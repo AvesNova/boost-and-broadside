@@ -204,26 +204,25 @@ def test_the_eight_gigabyte_row_is_exactly_the_shipped_launch(name: str) -> None
 
 
 def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
+    """Wider rows buy residency, and a missing width honestly repeats a narrower one.
+
+    The profile's shard ladder is (7776, 2592, 864, ...): there is no 2-shard
+    split, so the 16 GB row cannot hold more than the 8 GB row and says so by
+    proposing the same width rather than inventing an intermediate one.
+    """
+
     geometry = launch_geometry(PROFILES["rl"])
     widths = {
         gigabytes: preset_knobs(VRAM_PRESETS[gigabytes], geometry).num_envs
         for gigabytes in sorted(VRAM_PRESETS)
     }
-    assert widths == {8: 3904, 16: 5856, 24: 11712, 32: 11712}
+    assert [width for width, _ in geometry.shard_widths()] == [7776, 2592, 864, 288, 96, 32]
+    assert widths == {8: 2592, 16: 2592, 24: 7776, 32: 7776}
     shards = [
         geometry.aligned_logical_batch_tokens // geometry.rollout_tokens(width)
         for width in widths.values()
     ]
-    assert shards == [3, 2, 1, 1]
-
-
-def test_a_profile_without_an_intermediate_width_keeps_the_narrower_one() -> None:
-    """rl-fields has no 2-shard split, so its 16 GB row is honestly its 8 GB row."""
-
-    geometry = launch_geometry(PROFILES["rl-fields"])
-    assert [width for width, _ in geometry.shard_widths()] == [7776, 2592, 864, 288, 96, 32]
-    assert preset_knobs(VRAM_PRESETS[16], geometry).num_envs == 2592
-    assert preset_knobs(VRAM_PRESETS[24], geometry).num_envs == 7776
+    assert shards == [3, 3, 1, 1]
 
 
 def test_every_shard_width_preserves_the_fixed_logical_batch() -> None:
@@ -490,7 +489,7 @@ def test_an_unresolved_policy_changes_nothing() -> None:
 
 
 def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
-    proposal = resolution_from_cache(VramPolicy("auto"), _entry(VramKnobs(1952, 20_000, True)))
+    proposal = resolution_from_cache(VramPolicy("auto"), _entry(VramKnobs(864, 20_000, True)))
     resolved = resolve_profile(
         PROFILES["rl"], launch_overrides(proposal, num_envs=None, microbatch_tokens=None)
     )
@@ -498,7 +497,7 @@ def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
     assert resolved.value_sources["train_config.microbatch_tokens"] == "vram-cache"
     assert resolved.value_sources["model_config.grad_checkpoint"] == "vram-cache"
     assert resolved.model_config.grad_checkpoint is True
-    assert resolved.train_config.rollouts_per_update == 6
+    assert resolved.train_config.rollouts_per_update == 9
 
 
 def test_the_resolution_document_states_the_guarantee_of_what_it_moved() -> None:

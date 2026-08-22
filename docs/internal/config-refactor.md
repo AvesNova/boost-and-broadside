@@ -81,20 +81,46 @@ Each sub-step is independently shippable and separately committed. The order is
 forced: 8a shrinks the surface 8b has to collapse, 8b gives 8d a single schema
 to serialise, and 8d gives 8e something to append to.
 
-### 8a — one profile
+### 8a — one profile — **DONE**
 
-Merge `rl` and `rl-fields`; BC becomes an overlay rather than a peer. Hoist the
-19 shared values into one base.
+`rl` and `rl-fields` merged; BC is now `replace()` on `RL_PROFILE`. Deleted
+`profiles/rl_fields.py`, `make_bc_schedule_spec`, the `REWARDS`/`FIELD_REWARDS`
+split, and `tests/config/test_bc_profile.py` (181 lines policing a relationship
+the overlay guarantees by construction).
 
-Deletes `profiles/rl.py`, `profiles/bc.py`, `make_bc_schedule_spec`, the
-`REWARDS`/`FIELD_REWARDS` split, and `tests/config/test_bc_profile.py` (181
-lines policing a relationship an overlay guarantees by construction).
+Verified by resolving every profile before and after and diffing the leaves: the
+merged `rl` is **byte-identical to the old `rl-fields`**, and BC moved only by
+gaining the fielded environment. BC's divergence from RL is exactly the 7 leaves
+its docstring names, now asserted as data in one test.
 
-Touches the smoke matrix: `train-rl`, `train-rl-fields` and `train-bc` become
-one training case plus a BC-overlay case.
+**Part of 8f came forward.** The S01 snapshot tests, `_INTENDED_DIVERGENCE` and
+the fingerprint pin test are keyed by the three profile names this step merges,
+so keeping them would have meant a divergence list describing the merge itself,
+and re-pinning six fingerprints for a test 8f deletes. They went with 8a.
 
-*Risk:* `bc` differs from `rl` in 7 values, and the overlay has to reproduce
-all 7. Check by resolving both before and after and diffing the leaves.
+Two tests were **inverted** rather than deleted, because the property they
+protected still matters in the opposite direction:
+
+- *no profile imports another* → *the base does not import an overlay*. The
+  overlay direction is the mechanism; what must not happen is a cycle.
+- *profiles are independent values* → *an overlay shares the base's sub-spec
+  objects but not its identity*. Sharing is the guarantee; the copy is the
+  safety.
+
+It also caught an eighth mode. `capture` reads a run, and it reads the
+checkpoint's `env_config` -- which does carry `num_fields` -- while never reading
+the `field_map` beside it, so it belonged in the step 7 sweep and was invisible
+there only because the fixture was field-free. Merging the profiles made the
+fixture fielded and the `capture` smoke case failed immediately. Fixed by
+factoring the field-map read out of `load_run_config` into `recorded_field_map`,
+which both now use, and covered by a test verified failing against the old code.
+
+Also: the whole VRAM shard ladder moved, because the one profile is 12 entity
+tokens wide rather than 8. The valid widths are now
+`(7776, 2592, 864, 288, 96, 32)` and the default is 2592, not 3904. The measured
+8 GB row in `memory-optimization.md` was taken at 31,232 resident tokens against
+the current 31,104 — within 0.4%, so it is expected to carry, but it is flagged
+there as un-reprobed rather than quietly restated.
 
 ### 8b — one schema
 

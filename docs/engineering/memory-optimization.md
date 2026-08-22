@@ -30,8 +30,9 @@ three categories differ in what they promise, so they are never mixed:
 
 `--vram` may move tier 1 and tier 2 only. A profile's logical batch is fixed, so a width is
 valid only when it divides that batch exactly and stays minibatch-aligned; anything else is
-rejected rather than silently rounded. For the `rl` profile the valid widths are 11712 (1
-shard), 5856 (2), 3904 (3), and 1952 (6), and `rl-fields` has no two-shard split at all.
+rejected rather than silently rounded. For the `rl` profile the valid widths are 7776 (1
+shard), 2592 (3), 864 (9), 288 (27), 96 (81), and 32 (243) -- there is no two-shard split,
+so a preset that cannot afford 7776 proposes 2592 rather than inventing a width between.
 
 ### Policies
 
@@ -53,10 +54,9 @@ every resolved value with its source (`profile`, `derived`, `vram-cache`, `vram-
 
 ### Presets are starting points, measurements are not
 
-Only the 8 GB row is measured, and it is exactly the launch every registered profile already
-resolves to (3904 envs / 3 shards / 25,000 microbatch tokens / no gradient checkpointing for
-`rl`). Probing that card directly in August 2026, running one complete `rl` update in eager
-mode under Torch 2.13 / CUDA 13.0, accepted it on the first candidate:
+Only the 8 GB row is measured. Probing that card directly in August 2026, running one
+complete `rl` update in eager mode under Torch 2.13 / CUDA 13.0, accepted it on the first
+candidate:
 
 | candidate | allocated peak | reserved peak | of total | outcome |
 |---|---:|---:|---:|---|
@@ -65,6 +65,12 @@ mode under Torch 2.13 / CUDA 13.0, accepted it on the first candidate:
 Reserved peak is 96% of the card, so this row has essentially no allocator headroom on
 8 GB. It fits; a slightly larger shard or microbatch would not. The ladder below it
 therefore reaches for gradient checkpointing before it narrows the shard.
+
+That row was measured at eight entity tokens per environment, when `rl` was field-free and
+resolved to 3904 envs. The profile now carries four fields and resolves to 2592, which is
+31,104 resident entity tokens against the measured 31,232 -- within 0.4%, and the microbatch
+is capped at 25,000 tokens either way. The number is therefore expected to carry, but it has
+not been re-probed at the current width, and it is a measurement rather than a derivation.
 
 The 16, 24, and 32 GB rows are linear extrapolations of the persistent-buffer and
 rollout-peak figures in the production comparison below, and have never been run. Applying

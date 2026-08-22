@@ -2,7 +2,7 @@
 
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -198,18 +198,34 @@ def load_run_config(
     model_config = ModelConfig(**checkpoint["model_config"])
     train_config = checkpoint.get("train_config", {})
     paradigm = train_config.get("paradigm", "ego_pass")
-    field_map = train_config.get("field_map")
-    if env_config.num_fields > 0 and field_map is None:
-        raise InvalidCheckpointError(
-            f"{run_dir.name} trained with {env_config.num_fields} fields but records no "
-            f"field-map intent; it cannot be evaluated on the distribution it trained on"
-        )
     return (
         env_config,
         model_config,
         paradigm,
-        None if field_map is None else FieldMapConfig(**field_map),
+        recorded_field_map(checkpoint, env_config, run_dir.name),
     )
+
+
+def recorded_field_map(
+    checkpoint: Mapping[str, object],
+    env_config: EnvConfig,
+    label: str,
+) -> FieldMapConfig | None:
+    """The map distribution a checkpoint trained under, or ``None`` if it had none.
+
+    Absence is only legitimate at zero fields. A fielded run that records no
+    intent cannot be evaluated on the distribution it learned, and guessing one
+    from the current profile would produce a confident number about a different
+    game -- so this raises rather than substituting.
+    """
+
+    field_map = checkpoint.get("train_config", {}).get("field_map")
+    if env_config.num_fields > 0 and field_map is None:
+        raise InvalidCheckpointError(
+            f"{label} trained with {env_config.num_fields} fields but records no "
+            f"field-map intent; it cannot be evaluated on the distribution it trained on"
+        )
+    return None if field_map is None else FieldMapConfig(**field_map)
 
 
 def load_ladder_policy(

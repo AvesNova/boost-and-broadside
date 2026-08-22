@@ -1,4 +1,4 @@
-"""Every run-subject evaluation mode, driven against a run that has fields.
+"""Every run-subject evaluation mode, driven across both field widths.
 
 This file exists because of a specific failure. Fields were added to training and
 the evaluation stack did not follow, and nothing noticed: the synthetic run every
@@ -11,6 +11,10 @@ silently dropped the field tokens from its own output layout.
 So these tests assert the *environment that was built*, not the exit status. An
 exit-code test would have caught the three that raised and none of the three
 that did not.
+
+The field-free case at the bottom guards the opposite direction. ``num_fields``
+is a sequence length rather than an architecture, so zero is a configuration and
+not a legacy shape -- it is what run 682 trained under, and 682 is still cited.
 """
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ _RUN = "fields-run"
 def fields_run(tmp_path):
     """A minimal complete run trained with four refractive fields."""
 
-    return build_synthetic_run(tmp_path, profile="rl-fields", run_name=_RUN)
+    return build_synthetic_run(tmp_path, num_fields=4, run_name=_RUN)
 
 
 @pytest.fixture
@@ -205,3 +209,56 @@ def test_noise_calibration_sizes_its_hidden_state_for_the_field_tokens(
 
     # Two ships plus four fields. Before the fix this read 2.
     assert widths and set(widths) == {6}
+
+
+def test_capture_records_a_fields_run_in_a_field_arena(fields_run, built_envs, tmp_path):
+    """The seventh mode, and the one step 7 missed.
+
+    ``capture`` reads a run rather than being handed an environment, so it
+    belonged in this file from the start; it was invisible because it reads the
+    checkpoint's ``env_config`` -- which does carry ``num_fields`` -- while never
+    reading the ``field_map`` beside it. A clip of a fielded policy in an empty
+    arena is not a clip of that policy.
+    """
+
+    from boost_and_broadside.modes.capture import run_capture_mode
+
+    run_capture_mode(
+        run_spec=_RUN,
+        scenarios=["self"],
+        seeds="0",
+        ship_config=ShipConfig(),
+        model_config=MODEL_CONFIG,
+        device="cpu",
+        checkpoint_dir=str(tmp_path),
+        out_dir=tmp_path / "clips",
+        sizes=["1v1"],
+        max_steps=2,
+        window=64,
+        hold_ms=0,
+    )
+    _assert_played_with_fields(built_envs)
+
+
+def test_a_field_free_run_is_still_played_at_zero_fields(built_envs, tmp_path):
+    """The other direction: zero fields is a width, not a deprecated variant.
+
+    Merging the field-free and fielded profiles left one profile with four
+    fields, so nothing in the default fixture exercises the width run 682
+    trained at any more. This does, through the mode that rates it.
+    """
+
+    from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
+
+    build_synthetic_run(tmp_path, num_fields=0, run_name="field-free-run")
+    run_elo_calibrate_mode(
+        run_spec="field-free-run",
+        ship_config=ShipConfig(),
+        device="cpu",
+        config=_calibration(),
+        checkpoint_dir=str(tmp_path),
+    )
+
+    assert built_envs, "no environment was built at all"
+    assert [config.num_fields for config, _ in built_envs] == [0] * len(built_envs)
+    assert not any(has_map for _, has_map in built_envs)

@@ -261,18 +261,20 @@ def test_print_config_refuses_to_probe_from_the_command_line(policy: str, capsys
 
 
 def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None:
+    # The 24 GB row, not 16: the profile has no two-shard split, so its 16 GB row
+    # proposes the same width as its 8 GB one and would move tier 1 alone.
     assert (
-        cli.main(["train", "--profile", "rl", "--device", "cpu", "--vram", "16", "--print-config"])
+        cli.main(["train", "--profile", "rl", "--device", "cpu", "--vram", "24", "--print-config"])
         == 0
     )
     document = json.loads(capsys.readouterr().out)
     vram = document["launch"]["vram"]
     assert vram == {
-        "policy": "16",
+        "policy": "24",
         "source": "vram-preset",
         "status": "provisional",
-        "proposed": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
-        "applied": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "proposed": {"num_envs": 7776, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "applied": {"num_envs": 7776, "microbatch_tokens": 37_500, "grad_checkpoint": False},
         "tiers": vram["tiers"],
         "identity_fingerprint": None,
         "notes": vram["notes"],
@@ -280,7 +282,7 @@ def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None
     assert set(vram["tiers"]) == {"1", "2"}
     assert "never measured" in vram["notes"][0]
     # D9: the resolved shard count is recorded and reported.
-    assert document["config"]["train_config"]["rollouts_per_update"] == 2
+    assert document["config"]["train_config"]["rollouts_per_update"] == 1
     assert document["sources"]["train_config.scales.0.num_envs"] == "vram-preset"
     assert document["sources"]["model_config.grad_checkpoint"] == "vram-preset"
 
@@ -368,7 +370,7 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
                 "--profile",
                 "rl",
                 "--num-envs",
-                "1952",
+                "864",
                 "--microbatch-tokens",
                 "20000",
                 "--device",

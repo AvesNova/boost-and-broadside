@@ -1,110 +1,61 @@
-"""Independent behavior-cloning profile intent.
+"""Behavior-cloning intent, as an overlay on the RL profile.
 
 BC pretrains the policy against the stochastic scripted controller: the
 controller supplies supervised action targets on every environment, no policy
 gradient is taken, and no roster opponent plays a rollout.  The critic and the
 next-state head train alongside so RL inherits more than an actor.
 
-Every value the behavior-cloning objective does not require is the current
-project value, restated here rather than borrowed -- this module never imports
-another profile.  The differences that remain are named and enforced by the
-allowed-difference invariant in ``tests/config/test_bc_profile.py``:
+Imitation has to happen in the environment RL continues in, so everything BC's
+objective does not require is RL's value *by construction* rather than by
+restatement.  This module is the complete list of differences:
 
-* ``objective.next_state_coef`` -- BC weights next-state prediction at full
-  strength while it has a dense supervised signal to learn the trunk from.
+* ``objective.next_state_coef`` -- full-strength next-state prediction while
+  there is a dense supervised signal to learn the trunk from.
 * ``optimizer.total_timesteps`` -- BC owns its budget and stops when imitation
   saturates, not when RL's curriculum ends.
-* five schedule entries -- see :func:`make_bc_schedule_spec`.
+* five schedule entries, each commented below.
+
+The overlay is why there is no test policing that list.  A shared value cannot
+drift here without drifting in RL too, which is the property the deleted
+``tests/config/test_bc_profile.py`` spent 181 lines checking by hand.
 """
 
-from boost_and_broadside.config.defaults import (
-    COMPONENT_GAMMAS_PER_TICK,
-    COMPONENT_LAMBDAS_PER_TICK,
-    ELO_EVAL,
-    LIVE_REFERENCE_PROBABILITIES,
-    MODEL_CONFIG,
-    REWARDS,
-    SHIP_CONFIG,
-    make_bc_schedule_spec,
-)
-from boost_and_broadside.config.schema import (
-    DiscountSpec,
-    EnvironmentSpec,
-    LaunchSizingSpec,
-    LeagueSpec,
-    ObjectiveSpec,
-    OptimizerSpec,
-    ProfileSpec,
-    RolloutSpec,
-)
-from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
+from dataclasses import replace
 
-BC_PROFILE = ProfileSpec(
+from boost_and_broadside.config.schedule_spec import constant_spec, linear_spec
+from boost_and_broadside.profiles.rl import RL_PROFILE
+
+BC_SCHEDULE_SPEC = replace(
+    RL_PROFILE.objective.schedule,
+    # Warm up to the project learning rate, then hold.  RL's decay tail is keyed
+    # to keypoints at 100M and 500M steps -- the end of *its* budget -- and
+    # means nothing on BC's own, much longer one.
+    learning_rate=linear_spec((0, 1e-7), (6_000_000, 3e-4)),
+    # No policy gradient: the scripted controller supplies supervised action
+    # targets and never takes a side in the rollout.
+    policy_gradient_coef=constant_spec(0.0),
+    # In BC this is the policy head's only learning signal, deliberately
+    # balanced one-to-one against the next-state auxiliary BC also weights at
+    # 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term carried
+    # alongside a live policy gradient.
+    behavior_cloning_coef=constant_spec(1.0),
+    # League opposition disabled: no roster opponent plays a BC rollout.  The
+    # Elo evaluator still runs -- BC's own scripted win rate is what decays the
+    # cloning weight -- and it rates against the same derived rungs RL uses.
+    league_fraction=constant_spec(0.0),
+    # A KL trust region early-stops epochs when the policy moves away from the
+    # one that produced the rollout.  Under supervision that movement is the
+    # objective, so the PPO stopping criterion does not apply.
+    target_kl=constant_spec(None),
+)
+
+BC_PROFILE = replace(
+    RL_PROFILE,
     name="bc",
-    ship_config=SHIP_CONFIG,
-    model_config=MODEL_CONFIG,
-    environment=EnvironmentSpec(
-        # Imitation has to happen in the environment RL continues in: eight
-        # ships (4v4), the same 30 Hz decision rate over 60 Hz physics, and the
-        # same spawn spread.
-        num_ships=8,
-        num_fields=0,
-        max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
-        max_episode_steps=1024,
-        action_repeat=2,
-        spawn_resource_spread=0.25,
-    ),
-    rollout=RolloutSpec(
-        logical_batch_tokens=12_000_000,
-        num_steps=128,
-        num_minibatches=32,
-    ),
-    launch_defaults=LaunchSizingSpec(
-        # Memory launch choices, deliberately excluded from profile_fingerprint.
-        rollout_tokens=4_000_000,
-        microbatches_per_minibatch=5,
-    ),
-    discounts=DiscountSpec(
-        gamma_per_tick=0.99,
-        gae_lambda_per_tick=0.95,
-        component_gammas_per_tick=dict(COMPONENT_GAMMAS_PER_TICK),
-        component_lambdas_per_tick=dict(COMPONENT_LAMBDAS_PER_TICK),
-    ),
-    objective=ObjectiveSpec(
-        paradigm="ego_pass",
-        schedule=make_bc_schedule_spec(),
-        rewards=REWARDS,
-        # Named difference: full-strength next-state prediction.  A separate
-        # experiment, not this correction, is what would justify changing it.
+    objective=replace(
+        RL_PROFILE.objective,
+        schedule=BC_SCHEDULE_SPEC,
         next_state_coef=1.0,
-        windowed_loss_coef=0.1,
     ),
-    optimizer=OptimizerSpec(
-        clip_coef=0.15,
-        max_grad_norm=1.0,
-        # Named difference: BC's own budget.
-        total_timesteps=2_000_000_000,
-        return_ema_alpha=0.005,
-        return_min_span=1.0,
-        advantage_min_rms=1e-4,
-        return_quantile_samples=262_144,
-        checkpoint_dir="checkpoints",
-        histogram_interval=10,
-        log_interval=10,
-    ),
-    league=LeagueSpec(
-        league_size=20,
-        league_slots=4,
-        # league_fraction is 0.0 throughout, so no roster entry ever plays a
-        # rollout.  The Elo evaluator still runs -- BC's own scripted win rate
-        # is what decays the cloning weight -- and it rates the live policy
-        # against the same derived rungs RL continues on.
-        live_reference_probabilities=LIVE_REFERENCE_PROBABILITIES,
-        elo_milestone_gap=200.0,
-        elo_temperature=200.0,
-        league_uniform_sampling=False,
-        elo_eval=ELO_EVAL,
-        bc_winrate_target=0.45,
-    ),
-    field_map=None,
+    optimizer=replace(RL_PROFILE.optimizer, total_timesteps=2_000_000_000),
 )

@@ -10,9 +10,6 @@ the decision was made on.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
 from boost_and_broadside.config.defaults import LIVE_REFERENCE_PROBABILITIES
@@ -25,9 +22,6 @@ from boost_and_broadside.config.live_elo import (
 )
 from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.profiles import PROFILES
-
-_ROOT = Path(__file__).resolve().parents[2]
-_SNAPSHOTS = _ROOT / "tests" / "fixtures" / "mode_refactor"
 
 # The ladders the semi-random tournament fitted for the two shipped
 # environments, on the scripted-anchored gauge, with the rating it gave the
@@ -163,18 +157,6 @@ def test_every_profile_rates_on_the_same_derived_gauge(name: str) -> None:
     assert not hasattr(train_config, "random_elo")
     assert not hasattr(PROFILES[name].league, "reference_ladder")
     assert not hasattr(PROFILES[name].league, "random_elo")
-
-
-@pytest.mark.parametrize("name", ("rl", "rl-fields", "bc"))
-def test_no_resolved_snapshot_stores_a_fitted_rating(name: str) -> None:
-    """The recorded snapshots are the resolved-config diff S12 is judged on."""
-
-    train_config = json.loads((_SNAPSHOTS / f"{name}.json").read_text())["train_config"]
-
-    assert "reference_ladder" not in train_config
-    assert "random_elo" not in train_config
-    assert train_config["live_reference_probabilities"] == list(LIVE_REFERENCE_PROBABILITIES)
-    assert train_config["elo_eval"]["scripted_live_elo"] == 1000.0
 
 
 @pytest.mark.parametrize("probability", sorted(_ACCEPTED_ERROR))

@@ -267,14 +267,16 @@ the cutoff the actor is held where cloning left it and the critic, next-state, a
 terms carry on through the shared trunk. RL is unaffected: its policy gradient is positive
 throughout, so it keeps the scheduled entropy bonus.
 
-## Field training profile
+## Fields
 
-The primary [`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) profile remains an
-exact zero-field combat baseline.
-[`profiles/rl_fields.py`](../src/boost_and_broadside/profiles/rl_fields.py) adds four cached
-static fields, activates the two local field reward heads, and reduces environment count to
+[`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) trains in four cached static
+fields, with the two local field reward heads active and the environment count reduced to
 offset the extra attention tokens. The scripted controller ignores fields entirely: it aims
 and manoeuvres as if the medium were uniform.
+
+Fields are not a profile variant. `num_fields` is a sequence length -- it sets the token
+count `N + M`, and no weight shape depends on it -- so a run at zero fields uses the same
+network, and run 682 is still rated with the same evaluation stack.
 
 It used to carry a mild stay-on-your-side steering bias, on the theory that behavior
 cloning needed field-dependent targets to warm up the attention trunk. Measurement killed
@@ -542,7 +544,7 @@ launch block of every checkpoint.
 ```
 bnb train --profile rl --gradient-diagnostics top_level
 bnb train --profile rl --gradient-diagnostics reward_policy --gradient-diagnostics-interval 25
-bnb train --profile rl-fields --gradient-diagnostics reward_full \
+bnb train --profile rl --gradient-diagnostics reward_full \
     --gradient-diagnostics-interval 100 --gradient-diagnostics-minibatches 2
 ```
 
@@ -554,9 +556,11 @@ bnb train --profile rl-fields --gradient-diagnostics reward_full \
 | `reward_full` | also the critic gradient, by reward component | plus one per active component | 1.17x | 4529 MiB |
 
 Cost measured by
-[`benchmarks/gradient_diagnostics.py`](../benchmarks/gradient_diagnostics.py) on the `rl`
-profile at half width (`--num-envs 1952`) on an RTX 4070 Laptop, one diagnosed minibatch
-every update. The multiplier is on the update phase alone; a training step also collects a
+[`benchmarks/gradient_diagnostics.py`](../benchmarks/gradient_diagnostics.py) on an RTX 4070
+Laptop with one diagnosed minibatch every update, at `--num-envs 1952` -- a half-width shard
+of the `rl` profile as it stood before it carried fields, and not a width that resolves
+today. The multipliers are ratios between diagnostic levels at one width, which is what
+makes them worth quoting; the absolute MiB are of that launch. The multiplier is on the update phase alone; a training step also collects a
 rollout and runs Elo evaluation, so the share of total wall clock is smaller. Raising
 `--gradient-diagnostics-interval` divides the overhead by the cadence.
 

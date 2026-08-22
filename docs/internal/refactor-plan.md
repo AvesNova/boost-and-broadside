@@ -130,8 +130,15 @@ measure the only kind of run currently trained.
       `num_fields=[0, 0]` (the silent ones), and one with `{2} == {6}` — the
       hidden state sized for two ships instead of two ships and four fields.
 
-Not done: a fields smoke case. The matrix already runs `train-rl-fields`, and
-these tests cover the evaluation side more precisely than a smoke launch would.
+Not done: a fields smoke case. The matrix already runs the fielded training
+profile, and these tests cover the evaluation side more precisely than a smoke
+launch would.
+
+**Missed one.** `capture` also reads a run, and it had the same bug. Step 8a made
+the smoke fixture fielded, which surfaced it within the hour. It is fixed and
+covered in the same file now, but the lesson is that "run-subject mode" was the
+wrong search key -- the right one is "reads `env_config` off a checkpoint", which
+would have found `capture` too.
 
 Blocks: nothing, but do it before step 8 rewrites the resolver these modes read.
 
@@ -140,12 +147,13 @@ Blocks: nothing, but do it before step 8 rewrites the resolver these modes read.
 Each sub-step independently shippable; run suite + smoke after each.
 Full plan, invariants and risks: [config-refactor.md](config-refactor.md).
 
-- [ ] **8a** Drop non-field support; merge `rl`/`rl-fields`; BC becomes an
-      overlay; hoist the 19 duplicated values into one base.
-      Deletes: `profiles/rl.py`, `profiles/bc.py`, `make_bc_schedule_spec`,
-      `tests/config/test_bc_profile.py`, the `REWARDS`/`FIELD_REWARDS` split,
-      the config-layer `field_map is None` branches. The `num_fields == 0`
-      branches in `env/` stay — that is how 682 is evaluated.
+- [x] **8a** — **DONE**. One `rl` profile at four fields, byte-identical to the
+      old `rl-fields`; BC is an overlay on it. Deleted `profiles/rl_fields.py`,
+      `make_bc_schedule_spec`, the `REWARDS`/`FIELD_REWARDS` split,
+      `tests/config/test_bc_profile.py`, and — pulled forward from 8f — the S01
+      snapshots, `_INTENDED_DIVERGENCE`, and the fingerprint pin test.
+      `num_fields` is now a parameter of the smoke fixture, so the zero-field
+      width run 682 trained at keeps a regression test.
 - [ ] **8b** Collapse Spec + Config into one schema with explicit
       intent/derived field pairs (`gamma_per_tick` stored, `gamma` derived).
       Derivation becomes `derive(config) -> config`
@@ -164,8 +172,10 @@ Full plan, invariants and risks: [config-refactor.md](config-refactor.md).
       `resume_wandb_run_id`. Emit the changed keys as a logged event at the
       switch step so a chart shows where the settings moved.
 - [ ] **8f** Delete the fingerprint superstructure: drift guard,
-      `--allow-config-drift` on the training path, the fingerprint pin test,
-      the S01 snapshot tests, `_INTENDED_DIVERGENCE`
+      `--allow-config-drift` on the training path. The fingerprint pin test, the
+      S01 snapshot tests and `_INTENDED_DIVERGENCE` already went with 8a.
+      `profile_fingerprint` through `launch.py`/`vram_probe.py` is a VRAM cache
+      key, not a guard — it stays, and wants renaming to say so.
 
 **Keep:** `canonical_json`, the feature/physics guard in `policy_io`, a local
 `hash(dict)` inside `vram.py`. **Also keep** the artifact recipe digest — it is

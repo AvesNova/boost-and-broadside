@@ -101,9 +101,6 @@ uv sync
 # Resolve and inspect the RL launch without allocating the trainer
 uv run bnb train --profile rl --print-config
 
-# Inspect the independent refractive-field profile
-uv run bnb train --profile rl-fields --print-config
-
 # Play a 1v1 match against a null ship in four refractive fields
 uv run bnb play
 

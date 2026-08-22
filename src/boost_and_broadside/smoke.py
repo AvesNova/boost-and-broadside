@@ -51,16 +51,15 @@ class SmokeCase:
 
 
 SMOKE_CASES: tuple[SmokeCase, ...] = (
-    SmokeCase("train-rl", "train", "rl", 120),
-    SmokeCase("train-rl-fields", "train", "rl-fields", 180),
-    SmokeCase("train-bc", "train", "bc", 120),
+    SmokeCase("train-rl", "train", "rl", 180),
+    SmokeCase("train-bc", "train", "bc", 180),
     # One case per diagnostic level, because each level adds a distinct code
     # path: decomposing nothing, the loss terms, the policy by reward, and the
-    # critic by reward. They run against the cheapest profile; what is being
-    # exercised is the decomposition, not the environment.
-    SmokeCase("train-grad-top-level", "train", "rl", 150, gradient_diagnostics="top_level"),
-    SmokeCase("train-grad-reward-policy", "train", "rl", 180, gradient_diagnostics="reward_policy"),
-    SmokeCase("train-grad-reward-full", "train", "rl", 240, gradient_diagnostics="reward_full"),
+    # critic by reward. What is being exercised is the decomposition, not the
+    # environment, so they all run the one training profile.
+    SmokeCase("train-grad-top-level", "train", "rl", 210, gradient_diagnostics="top_level"),
+    SmokeCase("train-grad-reward-policy", "train", "rl", 240, gradient_diagnostics="reward_policy"),
+    SmokeCase("train-grad-reward-full", "train", "rl", 300, gradient_diagnostics="reward_full"),
     SmokeCase("play", "play"),
     SmokeCase("watch", "watch"),
     SmokeCase("capture", "capture", timeout_seconds=120),
@@ -127,16 +126,25 @@ def _smoke_resolved_profile(
     checkpoint_root: Path,
     *,
     resolved_name: str | None = None,
+    num_fields: int | None = None,
 ) -> ResolvedTrainConfig:
-    """Resolve a registry profile's objective under a fixed one-update smoke shape."""
+    """Resolve a registry profile's objective under a fixed one-update smoke shape.
+
+    ``num_fields`` overrides the profile's field count. It is a parameter rather
+    than a second profile because the network does not change with it -- zero
+    fields is the configuration run 682 trained under, and keeping a fixture at
+    that width is how the field-free path stays exercised.
+    """
 
     base = PROFILES[profile_name]
-    num_fields = base.environment.num_fields
+    if num_fields is None:
+        num_fields = base.environment.num_fields
     entity_tokens = 2 + num_fields
     num_steps = 2
     environment = replace(
         base.environment,
         num_ships=2,
+        num_fields=num_fields,
         max_bullets=2,
         max_episode_steps=2,
     )
@@ -169,7 +177,7 @@ def _smoke_resolved_profile(
     )
     field_map = (
         replace(base.field_map, cache_size=1, max_generation_attempts=256)
-        if base.field_map is not None
+        if num_fields and base.field_map is not None
         else None
     )
     spec = replace(
@@ -205,17 +213,20 @@ def build_synthetic_run(
     seed: int = 7,
     run_name: str = _RUN_NAME,
     profile: str = "rl",
+    num_fields: int | None = None,
 ) -> SyntheticRun:
     """Create the smallest current-schema run through production serializers.
 
-    ``profile`` selects what kind of run it is. ``rl-fields`` produces one with
-    refractive fields and the map-generation intent that goes with them, which
-    is what the evaluation modes need to be exercised against: a field-free
-    fixture cannot catch a mode that fails to read a run's field distribution.
+    ``num_fields`` overrides the profile's field count, and it is what the
+    evaluation modes need to be varied across: a field-free fixture cannot catch
+    a mode that fails to read a run's field distribution, and a fielded one
+    cannot catch a mode that has stopped handling the width run 682 trained at.
     """
 
     root = Path(checkpoint_root).resolve()
-    resolved = _smoke_resolved_profile(profile, root, resolved_name="smoke-fixture")
+    resolved = _smoke_resolved_profile(
+        profile, root, resolved_name="smoke-fixture", num_fields=num_fields
+    )
     run_dir = root / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
 

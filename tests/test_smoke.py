@@ -39,7 +39,7 @@ def test_registry_covers_every_runtime_command_and_training_profile() -> None:
         by_command.setdefault(case.command, []).append(case)
 
     assert set(by_command) == set(cli_commands.runtime_command_names())
-    assert {case.profile for case in by_command["train"]} == {"bc", "rl", "rl-fields"}
+    assert {case.profile for case in by_command["train"]} == {"bc", "rl"}
     assert len({case.name for case in SMOKE_CASES}) == len(SMOKE_CASES)
     assert all(case.timeout_seconds > 0 for case in SMOKE_CASES)
 

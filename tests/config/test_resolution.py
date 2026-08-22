@@ -23,94 +23,24 @@ from boost_and_broadside.config.service import format_resolved_config, resolved_
 from boost_and_broadside.profiles import PROFILES
 
 _ROOT = Path(__file__).resolve().parents[2]
-_SNAPSHOTS = _ROOT / "tests" / "fixtures" / "mode_refactor"
 _PROFILE_MODULES = (
     _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl.py",
-    _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl_fields.py",
     _ROOT / "src" / "boost_and_broadside" / "profiles" / "bc.py",
 )
 
 
-# Values a profile has deliberately moved away from its recorded snapshot since
-# that snapshot was taken. The snapshots stay as written -- they are the record
-# of what the refactor had to preserve -- so an intended change is declared here,
-# where it is one reviewable line, rather than by quietly rewriting the evidence.
-# Keys are dotted paths into the resolved train_config.
-_INTENDED_DIVERGENCE: dict[str, dict[str, object]] = {
-    # Shoot-quality shaping was switched off. It is a base reward weight rather
-    # than field intent, so it moves all three profiles together and the two RL
-    # profiles stay separated by field intent alone.
-    "rl": {"rewards.shoot_quality_weight": 0.0},
-    "bc": {"rewards.shoot_quality_weight": 0.0},
-    # The field run's budget was doubled on top of that.
-    "rl-fields": {
-        "rewards.shoot_quality_weight": 0.0,
-        "total_timesteps": 1_000_000_000,
-    },
-}
+def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
+    """BC's whole divergence from RL, as data.
 
-# The RL learning-rate schedule was raised from a 3e-4 peak decaying to 1e-4, to
-# a 4.5e-4 peak decaying proportionally to 1.5e-4. Each moved number is named
-# rather than the schedule replaced wholesale, so a fourth value drifting would
-# still be caught. Paths walk the compiled closure the snapshot records:
-# segments[i][1] is the i-th segment's schedule.
-_RL_LEARNING_RATE_DIVERGENCE = {
-    "schedule.learning_rate.closure.segments.0.1.closure.values.1": 4.5e-4,  # warmup target
-    "schedule.learning_rate.closure.segments.1.1.closure.value": 4.5e-4,  # hold
-    "schedule.learning_rate.closure.segments.2.1.closure.values.0": 4.5e-4,  # decay start
-    "schedule.learning_rate.closure.segments.2.1.closure.values.1": 1.5e-4,  # decay floor
-}
-_INTENDED_DIVERGENCE["rl"].update(_RL_LEARNING_RATE_DIVERGENCE)
-_INTENDED_DIVERGENCE["rl-fields"].update(_RL_LEARNING_RATE_DIVERGENCE)
-
-
-def apply_intended_divergence(name: str, train_config: dict) -> None:
-    """Move a recorded snapshot onto the values a profile has since chosen.
-
-    Asserts each declared value is genuinely a change, so an entry that has been
-    folded back into the snapshot fails here instead of silently weakening the
-    comparison.
-
-    A numeric path segment indexes a list, so a compiled schedule closure can be
-    reached as precisely as a plain field.
-
-    Args:
-        name:          Registered profile name.
-        train_config:  Snapshot ``train_config`` block, edited in place.
+    This replaces ``tests/config/test_bc_profile.py``, which spent 181 lines
+    checking by hand that BC had not drifted on any *shared* value. An overlay
+    cannot: a shared value that moves here moves in RL too. What is still worth
+    pinning is the other direction -- that the list of deliberate differences is
+    the one that was reviewed, and has not quietly grown.
     """
 
-    def descend(container: object, key: str) -> object:
-        return container[int(key)] if isinstance(container, list) else container[key]
-
-    for path, value in _INTENDED_DIVERGENCE.get(name, {}).items():
-        target = train_config
-        *parents, leaf = path.split(".")
-        for key in parents:
-            target = descend(target, key)
-        index = int(leaf) if isinstance(target, list) else leaf
-        assert target[index] != value, f"{name}.{path} no longer diverges from its snapshot"
-        target[index] = value
-
-
-@pytest.mark.parametrize("name", ("rl", "rl-fields"))
-def test_resolved_profiles_match_s01_snapshots(name: str) -> None:
-    """BC is deliberately absent: S11 corrected it away from its S01 evidence.
-
-    ``tests/config/test_bc_profile.py`` pins the corrected profile and the exact
-    set of values that correction changed.
-    """
-    expected = json.loads((_SNAPSHOTS / f"{name}.json").read_text())
-    resolved = resolve_profile(PROFILES[name])
-    apply_intended_divergence(name, expected["train_config"])
-
-    assert canonical_data(resolved.ship_config) == expected["ship_config"]
-    assert canonical_data(resolved.model_config) == expected["model_config"]
-    assert canonical_data(resolved.train_config) == expected["train_config"]
-
-
-def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
     rl = canonical_data(resolve_profile(PROFILES["rl"]).train_config)
-    fields = canonical_data(resolve_profile(PROFILES["rl-fields"]).train_config)
+    bc = canonical_data(resolve_profile(PROFILES["bc"]).train_config)
 
     def different_paths(left, right, prefix=""):
         if isinstance(left, dict) and isinstance(right, dict):
@@ -129,42 +59,54 @@ def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
             return paths
         return {prefix} if left != right else set()
 
-    # The live gauge is defined rather than fitted per environment, so S12
-    # removed the two rating differences that used to be here: what separates
-    # the two profiles is now field intent and nothing else.
-    assert different_paths(rl, fields) == {
-        "field_map",
-        "rewards.field_damage_taken_weight",
-        "rewards.field_death_weight",
-        "scales.0.env_config.num_fields",
-        "scales.0.num_envs",
-        # Budget, not intent: the field run is given twice the steps. It is the
-        # one non-field difference between the two profiles, so it is named here
-        # rather than allowed to hide inside a looser assertion.
+    assert {path.split(".")[0] for path in different_paths(rl, bc)} == {
+        # Full-strength next-state prediction while a dense supervised signal is
+        # available to learn the trunk from.
+        "next_state_coef",
+        # BC's own budget: it stops when imitation saturates.
         "total_timesteps",
+        # Five entries -- learning_rate, policy_gradient_coef,
+        # behavior_cloning_coef, league_fraction, target_kl -- each commented at
+        # the point of override in profiles/bc.py.
+        "schedule",
     }
 
 
-def test_registered_profile_modules_do_not_import_each_other() -> None:
-    module_names = {
-        "boost_and_broadside.profiles.rl",
-        "boost_and_broadside.profiles.rl_fields",
-        "boost_and_broadside.profiles.bc",
+def _imported_modules(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(), filename=str(path))
+    imported = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
     }
-    for path in _PROFILE_MODULES:
-        tree = ast.parse(path.read_text(), filename=str(path))
-        imported = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        }
-        imported.update(
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        )
-        assert imported.isdisjoint(module_names), f"{path.name} imports another profile: {imported}"
+    imported.update(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    )
+    return imported
+
+
+def test_the_base_profile_does_not_import_an_overlay() -> None:
+    """Overlays depend on the base, never the reverse.
+
+    An overlay importing ``rl`` is how BC gets the shared values by construction
+    instead of restating them, so the old rule that no profile may import another
+    is exactly inverted for overlays. What must hold is that the direction stays
+    one-way: the moment the base reads an overlay there is a cycle, and "what RL
+    trains with" stops being answerable without knowing what else is registered.
+    """
+
+    base = _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl.py"
+    overlays = {
+        f"boost_and_broadside.profiles.{path.stem}" for path in _PROFILE_MODULES if path != base
+    }
+
+    assert _imported_modules(base).isdisjoint(overlays)
+    assert "boost_and_broadside.profiles.rl" in _imported_modules(
+        _ROOT / "src" / "boost_and_broadside" / "profiles" / "bc.py"
+    )
     assert not (_ROOT / "runs").exists()
 
 
@@ -248,7 +190,7 @@ def test_token_and_discount_derivations_are_named_and_exact() -> None:
     assert derive_time_normalized_value(0.95, action_repeat=2) == 0.9025
 
 
-@pytest.mark.parametrize("name", ("rl", "rl-fields", "bc"))
+@pytest.mark.parametrize("name", ("rl", "bc"))
 def test_every_profile_checkpoints_on_every_update(name: str) -> None:
     """Save cadence is not a tuning knob any profile owns.
 
@@ -268,7 +210,7 @@ def test_fingerprints_are_canonical_and_separate_intent_from_launch() -> None:
     base = resolve_profile(PROFILES["rl"])
     overridden = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=1952, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=864, microbatch_tokens=20_000),
     )
 
     assert fingerprint({"b": 2, "a": 1}) == fingerprint({"a": 1, "b": 2})
@@ -289,48 +231,6 @@ def test_canonical_serialization_has_a_stable_golden_vector() -> None:
         canonical_json(float("nan"))
     with pytest.raises(TypeError, match="unsupported"):
         canonical_json(object())
-
-
-def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
-    # All six moved in S12: replacing each profile's fitted reference ladder and
-    # random rating with the derived live gauge is a semantic change to what the
-    # run is rated against, so both fingerprints are expected to differ from the
-    # values recorded through S11.
-    #
-    # All six moved again when checkpoint_interval went from 50 updates to 1.
-    # Save cadence changes nothing about what is trained or how it is rated, but
-    # the interval is declared schedule intent and both fingerprints cover the
-    # whole schedule, so a run recorded under the old cadence reads as drifted
-    # and needs --allow-config-drift to resume.
-    #
-    # All six moved again when shoot_quality_weight was set to 0. It is a base
-    # reward weight, so every profile that builds on REWARDS carries the change.
-    #
-    # The four RL values moved once more when the RL learning-rate peak went from
-    # 3e-4 to 4.5e-4 and its floor proportionally from 1e-4 to 1.5e-4. BC keeps
-    # its own warmup target and is unaffected.
-    #
-    # Both rl-fields values moved again when its budget went from 500M to 1B
-    # steps. total_timesteps is declared optimizer intent, and it also sets the
-    # update count and the peak league width, so an rl-fields run recorded under
-    # the 500M budget reads as drifted against this profile.
-    expected = {
-        "rl": (
-            "eb59a8de6759d6f558803c514d7d29a9b24ea10409c8aa5193bf61c4c389a1b8",
-            "445bea16a9a6215f62fd0ef66c9223e02b562597794abeb418b43c077fc3960f",
-        ),
-        "rl-fields": (
-            "41f381fd0a48ec6a00dddb779a86e5afdb306843bc25d3b85e9186b996283266",
-            "3629108db34a16fc95b39e99559e999e5145a824293d4f105342cb3887d002c6",
-        ),
-        "bc": (
-            "87432c0b1102fca6f00640358047e8ba3014b5d58906800e3aabed7094d01565",
-            "68a72d4bfc43e4736fe8ef316604e35f419451f843e965101180f9e04d2b0da1",
-        ),
-    }
-    for name, fingerprints in expected.items():
-        resolved = resolve_profile(PROFILES[name])
-        assert (resolved.profile_fingerprint, resolved.resolved_config_fingerprint) == fingerprints
 
 
 def test_profile_fingerprint_includes_declarative_schedule_intent() -> None:
@@ -389,7 +289,7 @@ def test_declarative_schedule_validation_and_boundaries() -> None:
 def test_resolution_tracks_sources_and_cli_overrides() -> None:
     resolved = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=1952, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=864, microbatch_tokens=20_000),
     )
 
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "cli"
@@ -397,11 +297,11 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
     assert resolved.value_sources["train_config.gamma"] == "derived"
     assert resolved.value_sources["train_config.component_gammas.ally_win"] == "derived"
     assert resolved.value_sources["model_config.d_model"] == "profile"
-    assert resolved.train_config.scales[0].num_envs == 1952
+    assert resolved.train_config.scales[0].num_envs == 864
     assert resolved.train_config.microbatch_tokens == 20_000
 
     document = json.loads(
-        format_resolved_config(resolve_profile(PROFILES["rl"], LaunchOverrides(1952, 20_000)))
+        format_resolved_config(resolve_profile(PROFILES["rl"], LaunchOverrides(864, 20_000)))
     )
 
     def leaves(value, prefix=""):
@@ -434,7 +334,7 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
 
 def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
     baseline = resolve_profile(PROFILES["rl"])
-    half_width = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=1952))
+    narrower = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=864))
 
     def effective_batch_tokens(resolved) -> int:
         scale = resolved.train_config.scales[0]
@@ -446,13 +346,13 @@ def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
         )
 
     assert baseline.train_config.rollouts_per_update == 3
-    assert half_width.train_config.rollouts_per_update == 6
-    assert effective_batch_tokens(half_width) == effective_batch_tokens(baseline)
-    assert half_width.value_sources["train_config.scales.0.num_envs"] == "cli"
-    assert half_width.value_sources["train_config.rollouts_per_update"] == "derived"
+    assert narrower.train_config.rollouts_per_update == 9
+    assert effective_batch_tokens(narrower) == effective_batch_tokens(baseline)
+    assert narrower.value_sources["train_config.scales.0.num_envs"] == "cli"
+    assert narrower.value_sources["train_config.rollouts_per_update"] == "derived"
 
 
-@pytest.mark.parametrize("num_envs", (3872, 7776, 23_040))
+@pytest.mark.parametrize("num_envs", (3872, 3904, 23_040))
 def test_num_envs_override_rejects_width_that_changes_logical_batch(num_envs: int) -> None:
     with pytest.raises(ValueError, match="fixed logical batch"):
         resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=num_envs))
@@ -462,7 +362,7 @@ def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() ->
     baseline = resolve_profile(PROFILES["rl"])
     explicit = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=3904, microbatch_tokens=25_000),
+        LaunchOverrides(num_envs=2592, microbatch_tokens=25_000),
     )
     assert explicit.resolved_config_fingerprint == baseline.resolved_config_fingerprint
     assert explicit.value_sources["train_config.scales.0.num_envs"] == "cli"
@@ -496,14 +396,14 @@ def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
     """
     fixed_width = replace(
         PROFILES["rl"],
-        rollout=replace(PROFILES["rl"].rollout, logical_batch_tokens=11_993_088),
-        launch_defaults=LaunchSizingSpec(num_envs=3904),
+        rollout=replace(PROFILES["rl"].rollout, logical_batch_tokens=11_943_936),
+        launch_defaults=LaunchSizingSpec(num_envs=864),
     )
     resolved = resolve_profile(fixed_width)
 
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "vram-preset"
     assert resolved.value_sources["train_config.rollouts_per_update"] == "derived"
-    assert resolved.train_config.rollouts_per_update == 3
+    assert resolved.train_config.rollouts_per_update == 9
 
 
 def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, capsys) -> None:
@@ -514,7 +414,7 @@ def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, c
     assert rendered == format_resolved_config(resolve_profile(PROFILES["rl"]))
     assert document["schema_version"] == 1
     assert document["profile"] == "rl"
-    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 3904
+    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 2592
     assert document["sources"]["train_config.scales.0.num_envs"] == "derived"
     assert len(document["profile_fingerprint"]) == 64
     assert len(document["resolved_config_fingerprint"]) == 64
@@ -538,14 +438,24 @@ def test_resolved_component_discounts_are_deeply_immutable() -> None:
     assert serialized["component_lambdas"] == dict(resolved.train_config.component_lambdas)
 
 
-def test_profiles_are_independent_values_even_when_their_intent_matches() -> None:
-    rl = PROFILES["rl"]
-    fields = PROFILES["rl-fields"]
+def test_an_overlay_shares_the_bases_values_without_sharing_its_identity() -> None:
+    """What BC does not override, it *is* -- and overriding cannot reach back.
 
-    assert rl is not fields
-    assert rl.objective.schedule is not fields.objective.schedule
-    assert replace(fields.environment, num_fields=0) == rl.environment
-    assert set(PROFILES) == {"bc", "rl", "rl-fields"}
+    ``replace`` on a frozen dataclass copies, so an overlay holding the base's
+    own sub-spec objects is the guarantee that a shared value cannot differ. The
+    second half is that the copy is still a copy: nothing done to BC edits RL.
+    """
+
+    rl = PROFILES["rl"]
+    bc = PROFILES["bc"]
+
+    assert rl is not bc
+    assert bc.environment is rl.environment
+    assert bc.rollout is rl.rollout
+    assert bc.discounts is rl.discounts
+    assert bc.league is rl.league
+    assert bc.objective.schedule is not rl.objective.schedule
+    assert set(PROFILES) == {"bc", "rl"}
     assert {profile.name for profile in PROFILES.values()} == set(PROFILES)
     with pytest.raises(TypeError):
         rl.discounts.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]

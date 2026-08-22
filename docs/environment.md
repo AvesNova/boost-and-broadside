@@ -28,10 +28,11 @@ The main layers are:
 - [`wrapper.py`](../src/boost_and_broadside/env/wrapper.py): observations, decomposed
   rewards, statistics, and automatic reset.
 
-`EnvConfig.num_ships` is the total across both teams. The primary `profiles/rl.py` profile
-uses eight ships (4-vs-4) and zero fields, preserving the original ambient-only hot path
-exactly. `profiles/rl_fields.py` is a four-field combat profile for smoke tests and future
-training.
+`EnvConfig.num_ships` is the total across both teams, and `EnvConfig.num_fields` the count
+of cached static fields. `profiles/rl.py` trains at eight ships (4-vs-4) and four fields.
+There is no separate field-free profile: `num_fields` sets the token count and no weight
+shape depends on it, so zero fields is a configuration -- the one run 682 trained under, and
+the ambient-only hot path it still exercises -- rather than a different model.
 
 Ships also observe `grad(n)` at their own position. The physics had been computing and
 consuming it long before it reached the observation, as the force term in

@@ -24,7 +24,7 @@ from pathlib import Path
 import pygame
 import torch
 
-from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, FieldMapConfig, ModelConfig, ShipConfig
 from boost_and_broadside.evaluation.agents import ResolvedAgent, resolve_agent_spec
 from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import MatchRunner
@@ -33,6 +33,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_final_training_checkpoint,
 )
 from boost_and_broadside.evaluation.sizes import Matchup, parse_matchup
+from boost_and_broadside.evaluation.tournament import recorded_field_map
 from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
     require_observation_schema,
@@ -94,6 +95,7 @@ def _capture_match(
     scripted: ResolvedAgent,
     ship_config: ShipConfig,
     env_config: EnvConfig,
+    field_map_config: FieldMapConfig | None,
     renderer: GameRenderer,
     device: torch.device,
     out: Path,
@@ -115,7 +117,9 @@ def _capture_match(
     torch.cuda.manual_seed_all(seed)
 
     N = env_config.num_ships
-    env = create_evaluation_env(1, ship_config, env_config, device)
+    env = create_evaluation_env(
+        1, ship_config, env_config, device, field_map_config=field_map_config, field_map_seed=seed
+    )
     agent0 = policy
     agent1 = (
         ResolvedAgent("policy", policy.agent, bundle=policy.bundle)
@@ -226,6 +230,9 @@ def run_capture_mode(
     checkpoint_data = load_checkpoint_payload(checkpoint, map_location="cpu")
     require_observation_schema(checkpoint_data, str(checkpoint))
     base_env = EnvConfig(**checkpoint_data["env_config"])
+    # A clip of a fielded policy in an empty arena is not a clip of that policy,
+    # so the run's own map distribution travels with its environment.
+    field_map_config = recorded_field_map(checkpoint_data, base_env, run_dir.name)
     native = base_env.num_ships // 2
     matchups = [parse_matchup(s) for s in sizes] if sizes else [Matchup(native, native)]
     torch_device = torch.device(device)
@@ -262,6 +269,7 @@ def run_capture_mode(
                         scripted,
                         ship_config,
                         env_config,
+                        field_map_config,
                         renderer,
                         torch_device,
                         out,

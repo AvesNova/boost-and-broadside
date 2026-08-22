@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 from boost_and_broadside.config.core import ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.config.live_elo import LIVE_SCRIPTED_ELO
 from boost_and_broadside.config.schedule_spec import (
@@ -84,9 +82,9 @@ REWARDS = RewardConfig(
     kill_shot_weight=1.0,
     kill_assist_weight=1.0,
     combat_death_weight=1.0,
-    field_death_weight=0.0,
+    field_death_weight=1.0,
     combat_damage_taken_weight=0.5,
-    field_damage_taken_weight=0.0,
+    field_damage_taken_weight=0.5,
     damage_dealt_enemy_weight=0.5,
     damage_dealt_ally_weight=0.5,
     proximity_radius=400.0,
@@ -112,12 +110,6 @@ REWARDS = RewardConfig(
     shooting_penalty_weight=0.0,
     speed_weight=0.0,
     speed_penalty_min=10.0,
-)
-
-FIELD_REWARDS = replace(
-    REWARDS,
-    field_damage_taken_weight=0.5,
-    field_death_weight=1.0,
 )
 
 # Values are expressed per 60 Hz physics tick.  The resolver raises them to
@@ -207,48 +199,6 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         checkpoint_interval=constant_spec(1),
         num_epochs=stepped_spec((0, 4)),
         target_kl=stepped_spec((0, 0.1)),
-        high_winrate_threshold=constant_spec(0.8),
-        high_winrate_target_kl=constant_spec(0.02),
-    )
-
-
-def make_bc_schedule_spec() -> TrainingScheduleSpec:
-    """Return independent declarative intent for the supervised BC schedule.
-
-    Every value the behavior-cloning objective does not require is the current
-    project value.  The five that differ from :func:`make_rl_schedule_spec` are
-    named and tested by the BC-versus-RL allowed-difference invariant.
-    """
-
-    return TrainingScheduleSpec(
-        # Warm up to the project learning rate, then hold.  RL's decay tail is
-        # keyed to keypoints at 100M and 500M steps -- the end of *its* budget --
-        # and means nothing on BC's own, much longer budget.
-        learning_rate=linear_spec((0, 1e-7), (6_000_000, 3e-4)),
-        # No policy gradient: the scripted controller supplies supervised action
-        # targets and never takes a side in the rollout.
-        policy_gradient_coef=constant_spec(0.0),
-        entropy_coef=constant_spec(0.005),
-        # In BC this is the policy head's only learning signal, deliberately
-        # balanced one-to-one against the next-state auxiliary BC also weights
-        # at 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term
-        # carried alongside a live policy gradient.
-        behavior_cloning_coef=constant_spec(1.0),
-        value_function_coef=constant_spec(1.0),
-        sigreg_coef=constant_spec(0.0),
-        # All component groups stay active so the critic learns the full reward
-        # signal before RL begins.
-        true_reward_scale=constant_spec(1.0),
-        global_scale=constant_spec(1.0),
-        local_scale=constant_spec(1.0),
-        # League opposition disabled: no roster opponent plays a BC rollout.
-        league_fraction=constant_spec(0.0),
-        checkpoint_interval=constant_spec(1),
-        num_epochs=stepped_spec((0, 4)),
-        # A KL trust region early-stops epochs when the policy moves away from
-        # the one that produced the rollout.  Under supervision that movement is
-        # the objective, so the PPO stopping criterion does not apply.
-        target_kl=constant_spec(None),
         high_winrate_threshold=constant_spec(0.8),
         high_winrate_target_kl=constant_spec(0.02),
     )
