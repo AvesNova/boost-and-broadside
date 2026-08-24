@@ -206,23 +206,39 @@ Each active component receives its own critic output and can have its own GAE ga
 horizon. Weights are magnitudes; each component carries its own sign, noted below. The
 reference policy activated these components:
 
-| Component | Weight | Role |
-|---|---:|---|
-| `ally_win` | 1.5 | +1 to each surviving teammate on a win |
-| `enemy_win` | 1.5 | opponent's win signal, seen as −1 through a negative enemy lambda |
-| `facing` | 0.1 | dense aim geometry (+) |
-| `closing_speed` | 0.1 | dense approach geometry (+) |
-| `shoot_quality` | off | firing opportunity quality (+); head retained at zero weight |
-| `kill_shot` | 1.0 | fatal-step credit (+), proportional to that step's damage |
-| `kill_assist` | 1.0 | assist credit (+), proportional to cumulative episode damage |
-| `kill_ally_shot` | 1.0 | blame (−) for a teammate's death, proportional to that step's damage |
-| `kill_ally_assist` | 1.0 | blame (−) for a teammate's death, proportional to cumulative episode damage |
-| `combat_damage_taken` | 0.5 | −applied projectile health loss |
-| `field_damage_taken` | 0.5 | −applied boundary health loss |
-| `damage_dealt_enemy` | 0.5 | +proportional to damage dealt to enemies |
-| `damage_dealt_ally` | 0.5 | −proportional to friendly fire dealt |
-| `combat_death` | 1.0 | −1 when projectile damage kills this ship |
-| `field_death` | 1.0 | −1 when boundary damage kills this ship |
+| Component | Weight | Tier | Role |
+|---|---:|---|---|
+| `ally_win` | 1.00 | outcome | +1 to each surviving teammate on a win |
+| `enemy_win` | 1.00 | outcome | opponent's win signal, seen as −1 through a negative enemy lambda |
+| `kill_shot` | 0.28 | kill/death | fatal-step credit (+), proportional to that step's damage |
+| `kill_assist` | 0.31 | kill/death | assist credit (+), proportional to cumulative episode damage |
+| `kill_ally_shot` | 0.28 | kill/death | blame (−) for a teammate's death, by that step's damage |
+| `kill_ally_assist` | 0.28 | kill/death | blame (−) for a teammate's death, by cumulative damage |
+| `combat_death` | 0.27 | kill/death | −1 when projectile damage kills this ship |
+| `field_death` | 0.28 | kill/death | −1 when boundary damage kills this ship |
+| `damage_dealt_enemy` | 0.54 | damage | +proportional to damage dealt to enemies |
+| `combat_damage_taken` | 0.32 | damage | −applied projectile health loss |
+| `field_damage_taken` | 0.26 | damage | −applied boundary health loss |
+| `damage_dealt_ally` | 0.50 | damage | −proportional to friendly fire dealt |
+| `facing` | 0.09 | shaping | dense aim geometry (+) |
+| `closing_speed` | 0.08 | shaping | dense approach geometry (+) |
+| `shoot_quality` | off | shaping | firing opportunity quality (+); head retained at zero weight |
+
+These are solved rather than chosen. A component's share of the policy gradient is its
+weight times a coherence factor — how much its per-token gradients add rather than cancel —
+and that factor is a stable property of the signal, measured at 6–15% coefficient of
+variation across the reference run. Weights therefore come from `w = share / d` against
+design targets of 31% outcome, 32% kill/death, 31% damage, 5% shaping, with offence and
+defence balanced at 41% each and the friendly-fire components counted in both at 19%.
+
+The top three tiers are deliberately flat rather than ranked by importance. The win pair is
+two near-duplicate signals (mean gradient cosine +0.536), and half of all games are
+self-play, where the outcome is a coin flip by construction; the tiers below carry per-step
+information the outcome cannot. It still takes the largest single share, because everything
+below it is a proxy and proxies are what a policy learns to farm.
+
+Only ratios matter. Advantages are per-component unit-RMS before aggregation and the
+aggregate is divided by its own RMS, so scaling the whole vector is a no-op.
 
 The wrapper divides component rewards by total ship count for team-size normalization.
 A lambda aggregation matrix then maps local event signals to training targets:

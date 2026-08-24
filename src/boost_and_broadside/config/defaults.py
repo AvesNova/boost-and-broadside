@@ -64,26 +64,45 @@ REWARDS = RewardConfig(
     enemy_combat_death_weight=0.0,
     ally_field_death_weight=0.0,
     enemy_field_death_weight=0.0,
-    # Weights are pure importance terms on already-normalized advantages, so only
-    # their ratios matter. These are still the reference run's numbers, which were
-    # chosen under a lambda normalization that cancelled them; the measured
-    # rebalance replaces this vector.
-    ally_win_weight=1.5,
-    enemy_win_weight=1.5,
-    facing_weight=0.1,
-    closing_speed_weight=0.1,
+    # Solved, not chosen by eye. A component's share of the policy gradient is
+    # its weight times a coherence factor d -- how much its per-token gradients
+    # add rather than cancel -- and d is a stable property of the signal,
+    # measured at 6-15% coefficient of variation across the whole reference run.
+    # So the weights come from w = share_target / d against these design targets:
+    #
+    #   win 31%, kill/death 32%, damage 31%, shaping 5%
+    #   offence 41%, defence 41%, friendly fire counted in both at 19%
+    #
+    # Flat across the top three tiers rather than ranked by importance. The win
+    # pair is two near-duplicate signals (mean gradient cosine +0.536) and half
+    # of all games are self-play, where the outcome is a coin flip by
+    # construction; the tiers below it carry per-step information the outcome
+    # cannot. It still takes the largest single share, because everything below
+    # it is a proxy and proxies are what a policy learns to farm.
+    #
+    # Only ratios matter: the aggregate advantage is divided by its own RMS, so
+    # scaling this whole vector is a no-op.
+    ally_win_weight=1.0,
+    enemy_win_weight=1.0,
+    facing_weight=0.09,
+    closing_speed_weight=0.08,
     shoot_quality_weight=0.0,
     # Per-ship credit stays local under the lambda aggregation matrix.
-    kill_shot_weight=1.0,
-    kill_assist_weight=1.0,
-    kill_ally_shot_weight=1.0,
-    kill_ally_assist_weight=1.0,
-    combat_death_weight=1.0,
-    field_death_weight=1.0,
-    combat_damage_taken_weight=0.5,
-    field_damage_taken_weight=0.5,
-    damage_dealt_enemy_weight=0.5,
-    damage_dealt_ally_weight=0.5,
+    kill_shot_weight=0.28,
+    kill_assist_weight=0.31,
+    kill_ally_shot_weight=0.28,
+    kill_ally_assist_weight=0.28,
+    combat_death_weight=0.27,
+    # field_death, kill_ally_shot and kill_ally_assist have no trustworthy d of
+    # their own and use the pack median. field_death's measured 8.28 is the
+    # lowest of the twelve and is expected to rise now that its critic is no
+    # longer starved by the return floor; the friendly-kill pair has never
+    # existed on its own. Re-solve all three off the first diagnostic update.
+    field_death_weight=0.28,
+    combat_damage_taken_weight=0.32,
+    field_damage_taken_weight=0.26,
+    damage_dealt_enemy_weight=0.54,
+    damage_dealt_ally_weight=0.50,
     proximity_radius=400.0,
     shoot_quality_radius=200.0,
     enemy_neg_lambda_components=frozenset(
