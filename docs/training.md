@@ -215,7 +215,8 @@ reference policy activated these components:
 | `shoot_quality` | off | firing opportunity quality (+); head retained at zero weight |
 | `kill_shot` | 1.0 | fatal-step credit (+), proportional to that step's damage |
 | `kill_assist` | 1.0 | assist credit (+), proportional to cumulative episode damage |
-| `kill_ally` | 1.0 | blame (−) for a teammate's death, proportional to cumulative episode damage |
+| `kill_ally_shot` | 1.0 | blame (−) for a teammate's death, proportional to that step's damage |
+| `kill_ally_assist` | 1.0 | blame (−) for a teammate's death, proportional to cumulative episode damage |
 | `combat_damage_taken` | 0.5 | −applied projectile health loss |
 | `field_damage_taken` | 0.5 | −applied boundary health loss |
 | `damage_dealt_enemy` | 0.5 | +proportional to damage dealt to enemies |
@@ -267,13 +268,13 @@ fatal step, each earns credit proportional to that step's damage. `kill_assist` 
 proportional to cumulative episode damage even when a field delivers the final blow;
 that preserves partial credit for attacks that force a dangerous navigation choice.
 
-`kill_ally` is the friendly-fire counterpart, and it is a component in its own right
-rather than a negative term inside the two above. Folded in, one critic head had to
-predict the sum of a positive enemy-kill signal and a negative friendly-kill one, the
-friendly half could not be weighted separately, and it was invisible to every
-per-component diagnostic — it read as part of `kill_shot`'s gradient share. It uses
-cumulative attribution, which covers the fatal blow as its limiting case: responsibility
-for a teammate's death is the whole contribution to it, not who happened to land last.
+`kill_ally_shot` and `kill_ally_assist` mirror that pair for friendly fire, on the same two
+horizons and with the same attribution. They are components in their own right rather than
+negative terms inside the enemy pair. Folded in, one critic head had to predict the sum of
+a positive enemy-kill signal and a negative friendly-kill one, the friendly half could not
+be weighted separately, and it was invisible to every per-component diagnostic — it read as
+part of `kill_shot`'s gradient share. All four share one implementation, differing only in
+which damage matrix they read and whether they credit enemy deaths or blame friendly ones.
 
 The former solid-obstacle death, proximity, closing-speed, and time-to-impact components
 have been removed: refractive interfaces are traversable and should not receive universal
