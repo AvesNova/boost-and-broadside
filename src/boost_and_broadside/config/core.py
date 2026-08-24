@@ -281,7 +281,7 @@ class RewardConfig:
 
     Core reward weights and geometry must be set explicitly at the call site.
     Optional behavior-shaping rewards default to disabled values.
-    Reward group scales (true_reward_scale, global_scale, local_scale) live in
+    Reward tier scales (outcome, kill/death, damage, shaping) live in
     TrainingSchedule since they vary over the course of a run.
 
     Global rewards flow through the lambda aggregation matrix at PPO update time,
@@ -296,12 +296,12 @@ class RewardConfig:
     matrix), so the signal never propagates. Each ship is the sole recipient of
     its own reward.
 
-    Group scales (applied as a multiplier on top of individual weights; the
-    authoritative component → group mapping is _GROUP in train/rl/ppo.py):
-        true_reward  → win components (ally_win, enemy_win)
-        global       → team outcome rewards (ally/enemy source-split damage and death)
-        local        → self-only per-ship rewards (shaping, kill credit,
-                       per-ship damage/death)
+    Tier scales (applied as a multiplier on top of individual weights; the
+    authoritative component → tier mapping is _TIER in train/rl/ppo.py):
+        outcome     → ally_win, enemy_win
+        kill_death  → kills, deaths, friendly kills
+        damage      → damage dealt and taken
+        shaping     → dense geometry rewards
     """
 
     # --- Global outcome rewards (lambda-aggregated across ships) ---

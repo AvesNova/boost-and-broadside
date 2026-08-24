@@ -186,9 +186,31 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         behavior_cloning_coef=hold(2.0),
         value_function_coef=hold(1.0),
         sigreg_coef=hold(0.00),
-        true_reward_scale=hold(1.0),
-        global_scale=hold(1.0),
-        local_scale=hold(1.0),
+        # Tier scales ride on top of the per-component weights. Three of the
+        # four hold: the realised tier shares already drift the way a curriculum
+        # would move them, with the outcome tier rising about 1.29x over a run
+        # and the kill/death tier falling to 0.73x as the policy stops dying in
+        # ways it can still learn from. Scheduling those would fight a trend
+        # rather than create one.
+        outcome_scale=hold(1.0),
+        kill_death_scale=hold(1.0),
+        damage_scale=hold(1.0),
+        # Shaping is the exception, and it has to be pushed down rather than
+        # merely left alone: its realised share *grows* about 1.58x over a run.
+        # Facing and closing speed are not potential-based, so they bias the
+        # optimum for as long as they are on, and they oppose the objective
+        # directly -- closing_speed against field_damage_taken measured a mean
+        # gradient cosine of -0.446, negative in 99.9% of samples. They exist to
+        # stop early passive collapse, and that job is finished long before the
+        # budget is. The floor is 0.05 rather than 0 so the components stay
+        # measurable to the end: their gradient share and explained variance
+        # remain readable, which is how the next run learns whether shaping was
+        # still buying anything.
+        shaping_scale=(
+            (0, 1.0, "hold"),
+            (100_000_000, 1.0, "exponential"),
+            (400_000_000, 0.05, "hold"),
+        ),
         league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy
         # against an update measured in minutes, and the writer already skips

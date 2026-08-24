@@ -240,6 +240,28 @@ per-component unit-RMS before aggregation, the weight is then a pure importance 
 and only the ratios between weights affect training — the aggregate advantage is
 divided by its own RMS, so scaling every weight together is a no-op.
 
+Components are grouped into four tiers — outcome, kill/death, damage, shaping — and each
+tier carries a schedule scale applied on top of the per-component weights. The tiers are a
+credit-assignment ladder, and the per-component gammas and lambdas already follow the same
+partition: an outcome is discounted over a whole episode, a kill over an engagement, damage
+over an exchange, geometry over the next moment.
+
+Three of the four scales hold flat. The realised tier shares already drift the way a
+curriculum would move them — measured on the reference run, the outcome tier's share of the
+policy gradient rises about 1.29x over a run while the kill/death tier falls to 0.73x — so
+scheduling them would fight a trend rather than create one.
+
+Shaping is the exception, and it has to be pushed down rather than left alone: its realised
+share *grows* about 1.58x. `facing` and `closing_speed` are not
+[potential-based](https://people.eecs.berkeley.edu/~pabbeel/cs287-fa09/readings/NgHaradaRussell-shaping-ICML1999.pdf),
+so they bias the optimum for as long as they are on, and they oppose the objective
+directly: `closing_speed` against `field_damage_taken` measures a mean gradient cosine of
+−0.446, negative in 99.9% of samples. They exist to stop early passive collapse, which is
+finished long before the budget is. `shaping_scale` therefore decays from 100M steps to a
+floor of 0.05 at 400M. The floor is not zero, so the components stay measurable to the end:
+their gradient share and explained variance remain readable, which is how the next run
+learns whether shaping was still buying anything.
+
 Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
 fatal step, each earns credit proportional to that step's damage. `kill_assist` remains
 proportional to cumulative episode damage even when a field delivers the final blow;

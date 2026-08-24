@@ -110,44 +110,68 @@ def _build_component_tensor(
 # so three gives the trigger two near-independent looks at the win rate.
 _BC_CUTOFF_UPDATES = 3
 
-# Maps reward component name → the TrainingSchedule group-scale field to apply.
-# Effective weight = group_scale * individual_weight (from RewardConfig).
-# Groups:
-#   true_reward → win components (ally_win, enemy_win)
-#   global      → global outcome rewards + shaping (team-aggregated via lambda)
-#   local       → self-only per-ship rewards (diagonal lambda, no teammate propagation)
-_GROUP: dict[str, str] = {
-    "ally_win": "true_reward_scale",
-    "enemy_win": "true_reward_scale",
-    "ally_combat_damage": "global_scale",
-    "enemy_combat_damage": "global_scale",
-    "ally_field_damage": "global_scale",
-    "enemy_field_damage": "global_scale",
-    "ally_combat_death": "global_scale",
-    "enemy_combat_death": "global_scale",
-    "ally_field_death": "global_scale",
-    "enemy_field_death": "global_scale",
-    "facing": "local_scale",
-    "closing_speed": "local_scale",
-    "shoot_quality": "local_scale",
-    "kill_shot": "local_scale",
-    "kill_assist": "local_scale",
-    "kill_ally": "local_scale",
-    "combat_damage_taken": "local_scale",
-    "field_damage_taken": "local_scale",
-    "damage_dealt_enemy": "local_scale",
-    "damage_dealt_ally": "local_scale",
-    "combat_death": "local_scale",
-    "field_death": "local_scale",
-    "shooting_penalty": "local_scale",
-    "speed": "local_scale",
+# Maps reward component name → the TrainingSchedule tier-scale field to apply.
+# Effective weight = tier_scale * individual_weight (from RewardConfig).
+#
+# The tiers are a credit-assignment ladder, and the per-component gammas and
+# lambdas in config/defaults.py already follow the same partition: an outcome is
+# discounted over a whole episode, a kill over an engagement, damage over an
+# exchange, geometry over the next moment. Scaling a whole tier at once is how a
+# run shifts weight between "what actually wins" and the proxies for it.
+_TIER: dict[str, str] = {
+    "ally_win": "outcome_scale",
+    "enemy_win": "outcome_scale",
+    "ally_combat_death": "kill_death_scale",
+    "enemy_combat_death": "kill_death_scale",
+    "ally_field_death": "kill_death_scale",
+    "enemy_field_death": "kill_death_scale",
+    "combat_death": "kill_death_scale",
+    "field_death": "kill_death_scale",
+    "kill_shot": "kill_death_scale",
+    "kill_assist": "kill_death_scale",
+    "kill_ally": "kill_death_scale",
+    "ally_combat_damage": "damage_scale",
+    "enemy_combat_damage": "damage_scale",
+    "ally_field_damage": "damage_scale",
+    "enemy_field_damage": "damage_scale",
+    "combat_damage_taken": "damage_scale",
+    "field_damage_taken": "damage_scale",
+    "damage_dealt_enemy": "damage_scale",
+    "damage_dealt_ally": "damage_scale",
+    "facing": "shaping_scale",
+    "closing_speed": "shaping_scale",
+    "shoot_quality": "shaping_scale",
+    "shooting_penalty": "shaping_scale",
+    "speed": "shaping_scale",
 }
 
 # Components with self-only rewards use a diagonal lambda (i == j); all others
-# use team-based lambda aggregation. Derived from _GROUP so the two registries
-# cannot silently drift: a "local_scale" component is exactly a self-only one.
+# use team-based lambda aggregation.
+#
+# Stated outright rather than derived from the tier map. Locality is a
+# credit-assignment property and the tier is a weighting one, and they are
+# orthogonal: combat_death and ally_combat_death sit in the same tier and differ
+# only in whether the signal propagates to teammates. The previous registry
+# derived one from the other, which worked only because the scale groups
+# happened to be drawn along the locality line. ``test_every_component_is
+# _classified`` pins that both maps stay complete.
 _LOCAL_COMPONENTS: frozenset[str] = frozenset(
-    name for name, group in _GROUP.items() if group == "local_scale"
+    {
+        "facing",
+        "closing_speed",
+        "shoot_quality",
+        "kill_shot",
+        "kill_assist",
+        "kill_ally",
+        "combat_damage_taken",
+        "field_damage_taken",
+        "damage_dealt_enemy",
+        "damage_dealt_ally",
+        "combat_death",
+        "field_death",
+        "shooting_penalty",
+        "speed",
+    }
 )
 
 
@@ -165,9 +189,10 @@ class _ResolvedSchedule:
     behavior_cloning_coef: float
     value_function_coef: float
     sigreg_coef: float
-    true_reward_scale: float
-    global_scale: float
-    local_scale: float
+    outcome_scale: float
+    kill_death_scale: float
+    damage_scale: float
+    shaping_scale: float
     league_fraction: float
     checkpoint_interval: int
     num_epochs: int
@@ -279,9 +304,10 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         behavior_cloning_coef=schedule.behavior_cloning_coef(step),
         value_function_coef=schedule.value_function_coef(step),
         sigreg_coef=schedule.sigreg_coef(step),
-        true_reward_scale=schedule.true_reward_scale(step),
-        global_scale=schedule.global_scale(step),
-        local_scale=schedule.local_scale(step),
+        outcome_scale=schedule.outcome_scale(step),
+        kill_death_scale=schedule.kill_death_scale(step),
+        damage_scale=schedule.damage_scale(step),
+        shaping_scale=schedule.shaping_scale(step),
         league_fraction=schedule.league_fraction(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
@@ -1210,7 +1236,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
             raw_weight = getattr(self.cfg.rewards, f"{component.name}_weight")
-            component.weight = raw_weight * getattr(self._schedule_state, _GROUP[component.name])
+            component.weight = raw_weight * getattr(self._schedule_state, _TIER[component.name])
         self.wrapper.refresh_component_weights()
         return bc_factor
 
@@ -1226,9 +1252,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/bc_decay_factor"] = bc_factor
         metrics["schedule/scripted_win_rate"] = self._scripted_win_rate
         metrics["schedule/target_kl"] = self._effective_target_kl()
-        metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
-        metrics["schedule/global_scale"] = self._schedule_state.global_scale
-        metrics["schedule/local_scale"] = self._schedule_state.local_scale
+        metrics["schedule/outcome_scale"] = self._schedule_state.outcome_scale
+        metrics["schedule/kill_death_scale"] = self._schedule_state.kill_death_scale
+        metrics["schedule/damage_scale"] = self._schedule_state.damage_scale
+        metrics["schedule/shaping_scale"] = self._schedule_state.shaping_scale
 
         # Avg-model accumulation picks up exactly where the BC aux loss lets go:
         # bc_factor hits zero when the scripted win rate reaches bc_winrate_target.

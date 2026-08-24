@@ -105,9 +105,10 @@ class TrainingScheduleSpec:
     behavior_cloning_coef: Keypoints
     value_function_coef: Keypoints
     sigreg_coef: Keypoints
-    true_reward_scale: Keypoints
-    global_scale: Keypoints
-    local_scale: Keypoints
+    outcome_scale: Keypoints
+    kill_death_scale: Keypoints
+    damage_scale: Keypoints
+    shaping_scale: Keypoints
     league_fraction: Keypoints
     checkpoint_interval: Keypoints
     num_epochs: Keypoints

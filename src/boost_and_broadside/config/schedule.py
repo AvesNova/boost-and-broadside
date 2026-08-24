@@ -203,9 +203,9 @@ class TrainingSchedule:
     current value. Use the schedule primitives (constant, linear, stepped,
     exponential, join) to construct each field.
 
-    Static reward weights live in RewardConfig. Only the group scales
-    (true_reward_scale, global_scale, local_scale) are here because they
-    realistically vary between BC and RL phases.
+    Static reward weights live in RewardConfig. Only the tier scales
+    (outcome, kill/death, damage, shaping) are here, because a run shifts weight
+    between tiers over its length while the weights inside a tier do not move.
     """
 
     # --- Optimization ---
@@ -216,10 +216,11 @@ class TrainingSchedule:
     value_function_coef: Callable[[int], float]
     sigreg_coef: Callable[[int], float]  # weight for SIGReg encoder regularization loss
 
-    # --- Reward group scales (component → group mapping: _GROUP in train/rl/ppo.py) ---
-    true_reward_scale: Callable[[int], float]  # win components (ally_win, enemy_win)
-    global_scale: Callable[[int], float]  # team source-split damage/death rewards
-    local_scale: Callable[[int], float]  # self-only rewards (shaping, kill credit, ...)
+    # --- Reward tier scales (component → tier mapping: _TIER in train/rl/ppo.py) ---
+    outcome_scale: Callable[[int], float]  # ally_win, enemy_win
+    kill_death_scale: Callable[[int], float]  # kills, deaths, friendly kills
+    damage_scale: Callable[[int], float]  # damage dealt and taken
+    shaping_scale: Callable[[int], float]  # dense geometry: facing, closing speed, ...
 
     # --- Opponents ---
     # Fraction of primary-scale envs whose opponent side is played by a league

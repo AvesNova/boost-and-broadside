@@ -26,7 +26,7 @@ from boost_and_broadside.config import (
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
-from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, _huber, PPOTrainer
+from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, _huber, PPOTrainer
 
 
 def _make_rewards(**overrides) -> RewardConfig:
@@ -86,9 +86,10 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         behavior_cloning_coef=constant(0.0),
         value_function_coef=constant(0.5),
         sigreg_coef=constant(0.0),
-        true_reward_scale=constant(1.0),
-        global_scale=constant(1.0),
-        local_scale=constant(1.0),
+        outcome_scale=constant(1.0),
+        kill_death_scale=constant(1.0),
+        damage_scale=constant(1.0),
+        shaping_scale=constant(1.0),
         league_fraction=constant(0.0),
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
@@ -942,11 +943,16 @@ class TestSchedulePrimitives:
         with pytest.raises(ValueError, match="ascending"):
             join((100, constant(1.0)), (0, constant(2.0)))
 
-    def test_group_scales_applied_by_trainer(self, tmp_path):
-        """After training, effective weight = group_scale * individual weight for EVERY
+    def test_tier_scales_applied_by_trainer(self, tmp_path):
+        """After training, effective weight = tier_scale * individual weight for EVERY
         component (regression: setattr on a per-class attribute name silently missed the
         18 components whose weight lived in a `_weight`-backed property)."""
-        group_scales = {"true_reward_scale": 0.25, "global_scale": 2.0, "local_scale": 0.5}
+        group_scales = {
+            "outcome_scale": 0.25,
+            "kill_death_scale": 2.0,
+            "damage_scale": 0.5,
+            "shaping_scale": 1.5,
+        }
         trainer = PPOTrainer(
             train_config=TrainConfig(
                 paradigm="ego_pass",
@@ -957,9 +963,10 @@ class TestSchedulePrimitives:
                     ),
                 ),
                 schedule=_make_schedule(
-                    true_reward_scale=constant(group_scales["true_reward_scale"]),
-                    global_scale=constant(group_scales["global_scale"]),
-                    local_scale=constant(group_scales["local_scale"]),
+                    outcome_scale=constant(group_scales["outcome_scale"]),
+                    kill_death_scale=constant(group_scales["kill_death_scale"]),
+                    damage_scale=constant(group_scales["damage_scale"]),
+                    shaping_scale=constant(group_scales["shaping_scale"]),
                 ),
                 rewards=_make_rewards(),
                 num_steps=16,
@@ -994,7 +1001,7 @@ class TestSchedulePrimitives:
         mismatched = {}
         for comp in trainer.wrapper.reward_components:
             individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
-            expected = individual_weight * group_scales[_GROUP[comp.name]]
+            expected = individual_weight * group_scales[_TIER[comp.name]]
             if abs(comp.weight - expected) > 1e-9:
                 mismatched[comp.name] = (comp.weight, expected)
         assert not mismatched, f"components with wrong effective weight: {mismatched}"
@@ -1181,23 +1188,70 @@ class TestLambdaMatrixWeighting:
         assert lam[0, 0, 0, 0, k] == pytest.approx(2.0)
 
 
-class TestLocalComponentRegistry:
-    """Regression for AUDIT-014: the self-only (diagonal-lambda) set and the
-    group-scale classification must not drift apart."""
+class TestComponentClassification:
+    """Both registries must stay complete and must not be confused for each other.
 
-    def test_local_components_match_local_scale_group(self):
-        """A component uses diagonal (self-only) lambda iff it is in the
-        `local_scale` group. If a new reward is classified in one registry but
-        not the other, its lambda aggregation would be silently wrong."""
-        local_scale_group = {name for name, group in _GROUP.items() if group == "local_scale"}
-        assert _LOCAL_COMPONENTS == local_scale_group
+    Locality (which lambda a component uses) and tier (which schedule scales it)
+    were one map when the scale groups happened to be drawn along the locality
+    line. They are independent now, so each needs its own check.
+    """
 
-    def test_every_reward_component_is_classified(self):
-        """Every registered reward component must appear in _GROUP, or
-        `_refresh_training_schedule` would KeyError on the first update."""
+    def test_every_reward_component_has_a_tier(self):
+        """A component missing from _TIER would KeyError on the first update."""
         from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 
-        assert set(REWARD_COMPONENT_NAMES) == set(_GROUP)
+        assert set(REWARD_COMPONENT_NAMES) == set(_TIER)
+
+    def test_local_components_are_registered_components(self):
+        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+        assert _LOCAL_COMPONENTS <= set(REWARD_COMPONENT_NAMES)
+
+    def test_shared_components_are_exactly_the_team_signals(self):
+        """Everything that is not self-only is a source-split pair or a win
+        component — those are the only signals with a team perspective to
+        propagate."""
+        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+        shared = set(REWARD_COMPONENT_NAMES) - _LOCAL_COMPONENTS
+        assert shared == {
+            "ally_combat_damage",
+            "enemy_combat_damage",
+            "ally_field_damage",
+            "enemy_field_damage",
+            "ally_combat_death",
+            "enemy_combat_death",
+            "ally_field_death",
+            "enemy_field_death",
+            "ally_win",
+            "enemy_win",
+        }
+
+    def test_tiers_partition_the_registry(self):
+        """Four tiers, and every component in exactly one."""
+        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+        assert set(_TIER.values()) == {
+            "outcome_scale",
+            "kill_death_scale",
+            "damage_scale",
+            "shaping_scale",
+        }
+        assert len(_TIER) == len(REWARD_COMPONENT_NAMES)
+
+    def test_a_tier_scale_of_zero_leaves_its_components_registered(self):
+        """The shaping taper must not evict what it silences.
+
+        `_active_names` freezes at init from the *initial* weight, so a tier
+        scaled to zero mid-run keeps its components active and measurable. That
+        is why the taper has a floor rather than reaching zero — but the floor is
+        a choice about instrumentation, not a correctness requirement."""
+        from boost_and_broadside.config.defaults import REWARDS
+        from boost_and_broadside.env.rewards import build_reward_components
+
+        components = build_reward_components(REWARDS, ShipConfig())
+        shaping = [c for c in components if _TIER[c.name] == "shaping_scale"]
+        assert shaping, "no shaping components to taper"
 
 
 class TestRLSmokeTest:
@@ -1219,10 +1273,11 @@ class TestRLSmokeTest:
             behavior_cloning_coef=constant(0.0),
             value_function_coef=constant(1.0),
             sigreg_coef=constant(0.0),
-            true_reward_scale=constant(1.0),
-            global_scale=constant(1.0),
-            local_scale=constant(1.0),
-            league_fraction=constant(0.5),
+            outcome_scale=constant(1.0),
+        kill_death_scale=constant(1.0),
+        damage_scale=constant(1.0),
+        shaping_scale=constant(1.0),
+                    league_fraction=constant(0.5),
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
