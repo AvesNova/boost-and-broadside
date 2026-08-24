@@ -29,10 +29,10 @@ phase 1, and its `d` calibration assumes the critics of phase 2.
 
 | # | Change | Files |
 |---|---|---|
-| 1 | Lambda fix: normalize the *unweighted* pattern, then apply the weight. Bit-identical at `w = 1` — that equivalence is the test. | `train/rl/ppo.py` |
-| 2 | Return scaler: RMS scale estimator (matching `AdvantageScaler`), `return_min_span` 1.0 -> 1e-2, Huber value loss. All three together. | `train/rl/buffer.py`, `train/rl/ppo.py`, `profiles/rl.py` |
-| 3 | Extract `kill_ally`; replace the three dead group scales with four tier scales; add the shaping taper. | `env/rewards.py`, `config/core.py`, `config/defaults.py`, `train/rl/ppo.py` |
-| 4 | New weight vector. | `config/defaults.py` |
+| 1 **done** | Lambda fix: normalize the *unweighted* pattern, then apply the weight. Bit-identical at `w = 1` — that equivalence is the test. | `train/rl/ppo.py` |
+| 2 **done** | Return scaler: masked mean/std estimator, `return_min_span` 1.0 -> **1e-3**, Huber value loss. All three together. | `train/rl/buffer.py`, `train/rl/ppo.py`, `profiles/rl.py` |
+| 3 **done** | Extract `kill_ally_shot`/`kill_ally_assist`; replace the three dead group scales with four tier scales; add the shaping taper. | `env/rewards.py`, `config/core.py`, `config/defaults.py`, `train/rl/ppo.py` |
+| 4 **done** | New weight vector. | `config/defaults.py` |
 | 5 | `behavior_cloning_coef` 2.0 -> 0.5. During BC, 100% of updates hit `max_grad_norm` (median total norm 2.18, max 13.3), so every other term trained at 0.1-0.5x its nominal step. After BC, 2.6% clip. | `config/defaults.py` |
 
 Each phase: `pytest`, then `--smoke`, tests added for new behaviour, docs updated,
@@ -48,27 +48,36 @@ run). The win pair is pinned at 1.00 by choice.
 
 | component | tier | side | w now | **w new** | share now | share new |
 |---|---|:--:|---:|---:|---:|---:|
-| ally_win | win | - | 1.5 *(eff 1.0)* | **1.00** | 11.2% | 16.6% |
-| enemy_win | win | - | 1.5 *(eff 1.0)* | **1.00** | 10.4% | 15.4% |
-| kill_shot | kill/death | O | 1.0 | **0.32** | 13.4% | 6.3% |
-| kill_assist | kill/death | O | 1.0 | **0.36** | 11.9% | 6.3% |
-| combat_death | kill/death | D | 1.0 | **0.31** | 13.7% | 6.3% |
-| field_death | kill/death | D | 1.0 | **0.32** | 8.3% | 6.3% |
-| kill_ally | kill/death | both | — | **0.32** | — | 6.3% |
-| damage_dealt_enemy | damage | O | 0.5 | **0.52** | 7.4% | 11.4% |
-| combat_damage_taken | damage | D | 0.5 | **0.31** | 6.8% | 6.3% |
-| field_damage_taken | damage | D | 0.5 | **0.25** | 6.9% | 5.1% |
-| damage_dealt_ally | damage | both | 0.5 | **0.48** | 5.8% | 8.2% |
-| facing | shaping | - | 0.1 | **0.09** | 1.6% | 2.2% |
-| closing_speed | shaping | - | 0.1 | **0.08** | 2.6% | 3.1% |
+| ally_win | win | - | 1.5 *(eff 1.0)* | **1.00** | 11.2% | 16.2% |
+| enemy_win | win | - | 1.5 *(eff 1.0)* | **1.00** | 10.4% | 15.0% |
+| kill_shot | kill/death | O | 1.0 | **0.28** | 13.4% | 5.4% |
+| kill_assist | kill/death | O | 1.0 | **0.31** | 11.9% | 5.3% |
+| kill_ally_shot | kill/death | both | - | **0.28** | - | 5.4% |
+| kill_ally_assist | kill/death | both | - | **0.28** | - | 5.4% |
+| combat_death | kill/death | D | 1.0 | **0.27** | 13.7% | 5.3% |
+| field_death | kill/death | D | 1.0 | **0.28** | 8.3% | 5.4% |
+| damage_dealt_enemy | damage | O | 0.5 | **0.54** | 7.4% | 11.6% |
+| combat_damage_taken | damage | D | 0.5 | **0.32** | 6.8% | 6.3% |
+| field_damage_taken | damage | D | 0.5 | **0.26** | 6.9% | 5.2% |
+| damage_dealt_ally | damage | both | 0.5 | **0.50** | 5.8% | 8.4% |
+| facing | shaping | - | 0.1 | **0.09** | 1.6% | 2.1% |
+| closing_speed | shaping | - | 0.1 | **0.08** | 2.6% | 3.0% |
 
-Tier totals **32.1 / 31.6 / 31.1 / 5.2**. Offence **38.7%**, defence **38.6%**,
-friendly fire **14.6%**.
+Tier totals **31.2 / 32.2 / 31.4 / 5.1**. Offence **41.4%**, defence **41.4%**,
+friendly fire **19.2%**. Both win components are pinned at 1.00 by choice; their
+realised shares differ by 1.2 points only because their measured `d` differs by
+8%, which is almost certainly measurement asymmetry on what is one event seen
+two ways.
 
-`field_death` and `kill_ally` use the pack-median `d` because neither has a
-trustworthy measurement — `field_death`'s current `d` is the thing prediction 1
-says will move, and `kill_ally` has never existed standalone. Both are provisional;
-re-solve after the first diagnostic update of the new run.
+The friendly-kill signal is two components mirroring the enemy pair on both
+horizons, so the kill/death tier is six components at equal share rather than
+five. That lands friendly fire at 19.2% across the two tiers -- the "counted in
+both offence and defence" weighting -- without breaking equality inside the tier.
+
+`field_death`, `kill_ally_shot` and `kill_ally_assist` use the pack-median `d`.
+None has a trustworthy measurement: field_death's 8.28 is the lowest of the
+twelve and prediction 1 says it moves, and the friendly-kill pair has never
+existed standalone. Re-solve all three off the first diagnostic update.
 
 ### Constant, except shaping
 
