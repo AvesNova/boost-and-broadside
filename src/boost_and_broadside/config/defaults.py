@@ -76,6 +76,7 @@ REWARDS = RewardConfig(
     # Per-ship credit stays local under the lambda aggregation matrix.
     kill_shot_weight=1.0,
     kill_assist_weight=1.0,
+    kill_ally_weight=1.0,
     combat_death_weight=1.0,
     field_death_weight=1.0,
     combat_damage_taken_weight=0.5,
@@ -123,6 +124,7 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
     "field_death": 0.995,
     "kill_shot": 0.995,
     "kill_assist": 0.995,
+    "kill_ally": 0.995,
     "ally_combat_damage": 0.991,
     "enemy_combat_damage": 0.991,
     "ally_field_damage": 0.991,
@@ -149,6 +151,7 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "field_death": 0.95,
     "kill_shot": 0.87,
     "kill_assist": 0.97,
+    "kill_ally": 0.97,
     "ally_combat_damage": 0.90,
     "enemy_combat_damage": 0.90,
     "ally_field_damage": 0.90,

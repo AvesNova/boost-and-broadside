@@ -46,6 +46,7 @@ def _make_rewards(**overrides) -> RewardConfig:
         shoot_quality_weight=0.01,
         kill_shot_weight=0.5,
         kill_assist_weight=0.5,
+        kill_ally_weight=0.5,
         combat_damage_taken_weight=0.1,
         field_damage_taken_weight=0.1,
         damage_dealt_enemy_weight=0.1,

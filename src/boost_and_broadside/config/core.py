@@ -322,6 +322,7 @@ class RewardConfig:
     shoot_quality_weight: float  # shot quality when firing (shaping)
     kill_shot_weight: float  # proportional share of +1.0 per kill, weighted by step damage
     kill_assist_weight: float  # proportional share of +1.0 per kill, weighted by episode damage
+    kill_ally_weight: float  # proportional share of -1.0 per teammate death caused
     combat_damage_taken_weight: float  # applied projectile health loss (negative reward)
     field_damage_taken_weight: float  # applied boundary health loss (negative reward)
     damage_dealt_enemy_weight: float  # damage dealt to enemies this step (positive reward)

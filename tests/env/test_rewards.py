@@ -23,6 +23,7 @@ from boost_and_broadside.env.rewards import (
     EnemyFieldDeathReward,
     EnemyWinReward,
     FacingReward,
+    KillAllyReward,
     KillAssistReward,
     KillShotReward,
     LocalCombatDamageTakenReward,
@@ -63,6 +64,7 @@ def reward_cfg() -> RewardConfig:
         shoot_quality_weight=1.0,
         kill_shot_weight=1.0,
         kill_assist_weight=1.0,
+        kill_ally_weight=1.0,
         combat_damage_taken_weight=1.0,
         field_damage_taken_weight=1.0,
         damage_dealt_enemy_weight=1.0,
@@ -108,8 +110,8 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_equals_23(self):
-        assert len(REWARD_COMPONENT_NAMES) == 23
+    def test_k_equals_24(self):
+        assert len(REWARD_COMPONENT_NAMES) == 24
 
     def test_source_split_starts_the_registry(self):
         assert REWARD_COMPONENT_NAMES[:8] == (
@@ -129,20 +131,23 @@ class TestRewardComponentNames:
     def test_kill_assist_is_index_14(self):
         assert REWARD_COMPONENT_NAMES[14] == "kill_assist"
 
+    def test_kill_ally_is_index_15(self):
+        assert REWARD_COMPONENT_NAMES[15] == "kill_ally"
+
     def test_source_split_local_damage_is_registered(self):
-        assert REWARD_COMPONENT_NAMES[15:17] == (
+        assert REWARD_COMPONENT_NAMES[16:18] == (
             "combat_damage_taken",
             "field_damage_taken",
         )
 
-    def test_damage_dealt_enemy_is_index_17(self):
-        assert REWARD_COMPONENT_NAMES[17] == "damage_dealt_enemy"
+    def test_damage_dealt_enemy_is_index_18(self):
+        assert REWARD_COMPONENT_NAMES[18] == "damage_dealt_enemy"
 
-    def test_damage_dealt_ally_is_index_18(self):
-        assert REWARD_COMPONENT_NAMES[18] == "damage_dealt_ally"
+    def test_damage_dealt_ally_is_index_19(self):
+        assert REWARD_COMPONENT_NAMES[19] == "damage_dealt_ally"
 
     def test_source_split_local_death_is_registered(self):
-        assert REWARD_COMPONENT_NAMES[19:21] == ("combat_death", "field_death")
+        assert REWARD_COMPONENT_NAMES[20:22] == ("combat_death", "field_death")
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
@@ -442,8 +447,13 @@ class TestKillShotReward:
 
         assert reward.abs().max().item() == 0.0
 
-    def test_friendly_fire_gives_penalty(self, cfg):
-        """Ship 0 dealt all damage to dying teammate ship 1; ship 0 gets -1 penalty."""
+    def test_friendly_kills_are_not_folded_in(self, cfg):
+        """A teammate's death is kill_ally's business, not kill_shot's.
+
+        Folded together, one critic head had to predict the sum of a positive
+        enemy-kill signal and a negative friendly-kill one, and the friendly
+        half could be neither weighted nor seen in any diagnostic.
+        """
         prev = _kill_state(cfg)
         next_ = _kill_state(cfg)
         next_.ship_alive[0, 1] = False  # teammate of ship 0 died
@@ -452,10 +462,94 @@ class TestKillShotReward:
         r = KillShotReward(weight=1.0)
         reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
 
-        assert reward[0, 0].item() == pytest.approx(-1.0)  # friendly fire penalty
+        assert reward.abs().max().item() == 0.0
+
+
+class TestKillAllyReward:
+    """Friendly-kill blame, split out of kill_shot and kill_assist."""
+
+    def test_sole_damage_dealer_takes_full_blame(self, cfg):
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 1] = False  # teammate of ship 0 died
+        next_.cumulative_damage_matrix[0, 0, 1] = 40.0
+
+        r = KillAllyReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
+
+        assert reward[0, 0].item() == pytest.approx(-1.0)
         assert reward[0, 1].item() == pytest.approx(0.0)
         assert reward[0, 2].item() == pytest.approx(0.0)
         assert reward[0, 3].item() == pytest.approx(0.0)
+
+    def test_blame_splits_by_cumulative_damage(self, cfg):
+        """Whoever landed last does not matter; the whole contribution does."""
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 1] = False
+        next_.cumulative_damage_matrix[0, 0, 1] = 30.0
+        next_.cumulative_damage_matrix[0, 2, 1] = 10.0  # enemy of ship 1, not a teammate
+
+        r = KillAllyReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
+
+        # Only the teammate is blamed; the enemy's damage is an ordinary kill.
+        assert reward[0, 0].item() == pytest.approx(-1.0)
+        assert reward[0, 2].item() == pytest.approx(0.0)
+
+    def test_enemy_kills_produce_no_blame(self, cfg):
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 2] = False  # an enemy of ship 0
+        next_.cumulative_damage_matrix[0, 0, 2] = 50.0
+
+        r = KillAllyReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
+
+        assert reward.abs().max().item() == 0.0
+
+    def test_a_ship_is_not_blamed_for_its_own_death(self, cfg):
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 0] = False
+        next_.cumulative_damage_matrix[0, 0, 0] = 100.0
+
+        r = KillAllyReward(weight=1.0)
+        reward = r.compute(prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool))
+
+        assert reward.abs().max().item() == 0.0
+
+    def test_no_death_gives_zero(self, cfg):
+        state = _kill_state(cfg)
+
+        r = KillAllyReward(weight=1.0)
+        reward = r.compute(state, torch.zeros(1, 4, 3), state, torch.zeros(1, dtype=torch.bool))
+
+        assert reward.abs().max().item() == 0.0
+
+    def test_extraction_conserves_the_old_combined_signal(self, cfg):
+        """kill_assist + kill_ally reproduces what kill_assist alone used to emit.
+
+        The split changes how the signal is weighted and learned, not what the
+        environment reports.
+        """
+        prev = _kill_state(cfg)
+        next_ = _kill_state(cfg)
+        next_.ship_alive[0, 1] = False  # teammate of ship 0
+        next_.ship_alive[0, 2] = False  # enemy of ship 0
+        next_.cumulative_damage_matrix[0, 0, 1] = 40.0  # ship 0 killed its teammate
+        next_.cumulative_damage_matrix[0, 0, 2] = 25.0  # and took a quarter of the enemy
+        next_.cumulative_damage_matrix[0, 1, 2] = 75.0
+
+        actions, dones = torch.zeros(1, 4, 3), torch.zeros(1, dtype=torch.bool)
+        combined = KillAssistReward(weight=1.0).compute(
+            prev, actions, next_, dones
+        ) + KillAllyReward(weight=1.0).compute(prev, actions, next_, dones)
+
+        # Ship 0: full blame for the teammate, a quarter of the enemy kill.
+        assert combined[0, 0].item() == pytest.approx(-1.0 + 0.25)
+        assert combined[0, 1].item() == pytest.approx(0.75)  # three quarters, no blame
+        assert combined[0, 3].item() == pytest.approx(0.0)  # ship 2's own teammate
 
 
 class TestKillAssistReward:

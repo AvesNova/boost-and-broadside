@@ -132,6 +132,7 @@ _GROUP: dict[str, str] = {
     "shoot_quality": "local_scale",
     "kill_shot": "local_scale",
     "kill_assist": "local_scale",
+    "kill_ally": "local_scale",
     "combat_damage_taken": "local_scale",
     "field_damage_taken": "local_scale",
     "damage_dealt_enemy": "local_scale",
