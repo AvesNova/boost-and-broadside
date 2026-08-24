@@ -1,129 +1,163 @@
-# Reward weighting: bug fixes and rebalance
+# Reward weighting: bug fixes, rebalance, and the balance rule
 
-Working notes for the next training run. Delete once it has landed.
-Detailed evidence is in the appendix below; every number was measured from
-`good-leaf-719` (its `artifacts/wandb-export/*/history.jsonl` and the
-`scaler_state_dict` in `step_000999309312.pt`).
+Working notes. Delete once the follow-up run has landed.
 
-## What this run changes and why
+Numbers come from two runs: `good-leaf-719` (the reference, 1B steps) and
+`silvery-pond-720` (this work's first attempt, interrupted at 127M). Detailed
+evidence is in the appendix.
 
-Two bugs in the weighting path mean the reward weights in the config have never
-been the weights the run trained under.
+## What landed
 
-- **Bug 1 — the lambda clamp cancels weights.** Local weights saturate at
-  `min(w, 1)`; global ones cancel entirely. `ally_win_weight=1.5` trains exactly
-  like `0.25`. Confirmed: components at 2x different configured weights deliver
-  identical gradient share per unit weight.
-- **Bug 2 — `return_min_span=1.0` starves 8 of 12 critics.** Critic targets are
-  compressed up to 121x and critic gradients up to 1.5e4x. The two critics whose
-  explained variance *falls* over training are the first and fifth most suppressed.
+Two bugs meant the reward weights in the config had never been the weights any run
+trained under. Fixing them made the weights real, which then made it worth asking
+what they should be -- and that turned out to be a structural question rather than
+a tuning one.
 
-With those fixed, weights become a real knob, so the run also adopts a designed
-weight vector, extracts a reward component that is currently hidden inside two
-others, and stops the behaviour-cloning term from eating the gradient clip.
-
-## Phases
-
-Each is one commit. Order matters: the weight vector is meaningless before
-phase 1, and its `d` calibration assumes the critics of phase 2.
-
-| # | Change | Files |
+| # | Change | Commit |
 |---|---|---|
-| 1 **done** | Lambda fix: normalize the *unweighted* pattern, then apply the weight. Bit-identical at `w = 1` — that equivalence is the test. | `train/rl/ppo.py` |
-| 2 **done** | Return scaler: masked mean/std estimator, `return_min_span` 1.0 -> **1e-3**, Huber value loss. All three together. | `train/rl/buffer.py`, `train/rl/ppo.py`, `profiles/rl.py` |
-| 3 **done** | Extract `kill_ally_shot`/`kill_ally_assist`; replace the three dead group scales with four tier scales; add the shaping taper. | `env/rewards.py`, `config/core.py`, `config/defaults.py`, `train/rl/ppo.py` |
-| 4 **done** | New weight vector. | `config/defaults.py` |
-| 5 | `behavior_cloning_coef` 2.0 -> 0.5. During BC, 100% of updates hit `max_grad_norm` (median total norm 2.18, max 13.3), so every other term trained at 0.1-0.5x its nominal step. After BC, 2.6% clip. | `config/defaults.py` |
+| 1 | **Lambda fix.** Rows were normalized by their own *weighted* sum, which divides out the weight just applied: local weights saturated at `min(w, 1)` and global ones cancelled entirely. `ally_win_weight=1.5` trained identically to `0.25`. Normalizing the unweighted pattern first keeps the weight linear; bit-identical at `w = 1`, which is the test. | `e27b73b` |
+| 2 | **Return scaler.** `return_min_span=1.0` bound 8 of 12 components on every update, compressing critic targets up to 121x and critic gradients up to 1.5e4x. Replaced p5/p95 with a masked mean/std estimator (2σ → 1), dropped the floor to 1e-3, added a Huber value loss for the tails the floor had been suppressing. Dead ships now excluded from both scalers. | `6a95e0e` |
+| 3 | **Friendly kills as their own components.** `kill_shot` and `kill_assist` each carried the friendly-fire penalty inside their own positive signal, so one critic head predicted the sum of two opposite things and the friendly half was unweightable and invisible to every diagnostic. Now `kill_ally_shot` and `kill_ally_assist`, mirroring the enemy pair on both horizons. | `81e3e9e`, `d60f44f` |
+| 4 | **Tier scales.** The three group scales were dead (all held at 1.0; `global_scale` applied only to zero-weight components). Replaced with four tier scales — outcome, kill/death, damage, shaping — the same partition the per-component gammas and lambdas already follow. Locality became its own registry, since it had only been derivable from the old groups by accident. | `f392417` |
+| 5 | **Weights derived, not chosen.** Four free numbers; every event component follows from the balance rule below. | `0a7708c` |
 
-Each phase: `pytest`, then `--smoke`, tests added for new behaviour, docs updated,
-commit at the phase boundary.
+Not done, deliberately: `behavior_cloning_coef` stays at 2.0. During BC 100% of
+updates hit `max_grad_norm` (median total norm 2.18, max 13.3), so every other
+term trained at 0.1-0.5x its nominal step for the first 38M steps. The mechanism
+is measured, but that it *harmed* the outcome is not, and the intervention is
+unpredictable: BC's unweighted gradient rises as its coefficient falls (CV 97%,
+roughly 2 → 13 over the decay), because a smaller coefficient lets the policy
+drift further from the teacher. Left as the control, to be measured against.
 
-## Weight table
+## The balance rule
 
-Tiers are win / kill-death / damage / shaping. Offence is dealing damage, defence
-is taking it; the friendly-fire pair counts in both. Weights are solved as
-`w = share_target / d`, where `d` is the measured policy-gradient share a
-component delivers per unit of effective weight (stable to 6-15% CV across the
-run). The win pair is pinned at 1.00 by choice.
+Weights were sixteen independent choices, and most of them were not independent.
+**An event pays one side exactly what it charges the other.** A death costs the
+dying ship's team `U` and pays whoever caused it `U` between them; damage does the
+same with `V`; a win pays `W` and charges `W`. `f` — how `U` splits between
+landing the finishing blow and contributing damage — is the only ratio the rule
+leaves free.
 
-| component | tier | side | w now | **w new** | share now | share new |
-|---|---|:--:|---:|---:|---:|---:|
-| ally_win | win | - | 1.5 *(eff 1.0)* | **1.00** | 11.2% | 16.2% |
-| enemy_win | win | - | 1.5 *(eff 1.0)* | **1.00** | 10.4% | 15.0% |
-| kill_shot | kill/death | O | 1.0 | **0.28** | 13.4% | 5.4% |
-| kill_assist | kill/death | O | 1.0 | **0.31** | 11.9% | 5.3% |
-| kill_ally_shot | kill/death | both | - | **0.28** | - | 5.4% |
-| kill_ally_assist | kill/death | both | - | **0.28** | - | 5.4% |
-| combat_death | kill/death | D | 1.0 | **0.27** | 13.7% | 5.3% |
-| field_death | kill/death | D | 1.0 | **0.28** | 8.3% | 5.4% |
-| damage_dealt_enemy | damage | O | 0.5 | **0.54** | 7.4% | 11.6% |
-| combat_damage_taken | damage | D | 0.5 | **0.32** | 6.8% | 6.3% |
-| field_damage_taken | damage | D | 0.5 | **0.26** | 6.9% | 5.2% |
-| damage_dealt_ally | damage | both | 0.5 | **0.50** | 5.8% | 8.4% |
-| facing | shaping | - | 0.1 | **0.09** | 1.6% | 2.1% |
-| closing_speed | shaping | - | 0.1 | **0.08** | 2.6% | 3.0% |
+| free number | value | fixes |
+|---|---:|---|
+| `win_weight` (W) | 1.00 | `ally_win`, `enemy_win` |
+| `death_weight` (U) | 0.38 | `combat_death`, `field_death` |
+| `damage_weight` (V) | 0.28 | all four damage components, plus `enemy_field_damage` |
+| `kill_shot_fraction` (f) | 0.50 | splits U across the four kill components and `enemy_field_death` |
 
-Tier totals **31.2 / 32.2 / 31.4 / 5.1**. Offence **41.4%**, defence **41.4%**,
-friendly fire **19.2%**. Both win components are pinned at 1.00 by choice; their
-realised shares differ by 1.2 points only because their measured `d` differs by
-8%, which is almost certainly measurement asymmetry on what is one event seen
-two ways.
+Shaping stays individually weighted (`facing` 0.06, `closing_speed` 0.09). Facing
+a target is a state, not something that happens to somebody, so there is no
+opposing side to charge and the rule does not apply.
 
-The friendly-kill signal is two components mirroring the enemy pair on both
-horizons, so the kill/death tier is six components at equal share rather than
-five. That lands friendly fire at 19.2% across the two tiers -- the "counted in
-both offence and defence" weighting -- without breaking equality inside the tier.
+Three consequences that look like coincidences and are not:
 
-`field_death`, `kill_ally_shot` and `kill_ally_assist` use the pack-median `d`.
-None has a trustworthy measurement: field_death's 8.28 is the lowest of the
-twelve and prediction 1 says it moves, and the friendly-kill pair has never
-existed standalone. Re-solve all three off the first diagnostic update.
+* **`enemy_field_death` must equal `kill_shot`.** A ship killed by a field was shot
+  by nobody on its fatal step — verified: `kill_shot` returns exactly 0.0 there
+  while `kill_assist` returns 1.0 — so the offensive side is short by precisely
+  `kill_shot`, and something has to make it up or a field kill pays half a combat
+  kill. `enemy_field_damage == V` by the same argument. These are the only two
+  source-split components with a non-zero weight, and that is their purpose: to
+  supply the offensive side of events with no shooter to attribute to.
+  `enemy_field_damage` is also the principled form of "reward for forcing an enemy
+  into a field" — attributed by team rather than by proximity, so unlike a
+  nearest-enemy heuristic it survives a change of fleet size.
+* **Killing a teammate costs the team twice**, once for the death and once for
+  having caused it, with the enemy paid nothing. Friendly fire is structurally
+  twice as expensive as being killed by an opponent, with no special case saying
+  so. Friendly-fire pressure falls 19.2% → 12.8% as a side effect.
+* **Offence and defence land at 25.0% and 25.9%** with nothing targeting them. The
+  rule makes the balance an identity rather than a goal.
 
-### Constant, except shaping
+The remaining `ally_*` and `enemy_combat_*` components stay at zero: their events
+are already paid for by the local per-ship components and by damage attribution,
+so turning them on would charge the same event twice.
 
-Weights are static for the whole run. Under static weights the realised tier
-shares drift on their own — win 1.29x up, kill/death 0.73x down, damage flat —
-which is the curriculum we wanted, arriving without a schedule. A
-constant-pressure controller would cancel it. `d` drift is also the instrument
-that tells us the phase-2 fix worked, and a controller would absorb that signal
-into the weight instead of showing it.
+### Weight parity is not gradient parity
 
-Shaping is the exception. It drifts *up* 1.58x under static weights, so its taper
-has to overcome the drift as well as deliver the intended decay:
+The kill side spends `U` across two correlated components (+0.509 cosine) while
+the death side spends it on one, so the kill side delivers about 87% of the death
+side's gradient magnitude. Left alone on purpose. Weights state what an event
+*means*; pressure is allowed to follow how coherent each signal actually is.
 
-```
-shaping_scale = (0, 1.0, "hold"), (100_000_000, 1.0, "exponential"),
-                (400_000_000, 0.05, "hold")
-```
+That is the point, not a defect. Pressure is `weight × coherence`, and coherence
+falls as a behaviour is solved, because rare events produce gradients that cancel
+across the batch. In run 719 `field_death`'s coherence halved (15.5 → 7.9) while
+field deaths fell eightfold (152 → 28 per million). A component whose problem the
+policy has solved should fade on its own.
 
-That lands realised shaping share at roughly 5% early and under 0.5% late. The
-floor is 0.05 rather than 0 so the components stay measurable — `d` and explained
-variance for `facing` and `closing_speed` remain readable all run. (Zero is safe
-for `_active_names`, which freezes at init from the *initial* weight, and the
-returns do not collapse either, because component rewards are stored unweighted
-and the weight only enters through lambda.)
+Which is why share-targeting was the wrong instrument. Solving `w = share / d`
+means that when `d` falls, `w` rises to compensate — a standing instruction to
+keep pressuring a solved problem. The four unit values are still solved against
+measured `d`, but only at the *tier* level, where the allocation is a genuine
+strategic choice.
 
-## What to check on the first diagnostic update
+Tier targets: **31% outcome / 32% kill-death / 31% damage / 5% shaping**, flat
+across the top three. The win pair is two near-duplicate signals (+0.536 cosine)
+and half of all games are self-play, where the outcome is a coin flip by
+construction, so the tiers below carry per-step information it cannot. It still
+takes the largest single share, because everything below it is a proxy and proxies
+are what a policy learns to farm.
 
-1. `field_death`'s `d` rises from 8.28 toward the pack (~12-14) and its CV drops
-   from 28.6%. If it does not move, field deaths really are just rare and the
-   component should be demoted.
-2. `field_death` explained variance rises above 0.49 and `damage_dealt_ally` above
-   0.56, and both stop declining.
-3. Win-pair and kill critics' EV barely moves (already 0.91-0.92 under ~10x
-   suppression); their value-share rise is reallocation, not repair.
-4. `ally_win_weight` is a linear knob — realised win share should land near 32%.
-5. Aggregate value loss rises ~14x and the critic's top-level gradient share moves
-   2.4% -> ~5-6%. `max_grad_norm` should still rarely bind.
+Shaping tapers: `(0, 1.0) → (100M, 1.0, exponential) → (400M, 0.05, hold)`. It has
+to be pushed down rather than left alone — its realised share *grows* 1.58x under
+static weights. `facing` and `closing_speed` are not potential-based, so they bias
+the optimum for as long as they are on, and they oppose the objective directly
+(`closing_speed` against `field_damage_taken`: mean cosine −0.446, negative in
+99.9% of samples). The 0.05 floor is instrumentation, not correctness — a tier at
+zero keeps its components registered, but a floor keeps their gradient share and
+explained variance readable to the end.
 
-## Out of scope for this run
+## What run 720 showed
 
-Tier scheduling (build the mechanism in phase 3, ship it flat; design keypoints
-from this run's EV curves). Team-spirit annealing on the local-vs-shared lambda
-axis. Joint 2x8x3 action space. Latent multi-step rollout head. EV-gated dynamic
-weights.
+Interrupted at 127.4M steps, update 127, live_elo 1417.
 
----
+Confirmed:
+
+* The floor never bound. `floor_bound_span_count` 0 for the whole run. The two
+  narrowest components clear 1e-3 by 31x and 34x; at the 1e-2 first proposed they
+  would have cleared by only ~3x, which is why the floor went lower.
+* Starved critics recovered. Against 719 at the matched 111M step: `field_death`
+  0.714 → **0.858**, `kill_assist` 0.712 → **0.860**, `kill_shot` 0.898 → 0.922,
+  the win pair 0.873 → 0.913 at 41.8M. The fix did not raise the ceiling so much
+  as reach it roughly twenty times sooner.
+* Elo tracked and then exceeded the reference: 1417 at the stop against 719's
+  95-125M band of mean 1327, sd 53 over 30-55M.
+
+Not confirmed:
+
+* **`field_death`'s coherence did not rise.** Predicted to climb toward the pack
+  once its critic was fed; normalized, it went 0.77 → 0.79 while its EV rose 0.14.
+  So the chain "starved critic → noisy advantage → incoherent gradient" does not
+  hold for this component: its low coherence is intrinsic to rarity. That removes
+  the argument for raising its weight.
+* `damage_dealt_ally` EV fell (0.773 → 0.699). Possibly the friendly-kill split
+  diluting it; unresolved.
+* A friendly-fire overshoot to 19.2% was diagnosed mid-run from an Elo reading
+  that later turned out to be a low sample rather than a trend. The derivation
+  fixes the overshoot structurally, so it was never isolated.
+
+## What to check on the first diagnostic update of the next run
+
+1. `enemy_field_death` and `enemy_field_damage` are active and their coherence is
+   measured for the first time. Their unit values rest on estimates (15.0 and 17.0,
+   from structural analogues) and are the least trustworthy numbers in the config.
+2. Realised tier shares against 31/32/31/5. The four unit values were solved
+   against `d` measured under the *old* weight vector, so expect drift.
+3. `scaler/floor_bound_span_count` stays 0 with two new active components.
+4. Friendly-fire pressure lands near 12.8% rather than 19.2%.
+5. Whether `damage_dealt_ally`'s EV recovers now that the friendly-kill weights are
+   halved relative to run 720.
+
+## Out of scope
+
+Tier scheduling (the mechanism exists and ships flat; design its keypoints from a
+clean run's EV curves). Team-spirit annealing on the local-vs-shared lambda axis —
+the faithful OpenAI Five analogue, and a different axis from the tier ladder.
+Joint 2x8x3 action space, with the caveat that a joint entropy bonus penalizes the
+inter-dimension correlation the joint head exists to express. Latent multi-step
+rollout head, which is where the balance analysis points: `next_state` holds
+27-31% of the trunk gradient for an objective the architecture docs already call a
+weak representation signal. EV-gated dynamic weights.
 
 # Appendix: evidence
 
@@ -263,7 +297,7 @@ Aggregate value loss rises ~14x (0.0125 -> 0.174); the critic's top-level gradie
 share moves 2.4% -> ~5-6%. `max_grad_norm` still would not bind (it binds on 2.6%
 of post-BC updates today).
 
-## Falsifiable predictions
+## Falsifiable predictions (outcomes recorded in "What run 720 showed")
 
 1. field_death's `d` rises from 8.28 toward the pack (~12-14) and its CV drops
    from 28.6% toward ~10%. It is both the most suppressed critic and the least
@@ -276,7 +310,7 @@ of post-BC updates today).
 4. `ally_win_weight` becomes a linear knob, testable on the first diagnostic
    update.
 
-## Missing component — friendly kills
+## Missing component — friendly kills (landed)
 
 There is no `kill_ally`. The friendly-kill penalty is folded *inside*
 `KillShotReward` and `KillAssistReward` (`reward -= dm_friendly/total_friendly`),
@@ -285,12 +319,6 @@ friendly-kill signal under one gamma and one weight. Extract it as its own
 component so it can be weighted and learned separately. Note `K` grows, which
 dilutes the per-component value-loss divisor, and `EnvWrapper._active_names` is
 frozen at init from `weight != 0`, so it must launch with a non-zero weight.
-
-## Later, not started
-
-Joint 2x8x3 action space (own ablation; note a joint entropy bonus penalizes the
-inter-dimension correlation the joint head exists to express). Latent multi-step
-rollout head. EV-gated dynamic weights.
 
 ## Tier scheduling (an OpenAI-Five-style curriculum)
 
