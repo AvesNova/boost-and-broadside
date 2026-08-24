@@ -11,6 +11,7 @@ import torch
 from boost_and_broadside.config import RewardConfig, ShipConfig
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
+    component_weights,
     AllyCombatDamageReward,
     AllyCombatDeathReward,
     AllyFieldDamageReward,
@@ -50,29 +51,13 @@ def cfg() -> ShipConfig:
 @pytest.fixture
 def reward_cfg() -> RewardConfig:
     return RewardConfig(
-        ally_combat_damage_weight=0.1,
-        enemy_combat_damage_weight=0.1,
-        ally_field_damage_weight=0.1,
-        enemy_field_damage_weight=0.1,
-        ally_combat_death_weight=0.5,
-        enemy_combat_death_weight=0.5,
-        ally_field_death_weight=0.5,
-        enemy_field_death_weight=0.5,
-        ally_win_weight=1.0,
-        enemy_win_weight=1.0,
+        win_weight=1.0,
+        death_weight=1.0,
+        damage_weight=1.0,
+        kill_shot_fraction=0.5,
         facing_weight=1.0,
         closing_speed_weight=1.0,
         shoot_quality_weight=1.0,
-        kill_shot_weight=1.0,
-        kill_assist_weight=1.0,
-        kill_ally_shot_weight=1.0,
-        kill_ally_assist_weight=1.0,
-        combat_damage_taken_weight=1.0,
-        field_damage_taken_weight=1.0,
-        damage_dealt_enemy_weight=1.0,
-        damage_dealt_ally_weight=1.0,
-        combat_death_weight=1.0,
-        field_death_weight=1.0,
         proximity_radius=500.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
@@ -153,6 +138,83 @@ class TestRewardComponentNames:
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
+
+
+class TestComponentWeightDerivation:
+    """The balance rule: an event pays one side what it charges the other."""
+
+    @staticmethod
+    def _cfg(**kw):
+        base = dict(
+            win_weight=1.0, death_weight=0.4, damage_weight=0.3, kill_shot_fraction=0.5,
+            facing_weight=0.06, closing_speed_weight=0.09,
+            proximity_radius=400.0, shoot_quality_radius=200.0,
+            enemy_neg_lambda_components=frozenset({"enemy_field_damage", "enemy_field_death",
+                                                   "enemy_win"}),
+            ally_zero_components=frozenset({"enemy_field_damage", "enemy_field_death",
+                                            "enemy_win"}),
+        )
+        base.update(kw)
+        return RewardConfig(**base)
+
+    def test_a_combat_death_is_paid_for_exactly(self):
+        """Charged to the victim, paid to whoever shot it, same total."""
+        w = component_weights(self._cfg())
+        assert w["kill_shot"] + w["kill_assist"] == pytest.approx(w["combat_death"])
+
+    def test_a_field_death_is_paid_for_exactly(self):
+        """kill_shot cannot fire on a field death, so enemy_field_death makes up
+        precisely its share -- otherwise field kills would pay less than combat ones."""
+        w = component_weights(self._cfg())
+        assert w["kill_assist"] + w["enemy_field_death"] == pytest.approx(w["field_death"])
+        assert w["enemy_field_death"] == pytest.approx(w["kill_shot"])
+
+    def test_damage_is_paid_for_exactly_from_both_sources(self):
+        w = component_weights(self._cfg())
+        assert w["damage_dealt_enemy"] == pytest.approx(w["combat_damage_taken"])
+        assert w["enemy_field_damage"] == pytest.approx(w["field_damage_taken"])
+
+    def test_friendly_fire_mirrors_the_offensive_side(self):
+        w = component_weights(self._cfg())
+        assert w["kill_ally_shot"] == pytest.approx(w["kill_shot"])
+        assert w["kill_ally_assist"] == pytest.approx(w["kill_assist"])
+        assert w["damage_dealt_ally"] == pytest.approx(w["damage_dealt_enemy"])
+
+    def test_killing_a_teammate_costs_the_team_twice(self):
+        """The ally is charged for dying and the shooter for causing it, and the
+        enemy is paid nothing -- so friendly fire is twice as expensive as an
+        ordinary death, with no special case saying so."""
+        w = component_weights(self._cfg())
+        friendly = w["combat_death"] + w["kill_ally_shot"] + w["kill_ally_assist"]
+        assert friendly == pytest.approx(2 * w["combat_death"])
+
+    def test_double_charging_components_stay_at_zero(self):
+        """Their events are already paid for by the local and dealer-attributed
+        components; turning them on would charge the same event twice."""
+        w = component_weights(self._cfg())
+        for name in ("ally_combat_damage", "enemy_combat_damage", "ally_field_damage",
+                     "ally_combat_death", "enemy_combat_death", "ally_field_death"):
+            assert w[name] == 0.0
+
+    def test_kill_split_moves_only_within_the_death_budget(self):
+        for fraction in (0.0, 0.25, 0.5, 0.9, 1.0):
+            w = component_weights(self._cfg(kill_shot_fraction=fraction))
+            assert w["kill_shot"] + w["kill_assist"] == pytest.approx(w["combat_death"])
+            assert w["kill_shot"] == pytest.approx(w["combat_death"] * fraction)
+
+    def test_every_registered_component_gets_a_weight(self):
+        w = component_weights(self._cfg())
+        assert set(w) == set(REWARD_COMPONENT_NAMES)
+
+    def test_pre_derivation_checkpoints_read_their_recorded_weights(self):
+        """An older run stored one weight per component; those are the record, and
+        it still has to load for inference."""
+        w = component_weights({"ally_win_weight": 1.5, "kill_shot_weight": 1.0,
+                               "facing_weight": 0.1})
+        assert w["ally_win"] == 1.5
+        assert w["kill_shot"] == 1.0
+        assert w["combat_death"] == 0.0
+        assert set(w) == set(REWARD_COMPONENT_NAMES)
 
 
 class TestComputePerComponentRewards:

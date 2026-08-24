@@ -25,35 +25,20 @@ from boost_and_broadside.config import (
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
+from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, _huber, PPOTrainer
 
 
 def _make_rewards(**overrides) -> RewardConfig:
     defaults = dict(
-        ally_combat_damage_weight=0.01,
-        enemy_combat_damage_weight=0.01,
-        ally_field_damage_weight=0.01,
-        enemy_field_damage_weight=0.01,
-        ally_combat_death_weight=0.5,
-        enemy_combat_death_weight=0.5,
-        ally_field_death_weight=0.5,
-        enemy_field_death_weight=0.5,
-        ally_win_weight=1.0,
-        enemy_win_weight=1.0,
+        win_weight=1.0,
+        death_weight=0.5,
+        damage_weight=0.1,
+        kill_shot_fraction=0.5,
         facing_weight=0.01,
         closing_speed_weight=0.01,
         shoot_quality_weight=0.01,
-        kill_shot_weight=0.5,
-        kill_assist_weight=0.5,
-        kill_ally_shot_weight=0.5,
-        kill_ally_assist_weight=0.5,
-        combat_damage_taken_weight=0.1,
-        field_damage_taken_weight=0.1,
-        damage_dealt_enemy_weight=0.1,
-        damage_dealt_ally_weight=0.1,
-        combat_death_weight=0.5,
-        field_death_weight=0.5,
         proximity_radius=300.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
@@ -1000,9 +985,9 @@ class TestSchedulePrimitives:
         )
         trainer.train()
         mismatched = {}
+        derived = component_weights(trainer.cfg.rewards)
         for comp in trainer.wrapper.reward_components:
-            individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
-            expected = individual_weight * group_scales[_TIER[comp.name]]
+            expected = derived[comp.name] * group_scales[_TIER[comp.name]]
             if abs(comp.weight - expected) > 1e-9:
                 mismatched[comp.name] = (comp.weight, expected)
         assert not mismatched, f"components with wrong effective weight: {mismatched}"

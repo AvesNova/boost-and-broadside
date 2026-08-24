@@ -284,52 +284,69 @@ class RewardConfig:
     Reward tier scales (outcome, kill/death, damage, shaping) live in
     TrainingSchedule since they vary over the course of a run.
 
-    Global rewards flow through the lambda aggregation matrix at PPO update time,
-    so a ship's signal can affect its teammates' and enemies' advantages:
-        ally_*   → each ship reports its own outcome; allies see it via lambda=1,
-                   enemies see it via lambda=-1 (zero-sum) if listed in
-                   enemy_neg_lambda_components.
-        enemy_*  → same signal, opposite team's perspective; combined with
-                   ally_zero_components to avoid double-counting on the ally side.
+    Weights obey one rule: **every event pays one side exactly what it charges the
+    other.** A ship's death costs its team ``death_weight`` and pays the ships that
+    caused it ``death_weight`` between them; damage works the same way with
+    ``damage_weight``. That fixes every ratio in the system and leaves four numbers.
+
+    Three consequences are worth knowing, because they look like coincidences and
+    are not:
+
+    * ``enemy_field_death`` must equal ``kill_shot``. A ship killed by a field was
+      shot by nobody on its fatal step, so ``kill_shot`` pays zero there and only
+      ``kill_assist`` fires. Balance then needs the shortfall made up exactly, and
+      the shortfall is ``kill_shot``. The same argument gives ``enemy_field_damage
+      == damage_weight``. These two are the only source-split components with a
+      non-zero weight: they exist to supply the offensive side of events that have
+      no shooter to attribute to.
+    * Killing a teammate costs the team twice. The ally is charged
+      ``death_weight`` for dying and the shooter is charged ``death_weight`` for
+      causing it, while the enemy is paid nothing — so friendly fire is
+      structurally twice as expensive as being killed by an opponent, without a
+      special case saying so.
+    * The remaining ``ally_*`` and ``enemy_combat_*`` components stay at zero.
+      Their events are already fully paid for by the local per-ship components and
+      by damage attribution; turning them on would charge the same event twice.
+
+    Equal weight is not equal gradient. The kill side spends its weight across two
+    correlated components while the death side spends it on one, so the kill side
+    delivers roughly 87% of the death side's gradient magnitude. That is expected
+    and is left alone: weights state what an event means, and pressure is allowed
+    to follow how coherent each signal actually is.
 
     Local rewards are self-only: lambda=0 for every other ship (diagonal lambda
-    matrix), so the signal never propagates. Each ship is the sole recipient of
-    its own reward.
+    matrix), so the signal never propagates. Global rewards flow through the lambda
+    aggregation matrix at PPO update time, so a ship's signal reaches its teammates
+    and, for zero-sum components, its enemies.
 
-    Tier scales (applied as a multiplier on top of individual weights; the
-    authoritative component → tier mapping is _TIER in train/rl/ppo.py):
-        outcome     → ally_win, enemy_win
-        kill_death  → kills, deaths, friendly kills
-        damage      → damage dealt and taken
-        shaping     → dense geometry rewards
+    Reward tier scales (outcome, kill/death, damage, shaping) live in
+    TrainingSchedule since they vary over the course of a run.
+
+    Tier scales (applied as a multiplier on top of the derived weights; the
+    authoritative component -> tier mapping is _TIER in train/rl/ppo.py):
+        outcome     -> ally_win, enemy_win
+        kill_death  -> kills, deaths, friendly kills
+        damage      -> damage dealt and taken
+        shaping     -> dense geometry rewards
     """
 
-    # --- Global outcome rewards (lambda-aggregated across ships) ---
-    ally_combat_damage_weight: float  # applied projectile damage to this ship
-    enemy_combat_damage_weight: float  # enemy-perspective projectile damage pair
-    ally_field_damage_weight: float  # applied boundary damage to this ship
-    enemy_field_damage_weight: float  # enemy-perspective boundary damage pair
-    ally_combat_death_weight: float  # projectile-caused death of this ship
-    enemy_combat_death_weight: float  # enemy-perspective projectile death pair
-    ally_field_death_weight: float  # boundary-caused death of this ship
-    enemy_field_death_weight: float  # enemy-perspective boundary death pair
-    ally_win_weight: float  # +1 when this ship's team wins
-    enemy_win_weight: float  # same signal, enemy-team perspective (pair with ally_win)
+    # --- Event weights ---
+    # Every event component derives from these four numbers, because the weights
+    # are not free of one another: an event that costs one team should pay the
+    # other the same. See ``component_weights`` in env/rewards.py for the algebra.
+    win_weight: float  # W: to the winning team, charged to the losing one
+    death_weight: float  # U: charged to a dying ship, paid to whoever caused it
+    damage_weight: float  # V: charged to a damaged ship, paid to whoever dealt it
+    # How U splits between "landed the finishing blow" and "contributed damage".
+    # The only ratio the balance rules leave free.
+    kill_shot_fraction: float
 
-    # --- Local per-ship rewards (self-only, lambda=0 for all other ships) ---
-    facing_weight: float  # pointing nose toward nearest enemy (shaping)
-    closing_speed_weight: float  # velocity component toward nearest enemy (shaping)
-    shoot_quality_weight: float  # shot quality when firing (shaping)
-    kill_shot_weight: float  # proportional share of +1.0 per kill, weighted by step damage
-    kill_assist_weight: float  # proportional share of +1.0 per kill, weighted by episode damage
-    kill_ally_shot_weight: float  # share of -1.0 per teammate death, by step damage
-    kill_ally_assist_weight: float  # share of -1.0 per teammate death, by episode damage
-    combat_damage_taken_weight: float  # applied projectile health loss (negative reward)
-    field_damage_taken_weight: float  # applied boundary health loss (negative reward)
-    damage_dealt_enemy_weight: float  # damage dealt to enemies this step (positive reward)
-    damage_dealt_ally_weight: float  # damage dealt to allies this step (friendly-fire penalty)
-    combat_death_weight: float  # -1 when projectile damage kills this ship
-    field_death_weight: float  # -1 when boundary damage kills this ship
+    # --- Shaping ---
+    # Not events. Facing a target is a state, not something that happens to
+    # somebody, so there is no opposing side to charge and no rule to apply.
+    # These stay individually weighted.
+    facing_weight: float  # pointing nose toward nearest enemy
+    closing_speed_weight: float  # velocity component toward nearest enemy
 
     # --- Geometry params ---
     proximity_radius: float  # falloff radius used by FacingReward
@@ -340,6 +357,17 @@ class RewardConfig:
     ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)
 
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
+    shoot_quality_weight: float = 0.0  # shot quality when firing
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
     speed_weight: float = 0.0  # penalty when speed < speed_penalty_min
-    speed_penalty_min: float = 40.0  # speed threshold below which penalty is applied
+    speed_penalty_min: float = 40.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.kill_shot_fraction <= 1.0:
+            raise ValueError(
+                f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}"
+            )
+        for name in ("win_weight", "death_weight", "damage_weight"):
+            value = getattr(self, name)
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative, got {value}")  # speed threshold below which penalty is applied

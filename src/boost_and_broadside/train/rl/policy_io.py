@@ -172,12 +172,12 @@ def infer_team_pma_k(ckpt: dict, fallback: tuple[int, ...] | None = None) -> tup
             )
         return tuple(fallback)
 
-    from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+    from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES, component_weights
 
-    reward_weights = ckpt["train_config"]["rewards"]
-    active = [
-        name for name in REWARD_COMPONENT_NAMES if reward_weights.get(f"{name}_weight", 0.0) != 0.0
-    ]
+    # component_weights reads either shape: the four event weights a current run
+    # records, or the per-component weights older checkpoints carry.
+    weights = component_weights(ckpt["train_config"]["rewards"])
+    active = [name for name in REWARD_COMPONENT_NAMES if weights[name] != 0.0]
     win_k = tuple(i for i, name in enumerate(active) if name in ("ally_win", "enemy_win"))
     n_win = ckpt["policy_state_dict"]["value_head_win.3.weight"].shape[0]
     if len(win_k) != n_win:

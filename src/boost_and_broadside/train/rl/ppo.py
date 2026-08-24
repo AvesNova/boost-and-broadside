@@ -47,6 +47,7 @@ from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.buffer import (
@@ -508,6 +509,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # Pre-compute lambda masks for active components only.
         # Static for the entire run — derived from RewardConfig.
+        # Derived once: the per-component weights the four event weights imply.
+        self._component_weights = component_weights(train_config.rewards)
         self.enemy_neg_k = self._make_enemy_neg_k(train_config.rewards.enemy_neg_lambda_components)
         self.ally_zero_k = self._make_ally_zero_k(train_config.rewards.ally_zero_components)
         self.local_k = self._make_local_k()
@@ -1237,7 +1240,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
-            raw_weight = getattr(self.cfg.rewards, f"{component.name}_weight")
+            raw_weight = self._component_weights[component.name]
             component.weight = raw_weight * getattr(self._schedule_state, _TIER[component.name])
         self.wrapper.refresh_component_weights()
         return bc_factor

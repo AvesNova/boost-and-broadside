@@ -208,37 +208,63 @@ reference policy activated these components:
 
 | Component | Weight | Tier | Role |
 |---|---:|---|---|
-| `ally_win` | 1.00 | outcome | +1 to each surviving teammate on a win |
-| `enemy_win` | 1.00 | outcome | opponent's win signal, seen as −1 through a negative enemy lambda |
-| `kill_shot` | 0.28 | kill/death | fatal-step credit (+), proportional to that step's damage |
-| `kill_assist` | 0.31 | kill/death | assist credit (+), proportional to cumulative episode damage |
-| `kill_ally_shot` | 0.28 | kill/death | blame (−) for a teammate's death, by that step's damage |
-| `kill_ally_assist` | 0.28 | kill/death | blame (−) for a teammate's death, by cumulative damage |
-| `combat_death` | 0.27 | kill/death | −1 when projectile damage kills this ship |
-| `field_death` | 0.28 | kill/death | −1 when boundary damage kills this ship |
-| `damage_dealt_enemy` | 0.54 | damage | +proportional to damage dealt to enemies |
-| `combat_damage_taken` | 0.32 | damage | −applied projectile health loss |
-| `field_damage_taken` | 0.26 | damage | −applied boundary health loss |
-| `damage_dealt_ally` | 0.50 | damage | −proportional to friendly fire dealt |
-| `facing` | 0.09 | shaping | dense aim geometry (+) |
-| `closing_speed` | 0.08 | shaping | dense approach geometry (+) |
+| `ally_win` | `W` = 1.00 | outcome | +1 to each surviving teammate on a win |
+| `enemy_win` | `W` = 1.00 | outcome | opponent's win signal, seen as −1 through a negative enemy lambda |
+| `combat_death` | `U` = 0.38 | kill/death | −1 when projectile damage kills this ship |
+| `field_death` | `U` = 0.38 | kill/death | −1 when boundary damage kills this ship |
+| `kill_shot` | `U·f` = 0.19 | kill/death | fatal-step credit (+), proportional to that step's damage |
+| `kill_assist` | `U(1−f)` = 0.19 | kill/death | assist credit (+), proportional to cumulative episode damage |
+| `kill_ally_shot` | `U·f` = 0.19 | kill/death | blame (−) for a teammate's death, by that step's damage |
+| `kill_ally_assist` | `U(1−f)` = 0.19 | kill/death | blame (−) for a teammate's death, by cumulative damage |
+| `enemy_field_death` | `U·f` = 0.19 | kill/death | credit (+) to the enemy team when a ship dies to a field |
+| `combat_damage_taken` | `V` = 0.28 | damage | −applied projectile health loss |
+| `field_damage_taken` | `V` = 0.28 | damage | −applied boundary health loss |
+| `damage_dealt_enemy` | `V` = 0.28 | damage | +proportional to damage dealt to enemies |
+| `damage_dealt_ally` | `V` = 0.28 | damage | −proportional to friendly fire dealt |
+| `enemy_field_damage` | `V` = 0.28 | damage | +to the enemy team when a ship takes field damage |
+| `facing` | 0.06 | shaping | dense aim geometry (+) |
+| `closing_speed` | 0.09 | shaping | dense approach geometry (+) |
 | `shoot_quality` | off | shaping | firing opportunity quality (+); head retained at zero weight |
 
-These are solved rather than chosen. A component's share of the policy gradient is its
-weight times a coherence factor — how much its per-token gradients add rather than cancel —
-and that factor is a stable property of the signal, measured at 6–15% coefficient of
-variation across the reference run. Weights therefore come from `w = share / d` against
-design targets of 31% outcome, 32% kill/death, 31% damage, 5% shaping, with offence and
-defence balanced at 41% each and the friendly-fire components counted in both at 19%.
+Only four of those numbers are set. The rest follow from one rule: **an event pays one
+side exactly what it charges the other.** A death costs the dying ship's team `U` and pays
+whoever caused it `U` between them; damage does the same with `V`; a win pays `W` and
+charges `W`. `f` — how `U` splits between "landed the finishing blow" and "contributed
+damage" — is the only ratio the rule leaves free, and it is even.
 
-The top three tiers are deliberately flat rather than ranked by importance. The win pair is
-two near-duplicate signals (mean gradient cosine +0.536), and half of all games are
-self-play, where the outcome is a coin flip by construction; the tiers below carry per-step
-information the outcome cannot. It still takes the largest single share, because everything
-below it is a proxy and proxies are what a policy learns to farm.
+Three things follow that look like coincidences and are not.
 
-Only ratios matter. Advantages are per-component unit-RMS before aggregation and the
-aggregate is divided by its own RMS, so scaling the whole vector is a no-op.
+`enemy_field_death` has to equal `kill_shot`. A ship killed by a field was shot by nobody
+on its fatal step, so `kill_shot` reads zero there and only `kill_assist` fires; the
+shortfall is exactly `kill_shot`, and something has to make it up or field kills would pay
+less than combat kills. `enemy_field_damage` equals `V` by the same argument. These are the
+only two source-split components with a non-zero weight, and that is what they are for:
+supplying the offensive side of events that have no shooter to attribute to. It is also the
+principled form of "reward for forcing an enemy into a field" — attributed by team rather
+than by proximity, so it survives a change of fleet size.
+
+Killing a teammate costs the team twice: the ally is charged `U` for dying and the shooter
+is charged `U` for causing it, while the enemy is paid nothing. Friendly fire is
+structurally twice as expensive as being killed by an opponent, with no special case saying
+so.
+
+The remaining `ally_*` and `enemy_combat_*` components stay at zero. Their events are
+already fully paid for by the local per-ship components and by damage attribution, so
+turning them on would charge the same event twice.
+
+Equal weight is not equal gradient, and is not meant to be. The kill side spends its weight
+across two correlated components (+0.509 cosine) while the death side spends it on one, so
+the kill side delivers roughly 87% of the death side's gradient magnitude. Weights state
+what an event *means*; how much pressure it exerts is allowed to follow how coherent the
+signal actually is. That is deliberate — a component whose behaviour the policy has already
+solved produces gradients that increasingly cancel, and its influence should fade on its
+own rather than be propped up. In the reference run `field_death`'s coherence halved as
+field deaths fell eightfold.
+
+The four numbers are then set so the *tiers* land near 31% outcome / 32% kill-death / 31%
+damage / 5% shaping. Tier allocation is the one strategic judgement left. Only ratios
+matter: advantages are per-component unit-RMS before aggregation and the aggregate is
+divided by its own RMS, so scaling all four together is a no-op.
 
 The wrapper divides component rewards by total ship count for team-size normalization.
 A lambda aggregation matrix then maps local event signals to training targets:

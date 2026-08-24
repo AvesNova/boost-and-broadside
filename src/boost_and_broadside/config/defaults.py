@@ -55,54 +55,31 @@ ELO_CALIBRATE = EloCalibrateConfig(
 LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 
 REWARDS = RewardConfig(
-    # Source-split outcome heads are retained even when their weights are zero.
-    ally_combat_damage_weight=0.0,
-    enemy_combat_damage_weight=0.0,
-    ally_field_damage_weight=0.0,
-    enemy_field_damage_weight=0.0,
-    ally_combat_death_weight=0.0,
-    enemy_combat_death_weight=0.0,
-    ally_field_death_weight=0.0,
-    enemy_field_death_weight=0.0,
-    # Solved, not chosen by eye. A component's share of the policy gradient is
-    # its weight times a coherence factor d -- how much its per-token gradients
-    # add rather than cancel -- and d is a stable property of the signal,
-    # measured at 6-15% coefficient of variation across the whole reference run.
-    # So the weights come from w = share_target / d against these design targets:
+    # Four numbers. Every event component follows from them by the balance rule
+    # documented on RewardConfig; nothing else here is a free choice.
     #
-    #   win 31%, kill/death 32%, damage 31%, shaping 5%
-    #   offence 41%, defence 41%, friendly fire counted in both at 19%
+    # Their ratios are solved against measured gradient coherence for tier shares
+    # of 31% outcome / 32% kill-death / 31% damage / 5% shaping. Tier allocation
+    # is the one strategic judgement left, and it is flat across the top three:
+    # the win pair is two near-duplicate signals (+0.536 cosine) and half of all
+    # games are self-play, where the outcome is a coin flip by construction, so
+    # the tiers below carry per-step information it cannot. It still takes the
+    # largest single share, because everything below it is a proxy and proxies
+    # are what a policy learns to farm.
     #
-    # Flat across the top three tiers rather than ranked by importance. The win
-    # pair is two near-duplicate signals (mean gradient cosine +0.536) and half
-    # of all games are self-play, where the outcome is a coin flip by
-    # construction; the tiers below it carry per-step information the outcome
-    # cannot. It still takes the largest single share, because everything below
-    # it is a proxy and proxies are what a policy learns to farm.
-    #
-    # Only ratios matter: the aggregate advantage is divided by its own RMS, so
-    # scaling this whole vector is a no-op.
-    ally_win_weight=1.0,
-    enemy_win_weight=1.0,
-    facing_weight=0.09,
-    closing_speed_weight=0.08,
-    shoot_quality_weight=0.0,
-    # Per-ship credit stays local under the lambda aggregation matrix.
-    kill_shot_weight=0.28,
-    kill_assist_weight=0.31,
-    kill_ally_shot_weight=0.28,
-    kill_ally_assist_weight=0.28,
-    combat_death_weight=0.27,
-    # field_death, kill_ally_shot and kill_ally_assist have no trustworthy d of
-    # their own and use the pack median. field_death's measured 8.28 is the
-    # lowest of the twelve and is expected to rise now that its critic is no
-    # longer starved by the return floor; the friendly-kill pair has never
-    # existed on its own. Re-solve all three off the first diagnostic update.
-    field_death_weight=0.28,
-    combat_damage_taken_weight=0.32,
-    field_damage_taken_weight=0.26,
-    damage_dealt_enemy_weight=0.54,
-    damage_dealt_ally_weight=0.50,
+    # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
+    # scaling all four together is a no-op.
+    win_weight=1.0,
+    death_weight=0.38,
+    damage_weight=0.28,
+    # The one ratio the balance rules leave free: "landed the finishing blow"
+    # against "contributed damage". Even until something argues otherwise.
+    kill_shot_fraction=0.5,
+    # Shaping is not an event, so it stays individually weighted. Both are also
+    # scheduled to decay: they are not potential-based, so they bias the optimum
+    # for as long as they are on.
+    facing_weight=0.06,
+    closing_speed_weight=0.09,
     proximity_radius=400.0,
     shoot_quality_radius=200.0,
     enemy_neg_lambda_components=frozenset(
