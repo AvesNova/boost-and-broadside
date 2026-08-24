@@ -216,7 +216,10 @@ class TrainConfig:
     # smallest span/RMS any *active* component really has, or they quietly
     # rescale that component's critic targets and policy-gradient share. The
     # trainer logs scaler/floor_bound/<name> and warns when one binds.
-    return_min_span: float  # ReturnScaler p95-p5 epsilon (symlog-space)
+    return_min_span: float  # ReturnScaler span epsilon (symlog-space)
+    # Normalized critic error beyond which the value loss goes linear.
+    # Inside it the loss is exactly squared error, so this only reshapes tails.
+    value_huber_delta: float
     advantage_min_rms: float  # AdvantageScaler RMS epsilon (symlog-space)
     checkpoint_dir: str  # directory to write .pt files
 
@@ -251,10 +254,6 @@ class TrainConfig:
     bc_winrate_target: float  # win rate vs scripted at which the BC aux loss reaches zero
     histogram_interval: int  # record expensive histograms every N updates
 
-    # Maximum entity samples used for host-backed return percentiles. None keeps
-    # exact quantiles; a bounded sample prevents CPU sorting from dominating large
-    # logical batches.
-    return_quantile_samples: int | None = None
 
     # --- Gradient accumulation (memory-only, per-machine knob) ---
     # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches
@@ -320,11 +319,6 @@ class TrainConfig:
         if self.rollouts_per_update < 1:
             raise ValueError(
                 f"rollouts_per_update must be positive, got {self.rollouts_per_update}"
-            )
-        if self.return_quantile_samples is not None and self.return_quantile_samples < 1:
-            raise ValueError(
-                "return_quantile_samples must be positive or None, "
-                f"got {self.return_quantile_samples}"
             )
         if not 0.0 < self.bc_winrate_target <= 1.0:
             raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")

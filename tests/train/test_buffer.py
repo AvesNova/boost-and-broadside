@@ -72,26 +72,61 @@ class TestSymlogSymexp:
 
 
 class TestReturnScaler:
+    @staticmethod
+    def _alive(returns):
+        return torch.ones(returns.shape[:3], dtype=torch.bool)
+
     def test_normalize_denormalize_roundtrip(self):
         """denormalize(normalize(x)) ≈ x after scaler has adapted."""
         scaler = ReturnScaler(num_components=K, device=torch.device("cpu"))
-        # Feed returns that span [-3, 3] so scaler can adapt
         returns = torch.randn(8, 4, 2, K) * 2.0
-        scaler.update(returns)
+        scaler.update(returns, self._alive(returns))
         x = torch.randn(4, 2, K)
         assert torch.allclose(scaler.denormalize(scaler.normalize(x)), x, atol=1e-5)
 
-    def test_normalize_maps_percentiles_to_unit_range(self):
-        """After a single update the p5/p95 percentiles of the data should map near ±1."""
-        scaler = ReturnScaler(
-            num_components=1, device=torch.device("cpu"), ema_alpha=1.0
-        )  # alpha=1: EMA = current batch exactly
-        returns = torch.arange(-10.0, 10.0).reshape(20, 1, 1, 1)
-        scaler.update(returns)
-        p5 = torch.quantile(returns.reshape(-1), 0.05)
-        p95 = torch.quantile(returns.reshape(-1), 0.95)
-        assert scaler.normalize(p5.unsqueeze(-1)).abs().item() < 1.1
-        assert scaler.normalize(p95.unsqueeze(-1)).abs().item() < 1.1
+    def test_normalize_maps_two_sigma_to_unit_range(self):
+        """STD_MULTIPLE standard deviations from the mean map to ±1."""
+        scaler = ReturnScaler(num_components=1, device=torch.device("cpu"), ema_alpha=1.0)
+        returns = torch.randn(2000, 1, 1, 1) * 3.0 + 1.0
+        scaler.update(returns, self._alive(returns))
+        mean, std = scaler.moments
+        edge = mean + std * ReturnScaler.STD_MULTIPLE
+        assert scaler.normalize(edge).item() == pytest.approx(1.0, abs=1e-4)
+
+    def test_scale_follows_sparse_tails_not_the_spike(self):
+        """A spike at zero with rare excursions must be scaled by the excursions.
+
+        This is the regression that motivated leaving p5/p95: for a component
+        like ``field_death`` the 5th and 95th percentiles both sit inside the
+        zero spike, so the span measured the spike's width and the floor then
+        bound on every update.
+        """
+        returns = torch.zeros(1000, 1, 1, 1)
+        returns[::100] = -1.0  # 1% of steps carry the event
+        scaler = ReturnScaler(num_components=1, device=torch.device("cpu"), ema_alpha=1.0)
+        scaler.update(returns, self._alive(returns))
+
+        flat = returns.reshape(-1)
+        percentile_span = torch.quantile(flat, 0.95) - torch.quantile(flat, 0.05)
+        assert percentile_span.item() == pytest.approx(0.0)  # p5/p95 sees nothing
+        # The event itself lands within an order of magnitude of the unit range.
+        assert 0.1 < scaler.normalize(torch.tensor([-1.0])).abs().item() < 10.0
+        assert not scaler.floor_bound.any()
+
+    def test_dead_ships_do_not_shrink_the_scale(self):
+        """Dead ships sit at zero; counting them narrows the very components
+        that can least afford it."""
+        returns = torch.zeros(100, 2, 4, 1)
+        returns[:, :, :2] = torch.randn(100, 2, 2, 1)
+        alive = torch.zeros(100, 2, 4, dtype=torch.bool)
+        alive[:, :, :2] = True
+
+        masked = ReturnScaler(num_components=1, device=torch.device("cpu"), ema_alpha=1.0)
+        unmasked = ReturnScaler(num_components=1, device=torch.device("cpu"), ema_alpha=1.0)
+        masked.update(returns, alive)
+        unmasked.update(returns, torch.ones_like(alive))
+
+        assert masked.moments[1].item() > unmasked.moments[1].item()
 
     def test_min_span_guards_zero_returns(self):
         """Disabled components (all-zero returns) must not produce NaN."""
@@ -99,39 +134,67 @@ class TestReturnScaler:
             num_components=2, device=torch.device("cpu"), ema_alpha=1.0, min_span=1.0
         )
         returns = torch.zeros(4, 4, 2, 2)
-        scaler.update(returns)
-        x = torch.zeros(2)
-        result = scaler.normalize(x)
+        scaler.update(returns, self._alive(returns))
+        result = scaler.normalize(torch.zeros(2))
         assert torch.isfinite(result).all()
         assert (result == 0.0).all()
 
     def test_state_dict_roundtrip(self):
-        """save/load scaler state must preserve p5 and p95."""
+        """save/load scaler state must preserve the moments."""
         scaler = ReturnScaler(num_components=K, device=torch.device("cpu"))
         returns = torch.randn(4, 4, 2, K)
-        scaler.update(returns)
+        scaler.update(returns, self._alive(returns))
         sd = scaler.state_dict()
 
         scaler2 = ReturnScaler(num_components=K, device=torch.device("cpu"))
         scaler2.load_state_dict(sd)
-        assert torch.allclose(scaler.percentiles[0], scaler2.percentiles[0])
-        assert torch.allclose(scaler.percentiles[1], scaler2.percentiles[1])
+        assert torch.allclose(scaler.moments[0], scaler2.moments[0])
+        assert torch.allclose(scaler.moments[1], scaler2.moments[1])
 
-    def test_sparse_component_is_scaled_by_its_own_span(self):
-        """A small-but-real span must set the scale, not be overridden by the floor.
+    def test_percentile_era_state_reseeds_instead_of_failing(self):
+        """A checkpoint from the p5/p95 estimator must still load — re-seeding
+        costs one rollout, refusing costs the run."""
+        scaler = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1e-2)
+        scaler.load_state_dict(
+            {"p5": torch.zeros(K), "p95": torch.ones(K), "initialized": True, "min_span": 1e-2}
+        )
+        assert not scaler._initialized
 
-        Guards the regression where min_span sat above a live component's span and
-        silently compressed its critic targets.
-        """
+    def test_sparse_component_is_scaled_by_its_own_spread(self):
+        """A small-but-real spread sets the scale, rather than the floor."""
         scaler = ReturnScaler(
             num_components=1, device=torch.device("cpu"), ema_alpha=1.0, min_span=1e-3
         )
-        # Span 0.1 — two orders of magnitude below the old 1.0 floor.
         returns = torch.linspace(-0.05, 0.05, 200).reshape(200, 1, 1, 1)
-        scaler.update(returns)
+        scaler.update(returns, self._alive(returns))
         assert not scaler.floor_bound.any()
-        p95 = scaler.percentiles[1]
-        assert scaler.normalize(p95).abs().item() == pytest.approx(1.0, abs=0.1)
+        # Scaled by its own spread, the edge of the data is order 1. Held up by a
+        # floor two orders above it, it would be order 0.01.
+        assert 0.5 < scaler.normalize(torch.tensor([0.05])).abs().item() < 2.0
+
+    def test_production_floor_clears_the_narrowest_real_component(self):
+        """The floor must sit far below every live component's spread.
+
+        run 719's narrowest component, ``field_death``, has a 4-sigma span of
+        about 0.0127 measured from its logged return histograms. The floor has to
+        clear that by a wide margin, or the estimator change just moves which
+        components get silently compressed.
+        """
+        from boost_and_broadside.profiles.rl import RL_PROFILE
+
+        narrowest_sigma = 0.00317
+        scaler = ReturnScaler(
+            num_components=1,
+            device=torch.device("cpu"),
+            ema_alpha=1.0,
+            min_span=RL_PROFILE.return_min_span,
+        )
+        returns = (torch.randn(4000, 1, 1, 1) * narrowest_sigma).float()
+        scaler.update(returns, self._alive(returns))
+
+        assert not scaler.floor_bound.any()
+        span = scaler.moments[1] * 2.0 * ReturnScaler.STD_MULTIPLE
+        assert (span / RL_PROFILE.return_min_span).item() > 10.0
 
     def test_floor_bound_flags_a_degenerate_component(self):
         scaler = ReturnScaler(
@@ -139,19 +202,21 @@ class TestReturnScaler:
         )
         returns = torch.zeros(4, 4, 2, 2)
         returns[..., 1] = torch.linspace(-1.0, 1.0, 32).reshape(4, 4, 2)
-        scaler.update(returns)
+        scaler.update(returns, self._alive(returns))
         assert scaler.floor_bound.tolist() == [True, False]
 
     def test_changed_floor_forces_reseed_on_load(self):
         """A checkpoint written under a different floor must not carry it forward."""
         old = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1.0)
-        old.update(torch.randn(4, 4, 2, K) * 0.01)
+        returns = torch.randn(4, 4, 2, K) * 0.01
+        old.update(returns, self._alive(returns))
         loaded = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1e-3)
         loaded.load_state_dict(old.state_dict())
         assert not loaded._initialized
 
         same = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1e-3)
-        same.update(torch.randn(4, 4, 2, K))
+        fresh = torch.randn(4, 4, 2, K)
+        same.update(fresh, self._alive(fresh))
         reloaded = ReturnScaler(num_components=K, device=torch.device("cpu"), min_span=1e-3)
         reloaded.load_state_dict(same.state_dict())
         assert reloaded._initialized
@@ -162,22 +227,12 @@ class TestReturnScaler:
         chunked = ReturnScaler(num_components=K, device=torch.device("cpu"))
         concatenated = ReturnScaler(num_components=K, device=torch.device("cpu"))
 
-        chunked.update_chunks([first, second])
-        concatenated.update(torch.cat((first, second), dim=1))
+        chunked.update_chunks([first, second], [self._alive(first), self._alive(second)])
+        both = torch.cat((first, second), dim=1)
+        concatenated.update(both, self._alive(both))
 
-        assert torch.allclose(chunked.percentiles[0], concatenated.percentiles[0])
-        assert torch.allclose(chunked.percentiles[1], concatenated.percentiles[1])
-
-    def test_sampled_chunked_update_tracks_exact_percentiles(self):
-        values = torch.linspace(-5.0, 5.0, 20_000).reshape(100, 100, 2, 1)
-        exact = ReturnScaler(num_components=1, device=torch.device("cpu"))
-        sampled = ReturnScaler(num_components=1, device=torch.device("cpu"))
-
-        exact.update_chunks([values[:, :50], values[:, 50:]])
-        sampled.update_chunks([values[:, :50], values[:, 50:]], max_samples=2_000)
-
-        assert torch.allclose(sampled.percentiles[0], exact.percentiles[0], atol=0.01)
-        assert torch.allclose(sampled.percentiles[1], exact.percentiles[1], atol=0.01)
+        assert torch.allclose(chunked.moments[0], concatenated.moments[0], atol=1e-6)
+        assert torch.allclose(chunked.moments[1], concatenated.moments[1], atol=1e-6)
 
 
 class TestAdvantageScaler:

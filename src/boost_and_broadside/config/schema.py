@@ -107,7 +107,7 @@ class ProfileSpec:
     return_ema_alpha: float
     return_min_span: float
     advantage_min_rms: float
-    return_quantile_samples: int | None
+    value_huber_delta: float
 
     # --- League and live evaluation ---
     league_size: int

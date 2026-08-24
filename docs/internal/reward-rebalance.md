@@ -210,16 +210,30 @@ the floor binds hardest, and barely at all elsewhere. So the profile's defence o
 the floor ("critic outliers dominate the squared value loss") was pointing at a
 real failure — it just patched the scale instead of the estimator or the loss.
 
-### Fix — three coupled changes, not one
+### Fix — three coupled changes, not one  [LANDED]
 
-1. Tail-aware scale estimator: RMS, matching what `AdvantageScaler` already uses.
-   The two scalers disagreeing is itself part of the bug.
-2. `return_min_span` down to ~1e-2, a genuine divide-by-zero guard.
-3. Huber value loss, to handle the heavy tails any per-component normalization
-   exposes.
+1. Tail-aware scale estimator: masked mean/std, two sigma to one, matching the
+   second-moment statistics `AdvantageScaler` already uses. Dead ships are now
+   excluded from both scalers, having been counted in neither's favour before.
+2. `return_min_span` down to **1e-3**, not the 1e-2 first sketched: measured
+   against run 719's logged histograms, the narrowest live component
+   (`field_death`, 4-sigma span 0.0127) clears 1e-3 by 12x but 1e-2 by only 1.3x,
+   which is not what "far below every active component's real span" means.
+3. Huber value loss (`value_huber_delta=1.0`), scaled to agree with squared error
+   inside delta so the switch reshapes only the tails.
 
 Doing (2) alone destabilizes the critic; doing (3) alone leaves the starvation.
-Resume is safe: `ReturnScaler.load_state_dict` re-seeds when `min_span` changes.
+Resume is safe: `ReturnScaler.load_state_dict` re-seeds when `min_span` changes,
+and now also when handed percentile-era state it cannot interpret.
+
+`return_quantile_samples` is gone — it existed only to bound CPU sorting for
+`torch.quantile`, and moments need no subsampling.
+
+Amplification is smaller than the p5/p95 arithmetic implied, because the new
+estimator is itself tail-aware: `field_death` gains ~79x rather than 121x,
+`damage_dealt_ally` ~2.5x rather than 7.2x, `field_damage_taken` ~1.0x rather
+than 2.4x. The predicted value-share table below is therefore an overestimate of
+the redistribution; re-measure rather than trusting it.
 
 ### Predicted effect
 

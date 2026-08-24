@@ -208,6 +208,37 @@ class _StagedMicroBatch:
     ready: torch.cuda.Event
 
 
+def _huber(error: torch.Tensor, delta: float) -> torch.Tensor:
+    """Squared error inside ``delta``, linear outside, continuous in both value
+    and slope at the join.
+
+    Scaled to agree with ``error**2`` in the quadratic region rather than with
+    the textbook ``0.5 * error**2``, so switching a squared-error critic to this
+    changes the tails and leaves the bulk of the loss — and therefore the critic's
+    gradient scale — where it was.
+
+    The tails are the point. Normalizing each component by its own statistics
+    necessarily exposes them: a sparse component's returns are a spike at zero
+    with rare large excursions, so its normalized error reaches values a dense
+    component never sees. Under squared error one such token can outweigh a
+    minibatch of ordinary ones, which is what the oversized ``return_min_span``
+    floor was compensating for by shrinking every sparse component instead.
+
+    Args:
+        error: Any shape — the critic residual in normalized space.
+        delta: Half-width of the quadratic region, in normalized units.
+
+    Returns:
+        Elementwise loss, same shape as ``error``.
+    """
+    magnitude = error.abs()
+    return torch.where(
+        magnitude <= delta,
+        error.pow(2),
+        delta * (2.0 * magnitude - delta),
+    )
+
+
 def _actor_entropy_coef(
     scheduled: float, *, policy_gradient_coef: float, behavior_cloning_coef: float
 ) -> float:
@@ -1055,7 +1086,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.aux_last_dones[index].float(),
             )
         if update_scalers:
-            self.scaler.update(self.buffer.returns)
+            self.scaler.update(self.buffer.returns, self.buffer.alive_mask)
             self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
 
     def _collect_host_rollouts(
@@ -1089,7 +1120,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         primary_shards = stored_by_scale[0]
         self.scaler.update_chunks(
             [shard.returns for shard in primary_shards],
-            max_samples=self.cfg.return_quantile_samples,
+            [shard.alive_mask for shard in primary_shards],
         )
         self.adv_scaler.update_chunks(
             [shard.advantages for shard in primary_shards],
@@ -1505,7 +1536,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # ---- Value loss --------------------------------------------------
         target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
-        vf_loss_raw = (new_value - target_norm).pow(2)  # (T, B_mb, N, K)
+        vf_loss_raw = _huber(new_value - target_norm, cfg.value_huber_delta)  # (T, B_mb, N, K)
         vf_loss = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
 
         # ---- Entropy bonus -----------------------------------------------

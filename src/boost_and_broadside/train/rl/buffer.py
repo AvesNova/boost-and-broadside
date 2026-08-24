@@ -218,31 +218,52 @@ def _obs_storage_dtype(key: ObsKey | BulletObsKey, dt: torch.dtype) -> torch.dty
 
 
 class ReturnScaler:
-    """Per-component EMA of 5th/95th percentiles for return normalization.
+    """Per-component EMA of return mean and standard deviation.
 
     Maps symlog-reward space returns to roughly [-1, 1] per component so that
-    MSE value loss is comparable across components that have very different
-    natural scales (e.g. victory ±80 vs turn_rate ±0.001).
+    value loss is comparable across components with very different natural
+    scales (e.g. victory ±80 vs turn_rate ±0.001). ``STD_MULTIPLE`` standard
+    deviations map to 1.
 
     The scaler is updated once per rollout from the buffer's computed returns.
     Lambdas in the PPO advantage aggregation then act as pure importance weights
     (sign + magnitude) rather than also implicitly controlling scale.
 
+    Scale is a masked standard deviation rather than a p5/p95 span. For a sparse
+    component — a death, a win, a friendly kill — the return distribution is a
+    spike at zero with rare large excursions, and p5/p95 measures the width of
+    the spike rather than the range of the signal. Measured on run 719,
+    ``field_death`` had a p5-p95 span of 0.0059 against a full range of 0.137, a
+    factor of 23, while dense components disagreed by 1.1-1.3x. A standard
+    deviation is an L2 statistic and sees the excursions.
+
+    Dead ships are excluded. Their returns sit at zero, and including them
+    concentrates yet more mass on the spike for exactly the components that can
+    least afford it.
+
     ``min_span`` is a divide-by-zero guard, not a scale. It must sit far below
     every active component's real span: a floor that binds on a live component
     silently shrinks that component's critic targets, and so its share of the
-    value loss, by the ratio between the floor and the truth. Check
-    ``floor_bound`` — the trainer logs it per component — before raising it.
+    value loss, by the ratio between the floor and the truth. Under the previous
+    p5/p95 estimator and a floor of 1.0 this bound 8 of 12 components on every
+    update of run 719, suppressing ``field_death``'s critic gradient by four
+    orders of magnitude. Check ``floor_bound`` — the trainer logs it per
+    component — before raising it.
 
     Args:
         num_components: K — number of value components.
         device:         Torch device (must match the returns tensor).
         ema_alpha:      EMA decay rate per rollout update (default 0.005 ≈ 200-update
                         memory). Slower = more stable but slower adaptation.
-        min_span:       Degeneracy epsilon on p95−p5 (symlog-space). Guards a
-                        component whose returns collapse to a constant — e.g. one
-                        whose reward group scale is scheduled to zero.
+        min_span:       Degeneracy epsilon on the full normalized span
+                        (symlog-space). Guards a component whose returns collapse
+                        to a constant.
     """
+
+    # Standard deviations mapped to 1. Two puts ~95% of a normal component's
+    # mass inside [-1, 1], close to what the p5/p95 span did for dense
+    # components while remaining sensitive to sparse tails.
+    STD_MULTIPLE: float = 2.0
 
     def __init__(
         self,
@@ -254,86 +275,67 @@ class ReturnScaler:
         self.alpha = ema_alpha
         self.min_span = min_span
         self._initialized = False
-        self._p5 = torch.zeros(num_components, device=device)
-        self._p95 = torch.zeros(num_components, device=device)
+        self._mean = torch.zeros(num_components, device=device)
+        self._sq_mean = torch.ones(num_components, device=device)
 
     @torch.no_grad()
-    def update(self, returns: torch.Tensor) -> None:
-        """Update EMA percentiles from this rollout's returns.
-
-        On the first call the EMA is seeded with the observed percentiles directly
-        (no prior) so that normalization is correct from the very first update.
+    def update(self, returns: torch.Tensor, alive_mask: torch.Tensor) -> None:
+        """Update EMA moments from this rollout's returns.
 
         Args:
-            returns: (T, B, N, K) bf16-stored — GAE returns in symlog-reward space
-                     (upcast to fp32 internally for the percentile reduction).
+            returns:    (T, B, N, K) bf16-stored — GAE returns in symlog-reward
+                        space (upcast to fp32 internally for the reduction).
+            alive_mask: (T, B, N) bool — which ships were alive each step.
         """
-        K = returns.shape[-1]
-        flat = returns.reshape(-1, K)  # (T*B*N, K)
-        p5 = torch.quantile(flat.float(), 0.05, dim=0)  # (K,)
-        p95 = torch.quantile(flat.float(), 0.95, dim=0)
-        self._update_percentiles(p5, p95)
+        self.update_chunks([returns], [alive_mask])
 
     @torch.no_grad()
     def update_chunks(
         self,
         returns_chunks: list[torch.Tensor],
-        max_samples: int | None = None,
+        alive_chunks: list[torch.Tensor],
     ) -> None:
-        """Update percentiles from one logical rollout split across host shards.
+        """Update moments from one logical rollout split across host shards.
 
         Args:
             returns_chunks: Shards shaped ``(T, B, N, K)`` on a common device.
-            max_samples: Maximum flattened entities retained across all shards.
-                None computes exact quantiles.
+            alive_chunks:   Matching alive masks shaped ``(T, B, N)``.
         """
-        if len(returns_chunks) == 0:
-            raise ValueError("returns_chunks must contain at least one shard")
+        if len(returns_chunks) == 0 or len(returns_chunks) != len(alive_chunks):
+            raise ValueError("returns_chunks and alive_chunks must be non-empty and aligned")
         K = returns_chunks[0].shape[-1]
-        flat_chunks = [returns.reshape(-1, K) for returns in returns_chunks]
-        if max_samples is not None:
-            samples_per_chunk = max(1, max_samples // len(flat_chunks))
-            flat_chunks = [
-                self._evenly_sample_entities(flat, samples_per_chunk) for flat in flat_chunks
-            ]
-        flat = torch.cat(flat_chunks, dim=0).float()  # (samples, K)
-        quantiles = torch.tensor(
-            (0.05, 0.95),
-            dtype=torch.float32,
-            device=returns_chunks[0].device,
-        )
-        percentile_matrix = torch.quantile(flat, quantiles, dim=0)  # (2, K)
-        p5, p95 = percentile_matrix[0], percentile_matrix[1]
-        self._update_percentiles(p5, p95)
+        device = returns_chunks[0].device
+        total = torch.zeros(K, dtype=torch.float32, device=device)
+        square_total = torch.zeros(K, dtype=torch.float32, device=device)
+        mask_sum = torch.zeros((), dtype=torch.float32, device=device)
+        for returns, alive in zip(returns_chunks, alive_chunks):
+            alive_k = alive.float().unsqueeze(-1)  # (T, B, N, 1)
+            values = returns.float()
+            total += (values * alive_k).sum((0, 1, 2))
+            square_total += (values.pow(2) * alive_k).sum((0, 1, 2))
+            mask_sum += alive.float().sum()
+        mask_sum.clamp_(min=1.0)
+        self._update_moments(total / mask_sum, square_total / mask_sum)
 
-    @staticmethod
-    def _evenly_sample_entities(flat: torch.Tensor, max_samples: int) -> torch.Tensor:
-        """Select a deterministic, evenly spaced entity sample."""
-        if flat.shape[0] <= max_samples:
-            return flat
-        indices = torch.linspace(
-            0,
-            flat.shape[0] - 1,
-            steps=max_samples,
-            device=flat.device,
-        ).long()  # (max_samples,)
-        return flat[indices]  # (max_samples, K)
-
-    def _update_percentiles(self, p5: torch.Tensor, p95: torch.Tensor) -> None:
-        """Apply one observed percentile pair to the running EMA."""
-        p5 = p5.to(self._p5.device)
-        p95 = p95.to(self._p95.device)
+    def _update_moments(self, mean: torch.Tensor, sq_mean: torch.Tensor) -> None:
+        """Apply one observed moment pair to the running EMA."""
+        mean = mean.to(self._mean.device)
+        sq_mean = sq_mean.to(self._sq_mean.device)
         if not self._initialized:
-            self._p5 = p5
-            self._p95 = p95
+            self._mean = mean
+            self._sq_mean = sq_mean
             self._initialized = True
         else:
-            self._p5 = (1.0 - self.alpha) * self._p5 + self.alpha * p5
-            self._p95 = (1.0 - self.alpha) * self._p95 + self.alpha * p95
+            self._mean = (1.0 - self.alpha) * self._mean + self.alpha * mean
+            self._sq_mean = (1.0 - self.alpha) * self._sq_mean + self.alpha * sq_mean
+
+    def _std(self) -> torch.Tensor:
+        """(K,) per-component standard deviation of returns, before any floor."""
+        return (self._sq_mean - self._mean.pow(2)).clamp(min=0.0).sqrt()
 
     def _half_span(self) -> torch.Tensor:
-        """Half the p95−p5 range, clamped to at least min_span/2."""
-        return ((self._p95 - self._p5) * 0.5).clamp(min=self.min_span * 0.5)
+        """Half the normalized window, clamped to at least min_span/2."""
+        return (self._std() * self.STD_MULTIPLE).clamp(min=self.min_span * 0.5)
 
     @property
     def floor_bound(self) -> torch.Tensor:
@@ -342,7 +344,7 @@ class ReturnScaler:
         True for an active component means its critic targets are compressed by
         the guard rather than scaled by its own statistics.
         """
-        return (self._p95 - self._p5) < self.min_span
+        return self._std() * (2.0 * self.STD_MULTIPLE) < self.min_span
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         """Map from symlog-reward space → normalized space (≈ [-1, 1] per component).
@@ -353,8 +355,7 @@ class ReturnScaler:
         Returns:
             (..., K) float — normalized values.
         """
-        center = (self._p95 + self._p5) * 0.5  # (K,)
-        return (x - center) / self._half_span()
+        return (x - self._mean) / self._half_span()
 
     def denormalize(self, x: torch.Tensor) -> torch.Tensor:
         """Map from normalized space → symlog-reward space.
@@ -365,27 +366,32 @@ class ReturnScaler:
         Returns:
             (..., K) float — values in symlog-reward space.
         """
-        center = (self._p95 + self._p5) * 0.5
-        return x * self._half_span() + center
+        return x * self._half_span() + self._mean
 
     def state_dict(self) -> dict:
         return {
-            "p5": self._p5.cpu(),
-            "p95": self._p95.cpu(),
+            "mean": self._mean.cpu(),
+            "sq_mean": self._sq_mean.cpu(),
             "initialized": self._initialized,
             "min_span": self.min_span,
         }
 
     @property
-    def percentiles(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """Current p5 and p95 vectors."""
-        return self._p5, self._p95
+    def moments(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Current per-component mean and standard deviation."""
+        return self._mean, self._std()
 
     def load_state_dict(self, d: dict) -> None:
-        self._p5 = d["p5"].to(self._p5.device)
-        self._p95 = d["p95"].to(self._p95.device)
-        self._initialized = d.get("initialized", True)  # assume initialized if loading old ckpt
-        # A checkpoint written under a different floor carries percentiles shaped
+        # A checkpoint written under the p5/p95 estimator carries statistics this
+        # scaler cannot interpret. Re-seeding costs one rollout; the alternative
+        # is refusing to load a run that is otherwise perfectly resumable.
+        if "mean" not in d or "sq_mean" not in d:
+            self._initialized = False
+            return
+        self._mean = d["mean"].to(self._mean.device)
+        self._sq_mean = d["sq_mean"].to(self._sq_mean.device)
+        self._initialized = d.get("initialized", True)
+        # A checkpoint written under a different floor carries statistics shaped
         # by that floor. Re-seeding costs one rollout; EMA-ing a stale floor out
         # takes ~1/alpha updates, during which the component is mis-scaled.
         if d.get("min_span") != self.min_span:

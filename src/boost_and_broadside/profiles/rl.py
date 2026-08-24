@@ -65,12 +65,23 @@ RL_PROFILE = ProfileSpec(
     max_grad_norm=1.0,
     total_timesteps=1_000_000_000,
     return_ema_alpha=0.005,
-    # This is intentionally 1.0, not an epsilon.  It binds sparse return
-    # components; reducing it makes critic outliers dominate the squared value
-    # loss and needs Huber/tail-aware retuning as a separate change.
-    return_min_span=1.0,
+    # A divide-by-zero guard, and nothing more.  At the previous 1.0 it bound 8
+    # of 12 components on every update of run 719 -- including the win pair --
+    # compressing their critic targets by up to 121x and their critic gradients
+    # by four orders of magnitude.  The outlier problem that motivated the large
+    # floor is now handled where it belongs, by ``value_huber_delta``.
+    #
+    # 1e-3 rather than 1e-2 because the guard has to sit far below every live
+    # component's spread, not just below it.  Measured on run 719's logged return
+    # histograms, the narrowest component (field_death) has a 4-sigma span of
+    # 0.0127: twelve times this floor, but only 1.3x a floor of 1e-2.
+    return_min_span=1e-3,
     advantage_min_rms=1e-4,
-    return_quantile_samples=262_144,
+    # Squared error inside one normalized unit, linear outside.  Per-component
+    # normalization necessarily exposes heavy tails -- a sparse component is a
+    # spike at zero with rare large excursions -- and bounding their gradient
+    # here keeps one component's tail from setting the whole critic's step.
+    value_huber_delta=1.0,
     # --- League and live evaluation ---
     league_size=20,
     league_slots=4,

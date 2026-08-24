@@ -20,10 +20,10 @@ class LoggingMixin:
         ship_tokens_per_update: int,
     ) -> tuple[int, int]:
         # Scaler stats — one CPU transfer per component group
-        p5, p95 = self.scaler.percentiles
-        p5_cpu = p5.cpu()
-        p95_cpu = p95.cpu()
-        span_cpu = p95_cpu - p5_cpu
+        mean, std = self.scaler.moments
+        mean_cpu = mean.cpu()
+        std_cpu = std.cpu()
+        span_cpu = std_cpu * (2.0 * self.scaler.STD_MULTIPLE)
         adv_rms_cpu = self.adv_scaler.rms.cpu()
         # A floor that binds on an active component decouples that component's
         # scale from its own statistics: the critic target (ReturnScaler) or the
@@ -33,8 +33,8 @@ class LoggingMixin:
         span_bound_cpu = self.scaler.floor_bound.cpu()
         rms_bound_cpu = self.adv_scaler.floor_bound.cpu()
         for i, name in enumerate(self._active_names):
-            metrics[f"scaler/p5/{name}"] = p5_cpu[i].item()
-            metrics[f"scaler/p95/{name}"] = p95_cpu[i].item()
+            metrics[f"scaler/return_mean/{name}"] = mean_cpu[i].item()
+            metrics[f"scaler/return_std/{name}"] = std_cpu[i].item()
             metrics[f"scaler/span/{name}"] = span_cpu[i].item()
             metrics[f"scaler/adv_rms/{name}"] = adv_rms_cpu[i].item()
             metrics[f"scaler/floor_bound_span/{name}"] = float(span_bound_cpu[i].item())

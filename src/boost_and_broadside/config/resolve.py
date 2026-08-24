@@ -257,6 +257,7 @@ def _validate_profile(profile: ProfileSpec) -> None:
         ("profile.return_ema_alpha", profile.return_ema_alpha),
         ("profile.return_min_span", profile.return_min_span),
         ("profile.advantage_min_rms", profile.advantage_min_rms),
+        ("profile.value_huber_delta", profile.value_huber_delta),
     ):
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"{name} must be positive and finite, got {value}")
@@ -264,8 +265,6 @@ def _validate_profile(profile: ProfileSpec) -> None:
         raise ValueError("profile.clip_coef must be below 1")
     if profile.return_ema_alpha > 1.0:
         raise ValueError("profile.return_ema_alpha must be at most 1")
-    if profile.return_quantile_samples is not None and profile.return_quantile_samples < 1:
-        raise ValueError("profile.return_quantile_samples must be positive or None")
     if profile.histogram_interval < 1 or profile.log_interval < 1:
         raise ValueError("optimizer logging intervals must be positive")
     if not profile.checkpoint_dir:

@@ -171,20 +171,32 @@ behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_
 also keeps the trust region independent of the Elo gauge, which would otherwise need
 re-deriving whenever the anchor or the environment moved.
 
-Advantages are scaled per component with running RMS statistics. Returns use a
-per-component percentile scaler in symlog reward space, which keeps critic targets in a
-stable range without forcing components with different natural scales into one value
-head. The exact loss assembly and logging proxies live in
+Advantages and returns are both scaled per component with running second-moment
+statistics in symlog reward space, which keeps critic targets in a stable range without
+forcing components with different natural scales into one value head. Returns map two
+standard deviations to one. A standard deviation rather than a percentile span, because
+for a sparse component — a death, a win, a friendly kill — the return distribution is a
+spike at zero with rare large excursions, and p5/p95 measures the width of the spike:
+run 719's `field_death` returns had a p5–p95 span of 0.0059 against a full range of
+0.137, while dense components disagreed by 1.1–1.3x. Dead ships are excluded from both
+scalers, since their returns sit at zero and would narrow exactly the components that can
+least afford it. The exact loss assembly and logging proxies live in
 [`ppo.py`](../src/boost_and_broadside/train/rl/ppo.py).
 
+The critic's loss is squared error out to `value_huber_delta` normalized units and linear
+beyond, matching plain squared error in the bulk so the switch reshapes only the tails.
+Per-component normalization necessarily produces those tails, and bounding them here is
+what lets `return_min_span` be a true epsilon.
+
 Both scalers carry a floor, and a floor that binds on an active component replaces that
-component's own scale with the guard's. `advantage_min_rms` is therefore a true epsilon:
+component's own scale with the guard's. Both are true epsilons:
 the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
 per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
-thirteenfold in the policy gradient. `return_min_span` is *not* an epsilon and is held at
-1.0 on purpose; see the note in
-[`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) for why lowering it needs the
-critic's outlier sensitivity addressed first. `scaler/floor_bound_span/*` and
+thirteenfold in the policy gradient. `return_min_span` was likewise held at 1.0 for a
+time, where it bound eight of twelve components on every update of the reference run and
+suppressed `field_death`'s critic gradient by four orders of magnitude; it now sits at
+1e-3, more than an order of magnitude below the narrowest live component's spread.
+`scaler/floor_bound_span/*` and
 `scaler/floor_bound_rms/*` report which components each floor is currently holding up.
 
 ## Reward decomposition

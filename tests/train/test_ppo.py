@@ -26,7 +26,7 @@ from boost_and_broadside.config import (
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
-from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, PPOTrainer
+from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, _huber, PPOTrainer
 
 
 def _make_rewards(**overrides) -> RewardConfig:
@@ -130,6 +130,7 @@ def _make_train_config(
         total_timesteps=64 * rollouts_per_update,
         return_ema_alpha=0.005,
         return_min_span=1e-3,
+        value_huber_delta=1.0,
         advantage_min_rms=1e-4,
         checkpoint_dir=checkpoint_dir,
         league_size=20,
@@ -970,6 +971,7 @@ class TestSchedulePrimitives:
                 total_timesteps=64,
                 return_ema_alpha=0.005,
                 return_min_span=1e-3,
+                value_huber_delta=1.0,
                 advantage_min_rms=1e-4,
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
@@ -1036,6 +1038,43 @@ class TestWinComponentLambdaMatrix:
         assert "enemy_win" in REWARDS.ally_zero_components
         assert "ally_win" not in REWARDS.enemy_neg_lambda_components
         assert "ally_win" not in REWARDS.ally_zero_components
+
+
+class TestValueHuberLoss:
+    """The critic loss is squared error in the bulk and linear in the tails.
+
+    Per-component normalization exposes heavy tails on sparse components; the
+    previous defence was an oversized ``return_min_span`` that shrank those
+    components' targets instead, starving their critics.
+    """
+
+    def test_matches_squared_error_inside_delta(self):
+        error = torch.linspace(-0.99, 0.99, 51)
+        assert torch.allclose(_huber(error, 1.0), error.pow(2))
+
+    def test_is_continuous_and_linear_outside_delta(self):
+        delta = 1.0
+        just_inside = _huber(torch.tensor(delta - 1e-6), delta)
+        just_outside = _huber(torch.tensor(delta + 1e-6), delta)
+        assert just_outside.item() == pytest.approx(just_inside.item(), abs=1e-4)
+
+        # Slope is constant beyond delta: equal steps give equal increments.
+        far = _huber(torch.tensor([5.0, 6.0, 7.0]), delta)
+        assert (far[1] - far[0]).item() == pytest.approx((far[2] - far[1]).item())
+
+    def test_bounds_the_gradient_a_single_outlier_contributes(self):
+        """A 20-sigma residual must not outweigh a minibatch of ordinary ones."""
+        outlier = torch.tensor(20.0, requires_grad=True)
+        _huber(outlier, 1.0).backward()
+        assert outlier.grad.abs().item() == pytest.approx(2.0)
+
+        squared = torch.tensor(20.0, requires_grad=True)
+        squared.pow(2).backward()
+        assert squared.grad.abs().item() == pytest.approx(40.0)
+
+    def test_delta_scales_the_quadratic_region(self):
+        assert _huber(torch.tensor(1.5), 2.0).item() == pytest.approx(2.25)  # still squared
+        assert _huber(torch.tensor(1.5), 1.0).item() == pytest.approx(2.0)  # already linear
 
 
 class TestLambdaMatrixWeighting:
@@ -1209,6 +1248,7 @@ class TestRLSmokeTest:
             total_timesteps=16 * 32 * 3,  # 3 updates
             return_ema_alpha=0.005,
             return_min_span=1e-3,
+            value_huber_delta=1.0,
             advantage_min_rms=1e-4,
             checkpoint_dir=str(tmp_path),
             league_size=5,
