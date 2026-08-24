@@ -64,8 +64,10 @@ REWARDS = RewardConfig(
     enemy_combat_death_weight=0.0,
     ally_field_death_weight=0.0,
     enemy_field_death_weight=0.0,
-    # The win pair receives 32% of the normalized reward-component mix: strong
-    # enough to express the objective without drowning dense engagement shaping.
+    # Weights are pure importance terms on already-normalized advantages, so only
+    # their ratios matter. These are still the reference run's numbers, which were
+    # chosen under a lambda normalization that cancelled them; the measured
+    # rebalance replaces this vector.
     ally_win_weight=1.5,
     enemy_win_weight=1.5,
     facing_weight=0.1,

@@ -1038,6 +1038,109 @@ class TestWinComponentLambdaMatrix:
         assert "ally_win" not in REWARDS.ally_zero_components
 
 
+class TestLambdaMatrixWeighting:
+    """Regression: ``comp_weights`` must reach the lambda matrix linearly.
+
+    The row normalization used to divide by the *weighted* row sum, which cancels
+    the weight it just applied: local components saturated at ``min(w, 1)`` and
+    global ones lost their weight entirely once ``w * n_alive`` passed the clamp.
+    ``ally_win_weight=1.5`` therefore trained identically to ``0.25``.
+    """
+
+    @staticmethod
+    def _legacy_lambda(trainer, team_id, alive, comp_weights):
+        """The pre-fix implementation, kept to pin the w=1 equivalence."""
+        N = alive.shape[-1]
+        ally_lam = torch.where(trainer.ally_zero_k, 0.0, 1.0)
+        enemy_lam = torch.where(trainer.enemy_neg_k, -1.0, 0.0)
+        identity = torch.eye(N, dtype=torch.float32, device=trainer.device)
+        local_lambda = identity[None, None, :, :, None]
+        same_team = team_id.unsqueeze(3) == team_id.unsqueeze(2)
+        alive_j = alive.float().unsqueeze(2).unsqueeze(-1)
+        global_lambda = (
+            same_team.float().unsqueeze(-1) * ally_lam
+            + (~same_team).float().unsqueeze(-1) * enemy_lam
+        )
+        lambda_ij = (
+            torch.where(trainer.local_k, local_lambda, global_lambda) * comp_weights * alive_j
+        )
+        return lambda_ij / lambda_ij.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+
+    @staticmethod
+    def _inputs(trainer):
+        team_id = torch.tensor([[[0, 0, 1, 1]]], device=trainer.device)
+        alive = torch.ones(1, 1, 4, dtype=torch.bool, device=trainer.device)
+        return team_id, alive
+
+    def test_matches_legacy_at_unit_weight(self, tmp_path):
+        """At w=1 the fix is a no-op: the run being replaced is the w=1 case."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        ones = torch.ones(len(trainer._active_names), device=trainer.device)
+
+        assert torch.equal(
+            trainer._lambda_matrix(team_id, alive, ones),
+            self._legacy_lambda(trainer, team_id, alive, ones),
+        )
+
+    def test_local_weight_is_linear_above_one(self, tmp_path):
+        """A local component's row is exactly its weight, at any magnitude."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        k = trainer._active_names.index("combat_death")
+
+        for weight in (0.5, 1.0, 2.0, 7.5):
+            w = torch.ones(len(trainer._active_names), device=trainer.device)
+            w[k] = weight
+            lam = trainer._lambda_matrix(team_id, alive, w)
+            assert lam[0, 0, 0, 0, k] == pytest.approx(weight)
+            # Self-only: no teammate or enemy contributes.
+            assert lam[0, 0, 0, 1:, k].abs().sum() == pytest.approx(0.0)
+
+    def test_global_weight_is_linear(self, tmp_path):
+        """A win component's row sums to its weight, spread over alive allies."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        k = trainer._active_names.index("ally_win")
+
+        for weight in (0.5, 1.0, 1.5, 3.0):
+            w = torch.ones(len(trainer._active_names), device=trainer.device)
+            w[k] = weight
+            lam = trainer._lambda_matrix(team_id, alive, w)
+            # Ships 0 and 1 are ship 0's team; each contributes weight/2.
+            assert lam[0, 0, 0, :, k].sum() == pytest.approx(weight)
+            assert lam[0, 0, 0, 0, k] == pytest.approx(weight / 2)
+
+    def test_scaling_every_weight_scales_the_matrix(self, tmp_path):
+        """The whole matrix is homogeneous in the weight vector.
+
+        The aggregate advantage is divided by its own RMS, so a uniform rescale
+        of every weight must be a no-op for training — which holds only if the
+        matrix is linear in the weights.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        base = torch.linspace(0.1, 1.0, len(trainer._active_names), device=trainer.device)
+
+        lam = trainer._lambda_matrix(team_id, alive, base)
+        scaled = trainer._lambda_matrix(team_id, alive, base * 4.0)
+        assert torch.allclose(scaled, lam * 4.0)
+
+    def test_dead_contributors_are_excluded_from_the_mean(self, tmp_path):
+        """A dead ally neither contributes nor dilutes the row it is absent from."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, _ = self._inputs(trainer)
+        alive = torch.tensor([[[True, False, True, True]]], device=trainer.device)
+        k = trainer._active_names.index("ally_win")
+        w = torch.ones(len(trainer._active_names), device=trainer.device)
+        w[k] = 2.0
+
+        lam = trainer._lambda_matrix(team_id, alive, w)
+        assert lam[0, 0, 0, 1, k] == pytest.approx(0.0)
+        # Ship 0 is its team's only survivor, so it carries the full weight.
+        assert lam[0, 0, 0, 0, k] == pytest.approx(2.0)
+
+
 class TestLocalComponentRegistry:
     """Regression for AUDIT-014: the self-only (diagonal-lambda) set and the
     group-scale classification must not drift apart."""

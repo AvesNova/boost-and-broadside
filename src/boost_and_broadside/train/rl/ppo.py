@@ -1839,8 +1839,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         Allies share signals, enemies are zero-sum (``enemy_neg_k``),
         enemy-only components zero the ally contribution (``ally_zero_k``),
         local components use a diagonal lambda, dead contributing ships are
-        zeroed, and each ship's weights are normalized to a weighted mean over
-        alive ships.
+        zeroed, and each ship's row is normalized to a mean over its alive
+        contributors before the component weight is applied.
+
+        Normalization runs on the unweighted pattern so that ``comp_weights``
+        stays linear: a row normalized by its own weighted sum divides the
+        weight back out. ``clamp(min=1.0)`` therefore bounds the number of
+        contributors, not the weight — a single-contributor row (every local
+        component, and any global one down to its last alive ship) passes
+        through at exactly its weight.
 
         Shared by the per-update aggregation and by the reward-decomposed
         gradient diagnostic, so the diagnostic cannot drift from the credit
@@ -1866,10 +1873,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             same_team.float().unsqueeze(-1) * ally_lam
             + (~same_team).float().unsqueeze(-1) * enemy_lam
         )  # (T, b, N_i, N_j, K)
-        lambda_ij = (
-            torch.where(self.local_k, local_lambda, global_lambda) * comp_weights * alive_j
-        )  # (T, b, N_i, N_j, K)
-        return lambda_ij / lambda_ij.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+        # Normalize the *unweighted* pattern, then apply the weight. Dividing a
+        # weighted row by its own weighted sum cancels the weight: local
+        # components came out at min(w, 1) and global ones lost their weight
+        # entirely once w * n_alive exceeded the clamp, so ally_win_weight=1.5
+        # trained identically to 0.25. Splitting the two steps keeps the row a
+        # mean over contributors while leaving the weight a linear knob.
+        pattern = torch.where(self.local_k, local_lambda, global_lambda) * alive_j
+        row_sum = pattern.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+        return pattern / row_sum * comp_weights  # (T, b, N_i, N_j, K)
 
     @torch.no_grad()
     def _precompute_lambda_aggregates(

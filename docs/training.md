@@ -210,14 +210,22 @@ reference policy activated these components:
 | `combat_death` | 1.0 | −1 when projectile damage kills this ship |
 | `field_death` | 1.0 | −1 when boundary damage kills this ship |
 
-Weights are normalized by their absolute sum, and the wrapper divides component rewards
-by total ship count for team-size normalization. A lambda aggregation matrix then maps
-local event signals to training targets:
+The wrapper divides component rewards by total ship count for team-size normalization.
+A lambda aggregation matrix then maps local event signals to training targets:
 
 - local components use diagonal/self-only credit;
 - global outcome components aggregate across live teammates;
 - selected enemy-perspective components use negative enemy coefficients to recover
   zero-sum outcome structure.
+
+Each row of that matrix is normalized to a mean over the contributors it actually has —
+one ship for a local component, the live teammates for a global one — and the component
+weight is applied afterwards. The order matters: normalizing a row that already carries
+its weight divides the weight back out, which is how the reference run's `ally_win`
+weight of 1.5 came to train identically to 0.25. Because advantages are already
+per-component unit-RMS before aggregation, the weight is then a pure importance term,
+and only the ratios between weights affect training — the aggregate advantage is
+divided by its own RMS, so scaling every weight together is a no-op.
 
 Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
 fatal step, each earns credit proportional to that step's damage. `kill_assist` remains
