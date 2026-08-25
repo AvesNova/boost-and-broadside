@@ -32,8 +32,8 @@ class GradientDiagnosticsConfig:
     Levels:
         off            — no diagnostic autograd, no diagnostic allocation.
         top_level      — one gradient per weighted PPO loss term (policy, value,
-                         entropy, behavior cloning, next-state, windowed
-                         next-state, SIGReg), with norms and pairwise cosines.
+                         entropy, behavior cloning, predictive state, predictive
+                         action, SIGReg), with norms and pairwise cosines.
         reward_policy  — additionally splits the policy gradient across active
                          reward components. The split is exact: the clipping
                          branch is the one the aggregate PPO objective chose,
