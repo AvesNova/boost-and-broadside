@@ -287,7 +287,9 @@ class TestYemongPolicy:
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
         hidden = policy.initial_hidden(B, policy.num_recurrent_tokens, torch.device("cpu"))
 
-        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(obs, hidden)
+        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(
+            obs, hidden, return_state_prediction=True
+        )
 
         from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
@@ -315,7 +317,9 @@ class TestYemongPolicy:
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
 
-        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(obs, hidden)
+        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(
+            obs, hidden, return_state_prediction=True
+        )
 
         K = NUM_VALUE_COMPONENTS
         assert action.shape == (B, N, 3)

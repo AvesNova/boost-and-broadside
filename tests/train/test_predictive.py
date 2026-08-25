@@ -7,12 +7,15 @@ notice.
 """
 
 import dataclasses
+from pathlib import Path
 
 import pytest
 import torch
 
 from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.constants import (
+    ACTION_FACTOR_MAX_ENTROPY,
+    ACTION_FACTOR_SLICES,
     NUM_POWER_ACTIONS,
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
@@ -252,20 +255,49 @@ class TestHorizonMasks:
 
 
 class TestFactoredActionStatistics:
-    def test_cross_entropy_sums_the_three_factor_log_likelihoods(self):
+    def test_each_factor_is_its_own_cross_entropy_over_its_own_maximum(self):
         torch.manual_seed(0)
         logits = torch.randn(4, TOTAL_ACTION_LOGITS)
         targets = torch.tensor([[0, 3, 1], [2, 0, 0], [1, 6, 1], [0, 2, 0]])
         cross_entropy, entropy, hits = factored_action_statistics(logits, targets)
 
         expected = torch.zeros(4)
-        for factor, logit_slice in enumerate((POWER_SLICE, TURN_SLICE, SHOOT_SLICE)):
-            expected += torch.nn.functional.cross_entropy(
-                logits[..., logit_slice], targets[..., factor], reduction="none"
+        for factor, (logit_slice, maximum) in enumerate(
+            zip(ACTION_FACTOR_SLICES, ACTION_FACTOR_MAX_ENTROPY, strict=True)
+        ):
+            expected += (
+                torch.nn.functional.cross_entropy(
+                    logits[..., logit_slice], targets[..., factor], reduction="none"
+                )
+                / maximum
             )
         torch.testing.assert_close(cross_entropy, expected)
         assert entropy.shape == (4,)
         assert hits.shape == (4, 3)
+
+    def test_no_factor_is_weighted_by_how_many_options_it_offers(self):
+        """The seven-way turn must not outweigh the binary shoot for being wider.
+
+        Under a plain sum of cross-entropies an untrained head puts 52% of the
+        loss on turn and 19% on shoot, purely from cardinality. Each factor
+        being equally uninformed has to cost the same.
+        """
+        uniform = torch.zeros(1, TOTAL_ACTION_LOGITS)
+        targets = torch.zeros(1, 3, dtype=torch.long)
+        per_factor = []
+        for logit_slice in ACTION_FACTOR_SLICES:
+            # Certain and correct on every factor but this one, which is uniform.
+            # Softmax is shift-invariant, so "certain" has to be a peak within
+            # the factor's own slice, not a lower floor across the vector.
+            single = torch.zeros(1, TOTAL_ACTION_LOGITS)
+            for other in ACTION_FACTOR_SLICES:
+                if other != logit_slice:
+                    single[0, other.start] = 30.0
+            cross_entropy, _, _ = factored_action_statistics(single, targets)
+            per_factor.append(cross_entropy.item())
+        assert per_factor == pytest.approx([1.0] * len(ACTION_FACTOR_SLICES), abs=1e-4)
+        total, _, _ = factored_action_statistics(uniform, targets)
+        assert total.item() == pytest.approx(sum(per_factor), rel=1e-5)
 
     def test_a_confident_correct_prediction_has_low_entropy_and_hits(self):
         logits = torch.zeros(1, TOTAL_ACTION_LOGITS)
@@ -279,15 +311,15 @@ class TestFactoredActionStatistics:
         assert cross_entropy.item() < 1e-4
         assert entropy.item() < 1e-3
 
-    def test_a_uniform_prediction_reaches_the_maximum_joint_entropy(self):
-        import math
-
+    def test_a_uniform_prediction_costs_exactly_one_per_factor(self):
+        """Normalized, "maximally uncertain" is the factor count rather than 3.738."""
         logits = torch.zeros(1, TOTAL_ACTION_LOGITS)
-        _, entropy, _ = factored_action_statistics(logits, torch.zeros(1, 3, dtype=torch.long))
-        maximum = sum(
-            math.log(width) for width in (NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS)
+        cross_entropy, entropy, _ = factored_action_statistics(
+            logits, torch.zeros(1, 3, dtype=torch.long)
         )
-        assert entropy.item() == pytest.approx(maximum, rel=1e-5)
+        factors = len(ACTION_FACTOR_SLICES)
+        assert entropy.item() == pytest.approx(factors, rel=1e-5)
+        assert cross_entropy.item() == pytest.approx(factors, rel=1e-5)
 
 
 # ----------------------------------------------------------------------
@@ -588,6 +620,39 @@ class TestDisabledPath:
         )
         assert predictive_latent is None
         assert encoder_output is None
+
+    def test_acting_decodes_no_prediction_unless_one_is_asked_for(self, tmp_path):
+        """The rollout, every league opponent, and every rated game discard it.
+
+        Leaving it on put two dead kernels in each of those forwards — and a
+        rated evaluation step fires up to eight of them, on a path that is
+        launch-bound rather than compute-bound.
+        """
+        trainer = _trainer(tmp_path)
+        batch, _ = _prepared_minibatch(trainer)
+        observation = batch.obs.map(lambda tensor: tensor[0])
+        hidden = batch.hidden
+
+        _, _, _, absent, _ = trainer._policy_module.get_action_and_value(observation, hidden)
+        assert absent is None
+
+        _, _, _, present, _ = trainer._policy_module.get_action_and_value(
+            observation, hidden, return_state_prediction=True
+        )
+        assert present is not None
+        assert present.shape[-1] == trainer.coordinator.total_prediction_dimension
+
+    def test_the_modes_that_decode_a_prediction_still_ask_for_one(self):
+        """The three call sites that consume it, pinned against a silent regression."""
+        source_root = Path(__file__).resolve().parents[2] / "src" / "boost_and_broadside"
+        consumers = (
+            source_root / "evaluation" / "next_state.py",
+            source_root / "modes" / "noise_calibration.py",
+            source_root / "evaluation" / "agents.py",
+        )
+        for consumer in consumers:
+            text = consumer.read_text()
+            assert "return_state_prediction" in text, f"{consumer.name} would decode a None"
 
     def test_only_the_state_family_still_trains_when_the_action_family_is_off(self, tmp_path):
         trainer = _trainer(tmp_path)

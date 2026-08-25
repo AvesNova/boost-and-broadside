@@ -248,6 +248,23 @@ league opponent, or the scripted controller. All three of the latter are legitim
 targets, and every ship's *later* actions are legitimate at every horizon, because those
 decisions had not been made when the belief was formed.
 
+**Factor weighting.** The action cross-entropy divides each factor by its own maximum
+entropy before summing them. The three factors have different cardinalities, so a plain
+sum weights them by how many options they happen to offer rather than by how much there is
+left to learn: untrained, the seven-way turn is 52% of the total and the binary shoot 19%,
+and the auxiliary would press hardest on whichever factor had the most values. Normalized,
+each factor reads as a fraction of its own maximum uncertainty — the total is the factor
+count when the prediction is uniform and zero when it is exact — and the reported
+cross-entropy is therefore no longer a likelihood in nats, so it is not comparable to
+`loss/behavioral_cloning`.
+
+That loss and the entropy bonus deliberately keep the unnormalized sum: they are the
+log-likelihood and the entropy of the distribution the policy genuinely samples from, and
+rescaling their factors would stop them being either. The predictive head is a
+representation-shaping pressure instead, where balance across the factors is worth more
+than being a likelihood — the same reason the state side scales every channel by
+`label_scale`.
+
 **Weighting.** Each horizon is averaged over its own valid tokens and the horizons are
 then averaged with equal weight, so the trivially easy first horizon cannot take the
 whole loss by token count. `predictive_state_coef` and `predictive_action_coef` weight

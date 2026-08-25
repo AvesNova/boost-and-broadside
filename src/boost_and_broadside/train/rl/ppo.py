@@ -44,7 +44,13 @@ from boost_and_broadside.config.diagnostics import (
     GradientDiagnosticsConfig,
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
-from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
+from boost_and_broadside.constants import (
+    ACTION_FACTOR_MAX_ENTROPY,
+    ACTION_FACTOR_SLICES,
+    POWER_SLICE,
+    SHOOT_SLICE,
+    TURN_SLICE,
+)
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.rewards import component_weights
@@ -361,26 +367,42 @@ def factored_action_statistics(
     """Per-token cross-entropy, entropy, and per-factor hits of an action prediction.
 
     The three action factors are independent categoricals sharing one logit
-    vector, exactly as the actor's own head lays them out, so the joint
-    log-likelihood is the sum of the three.
+    vector, exactly as the actor's own head lays them out. Each factor's term is
+    divided by its own maximum entropy before they are summed, so a factor
+    contributes according to how much of its uncertainty is left rather than to
+    how many options it offers: unnormalized, the seven-way turn would be 52% of
+    an untrained total and the binary shoot 19%, and the auxiliary would press
+    the trunk hardest on whichever factor happened to have the most values. Both
+    returned quantities are then in units of "fraction of maximum uncertainty
+    per factor", summing to the factor count when the prediction is uniform and
+    to zero when it is exact.
+
+    This is deliberately *not* what the behavior-cloning loss or the entropy
+    bonus do. Those are the log-likelihood and the entropy of the distribution
+    the policy genuinely samples from, and rescaling their factors would stop
+    them being either. This one is a representation-shaping pressure, where
+    balance across the factors is worth more than being a likelihood — the same
+    reason the state side scales every channel by ``label_scale``.
 
     Args:
         logits:  (..., TOTAL_ACTION_LOGITS) — predicted [power | turn | shoot].
         targets: (..., 3) long — the actions the rollout actually took.
 
     Returns:
-        cross_entropy: (...) — negative joint log-likelihood of the target.
-        entropy:       (...) — entropy of the predicted joint distribution.
+        cross_entropy: (...) — normalized negative log-likelihood of the target.
+        entropy:       (...) — normalized entropy of the predicted distribution.
         hits:          (..., 3) bool — whether each factor's mode is the target.
     """
     cross_entropy = torch.zeros_like(logits[..., 0])
     entropy = torch.zeros_like(cross_entropy)
     hits = []
-    for factor, logit_slice in enumerate((POWER_SLICE, TURN_SLICE, SHOOT_SLICE)):
+    factors = zip(ACTION_FACTOR_SLICES, ACTION_FACTOR_MAX_ENTROPY, strict=True)
+    for factor, (logit_slice, max_entropy) in enumerate(factors):
         log_probs = F.log_softmax(logits[..., logit_slice], dim=-1)
         target = targets[..., factor]
-        cross_entropy = cross_entropy - log_probs.gather(-1, target.unsqueeze(-1)).squeeze(-1)
-        entropy = entropy - (log_probs.exp() * log_probs).sum(-1)
+        likelihood = log_probs.gather(-1, target.unsqueeze(-1)).squeeze(-1)
+        cross_entropy = cross_entropy - likelihood / max_entropy
+        entropy = entropy - (log_probs.exp() * log_probs).sum(-1) / max_entropy
         hits.append(log_probs.argmax(-1) == target)
     return cross_entropy, entropy, torch.stack(hits, dim=-1)
 
@@ -907,14 +929,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         torch.Tensor,
         torch.Tensor,
         torch.Tensor,
-        torch.Tensor,
         torch.Tensor | None,
     ]:
         """Run the training policy's rollout forward pass(es) for one step.
 
         ego_pass: one batched 2B pass over both team perspectives. Team 1 ships
-        act from the flipped-obs half (action_t1); logprob/value/pred_next are
-        stored from the raw-obs half only.
+        act from the flipped-obs half (action_t1); logprob and value are stored
+        from the raw-obs half only. No state prediction is decoded: collecting
+        experience never reads one.
         shared_pass: one B pass on raw obs — every ship acts from it.
 
         Args:
@@ -930,29 +952,25 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             action_t1:  (B, N, 3) flipped-perspective actions; None in shared_pass.
             logprob:    (B, N) raw-perspective log probs.
             value_norm: (B, N, K) raw-perspective values (normalized space).
-            pred_next:  (B, N, pred_dim) raw-perspective next-state predictions.
             hidden:     Updated raw-perspective hidden state.
             hidden_t1:  Updated flipped-perspective hidden state; None in shared_pass.
         """
         if not self._ego_pass:
-            action, logprob, value_norm, pred_next, hidden = self.policy.get_action_and_value(
-                obs, hidden
-            )
-            return action, None, logprob, value_norm, pred_next, hidden, None
+            action, logprob, value_norm, _, hidden = self.policy.get_action_and_value(obs, hidden)
+            return action, None, logprob, value_norm, hidden, None
 
         batch = hidden.shape[1] // num_recurrent
         obs_t1 = flip_team_obs(obs, num_ships)
         obs_both = obs.concat_batch(obs_t1)
         hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*N, CONV_KERNEL*D)
-        action_both, logprob_both, value_both, pred_next_both, hidden_out = (
-            self.policy.get_action_and_value(obs_both, hidden_both)
+        action_both, logprob_both, value_both, _, hidden_out = self.policy.get_action_and_value(
+            obs_both, hidden_both
         )
         return (
             action_both[:batch],  # (B, N, 3)
             action_both[batch:],  # (B, N, 3)
             logprob_both[:batch],  # (B, N)
             value_both[:batch],  # (B, N, K)
-            pred_next_both[:batch],  # (B, N, pred_dim)
             hidden_out[:, : batch * num_recurrent, :],  # (n_layers, B*N, CONV_KERNEL*D)
             hidden_out[:, batch * num_recurrent :, :],  # (n_layers, B*N, CONV_KERNEL*D)
         )
@@ -977,7 +995,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     aux_action_t1,
                     aux_logprob,
                     aux_value_norm,
-                    _,
                     aux_hiddens[i],
                     aux_hidden_t1s[i],
                 ) = self._rollout_policy_pass(

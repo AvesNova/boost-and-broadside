@@ -27,9 +27,9 @@ class _Recorder:
         self.__dict__["_policy"] = policy
         self.__dict__["seen"] = []
 
-    def get_action_and_value(self, obs, hidden):
+    def get_action_and_value(self, obs, hidden, **kwargs):
         self.seen.append(obs)
-        return self._policy.get_action_and_value(obs, hidden)
+        return self._policy.get_action_and_value(obs, hidden, **kwargs)
 
     def __getattr__(self, name):
         return getattr(self.__dict__["_policy"], name)

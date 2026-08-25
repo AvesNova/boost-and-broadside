@@ -290,12 +290,25 @@ class YemongPolicy(nn.Module):
         self,
         obs: YemongObservation,
         hidden: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        return_state_prediction: bool = False,
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor | None,
+        torch.Tensor,
+    ]:
         """Sample an action and estimate value for one environment step.
 
         Args:
             obs:    YemongObservation with (B, N+M, ...) tensors.
             hidden: (n_layers, B*(N+M), CONV_KERNEL*D) packed recurrent state.
+            return_state_prediction: Decode the horizon-0 belief into a one-step
+                state prediction. Off by default because acting does not need
+                one: the rollout discards it, and so does every league opponent
+                and every rated evaluation game. Only the modes that *decode* a
+                prediction — imagined trajectories, the AR report, noise
+                calibration — ask for it.
 
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
@@ -304,6 +317,7 @@ class YemongPolicy(nn.Module):
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — the horizon-0 predictive latent's
                         state prediction: the transition out of *this* observation.
+                        None unless ``return_state_prediction``.
             new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
         """
         alive = obs["alive"]  # (B, N+M) bool — ships then fields
@@ -358,10 +372,16 @@ class YemongPolicy(nn.Module):
         team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 12)
-        # One-step transition belief. The rollout itself never uses it — it is
-        # what the evaluation modes decode into an imagined next observation —
-        # so only horizon 0 is worth computing here.
-        pred_next = self.predictive.predict_state(self.predictive(x_ships))  # (B, N, pred_dim)
+        # One-step transition belief, and only when someone decodes it. Horizon 0
+        # is all that is available from a single step anyway, and acting never
+        # reads it — computing it here unasked put two dead kernels in the
+        # rollout, in every league opponent's forward, and in each of the eight
+        # policy passes a rated evaluation step fires.
+        pred_next = (
+            self.predictive.predict_state(self.predictive(x_ships))  # (B, N, pred_dim)
+            if return_state_prediction
+            else None
+        )
         value = self.value_head_local(x_ships)  # (B, N, K)
         if self._team_pma_k:
             x_team = self.team_pma(x_ships, team_id_ships, alive_ships)  # (B, N, D)

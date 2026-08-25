@@ -512,7 +512,7 @@ def _run_phase2(
         with torch.no_grad():
             for k in range(_AR_WINDOW):
                 action_k, _, _, pred_next_scaled, curr_hidden = agent0.agent.get_action_and_value(
-                    curr_obs, curr_hidden
+                    curr_obs, curr_hidden, return_state_prediction=True
                 )
                 if pred_next_scaled is None:
                     break

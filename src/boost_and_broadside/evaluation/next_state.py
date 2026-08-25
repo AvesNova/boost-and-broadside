@@ -62,7 +62,7 @@ def imagine_trajectory(
     with torch.no_grad():
         for _ in range(n_steps):
             action, _, _, scaled_prediction, hidden = agent.agent.get_action_and_value(
-                imagined, hidden
+                imagined, hidden, return_state_prediction=True
             )
             predictions.append(scaled_prediction / label_scale)
             ship_targets = coordinator.apply_scaled_predictions(ship_targets, scaled_prediction)

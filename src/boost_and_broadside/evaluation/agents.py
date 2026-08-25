@@ -214,7 +214,7 @@ def get_actions(
     if agent.kind == "policy":
         with torch.no_grad():
             action, _, _, pred_next, agent.hidden = agent.agent.get_action_and_value(
-                obs, agent.hidden
+                obs, agent.hidden, return_state_prediction=return_pred_next
             )
         return (action, pred_next) if return_pred_next else action
 

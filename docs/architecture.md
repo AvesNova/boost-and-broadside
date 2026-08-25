@@ -262,10 +262,18 @@ from the observed step. That keeps the well-grounded immediate physics as an anc
 making every later horizon forecast a transition whose inputs it cannot see. The action
 head predicts the same factored `[power | turn | shoot]` categoricals the actor emits,
 trained by cross-entropy against the decision actually taken, and shares no weight with
-the actor.
+the actor. Each factor is normalized by its own maximum entropy so the widest one does not
+take the loss by cardinality alone — see
+[the predictive objective](training.md#the-predictive-auxiliary-objective).
 
 Static field material channels remain inputs, not prediction targets; the local index
 target is what makes entering and leaving a medium visible to the learned dynamics.
+
+Acting decodes none of this. Choosing an action needs the trunk and the actor head, and a
+single step could only ever produce horizon 0 anyway, so `get_action_and_value` returns a
+state prediction only when asked — which the rollout, the league opponents, and the rated
+evaluation games never do. The modes that *display* or *measure* a prediction (imagined
+trajectories, the AR report, noise calibration) request it explicitly.
 
 Why the horizon has to be more than one step is a property of the observation, not of the
 architecture — see [action timing](training.md#action-timing). The loss, its masking, and

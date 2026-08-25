@@ -251,7 +251,6 @@ class OpponentMixin:
                 action_t1,
                 logprob,
                 value_norm,
-                _,
                 hidden,
                 hidden_t1,
             ) = self._rollout_policy_pass(obs, hidden, hidden_t1, num_ships, num_recurrent)
