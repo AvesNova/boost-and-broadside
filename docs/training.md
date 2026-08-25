@@ -255,6 +255,25 @@ the two families; `prediction_horizon` sets the depth; `ModelConfig.predictive_l
 sets the belief width. Setting both coefficients to zero skips the projection entirely —
 no predictive activations are built and no transition labels are computed.
 
+**Cost.** The rollout evaluates two small heads at every horizon, so the update phase
+pays for it roughly in proportion to `prediction_horizon`. Measured on the 8 GB dev GPU at
+a bounded width (64 envs x 128 steps, `d_model` 128, uncompiled, both families on),
+against the same rollout with both coefficients at zero:
+
+| `prediction_horizon` | s / update | peak allocated |
+|---:|---:|---:|
+| disabled | 1.67 | 2534 MiB |
+| 1 | 1.61 | 2593 MiB |
+| 4 | 1.95 | 2913 MiB |
+| 8 | 2.17 | 3331 MiB |
+| 12 | 2.39 | 3742 MiB |
+
+At horizon 1 the whole system is free relative to the one-step head it replaced — the
+belief is narrower than the policy latent, so its two heads together cost about what the
+old single head did. Everything above that is the price of depth, and the horizon is the
+dial: this is the update phase alone, not end-to-end throughput, and it has not been
+measured on a compiled full-width run.
+
 **Diagnostics.** `loss/predictive_state` and `loss/predictive_action` carry the totals and
 appear as distinct terms in the [gradient decomposition](#gradient-diagnostics), so how
 much of the clipped step each family is asking for, and whether they pull the trunk the
