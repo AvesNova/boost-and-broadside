@@ -328,8 +328,6 @@ class TrainConfig:
                 f"rollouts_per_update must be positive, got {self.rollouts_per_update}"
             )
         if self.prediction_horizon < 1:
-            raise ValueError(
-                f"prediction_horizon must be positive, got {self.prediction_horizon}"
-            )
+            raise ValueError(f"prediction_horizon must be positive, got {self.prediction_horizon}")
         if not 0.0 < self.bc_winrate_target <= 1.0:
             raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")

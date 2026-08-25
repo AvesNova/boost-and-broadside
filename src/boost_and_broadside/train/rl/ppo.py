@@ -317,6 +317,43 @@ def predictive_horizon_masks(
         chain = chain[:span] & ~reached_terminal
 
 
+# Diagnostic groups the action prediction is split across: the whole valid set,
+# then the two sides of it. The suffix is both the denominator key and the metric
+# key, so a group cannot be normalized by one team's count and published as the
+# other's.
+ACTION_PREDICTION_GROUPS: tuple[str, ...] = ("", "_ally", "_enemy")
+
+
+def ally_token_mask(
+    obs: YemongObservation,
+    num_ships: int,
+    num_steps: int,
+) -> torch.Tensor:
+    """(T, B, N) bool — ship tokens on team 0 of the perspective this batch stores.
+
+    "Ally" is a statement about a perspective, not about a pair of ships. The
+    rollout stores the raw observation, and in ``ego_pass`` that observation is
+    always written from team 0's point of view — every ship acts from a pass
+    where its own side is team 0, and the ego half is the half re-evaluated
+    here. So team 0 is the side whose decisions the belief is forecasting from
+    the inside, and team 1 is the opposition.
+
+    In ``shared_pass`` there is no ego side: both teams train from one pass and a
+    league opponent may play either. The split is still exactly "team 0 versus
+    team 1" and still separates the two sides of each battle, but which side is
+    "ours" is then a labelling convention rather than a perspective.
+
+    Args:
+        obs:       The micro-batch observation, with T+1 stored steps.
+        num_ships: N — field tokens carry team 2 and are excluded by the slice.
+        num_steps: T — the steps the predictions are indexed by.
+
+    Returns:
+        (T, B, N) bool, True on team 0.
+    """
+    return obs[ObsKey.TEAM_ID][:num_steps, :, :num_ships].long() == 0
+
+
 def factored_action_statistics(
     logits: torch.Tensor,
     targets: torch.Tensor,
@@ -1516,9 +1553,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         numel = 0
         need_bc = is_primary and self._behavior_cloning_coef > 0.0
         need_predictive = is_primary and self._predictive_enabled
-        horizons = min(self.cfg.prediction_horizon, chunks[0].alive.shape[0])
+        steps, _, ships = chunks[0].alive.shape
+        horizons = min(self.cfg.prediction_horizon, steps)
         state_counts = torch.zeros(horizons, device=source_device)
-        action_counts = torch.zeros(horizons, device=source_device)
+        action_counts = {
+            group: torch.zeros(horizons, device=source_device) for group in ACTION_PREDICTION_GROUPS
+        }
         for chunk in chunks:
             mb_alive = chunk.alive
             mb_actor_mask = chunk.actor_mask
@@ -1534,21 +1574,34 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # One count per horizon: the predictive losses average each horizon
             # over its own valid tokens, so every horizon needs a denominator
             # that spans the whole minibatch rather than this micro-batch.
+            ally = ally_token_mask(chunk.obs, ships, steps)
             for horizon, state_mask, action_mask in predictive_horizon_masks(
                 mb_alive, chunk.terminated, mb_actor_mask, self.cfg.prediction_horizon
             ):
+                span = state_mask.shape[0]
                 state_counts[horizon] += state_mask.sum()
-                action_counts[horizon] += action_mask.sum()
-        return {
+                action_counts[""][horizon] += action_mask.sum()
+                action_counts["_ally"][horizon] += (action_mask & ally[:span]).sum()
+                action_counts["_enemy"][horizon] += (action_mask & ~ally[:span]).sum()
+        denominators = {
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
             "bc_sum": bc_sum.clamp(min=1.0).to(self.device),
             "state_counts": state_counts.clamp(min=1.0).to(self.device),
-            "action_counts": action_counts.clamp(min=1.0).to(self.device),
-            "action_count_total": action_counts.sum().clamp(min=1.0).to(self.device),
             "numel": float(numel),
             "adv_rms": buf.adv_rms,
         }
+        for group, counts in action_counts.items():
+            # The unsplit group normalizes the loss and must never be zero. The
+            # two sides are diagnostics, and an empty side is left to divide by
+            # zero on purpose: in ego_pass the ally group is empty at horizon 0
+            # by construction — those are exactly the self-generated actions the
+            # objective excludes — and a NaN says "not measured" where a zero
+            # would read as a perfect prediction.
+            counts = counts.clamp(min=1.0) if group == "" else counts
+            denominators[f"action_counts{group}"] = counts.to(self.device)
+            denominators[f"action_count_total{group}"] = counts.sum().to(self.device)
+        return denominators
 
     def _compute_minibatch_loss(
         self,
@@ -1887,6 +1940,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         then averaged with equal weight, so the easy immediate transition cannot
         dominate the total by sheer count.
 
+        The action statistics are additionally reported for each side of the
+        battle on its own (see ``ally_token_mask``). Only the unsplit group
+        enters the loss; the split exists because anticipating your own fleet's
+        decisions and anticipating the opposition's are different problems that
+        the total silently averages together. It also makes the horizon-0
+        exclusion visible rather than implicit: under ``ego_pass`` the ally group
+        there is empty by construction and reads NaN, because those are exactly
+        the actions this latent generated.
+
         Args:
             predictive_latent: (T, b, N, predictive_latent_dim) horizon-0 belief.
             batch:  The micro-batch being scored.
@@ -1908,10 +1970,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         state_total = self._zero_tensor
         action_total = self._zero_tensor
         state_by_horizon: list[torch.Tensor] = []
-        cross_entropy_by_horizon: list[torch.Tensor] = []
-        entropy_by_horizon: list[torch.Tensor] = []
-        accuracy_numerator = torch.zeros(3, device=self.device)
         state_per_feature: torch.Tensor | None = None
+        # One series per diagnostic group, keyed by the same suffix the
+        # denominators use. The unsplit group is what the loss is built from;
+        # the other two only describe it.
+        cross_entropy_by_horizon: dict[str, list[torch.Tensor]] = {
+            group: [] for group in ACTION_PREDICTION_GROUPS
+        }
+        entropy_by_horizon: dict[str, list[torch.Tensor]] = {
+            group: [] for group in ACTION_PREDICTION_GROUPS
+        }
+        accuracy_numerator = {
+            group: torch.zeros(3, device=self.device) for group in ACTION_PREDICTION_GROUPS
+        }
+        steps, _, ships = batch.alive.shape
+        ally = ally_token_mask(batch.obs, ships, steps) if want_action else None
 
         latent = predictive_latent
         # The rollout runs in the same reduced precision as the trunk that fed
@@ -1945,25 +2018,41 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     horizon_loss = (cross_entropy * mask).sum() / action_counts[horizon]
                     action_total = action_total + horizon_loss
                     with torch.no_grad():
-                        cross_entropy_by_horizon.append(horizon_loss.detach())
-                        entropy_by_horizon.append((entropy * mask).sum() / action_counts[horizon])
-                        accuracy_numerator += (hits.float() * mask.unsqueeze(-1)).sum((0, 1, 2))
+                        groups = {
+                            "": mask,
+                            "_ally": (action_mask & ally[:span]).float(),
+                            "_enemy": (action_mask & ~ally[:span]).float(),
+                        }
+                        for group, weights in groups.items():
+                            count = denoms[f"action_counts{group}"][horizon]
+                            cross_entropy_by_horizon[group].append(
+                                (cross_entropy * weights).sum() / count
+                            )
+                            entropy_by_horizon[group].append((entropy * weights).sum() / count)
+                            accuracy_numerator[group] += (hits.float() * weights.unsqueeze(-1)).sum(
+                                (0, 1, 2)
+                            )
                 if span > 1:
                     # Drop the last base step: its next horizon would need a step
                     # the rollout does not contain. Everything else advances.
                     latent = predictive.advance(latent[: span - 1])
 
-        horizons = max(len(state_by_horizon), len(cross_entropy_by_horizon), 1)
+        horizons = max(len(state_by_horizon), len(cross_entropy_by_horizon[""]), 1)
         diagnostics: dict = {}
         if want_state:
             diagnostics["predictive_state_by_horizon"] = torch.stack(state_by_horizon)
             diagnostics["next_state_per_feat"] = state_per_feature
         if want_action:
-            diagnostics["predictive_action_ce_by_horizon"] = torch.stack(cross_entropy_by_horizon)
-            diagnostics["predictive_action_entropy_by_horizon"] = torch.stack(entropy_by_horizon)
-            diagnostics["predictive_action_accuracy"] = (
-                accuracy_numerator / denoms["action_count_total"]
-            )
+            for group in ACTION_PREDICTION_GROUPS:
+                diagnostics[f"predictive_action_ce{group}_by_horizon"] = torch.stack(
+                    cross_entropy_by_horizon[group]
+                )
+                diagnostics[f"predictive_action_entropy{group}_by_horizon"] = torch.stack(
+                    entropy_by_horizon[group]
+                )
+                diagnostics[f"predictive_action_accuracy{group}"] = (
+                    accuracy_numerator[group] / denoms[f"action_count_total{group}"]
+                )
         return state_total / horizons, action_total / horizons, diagnostics
 
     def _active_component_weights(self) -> torch.Tensor:
@@ -2334,18 +2423,31 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             micro-batch's diagnostics simply go unlogged.
         """
         horizons = [f"h{index:02d}" for index in range(self.cfg.prediction_horizon)]
-        return {
+        factors = ["power", "turn", "shoot"]
+        labels = {
             # Horizon 0 of the predictive state head is the same quantity the
             # standalone one-step head reported, so it keeps the metric names.
             "next_state_per_feat": ("next_state/", self.coordinator.get_feature_names()),
             "predictive_state_by_horizon": ("predictive/state_loss/", horizons),
-            "predictive_action_ce_by_horizon": ("predictive/action_cross_entropy/", horizons),
-            "predictive_action_entropy_by_horizon": ("predictive/action_entropy/", horizons),
-            "predictive_action_accuracy": (
-                "predictive/action_accuracy/",
-                ["power", "turn", "shoot"],
-            ),
         }
+        # The unsplit action series, then the same three measurements for each
+        # side on its own. Forecasting what your own fleet will do and
+        # forecasting what the opposition will do are different problems, and
+        # only the split says which one the total is describing.
+        for group in ACTION_PREDICTION_GROUPS:
+            labels[f"predictive_action_ce{group}_by_horizon"] = (
+                f"predictive/action_cross_entropy{group}/",
+                horizons,
+            )
+            labels[f"predictive_action_entropy{group}_by_horizon"] = (
+                f"predictive/action_entropy{group}/",
+                horizons,
+            )
+            labels[f"predictive_action_accuracy{group}"] = (
+                f"predictive/action_accuracy{group}/",
+                factors,
+            )
+        return labels
 
     def _update_epochs(
         self,

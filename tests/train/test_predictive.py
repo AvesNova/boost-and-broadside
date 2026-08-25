@@ -301,8 +301,8 @@ def _trainer(tmp_path, **kwargs):
     return _make_trainer(checkpoint_dir=str(tmp_path), **kwargs)
 
 
-def _prepared_minibatch(trainer):
-    """One rollout's first minibatch, with everything the loss precomputes."""
+def _prepared_chunks(trainer):
+    """One rollout's first minibatch as micro-batches, plus its denominators."""
     runtime = trainer._initialize_rollout_runtime()
     terminated = trainer._collect_rollout(runtime, avg_eval_active=False)
     trainer._compute_rollout_gae(runtime, terminated)
@@ -316,6 +316,12 @@ def _prepared_minibatch(trainer):
         )
     )
     denominators = trainer._minibatch_denominators(chunks, trainer.buffer, True)
+    return chunks, denominators
+
+
+def _prepared_minibatch(trainer):
+    """One rollout's first micro-batch, with everything the loss precomputes."""
+    chunks, denominators = _prepared_chunks(trainer)
     return chunks[0], denominators
 
 
@@ -450,6 +456,109 @@ class TestTrainerIntegration:
         # state or action to enter; the belief at horizon 1 is a function of the
         # belief at horizon 0 alone.
         torch.testing.assert_close(advanced[0], predictive.advance(belief[:1])[0])
+
+
+class TestAllyEnemyActionDiagnostics:
+    """Forecasting your own fleet and forecasting the opposition are different jobs."""
+
+    def test_the_ally_mask_selects_team_zero_ships_only(self, tmp_path):
+        from boost_and_broadside.env.observation import ObsKey
+        from boost_and_broadside.train.rl.ppo import ally_token_mask
+
+        trainer = _trainer(tmp_path)
+        batch, _ = _prepared_minibatch(trainer)
+        steps, _, ships = batch.alive.shape
+        ally = ally_token_mask(batch.obs, ships, steps)
+
+        team_id = batch.obs[ObsKey.TEAM_ID][:steps, :, :ships].long()
+        assert ally.shape == batch.alive.shape
+        torch.testing.assert_close(ally, team_id == 0)
+
+    def test_the_ally_mask_never_reaches_the_field_tokens(self):
+        """Fields carry team 2 and belong to neither side of the battle."""
+        from boost_and_broadside.env.observation import ObsKey, YemongObservation
+        from boost_and_broadside.train.rl.ppo import ally_token_mask
+
+        steps, envs, ships, fields = 3, 2, 2, 2
+        team_id = torch.full((steps + 1, envs, ships + fields), 2, dtype=torch.long)
+        team_id[:, :, 0] = 0
+        team_id[:, :, 1] = 1
+        obs = YemongObservation(data={ObsKey.TEAM_ID: team_id})
+
+        ally = ally_token_mask(obs, ships, steps)
+        assert ally.shape == (steps, envs, ships)
+        assert ally[..., 0].all()
+        assert not ally[..., 1].any()
+
+    def test_the_two_sides_partition_the_scored_actions(self, tmp_path):
+        trainer = _trainer(tmp_path)
+        chunks, denominators = _prepared_chunks(trainer)
+        torch.testing.assert_close(
+            denominators["action_counts_ally"] + denominators["action_counts_enemy"],
+            denominators["action_counts"],
+        )
+        del chunks
+
+    def test_ego_pass_measures_no_ally_action_at_the_immediate_horizon(self, tmp_path):
+        """Those are exactly the self-generated actions the objective excludes.
+
+        An empty group reads NaN rather than zero, because zero is what a
+        perfect prediction would look like.
+        """
+        trainer = _trainer(tmp_path, paradigm="ego_pass")
+        batch, denominators = _prepared_minibatch(trainer)
+        _, _, diagnostics = _run_predictive(trainer, batch, denominators)
+
+        assert denominators["action_counts_ally"][0].item() == 0.0
+        assert denominators["action_counts_enemy"][0].item() > 0.0
+        ally = diagnostics["predictive_action_ce_ally_by_horizon"]
+        enemy = diagnostics["predictive_action_ce_enemy_by_horizon"]
+        assert torch.isnan(ally[0])
+        assert torch.isfinite(enemy[0])
+        # The opposition's *own* later decisions are measurable on both sides.
+        assert torch.isfinite(ally[1:]).all()
+        assert torch.isfinite(enemy[1:]).all()
+
+    def test_the_combined_series_is_the_count_weighted_mean_of_the_sides(self, tmp_path):
+        """The split has to describe the total, not a differently-masked quantity."""
+        trainer = _trainer(tmp_path)
+        batch, denominators = _prepared_minibatch(trainer)
+        _, _, diagnostics = _run_predictive(trainer, batch, denominators)
+
+        combined = diagnostics["predictive_action_ce_by_horizon"]
+        ally = diagnostics["predictive_action_ce_ally_by_horizon"]
+        enemy = diagnostics["predictive_action_ce_enemy_by_horizon"]
+        ally_count = denominators["action_counts_ally"]
+        enemy_count = denominators["action_counts_enemy"]
+        both = ally_count > 0  # horizon 0 has no ally side under ego_pass
+        expected = (ally[both] * ally_count[both] + enemy[both] * enemy_count[both]) / (
+            ally_count[both] + enemy_count[both]
+        )
+        torch.testing.assert_close(combined[both], expected, rtol=1e-4, atol=1e-5)
+
+    @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
+    def test_an_update_logs_both_sides_at_every_horizon_and_factor(self, paradigm, tmp_path):
+        trainer = _trainer(tmp_path, paradigm=paradigm)
+        trainer.train()
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer, *trainer.aux_buffers], precomputed=False
+        )
+        horizons = min(trainer.cfg.prediction_horizon, trainer.cfg.num_steps)
+        for side in ("_ally", "_enemy"):
+            for index in range(horizons):
+                assert f"predictive/action_cross_entropy{side}/h{index:02d}" in metrics
+                assert f"predictive/action_entropy{side}/h{index:02d}" in metrics
+            for factor in ("power", "turn", "shoot"):
+                assert f"predictive/action_accuracy{side}/{factor}" in metrics
+
+    def test_the_split_does_not_touch_the_loss(self, tmp_path):
+        """Diagnostics only: one shared head, and the total is the unsplit group."""
+        trainer = _trainer(tmp_path)
+        batch, denominators = _prepared_minibatch(trainer)
+        _, action_loss, diagnostics = _run_predictive(trainer, batch, denominators)
+        combined = diagnostics["predictive_action_ce_by_horizon"]
+        torch.testing.assert_close(action_loss, combined.sum() / len(combined))
+        assert not action_loss.isnan()
 
 
 class TestDisabledPath:

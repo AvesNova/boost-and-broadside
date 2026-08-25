@@ -259,9 +259,7 @@ class TestLegacyCheckpoints:
 
         live = trainer._policy_module.state_dict()
         loaded = bundle.policy.state_dict()
-        torch.testing.assert_close(
-            loaded["action_head.0.weight"], live["action_head.0.weight"]
-        )
+        torch.testing.assert_close(loaded["action_head.0.weight"], live["action_head.0.weight"])
         assert any(key.startswith("predictive.") for key in loaded)
 
     def test_any_other_weight_mismatch_is_still_refused(self, tmp_path):

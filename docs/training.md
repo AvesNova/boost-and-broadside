@@ -285,6 +285,19 @@ first if the objective misbehaves. `predictive/action_accuracy/{power,turn,shoot
 the per-factor hit rate, and `next_state/<channel>` keeps reporting the immediate
 transition's per-channel error, the same measurement the one-step head reported.
 
+All three action series are also reported per side, as `*_ally` and `*_enemy`. Anticipating
+what your own fleet will do and anticipating what the opposition will do are different
+problems, and the combined series averages them together without saying in what proportion.
+The split is by the token's team in the perspective the belief was formed in: in `ego_pass`
+the stored observation is always written from team 0's point of view, so team 0 is the side
+being forecast from the inside. (In `shared_pass` there is no ego side and the labels are
+just the two teams.) One head serves both — nothing about the loss changes.
+
+An empty side logs **NaN, not zero**, since zero is what a perfect prediction looks like.
+Under `ego_pass` the ally side is empty at horizon 0 by construction: those are precisely
+the self-generated actions the objective excludes, so `predictive/action_cross_entropy_ally/h00`
+is expected to be absent and everything from `h01` on is expected to be present.
+
 ## Reward decomposition
 
 Rewards are emitted as named components by [`rewards.py`](../src/boost_and_broadside/env/rewards.py).
