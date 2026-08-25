@@ -78,8 +78,8 @@ emits one output per ship, however many there are.
   simulator lives in
   [`env.py`](src/boost_and_broadside/env/env.py).
 - The [policy architecture](docs/architecture.md) combines spatial attention, Griffin
-  recurrence, factored action heads, decomposed value estimates, and auxiliary dynamics
-  prediction. See
+  recurrence, factored action heads, decomposed value estimates, and an iterated
+  predictive belief state that forecasts future states and future actions. See
   [`YemongPolicy`](src/boost_and_broadside/models/yemong/policy.py).
 - The [training system](docs/training.md) uses recurrent PPO with scripted, self-play,
   running-average, and historical opponents. The update logic is in
