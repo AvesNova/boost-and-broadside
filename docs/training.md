@@ -190,6 +190,22 @@ scalers, since their returns sit at zero and would narrow exactly the components
 least afford it. The exact loss assembly and logging proxies live in
 [`ppo.py`](../src/boost_and_broadside/train/rl/ppo.py).
 
+The critic's loss is squared error out to `value_huber_delta` normalized units and linear
+beyond, matching plain squared error in the bulk so the switch reshapes only the tails.
+Per-component normalization necessarily produces those tails, and bounding them here is
+what lets `return_min_span` be a true epsilon.
+
+Both scalers carry a floor, and a floor that binds on an active component replaces that
+component's own scale with the guard's. Both are true epsilons:
+the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
+per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
+thirteenfold in the policy gradient. `return_min_span` was likewise held at 1.0 for a
+time, where it bound eight of twelve components on every update of the reference run and
+suppressed `field_death`'s critic gradient by four orders of magnitude; it now sits at
+1e-3, more than an order of magnitude below the narrowest live component's spread.
+`scaler/floor_bound_span/*` and
+`scaler/floor_bound_rms/*` report which components each floor is currently holding up.
+
 ### The predictive auxiliary objective
 
 The auxiliary system supervises an iterated belief state rather than a single next step.
@@ -249,22 +265,6 @@ whether the action belief grows less certain further out, which is the behaviour
 first if the objective misbehaves. `predictive/action_accuracy/{power,turn,shoot}` gives
 the per-factor hit rate, and `next_state/<channel>` keeps reporting the immediate
 transition's per-channel error, the same measurement the one-step head reported.
-
-The critic's loss is squared error out to `value_huber_delta` normalized units and linear
-beyond, matching plain squared error in the bulk so the switch reshapes only the tails.
-Per-component normalization necessarily produces those tails, and bounding them here is
-what lets `return_min_span` be a true epsilon.
-
-Both scalers carry a floor, and a floor that binds on an active component replaces that
-component's own scale with the guard's. Both are true epsilons:
-the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
-per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
-thirteenfold in the policy gradient. `return_min_span` was likewise held at 1.0 for a
-time, where it bound eight of twelve components on every update of the reference run and
-suppressed `field_death`'s critic gradient by four orders of magnitude; it now sits at
-1e-3, more than an order of magnitude below the narrowest live component's spread.
-`scaler/floor_bound_span/*` and
-`scaler/floor_bound_rms/*` report which components each floor is currently holding up.
 
 ## Reward decomposition
 
