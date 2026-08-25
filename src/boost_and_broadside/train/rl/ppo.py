@@ -6,8 +6,8 @@ log async → repeat. On top of that, PPOTrainer coordinates:
   - the decomposed critic (per-component returns, lambda aggregation,
     schedule-driven group scales),
   - auxiliary losses (behavior cloning from the scripted agent with
-    win-rate-gated decay, next-state prediction, windowed cumulative loss,
-    optional SIGReg),
+    win-rate-gated decay, an iterated predictive belief state supervised on
+    future transitions and future actions, optional SIGReg),
   - opponent management (scripted / avg-model / league fractions, OpponentMixin),
   - continuous in-training Elo ladder evaluation (EloEvaluator) and the roster,
   - checkpointing (CheckpointMixin) and async W&B logging (LoggingMixin).
@@ -266,6 +266,86 @@ def _huber(error: torch.Tensor, delta: float) -> torch.Tensor:
         error.pow(2),
         delta * (2.0 * magnitude - delta),
     )
+
+
+def predictive_horizon_masks(
+    alive: torch.Tensor,
+    terminated: torch.Tensor,
+    actor_mask: torch.Tensor,
+    prediction_horizon: int,
+) -> Generator[tuple[int, torch.Tensor, torch.Tensor]]:
+    """Yield the validity masks of each predictive horizon, aligned on the base step.
+
+    The belief state at base step ``t`` and horizon ``h`` describes step
+    ``t + h``, so a prediction only counts where the rollout actually reaches
+    that step: no episode boundary anywhere in ``[t, t + h)``, and a ship that
+    is alive at both ends. Horizon ``h`` therefore covers base steps
+    ``[0, T - h)`` — the tail of the rollout simply supervises fewer horizons
+    rather than borrowing steps from the episode that follows it.
+
+    The two masks differ in one place. A *state* prediction is a transition out
+    of step ``t + h``, so it additionally needs that step to be non-terminal. An
+    *action* prediction is about the decision taken at ``t + h``, which exists
+    whether or not the episode ends there.
+
+    Args:
+        alive:      (T, B, N) bool — living ships per step.
+        terminated: (T, B) bool — True at the step an episode ended.
+        actor_mask: (T, B, N) bool — ships whose stored action was sampled from
+            this very forward pass. Only used to exclude horizon 0; see
+            ``_predictive_losses``.
+        prediction_horizon: Horizons to supervise, counting horizon 0.
+
+    Yields:
+        ``(horizon, state_mask, action_mask)`` with both masks shaped
+        ``(T - horizon, B, N)`` and indexed by the base step ``t``.
+    """
+    steps = alive.shape[0]
+    # chain[t] — the trajectory from t has not yet crossed an episode boundary.
+    chain = torch.ones_like(terminated)  # (T, B)
+    for horizon in range(min(prediction_horizon, steps)):
+        span = steps - horizon
+        # alive[t + horizon] and terminated[t + horizon], re-indexed by base step.
+        reached_alive = alive[horizon:steps]
+        reached_terminal = terminated[horizon:steps]
+        entity_mask = chain[:span].unsqueeze(-1) & alive[:span] & reached_alive
+        state_mask = entity_mask & ~reached_terminal.unsqueeze(-1)
+        action_mask = entity_mask
+        if horizon == 0:
+            action_mask = action_mask & ~actor_mask[:span]
+        yield horizon, state_mask, action_mask
+        chain = chain[:span] & ~reached_terminal
+
+
+def factored_action_statistics(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Per-token cross-entropy, entropy, and per-factor hits of an action prediction.
+
+    The three action factors are independent categoricals sharing one logit
+    vector, exactly as the actor's own head lays them out, so the joint
+    log-likelihood is the sum of the three.
+
+    Args:
+        logits:  (..., TOTAL_ACTION_LOGITS) — predicted [power | turn | shoot].
+        targets: (..., 3) long — the actions the rollout actually took.
+
+    Returns:
+        cross_entropy: (...) — negative joint log-likelihood of the target.
+        entropy:       (...) — entropy of the predicted joint distribution.
+        hits:          (..., 3) bool — whether each factor's mode is the target.
+    """
+    cross_entropy = torch.zeros_like(logits[..., 0])
+    entropy = torch.zeros_like(cross_entropy)
+    hits = []
+    for factor, logit_slice in enumerate((POWER_SLICE, TURN_SLICE, SHOOT_SLICE)):
+        log_probs = F.log_softmax(logits[..., logit_slice], dim=-1)
+        target = targets[..., factor]
+        cross_entropy = cross_entropy - log_probs.gather(-1, target.unsqueeze(-1)).squeeze(-1)
+        entropy = entropy - (log_probs.exp() * log_probs).sum(-1)
+        hits.append(log_probs.argmax(-1) == target)
+    return cross_entropy, entropy, torch.stack(hits, dim=-1)
 
 
 def _actor_entropy_coef(
@@ -1144,9 +1224,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 zip(stored_by_scale, device_buffers, strict=True)
             ):
                 if scale_index == 0:
-                    self._precompute_ns_labels(buffer)
+                    self._precompute_transition_labels(buffer)
                 else:
-                    buffer.ns_labels = None
+                    buffer.transition_labels = None
                 shards.append(StoredRollout(buffer))
 
         primary_shards = stored_by_scale[0]
@@ -1433,30 +1513,39 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         alive_sum = _z.clone()
         actor_sum = _z.clone()
         bc_sum = _z.clone()
-        ns_sum = _z.clone()
         numel = 0
         need_bc = is_primary and self._behavior_cloning_coef > 0.0
-        need_ns = is_primary and (
-            self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
-        )
+        need_predictive = is_primary and self._predictive_enabled
+        horizons = min(self.cfg.prediction_horizon, chunks[0].alive.shape[0])
+        state_counts = torch.zeros(horizons, device=source_device)
+        action_counts = torch.zeros(horizons, device=source_device)
         for chunk in chunks:
             mb_alive = chunk.alive
             mb_actor_mask = chunk.actor_mask
             mb_expert_probs = chunk.expert_probs
-            mb_terminated = chunk.terminated
             alive_sum += mb_alive.sum()
             actor_sum += (mb_actor_mask & mb_alive).sum()
             numel += mb_alive.numel()
             if need_bc:
                 bc_valid = mb_expert_probs.sum(-1) > 0
                 bc_sum += (bc_valid & mb_actor_mask & mb_alive).sum()
-            if need_ns:
-                ns_sum += (mb_alive & ~mb_terminated.unsqueeze(-1)).sum()
+            if not need_predictive:
+                continue
+            # One count per horizon: the predictive losses average each horizon
+            # over its own valid tokens, so every horizon needs a denominator
+            # that spans the whole minibatch rather than this micro-batch.
+            for horizon, state_mask, action_mask in predictive_horizon_masks(
+                mb_alive, chunk.terminated, mb_actor_mask, self.cfg.prediction_horizon
+            ):
+                state_counts[horizon] += state_mask.sum()
+                action_counts[horizon] += action_mask.sum()
         return {
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
             "bc_sum": bc_sum.clamp(min=1.0).to(self.device),
-            "ns_sum": ns_sum.clamp(min=1.0).to(self.device),
+            "state_counts": state_counts.clamp(min=1.0).to(self.device),
+            "action_counts": action_counts.clamp(min=1.0).to(self.device),
+            "action_count_total": action_counts.sum().clamp(min=1.0).to(self.device),
             "numel": float(numel),
             "adv_rms": buf.adv_rms,
         }
@@ -1477,18 +1566,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ``self._behavior_cloning_coef``, and ``self._schedule_state``. Setting
         ``policy_gradient_coef=0.0`` activates BC pretraining mode.
 
-        Lambda-aggregated advantages/returns and aux next-state labels arrive
+        Lambda-aggregated advantages/returns and state-transition labels arrive
         precomputed in the batch (see _precompute_lambda_aggregates /
-        _precompute_ns_labels) — they depend only on rollout data, so they are
-        built once per update instead of once per minibatch.
+        _precompute_transition_labels) — they depend only on rollout data, so
+        they are built once per update instead of once per minibatch.
 
         Masked-mean terms divide by the minibatch-total denominators in
         ``denoms`` rather than micro-batch-local counts, so losses and additive
         diagnostics from a minibatch's micro-batches sum exactly to the unsplit
         minibatch values — gradient accumulation over micro-batches is then
-        equivalent to one large minibatch. Batch-statistic terms (sigreg,
-        windowed next-state) can't decompose that way and are weighted by
-        ``frac`` instead (exact when the minibatch is unsplit, i.e. frac=1).
+        equivalent to one large minibatch. Batch-statistic terms (sigreg) can't
+        decompose that way and are weighted by ``frac`` instead (exact when the
+        minibatch is unsplit, i.e. frac=1).
 
         Args:
             batch:        One micro-batch tuple from RolloutBuffer.get_minibatch_iterator.
@@ -1524,24 +1613,32 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         mb_terminated = batch.terminated
         mb_adv_agg = batch.adv_agg
         mb_ret_agg = batch.ret_agg
-        mb_ns_labels = batch.ns_labels
 
         # mb_obs has T+1 steps; first T for encode/evaluate, last T for next-state aux loss.
         T = mb_alive.shape[0]
         curr_mb_obs = mb_obs.slice_time(0, T)
 
         need_sigreg = self._schedule_state.sigreg_coef > 0.0
+        need_predictive = is_primary and self._predictive_enabled
         # evaluate_actions needs the full (T, B, N+M) alive mask so Yemong layers
         # can attend to field tokens; mb_alive is ships-only and used for loss masking.
         alive_mask_full = curr_mb_obs["alive"].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(
+            (
+                logprob,
+                entropy,
+                new_value,
+                policy_logits,
+                z,
+                predictive_latent,
+            ) = self.policy.evaluate_actions(
                 obs=curr_mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
                 alive_mask=alive_mask_full,
                 done_mask=mb_terminated,
                 return_encoder_output=need_sigreg,
+                return_predictive_latent=need_predictive,
             )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
@@ -1617,49 +1714,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             z_flat = z.reshape(T_mb, B_mb * N_mb, D_mb)  # (T, B*N, D)
             sigreg_loss = self.sigreg(z_flat) * frac
 
-        # ---- Next-state prediction loss (primary scale only) ----------------
-        next_state_loss = self._zero_tensor
-        next_state_cont_loss = self._zero_tensor
-        windowed_ns_loss = self._zero_tensor
-        next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
-        _need_aux = is_primary and (
-            self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
-        )
-        if _need_aux:
-            non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
-            ns_mask = mb_alive & non_terminal  # (T, B_mb, N)
-            ns_mask_f = ns_mask.float()
-            ns_sum = denoms["ns_sum"]
-
-            # Labels precomputed once per update from the T+1 obs storage
-            # (see _precompute_ns_labels) — they depend only on rollout data.
-            labels = mb_ns_labels  # (T, B_mb, N, pred_dim)
-
-            P = self.coordinator.total_prediction_dimension
-            sq_err = (pred_next.float() - labels.detach()).pow(2)  # (T, B, N, pred_dim)
-            sq_err = sq_err * self.aux_weights  # per-prediction weight
-
-            if self.cfg.next_state_coef > 0.0:
-                next_state_cont_loss = (sq_err * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
-                next_state_loss = next_state_cont_loss
-
-            if self.cfg.windowed_loss_coef > 0.0:
-                # Internally a masked mean over its own validity mask — weight
-                # by env fraction like sigreg (exact when the minibatch is unsplit).
-                windowed_ns_loss = (
-                    self.coordinator.compute_windowed_loss(
-                        pred_next.float(),
-                        labels.detach(),
-                        ns_mask,
-                        mb_terminated,
-                    )
-                    * frac
-                )
-
-            with torch.no_grad():
-                next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
-                    (0, 1, 2)
-                ) / ns_sum  # (pred_dim,) gpu, additive across chunks
+        # ---- Predictive belief-state losses (primary scale only) -------------
+        predictive_state_loss = self._zero_tensor
+        predictive_action_loss = self._zero_tensor
+        predictive_diag: dict = {}
+        if need_predictive:
+            predictive_state_loss, predictive_action_loss, predictive_diag = (
+                self._predictive_losses(predictive_latent, batch, denoms)
+            )
 
         loss = (
             self._policy_gradient_coef * pg_loss
@@ -1667,11 +1729,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             + self._entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
             + self._schedule_state.sigreg_coef * sigreg_loss
-            + self.cfg.next_state_coef * next_state_loss
-            + self.cfg.windowed_loss_coef * windowed_ns_loss
+            + self.cfg.predictive_state_coef * predictive_state_loss
+            + self.cfg.predictive_action_coef * predictive_action_loss
         )
 
-        diag: dict = {}
+        diag: dict = dict(predictive_diag)
 
         # ---- Gradient decomposition -------------------------------------------
         # Differentiates the weighted terms that make up `loss` above, one
@@ -1685,8 +1747,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 "entropy": self._entropy_coef * ent_loss,
                 "bc": self._behavior_cloning_coef * bc_loss,
                 "sigreg": self._schedule_state.sigreg_coef * sigreg_loss,
-                "next_state": self.cfg.next_state_coef * next_state_loss,
-                "windowed_next_state": self.cfg.windowed_loss_coef * windowed_ns_loss,
+                "predictive_state": self.cfg.predictive_state_coef * predictive_state_loss,
+                "predictive_action": self.cfg.predictive_action_coef * predictive_action_loss,
             }
             if self._grad_diag.decomposes_policy_by_reward:
                 terms.update(
@@ -1738,10 +1800,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["ent_loss"] = ent_loss.detach()
             diag["bc_loss"] = bc_loss.detach()
             diag["sigreg_loss"] = sigreg_loss.detach()
-            diag["next_state_loss"] = next_state_loss.detach()
-            diag["next_state_cont_loss"] = next_state_cont_loss.detach()
-            diag["windowed_ns_loss"] = windowed_ns_loss.detach()
-            diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
+            diag["predictive_state_loss"] = predictive_state_loss.detach()
+            diag["predictive_action_loss"] = predictive_action_loss.detach()
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
             diag["approx_kl"] = (((ratio - 1) - log_ratio) * actor_f).sum() / actor_sum
@@ -1787,6 +1847,124 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 diag["logprob_flat"] = logprob.detach().float().reshape(-1)
 
         return loss, diag
+
+    @property
+    def _predictive_enabled(self) -> bool:
+        """Whether either predictive auxiliary family carries weight this run."""
+
+        return self.cfg.predictive_state_coef > 0.0 or self.cfg.predictive_action_coef > 0.0
+
+    def _predictive_losses(
+        self,
+        predictive_latent: torch.Tensor,
+        batch: MicroBatch,
+        denoms: dict,
+    ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+        """Roll the belief state forward and score it against the realized future.
+
+        The rollout is open-loop: after the projection that produced
+        ``predictive_latent``, the only input to each step is the previous
+        belief. Rollout states and actions enter as targets and nothing else,
+        which is what leaves the later horizons genuinely uncertain.
+
+        Timing, which is the part that is easy to get wrong. The observation at
+        step ``t`` already carries the action pending on the transition to
+        ``t + 1``, so:
+
+          - the state prediction at horizon ``h`` targets the local transition
+            ``t + h -> t + h + 1``, i.e. ``transition_labels[t + h]``;
+          - the action prediction at horizon ``h`` targets ``actions[t + h]``,
+            the decision *made* at that step, which only becomes visible in the
+            observation at ``t + h + 1``.
+
+        Horizon 0's action target is skipped wherever the rollout sampled that
+        action from this very latent (``actor_mask``): predicting one's own
+        output is self-imitation, not a belief about anything. Actions that came
+        from another perspective, another policy, or the scripted controller
+        stay in — the latent did not produce those.
+
+        Each horizon is averaged over its own valid tokens and the horizons are
+        then averaged with equal weight, so the easy immediate transition cannot
+        dominate the total by sheer count.
+
+        Args:
+            predictive_latent: (T, b, N, predictive_latent_dim) horizon-0 belief.
+            batch:  The micro-batch being scored.
+            denoms: Minibatch-total denominators from ``_minibatch_denominators``.
+
+        Returns:
+            ``(state_loss, action_loss, diagnostics)``. The diagnostics are GPU
+            tensors that add across micro-batches, never host scalars.
+        """
+        predictive = self._policy_module.predictive
+        labels = batch.transition_labels
+        targets = batch.actions.long()
+        want_state = self.cfg.predictive_state_coef > 0.0 and labels is not None
+        want_action = self.cfg.predictive_action_coef > 0.0
+        prediction_dim = self.coordinator.total_prediction_dimension
+
+        state_counts = denoms["state_counts"]
+        action_counts = denoms["action_counts"]
+        state_total = self._zero_tensor
+        action_total = self._zero_tensor
+        state_by_horizon: list[torch.Tensor] = []
+        cross_entropy_by_horizon: list[torch.Tensor] = []
+        entropy_by_horizon: list[torch.Tensor] = []
+        accuracy_numerator = torch.zeros(3, device=self.device)
+        state_per_feature: torch.Tensor | None = None
+
+        latent = predictive_latent
+        # The rollout runs in the same reduced precision as the trunk that fed
+        # it: its activation memory scales with the horizon, and it is the one
+        # part of the update whose cost is linear in a configurable depth. The
+        # reductions stay fp32 — autocast leaves them alone, and every predicted
+        # tensor is upcast before it enters one.
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            for horizon, state_mask, action_mask in predictive_horizon_masks(
+                batch.alive, batch.terminated, batch.actor_mask, self.cfg.prediction_horizon
+            ):
+                span = state_mask.shape[0]
+                if want_state:
+                    prediction = predictive.predict_state(latent).float()
+                    squared = (prediction - labels[horizon : horizon + span].detach()).pow(2)
+                    squared = squared * self.aux_weights * state_mask.unsqueeze(-1)
+                    horizon_loss = squared.sum() / (state_counts[horizon] * prediction_dim)
+                    state_total = state_total + horizon_loss
+                    with torch.no_grad():
+                        state_by_horizon.append(horizon_loss.detach())
+                        if horizon == 0:
+                            # Per-channel error of the immediate transition — the
+                            # same measurement the one-step head used to report.
+                            state_per_feature = squared.sum((0, 1, 2)) / state_counts[0]
+                if want_action:
+                    logits = predictive.predict_action_logits(latent).float()
+                    cross_entropy, entropy, hits = factored_action_statistics(
+                        logits, targets[horizon : horizon + span]
+                    )
+                    mask = action_mask.float()
+                    horizon_loss = (cross_entropy * mask).sum() / action_counts[horizon]
+                    action_total = action_total + horizon_loss
+                    with torch.no_grad():
+                        cross_entropy_by_horizon.append(horizon_loss.detach())
+                        entropy_by_horizon.append((entropy * mask).sum() / action_counts[horizon])
+                        accuracy_numerator += (hits.float() * mask.unsqueeze(-1)).sum((0, 1, 2))
+                if span > 1:
+                    # Drop the last base step: its next horizon would need a step
+                    # the rollout does not contain. Everything else advances.
+                    latent = predictive.advance(latent[: span - 1])
+
+        horizons = max(len(state_by_horizon), len(cross_entropy_by_horizon), 1)
+        diagnostics: dict = {}
+        if want_state:
+            diagnostics["predictive_state_by_horizon"] = torch.stack(state_by_horizon)
+            diagnostics["next_state_per_feat"] = state_per_feature
+        if want_action:
+            diagnostics["predictive_action_ce_by_horizon"] = torch.stack(cross_entropy_by_horizon)
+            diagnostics["predictive_action_entropy_by_horizon"] = torch.stack(entropy_by_horizon)
+            diagnostics["predictive_action_accuracy"] = (
+                accuracy_numerator / denoms["action_count_total"]
+            )
+        return state_total / horizons, action_total / horizons, diagnostics
 
     def _active_component_weights(self) -> torch.Tensor:
         """(K,) current effective weight of every active reward component."""
@@ -2020,16 +2198,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         return adv_sq_sum, adv_cnt, None, None
 
     @torch.no_grad()
-    def _precompute_ns_labels(self, buf: RolloutBuffer) -> None:
-        """Compute next-state prediction labels once per update.
+    def _precompute_transition_labels(self, buf: RolloutBuffer) -> None:
+        """Compute one-step state-transition labels once per update.
 
         Labels come from the stored T+1 observations only — not the policy — so
         computing them here saves num_epochs × num_minibatches redundant passes
         through the coordinator. Targets are computed once over all T+1 steps
         and diffed (labels[t] = f(target[t], target[t+1])).
+
+        The predictive rollout reads the same tensor at an offset: its horizon-h
+        belief for base step t is scored against ``labels[t + h]``, the local
+        transition out of step t + h. One label array therefore serves every
+        horizon, and no target is stored that the rollout data does not already
+        determine.
         """
-        if self.cfg.next_state_coef <= 0.0 and self.cfg.windowed_loss_coef <= 0.0:
-            buf.ns_labels = None
+        if self.cfg.predictive_state_coef <= 0.0:
+            buf.transition_labels = None
             return
         T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
         ship_obs = YemongObservation(
@@ -2044,7 +2228,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         targets = self.coordinator.get_target_vector(ship_obs)  # ((T+1)*B, N, t_dim)
         targets = targets.reshape(T + 1, B, N, -1)
-        buf.ns_labels = self.coordinator.compute_labels(
+        buf.transition_labels = self.coordinator.compute_labels(
             targets[:T], targets[1:]
         )  # (T, B, N, pred_dim)
 
@@ -2136,6 +2320,33 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "train/actor_grad_share": actor / (actor + critic + 1e-12),
         }
 
+    def _vector_diagnostic_labels(self) -> dict[str, tuple[str, list[str]]]:
+        """Diagnostic key → metric prefix and one label per element of its vector.
+
+        These are the per-element measurements the loss returns as GPU tensors:
+        the immediate transition's error per prediction channel, and the three
+        horizon-resolved predictive series. Whether prediction quality decays
+        smoothly with horizon, and whether the action belief grows less certain
+        further out, is exactly what these are for.
+
+        Returns:
+            Key → ``(metric prefix, element labels)``. Keys absent from a
+            micro-batch's diagnostics simply go unlogged.
+        """
+        horizons = [f"h{index:02d}" for index in range(self.cfg.prediction_horizon)]
+        return {
+            # Horizon 0 of the predictive state head is the same quantity the
+            # standalone one-step head reported, so it keeps the metric names.
+            "next_state_per_feat": ("next_state/", self.coordinator.get_feature_names()),
+            "predictive_state_by_horizon": ("predictive/state_loss/", horizons),
+            "predictive_action_ce_by_horizon": ("predictive/action_cross_entropy/", horizons),
+            "predictive_action_entropy_by_horizon": ("predictive/action_entropy/", horizons),
+            "predictive_action_accuracy": (
+                "predictive/action_accuracy/",
+                ["power", "turn", "shoot"],
+            ),
+        }
+
     def _update_epochs(
         self,
         all_buffers: list[RolloutBuffer | LogicalRolloutBuffer],
@@ -2175,16 +2386,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # Precompute everything that depends only on rollout data (not the
         # policy) once per update instead of once per minibatch: the lambda
-        # aggregation and the aux next-state labels (primary scale only).
+        # aggregation and the state-transition labels (primary scale only).
         if not precomputed:
             for scale_idx, buf in enumerate(all_buffers):
                 assert isinstance(buf, RolloutBuffer)
                 self._precompute_lambda_aggregates(buf, comp_weights, is_primary=(scale_idx == 0))
                 if scale_idx > 0:
-                    buf.ns_labels = None  # aux scales never use the aux losses
+                    buf.transition_labels = None  # aux scales never use the aux losses
             primary = all_buffers[0]
             assert isinstance(primary, RolloutBuffer)
-            self._precompute_ns_labels(primary)
+            self._precompute_transition_labels(primary)
 
         accum_scalar: dict[str, list[torch.Tensor]] = {
             "loss/total": [],
@@ -2195,15 +2406,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "loss/behavioral_cloning_kl": [],
             "loss/scripted_entropy": [],
             "loss/sigreg": [],
-            "loss/next_state": [],
-            "loss/next_state_cont": [],
-            "loss/windowed_ns": [],
+            "loss/predictive_state": [],
+            "loss/predictive_action": [],
             "loss_proxy/policy_gradient": [],
             "loss_proxy/value": [],
             "loss_proxy/entropy": [],
             "loss_proxy/behavioral_cloning": [],
             "loss_proxy/sigreg": [],
-            "loss_proxy/next_state": [],
+            "loss_proxy/predictive_state": [],
+            "loss_proxy/predictive_action": [],
             "policy/kl": [],
             "policy/clip_fraction": [],
             "policy/ratio_mean": [],
@@ -2235,12 +2446,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "returns/component": [],
             "returns/advantage_std": [],
         }
-        # Derived, never hand-listed: a parallel name list drifts from the
-        # coordinator's prediction width silently. It already had, dropping
-        # local_log_index — the one channel that says whether fields are being
-        # modelled — off the end of a 9-name list against 10 dimensions.
-        ns_feat_names = self.coordinator.get_feature_names()
-        ns_per_feat_accum: list[torch.Tensor] = []
+        # Per-element diagnostics: one GPU vector per diagnosed quantity, summed
+        # across micro-batches and averaged across minibatches, with the labels
+        # derived rather than hand-listed. A parallel name list drifts from the
+        # coordinator's prediction width silently, and already had — dropping
+        # local_log_index, the one channel that says whether fields are being
+        # modelled, off the end of a 9-name list against 10 dimensions.
+        vector_metric_labels = self._vector_diagnostic_labels()
+        vector_accum: dict[str, list[torch.Tensor]] = {key: [] for key in vector_metric_labels}
         hist_returns: torch.Tensor | None = None
         hist_logprob: torch.Tensor | None = None
         hist_alive: torch.Tensor | None = None
@@ -2305,9 +2518,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("ent", "ent_loss"),
                     ("bc", "bc_loss"),
                     ("sigreg", "sigreg_loss"),
-                    ("ns_loss", "next_state_loss"),
-                    ("ns_cont", "next_state_cont_loss"),
-                    ("windowed_ns", "windowed_ns_loss"),
+                    ("predictive_state", "predictive_state_loss"),
+                    ("predictive_action", "predictive_action_loss"),
                     ("bc_kl", "bc_kl"),
                     ("scripted_entropy", "scripted_entropy"),
                     ("kl", "approx_kl"),
@@ -2341,9 +2553,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("loss/behavioral_cloning_kl", "bc_kl"),
                     ("loss/scripted_entropy", "scripted_entropy"),
                     ("loss/sigreg", "sigreg"),
-                    ("loss/next_state", "ns_loss"),
-                    ("loss/next_state_cont", "ns_cont"),
-                    ("loss/windowed_ns", "windowed_ns"),
+                    ("loss/predictive_state", "predictive_state"),
+                    ("loss/predictive_action", "predictive_action"),
                     ("policy/kl", "kl"),
                     ("policy/clip_fraction", "clip"),
                     ("policy/ratio_mean", "ratio_mean"),
@@ -2362,7 +2573,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     scalar_accum_step[key] = _z.clone()
 
                 k_stats: dict[str, torch.Tensor] = {}  # primary per-K moments
-                ns_feat_step: torch.Tensor | None = None
+                vector_step: dict[str, torch.Tensor] = {}
                 hist_diag: dict = {}
 
                 for scale_idx, (buf, chunks) in enumerate(zip(all_buffers, batches)):
@@ -2404,12 +2615,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                                 k_stats[kk] = (
                                     diag[kk] if kk not in k_stats else k_stats[kk] + diag[kk]
                                 )
-                            if diag.get("next_state_per_feat") is not None:
-                                ns_feat_step = (
-                                    diag["next_state_per_feat"]
-                                    if ns_feat_step is None
-                                    else ns_feat_step + diag["next_state_per_feat"]
-                                )
+                            for key in vector_metric_labels:
+                                value = diag.get(key)
+                                if value is None:
+                                    continue
+                                stored = vector_step.get(key)
+                                vector_step[key] = value if stored is None else stored + value
                             hist_diag = diag
 
                     # Non-additive stats finalized per scale: max for the ratio,
@@ -2468,8 +2679,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 accum_scalar["loss_proxy/sigreg"].append(
                     self._schedule_state.sigreg_coef * scalar_accum_step["sigreg"]
                 )
-                accum_scalar["loss_proxy/next_state"].append(
-                    self.cfg.next_state_coef * scalar_accum_step["ns_loss"]
+                accum_scalar["loss_proxy/predictive_state"].append(
+                    self.cfg.predictive_state_coef * scalar_accum_step["predictive_state"]
+                )
+                accum_scalar["loss_proxy/predictive_action"].append(
+                    self.cfg.predictive_action_coef * scalar_accum_step["predictive_action"]
                 )
                 accum_scalar["returns/advantage_std"].append(scalar_accum_step["adv_var"] ** 0.5)
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
@@ -2493,8 +2707,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     )
                     ev_epoch.append(ev_k)
 
-                if ns_feat_step is not None:
-                    ns_per_feat_accum.append(ns_feat_step)
+                for key, value in vector_step.items():
+                    vector_accum[key].append(value)
 
                 if record_histograms and "alive_flat" in hist_diag:
                     # Sampled from the last micro-batch of the last primary
@@ -2523,10 +2737,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             for i, name in enumerate(self._active_names):
                 metrics[f"{prefix}/{name}"] = avg[i].item()
 
-        if ns_per_feat_accum:
-            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (pred_dim,)
-            for i, name in enumerate(ns_feat_names):
-                metrics[f"next_state/{name}"] = avg_per_feat[i].item()
+        for key, values in vector_accum.items():
+            if not values:
+                continue
+            prefix, names = vector_metric_labels[key]
+            # zip, not enumerate over the names: a rollout shorter than the
+            # prediction horizon supervises fewer horizons than the label list
+            # spells, and the vector is the authority on how many there were.
+            averaged = torch.stack(values).mean(0).cpu()
+            for name, value in zip(names, averaged, strict=False):
+                metrics[f"{prefix}{name}"] = value.item()
 
         if grad_diag_records:
             # Averaged across the diagnosed minibatches. Every key is present in

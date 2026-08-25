@@ -3,14 +3,15 @@
 BC pretrains the policy against the stochastic scripted controller: the
 controller supplies supervised action targets on every environment, no policy
 gradient is taken, and no roster opponent plays a rollout.  The critic and the
-next-state head train alongside so RL inherits more than an actor.
+predictive belief state train alongside so RL inherits more than an actor.
 
 Imitation has to happen in the environment RL continues in, so everything BC's
 objective does not require is RL's value *by construction* rather than by
 restatement.  This module is the complete list of differences:
 
-* ``objective.next_state_coef`` -- full-strength next-state prediction while
-  there is a dense supervised signal to learn the trunk from.
+* ``predictive_state_coef`` and ``predictive_action_coef`` -- full-strength
+  predictive supervision while there is a dense supervised signal to learn the
+  trunk from.
 * ``optimizer.total_timesteps`` -- BC owns its budget and stops when imitation
   saturates, not when RL's curriculum ends.
 * five schedule entries, each commented below.
@@ -35,7 +36,7 @@ BC_SCHEDULE_SPEC = replace(
     # targets and never takes a side in the rollout.
     policy_gradient_coef=hold(0.0),
     # In BC this is the policy head's only learning signal, deliberately
-    # balanced one-to-one against the next-state auxiliary BC also weights at
+    # balanced one-to-one against the predictive auxiliaries BC also weights at
     # 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term carried
     # alongside a live policy gradient.
     behavior_cloning_coef=hold(1.0),
@@ -53,6 +54,7 @@ BC_PROFILE = replace(
     RL_PROFILE,
     name="bc",
     schedule_spec=BC_SCHEDULE_SPEC,
-    next_state_coef=1.0,
+    predictive_state_coef=1.0,
+    predictive_action_coef=1.0,
     total_timesteps=2_000_000_000,
 )

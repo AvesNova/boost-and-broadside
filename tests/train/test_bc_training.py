@@ -124,7 +124,8 @@ def test_bc_takes_no_policy_gradient_across_its_whole_budget(tmp_path) -> None:
     assert trainer._policy_gradient_coef == 0.0
     # Full strength before any scripted game has been recorded.
     assert trainer._behavior_cloning_coef == pytest.approx(1.0)
-    assert trainer.cfg.next_state_coef == 1.0
+    assert trainer.cfg.predictive_state_coef == 1.0
+    assert trainer.cfg.predictive_action_coef == 1.0
 
 
 def test_bounded_bc_run_learns_from_supervision_and_freezes_no_milestone(tmp_path) -> None:

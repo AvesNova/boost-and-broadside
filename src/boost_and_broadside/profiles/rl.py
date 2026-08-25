@@ -53,8 +53,15 @@ RL_PROFILE = ProfileSpec(
     paradigm="ego_pass",
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
-    next_state_coef=0.2,
-    windowed_loss_coef=0.1,
+    # The state family keeps the weight the one-step next-state loss carried; the
+    # action family enters at the same weight, since neither is known to deserve
+    # more than the other and equal weighting is the baseline worth ablating from.
+    predictive_state_coef=0.2,
+    predictive_action_coef=0.2,
+    # Twelve decisions is 0.4 s of game time at the 30 Hz decision rate -- about
+    # one bullet flight, and long enough that where a ship will be and what it
+    # will do are genuinely open questions.
+    prediction_horizon=12,
     # --- Discounts, per physics tick ---
     gamma_per_tick=0.99,
     gae_lambda_per_tick=0.95,

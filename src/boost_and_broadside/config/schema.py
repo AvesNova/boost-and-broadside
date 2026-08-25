@@ -91,8 +91,9 @@ class ProfileSpec:
     paradigm: str
     schedule_spec: TrainingScheduleSpec
     rewards: RewardConfig
-    next_state_coef: float
-    windowed_loss_coef: float
+    predictive_state_coef: float
+    predictive_action_coef: float
+    prediction_horizon: int
 
     # --- Discounts, per physics tick ---
     gamma_per_tick: float

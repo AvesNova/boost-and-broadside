@@ -64,9 +64,10 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         return {prefix} if left != right else set()
 
     assert {path.split(".")[0] for path in different_paths(rl, bc)} == {
-        # Full-strength next-state prediction while a dense supervised signal is
+        # Full-strength predictive supervision while a dense supervised signal is
         # available to learn the trunk from.
-        "next_state_coef",
+        "predictive_state_coef",
+        "predictive_action_coef",
         # BC's own budget: it stops when imitation saturates.
         "total_timesteps",
         # Five entries -- learning_rate, policy_gradient_coef,

@@ -154,10 +154,17 @@ Tier scheduling (the mechanism exists and ships flat; design its keypoints from 
 clean run's EV curves). Team-spirit annealing on the local-vs-shared lambda axis —
 the faithful OpenAI Five analogue, and a different axis from the tier ladder.
 Joint 2x8x3 action space, with the caveat that a joint entropy bonus penalizes the
-inter-dimension correlation the joint head exists to express. Latent multi-step
-rollout head, which is where the balance analysis points: `next_state` holds
-27-31% of the trunk gradient for an objective the architecture docs already call a
-weak representation signal. EV-gated dynamic weights.
+inter-dimension correlation the joint head exists to express. EV-gated dynamic
+weights.
+
+The one item this list carried that has since been built is the latent multi-step
+rollout head, which is where the balance analysis pointed: the old `next_state`
+term held 27-31% of the trunk gradient for an objective the architecture docs
+already called a weak representation signal. It and the windowed loss are now the
+[predictive belief state](../architecture.md#predictive-belief-state), whose two
+loss families appear separately in the gradient decomposition. Whether that
+redistributes the trunk gradient usefully is unmeasured; the share numbers above
+describe the objective it replaced.
 
 # Appendix: evidence
 

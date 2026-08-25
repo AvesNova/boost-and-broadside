@@ -221,6 +221,73 @@ class TestLegacyCheckpoints:
         assert bundle.model_config == trainer.model_config
         assert bundle.ship_config == trainer.ship_config
 
+    def test_the_retired_one_step_head_loads_with_the_policy_intact(self, tmp_path):
+        """Runs recorded before the predictive belief state stay playable.
+
+        The trunk, actor, and critics such a checkpoint describes are unchanged,
+        so refusing it would cost every recorded run for nothing. What it cannot
+        supply is trained predictive weights, and the warning says so.
+        """
+        from boost_and_broadside.train.rl.policy_io import LegacyAuxiliaryHeadWarning
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        path = trainer._save_ladder_snapshot()
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        state = payload["policy_state_dict"]
+        width = trainer.model_config.d_model
+        prediction_dim = trainer.coordinator.total_prediction_dimension
+        for key in [key for key in state if key.startswith("predictive.")]:
+            state.pop(key)
+        # The head as it was: d_model -> 2*d_model -> prediction width.
+        state["next_state_head.net.0.weight"] = torch.zeros(2 * width, width)
+        state["next_state_head.net.0.bias"] = torch.zeros(2 * width)
+        state["next_state_head.net.1.weight"] = torch.ones(2 * width)
+        state["next_state_head.net.3.weight"] = torch.zeros(prediction_dim, 2 * width)
+        state["next_state_head.net.3.bias"] = torch.zeros(prediction_dim)
+        torch.save(payload, path)
+
+        with pytest.warns(LegacyAuxiliaryHeadWarning, match="predictive"):
+            bundle = load_policy_bundle(
+                str(path),
+                device="cpu",
+                num_ships=trainer.wrapper.num_ships,
+                ship_config=trainer.ship_config,
+                model_config=trainer.model_config,
+                team_pma_k=trainer._win_k,
+            )
+
+        live = trainer._policy_module.state_dict()
+        loaded = bundle.policy.state_dict()
+        torch.testing.assert_close(
+            loaded["action_head.0.weight"], live["action_head.0.weight"]
+        )
+        assert any(key.startswith("predictive.") for key in loaded)
+
+    def test_any_other_weight_mismatch_is_still_refused(self, tmp_path):
+        """The tolerance is for the retired head alone, not for damage in general."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        path = trainer._save_ladder_snapshot()
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        state = payload["policy_state_dict"]
+        for key in [key for key in state if key.startswith("predictive.")]:
+            state.pop(key)
+        state["next_state_head.net.0.bias"] = torch.zeros(4)
+        state.pop("action_head.0.weight")
+        torch.save(payload, path)
+
+        with pytest.raises(ValueError, match="incompatible policy weights"):
+            load_policy_bundle(
+                str(path),
+                device="cpu",
+                num_ships=trainer.wrapper.num_ships,
+                ship_config=trainer.ship_config,
+                model_config=trainer.model_config,
+                team_pma_k=trainer._win_k,
+            )
+
     def test_a_checkpoint_with_no_provenance_and_no_fallback_is_refused(self, tmp_path):
         from tests.train.test_ppo import _make_trainer
 

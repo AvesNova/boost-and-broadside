@@ -113,18 +113,25 @@ Two consequences worth knowing before touching the auxiliary losses:
   ship's pending action**, opponents included. One decision is 1/30 s against a ~0.4 s
   bullet flight, so the lookahead is small, and it is symmetric.
 - One-step next-state prediction is therefore a *deterministic* function of the
-  observation (up to `bullet_spread`), not merely a short-horizon one. That is why it is
-  a weak representation signal and why longer-horizon prediction is the useful version.
+  observation (up to `bullet_spread`), not merely a short-horizon one. A head that solves
+  it has learned to read its own input, which is why the auxiliary objective rolls a
+  belief state forward instead of stopping at one step.
+
+The same timing fixes what each predictive horizon is allowed to target. The observation
+at `t` already carries the action about to be applied, so the state prediction from the
+horizon-0 belief targets the transition `t → t+1` — whose action it can already see —
+while the *action* prediction from that same belief targets the decision being made at
+`t`, which will not appear in an observation until `t+1`.
 
 A logical update proceeds as follows:
 
-1. collect `T` actions while preserving `T+1` observations for bootstrap and next-state
-   labels;
+1. collect `T` actions while preserving `T+1` observations for bootstrap and one-step
+   transition labels;
 2. record actions, factored log probabilities, per-component values/rewards, masks, and
    recurrent boundary state in the [`RolloutBuffer`](../src/boost_and_broadside/train/rl/buffer.py);
 3. compute per-component GAE and return-normalization statistics;
 4. re-evaluate complete recurrent sequences with the stored initial hidden state;
-5. optimize clipped policy, value, entropy, behavior-cloning, and auxiliary prediction
+5. optimize clipped policy, value, entropy, behavior-cloning, and predictive
    objectives;
 6. update average/league/evaluation state and save scheduled checkpoints.
 
@@ -158,8 +165,8 @@ The total update combines:
 - normalized per-component critic mean-squared error;
 - entropy bonuses for power, turn, and shoot distributions;
 - behavior cloning from the scripted controller, gated down as scripted win rate rises;
-- one-step next-state prediction error;
-- a cumulative triangle-window position/velocity drift loss;
+- predictive state error and predictive action cross-entropy, over every horizon of the
+  belief-state rollout (below);
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
@@ -182,6 +189,66 @@ run 719's `field_death` returns had a p5–p95 span of 0.0059 against a full ran
 scalers, since their returns sit at zero and would narrow exactly the components that can
 least afford it. The exact loss assembly and logging proxies live in
 [`ppo.py`](../src/boost_and_broadside/train/rl/ppo.py).
+
+### The predictive auxiliary objective
+
+The auxiliary system supervises an iterated belief state rather than a single next step.
+Its architecture is described in
+[the architecture guide](architecture.md#predictive-belief-state); what the trainer adds
+is the target alignment, the masking, and the weighting.
+
+**Why it replaced the one-step loss.** The observation at `t` already contains the state
+at `t` and the action pending on the transition out of it, and spatial attention lets a
+ship read every other ship's pending action too. Predicting `t → t+1` from that is close
+to reading the input back out, so the head could be excellent while the trunk learned
+nothing it did not already need for the actor and critic. The windowed triangle loss that
+accompanied it was a way of extracting a multi-step signal out of the same one-step
+prediction, by penalizing correlated drift more than zero-mean noise; rolling a belief
+state forward supervises that directly instead of inferring it from a filter.
+
+**Targets, per horizon.** Writing `t` for the observed step and `h` for the horizon:
+
+| Prediction | Target | Available to the belief? |
+|---|---|---|
+| state, horizon `h` | the local transition `t+h → t+h+1` | only at `h = 0`, and only because that action is already pending |
+| action, horizon `h` | the decision taken at `t+h` | never — it is not in any observation the belief has seen |
+
+Each horizon's state target is the transition out of *its own* step, not a cumulative
+displacement from `t`. That is what keeps the easy immediate physics as an anchor while
+making later horizons forecast progressively less determined transitions.
+
+**Masking.** A horizon only counts where the trajectory actually reaches it: no episode
+boundary anywhere in `[t, t+h)`, the ship alive at both ends, and — for a state
+prediction, which is a transition — the reached step non-terminal. Horizons near the end
+of a rollout simply cover fewer base steps rather than borrowing the episode that follows.
+
+One more exclusion is easy to miss and matters. At horizon 0, an action target is dropped
+wherever the rollout sampled that action *from this very latent*: rewarding a
+representation for predicting its own output is self-imitation, not a belief about
+anything. The rule is stated over the rollout path rather than over team identity, since
+which ships those are depends on the paradigm — in `ego_pass` the ego side's actions come
+from the pass being re-evaluated, while team 1's come from the flipped-perspective pass, a
+league opponent, or the scripted controller. All three of the latter are legitimate
+targets, and every ship's *later* actions are legitimate at every horizon, because those
+decisions had not been made when the belief was formed.
+
+**Weighting.** Each horizon is averaged over its own valid tokens and the horizons are
+then averaged with equal weight, so the trivially easy first horizon cannot take the
+whole loss by token count. `predictive_state_coef` and `predictive_action_coef` weight
+the two families; `prediction_horizon` sets the depth; `ModelConfig.predictive_latent_dim`
+sets the belief width. Setting both coefficients to zero skips the projection entirely —
+no predictive activations are built and no transition labels are computed.
+
+**Diagnostics.** `loss/predictive_state` and `loss/predictive_action` carry the totals and
+appear as distinct terms in the [gradient decomposition](#gradient-diagnostics), so how
+much of the clipped step each family is asking for, and whether they pull the trunk the
+same way, is measured rather than assumed. Horizon-resolved series —
+`predictive/state_loss/h*`, `predictive/action_cross_entropy/h*`,
+`predictive/action_entropy/h*` — say whether quality degrades smoothly with horizon and
+whether the action belief grows less certain further out, which is the behaviour to check
+first if the objective misbehaves. `predictive/action_accuracy/{power,turn,shoot}` gives
+the per-factor hit rate, and `next_state/<channel>` keeps reporting the immediate
+transition's per-channel error, the same measurement the one-step head reported.
 
 The critic's loss is squared error out to `value_huber_delta` normalized units and linear
 beyond, matching plain squared error in the bulk so the switch reshapes only the tails.
@@ -333,7 +400,7 @@ current component horizons and schedules, and the preserved run config for histo
 scripted controller before any policy gradient is taken. The controller supplies
 supervised action targets on every environment and never takes a side, so
 `policy_gradient_coef` and `league_fraction` are zero for the whole budget and no roster
-entry plays a rollout. The critic and the next-state head train alongside the actor, so RL inherits a warm trunk
+entry plays a rollout. The critic and the predictive heads train alongside the actor, so RL inherits a warm trunk
 and a critic that has already seen the full reward decomposition.
 
 It trains in the environment RL continues in (eight ships, the same decision rate,
@@ -341,8 +408,8 @@ spawn spread, logical batch, minibatching, and component discount horizons), so 
 handoff in `bnb train --profile rl --pretrain-from <bc-checkpoint>` does not also change
 the task. Five things differ, and only where the objective requires it: no policy
 gradient, no league, no KL trust region (under supervision, moving away from the rollout
-policy is the objective rather than a reason to stop), full-strength next-state
-prediction, and its own budget. That list is enforced by a test rather than by
+policy is the objective rather than a reason to stop), full-strength predictive
+supervision, and its own budget. That list is enforced by a test rather than by
 convention, because the profile is written independently and does not inherit from
 `rl`.
 
@@ -357,7 +424,7 @@ had finished cloning would spend the rest of its budget undoing it. This was mea
 against the scripted controller, at 60% of maximum action entropy, was back to 99.8% of
 maximum and a KL of 2.66 within 400 updates of the cutoff. Those are its untrained values.
 A control arm that kept its cloning weight held steady over the same span. After
-the cutoff the actor is held where cloning left it and the critic, next-state, and SIGReg
+the cutoff the actor is held where cloning left it and the critic, predictive, and SIGReg
 terms carry on through the shared trunk. RL is unaffected: its policy gradient is positive
 throughout, so it keeps the scheduled entropy bonus.
 
@@ -381,8 +448,8 @@ than decisions, and since crossing an interface costs health that
 `field_damage_taken` then penalises, behaviour cloning was imprinting a habit RL had to
 unlearn.
 
-Field representation does not depend on the scripted agent in any case. The auxiliary
-next-state head predicts `local_log_index` directly, which cannot be done without locating
+Field representation does not depend on the scripted agent in any case. The predictive
+state head predicts `local_log_index` directly, which cannot be done without locating
 the ship relative to every field, and that pressure is always on and never decays with the
 behavior-cloning weight.
 
@@ -572,7 +639,7 @@ can omit to produce a policy whose inputs disagree with its weights.
 Three compatibility rules follow from that:
 
 - **Observation schema.** The refractive-field contract adds encoder inputs and a
-  local-index auxiliary target; radius is shared by ship and field tokens and normalized by
+  local-index predictive target; radius is shared by ship and field tokens and normalized by
   half the shorter world dimension, and the ship's local `grad(n)` widens the encoder's
   first projection. Payloads carry `observation_schema=refractive_fields_v3`. Earlier
   schemas have no faithful weight-only migration, so they are rejected and retraining is
@@ -694,7 +761,7 @@ direction the step follows.
 Groups are `top_level`, `reward_policy`, and `reward_value`, each also reported over the
 shared trunk under a `trunk_` prefix. The trunk scope is the informative one for cosines
 between terms owned by different heads: the action head, the two value heads, and the
-next-state head have disjoint parameters, which drags every whole-model pairing toward zero
+predictive model have disjoint parameters, which drags every whole-model pairing toward zero
 whatever the terms are doing to the weights they share. The trunk is defined by module
 reference (`YemongPolicy.trunk_modules`), not by matching parameter names.
 

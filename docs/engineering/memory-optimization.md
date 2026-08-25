@@ -192,7 +192,7 @@ long multi-shape runs). Free, and recommended always-on.
 GPU-resident rollout width:
 
 - Collection runs one fixed-width shard at a time without changing policy weights.
-- Bootstrap values, GAE, and next-state labels are computed on GPU before the shard moves to
+- Bootstrap values, GAE, and state-transition labels are computed on GPU before the shard moves to
   pageable CPU RAM.
 - Return percentiles use a deterministic, evenly spaced entity sample bounded by
   `return_quantile_samples`; advantage RMS remains an exact whole-logical-batch reduction.

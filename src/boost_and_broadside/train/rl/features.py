@@ -346,78 +346,6 @@ class UnitCirclePredictor(Predictor):
 
 
 # ---------------------------------------------------------------------------
-# Windowed cumulative loss
-# ---------------------------------------------------------------------------
-
-
-@dataclasses.dataclass
-class WindowedLoss:
-    """Triangle convolution cumulative loss spec for a Feature's predictions.
-
-    Convolves per-step prediction errors with a symmetric triangle kernel and
-    penalises the squared output. This amplifies systematic bias (which scales
-    as window²) relative to random noise (which scales as window), catching
-    drift that teacher-forced per-step loss cannot see.
-
-    Attributes:
-        window: Length of the triangle kernel (steps).
-        weight: Scalar multiplier applied to this feature's windowed loss before
-                it is averaged with other windowed features in the coordinator.
-    """
-
-    window: int = 32
-    weight: float = 1.0
-
-
-def _triangle_conv_loss(
-    errors: torch.Tensor,  # (T, B, N, D)
-    ns_mask: torch.Tensor,  # (T, B, N) — True where prediction is valid
-    terminated: torch.Tensor,  # (T, B)    — True where episode ended
-    window: int,
-) -> torch.Tensor:
-    """MSE of triangle-filtered prediction errors along the time axis.
-
-    Steps:
-      1. Zero errors at invalid positions (ns_mask guards dead ships + terminals).
-      2. Apply a causal symmetric-triangle conv1d along T.
-      3. Mask out output positions whose window spans an episode boundary.
-      4. Return mean squared conv output over valid (T, B, N) positions.
-    """
-    T, B, N, D = errors.shape
-    device = errors.device
-
-    # Zero errors at invalid steps so they don't contaminate the conv sum.
-    errors = errors * ns_mask.float().unsqueeze(-1)
-
-    # Symmetric triangle kernel: h[s] = min(s+1, window-s), normalized.
-    # Peaks in the centre; provides better spectral side-lobe suppression than
-    # a box filter so high-frequency per-step noise leaks less into the loss.
-    s = torch.arange(window, device=device, dtype=torch.float32)
-    h = torch.minimum(s + 1, torch.full_like(s, window) - s)
-    h = h / h.sum()
-
-    # Causal conv1d: output[t] = Σ h[s] * error[t-window+1+s] for s in [0,window).
-    # Reshape to (B*N*D, 1, T), pad left by window-1, apply conv.
-    x = errors.permute(1, 2, 3, 0).reshape(B * N * D, 1, T)
-    x_padded = F.pad(x, (window - 1, 0))
-    conv_out = F.conv1d(x_padded, h.view(1, 1, window))  # (B*N*D, 1, T)
-    conv_out = conv_out.view(B, N, D, T).permute(3, 0, 1, 2)  # (T, B, N, D)
-
-    # Temporal validity: position t is invalid if any termination falls inside
-    # the window [t-window+1, t]. Max-pool with explicit left padding checks this.
-    term_f = terminated.T.unsqueeze(1).float()  # (B, 1, T)
-    spread = F.max_pool1d(F.pad(term_f, (window - 1, 0)), window, stride=1)
-    t_valid = (spread.squeeze(1) == 0).T  # (T, B)
-
-    # Per-ship validity: ship must be alive and non-terminal at window endpoint.
-    valid = t_valid.unsqueeze(-1) & ns_mask  # (T, B, N)
-    valid_4d = valid.float().unsqueeze(-1)  # (T, B, N, 1)
-    n_valid = valid_4d.sum() * D
-
-    return (conv_out.pow(2) * valid_4d).sum() / n_valid.clamp(min=1.0)
-
-
-# ---------------------------------------------------------------------------
 # Feature
 # ---------------------------------------------------------------------------
 
@@ -445,7 +373,6 @@ class Feature:
         target_encoder: Transform,
         predictor: Predictor | None = None,
         label_scale: float | tuple[float, ...] = 1.0,
-        windowed_loss: WindowedLoss | None = None,
         scope: FeatureScope = FeatureScope.SHARED,
     ):
         self.name = name
@@ -454,7 +381,6 @@ class Feature:
         self.target_encoder = target_encoder
         self.predictor = predictor
         self.label_scale = label_scale
-        self.windowed_loss = windowed_loss
         self.scope = scope
 
     def get_input(self, obs: YemongObservation) -> torch.Tensor:
@@ -506,8 +432,6 @@ class FeatureCoordinator:
         # One cached spec per predictor feature — the single source of truth for
         # every per-feature offset/dimension lookup below.
         self._predictor_specs: list[_PredictorSpec] = []
-        # (pred_offset, pred_dim, WindowedLoss) for features that opt in
-        self._windowed_loss_specs: list[tuple[int, int, WindowedLoss]] = []
         # Lazily-built label-scale tensor, cached per device (see label_scale_vector).
         self._label_scale_cache: torch.Tensor | None = None
 
@@ -539,8 +463,6 @@ class FeatureCoordinator:
                 )
                 self.total_target_dimension += t_dim
                 self.total_prediction_dimension += p_dim
-                if f.windowed_loss is not None:
-                    self._windowed_loss_specs.append((p_offset, p_dim, f.windowed_loss))
                 t_offset += t_dim
                 p_offset += p_dim
 
@@ -709,35 +631,6 @@ class FeatureCoordinator:
         """
         return torch.ones(self.total_prediction_dimension, device=device, dtype=torch.float32)
 
-    def compute_windowed_loss(
-        self,
-        pred_rollout: torch.Tensor,  # (T, B, N, D_pred)
-        label_rollout: torch.Tensor,  # (T, B, N, D_pred)
-        ns_mask: torch.Tensor,  # (T, B, N) — alive & non-terminal
-        terminated: torch.Tensor,  # (T, B)
-    ) -> torch.Tensor:
-        """Triangle convolution cumulative loss for features that opt in via WindowedLoss.
-
-        Errors are extracted per-feature using stored prediction-dimension offsets,
-        passed through _triangle_conv_loss, and averaged (with per-feature weights
-        absorbed before averaging).
-
-        Returns a scalar; zero if no features have windowed_loss set.
-        """
-        if not self._windowed_loss_specs:
-            return pred_rollout.new_zeros(())
-
-        errors = pred_rollout.float() - label_rollout.float()  # (T, B, N, D_pred)
-        total = pred_rollout.new_zeros(())
-
-        for p_offset, p_dim, wl in self._windowed_loss_specs:
-            feat_errs = errors[..., p_offset : p_offset + p_dim]
-            total = total + wl.weight * _triangle_conv_loss(
-                feat_errs, ns_mask, terminated, wl.window
-            )
-
-        return total / len(self._windowed_loss_specs)
-
     def get_feature_names(self) -> list[str]:
         names = []
         for spec in self._predictor_specs:
@@ -774,7 +667,6 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=Fourier(n_freqs=1, periods=world_w),
             predictor=UnitCirclePredictor(cosine_first=False),  # Fourier gives (sin, cos)
             label_scale=177.4,
-            windowed_loss=WindowedLoss(window=32),
         ),
         Feature(
             name="position_y",
@@ -783,7 +675,6 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=Fourier(n_freqs=1, periods=world_h),
             predictor=UnitCirclePredictor(cosine_first=False),
             label_scale=177.4,
-            windowed_loss=WindowedLoss(window=32),
         ),
         # Velocity: SymlogVelocity encodes (vx, vy) → direction * symlog(speed).
         # AdditivePredictor on this 2D space avoids the angle discontinuity near
@@ -795,7 +686,6 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=SymlogVelocity(),
             predictor=AdditivePredictor(),
             label_scale=(20.0, 20.0),
-            windowed_loss=WindowedLoss(window=32),
             scope=FeatureScope.SHIP,
         ),
         # Attitude: Fourier input, raw (cos,sin) target — phase prediction

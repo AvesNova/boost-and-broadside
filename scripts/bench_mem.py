@@ -90,7 +90,7 @@ def _host_buffer_bytes(buffers) -> int:
                 shard.initial_hidden,
                 shard.adv_agg,
                 shard.ret_agg,
-                shard.ns_labels,
+                shard.transition_labels,
             ]
             total += sum(
                 tensor.numel() * tensor.element_size()

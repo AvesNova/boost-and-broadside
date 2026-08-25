@@ -1211,7 +1211,7 @@ class TestOrthogonalHeadInit:
         module gets orthogonal-initialized (previously a hardcoded head[0]/head[3])."""
         import torch.nn as nn
 
-        from boost_and_broadside.models.yemong.policy import _init_head_orthogonal
+        from boost_and_broadside.models.yemong.predictive import initialize_head_orthogonal
 
         torch.manual_seed(0)
         head = nn.Sequential(
@@ -1221,7 +1221,7 @@ class TestOrthogonalHeadInit:
             nn.GELU(),
             nn.Linear(8, 4),
         )
-        _init_head_orthogonal(head)
+        initialize_head_orthogonal(head)
 
         first_linear, last_linear = head[1], head[4]
         assert torch.allclose(first_linear.bias, torch.zeros_like(first_linear.bias))
@@ -1346,16 +1346,20 @@ class TestGradCheckpoint:
         hidden = base.initial_hidden(B, N, torch.device("cpu"))
         alive = torch.ones(T, B, N, dtype=torch.bool)
 
-        lp0, _, val0, _, _, pn0 = base.evaluate_actions(obs, actions, hidden, alive)
-        lp1, _, val1, _, _, pn1 = ckpt.evaluate_actions(obs, actions, hidden, alive)
+        lp0, _, val0, _, _, latent0 = base.evaluate_actions(
+            obs, actions, hidden, alive, return_predictive_latent=True
+        )
+        lp1, _, val1, _, _, latent1 = ckpt.evaluate_actions(
+            obs, actions, hidden, alive, return_predictive_latent=True
+        )
 
         assert torch.allclose(lp0, lp1, atol=1e-6)
         assert torch.allclose(val0, val1, atol=1e-6)
-        assert torch.allclose(pn0, pn1, atol=1e-6)
+        assert torch.allclose(latent0, latent1, atol=1e-6)
 
         # Gradients must match exactly — checkpointing recomputes the same forward.
-        (lp0.sum() + val0.sum() + pn0.sum()).backward()
-        (lp1.sum() + val1.sum() + pn1.sum()).backward()
+        (lp0.sum() + val0.sum() + latent0.sum()).backward()
+        (lp1.sum() + val1.sum() + latent1.sum()).backward()
         g0 = base.yemong_layers[0].temporal[0].linear1.weight.grad
         g1 = ckpt.yemong_layers[0].temporal[0].linear1.weight.grad
         assert g0 is not None and g1 is not None

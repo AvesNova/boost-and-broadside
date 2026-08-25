@@ -241,6 +241,11 @@ class ModelConfig:
     # Bullet encoder hidden width. Deliberately narrow: it runs over N*K entities
     # rather than N+M, so it, not the entity encoder, sets encoder cost.
     bullet_encoder_hidden: int = 64
+    # Width of the iterated predictive belief state (models/yemong/predictive.py).
+    # Narrower than d_model on purpose: the projection into it is one linear layer,
+    # so the bottleneck is what stops the auxiliary objective from being solved
+    # after the trunk instead of pressuring the trunk to carry the information.
+    predictive_latent_dim: int = 96
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True
@@ -268,6 +273,10 @@ class ModelConfig:
             raise ValueError(f"n_spatial_per_block must be >= 0, got {self.n_spatial_per_block}")
         if self.n_temporal_per_block < 0:
             raise ValueError(f"n_temporal_per_block must be >= 0, got {self.n_temporal_per_block}")
+        if self.predictive_latent_dim < 1:
+            raise ValueError(
+                f"predictive_latent_dim must be positive, got {self.predictive_latent_dim}"
+            )
         if not 0 <= self.n_bullet_cross_per_block <= self.n_spatial_per_block:
             raise ValueError(
                 "n_bullet_cross_per_block must be between 0 and n_spatial_per_block "

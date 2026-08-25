@@ -263,9 +263,16 @@ class TrainConfig:
     # change training statistics — set it per GPU to fit VRAM. None = no splitting.
     microbatch_tokens: int | None = None
 
-    # --- Next-state prediction loss ---
-    next_state_coef: float = 1.0  # weight for per-step aux prediction loss; 0 to disable
-    windowed_loss_coef: float = 0.1  # weight for windowed cumulative bias loss; 0 to disable
+    # --- Predictive belief-state auxiliary losses ---
+    # The iterated predictive latent decodes a local state transition and a
+    # factorized action distribution at every horizon; these weight the two
+    # families. Either at 0 disables that family; both at 0 skips the projection
+    # and every predictive activation entirely.
+    predictive_state_coef: float = 1.0
+    predictive_action_coef: float = 1.0
+    # Decisions the belief state is rolled forward, open-loop. Horizon 0 is the
+    # observed step, so this many horizons are supervised in total.
+    prediction_horizon: int = 12
 
     # --- Static field map cache (None when num_fields=0) ---
     field_map: FieldMapConfig | None = None
@@ -319,6 +326,10 @@ class TrainConfig:
         if self.rollouts_per_update < 1:
             raise ValueError(
                 f"rollouts_per_update must be positive, got {self.rollouts_per_update}"
+            )
+        if self.prediction_horizon < 1:
+            raise ValueError(
+                f"prediction_horizon must be positive, got {self.prediction_horizon}"
             )
         if not 0.0 < self.bc_winrate_target <= 1.0:
             raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")

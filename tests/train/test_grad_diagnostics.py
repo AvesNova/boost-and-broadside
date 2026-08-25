@@ -274,7 +274,7 @@ def test_measuring_does_not_disturb_the_gradient_that_gets_applied(tmp_path) -> 
     trainer._precompute_lambda_aggregates(
         trainer.buffer, trainer._active_component_weights(), is_primary=True
     )
-    trainer._precompute_ns_labels(trainer.buffer)
+    trainer._precompute_transition_labels(trainer.buffer)
     chunks = next(
         trainer.buffer.get_minibatch_iterator(
             trainer.cfg.num_minibatches, trainer.cfg.microbatch_tokens
@@ -327,7 +327,7 @@ def test_every_active_level_emits_finite_norms_and_cosines(tmp_path, level: str)
 
 def test_top_level_names_every_active_loss_term(tmp_path) -> None:
     metrics = _one_update(_diagnostic_trainer(tmp_path, "top_level"), update=1)
-    for term in ("policy", "value", "entropy", "next_state", "windowed_next_state"):
+    for term in ("policy", "value", "entropy", "predictive_state", "predictive_action"):
         assert f"grad_norm/top_level/{term}" in metrics
     assert "grad_norm/trunk_top_level/policy" in metrics
 
@@ -395,7 +395,7 @@ def _accumulate_one_minibatch(trainer, *, level: str) -> TermGradientAccumulator
     trainer._precompute_lambda_aggregates(
         trainer.buffer, trainer._active_component_weights(), is_primary=True
     )
-    trainer._precompute_ns_labels(trainer.buffer)
+    trainer._precompute_transition_labels(trainer.buffer)
     accumulator = TermGradientAccumulator(trainer._grad_diag_params, trainer._grad_diag_trunk)
     chunks = next(
         trainer.buffer.get_minibatch_iterator(
@@ -539,12 +539,14 @@ def test_per_component_clipping_would_be_a_different_objective(tmp_path) -> None
 
 def test_a_disabled_auxiliary_loss_is_left_out_rather_than_logged_as_zero(tmp_path) -> None:
     trainer = _diagnostic_trainer(tmp_path, "top_level")
-    trainer.cfg = dataclasses.replace(trainer.cfg, next_state_coef=0.0, windowed_loss_coef=0.0)
+    trainer.cfg = dataclasses.replace(
+        trainer.cfg, predictive_state_coef=0.0, predictive_action_coef=0.0
+    )
     metrics = _one_update(trainer, update=1)
 
     assert "grad_norm/top_level/policy" in metrics
-    assert "grad_norm/top_level/next_state" not in metrics
-    assert "grad_norm/top_level/windowed_next_state" not in metrics
+    assert "grad_norm/top_level/predictive_state" not in metrics
+    assert "grad_norm/top_level/predictive_action" not in metrics
 
 
 def test_behavior_cloning_off_and_sigreg_off_produce_no_terms(tmp_path) -> None:

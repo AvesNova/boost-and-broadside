@@ -3,8 +3,8 @@
 `YemongPolicy` is a centralized recurrent controller. It reads the full scene, exchanges
 information across entities with spatial attention, carries per-entity memory through
 time, and emits a factored action for every ship in the learned fleet. Its name (*Yemong*,
-from the Korean 예몽, a dream that foretells the future) comes from the auxiliary head that
-learns to predict the next state of the world. Zero-shot transfer across team sizes comes
+from the Korean 예몽, a dream that foretells the future) comes from the auxiliary
+objective that makes it forecast the world several decisions ahead. Zero-shot transfer across team sizes comes
 from its variable-cardinality design, described [below](#why-team-size-can-change).
 
 ![YemongPolicy architecture](policy_architecture.png)
@@ -28,7 +28,7 @@ FeatureCoordinator → encoder MLP            bullet encoder
 ship tokens only
     ├── factored action distributions (per ship)
     ├── decomposed value estimates (per ship/component)
-    └── next-state predictions (per ship)
+    └── predictive belief state (per ship) → state and action predictions per horizon
 ```
 
 For a batch `B`, `N` ships, `M` fields, and embedding width `D`, the shared trunk works
@@ -78,7 +78,7 @@ channel to:
 
 1. an accessor from the observation dictionary;
 2. a network-facing input transform;
-3. where applicable, a target transform and predictor for the auxiliary dynamics loss.
+3. where applicable, a target transform and predictor for the predictive state loss.
 
 | Feature | Network encoding | Auxiliary target |
 |---|---|---|
@@ -226,23 +226,57 @@ pooled team representation while retaining per-ship critic outputs.
 Returns are normalized per component by the training system before value loss. Reward
 semantics, aggregation, and horizons are documented in [training](training.md#reward-decomposition).
 
-## Auxiliary next-state head
+## Predictive belief state
 
-The next-state head predicts the coordinator's registered target channels for every ship:
-position and attitude phase deltas, velocity deltas, resource phase deltas, absolute
-angular velocity, and ship-local log-index delta. Static field material channels are
-inputs, not prediction targets; the local index target makes entering and leaving a
-medium visible to the learned dynamics model.
+The auxiliary objective is a belief about the future, rolled forward from the trunk's
+final per-ship latent by [`predictive.py`](../src/boost_and_broadside/models/yemong/predictive.py):
 
-Training applies:
+```text
+post-Yemong ship latent
+    ↓  predictive projection            (Linear → RMSNorm, no hidden layer)
+predictive latent, horizon 0 ──→ state prediction: t → t+1
+    │                       └──→ action prediction: the decision made at t
+    ↓  predictive transition            (residual MLP → RMSNorm)
+predictive latent, horizon 1 ──→ state prediction: t+1 → t+2
+    │                       └──→ action prediction: the decision made at t+1
+    ↓  the same transition again
+   ...
+```
 
-- normalized per-step mean-squared error across prediction channels; and
-- a triangle-window cumulative loss for position and velocity, which penalizes systematic
-  multi-step drift more strongly than zero-mean step noise.
+There is exactly one projection, one transition, and one head of each kind; the
+transition and both heads are reused at every horizon, so depth costs no parameters and
+a horizon-11 belief obeys the dynamics a horizon-1 belief obeys.
 
-The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
+**The rollout is open-loop.** Nothing after the projection reads an observation, a latent,
+or an action from the future. Rollout states and actions are targets and only targets,
+which is what leaves the later horizons genuinely uncertain — the point of the objective
+rather than an omission from it. This is deliberately *not* an action-conditioned world
+model: if an opponent has several plausible next moves, the action head is supposed to say
+so in its distribution.
+
+**Two families of target, both local to the horizon.** The state head predicts the
+coordinator's registered target channels — position and attitude phase deltas, velocity
+deltas, resource phase deltas, absolute angular velocity, ship-local log-index delta —
+for the transition *out of the step the belief describes*, never a cumulative displacement
+from the observed step. That keeps the well-grounded immediate physics as an anchor while
+making every later horizon forecast a transition whose inputs it cannot see. The action
+head predicts the same factored `[power | turn | shoot]` categoricals the actor emits,
+trained by cross-entropy against the decision actually taken, and shares no weight with
+the actor.
+
+Static field material channels remain inputs, not prediction targets; the local index
+target is what makes entering and leaving a medium visible to the learned dynamics.
+
+Why the horizon has to be more than one step is a property of the observation, not of the
+architecture — see [action timing](training.md#action-timing). The loss, its masking, and
+its diagnostics are described under
+[PPO and auxiliary losses](training.md#ppo-and-auxiliary-losses).
+
+The immediate channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
 with deeper autoregressive diagnostics under [`docs/ar_report/`](../checkpoints/good-leaf-719/artifacts/figures/ar_report_4v4/) and noise
 analysis under [`docs/noise_calibration/`](../checkpoints/good-leaf-719/artifacts/figures/noise_calibration/).
+Those figures were measured on run 719, whose auxiliary head was the single one-step
+predictor this replaced.
 
 ## Why team size can change
 

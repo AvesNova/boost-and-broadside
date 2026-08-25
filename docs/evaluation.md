@@ -252,6 +252,11 @@ does not isolate which mechanism caused the improvement.
 ![Normalized next-state prediction error](../checkpoints/good-leaf-719/artifacts/figures/next_state_error.png)
 
 The auxiliary head's normalized errors fall strongly for predictable dynamics channels.
+Run 719 trained the single one-step next-state head that the
+[predictive belief state](architecture.md#predictive-belief-state) has since replaced;
+its horizon-0 state prediction is the same measurement under the same metric names, so
+these curves remain comparable to a current run's immediate horizon and to nothing
+deeper.
 For example, position-x falls from 1.49 at the first sampled update to 0.0015 at the
 last; velocity-x from 3.04 to 0.019; power from 1.47 to 0.019. Health changes much less,
 from 0.57 to 0.49.

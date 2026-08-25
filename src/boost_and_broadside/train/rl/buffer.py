@@ -35,7 +35,7 @@ class MicroBatch(NamedTuple):
     terminated: torch.Tensor
     adv_agg: torch.Tensor
     ret_agg: torch.Tensor
-    ns_labels: torch.Tensor | None
+    transition_labels: torch.Tensor | None
 
     def pin_memory(self) -> "MicroBatch":
         """Copy one CPU micro-batch into page-locked transfer memory.
@@ -61,7 +61,11 @@ class MicroBatch(NamedTuple):
             terminated=self.terminated.pin_memory(),
             adv_agg=self.adv_agg.pin_memory(),
             ret_agg=self.ret_agg.pin_memory(),
-            ns_labels=self.ns_labels.pin_memory() if self.ns_labels is not None else None,
+            transition_labels=(
+                self.transition_labels.pin_memory()
+                if self.transition_labels is not None
+                else None
+            ),
         )
 
     def to(self, device: torch.device, non_blocking: bool = False) -> "MicroBatch":
@@ -89,9 +93,9 @@ class MicroBatch(NamedTuple):
             terminated=self.terminated.to(device=device, non_blocking=non_blocking),
             adv_agg=self.adv_agg.to(device=device, non_blocking=non_blocking),
             ret_agg=self.ret_agg.to(device=device, non_blocking=non_blocking),
-            ns_labels=(
-                self.ns_labels.to(device=device, non_blocking=non_blocking)
-                if self.ns_labels is not None
+            transition_labels=(
+                self.transition_labels.to(device=device, non_blocking=non_blocking)
+                if self.transition_labels is not None
                 else None
             ),
         )
@@ -141,7 +145,11 @@ class MicroBatch(NamedTuple):
             terminated=self.terminated[:, start:end],
             adv_agg=self.adv_agg[:, start:end],
             ret_agg=self.ret_agg[:, start:end],
-            ns_labels=self.ns_labels[:, start:end] if self.ns_labels is not None else None,
+            transition_labels=(
+                self.transition_labels[:, start:end]
+                if self.transition_labels is not None
+                else None
+            ),
         )
 
     def split_envs(self, num_chunks: int, num_recurrent: int) -> list["MicroBatch"]:
@@ -531,7 +539,7 @@ class RolloutBuffer:
 
     Supports per-ship per-component rewards and values for the decomposed critic.
     Stores one initial GRU hidden state per rollout for recurrent re-evaluation.
-    Stores T+1 observations (one extra for aux loss label computation at update time).
+    Stores T+1 observations (one extra for transition-label computation at update time).
 
     Args:
         num_steps:       Rollout horizon T.
@@ -613,16 +621,18 @@ class RolloutBuffer:
         # update by _precompute_lambda_aggregates. Global (whole-buffer) so the
         # advantage normalization is independent of minibatch/micro-batch splits.
         self.adv_rms = torch.ones((), device=device, dtype=torch.float32)
-        # Next-state prediction labels (T, B, N, pred_dim) — set once per update
-        # by PPOTrainer._precompute_ns_labels; None for aux scales or when the
-        # aux losses are disabled.
-        self.ns_labels: torch.Tensor | None = None
+        # One-step state-transition labels (T, B, N, pred_dim) — set once per
+        # update by PPOTrainer._precompute_transition_labels. label[t] describes
+        # the transition obs[t] -> obs[t+1], and the predictive rollout reads
+        # label[t + horizon] as the target for its horizon-th belief. None for
+        # aux scales or when the predictive state loss is disabled.
+        self.transition_labels: torch.Tensor | None = None
 
         self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
         self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=_STORAGE_FLOAT)
 
-        # Episode termination mask: done | truncated — used to exclude terminal transitions
-        # from the aux next-state prediction loss.
+        # Episode termination mask: done | truncated — used to cut the GAE trace
+        # and to stop the predictive rollout at an episode boundary.
         self.terminated = torch.zeros((T, B), device=device, dtype=torch.bool)
 
         # Initial GRU hidden state at the start of this rollout
@@ -705,8 +715,8 @@ class RolloutBuffer:
         """Store the observation at the end of the rollout (the T+1-th obs slot).
 
         Called once after the rollout loop completes. This final obs enables
-        computing aux next-state prediction labels at update time without a
-        separate pre-computed target buffer.
+        computing one-step transition labels at update time without a separate
+        pre-computed target buffer.
         """
         T = self.num_steps
         for key, val in obs.items():
@@ -786,8 +796,8 @@ class RolloutBuffer:
         gradients over the list before stepping. With microbatch_tokens=None
         the list always has exactly one entry (the whole minibatch).
 
-        The extra T+1-th obs step enables computing aux next-state prediction
-        labels at update time: coordinator.compute_labels(target(obs[t]), target(obs[t+1])).
+        The extra T+1-th obs step enables computing one-step transition labels at
+        update time: coordinator.compute_labels(target(obs[t]), target(obs[t+1])).
 
         Yields:
             List of named micro-batches, each containing:
@@ -803,7 +813,7 @@ class RolloutBuffer:
                 mb_terminated:   (T, B_mb) bool
                 mb_adv_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated advantages
                 mb_ret_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated returns
-                mb_ns_labels:    (T, B_mb, N, pred_dim) float32 or None — precomputed aux labels
+                mb_transition_labels: (T, B_mb, N, pred_dim) or None — one-step labels
         """
         assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
 
@@ -853,7 +863,11 @@ class RolloutBuffer:
                         terminated=self.terminated[:, idx],
                         adv_agg=self.adv_agg[:, idx],
                         ret_agg=self.ret_agg[:, idx],
-                        ns_labels=self.ns_labels[:, idx] if self.ns_labels is not None else None,
+                        transition_labels=(
+                            self.transition_labels[:, idx]
+                            if self.transition_labels is not None
+                            else None
+                        ),
                     )
                 )
             yield chunks
@@ -899,9 +913,9 @@ class StoredRollout:
 
         self.adv_agg: torch.Tensor | None = None
         self.ret_agg: torch.Tensor | None = None
-        self.ns_labels = (
-            source.ns_labels.detach().to(device="cpu", copy=True)
-            if source.ns_labels is not None
+        self.transition_labels = (
+            source.transition_labels.detach().to(device="cpu", copy=True)
+            if source.transition_labels is not None
             else None
         )
 
@@ -987,7 +1001,11 @@ class StoredRollout:
                     terminated=self.terminated[:, indices],
                     adv_agg=self.adv_agg[:, indices],
                     ret_agg=self.ret_agg[:, indices],
-                    ns_labels=(self.ns_labels[:, indices] if self.ns_labels is not None else None),
+                    transition_labels=(
+                        self.transition_labels[:, indices]
+                        if self.transition_labels is not None
+                        else None
+                    ),
                 )
             ]
 

@@ -1,4 +1,7 @@
-"""``noise-calibration`` mode: measure NextStateHead prediction error statistics.
+"""``noise-calibration`` mode: measure one-step state-prediction error statistics.
+
+The prediction comes from the policy's horizon-0 predictive belief (see
+``models/yemong/predictive.py``): the transition out of the observation just read.
 
 Runs two phases:
   Phase 1 — 512 envs × 512 steps, collecting per-feature single-step prediction

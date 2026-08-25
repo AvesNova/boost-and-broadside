@@ -9,7 +9,7 @@ Architecture (per timestep):
                then n_temporal_per_block temporal sublayers]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
-         → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
+         → PredictiveModel              → (B, N, G)    [aux: belief state; G from ModelConfig]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
@@ -51,28 +51,11 @@ from boost_and_broadside.constants import (
 from boost_and_broadside.env.observation import BulletObsKey, YemongObservation
 from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
+from boost_and_broadside.models.yemong.predictive import (
+    PredictiveModel,
+    initialize_head_orthogonal,
+)
 from boost_and_broadside.train.rl.features import FeatureCoordinator
-
-
-class NextStateHead(nn.Module):
-    """Predicts next-state deltas and absolutes for each ship.
-
-    Output dimension is determined by the FeatureCoordinator's total_prediction_dimension.
-    """
-
-    def __init__(self, d_model: int, pred_dim: int) -> None:
-        super().__init__()
-        self.pred_dim = pred_dim
-        self.net = nn.Sequential(
-            nn.Linear(d_model, d_model * 2),
-            nn.RMSNorm(d_model * 2),
-            nn.GELU(),
-            nn.Linear(d_model * 2, pred_dim),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Args: x (..., D). Returns: (..., pred_dim)."""
-        return self.net(x)
 
 
 class TeamPMA(nn.Module):
@@ -118,19 +101,6 @@ class TeamPMA(nn.Module):
         # Each ship gets its team's pooled embedding
         idx = team_id.clamp(0, 1).long().unsqueeze(-1).expand(B, N, D)
         return team_pool.gather(1, idx)  # (B, N, D)
-
-
-def _init_head_orthogonal(head: nn.Sequential) -> None:
-    """Orthogonal-init a Linear+Norm+Act+Linear head's first and last Linear layers.
-
-    Locates layers by type instead of a fixed index, so the head's Sequential can
-    grow or reorder non-Linear layers without corrupting or missing this init.
-    """
-    linears = [m for m in head if isinstance(m, nn.Linear)]
-    nn.init.orthogonal_(linears[0].weight, gain=math.sqrt(2))
-    nn.init.zeros_(linears[0].bias)
-    nn.init.orthogonal_(linears[-1].weight, gain=0.01)
-    nn.init.zeros_(linears[-1].bias)
 
 
 class YemongPolicy(nn.Module):
@@ -206,15 +176,22 @@ class YemongPolicy(nn.Module):
                 nn.GELU(),
                 nn.Linear(hidden_dim, len(team_pma_k)),
             )
-        self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
+        # Iterated predictive belief state — one projection, one shared transition,
+        # one shared state head and one shared action head, reused at every
+        # horizon. It initializes itself; see models/yemong/predictive.py.
+        self.predictive = PredictiveModel(
+            d_model=D,
+            predictive_latent_dim=model_config.predictive_latent_dim,
+            state_prediction_dim=coordinator.total_prediction_dimension,
+        )
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
         # rather than fixed Sequential index, so inserting a non-Linear layer (e.g.
         # Dropout) into a head can't silently init the wrong module.
-        for head in [self.action_head, self.value_head_local, self.next_state_head.net]:
-            _init_head_orthogonal(head)
+        for head in [self.action_head, self.value_head_local]:
+            initialize_head_orthogonal(head)
         if team_pma_k:
-            _init_head_orthogonal(self.value_head_win)
+            initialize_head_orthogonal(self.value_head_win)
             nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
             nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
             nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
@@ -225,7 +202,7 @@ class YemongPolicy(nn.Module):
         Stated as module references rather than name patterns so a renamed or
         newly added head cannot silently redefine what "shared" means. Anything
         not listed here is head-specific: the action head, the two value heads
-        and their pooling, and the next-state head.
+        and their pooling, and the whole predictive model.
         """
         modules: list[nn.Module] = [self.encoder, self.yemong_layers]
         if self.bullet_encoder is not None:
@@ -325,7 +302,8 @@ class YemongPolicy(nn.Module):
             logprob:    (B, N) float — sum of log probs for each sub-action.
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
-            pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
+            pred_next:  (B, N, pred_dim) float — the horizon-0 predictive latent's
+                        state prediction: the transition out of *this* observation.
             new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
         """
         alive = obs["alive"]  # (B, N+M) bool — ships then fields
@@ -380,7 +358,10 @@ class YemongPolicy(nn.Module):
         team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 12)
-        pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
+        # One-step transition belief. The rollout itself never uses it — it is
+        # what the evaluation modes decode into an imagined next observation —
+        # so only horizon 0 is worth computing here.
+        pred_next = self.predictive.predict_state(self.predictive(x_ships))  # (B, N, pred_dim)
         value = self.value_head_local(x_ships)  # (B, N, K)
         if self._team_pma_k:
             x_team = self.team_pma(x_ships, team_id_ships, alive_ships)  # (B, N, D)
@@ -404,13 +385,14 @@ class YemongPolicy(nn.Module):
         alive_mask: torch.Tensor,
         done_mask: torch.Tensor | None = None,
         return_encoder_output: bool = False,
+        return_predictive_latent: bool = False,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
         torch.Tensor,
         torch.Tensor,
         torch.Tensor | None,
-        torch.Tensor,
+        torch.Tensor | None,
     ]:
         """Re-evaluate actions over a full rollout for PPO update.
 
@@ -429,6 +411,11 @@ class YemongPolicy(nn.Module):
             return_encoder_output: If True, return raw encoder embeddings as 5th value.
                                    Pass False (default) when sigreg_coef=0 to avoid
                                    keeping the encoder output tensor alive in RAM.
+            return_predictive_latent: If True, project the post-Yemong ship latent
+                                   into the horizon-0 predictive latent and return
+                                   it. Pass False (default) when the predictive
+                                   auxiliary losses are disabled, so neither the
+                                   projection nor its activations are built.
 
         Returns:
             logprob:    (T, B, N) float.
@@ -437,7 +424,11 @@ class YemongPolicy(nn.Module):
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
-            pred_next:  (T, B, N, pred_dim) float — predicted next-state predictions (with grad).
+            predictive_latent: (T, B, N, predictive_latent_dim) float — the belief
+                        state at horizon 0 (with grad), or None if
+                        return_predictive_latent=False. The caller advances it
+                        with ``policy.predictive``; nothing downstream of the
+                        projection may read future rollout data.
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         D = self._d_model
@@ -503,7 +494,7 @@ class YemongPolicy(nn.Module):
         team_id_ships = obs["team_id"][:, :, :N]  # (T, B, N)
 
         logits = self.action_head(x_ships)  # (T, B, N, 12)
-        pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
+        predictive_latent = self.predictive(x_ships) if return_predictive_latent else None
 
         # Local value path: per-ship embedding, no team pooling.
         local_value = self.value_head_local(x_ships)  # (T, B, N, K)
@@ -533,7 +524,7 @@ class YemongPolicy(nn.Module):
 
         logprob, entropy = _evaluate_action(logits, actions)
 
-        return logprob, entropy, new_value, logits, z, pred_next
+        return logprob, entropy, new_value, logits, z, predictive_latent
 
 
 # ---------------------------------------------------------------------------

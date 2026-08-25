@@ -256,6 +256,66 @@ def _check_config_drift(
     )
 
 
+class LegacyAuxiliaryHeadWarning(UserWarning):
+    """A checkpoint carried the retired one-step next-state head."""
+
+
+# The state-dict prefix of the auxiliary head the predictive belief state
+# replaced. Its weights are a 128 -> 256 -> P decoder off the policy latent and
+# have no counterpart in the 96-wide predictive model, so there is nothing to
+# migrate — only something to drop.
+_RETIRED_AUXILIARY_PREFIX = "next_state_head."
+
+
+def _load_policy_state(policy: YemongPolicy, state: Mapping[str, object], path: str) -> None:
+    """Load weights, tolerating exactly one architecture change: the aux head.
+
+    A checkpoint written before the predictive belief state carries the retired
+    one-step head's weights and none of the predictive model's. The *policy* it
+    describes — trunk, actor, critics — is unchanged, so refusing it would cost
+    the ability to play, rate, or replay every run recorded so far in exchange
+    for nothing. The predictive weights are left at their initialization and the
+    caller is told, since a freshly initialized belief state decodes noise: such
+    a policy acts exactly as it always did, but its state and action predictions
+    mean nothing until it is trained again.
+
+    Any other mismatch is still an error.
+
+    Args:
+        policy: Freshly constructed policy to load into.
+        state:  The checkpoint's ``policy_state_dict``.
+        path:   Checkpoint path, for messages.
+
+    Raises:
+        ValueError: If the weights do not fit the policy for any other reason.
+    """
+    retired = [key for key in state if key.startswith(_RETIRED_AUXILIARY_PREFIX)]
+    if not retired:
+        try:
+            policy.load_state_dict(state)
+        except RuntimeError as error:
+            raise ValueError(
+                f"checkpoint {path!r} has incompatible policy weights: {error}"
+            ) from None
+        return
+
+    kept = {key: value for key, value in state.items() if key not in retired}
+    missing, unexpected = policy.load_state_dict(kept, strict=False)
+    predictive = [name for name in missing if name.startswith("predictive.")]
+    if unexpected or sorted(missing) != sorted(predictive):
+        raise ValueError(
+            f"checkpoint {path!r} has incompatible policy weights: missing "
+            f"{sorted(set(missing) - set(predictive))}, unexpected {sorted(unexpected)}"
+        )
+    warnings.warn(
+        f"checkpoint {path!r} predates the predictive belief state and carries the "
+        "retired one-step next-state head. The policy loads unchanged; its predictive "
+        "heads are untrained, so state and action predictions from it are meaningless.",
+        LegacyAuxiliaryHeadWarning,
+        stacklevel=3,
+    )
+
+
 def load_policy_bundle(
     path: str,
     *,
@@ -340,10 +400,7 @@ def load_policy_bundle(
             f"checkpoint {path!r} has invalid policy weights: expected a mapping, "
             f"got {type(policy_state).__name__}"
         )
-    try:
-        policy.load_state_dict(policy_state)
-    except RuntimeError as error:
-        raise ValueError(f"checkpoint {path!r} has incompatible policy weights: {error}") from None
+    _load_policy_state(policy, policy_state, path)
     policy.to(device)
     if freeze:
         policy.eval()
