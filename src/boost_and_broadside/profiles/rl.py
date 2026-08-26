@@ -53,11 +53,25 @@ RL_PROFILE = ProfileSpec(
     paradigm="ego_pass",
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
-    # The state family keeps the weight the one-step next-state loss carried; the
-    # action family enters at the same weight, since neither is known to deserve
-    # more than the other and equal weighting is the baseline worth ablating from.
-    predictive_state_coef=0.2,
-    predictive_action_coef=0.2,
+    # Set from measured gradient pressure, not from the loss values.  At 0.2/0.2
+    # run 722 gave the two families 43% of the trunk gradient -- ``predictive_state``
+    # alone averaged 0.336, matching the policy gradient's 0.330 and nearly four
+    # times the critic's share by the end of the run.  An auxiliary that keeps pace
+    # with the objective for a hundred million steps is a second objective, and the
+    # trunk cosines say this one pulls almost orthogonally to the policy (+0.02),
+    # while the *action* family is the one that pulls with it (+0.23).
+    #
+    # These target ~0.05 trunk share each.  A term's gradient norm is linear in its
+    # coefficient, so with policy+value+entropy holding 0.571 of the budget the two
+    # scale factors solve to 0.094 and 0.337 -- which is why the coefficients are
+    # asymmetric.  Setting both to 0.05 would leave a 3.5x imbalance intact, since
+    # the state family produces 3.6x the gradient per unit coefficient.
+    #
+    # First-order only: the shares are measured against a policy trained at the old
+    # weights, so check ``grad_share/trunk_top_level/*`` once the run is past the
+    # behavior-cloning decay and adjust if it landed wide.
+    predictive_state_coef=0.02,
+    predictive_action_coef=0.07,
     # Twelve decisions is 0.4 s of game time at the 30 Hz decision rate -- about
     # one bullet flight, and long enough that where a ship will be and what it
     # will do are genuinely open questions.
