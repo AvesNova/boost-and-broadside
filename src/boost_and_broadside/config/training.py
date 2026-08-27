@@ -8,6 +8,13 @@ from types import MappingProxyType
 from boost_and_broadside.config.core import EnvConfig, RewardConfig
 from boost_and_broadside.config.schedule import TrainingSchedule
 
+# How much of the predictive rollout each step decodes. See
+# ``TrainConfig.predictive_mode``. Spelled as a plain ``str`` with a runtime
+# check, like ``paradigm``, because the override parser can coerce ``str`` and
+# would refuse a Literal -- and comparing two decode plans is exactly the kind
+# of thing you want to do from the command line without editing a profile.
+PREDICTIVE_MODES: tuple[str, ...] = ("off", "full", "sampled")
+
 
 class _FrozenFloatMapping(Mapping[str, float]):
     """A pickle-compatible immutable mapping for nested config values."""
@@ -273,6 +280,18 @@ class TrainConfig:
     # Decisions the belief state is rolled forward, open-loop. Horizon 0 is the
     # observed step, so this many horizons are supervised in total.
     prediction_horizon: int = 12
+    # How many of those horizons each rollout step actually decodes.
+    #   "full"    — every step decodes every horizon.
+    #   "sampled" — every step decodes one horizon, with the horizons split
+    #               evenly across the rollout's steps (see
+    #               ``stratified_depth_assignment``). Unbiased for the same
+    #               loss, and roughly a quarter of the compute, because a step
+    #               that decodes at depth d only pays for d transitions and one
+    #               pair of heads instead of the whole chain.
+    #   "off"     — the predictive block does not run at all.
+    # Setting both coefficients to zero also skips the block; "off" is the
+    # switch to reach for, the coefficient path is an implementation detail.
+    predictive_mode: str = "sampled"
 
     # --- Static field map cache (None when num_fields=0) ---
     field_map: FieldMapConfig | None = None
@@ -329,5 +348,10 @@ class TrainConfig:
             )
         if self.prediction_horizon < 1:
             raise ValueError(f"prediction_horizon must be positive, got {self.prediction_horizon}")
+        if self.predictive_mode not in PREDICTIVE_MODES:
+            raise ValueError(
+                f"predictive_mode must be one of {', '.join(PREDICTIVE_MODES)}, "
+                f"got {self.predictive_mode!r}"
+            )
         if not 0.0 < self.bc_winrate_target <= 1.0:
             raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")

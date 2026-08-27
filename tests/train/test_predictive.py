@@ -29,8 +29,12 @@ from boost_and_broadside.models.yemong.predictive import (
     PredictiveTransition,
 )
 from boost_and_broadside.train.rl.ppo import (
+    ally_token_mask,
+    episode_boundary_counts,
     factored_action_statistics,
     predictive_horizon_masks,
+    predictive_masks_at,
+    stratified_depth_assignment,
 )
 
 PREDICTIVE_LATENT_DIM = 16
@@ -327,10 +331,19 @@ class TestFactoredActionStatistics:
 # ----------------------------------------------------------------------
 
 
-def _trainer(tmp_path, **kwargs):
+def _trainer(tmp_path, predictive_mode="full", **kwargs):
+    """A trainer for the predictive tests.
+
+    Defaults to ``full`` so the dense assertions below stay meaningful: this
+    fixture is 4 envs x 4 ships x 16 steps, and spreading 12 depths over 16
+    steps leaves 1-2 steps per depth, where a (depth, side) group being empty
+    is ordinary rather than a bug. The sampled path has its own tests.
+    """
     from tests.train.test_ppo import _make_trainer
 
-    return _make_trainer(checkpoint_dir=str(tmp_path), **kwargs)
+    trainer = _make_trainer(checkpoint_dir=str(tmp_path), **kwargs)
+    trainer.cfg = dataclasses.replace(trainer.cfg, predictive_mode=predictive_mode)
+    return trainer
 
 
 def _prepared_chunks(trainer):
@@ -448,7 +461,11 @@ class TestTrainerIntegration:
         batch, denominators = _prepared_minibatch(trainer)
         state_loss, _, diagnostics = _run_predictive(trainer, batch, denominators)
         per_horizon = diagnostics["predictive_state_by_horizon"]
-        torch.testing.assert_close(state_loss, per_horizon.sum() / len(per_horizon))
+        # Averaged over the depths that scored anything: an empty depth
+        # contributes a zero numerator and must not also claim a share of the
+        # divisor.
+        torch.testing.assert_close(state_loss, per_horizon.sum() / denominators["state_depths"])
+        assert (per_horizon > 0).sum() == denominators["state_depths"]
 
     def test_the_predictive_losses_reach_the_trunk(self, tmp_path):
         """The point of the objective is pressure on the shared representation."""
@@ -524,12 +541,26 @@ class TestAllyEnemyActionDiagnostics:
 
     def test_the_two_sides_partition_the_scored_actions(self, tmp_path):
         trainer = _trainer(tmp_path)
-        chunks, denominators = _prepared_chunks(trainer)
+        _, denominators = _prepared_chunks(trainer)
         torch.testing.assert_close(
             denominators["action_counts_ally"] + denominators["action_counts_enemy"],
             denominators["action_counts"],
         )
-        del chunks
+
+    def test_the_sides_still_partition_under_sampling(self, tmp_path):
+        """Only where a depth was scored at all.
+
+        The combined count is clamped to one so it can divide; the two sides are
+        deliberately left unclamped so an empty side reads NaN rather than zero.
+        A depth with no valid tokens therefore shows 1 against 0 + 0, which is
+        the guard doing its job, not a partition failure.
+        """
+        trainer = _trainer(tmp_path, predictive_mode="sampled")
+        _, denominators = _prepared_chunks(trainer)
+        sides = denominators["action_counts_ally"] + denominators["action_counts_enemy"]
+        scored = sides > 0
+        assert scored.any(), "no depth scored an action at all"
+        torch.testing.assert_close(sides[scored], denominators["action_counts"][scored])
 
     def test_ego_pass_measures_no_ally_action_at_the_immediate_horizon(self, tmp_path):
         """Those are exactly the self-generated actions the objective excludes.
@@ -550,6 +581,15 @@ class TestAllyEnemyActionDiagnostics:
         # The opposition's *own* later decisions are measurable on both sides.
         assert torch.isfinite(ally[1:]).all()
         assert torch.isfinite(enemy[1:]).all()
+
+    def test_the_immediate_ally_exclusion_survives_sampling(self, tmp_path):
+        """The self-generation rule is about the rollout, not the decode plan."""
+        trainer = _trainer(tmp_path, predictive_mode="sampled", paradigm="ego_pass")
+        batch, denominators = _prepared_minibatch(trainer)
+        _, _, diagnostics = _run_predictive(trainer, batch, denominators)
+
+        assert denominators["action_counts_ally"][0].item() == 0.0
+        assert torch.isnan(diagnostics["predictive_action_ce_ally_by_horizon"][0])
 
     def test_the_combined_series_is_the_count_weighted_mean_of_the_sides(self, tmp_path):
         """The split has to describe the total, not a differently-masked quantity."""
@@ -591,6 +631,195 @@ class TestAllyEnemyActionDiagnostics:
         combined = diagnostics["predictive_action_ce_by_horizon"]
         torch.testing.assert_close(action_loss, combined.sum() / len(combined))
         assert not action_loss.isnan()
+
+
+class TestStratifiedDepthAssignment:
+    """Which rollout step decodes at which depth, when only one of them does."""
+
+    def test_the_depths_are_split_evenly(self):
+        for steps, horizon in ((128, 12), (16, 12), (120, 12), (13, 5)):
+            assignment = stratified_depth_assignment(steps, horizon)
+            depths = min(horizon, steps)
+            counts = torch.bincount(assignment, minlength=depths)
+            assert assignment.shape == (steps,)
+            assert counts.sum().item() == steps
+            assert counts.max().item() - counts.min().item() <= 1, (
+                f"{steps} over {horizon}: {counts.tolist()}"
+            )
+            assert (counts > 0).all()
+
+    def test_a_horizon_longer_than_the_rollout_is_capped(self):
+        assignment = stratified_depth_assignment(4, 12)
+        assert assignment.max().item() == 3
+        assert sorted(assignment.tolist()) == [0, 1, 2, 3]
+
+    def test_the_remainder_does_not_always_land_on_the_same_depths(self):
+        """128 over 12 leaves 8 steps over; parking them on depths 0-7 every
+        minibatch would give those depths permanently more data."""
+        torch.manual_seed(0)
+        favoured = set()
+        for _ in range(40):
+            counts = torch.bincount(stratified_depth_assignment(128, 12), minlength=12)
+            favoured |= {int(d) for d in (counts == counts.max()).nonzero().flatten()}
+        assert len(favoured) == 12, f"only {sorted(favoured)} ever drew the extra step"
+
+    def test_it_is_not_the_modulo_pattern(self):
+        """`t % 12` splits evenly too, and would lock each depth to one phase of
+        anything periodic in the game — the firing cooldown is three decisions."""
+        torch.manual_seed(0)
+        modulo = torch.arange(128) % 12
+        assert not any(
+            torch.equal(stratified_depth_assignment(128, 12), modulo) for _ in range(20)
+        )
+
+    def test_the_draw_follows_the_seeded_generator(self):
+        torch.manual_seed(7)
+        first = stratified_depth_assignment(128, 12)
+        torch.manual_seed(7)
+        assert torch.equal(stratified_depth_assignment(128, 12), first)
+
+
+class TestSampledPlan:
+    def test_every_step_is_advanced_exactly_its_own_depth(self, tmp_path):
+        """The assertion this whole scheme rests on.
+
+        A step decoded at the wrong depth trains perfectly well and teaches the
+        wrong thing. With the transition replaced by a known increment, the
+        belief handed to the heads must equal the projection plus exactly the
+        depth that step was assigned.
+        """
+        trainer = _trainer(tmp_path, predictive_mode="sampled")
+        batch, denominators = _prepared_minibatch(trainer)
+        assignment = denominators["depth_assignment"]
+
+        steps = batch.alive.shape[0]
+        # A latent that names its own base step, so a row is traceable.
+        latent = (
+            torch.arange(steps, dtype=torch.float32)
+            .view(steps, 1, 1, 1)
+            .expand(steps, batch.alive.shape[1], batch.alive.shape[2], 4)
+            .contiguous()
+        )
+
+        class Counting(torch.nn.Module):
+            """Stands in for the transition: one application adds exactly one."""
+
+            def advance(self, belief):
+                return belief + 1.0
+
+        ally = ally_token_mask(batch.obs, batch.alive.shape[-1], steps)
+        seen = {}
+        for depth, belief, reached, _, _, _ in trainer._predictive_plan(
+            latent, batch, denominators, ally, Counting()
+        ):
+            base = belief[..., 0, 0, 0] - depth  # strip the advance to recover the step
+            for row, step in enumerate(base.tolist()):
+                seen[int(step)] = depth
+                assert reached[row].item() == min(int(step) + depth, steps - 1)
+
+        assert len(seen) == steps, "every rollout step must decode exactly once"
+        for step, depth in seen.items():
+            assert depth == assignment[step].item(), f"step {step} decoded at {depth}"
+
+    def test_the_sampled_masks_agree_with_the_full_horizon_masks(self, tmp_path):
+        """Two mask implementations, one meaning — pinned so they cannot drift."""
+        trainer = _trainer(tmp_path, predictive_mode="sampled")
+        batch, _ = _prepared_minibatch(trainer)
+        boundary = episode_boundary_counts(batch.terminated)
+        full = {
+            depth: (state, action)
+            for depth, state, action in predictive_horizon_masks(
+                batch.alive, batch.terminated, batch.actor_mask, trainer.cfg.prediction_horizon
+            )
+        }
+        steps = batch.alive.shape[0]
+        for depth, (full_state, full_action) in full.items():
+            span = full_state.shape[0]
+            rows = torch.arange(span)
+            state, action, reached = predictive_masks_at(
+                rows, depth, batch.alive, batch.terminated, batch.actor_mask, boundary
+            )
+            torch.testing.assert_close(state, full_state)
+            torch.testing.assert_close(action, full_action)
+            torch.testing.assert_close(reached, (rows + depth).clamp(max=steps - 1))
+
+    def test_targets_past_the_rollout_are_masked_out(self, tmp_path):
+        """A late step drawn at a deep horizon has nothing to be scored against."""
+        trainer = _trainer(tmp_path, predictive_mode="sampled")
+        batch, _ = _prepared_minibatch(trainer)
+        boundary = episode_boundary_counts(batch.terminated)
+        steps = batch.alive.shape[0]
+        rows = torch.tensor([steps - 1, steps - 2, 0])
+        state, action, reached = predictive_masks_at(
+            rows, 3, batch.alive, batch.terminated, batch.actor_mask, boundary
+        )
+        assert not state[0].any() and not action[0].any()  # steps-1 + 3 is past the end
+        assert not state[1].any() and not action[1].any()
+        assert reached.max().item() <= steps - 1
+
+    def test_the_sampled_loss_matches_the_full_loss_in_expectation(self, tmp_path):
+        """Sampling changes the estimator, not the objective.
+
+        Averaging the sampled loss over many draws has to converge on the full
+        mean-over-horizons — with no rescaling, since E_h[L_h] already is it.
+        """
+        trainer = _trainer(tmp_path, predictive_mode="full")
+        batch, full_denoms = _prepared_minibatch(trainer)
+        full_state, full_action, _ = _run_predictive(trainer, batch, full_denoms)
+
+        trainer.cfg = dataclasses.replace(trainer.cfg, predictive_mode="sampled")
+        states, actions = [], []
+        torch.manual_seed(0)
+        for _ in range(60):
+            chunks = [batch]
+            denoms = trainer._minibatch_denominators(chunks, trainer.buffer, True)
+            state, action, _ = _run_predictive(trainer, batch, denoms)
+            states.append(state.item())
+            actions.append(action.item())
+
+        mean_state = sum(states) / len(states)
+        mean_action = sum(actions) / len(actions)
+        assert mean_state == pytest.approx(full_state.item(), rel=0.15), (
+            f"sampled mean {mean_state:.4f} vs full {full_state.item():.4f}"
+        )
+        assert mean_action == pytest.approx(full_action.item(), rel=0.15), (
+            f"sampled mean {mean_action:.4f} vs full {full_action.item():.4f}"
+        )
+
+
+class TestPredictiveMode:
+    def test_off_skips_the_block_entirely(self, tmp_path):
+        trainer = _trainer(tmp_path, predictive_mode="off")
+        assert not trainer._predictive_enabled
+        trainer._precompute_transition_labels(trainer.buffer)
+        assert trainer.buffer.transition_labels is None
+        trainer.train()
+
+    def test_sampled_still_trains_every_predictive_module(self, tmp_path):
+        trainer = _trainer(tmp_path, predictive_mode="sampled")
+        batch, denominators = _prepared_minibatch(trainer)
+        state_loss, action_loss, _ = _run_predictive(trainer, batch, denominators)
+        grads = torch.autograd.grad(
+            state_loss + action_loss,
+            [
+                trainer._policy_module.predictive.projection.project.weight,
+                trainer._policy_module.predictive.transition.mlp[0].weight,
+                trainer._policy_module.predictive.state_prediction_head.net[0].weight,
+                trainer._policy_module.predictive.action_prediction_head.net[0].weight,
+            ],
+            allow_unused=True,
+        )
+        assert all(g is not None and g.abs().sum() > 0 for g in grads)
+
+    @pytest.mark.parametrize("mode", ["full", "sampled"])
+    def test_a_full_update_runs_in_either_mode(self, mode, tmp_path):
+        _trainer(tmp_path, predictive_mode=mode).train()
+
+    def test_an_unknown_mode_is_refused(self, tmp_path):
+        from tests.train.test_ppo import _make_train_config
+
+        with pytest.raises(ValueError, match="predictive_mode"):
+            dataclasses.replace(_make_train_config(), predictive_mode="occasionally")
 
 
 class TestDisabledPath:

@@ -330,6 +330,110 @@ def predictive_horizon_masks(
 ACTION_PREDICTION_GROUPS: tuple[str, ...] = ("", "_ally", "_enemy")
 
 
+def stratified_depth_assignment(
+    num_steps: int,
+    prediction_horizon: int,
+    device: torch.device | None = None,
+) -> torch.Tensor:
+    """Assign each rollout step one predictive depth, split evenly across depths.
+
+    Independent uniform draws would leave each depth with a random number of
+    steps — Binomial(T, 1/H), so 10.7 ± 3.1 at the shipping shape. Dealing a
+    fixed multiset instead pins the count per depth to within one, which buys
+    two things beyond the obvious variance reduction:
+
+    * the *shapes* of every tensor in the rollout become identical from step to
+      step, so ``torch.compile`` sees one graph rather than a new one per draw;
+    * the total transition work is exactly ``T * (H - 1) / 2`` rather than a
+      random variable around it, so peak memory is what the average says.
+
+    ``T`` need not divide ``H``. The remainder steps go to a *randomly chosen*
+    subset of depths, so across a run's minibatches every depth draws the extra
+    step equally often, and the multiset of counts — and therefore every shape —
+    stays fixed.
+
+    The assignment is a permutation, never ``t % H``: the modulo pattern would
+    lock each depth to one phase of any periodic structure in the game, and the
+    firing cooldown is three decisions against a twelve-deep horizon.
+
+    Args:
+        num_steps: T — rollout steps to assign.
+        prediction_horizon: H — depths to spread across, capped at T.
+        device: Device for the returned tensor. The draw itself always runs on
+            the CPU generator, the one ``--seed`` covers and the one that
+            already orders minibatches.
+
+    Returns:
+        (T,) int64 depths in ``[0, min(H, T))``, counts differing by at most one.
+    """
+    depths = min(prediction_horizon, num_steps)
+    base, remainder = divmod(num_steps, depths)
+    counts = torch.full((depths,), base, dtype=torch.long)
+    if remainder:
+        counts[torch.randperm(depths)[:remainder]] += 1
+    assignment = torch.repeat_interleave(torch.arange(depths), counts)
+    assignment = assignment[torch.randperm(num_steps)]
+    return assignment.to(device) if device is not None else assignment
+
+
+def predictive_masks_at(
+    base: torch.Tensor,
+    depth: int,
+    alive: torch.Tensor,
+    terminated: torch.Tensor,
+    actor_mask: torch.Tensor,
+    boundary_counts: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Validity of a horizon-``depth`` prediction made from the given base steps.
+
+    The index-addressed counterpart of :func:`predictive_horizon_masks`, for the
+    sampled mode where each step sits at its own depth and the contiguous
+    per-horizon slabs no longer exist. Same rules, stated the same way: the
+    trajectory must not cross an episode boundary in ``[t, t + depth)``, the ship
+    must be alive at both ends, a *state* prediction additionally needs the
+    reached step to be non-terminal, and horizon 0 excludes the actions the
+    latent itself generated.
+
+    Episode boundaries are read off a prefix sum rather than walked step by step,
+    which is what lets an arbitrary set of base steps be checked at once.
+
+    Args:
+        base:  (n,) int64 rollout steps the predictions are made from.
+        depth: Horizon these predictions sit at.
+        alive: (T, B, N) bool.
+        terminated: (T, B) bool.
+        actor_mask: (T, B, N) bool — actions sampled from this very pass.
+        boundary_counts: (T + 1, B) int64 prefix sum of ``terminated``.
+
+    Returns:
+        ``(state_mask, action_mask, reached)`` — masks shaped (n, B, N) and the
+        clamped ``base + depth`` index the targets are gathered from. Rows whose
+        target falls past the rollout are already masked out.
+    """
+    steps = alive.shape[0]
+    reached = base + depth
+    in_range = reached < steps
+    reached = reached.clamp(max=steps - 1)
+
+    crossed = boundary_counts[reached] - boundary_counts[base]  # (n, B)
+    entity = (
+        (crossed == 0).unsqueeze(-1)
+        & alive[base]
+        & alive[reached]
+        & in_range[:, None, None]
+    )
+    state_mask = entity & ~terminated[reached].unsqueeze(-1)
+    action_mask = entity if depth else entity & ~actor_mask[base]
+    return state_mask, action_mask, reached
+
+
+def episode_boundary_counts(terminated: torch.Tensor) -> torch.Tensor:
+    """(T + 1, B) prefix sum of episode endings, for O(1) boundary queries."""
+    counts = terminated.new_zeros((terminated.shape[0] + 1, terminated.shape[1]), dtype=torch.long)
+    counts[1:] = terminated.long().cumsum(0)
+    return counts
+
+
 def ally_token_mask(
     obs: YemongObservation,
     num_ships: int,
@@ -1572,6 +1676,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         need_predictive = is_primary and self._predictive_enabled
         steps, _, ships = chunks[0].alive.shape
         horizons = min(self.cfg.prediction_horizon, steps)
+        # Drawn once per optimizer minibatch and shared by its micro-batches, so
+        # every micro-batch scores the same depths and the denominators below
+        # describe the whole minibatch. It rides along in the returned dict
+        # rather than being redrawn in the loss, where it would disagree.
+        assignment = (
+            stratified_depth_assignment(steps, self.cfg.prediction_horizon)
+            if need_predictive and self.cfg.predictive_mode == "sampled"
+            else None
+        )
+        # Counted on the host once, so the belief rollout can slice its prefixes
+        # from Python ints instead of syncing the device every depth.
+        depth_counts = (
+            None
+            if assignment is None
+            else tuple(torch.bincount(assignment, minlength=horizons).tolist())
+        )
+        if assignment is not None:
+            assignment = assignment.to(source_device)
         state_counts = torch.zeros(horizons, device=source_device)
         action_counts = {
             group: torch.zeros(horizons, device=source_device) for group in ACTION_PREDICTION_GROUPS
@@ -1592,15 +1714,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # over its own valid tokens, so every horizon needs a denominator
             # that spans the whole minibatch rather than this micro-batch.
             ally = ally_token_mask(chunk.obs, ships, steps)
-            for horizon, state_mask, action_mask in predictive_horizon_masks(
-                mb_alive, chunk.terminated, mb_actor_mask, self.cfg.prediction_horizon
-            ):
-                span = state_mask.shape[0]
+            if assignment is None:
+                masks = (
+                    (horizon, state, action, slice(None))
+                    for horizon, state, action in predictive_horizon_masks(
+                        mb_alive, chunk.terminated, mb_actor_mask, self.cfg.prediction_horizon
+                    )
+                )
+            else:
+                masks = self._sampled_masks(assignment, mb_alive, chunk.terminated, mb_actor_mask)
+            for horizon, state_mask, action_mask, rows in masks:
+                ally_rows = ally[rows] if assignment is not None else ally[: state_mask.shape[0]]
                 state_counts[horizon] += state_mask.sum()
                 action_counts[""][horizon] += action_mask.sum()
-                action_counts["_ally"][horizon] += (action_mask & ally[:span]).sum()
-                action_counts["_enemy"][horizon] += (action_mask & ~ally[:span]).sum()
+                action_counts["_ally"][horizon] += (action_mask & ally_rows).sum()
+                action_counts["_enemy"][horizon] += (action_mask & ~ally_rows).sum()
         denominators = {
+            "depth_assignment": None if assignment is None else assignment.to(self.device),
+            "depth_counts": depth_counts,
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
             "bc_sum": bc_sum.clamp(min=1.0).to(self.device),
@@ -1608,6 +1739,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "numel": float(numel),
             "adv_rms": buf.adv_rms,
         }
+        # Depths that scored anything. A depth with no valid tokens contributes a
+        # zero numerator, so dividing the total by the full horizon count would
+        # pull the mean toward zero by however many depths happened to come up
+        # empty — a bias that exists in either mode and that sampling, with far
+        # fewer steps per depth, makes easy to hit.
+        denominators["state_depths"] = (state_counts > 0).sum().clamp(min=1).float().to(self.device)
+        denominators["action_depths"] = (
+            (action_counts[""] > 0).sum().clamp(min=1).float().to(self.device)
+        )
         for group, counts in action_counts.items():
             # The unsplit group normalizes the loss and must never be zero. The
             # two sides are diagnostics, and an empty side is left to divide by
@@ -1918,10 +2058,93 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         return loss, diag
 
+    def _predictive_plan(
+        self,
+        predictive_latent: torch.Tensor,
+        batch: MicroBatch,
+        denoms: dict,
+        ally: torch.Tensor,
+        predictive: torch.nn.Module,
+    ):
+        """Yield every decode point of the belief rollout, belief already advanced.
+
+        The two modes differ only in *which* rollout steps decode at *which*
+        depth; the scoring is identical, so it lives in the caller and this
+        supplies the plan.
+
+        ``full`` decodes every step at every depth: the belief is one contiguous
+        slab that loses its last step each time, since that step's next horizon
+        would need data past the end of the rollout.
+
+        ``sampled`` gives each step a single depth. Steps are visited
+        deepest-first, so the ones still advancing are always a prefix and the
+        belief shrinks by slicing rather than gathering. The prefix lengths come
+        from host-side counts, which is what keeps a twelve-deep rollout free of
+        twelve device synchronisations.
+
+        Yields:
+            ``(depth, belief, reached, state_mask, action_mask, ally_rows)``,
+            where ``reached`` indexes the labels and action targets.
+        """
+        assignment = denoms.get("depth_assignment")
+        horizon = self.cfg.prediction_horizon
+        if assignment is None:
+            belief = predictive_latent
+            for depth, state_mask, action_mask in predictive_horizon_masks(
+                batch.alive, batch.terminated, batch.actor_mask, horizon
+            ):
+                span = state_mask.shape[0]
+                reached = torch.arange(span, device=belief.device) + depth
+                yield depth, belief, reached, state_mask, action_mask, ally[:span]
+                if span > 1:
+                    belief = predictive.advance(belief[: span - 1])
+            return
+
+        counts = denoms["depth_counts"]
+        boundary_counts = episode_boundary_counts(batch.terminated)
+        # Deepest first, so "still advancing" is a prefix at every depth.
+        active = torch.argsort(assignment, descending=True, stable=True)
+        belief = predictive_latent[active]
+        for depth in range(len(counts)):
+            remaining = sum(counts[depth + 1 :])
+            rows = active[remaining:]
+            state_mask, action_mask, reached = predictive_masks_at(
+                rows, depth, batch.alive, batch.terminated, batch.actor_mask, boundary_counts
+            )
+            yield depth, belief[remaining:], reached, state_mask, action_mask, ally[rows]
+            active = active[:remaining]
+            belief = predictive.advance(belief[:remaining])
+
+    def _sampled_masks(
+        self,
+        assignment: torch.Tensor,
+        alive: torch.Tensor,
+        terminated: torch.Tensor,
+        actor_mask: torch.Tensor,
+    ):
+        """Yield ``(depth, state_mask, action_mask, rows)`` for the sampled plan.
+
+        ``rows`` are the rollout steps decoding at that depth, ordered so that
+        the belief rollout can hand this method a contiguous slice: steps are
+        visited deepest-first, so "still advancing" is always a prefix.
+        """
+        boundary_counts = episode_boundary_counts(terminated)
+        order = torch.argsort(assignment, descending=True, stable=True)
+        ordered = assignment[order]
+        horizons = min(self.cfg.prediction_horizon, alive.shape[0])
+        for depth in range(horizons):
+            rows = order[ordered == depth]
+            state_mask, action_mask, _ = predictive_masks_at(
+                rows, depth, alive, terminated, actor_mask, boundary_counts
+            )
+            yield depth, state_mask, action_mask, rows
+
     @property
     def _predictive_enabled(self) -> bool:
         """Whether either predictive auxiliary family carries weight this run."""
 
+        if self.cfg.predictive_mode == "off":
+            return False
         return self.cfg.predictive_state_coef > 0.0 or self.cfg.predictive_action_coef > 0.0
 
     def _predictive_losses(
@@ -2001,22 +2224,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             group: torch.zeros(3, device=self.device) for group in ACTION_PREDICTION_GROUPS
         }
         steps, _, ships = batch.alive.shape
-        ally = ally_token_mask(batch.obs, ships, steps) if want_action else None
+        # Always built: the rollout plan slices it per decode point, and a team
+        # comparison is far cheaper than branching the plan on which family is on.
+        ally = ally_token_mask(batch.obs, ships, steps)
 
-        latent = predictive_latent
         # The rollout runs in the same reduced precision as the trunk that fed
         # it: its activation memory scales with the horizon, and it is the one
         # part of the update whose cost is linear in a configurable depth. The
         # reductions stay fp32 — autocast leaves them alone, and every predicted
         # tensor is upcast before it enters one.
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            for horizon, state_mask, action_mask in predictive_horizon_masks(
-                batch.alive, batch.terminated, batch.actor_mask, self.cfg.prediction_horizon
+            for horizon, belief, reached, state_mask, action_mask, ally_rows in (
+                self._predictive_plan(predictive_latent, batch, denoms, ally, predictive)
             ):
-                span = state_mask.shape[0]
                 if want_state:
-                    prediction = predictive.predict_state(latent).float()
-                    squared = (prediction - labels[horizon : horizon + span].detach()).pow(2)
+                    prediction = predictive.predict_state(belief).float()
+                    squared = (prediction - labels[reached].detach()).pow(2)
                     squared = squared * self.aux_weights * state_mask.unsqueeze(-1)
                     horizon_loss = squared.sum() / (state_counts[horizon] * prediction_dim)
                     state_total = state_total + horizon_loss
@@ -2027,9 +2250,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                             # same measurement the one-step head used to report.
                             state_per_feature = squared.sum((0, 1, 2)) / state_counts[0]
                 if want_action:
-                    logits = predictive.predict_action_logits(latent).float()
+                    logits = predictive.predict_action_logits(belief).float()
                     cross_entropy, entropy, hits = factored_action_statistics(
-                        logits, targets[horizon : horizon + span]
+                        logits, targets[reached]
                     )
                     mask = action_mask.float()
                     horizon_loss = (cross_entropy * mask).sum() / action_counts[horizon]
@@ -2037,8 +2260,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     with torch.no_grad():
                         groups = {
                             "": mask,
-                            "_ally": (action_mask & ally[:span]).float(),
-                            "_enemy": (action_mask & ~ally[:span]).float(),
+                            "_ally": (action_mask & ally_rows).float(),
+                            "_enemy": (action_mask & ~ally_rows).float(),
                         }
                         for group, weights in groups.items():
                             count = denoms[f"action_counts{group}"][horizon]
@@ -2049,12 +2272,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                             accuracy_numerator[group] += (hits.float() * weights.unsqueeze(-1)).sum(
                                 (0, 1, 2)
                             )
-                if span > 1:
-                    # Drop the last base step: its next horizon would need a step
-                    # the rollout does not contain. Everything else advances.
-                    latent = predictive.advance(latent[: span - 1])
 
-        horizons = max(len(state_by_horizon), len(cross_entropy_by_horizon[""]), 1)
         diagnostics: dict = {}
         if want_state:
             diagnostics["predictive_state_by_horizon"] = torch.stack(state_by_horizon)
@@ -2070,7 +2288,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 diagnostics[f"predictive_action_accuracy{group}"] = (
                     accuracy_numerator[group] / denoms[f"action_count_total{group}"]
                 )
-        return state_total / horizons, action_total / horizons, diagnostics
+        return (
+            state_total / denoms["state_depths"],
+            action_total / denoms["action_depths"],
+            diagnostics,
+        )
 
     def _active_component_weights(self) -> torch.Tensor:
         """(K,) current effective weight of every active reward component."""
@@ -2318,7 +2540,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         horizon, and no target is stored that the rollout data does not already
         determine.
         """
-        if self.cfg.predictive_state_coef <= 0.0:
+        if not self._predictive_enabled or self.cfg.predictive_state_coef <= 0.0:
             buf.transition_labels = None
             return
         T, B, N = buf.num_steps, buf.num_envs, buf.num_ships

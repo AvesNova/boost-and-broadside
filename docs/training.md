@@ -272,6 +272,45 @@ the two families; `prediction_horizon` sets the depth; `ModelConfig.predictive_l
 sets the belief width. Setting both coefficients to zero skips the projection entirely —
 no predictive activations are built and no transition labels are computed.
 
+**Decode plan.** `predictive_mode` chooses how much of the rollout each step actually
+decodes:
+
+| mode | behaviour |
+|---|---|
+| `full` | every step decodes every horizon |
+| `sampled` | every step decodes **one** horizon (the default) |
+| `off` | the block does not run at all |
+
+Under `sampled`, the horizons are dealt out across the rollout's steps as a fixed even
+split — 128 steps over 12 horizons gives ten or eleven steps each — rather than drawn
+independently per step. Three reasons, only the first of which is obvious:
+
+- **Variance.** Independent draws would leave each horizon with a random 10.7 ± 3.1
+  steps; a fixed split pins it to within one.
+- **Static shapes.** The tensor sizes at every depth become identical from step to step,
+  so `torch.compile` keeps one graph instead of retracing per draw. Randomness lives in
+  *which* step gets which depth, which touches no shape.
+- **Contiguous prefixes.** Steps are visited deepest-first, so the ones still advancing
+  are always a prefix — the belief shrinks by slicing rather than gathering.
+
+The estimator is unbiased with no rescaling: `E_h[L_h]` is already the mean over horizons
+that `full` computes, so the two modes optimise the same objective and differ only in the
+noise of the estimate. The remainder steps (128 over 12 leaves eight) go to a randomly
+chosen subset of horizons each minibatch, so no horizon is permanently favoured. The
+assignment is a permutation and deliberately not `t % 12`: the modulo pattern splits
+evenly too, but would lock each horizon to one phase of anything periodic in the game, and
+the firing cooldown is three decisions against a twelve-deep horizon.
+
+A step that decodes at depth *d* pays for *d* transitions and one pair of heads instead of
+eleven and twelve, so the block costs about **27%** of what `full` costs — with peak
+activations near the average rather than the worst case, because 128 independent depths
+concentrate hard around their mean.
+
+Each horizon is still normalised by its own valid-token count, and the total is averaged
+over the horizons that **scored anything**. A horizon with no valid tokens contributes a
+zero numerator and must not also claim a share of the divisor — a bias that exists in
+either mode, and that sampling makes easy to hit at small rollout lengths.
+
 **Cost.** The rollout evaluates two small heads at every horizon, so the update phase
 pays for it roughly in proportion to `prediction_horizon`. Measured on the 8 GB dev GPU at
 a bounded width (64 envs x 128 steps, `d_model` 128, uncompiled, both families on),

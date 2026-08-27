@@ -72,6 +72,12 @@ RL_PROFILE = ProfileSpec(
     # behavior-cloning decay and adjust if it landed wide.
     predictive_state_coef=0.02,
     predictive_action_coef=0.07,
+    # Each rollout step decodes one horizon rather than all twelve, with the
+    # horizons split evenly across the step axis.  Same loss in expectation, and
+    # a step that decodes at depth d pays for d transitions and one pair of
+    # heads instead of eleven and twelve -- about a quarter of the block's
+    # compute.  ``full`` restores the exhaustive version for comparison.
+    predictive_mode="sampled",
     # Twelve decisions is 0.4 s of game time at the 30 Hz decision rate -- about
     # one bullet flight, and long enough that where a ship will be and what it
     # will do are genuinely open questions.

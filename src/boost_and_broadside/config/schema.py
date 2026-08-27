@@ -94,6 +94,7 @@ class ProfileSpec:
     predictive_state_coef: float
     predictive_action_coef: float
     prediction_horizon: int
+    predictive_mode: str
 
     # --- Discounts, per physics tick ---
     gamma_per_tick: float
