@@ -58,28 +58,33 @@ REWARDS = RewardConfig(
     # Four numbers. Every event component follows from them by the balance rule
     # documented on RewardConfig; nothing else here is a free choice.
     #
-    # Their ratios are solved against measured gradient coherence for tier shares
-    # of 31% outcome / 32% kill-death / 31% damage / 5% shaping. Tier allocation
-    # is the one strategic judgement left, and it is flat across the top three:
-    # the win pair is two near-duplicate signals (+0.536 cosine) and half of all
-    # games are self-play, where the outcome is a coin flip by construction, so
-    # the tiers below carry per-step information it cannot. It still takes the
-    # largest single share, because everything below it is a proxy and proxies
-    # are what a policy learns to farm.
+    # Their ratios reproduce run 719's measured tier shares -- 17% outcome / 54%
+    # kill-death / 25% damage / 4% shaping -- rather than the flat allocation
+    # that preceded them. The flat version was a strategic judgement made before
+    # there was anything to check it against; 719 is now that check. It leads
+    # every arm trained under the flat weights from about 70M steps onward, and
+    # the gap traces directly to this split: paid mostly for the outcome, the
+    # policy learns not to lose, and two such arms drew 25% of their games
+    # against each other against 12.7% against 719.
+    #
+    # A component's trunk gradient share is linear in its weight, so 719's
+    # per-component shares divided by 719's weights give a per-unit yield, and
+    # the tier sums solve for these three numbers. The solve reads 0.90-0.97 for
+    # death and 0.404-0.408 for damage across every measurement window tried.
     #
     # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
     # scaling all four together is a no-op.
     win_weight=1.0,
-    death_weight=0.38,
-    damage_weight=0.28,
+    death_weight=1.0,
+    damage_weight=0.40,
     # The one ratio the balance rules leave free: "landed the finishing blow"
-    # against "contributed damage". Even until something argues otherwise.
+    # against "contributed damage". Even until something argues otherwise, and
+    # nothing does: at 0.5 the shot/assist split within the kill-death tier
+    # predicts 0.285/0.201 against 719's measured 0.268/0.218.
     kill_shot_fraction=0.5,
-    # Shaping is not an event, so it stays individually weighted. Both are also
-    # scheduled to decay: they are not potential-based, so they bias the optimum
-    # for as long as they are on.
-    facing_weight=0.06,
-    closing_speed_weight=0.09,
+    # Shaping is not an event, so it stays individually weighted.
+    facing_weight=0.10,
+    closing_speed_weight=0.10,
     proximity_radius=400.0,
     shoot_quality_radius=200.0,
     enemy_neg_lambda_components=frozenset(
@@ -183,7 +188,12 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         policy_gradient_coef=hold(1.0),
         entropy_coef=hold(0.005),
         behavior_cloning_coef=hold(2.0),
-        value_function_coef=hold(1.0),
+        # 1.2, not 1.0. Run 719 ran the critic at 1.0 and measured a trunk
+        # policy:value gradient ratio of 1.70; this branch at the same 1.0
+        # measures 1.99, because ``return_min_span`` no longer starves the sparse
+        # components and the critic they feed is a smaller share of the whole.
+        # The correction solves to 1.17-1.21 across measurement windows.
+        value_function_coef=hold(1.2),
         sigreg_coef=hold(0.00),
         # Tier scales ride on top of the per-component weights. Three of the
         # four hold: the realised tier shares already drift the way a curriculum
@@ -194,22 +204,15 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         outcome_scale=hold(1.0),
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
-        # Shaping is the exception, and it has to be pushed down rather than
-        # merely left alone: its realised share *grows* about 1.58x over a run.
-        # Facing and closing speed are not potential-based, so they bias the
-        # optimum for as long as they are on, and they oppose the objective
-        # directly -- closing_speed against field_damage_taken measured a mean
-        # gradient cosine of -0.446, negative in 99.9% of samples. They exist to
-        # stop early passive collapse, and that job is finished long before the
-        # budget is. The floor is 0.05 rather than 0 so the components stay
-        # measurable to the end: their gradient share and explained variance
-        # remain readable, which is how the next run learns whether shaping was
-        # still buying anything.
-        shaping_scale=(
-            (0, 1.0, "hold"),
-            (100_000_000, 1.0, "exponential"),
-            (400_000_000, 0.05, "hold"),
-        ),
+        # Shaping held flat too, for now. The case for decaying it stands on its
+        # own -- facing and closing speed are not potential-based, so they bias
+        # the optimum for as long as they are on, and closing_speed against
+        # field_damage_taken measured a mean gradient cosine of -0.446, negative
+        # in 99.9% of samples. But run 719 carried its shaping undecayed and is
+        # the arm being reproduced here, so the taper is one more difference than
+        # this comparison can afford. Restore it once the reward split is
+        # settled.
+        shaping_scale=hold(1.0),
         league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy
         # against an update measured in minutes, and the writer already skips

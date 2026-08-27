@@ -41,11 +41,11 @@ leaves free.
 | free number | value | fixes |
 |---|---:|---|
 | `win_weight` (W) | 1.00 | `ally_win`, `enemy_win` |
-| `death_weight` (U) | 0.38 | `combat_death`, `field_death` |
-| `damage_weight` (V) | 0.28 | all four damage components, plus `enemy_field_damage` |
+| `death_weight` (U) | 1.00 | `combat_death`, `field_death` |
+| `damage_weight` (V) | 0.40 | all four damage components, plus `enemy_field_damage` |
 | `kill_shot_fraction` (f) | 0.50 | splits U across the four kill components and `enemy_field_death` |
 
-Shaping stays individually weighted (`facing` 0.06, `closing_speed` 0.09). Facing
+Shaping stays individually weighted (`facing` 0.10, `closing_speed` 0.10). Facing
 a target is a state, not something that happens to somebody, so there is no
 opposing side to charge and the rule does not apply.
 
@@ -425,3 +425,63 @@ If a controller is ever built: burn in past ~100M (`d` is erratic before that -
 facing reads 14.7 / 7.8 / 14.0 across the first three windows), EMA over hundreds
 of updates, clamp to +-30% of the static weight, target the designed share vector
 rather than equal shares, log its state, and default it off.
+
+## Outcome: the flat allocation was wrong, and the auxiliary was never the variable
+
+The recommendation above — build the tier mechanism, ship run 1 flat at roughly
+31/32/31/5 — was executed as `lyric-durian-722` and `breezy-cloud-723`. Both
+finished behind `good-leaf-719`. A three-point round robin, 2048 games per pair
+with both orderings sharing a seed:
+
+| pair | 11.9M (exact) | ~72M | ~140M |
+|---|---:|---:|---:|
+| 719 vs 722 | −49.7 | +57.0 | +42.6 |
+| 719 vs 723 | −76.4 | −10.6 | +13.2 |
+| 722 vs 723 | −28.9 | −58.5 | −3.5 |
+
+±15.4 Elo at 2σ. Note the crossover: at 12M, 719 was the *worst* of the three by a
+wide margin. The flat allocation bootstraps faster and then plateaus, which is
+what an outcome-weighted reward should do — sparse, high-variance, weakly
+attributed. 719's kill-weighted reward is slower to exploit and keeps paying.
+
+The plateau is visible in play, not just in Elo: 722 and 723 drew 25.0% of their
+games against each other against 12.7% against 719, with lifespan 383 against ~250
+and field deaths 50/M against 193/M. Paid mostly for the outcome, the policy
+learns not to lose.
+
+Two hypotheses died here, and the second was mine:
+
+* **Auxiliary share does not explain the ranking.** 719's two state losses took
+  0.371 of the trunk gradient — between 722's 0.430 and well above 723's 0.096 —
+  and 719 beat both. 722 and 723 span a 4.5x range in auxiliary share and are
+  separated by 3.5 Elo, inside the measurement error. Cutting
+  `predictive_state_coef` from 0.2 to 0.02 was argued for from three converging
+  lines of evidence and produced no strength difference. A large auxiliary share
+  is normal for this trunk.
+* **Flat tier allocation was a judgement without a check.** 719 is now that check.
+  The weights are re-solved against its measured tier shares (17/54/25/4), which
+  puts `U` at 1.0 rather than 0.38 — kill/death pressure up about 2.5x relative
+  to the win pair.
+
+What the balance rule cannot reproduce, and this is worth stating plainly: 719
+paid `kill_shot = 1.0` *and* `combat_death = 1.0`, a 2:1 payout-to-charge ratio —
+exactly the imbalance the rule exists to remove. So 719's `kill_shot` share of
+0.145 becomes 0.071 spread across `kill_shot`, `kill_ally_shot` and
+`enemy_field_death`. Tier totals match, and so does the deaths-vs-kill-credit
+split *within* the kill/death tier (0.514/0.486 for both, which was not fitted),
+but the concentration does not. If the mechanism behind 719's advantage was
+finishing-blow credit specifically rather than kill/death pressure in aggregate,
+the rule structurally cannot test that.
+
+Two differences remain uncontrolled. `return_min_span` is the larger one: 719's
+critic put essentially zero gradient on the sparse components (`ally_win` 0.001,
+`kill_shot` 0.000) and spent everything on dense shaping, which is the starvation
+fix #2 removed. The branch fixed a real bug and the run got weaker; the starvation
+may have been load-bearing. That is the next suspect if the re-solved weights do
+not recover the gap. The other is the predictive objective replacing the two state
+losses, which the 722/723 comparison argues is second-order.
+
+`shaping_scale` is back to `hold(1.0)` for the same reason the tiers are: 719
+carried its shaping undecayed, and the taper would be one more difference than
+this comparison can carry. The argument for tapering is unaffected and still
+recorded above — restore it once the reward split is settled.

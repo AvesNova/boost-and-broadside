@@ -53,25 +53,26 @@ RL_PROFILE = ProfileSpec(
     paradigm="ego_pass",
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
-    # Set from measured gradient pressure, not from the loss values.  At 0.2/0.2
-    # run 722 gave the two families 43% of the trunk gradient -- ``predictive_state``
-    # alone averaged 0.336, matching the policy gradient's 0.330 and nearly four
-    # times the critic's share by the end of the run.  An auxiliary that keeps pace
-    # with the objective for a hundred million steps is a second objective, and the
-    # trunk cosines say this one pulls almost orthogonally to the policy (+0.02),
-    # while the *action* family is the one that pulls with it (+0.23).
+    # Set from measured gradient pressure, not from the loss values, and aimed at
+    # run 719's split rather than at a round number.  The previous 0.02/0.07 held
+    # the two families to ~0.05 of the trunk gradient each on the theory that an
+    # auxiliary at 719's 0.39 was crowding out the objective.  Run 723 tested that
+    # and refuted it: cutting the auxiliary 4.5x against run 722 moved head-to-head
+    # strength by 3.5 Elo, inside the 15.4 measurement error, and both arms stayed
+    # behind 719.  Auxiliary share was never the variable.
     #
-    # These target ~0.05 trunk share each.  A term's gradient norm is linear in its
-    # coefficient, so with policy+value+entropy holding 0.571 of the budget the two
-    # scale factors solve to 0.094 and 0.337 -- which is why the coefficients are
-    # asymmetric.  Setting both to 0.05 would leave a 3.5x imbalance intact, since
-    # the state family produces 3.6x the gradient per unit coefficient.
+    # So restore 719's budget.  Its two state losses together took 0.371 of the
+    # trunk gradient; that total is split evenly here, which is the ratio 723 was
+    # already solved for.  A term's gradient norm is linear in its coefficient, so
+    # the scale factors follow directly, and they stay asymmetric because the state
+    # family still produces about 3.5x the gradient per unit coefficient.
     #
     # First-order only: the shares are measured against a policy trained at the old
-    # weights, so check ``grad_share/trunk_top_level/*`` once the run is past the
-    # behavior-cloning decay and adjust if it landed wide.
-    predictive_state_coef=0.02,
-    predictive_action_coef=0.07,
+    # reward weights, which this run also changes, so check
+    # ``grad_share/trunk_top_level/*`` once the run is past the behavior-cloning
+    # decay and adjust if it landed wide.
+    predictive_state_coef=0.125,
+    predictive_action_coef=0.44,
     # Each rollout step decodes one horizon rather than all twelve, with the
     # horizons split evenly across the step axis.  Same loss in expectation, and
     # a step that decodes at depth d pays for d transitions and one pair of

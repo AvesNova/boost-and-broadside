@@ -365,20 +365,20 @@ reference policy activated these components:
 |---|---:|---|---|
 | `ally_win` | `W` = 1.00 | outcome | +1 to each surviving teammate on a win |
 | `enemy_win` | `W` = 1.00 | outcome | opponent's win signal, seen as −1 through a negative enemy lambda |
-| `combat_death` | `U` = 0.38 | kill/death | −1 when projectile damage kills this ship |
-| `field_death` | `U` = 0.38 | kill/death | −1 when boundary damage kills this ship |
-| `kill_shot` | `U·f` = 0.19 | kill/death | fatal-step credit (+), proportional to that step's damage |
-| `kill_assist` | `U(1−f)` = 0.19 | kill/death | assist credit (+), proportional to cumulative episode damage |
-| `kill_ally_shot` | `U·f` = 0.19 | kill/death | blame (−) for a teammate's death, by that step's damage |
-| `kill_ally_assist` | `U(1−f)` = 0.19 | kill/death | blame (−) for a teammate's death, by cumulative damage |
-| `enemy_field_death` | `U·f` = 0.19 | kill/death | credit (+) to the enemy team when a ship dies to a field |
-| `combat_damage_taken` | `V` = 0.28 | damage | −applied projectile health loss |
-| `field_damage_taken` | `V` = 0.28 | damage | −applied boundary health loss |
-| `damage_dealt_enemy` | `V` = 0.28 | damage | +proportional to damage dealt to enemies |
-| `damage_dealt_ally` | `V` = 0.28 | damage | −proportional to friendly fire dealt |
-| `enemy_field_damage` | `V` = 0.28 | damage | +to the enemy team when a ship takes field damage |
-| `facing` | 0.06 | shaping | dense aim geometry (+) |
-| `closing_speed` | 0.09 | shaping | dense approach geometry (+) |
+| `combat_death` | `U` = 1.00 | kill/death | −1 when projectile damage kills this ship |
+| `field_death` | `U` = 1.00 | kill/death | −1 when boundary damage kills this ship |
+| `kill_shot` | `U·f` = 0.50 | kill/death | fatal-step credit (+), proportional to that step's damage |
+| `kill_assist` | `U(1−f)` = 0.50 | kill/death | assist credit (+), proportional to cumulative episode damage |
+| `kill_ally_shot` | `U·f` = 0.50 | kill/death | blame (−) for a teammate's death, by that step's damage |
+| `kill_ally_assist` | `U(1−f)` = 0.50 | kill/death | blame (−) for a teammate's death, by cumulative damage |
+| `enemy_field_death` | `U·f` = 0.50 | kill/death | credit (+) to the enemy team when a ship dies to a field |
+| `combat_damage_taken` | `V` = 0.40 | damage | −applied projectile health loss |
+| `field_damage_taken` | `V` = 0.40 | damage | −applied boundary health loss |
+| `damage_dealt_enemy` | `V` = 0.40 | damage | +proportional to damage dealt to enemies |
+| `damage_dealt_ally` | `V` = 0.40 | damage | −proportional to friendly fire dealt |
+| `enemy_field_damage` | `V` = 0.40 | damage | +to the enemy team when a ship takes field damage |
+| `facing` | 0.10 | shaping | dense aim geometry (+) |
+| `closing_speed` | 0.10 | shaping | dense approach geometry (+) |
 | `shoot_quality` | off | shaping | firing opportunity quality (+); head retained at zero weight |
 
 Only four of those numbers are set. The rest follow from one rule: **an event pays one
@@ -416,10 +416,23 @@ solved produces gradients that increasingly cancel, and its influence should fad
 own rather than be propped up. In the reference run `field_death`'s coherence halved as
 field deaths fell eightfold.
 
-The four numbers are then set so the *tiers* land near 31% outcome / 32% kill-death / 31%
-damage / 5% shaping. Tier allocation is the one strategic judgement left. Only ratios
-matter: advantages are per-component unit-RMS before aggregation and the aggregate is
-divided by its own RMS, so scaling all four together is a no-op.
+The four numbers are then set so the *tiers* land near 17% outcome / 54% kill-death / 25%
+damage / 4% shaping. Those targets are measured, not chosen: they are the reference run's
+own tier shares. A component's trunk gradient share is linear in its weight, so dividing
+that run's per-component shares by its per-component weights gives a per-unit yield, and
+the tier sums then solve for the three event weights. The solve is stable — 0.90 to 0.97
+for `U` and 0.404 to 0.408 for `V` across every measurement window tried.
+
+An earlier version of this table allocated the tiers flat instead, near 31/32/31/5, on the
+judgement that outcome deserved the largest single share because everything below it is a
+proxy and proxies are what a policy learns to farm. Two runs trained that way and both
+finished behind the reference run from about 70M steps onward, having converged on
+survival rather than aggression: they drew 25% of their games against each other against
+12.7% against the reference. The flat allocation was a judgement made before there was
+anything to check it against.
+
+Only ratios matter: advantages are per-component unit-RMS before aggregation and the
+aggregate is divided by its own RMS, so scaling all four together is a no-op.
 
 The wrapper divides component rewards by total ship count for team-size normalization.
 A lambda aggregation matrix then maps local event signals to training targets:
@@ -449,16 +462,16 @@ curriculum would move them — measured on the reference run, the outcome tier's
 policy gradient rises about 1.29x over a run while the kill/death tier falls to 0.73x — so
 scheduling them would fight a trend rather than create one.
 
-Shaping is the exception, and it has to be pushed down rather than left alone: its realised
-share *grows* about 1.58x. `facing` and `closing_speed` are not
+Shaping holds flat as well, for now. The case for decaying it stands on its own: its
+realised share *grows* about 1.58x, `facing` and `closing_speed` are not
 [potential-based](https://people.eecs.berkeley.edu/~pabbeel/cs287-fa09/readings/NgHaradaRussell-shaping-ICML1999.pdf),
 so they bias the optimum for as long as they are on, and they oppose the objective
 directly: `closing_speed` against `field_damage_taken` measures a mean gradient cosine of
 −0.446, negative in 99.9% of samples. They exist to stop early passive collapse, which is
-finished long before the budget is. `shaping_scale` therefore decays from 100M steps to a
-floor of 0.05 at 400M. The floor is not zero, so the components stay measurable to the end:
-their gradient share and explained variance remain readable, which is how the next run
-learns whether shaping was still buying anything.
+finished long before the budget is. But the reference policy carried its shaping undecayed,
+and the current weights are set to reproduce that run's measured gradient split, so a taper
+would be one more difference than the comparison can carry. Restore it once the reward
+split is settled.
 
 Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
 fatal step, each earns credit proportional to that step's damage. `kill_assist` remains
