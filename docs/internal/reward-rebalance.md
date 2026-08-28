@@ -390,3 +390,112 @@ If a controller is ever built: burn in past ~100M (`d` is erratic before that -
 facing reads 14.7 / 7.8 / 14.0 across the first three windows), EMA over hundreds
 of updates, clamp to +-30% of the static weight, target the designed share vector
 rather than equal shares, log its state, and default it off.
+
+# Outcome: the derivation was right, the allocation was not
+
+Everything above was written before any of it had run. Five runs later, on a
+single Elo scale, this is what it bought. Ratings are from one Bradley-Terry fit
+over all six runs' ladder checkpoints and a shared random / scripted /
+semi-scripted reference field — 34 players, 49,152 games, every rating inside
+±15 Elo — in `artifacts/elo-calibration/20260828T203651Z-be16de50/`. Per-run
+calibrations are each on their own scale and cannot be compared; this one can.
+
+Gap to 719 at matched steps, interpolating 719's ladder in log(step), ±26 at 2σ:
+
+| run | what it changed against its predecessor | final | mid-run |
+|---|---|---:|---|
+| 720 | the four bug fixes, weights solved against measured share | **+58** | +60 @72M, +66 @124M |
+| 721 | weights re-derived from the balance rule | −16 | −47 @83M, −2 @145M |
+| 722 | predictive belief state replaces the one-step head | −53 | −37 @71M, −37 @115M |
+| 723 | predictive coefficients cut 4.5x | −87 | −12 @74M, −46 @150M |
+| 724 | weights re-solved against 719's own tier split (`U` 0.38 → 1.00) | **−98** | −35 @33M, −33 @69M |
+
+**720 is the only configuration on this branch that beats 719**, and it beats it
+everywhere it was measured. **721 is the cleanest single-variable result**: it
+differs from 720 only in how the weights were derived, and that derivation cost
+about 60–70 Elo. Everything after 721 inherits 721's weights, so nothing
+downstream ever got to run on the vector that worked.
+
+## What separates 720, and it is not a tier share
+
+Share-targeting was abandoned above for a reason that turned out to be right for
+the wrong reason. The reason given was that `w = share / d` keeps pressuring a
+solved problem. The reason it actually failed is simpler: **tier share is not the
+quantity that decides how a policy plays.** Run 724 is the proof — it hit 719's
+measured split to within 5% at the tier level and within noise at the top level,
+and produced the most passive policy of the set: lifespan 421 at matched steps
+against 719's 259, and the worst rating on the board.
+
+The quantity that tracks strength is the ratio between what a death charges and
+what a kill pays:
+
+| run | death charge | kill payout | ratio | gap to 719 |
+|---|---:|---|---:|---:|
+| 719 | 1.00 | `kill_shot` 1.00 + `kill_assist` 1.00 | **2.00** | — |
+| 720 | 0.27 | 0.28 + 0.31 | **2.19** | +58 |
+| 721 / 722 / 723 | 0.38 | 0.19 + 0.19 | 1.00 | −16 / −53 / −87 |
+| 724 | 1.00 | 0.50 + 0.50 | 1.00 | −98 |
+
+720 kept a 2:1 payout by accident, the same way 719 did — its weights were solved
+per component against measured `d`, before the balance rule tied the two sides
+together. Every run that sits at 1:1 is more passive than 719 and rates below it.
+That is five runs agreeing on one number, and it was visible in the play as well:
+lifespans at matched steps run 208 (720), 259 (719), 282, 307, 315, 421 (724),
+in almost the same order as the ratings.
+
+The mechanism is not subtle. Charging a death `U` and paying a kill `U` makes an
+even trade worth exactly nothing, so a policy that cannot reliably win the trade
+declines it. Paying the aggressor more is what makes the trade worth taking.
+
+## What this branch does about it
+
+The balance rule is kept — it is a good derivation and it is why only a handful of
+numbers are set — and given the one knob it structurally cannot express:
+`kill_payout_ratio`, kill tier only, default 1.0.
+
+The free numbers then stop chasing a share target and reproduce 719's effective
+vector directly: `W` 1.0, `U` 1.0, `V` 0.5, `f` 0.5, `k` 2.0. That is an exact
+match on all twelve components 719 carried — see
+`TestShippedWeightsReproduceRun719`, which is the test that fails if this drifts.
+Effective, not configured: 719's config said `ally_win_weight=1.5`, but the
+lambda normalization order divided the weight back out of every global component,
+so the win pair trained at a total of 1.0. The rest of 719's vector is its config.
+
+Only two components are added, both required by the rule and both zero in 719:
+`enemy_field_death` at 1.0 and `enemy_field_damage` at 0.5, so a ship killed by a
+field pays its opponents something. The `kill_ally_*` pair is not an addition —
+719 penalized friendly kills at an unscaled −1.0 share folded inside
+`KillShotReward` under `kill_shot`'s own weight, which is 1.0, exactly where the
+derivation puts it.
+
+`shaping_scale` returns to `hold(1.0)` for the same reason: 719 carried its
+shaping undecayed, and the taper would be one more difference than this
+comparison can carry. The argument for it is unaffected and still recorded above.
+
+## What is still uncontrolled, and what to check
+
+`return_min_span` is the one difference from 719 that nobody has isolated, and it
+is the largest. 719's critic put essentially zero gradient on the sparse
+components (`ally_win` 0.001, `kill_shot` 0.000) and spent everything on dense
+shaping; the scaler fix removed that starvation, and the branch got weaker. The
+branch fixed a real bug and the starvation may have been load-bearing. If this
+run does not recover 720's margin, that is the next suspect and it is a
+one-variable test.
+
+Not carried here on purpose: the predictive belief state. It costs 26% throughput
+(2066 sps against 719's 2707, and 722–724 ran gradient diagnostics at interval 5
+rather than 1, so the true cost is larger), and across 722 and 723 it never
+showed a strength gain to pay for that. The reward change and the objective
+change have never been separated in one run; this branch is the reward arm, on
+the fast code path.
+
+On the first diagnostic update past the behavior-cloning decay:
+
+1. Realised tier shares. They are no longer targeted, so they are a reading
+   rather than a check — but record them, because the whole point is that this
+   vector is expected to land somewhere the share-solve would have rejected.
+2. `enemy_field_death` and `enemy_field_damage` are active for the first time at
+   a weight this high. Their coherence has never been measured.
+3. `scaler/floor_bound_span_count` stays 0.
+4. Lifespan. It is the cheapest early read on whether the 2:1 payout is doing
+   what five runs of evidence say it should — 720 sat at 208 against 724's 421.

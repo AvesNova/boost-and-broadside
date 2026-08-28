@@ -340,6 +340,8 @@ class RewardConfig:
     # How U splits between "landed the finishing blow" and "contributed damage".
     # The only ratio the balance rules leave free.
     kill_shot_fraction: float
+    # ``kill_payout_ratio`` breaks the balance rule for the kill tier on purpose;
+    # it lives with the other defaulted fields below.
 
     # --- Shaping ---
     # Not events. Facing a target is a state, not something that happens to
@@ -356,18 +358,41 @@ class RewardConfig:
     enemy_neg_lambda_components: frozenset[str]  # enemies get lambda=-1 (zero-sum)
     ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)
 
+    # A named, deliberate exception to the balance rule: the kill side is paid
+    # ``kill_payout_ratio * U`` while the dying side is still charged ``U``. At
+    # 1.0 the rule holds and an event pays exactly what it charges.
+    #
+    # It is a knob rather than a constant because the balance rule cannot express
+    # it at all -- raising ``U`` raises charge and payout together, so no setting
+    # of the four event weights reaches a ratio other than 1:1. The reference run
+    # sat at 2:1 by accident, carrying ``kill_shot`` and ``kill_assist`` at the
+    # same weight as ``combat_death``, and is the strongest policy measured;
+    # every balanced run since has been more passive than it. Charging a death
+    # and paying the kill equally makes an even trade worth nothing, so a policy
+    # that cannot reliably win the trade declines it.
+    #
+    # Kill tier only. Damage and win were balanced in the reference run too, so
+    # the evidence for an asymmetry is specific to this tier, and a second free
+    # ratio would not be separable from the first inside one run.
+    kill_payout_ratio: float = 1.0
+
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shoot_quality_weight: float = 0.0  # shot quality when firing
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
     speed_weight: float = 0.0  # penalty when speed < speed_penalty_min
-    speed_penalty_min: float = 40.0
+    speed_penalty_min: float = 40.0  # speed threshold below which penalty is applied
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.kill_shot_fraction <= 1.0:
             raise ValueError(
                 f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}"
             )
+        if not np.isfinite(self.kill_payout_ratio) or self.kill_payout_ratio < 0.0:
+            raise ValueError(
+                f"kill_payout_ratio must be finite and non-negative, "
+                f"got {self.kill_payout_ratio}"
+            )
         for name in ("win_weight", "death_weight", "damage_weight"):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0.0:
-                raise ValueError(f"{name} must be finite and non-negative, got {value}")  # speed threshold below which penalty is applied
+                raise ValueError(f"{name} must be finite and non-negative, got {value}")

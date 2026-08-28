@@ -672,7 +672,7 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
 
     ==========================  ==========================================
     combat death of a ship      charged ``U`` (``combat_death``), paid
-                                ``U`` split over ``kill_shot`` and
+                                ``k*U`` split over ``kill_shot`` and
                                 ``kill_assist``
     field death of a ship       charged ``U`` (``field_death``), paid
                                 ``kill_assist`` plus ``enemy_field_death``
@@ -687,9 +687,15 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
                                 negative enemy lambda on ``enemy_win``
     ==========================  ==========================================
 
+    ``k`` is ``kill_payout_ratio``, the one named exception: at 1.0 the table
+    above balances exactly, and above it the kill side is paid more than the
+    dying side is charged. Nothing else in the system can express that, because
+    raising ``U`` raises charge and payout together.
+
     The friendly-fire components mirror the offensive ones exactly, which is what
     makes killing a teammate cost the team twice: once for the death and once for
-    having caused it.
+    having caused it. They follow the payout, so ``k`` prices blame for a
+    teammate's death at the same rate it prices credit for an enemy's.
 
     Args:
         rewards: A ``RewardConfig``, or the plain mapping a checkpoint stores in
@@ -710,8 +716,12 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
     win = float(raw["win_weight"])
     death = float(raw["death_weight"])
     damage = float(raw["damage_weight"])
-    shot = death * float(raw["kill_shot_fraction"])
-    assist = death - shot
+    # The one place the balance rule is broken on purpose. The dying side is
+    # charged ``death``; the kill side is paid ``payout``, which is the same
+    # number only when ``kill_payout_ratio`` is 1.0. See ``RewardConfig``.
+    payout = death * float(raw.get("kill_payout_ratio", 1.0))
+    shot = payout * float(raw["kill_shot_fraction"])
+    assist = payout - shot
 
     derived = {name: 0.0 for name in REWARD_COMPONENT_NAMES}
     derived.update(

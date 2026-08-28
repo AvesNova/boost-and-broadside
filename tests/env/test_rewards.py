@@ -5,13 +5,15 @@ No compute_rewards() — per-ship signals are tested directly; zero-sum accounti
 (lambda aggregation) lives in the PPO trainer, not the reward components.
 """
 
+import dataclasses
+
 import pytest
 import torch
 
 from boost_and_broadside.config import RewardConfig, ShipConfig
+from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
-    component_weights,
     AllyCombatDamageReward,
     AllyCombatDeathReward,
     AllyFieldDamageReward,
@@ -38,6 +40,7 @@ from boost_and_broadside.env.rewards import (
     ShootQualityReward,
     SpeedReward,
     build_reward_components,
+    component_weights,
     compute_per_component_rewards,
 )
 from tests.conftest import make_state
@@ -141,7 +144,12 @@ class TestRewardComponentNames:
 
 
 class TestComponentWeightDerivation:
-    """The balance rule: an event pays one side what it charges the other."""
+    """The balance rule: an event pays one side what it charges the other.
+
+    Every case here leaves ``kill_payout_ratio`` at its default 1.0, which is
+    where the rule holds exactly. ``TestKillPayoutRatio`` covers the one tier
+    that is allowed to break it.
+    """
 
     @staticmethod
     def _cfg(**kw):
@@ -215,6 +223,143 @@ class TestComponentWeightDerivation:
         assert w["kill_shot"] == 1.0
         assert w["combat_death"] == 0.0
         assert set(w) == set(REWARD_COMPONENT_NAMES)
+
+
+class TestKillPayoutRatio:
+    """The kill tier is allowed to pay more than it charges. Nothing else is."""
+
+    _cfg = staticmethod(TestComponentWeightDerivation._cfg)
+
+    def test_default_is_the_balance_rule(self):
+        """Unset, the knob must not move a single weight."""
+        assert self._cfg().kill_payout_ratio == 1.0
+        assert component_weights(self._cfg()) == component_weights(
+            self._cfg(kill_payout_ratio=1.0)
+        )
+
+    def test_the_kill_side_is_paid_the_ratio_times_the_charge(self):
+        w = component_weights(self._cfg(death_weight=0.4, kill_payout_ratio=2.0))
+        assert w["combat_death"] == pytest.approx(0.4)
+        assert w["kill_shot"] + w["kill_assist"] == pytest.approx(0.8)
+
+    def test_the_split_still_divides_the_payout_evenly(self):
+        """f partitions the payout, not the charge, so the two knobs stay
+        independent: changing one must not move the other's total."""
+        for fraction in (0.0, 0.25, 0.5, 1.0):
+            w = component_weights(
+                self._cfg(kill_shot_fraction=fraction, kill_payout_ratio=2.0)
+            )
+            payout = w["kill_shot"] + w["kill_assist"]
+            assert payout == pytest.approx(2 * w["combat_death"])
+            assert w["kill_shot"] == pytest.approx(payout * fraction)
+
+    def test_friendly_fire_follows_the_payout(self):
+        """Blame for a teammate's death is priced at the same rate as credit for
+        an enemy's, so raising the payout does not make friendly fire cheap."""
+        w = component_weights(self._cfg(kill_payout_ratio=2.0))
+        assert w["kill_ally_shot"] == pytest.approx(w["kill_shot"])
+        assert w["kill_ally_assist"] == pytest.approx(w["kill_assist"])
+
+    def test_a_field_kill_still_pays_what_a_combat_kill_pays(self):
+        """enemy_field_death exists to cover the shot the field did not fire, so
+        it has to track the payout rather than the charge."""
+        w = component_weights(self._cfg(kill_payout_ratio=2.0))
+        assert w["enemy_field_death"] == pytest.approx(w["kill_shot"])
+        assert w["kill_assist"] + w["enemy_field_death"] == pytest.approx(
+            2 * w["field_death"]
+        )
+
+    def test_damage_and_win_are_untouched(self):
+        """The asymmetry is evidenced for the kill tier only."""
+        balanced = component_weights(self._cfg())
+        paid = component_weights(self._cfg(kill_payout_ratio=2.0))
+        for name in ("ally_win", "enemy_win", "combat_death", "field_death",
+                     "combat_damage_taken", "field_damage_taken",
+                     "damage_dealt_enemy", "damage_dealt_ally",
+                     "enemy_field_damage", "facing", "closing_speed"):
+            assert paid[name] == pytest.approx(balanced[name])
+
+    def test_zero_pays_the_kill_side_nothing(self):
+        w = component_weights(self._cfg(kill_payout_ratio=0.0))
+        assert w["kill_shot"] == 0.0
+        assert w["kill_assist"] == 0.0
+        assert w["combat_death"] == pytest.approx(0.4)
+
+    @pytest.mark.parametrize("bad", [-1.0, float("nan"), float("inf")])
+    def test_a_nonsense_ratio_is_refused(self, bad):
+        with pytest.raises(ValueError, match="kill_payout_ratio"):
+            self._cfg(kill_payout_ratio=bad)
+
+    def test_a_checkpoint_without_the_field_reads_as_balanced(self):
+        """Runs recorded before the knob existed derived at 1:1, and reloading
+        one must not silently re-price its rewards."""
+        stored = {"win_weight": 1.0, "death_weight": 0.4, "damage_weight": 0.3,
+                  "kill_shot_fraction": 0.5}
+        w = component_weights(stored)
+        assert w["kill_shot"] + w["kill_assist"] == pytest.approx(w["combat_death"])
+
+
+class TestShippedWeightsReproduceRun719:
+    """The profile's five free numbers exist to rebuild run 719's reward vector.
+
+    719 is the strongest policy measured and the only one whose weights were not
+    derived. Solving the free numbers against measured gradient share was tried
+    in runs 721 and 724 and lost both times, so the defaults copy 719 instead —
+    and this is the test that says so, because the claim is otherwise only a
+    comment.
+
+    The target is what 719 *trained under*, not what its config file said. Its
+    lambda rows were normalized after the component weight was applied, which
+    divided the weight back out of every global component: ``ally_win`` and
+    ``enemy_win`` came out at an effective total of 1.0 against a configured
+    1.5. Local components were below the clamp and passed through untouched.
+    """
+
+    # Run 719's effective weights. Global pair at 1.0, everything else as configured.
+    EFFECTIVE_719 = {
+        "ally_win": 1.0, "enemy_win": 1.0,
+        "combat_death": 1.0, "field_death": 1.0,
+        "kill_shot": 1.0, "kill_assist": 1.0,
+        "combat_damage_taken": 0.5, "field_damage_taken": 0.5,
+        "damage_dealt_enemy": 0.5, "damage_dealt_ally": 0.5,
+        "facing": 0.1, "closing_speed": 0.1,
+    }
+
+    def test_every_component_719_carried_is_reproduced_exactly(self):
+        w = component_weights(REWARDS)
+        for name, expected in self.EFFECTIVE_719.items():
+            assert w[name] == pytest.approx(expected), name
+
+    def test_the_only_additions_are_the_two_the_rule_requires(self):
+        """719 had no source-split offensive components at all, so a field death
+        paid its killers nothing. Those two are the only weights this vector adds
+        — anything else appearing here is a difference nobody argued for."""
+        w = component_weights(REWARDS)
+        added = {
+            name for name, weight in w.items()
+            if weight != 0.0 and name not in self.EFFECTIVE_719
+        }
+        assert added == {"enemy_field_death", "enemy_field_damage",
+                         "kill_ally_shot", "kill_ally_assist"}
+
+    def test_the_friendly_kill_pair_matches_the_penalty_719_folded_in(self):
+        """719 had no kill_ally_* components, but it did penalize friendly kills:
+        the term lived inside KillShotReward at an unscaled -1.0 share, under
+        kill_shot's own weight. Extracting it changed what is weightable and
+        visible, not how much friendly fire cost."""
+        w = component_weights(REWARDS)
+        assert w["kill_ally_shot"] == pytest.approx(self.EFFECTIVE_719["kill_shot"])
+        assert w["kill_ally_assist"] == pytest.approx(self.EFFECTIVE_719["kill_assist"])
+
+    def test_the_payout_ratio_is_what_makes_this_reachable(self):
+        """Under the plain balance rule no setting of the free numbers reproduces
+        719, because it paid a kill 2.0 while charging a death 1.0. This is the
+        test that fails if the knob is ever quietly returned to 1.0."""
+        assert REWARDS.kill_payout_ratio == 2.0
+        balanced = component_weights(
+            dataclasses.replace(REWARDS, kill_payout_ratio=1.0)
+        )
+        assert balanced["kill_shot"] != pytest.approx(self.EFFECTIVE_719["kill_shot"])
 
 
 class TestComputePerComponentRewards:
