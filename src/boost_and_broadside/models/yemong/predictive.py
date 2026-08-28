@@ -178,10 +178,20 @@ class PredictiveModel(nn.Module):
     Held as one submodule so the whole auxiliary apparatus is a single thing to
     checkpoint, to exclude from the shared trunk, and to switch off.
 
+    ``next_step_only`` strips this back to the one-step head the model carried
+    before the belief state existed: no projection, no transition, no action
+    head, and a state head reading the post-Yemong latent directly. It is the
+    control arm — the same architecture and the same objective as run 719 —
+    kept so the belief state can be measured against what it replaced rather
+    than only against its own ablations. The state head is built at ``d_model``
+    there, which reproduces that head exactly.
+
     Args:
         d_model: Width of the post-Yemong ship latent.
-        predictive_latent_dim: Width of the predictive latent.
+        predictive_latent_dim: Width of the predictive latent. Unused when
+            ``next_step_only``, since nothing projects into that space.
         state_prediction_dim: Width of the FeatureCoordinator's prediction vector.
+        next_step_only: Build the one-step control arm instead of the rollout.
     """
 
     def __init__(
@@ -189,19 +199,32 @@ class PredictiveModel(nn.Module):
         d_model: int,
         predictive_latent_dim: int,
         state_prediction_dim: int,
+        next_step_only: bool = False,
     ) -> None:
         super().__init__()
-        self.predictive_latent_dim = predictive_latent_dim
-        self.projection = PredictiveProjection(d_model, predictive_latent_dim)
-        self.transition = PredictiveTransition(predictive_latent_dim)
+        self.next_step_only = next_step_only
+        # The width the heads actually read: the trunk latent itself when there
+        # is no projection to narrow it.
+        self.predictive_latent_dim = d_model if next_step_only else predictive_latent_dim
+        if next_step_only:
+            self.projection = None
+            self.transition = None
+            self.action_prediction_head = None
+        else:
+            self.projection = PredictiveProjection(d_model, predictive_latent_dim)
+            self.transition = PredictiveTransition(predictive_latent_dim)
+            self.action_prediction_head = PredictiveActionHead(predictive_latent_dim)
         self.state_prediction_head = PredictiveStateHead(
-            predictive_latent_dim, state_prediction_dim
+            self.predictive_latent_dim, state_prediction_dim
         )
-        self.action_prediction_head = PredictiveActionHead(predictive_latent_dim)
 
     def forward(self, latent: torch.Tensor) -> torch.Tensor:
-        """Project a post-Yemong latent to the horizon-0 predictive latent."""
-        return self.projection(latent)
+        """Project a post-Yemong latent to the horizon-0 predictive latent.
+
+        The identity when there is no projection, so callers that pair this with
+        ``predict_state`` need no branch of their own.
+        """
+        return latent if self.next_step_only else self.projection(latent)
 
     def predict_state(self, predictive_latent: torch.Tensor) -> torch.Tensor:
         """The local one-step state transition believed at this horizon."""
@@ -209,10 +232,14 @@ class PredictiveModel(nn.Module):
 
     def predict_action_logits(self, predictive_latent: torch.Tensor) -> torch.Tensor:
         """The factorized action logits believed at this horizon."""
+        if self.next_step_only:
+            raise RuntimeError("the one-step control arm has no action head")
         return self.action_prediction_head(predictive_latent)
 
     def advance(self, predictive_latent: torch.Tensor) -> torch.Tensor:
         """Advance the belief one decision, open-loop."""
+        if self.next_step_only:
+            raise RuntimeError("the one-step control arm has no transition to advance")
         return self.transition(predictive_latent)
 
 

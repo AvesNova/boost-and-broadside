@@ -246,6 +246,13 @@ class ModelConfig:
     # so the bottleneck is what stops the auxiliary objective from being solved
     # after the trunk instead of pressuring the trunk to carry the information.
     predictive_latent_dim: int = 96
+    # Build the one-step control arm instead of the belief rollout: no
+    # projection, no transition, no action head, and a state head reading the
+    # trunk latent directly. Architecture rather than objective, so it lives
+    # here -- checkpoints rebuild their policy from ``model_config`` alone, and
+    # a train-config-only switch would not survive a reload. Must agree with
+    # ``TrainConfig.predictive_mode``; ``ProfileSpec`` checks that they do.
+    predictive_next_step: bool = False
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True
@@ -349,6 +356,8 @@ class RewardConfig:
     # How U splits between "landed the finishing blow" and "contributed damage".
     # The only ratio the balance rules leave free.
     kill_shot_fraction: float
+    # ``kill_payout_ratio`` breaks the balance rule for this tier on purpose;
+    # it lives with the other defaulted fields below.
 
     # --- Shaping ---
     # Not events. Facing a target is a state, not something that happens to
@@ -365,6 +374,23 @@ class RewardConfig:
     enemy_neg_lambda_components: frozenset[str]  # enemies get lambda=-1 (zero-sum)
     ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)
 
+    # A deliberate, named exception to the balance rule: the kill side is paid
+    # ``kill_payout_ratio * U`` while the dying side is still charged ``U``. At
+    # 1.0 the rule holds and an event pays exactly what it charges.
+    #
+    # It exists because run 719 -- the strongest policy measured -- paid 2:1 by
+    # accident, through carrying ``kill_shot`` and ``kill_assist`` at the same
+    # weight as ``combat_death``. Every balanced run since has been more passive
+    # than it: lifespans of 314 and 398 against 719's 267, and tie rates up to
+    # 35%. Charging a death and paying the kill equally leaves a one-for-one
+    # trade worth nothing, so a policy that cannot reliably win the trade
+    # declines it; paying the aggressor more is what makes the trade worth
+    # taking.
+    #
+    # Kill only, not damage or win. Those two were balanced in 719 as well, so
+    # the evidence for an asymmetry is specific to this tier rather than general.
+    kill_payout_ratio: float = 1.0
+
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shoot_quality_weight: float = 0.0  # shot quality when firing
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
@@ -375,6 +401,11 @@ class RewardConfig:
         if not 0.0 <= self.kill_shot_fraction <= 1.0:
             raise ValueError(
                 f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}"
+            )
+        if not np.isfinite(self.kill_payout_ratio) or self.kill_payout_ratio < 0.0:
+            raise ValueError(
+                f"kill_payout_ratio must be finite and non-negative, "
+                f"got {self.kill_payout_ratio}"
             )
         for name in ("win_weight", "death_weight", "damage_weight"):
             value = getattr(self, name)

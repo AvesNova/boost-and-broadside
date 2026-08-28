@@ -183,6 +183,7 @@ class YemongPolicy(nn.Module):
             d_model=D,
             predictive_latent_dim=model_config.predictive_latent_dim,
             state_prediction_dim=coordinator.total_prediction_dimension,
+            next_step_only=model_config.predictive_next_step,
         )
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)

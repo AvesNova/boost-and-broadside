@@ -339,8 +339,17 @@ def _trainer(tmp_path, predictive_mode="full", **kwargs):
     steps leaves 1-2 steps per depth, where a (depth, side) group being empty
     is ordinary rather than a bug. The sampled path has its own tests.
     """
+    from boost_and_broadside.config.core import ModelConfig
+
     from tests.train.test_ppo import _make_trainer
 
+    if predictive_mode == "next_step" and "model_config" not in kwargs:
+        # The one-step arm is an architecture as well as an objective, so the
+        # policy has to be built for it; a mode set on cfg alone would leave a
+        # projection the loss never calls.
+        kwargs["model_config"] = ModelConfig(
+            d_model=32, n_heads=4, n_yemong_blocks=1, predictive_next_step=True
+        )
     trainer = _make_trainer(checkpoint_dir=str(tmp_path), **kwargs)
     trainer.cfg = dataclasses.replace(trainer.cfg, predictive_mode=predictive_mode)
     return trainer
@@ -814,6 +823,63 @@ class TestPredictiveMode:
     @pytest.mark.parametrize("mode", ["full", "sampled"])
     def test_a_full_update_runs_in_either_mode(self, mode, tmp_path):
         _trainer(tmp_path, predictive_mode=mode).train()
+
+    def test_next_step_builds_only_a_one_step_head(self, tmp_path):
+        """No projection, no transition, no action head -- run 719's architecture."""
+        trainer = _trainer(tmp_path, predictive_mode="next_step")
+        predictive = trainer._policy_module.predictive
+        assert predictive.next_step_only
+        assert predictive.projection is None
+        assert predictive.transition is None
+        assert predictive.action_prediction_head is None
+        # The head reads the trunk latent directly, so its input is d_model.
+        d_model = trainer._policy_module._d_model
+        assert predictive.state_prediction_head.net[0].in_features == d_model
+        # Identity projection keeps predict_state(predictive(x)) working unbranched.
+        latent = torch.randn(2, 3, d_model)
+        assert torch.equal(predictive(latent), latent)
+
+    def test_next_step_decodes_exactly_one_horizon_and_no_actions(self, tmp_path):
+        trainer = _trainer(tmp_path, predictive_mode="next_step")
+        assert trainer._predictive_horizon == 1
+        assert not trainer._predictive_action_enabled
+        batch, denominators = _prepared_minibatch(trainer)
+        state_loss, action_loss, diagnostics = _run_predictive(trainer, batch, denominators)
+        assert diagnostics["predictive_state_by_horizon"].shape == (1,)
+        assert not any("action" in key for key in diagnostics)
+        assert action_loss.item() == 0.0
+        assert state_loss.requires_grad
+
+    def test_next_step_trains_the_head_and_the_trunk(self, tmp_path):
+        trainer = _trainer(tmp_path, predictive_mode="next_step")
+        batch, denominators = _prepared_minibatch(trainer)
+        state_loss, _, _ = _run_predictive(trainer, batch, denominators)
+        grad = torch.autograd.grad(
+            state_loss,
+            trainer._policy_module.predictive.state_prediction_head.net[0].weight,
+        )[0]
+        assert grad is not None and grad.abs().sum() > 0
+
+    def test_next_step_refuses_the_rollout_operations(self, tmp_path):
+        trainer = _trainer(tmp_path, predictive_mode="next_step")
+        predictive = trainer._policy_module.predictive
+        latent = torch.randn(2, trainer._policy_module._d_model)
+        with pytest.raises(RuntimeError, match="no transition"):
+            predictive.advance(latent)
+        with pytest.raises(RuntimeError, match="no action head"):
+            predictive.predict_action_logits(latent)
+
+    def test_next_step_runs_a_full_update(self, tmp_path):
+        _trainer(tmp_path, predictive_mode="next_step").train()
+
+    def test_mode_and_architecture_must_agree(self):
+        """A ProfileSpec that sets one without the other is refused."""
+        import dataclasses as dc
+
+        from boost_and_broadside.profiles.rl import RL_PROFILE
+
+        with pytest.raises(ValueError, match="must agree"):
+            dc.replace(RL_PROFILE, predictive_mode="next_step")
 
     def test_an_unknown_mode_is_refused(self, tmp_path):
         from tests.train.test_ppo import _make_train_config

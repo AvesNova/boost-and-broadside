@@ -75,8 +75,14 @@ REWARDS = RewardConfig(
     # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
     # scaling all four together is a no-op.
     win_weight=1.0,
-    death_weight=1.0,
+    death_weight=0.65,
     damage_weight=0.40,
+    # Pays the kill side twice what the dying side is charged, reproducing the
+    # ratio run 719 carried by accident. Re-solving the tier shares against that
+    # doubled payout is what moves ``death_weight`` from 1.0 back to 0.65 -- and
+    # the solve then lands on 0.65 for ``kill_shot`` and ``kill_assist`` as well,
+    # against 719's own 0.667, without having been told what 719's weights were.
+    kill_payout_ratio=2.0,
     # The one ratio the balance rules leave free: "landed the finishing blow"
     # against "contributed damage". Even until something argues otherwise, and
     # nothing does: at 0.5 the shot/assist split within the kill-death tier

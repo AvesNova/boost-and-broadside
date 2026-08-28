@@ -41,9 +41,10 @@ leaves free.
 | free number | value | fixes |
 |---|---:|---|
 | `win_weight` (W) | 1.00 | `ally_win`, `enemy_win` |
-| `death_weight` (U) | 1.00 | `combat_death`, `field_death` |
+| `death_weight` (U) | 0.65 | `combat_death`, `field_death` |
 | `damage_weight` (V) | 0.40 | all four damage components, plus `enemy_field_damage` |
 | `kill_shot_fraction` (f) | 0.50 | splits U across the four kill components and `enemy_field_death` |
+| `kill_payout_ratio` (k) | 2.00 | pays the kill side `k·U` against a charge of `U` — the one deliberate breach of the rule |
 
 Shaping stays individually weighted (`facing` 0.10, `closing_speed` 0.10). Facing
 a target is a state, not something that happens to somebody, so there is no
@@ -485,3 +486,47 @@ losses, which the 722/723 comparison argues is second-order.
 carried its shaping undecayed, and the taper would be one more difference than
 this comparison can carry. The argument for tapering is unaffected and still
 recorded above — restore it once the reward split is settled.
+
+## The rule itself was the confound
+
+Re-solving the weights against 719's tier shares (`U` 0.38 → 1.00, run 724) landed the
+gradient split almost exactly on target — tiers within 5%, top level within noise at
+matched steps — and made the policy *worse*, monotonically:
+
+| pair | ~33M | ~70M | 132.4M (exact) |
+|---|---:|---:|---:|
+| 719 vs 724 | +43.3 | +43.6 | **+82.9** |
+| 722 vs 724 | +33.8 | −13.7 | +51.4 |
+
+724 finished the worst of the four runs and the most passive: lifespan 398 against 719's
+267 and 723's 314, and a 35.2% tie rate against 722. The prediction was aggression; the
+result was the opposite.
+
+The quantity that actually separates 719 is not a tier share. It is the ratio between what
+a death charges and what a kill pays:
+
+| run | death charge | kill payout | ratio |
+|---|---:|---:|---:|
+| 719 | 1.00 | `kill_shot` 1.00 + `kill_assist` 1.00 = 2.00 | **2:1** |
+| 722 / 723 | 0.38 | 0.19 + 0.19 = 0.38 | 1:1 |
+| 724 | 1.00 | 0.50 + 0.50 = 1.00 | 1:1 |
+
+Every run built on the balance rule sits at 1:1, and every one of them is more passive than
+719. Raising `U` raises charge and payout together, so no setting of the four event weights
+can reach 2:1 — the rule forbids it by construction. Run 724 raised the cost of dying 2.6x
+relative to winning without making killing any more attractive, which is why it produced
+the most risk-averse policy of the set rather than the most aggressive.
+
+This was written down as a caveat when the weights were first re-solved ("if the mechanism
+was finishing-blow credit specifically, the rule structurally cannot test that") and filed
+as a limitation rather than pursued as the hypothesis. It should have been the hypothesis:
+the balance rule is a *derivation* convenience, and nothing measured ever supported it as a
+statement about what makes a policy strong.
+
+Hence `kill_payout_ratio`, kill tier only. Re-solving with `k = 2` returns `U` to 0.65 and
+puts `kill_shot`/`kill_assist` at 0.65 against 719's 0.667 — the derived system reproducing
+719's weight vector, from gradient yields alone, once it is allowed to.
+
+Also added: `predictive_mode="next_step"`, which rebuilds 719's one-step head exactly (no
+projection, no rollout, no action head). The reward change and the objective change have
+never been separated in a single run; this is the control that separates them.

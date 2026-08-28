@@ -1675,7 +1675,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         need_bc = is_primary and self._behavior_cloning_coef > 0.0
         need_predictive = is_primary and self._predictive_enabled
         steps, _, ships = chunks[0].alive.shape
-        horizons = min(self.cfg.prediction_horizon, steps)
+        horizons = min(self._predictive_horizon, steps)
         # Drawn once per optimizer minibatch and shared by its micro-batches, so
         # every micro-batch scores the same depths and the denominators below
         # describe the whole minibatch. It rides along in the returned dict
@@ -1718,7 +1718,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 masks = (
                     (horizon, state, action, slice(None))
                     for horizon, state, action in predictive_horizon_masks(
-                        mb_alive, chunk.terminated, mb_actor_mask, self.cfg.prediction_horizon
+                        mb_alive, chunk.terminated, mb_actor_mask, self._predictive_horizon
                     )
                 )
             else:
@@ -2087,16 +2087,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             where ``reached`` indexes the labels and action targets.
         """
         assignment = denoms.get("depth_assignment")
-        horizon = self.cfg.prediction_horizon
+        horizon = self._predictive_horizon
         if assignment is None:
             belief = predictive_latent
+            depths = min(horizon, batch.alive.shape[0])
             for depth, state_mask, action_mask in predictive_horizon_masks(
                 batch.alive, batch.terminated, batch.actor_mask, horizon
             ):
                 span = state_mask.shape[0]
                 reached = torch.arange(span, device=belief.device) + depth
                 yield depth, belief, reached, state_mask, action_mask, ally[:span]
-                if span > 1:
+                # Only when another horizon will consume it. Advancing past the
+                # last one is a transition nothing decodes -- wasted work here,
+                # and the one-step arm has no transition to call at all.
+                if depth + 1 < depths and span > 1:
                     belief = predictive.advance(belief[: span - 1])
             return
 
@@ -2131,7 +2135,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         boundary_counts = episode_boundary_counts(terminated)
         order = torch.argsort(assignment, descending=True, stable=True)
         ordered = assignment[order]
-        horizons = min(self.cfg.prediction_horizon, alive.shape[0])
+        horizons = min(self._predictive_horizon, alive.shape[0])
         for depth in range(horizons):
             rows = order[ordered == depth]
             state_mask, action_mask, _ = predictive_masks_at(
@@ -2140,12 +2144,30 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             yield depth, state_mask, action_mask, rows
 
     @property
+    def _predictive_horizon(self) -> int:
+        """Decode depth for this run: one step for the control arm, else configured.
+
+        ``next_step`` is the horizon-0 slice of the same machinery, so it needs
+        no separate loss path -- capping the depth at one leaves the ``full``
+        plan yielding exactly the immediate transition.
+        """
+        return 1 if self.cfg.predictive_mode == "next_step" else self.cfg.prediction_horizon
+
+    @property
+    def _predictive_action_enabled(self) -> bool:
+        """Whether the action family trains. The control arm has no action head."""
+
+        if self.cfg.predictive_mode == "next_step":
+            return False
+        return self.cfg.predictive_action_coef > 0.0
+
+    @property
     def _predictive_enabled(self) -> bool:
         """Whether either predictive auxiliary family carries weight this run."""
 
         if self.cfg.predictive_mode == "off":
             return False
-        return self.cfg.predictive_state_coef > 0.0 or self.cfg.predictive_action_coef > 0.0
+        return self.cfg.predictive_state_coef > 0.0 or self._predictive_action_enabled
 
     def _predictive_losses(
         self,
@@ -2202,7 +2224,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         labels = batch.transition_labels
         targets = batch.actions.long()
         want_state = self.cfg.predictive_state_coef > 0.0 and labels is not None
-        want_action = self.cfg.predictive_action_coef > 0.0
+        want_action = self._predictive_action_enabled
         prediction_dim = self.coordinator.total_prediction_dimension
 
         state_counts = denoms["state_counts"]

@@ -279,6 +279,7 @@ decodes:
 |---|---|
 | `full` | every step decodes every horizon |
 | `sampled` | every step decodes **one** horizon (the default) |
+| `next_step` | no projection, no rollout, no action head — a one-step state head reading the trunk latent |
 | `off` | the block does not run at all |
 
 Under `sampled`, the horizons are dealt out across the rollout's steps as a fixed even
@@ -365,13 +366,13 @@ reference policy activated these components:
 |---|---:|---|---|
 | `ally_win` | `W` = 1.00 | outcome | +1 to each surviving teammate on a win |
 | `enemy_win` | `W` = 1.00 | outcome | opponent's win signal, seen as −1 through a negative enemy lambda |
-| `combat_death` | `U` = 1.00 | kill/death | −1 when projectile damage kills this ship |
-| `field_death` | `U` = 1.00 | kill/death | −1 when boundary damage kills this ship |
-| `kill_shot` | `U·f` = 0.50 | kill/death | fatal-step credit (+), proportional to that step's damage |
-| `kill_assist` | `U(1−f)` = 0.50 | kill/death | assist credit (+), proportional to cumulative episode damage |
-| `kill_ally_shot` | `U·f` = 0.50 | kill/death | blame (−) for a teammate's death, by that step's damage |
-| `kill_ally_assist` | `U(1−f)` = 0.50 | kill/death | blame (−) for a teammate's death, by cumulative damage |
-| `enemy_field_death` | `U·f` = 0.50 | kill/death | credit (+) to the enemy team when a ship dies to a field |
+| `combat_death` | `U` = 0.65 | kill/death | −1 when projectile damage kills this ship |
+| `field_death` | `U` = 0.65 | kill/death | −1 when boundary damage kills this ship |
+| `kill_shot` | `U·k·f` = 0.65 | kill/death | fatal-step credit (+), proportional to that step's damage |
+| `kill_assist` | `U·k(1−f)` = 0.65 | kill/death | assist credit (+), proportional to cumulative episode damage |
+| `kill_ally_shot` | `U·k·f` = 0.65 | kill/death | blame (−) for a teammate's death, by that step's damage |
+| `kill_ally_assist` | `U·k(1−f)` = 0.65 | kill/death | blame (−) for a teammate's death, by cumulative damage |
+| `enemy_field_death` | `U·k·f` = 0.65 | kill/death | credit (+) to the enemy team when a ship dies to a field |
 | `combat_damage_taken` | `V` = 0.40 | damage | −applied projectile health loss |
 | `field_damage_taken` | `V` = 0.40 | damage | −applied boundary health loss |
 | `damage_dealt_enemy` | `V` = 0.40 | damage | +proportional to damage dealt to enemies |
@@ -381,11 +382,23 @@ reference policy activated these components:
 | `closing_speed` | 0.10 | shaping | dense approach geometry (+) |
 | `shoot_quality` | off | shaping | firing opportunity quality (+); head retained at zero weight |
 
-Only four of those numbers are set. The rest follow from one rule: **an event pays one
+Only five of those numbers are set. The rest follow from one rule: **an event pays one
 side exactly what it charges the other.** A death costs the dying ship's team `U` and pays
 whoever caused it `U` between them; damage does the same with `V`; a win pays `W` and
 charges `W`. `f` — how `U` splits between "landed the finishing blow" and "contributed
 damage" — is the only ratio the rule leaves free, and it is even.
+
+`k` (`kill_payout_ratio`) is the fifth number, and it breaks the rule on purpose: the kill
+side is paid `k·U` while the dying side is still charged `U`. At `k = 1` the rule holds
+everywhere. It is set to 2 because the reference run paid 2:1 by accident — it carried
+`kill_shot` and `kill_assist` at the same weight as `combat_death` — and every balanced run
+since has been more passive than it, with lifespans of 314 and 398 against its 267 and tie
+rates reaching 35%. Charging a death and paying the kill equally leaves a one-for-one trade
+worth nothing, so a policy that cannot reliably win the trade declines it.
+
+The exception is confined to the kill tier. Damage and win were balanced in the reference
+run too, so the evidence for an asymmetry is specific to this tier rather than general, and
+a second free ratio would not be separable from the first in a single run.
 
 Three things follow that look like coincidences and are not.
 
@@ -420,8 +433,11 @@ The four numbers are then set so the *tiers* land near 17% outcome / 54% kill-de
 damage / 4% shaping. Those targets are measured, not chosen: they are the reference run's
 own tier shares. A component's trunk gradient share is linear in its weight, so dividing
 that run's per-component shares by its per-component weights gives a per-unit yield, and
-the tier sums then solve for the three event weights. The solve is stable — 0.90 to 0.97
-for `U` and 0.404 to 0.408 for `V` across every measurement window tried.
+the tier sums then solve for the three event weights. Solved against the doubled kill
+payout, and independently from two different runs' yields, `U` lands at 0.628 and 0.653 and
+`V` at 0.406 and 0.384. That puts `kill_shot` and `kill_assist` at 0.65 against the
+reference run's own 0.667 — reconstructed from gradient measurements alone, without being
+told what that run's weights were.
 
 An earlier version of this table allocated the tiers flat instead, near 31/32/31/5, on the
 judgement that outcome deserved the largest single share because everything below it is a

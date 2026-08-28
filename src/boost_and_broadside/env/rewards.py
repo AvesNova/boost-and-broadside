@@ -710,8 +710,12 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
     win = float(raw["win_weight"])
     death = float(raw["death_weight"])
     damage = float(raw["damage_weight"])
-    shot = death * float(raw["kill_shot_fraction"])
-    assist = death - shot
+    # The one place the balance rule is broken on purpose. The dying side is
+    # charged ``death``; the kill side is paid ``payout``, which is the same
+    # number only when ``kill_payout_ratio`` is 1.0. See ``RewardConfig``.
+    payout = death * float(raw.get("kill_payout_ratio", 1.0))
+    shot = payout * float(raw["kill_shot_fraction"])
+    assist = payout - shot
 
     derived = {name: 0.0 for name in REWARD_COMPONENT_NAMES}
     derived.update(

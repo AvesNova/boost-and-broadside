@@ -13,7 +13,7 @@ from boost_and_broadside.config.schedule import TrainingSchedule
 # check, like ``paradigm``, because the override parser can coerce ``str`` and
 # would refuse a Literal -- and comparing two decode plans is exactly the kind
 # of thing you want to do from the command line without editing a profile.
-PREDICTIVE_MODES: tuple[str, ...] = ("off", "full", "sampled")
+PREDICTIVE_MODES: tuple[str, ...] = ("off", "full", "sampled", "next_step")
 
 
 class _FrozenFloatMapping(Mapping[str, float]):

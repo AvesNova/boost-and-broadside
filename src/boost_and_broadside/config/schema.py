@@ -141,6 +141,16 @@ class ProfileSpec:
             "component_lambdas_per_tick",
             MappingProxyType(dict(self.component_lambdas_per_tick)),
         )
+        # The one-step arm is an architecture and an objective at once, recorded
+        # in two configs because checkpoints rebuild from ``model_config`` alone.
+        # This is the only place both are visible, so it is where they are held
+        # to agree -- a mismatch builds a policy whose heads the loss cannot use.
+        if (self.predictive_mode == "next_step") != self.model_config.predictive_next_step:
+            raise ValueError(
+                "predictive_mode='next_step' and model_config.predictive_next_step "
+                f"must agree, got {self.predictive_mode!r} and "
+                f"{self.model_config.predictive_next_step}"
+            )
 
 
 @dataclass(frozen=True)
