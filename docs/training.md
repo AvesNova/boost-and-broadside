@@ -219,9 +219,9 @@ reference policy activated these components:
 | `enemy_field_death` | `k·U·f` = 1.00 | kill/death | credit (+) to the enemy team when a ship dies to a field |
 | `combat_damage_taken` | `V` = 0.50 | damage | −applied projectile health loss |
 | `field_damage_taken` | `V` = 0.50 | damage | −applied boundary health loss |
-| `damage_dealt_enemy` | `V` = 0.50 | damage | +proportional to damage dealt to enemies |
-| `damage_dealt_ally` | `V` = 0.50 | damage | −proportional to friendly fire dealt |
-| `enemy_field_damage` | `V` = 0.50 | damage | +to the enemy team when a ship takes field damage |
+| `damage_dealt_enemy` | `d·V` = 1.00 | damage | +proportional to damage dealt to enemies |
+| `damage_dealt_ally` | `d·V` = 1.00 | damage | −proportional to friendly fire dealt |
+| `enemy_field_damage` | `d·V` = 1.00 | damage | +to the enemy team when a ship takes field damage |
 | `facing` | 0.10 | shaping | dense aim geometry (+) |
 | `closing_speed` | 0.10 | shaping | dense approach geometry (+) |
 | `shoot_quality` | off | shaping | firing opportunity quality (+); head retained at zero weight |
@@ -232,11 +232,16 @@ whoever caused it `U` between them; damage does the same with `V`; a win pays `W
 charges `W`. `f` — how the kill budget splits between "landed the finishing blow" and
 "contributed damage" — is the only ratio the rule leaves free, and it is even.
 
-`k` is the fifth number and the one named exception. At `k = 1` the rule holds exactly; at
-`k = 2` a death still charges the dying team `U` but pays its killers `2U`. Nothing else in
-the system can express that, because raising `U` raises the charge and the payout together.
-It is scoped to the kill tier: damage and win are balanced, and a second free ratio would
-not be separable from the first inside one run.
+`k` and `d` are the two named exceptions, one per tier. At 1 the rule holds exactly; above
+it, the side that *caused* an event is paid more than the side it happened to is charged —
+at `k = 2` a death still charges the dying team `U` but pays its killers `2U`, and at
+`d = 2` damage still charges its victim `V` but pays whoever dealt it `2V`. Nothing else in
+the system can express that, because raising `U` or `V` raises the charge and the payout
+together. Win stays balanced: it is one signal to each side of the same event, with no
+third party to pay.
+
+The friendly-fire components follow the payout rather than the charge, so neither ratio
+makes harming a teammate quietly cheaper as it makes harming an opponent more attractive.
 
 Three things follow that look like coincidences and are not.
 
@@ -267,8 +272,8 @@ solved produces gradients that increasingly cancel, and its influence should fad
 own rather than be propped up. In the reference run `field_death`'s coherence halved as
 field deaths fell eightfold.
 
-The five numbers are set to reproduce the reference run's reward vector, not to hit a tier
-target. Solving them against measured gradient share was tried twice and lost twice: one run
+The numbers are set to reproduce the reference run's reward vector, with one deliberate
+departure, rather than to hit a tier target. Solving them against measured gradient share was tried twice and lost twice: one run
 landed a flat 31/32/31/5 allocation and finished about 60 Elo behind its own predecessor,
 and a second re-solved against the reference run's own measured split, landed it to within
 5%, and produced the most passive policy of the set — lifespan 421 against the reference's
@@ -283,6 +288,15 @@ through untouched. `W`, `U`, `V`, `f` and `k` above reproduce that effective vec
 and the ratio it carried between a death charged and a kill paid — 2:1 — is what `k` exists
 to express. Only ratios matter: advantages are per-component unit-RMS before aggregation and
 the aggregate is divided by its own RMS, so scaling all five together is a no-op.
+
+One number departs from the reference run on purpose: `d`. A later run reproduced that
+vector exactly — parity on a joint Elo fit at 133M and 154M steps — and did not reach the
+one configuration that has beaten it, whose per-component weights were tilted 1.69:1 toward
+damage dealt. Matching the reference vector is evidently enough to match the reference run
+and not enough to beat it, and the damage tilt is the structural difference left. `d = 2`
+rather than 1.69 for symmetry with `k`; one run cannot resolve the two. Note that the tier
+share moves with it — doubling the paid side takes the damage tier from roughly 25% of the
+policy gradient to roughly 34% — so a win does not attribute to the ratio alone.
 
 Two components are new against the reference run rather than copied from it.
 `enemy_field_death` and `enemy_field_damage` were both zero there, so a ship killed by a

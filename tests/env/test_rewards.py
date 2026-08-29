@@ -299,14 +299,75 @@ class TestKillPayoutRatio:
         assert w["kill_shot"] + w["kill_assist"] == pytest.approx(w["combat_death"])
 
 
-class TestShippedWeightsReproduceRun719:
-    """The profile's five free numbers exist to rebuild run 719's reward vector.
+class TestDamagePayoutRatio:
+    """The damage tier gets the same exception, on separate and weaker evidence."""
 
-    719 is the strongest policy measured and the only one whose weights were not
-    derived. Solving the free numbers against measured gradient share was tried
-    in runs 721 and 724 and lost both times, so the defaults copy 719 instead —
-    and this is the test that says so, because the claim is otherwise only a
-    comment.
+    _cfg = staticmethod(TestComponentWeightDerivation._cfg)
+
+    def test_default_is_the_balance_rule(self):
+        assert self._cfg().damage_payout_ratio == 1.0
+        assert component_weights(self._cfg()) == component_weights(
+            self._cfg(damage_payout_ratio=1.0)
+        )
+
+    def test_damage_dealt_is_paid_the_ratio_times_the_charge(self):
+        w = component_weights(self._cfg(damage_weight=0.3, damage_payout_ratio=2.0))
+        assert w["combat_damage_taken"] == pytest.approx(0.3)
+        assert w["field_damage_taken"] == pytest.approx(0.3)
+        assert w["damage_dealt_enemy"] == pytest.approx(0.6)
+
+    def test_field_damage_follows_the_payout(self):
+        """enemy_field_damage supplies the offensive side of damage nobody dealt,
+        so it tracks what dealing damage pays, not what taking it charges."""
+        w = component_weights(self._cfg(damage_payout_ratio=2.0))
+        assert w["enemy_field_damage"] == pytest.approx(w["damage_dealt_enemy"])
+
+    def test_friendly_fire_follows_the_payout(self):
+        """Damaging a teammate is priced at the rate damaging an enemy pays, so
+        raising the payout does not quietly make friendly fire cheap."""
+        w = component_weights(self._cfg(damage_payout_ratio=2.0))
+        assert w["damage_dealt_ally"] == pytest.approx(w["damage_dealt_enemy"])
+
+    def test_kill_and_win_are_untouched(self):
+        """The two ratios are independent knobs on independent tiers."""
+        balanced = component_weights(self._cfg())
+        paid = component_weights(self._cfg(damage_payout_ratio=2.0))
+        for name in ("ally_win", "enemy_win", "combat_death", "field_death",
+                     "kill_shot", "kill_assist", "kill_ally_shot",
+                     "kill_ally_assist", "enemy_field_death",
+                     "combat_damage_taken", "field_damage_taken",
+                     "facing", "closing_speed"):
+            assert paid[name] == pytest.approx(balanced[name])
+
+    def test_the_two_ratios_compose(self):
+        w = component_weights(
+            self._cfg(death_weight=0.4, damage_weight=0.3,
+                      kill_payout_ratio=2.0, damage_payout_ratio=3.0)
+        )
+        assert w["kill_shot"] + w["kill_assist"] == pytest.approx(0.8)
+        assert w["damage_dealt_enemy"] == pytest.approx(0.9)
+
+    @pytest.mark.parametrize("bad", [-1.0, float("nan"), float("inf")])
+    def test_a_nonsense_ratio_is_refused(self, bad):
+        with pytest.raises(ValueError, match="damage_payout_ratio"):
+            self._cfg(damage_payout_ratio=bad)
+
+    def test_a_checkpoint_without_the_field_reads_as_balanced(self):
+        stored = {"win_weight": 1.0, "death_weight": 0.4, "damage_weight": 0.3,
+                  "kill_shot_fraction": 0.5}
+        w = component_weights(stored)
+        assert w["damage_dealt_enemy"] == pytest.approx(w["combat_damage_taken"])
+
+
+class TestRun719Reconstruction:
+    """The derivation can rebuild run 719's reward vector, and the profile says
+    where it deliberately departs from it.
+
+    719 is the strongest policy measured over a full budget and the only one
+    whose weights were not derived. Solving the free numbers against measured
+    gradient share was tried in runs 721 and 724 and lost both times, so the
+    profile copies 719 rather than targeting a share — with exactly one intended
+    departure at a time, which is what the second half of this class pins.
 
     The target is what 719 *trained under*, not what its config file said. Its
     lambda rows were normalized after the component weight was applied, which
@@ -325,16 +386,22 @@ class TestShippedWeightsReproduceRun719:
         "facing": 0.1, "closing_speed": 0.1,
     }
 
+    # The profile's numbers with both tiers balanced: run 725's vector, which
+    # calibrated to parity with 719 at 133M and 154M.
+    @staticmethod
+    def _as_run_725():
+        return dataclasses.replace(REWARDS, damage_payout_ratio=1.0)
+
     def test_every_component_719_carried_is_reproduced_exactly(self):
-        w = component_weights(REWARDS)
+        w = component_weights(self._as_run_725())
         for name, expected in self.EFFECTIVE_719.items():
             assert w[name] == pytest.approx(expected), name
 
-    def test_the_only_additions_are_the_two_the_rule_requires(self):
+    def test_the_only_additions_are_the_ones_the_rule_requires(self):
         """719 had no source-split offensive components at all, so a field death
-        paid its killers nothing. Those two are the only weights this vector adds
-        — anything else appearing here is a difference nobody argued for."""
-        w = component_weights(REWARDS)
+        paid its killers nothing. Anything else appearing here is a difference
+        nobody argued for."""
+        w = component_weights(self._as_run_725())
         added = {
             name for name, weight in w.items()
             if weight != 0.0 and name not in self.EFFECTIVE_719
@@ -347,19 +414,36 @@ class TestShippedWeightsReproduceRun719:
         the term lived inside KillShotReward at an unscaled -1.0 share, under
         kill_shot's own weight. Extracting it changed what is weightable and
         visible, not how much friendly fire cost."""
-        w = component_weights(REWARDS)
+        w = component_weights(self._as_run_725())
         assert w["kill_ally_shot"] == pytest.approx(self.EFFECTIVE_719["kill_shot"])
         assert w["kill_ally_assist"] == pytest.approx(self.EFFECTIVE_719["kill_assist"])
 
-    def test_the_payout_ratio_is_what_makes_this_reachable(self):
-        """Under the plain balance rule no setting of the free numbers reproduces
-        719, because it paid a kill 2.0 while charging a death 1.0. This is the
-        test that fails if the knob is ever quietly returned to 1.0."""
+    def test_the_kill_ratio_is_what_makes_719_reachable(self):
+        """Under the plain balance rule no setting of the free numbers reaches
+        719, because it paid a kill 2.0 while charging a death 1.0. This fails
+        if the kill knob is ever quietly returned to 1.0."""
         assert REWARDS.kill_payout_ratio == 2.0
         balanced = component_weights(
-            dataclasses.replace(REWARDS, kill_payout_ratio=1.0)
+            dataclasses.replace(REWARDS, kill_payout_ratio=1.0, damage_payout_ratio=1.0)
         )
         assert balanced["kill_shot"] != pytest.approx(self.EFFECTIVE_719["kill_shot"])
+
+    def test_the_shipped_vector_departs_from_719_in_the_damage_tier_only(self):
+        """The profile is 725's vector plus one change. 725 matched 719 and did
+        not beat it; 720 did, and its damage tier was tilted toward damage dealt.
+        This names that departure so a second one cannot arrive unannounced."""
+        assert REWARDS.damage_payout_ratio == 2.0
+        shipped = component_weights(REWARDS)
+        matched = component_weights(self._as_run_725())
+        moved = {name for name in shipped if shipped[name] != pytest.approx(matched[name])}
+        assert moved == {"damage_dealt_enemy", "damage_dealt_ally", "enemy_field_damage"}
+
+    def test_the_departure_pays_damage_dealt_twice_what_damage_taken_charges(self):
+        w = component_weights(REWARDS)
+        assert w["damage_dealt_enemy"] == pytest.approx(2 * w["combat_damage_taken"])
+        assert w["combat_damage_taken"] == pytest.approx(
+            self.EFFECTIVE_719["combat_damage_taken"]
+        )
 
 
 class TestComputePerComponentRewards:

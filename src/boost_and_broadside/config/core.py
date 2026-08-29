@@ -340,8 +340,8 @@ class RewardConfig:
     # How U splits between "landed the finishing blow" and "contributed damage".
     # The only ratio the balance rules leave free.
     kill_shot_fraction: float
-    # ``kill_payout_ratio`` breaks the balance rule for the kill tier on purpose;
-    # it lives with the other defaulted fields below.
+    # ``kill_payout_ratio`` and ``damage_payout_ratio`` break the balance rule for
+    # their own tier on purpose; they live with the other defaulted fields below.
 
     # --- Shaping ---
     # Not events. Facing a target is a state, not something that happens to
@@ -358,9 +358,12 @@ class RewardConfig:
     enemy_neg_lambda_components: frozenset[str]  # enemies get lambda=-1 (zero-sum)
     ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)
 
-    # A named, deliberate exception to the balance rule: the kill side is paid
-    # ``kill_payout_ratio * U`` while the dying side is still charged ``U``. At
-    # 1.0 the rule holds and an event pays exactly what it charges.
+    # Two named, deliberate exceptions to the balance rule, one per tier. The
+    # side that *caused* an event is paid the ratio times the weight while the
+    # side it happened to is still charged the plain weight. At 1.0 the rule
+    # holds and an event pays exactly what it charges.
+    #
+    # The kill side is paid ``kill_payout_ratio * U`` against a charge of ``U``.
     #
     # It is a knob rather than a constant because the balance rule cannot express
     # it at all -- raising ``U`` raises charge and payout together, so no setting
@@ -371,10 +374,30 @@ class RewardConfig:
     # and paying the kill equally makes an even trade worth nothing, so a policy
     # that cannot reliably win the trade declines it.
     #
-    # Kill tier only. Damage and win were balanced in the reference run too, so
-    # the evidence for an asymmetry is specific to this tier, and a second free
-    # ratio would not be separable from the first inside one run.
     kill_payout_ratio: float = 1.0
+
+    # Damage dealt is paid ``damage_payout_ratio * V`` against a charge of ``V``
+    # for damage taken. Separate evidence from the kill ratio, and weaker.
+    #
+    # Run 720 is the only configuration measured that beat the reference run, and
+    # its weights -- solved per component against measured coherence rather than
+    # derived -- came out tilted offensively in this tier as well:
+    # ``damage_dealt_enemy`` 0.54 against ``combat_damage_taken`` 0.32, a ratio
+    # of 1.69. The reference run was flat here, and run 725 reproduced the
+    # reference run's strength exactly while staying flat -- so a flat damage
+    # tier is consistent with matching that run and not with beating it. This is
+    # the one structural difference left between 725 and 720.
+    #
+    # Set to 2.0 for symmetry with the kill ratio rather than to 720's measured
+    # 1.69; one run cannot resolve the two. The tier-share side effect is larger
+    # than the knob looks: doubling the paid side moves the damage tier from
+    # about 25% of the policy gradient to about 34% and dilutes kill/death from
+    # 57% toward 50%, which is itself a move toward 720's flat allocation. A win
+    # here therefore does not attribute cleanly to the ratio alone.
+    #
+    # Win stays balanced. It is one signal to each side of the same event, with
+    # no third party to pay, so there is no asymmetry to express.
+    damage_payout_ratio: float = 1.0
 
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shoot_quality_weight: float = 0.0  # shot quality when firing
@@ -387,11 +410,10 @@ class RewardConfig:
             raise ValueError(
                 f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}"
             )
-        if not np.isfinite(self.kill_payout_ratio) or self.kill_payout_ratio < 0.0:
-            raise ValueError(
-                f"kill_payout_ratio must be finite and non-negative, "
-                f"got {self.kill_payout_ratio}"
-            )
+        for name in ("kill_payout_ratio", "damage_payout_ratio"):
+            ratio = getattr(self, name)
+            if not np.isfinite(ratio) or ratio < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative, got {ratio}")
         for name in ("win_weight", "death_weight", "damage_weight"):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0.0:

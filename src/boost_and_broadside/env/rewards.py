@@ -680,22 +680,23 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
                                 field death, that second term has to equal
                                 ``kill_shot`` for the totals to match
     combat damage               charged ``V`` (``combat_damage_taken``),
-                                paid ``V`` (``damage_dealt_enemy``)
+                                paid ``d*V`` (``damage_dealt_enemy``)
     field damage                charged ``V`` (``field_damage_taken``),
-                                paid ``V`` (``enemy_field_damage``)
+                                paid ``d*V`` (``enemy_field_damage``)
     a win                       paid ``W``, charged ``W`` through the
                                 negative enemy lambda on ``enemy_win``
     ==========================  ==========================================
 
-    ``k`` is ``kill_payout_ratio``, the one named exception: at 1.0 the table
-    above balances exactly, and above it the kill side is paid more than the
-    dying side is charged. Nothing else in the system can express that, because
-    raising ``U`` raises charge and payout together.
+    ``k`` is ``kill_payout_ratio`` and ``d`` is ``damage_payout_ratio``, the two
+    named exceptions: at 1.0 the table above balances exactly, and above it the
+    side that caused an event is paid more than the side it happened to is
+    charged. Nothing else in the system can express that, because raising ``U``
+    or ``V`` raises charge and payout together.
 
     The friendly-fire components mirror the offensive ones exactly, which is what
     makes killing a teammate cost the team twice: once for the death and once for
-    having caused it. They follow the payout, so ``k`` prices blame for a
-    teammate's death at the same rate it prices credit for an enemy's.
+    having caused it. They follow the payout, so the two ratios price blame for
+    harming a teammate at the same rate they price credit for harming an enemy.
 
     Args:
         rewards: A ``RewardConfig``, or the plain mapping a checkpoint stores in
@@ -716,12 +717,14 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
     win = float(raw["win_weight"])
     death = float(raw["death_weight"])
     damage = float(raw["damage_weight"])
-    # The one place the balance rule is broken on purpose. The dying side is
-    # charged ``death``; the kill side is paid ``payout``, which is the same
-    # number only when ``kill_payout_ratio`` is 1.0. See ``RewardConfig``.
+    # The two places the balance rule is broken on purpose. Each tier charges the
+    # side an event happens *to* the plain weight and pays the side that caused it
+    # the weight times a ratio, which is the same number only at 1.0. See
+    # ``RewardConfig``.
     payout = death * float(raw.get("kill_payout_ratio", 1.0))
     shot = payout * float(raw["kill_shot_fraction"])
     assist = payout - shot
+    dealt = damage * float(raw.get("damage_payout_ratio", 1.0))
 
     derived = {name: 0.0 for name in REWARD_COMPONENT_NAMES}
     derived.update(
@@ -738,10 +741,10 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
             "kill_ally_assist": assist,
             "combat_damage_taken": damage,
             "field_damage_taken": damage,
-            "damage_dealt_enemy": damage,
-            "damage_dealt_ally": damage,
+            "damage_dealt_enemy": dealt,
+            "damage_dealt_ally": dealt,
             # The offensive side of damage nobody dealt.
-            "enemy_field_damage": damage,
+            "enemy_field_damage": dealt,
         }
     )
     # Shaping is not an event and has no opposing side, so it stays individual.

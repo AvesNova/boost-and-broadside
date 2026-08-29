@@ -499,3 +499,66 @@ On the first diagnostic update past the behavior-cloning decay:
 3. `scaler/floor_bound_span_count` stays 0.
 4. Lifespan. It is the cheapest early read on whether the 2:1 payout is doing
    what five runs of evidence say it should — 720 sat at 208 against 724's 421.
+
+## Run 725: the kill ratio reproduces 719, and only 719
+
+725 ran 719's effective vector with `k = 2` on the pre-predictive code path. A
+joint Bradley-Terry fit over all seven runs — 39 players, 49,152 games, every
+rating within ±15 Elo, in
+`artifacts/elo-calibration/20260829T151130Z-33da087c/` — puts it here against
+719 at matched steps:
+
+| step | 30.9M | 82.6M | 133.4M | 153.8M |
+|---|---:|---:|---:|---:|
+| 725 − 719 | −38 | −52 | **−1** | **+3** |
+
+Parity, reached from below at about 130M. The design goal was to rebuild 719 and
+it rebuilt 719, behaviour included: lifespan 268 over 100–155M against 719's 267,
+realised tier shares 13.9/57.3/25.0/3.8 against 719's measured 17/54/25/4 without
+targeting them, friendly-fire pressure 12.3% against the 12.8% the derivation
+predicted, `floor_bound_span_count` 0, and 2,764 sps on the fast path.
+
+It did **not** reach 720. The fit's reference player is `r720_ladder_71.7M`, so
+each stderr above is the error on the gap to that exact point: 725 at 82.6M rates
+1142 against 720's 1188 at 71.7M — **−46 ± 19 at 2σ, with 15% more steps**. At
+the next band, 725 at 133.4M against 720 at 124.4M is −32 [±27]. Marginal
+individually, consistent in sign.
+
+So the kill payout ratio explains 725 ≈ 719 and does not explain 720 > 719.
+
+## The damage tier was tilted in 720 too
+
+720's weights were solved per component against measured coherence, and that left
+the damage tier asymmetric in the same direction as its kill tier:
+
+| run | damage dealt | damage taken | ratio | vs 719 |
+|---|---:|---:|---:|---:|
+| 719 | 0.50 | 0.50 | 1.00 | — |
+| **720** | 0.54 | 0.32 | **1.69** | +58 |
+| 725 | 0.50 | 0.50 | 1.00 | ~0 |
+
+The kill ratio was scoped to its own tier on the grounds that "damage and win
+were balanced in 719 as well, so the evidence for an asymmetry is specific to
+this tier." That reasoning had one run in it. 720 is a second and it disagrees.
+
+The obvious alternative does not hold: 720's shaping taper does not begin until
+100M, and 720 was already +40 at 71.7M.
+
+Hence `damage_payout_ratio`, damage tier only, default 1.0, set to 2.0. Win stays
+balanced — it is one signal to each side of the same event, with no third party
+to pay.
+
+### Two caveats on this run, recorded before it starts
+
+1. **2.0 is symmetry, not measurement.** 720 measured 1.69. One run cannot
+   resolve the difference, and a round number that matches `k` is easier to
+   reason about, but nothing measured says 2.0.
+2. **The tier share moves with the knob, and that is a confound.** Doubling the
+   paid side takes the damage tier from about 25% of the policy gradient to about
+   34% and dilutes kill/death from 57% toward 50% — a move *toward* 720's flat
+   31/32/31/5. Since 720 and 721 shared that flat allocation and differed only in
+   payout ratio, allocation is a live alternative explanation for 720's margin,
+   and this run moves both at once. A win here is evidence for "720's direction"
+   rather than for the damage ratio specifically. Separating them needs a second
+   run holding tier shares fixed while the ratio moves, which the tier scales can
+   do.

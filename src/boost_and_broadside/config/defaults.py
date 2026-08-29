@@ -89,6 +89,13 @@ REWARDS = RewardConfig(
     # weight; k=2 is that ratio, and with U=1.0 it reproduces both numbers
     # exactly. See RewardConfig for why this is the tier that gets a knob.
     kill_payout_ratio=2.0,
+    # And the same for damage, which is the one thing 725 did not copy from 720.
+    # 725 reproduced 719 exactly -- parity at 133M and 154M -- and did not reach
+    # 720's +58, so matching 719's vector is evidently enough to match 719 and
+    # not enough to beat it. 720's damage tier was tilted 1.69:1 toward damage
+    # dealt; 2.0 here for symmetry with the kill ratio rather than to chase a
+    # number one run cannot resolve. See RewardConfig for the tier-share caveat.
+    damage_payout_ratio=2.0,
     # Shaping is not an event, so it stays individually weighted. 719 carried
     # both at 0.10 and did not taper them; the taper argument is unaffected and
     # still recorded in the schedule, but it would be one more difference than
