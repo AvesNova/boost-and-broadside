@@ -6,6 +6,7 @@ No compute_rewards() — per-ship signals are tested directly; zero-sum accounti
 """
 
 import dataclasses
+import math
 
 import pytest
 import torch
@@ -360,14 +361,12 @@ class TestDamagePayoutRatio:
 
 
 class TestRun719Reconstruction:
-    """The derivation can rebuild run 719's reward vector, and the profile says
-    where it deliberately departs from it.
+    """The derivation can rebuild run 719's reward vector exactly.
 
-    719 is the strongest policy measured over a full budget and the only one
-    whose weights were not derived. Solving the free numbers against measured
-    gradient share was tried in runs 721 and 724 and lost both times, so the
-    profile copies 719 rather than targeting a share — with exactly one intended
-    departure at a time, which is what the second half of this class pins.
+    A permanent property of the system, tested with explicit parameters rather
+    than the shipped ones: the profile is free to point somewhere else (it does),
+    but the algebra still has to be able to express 719. Run 725 trained on this
+    exact vector and calibrated to parity with 719 at 133M and 154M steps.
 
     The target is what 719 *trained under*, not what its config file said. Its
     lambda rows were normalized after the component weight was applied, which
@@ -376,7 +375,6 @@ class TestRun719Reconstruction:
     1.5. Local components were below the clamp and passed through untouched.
     """
 
-    # Run 719's effective weights. Global pair at 1.0, everything else as configured.
     EFFECTIVE_719 = {
         "ally_win": 1.0, "enemy_win": 1.0,
         "combat_death": 1.0, "field_death": 1.0,
@@ -386,26 +384,26 @@ class TestRun719Reconstruction:
         "facing": 0.1, "closing_speed": 0.1,
     }
 
-    # The profile's numbers with both tiers balanced: run 725's vector, which
-    # calibrated to parity with 719 at 133M and 154M.
     @staticmethod
-    def _as_run_725():
-        return dataclasses.replace(REWARDS, damage_payout_ratio=1.0)
+    def _run_725():
+        """719's effective vector, as the five free numbers that produce it."""
+        return dataclasses.replace(
+            REWARDS, win_weight=1.0, death_weight=1.0, damage_weight=0.5,
+            kill_shot_fraction=0.5, kill_payout_ratio=2.0, damage_payout_ratio=1.0,
+            facing_weight=0.1, closing_speed_weight=0.1,
+        )
 
     def test_every_component_719_carried_is_reproduced_exactly(self):
-        w = component_weights(self._as_run_725())
+        w = component_weights(self._run_725())
         for name, expected in self.EFFECTIVE_719.items():
             assert w[name] == pytest.approx(expected), name
 
     def test_the_only_additions_are_the_ones_the_rule_requires(self):
-        """719 had no source-split offensive components at all, so a field death
-        paid its killers nothing. Anything else appearing here is a difference
-        nobody argued for."""
-        w = component_weights(self._as_run_725())
-        added = {
-            name for name, weight in w.items()
-            if weight != 0.0 and name not in self.EFFECTIVE_719
-        }
+        """719 had no source-split offensive components, so a field death paid its
+        killers nothing. Anything beyond these is a difference nobody argued for."""
+        w = component_weights(self._run_725())
+        added = {name for name, weight in w.items()
+                 if weight != 0.0 and name not in self.EFFECTIVE_719}
         assert added == {"enemy_field_death", "enemy_field_damage",
                          "kill_ally_shot", "kill_ally_assist"}
 
@@ -414,36 +412,78 @@ class TestRun719Reconstruction:
         the term lived inside KillShotReward at an unscaled -1.0 share, under
         kill_shot's own weight. Extracting it changed what is weightable and
         visible, not how much friendly fire cost."""
-        w = component_weights(self._as_run_725())
+        w = component_weights(self._run_725())
         assert w["kill_ally_shot"] == pytest.approx(self.EFFECTIVE_719["kill_shot"])
         assert w["kill_ally_assist"] == pytest.approx(self.EFFECTIVE_719["kill_assist"])
 
     def test_the_kill_ratio_is_what_makes_719_reachable(self):
-        """Under the plain balance rule no setting of the free numbers reaches
-        719, because it paid a kill 2.0 while charging a death 1.0. This fails
-        if the kill knob is ever quietly returned to 1.0."""
-        assert REWARDS.kill_payout_ratio == 2.0
+        """Under the plain balance rule no setting of the free numbers reaches 719,
+        because it paid a kill 2.0 while charging a death 1.0."""
         balanced = component_weights(
-            dataclasses.replace(REWARDS, kill_payout_ratio=1.0, damage_payout_ratio=1.0)
+            dataclasses.replace(self._run_725(), kill_payout_ratio=1.0)
         )
         assert balanced["kill_shot"] != pytest.approx(self.EFFECTIVE_719["kill_shot"])
 
-    def test_the_shipped_vector_departs_from_719_in_the_damage_tier_only(self):
-        """The profile is 725's vector plus one change. 725 matched 719 and did
-        not beat it; 720 did, and its damage tier was tilted toward damage dealt.
-        This names that departure so a second one cannot arrive unannounced."""
-        assert REWARDS.damage_payout_ratio == 2.0
-        shipped = component_weights(REWARDS)
-        matched = component_weights(self._as_run_725())
-        moved = {name for name in shipped if shipped[name] != pytest.approx(matched[name])}
-        assert moved == {"damage_dealt_enemy", "damage_dealt_ally", "enemy_field_damage"}
 
-    def test_the_departure_pays_damage_dealt_twice_what_damage_taken_charges(self):
+class TestShippedWeightsReconstructRun720:
+    """The profile's numbers are a least-squares reconstruction of run 720.
+
+    720 is the only configuration measured that beat 719, and its weights were
+    not derived -- they were solved per component as ``w = share / d`` against
+    measured coherence, so no two are equal. The profile fits the derivation to
+    that vector in log space. This class pins the result, because a fit nobody
+    checks is a comment.
+
+    The residual is irreducible: the rule forces pairs equal that 720 had
+    unequal. ``combat_damage_taken`` 0.32 against ``field_damage_taken`` 0.26 is
+    the worst, and that spread came out of 720's own per-component solve rather
+    than out of a principle.
+    """
+
+    # Run 720's active weights, from checkpoints/silvery-pond-720/config.json.
+    RUN_720 = {
+        "ally_win": 1.0, "enemy_win": 1.0,
+        "combat_death": 0.27, "field_death": 0.28,
+        "kill_shot": 0.28, "kill_assist": 0.31,
+        "kill_ally_shot": 0.28, "kill_ally_assist": 0.28,
+        "combat_damage_taken": 0.32, "field_damage_taken": 0.26,
+        "damage_dealt_enemy": 0.54, "damage_dealt_ally": 0.50,
+        "facing": 0.09, "closing_speed": 0.08,
+    }
+
+    def test_the_two_ratios_are_one_shared_number(self):
+        """Both tiers were tilted in 720 and the shared ratio is the smaller
+        claim: an aggressor is paid twice what a victim is charged, everywhere.
+        The solve returned 1.96, which the fit cannot tell from 2.0."""
+        assert REWARDS.kill_payout_ratio == REWARDS.damage_payout_ratio == 2.0
+
+    def test_every_component_lands_within_the_fit_residual(self):
         w = component_weights(REWARDS)
-        assert w["damage_dealt_enemy"] == pytest.approx(2 * w["combat_damage_taken"])
-        assert w["combat_damage_taken"] == pytest.approx(
-            self.EFFECTIVE_719["combat_damage_taken"]
-        )
+        for name, target in self.RUN_720.items():
+            assert w[name] == pytest.approx(target, rel=0.15), name
+
+    def test_the_fit_is_no_worse_than_the_solve_that_produced_it(self):
+        """Guards the numbers against a well-meant round. The solved vector sits
+        at 6.01% RMS relative error against 720; anything materially worse means
+        the profile drifted off the fit."""
+        w = component_weights(REWARDS)
+        errs = [w[n] / t - 1.0 for n, t in self.RUN_720.items()]
+        rms = math.sqrt(sum(e * e for e in errs) / len(errs))
+        assert rms < 0.065
+
+    def test_the_kill_tier_is_flat_because_f_is_even_and_the_ratio_is_two(self):
+        """k*U*f == U at k=2, f=0.5, so every kill/death component lands on U.
+        Worth an assertion because it looks like a coincidence and is not."""
+        w = component_weights(REWARDS)
+        for name in ("combat_death", "field_death", "kill_shot", "kill_assist",
+                     "kill_ally_shot", "kill_ally_assist", "enemy_field_death"):
+            assert w[name] == pytest.approx(REWARDS.death_weight), name
+
+    def test_the_additions_720_lacked_are_still_only_the_two(self):
+        w = component_weights(REWARDS)
+        added = {name for name, weight in w.items()
+                 if weight != 0.0 and name not in self.RUN_720}
+        assert added == {"enemy_field_death", "enemy_field_damage"}
 
 
 class TestComputePerComponentRewards:

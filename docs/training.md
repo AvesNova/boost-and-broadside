@@ -210,20 +210,20 @@ reference policy activated these components:
 |---|---:|---|---|
 | `ally_win` | `W` = 1.00 | outcome | +1 to each surviving teammate on a win |
 | `enemy_win` | `W` = 1.00 | outcome | opponent's win signal, seen as −1 through a negative enemy lambda |
-| `combat_death` | `U` = 1.00 | kill/death | −1 when projectile damage kills this ship |
-| `field_death` | `U` = 1.00 | kill/death | −1 when boundary damage kills this ship |
-| `kill_shot` | `k·U·f` = 1.00 | kill/death | fatal-step credit (+), proportional to that step's damage |
-| `kill_assist` | `k·U(1−f)` = 1.00 | kill/death | assist credit (+), proportional to cumulative episode damage |
-| `kill_ally_shot` | `k·U·f` = 1.00 | kill/death | blame (−) for a teammate's death, by that step's damage |
-| `kill_ally_assist` | `k·U(1−f)` = 1.00 | kill/death | blame (−) for a teammate's death, by cumulative damage |
-| `enemy_field_death` | `k·U·f` = 1.00 | kill/death | credit (+) to the enemy team when a ship dies to a field |
-| `combat_damage_taken` | `V` = 0.50 | damage | −applied projectile health loss |
-| `field_damage_taken` | `V` = 0.50 | damage | −applied boundary health loss |
-| `damage_dealt_enemy` | `d·V` = 1.00 | damage | +proportional to damage dealt to enemies |
-| `damage_dealt_ally` | `d·V` = 1.00 | damage | −proportional to friendly fire dealt |
-| `enemy_field_damage` | `d·V` = 1.00 | damage | +to the enemy team when a ship takes field damage |
-| `facing` | 0.10 | shaping | dense aim geometry (+) |
-| `closing_speed` | 0.10 | shaping | dense approach geometry (+) |
+| `combat_death` | `U` = 0.283 | kill/death | −1 when projectile damage kills this ship |
+| `field_death` | `U` = 0.283 | kill/death | −1 when boundary damage kills this ship |
+| `kill_shot` | `r·U·f` = 0.283 | kill/death | fatal-step credit (+), proportional to that step's damage |
+| `kill_assist` | `r·U(1−f)` = 0.283 | kill/death | assist credit (+), proportional to cumulative episode damage |
+| `kill_ally_shot` | `r·U·f` = 0.283 | kill/death | blame (−) for a teammate's death, by that step's damage |
+| `kill_ally_assist` | `r·U(1−f)` = 0.283 | kill/death | blame (−) for a teammate's death, by cumulative damage |
+| `enemy_field_death` | `r·U·f` = 0.283 | kill/death | credit (+) to the enemy team when a ship dies to a field |
+| `combat_damage_taken` | `V` = 0.274 | damage | −applied projectile health loss |
+| `field_damage_taken` | `V` = 0.274 | damage | −applied boundary health loss |
+| `damage_dealt_enemy` | `r·V` = 0.548 | damage | +proportional to damage dealt to enemies |
+| `damage_dealt_ally` | `r·V` = 0.548 | damage | −proportional to friendly fire dealt |
+| `enemy_field_damage` | `r·V` = 0.548 | damage | +to the enemy team when a ship takes field damage |
+| `facing` | 0.09 | shaping | dense aim geometry (+) |
+| `closing_speed` | 0.08 | shaping | dense approach geometry (+) |
 | `shoot_quality` | off | shaping | firing opportunity quality (+); head retained at zero weight |
 
 Only five of those numbers are set. The rest follow from one rule: **an event pays one
@@ -232,13 +232,21 @@ whoever caused it `U` between them; damage does the same with `V`; a win pays `W
 charges `W`. `f` — how the kill budget splits between "landed the finishing blow" and
 "contributed damage" — is the only ratio the rule leaves free, and it is even.
 
-`k` and `d` are the two named exceptions, one per tier. At 1 the rule holds exactly; above
-it, the side that *caused* an event is paid more than the side it happened to is charged —
-at `k = 2` a death still charges the dying team `U` but pays its killers `2U`, and at
-`d = 2` damage still charges its victim `V` but pays whoever dealt it `2V`. Nothing else in
-the system can express that, because raising `U` or `V` raises the charge and the payout
-together. Win stays balanced: it is one signal to each side of the same event, with no
-third party to pay.
+`r` is the one named exception, and it applies to both event tiers. At `r = 1` the rule
+holds exactly; above it, the side that *caused* an event is paid more than the side it
+happened to is charged — at `r = 2` a death still charges the dying team `U` but pays its
+killers `2U`, and damage still charges its victim `V` but pays whoever dealt it `2V`.
+Nothing else in the system can express that, because raising `U` or `V` raises the charge
+and the payout together. It is carried as two config fields, `kill_payout_ratio` and
+`damage_payout_ratio`, so either tier can be moved alone; they are set to the same number
+because one shared ratio is the smaller claim, and because solving them separately gave
+2.09 and 1.80 — a difference the fit cannot resolve.
+
+Win stays balanced: it is one signal to each side of the same event, with no third party
+to pay.
+
+At `r = 2` and `f = 0.5` the kill payout `r·U·f` equals `U`, so every component in the
+kill/death tier lands on the same number. That looks like a coincidence and is not.
 
 The friendly-fire components follow the payout rather than the charge, so neither ratio
 makes harming a teammate quietly cheaper as it makes harming an opponent more attractive.
@@ -272,39 +280,30 @@ solved produces gradients that increasingly cancel, and its influence should fad
 own rather than be propped up. In the reference run `field_death`'s coherence halved as
 field deaths fell eightfold.
 
-The numbers are set to reproduce the reference run's reward vector, with one deliberate
-departure, rather than to hit a tier target. Solving them against measured gradient share was tried twice and lost twice: one run
-landed a flat 31/32/31/5 allocation and finished about 60 Elo behind its own predecessor,
-and a second re-solved against the reference run's own measured split, landed it to within
-5%, and produced the most passive policy of the set — lifespan 421 against the reference's
-259 at matched steps. Tier share is evidently not the quantity that separates a strong
-policy from a passive one.
+The numbers are **solved, not chosen.** The target is the one configuration measured that
+beat the reference run, by +58 Elo at matched steps on a joint Bradley-Terry fit. That
+run's weights were not derived — they came from `w = share / d` against measured gradient
+coherence, which is why no two of them are equal — so these five numbers are the closest
+the derivation can come to that vector, by least squares on log weights. Log space because
+the weights span 0.08 to 1.0 and only ratios matter, so a 10% error on `facing` should
+count like a 10% error on `ally_win`. The fit has a closed form and was checked against a
+numeric optimiser.
 
-What the reference run *trained under* is the target, not what its config recorded. Its
-lambda rows were normalized after the component weight was applied, which divided the weight
-back out of every global component, so `ally_win` and `enemy_win` came out at an effective
-total of 1.00 against a configured 1.50. Local components sat below the clamp and passed
-through untouched. `W`, `U`, `V`, `f` and `k` above reproduce that effective vector exactly,
-and the ratio it carried between a death charged and a kill paid — 2:1 — is what `k` exists
-to express. Only ratios matter: advantages are per-component unit-RMS before aggregation and
-the aggregate is divided by its own RMS, so scaling all five together is a no-op.
+It lands within 6% RMS. The residual is irreducible rather than a tuning failure: the rule
+forces pairs equal that the target had unequal — `combat_damage_taken` 0.32 against
+`field_damage_taken` 0.26 is the worst of them, and that spread came out of a
+per-component solve rather than out of any principle.
 
-One number departs from the reference run on purpose: `d`. A later run reproduced that
-vector exactly — parity on a joint Elo fit at 133M and 154M steps — and did not reach the
-one configuration that has beaten it, whose per-component weights were tilted 1.69:1 toward
-damage dealt. Matching the reference vector is evidently enough to match the reference run
-and not enough to beat it, and the damage tilt is the structural difference left. `d = 2`
-rather than 1.69 for symmetry with `k`; one run cannot resolve the two. Note that the tier
-share moves with it — doubling the paid side takes the damage tier from roughly 25% of the
-policy gradient to roughly 34% — so a win does not attribute to the ratio alone.
+Two earlier vectors are worth knowing about, because they are what this replaced. Setting
+the numbers to a *tier-share target* was tried twice and lost both times. Copying the
+reference run's own vector exactly was tried once: it reproduced that run — parity at 133M
+and 154M steps — and came nowhere near the run being reconstructed here. Matching the
+reference is evidently enough to match it and not enough to beat it.
 
-Two components are new against the reference run rather than copied from it.
-`enemy_field_death` and `enemy_field_damage` were both zero there, so a ship killed by a
-field paid its opponents nothing at all; the rule requires them, and they are the only
-weights this vector adds. The `kill_ally_*` pair looks like a third addition and is not —
-the reference run penalized friendly kills at an unscaled −1.0 share folded inside
-`KillShotReward` under `kill_shot`'s own weight, so extracting it changed what is weightable
-and visible, not what friendly fire costs.
+Two components are new against the target rather than fitted to it. `enemy_field_death` and
+`enemy_field_damage` were both zero there, so a ship killed by a field paid its opponents
+nothing at all; the rule requires them. They also widen the critic from 14 heads to 16,
+which dilutes every other component's share of the per-component value loss by 14/16.
 
 The wrapper divides component rewards by total ship count for team-size normalization.
 A lambda aggregation matrix then maps local event signals to training targets:
@@ -330,24 +329,28 @@ credit-assignment ladder, and the per-component gammas and lambdas already follo
 partition: an outcome is discounted over a whole episode, a kill over an engagement, damage
 over an exchange, geometry over the next moment.
 
-All four scales hold flat. For three of them that is the settled answer: the realised tier
-shares already drift the way a curriculum would move them — measured on the reference run,
+Three of the four scales hold flat, and that is the settled answer for them: the realised
+tier shares already drift the way a curriculum would move them — measured on the reference run,
 the outcome tier's share of the policy gradient rises about 1.29x over a run while the
 kill/death tier falls to 0.73x — so scheduling them would fight a trend rather than create
 one.
 
-Shaping holds flat for a weaker reason: the reference run carried its shaping undecayed, and
-this weight vector exists to reproduce that run with one deliberate change in it. A taper
-would be a second. The argument for tapering is unaffected and worth restoring once the
-reward vector is settled. Shaping's realised share *grows* about 1.58x over a run, and
-`facing` and `closing_speed` are not
+Shaping is the exception, and it is also the last remaining config difference between this
+profile and the run it reconstructs — that run carried this taper, so this one does too. It
+has to be pushed down rather than left alone: shaping's realised share *grows* about 1.58x
+over a run, and `facing` and `closing_speed` are not
 [potential-based](https://people.eecs.berkeley.edu/~pabbeel/cs287-fa09/readings/NgHaradaRussell-shaping-ICML1999.pdf),
 so they bias the optimum for as long as they are on, and they oppose the objective
 directly: `closing_speed` against `field_damage_taken` measures a mean gradient cosine of
 −0.446, negative in 99.9% of samples. They exist to stop early passive collapse, which is
-finished long before the budget is. The shape to restore decays `shaping_scale` from 100M
-steps to a floor of 0.05 at 400M — a floor rather than zero, so the components stay
-measurable to the end and the next run can read whether shaping was still buying anything.
+finished long before the budget is. `shaping_scale` therefore decays from 100M steps to a
+floor of 0.05 at 400M. The floor is not zero, so the components stay measurable to the end:
+their gradient share and explained variance remain readable, which is how the next run
+learns whether shaping was still buying anything.
+
+One caveat on that inheritance. The reconstructed run stopped at 127M, so it ran barely 27M
+steps into the taper and ended near 0.76. Everything the taper does past that point is
+untested by the evidence this profile is built on.
 
 Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
 fatal step, each earns credit proportional to that step's damage. `kill_assist` remains

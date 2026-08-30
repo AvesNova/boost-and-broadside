@@ -562,3 +562,67 @@ to pay.
    rather than for the damage ratio specifically. Separating them needs a second
    run holding tier shares fixed while the ratio moves, which the tier scales can
    do.
+
+## Reconstructing 720 instead of 719
+
+Run 726 tested 719's vector plus a damage tilt. It was stopped at 103.5M once a
+config diff made the point clearer than the run would have: **726 was never a
+reconstruction of 720.** It was 719 with one thing changed, and the kill/death
+level relative to the win pair stayed at 719's, which is 3.5x heavier than 720's.
+Its measured tier shares said so — 11.8 outcome / 52.0 kill-death / 32.4 damage
+against 720's 29.3 / 30.8 / 36.1 at the same steps.
+
+So the profile now fits the derivation to 720 directly, by least squares on log
+weights. Log space because the weights span 0.08 to 1.0 and only ratios matter.
+The problem separates in logs, so the fit is closed-form; it was checked against
+a coordinate-descent optimiser with random restarts and agrees to every digit.
+
+| fit | W | U | V | f | k | d | RMS | max |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| eyeballed first pass | 1.000 | 0.2800 | 0.2900 | 0.500 | 2.00 | 2.00 | 7.3% | 16.0% |
+| ratios pinned at 2 | 1.000 | 0.2831 | 0.2738 | 0.4875 | 2.00 | 2.00 | 5.9% | 14.5% |
+| all six free | 1.000 | 0.2750 | 0.2884 | 0.4873 | 2.09 | 1.80 | 5.0% | 10.9% |
+| **shared ratio, f even (shipped)** | **1.000** | **0.283** | **0.274** | **0.500** | **2.00** | **2.00** | **6.0%** | 14.4% |
+
+Freeing the two ratios separately buys 5.9% → 5.0% and returns 2.09 and 1.80.
+Tying them to one number and solving returns **1.96**, which the fit cannot
+distinguish from 2.0 (5.97% against 6.01% RMS). One shared ratio is the smaller
+claim and keeps a single number across runs 725, 726 and this one, so 2.0 it is.
+Pinning `f` even costs 0.2% RMS and keeps the standing principle.
+
+At `r = 2` and `f = 0.5` the kill payout `r·U·f` equals `U`, so the whole
+kill/death tier lands on 0.283. That is arithmetic, not a coincidence.
+
+The ~6% residual is irreducible. The rule forces pairs equal that 720 had
+unequal: `combat_damage_taken` 0.32 against `field_damage_taken` 0.26 (23%
+spread, the worst), `kill_assist` 0.31 against `kill_shot` 0.28, `damage_dealt_ally`
+0.50 against `damage_dealt_enemy` 0.54. Those spreads fell out of 720's own
+`w = share / d` solve rather than out of a principle, so some of that residual is
+fitting 720's noise.
+
+### Everything else that differs from 720
+
+A full flattened diff of the resolved config against
+`checkpoints/silvery-pond-720/config.json` now reports **no non-reward
+differences at all**. `shaping_scale` was the last one and is restored to 720's
+taper. Physics, model, env, every schedule, `microbatch_tokens`, `num_envs`,
+`total_timesteps`, all per-component gammas and lambdas and the other three tier
+scales were already identical.
+
+Code: between 720's commit `3d7f86d` and here, the only training-path changes are
+the weight derivation, the two ratio knobs, and one plumbing edit — `ppo.py`
+reads `self._component_weights[name]` where it read
+`getattr(cfg.rewards, f"{name}_weight")`. For a fixed weight vector that is a
+no-op. Nothing touches the loss, the lambda matrix, the scalers or the rollout.
+
+What remains, and neither is a choice:
+
+1. **K goes 14 → 16.** `enemy_field_death` and `enemy_field_damage` are zero in
+   720 and non-zero under the rule, so the critic widens and every component's
+   share of the per-component value loss is diluted by 14/16. A field kill pays
+   0.283 where 720 paid nothing for the shot half.
+2. **720's taper is untested past 127M.** It ran 27M steps into the decay and
+   ended near 0.76. Everything the taper does after that is inherited on faith.
+
+And the seed differs, which is worth stating plainly: 720's whole +58 rests on a
+single run with no replicate.

@@ -55,53 +55,53 @@ ELO_CALIBRATE = EloCalibrateConfig(
 LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 
 REWARDS = RewardConfig(
-    # Five numbers. Every event component follows from them by the balance rule
-    # documented on RewardConfig; nothing else here is a free choice.
+    # Five numbers, solved rather than chosen. Every event component follows from
+    # them by the balance rule documented on RewardConfig.
     #
-    # They are set to reproduce run 719 -- the strongest policy measured -- and
-    # not to hit a tier-share target. Solving the free numbers against measured
-    # gradient share was tried twice and lost both times: run 721 landed the flat
-    # 31/32/31/5 allocation and finished ~60 Elo behind run 720, and run 724
-    # re-solved against 719's own measured split, landed it (tiers within 5%),
-    # and finished the worst and most passive of the set. Tier share is evidently
-    # not the quantity that separates a strong policy from a passive one, so this
-    # stops targeting it and copies the vector that worked instead.
+    # The target is run 720 -- the only configuration measured that beat run 719,
+    # by +58 Elo at matched steps on a joint calibration. Its weights were not
+    # derived: they were solved per component as ``w = share / d`` against measured
+    # gradient coherence, which is why no two of them are equal. These five numbers
+    # are the closest the derivation can come to that vector, by least squares on
+    # log weights -- log space because the weights span 0.08 to 1.0 and only ratios
+    # matter, so a 10% error on ``facing`` should count like a 10% error on
+    # ``ally_win``. The fit is exact in closed form and was checked against a
+    # numeric optimiser; it lands within 6% RMS of 720, and the residual is
+    # irreducible because the rule forces pairs equal that 720 had unequal
+    # (``combat_damage_taken`` 0.32 against ``field_damage_taken`` 0.26 is the
+    # worst of them, and that spread came out of 720's per-component solve rather
+    # than out of any principle).
     #
-    # What 719 *trained under* is the target, not what its config said. Its
-    # config read ``ally_win_weight=1.5``, but the lambda rows were normalized
-    # after the weight was applied, which divided the weight back out: every
-    # global component came out at an effective total of 1.0 no matter what was
-    # configured. Local components were unaffected below 1.0, so the rest of
-    # 719's vector is its config. Effective 719, and therefore the target here:
-    # win 1.0, death 1.0, damage 0.5, kill_shot 1.0, kill_assist 1.0.
+    # Run 725 established what this is *not*: 719's own vector, which reproduced
+    # 719 exactly -- parity on a joint fit at 133M and 154M -- and did not come
+    # near 720. Matching 719 is evidently enough to match 719 and not enough to
+    # beat it, so this stops copying 719 and reconstructs 720 instead.
     #
     # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
-    # scaling all five together is a no-op.
+    # scaling all of these together is a no-op. They are stated against a win of
+    # 1.0 for that reason.
     win_weight=1.0,
-    death_weight=1.0,
-    damage_weight=0.5,
-    # The one ratio the balance rule leaves free: "landed the finishing blow"
-    # against "contributed damage". Even, which is also what 719 carried --
-    # kill_shot and kill_assist both at 1.0.
+    death_weight=0.283,
+    damage_weight=0.274,
+    # The one ratio the balance rule leaves free. Solved at 0.4875 and set even:
+    # nothing distinguishes them (6.0% RMS against 5.8%), and an even split is the
+    # standing principle.
     kill_shot_fraction=0.5,
-    # And the one the rule forbids. 719 charged a death 1.0 while paying the
-    # kill 2.0, because it carried kill_shot and kill_assist at combat_death's
-    # weight; k=2 is that ratio, and with U=1.0 it reproduces both numbers
-    # exactly. See RewardConfig for why this is the tier that gets a knob.
+    # The two ratios the rule forbids, tied to one another and solved as a single
+    # free number. Both tiers in 720 were tilted toward the side that caused the
+    # event -- kills 2.15 against deaths, damage dealt 1.86 against damage taken --
+    # and one shared ratio is the smaller claim: an event pays the aggressor twice
+    # what it charges the victim, everywhere, rather than two independently tuned
+    # numbers. The solve returns 1.96 for the shared ratio, which the fit cannot
+    # tell from 2.0 (5.97% RMS against 6.01%), so it is 2.0 -- also the value runs
+    # 725 and 726 carry, which keeps one ratio across all three.
     kill_payout_ratio=2.0,
-    # And the same for damage, which is the one thing 725 did not copy from 720.
-    # 725 reproduced 719 exactly -- parity at 133M and 154M -- and did not reach
-    # 720's +58, so matching 719's vector is evidently enough to match 719 and
-    # not enough to beat it. 720's damage tier was tilted 1.69:1 toward damage
-    # dealt; 2.0 here for symmetry with the kill ratio rather than to chase a
-    # number one run cannot resolve. See RewardConfig for the tier-share caveat.
     damage_payout_ratio=2.0,
-    # Shaping is not an event, so it stays individually weighted. 719 carried
-    # both at 0.10 and did not taper them; the taper argument is unaffected and
-    # still recorded in the schedule, but it would be one more difference than
-    # this comparison can carry.
-    facing_weight=0.1,
-    closing_speed_weight=0.1,
+    # Shaping is not an event, so it stays individually weighted, and these two
+    # are 720's own values rather than solved -- the derivation has nothing to say
+    # about them.
+    facing_weight=0.09,
+    closing_speed_weight=0.08,
     proximity_radius=400.0,
     shoot_quality_radius=200.0,
     enemy_neg_lambda_components=frozenset(
@@ -216,21 +216,27 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         outcome_scale=hold(1.0),
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
-        # Shaping holds flat here for the same reason the weights copy 719's:
-        # 719 carried its shaping undecayed, and this run exists to reproduce
-        # that vector with one change in it. The argument for tapering is
-        # unaffected and still stands -- shaping's realised share *grows* about
-        # 1.58x over a run, and facing and closing speed are not potential-based,
-        # so they bias the optimum for as long as they are on, opposing the
-        # objective directly (closing_speed against field_damage_taken measured a
-        # mean gradient cosine of -0.446, negative in 99.9% of samples). Restore
-        # the taper below once the reward vector is settled:
+        # Shaping is the exception, and it is also what run 720 carried -- this is
+        # the last config difference between that run and this one. It has to be
+        # pushed down rather than left alone: its realised share *grows* about
+        # 1.58x over a run. Facing and closing speed are not potential-based, so
+        # they bias the optimum for as long as they are on, and they oppose the
+        # objective directly -- closing_speed against field_damage_taken measured
+        # a mean gradient cosine of -0.446, negative in 99.9% of samples. They
+        # exist to stop early passive collapse, and that job is finished long
+        # before the budget is. The floor is 0.05 rather than 0 so the components
+        # stay measurable to the end: their gradient share and explained variance
+        # remain readable, which is how the next run learns whether shaping was
+        # still buying anything.
         #
-        #     (0, 1.0, "hold"), (100M, 1.0, "exponential"), (400M, 0.05, "hold")
-        #
-        # with the 0.05 floor rather than 0 so the components stay measurable to
-        # the end.
-        shaping_scale=hold(1.0),
+        # Note 720 only reached 127M, so it ran barely 27M steps into this taper
+        # and ended near 0.76. Everything the taper does past that point is
+        # untested by the run this vector reconstructs.
+        shaping_scale=(
+            (0, 1.0, "hold"),
+            (100_000_000, 1.0, "exponential"),
+            (400_000_000, 0.05, "hold"),
+        ),
         league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy
         # against an update measured in minutes, and the writer already skips
