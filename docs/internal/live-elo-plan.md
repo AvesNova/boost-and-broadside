@@ -19,7 +19,7 @@ So `live_elo` over-reports by roughly 2.7x. Nothing published is affected —
 `live_elo` gates ladder promotion and `best_training` selection, so the error
 degrades the ladder as a measuring instrument over a long run.
 
-### Root cause
+### Root cause — the leading hypothesis, not a measurement
 
 `config/live_elo.py` defines the gauge only up to scripted: random 0, scripted
 1000, semi-random at `p` → 1000·p. **Above scripted nothing is defined**, and
@@ -38,6 +38,16 @@ equilibrates ~70% toward what the self-generated rungs say. Solving
 
 `MAX_CHECKPOINT_ANCHORS = 2` exists to damp this ("damping the random walk a
 single-link ladder accumulates") — damping, not elimination.
+
+**Read that as a hypothesis.** The 0.3/0.7 mixing weights are derived from the
+same information ratio they are being used to explain, so the argument is
+self-consistent rather than independently confirmed. It is consistent with every
+number in the table, and no competing explanation survives the checks below —
+but nothing yet rules out a second mechanism contributing. Phase 0 exists partly
+to test it: if the drift detector shows `live_elo` minus scripted-implied Elo
+growing smoothly with policy strength, the story holds; if the drift is
+concentrated at discrete events, something else is also at work and Phase 2
+alone will not fix it.
 
 ### What is *not* the cause
 
@@ -64,6 +74,29 @@ It is that **the offset is carried from floor to top through a chain, and the
 chain is estimated badly.** Fleet-size handicaps against scripted were
 considered and rejected: adding weak opponents changes the task rather than its
 difficulty, rewarding crowd control over skill.
+
+### The ceiling this design has, and why calibration stays the publication path
+
+A floor is enough to *define* the scale, but it gets progressively more
+expensive to *measure* against. `Var(r_live − r_scripted)` is the effective
+resistance from the live policy to the anchor, and as the policy strengthens the
+direct edge saturates — `p → 1`, `info → 0` — so the current is forced through
+the rung chain, adding resistances in series. The variance of the floor-anchored
+offset therefore grows over a run no matter how well the games are allocated.
+Better allocation changes the constant and the rate; it cannot make the quantity
+stationary.
+
+That is the honest limit of a live rating, and it is precisely why frozen
+checkpoint calibration remains the thing we publish. `elo-calibrate` gets to
+replay any pair it likes, including live-era checkpoints against each other, so
+it can short the chain that training had to traverse one link at a time. The
+non-goal below — never publish `live_elo` — is a consequence of this paragraph,
+not an independent policy choice.
+
+Phase 0 should log the running `Var(r_live − r_scripted)` so we find out how fast
+this actually degrades in practice. If the SE at 400M is small enough, the
+distinction is academic; if it is 40 Elo, cross-run claims late in a run need the
+calibrator and we should know that before making one.
 
 ## The two facts the design rests on
 
@@ -102,10 +135,19 @@ allocator has only the first factor. On the real pool, targeting
 |---|---:|---:|
 | semi_scripted:0.5 vs r719_ladder_10M | **4.8e−10** | 8.3e−06 (max) |
 
-Eight orders of magnitude apart. The local rule spends its budget on a perfectly
-balanced matchup between two players whose relative rating nobody is asking
-about, and ranks the single most valuable game — live against the anchor — last,
-because it is saturated.
+The local rule spends its budget on a perfectly balanced matchup between two
+players whose relative rating nobody is asking about, and ranks the single most
+valuable game — live against the anchor — last, because it is saturated.
+
+Do not read the raw ratio between those two numbers as the expected improvement.
+It compares each rule's *best* pair, and `p(1−p)`'s best pair is bad by
+construction, because that rule has no notion of which rating we are asking
+about. The honest baselines are uniform allocation and `p(1−p)` restricted to
+edges touching the live policy; both are far better than the unrestricted local
+rule, and the realistic gain over them is a modest constant factor, not orders of
+magnitude. The simulation in *Validation* measures against all three, and that
+measurement — not this table — is what decides whether Phase 3 earns its
+complexity.
 
 ### The sub-1000 caveat handles itself
 
@@ -134,10 +176,22 @@ removes the periodic-bump problem by construction.
   Accumulate counts *forever*; these players do not move. Refit every update,
   warm-started from the previous solution. Converges like 1/√N and stabilises.
 * **Stage 2 — the live policy.** `fit_single_rating` over a sliding window of
-  recent games against the now-known ladder. Its noise is honest sampling noise
-  from the window, with no filter lag and no K-factor fixed point.
+  recent games against the now-known ladder.
 
-Both functions already exist in `train/rl/bradley_terry.py`.
+Both functions already exist in `train/rl/bradley_terry.py`. Draws are folded in
+at half a win before the fit, matching every existing caller — `fit_bradley_terry`
+takes a decisive-win matrix and excludes draws by contract.
+
+**What stage 2 does and does not buy.** It is not lag-free, and the window length
+is a tuned constant with the same bias/variance tradeoff the K-factor had: the
+live policy is improving *within* the window, so a boxcar of length W estimates
+what the policy was worth around W/2 updates ago. The two real gains are that the
+estimate has no self-referential fixed point — it is a direct solve against
+ratings that were not themselves derived from the live policy — and that its
+error bar is honest sampling noise the fitter reports, rather than a filter
+state whose spread nobody can quote. Pick W by the offline replay against 719's
+`live_calibrated` curve rather than by feel, and log the fitted standard error
+next to the rating so the lag/noise tradeoff stays visible.
 
 ### Allocator
 
@@ -189,20 +243,52 @@ Regression alarms to log every refit:
 
 ## Phases
 
-Each phase is independently landable and independently valuable.
+Each phase is independently landable and independently valuable, and the
+sequence is designed to be abandonable after Phase 2 if the measurements say the
+rest is not worth it.
 
-**Phase 0 — drift detector and diagnostics.** Log the four alarms above against
-the *existing* K-factor estimator. No behaviour change. Cheap, and it gives a
-baseline to compare the new estimator against.
+**Phase 0 — drift detector and diagnostics.** Log the four alarms above, plus
+the running `Var(r_live − r_scripted)`, against the *existing* K-factor
+estimator. No behaviour change. Cheap, and it gives a baseline to compare the new
+estimator against.
 
 **Phase 1 — persistent match matrix.** Accumulate wins/ties among stationary
-players across the whole run, checkpointed and restored. Nothing reads it yet.
+players across the whole run. Persist it as a sidecar next to `roster.json` in
+the checkpoint directory rather than inside the `.pt` payload — the roster
+already works this way, and keeping the tensor payload untouched means the
+compatibility question never arises for inference. A run that finds no matrix
+file starts an empty one, which is also what a resumed pre-Phase-1 run does.
+Nothing reads it yet.
+
+*Compatibility, stated once:* old checkpoints must stay **loadable for post-hoc
+inference** — `elo-calibrate`, the league, tournament replay. They need not stay
+*resumable*. Any state added for this work therefore goes outside the `.pt`
+payload, or is optional with an empty default; neither is allowed to become a
+required key that `load_checkpoint_payload` would trip on.
 
 **Phase 2 — the two-stage estimator.** Replace the K-factor filter. Stage 1
 refits the ladder every update from the accumulated matrix with `prior_games`,
 a fixed scripted anchor, half-win draws, warm-started. Stage 2 rates the live
-policy with `fit_single_rating` over a sliding window. Keep the old `live_elo`
-logged alongside under a different key for one run.
+policy with `fit_single_rating` over a sliding window, with W chosen by the
+offline replay.
+
+Two rules for the side-by-side run. Log the old `live_elo` under a different key
+— and **the old estimator keeps gating promotion and `best_training` selection
+for the whole comparison run.** `live_elo` gates ladder advancement, so an
+estimator that gates also changes promotion timing, which changes the pool, which
+changes the ratings. If both estimators gate in different runs there is no
+controlled comparison left. The new estimator observes only, until it has been
+accepted.
+
+**Checkpoint here.** Phases 3 and 4 are refinements of allocation; Phase 2 alone
+plausibly captures most of the benefit, because the diagnosed fault is *how the
+chain is estimated*, not which games were played. Measure against the 719 replay
+and the seam test before committing further, and be willing to stop with Phase 2
+shipped. If we do continue, note that the phases are numbered in increasing order
+of implementation cost, not of expected value: **Phase 4 addresses the root cause
+more directly than Phase 3 does**, since a well-estimated ladder is what the
+floor-to-top offset actually rides on. Reordering them is reasonable if the
+Phase 2 results point that way.
 
 **Phase 3 — resistance-based allocation.** Replace the `p(1−p)` multinomial with
 the c-optimal rule for live slots. One linear solve plus an O(n²) scoring pass
@@ -226,16 +312,40 @@ policy was worth at each update. Replay the new estimator over the recorded
 counts and check it tracks `live_calibrated` better than the recorded
 `live_elo` does. Report RMS error against the calibrated curve for both.
 
-Caveat: those counts came from the *old* allocator, so this validates the
-estimator only, not the allocator.
+Sweep the stage-2 window length W here and pick it on this curve. Two caveats,
+the second more serious than the first:
+
+* those counts came from the *old* allocator, so this validates the estimator
+  only, not the allocator;
+* **this tests static estimation quality, and the failure we actually observed
+  was dynamic.** 727's fault was an +85 *step at a resume seam* that then
+  persisted. A replay over 719's smooth run can show a healthy RMS improvement
+  while saying nothing about whether the new estimator steps across a seam. Do
+  not treat a good replay number as the plan succeeding.
+
+**The seam test.** The direct instrument for the observed fault: run the new
+estimator across a stop/resume and check it does not step. 726 is parked at
+103.5M with its ladder intact and is the cheap way to get one — resume it, seam
+and all, with both estimators logged. If it no longer resumes cleanly, the
+fallback costs nothing extra: deliberately stop and resume the Phase 2
+comparison run at a chosen update and read the same seam off it. Either way this
+is a required gate, not an optional extra, and it is the one that maps onto the
+bug.
+
+Note that 727's own seam is confounded with a coincident promotion and cannot
+serve as the ground truth here — which is exactly why a clean seam has to be
+manufactured.
 
 **Allocator, in simulation.** Synthetic pool with known ratings; simulate
-batches under (a) `p(1−p)` multinomial, (b) c-optimal, (c) uniform; compare the
-SE of the target functional against games spent. Deterministic and cheap, so it
-belongs in the test suite.
+batches under (a) `p(1−p)` multinomial, (b) c-optimal, (c) uniform, and
+(d) `p(1−p)` restricted to edges touching the live policy; compare the SE of the
+target functional against games spent. (c) and (d) are the baselines that decide
+whether Phase 3 is worth building — (a) is a floor, not a fair comparison.
+Deterministic and cheap, so it belongs in the test suite.
 
-**Live.** One run with both estimators logged side by side, then a post-hoc
-calibration; the new curve should sit closer to the calibrated one.
+**Live.** One run with both estimators logged side by side — old one gating, new
+one observing — then a post-hoc calibration; the new curve should sit closer to
+the calibrated one.
 
 ## Non-goals
 
@@ -246,4 +356,7 @@ calibration; the new curve should sit closer to the calibrated one.
   be compared across runs. Useful as within-run league diversity audits only.
 * Any use of another run's weights, or of scripted above the floor.
 * Changing what `elo-calibrate` publishes. `live_elo` remains a training
-  instrument and must never be published as a rating.
+  instrument and must never be published as a rating — see *The ceiling this
+  design has* for why that stays true however good the estimator gets.
+* Making old checkpoints resumable. They must stay loadable for post-hoc
+  inference; resume compatibility across this work is explicitly not maintained.
