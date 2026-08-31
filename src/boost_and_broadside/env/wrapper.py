@@ -122,6 +122,11 @@ class YemongEnvWrapper:
         self._ep_wins = torch.zeros((B, N), device=self.device)
         # Steps each ship has been alive this episode (stops at death, resets on episode end).
         self._ship_age = torch.zeros((B, N), device=self.device, dtype=torch.int32)
+        # Whether each env's current episode may enter the episode statistics.
+        # An episode seeded mid-horizon did not start at step 0, so its forced
+        # truncation reports a short, low-reward, usually drawn episode that
+        # measures the seeding rather than the policy. See mark_seeded_uncounted.
+        self._counted = torch.ones((B,), device=self.device, dtype=torch.bool)
 
         self.refresh_component_weights()
         self._zero_stat_accumulators()
@@ -144,8 +149,29 @@ class YemongEnvWrapper:
         self._ep_comp_scaled.zero_()
         self._ep_wins.zero_()
         self._ship_age.zero_()
+        self._counted.fill_(True)
         self._zero_stat_accumulators()
         return self._get_obs()
+
+    def mark_seeded_uncounted(self) -> None:
+        """Withhold mid-horizon episodes from the episode statistics.
+
+        Callers stagger truncation by writing a random ``step_count`` after a
+        reset, so the first episode in most envs is a fragment: ships still at
+        spawn health, nothing in flight, and a forced truncation a few steps
+        later. Folding those into the per-update means measures the seeding, not
+        the policy -- on a resume it moved reward_mean by 8%, win_rate by 0.07
+        and mean lifespan by 10% for exactly one update before snapping back.
+
+        The rule is the one ``elo_eval`` already applies to rated games: an
+        episode counts only if it ran the full horizon from step 0. Envs recycle
+        into counted episodes as they finish, so this decays away on its own
+        within an episode length and costs nothing after that.
+
+        Call after seeding ``env.state.step_count``; idempotent, and a no-op when
+        every env really is at step 0.
+        """
+        self._counted = self.env.state.step_count == 0
 
     # ------------------------------------------------------------------
     # Episode statistics (GPU-accumulated, flushed once per update)
@@ -384,25 +410,31 @@ class YemongEnvWrapper:
         t1_wins = ((t1_alive > 0) & (t0_alive == 0) & done_mask).unsqueeze(1)
         self._ep_wins += ((team0 & t0_wins) | (team1 & t1_wins)).float()
 
-        # Fold finished episodes into the per-update accumulators.
-        done_f = done_mask.float()  # (B,)
-        done_n = done_mask.unsqueeze(1)  # (B, 1)
-        done_nf = done_n.float()
-        self._acc_episodes += done_f.sum()
-        self._acc_reward_sum += (self._ep_reward * done_nf).sum()
+        # Fold finished episodes into the per-update accumulators. Episodes seeded
+        # mid-horizon are excluded (see mark_seeded_uncounted); every env that
+        # finishes here restarts at step 0, so it counts from now on.
+        counted = done_mask & self._counted  # (B,)
+        self._counted = self._counted | done_mask
+        counted_f = counted.float()  # (B,)
+        counted_n = counted.unsqueeze(1)  # (B, 1)
+        counted_nf = counted_n.float()
+        self._acc_episodes += counted_f.sum()
+        self._acc_reward_sum += (self._ep_reward * counted_nf).sum()
         self._acc_reward_min = torch.minimum(
             self._acc_reward_min,
-            torch.where(done_n, self._ep_reward, float("inf")).min(),
+            torch.where(counted_n, self._ep_reward, float("inf")).min(),
         )
         self._acc_reward_max = torch.maximum(
             self._acc_reward_max,
-            torch.where(done_n, self._ep_reward, float("-inf")).max(),
+            torch.where(counted_n, self._ep_reward, float("-inf")).max(),
         )
-        self._acc_length_sum += (self._ep_length.float() * done_f).sum()
-        self._acc_comp_sum += (self._ep_comp * done_nf.unsqueeze(-1)).sum(dim=(0, 1))
-        self._acc_comp_scaled_sum += (self._ep_comp_scaled * done_nf.unsqueeze(-1)).sum(dim=(0, 1))
-        self._acc_wins_sum += (self._ep_wins * done_nf).sum()
-        self._acc_lifespan_sum += (self._ship_age.float() * done_nf).sum()
+        self._acc_length_sum += (self._ep_length.float() * counted_f).sum()
+        self._acc_comp_sum += (self._ep_comp * counted_nf.unsqueeze(-1)).sum(dim=(0, 1))
+        self._acc_comp_scaled_sum += (
+            self._ep_comp_scaled * counted_nf.unsqueeze(-1)
+        ).sum(dim=(0, 1))
+        self._acc_wins_sum += (self._ep_wins * counted_nf).sum()
+        self._acc_lifespan_sum += (self._ship_age.float() * counted_nf).sum()
 
         return dones, truncated
 

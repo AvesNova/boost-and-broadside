@@ -594,6 +594,86 @@ class TestYemongEnvWrapper:
         assert stats_after["episodes"].item() == 0
         assert not stats_after["source_stats"].any()
 
+    def test_seeded_episodes_are_withheld_from_the_stats(self, ship_cfg, reward_cfg):
+        """A mid-horizon seed produces a fragment, and fragments must not count.
+
+        Callers stagger truncation by writing a random step_count after reset.
+        The episode that seed lands in did not run from step 0, so its forced
+        truncation reports a short, low-reward, drawn episode that measures the
+        seeding. This is the same rule elo_eval applies to rated games.
+        """
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=4)
+        wrapper = YemongEnvWrapper(
+            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
+            rewards=reward_cfg, device="cpu",
+        )
+        wrapper.reset(options={"team_sizes": (1, 1)})
+        wrapper.env.state.step_count.fill_(3)  # one step short of truncation
+        wrapper.mark_seeded_uncounted()
+
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+        wrapper.step(actions)  # truncates immediately -- the seeded fragment
+        assert wrapper.pop_episode_stats()["episodes"].item() == 0
+
+        for _ in range(4):  # the recycled episode runs the full horizon
+            wrapper.step(actions)
+        stats = wrapper.pop_episode_stats()
+        assert stats["episodes"].item() == 1
+        assert stats["length_sum"].item() == 4
+
+    def test_marking_is_a_no_op_when_nothing_was_seeded(self, ship_cfg, reward_cfg):
+        """Called after a plain reset every env is at step 0, so nothing is held
+        back -- the gate must not cost a run its first episode."""
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2)
+        wrapper = YemongEnvWrapper(
+            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
+            rewards=reward_cfg, device="cpu",
+        )
+        wrapper.reset(options={"team_sizes": (1, 1)})
+        wrapper.mark_seeded_uncounted()
+
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+        for _ in range(2):
+            wrapper.step(actions)
+        assert wrapper.pop_episode_stats()["episodes"].item() == 1
+
+    def test_a_reset_clears_the_gate(self, ship_cfg, reward_cfg):
+        """reset() restarts every env at step 0, so a stale withhold from an
+        earlier seeding must not survive it."""
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2)
+        wrapper = YemongEnvWrapper(
+            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
+            rewards=reward_cfg, device="cpu",
+        )
+        wrapper.reset(options={"team_sizes": (1, 1)})
+        wrapper.env.state.step_count.fill_(1)
+        wrapper.mark_seeded_uncounted()
+        wrapper.reset(options={"team_sizes": (1, 1)})
+
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+        for _ in range(2):
+            wrapper.step(actions)
+        assert wrapper.pop_episode_stats()["episodes"].item() == 1
+
+    def test_step_level_source_stats_are_not_gated(self, ship_cfg, reward_cfg):
+        """The gate is about episode outcomes. A fragment's steps are real steps,
+        and the per-step source metrics are rates over them, so they keep
+        accumulating -- gating them would throw away valid measurements.
+        """
+        env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=4)
+        wrapper = YemongEnvWrapper(
+            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
+            rewards=reward_cfg, device="cpu",
+        )
+        wrapper.reset(options={"team_sizes": (1, 1)})
+        wrapper.env.state.step_count.fill_(3)
+        wrapper.mark_seeded_uncounted()
+
+        wrapper.step(torch.zeros((1, 2, 3), dtype=torch.long))
+        stats = wrapper.pop_episode_stats()
+        assert stats["episodes"].item() == 0
+        assert stats["source_stats"].any()
+
     def test_source_metrics_accumulate_without_waiting_for_episode_end(self, ship_cfg, reward_cfg):
         env_cfg = EnvConfig(num_ships=2, max_bullets=1, max_episode_steps=100)
         wrapper = YemongEnvWrapper(

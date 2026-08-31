@@ -938,7 +938,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         num_recurrent = num_ships
 
         obs = self.wrapper.reset()
+        # Stagger truncation so episodes do not all end in one synchronized block.
+        # The seeded first episode in each env is a fragment, so it is withheld
+        # from the episode statistics until the env recycles -- otherwise the
+        # first update of every run, and of every resume, reports a reward and
+        # win rate that measure the seeding.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
+        self.wrapper.mark_seeded_uncounted()
         hidden = self.policy.initial_hidden(num_envs, num_recurrent, self.device)
         hidden_t1 = (
             self.policy.initial_hidden(num_envs, num_recurrent, self.device)
@@ -955,6 +961,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for scale, wrapper in zip(self.cfg.scales[1:], self.aux_wrappers):
             aux_obs.append(wrapper.reset())
             wrapper.env.state.step_count.random_(0, scale.env_config.max_episode_steps)
+            wrapper.mark_seeded_uncounted()
             aux_tokens = scale.env_config.num_ships  # recurrent tokens: ships only
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(

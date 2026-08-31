@@ -654,6 +654,19 @@ does not happen. Only the resolved-config and launch blocks are optional, and bo
 provenance rather than state. Policy-only files (`best_*.pt`, `ladder_step_*.pt`) are
 consequently not resumable; `--pretrain-from` is the path that takes one.
 
+Environment state is deliberately *not* in that list. A resume respawns every
+environment and re-staggers truncation by writing a random `step_count`, exactly
+as a cold start does, so the first episode in most environments is a fragment:
+ships at spawn health, nothing in flight, and a forced truncation a few steps
+later. Those fragments are withheld from the episode statistics until their
+environment recycles — the same rule `elo_eval` applies to rated games, that an
+episode counts only if it ran the full horizon from step 0. Without the gate the
+first update of every run and every resume reported a reward mean, win rate and
+lifespan that measured the seeding rather than the policy; on one measured resume
+that was reward −8%, win rate −0.07 and lifespan −10% for a single update. The
+gate costs nothing after the first episode length, and it never applies to the
+per-step source metrics: a fragment's steps are real steps.
+
 `--seed` seeds Python's `random` and Torch on the CPU and every CUDA device. Every draw
 the trainer makes comes from Torch, including the permutation that orders PPO
 minibatches, so one seed covers the run; a second RNG would be a second thing to
