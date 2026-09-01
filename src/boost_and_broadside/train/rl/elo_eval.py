@@ -44,7 +44,7 @@ draw and is rated normally.
 """
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 
@@ -153,6 +153,13 @@ class EloSnapshot:
     # Rated episodes this update, keyed by opponent label → (win, loss, tie)
     # from the live policy's perspective. Empty entries are omitted.
     match_counts: dict[str, tuple[int, int, int]]
+    # The floating checkpoint's label, or None before the first milestone.
+    floating_label: str | None = None
+    # This update's slot-4 episodes, keyed by anchor label → (win, loss, tie)
+    # from the *floating checkpoint's* perspective. Both players are
+    # weight-frozen, so unlike match_counts these are worth accumulating for the
+    # life of the run rather than reading once.
+    ladder_counts: dict[str, tuple[int, int, int]] = field(default_factory=dict)
 
 
 class EloEvaluator:
@@ -271,17 +278,28 @@ class EloEvaluator:
         # promotion never has to resize it mid-run. Columns are
         # (live win, live loss, tie).
         #
-        # The floating-vs-anchor slot is deliberately absent: both participants
-        # are frozen ladder entries the post-hoc suite rates from far more games
-        # than in-training eval could contribute. Only matchups involving the
+        # The floating-vs-anchor slot is deliberately absent *from this table*:
+        # elo_history.jsonl holds the run's irreplaceable measurements, and both
+        # participants in that slot are frozen entries the post-hoc suite can
+        # re-measure from disk at any precision. Only matchups involving the
         # live or avg policy — the two non-stationary players, which exist in one
-        # form for exactly one update and can never be replayed — are recorded.
+        # form for exactly one update and can never be replayed — are recorded
+        # here. Those same slot-4 games *are* tallied separately in
+        # _ladder_counts, because the online ladder estimator needs them during
+        # the run rather than after it. See train/rl/match_matrix.
         self._anchor_rows = len(self._anchor_specs) + MAX_CHECKPOINT_ANCHORS
         self._count_floating = self._anchor_rows
         self._count_scripted = self._anchor_rows + 1
         self._count_avg = self._anchor_rows + 2
         self._count_rows = self._anchor_rows + 3
         self._match_counts = torch.zeros(self._count_rows, 3, device=device, dtype=torch.float64)
+        # (anchor_rows, 3) tally of slot-4 episodes as (floating win, floating
+        # loss, tie), by the anchor each episode was assigned. Both players are
+        # weight-frozen, so these accumulate across the whole run rather than
+        # being consumed each update.
+        self._ladder_counts = torch.zeros(
+            self._anchor_rows, 3, device=device, dtype=torch.float64
+        )
 
         self._win_history: list[torch.Tensor] = []
         self._rated_history: list[torch.Tensor] = []
@@ -756,6 +774,10 @@ class EloEvaluator:
             self._match_counts[self._count_scripted] += outcomes[2 * size : 3 * size].sum(dim=0)
         if avg_active:
             self._match_counts[self._count_avg] += outcomes[3 * size : 4 * size].sum(dim=0)
+        if self.float_pro_agent is not None:
+            # Slot 4 is the floating checkpoint as team 0, so the columns already
+            # read as (floating win, floating loss, tie).
+            self._ladder_counts.index_add_(0, self._anchor_idx_float, outcomes[4 * size :])
 
     def _match_count_labels(self) -> list[str | None]:
         """Row → opponent label, or None for rows with no active opponent."""
@@ -832,6 +854,19 @@ class EloEvaluator:
             records[label] = (previous[0] + win, previous[1] + loss, previous[2] + tie)
         return records
 
+    def _flush_ladder_counts(self) -> dict[str, tuple[int, int, int]]:
+        """Read back and reset the floating-vs-anchor tally, by anchor label."""
+        counts = self._ladder_counts.cpu().tolist()
+        self._ladder_counts.zero_()
+        records: dict[str, tuple[int, int, int]] = {}
+        for spec, row in zip(self._anchor_specs, counts):
+            win, loss, tie = (int(value) for value in row)
+            if win + loss + tie == 0:
+                continue
+            previous = records.get(spec.label, (0, 0, 0))
+            records[spec.label] = (previous[0] + win, previous[1] + loss, previous[2] + tie)
+        return records
+
     def flush(self, avg_active: bool) -> EloSnapshot:
         """Flush GPU ratings and outcome history to CPU once per PPO update."""
         floating_active = self.float_pro_agent is not None
@@ -841,6 +876,8 @@ class EloEvaluator:
             floating_elo=float(self.floating_elo.item()) if floating_active else None,
             floating_games=int(self.floating_games.item()) if floating_active else 0,
             match_counts=self._flush_match_counts(),
+            floating_label=self._floating_label if floating_active else None,
+            ladder_counts=self._flush_ladder_counts() if floating_active else {},
         )
         if not self._win_history:
             return snapshot

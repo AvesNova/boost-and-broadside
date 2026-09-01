@@ -60,6 +60,7 @@ from boost_and_broadside.train.rl.buffer import (
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
 from boost_and_broadside.train.rl.elo_diagnostics import LiveEloDiagnostics
+from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import (
     FeatureCoordinator,
@@ -620,6 +621,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Read-only instrumentation for the rating filter above. Logs only; see
         # elo_diagnostics and docs/internal/live-elo-plan.md.
         self._elo_diagnostics = LiveEloDiagnostics(scripted_label="scripted")
+        # Accumulated ladder record among weight-frozen players. Replaced
+        # wholesale on resume; see _save_roster_json for why it is a sidecar.
+        self.match_matrix = MatchMatrix()
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
@@ -1085,6 +1089,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._avg_live_elo = elo_snapshot.avg_elo
         self._floating_games = elo_snapshot.floating_games
         self._match_counts = elo_snapshot.match_counts
+        if elo_snapshot.floating_label is not None:
+            # The floating checkpoint's weights are fixed at snapshot time — only
+            # its rating is unsettled — so its games are worth keeping forever.
+            # The live and avg policies are excluded because they change under
+            # the record, and a count matrix cannot say when a game was played.
+            self.match_matrix.record_all(elo_snapshot.floating_label, elo_snapshot.ladder_counts)
         if elo_snapshot.floating_elo is not None:
             self.roster.set_floating_elo(elo_snapshot.floating_elo)
         # Proximity sampling reads this, so it has to track the evaluator rather

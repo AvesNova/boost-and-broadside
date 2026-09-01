@@ -25,6 +25,7 @@ from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
     require_observation_schema,
 )
+from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 
 # Rolling window of full-resume (step_*.pt) and avg (avg_step_*.pt) checkpoints
@@ -307,10 +308,18 @@ class CheckpointMixin:
                 thread.join()
 
     def _save_roster_json(self) -> None:
-        """Persist roster metadata alongside the run's checkpoints."""
+        """Persist roster metadata and the ladder match record alongside the run.
+
+        Both are sidecars rather than checkpoint payload keys. The accumulated
+        match record is what makes the ladder's ratings a compounding
+        investment, so it has to survive a resume — but a checkpoint written
+        before it existed must stay loadable for post-hoc inference, and keeping
+        the tensor payload untouched settles that by construction.
+        """
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.roster.save_json(ckpt_dir / "roster.json")
+        self.match_matrix.save_json(ckpt_dir / "match_matrix.json")
 
     def _run_directory(self) -> Path:
         return Path(self.cfg.checkpoint_dir) / self.run_name
@@ -853,6 +862,10 @@ class CheckpointMixin:
         if roster_path.exists():
             self.roster.load_json(roster_path)
             self._register_special_opponents()
+        # A run that predates this file, or one killed before its first save,
+        # resumes with an empty matrix and starts counting again. The
+        # accumulation buys precision; nothing depends on it being complete.
+        self.match_matrix = MatchMatrix.load_json(Path(path).parent / "match_matrix.json")
 
         # Schedule-derived state is not stored -- it is a pure function of the
         # restored step and eval window, and rebuilding it here is what keeps the

@@ -189,6 +189,11 @@ class LoggingMixin:
         # Read-only instrumentation of the rating filter. Nothing downstream
         # consumes these keys; they exist so the estimator has a measured
         # baseline before it is replaced. See docs/internal/live-elo-plan.md.
+        # The accumulated ladder record fills in the background through Phase 1;
+        # nothing reads it back yet. Logged so its growth is visible before an
+        # estimator is built on it.
+        metrics["elo_diag/ladder_matrix_games"] = self.match_matrix.total_games
+        metrics["elo_diag/ladder_matrix_pairs"] = float(len(self.match_matrix))
         metrics.update(
             self._elo_diagnostics.update(
                 live_elo=self._live_elo,

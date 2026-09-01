@@ -225,9 +225,20 @@ version should port its guards rather than be written fresh.
    between the rung block and the stationary references; a weakly-connected
    component swings on small count changes. Fix: a floor of games on every
    rung-to-stationary edge, plus a Fiedler-value monitor.
-4. **Non-stationary players in the accumulator.** The still-floating rung, the
-   averaged policy, or the live policy must never enter the accumulate-forever
-   matrix. `_NON_STATIONARY` in the calibrator is the precedent.
+4. **Non-stationary players in the accumulator.** The averaged policy and the
+   live policy must never enter the accumulate-forever matrix.
+   `_NON_STATIONARY` in the calibrator is the precedent.
+
+   *Corrected while implementing Phase 1.* This guard originally named the
+   still-floating rung too, which is wrong: admission is decided by **weights,
+   not by ratings**. A floating checkpoint's weights are fixed at snapshot time
+   and never move again — only its *rating* is unsettled, and the accumulator
+   stores counts, which the fit re-estimates from scratch. Its rating being
+   unsettled is the reason to accumulate its games, not a reason to withhold
+   them. The live and averaged policies are excluded on the correct grounds:
+   they change strength under the record, and a count matrix cannot say when a
+   game was played, so pooling them fits the average of something that was never
+   the same twice.
 5. **Dropping draws.** Against random, a whole-run record of 2794W/10L/1120T
    yields Fisher information 10 under decisive-only and 487 under half-win.
    Keep half-win.
@@ -286,8 +297,23 @@ sits around 1e−8. At 400M the floor-anchored offset is worth ±22 Elo before a
 estimator error at all, which is the size of the effects we routinely compare
 between runs. Phase 4 is the phase that attacks this term.
 
-**Phase 1 — persistent match matrix.** Accumulate wins/ties among stationary
-players across the whole run. Persist it as a sidecar next to `roster.json` in
+**Phase 1 — persistent match matrix.** *Landed.* `train/rl/match_matrix.py`,
+saved as `match_matrix.json` in the run directory.
+
+The games were already being played and thrown away. The evaluator's slot 4
+runs the floating checkpoint against a stationary anchor every update to settle
+the floating rating, then discards the outcome; both players are weight-frozen,
+so over a run those results build exactly the rung-to-reference and
+rung-to-rung graph the ladder estimator needs. Nothing new is computed and no
+eval budget moves — Phase 4 is where budget gets reallocated.
+
+Kept out of `elo_history.jsonl` on purpose. That file holds the run's
+*irreplaceable* measurements, the live and averaged policies' records, which
+exist in one form for one update. Everything in the match matrix can be
+replayed from disk later at any precision; it is persisted because the training
+run needs it *now*, which is a different reason and belongs in a different file.
+
+Accumulate wins/ties among weight-frozen players across the whole run. Persist it as a sidecar next to `roster.json` in
 the checkpoint directory rather than inside the `.pt` payload — the roster
 already works this way, and keeping the tensor payload untouched means the
 compatibility question never arises for inference. A run that finds no matrix

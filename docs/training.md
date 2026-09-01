@@ -623,6 +623,28 @@ Sign convention: positive drift means `live_elo` reads *above* what the record s
 Non-finite values are dropped rather than logged, so a saturated window shows up as a gap
 in the series instead of a spike that ruins the axis.
 
+### The accumulated ladder record
+
+`match_matrix.json`, beside `roster.json` in the run directory, holds the running win/loss/tie
+totals between players whose *weights* never change: the random agent, the semi-random rungs,
+the scripted controller, and every checkpoint snapshot including the newest one whose rating
+is still settling. The live and averaged policies are excluded, because they change strength
+under the record and a count matrix cannot say when a game was played.
+
+The games come from the evaluation battery's floating-vs-anchor slot, which the run already
+plays every update to settle the floating rating and which previously discarded its results.
+No evaluation budget moves to fill this file. Two keys track it, `elo_diag/ladder_matrix_games`
+and `elo_diag/ladder_matrix_pairs`.
+
+It is a sidecar, not a checkpoint payload key, so a checkpoint written before it existed stays
+loadable. A resume that finds no file starts counting from zero: the accumulation buys
+precision in the ladder's ratings and nothing depends on it being complete.
+
+This is separate from `elo_history.jsonl` by design. That file records what cannot be
+recovered — the live and averaged policies exist in one form for one update. Everything in the
+match matrix can be replayed from disk afterwards; it is kept because the training run needs it
+during the run.
+
 ## Checkpoints and reproducibility
 
 Every payload family (full `step_<N>.pt` resumes, best-model snapshots, and the ladder
