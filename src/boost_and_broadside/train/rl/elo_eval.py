@@ -336,6 +336,19 @@ class EloEvaluator:
                 return index
         return 0
 
+    def _anchor_p_tensor(self) -> torch.Tensor:
+        """Scripted-action probability per anchor, 0 for the random agent.
+
+        Held as a tensor so the per-episode assignment can index it directly.
+        Policy anchors take 0 as a placeholder: their entry is never read,
+        because their environments are overwritten with the policy's own action.
+        """
+        return torch.tensor(
+            [float(spec.p_scripted or 0.0) for spec in self._anchor_specs],
+            device=self.device,
+            dtype=torch.float32,
+        )
+
     def _anchor_elo_tensor(self) -> torch.Tensor:
         """Anchor ratings as a (A,) tensor, oldest first."""
         return torch.tensor(
@@ -375,6 +388,7 @@ class EloEvaluator:
         in place instead, to preserve surviving anchors' hidden states.
         """
         self._anchor_elos = self._anchor_elo_tensor()
+        self._anchor_p = self._anchor_p_tensor()
         self._anchor_agents_live: list[ResolvedAgent | None] = []
         self._anchor_agents_float: list[ResolvedAgent | None] = []
         for spec in self._anchor_specs:
@@ -422,6 +436,7 @@ class EloEvaluator:
                 del self._anchor_agents_live[cut]
                 del self._anchor_agents_float[cut]
             self._anchor_elos = self._anchor_elo_tensor()
+            self._anchor_p = self._anchor_p_tensor()
         self._floating_policy = snapshot_policy
         self._floating_label = snapshot_label
         self.floating_elo = self.live_elo.clone()
@@ -521,60 +536,63 @@ class EloEvaluator:
 
         Policy anchors act on every environment in the slot even where they are
         not the assigned opponent, because their recurrent state has to stay
-        valid for when the assignment does land on them. Stateless anchors carry
-        no such requirement, and every semi-random rung is a Bernoulli blend of
-        the same two action tensors — so the whole stationary ladder costs one
-        scripted call and one random call however many rungs it holds.
+        valid for when the assignment does land on them. That cost is
+        unavoidable and bounded by MAX_CHECKPOINT_ANCHORS.
+
+        The stationary ladder costs one scripted call and one random call
+        however many rungs it holds, and — because the mixture is resolved
+        against each environment's *assigned* probability rather than per rung —
+        one Bernoulli draw and one blend as well. Building a full action tensor
+        per rung and gathering the assigned one afterwards computes eleven or
+        twelve candidate actions for every environment and then discards all but
+        one; indexing the probability by the assignment first collapses the
+        whole ladder to a single ``torch.where``, and the rungs stop costing
+        anything as the ladder grows.
         """
         size = hi - lo
         state = self.env.state.slice_envs(slice(lo, hi))
+        idx = self._anchor_idx_live if lo == 0 else self._anchor_idx_float  # (size,)
 
-        stateless = [spec.is_stateless for spec in self._anchor_specs]
-        random_action = (
-            get_actions(self.random_agent, None, state, size, self.num_ships, self.device).long()
-            if any(stateless)
-            else None
-        )
-        needs_scripted = (
-            any(spec.p_scripted is not None for spec in self._anchor_specs)
-            and self.scripted_agent is not None
-        )
-        scripted_action = (
-            get_actions(self.scripted_agent, None, state, size, self.num_ships, self.device).long()
-            if needs_scripted
-            else None
-        )
-
-        per_anchor = []
-        for spec, agent in zip(self._anchor_specs, agents, strict=True):
-            if spec.is_stateless:
-                if spec.p_scripted is None or scripted_action is None:
-                    per_anchor.append(random_action)
-                else:
-                    # One coherent scripted decision per ship per step, matching
-                    # SemiRandomScriptedAgent — not a per-head coin flip.
-                    follow = (
-                        torch.rand(size, self.num_ships, device=self.device) < spec.p_scripted
-                    ).unsqueeze(-1)
-                    per_anchor.append(torch.where(follow, scripted_action, random_action))
-                continue
-            per_anchor.append(
-                get_actions(
-                    agent,
-                    self._opponent_obs(obs, lo, hi),
-                    state,
-                    size,
-                    self.num_ships,
-                    self.device,
+        action: torch.Tensor | None = None
+        if any(spec.is_stateless for spec in self._anchor_specs):
+            random_action = get_actions(
+                self.random_agent, None, state, size, self.num_ships, self.device
+            ).long()
+            if self.scripted_agent is None:
+                action = random_action
+            else:
+                scripted_action = get_actions(
+                    self.scripted_agent, None, state, size, self.num_ships, self.device
                 ).long()
-            )
+                # One coherent scripted decision per ship per step, matching
+                # SemiRandomScriptedAgent — not a per-head coin flip. The random
+                # agent's own probability is 0, so it falls out of the same
+                # expression rather than needing a branch.
+                probability = self._anchor_p[idx].unsqueeze(1)  # (size, 1)
+                follow = torch.rand(
+                    size, self.num_ships, device=self.device
+                ) < probability
+                action = torch.where(follow.unsqueeze(-1), scripted_action, random_action)
 
-        if len(per_anchor) == 1:
-            return per_anchor[0]
-        idx = self._anchor_idx_live if lo == 0 else self._anchor_idx_float  # (B_slot,)
-        stacked = torch.stack(per_anchor, dim=0)  # (A, B_slot, N, 3)
-        gather_idx = idx.view(1, -1, 1, 1).expand(1, size, self.num_ships, 3)
-        return stacked.gather(0, gather_idx).squeeze(0)
+        for index, (spec, agent) in enumerate(zip(self._anchor_specs, agents, strict=True)):
+            if spec.is_stateless:
+                continue
+            policy_action = get_actions(
+                agent,
+                self._opponent_obs(obs, lo, hi),
+                state,
+                size,
+                self.num_ships,
+                self.device,
+            ).long()
+            assigned = (idx == index).view(-1, 1, 1)
+            # Written unconditionally rather than behind an ``.any()`` test: the
+            # check would force a device sync every step to save a masked write.
+            action = policy_action if action is None else torch.where(
+                assigned, policy_action, action
+            )
+        assert action is not None, "the evaluator needs at least one anchor"
+        return action
 
     def _compute_team_actions(self, obs: YemongObservation) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (team0, team1) actions, each (5·size, N, 3), for one eval step."""

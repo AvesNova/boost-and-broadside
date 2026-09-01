@@ -97,3 +97,73 @@ class TestLadderCountFlush:
             [self.anchor("random")], [[3.0, 1.0, 0.0], [9.0, 9.0, 9.0]]
         )
         assert evaluator._flush_ladder_counts() == {"random": (3, 1, 0)}
+
+
+class TestAnchorProbabilityTable:
+    """The ladder resolves its mixture against each env's assigned rung.
+
+    Building one action tensor per rung and gathering afterwards computes a
+    dozen candidate actions per environment and throws all but one away. Indexing
+    the probability by the assignment first is equivalent in distribution and
+    costs one blend however long the ladder gets.
+    """
+
+    @staticmethod
+    def evaluator(specs: list[LadderOpponent]) -> EloEvaluator:
+        instance = object.__new__(EloEvaluator)
+        instance._anchor_specs = specs
+        instance.device = torch.device("cpu")
+        return instance
+
+    def test_each_rung_contributes_its_own_probability(self) -> None:
+        specs = [
+            LadderOpponent(policy=None, elo=0.0, label="random"),
+            LadderOpponent(policy=None, elo=500.0, label="semi", p_scripted=0.5),
+            LadderOpponent(policy=None, elo=1000.0, label="scripted", p_scripted=1.0),
+        ]
+        table = self.evaluator(specs)._anchor_p_tensor()
+        assert table.tolist() == pytest.approx([0.0, 0.5, 1.0])
+
+    def test_the_random_agent_falls_out_of_the_same_expression(self) -> None:
+        """p = 0 makes the blend always pick random, so it needs no branch."""
+        table = self.evaluator(
+            [LadderOpponent(policy=None, elo=0.0, label="random")]
+        )._anchor_p_tensor()
+        assert table.tolist() == pytest.approx([0.0])
+
+    def test_a_policy_anchor_takes_a_placeholder(self) -> None:
+        """Its entry is never read — its envs are overwritten by the policy."""
+        specs = [
+            LadderOpponent(policy=None, elo=1000.0, label="scripted", p_scripted=1.0),
+            LadderOpponent(policy=object(), elo=1200.0, label="ckpt_1"),
+        ]
+        assert self.evaluator(specs)._anchor_p_tensor().tolist() == pytest.approx([1.0, 0.0])
+
+    def test_indexing_by_assignment_matches_a_per_rung_blend(self) -> None:
+        """Equivalence against the formulation this replaces."""
+        torch.manual_seed(0)
+        specs = [
+            LadderOpponent(policy=None, elo=0.0, label="random"),
+            LadderOpponent(policy=None, elo=300.0, label="a", p_scripted=0.3),
+            LadderOpponent(policy=None, elo=900.0, label="b", p_scripted=0.9),
+        ]
+        table = self.evaluator(specs)._anchor_p_tensor()
+        envs, ships, draws = 4096, 4, 40
+        idx = torch.randint(0, len(specs), (envs,))
+
+        collapsed = 0.0
+        for _ in range(draws):
+            follow = torch.rand(envs, ships) < table[idx].unsqueeze(1)
+            collapsed += follow.float().mean(dim=1)
+        per_rung = 0.0
+        for _ in range(draws):
+            stacked = torch.stack(
+                [torch.rand(envs, ships) < float(s.p_scripted or 0.0) for s in specs]
+            )
+            per_rung += stacked.gather(
+                0, idx.view(1, -1, 1).expand(1, envs, ships)
+            ).squeeze(0).float().mean(dim=1)
+
+        expected = table[idx] * draws
+        assert collapsed.mean() == pytest.approx(expected.mean(), abs=0.4)
+        assert collapsed.mean() == pytest.approx(per_rung.mean(), abs=0.4)
