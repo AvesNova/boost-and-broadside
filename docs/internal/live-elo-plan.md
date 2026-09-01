@@ -252,6 +252,40 @@ the running `Var(r_live − r_scripted)`, against the *existing* K-factor
 estimator. No behaviour change. Cheap, and it gives a baseline to compare the new
 estimator against.
 
+*Landed.* `train/rl/elo_diagnostics.py`, logged under `elo_diag/*` and
+documented in `training.md`. Replaying 727's own `elo_history.jsonl` through it
+gives the baseline the rest of this work is measured against:
+
+| update | Mstep | live_elo | gauge-implied | drift | SE(live−scripted) | movement z |
+|---:|---:|---:|---:|---:|---:|---:|
+| 40 | 39.8 | 961.9 | 973.1 | −11.2 | 6.0 | 0.82 |
+| 127 | 126.4 | 1393.4 | 1375.8 | +17.6 | 9.2 | 0.23 |
+| 128 | 127.4 | 1361.5 | 1380.8 | −19.2 | 8.5 | 2.86 |
+| **129** | **129.3** | **1451.0** | **1387.2** | **+63.7** | **10.4** | **7.40** |
+| 130 | 130.3 | 1476.8 | 1391.5 | +85.3 | 11.2 | 2.25 |
+| 200 | 200.0 | 1620.3 | 1524.9 | +95.5 | 16.8 | 0.92 |
+| 320 | 319.4 | 1696.4 | 1570.2 | +126.2 | 20.1 | 1.18 |
+| 400 | 399.0 | 1729.1 | 1599.6 | +129.6 | 22.1 | 0.82 |
+
+Three things this settles.
+
+**The detector works, and the seam is the event.** Update 129 is the resume.
+Drift opens from −19 to +64 in one update at `movement_z` 7.4, and never closes.
+The alarm fires on the day, which is what Phase 0 was for.
+
+**The problem is worse than the 135–178M window suggested, and it compounds.**
+Drift keeps growing after the seam — +85 at 130M, +96 at 200M, +130 at 400M
+against a fitted standard error of 15. That is 8σ, and it is not a step that
+settles; the rate of growth is roughly constant. The seam started it but is not
+all of it, which supports the information-starvation account over a one-off
+resume bug.
+
+**The ceiling is now a number rather than an argument.** `SE(live − scripted)`
+grows 6.0 → 22.1 over 400M steps, monotonically, on a pool whose Fiedler value
+sits around 1e−8. At 400M the floor-anchored offset is worth ±22 Elo before any
+estimator error at all, which is the size of the effects we routinely compare
+between runs. Phase 4 is the phase that attacks this term.
+
 **Phase 1 — persistent match matrix.** Accumulate wins/ties among stationary
 players across the whole run. Persist it as a sidecar next to `roster.json` in
 the checkpoint directory rather than inside the `.pt` payload — the roster

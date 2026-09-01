@@ -59,6 +59,7 @@ from boost_and_broadside.train.rl.buffer import (
     StoredRollout,
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+from boost_and_broadside.train.rl.elo_diagnostics import LiveEloDiagnostics
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import (
     FeatureCoordinator,
@@ -616,6 +617,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._scripted_win_rate: float = 0.0
         # Latest update's rated outcomes, opponent label → (win, loss, tie).
         self._match_counts: dict[str, tuple[int, int, int]] = {}
+        # Read-only instrumentation for the rating filter above. Logs only; see
+        # elo_diagnostics and docs/internal/live-elo-plan.md.
+        self._elo_diagnostics = LiveEloDiagnostics(scripted_label="scripted")
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)

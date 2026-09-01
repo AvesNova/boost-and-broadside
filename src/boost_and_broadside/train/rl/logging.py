@@ -186,6 +186,20 @@ class LoggingMixin:
         for entry in self.roster.entries:
             metrics[f"live_elo/ladder/{entry.label}"] = entry.elo
 
+        # Read-only instrumentation of the rating filter. Nothing downstream
+        # consumes these keys; they exist so the estimator has a measured
+        # baseline before it is replaced. See docs/internal/live-elo-plan.md.
+        metrics.update(
+            self._elo_diagnostics.update(
+                live_elo=self._live_elo,
+                match_counts=self._match_counts,
+                ratings={entry.label: entry.elo for entry in self.roster.entries},
+                stationary={
+                    entry.label: entry.is_stationary for entry in self.roster.entries
+                },
+            )
+        )
+
         # Save overwriting best-model checkpoints (live, then avg) when the
         # rating improves. Absolute gauge, so no re-basing.
         self._maybe_save_best_checkpoints()

@@ -596,6 +596,33 @@ quote the calibrated series only.
 artifact carries `live_gauge_error`, the per-rung distance between the fitted ladder and
 the rating training actually uses. No profile has to wait for it.
 
+### Watching the live estimator
+
+The live rating is a K-factor tracking filter, and a filter can settle somewhere the games
+do not support. The `elo_diag/*` keys instrument it. They are read-only: nothing consumes
+them, and opponent sampling, promotion, and `best_training` selection all behave exactly as
+they did before the keys existed.
+
+| Key | Reads |
+|---|---|
+| `elo_diag/implied_gauge_elo` | the rating that best explains the live policy's recent record against the *defined* references — random, the semi-random rungs, scripted — pooled over the last 8 updates |
+| `elo_diag/drift_vs_gauge` | `live_elo` minus that. The headline alarm |
+| `elo_diag/implied_scripted_elo`, `elo_diag/drift_vs_scripted` | the same against the scripted controller alone |
+| `elo_diag/se_live_vs_scripted` | how precisely the floor-anchored offset is known, as effective resistance to the anchor in the pool's information graph |
+| `elo_diag/movement_z` | this update's rating change divided by the standard error one update's games can support |
+| `elo_diag/fiedler` | algebraic connectivity of that graph; zero means the pool has split and the ratings across the split are unidentified |
+| `elo_diag/max_abs_rating` | trips first if a fit ever runs away to a separation corner |
+
+The drift keys are what these exist for. Only the defined references can testify about the
+live rating independently, because every other pool member was rated by this run against
+this run. A drift that grows with training means the offset from the floor is being carried
+up a chain that is estimated worse than the rating claims.
+
+Sign convention: positive drift means `live_elo` reads *above* what the record supports.
+
+Non-finite values are dropped rather than logged, so a saturated window shows up as a gap
+in the series instead of a spike that ruins the axis.
+
 ## Checkpoints and reproducibility
 
 Every payload family (full `step_<N>.pt` resumes, best-model snapshots, and the ladder
