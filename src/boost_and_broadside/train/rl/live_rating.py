@@ -53,41 +53,93 @@ NON_STATIONARY = frozenset({"avg"})
 def fit_ladder(
     matrix: MatchMatrix,
     *,
-    anchor_label: str,
-    anchor_elo: float,
+    fixed: Mapping[str, float],
     prior_games: float = DEFAULT_PRIOR_GAMES,
+    passes: int = 64,
+    tolerance: float = 1e-4,
 ) -> dict[str, float]:
-    """Refit every accumulated player's rating, with the anchor held fixed.
+    """Rate the checkpoints against references whose ratings are already known.
 
-    The anchor is pinned rather than centred. Centring on a pool mean, or on
-    whichever player happens to be first, makes every rating jump when the pool
-    changes — and the pool changes at every milestone. Shifting so the anchor
-    reads its defined gauge value keeps the scale still across promotions, which
-    is what lets ratings from different points in a run be compared at all.
+    ``fixed`` holds the gauge's defined players — the random agent at 0, each
+    semi-random rung at 1000·p, the scripted controller at 1000. These are not
+    estimates and are not refit. Everything else in the matrix is free.
 
-    Returns an empty mapping when the anchor has no accumulated games, since
-    without it the fit has no gauge and the caller should keep using the ratings
-    it already has.
+    **Fitting them jointly instead is a trap, and it was observed failing on real
+    data before this signature grew a ``fixed`` argument.** Eleven updates into
+    run 728 the accumulated record held two clean sweeps by the same checkpoint,
+    15–0 over the random agent and 27–0 over the 0.2 rung. Complete separation
+    sends both opponents' maximum likelihood to −∞, so ``prior_games`` alone
+    decides where they land — and its shrinkage weakens with sample size, so the
+    agent with *fewer* games came out higher. A joint fit ranked random above the
+    0.2 rung by 100 points, on 42 games that agreed perfectly with the gauge.
+    Pinning the defined players removes the failure at its source rather than
+    waiting for game counts to grow out of it.
+
+    The trade is deliberate. The linear rung assignment is known to sit up to
+    ~106 Elo from a fitted ladder at the weak end (see ``config/live_elo``), so
+    pinning propagates a bias into the checkpoint ratings. That bias is bounded,
+    known, and identical in every run under the same gauge, which is what matters
+    for comparing runs; an unpinned fit at low connectivity is unbounded and
+    different every time.
+
+    Solved by coordinate ascent — each free player in turn against everyone
+    else's current rating — rather than by the joint MM iteration, which has no
+    way to hold a player still. The likelihood is concave in each coordinate and
+    every free player is fit exactly given the rest, so the passes converge
+    monotonically. On this pool it takes a handful.
+
+    Returns an empty mapping when there is nothing to fit, in which case the
+    caller keeps the ratings it already has.
     """
     labels = [label for label in matrix.labels() if label not in NON_STATIONARY]
-    if anchor_label not in labels or len(labels) < 2:
-        return {}
-    wins = matrix.scored_wins(labels)
-    anchor = labels.index(anchor_label)
-    if wins[anchor].sum() + wins[:, anchor].sum() <= 0.0:
-        return {}
-    fit = fit_bradley_terry(wins, anchor=anchor, prior_games=prior_games)
-    # fit_bradley_terry pins its anchor at 0, so one shift puts the whole ladder
-    # on the gauge.
-    return {
-        label: float(rating) + anchor_elo
-        for label, rating in zip(labels, fit.ratings)
-    }
+    free = [label for label in labels if label not in fixed]
+    known = {label: float(fixed[label]) for label in labels if label in fixed}
+    if not free or not known:
+        return dict(known)
+    games = {label: _opponent_counts(matrix, label) for label in free}
+    # Start every free player at the strongest defined reference. A checkpoint
+    # on the ladder has beaten its way up to at least the rungs it plays, so this
+    # is closer than the pool mean and costs a pass or two less.
+    ratings = {**known, **dict.fromkeys(free, max(known.values()))}
+    for _ in range(passes):
+        movement = 0.0
+        for label in free:
+            counts = {
+                opponent: record
+                for opponent, record in games[label].items()
+                if opponent in ratings
+            }
+            rating, _ = rate_live(
+                counts, ratings, prior_games=prior_games, prior_rating=max(known.values())
+            )
+            if np.isfinite(rating):
+                movement = max(movement, abs(rating - ratings[label]))
+                ratings[label] = rating
+        if movement < tolerance:
+            break
+    return {label: ratings[label] for label in labels}
+
+
+def _opponent_counts(
+    matrix: MatchMatrix, player: str
+) -> dict[str, tuple[float, float, float]]:
+    """One player's raw win/loss/tie record against each opponent it has met."""
+    counts: dict[str, tuple[float, float, float]] = {}
+    for record in matrix.as_records():
+        low, high = str(record["a"]), str(record["b"])
+        if player == low:
+            counts[high] = (record["wins_a"], record["wins_b"], record["ties"])
+        elif player == high:
+            counts[low] = (record["wins_b"], record["wins_a"], record["ties"])
+    return counts
 
 
 def rate_live(
     counts: Mapping[str, tuple[float, float, float]],
     ratings: Mapping[str, float],
+    *,
+    prior_games: float = 0.0,
+    prior_rating: float = 0.0,
 ) -> tuple[float, float]:
     """Solve for the rating that best explains one update's live record.
 
@@ -96,10 +148,19 @@ def rate_live(
                  perspective.
         ratings: Opponent ratings, ideally stage 1's refit output.
 
+        prior_games: Virtual games split evenly for and against
+                 ``prior_rating``. Zero for the live policy, where an unbounded
+                 record should be *reported* as unbounded; positive when fitting
+                 a ladder player, where a bounded answer is needed every update
+                 and the shrinkage is under a rating point once real games
+                 accumulate.
+        prior_rating: Where those virtual games are played.
+
     Returns:
-        ``(rating, stderr)``. A clean sweep in either direction has no finite
-        maximum likelihood and comes back as ``±inf`` with infinite error rather
-        than as a large finite number the caller might mistake for a measurement.
+        ``(rating, stderr)``. With no prior, a clean sweep in either direction
+        has no finite maximum likelihood and comes back as ``±inf`` with infinite
+        error rather than as a large finite number a caller might mistake for a
+        measurement.
     """
     usable = [
         label
@@ -112,6 +173,10 @@ def rate_live(
     # Half-win draws, the convention every other caller of the fitter uses.
     wins = np.array([counts[label][0] + 0.5 * counts[label][2] for label in usable])
     losses = np.array([counts[label][1] + 0.5 * counts[label][2] for label in usable])
+    if prior_games > 0.0:
+        opponents = np.append(opponents, prior_rating)
+        wins = np.append(wins, 0.5 * prior_games)
+        losses = np.append(losses, 0.5 * prior_games)
     return fit_single_rating(opponents, wins, losses)
 
 
@@ -137,6 +202,7 @@ class TwoStageRating:
         matrix: MatchMatrix,
         counts: Mapping[str, tuple[float, float, float]],
         fallback_ratings: Mapping[str, float],
+        gauge: Mapping[str, float],
     ) -> dict[str, float]:
         """Refit the ladder and the live policy, and report both as metrics.
 
@@ -147,10 +213,9 @@ class TwoStageRating:
                                games for. The gauge's defined values for the
                                stationary references, and the filter's current
                                numbers for anything else.
+            gauge:             The defined players, held fixed by stage 1.
         """
-        self.ladder = fit_ladder(
-            matrix, anchor_label=self.anchor_label, anchor_elo=self.anchor_elo
-        )
+        self.ladder = fit_ladder(matrix, fixed=gauge)
         ratings = {**fallback_ratings, **self.ladder}
         rating, stderr = rate_live(counts, ratings)
         metrics: dict[str, float] = {}

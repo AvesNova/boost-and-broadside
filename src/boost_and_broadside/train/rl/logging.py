@@ -199,6 +199,11 @@ class LoggingMixin:
                 self.match_matrix,
                 self._match_counts,
                 {entry.label: entry.elo for entry in self.roster.entries},
+                {
+                    entry.label: entry.elo
+                    for entry in self.roster.entries
+                    if entry.is_stationary
+                },
             )
         )
         metrics["elo_diag/ladder_matrix_games"] = self.match_matrix.total_games

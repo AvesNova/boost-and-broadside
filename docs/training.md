@@ -656,10 +656,21 @@ precision in the ladder's ratings and nothing depends on it being complete.
 Swapping the estimator would change promotion timing, which changes the pool, which changes
 every rating, so the filter keeps gating for a full comparison run and this one only observes.
 
-Stage 1 refits every accumulated player from `match_matrix.json` each update, with the scripted
-controller pinned at its gauge value — pinned rather than centred, so the scale holds still when
-a promotion changes the pool. Stage 2 then solves for the rating that best explains the live
-policy's record *this update* against those refit ratings, and reports a standard error with it.
+Stage 1 rates the checkpoints from `match_matrix.json` each update against the gauge's defined
+players — random at 0, each rung at 1000·p, scripted at 1000 — which are **held fixed, not
+refit**. They are the scale, and refitting them is refitting the ruler. Stage 2 then solves for
+the rating that best explains the live policy's record *this update* against the result, and
+reports a standard error with it.
+
+Fitting the references jointly instead fails on real data, which is how the pinning got there.
+Eleven updates into run 728 one checkpoint had swept both the random agent (15–0) and the 0.2
+rung (27–0). Complete separation sends both opponents' maximum likelihood to −∞, so only the
+prior bounds them, and its shrinkage weakens as games accumulate — so the agent with *fewer*
+games came out higher, ranking random a hundred points above a rung it is plainly worse than.
+The trade for pinning is a known one: the linear rung assignment sits up to ~106 Elo from a
+fitted ladder at the weak end, so that bias propagates into the checkpoint ratings. It is
+bounded and identical in every run under the same gauge, which is what matters for comparing
+runs, where an unpinned fit at low connectivity is unbounded and different every time.
 
 Two measured facts shaped it, both from replaying 719's recorded counts against its post-hoc
 calibrated curve. Fitting against the whole pool scores 15.4 RMS where fitting against the
