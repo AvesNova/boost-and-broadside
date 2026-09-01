@@ -61,6 +61,8 @@ from boost_and_broadside.train.rl.buffer import (
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
 from boost_and_broadside.train.rl.elo_diagnostics import LiveEloDiagnostics
 from boost_and_broadside.train.rl.match_matrix import MatchMatrix
+from boost_and_broadside.train.rl.allocation import allocation_weights
+from boost_and_broadside.train.rl.live_rating import TwoStageRating
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import (
     FeatureCoordinator,
@@ -624,6 +626,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Accumulated ladder record among weight-frozen players. Replaced
         # wholesale on resume; see _save_roster_json for why it is a sidecar.
         self.match_matrix = MatchMatrix()
+        # The candidate replacement for the K-factor filter, running alongside
+        # it. It gates nothing: swapping the estimator would change promotion
+        # timing, which changes the pool, which changes every rating — so the
+        # old one keeps gating for the whole comparison run and this one only
+        # observes. See docs/internal/live-elo-plan.md.
+        self._two_stage = TwoStageRating(
+            anchor_label="scripted",
+            anchor_elo=train_config.elo_eval.scripted_live_elo,
+        )
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
@@ -1101,7 +1112,36 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # than keep the rating the entry was created with. The scripted entry
         # needs no such sync: the live gauge pins it and it never moves.
         self.roster.set_special_elo("avg", elo_snapshot.avg_elo)
+        self._allocate_ladder_games(runtime.elo_eval)
         return terminated
+
+    def _allocate_ladder_games(self, elo_eval: EloEvaluator) -> None:
+        """Point slot 4 at the games that most sharpen the rung's floor offset.
+
+        Recomputed every update because the target moves: the floating rung's
+        rating settles, the accumulated graph gains edges, and the direct link to
+        the anchor saturates. Falls back to the evaluator's local rule whenever
+        the graph cannot yet identify the difference, which is the normal state
+        until the new rung has played its first games.
+        """
+        floating_label = elo_eval.floating_label
+        if not floating_label:
+            return
+        ratings = {entry.label: entry.elo for entry in self.roster.entries}
+        ratings[floating_label] = float(elo_eval.floating_elo.item())
+        ratings["scripted"] = self.cfg.elo_eval.scripted_live_elo
+        candidates = elo_eval.anchor_labels()
+        elo_eval.set_float_anchor_weights(
+            allocation_weights(
+                self.match_matrix,
+                ratings,
+                protagonist=floating_label,
+                anchor="scripted",
+                candidates=candidates,
+            )
+            if candidates
+            else None
+        )
 
     def _compute_rollout_gae(
         self,

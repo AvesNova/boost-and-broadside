@@ -46,6 +46,7 @@ draw and is rated normally.
 from collections import deque
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
 
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
@@ -259,6 +260,10 @@ class EloEvaluator:
         )
         self._anchor_idx_live = torch.zeros(size, dtype=torch.long, device=device)
         self._anchor_idx_float = torch.zeros(size, dtype=torch.long, device=device)
+        # Slot-4 opponent weights, set once per update by the trainer when the
+        # accumulated graph can identify the rung's offset from the anchor. None
+        # falls back to local information alone. See train/rl/allocation.
+        self._float_anchor_weights: torch.Tensor | None = None
         # Stationary references form the head of the anchor set and never age
         # out; checkpoint anchors are appended and rotate behind them. Fixed for
         # the evaluator's life — promotion only ever appends checkpoints.
@@ -462,7 +467,35 @@ class EloEvaluator:
             self._anchor_idx_live.clamp(max=max(stationary - 1, 0)),
         )
         self._anchor_idx_float.zero_()
+        # The anchor set just changed shape and the floating protagonist is a
+        # different player, so any allocation computed for the old pair is
+        # meaningless. The trainer recomputes it after the next flush.
+        self._float_anchor_weights = None
         self._resample_anchor_assignments(mask)
+
+    def set_float_anchor_weights(self, weights: "np.ndarray | None") -> None:
+        """Set slot 4's opponent distribution over the current anchor set.
+
+        Passing None restores the local-information rule. The length is checked
+        at draw time rather than here, so a promotion arriving between the
+        trainer's computation and the next episode end degrades to the fallback
+        instead of raising.
+        """
+        if weights is None:
+            self._float_anchor_weights = None
+            return
+        self._float_anchor_weights = torch.as_tensor(
+            weights, dtype=torch.float64, device=self.device
+        )
+
+    def anchor_labels(self) -> list[str]:
+        """Labels of the current anchor set, in the order slot 4 indexes them."""
+        return [spec.label for spec in self._anchor_specs]
+
+    @property
+    def floating_label(self) -> str:
+        """Label of the checkpoint slot 4 is currently settling."""
+        return self._floating_label
 
     def seed_avg_elo_from_live(self) -> None:
         """Seed the first averaged-policy rating from the identical live snapshot."""
@@ -808,7 +841,12 @@ class EloEvaluator:
         ).squeeze(1)  # (size,)
         self._anchor_idx_live = torch.where(done_any[:size], draw_live, self._anchor_idx_live)
         if self.float_pro_agent is not None:
-            weights_float = information_weights(self.floating_elo, self._anchor_elos)
+            weights_float = self._float_anchor_weights
+            if weights_float is None or weights_float.numel() != self._anchor_elos.numel():
+                # Before the graph connects the rung to the anchor, and after a
+                # promotion until the trainer supplies fresh weights, fall back
+                # to the local rule rather than to a stale allocation.
+                weights_float = information_weights(self.floating_elo, self._anchor_elos)
             draw_float = torch.multinomial(
                 weights_float.float().clamp(min=1e-12).expand(size, -1), 1
             ).squeeze(1)

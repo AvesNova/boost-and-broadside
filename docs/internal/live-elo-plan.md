@@ -438,6 +438,22 @@ Recommended sequence from here: land stage 1 and a whole-pool stage 2 logged
 beside the filter, then Phase 4, then reassess Phase 3 on measurement rather than
 on the argument in this document.
 
+*Phases 2 and 4 landed together*, since stage 1 needs games that only the
+Phase 4 allocator produces in useful proportions. `train/rl/live_rating.py` and
+`train/rl/allocation.py`, logged under `two_stage/*`, gating nothing.
+
+The allocator's simulated margin, standard error of a rung's floor offset:
+
+| rule | 10 batches | 40 | 160 |
+|---|---:|---:|---:|
+| `p(1−p)` — the rule being replaced | 39.5 | 26.1 | 14.5 |
+| uniform | 33.9 | 20.4 | 10.9 |
+| **current-flow weighted** | **23.6** | **12.2** | **6.1** |
+
+Roughly three times fewer games for equal precision against the honest baseline.
+Worth recording that the old rule is *worse than uniform*: targeting information
+without asking what it is information about is not merely suboptimal.
+
 **Phase 3 — resistance-based allocation.** Replace the `p(1−p)` multinomial with
 the c-optimal rule for live slots. One linear solve plus an O(n²) scoring pass
 per batch. Keep the connectivity floor.

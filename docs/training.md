@@ -650,6 +650,56 @@ It is a sidecar, not a checkpoint payload key, so a checkpoint written before it
 loadable. A resume that finds no file starts counting from zero: the accumulation buys
 precision in the ladder's ratings and nothing depends on it being complete.
 
+### The two-stage rating, running alongside
+
+`two_stage/*` carries a candidate replacement for the K-factor filter. **It gates nothing.**
+Swapping the estimator would change promotion timing, which changes the pool, which changes
+every rating, so the filter keeps gating for a full comparison run and this one only observes.
+
+Stage 1 refits every accumulated player from `match_matrix.json` each update, with the scripted
+controller pinned at its gauge value — pinned rather than centred, so the scale holds still when
+a promotion changes the pool. Stage 2 then solves for the rating that best explains the live
+policy's record *this update* against those refit ratings, and reports a standard error with it.
+
+Two measured facts shaped it, both from replaying 719's recorded counts against its post-hoc
+calibrated curve. Fitting against the whole pool scores 15.4 RMS where fitting against the
+gauge's defined references alone scores 65.9 — a floor-only fit collapses to one saturated edge
+late in a run, and saturated edges carry almost no information. And a single update beats every
+longer window tested (15.4 at one, 21.8 at two, 36.7 at eight), because the policy improves fast
+enough that pooling costs more in lag than it buys in variance.
+
+The structural difference does not show up in either number. A K-factor filter carries state and
+settles where competing pulls cancel, so a shift that gets in stays in — run 727 held one for
+270M steps after a resume. A per-update solve has no memory of its own previous value.
+
+### Choosing which ladder games to play
+
+The evaluation battery's floating-vs-anchor slot used to draw its opponent by `p(1−p)`, which
+picks the most evenly matched opponent available. That answers "which game is most informative
+about some rating", not "which game most sharpens this rung's offset from the floor" — and it
+ranks the single most valuable game, the rung against the anchor, last, because it is saturated.
+
+The replacement weights each candidate by `p(1−p)·b²`, where `b` is the potential drop across
+that edge under unit current injected at the rung and drawn off at the anchor. Local information
+times global position: play the matches that carry the most current between the rung and the
+floor. In simulation, standard error of the rung's floor offset after equal budgets:
+
+| rule | 10 batches | 40 | 160 |
+|---|---:|---:|---:|
+| `p(1−p)`, the old rule | 39.5 | 26.1 | 14.5 |
+| uniform | 33.9 | 20.4 | 10.9 |
+| **current-flow weighted** | **23.6** | **12.2** | **6.1** |
+
+About three times fewer games for the same precision, and note the old rule is worse than
+spreading games evenly — targeting information without asking what the information is *about*
+is actively counterproductive.
+
+A fixed share of the budget is spread evenly regardless of score. That is not a hedge against
+the rule being wrong; it is insurance against the failure this class of rule causes, where
+starving an edge splits the graph and leaves the ratings either side of the split unidentified.
+The rule falls back to the old one whenever the accumulated graph cannot yet reach the anchor,
+which is the normal state until a new rung has played its first games.
+
 This is separate from `elo_history.jsonl` by design. That file records what cannot be
 recovered — the live and averaged policies exist in one form for one update. Everything in the
 match matrix can be replayed from disk afterwards; it is kept because the training run needs it

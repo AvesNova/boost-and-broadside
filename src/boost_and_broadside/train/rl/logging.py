@@ -192,6 +192,15 @@ class LoggingMixin:
         # The accumulated ladder record fills in the background through Phase 1;
         # nothing reads it back yet. Logged so its growth is visible before an
         # estimator is built on it.
+        # Stage 1 refits the ladder from the accumulated record, stage 2 solves
+        # for the live policy against it. Logged beside live_elo, gating nothing.
+        metrics.update(
+            self._two_stage.update(
+                self.match_matrix,
+                self._match_counts,
+                {entry.label: entry.elo for entry in self.roster.entries},
+            )
+        )
         metrics["elo_diag/ladder_matrix_games"] = self.match_matrix.total_games
         metrics["elo_diag/ladder_matrix_pairs"] = float(len(self.match_matrix))
         metrics.update(
