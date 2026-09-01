@@ -1,5 +1,7 @@
 """Unit tests for the Elo league roster: sampling, ladder, policy cache, persistence."""
 
+import json
+
 import pytest
 import torch
 
@@ -276,3 +278,70 @@ class TestPersistence:
         _add_frozen_checkpoint(roster, step=1, elo=0.0)
         roster.add_checkpoint(path="/ckpt/b.pt", global_step=2, update=2)
         assert roster.kept_paths() == {"/ckpt/1.pt", "/ckpt/b.pt"}
+
+
+class TestSemiRandomProbabilityRoundTrip:
+    """A rung that loses p_scripted plays as random while keeping its rating.
+
+    This cost run 728 its whole ladder. save_json never wrote the field and
+    load_json never read it, so every resume rebuilt the rungs with
+    p_scripted=None -- which the evaluator plays as the uniform random agent.
+    The rungs kept ratings of 200-950 while being trivially beatable, so the
+    live rating was pulled up by sweeps that looked like beating a 950. Nothing
+    in any metric showed it: the run's own win rates against the rungs were the
+    only evidence, and they read as the policy having improved.
+    """
+
+    @staticmethod
+    def roster_with_rungs() -> EloRoster:
+        roster = EloRoster()
+        for probability in (0.2, 0.5, 0.95):
+            roster.add_reference(probability, 1000.0 * probability)
+        return roster
+
+    def test_the_probability_survives_a_save_and_load(self, tmp_path):
+        original = self.roster_with_rungs()
+        path = tmp_path / "roster.json"
+        original.save_json(path)
+        restored = EloRoster()
+        restored.load_json(path)
+        before = {e.label: e.p_scripted for e in original.entries if e.kind == "semi_random"}
+        after = {e.label: e.p_scripted for e in restored.entries if e.kind == "semi_random"}
+        assert after == before
+        assert all(value is not None for value in after.values())
+
+    def test_a_roster_written_before_the_field_existed_is_repaired(self, tmp_path):
+        """Every run on disk predates the fix, so the label has to be enough."""
+        path = tmp_path / "roster.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "kind": "semi_random",
+                            "label": "semi_scripted_0p95",
+                            "elo": 950.0,
+                            "global_step": 0,
+                            "update": 0,
+                            "path": None,
+                            "fixed": True,
+                        }
+                    ]
+                }
+            )
+        )
+        roster = EloRoster()
+        roster.load_json(path)
+        assert roster.entries[0].p_scripted == pytest.approx(0.95)
+
+    def test_non_rung_entries_keep_no_probability(self, tmp_path):
+        roster = EloRoster()
+        path = tmp_path / "roster.json"
+        roster.save_json(path)
+        restored = EloRoster()
+        restored.load_json(path)
+        assert all(
+            entry.p_scripted is None
+            for entry in restored.entries
+            if entry.kind != "semi_random"
+        )

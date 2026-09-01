@@ -2630,6 +2630,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 # evaluator computes itself — no weights, no recurrent state.
                 # p_scripted=1.0 is the scripted controller; None is uniform.
                 p_scripted = 1.0 if entry.kind == "scripted" else entry.p_scripted
+                if entry.kind == "semi_random" and p_scripted is None:
+                    # Fail rather than fall through to the uniform agent. A rung
+                    # that plays as random while keeping a rating of 200-950 is
+                    # invisible in every metric and inflates the live rating for
+                    # the rest of the run; a resume that cannot rebuild the
+                    # ladder has to stop instead.
+                    raise ValueError(
+                        f"semi-random rung {entry.label!r} has no p_scripted; its roster "
+                        "entry cannot be rebuilt and it would silently play as random"
+                    )
                 return LadderOpponent(
                     policy=None, elo=entry.elo, label=entry.label, p_scripted=p_scripted
                 )

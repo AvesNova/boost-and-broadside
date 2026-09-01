@@ -592,6 +592,15 @@ that could be read as either, and the calibration chart files deliberately do no
 the trainer's key names even though they share its file shape. Published figures and prose
 quote the calibrated series only.
 
+Every rung's `p_scripted` is persisted in `roster.json` and restored on resume. It has to be:
+the evaluator builds the rungs itself from a scripted/uniform blend, and a rung rebuilt without
+its probability plays as the uniform random agent **while keeping its rating**. That is invisible
+in every metric — the run's win rate against the rung simply rises, which reads as the policy
+improving — and it inflates the live rating for the remainder of the run, because opponent
+sampling concentrates games on whichever rungs sit nearest the current rating. A roster written
+before the field existed is repaired by parsing the probability back out of the label; a rung
+that cannot be rebuilt stops the run rather than falling through to random.
+
 `bnb semi-random` checks the approximation rather than supplying it: each scale in its
 artifact carries `live_gauge_error`, the per-rung distance between the fitted ladder and
 the rating training actually uses. No profile has to wait for it.

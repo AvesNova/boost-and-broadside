@@ -27,7 +27,10 @@ from pathlib import Path
 
 import torch
 
-from boost_and_broadside.agents.semi_random_scripted import semi_random_label
+from boost_and_broadside.agents.semi_random_scripted import (
+    semi_random_label,
+    semi_random_probability,
+)
 from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.train.rl.policy_io import PolicyBundle, load_policy_bundle
@@ -451,6 +454,10 @@ class EloRoster:
                     "update": e.update,
                     "path": e.path,
                     "fixed": e.fixed,
+                    # Without this a resumed run rebuilds every semi-random rung
+                    # with p_scripted=None, which the evaluator plays as the
+                    # uniform random agent while the rung keeps its rating.
+                    "p_scripted": e.p_scripted,
                 }
                 for e in self.entries
             ],
@@ -469,6 +476,13 @@ class EloRoster:
                 update=d["update"],
                 path=d.get("path"),
                 fixed=d.get("fixed", False),
+                # Rosters written before this field was persisted carry the
+                # probability only in the label, so fall back to parsing it.
+                p_scripted=(
+                    d["p_scripted"]
+                    if d.get("p_scripted") is not None
+                    else semi_random_probability(d["label"])
+                ),
             )
             for d in data["entries"]
         ]
