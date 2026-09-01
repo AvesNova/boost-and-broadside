@@ -59,6 +59,14 @@ alone will not fix it.
 
 ## Why a floor is enough
 
+> **Superseded by the Phase 0 control.** Read this section with the measurement
+> in *Phase 2 as designed is refuted* below. A shared floor is enough to
+> **define** the scale, and that part stands. It is not enough to **estimate**
+> against: a floor-only fit is off by ~50 Elo in RMS and in bias late in a run,
+> because the direct edge saturates and a single saturated edge is not a
+> connected graph. The argument below is right about identification and wrong
+> about what follows from it for an estimator.
+
 Elo's unit is fixed by the logistic model — 400 points is 10:1 odds by
 construction — so within a connected pool the MLE pins every rating
 *difference* and only one additive constant is free. Two runs under identical
@@ -167,6 +175,12 @@ saturate" gets answered quantitatively, at the moment it happens.
 
 ### Estimator: two stages, every update
 
+> **Revised after Phase 0.** Stage 2 must fit against the **whole pool**, not
+> the gauge references — floor-anchored fits lose to the current filter by a
+> factor of four. And the sliding window is a cost at every length tested, so
+> the window is one update. What remains worth building is the *ladder* half:
+> refitting rung ratings from the accumulated matrix rather than filtering them.
+
 Cost measured with the repo's own `fit_bradley_terry`: 28 players 11.7 ms,
 60 players 27 ms, 120 players 122 ms, single-rating solve 1.2 ms — against a
 ~350,000 ms update. There is no reason to batch it, and running every update
@@ -264,38 +278,97 @@ estimator. No behaviour change. Cheap, and it gives a baseline to compare the ne
 estimator against.
 
 *Landed.* `train/rl/elo_diagnostics.py`, logged under `elo_diag/*` and
-documented in `training.md`. Replaying 727's own `elo_history.jsonl` through it
-gives the baseline the rest of this work is measured against:
+documented in `training.md`.
 
-| update | Mstep | live_elo | gauge-implied | drift | SE(live−scripted) | movement z |
-|---:|---:|---:|---:|---:|---:|---:|
-| 40 | 39.8 | 961.9 | 973.1 | −11.2 | 6.0 | 0.82 |
-| 127 | 126.4 | 1393.4 | 1375.8 | +17.6 | 9.2 | 0.23 |
-| 128 | 127.4 | 1361.5 | 1380.8 | −19.2 | 8.5 | 2.86 |
-| **129** | **129.3** | **1451.0** | **1387.2** | **+63.7** | **10.4** | **7.40** |
-| 130 | 130.3 | 1476.8 | 1391.5 | +85.3 | 11.2 | 2.25 |
-| 200 | 200.0 | 1620.3 | 1524.9 | +95.5 | 16.8 | 0.92 |
-| 320 | 319.4 | 1696.4 | 1570.2 | +126.2 | 20.1 | 1.18 |
-| 400 | 399.0 | 1729.1 | 1599.6 | +129.6 | 22.1 | 0.82 |
+It was then replayed over **719 as a control** — the run whose post-hoc
+calibration shows its filter tracking the truth to −4.1 Elo on average — and the
+control overturned three things this document previously asserted. What follows
+replaces them.
 
-Three things this settles.
+### The floor-anchored estimate is biased, not just noisy
 
-**The detector works, and the seam is the event.** Update 129 is the resume.
-Drift opens from −19 to +64 in one update at `movement_z` 7.4, and never closes.
-The alarm fires on the day, which is what Phase 0 was for.
+719's filter is accurate, and `drift_vs_gauge` still reads **+53 on average**,
+rising past +75, with a correlation to the filter's true error of only +0.18.
+The mechanism is saturation: once the policy beats every defined reference
+almost always, its record against them stops being able to say *how far* above
+them it is, and the fitted rating settles below the truth.
 
-**The problem is worse than the 135–178M window suggested, and it compounds.**
-Drift keeps growing after the seam — +85 at 130M, +96 at 200M, +130 at 400M
-against a fitted standard error of 15. That is 8σ, and it is not a step that
-settles; the rate of growth is roughly constant. The seam started it but is not
-all of it, which supports the information-starvation account over a one-off
-resume bug.
+So the drift is a **paired** instrument. Two runs under the same physics share
+the bias almost exactly, and their difference at matched steps is meaningful
+even though neither number is:
 
-**The ceiling is now a number rather than an argument.** `SE(live − scripted)`
-grows 6.0 → 22.1 over 400M steps, monotonically, on a pool whose Fiedler value
-sits around 1e−8. At 400M the floor-anchored offset is worth ±22 Elo before any
-estimator error at all, which is the size of the effects we routinely compare
-between runs. Phase 4 is the phase that attacks this term.
+| band | 727 − 719 drift | n |
+|---|---:|---:|
+| 40–128M (before 727's resume) | **+4.6 ± 33** | 22 |
+| 130–400M (after) | **+60.5 ± 30** | 54 |
+
+That is the cleanest measurement of the original problem yet taken, and it
+agrees with the two independent instruments (+34 win-rate-implied, +37
+calibrated tournament at 127.4M, both measured *at* the seam before the shift
+completed). The earlier "+130 at 400M" reading in this document was the shared
+bias, not the effect.
+
+### The seam is a regime change, not a detectable event
+
+`movement_z` at the seam is 7.4, which sits inside 719's ordinary range — 719's
+distribution is median 1.33, p95 4.34, max 14.8, with values of 6.8 and 9.7 at
+unremarkable updates. And the seam's single-update change in drift is the **53rd
+percentile** of 719's. No per-update alarm fires, and the earlier claim that this
+"would have caught 727 on the day" is withdrawn.
+
+What is real is the persistent shift in the table above: +4.6 → +60.5, sustained
+over 270M steps. It takes tens of updates of pooled evidence to see, not one.
+Any drift alarm has to be built on an accumulated comparison, not a per-update
+threshold.
+
+### The measurement ceiling is real and run-independent
+
+`SE(live − scripted)` climbs 6.0 → 22.1 over 400M steps in both runs, on a pool
+whose Fiedler value sits near 1e−8. This one survives unchanged: it is a
+property of the information graph rather than of any estimator, and at 400M the
+floor-anchored offset is worth ±22 Elo before estimator error.
+
+### Phase 2 as designed is refuted
+
+Scored against 719's `live_calibrated` curve over all 1004 updates, RMS error in
+Elo:
+
+| estimator | RMS | bias |
+|---|---:|---:|
+| `live_elo`, the current K-factor filter | 17.6 | −4.1 |
+| **all opponents, window 1 update** | **15.4** | −4.9 |
+| all opponents, window 8 | 36.7 | −10.3 |
+| gauge references only, window 1 | 65.9 | −48.1 |
+| gauge references only, window 8 | 69.5 | −57.2 |
+| scripted only, window 4 | 63.0 | −52.0 |
+
+Three conclusions, in order of how much they change the plan.
+
+**The chain is not the problem — it is the solution.** This document argued the
+offset should be carried from the floor and that the self-generated rungs were
+the weak link. The opposite holds: floor-anchored estimation is off by ~50 Elo
+in RMS *and* in bias, and the only estimator that tracks the calibrated truth is
+the one that uses the whole pool including the run's own rungs. Bradley-Terry
+pinning differences from one shared anchor is true of the MLE over a connected
+graph; it is not true of a single saturated edge, which is what a floor-only fit
+degenerates into late in a run. Stage 2 must not be built against the floor.
+
+**The sliding window is a cost, not a benefit.** Every mode is monotonically
+worse as W grows, and W=1 wins outright. The policy improves fast enough that
+pooling even two updates costs more in lag than it buys in variance. This kills
+the window-length sweep as a tuning exercise: the answer is one update.
+
+**The headroom is 12%.** The best implementable alternative beats the current
+filter 15.4 to 17.6. That is a real improvement and it comes with an honest
+error bar the filter cannot produce, but it is not the several-fold gain this
+plan was scoped around. The stop/go checkpoint below should be read as already
+half-fired.
+
+One thing the replay could not test: 719's history carries no accumulated
+rung-vs-rung record, so "all opponents" had to use rung ratings that the
+K-factor filter itself produced. Whether refitting those from the Phase 1 matrix
+improves on 15.4 is the open question, and it is the question Phase 4 exists to
+answer. That is now the phase carrying the plan's value.
 
 **Phase 1 — persistent match matrix.** *Landed.* `train/rl/match_matrix.py`,
 saved as `match_matrix.json` in the run directory.
@@ -326,11 +399,20 @@ inference** — `elo-calibrate`, the league, tournament replay. They need not st
 payload, or is optional with an empty default; neither is allowed to become a
 required key that `load_checkpoint_payload` would trip on.
 
-**Phase 2 — the two-stage estimator.** Replace the K-factor filter. Stage 1
-refits the ladder every update from the accumulated matrix with `prior_games`,
-a fixed scripted anchor, half-win draws, warm-started. Stage 2 rates the live
-policy with `fit_single_rating` over a sliding window, with W chosen by the
-offline replay.
+**Phase 2 — the two-stage estimator.** *Rescoped by the Phase 0 control.*
+Stage 1 refits the ladder every update from the accumulated matrix with
+`prior_games`, a fixed scripted anchor, half-win draws, warm-started — this is
+the half that survives, and it is the half Phase 1 now feeds. Stage 2 rates the
+live policy with `fit_single_rating` against **the whole pool at those refitted
+ratings, over a single update**: not against the gauge references, which lose to
+the current filter four to one, and not over a sliding window, which was worse at
+every length tested.
+
+The measured headroom for stage 2 alone is 17.6 → 15.4 RMS against 719's
+calibrated curve, using filter-produced rung ratings. Whether stage 1 improves
+on that is untested and untestable offline, because no run has an accumulated
+rung-vs-rung record yet. Build stage 1 first, log stage 2 beside the filter, and
+let the first run on the new matrix answer it.
 
 Two rules for the side-by-side run. Log the old `live_elo` under a different key
 — and **the old estimator keeps gating promotion and `best_training` selection
@@ -340,15 +422,21 @@ changes the ratings. If both estimators gate in different runs there is no
 controlled comparison left. The new estimator observes only, until it has been
 accepted.
 
-**Checkpoint here.** Phases 3 and 4 are refinements of allocation; Phase 2 alone
-plausibly captures most of the benefit, because the diagnosed fault is *how the
-chain is estimated*, not which games were played. Measure against the 719 replay
-and the seam test before committing further, and be willing to stop with Phase 2
-shipped. If we do continue, note that the phases are numbered in increasing order
-of implementation cost, not of expected value: **Phase 4 addresses the root cause
-more directly than Phase 3 does**, since a well-estimated ladder is what the
-floor-to-top offset actually rides on. Reordering them is reasonable if the
-Phase 2 results point that way.
+**Checkpoint here — and it has already half-fired.** The 719 replay puts stage
+2's headroom at 12%, not the several-fold gain this plan was scoped around, and
+it refuted the floor-anchored design the plan was built on. What the replay could
+not test is whether refitting the rungs helps, because no run had the record to
+refit from until Phase 1 landed.
+
+So the ordering changes. **Phase 4 now carries the plan's value, not Phase 3.**
+The estimator that tracks the calibrated truth is the one that uses the run's own
+rungs, which means rung quality is the binding constraint, which is exactly what
+a rung-vs-rung tournament buys. Phase 3 optimises how the live policy spends its
+games and is a refinement of a term that is no longer the largest one.
+
+Recommended sequence from here: land stage 1 and a whole-pool stage 2 logged
+beside the filter, then Phase 4, then reassess Phase 3 on measurement rather than
+on the argument in this document.
 
 **Phase 3 — resistance-based allocation.** Replace the `p(1−p)` multinomial with
 the c-optimal rule for live slots. One linear solve plus an O(n²) scoring pass

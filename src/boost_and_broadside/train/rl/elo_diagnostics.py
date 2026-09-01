@@ -15,7 +15,19 @@ stationary references — random, the semi-random rungs, and scripted — have
 ratings that are **defined** rather than estimated (see ``config/live_elo``), so
 a rating fitted to the live policy's record against those alone is independent
 of the run's self-generated ladder. The gap between that and ``live_elo`` is the
-drift detector. On 727 it would have opened at the seam on the day.
+drift detector.
+
+**Read the drift as a paired comparison between runs, never as an absolute
+error.** It carries a large shared bias. Replayed over run 719 — whose filter
+the post-hoc calibration shows tracking the truth to −4 Elo on average — the
+drift still reads +53 on average and rises past +75, because a rating fitted
+only against the floor saturates: once the policy beats every defined reference
+almost always, the record stops being able to say how far above them it is, and
+the estimate settles below the truth. Two runs under the same physics share that
+bias almost exactly, so the *difference* between two runs at matched steps is
+meaningful even though neither number is. On 719 against 727 that difference is
++4.6 ± 33 Elo before 727's resume at 128M and +60.5 ± 30 after it — the same
+regime change three independent instruments found, with the bias divided out.
 
 *How precisely can the floor-anchored offset be known at all?* The Fisher
 information of a Bradley-Terry model is a weighted graph Laplacian with edge
@@ -27,9 +39,12 @@ edge saturates, and how fast is a measurement nobody has taken here.
 
 *Is the filter moving more than the evidence licenses?* One update's games carry
 a finite amount of information; convert it to a standard error and report the
-update's rating change in units of it. A tracking filter should move a fraction
-of one; sustained values well above one mean the rating is being driven by
-something other than the games.
+update's rating change in units of it. Calibrate expectations against a healthy
+run before treating a number as an alarm: 719 sits at a median of 1.33 with a
+95th percentile of 4.34 and single updates as high as 14.8, so this is a
+distribution to watch rather than a threshold to trip. It is a *scale-free*
+statistic, which is its point — a large move on thin evidence and a small one on
+thick evidence can both be wrong, and neither shows up in the raw delta.
 
 *Is the fit anywhere near a degenerate corner?* Complete separation sends a
 maximum-likelihood rating to infinity, which is the most likely cause of the

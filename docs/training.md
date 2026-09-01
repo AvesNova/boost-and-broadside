@@ -613,12 +613,22 @@ they did before the keys existed.
 | `elo_diag/fiedler` | algebraic connectivity of that graph; zero means the pool has split and the ratings across the split are unidentified |
 | `elo_diag/max_abs_rating` | trips first if a fit ever runs away to a separation corner |
 
-The drift keys are what these exist for. Only the defined references can testify about the
-live rating independently, because every other pool member was rated by this run against
-this run. A drift that grows with training means the offset from the floor is being carried
-up a chain that is estimated worse than the rating claims.
+The drift keys are what these exist for, but they are a **paired** instrument: compare two
+runs at matched steps, and never read one run's number as its error.
+
+The bias is large and shared. Replayed over run 719 — whose filter the post-hoc calibration
+shows tracking the truth to −4 Elo on average — `drift_vs_gauge` still averages +53 and
+climbs past +75. A rating fitted only against the floor saturates: once the policy beats every
+defined reference almost always, the record can no longer say how far above them it sits, so
+the estimate settles below the truth and the apparent drift grows with training. Runs under the
+same physics share this almost exactly, which is what makes their difference informative. Run
+727 against 719 reads +4.6 ± 33 Elo before 727's resume at 128M and +60.5 ± 30 after it.
 
 Sign convention: positive drift means `live_elo` reads *above* what the record supports.
+
+`elo_diag/movement_z` is likewise a distribution to watch, not a threshold to trip. A healthy
+run sits near a median of 1.3 with a 95th percentile around 4.3 and occasional single updates
+past 14.
 
 Non-finite values are dropped rather than logged, so a saturated window shows up as a gap
 in the series instead of a spike that ruins the axis.
