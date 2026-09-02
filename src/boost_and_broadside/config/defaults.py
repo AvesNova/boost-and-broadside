@@ -204,7 +204,15 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         ),
         policy_gradient_coef=hold(1.0),
         entropy_coef=hold(0.005),
-        behavior_cloning_coef=hold(2.0),
+        # Quartered from the 2.0 every run through 729 carried. The coefficient
+        # is gated off once the policy clears its win-rate target against
+        # scripted -- around 38M steps in recent runs -- so it only ever shapes
+        # the early climb, and the open question is whether that shaping is
+        # still paying for itself by the time it stops. Anchoring on the
+        # scripted controller costs plasticity: it pulls the policy toward a
+        # style it has to unlearn to pass, and the cheapest test of how much is
+        # to weaken it and watch where the crossover lands.
+        behavior_cloning_coef=hold(0.5),
         value_function_coef=hold(1.0),
         sigreg_coef=hold(0.00),
         # Tier scales ride on top of the per-component weights. Three of the
