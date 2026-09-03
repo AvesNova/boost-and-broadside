@@ -7,7 +7,17 @@ from boost_and_broadside.config.live_elo import LIVE_SCRIPTED_ELO
 from boost_and_broadside.config.schedule_spec import TrainingScheduleSpec, hold
 from boost_and_broadside.config.training import EloCalibrateConfig, EloEvalConfig
 
-SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
+# Frontal armour, re-enabled at 0.3: a head-on hit lands 30% of its damage, and
+# the mitigation falls off with the hit angle so a broadside still lands in full.
+# 1.0 disables the term entirely, which is what every run from 719 to 730 used.
+#
+# This changes the physics, so ratings do not carry across the boundary. The live
+# gauge is defined per environment -- random at 0, scripted at 1000 -- and the
+# span between those two points is a property of the game, not a constant, so a
+# run under this config cannot be compared on Elo to 719-730 however either was
+# measured. Cross-config comparison needs a shared opponent played under one
+# physics, which is what `bnb crossover` measures.
+SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=0.3)
 
 MODEL_CONFIG = ModelConfig(
     d_model=128,
@@ -204,15 +214,7 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         ),
         policy_gradient_coef=hold(1.0),
         entropy_coef=hold(0.005),
-        # Quartered from the 2.0 every run through 729 carried. The coefficient
-        # is gated off once the policy clears its win-rate target against
-        # scripted -- around 38M steps in recent runs -- so it only ever shapes
-        # the early climb, and the open question is whether that shaping is
-        # still paying for itself by the time it stops. Anchoring on the
-        # scripted controller costs plasticity: it pulls the policy toward a
-        # style it has to unlearn to pass, and the cheapest test of how much is
-        # to weaken it and watch where the crossover lands.
-        behavior_cloning_coef=hold(0.5),
+        behavior_cloning_coef=hold(2.0),
         value_function_coef=hold(1.0),
         sigreg_coef=hold(0.00),
         # Tier scales ride on top of the per-component weights. Three of the
