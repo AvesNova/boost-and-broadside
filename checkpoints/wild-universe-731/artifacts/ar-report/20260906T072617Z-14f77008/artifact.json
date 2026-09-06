@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "artifact_type": "ar-report",
+  "artifact_id": "20260906T072617Z-14f77008",
+  "status": "complete",
+  "created_at": "2026-09-06T07:26:17Z",
+  "updated_at": "2026-09-06T07:26:18Z",
+  "owner": {
+    "kind": "run",
+    "run": "wild-universe-731"
+  },
+  "recipe": {
+    "artifact_type": "ar-report",
+    "result_schema_version": 1,
+    "subjects": {
+      "team0": {
+        "checkpoint": "wild-universe-731/step_000671846400.pt",
+        "global_step": null,
+        "kind": "policy",
+        "sha256": "a79e975043df12542cc41a8ccad721e0a825818eaa39508177554538fbca75f8"
+      },
+      "team1": {
+        "checkpoint": "wild-universe-731/step_000671846400.pt",
+        "global_step": null,
+        "kind": "policy",
+        "sha256": "a79e975043df12542cc41a8ccad721e0a825818eaa39508177554538fbca75f8"
+      }
+    },
+    "parameters": {
+      "decision_steps": 512,
+      "environment": {
+        "max_bullets": 10,
+        "max_episode_steps": 512,
+        "num_fields": 4,
+        "num_ships": 8
+      }
+    },
+    "sources": {}
+  },
+  "recipe_digest": "14f7700801b4ce1aacb27023aa2460c6fce233b0eacf60248fcc053ec6057a0c",
+  "result_schema_version": 1,
+  "invocation": {
+    "command": "ar-report",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "ar-report",
+      "--team0",
+      "checkpoints/wild-universe-731/step_000671846400.pt",
+      "--team1",
+      "checkpoints/wild-universe-731/step_000671846400.pt"
+    ],
+    "normalized": "uv run bnb ar-report --team0 checkpoints/wild-universe-731/step_000671846400.pt --team1 checkpoints/wild-universe-731/step_000671846400.pt"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 6844440812339206151,
+    "compile_mode": null,
+    "allow_config_drift": false,
+    "gradient_diagnostics": {
+      "level": "off",
+      "interval": 1,
+      "minibatches": 1
+    }
+  },
+  "code": {
+    "git_commit": "3d1a2e5573d9fff135cf5ab30b0fdea1b369908c",
+    "git_dirty": true,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "result.json",
+      "sha256": "46c76fb09e733526666c2692aa98a472d499c874ebdbdcc9d7f5e3b93b76896e",
+      "bytes": 452
+    },
+    {
+      "path": "result.npz",
+      "sha256": "5458da6244f0b3b29769289ee330c1e1a653ccfdd0fe2e7b7f430acbc156e82c",
+      "bytes": 326681
+    },
+    {
+      "path": "samples/rollout_inputs.npz",
+      "sha256": "d414f280100e4d1a12aee4163bee5a1afaee04990b8033596befa61b3afbd232",
+      "bytes": 8027
+    }
+  ],
+  "samples_present": true
+}

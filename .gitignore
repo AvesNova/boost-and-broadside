@@ -7,6 +7,7 @@ checkpoints/*
 # Landmark runs (baselines future work forks from) are kept in-repo via git-lfs.
 !checkpoints/resilient-resonance-682/
 !checkpoints/good-leaf-719/
+!checkpoints/wild-universe-731/
 # A landmark keeps the checkpoints something cites: the final resumable state,
 # the averaged model beside it, the ladder the calibration tournament rates, and
 # the two best-so-far policies. Checkpointing runs every update, so the rolling
@@ -16,6 +17,15 @@ checkpoints/good-leaf-719/step_000997318656.pt
 checkpoints/good-leaf-719/step_000998313984.pt
 checkpoints/good-leaf-719/avg_step_000997318656.pt
 checkpoints/good-leaf-719/avg_step_000998313984.pt
+# 731 is the first run under frontal armour (bullet_min_damage_frac 0.3), so it
+# is the baseline anything on that physics forks from. Ratings do not carry
+# across the boundary -- the gauge is defined per environment -- so it cannot be
+# compared on Elo to 682 or 719 and is kept as a separate lineage rather than a
+# successor. Same rolling-prune exclusion as above, 152 MB here.
+checkpoints/wild-universe-731/step_000669855744.pt
+checkpoints/wild-universe-731/step_000670851072.pt
+checkpoints/wild-universe-731/avg_step_000669855744.pt
+checkpoints/wild-universe-731/avg_step_000670851072.pt
 *.zip
 *.log
 data/

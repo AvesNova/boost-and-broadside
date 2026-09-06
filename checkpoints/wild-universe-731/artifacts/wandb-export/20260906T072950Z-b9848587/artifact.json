@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "artifact_type": "wandb-export",
+  "artifact_id": "20260906T072950Z-b9848587",
+  "status": "complete",
+  "created_at": "2026-09-06T07:29:50Z",
+  "updated_at": "2026-09-06T07:30:02Z",
+  "owner": {
+    "kind": "run",
+    "run": "wild-universe-731"
+  },
+  "recipe": {
+    "artifact_type": "wandb-export",
+    "result_schema_version": 1,
+    "subjects": {
+      "run": "wild-universe-731",
+      "wandb_run": "vizia128/boost-and-broadside/mwvvm4kb"
+    },
+    "parameters": {
+      "samples": 2000
+    },
+    "sources": {}
+  },
+  "recipe_digest": "b98485872affbb0404398b554102d943c87d5327df0acf6e60fc49ccc2127ea0",
+  "result_schema_version": 1,
+  "invocation": {
+    "command": "wandb-export",
+    "argv": [
+      "scripts/export_wandb_run.py",
+      "--run",
+      "vizia128/boost-and-broadside/mwvvm4kb"
+    ],
+    "normalized": "uv run scripts/export_wandb_run.py --run vizia128/boost-and-broadside/mwvvm4kb"
+  },
+  "execution": {
+    "samples": 2000
+  },
+  "code": {
+    "git_commit": "3d1a2e5573d9fff135cf5ab30b0fdea1b369908c",
+    "git_dirty": true,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": null
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "config.json",
+      "sha256": "3dd14547e84bf6f0ced77b7c7ac24c011ab71c0e91b97517adee32705cb830ed",
+      "bytes": 5865
+    },
+    {
+      "path": "files/config.yaml",
+      "sha256": "a64f13b619a3196aa9d06b93d10a301c69bc9a3aa08ec57a62aa54e43237b48c",
+      "bytes": 8235
+    },
+    {
+      "path": "files/output.log",
+      "sha256": "f36c546755af8a2dd93fa83f9c8fb1b00c4cfa94df355856b8aae3df69a445e8",
+      "bytes": 139860
+    },
+    {
+      "path": "files/requirements.txt",
+      "sha256": "5042937248c56d7e4b3dadc1943770248e5c0285e0b4d282b68b9867075bb905",
+      "bytes": 1682
+    },
+    {
+      "path": "files/wandb-metadata.json",
+      "sha256": "37ad1c0656443bb0a12329dcf17a498d4f42836d5dc795814a14a689ee616f34",
+      "bytes": 985
+    },
+    {
+      "path": "files/wandb-summary.json",
+      "sha256": "fa06518903a3b6d7c96d1f544541191dba81a65f46c76e3b004f35e8821f7b31",
+      "bytes": 97683
+    },
+    {
+      "path": "history.jsonl",
+      "sha256": "6ab358088850d60f1ea69dedde99b843c70c6c4806b3b17e40104ee53d729340",
+      "bytes": 48515558
+    },
+    {
+      "path": "run_meta.json",
+      "sha256": "aa8a38a0579d98ee7bb8282c6a3306ff63fd2a6168513a6ac2b4f9c17e408b45",
+      "bytes": 254
+    },
+    {
+      "path": "summary.json",
+      "sha256": "a70d41fb041f43b86e1c4c3b2fa3b1a4fb84450b8de4c1307813db68c99f8845",
+      "bytes": 77537
+    }
+  ],
+  "samples_present": false
+}

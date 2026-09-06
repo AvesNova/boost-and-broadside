@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "artifact_type": "crossover",
+  "artifact_id": "20260906T002707Z-5071483a",
+  "status": "complete",
+  "created_at": "2026-09-06T00:27:07Z",
+  "updated_at": "2026-09-06T02:01:05Z",
+  "owner": {
+    "kind": "run",
+    "run": "wild-universe-731"
+  },
+  "recipe": {
+    "artifact_type": "crossover",
+    "result_schema_version": 2,
+    "subjects": {
+      "run": "wild-universe-731",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      },
+      "trained": {
+        "checkpoint": "step_000671846400.pt",
+        "global_step": 671846400,
+        "kind": "policy",
+        "sha256": "a79e975043df12542cc41a8ccad721e0a825818eaa39508177554538fbca75f8",
+        "training_config": {
+          "profile": "rl"
+        }
+      }
+    },
+    "parameters": {
+      "environment": {
+        "max_bullets": 10,
+        "max_episode_steps": 1024,
+        "num_fields": 4,
+        "num_ships": 8
+      },
+      "max_total_ships": 320,
+      "num_envs": 256,
+      "trained_counts": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    "sources": {}
+  },
+  "recipe_digest": "5071483ad2b11bab13eff0681d34e824b04a4ba39ea75f2be0c8bf9ed74cd636",
+  "result_schema_version": 2,
+  "invocation": {
+    "command": "crossover",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "crossover",
+      "--run",
+      "wild-universe-731"
+    ],
+    "normalized": "uv run bnb crossover --run wild-universe-731"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 4493437537048634317,
+    "compile_mode": null,
+    "allow_config_drift": false,
+    "gradient_diagnostics": {
+      "level": "off",
+      "interval": 1,
+      "minibatches": 1
+    }
+  },
+  "code": {
+    "git_commit": "3d1a2e5573d9fff135cf5ab30b0fdea1b369908c",
+    "git_dirty": true,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "result.json",
+      "sha256": "a513f855b358a8d38786e03f100e9a828473545b42b40fadda03965914e2e9c5",
+      "bytes": 21153
+    }
+  ],
+  "samples_present": false
+}

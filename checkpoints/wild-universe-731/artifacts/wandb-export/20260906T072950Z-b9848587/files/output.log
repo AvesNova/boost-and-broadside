@@ -1,0 +1,1559 @@
+/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/_inductor/lowering.py:2633: UserWarning: Torchinductor does not support code generation for complex operators. Performance may be worse than eager.
+  warnings.warn(
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000000995328.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000001990656.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000002985984.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000003981312.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000004976640.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000005971968.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000006967296.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000007962624.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000008957952.pt
+update=10/1004  step=9,953,280  sps=3,808  ship_tps=30,469  loss=4.1944  live_elo=119  lifespan=542.1  field_dmg=0.0268  field_deaths/M=116.1
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000009953280.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000010948608.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000011943936.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000012939264.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000013934592.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000014929920.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000015925248.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000016920576.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000017915904.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000018911232.pt
+update=20/1004  step=19,906,560  sps=3,283  ship_tps=26,267  loss=0.4617  live_elo=944  lifespan=434.4  field_dmg=0.0277  field_deaths/M=161.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000019906560.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000020901888.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000021897216.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000022892544.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000023887872.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000024883200.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000025878528.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000026873856.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000027869184.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000028864512.pt
+update=30/1004  step=29,859,840  sps=3,051  ship_tps=24,415  loss=0.1644  live_elo=986  lifespan=432.5  field_dmg=0.0291  field_deaths/M=173.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000029859840.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000030855168.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000031850496.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000032845824.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000033841152.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000034836480.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000035831808.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000036827136.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000036827136.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000037822464.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000037822464.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000038817792.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000038817792.pt
+update=40/1004  step=39,813,120  sps=2,946  ship_tps=23,569  loss=0.0953  live_elo=1036  lifespan=422.7  field_dmg=0.0291  field_deaths/M=172.4
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000039813120.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000039813120.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000040808448.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000040808448.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000041803776.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000041803776.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000042799104.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000042799104.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000043794432.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000043794432.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000044789760.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000044789760.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000045785088.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000045785088.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000046780416.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000046780416.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000047775744.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000047775744.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000048771072.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000048771072.pt
+update=50/1004  step=49,766,400  sps=2,882  ship_tps=23,058  loss=0.0806  live_elo=1142  lifespan=398.2  field_dmg=0.0305  field_deaths/M=183.0
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000049766400.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000049766400.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000050761728.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000050761728.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000051757056.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000051757056.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000052752384.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000052752384.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000053747712.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000053747712.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000054743040.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000054743040.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000055738368.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000055738368.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000056733696.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000056733696.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000057729024.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000057729024.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000058724352.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000058724352.pt
+update=60/1004  step=59,719,680  sps=2,841  ship_tps=22,730  loss=0.0167  live_elo=1279  lifespan=406.2  field_dmg=0.0298  field_deaths/M=172.5
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000059719680.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000059719680.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000060715008.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000060715008.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000061710336.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000061710336.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000062705664.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000062705664.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000063700992.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000063700992.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000064696320.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000064696320.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000065691648.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000065691648.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000066686976.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000066686976.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000067682304.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000067682304.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000068677632.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000068677632.pt
+update=70/1004  step=69,672,960  sps=2,812  ship_tps=22,496  loss=0.0509  live_elo=1333  lifespan=412.2  field_dmg=0.0299  field_deaths/M=186.0
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000069672960.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000069672960.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000070668288.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000070668288.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000071663616.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000071663616.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000072658944.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000072658944.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000073654272.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000073654272.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000074649600.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000074649600.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000075644928.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000075644928.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000076640256.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000076640256.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000077635584.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000077635584.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000078630912.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000078630912.pt
+update=80/1004  step=79,626,240  sps=2,790  ship_tps=22,323  loss=0.0431  live_elo=1403  lifespan=393.2  field_dmg=0.0301  field_deaths/M=169.9
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000079626240.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000079626240.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000080621568.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000080621568.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000081616896.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000081616896.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000082612224.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000082612224.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000083607552.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000083607552.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000084602880.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000084602880.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000085598208.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000085598208.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000086593536.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000086593536.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000087588864.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000087588864.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000088584192.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000088584192.pt
+update=90/1004  step=89,579,520  sps=2,770  ship_tps=22,167  loss=0.0519  live_elo=1445  lifespan=396.6  field_dmg=0.0290  field_deaths/M=151.6
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000089579520.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000089579520.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000090574848.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000090574848.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000091570176.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000091570176.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000092565504.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000092565504.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000093560832.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000093560832.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000094556160.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000094556160.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000095551488.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000095551488.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000096546816.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000096546816.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000097542144.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000097542144.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000098537472.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000098537472.pt
+update=100/1004  step=99,532,800  sps=2,756  ship_tps=22,048  loss=0.0499  live_elo=1454  lifespan=404.7  field_dmg=0.0266  field_deaths/M=124.2
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000099532800.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000099532800.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000100528128.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000100528128.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000101523456.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000101523456.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000102518784.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000102518784.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000103514112.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000103514112.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000104509440.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000104509440.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000105504768.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000105504768.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000106500096.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000106500096.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000107495424.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000107495424.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000108490752.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000108490752.pt
+update=110/1004  step=109,486,080  sps=2,744  ship_tps=21,952  loss=0.0194  live_elo=1549  lifespan=401.2  field_dmg=0.0260  field_deaths/M=113.5
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000109486080.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000109486080.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000110481408.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000110481408.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000111476736.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000111476736.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000112472064.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000112472064.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000113467392.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000113467392.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000114462720.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000114462720.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000115458048.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000115458048.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000116453376.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000116453376.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000117448704.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000117448704.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000118444032.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000118444032.pt
+update=120/1004  step=119,439,360  sps=2,735  ship_tps=21,883  loss=0.0331  live_elo=1595  lifespan=391.7  field_dmg=0.0247  field_deaths/M=92.3
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000119439360.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000119439360.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000120434688.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000120434688.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000121430016.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000121430016.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000122425344.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000122425344.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000123420672.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000123420672.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000124416000.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000124416000.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000125411328.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000125411328.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000126406656.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000126406656.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000127401984.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000127401984.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000128397312.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000128397312.pt
+update=130/1004  step=129,392,640  sps=2,728  ship_tps=21,829  loss=0.0593  live_elo=1663  lifespan=384.9  field_dmg=0.0233  field_deaths/M=70.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000129392640.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000129392640.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000130387968.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000130387968.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000131383296.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000131383296.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000132378624.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000132378624.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000133373952.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000133373952.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000134369280.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000134369280.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000135364608.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000135364608.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000136359936.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000136359936.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000137355264.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000137355264.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000138350592.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000138350592.pt
+update=140/1004  step=139,345,920  sps=2,723  ship_tps=21,784  loss=0.0295  live_elo=1713  lifespan=366.3  field_dmg=0.0233  field_deaths/M=61.6
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000139345920.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000139345920.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000140341248.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000140341248.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000141336576.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000141336576.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000142331904.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000142331904.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000143327232.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000143327232.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000144322560.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000144322560.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000145317888.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000145317888.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000146313216.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000146313216.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000147308544.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000147308544.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000148303872.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000148303872.pt
+update=150/1004  step=149,299,200  sps=2,717  ship_tps=21,743  loss=0.0375  live_elo=1776  lifespan=358.3  field_dmg=0.0217  field_deaths/M=58.7
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000149299200.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000149299200.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000150294528.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000150294528.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000151289856.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000151289856.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000152285184.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000152285184.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000153280512.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000153280512.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000154275840.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000154275840.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000155271168.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000155271168.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000156266496.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000156266496.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000157261824.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000157261824.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000158257152.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000158257152.pt
+update=160/1004  step=159,252,480  sps=2,714  ship_tps=21,715  loss=0.0509  live_elo=1804  lifespan=342.7  field_dmg=0.0188  field_deaths/M=38.7
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000159252480.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000159252480.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000160247808.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000160247808.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000161243136.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000161243136.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000162238464.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000162238464.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000163233792.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000163233792.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000164229120.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000164229120.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000165224448.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000165224448.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000166219776.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000166219776.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000167215104.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000167215104.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000168210432.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000168210432.pt
+update=170/1004  step=169,205,760  sps=2,710  ship_tps=21,686  loss=0.0137  live_elo=1840  lifespan=336.6  field_dmg=0.0183  field_deaths/M=40.3
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000169205760.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000169205760.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000170201088.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000170201088.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000171196416.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000171196416.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000172191744.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000172191744.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000173187072.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000173187072.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000174182400.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000174182400.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000175177728.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000175177728.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000176173056.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000176173056.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000177168384.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000177168384.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000178163712.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000178163712.pt
+update=180/1004  step=179,159,040  sps=2,707  ship_tps=21,662  loss=0.0406  live_elo=1862  lifespan=336.3  field_dmg=0.0178  field_deaths/M=34.2
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000179159040.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000179159040.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000180154368.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000180154368.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000181149696.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000181149696.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000182145024.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000182145024.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000183140352.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000183140352.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000184135680.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000184135680.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000185131008.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000185131008.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000186126336.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000186126336.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000187121664.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000187121664.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000188116992.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000188116992.pt
+update=190/1004  step=189,112,320  sps=2,705  ship_tps=21,646  loss=0.0359  live_elo=1847  lifespan=331.2  field_dmg=0.0183  field_deaths/M=35.8
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000189112320.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000189112320.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000190107648.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000190107648.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000191102976.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000191102976.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000192098304.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000192098304.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000193093632.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000193093632.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000194088960.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000194088960.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000195084288.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000195084288.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000196079616.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000196079616.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000197074944.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000197074944.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000198070272.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000198070272.pt
+update=200/1004  step=199,065,600  sps=2,706  ship_tps=21,655  loss=0.0328  live_elo=1903  lifespan=318.3  field_dmg=0.0176  field_deaths/M=38.2
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000199065600.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000199065600.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000200060928.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000200060928.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000201056256.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000201056256.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000202051584.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000202051584.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000203046912.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000203046912.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000204042240.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000204042240.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000205037568.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000205037568.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000206032896.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000206032896.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000207028224.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000207028224.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000208023552.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000208023552.pt
+update=210/1004  step=209,018,880  sps=2,702  ship_tps=21,620  loss=0.0529  live_elo=1946  lifespan=320.3  field_dmg=0.0173  field_deaths/M=34.1
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000209018880.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000209018880.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000210014208.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000210014208.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000211009536.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000211009536.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000212004864.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000212004864.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000213000192.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000213000192.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000213995520.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000213995520.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000214990848.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000214990848.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000215986176.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000215986176.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000216981504.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000216981504.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000217976832.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000217976832.pt
+update=220/1004  step=218,972,160  sps=2,698  ship_tps=21,586  loss=0.0621  live_elo=1938  lifespan=327.0  field_dmg=0.0160  field_deaths/M=30.3
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000218972160.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000218972160.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000219967488.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000219967488.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000220962816.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000220962816.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000221958144.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000221958144.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000222953472.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000222953472.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000223948800.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000223948800.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000224944128.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000224944128.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000225939456.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000225939456.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000226934784.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000226934784.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000227930112.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000227930112.pt
+update=230/1004  step=228,925,440  sps=2,693  ship_tps=21,551  loss=0.0463  live_elo=1927  lifespan=318.7  field_dmg=0.0172  field_deaths/M=33.8
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000228925440.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000228925440.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000229920768.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000229920768.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000230916096.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000230916096.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000231911424.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000231911424.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000232906752.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000232906752.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000233902080.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000233902080.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000234897408.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000234897408.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000235892736.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000235892736.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000236888064.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000236888064.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000237883392.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000237883392.pt
+update=240/1004  step=238,878,720  sps=2,690  ship_tps=21,523  loss=0.0740  live_elo=1987  lifespan=314.8  field_dmg=0.0164  field_deaths/M=37.9
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000238878720.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000238878720.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000239874048.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000239874048.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000240869376.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000240869376.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000241864704.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000241864704.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000242860032.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000242860032.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000243855360.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000243855360.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000244850688.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000244850688.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000245846016.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000245846016.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000246841344.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000246841344.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000247836672.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000247836672.pt
+update=250/1004  step=248,832,000  sps=2,690  ship_tps=21,525  loss=0.0695  live_elo=2006  lifespan=321.7  field_dmg=0.0149  field_deaths/M=32.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000248832000.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000248832000.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000249827328.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000249827328.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000250822656.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000250822656.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000251817984.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000251817984.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000252813312.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000252813312.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000253808640.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000253808640.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000254803968.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000254803968.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000255799296.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000255799296.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000256794624.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000256794624.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000257789952.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000257789952.pt
+update=260/1004  step=258,785,280  sps=2,687  ship_tps=21,501  loss=0.0584  live_elo=1993  lifespan=327.6  field_dmg=0.0148  field_deaths/M=29.7
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000258785280.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000258785280.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000259780608.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000259780608.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000260775936.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000260775936.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000261771264.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000261771264.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000262766592.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000262766592.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000263761920.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000263761920.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000264757248.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000264757248.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000265752576.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000265752576.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000266747904.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000266747904.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000267743232.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000267743232.pt
+update=270/1004  step=268,738,560  sps=2,684  ship_tps=21,475  loss=0.0228  live_elo=1974  lifespan=328.7  field_dmg=0.0148  field_deaths/M=24.6
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000268738560.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000268738560.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000269733888.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000269733888.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000270729216.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000270729216.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000271724544.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000271724544.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000272719872.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000272719872.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000273715200.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000273715200.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000274710528.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000274710528.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000275705856.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000275705856.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000276701184.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000276701184.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000277696512.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000277696512.pt
+update=280/1004  step=278,691,840  sps=2,681  ship_tps=21,453  loss=0.0425  live_elo=2012  lifespan=325.9  field_dmg=0.0152  field_deaths/M=30.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000278691840.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000278691840.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000279687168.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000279687168.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000280682496.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000280682496.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000281677824.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000281677824.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000282673152.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000282673152.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000283668480.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000283668480.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000284663808.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000284663808.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000285659136.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000285659136.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000286654464.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000286654464.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000287649792.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000287649792.pt
+update=290/1004  step=288,645,120  sps=2,679  ship_tps=21,433  loss=0.0957  live_elo=2035  lifespan=324.6  field_dmg=0.0146  field_deaths/M=24.8
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000288645120.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000288645120.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000289640448.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000289640448.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000290635776.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000290635776.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000291631104.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000291631104.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000292626432.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000292626432.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000293621760.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000293621760.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000294617088.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000294617088.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000295612416.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000295612416.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000296607744.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000296607744.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000297603072.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000297603072.pt
+update=300/1004  step=298,598,400  sps=2,676  ship_tps=21,414  loss=0.0383  live_elo=2013  lifespan=326.1  field_dmg=0.0156  field_deaths/M=26.7
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000298598400.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000298598400.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000299593728.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000299593728.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000300589056.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000300589056.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000301584384.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000301584384.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000302579712.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000302579712.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000303575040.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000303575040.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000304570368.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000304570368.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000305565696.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000305565696.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000306561024.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000306561024.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000307556352.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000307556352.pt
+update=310/1004  step=308,551,680  sps=2,674  ship_tps=21,399  loss=0.0184  live_elo=2027  lifespan=328.3  field_dmg=0.0140  field_deaths/M=22.4
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000308551680.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000308551680.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000309547008.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000309547008.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000310542336.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000310542336.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000311537664.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000311537664.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000312532992.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000312532992.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000313528320.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000313528320.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000314523648.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000314523648.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000315518976.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000315518976.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000316514304.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000316514304.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000317509632.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000317509632.pt
+update=320/1004  step=318,504,960  sps=2,672  ship_tps=21,383  loss=0.0000  live_elo=2024  lifespan=329.0  field_dmg=0.0147  field_deaths/M=29.6
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000318504960.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000318504960.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000319500288.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000319500288.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000320495616.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000320495616.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000321490944.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000321490944.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000322486272.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000322486272.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000323481600.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000323481600.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000324476928.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000324476928.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000325472256.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000325472256.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000326467584.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000326467584.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000327462912.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000327462912.pt
+update=330/1004  step=328,458,240  sps=2,671  ship_tps=21,369  loss=0.0275  live_elo=2032  lifespan=331.3  field_dmg=0.0141  field_deaths/M=23.4
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000328458240.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000328458240.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000329453568.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000329453568.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000330448896.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000330448896.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000331444224.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000331444224.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000332439552.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000332439552.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000333434880.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000333434880.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000334430208.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000334430208.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000335425536.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000335425536.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000336420864.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000336420864.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000337416192.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000337416192.pt
+update=340/1004  step=338,411,520  sps=2,669  ship_tps=21,358  loss=0.0504  live_elo=2021  lifespan=340.8  field_dmg=0.0133  field_deaths/M=19.0
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000338411520.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000338411520.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000339406848.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000339406848.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000340402176.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000340402176.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000341397504.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000341397504.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000342392832.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000342392832.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000343388160.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000343388160.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000344383488.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000344383488.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000345378816.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000345378816.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000346374144.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000346374144.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000347369472.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000347369472.pt
+update=350/1004  step=348,364,800  sps=2,668  ship_tps=21,350  loss=0.0235  live_elo=2038  lifespan=331.4  field_dmg=0.0147  field_deaths/M=26.5
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000348364800.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000348364800.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000349360128.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000349360128.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000350355456.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000350355456.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000351350784.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000351350784.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000352346112.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000352346112.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000353341440.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000353341440.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000354336768.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000354336768.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000355332096.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000355332096.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000356327424.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000356327424.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000357322752.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000357322752.pt
+update=360/1004  step=358,318,080  sps=2,668  ship_tps=21,345  loss=0.0462  live_elo=2022  lifespan=339.9  field_dmg=0.0132  field_deaths/M=19.1
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000358318080.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000358318080.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000359313408.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000359313408.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000360308736.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000360308736.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000361304064.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000361304064.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000362299392.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000362299392.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000363294720.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000363294720.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000364290048.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000364290048.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000365285376.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000365285376.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000366280704.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000366280704.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000367276032.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000367276032.pt
+update=370/1004  step=368,271,360  sps=2,667  ship_tps=21,342  loss=0.0217  live_elo=2027  lifespan=333.3  field_dmg=0.0134  field_deaths/M=20.8
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000368271360.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000368271360.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000369266688.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000369266688.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000370262016.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000370262016.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000371257344.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000371257344.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000372252672.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000372252672.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000373248000.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000373248000.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000374243328.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000374243328.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000375238656.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000375238656.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000376233984.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000376233984.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000377229312.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000377229312.pt
+update=380/1004  step=378,224,640  sps=2,667  ship_tps=21,338  loss=0.0147  live_elo=2069  lifespan=336.1  field_dmg=0.0132  field_deaths/M=18.0
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000378224640.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000378224640.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000379219968.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000379219968.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000380215296.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000380215296.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000381210624.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000381210624.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000382205952.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000382205952.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000383201280.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000383201280.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000384196608.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000384196608.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000385191936.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000385191936.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000386187264.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000386187264.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000387182592.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000387182592.pt
+update=390/1004  step=388,177,920  sps=2,667  ship_tps=21,337  loss=-0.0153  live_elo=2057  lifespan=336.8  field_dmg=0.0125  field_deaths/M=23.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000388177920.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000388177920.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000389173248.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000389173248.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000390168576.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000390168576.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000391163904.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000391163904.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000392159232.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000392159232.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000393154560.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000393154560.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000394149888.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000394149888.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000395145216.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000395145216.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000396140544.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000396140544.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000397135872.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000397135872.pt
+update=400/1004  step=398,131,200  sps=2,666  ship_tps=21,335  loss=0.0135  live_elo=2030  lifespan=329.2  field_dmg=0.0134  field_deaths/M=25.3
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000398131200.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000398131200.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000399126528.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000399126528.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000400121856.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000400121856.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000401117184.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000401117184.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000402112512.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000402112512.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000403107840.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000403107840.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000404103168.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000404103168.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000405098496.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000405098496.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000406093824.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000406093824.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000407089152.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000407089152.pt
+update=410/1004  step=408,084,480  sps=2,667  ship_tps=21,337  loss=0.0161  live_elo=2045  lifespan=333.0  field_dmg=0.0127  field_deaths/M=24.0
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000408084480.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000408084480.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000409079808.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000409079808.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000410075136.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000410075136.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000411070464.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000411070464.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000412065792.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000412065792.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000413061120.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000413061120.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000414056448.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000414056448.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000415051776.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000415051776.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000416047104.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000416047104.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000417042432.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000417042432.pt
+update=420/1004  step=418,037,760  sps=2,667  ship_tps=21,337  loss=0.0186  live_elo=2054  lifespan=337.7  field_dmg=0.0125  field_deaths/M=19.7
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000418037760.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000418037760.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000419033088.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000419033088.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000420028416.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000420028416.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000421023744.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000421023744.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000422019072.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000422019072.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000423014400.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000423014400.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000424009728.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000424009728.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000425005056.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000425005056.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000426000384.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000426000384.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000426995712.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000426995712.pt
+update=430/1004  step=427,991,040  sps=2,666  ship_tps=21,334  loss=0.0357  live_elo=2084  lifespan=344.3  field_dmg=0.0119  field_deaths/M=17.4
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000427991040.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000427991040.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000428986368.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000428986368.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000429981696.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000429981696.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000430977024.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000430977024.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000431972352.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000431972352.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000432967680.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000432967680.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000433963008.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000433963008.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000434958336.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000434958336.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000435953664.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000435953664.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000436948992.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000436948992.pt
+update=440/1004  step=437,944,320  sps=2,666  ship_tps=21,328  loss=0.0473  live_elo=2076  lifespan=332.8  field_dmg=0.0128  field_deaths/M=21.0
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000437944320.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000437944320.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000438939648.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000438939648.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000439934976.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000439934976.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000440930304.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000440930304.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000441925632.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000441925632.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000442920960.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000442920960.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000443916288.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000443916288.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000444911616.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000444911616.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000445906944.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000445906944.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000446902272.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000446902272.pt
+update=450/1004  step=447,897,600  sps=2,665  ship_tps=21,320  loss=0.0483  live_elo=2026  lifespan=328.9  field_dmg=0.0127  field_deaths/M=17.3
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000447897600.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000447897600.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000448892928.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000448892928.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000449888256.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000449888256.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000450883584.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000450883584.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000451878912.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000451878912.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000452874240.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000452874240.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000453869568.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000453869568.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000454864896.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000454864896.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000455860224.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000455860224.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000456855552.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000456855552.pt
+update=460/1004  step=457,850,880  sps=2,664  ship_tps=21,314  loss=0.0098  live_elo=1995  lifespan=338.2  field_dmg=0.0127  field_deaths/M=22.8
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000457850880.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000457850880.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000458846208.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000458846208.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000459841536.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000459841536.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000460836864.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000460836864.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000461832192.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000461832192.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000462827520.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000462827520.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000463822848.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000463822848.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000464818176.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000464818176.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000465813504.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000465813504.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000466808832.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000466808832.pt
+update=470/1004  step=467,804,160  sps=2,663  ship_tps=21,307  loss=0.0429  live_elo=2074  lifespan=337.6  field_dmg=0.0125  field_deaths/M=20.3
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000467804160.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000467804160.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000468799488.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000468799488.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000469794816.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000469794816.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000470790144.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000470790144.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000471785472.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000471785472.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000472780800.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000472780800.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000473776128.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000473776128.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000474771456.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000474771456.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000475766784.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000475766784.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000476762112.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000476762112.pt
+update=480/1004  step=477,757,440  sps=2,662  ship_tps=21,302  loss=0.0147  live_elo=2085  lifespan=335.0  field_dmg=0.0127  field_deaths/M=22.8
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000477757440.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000477757440.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000478752768.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000478752768.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000479748096.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000479748096.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000480743424.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000480743424.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000481738752.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000481738752.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000482734080.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000482734080.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000483729408.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000483729408.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000484724736.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000484724736.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000485720064.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000485720064.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000486715392.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000486715392.pt
+update=490/1004  step=487,710,720  sps=2,662  ship_tps=21,299  loss=0.0119  live_elo=2105  lifespan=334.8  field_dmg=0.0127  field_deaths/M=26.5
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000487710720.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000487710720.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000488706048.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000488706048.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000489701376.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000489701376.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000490696704.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000490696704.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000491692032.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000491692032.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000492687360.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000492687360.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000493682688.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000493682688.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000494678016.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000494678016.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000495673344.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000495673344.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000496668672.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000496668672.pt
+update=500/1004  step=497,664,000  sps=2,661  ship_tps=21,293  loss=0.0376  live_elo=2099  lifespan=340.8  field_dmg=0.0119  field_deaths/M=19.3
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000497664000.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000497664000.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000498659328.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000498659328.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000499654656.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000499654656.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000500649984.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000500649984.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000501645312.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000501645312.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000502640640.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000502640640.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000503635968.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000503635968.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000504631296.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000504631296.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000505626624.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000505626624.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000506621952.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000506621952.pt
+update=510/1004  step=507,617,280  sps=2,660  ship_tps=21,286  loss=-0.0008  live_elo=2060  lifespan=341.9  field_dmg=0.0126  field_deaths/M=23.8
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000507617280.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000507617280.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000508612608.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000508612608.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000509607936.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000509607936.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000510603264.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000510603264.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000511598592.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000511598592.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000512593920.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000512593920.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000513589248.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000513589248.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000514584576.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000514584576.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000515579904.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000515579904.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000516575232.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000516575232.pt
+update=520/1004  step=517,570,560  sps=2,660  ship_tps=21,281  loss=0.0397  live_elo=2073  lifespan=344.1  field_dmg=0.0116  field_deaths/M=18.3
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000517570560.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000517570560.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000518565888.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000518565888.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000519561216.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000519561216.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000520556544.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000520556544.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000521551872.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000521551872.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000522547200.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000522547200.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000523542528.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000523542528.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000524537856.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000524537856.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000525533184.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000525533184.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000526528512.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000526528512.pt
+update=530/1004  step=527,523,840  sps=2,659  ship_tps=21,276  loss=0.0433  live_elo=2103  lifespan=349.2  field_dmg=0.0113  field_deaths/M=20.8
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000527523840.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000527523840.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000528519168.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000528519168.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000529514496.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000529514496.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000530509824.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000530509824.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000531505152.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000531505152.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000532500480.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000532500480.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000533495808.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000533495808.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000534491136.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000534491136.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000535486464.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000535486464.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000536481792.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000536481792.pt
+update=540/1004  step=537,477,120  sps=2,659  ship_tps=21,273  loss=0.0014  live_elo=2066  lifespan=350.4  field_dmg=0.0116  field_deaths/M=19.1
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000537477120.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000537477120.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000538472448.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000538472448.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000539467776.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000539467776.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000540463104.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000540463104.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000541458432.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000541458432.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000542453760.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000542453760.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000543449088.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000543449088.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000544444416.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000544444416.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000545439744.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000545439744.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000546435072.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000546435072.pt
+update=550/1004  step=547,430,400  sps=2,658  ship_tps=21,269  loss=0.0273  live_elo=2080  lifespan=346.0  field_dmg=0.0119  field_deaths/M=20.1
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000547430400.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000547430400.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000548425728.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000548425728.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000549421056.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000549421056.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000550416384.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000550416384.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000551411712.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000551411712.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000552407040.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000552407040.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000553402368.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000553402368.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000554397696.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000554397696.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000555393024.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000555393024.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000556388352.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000556388352.pt
+update=560/1004  step=557,383,680  sps=2,658  ship_tps=21,266  loss=0.0271  live_elo=2076  lifespan=351.9  field_dmg=0.0117  field_deaths/M=22.1
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000557383680.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000557383680.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000558379008.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000558379008.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000559374336.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000559374336.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000560369664.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000560369664.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000561364992.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000561364992.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000562360320.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000562360320.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000563355648.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000563355648.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000564350976.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000564350976.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000565346304.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000565346304.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000566341632.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000566341632.pt
+update=570/1004  step=567,336,960  sps=2,658  ship_tps=21,265  loss=0.0097  live_elo=2094  lifespan=347.2  field_dmg=0.0120  field_deaths/M=21.6
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000567336960.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000567336960.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000568332288.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000568332288.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000569327616.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000569327616.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000570322944.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000570322944.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000571318272.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000571318272.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000572313600.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000572313600.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000573308928.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000573308928.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000574304256.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000574304256.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000575299584.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000575299584.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000576294912.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000576294912.pt
+update=580/1004  step=577,290,240  sps=2,658  ship_tps=21,264  loss=0.0236  live_elo=2105  lifespan=342.5  field_dmg=0.0122  field_deaths/M=22.2
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000577290240.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000577290240.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000578285568.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000578285568.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000579280896.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000579280896.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000580276224.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000580276224.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000581271552.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000581271552.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000582266880.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000582266880.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000583262208.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000583262208.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000584257536.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000584257536.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000585252864.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000585252864.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000586248192.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000586248192.pt
+update=590/1004  step=587,243,520  sps=2,658  ship_tps=21,264  loss=0.0025  live_elo=2083  lifespan=346.3  field_dmg=0.0118  field_deaths/M=21.5
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000587243520.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000587243520.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000588238848.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000588238848.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000589234176.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000589234176.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000590229504.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000590229504.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000591224832.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000591224832.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000592220160.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000592220160.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000593215488.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000593215488.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000594210816.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000594210816.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000595206144.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000595206144.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000596201472.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000596201472.pt
+update=600/1004  step=597,196,800  sps=2,657  ship_tps=21,260  loss=0.0431  live_elo=2077  lifespan=340.1  field_dmg=0.0111  field_deaths/M=17.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000597196800.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000597196800.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000598192128.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000598192128.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000599187456.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000599187456.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000600182784.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000600182784.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000601178112.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000601178112.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000602173440.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000602173440.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000603168768.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000603168768.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000604164096.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000604164096.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000605159424.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000605159424.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000606154752.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000606154752.pt
+update=610/1004  step=607,150,080  sps=2,657  ship_tps=21,257  loss=0.0360  live_elo=2078  lifespan=346.1  field_dmg=0.0112  field_deaths/M=15.6
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000607150080.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000607150080.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000608145408.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000608145408.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000609140736.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000609140736.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000610136064.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000610136064.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000611131392.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000611131392.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000612126720.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000612126720.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000613122048.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000613122048.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000614117376.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000614117376.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000615112704.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000615112704.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000616108032.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000616108032.pt
+update=620/1004  step=617,103,360  sps=2,656  ship_tps=21,252  loss=0.0339  live_elo=2073  lifespan=344.3  field_dmg=0.0115  field_deaths/M=17.2
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000617103360.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000617103360.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000618098688.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000618098688.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000619094016.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000619094016.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000620089344.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000620089344.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000621084672.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000621084672.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000622080000.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000622080000.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000623075328.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000623075328.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000624070656.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000624070656.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000625065984.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000625065984.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000626061312.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000626061312.pt
+update=630/1004  step=627,056,640  sps=2,656  ship_tps=21,248  loss=0.0440  live_elo=2083  lifespan=341.9  field_dmg=0.0113  field_deaths/M=15.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000627056640.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000627056640.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000628051968.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000628051968.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000629047296.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000629047296.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000630042624.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000630042624.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000631037952.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000631037952.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000632033280.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000632033280.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000633028608.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000633028608.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000634023936.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000634023936.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000635019264.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000635019264.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000636014592.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000636014592.pt
+update=640/1004  step=637,009,920  sps=2,655  ship_tps=21,245  loss=-0.0012  live_elo=2114  lifespan=325.4  field_dmg=0.0133  field_deaths/M=26.9
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000637009920.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000637009920.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000638005248.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000638005248.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000639000576.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000639000576.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000639995904.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000639995904.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_training.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000640991232.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000640991232.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000641986560.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000641986560.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000642981888.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000642981888.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000643977216.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000643977216.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000644972544.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000644972544.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000645967872.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000645967872.pt
+update=650/1004  step=646,963,200  sps=2,655  ship_tps=21,243  loss=-0.0003  live_elo=2089  lifespan=340.7  field_dmg=0.0121  field_deaths/M=24.8
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000646963200.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000646963200.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000647958528.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000647958528.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000648953856.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000648953856.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000649949184.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000649949184.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000650944512.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000650944512.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000651939840.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000651939840.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000652935168.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000652935168.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000653930496.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000653930496.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000654925824.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000654925824.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000655921152.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000655921152.pt
+update=660/1004  step=656,916,480  sps=2,655  ship_tps=21,240  loss=0.0337  live_elo=2116  lifespan=341.0  field_dmg=0.0115  field_deaths/M=18.2
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000656916480.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000656916480.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000657911808.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000657911808.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000658907136.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000658907136.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000659902464.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000659902464.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000660897792.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000660897792.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000661893120.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000661893120.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000662888448.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000662888448.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000663883776.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000663883776.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000664879104.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000664879104.pt
+Best checkpoint saved asynchronously: checkpoints/wild-universe-731/best_avg.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000665874432.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000665874432.pt
+update=670/1004  step=666,869,760  sps=2,654  ship_tps=21,237  loss=0.0496  live_elo=2086  lifespan=339.2  field_dmg=0.0115  field_deaths/M=20.0
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000666869760.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000666869760.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000667865088.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000667865088.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000668860416.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000668860416.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000669855744.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000669855744.pt
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000670851072.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000670851072.pt
+
+Training interrupted.
+Checkpoint saved asynchronously: checkpoints/wild-universe-731/step_000671846400.pt
+Avg checkpoint saved asynchronously: checkpoints/wild-universe-731/avg_step_000671846400.pt

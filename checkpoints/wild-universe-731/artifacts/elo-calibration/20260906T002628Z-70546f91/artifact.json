@@ -1,0 +1,276 @@
+{
+  "schema_version": 1,
+  "artifact_type": "elo-calibration",
+  "artifact_id": "20260906T002628Z-70546f91",
+  "status": "complete",
+  "created_at": "2026-09-06T00:26:28Z",
+  "updated_at": "2026-09-06T00:26:28Z",
+  "owner": {
+    "kind": "run",
+    "run": "wild-universe-731"
+  },
+  "recipe": {
+    "artifact_type": "elo-calibration",
+    "result_schema_version": 2,
+    "subjects": {
+      "paradigm": "ego_pass",
+      "players": [
+        {
+          "global_step": 0,
+          "label": "random"
+        },
+        {
+          "global_step": null,
+          "label": "scripted"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p2"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p3"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p4"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p5"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p6"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p7"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p8"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p9"
+        },
+        {
+          "global_step": null,
+          "label": "semi_scripted_0p95"
+        },
+        {
+          "global_step": 10948608,
+          "label": "ckpt_10948608"
+        },
+        {
+          "global_step": 12939264,
+          "label": "ckpt_12939264"
+        },
+        {
+          "global_step": 14929920,
+          "label": "ckpt_14929920"
+        },
+        {
+          "global_step": 24883200,
+          "label": "ckpt_24883200"
+        },
+        {
+          "global_step": 55738368,
+          "label": "ckpt_55738368"
+        },
+        {
+          "global_step": 79626240,
+          "label": "ckpt_79626240"
+        },
+        {
+          "global_step": 120434688,
+          "label": "ckpt_120434688"
+        },
+        {
+          "global_step": 153280512,
+          "label": "ckpt_153280512"
+        },
+        {
+          "global_step": 247836672,
+          "label": "ckpt_247836672"
+        },
+        {
+          "global_step": 671846400,
+          "label": "ckpt_671846400"
+        },
+        {
+          "global_step": 640991232,
+          "label": "best_training"
+        },
+        {
+          "global_step": 665874432,
+          "label": "best_avg"
+        }
+      ],
+      "run": "wild-universe-731",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      }
+    },
+    "parameters": {
+      "anchor_elo": 1000.0,
+      "environment": {
+        "max_bullets": 10,
+        "max_episode_steps": 1024,
+        "num_fields": 4,
+        "num_ships": 8
+      },
+      "max_batches": 8,
+      "num_envs": 16384,
+      "prior_games": 1.0,
+      "reference_probabilities": [
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        0.95
+      ],
+      "target_stderr": 12.0,
+      "tie_mode": "half_win"
+    },
+    "sources": {}
+  },
+  "recipe_digest": "70546f915bdc3bc55a57ea496fa3197f25380d9b10eaac741eaade9d0fad22c5",
+  "result_schema_version": 2,
+  "invocation": {
+    "command": "elo-calibrate",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "elo-calibrate",
+      "--run",
+      "wild-universe-731",
+      "--target-stderr",
+      "12",
+      "--max-batches",
+      "8"
+    ],
+    "normalized": "uv run bnb elo-calibrate --run wild-universe-731 --target-stderr 12 --max-batches 8"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 17184441408170528798,
+    "compile_mode": null,
+    "allow_config_drift": false,
+    "gradient_diagnostics": {
+      "level": "off",
+      "interval": 1,
+      "minibatches": 1
+    }
+  },
+  "code": {
+    "git_commit": "3d1a2e5573d9fff135cf5ab30b0fdea1b369908c",
+    "git_dirty": true,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "chart_history.jsonl",
+      "sha256": "da9a6d094c9bf194a6b0eb23de0f33295c86559f9eebd86a5de9401c6aae45c4",
+      "bytes": 209407
+    },
+    {
+      "path": "chart_summary.json",
+      "sha256": "4f9b0849432fa0b859e6534c393f5dccf036eedc1aa77ce83fe4a9567e0d99b6",
+      "bytes": 1785
+    },
+    {
+      "path": "result.json",
+      "sha256": "e980e344da4a94a30b2b6dce5b876944c7d5f93956459aa857389e5c07853e98",
+      "bytes": 962421
+    }
+  ],
+  "samples_present": false
+}

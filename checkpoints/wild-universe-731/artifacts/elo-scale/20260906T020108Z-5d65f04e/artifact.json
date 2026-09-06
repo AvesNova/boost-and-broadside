@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "artifact_type": "elo-scale",
+  "artifact_id": "20260906T020108Z-5d65f04e",
+  "status": "complete",
+  "created_at": "2026-09-06T02:01:08Z",
+  "updated_at": "2026-09-06T06:13:55Z",
+  "owner": {
+    "kind": "run",
+    "run": "wild-universe-731"
+  },
+  "recipe": {
+    "artifact_type": "elo-scale",
+    "result_schema_version": 1,
+    "subjects": {
+      "players": [
+        {
+          "global_step": 0,
+          "kind": "random",
+          "label": "random",
+          "sha256": null,
+          "training_config": null
+        },
+        {
+          "global_step": null,
+          "kind": "scripted",
+          "label": "scripted",
+          "sha256": null,
+          "training_config": null
+        },
+        {
+          "global_step": 10948608,
+          "kind": "checkpoint",
+          "label": "ckpt_10948608",
+          "sha256": "f6492c0b81f65191fc3e57fc663dee02a2d0d583459130b0322801bfae789b42",
+          "training_config": null
+        },
+        {
+          "global_step": 12939264,
+          "kind": "checkpoint",
+          "label": "ckpt_12939264",
+          "sha256": "b5df58a252a2c0252005fd581bda1f1013613dcd3ca97ee9fd083714f783d34e",
+          "training_config": null
+        },
+        {
+          "global_step": 14929920,
+          "kind": "checkpoint",
+          "label": "ckpt_14929920",
+          "sha256": "5bd7b44b667938ab9371f989ca9c97a0900a3b5b72b201768491276ab1eb34c4",
+          "training_config": null
+        },
+        {
+          "global_step": 24883200,
+          "kind": "checkpoint",
+          "label": "ckpt_24883200",
+          "sha256": "1dccdebd604cc02565a1dda014440a10ab6d81fdab1d8c0c24d272af254f9f44",
+          "training_config": null
+        },
+        {
+          "global_step": 55738368,
+          "kind": "checkpoint",
+          "label": "ckpt_55738368",
+          "sha256": "9272f0ac68344764e96a798a12168dfeb7a35ba906970af3f22c8f4c940d6677",
+          "training_config": null
+        },
+        {
+          "global_step": 79626240,
+          "kind": "checkpoint",
+          "label": "ckpt_79626240",
+          "sha256": "6b3ae2c5f2beeb829114994e69d0389325b73ef97542711ccb5742d247430f1f",
+          "training_config": null
+        },
+        {
+          "global_step": 120434688,
+          "kind": "checkpoint",
+          "label": "ckpt_120434688",
+          "sha256": "ca417d22dce2eeff99feb07f240cc6f7edd635e0fef12a073dc5d4697aa23c0c",
+          "training_config": null
+        },
+        {
+          "global_step": 153280512,
+          "kind": "checkpoint",
+          "label": "ckpt_153280512",
+          "sha256": "c7ec33fc0634adfdb683d2b2ec3c8fdba4c23653172b1463e154281254ddc5b4",
+          "training_config": null
+        },
+        {
+          "global_step": 247836672,
+          "kind": "checkpoint",
+          "label": "ckpt_247836672",
+          "sha256": "3c7938784d2e492e322442be1e25e63edb8db114f93cb0bfb4477c0a126a3e22",
+          "training_config": null
+        },
+        {
+          "global_step": 671846400,
+          "kind": "checkpoint",
+          "label": "final",
+          "sha256": "a79e975043df12542cc41a8ccad721e0a825818eaa39508177554538fbca75f8",
+          "training_config": {
+            "profile": "rl"
+          }
+        }
+      ],
+      "run": "wild-universe-731",
+      "scripted": {
+        "kind": "scripted",
+        "scripted_config": {
+          "boost_speed_prob": [
+            0.68,
+            0.04
+          ],
+          "boost_speed_ramp": [
+            16,
+            32
+          ],
+          "close_range_prob": [
+            0.5,
+            0.05
+          ],
+          "close_range_ramp": [
+            10,
+            50
+          ],
+          "flat_action_sampling": false,
+          "prob_offset": 0.1,
+          "sharp_turn_angle_prob": [
+            0.05,
+            0.95
+          ],
+          "sharp_turn_angle_ramp": [
+            0.24,
+            0.42
+          ],
+          "shoot_angle_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_angle_ramp": [
+            1.0,
+            1.5
+          ],
+          "shoot_distance_prob": [
+            0.95,
+            0.05
+          ],
+          "shoot_distance_ramp": [
+            200,
+            500
+          ],
+          "team_target_distance_prob": [
+            0.0,
+            0.0
+          ],
+          "team_target_distance_ramp": [
+            60.0,
+            100.0
+          ],
+          "turn_angle_prob": [
+            0.068,
+            0.95
+          ],
+          "turn_angle_ramp": [
+            0.03,
+            0.12
+          ]
+        }
+      }
+    },
+    "parameters": {
+      "environment": {
+        "max_bullets": 10,
+        "max_episode_steps": 1024,
+        "num_fields": 4,
+        "num_ships": 8
+      },
+      "max_batches": 12,
+      "max_parallel_envs": 16384,
+      "prior_games": 1.0,
+      "seed_base": 682000,
+      "target_stderr": 10.0,
+      "team_sizes": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ],
+      "tie_mode": "half_win"
+    },
+    "sources": {}
+  },
+  "recipe_digest": "5d65f04e6f9d1bd2700cbe44cd9a298a32aba1e9ab5451f56efe35771d069712",
+  "result_schema_version": 1,
+  "invocation": {
+    "command": "elo-scale",
+    "argv": [
+      "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+      "elo-scale",
+      "--run",
+      "wild-universe-731"
+    ],
+    "normalized": "uv run bnb elo-scale --run wild-universe-731"
+  },
+  "execution": {
+    "device": "cuda",
+    "seed": 17644150363445286418,
+    "compile_mode": null,
+    "allow_config_drift": false,
+    "gradient_diagnostics": {
+      "level": "off",
+      "interval": 1,
+      "minibatches": 1
+    }
+  },
+  "code": {
+    "git_commit": "3d1a2e5573d9fff135cf5ab30b0fdea1b369908c",
+    "git_dirty": true,
+    "repository_available": true,
+    "uv_lock_sha256": "eff32a47a4f866e4b4864030845339fe79c57bb888bde3fab76347f8c8afba93"
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": false,
+    "float32_matmul_precision": "highest",
+    "device": {
+      "requested": "cuda",
+      "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+      "index": 0,
+      "total_memory_bytes": 8186822656,
+      "capability": "8.9",
+      "uuid": "7161aed0-f7cd-9222-9196-257e42144f0d"
+    }
+  },
+  "environment": {},
+  "producer": {
+    "name": "boost-and-broadside",
+    "version": "0.1.0"
+  },
+  "files": [
+    {
+      "path": "result.json",
+      "sha256": "05d7a6a88454dc16f9ba07bbcf52a3f27b3539efc6a1e6c78944d01ea6c55a0b",
+      "bytes": 194856
+    }
+  ],
+  "samples_present": false
+}
