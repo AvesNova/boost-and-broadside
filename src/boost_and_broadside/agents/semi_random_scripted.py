@@ -28,6 +28,24 @@ def semi_random_label(probability: float) -> str:
     return f"semi_scripted_{digits}"
 
 
+def semi_random_probability(label: str) -> float | None:
+    """Recover ``p_scripted`` from a label, or None if it is not a rung label.
+
+    The inverse of :func:`semi_random_label`. It exists because a roster written
+    before ``p_scripted`` was persisted carries the probability *only* in the
+    label, and a resume that cannot recover it silently turns every rung into
+    the uniform random agent while leaving its rating intact.
+    """
+    prefix = "semi_scripted_"
+    if not label.startswith(prefix):
+        return None
+    try:
+        probability = float(label[len(prefix) :].replace("p", "."))
+    except ValueError:
+        return None
+    return probability if 0.0 < probability < 1.0 else None
+
+
 class SemiRandomScriptedAgent:
     """Use a complete scripted action with probability ``p_scripted``.
 

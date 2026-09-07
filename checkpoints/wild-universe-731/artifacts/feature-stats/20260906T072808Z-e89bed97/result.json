@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "valid_pairs": 6759024,
+  "seconds": 30.862860571127385,
+  "features": [
+    {
+      "name": "position_x_0",
+      "mean_sq_scaled": 1.6923218965530396,
+      "current_scale": 177.39999389648438,
+      "suggested_scale": 136.36788940429688
+    },
+    {
+      "name": "position_y_0",
+      "mean_sq_scaled": 1.658378005027771,
+      "current_scale": 177.39999389648438,
+      "suggested_scale": 137.75640869140625
+    },
+    {
+      "name": "velocity_0",
+      "mean_sq_scaled": 4.461125373840332,
+      "current_scale": 20.0,
+      "suggested_scale": 9.469079971313477
+    },
+    {
+      "name": "velocity_1",
+      "mean_sq_scaled": 4.480061054229736,
+      "current_scale": 20.0,
+      "suggested_scale": 9.449047088623047
+    },
+    {
+      "name": "attitude_0",
+      "mean_sq_scaled": 0.04777485877275467,
+      "current_scale": 1.5,
+      "suggested_scale": 6.862645149230957
+    },
+    {
+      "name": "angular_velocity_0",
+      "mean_sq_scaled": 0.870362401008606,
+      "current_scale": 0.44699999690055847,
+      "suggested_scale": 0.47913452982902527
+    },
+    {
+      "name": "health_0",
+      "mean_sq_scaled": 0.6104943156242371,
+      "current_scale": 36.0,
+      "suggested_scale": 46.07461166381836
+    },
+    {
+      "name": "power_0",
+      "mean_sq_scaled": 1.1468302011489868,
+      "current_scale": 93.0,
+      "suggested_scale": 86.84271240234375
+    },
+    {
+      "name": "cooldown_0",
+      "mean_sq_scaled": 1.122186303138733,
+      "current_scale": 2.0999999046325684,
+      "suggested_scale": 1.98237943649292
+    },
+    {
+      "name": "local_log_index_0",
+      "mean_sq_scaled": 0.0,
+      "current_scale": 10.0,
+      "suggested_scale": 10000000000.0
+    }
+  ]
+}

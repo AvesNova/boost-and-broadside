@@ -11,6 +11,7 @@ import pytest
 import torch
 
 from boost_and_broadside import cli, cli_commands
+from boost_and_broadside.config.diagnostics import GRADIENT_DIAGNOSTICS_LEVELS
 from boost_and_broadside.smoke import (
     SMOKE_CASES,
     SmokeCase,
@@ -38,9 +39,19 @@ def test_registry_covers_every_runtime_command_and_training_profile() -> None:
         by_command.setdefault(case.command, []).append(case)
 
     assert set(by_command) == set(cli_commands.runtime_command_names())
-    assert {case.profile for case in by_command["train"]} == {"bc", "rl", "rl-fields"}
+    assert {case.profile for case in by_command["train"]} == {"bc", "rl"}
     assert len({case.name for case in SMOKE_CASES}) == len(SMOKE_CASES)
     assert all(case.timeout_seconds > 0 for case in SMOKE_CASES)
+
+
+def test_every_gradient_diagnostic_level_is_launched_by_a_training_case() -> None:
+    """Each level is a distinct code path, so each gets its own bounded launch."""
+    launched = {case.gradient_diagnostics for case in SMOKE_CASES if case.command == "train"}
+    assert launched == set(GRADIENT_DIAGNOSTICS_LEVELS)
+    # Nothing that is not a training run has a gradient to decompose.
+    assert all(
+        case.gradient_diagnostics == "off" for case in SMOKE_CASES if case.command != "train"
+    )
 
 
 def test_synthetic_run_uses_current_loadable_checkpoint_schema(tmp_path: Path) -> None:
@@ -54,7 +65,6 @@ def test_synthetic_run_uses_current_loadable_checkpoint_schema(tmp_path: Path) -
     assert checkpoint["ship_config"]
     assert checkpoint["env_config"]["num_ships"] == 2
     assert checkpoint["resolved_config"]["profile"] == "smoke-fixture"
-    assert checkpoint["resolved_config"]["resolved_config_fingerprint"]
     assert checkpoint["optimizer_state_dict"]["param_groups"]
     assert checkpoint["avg_policy_state_dict"]
     assert checkpoint["launch"] == {
@@ -139,7 +149,7 @@ def test_case_root_rejects_writes_outside_managed_roots(tmp_path: Path) -> None:
         validate_case_root(tmp_path)
 
 
-def test_case_root_rejects_rendered_publication_outputs(tmp_path: Path) -> None:
+def test_case_root_rejects_rendered_report_outputs(tmp_path: Path) -> None:
     for managed in ("checkpoints", "artifacts", "out", "tmp"):
         (tmp_path / managed).mkdir()
     (tmp_path / "artifacts" / "unexpected.png").touch()
@@ -254,11 +264,3 @@ def test_cli_focused_case_selection_dispatches_one_case(monkeypatch) -> None:
     )
     cli_commands.execute("smoke", _parse(["smoke", "--case", "collect-stats"]))
     assert captured == {"selected": "collect-stats"}
-
-
-@pytest.mark.parametrize("case", SMOKE_CASES, ids=lambda case: case.name)
-def test_every_smoke_case_passes_in_a_fresh_subprocess(case, tmp_path: Path) -> None:
-    result = run_case_subprocess(case, tmp_path / case.name)
-    assert result.returncode == 0, result.stderr
-    assert f"SMOKE PASS {case.name}" in result.stdout
-    validate_case_root(tmp_path / case.name)

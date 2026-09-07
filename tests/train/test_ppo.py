@@ -25,33 +25,20 @@ from boost_and_broadside.config import (
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
+from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
-from boost_and_broadside.train.rl.ppo import _GROUP, _LOCAL_COMPONENTS, PPOTrainer
+from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, _huber, PPOTrainer
 
 
 def _make_rewards(**overrides) -> RewardConfig:
     defaults = dict(
-        ally_combat_damage_weight=0.01,
-        enemy_combat_damage_weight=0.01,
-        ally_field_damage_weight=0.01,
-        enemy_field_damage_weight=0.01,
-        ally_combat_death_weight=0.5,
-        enemy_combat_death_weight=0.5,
-        ally_field_death_weight=0.5,
-        enemy_field_death_weight=0.5,
-        ally_win_weight=1.0,
-        enemy_win_weight=1.0,
+        win_weight=1.0,
+        death_weight=0.5,
+        damage_weight=0.1,
+        kill_shot_fraction=0.5,
         facing_weight=0.01,
         closing_speed_weight=0.01,
         shoot_quality_weight=0.01,
-        kill_shot_weight=0.5,
-        kill_assist_weight=0.5,
-        combat_damage_taken_weight=0.1,
-        field_damage_taken_weight=0.1,
-        damage_dealt_enemy_weight=0.1,
-        damage_dealt_ally_weight=0.1,
-        combat_death_weight=0.5,
-        field_death_weight=0.5,
         proximity_radius=300.0,
         shoot_quality_radius=200.0,
         enemy_neg_lambda_components=frozenset(
@@ -85,9 +72,10 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         behavior_cloning_coef=constant(0.0),
         value_function_coef=constant(0.5),
         sigreg_coef=constant(0.0),
-        true_reward_scale=constant(1.0),
-        global_scale=constant(1.0),
-        local_scale=constant(1.0),
+        outcome_scale=constant(1.0),
+        kill_death_scale=constant(1.0),
+        damage_scale=constant(1.0),
+        shaping_scale=constant(1.0),
         league_fraction=constant(0.0),
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
@@ -107,6 +95,7 @@ def _make_train_config(
     checkpoint_dir: str = "checkpoints",
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
+    schedule: TrainingSchedule | None = None,
     **reward_overrides,
 ) -> TrainConfig:
     return TrainConfig(
@@ -117,7 +106,7 @@ def _make_train_config(
                 num_envs=4,
             ),
         ),
-        schedule=_make_schedule(league_fraction=constant(league_fraction)),
+        schedule=schedule or _make_schedule(league_fraction=constant(league_fraction)),
         rewards=_make_rewards(**reward_overrides),
         num_steps=16,
         rollouts_per_update=rollouts_per_update,
@@ -129,6 +118,7 @@ def _make_train_config(
         total_timesteps=64 * rollouts_per_update,
         return_ema_alpha=0.005,
         return_min_span=1e-3,
+        value_huber_delta=1.0,
         advantage_min_rms=1e-4,
         checkpoint_dir=checkpoint_dir,
         league_size=20,
@@ -161,6 +151,7 @@ def _make_trainer(
     rollouts_per_update: int = 1,
     device: str = "cpu",
     model_config: ModelConfig | None = None,
+    schedule: TrainingSchedule | None = None,
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ShipConfig()
@@ -178,6 +169,7 @@ def _make_trainer(
             checkpoint_dir=checkpoint_dir,
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
+            schedule=schedule,
             **reward_overrides,
         ),
         model_config=model_config
@@ -937,11 +929,16 @@ class TestSchedulePrimitives:
         with pytest.raises(ValueError, match="ascending"):
             join((100, constant(1.0)), (0, constant(2.0)))
 
-    def test_group_scales_applied_by_trainer(self, tmp_path):
-        """After training, effective weight = group_scale * individual weight for EVERY
+    def test_tier_scales_applied_by_trainer(self, tmp_path):
+        """After training, effective weight = tier_scale * individual weight for EVERY
         component (regression: setattr on a per-class attribute name silently missed the
         18 components whose weight lived in a `_weight`-backed property)."""
-        group_scales = {"true_reward_scale": 0.25, "global_scale": 2.0, "local_scale": 0.5}
+        group_scales = {
+            "outcome_scale": 0.25,
+            "kill_death_scale": 2.0,
+            "damage_scale": 0.5,
+            "shaping_scale": 1.5,
+        }
         trainer = PPOTrainer(
             train_config=TrainConfig(
                 paradigm="ego_pass",
@@ -952,9 +949,10 @@ class TestSchedulePrimitives:
                     ),
                 ),
                 schedule=_make_schedule(
-                    true_reward_scale=constant(group_scales["true_reward_scale"]),
-                    global_scale=constant(group_scales["global_scale"]),
-                    local_scale=constant(group_scales["local_scale"]),
+                    outcome_scale=constant(group_scales["outcome_scale"]),
+                    kill_death_scale=constant(group_scales["kill_death_scale"]),
+                    damage_scale=constant(group_scales["damage_scale"]),
+                    shaping_scale=constant(group_scales["shaping_scale"]),
                 ),
                 rewards=_make_rewards(),
                 num_steps=16,
@@ -967,6 +965,7 @@ class TestSchedulePrimitives:
                 total_timesteps=64,
                 return_ema_alpha=0.005,
                 return_min_span=1e-3,
+                value_huber_delta=1.0,
                 advantage_min_rms=1e-4,
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
@@ -986,9 +985,9 @@ class TestSchedulePrimitives:
         )
         trainer.train()
         mismatched = {}
+        derived = component_weights(trainer.cfg.rewards)
         for comp in trainer.wrapper.reward_components:
-            individual_weight = getattr(trainer.cfg.rewards, f"{comp.name}_weight")
-            expected = individual_weight * group_scales[_GROUP[comp.name]]
+            expected = derived[comp.name] * group_scales[_TIER[comp.name]]
             if abs(comp.weight - expected) > 1e-9:
                 mismatched[comp.name] = (comp.weight, expected)
         assert not mismatched, f"components with wrong effective weight: {mismatched}"
@@ -1035,23 +1034,210 @@ class TestWinComponentLambdaMatrix:
         assert "ally_win" not in REWARDS.ally_zero_components
 
 
-class TestLocalComponentRegistry:
-    """Regression for AUDIT-014: the self-only (diagonal-lambda) set and the
-    group-scale classification must not drift apart."""
+class TestValueHuberLoss:
+    """The critic loss is squared error in the bulk and linear in the tails.
 
-    def test_local_components_match_local_scale_group(self):
-        """A component uses diagonal (self-only) lambda iff it is in the
-        `local_scale` group. If a new reward is classified in one registry but
-        not the other, its lambda aggregation would be silently wrong."""
-        local_scale_group = {name for name, group in _GROUP.items() if group == "local_scale"}
-        assert _LOCAL_COMPONENTS == local_scale_group
+    Per-component normalization exposes heavy tails on sparse components; the
+    previous defence was an oversized ``return_min_span`` that shrank those
+    components' targets instead, starving their critics.
+    """
 
-    def test_every_reward_component_is_classified(self):
-        """Every registered reward component must appear in _GROUP, or
-        `_refresh_training_schedule` would KeyError on the first update."""
+    def test_matches_squared_error_inside_delta(self):
+        error = torch.linspace(-0.99, 0.99, 51)
+        assert torch.allclose(_huber(error, 1.0), error.pow(2))
+
+    def test_is_continuous_and_linear_outside_delta(self):
+        delta = 1.0
+        just_inside = _huber(torch.tensor(delta - 1e-6), delta)
+        just_outside = _huber(torch.tensor(delta + 1e-6), delta)
+        assert just_outside.item() == pytest.approx(just_inside.item(), abs=1e-4)
+
+        # Slope is constant beyond delta: equal steps give equal increments.
+        far = _huber(torch.tensor([5.0, 6.0, 7.0]), delta)
+        assert (far[1] - far[0]).item() == pytest.approx((far[2] - far[1]).item())
+
+    def test_bounds_the_gradient_a_single_outlier_contributes(self):
+        """A 20-sigma residual must not outweigh a minibatch of ordinary ones."""
+        outlier = torch.tensor(20.0, requires_grad=True)
+        _huber(outlier, 1.0).backward()
+        assert outlier.grad.abs().item() == pytest.approx(2.0)
+
+        squared = torch.tensor(20.0, requires_grad=True)
+        squared.pow(2).backward()
+        assert squared.grad.abs().item() == pytest.approx(40.0)
+
+    def test_delta_scales_the_quadratic_region(self):
+        assert _huber(torch.tensor(1.5), 2.0).item() == pytest.approx(2.25)  # still squared
+        assert _huber(torch.tensor(1.5), 1.0).item() == pytest.approx(2.0)  # already linear
+
+
+class TestLambdaMatrixWeighting:
+    """Regression: ``comp_weights`` must reach the lambda matrix linearly.
+
+    The row normalization used to divide by the *weighted* row sum, which cancels
+    the weight it just applied: local components saturated at ``min(w, 1)`` and
+    global ones lost their weight entirely once ``w * n_alive`` passed the clamp.
+    ``ally_win_weight=1.5`` therefore trained identically to ``0.25``.
+    """
+
+    @staticmethod
+    def _legacy_lambda(trainer, team_id, alive, comp_weights):
+        """The pre-fix implementation, kept to pin the w=1 equivalence."""
+        N = alive.shape[-1]
+        ally_lam = torch.where(trainer.ally_zero_k, 0.0, 1.0)
+        enemy_lam = torch.where(trainer.enemy_neg_k, -1.0, 0.0)
+        identity = torch.eye(N, dtype=torch.float32, device=trainer.device)
+        local_lambda = identity[None, None, :, :, None]
+        same_team = team_id.unsqueeze(3) == team_id.unsqueeze(2)
+        alive_j = alive.float().unsqueeze(2).unsqueeze(-1)
+        global_lambda = (
+            same_team.float().unsqueeze(-1) * ally_lam
+            + (~same_team).float().unsqueeze(-1) * enemy_lam
+        )
+        lambda_ij = (
+            torch.where(trainer.local_k, local_lambda, global_lambda) * comp_weights * alive_j
+        )
+        return lambda_ij / lambda_ij.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+
+    @staticmethod
+    def _inputs(trainer):
+        team_id = torch.tensor([[[0, 0, 1, 1]]], device=trainer.device)
+        alive = torch.ones(1, 1, 4, dtype=torch.bool, device=trainer.device)
+        return team_id, alive
+
+    def test_matches_legacy_at_unit_weight(self, tmp_path):
+        """At w=1 the fix is a no-op: the run being replaced is the w=1 case."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        ones = torch.ones(len(trainer._active_names), device=trainer.device)
+
+        assert torch.equal(
+            trainer._lambda_matrix(team_id, alive, ones),
+            self._legacy_lambda(trainer, team_id, alive, ones),
+        )
+
+    def test_local_weight_is_linear_above_one(self, tmp_path):
+        """A local component's row is exactly its weight, at any magnitude."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        k = trainer._active_names.index("combat_death")
+
+        for weight in (0.5, 1.0, 2.0, 7.5):
+            w = torch.ones(len(trainer._active_names), device=trainer.device)
+            w[k] = weight
+            lam = trainer._lambda_matrix(team_id, alive, w)
+            assert lam[0, 0, 0, 0, k] == pytest.approx(weight)
+            # Self-only: no teammate or enemy contributes.
+            assert lam[0, 0, 0, 1:, k].abs().sum() == pytest.approx(0.0)
+
+    def test_global_weight_is_linear(self, tmp_path):
+        """A win component's row sums to its weight, spread over alive allies."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        k = trainer._active_names.index("ally_win")
+
+        for weight in (0.5, 1.0, 1.5, 3.0):
+            w = torch.ones(len(trainer._active_names), device=trainer.device)
+            w[k] = weight
+            lam = trainer._lambda_matrix(team_id, alive, w)
+            # Ships 0 and 1 are ship 0's team; each contributes weight/2.
+            assert lam[0, 0, 0, :, k].sum() == pytest.approx(weight)
+            assert lam[0, 0, 0, 0, k] == pytest.approx(weight / 2)
+
+    def test_scaling_every_weight_scales_the_matrix(self, tmp_path):
+        """The whole matrix is homogeneous in the weight vector.
+
+        The aggregate advantage is divided by its own RMS, so a uniform rescale
+        of every weight must be a no-op for training — which holds only if the
+        matrix is linear in the weights.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, alive = self._inputs(trainer)
+        base = torch.linspace(0.1, 1.0, len(trainer._active_names), device=trainer.device)
+
+        lam = trainer._lambda_matrix(team_id, alive, base)
+        scaled = trainer._lambda_matrix(team_id, alive, base * 4.0)
+        assert torch.allclose(scaled, lam * 4.0)
+
+    def test_dead_contributors_are_excluded_from_the_mean(self, tmp_path):
+        """A dead ally neither contributes nor dilutes the row it is absent from."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        team_id, _ = self._inputs(trainer)
+        alive = torch.tensor([[[True, False, True, True]]], device=trainer.device)
+        k = trainer._active_names.index("ally_win")
+        w = torch.ones(len(trainer._active_names), device=trainer.device)
+        w[k] = 2.0
+
+        lam = trainer._lambda_matrix(team_id, alive, w)
+        assert lam[0, 0, 0, 1, k] == pytest.approx(0.0)
+        # Ship 0 is its team's only survivor, so it carries the full weight.
+        assert lam[0, 0, 0, 0, k] == pytest.approx(2.0)
+
+
+class TestComponentClassification:
+    """Both registries must stay complete and must not be confused for each other.
+
+    Locality (which lambda a component uses) and tier (which schedule scales it)
+    were one map when the scale groups happened to be drawn along the locality
+    line. They are independent now, so each needs its own check.
+    """
+
+    def test_every_reward_component_has_a_tier(self):
+        """A component missing from _TIER would KeyError on the first update."""
         from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 
-        assert set(REWARD_COMPONENT_NAMES) == set(_GROUP)
+        assert set(REWARD_COMPONENT_NAMES) == set(_TIER)
+
+    def test_local_components_are_registered_components(self):
+        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+        assert _LOCAL_COMPONENTS <= set(REWARD_COMPONENT_NAMES)
+
+    def test_shared_components_are_exactly_the_team_signals(self):
+        """Everything that is not self-only is a source-split pair or a win
+        component — those are the only signals with a team perspective to
+        propagate."""
+        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+        shared = set(REWARD_COMPONENT_NAMES) - _LOCAL_COMPONENTS
+        assert shared == {
+            "ally_combat_damage",
+            "enemy_combat_damage",
+            "ally_field_damage",
+            "enemy_field_damage",
+            "ally_combat_death",
+            "enemy_combat_death",
+            "ally_field_death",
+            "enemy_field_death",
+            "ally_win",
+            "enemy_win",
+        }
+
+    def test_tiers_partition_the_registry(self):
+        """Four tiers, and every component in exactly one."""
+        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+        assert set(_TIER.values()) == {
+            "outcome_scale",
+            "kill_death_scale",
+            "damage_scale",
+            "shaping_scale",
+        }
+        assert len(_TIER) == len(REWARD_COMPONENT_NAMES)
+
+    def test_a_tier_scale_of_zero_leaves_its_components_registered(self):
+        """The shaping taper must not evict what it silences.
+
+        `_active_names` freezes at init from the *initial* weight, so a tier
+        scaled to zero mid-run keeps its components active and measurable. That
+        is why the taper has a floor rather than reaching zero — but the floor is
+        a choice about instrumentation, not a correctness requirement."""
+        from boost_and_broadside.config.defaults import REWARDS
+        from boost_and_broadside.env.rewards import build_reward_components
+
+        components = build_reward_components(REWARDS, ShipConfig())
+        shaping = [c for c in components if _TIER[c.name] == "shaping_scale"]
+        assert shaping, "no shaping components to taper"
 
 
 class TestRLSmokeTest:
@@ -1073,10 +1259,11 @@ class TestRLSmokeTest:
             behavior_cloning_coef=constant(0.0),
             value_function_coef=constant(1.0),
             sigreg_coef=constant(0.0),
-            true_reward_scale=constant(1.0),
-            global_scale=constant(1.0),
-            local_scale=constant(1.0),
-            league_fraction=constant(0.5),
+            outcome_scale=constant(1.0),
+        kill_death_scale=constant(1.0),
+        damage_scale=constant(1.0),
+        shaping_scale=constant(1.0),
+                    league_fraction=constant(0.5),
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),
@@ -1103,6 +1290,7 @@ class TestRLSmokeTest:
             total_timesteps=16 * 32 * 3,  # 3 updates
             return_ema_alpha=0.005,
             return_min_span=1e-3,
+            value_huber_delta=1.0,
             advantage_min_rms=1e-4,
             checkpoint_dir=str(tmp_path),
             league_size=5,

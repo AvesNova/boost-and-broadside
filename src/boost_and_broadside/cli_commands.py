@@ -11,11 +11,15 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
 from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.config.defaults import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
+from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
+from boost_and_broadside.config.overrides import parse_override
 from boost_and_broadside.config.service import resolved_profile_document
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
+from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.evaluation.run_catalog import (
     resolve_exact_run,
     resolve_explicit_checkpoint,
+    select_checkpoint_at_step,
     select_latest_resumable_checkpoint,
     select_latest_resumable_run,
     summarize_runs,
@@ -115,6 +119,16 @@ def _calibration_config(args: argparse.Namespace):
     )
 
 
+def gradient_diagnostics_from_args(args: argparse.Namespace) -> GradientDiagnosticsConfig:
+    """Build the observability setting the ``train`` gradient-diagnostic flags describe."""
+
+    return GradientDiagnosticsConfig(
+        level=args.gradient_diagnostics,
+        interval=args.gradient_diagnostics_interval,
+        minibatches=args.gradient_diagnostics_minibatches,
+    )
+
+
 def _resume_checkpoint(subject: str, checkpoint_dir: str = "checkpoints") -> tuple[str, str | None]:
     if subject.endswith(".pt"):
         checkpoint = resolve_explicit_checkpoint(subject).path
@@ -124,6 +138,12 @@ def _resume_checkpoint(subject: str, checkpoint_dir: str = "checkpoints") -> tup
     run_id_path = checkpoint.parent / "wandb_run_id.txt"
     run_id = run_id_path.read_text().strip() if run_id_path.is_file() else None
     return str(checkpoint), run_id
+
+
+def config_overrides_from_args(args: argparse.Namespace) -> dict[str, str]:
+    """The ``key=value`` arguments of one launch, in the order they were given."""
+
+    return dict(parse_override(text) for text in getattr(args, "overrides", ()) or ())
 
 
 def _make_trainer(
@@ -142,11 +162,18 @@ def _make_trainer(
         use_wandb=not args.no_wandb,
         scripted_agent=StochasticScriptedAgent(resolved.ship_config, StochasticAgentConfig()),
         compile_mode=launch.execution.compile_mode,
+        gradient_diagnostics=launch.execution.gradient_diagnostics,
         resume_wandb_run_id=resume_wandb_run_id,
         resolved_config_document=resolved_profile_document(resolved),
         # The complete launch record, including which VRAM decision chose the
         # rollout width, the microbatch, and gradient checkpointing.
-        launch_provenance=launch.document(),
+        launch_provenance={
+            **launch.document(),
+            # What the command line changed, kept beside the resolved values so a
+            # run's config segment can say what was asked for as well as what
+            # came out.
+            "overrides": config_overrides_from_args(args),
+        },
     )
 
 
@@ -158,6 +185,37 @@ def _run_trainer(trainer: PPOTrainer) -> None:
         trainer.save_final_checkpoint()
         trainer.record_run_status(RunStatus.INTERRUPTED)
         trainer.shutdown()
+    except BaseException:
+        # A run that died leaves a manifest saying "running" otherwise, which
+        # reads as a live process to anything selecting a run to resume. No
+        # final save: the failure may be exactly what makes the trainer's state
+        # unsafe to write, and the last scheduled checkpoint is already on disk.
+        trainer.record_run_status(RunStatus.FAILED)
+        raise
+
+
+def _fork_checkpoint(args: argparse.Namespace) -> str | None:
+    """The checkpoint ``--from RUN [--at STEP]`` names, as a warm-start path.
+
+    A fork is not a resume: only weights cross over, so the new run gets its own
+    history, its own W&B run, and its own config segments. That is the supported
+    way to change the *task* -- ship count, field count -- which a continuation
+    deliberately is not, because the Elo series either side would not be one
+    series.
+    """
+
+    if args.from_run is None:
+        if args.from_step is not None:
+            raise UserFacingError("--at names a step within --from; pass both or neither")
+        return None
+    run = resolve_exact_run(args.from_run, "checkpoints")
+    selected = (
+        select_checkpoint_at_step(run, args.from_step)
+        if args.from_step is not None
+        else select_latest_resumable_checkpoint(run)
+    )
+    print(f"Forking from {run.name} at step {selected.step}: {selected.path}")
+    return str(selected.path)
 
 
 def _resume_subject_for(args: argparse.Namespace) -> str | None:
@@ -180,7 +238,7 @@ def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
     resume_path, run_id = (
         _resume_checkpoint(resume_subject) if resume_subject is not None else (None, None)
     )
-    pretrain_path = (
+    pretrain_path = _fork_checkpoint(args) or (
         str(resolve_explicit_checkpoint(args.pretrain_from).path)
         if args.pretrain_from is not None
         else None
@@ -195,10 +253,12 @@ def _train(args: argparse.Namespace, prepare: ContextFactory) -> None:
         compile_mode=None if args.compile_mode == "none" else args.compile_mode,
         wandb=not args.no_wandb,
         allow_config_drift=args.allow_config_drift,
+        gradient_diagnostics=gradient_diagnostics_from_args(args),
         num_envs=args.num_envs,
         microbatch_tokens=args.microbatch_tokens,
         report=print,
         resolve=resolve_named_profile,
+        overrides=config_overrides_from_args(args),
     )
     context = prepare()
     device = context.device
@@ -463,28 +523,6 @@ def _runs(args: argparse.Namespace) -> None:
         print("  ".join(value.ljust(width) for value, width in zip(row, widths, strict=True)))
 
 
-def _publish(args: argparse.Namespace) -> None:
-    """Render manifest-selected canonical views. Never simulates, never plays."""
-
-    from pathlib import Path
-
-    from boost_and_broadside.publication.publish import UNRESOLVED, run_publish
-    from boost_and_broadside.publication.renderer_api import PublicationError
-
-    report = run_publish(Path.cwd(), target=args.target, check=args.check)
-    print(report.render())
-    if report.by_status(UNRESOLVED):
-        # Re-running publish cannot repair a source that is damaged, absent, or
-        # was produced from a dirty checkout, so do not suggest it.
-        raise PublicationError(
-            "a publication source could not be verified; see the entries reported above"
-        )
-    if report.failed:
-        raise PublicationError(
-            "canonical output does not match the manifest; run bnb publish to update it"
-        )
-
-
 _HANDLERS = {
     "train": _train,
     "play": _play,
@@ -502,14 +540,24 @@ _HANDLERS = {
 
 
 def runtime_command_names() -> tuple[str, ...]:
-    """Commands that own runtime smoke cases (excluding orchestration/publication)."""
+    """Commands that own runtime smoke cases (excluding orchestration)."""
 
     return tuple(_HANDLERS)
 
 
-def execute(
-    command: str, args: argparse.Namespace, argv: Sequence[str] | None = None
-) -> None:
+def _figures(args: argparse.Namespace) -> None:
+    """Render a run's charts beside its measurements.
+
+    Grouped with the orchestration commands rather than the measurement modes:
+    it plays no games, needs no device, and reads only artifacts already on disk.
+    """
+
+    from boost_and_broadside.modes.figures import render_run_figures
+
+    render_run_figures(args.run, only=tuple(args.only))
+
+
+def execute(command: str, args: argparse.Namespace, argv: Sequence[str] | None = None) -> None:
     """Execute one completely parsed command.
 
     ``argv`` is the invocation as the user spelled it; it is recorded verbatim in
@@ -518,11 +566,11 @@ def execute(
     if command == "smoke":
         _smoke(args)
         return
-    if command == "publish":
-        _publish(args)
-        return
     if command == "runs":
         _runs(args)
+        return
+    if command == "figures":
+        _figures(args)
         return
     try:
         handler = _HANDLERS[command]

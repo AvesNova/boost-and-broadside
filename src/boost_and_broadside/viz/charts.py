@@ -63,7 +63,6 @@ def _draw_panel(
     *,
     title: str,
     ylabel: str,
-    subtitle: str = "",
     log_y: bool = False,
     percent: bool = False,
     reference_lines: list[tuple[str, float]] | None = None,
@@ -76,7 +75,7 @@ def _draw_panel(
     the caller places those labels after a draw, once the scale is final. Landmark
     ``reference_lines`` sit behind the data as recessive dashed rules.
     """
-    style.style_axes(axes, title, subtitle)
+    style.style_axes(axes, title)
     if reference_lines:
         style.draw_reference_lines(axes, reference_lines)
 
@@ -107,7 +106,6 @@ def trend(
     out: Path,
     *,
     title: str,
-    subtitle: str = "",
     ylabel: str,
     log_y: bool = False,
     percent: bool = False,
@@ -119,7 +117,7 @@ def trend(
     figure = style.new_figure(size)
     axes = figure.add_subplot(111)
     ends = _draw_panel(
-        axes, lines, title=title, subtitle=subtitle, ylabel=ylabel,
+        axes, lines, title=title, ylabel=ylabel,
         log_y=log_y, percent=percent, reference_lines=reference_lines,
     )
     if points is not None and points.x.size:

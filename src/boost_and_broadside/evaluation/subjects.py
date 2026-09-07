@@ -51,21 +51,17 @@ def describe_agent(
 
 
 def describe_checkpoint_configuration(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """The training configuration a checkpoint was produced under, by fingerprint.
+    """The training configuration a checkpoint was produced under, by name.
 
-    A checkpoint carries its complete resolved configuration; repeating it in
-    every artifact would be noise. The two fingerprints are enough to decide
-    whether two measurements were taken against the same experiment intent and
-    the same launched configuration, and the checkpoint itself remains the
-    authority they resolve against.
+    A checkpoint carries its complete resolved configuration and the run keeps a
+    ``config.json`` history beside it; repeating either in every artifact would
+    be noise. Two measurements taken against the same run and profile are
+    comparable, and anything finer is a question for those two records, which
+    state values rather than digests of values.
     """
 
     recorded = payload.get("resolved_config") or {}
-    return {
-        "profile": recorded.get("profile"),
-        "profile_fingerprint": recorded.get("profile_fingerprint"),
-        "resolved_config_fingerprint": recorded.get("resolved_config_fingerprint"),
-    }
+    return {"profile": recorded.get("profile")}
 
 
 def describe_agents(

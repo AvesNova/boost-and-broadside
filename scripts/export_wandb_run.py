@@ -43,6 +43,28 @@ def _dump(payload) -> str:
     return json.dumps(payload, indent=2, default=_json_default)
 
 
+def _plain(value):
+    """Coerce W&B's proxy objects into plain JSON types, all the way down.
+
+    ``run.summary`` is a mapping whose nested entries are ``SummarySubDict`` --
+    not a ``dict``, not even a ``Mapping``, just something with ``.items()`` --
+    so ``dict(run.summary)`` converts only the top level. Any run that logged a
+    histogram has one of these per histogram key. The artifact store writes
+    canonical JSON with no encoder hook, by design, so the coercion belongs here
+    at the boundary with W&B rather than in the store.
+    """
+
+    if isinstance(value, (str, bool, int, float)) or value is None:
+        return value
+    if hasattr(value, "items"):
+        return {str(key): _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    # numpy scalars and anything else W&B hands back.
+    item = getattr(value, "item", None)
+    return _plain(item()) if callable(item) else _json_default(value)
+
+
 def export_run(
     run_path: str,
     *,
@@ -82,8 +104,8 @@ def export_run(
         owner,
     )
 
-    artifact.write_json(dict(run.config), "config.json")
-    artifact.write_json(dict(run.summary), "summary.json")
+    artifact.write_json(_plain(run.config), "config.json")
+    artifact.write_json(_plain(run.summary), "summary.json")
     artifact.write_json(
         {
             "id": run.id,

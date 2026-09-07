@@ -27,7 +27,10 @@ from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import ShipConfig, TrainConfig
 from boost_and_broadside.config.live_elo import live_reference_elo
 from boost_and_broadside.evaluation.agents import ResolvedAgent
-from boost_and_broadside.evaluation.environment import create_evaluation_field_map
+from boost_and_broadside.evaluation.environment import (
+    create_evaluation_field_map,
+    run_field_map,
+)
 from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.subjects import describe_agent, describe_environment
 from boost_and_broadside.evaluation.tournament import (
@@ -226,7 +229,8 @@ def run_semi_random_tournament(
     else:
         run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
         subject = {"run": run_dir.name}
-        base_env, _, paradigm = load_run_config(run_dir)
+        base_env, _, paradigm, field_map_config = load_run_config(run_dir)
+        field_map = run_field_map(ship_config, base_env, field_map_config, device)
     labels = [_label(probability) for probability in probabilities]
 
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)

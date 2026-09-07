@@ -4,7 +4,6 @@ import copy
 import dataclasses
 import threading
 import time
-import warnings
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import replace
@@ -13,9 +12,11 @@ from typing import Any
 
 import torch
 
+from boost_and_broadside.config.run_config import ConfigSegment, append_segment
 from boost_and_broadside.run_manifest import (
     RunManifest,
     RunStatus,
+    code_identity,
     read_manifest,
     write_manifest,
 )
@@ -24,6 +25,7 @@ from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
     require_observation_schema,
 )
+from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 
 # Rolling window of full-resume (step_*.pt) and avg (avg_step_*.pt) checkpoints
@@ -236,29 +238,6 @@ def require_resumable_checkpoint(checkpoint: Mapping[str, Any], path: str | None
     )
 
 
-def _check_resolved_config_provenance(
-    checkpoint: Mapping[str, Any],
-    current: Mapping[str, object] | None,
-    *,
-    allow_config_drift: bool,
-) -> None:
-    """Reject a resume whose complete recorded launch config changed."""
-    recorded = checkpoint.get("resolved_config")
-    if current is None or not isinstance(recorded, Mapping):
-        return
-    recorded_fingerprint = recorded.get("resolved_config_fingerprint")
-    current_fingerprint = current.get("resolved_config_fingerprint")
-    if recorded_fingerprint == current_fingerprint:
-        return
-    message = (
-        "Checkpoint resolved configuration does not match this launch: "
-        f"recorded={recorded_fingerprint!r}, current={current_fingerprint!r}"
-    )
-    if not allow_config_drift:
-        raise ValueError(f"{message}. Pass --allow-config-drift to override explicitly.")
-    warnings.warn(f"{message}; continuing because config drift is allowed", stacklevel=2)
-
-
 def _load_checkpoint_state(
     target: Any, state: Mapping[str, Any], path: str, component: str
 ) -> None:
@@ -329,10 +308,18 @@ class CheckpointMixin:
                 thread.join()
 
     def _save_roster_json(self) -> None:
-        """Persist roster metadata alongside the run's checkpoints."""
+        """Persist roster metadata and the ladder match record alongside the run.
+
+        Both are sidecars rather than checkpoint payload keys. The accumulated
+        match record is what makes the ladder's ratings a compounding
+        investment, so it has to survive a resume — but a checkpoint written
+        before it existed must stay loadable for post-hoc inference, and keeping
+        the tensor payload untouched settles that by construction.
+        """
         ckpt_dir = Path(self.cfg.checkpoint_dir) / self.run_name
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         self.roster.save_json(ckpt_dir / "roster.json")
+        self.match_matrix.save_json(ckpt_dir / "match_matrix.json")
 
     def _run_directory(self) -> Path:
         return Path(self.cfg.checkpoint_dir) / self.run_name
@@ -348,6 +335,8 @@ class CheckpointMixin:
         launch = self.launch_provenance or {}
         resolved = self.resolved_config_document or {}
         run_id_path = self._run_directory() / "wandb_run_id.txt"
+        git_commit, git_dirty = code_identity()
+        self._record_config_segment(resolved, git_commit, git_dirty)
         write_manifest(
             self._run_directory(),
             RunManifest(
@@ -360,10 +349,42 @@ class CheckpointMixin:
                 live_elo=self._live_elo,
                 device=launch.get("device"),
                 seed=launch.get("seed"),
-                resolved_config_fingerprint=resolved.get("resolved_config_fingerprint"),
                 wandb_run_id=(
                     run_id_path.read_text().strip() if run_id_path.is_file() else None
                 ),
+                git_commit=git_commit,
+                git_dirty=git_dirty,
+            ),
+        )
+
+    def _record_config_segment(
+        self,
+        resolved: Mapping[str, object],
+        git_commit: str | None,
+        git_dirty: bool | None,
+    ) -> None:
+        """Record what this stretch of the run is training under, once.
+
+        Written from the same place as the manifest and for the same reason: a
+        run that never checkpoints has no history worth keeping. ``append_segment``
+        replaces a repeat of the newest step, so the ordinary case of saving
+        every update rewrites one entry rather than growing a row per save; a
+        resume that has advanced past it appends instead, which is what makes
+        the file a history rather than a snapshot.
+        """
+
+        if not resolved:
+            return
+        append_segment(
+            self._run_directory(),
+            ConfigSegment(
+                from_step=self._start_step,
+                profile=str(resolved.get("profile") or ""),
+                config=dict(resolved.get("config") or {}),
+                overrides=dict((self.launch_provenance or {}).get("overrides") or {}),
+                git_commit=git_commit,
+                git_dirty=git_dirty,
+                recorded_at=self._segment_recorded_at,
             ),
         )
 
@@ -781,16 +802,7 @@ class CheckpointMixin:
         """
         ckpt = load_checkpoint_payload(path, map_location=self.device)
         require_observation_schema(ckpt, path)
-        # Before the drift check, which returns early on a payload that records
-        # no resolved config — the shape of every pre-branch checkpoint.
         require_resumable_checkpoint(ckpt, path)
-        _check_resolved_config_provenance(
-            ckpt,
-            self.resolved_config_document,
-            allow_config_drift=bool(
-                self.launch_provenance and self.launch_provenance.get("allow_config_drift")
-            ),
-        )
         recorded_config = ckpt["train_config"]
         if not isinstance(recorded_config, Mapping):
             raise ValueError(
@@ -833,6 +845,7 @@ class CheckpointMixin:
         self._eval_window_floating = deque(ckpt["eval_window_floating"], maxlen=window)
         self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=window)
         self._global_step = ckpt["global_step"]
+        self._start_step = ckpt["global_step"]
         self._start_update = ckpt["update"] + 1
         # An interrupt before the resumed run finishes an update of its own has
         # nothing newer to write than the file it just loaded.
@@ -849,6 +862,15 @@ class CheckpointMixin:
         if roster_path.exists():
             self.roster.load_json(roster_path)
             self._register_special_opponents()
+        # A run that predates this file, or one killed before its first save,
+        # resumes with an empty matrix and starts counting again. The
+        # accumulation buys precision; nothing depends on it being complete.
+        self.match_matrix = MatchMatrix.load_json(Path(path).parent / "match_matrix.json")
+
+        # Schedule-derived state is not stored -- it is a pure function of the
+        # restored step and eval window, and rebuilding it here is what keeps the
+        # first post-resume update from running with step-zero coefficients.
+        self._apply_schedule_state(self._global_step)
 
         print(
             f"Checkpoint loaded from: {path} (resuming from update {self._start_update}, "

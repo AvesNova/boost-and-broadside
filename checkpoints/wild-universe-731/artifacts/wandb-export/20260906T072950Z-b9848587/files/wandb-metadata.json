@@ -1,0 +1,37 @@
+{
+  "os": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.13.11",
+  "startedAt": "2026-09-03T01:44:20.879363Z",
+  "args": [
+    "train",
+    "--profile",
+    "rl",
+    "--gradient-diagnostics",
+    "reward_full",
+    "--gradient-diagnostics-interval",
+    "1"
+  ],
+  "program": "/home/vizia/avesnova/boost-and-broadside/.venv/bin/bnb",
+  "codePath": ".venv/bin/bnb",
+  "codePathLocal": ".venv/bin/bnb",
+  "git": {
+    "remote": "git@github.com:AvesNova/boost-and-broadside.git",
+    "commit": "3d1a2e5573d9fff135cf5ab30b0fdea1b369908c"
+  },
+  "email": "julianzia@gmail.com",
+  "root": "/home/vizia/avesnova/boost-and-broadside",
+  "host": "vizia",
+  "executable": "/home/vizia/avesnova/boost-and-broadside/.venv/bin/python3",
+  "cpu_count": 10,
+  "cpu_count_logical": 16,
+  "disk": {
+    "/": {
+      "total": "501809635328",
+      "used": "237504286720"
+    }
+  },
+  "memory": {
+    "total": "50106368000"
+  },
+  "writerId": "2k7srk5683wx678rkqdlpvpslusmanpd"
+}

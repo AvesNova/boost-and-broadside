@@ -27,6 +27,10 @@ from boost_and_broadside.evaluation.agents import (
     init_hidden,
     resolve_agent_spec,
 )
+from boost_and_broadside.evaluation.environment import (
+    resolve_evaluation_environment,
+    run_field_map,
+)
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
@@ -113,13 +117,17 @@ def run_ar_report_mode(
         num_ships=env_config.num_ships,
     )
 
+    # A fields policy reports on the map distribution it was trained on; without
+    # this it would be diagnosed in an empty arena it never saw.
+    env_config, field_map_config = resolve_evaluation_environment(env_config, (agent0, agent1))
+
     wrapper = YemongEnvWrapper(
         num_envs=1,
         ship_config=ship_config,
         env_config=env_config,
         rewards=rewards,
         device=device,
-        field_map=None,
+        field_map=run_field_map(ship_config, env_config, field_map_config, device),
         include_bullets=agents_read_bullets(agent0, agent1),
     )
 

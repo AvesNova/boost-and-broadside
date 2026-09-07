@@ -16,12 +16,16 @@ Adding a new reward
 2. Add its name to REWARD_COMPONENT_NAMES (fixes K and value head ordering).
 3. Add a weight field to RewardConfig in config/core.py and set it in config/defaults.py.
 4. Add an instance to the list in build_reward_components().
-5. Classify it in `_GROUP` in train/rl/ppo.py (true_reward / global / local scale).
-   `_LOCAL_COMPONENTS` — which components use diagonal (self-only) lambda — is
-   derived from `_GROUP`, so a "local_scale" entry is automatically self-only.
+5. Classify it in `_TIER` in train/rl/ppo.py (outcome / kill_death / damage /
+   shaping scale), and add it to `_LOCAL_COMPONENTS` there if its signal is
+   self-only. The two are independent: the tier decides which schedule scales it,
+   locality decides whether the lambda matrix propagates it to teammates.
 """
 
+import dataclasses
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
+from typing import Any
 
 import torch
 
@@ -183,17 +187,28 @@ class EnemyFieldDeathReward(AllyFieldDeathReward):
     name = "enemy_field_death"
 
 
-class KillShotReward(RewardComponent):
-    """Proportional kill credit/penalty based on step-level damage attribution.
+class _KillCreditReward(RewardComponent):
+    """Proportional credit or blame for each dying ship, by damage attribution.
 
-    Each ship earns a proportional share of +1.0 per dying enemy, weighted by
-    its step-level damage to that ship. Ships that dealt damage to a dying
-    friendly take a proportional share of -1.0 (friendly-fire penalty).
-    Uses state.damage_matrix (step-level). Lambda=0 for all other ships
-    (self-only, diagonal lambda).
+    Every ship that damaged a dying target takes a share of ±1 proportional to
+    its damage to that target, so credit is never winner-take-all: when several
+    ships bring a target down, each earns the fraction it caused.
+
+    Four components differ only in the two axes below, so they share one
+    implementation rather than four near-copies of the same einsum-free reduce.
+
+    Subclasses set:
+        source_attr:   ``damage_matrix`` for step-level attribution, or
+                       ``cumulative_damage_matrix`` for episode-level.
+        targets_enemy: True to credit enemy kills, False to blame friendly ones.
+        sign:          +1.0 for credit, -1.0 for blame.
+
+    Self-only in every case: lambda=0 for all other ships (diagonal lambda).
     """
 
-    name = "kill_shot"
+    source_attr: str
+    targets_enemy: bool
+    sign: float
 
     def compute(
         self,
@@ -204,71 +219,74 @@ class KillShotReward(RewardComponent):
     ) -> torch.Tensor:
         just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
 
-        B, N = next_state.ship_health.shape
-        dm = next_state.damage_matrix  # (B, N_shooter, N_target)
+        _, N = next_state.ship_health.shape
+        damage = getattr(next_state, self.source_attr)  # (B, N_shooter, N_target)
         is_enemy_target = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
             1
         )  # (B, N_shooter, N_target)
-        self_mask = torch.eye(N, dtype=torch.bool, device=dm.device).unsqueeze(0)
-        is_friendly_target = ~is_enemy_target & ~self_mask  # same team, not self
+        if self.targets_enemy:
+            relevant = is_enemy_target
+        else:
+            # Same team, not self: a ship is never blamed for its own death.
+            self_mask = torch.eye(N, dtype=torch.bool, device=damage.device).unsqueeze(0)
+            relevant = ~is_enemy_target & ~self_mask
 
         dying = just_died.unsqueeze(1).float()  # (B, 1, N_target)
-
-        # --- Enemy kill credit (proportional share of +1.0 per kill) ---
-        dm_enemy = dm * is_enemy_target.float() * dying
-        total_enemy = dm_enemy.sum(dim=1, keepdim=True).clamp(min=1e-8)
-        reward = (dm_enemy / total_enemy).sum(dim=2)
-
-        # --- Friendly kill penalty (proportional share of -1.0 per friendly kill) ---
-        dm_friendly = dm * is_friendly_target.float() * dying
-        total_friendly = dm_friendly.sum(dim=1, keepdim=True).clamp(min=1e-8)
-        reward -= (dm_friendly / total_friendly).sum(dim=2)
-
-        return reward
+        attributed = damage * relevant.float() * dying  # (B, N_shooter, N_target)
+        total = attributed.sum(dim=1, keepdim=True).clamp(min=1e-8)  # (B, 1, N_target)
+        return self.sign * (attributed / total).sum(dim=2)  # (B, N_shooter)
 
 
-class KillAssistReward(RewardComponent):
-    """Proportional kill credit/penalty based on cumulative episode damage.
+class KillShotReward(_KillCreditReward):
+    """Kill credit from step-level damage: who was shooting when it died."""
 
-    Each ship earns a proportional share of 1.0 credit per dying enemy,
-    weighted by its cumulative damage to that ship. Ships that dealt cumulative
-    damage to a dying friendly take a proportional share of -1.0 (friendly-fire
-    penalty). Uses state.cumulative_damage_matrix (episode-level).
-    Lambda=0 for all other ships (self-only, diagonal lambda).
+    name = "kill_shot"
+    source_attr = "damage_matrix"
+    targets_enemy = True
+    sign = 1.0
+
+
+class KillAssistReward(_KillCreditReward):
+    """Kill credit from cumulative episode damage.
+
+    Survives a field delivering the final blow, which preserves partial credit
+    for attacks that forced a dangerous navigation choice.
     """
 
     name = "kill_assist"
+    source_attr = "cumulative_damage_matrix"
+    targets_enemy = True
+    sign = 1.0
 
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
 
-        B, N = next_state.ship_health.shape
-        cdm = next_state.cumulative_damage_matrix  # (B, N_shooter, N_target)
-        is_enemy_target = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
-            1
-        )  # (B, N_shooter, N_target)
-        self_mask = torch.eye(N, dtype=torch.bool, device=cdm.device).unsqueeze(0)
-        is_friendly_target = ~is_enemy_target & ~self_mask
+class KillAllyShotReward(_KillCreditReward):
+    """Blame for a teammate's death, from step-level damage.
 
-        dying = just_died.unsqueeze(1).float()  # (B, 1, N_target)
+    The friendly mirror of ``kill_shot``, and a component in its own right
+    rather than a negative term folded into it. Folded together, one critic head
+    had to predict the sum of a positive enemy-kill signal and a negative
+    friendly-kill one, the friendly half could not be weighted separately, and it
+    was invisible to every per-component diagnostic.
+    """
 
-        # --- Enemy kill credit (proportional share of +1.0 per kill) ---
-        cdm_enemy = cdm * is_enemy_target.float() * dying
-        total_enemy = cdm_enemy.sum(dim=1, keepdim=True).clamp(min=1e-8)
-        reward = (cdm_enemy / total_enemy).sum(dim=2)
+    name = "kill_ally_shot"
+    source_attr = "damage_matrix"
+    targets_enemy = False
+    sign = -1.0
 
-        # --- Friendly kill penalty (proportional share of -1.0 per friendly kill) ---
-        cdm_friendly = cdm * is_friendly_target.float() * dying
-        total_friendly = cdm_friendly.sum(dim=1, keepdim=True).clamp(min=1e-8)
-        reward -= (cdm_friendly / total_friendly).sum(dim=2)
 
-        return reward
+class KillAllyAssistReward(_KillCreditReward):
+    """Blame for a teammate's death, from cumulative episode damage.
+
+    Keeps the share of a ship that chipped an ally early and left another to
+    finish them: on this horizon, responsibility is the whole contribution to
+    the death rather than who happened to land last.
+    """
+
+    name = "kill_ally_assist"
+    source_attr = "cumulative_damage_matrix"
+    targets_enemy = False
+    sign = -1.0
 
 
 class AllyWinReward(RewardComponent):
@@ -631,17 +649,108 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "shoot_quality",  # 12 — shot quality when firing (shaping, self only)
     "kill_shot",  # 13 — proportional kill credit from step-level damage (self only)
     "kill_assist",  # 14 — cumulative combat credit, including field-finished kills
-    "combat_damage_taken",  # 15 — applied projectile damage to this ship
-    "field_damage_taken",  # 16 — applied boundary damage to this ship
-    "damage_dealt_enemy",  # 17 — damage dealt to enemies this step (self only)
-    "damage_dealt_ally",  # 18 — damage dealt to allies — friendly-fire penalty
-    "combat_death",  # 19 — projectile death of this ship (self only)
-    "field_death",  # 20 — boundary death of this ship (self only)
-    "shooting_penalty",  # 21 — negative reward on every shot (self only)
-    "speed",  # 22 — penalty when proper speed < min_speed (self only)
+    "kill_ally_shot",  # 15 — step-level blame for a teammate's death (self only)
+    "kill_ally_assist",  # 16 — cumulative blame for a teammate's death (self only)
+    "combat_damage_taken",  # 17 — applied projectile damage to this ship
+    "field_damage_taken",  # 18 — applied boundary damage to this ship
+    "damage_dealt_enemy",  # 19 — damage dealt to enemies this step (self only)
+    "damage_dealt_ally",  # 20 — damage dealt to allies — friendly-fire penalty
+    "combat_death",  # 21 — projectile death of this ship (self only)
+    "field_death",  # 22 — boundary death of this ship (self only)
+    "shooting_penalty",  # 23 — negative reward on every shot (self only)
+    "speed",  # 24 — penalty when proper speed < min_speed (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
+
+
+def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, float]:
+    """Every component's weight, derived from the four event weights.
+
+    The balance rule is that an event pays one side what it charges the other.
+    Writing it out:
+
+    ==========================  ==========================================
+    combat death of a ship      charged ``U`` (``combat_death``), paid
+                                ``k*U`` split over ``kill_shot`` and
+                                ``kill_assist``
+    field death of a ship       charged ``U`` (``field_death``), paid
+                                ``kill_assist`` plus ``enemy_field_death``
+                                -- and since ``kill_shot`` cannot fire on a
+                                field death, that second term has to equal
+                                ``kill_shot`` for the totals to match
+    combat damage               charged ``V`` (``combat_damage_taken``),
+                                paid ``d*V`` (``damage_dealt_enemy``)
+    field damage                charged ``V`` (``field_damage_taken``),
+                                paid ``d*V`` (``enemy_field_damage``)
+    a win                       paid ``W``, charged ``W`` through the
+                                negative enemy lambda on ``enemy_win``
+    ==========================  ==========================================
+
+    ``k`` is ``kill_payout_ratio`` and ``d`` is ``damage_payout_ratio``, the two
+    named exceptions: at 1.0 the table above balances exactly, and above it the
+    side that caused an event is paid more than the side it happened to is
+    charged. Nothing else in the system can express that, because raising ``U``
+    or ``V`` raises charge and payout together.
+
+    The friendly-fire components mirror the offensive ones exactly, which is what
+    makes killing a teammate cost the team twice: once for the death and once for
+    having caused it. They follow the payout, so the two ratios price blame for
+    harming a teammate at the same rate they price credit for harming an enemy.
+
+    Args:
+        rewards: A ``RewardConfig``, or the plain mapping a checkpoint stores in
+            ``train_config["rewards"]``. Checkpoints written before the weights
+            became derived carry one key per component; those are returned as they
+            were recorded, so an older run still loads for inference.
+
+    Returns:
+        Component name -> weight, covering every name in REWARD_COMPONENT_NAMES.
+    """
+
+    raw = rewards if isinstance(rewards, Mapping) else dataclasses.asdict(rewards)
+
+    if "death_weight" not in raw:
+        # Pre-derivation checkpoint: the per-component weights are the record.
+        return {name: float(raw.get(f"{name}_weight", 0.0)) for name in REWARD_COMPONENT_NAMES}
+
+    win = float(raw["win_weight"])
+    death = float(raw["death_weight"])
+    damage = float(raw["damage_weight"])
+    # The two places the balance rule is broken on purpose. Each tier charges the
+    # side an event happens *to* the plain weight and pays the side that caused it
+    # the weight times a ratio, which is the same number only at 1.0. See
+    # ``RewardConfig``.
+    payout = death * float(raw.get("kill_payout_ratio", 1.0))
+    shot = payout * float(raw["kill_shot_fraction"])
+    assist = payout - shot
+    dealt = damage * float(raw.get("damage_payout_ratio", 1.0))
+
+    derived = {name: 0.0 for name in REWARD_COMPONENT_NAMES}
+    derived.update(
+        {
+            "ally_win": win,
+            "enemy_win": win,
+            "combat_death": death,
+            "field_death": death,
+            "kill_shot": shot,
+            "kill_ally_shot": shot,
+            # The offensive side of a death nobody shot.
+            "enemy_field_death": shot,
+            "kill_assist": assist,
+            "kill_ally_assist": assist,
+            "combat_damage_taken": damage,
+            "field_damage_taken": damage,
+            "damage_dealt_enemy": dealt,
+            "damage_dealt_ally": dealt,
+            # The offensive side of damage nobody dealt.
+            "enemy_field_damage": dealt,
+        }
+    )
+    # Shaping is not an event and has no opposing side, so it stays individual.
+    for name in ("facing", "closing_speed", "shoot_quality", "shooting_penalty", "speed"):
+        derived[name] = float(raw.get(f"{name}_weight", 0.0))
+    return derived
 
 
 def build_reward_components(
@@ -660,42 +769,45 @@ def build_reward_components(
     Returns:
         One RewardComponent per entry in REWARD_COMPONENT_NAMES, in order.
     """
+    w = component_weights(rewards)
     return [
-        AllyCombatDamageReward(weight=rewards.ally_combat_damage_weight),
-        EnemyCombatDamageReward(weight=rewards.enemy_combat_damage_weight),
-        AllyFieldDamageReward(weight=rewards.ally_field_damage_weight),
-        EnemyFieldDamageReward(weight=rewards.enemy_field_damage_weight),
-        AllyCombatDeathReward(weight=rewards.ally_combat_death_weight),
-        EnemyCombatDeathReward(weight=rewards.enemy_combat_death_weight),
-        AllyFieldDeathReward(weight=rewards.ally_field_death_weight),
-        EnemyFieldDeathReward(weight=rewards.enemy_field_death_weight),
-        AllyWinReward(weight=rewards.ally_win_weight),
-        EnemyWinReward(weight=rewards.enemy_win_weight),
+        AllyCombatDamageReward(weight=w["ally_combat_damage"]),
+        EnemyCombatDamageReward(weight=w["enemy_combat_damage"]),
+        AllyFieldDamageReward(weight=w["ally_field_damage"]),
+        EnemyFieldDamageReward(weight=w["enemy_field_damage"]),
+        AllyCombatDeathReward(weight=w["ally_combat_death"]),
+        EnemyCombatDeathReward(weight=w["enemy_combat_death"]),
+        AllyFieldDeathReward(weight=w["ally_field_death"]),
+        EnemyFieldDeathReward(weight=w["enemy_field_death"]),
+        AllyWinReward(weight=w["ally_win"]),
+        EnemyWinReward(weight=w["enemy_win"]),
         FacingReward(
-            weight=rewards.facing_weight,
+            weight=w["facing"],
             radius=rewards.proximity_radius,
             world_size=ship_config.world_size,
         ),
         ClosingSpeedReward(
-            weight=rewards.closing_speed_weight,
+            weight=w["closing_speed"],
             world_size=ship_config.world_size,
             max_speed=ship_config.max_speed,
         ),
         ShootQualityReward(
-            weight=rewards.shoot_quality_weight,
+            weight=w["shoot_quality"],
             radius=rewards.shoot_quality_radius,
             world_size=ship_config.world_size,
         ),
-        KillShotReward(weight=rewards.kill_shot_weight),
-        KillAssistReward(weight=rewards.kill_assist_weight),
-        LocalCombatDamageTakenReward(weight=rewards.combat_damage_taken_weight),
-        LocalFieldDamageTakenReward(weight=rewards.field_damage_taken_weight),
-        LocalDamageDealtEnemyReward(weight=rewards.damage_dealt_enemy_weight),
-        LocalDamageDealtAllyReward(weight=rewards.damage_dealt_ally_weight),
-        LocalCombatDeathReward(weight=rewards.combat_death_weight),
-        LocalFieldDeathReward(weight=rewards.field_death_weight),
-        ShootingPenaltyReward(weight=rewards.shooting_penalty_weight),
-        SpeedReward(weight=rewards.speed_weight, min_speed=rewards.speed_penalty_min),
+        KillShotReward(weight=w["kill_shot"]),
+        KillAssistReward(weight=w["kill_assist"]),
+        KillAllyShotReward(weight=w["kill_ally_shot"]),
+        KillAllyAssistReward(weight=w["kill_ally_assist"]),
+        LocalCombatDamageTakenReward(weight=w["combat_damage_taken"]),
+        LocalFieldDamageTakenReward(weight=w["field_damage_taken"]),
+        LocalDamageDealtEnemyReward(weight=w["damage_dealt_enemy"]),
+        LocalDamageDealtAllyReward(weight=w["damage_dealt_ally"]),
+        LocalCombatDeathReward(weight=w["combat_death"]),
+        LocalFieldDeathReward(weight=w["field_death"]),
+        ShootingPenaltyReward(weight=w["shooting_penalty"]),
+        SpeedReward(weight=w["speed"], min_speed=rewards.speed_penalty_min),
     ]
 
 

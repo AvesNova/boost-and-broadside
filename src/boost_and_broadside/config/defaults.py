@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 from boost_and_broadside.config.core import ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.config.live_elo import LIVE_SCRIPTED_ELO
-from boost_and_broadside.config.schedule_spec import (
-    TrainingScheduleSpec,
-    constant_spec,
-    exponential_spec,
-    join_spec,
-    linear_spec,
-    stepped_spec,
-)
+from boost_and_broadside.config.schedule_spec import TrainingScheduleSpec, hold
 from boost_and_broadside.config.training import EloCalibrateConfig, EloEvalConfig
 
-SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=1.0)
+# Frontal armour, re-enabled at 0.3: a head-on hit lands 30% of its damage, and
+# the mitigation falls off with the hit angle so a broadside still lands in full.
+# 1.0 disables the term entirely, which is what every run from 719 to 730 used.
+#
+# This changes the physics, so ratings do not carry across the boundary. The live
+# gauge is defined per environment -- random at 0, scripted at 1000 -- and the
+# span between those two points is a property of the game, not a constant, so a
+# run under this config cannot be compared on Elo to 719-730 however either was
+# measured. Cross-config comparison needs a shared opponent played under one
+# physics, which is what `bnb crossover` measures.
+SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=0.3)
 
 MODEL_CONFIG = ModelConfig(
     d_model=128,
@@ -64,31 +65,53 @@ ELO_CALIBRATE = EloCalibrateConfig(
 LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 
 REWARDS = RewardConfig(
-    # Source-split outcome heads are retained even when their weights are zero.
-    ally_combat_damage_weight=0.0,
-    enemy_combat_damage_weight=0.0,
-    ally_field_damage_weight=0.0,
-    enemy_field_damage_weight=0.0,
-    ally_combat_death_weight=0.0,
-    enemy_combat_death_weight=0.0,
-    ally_field_death_weight=0.0,
-    enemy_field_death_weight=0.0,
-    # The win pair receives 32% of the normalized reward-component mix: strong
-    # enough to express the objective without drowning dense engagement shaping.
-    ally_win_weight=1.5,
-    enemy_win_weight=1.5,
-    facing_weight=0.1,
-    closing_speed_weight=0.1,
-    shoot_quality_weight=0.1,
-    # Per-ship credit stays local under the lambda aggregation matrix.
-    kill_shot_weight=1.0,
-    kill_assist_weight=1.0,
-    combat_death_weight=1.0,
-    field_death_weight=0.0,
-    combat_damage_taken_weight=0.5,
-    field_damage_taken_weight=0.0,
-    damage_dealt_enemy_weight=0.5,
-    damage_dealt_ally_weight=0.5,
+    # Five numbers, solved rather than chosen. Every event component follows from
+    # them by the balance rule documented on RewardConfig.
+    #
+    # The target is run 720 -- the only configuration measured that beat run 719,
+    # by +58 Elo at matched steps on a joint calibration. Its weights were not
+    # derived: they were solved per component as ``w = share / d`` against measured
+    # gradient coherence, which is why no two of them are equal. These five numbers
+    # are the closest the derivation can come to that vector, by least squares on
+    # log weights -- log space because the weights span 0.08 to 1.0 and only ratios
+    # matter, so a 10% error on ``facing`` should count like a 10% error on
+    # ``ally_win``. The fit is exact in closed form and was checked against a
+    # numeric optimiser; it lands within 6% RMS of 720, and the residual is
+    # irreducible because the rule forces pairs equal that 720 had unequal
+    # (``combat_damage_taken`` 0.32 against ``field_damage_taken`` 0.26 is the
+    # worst of them, and that spread came out of 720's per-component solve rather
+    # than out of any principle).
+    #
+    # Run 725 established what this is *not*: 719's own vector, which reproduced
+    # 719 exactly -- parity on a joint fit at 133M and 154M -- and did not come
+    # near 720. Matching 719 is evidently enough to match 719 and not enough to
+    # beat it, so this stops copying 719 and reconstructs 720 instead.
+    #
+    # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
+    # scaling all of these together is a no-op. They are stated against a win of
+    # 1.0 for that reason.
+    win_weight=1.0,
+    death_weight=0.283,
+    damage_weight=0.274,
+    # The one ratio the balance rule leaves free. Solved at 0.4875 and set even:
+    # nothing distinguishes them (6.0% RMS against 5.8%), and an even split is the
+    # standing principle.
+    kill_shot_fraction=0.5,
+    # The two ratios the rule forbids, tied to one another and solved as a single
+    # free number. Both tiers in 720 were tilted toward the side that caused the
+    # event -- kills 2.15 against deaths, damage dealt 1.86 against damage taken --
+    # and one shared ratio is the smaller claim: an event pays the aggressor twice
+    # what it charges the victim, everywhere, rather than two independently tuned
+    # numbers. The solve returns 1.96 for the shared ratio, which the fit cannot
+    # tell from 2.0 (5.97% RMS against 6.01%), so it is 2.0 -- also the value runs
+    # 725 and 726 carry, which keeps one ratio across all three.
+    kill_payout_ratio=2.0,
+    damage_payout_ratio=2.0,
+    # Shaping is not an event, so it stays individually weighted, and these two
+    # are 720's own values rather than solved -- the derivation has nothing to say
+    # about them.
+    facing_weight=0.09,
+    closing_speed_weight=0.08,
     proximity_radius=400.0,
     shoot_quality_radius=200.0,
     enemy_neg_lambda_components=frozenset(
@@ -114,12 +137,6 @@ REWARDS = RewardConfig(
     speed_penalty_min=10.0,
 )
 
-FIELD_REWARDS = replace(
-    REWARDS,
-    field_damage_taken_weight=0.5,
-    field_death_weight=1.0,
-)
-
 # Values are expressed per 60 Hz physics tick.  The resolver raises them to
 # action_repeat so decision-step horizons remain normalized to game time.
 # Gamma buckets are win=.999, kill/death=.995, damage=.991, shaping=.975;
@@ -136,6 +153,8 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
     "field_death": 0.995,
     "kill_shot": 0.995,
     "kill_assist": 0.995,
+    "kill_ally_shot": 0.995,
+    "kill_ally_assist": 0.995,
     "ally_combat_damage": 0.991,
     "enemy_combat_damage": 0.991,
     "ally_field_damage": 0.991,
@@ -162,6 +181,8 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "field_death": 0.95,
     "kill_shot": 0.87,
     "kill_assist": 0.97,
+    "kill_ally_shot": 0.87,
+    "kill_ally_assist": 0.97,
     "ally_combat_damage": 0.90,
     "enemy_combat_damage": 0.90,
     "ally_field_damage": 0.90,
@@ -179,73 +200,62 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
 
 
 def make_rl_schedule_spec() -> TrainingScheduleSpec:
-    """Return independent declarative intent for the current RL schedule."""
+    """The current RL schedule, as keypoint tables."""
 
     return TrainingScheduleSpec(
-        learning_rate=join_spec(
-            (0, linear_spec((0, 1e-7), (5_000_000, 3e-4))),
-            (5_000_000, constant_spec(3e-4)),
-            (100_000_000, exponential_spec((100_000_000, 3e-4), (500_000_000, 1e-4))),
+        # Peak 4.5e-4, decaying to a third of it. The last row holds, so a budget
+        # longer than 500M steps trains its tail at the floor rather than
+        # continuing to decay.
+        learning_rate=(
+            (0, 1e-7, "linear"),
+            (5_000_000, 4.5e-4, "hold"),
+            (100_000_000, 4.5e-4, "exponential"),
+            (500_000_000, 1.5e-4, "hold"),
         ),
-        policy_gradient_coef=constant_spec(1.0),
-        entropy_coef=constant_spec(0.005),
-        behavior_cloning_coef=constant_spec(2.0),
-        value_function_coef=constant_spec(1.0),
-        sigreg_coef=constant_spec(0.00),
-        true_reward_scale=constant_spec(1.0),
-        global_scale=constant_spec(1.0),
-        local_scale=constant_spec(1.0),
-        league_fraction=constant_spec(0.5),
+        policy_gradient_coef=hold(1.0),
+        entropy_coef=hold(0.005),
+        behavior_cloning_coef=hold(2.0),
+        value_function_coef=hold(1.0),
+        sigreg_coef=hold(0.00),
+        # Tier scales ride on top of the per-component weights. Three of the
+        # four hold: the realised tier shares already drift the way a curriculum
+        # would move them, with the outcome tier rising about 1.29x over a run
+        # and the kill/death tier falling to 0.73x as the policy stops dying in
+        # ways it can still learn from. Scheduling those would fight a trend
+        # rather than create one.
+        outcome_scale=hold(1.0),
+        kill_death_scale=hold(1.0),
+        damage_scale=hold(1.0),
+        # Shaping is the exception, and it is also what run 720 carried -- this is
+        # the last config difference between that run and this one. It has to be
+        # pushed down rather than left alone: its realised share *grows* about
+        # 1.58x over a run. Facing and closing speed are not potential-based, so
+        # they bias the optimum for as long as they are on, and they oppose the
+        # objective directly -- closing_speed against field_damage_taken measured
+        # a mean gradient cosine of -0.446, negative in 99.9% of samples. They
+        # exist to stop early passive collapse, and that job is finished long
+        # before the budget is. The floor is 0.05 rather than 0 so the components
+        # stay measurable to the end: their gradient share and explained variance
+        # remain readable, which is how the next run learns whether shaping was
+        # still buying anything.
+        #
+        # Note 720 only reached 127M, so it ran barely 27M steps into this taper
+        # and ended near 0.76. Everything the taper does past that point is
+        # untested by the run this vector reconstructs.
+        shaping_scale=(
+            (0, 1.0, "hold"),
+            (100_000_000, 1.0, "exponential"),
+            (400_000_000, 0.05, "hold"),
+        ),
+        league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy
         # against an update measured in minutes, and the writer already skips
         # itself rather than queueing when a previous save is still running, so
         # the interval buys no throughput -- it only decides how much progress
         # an interrupted run throws away.
-        checkpoint_interval=constant_spec(1),
-        num_epochs=stepped_spec((0, 4)),
-        target_kl=stepped_spec((0, 0.1)),
-        high_winrate_threshold=constant_spec(0.8),
-        high_winrate_target_kl=constant_spec(0.02),
-    )
-
-
-def make_bc_schedule_spec() -> TrainingScheduleSpec:
-    """Return independent declarative intent for the supervised BC schedule.
-
-    Every value the behavior-cloning objective does not require is the current
-    project value.  The five that differ from :func:`make_rl_schedule_spec` are
-    named and tested by the BC-versus-RL allowed-difference invariant.
-    """
-
-    return TrainingScheduleSpec(
-        # Warm up to the project learning rate, then hold.  RL's decay tail is
-        # keyed to keypoints at 100M and 500M steps -- the end of *its* budget --
-        # and means nothing on BC's own, much longer budget.
-        learning_rate=linear_spec((0, 1e-7), (6_000_000, 3e-4)),
-        # No policy gradient: the scripted controller supplies supervised action
-        # targets and never takes a side in the rollout.
-        policy_gradient_coef=constant_spec(0.0),
-        entropy_coef=constant_spec(0.005),
-        # In BC this is the policy head's only learning signal, deliberately
-        # balanced one-to-one against the next-state auxiliary BC also weights
-        # at 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term
-        # carried alongside a live policy gradient.
-        behavior_cloning_coef=constant_spec(1.0),
-        value_function_coef=constant_spec(1.0),
-        sigreg_coef=constant_spec(0.0),
-        # All component groups stay active so the critic learns the full reward
-        # signal before RL begins.
-        true_reward_scale=constant_spec(1.0),
-        global_scale=constant_spec(1.0),
-        local_scale=constant_spec(1.0),
-        # League opposition disabled: no roster opponent plays a BC rollout.
-        league_fraction=constant_spec(0.0),
-        checkpoint_interval=constant_spec(1),
-        num_epochs=stepped_spec((0, 4)),
-        # A KL trust region early-stops epochs when the policy moves away from
-        # the one that produced the rollout.  Under supervision that movement is
-        # the objective, so the PPO stopping criterion does not apply.
-        target_kl=constant_spec(None),
-        high_winrate_threshold=constant_spec(0.8),
-        high_winrate_target_kl=constant_spec(0.02),
+        checkpoint_interval=hold(1),
+        num_epochs=hold(4),
+        target_kl=hold(0.1),
+        high_winrate_threshold=hold(0.8),
+        high_winrate_target_kl=hold(0.02),
     )

@@ -30,8 +30,9 @@ three categories differ in what they promise, so they are never mixed:
 
 `--vram` may move tier 1 and tier 2 only. A profile's logical batch is fixed, so a width is
 valid only when it divides that batch exactly and stays minibatch-aligned; anything else is
-rejected rather than silently rounded. For the `rl` profile the valid widths are 11712 (1
-shard), 5856 (2), 3904 (3), and 1952 (6), and `rl-fields` has no two-shard split at all.
+rejected rather than silently rounded. For the `rl` profile the valid widths are 7776 (1
+shard), 2592 (3), 864 (9), 288 (27), 96 (81), and 32 (243) -- there is no two-shard split,
+so a preset that cannot afford 7776 proposes 2592 rather than inventing a width between.
 
 ### Policies
 
@@ -53,10 +54,9 @@ every resolved value with its source (`profile`, `derived`, `vram-cache`, `vram-
 
 ### Presets are starting points, measurements are not
 
-Only the 8 GB row is measured, and it is exactly the launch every registered profile already
-resolves to (3904 envs / 3 shards / 25,000 microbatch tokens / no gradient checkpointing for
-`rl`). Probing that card directly in August 2026, running one complete `rl` update in eager
-mode under Torch 2.13 / CUDA 13.0, accepted it on the first candidate:
+Only the 8 GB row is measured. Probing that card directly in August 2026, running one
+complete `rl` update in eager mode under Torch 2.13 / CUDA 13.0, accepted it on the first
+candidate:
 
 | candidate | allocated peak | reserved peak | of total | outcome |
 |---|---:|---:|---:|---|
@@ -65,6 +65,12 @@ mode under Torch 2.13 / CUDA 13.0, accepted it on the first candidate:
 Reserved peak is 96% of the card, so this row has essentially no allocator headroom on
 8 GB. It fits; a slightly larger shard or microbatch would not. The ladder below it
 therefore reaches for gradient checkpointing before it narrows the shard.
+
+That row was measured at eight entity tokens per environment, when `rl` was field-free and
+resolved to 3904 envs. The profile now carries four fields and resolves to 2592, which is
+31,104 resident entity tokens against the measured 31,232 -- within 0.4%, and the microbatch
+is capped at 25,000 tokens either way. The number is therefore expected to carry, but it has
+not been re-probed at the current width, and it is a measurement rather than a derivation.
 
 The 16, 24, and 32 GB rows are linear extrapolations of the persistent-buffer and
 rollout-peak figures in the production comparison below, and have never been run. Applying
@@ -82,11 +88,19 @@ numerically exact and only costs time, and narrows the rollout shard only after 
 first candidate that survives a full update wins.
 
 The result lands in `.vram.json` beside the working tree, gitignored and recomputable rather
-than an artifact. An entry applies only to a fingerprint covering GPU name, UUID, MIG status,
-total memory, compute capability and SM count, the Torch/CUDA/cuDNN/Python versions, the
-autocast dtype, the compile mode, the profile's semantic fingerprint, and its token
-geometry. Change any of those and the entry stops matching, so `auto` falls back to the
-profile's own sizing instead of reusing a measurement of a different question.
+than an artifact. Each entry carries the question it answered, written out: GPU name, UUID,
+MIG status, total memory, compute capability and SM count; the Torch/CUDA/cuDNN/Python
+versions; the autocast dtype and compile mode; the network architecture; the arena the
+tokens come from; and the token geometry. Change any of those and the entry stops matching,
+so `auto` falls back to the profile's own sizing instead of reusing a measurement of a
+different question.
+
+The list is deliberately short of a whole profile. A learning rate or a reward weight cannot
+move a byte, so a measurement of this card survives editing them, and `rl` and `bc` share
+one entry because they differ in objective rather than in architecture. What does invalidate
+an entry is anything that changes the shape of the work: token width, network size, the
+logical batch. The stored hash is only the dictionary key; the identity beside it is what
+says whether an entry still applies, and it is readable.
 
 A cache file that cannot be read is an error naming `--vram reprobe` or `--vram off`, never
 a silent resize. A reprobe reaches the file only after it has measured the card, so it
@@ -101,7 +115,7 @@ microbatch chosen on the command line does claim its tier, since the cost is the
 whoever picked it. `proposed`, `applied`, and the per-value source map record who did.
 
 `--compile` changes the reserved workspace, which is why compile mode is part of the cache
-fingerprint: a measurement taken under one mode does not answer for another. Probe with the
+identity: a measurement taken under one mode does not answer for another. Probe with the
 flags you intend to train with. `bnb train --profile rl --vram probe` uses the run's own
 compile mode, so one command line probes and then trains against its own measurement.
 Switching `--compile` afterwards is a cache miss, and `auto` says so instead of reusing the

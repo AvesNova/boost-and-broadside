@@ -4,6 +4,9 @@
 
 ![Eight learned blue ships defeating eleven scripted red ships](docs/results/replays/vs_scripted_8v11_seed03.gif)
 
+<sub>Replay of <code>resilient-resonance-682</code>, the previous reference run; the
+figures below measure <code>good-leaf-719</code>. See <a href="docs/replays.md">replays</a>.</sub>
+
 *Outnumbered 11 ships to 8, the learned fleet wins with three ships to spare.*
 
 Boost and Broadside is a tensorized 2D dogfighting environment and reinforcement
@@ -15,7 +18,8 @@ zero-shot to fleets of one to 64 ships. A single recurrent network commands the
 whole fleet, producing an action for every ship on each forward pass.
 
 [Explore the results](docs/evaluation.md) · [Watch more replays](docs/replays.md) ·
-[Understand the architecture](docs/architecture.md) · [Get started](docs/getting-started.md)
+[Understand the architecture](docs/architecture.md) · [Get started](docs/getting-started.md) ·
+[Training runs](docs/training-runs.md)
 
 ## Zero-shot team-size transfer
 
@@ -25,32 +29,34 @@ recurrence carries information through time. Because the network operates over a
 variable-length token sequence, the same weights can run at fleet sizes never seen
 during training.
 
-![Zero-shot crossover against the scripted controller](docs/results/crossover_phase.png)
+![Calibrated rating across symmetric fleet sizes](checkpoints/good-leaf-719/artifacts/figures/elo_scale_scripted_1000.png)
 
-*From three learned ships onward, the 4-vs-4 policy remains above 50% against a larger
-scripted fleet at every scale tested.*
+*Rated against the same scripted controller at every size, the 4-vs-4 policy is stronger
+the larger the fleet it is given — the coordination it learned scales further than the
+setting it learned it in.*
 
-Selected results from the [recorded crossover sweep](docs/crossover/crossover.json):
+Selected results from the [recorded crossover sweep](checkpoints/good-leaf-719/artifacts/figures/crossover.json),
+each row the largest scripted fleet the policy still beats:
 
 | Learned ships | Scripted ships | Win rate |
 |---:|---:|---:|
-| 4 | 5 | **82.4%** |
-| 8 | 11 | **72.7%** |
-| 16 | 24 | **56.6%** |
-| 32 | 48 | **56.2%** |
-| 64 | 88 | **50.3%** |
+| 4 | 6 | **63.3%** |
+| 8 | 12 | **59.8%** |
+| 16 | 23 | **64.8%** |
+| 32 | 44 | **57.4%** |
+| 64 | 79 | **54.4%** |
 
 The [evaluation guide](docs/evaluation.md#zero-shot-crossover) covers the search method,
 sample sizes, raw artifacts, and limitations behind these measurements.
 
 ## Learning progression
 
-A one-billion-step training run completed in 7.5 hours on a single RTX 5090. Post-hoc
-calibration places the final checkpoint at about **1772 Elo** on a scale that fixes the
-scripted controller at 1000, a lead of roughly **772 points**, where 400 points
-already means ten-to-one odds.
+A one-billion-step training run completed in about four days on a single RTX 4070
+Laptop. Post-hoc calibration places the final checkpoint at about **1748 Elo** on a
+scale that fixes the scripted controller at 1000, a lead of roughly **748 points**,
+where 400 points already means ten-to-one odds.
 
-![Post-hoc calibrated Elo over training](docs/results/elo_curve.png)
+![Post-hoc calibrated Elo over training](checkpoints/good-leaf-719/artifacts/figures/elo_curve.png)
 
 *The calibrated rating keeps rising long after wins against the scripted controller
 stop being informative.*
@@ -82,8 +88,9 @@ emits one output per ship, however many there are.
   measurements with qualitative behavior. The crossover evaluator is
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).
 
-Headline claims are traceable to code and stored artifacts through the
-[evidence map](docs/internal/evidence.md).
+Every headline number names the artifact it came from. The figures are linked from
+[the reference run's own directory](checkpoints/good-leaf-719/artifacts/figures/), which
+records the measurement behind each one.
 
 ## Quick start
 
@@ -97,9 +104,6 @@ uv sync
 
 # Resolve and inspect the RL launch without allocating the trainer
 uv run bnb train --profile rl --print-config
-
-# Inspect the independent refractive-field profile
-uv run bnb train --profile rl-fields --print-config
 
 # Play a 1v1 match against a null ship in four refractive fields
 uv run bnb play

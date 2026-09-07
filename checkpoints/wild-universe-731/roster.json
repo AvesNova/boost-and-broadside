@@ -1,0 +1,214 @@
+{
+  "entries": [
+    {
+      "kind": "random",
+      "label": "random",
+      "elo": 0.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "scripted",
+      "label": "scripted",
+      "elo": 1000.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p2",
+      "elo": 200.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.2
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p3",
+      "elo": 300.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.3
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p4",
+      "elo": 400.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.4
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p5",
+      "elo": 500.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.5
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p6",
+      "elo": 600.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.6
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p7",
+      "elo": 700.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.7
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p8",
+      "elo": 800.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.8
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p9",
+      "elo": 900.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.9
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p95",
+      "elo": 950.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true,
+      "p_scripted": 0.95
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_10948608",
+      "elo": 642.318299239235,
+      "global_step": 10948608,
+      "update": 11,
+      "path": "checkpoints/wild-universe-731/ladder_step_000010948608.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_12939264",
+      "elo": 883.1526245069581,
+      "global_step": 12939264,
+      "update": 13,
+      "path": "checkpoints/wild-universe-731/ladder_step_000012939264.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_14929920",
+      "elo": 923.6406597080418,
+      "global_step": 14929920,
+      "update": 15,
+      "path": "checkpoints/wild-universe-731/ladder_step_000014929920.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_24883200",
+      "elo": 1026.8281628577238,
+      "global_step": 24883200,
+      "update": 25,
+      "path": "checkpoints/wild-universe-731/ladder_step_000024883200.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "avg",
+      "label": "avg",
+      "elo": 2054.15174044188,
+      "global_step": 36827136,
+      "update": 0,
+      "path": null,
+      "fixed": false,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_55738368",
+      "elo": 1203.1021428629779,
+      "global_step": 55738368,
+      "update": 56,
+      "path": "checkpoints/wild-universe-731/ladder_step_000055738368.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_79626240",
+      "elo": 1394.4530700045448,
+      "global_step": 79626240,
+      "update": 80,
+      "path": "checkpoints/wild-universe-731/ladder_step_000079626240.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_120434688",
+      "elo": 1590.828749336802,
+      "global_step": 120434688,
+      "update": 121,
+      "path": "checkpoints/wild-universe-731/ladder_step_000120434688.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_153280512",
+      "elo": 1823.7646421757208,
+      "global_step": 153280512,
+      "update": 154,
+      "path": "checkpoints/wild-universe-731/ladder_step_000153280512.pt",
+      "fixed": true,
+      "p_scripted": null
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_247836672",
+      "elo": 1955.2907926492014,
+      "global_step": 247836672,
+      "update": 249,
+      "path": "checkpoints/wild-universe-731/ladder_step_000247836672.pt",
+      "fixed": false,
+      "p_scripted": null
+    }
+  ]
+}

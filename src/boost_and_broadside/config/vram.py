@@ -35,7 +35,7 @@ from typing import Any, Literal
 
 from boost_and_broadside.config.fingerprint import canonical_data, fingerprint
 from boost_and_broadside.config.resolve import LaunchGeometry, LaunchOverrides
-from boost_and_broadside.config.schema import ResolutionSource
+from boost_and_broadside.config.schema import ProfileSpec, ResolutionSource
 
 VRAM_CACHE_FILENAME = ".vram.json"
 VRAM_CACHE_SCHEMA_VERSION = 1
@@ -263,10 +263,33 @@ def preset_knobs(preset: VramPreset, geometry: LaunchGeometry) -> VramKnobs:
     )
 
 
+def memory_identity(profile: ProfileSpec) -> dict[str, Any]:
+    """The parts of a profile that change how much memory a launch needs.
+
+    Everything else in a profile is deliberately absent.  A learning rate or a
+    reward weight cannot move a byte, so a measurement stays valid across those
+    edits; keying the cache on the whole profile threw away a real measurement
+    every time an unrelated hyperparameter moved.
+    """
+
+    model = canonical_data(profile.model_config)
+    # The knob the probe is choosing, not an input to the question it answers.
+    del model["grad_checkpoint"]
+    arena: dict[str, Any] = {
+        "num_ships": profile.num_ships,
+        "num_fields": profile.num_fields,
+    }
+    if profile.model_config.reads_bullets:
+        # The bullet tensor is num_ships * max_bullets entries. A model with no
+        # bullet cross-attention never builds it, so its size is not part of
+        # that model's question.
+        arena["max_bullets"] = profile.max_bullets
+    return {"model": model, "arena": arena}
+
+
 def cache_identity(
     *,
-    profile_name: str,
-    profile_fingerprint: str,
+    profile: ProfileSpec,
     geometry: LaunchGeometry,
     compile_mode: str | None,
     device: Mapping[str, Any],
@@ -274,17 +297,16 @@ def cache_identity(
 ) -> dict[str, Any]:
     """The complete description a cached measurement is only valid for.
 
-    ``profile_fingerprint`` already binds the model and the rollout intent; the
-    explicit token arithmetic is repeated so ``.vram.json`` stays readable by a
-    human deciding whether an entry is still relevant.
+    Written out in full rather than hashed down, so a human reading
+    ``.vram.json`` can see why an entry did or did not apply.  The hash over it
+    is only the dictionary key.
     """
 
     return {
         "probe_version": PROBE_VERSION,
         "autocast_dtype": AUTOCAST_DTYPE,
         "compile_mode": compile_mode,
-        "profile": profile_name,
-        "profile_fingerprint": profile_fingerprint,
+        **memory_identity(profile),
         "geometry": {
             "entity_tokens": geometry.entity_tokens,
             "num_steps": geometry.num_steps,
@@ -589,6 +611,7 @@ __all__ = [
     "cache_identity",
     "cache_path",
     "identity_fingerprint",
+    "memory_identity",
     "launch_overrides",
     "parse_vram_policy",
     "preset_knobs",

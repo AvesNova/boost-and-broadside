@@ -1,0 +1,803 @@
+{
+ "version": 1,
+ "pairs": [
+  {
+   "a": "ckpt_10948608",
+   "b": "ckpt_12939264",
+   "wins_a": 18.0,
+   "wins_b": 73.0,
+   "ties": 6.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "ckpt_14929920",
+   "wins_a": 47.0,
+   "wins_b": 277.0,
+   "ties": 21.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "random",
+   "wins_a": 24.0,
+   "wins_b": 1.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "scripted",
+   "wins_a": 25.0,
+   "wins_b": 253.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p2",
+   "wins_a": 46.0,
+   "wins_b": 1.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p3",
+   "wins_a": 51.0,
+   "wins_b": 8.0,
+   "ties": 7.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p4",
+   "wins_a": 38.0,
+   "wins_b": 11.0,
+   "ties": 4.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p5",
+   "wins_a": 43.0,
+   "wins_b": 10.0,
+   "ties": 10.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p6",
+   "wins_a": 24.0,
+   "wins_b": 12.0,
+   "ties": 9.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p7",
+   "wins_a": 27.0,
+   "wins_b": 20.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p8",
+   "wins_a": 8.0,
+   "wins_b": 18.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p9",
+   "wins_a": 4.0,
+   "wins_b": 11.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_10948608",
+   "b": "semi_scripted_0p95",
+   "wins_a": 2.0,
+   "wins_b": 12.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "ckpt_153280512",
+   "wins_a": 5190.0,
+   "wins_b": 17012.0,
+   "ties": 543.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "ckpt_247836672",
+   "wins_a": 6964.0,
+   "wins_b": 73358.0,
+   "ties": 1319.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "ckpt_55738368",
+   "wins_a": 5556.0,
+   "wins_b": 425.0,
+   "ties": 38.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "ckpt_79626240",
+   "wins_a": 7717.0,
+   "wins_b": 1930.0,
+   "ties": 235.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "random",
+   "wins_a": 320.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "scripted",
+   "wins_a": 3648.0,
+   "wins_b": 133.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p2",
+   "wins_a": 342.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p3",
+   "wins_a": 367.0,
+   "wins_b": 1.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p4",
+   "wins_a": 447.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p5",
+   "wins_a": 470.0,
+   "wins_b": 0.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p6",
+   "wins_a": 566.0,
+   "wins_b": 0.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p7",
+   "wins_a": 726.0,
+   "wins_b": 4.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p8",
+   "wins_a": 1095.0,
+   "wins_b": 5.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p9",
+   "wins_a": 1476.0,
+   "wins_b": 19.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_120434688",
+   "b": "semi_scripted_0p95",
+   "wins_a": 1853.0,
+   "wins_b": 52.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "ckpt_14929920",
+   "wins_a": 168.0,
+   "wins_b": 213.0,
+   "ties": 38.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "ckpt_24883200",
+   "wins_a": 383.0,
+   "wins_b": 716.0,
+   "ties": 98.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "random",
+   "wins_a": 10.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "scripted",
+   "wins_a": 37.0,
+   "wins_b": 92.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p2",
+   "wins_a": 24.0,
+   "wins_b": 0.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p3",
+   "wins_a": 24.0,
+   "wins_b": 1.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p4",
+   "wins_a": 46.0,
+   "wins_b": 3.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p5",
+   "wins_a": 44.0,
+   "wins_b": 7.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p6",
+   "wins_a": 72.0,
+   "wins_b": 9.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p7",
+   "wins_a": 90.0,
+   "wins_b": 16.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p8",
+   "wins_a": 48.0,
+   "wins_b": 23.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p9",
+   "wins_a": 36.0,
+   "wins_b": 39.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_12939264",
+   "b": "semi_scripted_0p95",
+   "wins_a": 22.0,
+   "wins_b": 26.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "ckpt_24883200",
+   "wins_a": 1452.0,
+   "wins_b": 1964.0,
+   "ties": 265.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "ckpt_55738368",
+   "wins_a": 452.0,
+   "wins_b": 2222.0,
+   "ties": 26.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "random",
+   "wins_a": 76.0,
+   "wins_b": 2.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "scripted",
+   "wins_a": 1329.0,
+   "wins_b": 2137.0,
+   "ties": 320.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p2",
+   "wins_a": 86.0,
+   "wins_b": 2.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p3",
+   "wins_a": 104.0,
+   "wins_b": 3.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p4",
+   "wins_a": 133.0,
+   "wins_b": 8.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p5",
+   "wins_a": 150.0,
+   "wins_b": 13.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p6",
+   "wins_a": 174.0,
+   "wins_b": 11.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p7",
+   "wins_a": 165.0,
+   "wins_b": 36.0,
+   "ties": 6.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p8",
+   "wins_a": 170.0,
+   "wins_b": 53.0,
+   "ties": 9.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p9",
+   "wins_a": 110.0,
+   "wins_b": 76.0,
+   "ties": 20.0
+  },
+  {
+   "a": "ckpt_14929920",
+   "b": "semi_scripted_0p95",
+   "wins_a": 81.0,
+   "wins_b": 104.0,
+   "ties": 15.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "ckpt_247836672",
+   "wins_a": 20981.0,
+   "wins_b": 57577.0,
+   "ties": 2731.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "ckpt_79626240",
+   "wins_a": 24566.0,
+   "wins_b": 2045.0,
+   "ties": 152.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "random",
+   "wins_a": 1047.0,
+   "wins_b": 0.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "scripted",
+   "wins_a": 13521.0,
+   "wins_b": 181.0,
+   "ties": 11.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p2",
+   "wins_a": 1170.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p3",
+   "wins_a": 1112.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p4",
+   "wins_a": 1220.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p5",
+   "wins_a": 1418.0,
+   "wins_b": 0.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p6",
+   "wins_a": 1771.0,
+   "wins_b": 0.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p7",
+   "wins_a": 2300.0,
+   "wins_b": 8.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p8",
+   "wins_a": 3135.0,
+   "wins_b": 12.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p9",
+   "wins_a": 4129.0,
+   "wins_b": 32.0,
+   "ties": 4.0
+  },
+  {
+   "a": "ckpt_153280512",
+   "b": "semi_scripted_0p95",
+   "wins_a": 5024.0,
+   "wins_b": 39.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "random",
+   "wins_a": 5365.0,
+   "wins_b": 0.0,
+   "ties": 20.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "scripted",
+   "wins_a": 134000.0,
+   "wins_b": 884.0,
+   "ties": 43.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p2",
+   "wins_a": 5945.0,
+   "wins_b": 0.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p3",
+   "wins_a": 6447.0,
+   "wins_b": 0.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p4",
+   "wins_a": 7308.0,
+   "wins_b": 1.0,
+   "ties": 4.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p5",
+   "wins_a": 9017.0,
+   "wins_b": 3.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p6",
+   "wins_a": 11708.0,
+   "wins_b": 6.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p7",
+   "wins_a": 15842.0,
+   "wins_b": 16.0,
+   "ties": 6.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p8",
+   "wins_a": 21896.0,
+   "wins_b": 39.0,
+   "ties": 10.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p9",
+   "wins_a": 29353.0,
+   "wins_b": 107.0,
+   "ties": 12.0
+  },
+  {
+   "a": "ckpt_247836672",
+   "b": "semi_scripted_0p95",
+   "wins_a": 33011.0,
+   "wins_b": 145.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "ckpt_55738368",
+   "wins_a": 742.0,
+   "wins_b": 2990.0,
+   "ties": 38.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "ckpt_79626240",
+   "wins_a": 514.0,
+   "wins_b": 5908.0,
+   "ties": 18.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "random",
+   "wins_a": 247.0,
+   "wins_b": 3.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "scripted",
+   "wins_a": 4523.0,
+   "wins_b": 5012.0,
+   "ties": 736.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p2",
+   "wins_a": 311.0,
+   "wins_b": 6.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p3",
+   "wins_a": 360.0,
+   "wins_b": 7.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p4",
+   "wins_a": 392.0,
+   "wins_b": 14.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p5",
+   "wins_a": 528.0,
+   "wins_b": 24.0,
+   "ties": 4.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p6",
+   "wins_a": 579.0,
+   "wins_b": 50.0,
+   "ties": 4.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p7",
+   "wins_a": 609.0,
+   "wins_b": 98.0,
+   "ties": 10.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p8",
+   "wins_a": 645.0,
+   "wins_b": 147.0,
+   "ties": 20.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p9",
+   "wins_a": 527.0,
+   "wins_b": 254.0,
+   "ties": 37.0
+  },
+  {
+   "a": "ckpt_24883200",
+   "b": "semi_scripted_0p95",
+   "wins_a": 412.0,
+   "wins_b": 296.0,
+   "ties": 41.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "ckpt_79626240",
+   "wins_a": 1783.0,
+   "wins_b": 6072.0,
+   "ties": 233.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "random",
+   "wins_a": 240.0,
+   "wins_b": 3.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "scripted",
+   "wins_a": 3861.0,
+   "wins_b": 1144.0,
+   "ties": 29.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p2",
+   "wins_a": 266.0,
+   "wins_b": 3.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p3",
+   "wins_a": 317.0,
+   "wins_b": 5.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p4",
+   "wins_a": 389.0,
+   "wins_b": 2.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p5",
+   "wins_a": 471.0,
+   "wins_b": 15.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p6",
+   "wins_a": 612.0,
+   "wins_b": 39.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p7",
+   "wins_a": 839.0,
+   "wins_b": 65.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p8",
+   "wins_a": 1041.0,
+   "wins_b": 122.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p9",
+   "wins_a": 1214.0,
+   "wins_b": 228.0,
+   "ties": 6.0
+  },
+  {
+   "a": "ckpt_55738368",
+   "b": "semi_scripted_0p95",
+   "wins_a": 1185.0,
+   "wins_b": 317.0,
+   "ties": 5.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "random",
+   "wins_a": 423.0,
+   "wins_b": 0.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "scripted",
+   "wins_a": 7187.0,
+   "wins_b": 708.0,
+   "ties": 18.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p2",
+   "wins_a": 463.0,
+   "wins_b": 0.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p3",
+   "wins_a": 485.0,
+   "wins_b": 2.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p4",
+   "wins_a": 557.0,
+   "wins_b": 2.0,
+   "ties": 1.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p5",
+   "wins_a": 697.0,
+   "wins_b": 4.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p6",
+   "wins_a": 902.0,
+   "wins_b": 15.0,
+   "ties": 0.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p7",
+   "wins_a": 1255.0,
+   "wins_b": 28.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p8",
+   "wins_a": 1714.0,
+   "wins_b": 55.0,
+   "ties": 2.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p9",
+   "wins_a": 2423.0,
+   "wins_b": 132.0,
+   "ties": 3.0
+  },
+  {
+   "a": "ckpt_79626240",
+   "b": "semi_scripted_0p95",
+   "wins_a": 2561.0,
+   "wins_b": 194.0,
+   "ties": 7.0
+  }
+ ]
+}

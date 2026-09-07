@@ -188,6 +188,27 @@ def select_latest_resumable_run(
     return found[0].run
 
 
+def select_checkpoint_at_step(run: RunRef | Path, step: int) -> CheckpointRef:
+    """The newest numeric checkpoint at or before ``step``.
+
+    Forking wants "the run as it was at 250M", and checkpoints land on whatever
+    step an update happened to end on, so an exact match is not something a
+    caller can be expected to know. Asking before the first one is an error
+    rather than a clamp: it means the fork point was misidentified.
+    """
+
+    available = _numeric_steps(run)
+    eligible = [(found, path) for found, path in available if found <= step]
+    if not eligible:
+        earliest = available[0][0] if available else None
+        raise CheckpointNotFoundError(
+            f"no checkpoint at or before step {step}"
+            + (f"; the earliest is {earliest}" if earliest is not None else "")
+        )
+    found, path = eligible[-1]
+    return CheckpointRef(path=path, kind="numeric_step", step=found)
+
+
 def select_final_training_checkpoint(run: RunRef | Path) -> CheckpointRef:
     """Select the numerically final training step under the final-policy contract."""
     selected = select_latest_resumable_checkpoint(run)

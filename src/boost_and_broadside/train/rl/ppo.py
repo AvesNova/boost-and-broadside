@@ -21,6 +21,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Generator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from queue import Queue
 
@@ -37,10 +38,16 @@ from boost_and_broadside.config import (
     TrainConfig,
     TrainingSchedule,
 )
+from boost_and_broadside.config.diagnostics import (
+    GRADIENT_DIAGNOSTICS_LEVELS,
+    GRADIENT_DIAGNOSTICS_OFF,
+    GradientDiagnosticsConfig,
+)
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.buffer import (
@@ -52,11 +59,20 @@ from boost_and_broadside.train.rl.buffer import (
     StoredRollout,
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+from boost_and_broadside.train.rl.elo_diagnostics import LiveEloDiagnostics
+from boost_and_broadside.train.rl.match_matrix import MatchMatrix
+from boost_and_broadside.train.rl.allocation import allocation_weights
+from boost_and_broadside.train.rl.live_rating import TwoStageRating
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import (
     FeatureCoordinator,
     build_bullet_coordinator,
     build_standard_coordinator,
+)
+from boost_and_broadside.train.rl.grad_diagnostics import (
+    TermGradientAccumulator,
+    scope_metric_records,
+    scope_statistics,
 )
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.opponents import (
@@ -99,43 +115,70 @@ def _build_component_tensor(
 # so three gives the trigger two near-independent looks at the win rate.
 _BC_CUTOFF_UPDATES = 3
 
-# Maps reward component name → the TrainingSchedule group-scale field to apply.
-# Effective weight = group_scale * individual_weight (from RewardConfig).
-# Groups:
-#   true_reward → win components (ally_win, enemy_win)
-#   global      → global outcome rewards + shaping (team-aggregated via lambda)
-#   local       → self-only per-ship rewards (diagonal lambda, no teammate propagation)
-_GROUP: dict[str, str] = {
-    "ally_win": "true_reward_scale",
-    "enemy_win": "true_reward_scale",
-    "ally_combat_damage": "global_scale",
-    "enemy_combat_damage": "global_scale",
-    "ally_field_damage": "global_scale",
-    "enemy_field_damage": "global_scale",
-    "ally_combat_death": "global_scale",
-    "enemy_combat_death": "global_scale",
-    "ally_field_death": "global_scale",
-    "enemy_field_death": "global_scale",
-    "facing": "local_scale",
-    "closing_speed": "local_scale",
-    "shoot_quality": "local_scale",
-    "kill_shot": "local_scale",
-    "kill_assist": "local_scale",
-    "combat_damage_taken": "local_scale",
-    "field_damage_taken": "local_scale",
-    "damage_dealt_enemy": "local_scale",
-    "damage_dealt_ally": "local_scale",
-    "combat_death": "local_scale",
-    "field_death": "local_scale",
-    "shooting_penalty": "local_scale",
-    "speed": "local_scale",
+# Maps reward component name → the TrainingSchedule tier-scale field to apply.
+# Effective weight = tier_scale * individual_weight (from RewardConfig).
+#
+# The tiers are a credit-assignment ladder, and the per-component gammas and
+# lambdas in config/defaults.py already follow the same partition: an outcome is
+# discounted over a whole episode, a kill over an engagement, damage over an
+# exchange, geometry over the next moment. Scaling a whole tier at once is how a
+# run shifts weight between "what actually wins" and the proxies for it.
+_TIER: dict[str, str] = {
+    "ally_win": "outcome_scale",
+    "enemy_win": "outcome_scale",
+    "ally_combat_death": "kill_death_scale",
+    "enemy_combat_death": "kill_death_scale",
+    "ally_field_death": "kill_death_scale",
+    "enemy_field_death": "kill_death_scale",
+    "combat_death": "kill_death_scale",
+    "field_death": "kill_death_scale",
+    "kill_shot": "kill_death_scale",
+    "kill_assist": "kill_death_scale",
+    "kill_ally_shot": "kill_death_scale",
+    "kill_ally_assist": "kill_death_scale",
+    "ally_combat_damage": "damage_scale",
+    "enemy_combat_damage": "damage_scale",
+    "ally_field_damage": "damage_scale",
+    "enemy_field_damage": "damage_scale",
+    "combat_damage_taken": "damage_scale",
+    "field_damage_taken": "damage_scale",
+    "damage_dealt_enemy": "damage_scale",
+    "damage_dealt_ally": "damage_scale",
+    "facing": "shaping_scale",
+    "closing_speed": "shaping_scale",
+    "shoot_quality": "shaping_scale",
+    "shooting_penalty": "shaping_scale",
+    "speed": "shaping_scale",
 }
 
 # Components with self-only rewards use a diagonal lambda (i == j); all others
-# use team-based lambda aggregation. Derived from _GROUP so the two registries
-# cannot silently drift: a "local_scale" component is exactly a self-only one.
+# use team-based lambda aggregation.
+#
+# Stated outright rather than derived from the tier map. Locality is a
+# credit-assignment property and the tier is a weighting one, and they are
+# orthogonal: combat_death and ally_combat_death sit in the same tier and differ
+# only in whether the signal propagates to teammates. The previous registry
+# derived one from the other, which worked only because the scale groups
+# happened to be drawn along the locality line. ``test_every_component_is
+# _classified`` pins that both maps stay complete.
 _LOCAL_COMPONENTS: frozenset[str] = frozenset(
-    name for name, group in _GROUP.items() if group == "local_scale"
+    {
+        "facing",
+        "closing_speed",
+        "shoot_quality",
+        "kill_shot",
+        "kill_assist",
+        "kill_ally_shot",
+        "kill_ally_assist",
+        "combat_damage_taken",
+        "field_damage_taken",
+        "damage_dealt_enemy",
+        "damage_dealt_ally",
+        "combat_death",
+        "field_death",
+        "shooting_penalty",
+        "speed",
+    }
 )
 
 
@@ -153,9 +196,10 @@ class _ResolvedSchedule:
     behavior_cloning_coef: float
     value_function_coef: float
     sigreg_coef: float
-    true_reward_scale: float
-    global_scale: float
-    local_scale: float
+    outcome_scale: float
+    kill_death_scale: float
+    damage_scale: float
+    shaping_scale: float
     league_fraction: float
     checkpoint_interval: int
     num_epochs: int
@@ -197,6 +241,37 @@ class _StagedMicroBatch:
     ready: torch.cuda.Event
 
 
+def _huber(error: torch.Tensor, delta: float) -> torch.Tensor:
+    """Squared error inside ``delta``, linear outside, continuous in both value
+    and slope at the join.
+
+    Scaled to agree with ``error**2`` in the quadratic region rather than with
+    the textbook ``0.5 * error**2``, so switching a squared-error critic to this
+    changes the tails and leaves the bulk of the loss — and therefore the critic's
+    gradient scale — where it was.
+
+    The tails are the point. Normalizing each component by its own statistics
+    necessarily exposes them: a sparse component's returns are a spike at zero
+    with rare large excursions, so its normalized error reaches values a dense
+    component never sees. Under squared error one such token can outweigh a
+    minibatch of ordinary ones, which is what the oversized ``return_min_span``
+    floor was compensating for by shrinking every sparse component instead.
+
+    Args:
+        error: Any shape — the critic residual in normalized space.
+        delta: Half-width of the quadratic region, in normalized units.
+
+    Returns:
+        Elementwise loss, same shape as ``error``.
+    """
+    magnitude = error.abs()
+    return torch.where(
+        magnitude <= delta,
+        error.pow(2),
+        delta * (2.0 * magnitude - delta),
+    )
+
+
 def _actor_entropy_coef(
     scheduled: float, *, policy_gradient_coef: float, behavior_cloning_coef: float
 ) -> float:
@@ -236,9 +311,10 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         behavior_cloning_coef=schedule.behavior_cloning_coef(step),
         value_function_coef=schedule.value_function_coef(step),
         sigreg_coef=schedule.sigreg_coef(step),
-        true_reward_scale=schedule.true_reward_scale(step),
-        global_scale=schedule.global_scale(step),
-        local_scale=schedule.local_scale(step),
+        outcome_scale=schedule.outcome_scale(step),
+        kill_death_scale=schedule.kill_death_scale(step),
+        damage_scale=schedule.damage_scale(step),
+        shaping_scale=schedule.shaping_scale(step),
         league_fraction=schedule.league_fraction(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
@@ -273,6 +349,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         scripted_agent:  Stochastic scripted agent for BC loss targets and scripted opponents.
         resolved_config_document: Complete resolved launch config/fingerprints for checkpoints.
         launch_provenance: Execution settings resolved by the installed CLI.
+        gradient_diagnostics: Gradient decomposition depth and cadence. At its
+            default the trainer takes no diagnostic code path at all.
     """
 
     def __init__(
@@ -287,6 +365,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         resume_wandb_run_id: str | None = None,
         resolved_config_document: Mapping[str, object] | None = None,
         launch_provenance: Mapping[str, object] | None = None,
+        gradient_diagnostics: GradientDiagnosticsConfig = GRADIENT_DIAGNOSTICS_OFF,
     ) -> None:
         self.cfg = train_config
         self.model_config = model_config
@@ -402,6 +481,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
 
+        # --- Gradient diagnostics (observability; off changes nothing) ---
+        # The parameter list and its trunk membership are fixed for the run, so
+        # they are resolved once here rather than per diagnosed minibatch. At
+        # level "off" both stay empty and nothing downstream ever runs.
+        self._grad_diag = gradient_diagnostics
+        self._grad_diag_params: list[nn.Parameter] = []
+        self._grad_diag_trunk: list[bool] = []
+        if self._grad_diag.enabled:
+            trunk_ids = self._policy_module.trunk_parameter_ids()
+            for parameter in self._policy_module.parameters():
+                if not parameter.requires_grad:
+                    continue
+                self._grad_diag_params.append(parameter)
+                self._grad_diag_trunk.append(id(parameter) in trunk_ids)
+
         # Build the buffer using a sample observation to infer shapes and dtypes
         sample_obs = self.wrapper.reset()
 
@@ -419,6 +513,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # Pre-compute lambda masks for active components only.
         # Static for the entire run — derived from RewardConfig.
+        # Derived once: the per-component weights the four event weights imply.
+        self._component_weights = component_weights(train_config.rewards)
         self.enemy_neg_k = self._make_enemy_neg_k(train_config.rewards.enemy_neg_lambda_components)
         self.ally_zero_k = self._make_ally_zero_k(train_config.rewards.ally_zero_components)
         self.local_k = self._make_local_k()
@@ -524,6 +620,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._scripted_win_rate: float = 0.0
         # Latest update's rated outcomes, opponent label → (win, loss, tie).
         self._match_counts: dict[str, tuple[int, int, int]] = {}
+        # Read-only instrumentation for the rating filter above. Logs only; see
+        # elo_diagnostics.
+        self._elo_diagnostics = LiveEloDiagnostics(scripted_label="scripted")
+        # Accumulated ladder record among weight-frozen players. Replaced
+        # wholesale on resume; see _save_roster_json for why it is a sidecar.
+        self.match_matrix = MatchMatrix()
+        # The candidate replacement for the K-factor filter, running alongside
+        # it. It gates nothing: swapping the estimator would change promotion
+        # timing, which changes the pool, which changes every rating — so the
+        # old one keeps gating for the whole comparison run and this one only
+        # observes.
+        self._two_stage = TwoStageRating(
+            anchor_label="scripted",
+            anchor_elo=train_config.elo_eval.scripted_live_elo,
+        )
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
@@ -557,6 +668,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._log_thread.start()
 
         self._global_step = 0
+        # Where this process's configuration starts applying. A fresh run owns
+        # the whole history; a resume owns everything from the step it restored
+        # at, which is what makes `--continue` with changed settings recordable.
+        self._start_step = 0
+        self._segment_recorded_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         self._start_update = 1
         # Last update the loop carried all the way through. An interrupt lands
         # mid-update, so this -- not the update in progress -- is the only index
@@ -595,8 +711,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             run_id_path.parent.mkdir(parents=True, exist_ok=True)
             run_id_path.write_text(_wandb.run.id)
         else:
-            from datetime import datetime
-
             self.run_name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         # Schedule state — evaluated from the schedule functions each update.
@@ -843,7 +957,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         num_recurrent = num_ships
 
         obs = self.wrapper.reset()
+        # Stagger truncation so episodes do not all end in one synchronized block.
+        # The seeded first episode in each env is a fragment, so it is withheld
+        # from the episode statistics until the env recycles -- otherwise the
+        # first update of every run, and of every resume, reports a reward and
+        # win rate that measure the seeding.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
+        self.wrapper.mark_seeded_uncounted()
         hidden = self.policy.initial_hidden(num_envs, num_recurrent, self.device)
         hidden_t1 = (
             self.policy.initial_hidden(num_envs, num_recurrent, self.device)
@@ -860,6 +980,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for scale, wrapper in zip(self.cfg.scales[1:], self.aux_wrappers):
             aux_obs.append(wrapper.reset())
             wrapper.env.state.step_count.random_(0, scale.env_config.max_episode_steps)
+            wrapper.mark_seeded_uncounted()
             aux_tokens = scale.env_config.num_ships  # recurrent tokens: ships only
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(
@@ -979,13 +1100,48 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._avg_live_elo = elo_snapshot.avg_elo
         self._floating_games = elo_snapshot.floating_games
         self._match_counts = elo_snapshot.match_counts
+        if elo_snapshot.floating_label is not None:
+            # The floating checkpoint's weights are fixed at snapshot time — only
+            # its rating is unsettled — so its games are worth keeping forever.
+            # The live and avg policies are excluded because they change under
+            # the record, and a count matrix cannot say when a game was played.
+            self.match_matrix.record_all(elo_snapshot.floating_label, elo_snapshot.ladder_counts)
         if elo_snapshot.floating_elo is not None:
             self.roster.set_floating_elo(elo_snapshot.floating_elo)
         # Proximity sampling reads this, so it has to track the evaluator rather
         # than keep the rating the entry was created with. The scripted entry
         # needs no such sync: the live gauge pins it and it never moves.
         self.roster.set_special_elo("avg", elo_snapshot.avg_elo)
+        self._allocate_ladder_games(runtime.elo_eval)
         return terminated
+
+    def _allocate_ladder_games(self, elo_eval: EloEvaluator) -> None:
+        """Point slot 4 at the games that most sharpen the rung's floor offset.
+
+        Recomputed every update because the target moves: the floating rung's
+        rating settles, the accumulated graph gains edges, and the direct link to
+        the anchor saturates. Falls back to the evaluator's local rule whenever
+        the graph cannot yet identify the difference, which is the normal state
+        until the new rung has played its first games.
+        """
+        floating_label = elo_eval.floating_label
+        if not floating_label:
+            return
+        ratings = {entry.label: entry.elo for entry in self.roster.entries}
+        ratings[floating_label] = float(elo_eval.floating_elo.item())
+        ratings["scripted"] = self.cfg.elo_eval.scripted_live_elo
+        candidates = elo_eval.anchor_labels()
+        elo_eval.set_float_anchor_weights(
+            allocation_weights(
+                self.match_matrix,
+                ratings,
+                protagonist=floating_label,
+                anchor="scripted",
+                candidates=candidates,
+            )
+            if candidates
+            else None
+        )
 
     def _compute_rollout_gae(
         self,
@@ -1023,7 +1179,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.aux_last_dones[index].float(),
             )
         if update_scalers:
-            self.scaler.update(self.buffer.returns)
+            self.scaler.update(self.buffer.returns, self.buffer.alive_mask)
             self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
 
     def _collect_host_rollouts(
@@ -1057,7 +1213,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         primary_shards = stored_by_scale[0]
         self.scaler.update_chunks(
             [shard.returns for shard in primary_shards],
-            max_samples=self.cfg.return_quantile_samples,
+            [shard.alive_mask for shard in primary_shards],
         )
         self.adv_scaler.update_chunks(
             [shard.advantages for shard in primary_shards],
@@ -1117,9 +1273,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             logical_buffers.append(LogicalRolloutBuffer(stored_shards, adv_rms))
         return logical_buffers
 
-    def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
-        """Refresh schedule-controlled optimization, reward, and averaging state."""
-        self._schedule_state = _resolve_schedule(self.cfg.schedule, self._global_step)
+    def _apply_schedule_state(self, step: int) -> float:
+        """Resolve the schedule at ``step`` and apply every value it controls.
+
+        Pure in the sense that matters: it reads ``step`` and the restored eval
+        window and writes the coefficients, the optimizer learning rate, and the
+        reward-component weights, without touching the averaging or league state
+        that only an update boundary should advance. That makes it safe to call
+        from ``load_checkpoint``, which must reproduce the coefficients the run
+        had when it stopped rather than inherit the step-zero values ``__init__``
+        computed. Returns the behavior-cloning decay factor, which the caller
+        needs for the cutoff streak.
+        """
+        self._schedule_state = _resolve_schedule(self.cfg.schedule, step)
         self._policy_gradient_coef = self._schedule_state.policy_gradient_coef
         # BC aux loss decays linearly with the win rate against the scripted
         # agent, reaching zero at bc_winrate_target (full strength before any
@@ -1135,9 +1301,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
         for component in self.wrapper.reward_components:
-            raw_weight = getattr(self.cfg.rewards, f"{component.name}_weight")
-            component.weight = raw_weight * getattr(self._schedule_state, _GROUP[component.name])
+            raw_weight = self._component_weights[component.name]
+            component.weight = raw_weight * getattr(self._schedule_state, _TIER[component.name])
         self.wrapper.refresh_component_weights()
+        return bc_factor
+
+    def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
+        """Refresh schedule-controlled optimization, reward, and averaging state."""
+        bc_factor = self._apply_schedule_state(self._global_step)
+        window_sc = self._eval_window_sc
 
         metrics["schedule/learning_rate"] = self._schedule_state.learning_rate
         metrics["schedule/policy_gradient_coef"] = self._policy_gradient_coef
@@ -1146,9 +1318,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/bc_decay_factor"] = bc_factor
         metrics["schedule/scripted_win_rate"] = self._scripted_win_rate
         metrics["schedule/target_kl"] = self._effective_target_kl()
-        metrics["schedule/true_reward_scale"] = self._schedule_state.true_reward_scale
-        metrics["schedule/global_scale"] = self._schedule_state.global_scale
-        metrics["schedule/local_scale"] = self._schedule_state.local_scale
+        metrics["schedule/outcome_scale"] = self._schedule_state.outcome_scale
+        metrics["schedule/kill_death_scale"] = self._schedule_state.kill_death_scale
+        metrics["schedule/damage_scale"] = self._schedule_state.damage_scale
+        metrics["schedule/shaping_scale"] = self._schedule_state.shaping_scale
 
         # Avg-model accumulation picks up exactly where the BC aux loss lets go:
         # bc_factor hits zero when the scripted win rate reaches bc_winrate_target.
@@ -1201,6 +1374,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 all_buffers=update_buffers,
                 record_histograms=record_hist,
                 precomputed=precomputed,
+                update=update,
             )
 
             self._refresh_training_schedule(metrics, runtime.elo_eval)
@@ -1355,6 +1529,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         denoms: dict,
         frac: float,
         measure_grad_split: bool = False,
+        grad_terms: TermGradientAccumulator | None = None,
+        grad_scale: float = 1.0,
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one micro-batch. Does NOT call zero_grad / backward / step.
 
@@ -1383,6 +1559,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             denoms:       Minibatch-total denominators from _minibatch_denominators,
                           plus "adv_rms" (whole-buffer advantage normalizer).
             frac:         This micro-batch's env count / minibatch env count.
+            grad_terms:   Accumulator collecting this micro-batch's per-term
+                          gradients, or None (the default) for no diagnostics.
+            grad_scale:   The factor the training backward applies to this
+                          micro-batch's loss, so accumulated term gradients sum
+                          to the gradient the optimizer step receives.
 
         Returns:
             (loss, diag) where diag is a dict of scalar/tensor diagnostics.
@@ -1449,7 +1630,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # ---- Value loss --------------------------------------------------
         target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
-        vf_loss_raw = (new_value - target_norm).pow(2)  # (T, B_mb, N, K)
+        vf_loss_raw = _huber(new_value - target_norm, cfg.value_huber_delta)  # (T, B_mb, N, K)
         vf_loss = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
 
         # ---- Entropy bonus -----------------------------------------------
@@ -1553,14 +1734,50 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         diag: dict = {}
 
+        # ---- Gradient decomposition -------------------------------------------
+        # Differentiates the weighted terms that make up `loss` above, one
+        # autograd traversal each, and hands the results to the accumulator that
+        # spans this optimizer minibatch. Everything here is opt-in: with
+        # grad_terms None not a single extra graph node is built.
+        if grad_terms is not None:
+            terms = {
+                "policy": self._policy_gradient_coef * pg_loss,
+                "value": self._schedule_state.value_function_coef * vf_loss,
+                "entropy": self._entropy_coef * ent_loss,
+                "bc": self._behavior_cloning_coef * bc_loss,
+                "sigreg": self._schedule_state.sigreg_coef * sigreg_loss,
+                "next_state": self.cfg.next_state_coef * next_state_loss,
+                "windowed_next_state": self.cfg.windowed_loss_coef * windowed_ns_loss,
+            }
+            if self._grad_diag.decomposes_policy_by_reward:
+                terms.update(
+                    self._reward_policy_terms(
+                        batch=batch,
+                        ratio=ratio,
+                        adv_norm=adv_norm,
+                        actor_f=actor_f,
+                        actor_sum=actor_sum,
+                        adv_rms=denoms["adv_rms"],
+                    )
+                )
+            if self._grad_diag.decomposes_value_by_reward:
+                terms.update(
+                    self._reward_value_terms(
+                        vf_loss_raw=vf_loss_raw,
+                        alive_k=alive_k,
+                        mask_sum=mask_sum,
+                        num_components=K,
+                    )
+                )
+            grad_terms.accumulate(terms, scale=grad_scale)
+
         # ---- Actor / critic gradient split ------------------------------------
         # Both terms land on the same trunk, so max_grad_norm renormalizes them
         # together: whichever sends more gradient takes a larger share of every
         # clipped step, and the other loses it. Inferring that split from the
-        # total norm is how a 3.4x imbalance survived two full runs -- see the
-        # categorical-critic entry in docs/internal/training-plan.md. Costs two
-        # extra backward passes, so it runs on one micro-batch per update at the
-        # histogram cadence.
+        # total norm is how a 3.4x imbalance in the categorical critic's favor
+        # survived two full runs unnoticed. Costs two extra backward passes, so
+        # it runs on one micro-batch per update at the histogram cadence.
         if measure_grad_split:
             params = [p for p in self._policy_module.parameters() if p.requires_grad]
             terms = {
@@ -1632,6 +1849,165 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         return loss, diag
 
+    def _active_component_weights(self) -> torch.Tensor:
+        """(K,) current effective weight of every active reward component."""
+        return torch.tensor(
+            [component.weight for component in self.wrapper.active_components],
+            dtype=torch.float32,
+            device=self.device,
+        )
+
+    def _reward_policy_terms(
+        self,
+        *,
+        batch: MicroBatch,
+        ratio: torch.Tensor,
+        adv_norm: torch.Tensor,
+        actor_f: torch.Tensor,
+        actor_sum: torch.Tensor,
+        adv_rms: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Split this micro-batch's policy loss across reward components.
+
+        PPO's clipping decision belongs to the aggregate objective: the ratio is
+        clipped or not for a *token*, not for a reward. Choosing a branch per
+        component would let each component pick the branch that flatters it, and
+        the parts would no longer add up to the update being run. So the branch
+        the aggregate objective selected is taken as given, and only the
+        advantage is decomposed:
+
+            pg = -sum_k adv_k * ratio_selected,   sum_k adv_k = adv_aggregate
+
+        which makes the component gradients an exact linear attribution of the
+        real policy gradient rather than an approximation of it.
+
+        Args:
+            batch:     The micro-batch being differentiated.
+            ratio:     (T, b, N) new/old probability ratio.
+            adv_norm:  (T, b, N) normalized aggregate advantage — the quantity
+                       the live objective uses.
+            actor_f:   (T, b, N) float mask of tokens the actor loss covers.
+            actor_sum: Minibatch-total actor token count.
+            adv_rms:   Whole-buffer aggregated-advantage mean square.
+
+        Returns:
+            Term name → weighted scalar loss, one per component with a non-zero
+            weight. Components scheduled to zero contribute no gradient and are
+            left out rather than logged as an empty series.
+        """
+        T, _, N = batch.alive.shape
+        team_id = batch.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, b, N)
+        comp_weights = self._active_component_weights()  # (K,)
+        with torch.no_grad():
+            lambda_ij = self._lambda_matrix(team_id, batch.alive, comp_weights)
+            adv_normed = self.adv_scaler.normalize(batch.advantages)  # (T, b, N, K)
+            # Same aggregation as _precompute_lambda_aggregates, minus the sum
+            # over components: adv_agg_k.sum(-1) is the adv_agg it produced.
+            adv_agg_k = torch.einsum("tbijk,tbjk->tbik", lambda_ij, adv_normed)  # (T, b, N, K)
+            adv_norm_k = adv_agg_k / (adv_rms.sqrt().clamp(min=0.1) + 1e-8)  # (T, b, N, K)
+
+        clipped = ratio.clamp(1 - self.cfg.clip_coef, 1 + self.cfg.clip_coef)  # (T, b, N)
+        # torch.max(-A*r, -A*clip(r)) selects a branch; reproduce that selection
+        # from the aggregate advantage and reuse it for every component.
+        use_clipped = (-adv_norm * clipped) > (-adv_norm * ratio)  # (T, b, N)
+        ratio_selected = torch.where(use_clipped, clipped, ratio)  # (T, b, N)
+
+        weighted = (ratio_selected * actor_f).unsqueeze(-1)  # (T, b, N, 1)
+        per_component = -(adv_norm_k * weighted).sum((0, 1, 2)) / actor_sum  # (K,)
+        coefficient = self._policy_gradient_coef
+        return {
+            f"policy/{name}": coefficient * per_component[index]
+            for index, name in enumerate(self._active_names)
+            if self.wrapper.active_components[index].weight != 0.0
+        }
+
+    def _reward_value_terms(
+        self,
+        *,
+        vf_loss_raw: torch.Tensor,
+        alive_k: torch.Tensor,
+        mask_sum: torch.Tensor,
+        num_components: int,
+    ) -> dict[str, torch.Tensor]:
+        """Split this micro-batch's critic loss across reward components.
+
+        The critic objective is already a sum of independent per-component
+        squared errors, so this is the existing loss regrouped rather than a
+        second objective: the components sum back to ``vf_loss`` by construction.
+
+        Args:
+            vf_loss_raw:    (T, b, N, K) per-component squared critic error.
+            alive_k:        (T, b, N, 1) float alive mask.
+            mask_sum:       Minibatch-total alive token count.
+            num_components: K — the critic's own averaging divisor.
+
+        Returns:
+            Term name → weighted scalar loss, one per active component.
+        """
+        per_component = (vf_loss_raw * alive_k).sum((0, 1, 2)) / (
+            mask_sum * num_components
+        )  # (K,)
+        coefficient = self._schedule_state.value_function_coef
+        return {
+            f"value/{name}": coefficient * per_component[index]
+            for index, name in enumerate(self._active_names)
+        }
+
+    def _lambda_matrix(
+        self,
+        team_id: torch.Tensor,
+        alive: torch.Tensor,
+        comp_weights: torch.Tensor,
+    ) -> torch.Tensor:
+        """Build the normalized credit-assignment weights for one env chunk.
+
+        Allies share signals, enemies are zero-sum (``enemy_neg_k``),
+        enemy-only components zero the ally contribution (``ally_zero_k``),
+        local components use a diagonal lambda, dead contributing ships are
+        zeroed, and each ship's row is normalized to a mean over its alive
+        contributors before the component weight is applied.
+
+        Normalization runs on the unweighted pattern so that ``comp_weights``
+        stays linear: a row normalized by its own weighted sum divides the
+        weight back out. ``clamp(min=1.0)`` therefore bounds the number of
+        contributors, not the weight — a single-contributor row (every local
+        component, and any global one down to its last alive ship) passes
+        through at exactly its weight.
+
+        Shared by the per-update aggregation and by the reward-decomposed
+        gradient diagnostic, so the diagnostic cannot drift from the credit
+        assignment the policy gradient actually used.
+
+        Args:
+            team_id:      (T, b, N) long — raw team labels.
+            alive:        (T, b, N) bool — living ships.
+            comp_weights: (K,) — current effective per-component weights.
+
+        Returns:
+            (T, b, N_i, N_j, K) float32 lambda tensor.
+        """
+        N = alive.shape[-1]
+        ally_lam = torch.where(self.ally_zero_k, 0.0, 1.0)  # (K,)
+        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)  # (K,)
+        identity = torch.eye(N, dtype=torch.float32, device=self.device)
+        local_lambda = identity[None, None, :, :, None]  # (1, 1, N, N, 1)
+
+        same_team = team_id.unsqueeze(3) == team_id.unsqueeze(2)  # (T, b, N, N)
+        alive_j = alive.float().unsqueeze(2).unsqueeze(-1)  # (T, b, 1, N_j, 1)
+        global_lambda = (
+            same_team.float().unsqueeze(-1) * ally_lam
+            + (~same_team).float().unsqueeze(-1) * enemy_lam
+        )  # (T, b, N_i, N_j, K)
+        # Normalize the *unweighted* pattern, then apply the weight. Dividing a
+        # weighted row by its own weighted sum cancels the weight: local
+        # components came out at min(w, 1) and global ones lost their weight
+        # entirely once w * n_alive exceeded the clamp, so ally_win_weight=1.5
+        # trained identically to 0.25. Splitting the two steps keeps the row a
+        # mean over contributors while leaving the weight a linear knob.
+        pattern = torch.where(self.local_k, local_lambda, global_lambda) * alive_j
+        row_sum = pattern.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+        return pattern / row_sum * comp_weights  # (T, b, N_i, N_j, K)
+
     @torch.no_grad()
     def _precompute_lambda_aggregates(
         self, buf: RolloutBuffer, comp_weights: torch.Tensor, is_primary: bool
@@ -1666,11 +2042,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         B = buf.num_envs
         N = buf.num_ships
 
-        ally_lam = torch.where(self.ally_zero_k, 0.0, 1.0)  # (K,)
-        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)  # (K,)
-        identity = torch.eye(N, dtype=torch.float32, device=self.device)
-        local_lambda = identity[None, None, :, :, None]  # (1, 1, N, N, 1)
-
         adv_sq_sum = torch.zeros((), device=self.device)
         adv_cnt = torch.zeros((), device=self.device)
         if is_primary:
@@ -1684,18 +2055,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             sl = slice(start, start + chunk)
             alive = buf.alive_mask[:, sl]  # (T, b, N)
             team_id_t = buf.obs[ObsKey.TEAM_ID][:T, sl, :N].long()  # (T, b, N)
-            same_team_t = team_id_t.unsqueeze(3) == team_id_t.unsqueeze(2)  # (T, b, N, N)
-            alive_j = alive.float().unsqueeze(2).unsqueeze(-1)  # (T, b, 1, N_j, 1)
-
-            global_lambda = (
-                same_team_t.float().unsqueeze(-1) * ally_lam
-                + (~same_team_t).float().unsqueeze(-1) * enemy_lam
-            )  # (T, b, N_i, N_j, K)
-            lambda_ij_t = (
-                torch.where(self.local_k, local_lambda, global_lambda) * comp_weights * alive_j
-            )
-            lambda_norm = lambda_ij_t.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
-            lambda_ij_t = lambda_ij_t / lambda_norm
+            lambda_ij_t = self._lambda_matrix(team_id_t, alive, comp_weights)
 
             # advantages/returns are bf16-stored; normalize() promotes advantages via
             # the fp32 rms divisor, and returns is upcast explicitly so the einsum with
@@ -1749,11 +2109,100 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             targets[:T], targets[1:]
         )  # (T, B, N, pred_dim)
 
+    def _gradient_diagnostic_groups(
+        self, accumulator: TermGradientAccumulator
+    ) -> dict[str, list[str]]:
+        """Group the accumulated terms into the families that get compared.
+
+        A cosine is only meaningful between terms measuring the same kind of
+        thing, and the summed-gradient statistics describe exactly one group, so
+        the top-level terms, the reward-decomposed policy terms, and the
+        reward-decomposed critic terms are kept apart.
+
+        Args:
+            accumulator: The minibatch's accumulated term gradients.
+
+        Returns:
+            Group name → accumulator term names, skipping empty groups.
+        """
+        groups = {
+            "top_level": [name for name in accumulator.term_names if "/" not in name],
+            "reward_policy": [
+                name for name in accumulator.term_names if name.startswith("policy/")
+            ],
+            "reward_value": [name for name in accumulator.term_names if name.startswith("value/")],
+        }
+        return {group: names for group, names in groups.items() if names}
+
+    def _gradient_diagnostic_metrics(
+        self, accumulator: TermGradientAccumulator, seconds: float
+    ) -> dict[str, float]:
+        """Turn one diagnosed minibatch's accumulated gradients into metrics.
+
+        Every group is measured over two parameter scopes. The whole-model scope
+        answers "how much of the clipped step is this term asking for"; the
+        shared-trunk scope answers "do these two terms want the trunk to move the
+        same way", which the whole-model cosine cannot, because task-specific
+        heads have disjoint parameters and drag every pairing toward zero.
+
+        Args:
+            accumulator: The minibatch's accumulated term gradients.
+            seconds:     Wall-clock cost of measuring this minibatch.
+
+        Returns:
+            Metric name → value.
+        """
+        records: dict[str, float] = {}
+        for group, names in self._gradient_diagnostic_groups(accumulator).items():
+            # Reward groups are keyed "<term>/<reward>"; publish the reward.
+            display = [name.split("/")[-1] for name in names]
+            for trunk in (False, True):
+                statistics = scope_statistics(display, accumulator.gram(names, trunk=trunk))
+                prefix = f"trunk_{group}" if trunk else group
+                records.update(scope_metric_records(prefix, statistics))
+
+        records.update(self._actor_critic_split(accumulator))
+        records["grad_diag/microbatches"] = float(accumulator.microbatches)
+        records["grad_diag/terms"] = float(len(accumulator.term_names))
+        records["grad_diag/seconds"] = seconds
+        records["grad_diag/level"] = float(GRADIENT_DIAGNOSTICS_LEVELS.index(self._grad_diag.level))
+        return records
+
+    def _actor_critic_split(self, accumulator: TermGradientAccumulator) -> dict[str, float]:
+        """The long-standing actor/critic split, read off the top-level terms.
+
+        Same quantity the histogram-cadence probe reports, measured over the
+        whole optimizer minibatch rather than one micro-batch of it. The actor
+        side is the norm of the *combined* policy and entropy gradient, not the
+        sum of their norms, because that combination is what reaches the trunk.
+
+        Args:
+            accumulator: The minibatch's accumulated term gradients.
+
+        Returns:
+            Metric name → value, empty when neither side received a gradient.
+        """
+        accumulated = set(accumulator.term_names)
+        actor_names = [name for name in ("policy", "entropy") if name in accumulated]
+        critic_names = [name for name in ("value",) if name in accumulated]
+        if not actor_names and not critic_names:
+            return {}
+        actor = scope_statistics(actor_names, accumulator.gram(actor_names, trunk=False)).total_norm
+        critic = scope_statistics(
+            critic_names, accumulator.gram(critic_names, trunk=False)
+        ).total_norm
+        return {
+            "train/grad_norm_actor": actor,
+            "train/grad_norm_critic": critic,
+            "train/actor_grad_share": actor / (actor + critic + 1e-12),
+        }
+
     def _update_epochs(
         self,
         all_buffers: list[RolloutBuffer | LogicalRolloutBuffer],
         record_histograms: bool = False,
         precomputed: bool = False,
+        update: int = 1,
     ) -> dict:
         """Run num_epochs × num_minibatches of PPO updates across all scales.
 
@@ -1769,6 +2218,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             record_histograms: If True, capture return/logprob distributions from
                 the last primary-scale minibatch for async histogram logging.
             precomputed: Derived tensors already exist in host-backed logical buffers.
+            update: This update's index, which decides whether the gradient
+                diagnostic cadence fires.
 
         Returns:
             Dict of mean metric values over all minibatch updates.
@@ -1865,8 +2316,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # "epoch num_epochs-1": target_kl can break the loop early, and gating on
         # the final index instead dropped the whole family for those updates.
         ev_epoch: list[torch.Tensor] = []
-        # Armed once per call; the first primary micro-batch consumes it.
-        measure_split = record_histograms
+        # Gradient diagnostics measure whole optimizer minibatches from the
+        # first epoch, so every measurement describes a step taken against the
+        # same rollout under a comparably fresh policy.
+        diagnose_update = self._grad_diag.measures_update(update)
+        diagnosed_minibatches = 0
+        grad_diag_records: list[dict[str, float]] = []
+        # Armed once per call; the first primary micro-batch consumes it. A
+        # diagnostic update measures the actor/critic split over the full
+        # minibatch instead, so the cheap single-micro-batch probe stands down
+        # rather than measuring the same thing twice, less well.
+        measure_split = record_histograms and not diagnose_update
 
         for epoch_idx in range(num_epochs):
             kl_start = len(accum_scalar["policy/kl"])
@@ -1877,6 +2337,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ]
             for batches in zip(*iters):
                 self.optim.zero_grad()
+
+                measure_gradients = (
+                    diagnose_update
+                    and epoch_idx == 0
+                    and diagnosed_minibatches < self._grad_diag.minibatches
+                )
+                accumulator = (
+                    TermGradientAccumulator(self._grad_diag_params, self._grad_diag_trunk)
+                    if measure_gradients
+                    else None
+                )
+                diagnostic_start = time.perf_counter() if measure_gradients else 0.0
 
                 # Accumulate gradients across all scales — and each scale's
                 # micro-batches when cfg.microbatch_tokens splits minibatches —
@@ -1970,6 +2442,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                             denoms,
                             frac,
                             measure_grad_split=measure_split and is_primary,
+                            grad_terms=accumulator,
+                            grad_scale=1.0 / n_scales,
                         )
                         (loss / n_scales).backward()
 
@@ -2025,6 +2499,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     if param.grad is not None:
                         torch.nan_to_num_(param.grad, nan=0.0, posinf=0.0, neginf=0.0)
                 self.optim.step()
+
+                if accumulator is not None:
+                    # Taken after the step is launched: the statistics sync on
+                    # the host, and there is no reason to make the optimizer
+                    # wait behind that.
+                    grad_diag_records.append(
+                        self._gradient_diagnostic_metrics(
+                            accumulator, time.perf_counter() - diagnostic_start
+                        )
+                    )
+                    diagnosed_minibatches += 1
+                    accumulator = None  # release the accumulated gradient copies
 
                 for out_key, short_key in _direct_metrics:
                     accum_scalar[out_key].append(scalar_accum_step[short_key])
@@ -2103,6 +2589,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             for i, name in enumerate(ns_feat_names):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
 
+        if grad_diag_records:
+            # Averaged across the diagnosed minibatches. Every key is present in
+            # every record, so a mean is over the same measurement each time.
+            for key in grad_diag_records[0]:
+                metrics[key] = sum(record[key] for record in grad_diag_records) / len(
+                    grad_diag_records
+                )
+
         if hist_returns is not None:
             # returns are bf16-stored; upcast before numpy (no bf16 dtype there).
             metrics["hist/returns"] = hist_returns.reshape(-1, K)[hist_alive].float().cpu().numpy()
@@ -2136,6 +2630,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 # evaluator computes itself — no weights, no recurrent state.
                 # p_scripted=1.0 is the scripted controller; None is uniform.
                 p_scripted = 1.0 if entry.kind == "scripted" else entry.p_scripted
+                if entry.kind == "semi_random" and p_scripted is None:
+                    # Fail rather than fall through to the uniform agent. A rung
+                    # that plays as random while keeping a rating of 200-950 is
+                    # invisible in every metric and inflates the live rating for
+                    # the rest of the run; a resume that cannot rebuild the
+                    # ladder has to stop instead.
+                    raise ValueError(
+                        f"semi-random rung {entry.label!r} has no p_scripted; its roster "
+                        "entry cannot be rebuilt and it would silently play as random"
+                    )
                 return LadderOpponent(
                     policy=None, elo=entry.elo, label=entry.label, p_scripted=p_scripted
                 )

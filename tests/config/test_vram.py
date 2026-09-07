@@ -41,7 +41,7 @@ from boost_and_broadside.config.vram import (
     write_cache_entry,
 )
 from boost_and_broadside.launch import profile_knobs
-from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.profiles import PROFILES, named_profile_spec
 
 _DEVICE = {
     "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
@@ -56,8 +56,7 @@ _SOFTWARE = {"python": "3.13.11", "torch": "2.9.0", "cuda": "12.8", "cudnn": 910
 
 def _identity(**changes):
     base = {
-        "profile_name": "rl",
-        "profile_fingerprint": resolve_profile(PROFILES["rl"]).profile_fingerprint,
+        "profile": PROFILES["rl"],
         "geometry": launch_geometry(PROFILES["rl"]),
         "compile_mode": "reduce-overhead",
         "device": _DEVICE,
@@ -198,32 +197,30 @@ def test_the_eight_gigabyte_row_is_exactly_the_shipped_launch(name: str) -> None
     sized = resolve_profile(profile, launch_overrides_for(knobs))
     assert canonical_data(sized.train_config) == canonical_data(baseline.train_config)
     assert canonical_data(sized.model_config) == canonical_data(baseline.model_config)
-    assert sized.resolved_config_fingerprint == baseline.resolved_config_fingerprint
     # And it must not claim it moved anything either.
     assert knobs.tiers(profile_knobs(baseline)) == ()
 
 
 def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
+    """Wider rows buy residency, and a missing width honestly repeats a narrower one.
+
+    The profile's shard ladder is (7776, 2592, 864, ...): there is no 2-shard
+    split, so the 16 GB row cannot hold more than the 8 GB row and says so by
+    proposing the same width rather than inventing an intermediate one.
+    """
+
     geometry = launch_geometry(PROFILES["rl"])
     widths = {
         gigabytes: preset_knobs(VRAM_PRESETS[gigabytes], geometry).num_envs
         for gigabytes in sorted(VRAM_PRESETS)
     }
-    assert widths == {8: 3904, 16: 5856, 24: 11712, 32: 11712}
+    assert [width for width, _ in geometry.shard_widths()] == [7776, 2592, 864, 288, 96, 32]
+    assert widths == {8: 2592, 16: 2592, 24: 7776, 32: 7776}
     shards = [
         geometry.aligned_logical_batch_tokens // geometry.rollout_tokens(width)
         for width in widths.values()
     ]
-    assert shards == [3, 2, 1, 1]
-
-
-def test_a_profile_without_an_intermediate_width_keeps_the_narrower_one() -> None:
-    """rl-fields has no 2-shard split, so its 16 GB row is honestly its 8 GB row."""
-
-    geometry = launch_geometry(PROFILES["rl-fields"])
-    assert [width for width, _ in geometry.shard_widths()] == [7776, 2592, 864, 288, 96, 32]
-    assert preset_knobs(VRAM_PRESETS[16], geometry).num_envs == 2592
-    assert preset_knobs(VRAM_PRESETS[24], geometry).num_envs == 7776
+    assert shards == [3, 3, 1, 1]
 
 
 def test_every_shard_width_preserves_the_fixed_logical_batch() -> None:
@@ -292,12 +289,58 @@ def test_identity_is_stable_and_order_independent() -> None:
     (
         ("compile_mode", None),
         ("compile_mode", "max-autotune"),
-        ("profile_name", "bc"),
-        ("profile_fingerprint", "0" * 64),
+        ("profile", named_profile_spec("rl", {"num_fields": "0", "field_map": "none"})),
+        ("profile", named_profile_spec("rl", {"model_config.d_model": "512"})),
     ),
 )
 def test_a_changed_launch_question_invalidates_the_entry(field: str, value) -> None:
     assert identity_fingerprint(_identity(**{field: value})) != identity_fingerprint(_identity())
+
+
+def test_the_knob_the_probe_chooses_is_not_part_of_the_question() -> None:
+    """`grad_checkpoint` is what a probe decides, so keying on it is circular.
+
+    A cache keyed on it could never be read: the reader does not know the value
+    until the entry it is looking for tells it.
+    """
+
+    flipped = replace(
+        PROFILES["rl"],
+        model_config=replace(PROFILES["rl"].model_config, grad_checkpoint=True),
+    )
+    assert identity_fingerprint(_identity(profile=flipped)) == identity_fingerprint(_identity())
+
+
+def test_the_default_shard_width_is_not_part_of_the_question() -> None:
+    """A probe picks the width, so the width it started from cannot key the cache.
+
+    What does key it is the logical batch, because that decides which widths are
+    legal at all -- resizing it is a tier 3 experiment change, not a launch one.
+    """
+
+    def identity_for(rollout_tokens: int) -> str:
+        spec = replace(
+            PROFILES["rl"],
+            launch=replace(PROFILES["rl"].launch, rollout_tokens=rollout_tokens),
+        )
+        return identity_fingerprint(_identity(profile=spec, geometry=launch_geometry(spec)))
+
+    # 1536 envs over 5 shards against 1280 over 6: the same 11,796,480 tokens.
+    assert identity_for(2_400_000) == identity_for(2_000_000)
+    # 2592 over 3 aligns to a different batch, so it is a different question.
+    assert identity_for(4_000_000) != identity_for(2_000_000)
+
+
+def test_two_profiles_that_ask_the_same_question_share_one_measurement() -> None:
+    """`bc` differs from `rl` in objective, not in architecture or token count.
+
+    Nothing about the difference can change what fits on a card, so measuring
+    one card twice would be measuring the same thing twice.
+    """
+
+    assert identity_fingerprint(_identity(profile=PROFILES["bc"])) == identity_fingerprint(
+        _identity()
+    )
 
 
 @pytest.mark.parametrize(
@@ -340,7 +383,7 @@ def test_cache_round_trips_and_keeps_unrelated_entries(tmp_path: Path) -> None:
     assert read_cache(path) == {}
 
     first = _entry()
-    second = _entry(profile_name="bc")
+    second = _entry(compile_mode="max-autotune")
     write_cache_entry(path, first)
     write_cache_entry(path, second)
 
@@ -375,7 +418,7 @@ def test_a_failed_write_leaves_the_previous_cache_intact(tmp_path: Path, monkeyp
         lambda *_: (_ for _ in ()).throw(OSError("disk full")),
     )
     with pytest.raises(OSError, match="disk full"):
-        write_cache_entry(path, _entry(profile_name="bc"))
+        write_cache_entry(path, _entry(compile_mode="max-autotune"))
 
     assert path.read_text() == before
     assert sorted(item.name for item in tmp_path.iterdir()) == [".vram.json"]
@@ -484,13 +527,13 @@ def test_an_unresolved_policy_changes_nothing() -> None:
 
     baseline = resolve_profile(PROFILES["rl"])
     unchanged = resolve_profile(PROFILES["rl"], overrides)
-    assert unchanged.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    assert canonical_data(unchanged.train_config) == canonical_data(baseline.train_config)
     assert unchanged.value_sources["train_config.scales.0.num_envs"] == "derived"
     assert unchanged.value_sources["model_config.grad_checkpoint"] == "profile"
 
 
 def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
-    proposal = resolution_from_cache(VramPolicy("auto"), _entry(VramKnobs(1952, 20_000, True)))
+    proposal = resolution_from_cache(VramPolicy("auto"), _entry(VramKnobs(864, 20_000, True)))
     resolved = resolve_profile(
         PROFILES["rl"], launch_overrides(proposal, num_envs=None, microbatch_tokens=None)
     )
@@ -498,7 +541,7 @@ def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
     assert resolved.value_sources["train_config.microbatch_tokens"] == "vram-cache"
     assert resolved.value_sources["model_config.grad_checkpoint"] == "vram-cache"
     assert resolved.model_config.grad_checkpoint is True
-    assert resolved.train_config.rollouts_per_update == 6
+    assert resolved.train_config.rollouts_per_update == 9
 
 
 def test_the_resolution_document_states_the_guarantee_of_what_it_moved() -> None:

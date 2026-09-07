@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from boost_and_broadside.config.diagnostics import GRADIENT_DIAGNOSTICS_LEVELS
 from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.profiles import PROFILES
 
@@ -131,7 +132,7 @@ _SEED = _option(
 _ALLOW_DRIFT = _option(
     "--allow-config-drift",
     action="store_true",
-    help="Allow checkpoint physics/config drift, with warnings.",
+    help="Load a checkpoint whose physics constants differ from this run, with warnings.",
 )
 _TEAM0 = _option(
     "--team0", type=_exact_agent, required=True, metavar="AGENT", help="Exact team-0 agent."
@@ -173,6 +174,16 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Train one exact registered profile.",
         (
             _option(
+                "overrides",
+                nargs="*",
+                default=(),
+                metavar="KEY=VALUE",
+                help=(
+                    "Profile values to change for this launch, e.g. clip_coef=0.2 "
+                    "elo_eval.window_size=64. Applied before anything is derived."
+                ),
+            ),
+            _option(
                 "--profile",
                 choices=tuple(sorted(PROFILES)),
                 required=True,
@@ -200,6 +211,24 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 exclusive_group="training-source",
                 metavar="PATH",
                 help="Warm-start policy/scaler weights from an explicit .pt checkpoint.",
+            ),
+            _option(
+                "--from",
+                dest="from_run",
+                exclusive_group="training-source",
+                metavar="RUN",
+                help=(
+                    "Fork: start a new run from an existing run's weights. Unlike "
+                    "--resume this keeps no history and logs to a new W&B run."
+                ),
+            ),
+            _option(
+                "--at",
+                dest="from_step",
+                type=_positive_int,
+                default=None,
+                metavar="STEP",
+                help="With --from, fork at the newest checkpoint at or before STEP.",
             ),
             _option(
                 "--compile",
@@ -238,6 +267,31 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 default=None,
                 metavar="TOKENS",
                 help="Explicit entity tokens per gradient microbatch.",
+            ),
+            _option(
+                "--gradient-diagnostics",
+                choices=GRADIENT_DIAGNOSTICS_LEVELS,
+                default="off",
+                metavar="LEVEL",
+                help=(
+                    "Decompose the update's gradient by loss term (top_level), also by "
+                    "reward component for the policy (reward_policy), or for the policy "
+                    "and the critic (reward_full). Default: off."
+                ),
+            ),
+            _option(
+                "--gradient-diagnostics-interval",
+                type=_positive_int,
+                default=1,
+                metavar="UPDATES",
+                help="Measure gradient diagnostics every N PPO updates (default: 1).",
+            ),
+            _option(
+                "--gradient-diagnostics-minibatches",
+                type=_positive_int,
+                default=1,
+                metavar="MINIBATCHES",
+                help="Complete optimizer minibatches measured per diagnostic update.",
             ),
             _DEVICE,
             _SEED,
@@ -486,14 +540,16 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ),
     ),
     CommandSpec(
-        "publish",
-        "Render manifest-selected canonical publications offline.",
+        "figures",
+        "Render one run's figure set into that run's own artifacts.",
         (
-            _option("--target", metavar="NAME", help="Render one manifest entry."),
+            _RUN,
             _option(
-                "--check",
-                action="store_true",
-                help="Check without modifying canonical output.",
+                "--only",
+                nargs="+",
+                default=(),
+                metavar="NAME",
+                help="Render only these figures (default: the whole set).",
             ),
         ),
     ),
@@ -556,10 +612,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "train" and args.print_config:
+            from boost_and_broadside.cli_commands import (
+                config_overrides_from_args,
+                gradient_diagnostics_from_args,
+            )
             from boost_and_broadside.config.service import print_resolved_config
             from boost_and_broadside.launch import resolve_training_launch
 
             launch = resolve_training_launch(
+                overrides=config_overrides_from_args(args),
                 profile=args.profile,
                 vram=args.vram,
                 device=args.device,
@@ -567,6 +628,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 compile_mode=None if args.compile_mode == "none" else args.compile_mode,
                 wandb=not args.no_wandb,
                 allow_config_drift=args.allow_config_drift,
+                gradient_diagnostics=gradient_diagnostics_from_args(args),
                 num_envs=args.num_envs,
                 microbatch_tokens=args.microbatch_tokens,
                 allow_probe=False,

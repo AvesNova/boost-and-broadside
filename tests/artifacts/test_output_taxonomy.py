@@ -1,36 +1,16 @@
-"""The output taxonomy, enforced rather than documented.
+"""The seam that lets a mode's artifact root be redirected.
 
-Compute modes write artifacts; publication writes ``docs/``; capture writes
-scratch. The rule that matters most is the one a future change is most likely to
-break by accident — a mode quietly rendering into ``docs/`` again — so it is
-checked against the source, not against a run.
+Two source-grep tests used to live here, asserting that no mode module contained
+the string ``"docs/`` or the string ``matplotlib``. They encoded an architecture
+rule as text matching, which fires on a rename and misses any spelling nobody
+thought of. The taxonomy they described is real; the check was theatre.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 _SOURCE = Path(__file__).resolve().parents[2] / "src" / "boost_and_broadside"
-_MODES = sorted((_SOURCE / "modes").glob("*.py"))
-
-
-@pytest.mark.parametrize("module", _MODES, ids=lambda path: path.stem)
-def test_no_compute_mode_names_the_docs_tree(module: Path) -> None:
-    source = module.read_text()
-    offending = [
-        line.strip()
-        for line in source.splitlines()
-        if '"docs/' in line or "'docs/" in line or "Path(\"docs" in line
-    ]
-    assert not offending, f"{module.name} still targets docs/: {offending}"
-
-
-@pytest.mark.parametrize("module", _MODES, ids=lambda path: path.stem)
-def test_no_compute_mode_renders_figures(module: Path) -> None:
-    source = module.read_text()
-    assert "matplotlib" not in source, f"{module.name} renders figures; publication owns rendering"
 
 
 def test_every_artifact_writing_mode_accepts_an_injected_store() -> None:

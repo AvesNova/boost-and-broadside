@@ -1,19 +1,18 @@
-"""Independent profile registry and resolved legacy projections."""
+"""Profile registry and resolved projections."""
 
 from __future__ import annotations
 
 from types import MappingProxyType
 
+from boost_and_broadside.config.overrides import apply_overrides
 from boost_and_broadside.config.resolve import LaunchOverrides, resolve_profile
 from boost_and_broadside.config.schema import ProfileSpec, ResolvedTrainConfig
 from boost_and_broadside.profiles.bc import BC_PROFILE
 from boost_and_broadside.profiles.rl import RL_PROFILE
-from boost_and_broadside.profiles.rl_fields import RL_FIELDS_PROFILE
 
 PROFILES = MappingProxyType(
     {
         "rl": RL_PROFILE,
-        "rl-fields": RL_FIELDS_PROFILE,
         "bc": BC_PROFILE,
     }
 )
@@ -31,19 +30,40 @@ def get_profile(name: str) -> ProfileSpec:
 
 def resolve_named_profile(
     name: str,
-    overrides: LaunchOverrides | None = None,
+    launch_overrides: LaunchOverrides | None = None,
+    *,
+    overrides: dict[str, str] | None = None,
 ) -> ResolvedTrainConfig:
-    return resolve_profile(get_profile(name), overrides)
+    """Resolve a registered profile, with optional ``key=value`` edits applied first.
+
+    Config overrides land on the profile before resolution so that everything
+    derived from them -- token width, shard count, normalized discounts -- is
+    derived from what was asked for. ``launch_overrides`` is the separate,
+    later-applied machine sizing.
+    """
+
+    return resolve_profile(named_profile_spec(name, overrides), launch_overrides)
 
 
-# S02 keeps trainer consumers field-compatible while moving construction behind
-# the new resolver.  Later CLI/training sections consume the resolved wrapper.
+def named_profile_spec(name: str, overrides: dict[str, str] | None = None) -> ProfileSpec:
+    """The registered profile after ``key=value`` edits, before any resolution.
+
+    VRAM sizing asks its questions of this rather than of the registered
+    profile: an edit to ``num_fields`` or ``num_steps`` changes how much memory
+    a launch needs, and a measurement taken without it describes a different
+    configuration.
+    """
+
+    profile = get_profile(name)
+    if overrides:
+        profile = apply_overrides(profile, overrides)
+    return profile
+
+
 RL_RESOLVED_CONFIG = resolve_named_profile("rl")
-RL_FIELDS_RESOLVED_CONFIG = resolve_named_profile("rl-fields")
 BC_RESOLVED_CONFIG = resolve_named_profile("bc")
 
 RL_TRAIN_CONFIG = RL_RESOLVED_CONFIG.train_config
-RL_FIELDS_TRAIN_CONFIG = RL_FIELDS_RESOLVED_CONFIG.train_config
 BC_TRAIN_CONFIG = BC_RESOLVED_CONFIG.train_config
 
 __all__ = [
@@ -51,12 +71,10 @@ __all__ = [
     "BC_RESOLVED_CONFIG",
     "BC_TRAIN_CONFIG",
     "PROFILES",
-    "RL_FIELDS_PROFILE",
-    "RL_FIELDS_RESOLVED_CONFIG",
-    "RL_FIELDS_TRAIN_CONFIG",
     "RL_PROFILE",
     "RL_RESOLVED_CONFIG",
     "RL_TRAIN_CONFIG",
     "get_profile",
+    "named_profile_spec",
     "resolve_named_profile",
 ]

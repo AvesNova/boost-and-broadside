@@ -1,0 +1,175 @@
+{
+  "entries": [
+    {
+      "kind": "random",
+      "label": "random",
+      "elo": 0.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "scripted",
+      "label": "scripted",
+      "elo": 1000.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p2",
+      "elo": 200.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p3",
+      "elo": 300.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p4",
+      "elo": 400.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p5",
+      "elo": 500.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p6",
+      "elo": 600.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p7",
+      "elo": 700.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p8",
+      "elo": 800.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p9",
+      "elo": 900.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "semi_random",
+      "label": "semi_scripted_0p95",
+      "elo": 950.0,
+      "global_step": 0,
+      "update": 0,
+      "path": null,
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_9953280",
+      "elo": 516.2685011876579,
+      "global_step": 9953280,
+      "update": 10,
+      "path": "checkpoints/good-leaf-719/ladder_step_000009953280.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_11943936",
+      "elo": 819.2889506813783,
+      "global_step": 11943936,
+      "update": 12,
+      "path": "checkpoints/good-leaf-719/ladder_step_000011943936.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_13934592",
+      "elo": 842.9935256714668,
+      "global_step": 13934592,
+      "update": 14,
+      "path": "checkpoints/good-leaf-719/ladder_step_000013934592.pt",
+      "fixed": true
+    },
+    {
+      "kind": "avg",
+      "label": "avg",
+      "elo": 1699.7409395058394,
+      "global_step": 35831808,
+      "update": 0,
+      "path": null,
+      "fixed": false
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_39813120",
+      "elo": 1026.758385168904,
+      "global_step": 39813120,
+      "update": 40,
+      "path": "checkpoints/good-leaf-719/ladder_step_000039813120.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_72658944",
+      "elo": 1158.0713840085377,
+      "global_step": 72658944,
+      "update": 73,
+      "path": "checkpoints/good-leaf-719/ladder_step_000072658944.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_132378624",
+      "elo": 1386.4368863381458,
+      "global_step": 132378624,
+      "update": 133,
+      "path": "checkpoints/good-leaf-719/ladder_step_000132378624.pt",
+      "fixed": true
+    },
+    {
+      "kind": "checkpoint",
+      "label": "ckpt_256794624",
+      "elo": 1592.7232742840902,
+      "global_step": 256794624,
+      "update": 258,
+      "path": "checkpoints/good-leaf-719/ladder_step_000256794624.pt",
+      "fixed": false
+    }
+  ]
+}

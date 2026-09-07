@@ -12,16 +12,26 @@ from dataclasses import asdict, dataclass
 
 import torch
 
+from boost_and_broadside.config.diagnostics import (
+    GRADIENT_DIAGNOSTICS_OFF,
+    GradientDiagnosticsConfig,
+)
+
 
 @dataclass(frozen=True)
 class ExecutionSettings:
-    """Validated process settings recorded beside a resolved configuration."""
+    """Validated process settings recorded beside a resolved configuration.
+
+    Observability settings live here rather than in the profile: they are chosen
+    per launch and change nothing about what the run optimizes.
+    """
 
     device: str
     seed: int
     compile_mode: str | None
     wandb: bool
     allow_config_drift: bool
+    gradient_diagnostics: GradientDiagnosticsConfig = GRADIENT_DIAGNOSTICS_OFF
 
     def document(self) -> dict[str, object]:
         return asdict(self)
@@ -77,6 +87,7 @@ def resolve_execution_settings(
     compile_mode: str | None,
     wandb: bool,
     allow_config_drift: bool,
+    gradient_diagnostics: GradientDiagnosticsConfig = GRADIENT_DIAGNOSTICS_OFF,
 ) -> ExecutionSettings:
     """Validate and resolve settings without mutating process RNG state."""
 
@@ -91,6 +102,7 @@ def resolve_execution_settings(
         compile_mode=compile_mode,
         wandb=wandb,
         allow_config_drift=allow_config_drift,
+        gradient_diagnostics=gradient_diagnostics,
     )
 
 
@@ -98,6 +110,10 @@ def initialize_execution(settings: ExecutionSettings) -> None:
     """Apply already validated RNG settings to the current process."""
 
     random.seed(settings.seed)
+    # Every draw the trainer makes comes from Torch, including the permutation
+    # that orders PPO minibatches. Keep it that way: a second RNG would need its
+    # own seeding here, and the one that got missed is the one that silently
+    # varies between two runs meant to be compared.
     torch.manual_seed(settings.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(settings.seed)

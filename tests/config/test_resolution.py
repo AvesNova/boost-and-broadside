@@ -1,54 +1,50 @@
-"""Contracts for the profile-intent and resolved-configuration boundary."""
+"""Contracts for the profile-intent and resolved-configuration boundary.
+
+Three source-scanning tests were removed from this file: an ``ast`` check that
+the base profile imports no overlay, an ``ast`` check that ``config/`` imports no
+runtime engine module, and a regex sweep for references to the deleted ``runs/``
+package. Each stated a real rule by pattern-matching over source text, which
+fires on renames and misses anything phrased differently. The rules hold; the
+enforcement cost more than it caught.
+"""
 
 from __future__ import annotations
 
-import ast
 import json
-import re
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 from pathlib import Path
 
 import pytest
 
 from boost_and_broadside.config.fingerprint import canonical_data, canonical_json, fingerprint
 from boost_and_broadside.config.resolve import (
+    _PASS_THROUGH,
     LaunchOverrides,
     derive_aligned_num_envs,
     derive_time_normalized_value,
     resolve_profile,
 )
-from boost_and_broadside.config.schedule_spec import compile_schedule, constant_spec, linear_spec
-from boost_and_broadside.config.schema import LaunchSizingSpec
+from boost_and_broadside.config.schedule_spec import compile_keypoints, hold
+from boost_and_broadside.config.schema import LaunchSizingSpec, ProfileSpec
 from boost_and_broadside.config.service import format_resolved_config, resolved_profile_document
+from boost_and_broadside.config.training import TrainConfig
 from boost_and_broadside.profiles import PROFILES
 
 _ROOT = Path(__file__).resolve().parents[2]
-_SNAPSHOTS = _ROOT / "tests" / "fixtures" / "mode_refactor"
-_PROFILE_MODULES = (
-    _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl.py",
-    _ROOT / "src" / "boost_and_broadside" / "profiles" / "rl_fields.py",
-    _ROOT / "src" / "boost_and_broadside" / "profiles" / "bc.py",
-)
 
 
-@pytest.mark.parametrize("name", ("rl", "rl-fields"))
-def test_resolved_profiles_match_s01_snapshots(name: str) -> None:
-    """BC is deliberately absent: S11 corrected it away from its S01 evidence.
+def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
+    """BC's whole divergence from RL, as data.
 
-    ``tests/config/test_bc_profile.py`` pins the corrected profile and the exact
-    set of values that correction changed.
+    This replaces ``tests/config/test_bc_profile.py``, which spent 181 lines
+    checking by hand that BC had not drifted on any *shared* value. An overlay
+    cannot: a shared value that moves here moves in RL too. What is still worth
+    pinning is the other direction -- that the list of deliberate differences is
+    the one that was reviewed, and has not quietly grown.
     """
-    expected = json.loads((_SNAPSHOTS / f"{name}.json").read_text())
-    resolved = resolve_profile(PROFILES[name])
 
-    assert canonical_data(resolved.ship_config) == expected["ship_config"]
-    assert canonical_data(resolved.model_config) == expected["model_config"]
-    assert canonical_data(resolved.train_config) == expected["train_config"]
-
-
-def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
     rl = canonical_data(resolve_profile(PROFILES["rl"]).train_config)
-    fields = canonical_data(resolve_profile(PROFILES["rl-fields"]).train_config)
+    bc = canonical_data(resolve_profile(PROFILES["bc"]).train_config)
 
     def different_paths(left, right, prefix=""):
         if isinstance(left, dict) and isinstance(right, dict):
@@ -67,102 +63,17 @@ def test_rl_fields_resolved_diff_contains_only_named_field_intent() -> None:
             return paths
         return {prefix} if left != right else set()
 
-    # The live gauge is defined rather than fitted per environment, so S12
-    # removed the two rating differences that used to be here: what separates
-    # the two profiles is now field intent and nothing else.
-    assert different_paths(rl, fields) == {
-        "field_map",
-        "rewards.field_damage_taken_weight",
-        "rewards.field_death_weight",
-        "scales.0.env_config.num_fields",
-        "scales.0.num_envs",
+    assert {path.split(".")[0] for path in different_paths(rl, bc)} == {
+        # Full-strength next-state prediction while a dense supervised signal is
+        # available to learn the trunk from.
+        "next_state_coef",
+        # BC's own budget: it stops when imitation saturates.
+        "total_timesteps",
+        # Five entries -- learning_rate, policy_gradient_coef,
+        # behavior_cloning_coef, league_fraction, target_kl -- each commented at
+        # the point of override in profiles/bc.py.
+        "schedule",
     }
-
-
-def test_registered_profile_modules_do_not_import_each_other() -> None:
-    module_names = {
-        "boost_and_broadside.profiles.rl",
-        "boost_and_broadside.profiles.rl_fields",
-        "boost_and_broadside.profiles.bc",
-    }
-    for path in _PROFILE_MODULES:
-        tree = ast.parse(path.read_text(), filename=str(path))
-        imported = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        }
-        imported.update(
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        )
-        assert imported.isdisjoint(module_names), f"{path.name} imports another profile: {imported}"
-    assert not (_ROOT / "runs").exists()
-
-
-def test_deleted_runs_profile_path_has_no_live_references() -> None:
-    # Files that name `runs/` as *history* rather than as a path in this tree. The
-    # two 682 migration scripts read the landmark run's own training commit, where
-    # the profiles still lived at `runs/shared.py`; that commit is recorded in the
-    # run's W&B export and is an ancestor of main, so the reference is to a real
-    # location in a real checkout, just not this one. Nothing here imports `runs` at
-    # runtime: landmark_682_reference.py does so only inside a subprocess-style entry
-    # point that has already put the historical checkout first on sys.path, and
-    # asserts it.
-    historical_references = {
-        _ROOT / "scripts" / "migrate_682.py",
-        _ROOT / "scripts" / "landmark_682_reference.py",
-    }
-    candidates = [
-        _ROOT / "src" / "boost_and_broadside" / "cli.py",
-        _ROOT / "src" / "boost_and_broadside" / "cli_commands.py",
-        _ROOT / "README.md",
-        _ROOT / "STYLE_GUIDE.md",
-        _ROOT / "pyproject.toml",
-    ]
-    for root in (_ROOT / "src", _ROOT / "scripts", _ROOT / "docs"):
-        candidates.extend(
-            path
-            for path in root.rglob("*")
-            if path.suffix in {".md", ".py", ".toml"}
-            and path not in historical_references
-        )
-
-    stale_reference = re.compile(r"\b(?:from|import)\s+runs\b|\bruns/")
-    offenders = {
-        str(path.relative_to(_ROOT)): sorted(set(stale_reference.findall(path.read_text())))
-        for path in candidates
-        if stale_reference.search(path.read_text())
-    }
-    assert offenders == {}
-
-
-def test_config_foundation_has_no_runtime_engine_dependencies() -> None:
-    roots = (
-        _ROOT / "src" / "boost_and_broadside" / "config",
-        _ROOT / "src" / "boost_and_broadside" / "profiles",
-    )
-    forbidden = (
-        "boost_and_broadside.env",
-        "boost_and_broadside.modes",
-        "boost_and_broadside.train",
-    )
-    for path in (path for root in roots for path in root.glob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
-        modules = [
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        ]
-        modules.extend(
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        )
-        assert not [module for module in modules if module.startswith(forbidden)], path
 
 
 def test_token_and_discount_derivations_are_named_and_exact() -> None:
@@ -182,7 +93,7 @@ def test_token_and_discount_derivations_are_named_and_exact() -> None:
     assert derive_time_normalized_value(0.95, action_repeat=2) == 0.9025
 
 
-@pytest.mark.parametrize("name", ("rl", "rl-fields", "bc"))
+@pytest.mark.parametrize("name", ("rl", "bc"))
 def test_every_profile_checkpoints_on_every_update(name: str) -> None:
     """Save cadence is not a tuning knob any profile owns.
 
@@ -198,20 +109,16 @@ def test_every_profile_checkpoints_on_every_update(name: str) -> None:
         assert schedule.checkpoint_interval(step) == 1
 
 
-def test_fingerprints_are_canonical_and_separate_intent_from_launch() -> None:
+def test_resolving_one_profile_twice_gives_the_same_configuration() -> None:
     base = resolve_profile(PROFILES["rl"])
+    second = resolve_profile(PROFILES["rl"])
     overridden = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=1952, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=864, microbatch_tokens=20_000),
     )
 
-    assert fingerprint({"b": 2, "a": 1}) == fingerprint({"a": 1, "b": 2})
-    assert base.profile_fingerprint == overridden.profile_fingerprint
-    assert base.resolved_config_fingerprint != overridden.resolved_config_fingerprint
-    second = resolve_profile(PROFILES["rl"])
     assert canonical_data(second.train_config) == canonical_data(base.train_config)
-    assert second.profile_fingerprint == base.profile_fingerprint
-    assert second.resolved_config_fingerprint == base.resolved_config_fingerprint
+    assert canonical_data(overridden.train_config) != canonical_data(base.train_config)
 
 
 def test_canonical_serialization_has_a_stable_golden_vector() -> None:
@@ -225,93 +132,52 @@ def test_canonical_serialization_has_a_stable_golden_vector() -> None:
         canonical_json(object())
 
 
-def test_current_profile_and_resolved_fingerprints_are_stable() -> None:
-    # All six moved in S12: replacing each profile's fitted reference ladder and
-    # random rating with the derived live gauge is a semantic change to what the
-    # run is rated against, so both fingerprints are expected to differ from the
-    # values recorded through S11.
-    #
-    # All six moved again when checkpoint_interval went from 50 updates to 1.
-    # Save cadence changes nothing about what is trained or how it is rated, but
-    # the interval is declared schedule intent and both fingerprints cover the
-    # whole schedule, so a run recorded under the old cadence reads as drifted
-    # and needs --allow-config-drift to resume.
-    expected = {
-        "rl": (
-            "8185ff05150d3986a07652154ea9ced8eff0e4f1cd084f693aa83794589c383a",
-            "0bf3a3b52232e1fee5b6152fff05b5eae683af0dec48e603f4a8fb7c759fc12e",
-        ),
-        "rl-fields": (
-            "be1cc46795c4c07b9abd0a111c9633f1fbec9097c255231042c0085e363f89dc",
-            "35f7837d475c1b8c5ec2fadf50af2309af8cf1c7d77c47016d76a42a79d39a39",
-        ),
-        "bc": (
-            "f4e6d49575885b45c168ff2bc0f9f3261c4933518205072f573b79059bad5056",
-            "268bd9a48907f8d139a92ba074fb1511889962752954b0651d467f773c5aa6d5",
-        ),
-    }
-    for name, fingerprints in expected.items():
-        resolved = resolve_profile(PROFILES[name])
-        assert (resolved.profile_fingerprint, resolved.resolved_config_fingerprint) == fingerprints
-
-
-def test_profile_fingerprint_includes_declarative_schedule_intent() -> None:
+def test_a_changed_schedule_intent_reaches_the_compiled_schedule() -> None:
     profile = PROFILES["rl"]
-    changed_schedule = replace(
-        profile.objective.schedule,
-        entropy_coef=constant_spec(0.006),
-    )
-    changed = replace(
-        profile,
-        objective=replace(profile.objective, schedule=changed_schedule),
-    )
-    changed_fingerprint = resolve_profile(changed).profile_fingerprint
-    assert changed_fingerprint != resolve_profile(profile).profile_fingerprint
+    changed_schedule = replace(profile.schedule_spec, entropy_coef=hold(0.006))
+    changed = replace(profile, schedule_spec=changed_schedule)
+
+    assert resolve_profile(changed).train_config.schedule.entropy_coef(0) == 0.006
+    assert resolve_profile(profile).train_config.schedule.entropy_coef(0) != 0.006
 
 
-def test_profile_fingerprint_excludes_legacy_machine_launch_preset() -> None:
-    profile = PROFILES["rl"]
-    changed = replace(
-        profile,
-        launch_defaults=replace(profile.launch_defaults, rollout_tokens=3_000_000),
-    )
-    baseline = resolve_profile(profile)
-    other_machine = resolve_profile(changed)
-    assert other_machine.profile_fingerprint == baseline.profile_fingerprint
-    assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
+def test_a_keypoint_table_interpolates_holds_and_clamps() -> None:
+    linear = compile_keypoints(((0, 1.0, "linear"), (10, 3.0, "hold")))
+    assert (linear(-1), linear(0), linear(5), linear(10), linear(11)) == (1.0, 1.0, 2.0, 3.0, 3.0)
+
+    # A row that holds ignores the next value entirely until its step arrives.
+    held = compile_keypoints(((0, 1.0, "hold"), (10, 3.0, "hold")))
+    assert (held(0), held(9), held(10)) == (1.0, 1.0, 3.0)
+
+    # Exponential interpolation returns the written value at the keypoint, not
+    # exp(log(v)): the round trip loses the last bits, and the schedules were
+    # tuned under the exact number.
+    decay = compile_keypoints(((0, 4.5e-4, "exponential"), (400, 1.5e-4, "hold")))
+    assert decay(0) == 4.5e-4
+    assert decay(400) == 1.5e-4
+    assert decay(200) == 4.5e-4 * (1.5e-4 / 4.5e-4) ** 0.5
 
 
-def test_profile_fingerprint_excludes_gradient_checkpointing() -> None:
-    profile = PROFILES["rl"]
-    changed = replace(
-        profile,
-        model_config=replace(
-            profile.model_config,
-            grad_checkpoint=not profile.model_config.grad_checkpoint,
-        ),
-    )
-    baseline = resolve_profile(profile)
-    other_machine = resolve_profile(changed)
-
-    assert canonical_data(other_machine.train_config) == canonical_data(baseline.train_config)
-    assert other_machine.profile_fingerprint == baseline.profile_fingerprint
-    assert other_machine.resolved_config_fingerprint != baseline.resolved_config_fingerprint
-
-
-def test_declarative_schedule_validation_and_boundaries() -> None:
-    with pytest.raises(ValueError, match="at least two"):
-        linear_spec((0, 1.0))
-    with pytest.raises(ValueError, match="strictly increasing"):
-        linear_spec((10, 1.0), (0, 3.0))
-    schedule = linear_spec((0, 1.0), (10, 3.0))
-    runtime = compile_schedule(schedule)
-    assert (runtime(-1), runtime(5), runtime(11)) == (1.0, 2.0, 3.0)
+def test_a_malformed_keypoint_table_is_refused_by_name() -> None:
+    with pytest.raises(ValueError, match="at least one keypoint"):
+        compile_keypoints((), name="entropy_coef")
+    with pytest.raises(ValueError, match="strictly increase"):
+        compile_keypoints(((10, 1.0, "hold"), (0, 3.0, "hold")))
+    with pytest.raises(ValueError, match="unknown interpolation"):
+        compile_keypoints(((0, 1.0, "cosine"),))
+    with pytest.raises(ValueError, match="positive value"):
+        compile_keypoints(((0, 0.0, "exponential"), (10, 1.0, "hold")))
+    with pytest.raises(ValueError, match="needs a number"):
+        compile_keypoints(((0, None, "linear"), (10, 1.0, "hold")))
+    # A non-numeric value is fine as long as nothing interpolates through it:
+    # target_kl is None for the whole of BC.
+    assert compile_keypoints(hold(None))(5) is None
 
 
 def test_resolution_tracks_sources_and_cli_overrides() -> None:
     resolved = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=1952, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=864, microbatch_tokens=20_000),
     )
 
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "cli"
@@ -319,11 +185,11 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
     assert resolved.value_sources["train_config.gamma"] == "derived"
     assert resolved.value_sources["train_config.component_gammas.ally_win"] == "derived"
     assert resolved.value_sources["model_config.d_model"] == "profile"
-    assert resolved.train_config.scales[0].num_envs == 1952
+    assert resolved.train_config.scales[0].num_envs == 864
     assert resolved.train_config.microbatch_tokens == 20_000
 
     document = json.loads(
-        format_resolved_config(resolve_profile(PROFILES["rl"], LaunchOverrides(1952, 20_000)))
+        format_resolved_config(resolve_profile(PROFILES["rl"], LaunchOverrides(864, 20_000)))
     )
 
     def leaves(value, prefix=""):
@@ -356,7 +222,7 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
 
 def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
     baseline = resolve_profile(PROFILES["rl"])
-    half_width = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=1952))
+    narrower = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=864))
 
     def effective_batch_tokens(resolved) -> int:
         scale = resolved.train_config.scales[0]
@@ -368,13 +234,13 @@ def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
         )
 
     assert baseline.train_config.rollouts_per_update == 3
-    assert half_width.train_config.rollouts_per_update == 6
-    assert effective_batch_tokens(half_width) == effective_batch_tokens(baseline)
-    assert half_width.value_sources["train_config.scales.0.num_envs"] == "cli"
-    assert half_width.value_sources["train_config.rollouts_per_update"] == "derived"
+    assert narrower.train_config.rollouts_per_update == 9
+    assert effective_batch_tokens(narrower) == effective_batch_tokens(baseline)
+    assert narrower.value_sources["train_config.scales.0.num_envs"] == "cli"
+    assert narrower.value_sources["train_config.rollouts_per_update"] == "derived"
 
 
-@pytest.mark.parametrize("num_envs", (3872, 7776, 23_040))
+@pytest.mark.parametrize("num_envs", (3872, 3904, 23_040))
 def test_num_envs_override_rejects_width_that_changes_logical_batch(num_envs: int) -> None:
     with pytest.raises(ValueError, match="fixed logical batch"):
         resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=num_envs))
@@ -384,9 +250,9 @@ def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() ->
     baseline = resolve_profile(PROFILES["rl"])
     explicit = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=3904, microbatch_tokens=25_000),
+        LaunchOverrides(num_envs=2592, microbatch_tokens=25_000),
     )
-    assert explicit.resolved_config_fingerprint == baseline.resolved_config_fingerprint
+    assert canonical_data(explicit.train_config) == canonical_data(baseline.train_config)
     assert explicit.value_sources["train_config.scales.0.num_envs"] == "cli"
     assert explicit.value_sources["train_config.microbatch_tokens"] == "cli"
 
@@ -398,13 +264,13 @@ def test_invalid_launch_override_fails_after_precedence_is_applied() -> None:
         resolve_profile(PROFILES["rl"], LaunchOverrides(microbatch_tokens=0))
     invalid_fixed_width = replace(
         PROFILES["bc"],
-        launch_defaults=LaunchSizingSpec(num_envs=0),
+        launch=LaunchSizingSpec(num_envs=0),
     )
     with pytest.raises(ValueError, match="num_envs must be positive"):
         resolve_profile(invalid_fixed_width)
     invalid_optimizer = replace(
         PROFILES["rl"],
-        optimizer=replace(PROFILES["rl"].optimizer, clip_coef=-0.1),
+        clip_coef=-0.1,
     )
     with pytest.raises(ValueError, match="clip_coef"):
         resolve_profile(invalid_optimizer)
@@ -418,14 +284,14 @@ def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
     """
     fixed_width = replace(
         PROFILES["rl"],
-        rollout=replace(PROFILES["rl"].rollout, logical_batch_tokens=11_993_088),
-        launch_defaults=LaunchSizingSpec(num_envs=3904),
+        logical_batch_tokens=11_943_936,
+        launch=LaunchSizingSpec(num_envs=864),
     )
     resolved = resolve_profile(fixed_width)
 
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "vram-preset"
     assert resolved.value_sources["train_config.rollouts_per_update"] == "derived"
-    assert resolved.train_config.rollouts_per_update == 3
+    assert resolved.train_config.rollouts_per_update == 9
 
 
 def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, capsys) -> None:
@@ -436,10 +302,8 @@ def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, c
     assert rendered == format_resolved_config(resolve_profile(PROFILES["rl"]))
     assert document["schema_version"] == 1
     assert document["profile"] == "rl"
-    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 3904
+    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 2592
     assert document["sources"]["train_config.scales.0.num_envs"] == "derived"
-    assert len(document["profile_fingerprint"]) == 64
-    assert len(document["resolved_config_fingerprint"]) == 64
     assert list(tmp_path.iterdir()) == []
     assert capsys.readouterr() == ("", "")
 
@@ -460,14 +324,55 @@ def test_resolved_component_discounts_are_deeply_immutable() -> None:
     assert serialized["component_lambdas"] == dict(resolved.train_config.component_lambdas)
 
 
-def test_profiles_are_independent_values_even_when_their_intent_matches() -> None:
-    rl = PROFILES["rl"]
-    fields = PROFILES["rl-fields"]
+def test_an_overlay_shares_the_bases_values_without_sharing_its_identity() -> None:
+    """What BC does not override, it *is* -- and overriding cannot reach back.
 
-    assert rl is not fields
-    assert rl.objective.schedule is not fields.objective.schedule
-    assert replace(fields.environment, num_fields=0) == rl.environment
-    assert set(PROFILES) == {"bc", "rl", "rl-fields"}
+    ``replace`` on a frozen dataclass copies, so an overlay holding the base's
+    own sub-spec objects is the guarantee that a shared value cannot differ. The
+    second half is that the copy is still a copy: nothing done to BC edits RL.
+    """
+
+    rl = PROFILES["rl"]
+    bc = PROFILES["bc"]
+
+    assert rl is not bc
+    assert bc.rewards is rl.rewards
+    assert bc.elo_eval is rl.elo_eval
+    assert bc.launch is rl.launch
+    assert bc.component_gammas_per_tick == rl.component_gammas_per_tick
+    assert bc.schedule_spec is not rl.schedule_spec
+    assert set(PROFILES) == {"bc", "rl"}
     assert {profile.name for profile in PROFILES.values()} == set(PROFILES)
     with pytest.raises(TypeError):
-        rl.discounts.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]
+        rl.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]
+
+
+def test_only_untransformed_intent_shares_a_name_with_the_resolved_config() -> None:
+    """The pass-through set is derived from the two schemas, so naming decides it.
+
+    ``resolve_profile`` copies every field whose name appears on both
+    ``ProfileSpec`` and ``TrainConfig``, which is what makes adding a plain
+    hyperparameter a two-line change with nothing to edit in the resolver. The
+    hazard that buys is a *transformed* value being given the same name on both
+    sides -- it would then be copied straight through, and the trainer would read
+    the stated intent as if it were the derived result. A per-tick discount would
+    silently become a per-decision one.
+
+    So the derived names are pinned here. Adding to this list is a real decision;
+    arriving in it by accident is the bug.
+    """
+
+    profile_names = {field.name for field in fields(ProfileSpec)}
+    resolved_names = {field.name for field in fields(TrainConfig)}
+
+    assert resolved_names - profile_names == {
+        "gamma",  # gamma_per_tick raised to action_repeat
+        "gae_lambda",  # likewise
+        "component_gammas",  # likewise, per component
+        "component_lambdas",  # likewise
+        "schedule",  # schedule_spec compiled to closures
+        "scales",  # env intent plus the derived shard width
+        "rollouts_per_update",  # derived from the fixed logical batch
+        "microbatch_tokens",  # machine sizing, resolved from launch/VRAM/CLI
+    }
+    assert set(_PASS_THROUGH) == profile_names & resolved_names

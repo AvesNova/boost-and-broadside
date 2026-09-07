@@ -1,0 +1,852 @@
+{
+  "schema_version": 2,
+  "run": "good-leaf-719",
+  "num_envs": 256,
+  "max_total_ships": 320,
+  "rows": [
+    {
+      "trained": 1,
+      "crossover": 2,
+      "beats_up_to": 1,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.8828125,
+      "win_rate_at_crossover": 0.28515625,
+      "curve": {
+        "1": {
+          "counts_available": true,
+          "wins": 226,
+          "losses": 19,
+          "ties": 11,
+          "games": 256,
+          "win_rate": 0.8828125,
+          "mean_episode_steps": 210.7109375
+        },
+        "2": {
+          "counts_available": true,
+          "wins": 73,
+          "losses": 167,
+          "ties": 16,
+          "games": 256,
+          "win_rate": 0.28515625,
+          "mean_episode_steps": 335.5859375
+        }
+      }
+    },
+    {
+      "trained": 2,
+      "crossover": 4,
+      "beats_up_to": 3,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.62109375,
+      "win_rate_at_crossover": 0.296875,
+      "curve": {
+        "2": {
+          "counts_available": true,
+          "wins": 243,
+          "losses": 10,
+          "ties": 3,
+          "games": 256,
+          "win_rate": 0.94921875,
+          "mean_episode_steps": 239.4609375
+        },
+        "3": {
+          "counts_available": true,
+          "wins": 159,
+          "losses": 87,
+          "ties": 10,
+          "games": 256,
+          "win_rate": 0.62109375,
+          "mean_episode_steps": 369.6171875
+        },
+        "4": {
+          "counts_available": true,
+          "wins": 76,
+          "losses": 168,
+          "ties": 12,
+          "games": 256,
+          "win_rate": 0.296875,
+          "mean_episode_steps": 368.6171875
+        }
+      }
+    },
+    {
+      "trained": 4,
+      "crossover": 7,
+      "beats_up_to": 6,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.6328125,
+      "win_rate_at_crossover": 0.3515625,
+      "curve": {
+        "4": {
+          "counts_available": true,
+          "wins": 245,
+          "losses": 8,
+          "ties": 3,
+          "games": 256,
+          "win_rate": 0.95703125,
+          "mean_episode_steps": 279.203125
+        },
+        "5": {
+          "counts_available": true,
+          "wins": 224,
+          "losses": 28,
+          "ties": 4,
+          "games": 256,
+          "win_rate": 0.875,
+          "mean_episode_steps": 348.671875
+        },
+        "6": {
+          "counts_available": true,
+          "wins": 162,
+          "losses": 86,
+          "ties": 8,
+          "games": 256,
+          "win_rate": 0.6328125,
+          "mean_episode_steps": 408.8984375
+        },
+        "7": {
+          "counts_available": true,
+          "wins": 90,
+          "losses": 149,
+          "ties": 17,
+          "games": 256,
+          "win_rate": 0.3515625,
+          "mean_episode_steps": 417.2421875
+        }
+      }
+    },
+    {
+      "trained": 8,
+      "crossover": 13,
+      "beats_up_to": 12,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.59765625,
+      "win_rate_at_crossover": 0.46875,
+      "curve": {
+        "7": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 259.0625
+        },
+        "8": {
+          "counts_available": true,
+          "wins": 253,
+          "losses": 3,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.98828125,
+          "mean_episode_steps": 281.3828125
+        },
+        "9": {
+          "counts_available": true,
+          "wins": 245,
+          "losses": 10,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.95703125,
+          "mean_episode_steps": 337.140625
+        },
+        "10": {
+          "counts_available": true,
+          "wins": 232,
+          "losses": 22,
+          "ties": 2,
+          "games": 256,
+          "win_rate": 0.90625,
+          "mean_episode_steps": 367.2734375
+        },
+        "11": {
+          "counts_available": true,
+          "wins": 197,
+          "losses": 55,
+          "ties": 4,
+          "games": 256,
+          "win_rate": 0.76953125,
+          "mean_episode_steps": 404.96875
+        },
+        "12": {
+          "counts_available": true,
+          "wins": 153,
+          "losses": 92,
+          "ties": 11,
+          "games": 256,
+          "win_rate": 0.59765625,
+          "mean_episode_steps": 437.1953125
+        },
+        "13": {
+          "counts_available": true,
+          "wins": 120,
+          "losses": 134,
+          "ties": 2,
+          "games": 256,
+          "win_rate": 0.46875,
+          "mean_episode_steps": 406.625
+        }
+      }
+    },
+    {
+      "trained": 16,
+      "crossover": 24,
+      "beats_up_to": 23,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.6484375,
+      "win_rate_at_crossover": 0.4921875,
+      "curve": {
+        "13": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 258.28125
+        },
+        "14": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 268.078125
+        },
+        "15": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 292.125
+        },
+        "16": {
+          "counts_available": true,
+          "wins": 255,
+          "losses": 1,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.99609375,
+          "mean_episode_steps": 299.0234375
+        },
+        "17": {
+          "counts_available": true,
+          "wins": 255,
+          "losses": 1,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.99609375,
+          "mean_episode_steps": 318.46875
+        },
+        "18": {
+          "counts_available": true,
+          "wins": 251,
+          "losses": 5,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.98046875,
+          "mean_episode_steps": 339.5078125
+        },
+        "19": {
+          "counts_available": true,
+          "wins": 248,
+          "losses": 8,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.96875,
+          "mean_episode_steps": 365.828125
+        },
+        "20": {
+          "counts_available": true,
+          "wins": 227,
+          "losses": 28,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.88671875,
+          "mean_episode_steps": 382.828125
+        },
+        "21": {
+          "counts_available": true,
+          "wins": 200,
+          "losses": 54,
+          "ties": 2,
+          "games": 256,
+          "win_rate": 0.78125,
+          "mean_episode_steps": 409.3046875
+        },
+        "22": {
+          "counts_available": true,
+          "wins": 194,
+          "losses": 61,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.7578125,
+          "mean_episode_steps": 431.796875
+        },
+        "23": {
+          "counts_available": true,
+          "wins": 166,
+          "losses": 87,
+          "ties": 3,
+          "games": 256,
+          "win_rate": 0.6484375,
+          "mean_episode_steps": 441.5078125
+        },
+        "24": {
+          "counts_available": true,
+          "wins": 126,
+          "losses": 122,
+          "ties": 8,
+          "games": 256,
+          "win_rate": 0.4921875,
+          "mean_episode_steps": 459.9453125
+        }
+      }
+    },
+    {
+      "trained": 32,
+      "crossover": 45,
+      "beats_up_to": 44,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.57421875,
+      "win_rate_at_crossover": 0.46484375,
+      "curve": {
+        "24": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 284.296875
+        },
+        "25": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 296.0078125
+        },
+        "26": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 291.5
+        },
+        "27": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 299.96875
+        },
+        "28": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 308.1953125
+        },
+        "29": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 309.7421875
+        },
+        "30": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 319.6796875
+        },
+        "31": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 322.078125
+        },
+        "32": {
+          "counts_available": true,
+          "wins": 254,
+          "losses": 2,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.9921875,
+          "mean_episode_steps": 332.9375
+        },
+        "33": {
+          "counts_available": true,
+          "wins": 255,
+          "losses": 1,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.99609375,
+          "mean_episode_steps": 347.625
+        },
+        "34": {
+          "counts_available": true,
+          "wins": 251,
+          "losses": 5,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.98046875,
+          "mean_episode_steps": 349.4296875
+        },
+        "35": {
+          "counts_available": true,
+          "wins": 251,
+          "losses": 5,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.98046875,
+          "mean_episode_steps": 359.015625
+        },
+        "36": {
+          "counts_available": true,
+          "wins": 243,
+          "losses": 12,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.94921875,
+          "mean_episode_steps": 374.4609375
+        },
+        "37": {
+          "counts_available": true,
+          "wins": 245,
+          "losses": 11,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.95703125,
+          "mean_episode_steps": 393.5625
+        },
+        "38": {
+          "counts_available": true,
+          "wins": 230,
+          "losses": 25,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.8984375,
+          "mean_episode_steps": 403.1953125
+        },
+        "39": {
+          "counts_available": true,
+          "wins": 219,
+          "losses": 36,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.85546875,
+          "mean_episode_steps": 424.046875
+        },
+        "40": {
+          "counts_available": true,
+          "wins": 208,
+          "losses": 47,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.8125,
+          "mean_episode_steps": 430.4375
+        },
+        "41": {
+          "counts_available": true,
+          "wins": 181,
+          "losses": 72,
+          "ties": 3,
+          "games": 256,
+          "win_rate": 0.70703125,
+          "mean_episode_steps": 428.421875
+        },
+        "42": {
+          "counts_available": true,
+          "wins": 173,
+          "losses": 82,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.67578125,
+          "mean_episode_steps": 432.2421875
+        },
+        "43": {
+          "counts_available": true,
+          "wins": 145,
+          "losses": 111,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.56640625,
+          "mean_episode_steps": 434.8203125
+        },
+        "44": {
+          "counts_available": true,
+          "wins": 147,
+          "losses": 105,
+          "ties": 4,
+          "games": 256,
+          "win_rate": 0.57421875,
+          "mean_episode_steps": 458.0390625
+        },
+        "45": {
+          "counts_available": true,
+          "wins": 119,
+          "losses": 135,
+          "ties": 2,
+          "games": 256,
+          "win_rate": 0.46484375,
+          "mean_episode_steps": 442.75
+        }
+      }
+    },
+    {
+      "trained": 64,
+      "crossover": 80,
+      "beats_up_to": 79,
+      "capped": false,
+      "win_rate_at_beats_up_to": 0.5435897435897435,
+      "win_rate_at_crossover": 0.46875,
+      "curve": {
+        "45": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 336.3984375
+        },
+        "46": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 336.2109375
+        },
+        "47": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 333.0078125
+        },
+        "48": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 333.3046875
+        },
+        "49": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 338.1171875
+        },
+        "50": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 329.859375
+        },
+        "51": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 335.9609375
+        },
+        "52": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 331.2265625
+        },
+        "53": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 335.0859375
+        },
+        "54": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 339.921875
+        },
+        "55": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 343.7421875
+        },
+        "56": {
+          "counts_available": true,
+          "wins": 255,
+          "losses": 1,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.99609375,
+          "mean_episode_steps": 348.6875
+        },
+        "57": {
+          "counts_available": true,
+          "wins": 256,
+          "losses": 0,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 1.0,
+          "mean_episode_steps": 339.0625
+        },
+        "58": {
+          "counts_available": true,
+          "wins": 255,
+          "losses": 0,
+          "ties": 1,
+          "games": 256,
+          "win_rate": 0.99609375,
+          "mean_episode_steps": 347.25
+        },
+        "59": {
+          "counts_available": true,
+          "wins": 255,
+          "losses": 1,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.99609375,
+          "mean_episode_steps": 353.1640625
+        },
+        "60": {
+          "counts_available": true,
+          "wins": 252,
+          "losses": 4,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.984375,
+          "mean_episode_steps": 348.21875
+        },
+        "61": {
+          "counts_available": true,
+          "wins": 253,
+          "losses": 3,
+          "ties": 0,
+          "games": 256,
+          "win_rate": 0.98828125,
+          "mean_episode_steps": 361.0390625
+        },
+        "62": {
+          "counts_available": true,
+          "wins": 250,
+          "losses": 1,
+          "ties": 0,
+          "games": 251,
+          "win_rate": 0.9960159362549801,
+          "mean_episode_steps": 368.1991882324219
+        },
+        "63": {
+          "counts_available": true,
+          "wins": 243,
+          "losses": 4,
+          "ties": 1,
+          "games": 248,
+          "win_rate": 0.9798387096774194,
+          "mean_episode_steps": 371.8951721191406
+        },
+        "64": {
+          "counts_available": true,
+          "wins": 232,
+          "losses": 11,
+          "ties": 1,
+          "games": 244,
+          "win_rate": 0.9508196721311475,
+          "mean_episode_steps": 382.1639404296875
+        },
+        "65": {
+          "counts_available": true,
+          "wins": 230,
+          "losses": 10,
+          "ties": 0,
+          "games": 240,
+          "win_rate": 0.9583333333333334,
+          "mean_episode_steps": 374.4583435058594
+        },
+        "66": {
+          "counts_available": true,
+          "wins": 224,
+          "losses": 12,
+          "ties": 0,
+          "games": 236,
+          "win_rate": 0.9491525423728814,
+          "mean_episode_steps": 391.1610107421875
+        },
+        "67": {
+          "counts_available": true,
+          "wins": 212,
+          "losses": 21,
+          "ties": 0,
+          "games": 233,
+          "win_rate": 0.9098712446351931,
+          "mean_episode_steps": 390.1373291015625
+        },
+        "68": {
+          "counts_available": true,
+          "wins": 207,
+          "losses": 20,
+          "ties": 2,
+          "games": 229,
+          "win_rate": 0.9039301310043668,
+          "mean_episode_steps": 397.60699462890625
+        },
+        "69": {
+          "counts_available": true,
+          "wins": 199,
+          "losses": 27,
+          "ties": 0,
+          "games": 226,
+          "win_rate": 0.8805309734513275,
+          "mean_episode_steps": 403.5840759277344
+        },
+        "70": {
+          "counts_available": true,
+          "wins": 199,
+          "losses": 23,
+          "ties": 0,
+          "games": 222,
+          "win_rate": 0.8963963963963963,
+          "mean_episode_steps": 407.7207336425781
+        },
+        "71": {
+          "counts_available": true,
+          "wins": 189,
+          "losses": 30,
+          "ties": 0,
+          "games": 219,
+          "win_rate": 0.863013698630137,
+          "mean_episode_steps": 413.4794616699219
+        },
+        "72": {
+          "counts_available": true,
+          "wins": 174,
+          "losses": 41,
+          "ties": 1,
+          "games": 216,
+          "win_rate": 0.8055555555555556,
+          "mean_episode_steps": 429.1759338378906
+        },
+        "73": {
+          "counts_available": true,
+          "wins": 168,
+          "losses": 43,
+          "ties": 2,
+          "games": 213,
+          "win_rate": 0.7887323943661971,
+          "mean_episode_steps": 434.4507141113281
+        },
+        "74": {
+          "counts_available": true,
+          "wins": 162,
+          "losses": 46,
+          "ties": 2,
+          "games": 210,
+          "win_rate": 0.7714285714285715,
+          "mean_episode_steps": 432.8666687011719
+        },
+        "75": {
+          "counts_available": true,
+          "wins": 151,
+          "losses": 53,
+          "ties": 3,
+          "games": 207,
+          "win_rate": 0.7294685990338164,
+          "mean_episode_steps": 436.74395751953125
+        },
+        "76": {
+          "counts_available": true,
+          "wins": 146,
+          "losses": 58,
+          "ties": 0,
+          "games": 204,
+          "win_rate": 0.7156862745098039,
+          "mean_episode_steps": 428.2549133300781
+        },
+        "77": {
+          "counts_available": true,
+          "wins": 132,
+          "losses": 69,
+          "ties": 0,
+          "games": 201,
+          "win_rate": 0.6567164179104478,
+          "mean_episode_steps": 438.487548828125
+        },
+        "78": {
+          "counts_available": true,
+          "wins": 115,
+          "losses": 82,
+          "ties": 1,
+          "games": 198,
+          "win_rate": 0.5808080808080808,
+          "mean_episode_steps": 454.65655517578125
+        },
+        "79": {
+          "counts_available": true,
+          "wins": 106,
+          "losses": 89,
+          "ties": 0,
+          "games": 195,
+          "win_rate": 0.5435897435897435,
+          "mean_episode_steps": 430.4820556640625
+        },
+        "80": {
+          "counts_available": true,
+          "wins": 90,
+          "losses": 102,
+          "ties": 0,
+          "games": 192,
+          "win_rate": 0.46875,
+          "mean_episode_steps": 423.9791564941406
+        }
+      }
+    }
+  ]
+}

@@ -39,35 +39,26 @@ def _bounded_bc(checkpoint_dir: str) -> ResolvedTrainConfig:
     """Resolve the registered BC profile at a launch size a CPU test can run."""
 
     profile = PROFILES["bc"]
-    entity_tokens = profile.environment.num_ships + profile.environment.num_fields
+    entity_tokens = profile.num_ships + profile.num_fields
     rollout_tokens = _NUM_ENVS * entity_tokens * _NUM_STEPS
     bounded = replace(
         profile,
         model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
-        environment=replace(profile.environment, max_episode_steps=64),
-        rollout=replace(
-            profile.rollout,
-            logical_batch_tokens=rollout_tokens,
-            num_steps=_NUM_STEPS,
-            num_minibatches=1,
-        ),
-        launch_defaults=LaunchSizingSpec(num_envs=_NUM_ENVS),
-        optimizer=replace(
-            profile.optimizer,
-            total_timesteps=_NUM_ENVS * _NUM_STEPS * _UPDATES,
-            checkpoint_dir=checkpoint_dir,
-            histogram_interval=1000,
-            log_interval=1,
-        ),
-        league=replace(
-            profile.league,
-            elo_eval=replace(
-                profile.league.elo_eval,
-                envs_per_matchup=2,
-                step_interval=1,
-                window_size=4,
-                min_games_to_freeze=0,
-            ),
+        max_episode_steps=64,
+        logical_batch_tokens=rollout_tokens,
+        num_steps=_NUM_STEPS,
+        num_minibatches=1,
+        launch=LaunchSizingSpec(num_envs=_NUM_ENVS),
+        total_timesteps=_NUM_ENVS * _NUM_STEPS * _UPDATES,
+        checkpoint_dir=checkpoint_dir,
+        histogram_interval=1000,
+        log_interval=1,
+        elo_eval=replace(
+            profile.elo_eval,
+            envs_per_matchup=2,
+            step_interval=1,
+            window_size=4,
+            min_games_to_freeze=0,
         ),
     )
     return resolve_profile(bounded)
@@ -125,7 +116,7 @@ def test_bc_rates_on_the_derived_live_gauge(tmp_path) -> None:
 
 def test_bc_takes_no_policy_gradient_across_its_whole_budget(tmp_path) -> None:
     trainer = _trainer(tmp_path)
-    budget = PROFILES["bc"].optimizer.total_timesteps
+    budget = PROFILES["bc"].total_timesteps
 
     for step in (0, budget // 2, budget):
         assert trainer.cfg.schedule.policy_gradient_coef(step) == 0.0

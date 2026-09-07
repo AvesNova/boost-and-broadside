@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-09-03T01:52:12Z",
+  "device": "cuda",
+  "elapsed_seconds": 253059.76745724678,
+  "git_commit": "3d1a2e5573d9fff135cf5ab30b0fdea1b369908c",
+  "git_dirty": false,
+  "global_step": 671846400,
+  "live_elo": 2120.832286989671,
+  "profile": "rl",
+  "run": "wild-universe-731",
+  "schema_version": 1,
+  "seed": 526210600045818742,
+  "status": "interrupted",
+  "update": 674,
+  "updated_at": "2026-09-06T00:02:02Z",
+  "wandb_run_id": "mwvvm4kb"
+}

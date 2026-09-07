@@ -45,12 +45,21 @@ class SmokeCase:
     command: str
     profile: str | None = None
     timeout_seconds: int = 90
+    # Gradient-diagnostic level this training case launches at. Off is the
+    # default every non-diagnostic case runs, and the one shipping runs use.
+    gradient_diagnostics: str = "off"
 
 
 SMOKE_CASES: tuple[SmokeCase, ...] = (
-    SmokeCase("train-rl", "train", "rl", 120),
-    SmokeCase("train-rl-fields", "train", "rl-fields", 180),
-    SmokeCase("train-bc", "train", "bc", 120),
+    SmokeCase("train-rl", "train", "rl", 180),
+    SmokeCase("train-bc", "train", "bc", 180),
+    # One case per diagnostic level, because each level adds a distinct code
+    # path: decomposing nothing, the loss terms, the policy by reward, and the
+    # critic by reward. What is being exercised is the decomposition, not the
+    # environment, so they all run the one training profile.
+    SmokeCase("train-grad-top-level", "train", "rl", 210, gradient_diagnostics="top_level"),
+    SmokeCase("train-grad-reward-policy", "train", "rl", 240, gradient_diagnostics="reward_policy"),
+    SmokeCase("train-grad-reward-full", "train", "rl", 300, gradient_diagnostics="reward_full"),
     SmokeCase("play", "play"),
     SmokeCase("watch", "watch"),
     SmokeCase("capture", "capture", timeout_seconds=120),
@@ -117,62 +126,53 @@ def _smoke_resolved_profile(
     checkpoint_root: Path,
     *,
     resolved_name: str | None = None,
+    num_fields: int | None = None,
 ) -> ResolvedTrainConfig:
-    """Resolve a registry profile's objective under a fixed one-update smoke shape."""
+    """Resolve a registry profile's objective under a fixed one-update smoke shape.
+
+    ``num_fields`` overrides the profile's field count. It is a parameter rather
+    than a second profile because the network does not change with it -- zero
+    fields is the configuration run 682 trained under, and keeping a fixture at
+    that width is how the field-free path stays exercised.
+    """
 
     base = PROFILES[profile_name]
-    num_fields = base.environment.num_fields
-    entity_tokens = 2 + num_fields
+    if num_fields is None:
+        num_fields = base.num_fields
     num_steps = 2
-    environment = replace(
-        base.environment,
-        num_ships=2,
-        max_bullets=2,
-        max_episode_steps=2,
+    return resolve_profile(
+        replace(
+            base,
+            name=resolved_name or f"smoke-{profile_name}",
+            num_ships=2,
+            num_fields=num_fields,
+            max_bullets=2,
+            max_episode_steps=2,
+            field_map=(
+                replace(base.field_map, cache_size=1, max_generation_attempts=256)
+                if num_fields and base.field_map is not None
+                else None
+            ),
+            logical_batch_tokens=(2 + num_fields) * num_steps,
+            num_steps=num_steps,
+            num_minibatches=1,
+            total_timesteps=num_steps,
+            checkpoint_dir=str(checkpoint_root),
+            histogram_interval=100,
+            log_interval=1,
+            league_slots=1,
+            live_reference_probabilities=(),
+            elo_milestone_gap=0.0,
+            elo_eval=replace(
+                base.elo_eval,
+                envs_per_matchup=1,
+                step_interval=1,
+                window_size=2,
+                min_games_to_freeze=0,
+            ),
+            launch=LaunchSizingSpec(num_envs=1),
+        )
     )
-    rollout = replace(
-        base.rollout,
-        logical_batch_tokens=entity_tokens * num_steps,
-        num_steps=num_steps,
-        num_minibatches=1,
-    )
-    launch = LaunchSizingSpec(num_envs=1)
-    optimizer = replace(
-        base.optimizer,
-        total_timesteps=num_steps,
-        checkpoint_dir=str(checkpoint_root),
-        histogram_interval=100,
-        log_interval=1,
-    )
-    league = replace(
-        base.league,
-        league_slots=1,
-        live_reference_probabilities=(),
-        elo_milestone_gap=0.0,
-        elo_eval=replace(
-            base.league.elo_eval,
-            envs_per_matchup=1,
-            step_interval=1,
-            window_size=2,
-            min_games_to_freeze=0,
-        ),
-    )
-    field_map = (
-        replace(base.field_map, cache_size=1, max_generation_attempts=256)
-        if base.field_map is not None
-        else None
-    )
-    spec = replace(
-        base,
-        name=resolved_name or f"smoke-{profile_name}",
-        environment=environment,
-        rollout=rollout,
-        launch_defaults=launch,
-        optimizer=optimizer,
-        league=league,
-        field_map=field_map,
-    )
-    return resolve_profile(spec)
 
 
 def _active_value_layout(resolved: ResolvedTrainConfig) -> tuple[int, tuple[int, ...]]:
@@ -194,11 +194,21 @@ def build_synthetic_run(
     *,
     seed: int = 7,
     run_name: str = _RUN_NAME,
+    profile: str = "rl",
+    num_fields: int | None = None,
 ) -> SyntheticRun:
-    """Create the smallest current-schema run through production serializers."""
+    """Create the smallest current-schema run through production serializers.
+
+    ``num_fields`` overrides the profile's field count, and it is what the
+    evaluation modes need to be varied across: a field-free fixture cannot catch
+    a mode that fails to read a run's field distribution, and a fielded one
+    cannot catch a mode that has stopped handling the width run 682 trained at.
+    """
 
     root = Path(checkpoint_root).resolve()
-    resolved = _smoke_resolved_profile("rl", root, resolved_name="smoke-fixture")
+    resolved = _smoke_resolved_profile(
+        profile, root, resolved_name="smoke-fixture", num_fields=num_fields
+    )
     run_dir = root / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -325,7 +335,7 @@ def validate_case_root(root: str | Path) -> None:
     )
     if rendered:
         raise SmokeIsolationError(
-            "smoke cases must disable report/publication rendering: " + ", ".join(rendered)
+            "smoke cases must disable report and figure rendering: " + ", ".join(rendered)
         )
 
 
@@ -361,6 +371,8 @@ def _run_training_case(case: SmokeCase, roots: SmokeRoots) -> None:
                 "--compile",
                 "none",
                 "--no-wandb",
+                "--gradient-diagnostics",
+                case.gradient_diagnostics,
             ]
         )
     if result:

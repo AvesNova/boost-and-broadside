@@ -2,7 +2,7 @@
 
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,7 +15,13 @@ from boost_and_broadside.agents.semi_random_scripted import (
 )
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.config import (
+    EloCalibrateConfig,
+    EnvConfig,
+    FieldMapConfig,
+    ModelConfig,
+    ShipConfig,
+)
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.environment import create_evaluation_env
@@ -167,12 +173,17 @@ class BatchStat:
     ratings: list[float] = field(default_factory=list)
 
 
-def load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
-    """Recover the environment, model, and paradigm the run actually trained under.
+def load_run_config(
+    run_dir: Path,
+) -> tuple[EnvConfig, ModelConfig, str, FieldMapConfig | None]:
+    """Recover the environment, model, paradigm, and field distribution a run trained under.
 
     Ladder snapshots are policy-only, so this reads the resumable checkpoint.
     Calibrating under a different ship count or paradigm than the run used would
-    measure a different game than the one the counts came from.
+    measure a different game than the one the counts came from -- and for a run
+    with fields, so would a different map distribution, which is why the
+    field-map intent comes back with the rest rather than being rebuilt from
+    whatever the current profile happens to say.
     """
     try:
         selected = select_final_training_checkpoint(run_dir)
@@ -185,8 +196,36 @@ def load_run_config(run_dir: Path) -> tuple[EnvConfig, ModelConfig, str]:
     require_observation_schema(checkpoint, str(selected.path))
     env_config = EnvConfig(**checkpoint["env_config"])
     model_config = ModelConfig(**checkpoint["model_config"])
-    paradigm = checkpoint.get("train_config", {}).get("paradigm", "ego_pass")
-    return env_config, model_config, paradigm
+    train_config = checkpoint.get("train_config", {})
+    paradigm = train_config.get("paradigm", "ego_pass")
+    return (
+        env_config,
+        model_config,
+        paradigm,
+        recorded_field_map(checkpoint, env_config, run_dir.name),
+    )
+
+
+def recorded_field_map(
+    checkpoint: Mapping[str, object],
+    env_config: EnvConfig,
+    label: str,
+) -> FieldMapConfig | None:
+    """The map distribution a checkpoint trained under, or ``None`` if it had none.
+
+    Absence is only legitimate at zero fields. A fielded run that records no
+    intent cannot be evaluated on the distribution it learned, and guessing one
+    from the current profile would produce a confident number about a different
+    game -- so this raises rather than substituting.
+    """
+
+    field_map = checkpoint.get("train_config", {}).get("field_map")
+    if env_config.num_fields > 0 and field_map is None:
+        raise InvalidCheckpointError(
+            f"{label} trained with {env_config.num_fields} fields but records no "
+            f"field-map intent; it cannot be evaluated on the distribution it trained on"
+        )
+    return None if field_map is None else FieldMapConfig(**field_map)
 
 
 def load_ladder_policy(
@@ -228,17 +267,22 @@ def build_players(
     device: str,
     reference_probabilities: tuple[float, ...] = (),
     final_label: str | None = None,
+    best_names: tuple[str, ...] = (),
 ) -> list[Player]:
     """Assemble the tournament field.
 
     The field is random, the scripted controller, optional semi-random reference
-    rungs between them, every ladder snapshot, and the run's final checkpoint.
+    rungs between them, every ladder snapshot, the run's final checkpoint, and
+    any ``best_<name>.pt`` policies named in ``best_names``.
     The random anchor comes first so it can serve as the fallback rating gauge.
     The rungs cost batch budget but repair the field's weakest link: without
     them, random connects to everything else only through near-certain games.
     The final checkpoint is included so the endpoint of the calibrated curve is
     pinned by a full tournament rating rather than only by the last update's
-    online record.
+    online record. The best policies belong in the same tournament rather than a
+    separate one for the same reason a ladder does: ratings are only comparable
+    within a fit, so asking whether a run's final policy is really its strongest
+    means playing them against each other and the same field.
     """
     players = [Player("random", ResolvedAgent("random", None), 0.0, 0)]
     scripted = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
@@ -311,6 +355,34 @@ def build_players(
                     final_step,
                 )
             )
+            ladder_steps.add(final_step)
+
+    # Best-so-far snapshots. live_elo stays None: they are selections out of the
+    # trajectory rather than points on it, and the rung-to-rung comparison keys
+    # off a live rating precisely so it reports the trajectory only.
+    for name in best_names:
+        try:
+            best = select_named_best_policy(run_dir, name)
+        except CheckpointNotFoundError:
+            print(f"  [warn] no best_{name}.pt in {run_dir.name}, skipping")
+            continue
+        bundle = load_policy_bundle(
+            str(best.path),
+            device=device,
+            num_ships=num_ships,
+            ship_config=ship_config,
+            model_config=model_config,
+        )
+        if bundle.global_step in ladder_steps:
+            print(
+                f"  [warn] best_{name}.pt is step {bundle.global_step}, already in the "
+                f"field; skipping"
+            )
+            continue
+        ladder_steps.add(bundle.global_step)
+        players.append(
+            Player(f"best_{name}", ResolvedAgent("policy", bundle.policy), None, bundle.global_step)
+        )
     return players
 
 

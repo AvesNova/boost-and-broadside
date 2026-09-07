@@ -58,6 +58,7 @@ from boost_and_broadside.evaluation.agents import (
 from boost_and_broadside.evaluation.environment import (
     create_evaluation_field_map,
     resolve_evaluation_environment,
+    run_field_map,
 )
 from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.subjects import (
@@ -85,6 +86,12 @@ from boost_and_broadside.train.rl.bradley_terry import (
 # Opponents that are not stationary and so cannot be tournament players. "avg"
 # changes every update, exactly like the live policy it is measured against.
 _NON_STATIONARY = frozenset({"avg"})
+
+# The saved best-so-far policies, rated in the same tournament as the ladder and
+# the final checkpoint. Their frozen files *are* stationary -- unlike the live
+# "avg" opponent above -- and whether a run's final policy is actually its
+# strongest is only answerable inside a single fit.
+BEST_POLICY_NAMES: tuple[str, ...] = ("training", "avg")
 
 # How draws enter the likelihood.
 #
@@ -410,7 +417,7 @@ def run_elo_calibrate_mode(
             raise FileNotFoundError(f"no roster.json in {run_dir}; nothing to calibrate")
 
         roster = json.loads(roster_path.read_text())
-        env_config, model_config, paradigm = load_run_config(run_dir)
+        env_config, model_config, paradigm, field_map_config = load_run_config(run_dir)
         print(f"\n=== Elo calibration: {run_dir.name} ===")
         print(
             f"  {env_config.num_ships} ships, {paradigm}, "
@@ -427,6 +434,7 @@ def run_elo_calibrate_mode(
             env_config.num_ships,
             device,
             reference_probabilities=config.reference_probabilities,
+            best_names=BEST_POLICY_NAMES,
         )
         progress.done(f"field ({len(players)}): {', '.join(p.label for p in players)}")
         anchor = next(i for i, p in enumerate(players) if p.label == "random")
@@ -453,6 +461,7 @@ def run_elo_calibrate_mode(
             num_envs,
             device,
             include_bullets=model_config.reads_bullets,
+            field_map=run_field_map(ship_config, env_config, field_map_config, device),
         )
         pairs = len(players) * (len(players) - 1) // 2
         progress.stage(

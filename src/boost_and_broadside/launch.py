@@ -15,6 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from boost_and_broadside.config.diagnostics import (
+    GRADIENT_DIAGNOSTICS_OFF,
+    GradientDiagnosticsConfig,
+)
 from boost_and_broadside.config.resolve import LaunchOverrides
 from boost_and_broadside.config.schema import ResolvedTrainConfig
 from boost_and_broadside.config.vram import (
@@ -26,7 +30,7 @@ from boost_and_broadside.config.vram import (
 )
 from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.execution import ExecutionSettings, resolve_execution_settings
-from boost_and_broadside.profiles import resolve_named_profile
+from boost_and_broadside.profiles import named_profile_spec, resolve_named_profile
 
 ProfileResolver = Callable[..., ResolvedTrainConfig]
 
@@ -76,6 +80,7 @@ def resolve_training_launch(
     compile_mode: str | None = None,
     wandb: bool = True,
     allow_config_drift: bool = False,
+    gradient_diagnostics: GradientDiagnosticsConfig = GRADIENT_DIAGNOSTICS_OFF,
     num_envs: int | None = None,
     microbatch_tokens: int | None = None,
     allow_probe: bool = True,
@@ -83,11 +88,16 @@ def resolve_training_launch(
     runner: Callable[..., Any] | None = None,
     report: Callable[[str], None] | None = None,
     resolve: ProfileResolver = resolve_named_profile,
+    overrides: dict[str, str] | None = None,
 ) -> TrainingLaunch:
     """Resolve a complete launch without constructing a trainer or environment.
 
     ``allow_probe`` is false for ``--print-config``: printing what a launch
     would do must not spend an hour measuring the card.
+
+    ``overrides`` are ``key=value`` edits to the profile, applied before anything
+    is derived from it, so a changed ``num_fields`` or ``num_steps`` resizes the
+    launch the way the profile would have.
     """
 
     policy = parse_vram_policy(vram)
@@ -111,18 +121,20 @@ def resolve_training_launch(
         compile_mode=compile_mode,
         wandb=wandb,
         allow_config_drift=allow_config_drift,
+        gradient_diagnostics=gradient_diagnostics,
     )
-    # The semantic fingerprint keys the VRAM cache and does not depend on any
-    # launch sizing, so resolving the profile at its defaults is enough to ask
-    # the cache a question about it.
-    intent = resolve(profile)
+    # The VRAM question is asked of the profile as edited but before any launch
+    # sizing: sizing is the answer, so it cannot also be part of the question.
+    intent = resolve(profile, overrides=overrides)
+    spec = named_profile_spec(profile, overrides)
 
     from boost_and_broadside.vram_probe import resolve_vram
 
     resolution = resolve_vram(
         policy,
         profile_name=profile,
-        profile_fingerprint=intent.profile_fingerprint,
+        profile=spec,
+        overrides=overrides,
         device=execution.device,
         compile_mode=execution.compile_mode,
         cache_file=cache_file,

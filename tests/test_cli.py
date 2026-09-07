@@ -11,6 +11,7 @@ import pytest
 
 from boost_and_broadside import cli, cli_commands
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
+from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
 from boost_and_broadside.config.vram import TIER_GUARANTEES
 from boost_and_broadside.launch import resolve_training_launch
 
@@ -28,7 +29,7 @@ EXPECTED_COMMANDS = (
     "noise-calibration",
     "feature-stats",
     "runs",
-    "publish",
+    "figures",
     "smoke",
 )
 
@@ -46,7 +47,7 @@ VALID_ARGV = {
     "noise-calibration": ["--team0", "model.pt", "--team1", "scripted"],
     "feature-stats": ["--team0", "scripted", "--team1", "random"],
     "runs": [],
-    "publish": [],
+    "figures": ["--run", "exact-run"],
     "smoke": [],
 }
 
@@ -80,6 +81,10 @@ def test_modifier_ownership_matches_command_contract() -> None:
     assert owners["--vram"] == {"train"}
     assert owners["--num-envs"] == {"train"}
     assert owners["--microbatch-tokens"] == {"train"}
+    # Only training has a gradient to decompose.
+    assert owners["--gradient-diagnostics"] == {"train"}
+    assert owners["--gradient-diagnostics-interval"] == {"train"}
+    assert owners["--gradient-diagnostics-minibatches"] == {"train"}
     assert owners["--out"] == {"capture"}
     assert owners["--target-stderr"] == {"elo-calibrate", "elo-scale"}
     assert owners["--max-batches"] == {"elo-calibrate", "elo-scale"}
@@ -254,20 +259,20 @@ def test_print_config_refuses_to_probe_from_the_command_line(policy: str, capsys
 
 
 def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None:
+    # The 24 GB row, not 16: the profile has no two-shard split, so its 16 GB row
+    # proposes the same width as its 8 GB one and would move tier 1 alone.
     assert (
-        cli.main(
-            ["train", "--profile", "rl", "--device", "cpu", "--vram", "16", "--print-config"]
-        )
+        cli.main(["train", "--profile", "rl", "--device", "cpu", "--vram", "24", "--print-config"])
         == 0
     )
     document = json.loads(capsys.readouterr().out)
     vram = document["launch"]["vram"]
     assert vram == {
-        "policy": "16",
+        "policy": "24",
         "source": "vram-preset",
         "status": "provisional",
-        "proposed": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
-        "applied": {"num_envs": 5856, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "proposed": {"num_envs": 7776, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "applied": {"num_envs": 7776, "microbatch_tokens": 37_500, "grad_checkpoint": False},
         "tiers": vram["tiers"],
         "identity_fingerprint": None,
         "notes": vram["notes"],
@@ -275,7 +280,7 @@ def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None
     assert set(vram["tiers"]) == {"1", "2"}
     assert "never measured" in vram["notes"][0]
     # D9: the resolved shard count is recorded and reported.
-    assert document["config"]["train_config"]["rollouts_per_update"] == 2
+    assert document["config"]["train_config"]["rollouts_per_update"] == 1
     assert document["sources"]["train_config.scales.0.num_envs"] == "vram-preset"
     assert document["sources"]["model_config.grad_checkpoint"] == "vram-preset"
 
@@ -290,66 +295,31 @@ def test_print_config_rejects_an_unavailable_execution_backend(capsys, monkeypat
     assert "Traceback" not in error
 
 
-def test_publish_reports_a_missing_manifest_concisely(tmp_path, monkeypatch, capsys) -> None:
+def test_figures_reports_an_unknown_run_concisely(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(SystemExit) as exit_info:
-        cli.main(["publish", "--check"])
+        cli.main(["figures", "--run", "no-such-run"])
 
     assert exit_info.value.code == 2
     error = capsys.readouterr().err
-    assert "publications.toml" in error
+    assert "no-such-run" in error
     assert "Traceback" not in error
 
 
-_UNSELECTED_MANIFEST = """
-schema_version = 1
+def test_figures_reports_a_missing_measurement_concisely(tmp_path, monkeypatch, capsys) -> None:
+    """A run that has not been evaluated yet says which artifact it lacks."""
 
-[publications.pending]
-renderer = "crossover-phase-v1"
-output = "docs/results/crossover_phase.png"
-description = "An entry whose measurement has not been made yet."
-"""
-
-
-def test_publish_check_succeeds_when_an_entry_is_still_unselected(
-    tmp_path, monkeypatch, capsys
-) -> None:
-    """An entry with no source is part of the inventory, not an error."""
-
-    docs = tmp_path / "docs"
-    docs.mkdir()
-    (docs / "publications.toml").write_text(_UNSELECTED_MANIFEST)
-    monkeypatch.chdir(tmp_path)
-
-    assert cli.main(["publish", "--check"]) == 0
-    assert "unselected" in capsys.readouterr().out
-
-
-def test_publish_reports_a_selected_source_that_is_absent_concisely(
-    tmp_path, monkeypatch, capsys
-) -> None:
-    """The shipped manifest names real artifacts; without them, say so plainly.
-
-    Each entry says which source it could not resolve, rather than one entry's
-    failure standing in for the whole inventory, so the naming happens in the
-    report on stdout and stderr carries the summary. Both stay concise.
-    """
-
-    docs = tmp_path / "docs"
-    docs.mkdir()
-    (docs / "publications.toml").write_text(Path("docs/publications.toml").read_text())
-    (docs / "policy_architecture.png").write_bytes(b"fixture")
+    (tmp_path / "checkpoints" / "half-done").mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(SystemExit) as exit_info:
-        cli.main(["publish", "--check"])
+        cli.main(["figures", "--run", "half-done", "--only", "crossover_ratio.png"])
 
     assert exit_info.value.code == 2
-    captured = capsys.readouterr()
-    assert "artifact.json" in captured.out
-    assert "unresolved" in captured.out
-    assert "Traceback" not in captured.err and "Traceback" not in captured.out
+    error = capsys.readouterr().err
+    assert "no crossover artifact" in error
+    assert "Traceback" not in error
 
 
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
@@ -363,7 +333,7 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
                 "--profile",
                 "rl",
                 "--num-envs",
-                "1952",
+                "864",
                 "--microbatch-tokens",
                 "20000",
                 "--device",
@@ -389,6 +359,9 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
         "device": "cpu",
         "seed": 17,
         "wandb": False,
+        # Observability, recorded like any other launch decision. Off is what a
+        # run that measured nothing has to say for itself.
+        "gradient_diagnostics": {"level": "off", "interval": 1, "minibatches": 1},
         # A CPU launch has nothing to size, and says so rather than implying a
         # decision it did not make. The tiers are still claimed: this launch
         # really does run at half the profile's width and a smaller microbatch,
@@ -693,6 +666,82 @@ def test_analysis_adapters_use_the_locked_4v4_default(command, runtime_name, mon
     assert captured["env_config"].num_ships == 8
 
 
+def test_gradient_diagnostics_default_to_off() -> None:
+    """Nothing measures unless it was asked to."""
+    settings = cli_commands.gradient_diagnostics_from_args(_parse(["train", "--profile", "rl"]))
+    assert settings == GradientDiagnosticsConfig(level="off", interval=1, minibatches=1)
+    assert not settings.enabled
+
+
+@pytest.mark.parametrize("level", ["off", "top_level", "reward_policy", "reward_full"])
+def test_every_gradient_diagnostic_level_is_selectable_from_the_command_line(level: str) -> None:
+    args = _parse(["train", "--profile", "rl", "--gradient-diagnostics", level])
+    assert cli_commands.gradient_diagnostics_from_args(args).level == level
+
+
+def test_gradient_diagnostic_cadence_and_width_are_carried_from_the_command_line() -> None:
+    args = _parse(
+        [
+            "train",
+            "--profile",
+            "rl",
+            "--gradient-diagnostics",
+            "reward_policy",
+            "--gradient-diagnostics-interval",
+            "25",
+            "--gradient-diagnostics-minibatches",
+            "3",
+        ]
+    )
+    settings = cli_commands.gradient_diagnostics_from_args(args)
+    assert settings == GradientDiagnosticsConfig(level="reward_policy", interval=25, minibatches=3)
+    assert settings.measures_update(50)
+    assert not settings.measures_update(51)
+
+
+def test_an_unregistered_gradient_diagnostic_level_fails_during_parsing() -> None:
+    with pytest.raises(SystemExit):
+        _parse(["train", "--profile", "rl", "--gradient-diagnostics", "everything"])
+
+
+def test_gradient_diagnostics_reach_the_trainer_through_the_launch(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        cli_commands, "PPOTrainer", lambda **kwargs: captured.update(kwargs) or _StubTrainer()
+    )
+    args = _parse(
+        [
+            "train",
+            "--profile",
+            "rl",
+            "--no-wandb",
+            "--gradient-diagnostics",
+            "top_level",
+            "--gradient-diagnostics-interval",
+            "4",
+        ]
+    )
+    launch = resolve_training_launch(
+        profile="rl",
+        vram=args.vram,
+        device="cpu",
+        seed=0,
+        compile_mode=None,
+        wandb=False,
+        gradient_diagnostics=cli_commands.gradient_diagnostics_from_args(args),
+    )
+    cli_commands._make_trainer(launch, args, "cpu")
+
+    assert captured["gradient_diagnostics"] == GradientDiagnosticsConfig(
+        level="top_level", interval=4
+    )
+    assert launch.document()["gradient_diagnostics"] == {
+        "level": "top_level",
+        "interval": 4,
+        "minibatches": 1,
+    }
+
+
 def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -> None:
     captured = {}
 
@@ -715,7 +764,7 @@ def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -
 
     document = captured["resolved_config_document"]
     assert document["profile"] == "rl"
-    assert document["resolved_config_fingerprint"] == launch.resolved.resolved_config_fingerprint
+    assert document["config"]["train_config"]["num_steps"] == launch.resolved.train_config.num_steps
     provenance = captured["launch_provenance"]
     assert {key: provenance[key] for key in provenance if key != "vram"} == {
         "device": "cpu",
@@ -723,6 +772,9 @@ def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -
         "compile_mode": "reduce-overhead",
         "wandb": False,
         "allow_config_drift": False,
+        "gradient_diagnostics": {"level": "off", "interval": 1, "minibatches": 1},
+        # What the command line changed, recorded beside what it resolved to.
+        "overrides": {},
     }
     # The launch record names the VRAM decision, not just the execution settings.
     assert provenance["vram"]["policy"] == "auto"
@@ -752,7 +804,11 @@ def _recorded_run(root: Path, name: str, *, profile: str, step: int, modified: f
     write_manifest(
         path,
         RunManifest(
-            run=name, profile=profile, update=7, global_step=step, live_elo=879.8,
+            run=name,
+            profile=profile,
+            update=7,
+            global_step=step,
+            live_elo=879.8,
             elapsed_seconds=5_400.0,
         ),
     )
@@ -804,11 +860,26 @@ def test_runs_lists_newest_first_and_marks_what_is_resumable(tmp_path, monkeypat
 
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].split() == [
-        "RUN", "PROFILE", "STATUS", "UPDATE", "STEP", "ELAPSED", "LIVE", "ELO", "RESUMABLE",
+        "RUN",
+        "PROFILE",
+        "STATUS",
+        "UPDATE",
+        "STEP",
+        "ELAPSED",
+        "LIVE",
+        "ELO",
+        "RESUMABLE",
     ]
     assert [line.split()[0] for line in lines[1:]] == ["no-checkpoint", "newest-bc", "older-rl"]
-    assert lines[2].split()[1:] == ["bc", "running", "7", "4,096", "1h30m", "880",
-                                    "step_000000004096.pt"]
+    assert lines[2].split()[1:] == [
+        "bc",
+        "running",
+        "7",
+        "4,096",
+        "1h30m",
+        "880",
+        "step_000000004096.pt",
+    ]
     # A run with no manifest and no checkpoint still lists, with nothing invented.
     assert lines[1].split()[1:] == ["-", "-", "-", "-", "-", "-", "-"]
 

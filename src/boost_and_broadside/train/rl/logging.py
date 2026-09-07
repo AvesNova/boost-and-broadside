@@ -20,10 +20,10 @@ class LoggingMixin:
         ship_tokens_per_update: int,
     ) -> tuple[int, int]:
         # Scaler stats — one CPU transfer per component group
-        p5, p95 = self.scaler.percentiles
-        p5_cpu = p5.cpu()
-        p95_cpu = p95.cpu()
-        span_cpu = p95_cpu - p5_cpu
+        mean, std = self.scaler.moments
+        mean_cpu = mean.cpu()
+        std_cpu = std.cpu()
+        span_cpu = std_cpu * (2.0 * self.scaler.STD_MULTIPLE)
         adv_rms_cpu = self.adv_scaler.rms.cpu()
         # A floor that binds on an active component decouples that component's
         # scale from its own statistics: the critic target (ReturnScaler) or the
@@ -33,8 +33,8 @@ class LoggingMixin:
         span_bound_cpu = self.scaler.floor_bound.cpu()
         rms_bound_cpu = self.adv_scaler.floor_bound.cpu()
         for i, name in enumerate(self._active_names):
-            metrics[f"scaler/p5/{name}"] = p5_cpu[i].item()
-            metrics[f"scaler/p95/{name}"] = p95_cpu[i].item()
+            metrics[f"scaler/return_mean/{name}"] = mean_cpu[i].item()
+            metrics[f"scaler/return_std/{name}"] = std_cpu[i].item()
             metrics[f"scaler/span/{name}"] = span_cpu[i].item()
             metrics[f"scaler/adv_rms/{name}"] = adv_rms_cpu[i].item()
             metrics[f"scaler/floor_bound_span/{name}"] = float(span_bound_cpu[i].item())
@@ -185,6 +185,38 @@ class LoggingMixin:
         metrics["live_elo/ladder/policy"] = self._live_elo
         for entry in self.roster.entries:
             metrics[f"live_elo/ladder/{entry.label}"] = entry.elo
+
+        # Read-only instrumentation of the rating filter. Nothing downstream
+        # consumes these keys; they exist so the estimator has a measured
+        # baseline before it is replaced. The accumulated ladder record fills
+        # in the background; nothing reads it back yet, and it is logged so its
+        # growth is visible before an estimator is built on it.
+        # Stage 1 refits the ladder from the accumulated record, stage 2 solves
+        # for the live policy against it. Logged beside live_elo, gating nothing.
+        metrics.update(
+            self._two_stage.update(
+                self.match_matrix,
+                self._match_counts,
+                {entry.label: entry.elo for entry in self.roster.entries},
+                {
+                    entry.label: entry.elo
+                    for entry in self.roster.entries
+                    if entry.is_stationary
+                },
+            )
+        )
+        metrics["elo_diag/ladder_matrix_games"] = self.match_matrix.total_games
+        metrics["elo_diag/ladder_matrix_pairs"] = float(len(self.match_matrix))
+        metrics.update(
+            self._elo_diagnostics.update(
+                live_elo=self._live_elo,
+                match_counts=self._match_counts,
+                ratings={entry.label: entry.elo for entry in self.roster.entries},
+                stationary={
+                    entry.label: entry.is_stationary for entry in self.roster.entries
+                },
+            )
+        )
 
         # Save overwriting best-model checkpoints (live, then avg) when the
         # rating improves. Absolute gauge, so no re-basing.

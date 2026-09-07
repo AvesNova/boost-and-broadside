@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 import torch
 
+from boost_and_broadside.config import constant, stepped
 from boost_and_broadside.train.rl.checkpoint import (
     OPTIONAL_CHECKPOINT_FIELDS,
     POLICY_CHECKPOINT_FIELDS,
     RESUMABLE_CHECKPOINT_FIELDS,
-    _check_resolved_config_provenance,
     build_policy_checkpoint_payload,
     build_training_checkpoint_payload,
     clone_to_cpu,
@@ -197,7 +197,7 @@ class TestObservationSchema:
             env_config=EnvConfig(num_ships=2, max_bullets=4, max_episode_steps=8),
             ship_config=ShipConfig(),
             paradigm="ego_pass",
-            resolved_config={"resolved_config_fingerprint": "abc"},
+            resolved_config={"profile": "abc"},
             launch={"device": "cpu", "seed": 7},
         )
 
@@ -205,7 +205,7 @@ class TestObservationSchema:
         assert payload["num_value_components"] == 3
         assert payload["team_pma_k"] == (0, 2)
         assert payload["global_step"] == 17
-        assert payload["resolved_config"]["resolved_config_fingerprint"] == "abc"
+        assert payload["resolved_config"]["profile"] == "abc"
         assert payload["launch"] == {"device": "cpu", "seed": 7}
 
     def test_full_payload_builder_matches_resumable_checkpoint_schema(self, tmp_path):
@@ -277,63 +277,6 @@ class TestObservationSchema:
     def test_legacy_obstacle_checkpoint_fails_clearly(self):
         with pytest.raises(ValueError, match="Observation feature semantics are incompatible"):
             require_observation_schema({"policy_state_dict": {}}, "legacy.pt")
-
-
-class TestResolvedConfigProvenance:
-    def test_resume_rejects_a_different_complete_resolved_config(self):
-        checkpoint = {
-            "resolved_config": {"resolved_config_fingerprint": "recorded"},
-        }
-        current = {"resolved_config_fingerprint": "current"}
-        with pytest.raises(ValueError, match="--allow-config-drift"):
-            _check_resolved_config_provenance(
-                checkpoint,
-                current,
-                allow_config_drift=False,
-            )
-
-    def test_explicit_drift_override_is_loud(self):
-        checkpoint = {
-            "resolved_config": {"resolved_config_fingerprint": "recorded"},
-        }
-        current = {"resolved_config_fingerprint": "current"}
-        with pytest.warns(UserWarning, match="config drift is allowed"):
-            _check_resolved_config_provenance(
-                checkpoint,
-                current,
-                allow_config_drift=True,
-            )
-
-    def test_real_resume_loader_enforces_drift_while_pretraining_allows_it(self, tmp_path):
-        from tests.train.test_ppo import _make_trainer
-
-        source = _make_trainer(checkpoint_dir=str(tmp_path / "source"))
-        payload = source.checkpoint_payload(0)
-        payload["resolved_config"] = {"resolved_config_fingerprint": "recorded-bc"}
-        checkpoint = tmp_path / "cross-profile.pt"
-        torch.save(payload, checkpoint)
-
-        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"))
-        resumed.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
-        resumed.launch_provenance = {"allow_config_drift": False}
-        with pytest.raises(ValueError, match="--allow-config-drift"):
-            resumed.load_checkpoint(str(checkpoint))
-
-        allowed = _make_trainer(checkpoint_dir=str(tmp_path / "allowed"))
-        allowed.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
-        allowed.launch_provenance = {"allow_config_drift": True}
-        with pytest.warns(UserWarning, match="config drift is allowed"):
-            assert allowed.load_checkpoint(str(checkpoint)) == 0
-
-        pretrained = _make_trainer(checkpoint_dir=str(tmp_path / "pretrain"))
-        pretrained.resolved_config_document = {"resolved_config_fingerprint": "current-rl"}
-        pretrained.launch_provenance = {"allow_config_drift": False}
-        pretrained.load_pretrained_weights(str(checkpoint))
-
-        source.shutdown()
-        resumed.shutdown()
-        allowed.shutdown()
-        pretrained.shutdown()
 
 
 class TestResumableCheckpointContract:
@@ -411,12 +354,12 @@ class TestResumableCheckpointContract:
         payload["training_elo"] = payload.pop("live_elo")
         payload["avg_training_elo"] = payload.pop("avg_live_elo")
         if with_resolved_config:
-            payload["resolved_config"] = {"resolved_config_fingerprint": "recorded"}
+            payload["resolved_config"] = {"profile": "recorded"}
         legacy = tmp_path / "legacy.pt"
         torch.save(payload, legacy)
 
         resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"))
-        resumed.resolved_config_document = {"resolved_config_fingerprint": "recorded"}
+        resumed.resolved_config_document = {"profile": "recorded"}
         resumed.launch_provenance = {"allow_config_drift": False}
         before = (
             resumed._live_elo,
@@ -904,10 +847,7 @@ class TestRunManifest:
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._schedule_state.checkpoint_interval = 1
-        trainer.resolved_config_document = {
-            "profile": "rl",
-            "resolved_config_fingerprint": "0bf3a3b5",
-        }
+        trainer.resolved_config_document = {"profile": "rl"}
         trainer.launch_provenance = {"device": "cpu", "seed": 7}
         return trainer
 
@@ -926,7 +866,6 @@ class TestRunManifest:
         assert (manifest.profile, manifest.device, manifest.seed) == ("rl", "cpu", 7)
         assert (manifest.global_step, manifest.update) == (4096, 3)
         assert manifest.status is RunStatus.RUNNING
-        assert manifest.resolved_config_fingerprint == "0bf3a3b5"
 
     def test_the_final_save_records_the_run_it_wrote(self, tmp_path):
         from boost_and_broadside.run_manifest import read_manifest
@@ -955,6 +894,43 @@ class TestRunManifest:
         assert manifest is not None
         assert manifest.status is RunStatus.INTERRUPTED
         # The record it was tracking is untouched by the status change.
+        assert (manifest.global_step, manifest.update) == (4096, 3)
+
+    def test_the_manifest_records_which_code_produced_the_run(self, tmp_path):
+        """A commit alone does not describe a run made from a modified checkout."""
+        from boost_and_broadside.run_manifest import code_identity, read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._global_step = 4096
+        trainer._maybe_save_checkpoint(update=3)
+        trainer._active_save_thread.join(timeout=60)
+
+        manifest = read_manifest(Path(tmp_path) / trainer.run_name)
+
+        assert manifest is not None
+        assert (manifest.git_commit, manifest.git_dirty) == code_identity()
+
+    def test_a_crashed_run_is_recorded_as_failed(self, tmp_path):
+        """Otherwise the manifest still says "running" and reads as a live process."""
+        from boost_and_broadside.cli_commands import _run_trainer
+        from boost_and_broadside.run_manifest import RunStatus, read_manifest
+
+        trainer = self._trainer(tmp_path)
+        trainer._global_step = 4096
+        trainer._maybe_save_checkpoint(update=3)
+        trainer._active_save_thread.join(timeout=60)
+
+        def explode():
+            raise RuntimeError("CUDA error: device-side assert triggered")
+
+        trainer.train = explode
+        with pytest.raises(RuntimeError, match="device-side assert"):
+            _run_trainer(trainer)
+
+        manifest = read_manifest(Path(tmp_path) / trainer.run_name)
+        assert manifest is not None
+        assert manifest.status is RunStatus.FAILED
+        # The record the last successful save made is left as it was.
         assert (manifest.global_step, manifest.update) == (4096, 3)
 
     def test_a_run_with_no_checkpoint_gets_no_manifest(self, tmp_path):
@@ -1076,3 +1052,165 @@ class TestBestCheckpoints:
         # Save was skipped (slot busy), so the bar must not have moved.
         assert trainer._best_live_elo == mark_before
         blocker.join(timeout=60)
+
+
+class TestResumeRestoresScheduleState:
+    """Schedule-derived runtime state has to be rebuilt at the restored step.
+
+    ``__init__`` computes the coefficients from the schedule at step zero, and
+    the loop refreshes them only *after* an update. So a resume that restores
+    everything else still entered its first update holding step-zero values —
+    most damagingly a behavior-cloning coefficient the run had already decayed
+    to zero, reapplied at full strength against a policy that had long outgrown
+    the scripted controller. On run 717 that cost ~400 Elo and 20 updates.
+    """
+
+    @staticmethod
+    def _schedule():
+        """Step-dependent LR and live BC, so step-zero state is distinguishable."""
+        from tests.train.test_ppo import _make_schedule
+
+        return _make_schedule(
+            learning_rate=stepped((0, 3e-4), (256, 5e-5)),
+            behavior_cloning_coef=constant(2.0),
+        )
+
+    def _saved_run(self, tmp_path):
+        """A run that reached step 512 already beating the scripted agent."""
+        from tests.train.test_ppo import _make_trainer
+
+        source = _make_trainer(checkpoint_dir=str(tmp_path / "source"), schedule=self._schedule())
+        source._global_step = 512
+        # A full window of scripted wins: past bc_winrate_target (0.9), so the
+        # decay factor is zero and BC has switched itself off.
+        source._eval_window_sc.extend([1.0] * source._eval_window_sc.maxlen)
+        saved = tmp_path / "step.pt"
+        torch.save(clone_to_cpu(source.checkpoint_payload(update=0)), saved)
+        source.shutdown()
+        return saved
+
+    def test_resume_applies_the_schedule_at_the_restored_step(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        saved = self._saved_run(tmp_path)
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"), schedule=self._schedule())
+        assert resumed._behavior_cloning_coef == 2.0  # step-zero state, pre-load
+
+        resumed.load_checkpoint(str(saved))
+
+        assert resumed._scripted_win_rate == 1.0
+        assert resumed._behavior_cloning_coef == 0.0
+        assert resumed._schedule_state.learning_rate == 5e-5
+        assert resumed.optim.param_groups[0]["lr"] == 5e-5
+        resumed.shutdown()
+
+    def test_resume_matches_the_state_a_refresh_would_have_produced(self, tmp_path):
+        """Coefficient for coefficient, against the loop's own refresh path."""
+        from tests.train.test_ppo import _make_trainer
+
+        saved = self._saved_run(tmp_path)
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"), schedule=self._schedule())
+        resumed.load_checkpoint(str(saved))
+        restored = (
+            resumed._schedule_state,
+            resumed._policy_gradient_coef,
+            resumed._behavior_cloning_coef,
+            resumed._entropy_coef,
+            resumed._scripted_win_rate,
+            [c.weight for c in resumed.wrapper.reward_components],
+        )
+
+        # The refresh the loop runs at the end of an update, from the same step
+        # and the same window: the state a resume is trying to reproduce.
+        resumed._refresh_training_schedule({}, elo_eval=None)
+
+        assert restored == (
+            resumed._schedule_state,
+            resumed._policy_gradient_coef,
+            resumed._behavior_cloning_coef,
+            resumed._entropy_coef,
+            resumed._scripted_win_rate,
+            [c.weight for c in resumed.wrapper.reward_components],
+        )
+        resumed.shutdown()
+
+    def test_the_first_post_resume_update_takes_no_behavior_cloning_loss(self, tmp_path):
+        """The consequence, at the training loop rather than at the loader."""
+        from tests.train.test_ppo import _make_trainer
+
+        saved = self._saved_run(tmp_path)
+        resumed = _make_trainer(checkpoint_dir=str(tmp_path / "resume"), schedule=self._schedule())
+        resumed.load_checkpoint(str(saved))
+        assert resumed._start_update == 1  # the loop really does run an update
+
+        logged = []
+        resumed._log_training_update = lambda metrics, *a, **k: logged.append(metrics)
+        resumed.train()
+
+        assert logged
+        assert logged[0]["loss/behavioral_cloning"] == 0.0
+
+
+class TestRecordedConfigHistory:
+    """``config.json`` beside the checkpoints: what this run trained under, when."""
+
+    def test_a_saving_run_records_the_config_it_is_training_under(self, tmp_path):
+        from boost_and_broadside.config.run_config import latest_config, read_segments
+        from boost_and_broadside.run_manifest import RunStatus
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.resolved_config_document = {
+            "profile": "rl",
+            "config": {"train_config": {"clip_coef": 0.15}},
+        }
+        trainer.launch_provenance = {"overrides": {"clip_coef": "0.15"}}
+        trainer._write_run_manifest(1, RunStatus.RUNNING)
+
+        segments = read_segments(tmp_path / trainer.run_name)
+        assert len(segments) == 1
+        assert segments[0].from_step == 0
+        assert segments[0].profile == "rl"
+        assert segments[0].overrides == {"clip_coef": "0.15"}
+        assert (
+            latest_config(tmp_path / trainer.run_name).config["train_config"]["clip_coef"] == 0.15
+        )
+        trainer.shutdown()
+
+    def test_saving_every_update_rewrites_one_segment_rather_than_growing(self, tmp_path):
+        """Checkpointing every update must not write a config row every update."""
+
+        from boost_and_broadside.config.run_config import read_segments
+        from boost_and_broadside.run_manifest import RunStatus
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.resolved_config_document = {"profile": "rl", "config": {}}
+        for update in range(1, 6):
+            trainer._write_run_manifest(update, RunStatus.RUNNING)
+
+        assert len(read_segments(tmp_path / trainer.run_name)) == 1
+        trainer.shutdown()
+
+    def test_continuing_past_a_recorded_step_appends_a_new_segment(self, tmp_path):
+        """A resume owns the history from the step it restored at, not before."""
+
+        from boost_and_broadside.config.run_config import config_at, read_segments
+        from boost_and_broadside.run_manifest import RunStatus
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.resolved_config_document = {"profile": "rl", "config": {"clip_coef": 0.15}}
+        trainer._write_run_manifest(1, RunStatus.RUNNING)
+
+        # What load_checkpoint does: the restored step becomes this stretch's start.
+        trainer._start_step = 250_000_000
+        trainer.resolved_config_document = {"profile": "rl", "config": {"clip_coef": 0.2}}
+        trainer.launch_provenance = {"overrides": {"clip_coef": "0.2"}}
+        trainer._write_run_manifest(2, RunStatus.RUNNING)
+
+        run_dir = tmp_path / trainer.run_name
+        assert [segment.from_step for segment in read_segments(run_dir)] == [0, 250_000_000]
+        assert config_at(run_dir, 100).config["clip_coef"] == 0.15
+        assert config_at(run_dir, 250_000_001).config["clip_coef"] == 0.2
+        trainer.shutdown()
