@@ -63,7 +63,15 @@ RL_PROFILE = ProfileSpec(
     # --- Optimizer, scalers, budget ---
     clip_coef=0.15,
     max_grad_norm=1.0,
-    total_timesteps=1_000_000_000,
+    # 500M rather than 1B, which is where the schedules finish rather than an
+    # arbitrary truncation: the learning rate reaches its 1.5e-4 floor at exactly
+    # 500M and holds, and shaping_scale finishes its taper at 400M. Past that the
+    # run is pure incremental self-play at fixed coefficients, and run 719's
+    # calibrated curve prices it accordingly -- 500M captures 94.4% of the 1B
+    # result, and the last 500M bought +37 Elo for 51 hours, against 0.06 h/Elo
+    # over the first 200M. Run 731 reproduced the same saturation profile under
+    # different physics and different reward weights.
+    total_timesteps=500_000_000,
     return_ema_alpha=0.005,
     # A divide-by-zero guard, and nothing more.  At the previous 1.0 it bound 8
     # of 12 components on every update of run 719 -- including the win pair --
