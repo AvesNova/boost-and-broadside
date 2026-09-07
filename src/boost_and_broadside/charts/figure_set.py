@@ -2,10 +2,10 @@
 
 This is the single declaration of *what figures exist*. ``bnb figures`` renders
 the whole set from one run's own measurements into that run's artifact
-directory, and ``docs/publications.toml`` selects which run's rendered figures
-are published. Those are different questions -- what a run can show, versus
-which run the documents currently illustrate -- and separating them is what
-makes a new run's charts a single command rather than a manifest rewrite.
+directory, and the documents link at whichever run they illustrate. Those are
+different questions -- what a run can show, versus which run the documents
+currently cite -- and separating them is what makes a new run's charts a single
+command rather than a documentation rewrite.
 
 Each entry names the renderer and, per renderer source, the artifact *type* it
 reads. The type is enough: a run holds at most one current artifact of each

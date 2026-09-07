@@ -1,12 +1,12 @@
 """Choosing which ladder games to play next.
 
-Phase 4 of ``docs/internal/live-elo-plan.md``. The evaluator's slot 4 plays the
-floating checkpoint against one anchor per episode, and until now it drew that
-anchor by local information alone — ``p(1−p)``, which peaks on the most evenly
-matched opponent available. That rule answers "which single game is most
-informative about *some* rating", which is not the question. The question is
-which game most reduces the uncertainty in the rung's offset **from the floor**,
-and a game can be individually informative while telling us nothing about that.
+The evaluator's slot 4 plays the floating checkpoint against one anchor per
+episode, and until now it drew that anchor by local information alone —
+``p(1−p)``, which peaks on the most evenly matched opponent available. That
+rule answers "which single game is most informative about *some* rating",
+which is not the question. The question is which game most reduces the
+uncertainty in the rung's offset **from the floor**, and a game can be
+individually informative while telling us nothing about that.
 
 The correction comes from two facts checked numerically in ``elo_diagnostics``:
 the Fisher information of a Bradley-Terry model is a weighted graph Laplacian,

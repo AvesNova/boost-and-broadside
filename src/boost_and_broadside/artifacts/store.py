@@ -12,8 +12,8 @@ optionally a raw sample payload that is never tracked:
 
 Ownership follows the subjects: a measurement about one exact run belongs to
 that run, and one without a single owning run lands under the standalone
-``artifacts/`` root. Nothing here writes under ``docs/`` — publication is the
-only writer of canonical views.
+``artifacts/`` root. Nothing here writes under ``docs/``: a document links at
+the run that owns the measurement.
 
 Writes are atomic and the manifest is rewritten after every payload file, so an
 interrupted measurement leaves either the previous consistent state or the new
@@ -27,7 +27,7 @@ previous hash — exactly the artifact resume exists to continue. That one file 
 also the one a resumed sweep reads back and builds on, so re-hashing here could
 not protect it without a different protocol: it would only reject the artifact
 worth continuing. Integrity is verified where an artifact is read as final
-evidence instead: :func:`load_artifact` re-hashes by default, and publication and
+evidence instead: :func:`load_artifact` re-hashes by default, and rendering and
 reanalysis additionally require :func:`require_complete`.
 """
 
@@ -356,11 +356,11 @@ class ArtifactStore:
         and the code that produced it, so a re-render supersedes its predecessor
         rather than sitting beside it as a second answer to the same question.
 
-        The path is stable because it gets quoted. ``docs/publications.toml``
-        names the figures a document is built from, and an identity that changed
-        on every re-render would break that pointer each time -- which is the
-        opposite of what a stable reference is for. The manifest still records
-        the per-render ``artifact_id``, so when it was rendered and from which
+        The path is stable because it gets quoted. The documents link directly
+        at the figures a run rendered, and an identity that changed on every
+        re-render would break those links each time -- which is the opposite of
+        what a stable reference is for. The manifest still records the
+        per-render ``artifact_id``, so when it was rendered and from which
         recipe is not lost; only the directory name holds still.
         """
 

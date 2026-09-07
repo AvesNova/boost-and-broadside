@@ -188,10 +188,9 @@ class LoggingMixin:
 
         # Read-only instrumentation of the rating filter. Nothing downstream
         # consumes these keys; they exist so the estimator has a measured
-        # baseline before it is replaced. See docs/internal/live-elo-plan.md.
-        # The accumulated ladder record fills in the background through Phase 1;
-        # nothing reads it back yet. Logged so its growth is visible before an
-        # estimator is built on it.
+        # baseline before it is replaced. The accumulated ladder record fills
+        # in the background; nothing reads it back yet, and it is logged so its
+        # growth is visible before an estimator is built on it.
         # Stage 1 refits the ladder from the accumulated record, stage 2 solves
         # for the live policy against it. Logged beside live_elo, gating nothing.
         metrics.update(

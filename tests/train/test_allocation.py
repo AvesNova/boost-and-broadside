@@ -1,4 +1,4 @@
-"""Tests for c-optimal ladder game allocation (live-elo-plan Phase 4)."""
+"""Tests for c-optimal ladder game allocation."""
 
 import numpy as np
 import pytest

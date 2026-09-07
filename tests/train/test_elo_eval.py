@@ -42,7 +42,7 @@ def test_information_weights_uniform_when_all_matchups_saturated() -> None:
 
 
 class TestLadderCountFlush:
-    """Readback of the floating-vs-anchor tally (live-elo-plan Phase 1).
+    """Readback of the floating-vs-anchor tally.
 
     Exercised on a bare instance: the method reads only the count tensor and the
     anchor list, and building a real evaluator would drag in an environment and

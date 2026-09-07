@@ -1,11 +1,10 @@
 """Accumulated match record among players whose strength does not change.
 
-Phase 1 of ``docs/internal/live-elo-plan.md``. The live rating is carried up
-from the floor through a chain of ladder rungs, and the chain is only as good as
-the ratings of its links. Those ratings are a *static* estimation problem —
-every rung is a file on disk whose weights never move again — so the right
-treatment is to keep counting and refit, rather than to nudge with a K-factor.
-This is the counting half.
+The live rating is carried up from the floor through a chain of ladder rungs,
+and the chain is only as good as the ratings of its links. Those ratings are a
+*static* estimation problem — every rung is a file on disk whose weights never
+move again — so the right treatment is to keep counting and refit, rather than
+to nudge with a K-factor. This is the counting half.
 
 What goes in is decided by weights, not by ratings. A player belongs here when
 its play is fixed forever: the random agent, the semi-random rungs, the scripted

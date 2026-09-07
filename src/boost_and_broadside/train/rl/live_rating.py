@@ -1,9 +1,7 @@
 """Two-stage live rating: refit the ladder, then solve for the live policy.
 
-Phase 2 of ``docs/internal/live-elo-plan.md``, rescoped by the measurement in
-that document's Phase 0 section. Two findings from replaying 719's recorded
-counts against its post-hoc calibrated curve shaped what is here, and both
-contradict the original design:
+Two findings from replaying 719's recorded counts against its post-hoc
+calibrated curve shaped what is here, and both contradict the original design:
 
 *Fit against the whole pool, not the floor.* Scored over 1004 updates, a fit
 using every opponent reaches 15.4 RMS against the calibrated curve where a fit

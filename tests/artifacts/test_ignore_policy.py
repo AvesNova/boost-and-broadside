@@ -13,6 +13,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _LANDMARK = "checkpoints/resilient-resonance-682"
+_REFERENCE = "checkpoints/good-leaf-719"
 
 
 def _ignored(path: str) -> bool:
@@ -46,8 +47,9 @@ def test_local_only_outputs_are_ignored(path):
     [
         f"{_LANDMARK}/artifacts/elo-scale/20260809T142500Z-a81bc39e/artifact.json",
         f"{_LANDMARK}/artifacts/elo-scale/20260809T142500Z-a81bc39e/result.json",
-        "docs/publications.toml",
-        "docs/results/elo_curve.png",
+        f"{_REFERENCE}/artifacts/figures/artifact.json",
+        f"{_REFERENCE}/artifacts/figures/elo_curve.png",
+        "docs/results/replays/self_4v4_seed00.gif",
     ],
 )
 def test_promotable_landmark_aggregates_remain_trackable(path):

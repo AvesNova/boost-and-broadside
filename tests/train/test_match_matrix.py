@@ -1,4 +1,4 @@
-"""Tests for the accumulated ladder match record (live-elo-plan Phase 1)."""
+"""Tests for the accumulated ladder match record."""
 
 import json
 

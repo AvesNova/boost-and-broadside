@@ -358,7 +358,7 @@ def _derived_recipe(**parameters) -> ArtifactRecipe:
 
 
 def test_a_derived_artifact_takes_a_stable_path_that_can_be_quoted(tmp_path):
-    """docs/publications.toml names this path; an id per render would break it."""
+    """The documents link this path; an id per render would break them."""
 
     store = _store(tmp_path)
     owner = store.run_owner("synthetic-run")

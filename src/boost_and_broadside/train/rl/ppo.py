@@ -621,7 +621,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Latest update's rated outcomes, opponent label → (win, loss, tie).
         self._match_counts: dict[str, tuple[int, int, int]] = {}
         # Read-only instrumentation for the rating filter above. Logs only; see
-        # elo_diagnostics and docs/internal/live-elo-plan.md.
+        # elo_diagnostics.
         self._elo_diagnostics = LiveEloDiagnostics(scripted_label="scripted")
         # Accumulated ladder record among weight-frozen players. Replaced
         # wholesale on resume; see _save_roster_json for why it is a sidecar.
@@ -630,7 +630,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # it. It gates nothing: swapping the estimator would change promotion
         # timing, which changes the pool, which changes every rating — so the
         # old one keeps gating for the whole comparison run and this one only
-        # observes. See docs/internal/live-elo-plan.md.
+        # observes.
         self._two_stage = TwoStageRating(
             anchor_label="scripted",
             anchor_elo=train_config.elo_eval.scripted_live_elo,

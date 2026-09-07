@@ -1,12 +1,11 @@
 """Instrumentation for the live Elo estimator.
 
-Phase 0 of ``docs/internal/live-elo-plan.md``. Everything here is read-only: it
-observes the K-factor filter and changes nothing about how the filter, opponent
-sampling, or ladder promotion behave. The point is to have a baseline recorded
-under the current estimator before a replacement is proposed, and to catch the
-failure that motivated the work — run 727's live rating stepped +85 across a
-resume seam and stayed there, while its win rate against the scripted controller
-implied roughly a third of that.
+Everything here is read-only: it observes the K-factor filter and changes
+nothing about how the filter, opponent sampling, or ladder promotion behave.
+The point is to have a baseline recorded under the current estimator before a
+replacement is proposed, and to catch the failure that motivated the work —
+run 727's live rating stepped +85 across a resume seam and stayed there, while
+its win rate against the scripted controller implied roughly a third of that.
 
 Four questions, one metric family each.
 

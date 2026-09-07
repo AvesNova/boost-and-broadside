@@ -65,8 +65,8 @@ def code_provenance(repository: Path | None = None) -> dict[str, Any]:
     """Git commit, cleanliness, and locked-dependency identity of the code that ran.
 
     An installed wheel has no checkout to interrogate; that is recorded as an
-    absent commit rather than guessed at. Publication requires a clean commit
-    (see the publication manifest), so ``dirty`` is a decision input, not a note.
+    absent commit rather than guessed at. A figure set is only promotable from a
+    clean commit, so ``dirty`` is a decision input, not a note.
     """
 
     root = package_repository() if repository is None else Path(repository)

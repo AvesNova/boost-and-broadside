@@ -1,4 +1,4 @@
-"""Tests for the two-stage live rating (live-elo-plan Phase 2)."""
+"""Tests for the two-stage live rating."""
 
 import numpy as np
 import pytest

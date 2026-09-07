@@ -1,4 +1,4 @@
-"""Tests for the read-only live-Elo instrumentation (live-elo-plan Phase 0)."""
+"""Tests for the read-only live-Elo instrumentation."""
 
 import numpy as np
 import pytest
