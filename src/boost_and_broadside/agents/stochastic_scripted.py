@@ -314,11 +314,31 @@ class StochasticScriptedAgent:
         spawnward = spawnward / spawnward.abs().clamp(min=1e-8)
         # The Gate-1 map currently gives every zone one radius. Read it from
         # authoritative state so the holding position follows future map tuning.
-        defense_hold_distance = state.zone_radius[:, :1] + (
+        defense_patrol_radius = state.zone_radius[:, :1] + (
             2.0 * self.ship_config.collision_radius
         )
-        own_defense_hold = wrap_positions(
-            own_defense + spawnward * defense_hold_distance,
+        defense_radial = toroidal_displacement(state.ship_pos - own_defense, world_size)
+        defense_radial_direction = defense_radial / defense_radial.abs().clamp(min=1e-8)
+        defense_radial_direction = torch.where(
+            defense_radial.abs() > 1e-8,
+            defense_radial_direction,
+            spawnward,
+        )
+        rank0 = team0.long().cumsum(dim=1) - 1
+        rank1 = (~team0).long().cumsum(dim=1) - 1
+        team_rank = torch.where(team0, rank0, rank1)
+        orbit_direction = torch.where(
+            team_rank.remainder(2) == 0,
+            torch.ones_like(state.ship_health),
+            -torch.ones_like(state.ship_health),
+        )
+        orbit_lookahead = torch.polar(
+            torch.ones_like(state.ship_health),
+            orbit_direction * float(np.deg2rad(20.0)),
+        )
+        own_defense_patrol = wrap_positions(
+            own_defense
+            + defense_radial_direction * orbit_lookahead * defense_patrol_radius,
             world_size,
         )
 
@@ -366,13 +386,14 @@ class StochasticScriptedAgent:
             team0, team0_majority_attack.unsqueeze(1), team1_majority_attack.unsqueeze(1)
         )
         tendency_attack = offensive | (timid & majority_attack)
-        # Idle defenders wait just outside the damaging circle, on the side
-        # nearest their spawn. Once enemies enter, the contested-point override
-        # below sends them into the point to fight and stabilize it.
+        # Idle defenders chase a short moving waypoint around the safe perimeter.
+        # Alternating direction by stable within-team rank reduces bunching. Once
+        # enemies enter, the contested-point override sends defenders into the
+        # point to fight and stabilize it.
         tendency_objective = torch.where(
             tendency_attack,
             enemy_defense,
-            torch.where(own_contested, own_defense, own_defense_hold),
+            torch.where(own_contested, own_defense, own_defense_patrol),
         )
 
         only_enemy_contested = enemy_contested & ~own_contested

@@ -281,26 +281,22 @@ def test_neither_point_contested_uses_tendencies_and_stable_tie_break() -> None:
         tie_attack=(True, False),
     )
 
-    _, bearing, engage = _targeting(agent, state)
+    distance, bearing, engage = _targeting(agent, state)
 
-    expected_targets = [
-        9000.0 + 100.0j,
-        5780.0 + 100.0j,
-        9000.0 + 100.0j,
-        9000.0 + 100.0j,
-    ]
     expected = torch.tensor(
         [
-            _bearing(state.ship_pos[0, i].item(), target, config.world_size)
-            for i, target in enumerate(expected_targets)
+            _bearing(state.ship_pos[0, i].item(), 9000.0 + 100.0j, config.world_size)
+            for i in (0, 2, 3)
         ],
         dtype=torch.complex64,
     )
+    defender_target = state.ship_pos[0, 1] + distance[0, 1] * bearing[0, 1]
     assert not engage.any()
-    assert torch.allclose(bearing[0, :4], expected)
+    assert torch.allclose(bearing[0, [0, 2, 3]], expected)
+    assert abs(defender_target.item() - (6000.0 + 100.0j)) == pytest.approx(220.0)
 
 
-def test_idle_defender_holds_outside_damage_radius_on_spawn_side() -> None:
+def test_idle_defender_patrol_waypoint_moves_around_safe_perimeter() -> None:
     config, state = _frontline_state()
     state.ship_pos[0] = torch.tensor(
         [1000.0 + 100.0j, 2000.0 + 100.0j, 10000.0 + 100.0j, 11000.0 + 100.0j]
@@ -324,9 +320,16 @@ def test_idle_defender_holds_outside_damage_radius_on_spawn_side() -> None:
     target = state.ship_pos[0, 0] + distance[0, 0] * bearing[0, 0]
 
     assert not engage[0, 0]
-    assert target.real.item() == pytest.approx(5780.0)
-    assert target.imag.item() == pytest.approx(100.0)
-    assert abs(target.item() - (6000.0 + 100.0j)) > state.zone_radius[0, 2].item()
+    assert abs(target.item() - (6000.0 + 100.0j)) == pytest.approx(220.0)
+    assert target.imag.item() < 100.0
+
+    state.ship_pos[0, 0] = 6000.0 + 1100.0j
+    distance, bearing, engage = _targeting(agent, state)
+    advanced_target = state.ship_pos[0, 0] + distance[0, 0] * bearing[0, 0]
+
+    assert not engage[0, 0]
+    assert abs(advanced_target.item() - (6000.0 + 100.0j)) == pytest.approx(220.0)
+    assert advanced_target != pytest.approx(target)
 
 
 def test_respawn_healing_rules_and_local_battle_priority() -> None:

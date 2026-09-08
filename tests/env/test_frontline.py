@@ -1,6 +1,5 @@
 """Frontline state-transition and hazard contract tests."""
 
-import math
 from dataclasses import replace
 
 import pytest
@@ -20,7 +19,6 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import (
     FRONTLINE_WORLD_SIZE,
     apply_frontline_tick,
-    capture_seconds_from_zone_spacing,
     roles_from_front,
     zone_membership,
 )
@@ -34,7 +32,7 @@ def _frontline(**overrides: float | int) -> FrontlineConfig:
         "zone_radius": 330.0,
         "zone_ring_radius": 1200.0,
         "playable_radius": 2600.0,
-        "capture_seconds": capture_seconds_from_zone_spacing(1200.0),
+        "capture_seconds": 20.0,
         "defense_damage_per_second": 2.0,
         "respawn_health": 25.0,
         "spawn_heal_per_second": 12.0,
@@ -105,14 +103,6 @@ def test_active_defense_zones_are_physically_adjacent() -> None:
     cyclic_separation = (team0_index - team1_index).abs()
 
     assert ((cyclic_separation == 1) | (cyclic_separation == 4)).all()
-
-
-def test_playtest_capture_time_is_three_adjacent_zone_travel_times() -> None:
-    adjacent_distance = 2.0 * 1200.0 * math.sin(math.pi / 5.0)
-
-    assert capture_seconds_from_zone_spacing(1200.0) == pytest.approx(
-        3.0 * adjacent_distance / 100.0
-    )
 
 
 def test_reset_uses_one_toroidal_translation_for_map_geometry() -> None:

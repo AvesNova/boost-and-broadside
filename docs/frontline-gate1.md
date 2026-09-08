@@ -16,12 +16,10 @@ The five physical zones stay fixed while their roles rotate with the unwrapped f
 Their cyclic order is neutral → Team 0 spawn → Team 0 defense → Team 1 defense → Team 1
 spawn → neutral, so the two capturable damaging defenses are adjacent. Every zone has a
 330 px radius. Team 0 advances the front toward `+5`; Team 1 toward `-5`. A defense
-capture takes about 42.3 seconds: three times the 14.1 seconds needed to travel between
-adjacent zone centers at an assumed 100 px/s. Capture pressure is flat and based only on
-which team has more ships in the defense: `4v0`, `4v2`, `1v0`, and `2v1` all advance at
-the same rate, while a defending majority stabilizes at that same rate. Equal counts
-pause the meter. Simultaneous completion changes the front by zero and resets both
-meters.
+capture takes 20 seconds. Capture pressure is flat and based only on which team has more
+ships in the defense: `4v0`, `4v2`, `1v0`, and `2v1` all advance at the same rate, while
+a defending majority stabilizes at that same rate. Equal counts pause the meter.
+Simultaneous completion changes the front by zero and resets both meters.
 
 Ships die and immediately reappear in their current spawn at 25 health. Friendly spawn
 heals 12 health/second, enemy spawn deals 8 damage/second, and either defense deals 2
@@ -33,12 +31,13 @@ provisional Gate-1 tuning, not settled balance.
 At episode start, every scripted ship independently draws an offensive, defensive, or
 timid tendency. With neither defense under attack, offensive ships head for the enemy
 defense, defensive ships hold their own, and timid ships follow their team's non-timid
-majority (a per-team episode coin breaks ties). Uncontested defensive ships hold just
-outside their damaging point, on its spawn-facing side. If enemies occupy exactly one
-defense, both fleets converge on it; if enemies occupy both defenses, ships return to
-their tendencies. Thus “contested” includes an undefended capture attempt, not only a
-fight with both teams already inside the point. Nearby enemies take priority over point
-orders.
+majority (a per-team episode coin breaks ties). Uncontested defensive ships orbit just
+outside their damaging point, alternating direction to reduce bunching. If an enemy
+comes within local engagement range they leave the patrol to fight. If enemies occupy
+exactly one defense, both fleets converge on it; if enemies occupy both defenses, ships
+return to their tendencies. Thus “contested” includes an undefended capture attempt,
+not only a fight with both teams already inside the point. Nearby enemies take priority
+over point orders.
 
 Timid ships retreat below 30% health and remain in their spawn until fully healed; they
 also fully heal after every respawn. Offensive and defensive ships normally fully heal

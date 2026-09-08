@@ -28,10 +28,7 @@ from boost_and_broadside.constants import (
     ShootActions,
     TurnActions,
 )
-from boost_and_broadside.env.frontline import (
-    FRONTLINE_WORLD_SIZE,
-    capture_seconds_from_zone_spacing,
-)
+from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -63,7 +60,7 @@ PLAY_ENV_CONFIG = EnvConfig(
         zone_radius=_PLAY_ZONE_RADIUS,
         zone_ring_radius=_PLAY_ZONE_RING_RADIUS,
         playable_radius=2600.0,
-        capture_seconds=capture_seconds_from_zone_spacing(_PLAY_ZONE_RING_RADIUS),
+        capture_seconds=20.0,
         defense_damage_per_second=2.0,
         respawn_health=25.0,
         spawn_heal_per_second=12.0,
