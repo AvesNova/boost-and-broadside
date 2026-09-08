@@ -1,5 +1,8 @@
 """Tests for the frontline play preset and single-ship keyboard routing."""
 
+import math
+
+import pytest
 import torch
 
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG, _apply_keyboard_override
@@ -11,6 +14,11 @@ def test_play_preset_is_timed_frontline_with_scriptable_fleets() -> None:
     assert PLAY_ENV_CONFIG.max_episode_steps == 18_000
     assert PLAY_ENV_CONFIG.frontline is not None
     assert not PLAY_ENV_CONFIG.single_team
+    assert PLAY_ENV_CONFIG.frontline.zone_radius == 330.0
+    adjacent_zone_distance = 2.0 * 1200.0 * math.sin(math.pi / 5.0)
+    assert PLAY_ENV_CONFIG.frontline.capture_seconds == pytest.approx(
+        3.0 * adjacent_zone_distance / 100.0
+    )
 
 
 def test_play_keyboard_controls_team_zero_but_not_null_team_one() -> None:

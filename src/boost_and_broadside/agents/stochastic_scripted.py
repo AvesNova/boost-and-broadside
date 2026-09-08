@@ -11,7 +11,11 @@ from boost_and_broadside.agents.scripted_utils import (
 )
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.config import ShipConfig, ZoneRole
-from boost_and_broadside.env.frontline import zone_membership
+from boost_and_broadside.env.frontline import (
+    toroidal_displacement,
+    wrap_positions,
+    zone_membership,
+)
 from boost_and_broadside.env.state import TensorState
 
 
@@ -305,6 +309,19 @@ class StochasticScriptedAgent:
         own_defense = torch.where(team0, team0_defense.unsqueeze(1), team1_defense.unsqueeze(1))
         enemy_defense = torch.where(team0, team1_defense.unsqueeze(1), team0_defense.unsqueeze(1))
 
+        world_size = self.ship_config.world_size
+        spawnward = toroidal_displacement(own_spawn - own_defense, world_size)
+        spawnward = spawnward / spawnward.abs().clamp(min=1e-8)
+        # The Gate-1 map currently gives every zone one radius. Read it from
+        # authoritative state so the holding position follows future map tuning.
+        defense_hold_distance = state.zone_radius[:, :1] + (
+            2.0 * self.ship_config.collision_radius
+        )
+        own_defense_hold = wrap_positions(
+            own_defense + spawnward * defense_hold_distance,
+            world_size,
+        )
+
         membership = zone_membership(
             state.ship_pos,
             state.zone_pos,
@@ -349,7 +366,14 @@ class StochasticScriptedAgent:
             team0, team0_majority_attack.unsqueeze(1), team1_majority_attack.unsqueeze(1)
         )
         tendency_attack = offensive | (timid & majority_attack)
-        tendency_objective = torch.where(tendency_attack, enemy_defense, own_defense)
+        # Idle defenders wait just outside the damaging circle, on the side
+        # nearest their spawn. Once enemies enter, the contested-point override
+        # below sends them into the point to fight and stabilize it.
+        tendency_objective = torch.where(
+            tendency_attack,
+            enemy_defense,
+            torch.where(own_contested, own_defense, own_defense_hold),
+        )
 
         only_enemy_contested = enemy_contested & ~own_contested
         only_own_contested = own_contested & ~enemy_contested
@@ -384,7 +408,7 @@ class StochasticScriptedAgent:
             ),
         )
 
-        world_width, world_height = self.ship_config.world_size
+        world_width, world_height = world_size
         displacement = destination - state.ship_pos
         displacement = torch.complex(
             (displacement.real + world_width / 2.0) % world_width - world_width / 2.0,

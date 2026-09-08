@@ -285,7 +285,7 @@ def test_neither_point_contested_uses_tendencies_and_stable_tie_break() -> None:
 
     expected_targets = [
         9000.0 + 100.0j,
-        6000.0 + 100.0j,
+        5780.0 + 100.0j,
         9000.0 + 100.0j,
         9000.0 + 100.0j,
     ]
@@ -298,6 +298,35 @@ def test_neither_point_contested_uses_tendencies_and_stable_tie_break() -> None:
     )
     assert not engage.any()
     assert torch.allclose(bearing[0, :4], expected)
+
+
+def test_idle_defender_holds_outside_damage_radius_on_spawn_side() -> None:
+    config, state = _frontline_state()
+    state.ship_pos[0] = torch.tensor(
+        [1000.0 + 100.0j, 2000.0 + 100.0j, 10000.0 + 100.0j, 11000.0 + 100.0j]
+    )
+    agent = StochasticScriptedAgent(
+        config,
+        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
+    )
+    _set_tendencies(
+        agent,
+        state,
+        [
+            FrontlineTendency.DEFENSIVE,
+            FrontlineTendency.OFFENSIVE,
+            FrontlineTendency.OFFENSIVE,
+            FrontlineTendency.OFFENSIVE,
+        ],
+    )
+
+    distance, bearing, engage = _targeting(agent, state)
+    target = state.ship_pos[0, 0] + distance[0, 0] * bearing[0, 0]
+
+    assert not engage[0, 0]
+    assert target.real.item() == pytest.approx(5780.0)
+    assert target.imag.item() == pytest.approx(100.0)
+    assert abs(target.item() - (6000.0 + 100.0j)) > state.zone_radius[0, 2].item()
 
 
 def test_respawn_healing_rules_and_local_battle_priority() -> None:
@@ -396,6 +425,7 @@ def test_tendency_survives_respawn_and_healing_latch_clears_on_episode_reset() -
 
     state.step_count.zero_()
     state.ship_respawned.zero_()
+    state.ship_health.fill_(config.max_health)
     _targeting(agent, state)
     assert not memory.healing.any()
 

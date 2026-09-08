@@ -12,6 +12,29 @@ FRONTLINE_WORLD_SIZE = (16384.0, 16384.0)
 NUM_FRONTLINE_ZONES = 5
 
 
+def capture_seconds_from_zone_spacing(
+    zone_ring_radius: float,
+    *,
+    travel_speed: float = 100.0,
+    travel_time_multiplier: float = 3.0,
+) -> float:
+    """Derive capture time from travel between adjacent zone centers.
+
+    Five zones are equally spaced on a circle, so adjacent centers are one
+    pentagon side apart. The play preset initially budgets three such travel
+    times at an assumed 100 px/s for a solo or majority capture.
+    """
+
+    if zone_ring_radius <= 0.0:
+        raise ValueError("zone_ring_radius must be positive")
+    if travel_speed <= 0.0:
+        raise ValueError("travel_speed must be positive")
+    if travel_time_multiplier <= 0.0:
+        raise ValueError("travel_time_multiplier must be positive")
+    adjacent_distance = 2.0 * zone_ring_radius * math.sin(math.pi / NUM_FRONTLINE_ZONES)
+    return travel_time_multiplier * adjacent_distance / travel_speed
+
+
 def toroidal_displacement(
     displacement: torch.Tensor,
     world_size: tuple[float, float],
@@ -298,6 +321,8 @@ def _advance_capture_state(
     alive_in_zone = membership & state.ship_alive.unsqueeze(2)
     team0_count = (alive_in_zone & (state.ship_team_id == 0).unsqueeze(2)).sum(dim=1)
     team1_count = (alive_in_zone & (state.ship_team_id == 1).unsqueeze(2)).sum(dim=1)
+    # Deliberately discard the size of the advantage: every non-tied majority
+    # applies one fixed capture/stabilization rate.
     majority = torch.sign(team0_count - team1_count).to(torch.int8)
 
     roles = state.zone_roles

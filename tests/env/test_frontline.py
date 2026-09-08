@@ -1,5 +1,6 @@
 """Frontline state-transition and hazard contract tests."""
 
+import math
 from dataclasses import replace
 
 import pytest
@@ -19,6 +20,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import (
     FRONTLINE_WORLD_SIZE,
     apply_frontline_tick,
+    capture_seconds_from_zone_spacing,
     roles_from_front,
     zone_membership,
 )
@@ -29,10 +31,10 @@ from boost_and_broadside.evaluation.match import evaluate_matchup
 
 def _frontline(**overrides: float | int) -> FrontlineConfig:
     values: dict[str, float | int] = {
-        "zone_radius": 220.0,
+        "zone_radius": 330.0,
         "zone_ring_radius": 1200.0,
         "playable_radius": 2600.0,
-        "capture_seconds": 6.0,
+        "capture_seconds": capture_seconds_from_zone_spacing(1200.0),
         "defense_damage_per_second": 2.0,
         "respawn_health": 25.0,
         "spawn_heal_per_second": 12.0,
@@ -49,13 +51,14 @@ def _env(
     frontline: FrontlineConfig | None = None,
     *,
     num_envs: int = 1,
+    num_ships: int = 4,
     max_steps: int = 600,
 ) -> TensorEnv:
     env = TensorEnv(
         num_envs,
         ShipConfig(world_size=FRONTLINE_WORLD_SIZE),
         EnvConfig(
-            num_ships=4,
+            num_ships=num_ships,
             max_bullets=0,
             max_episode_steps=max_steps,
             frontline=frontline or _frontline(),
@@ -102,6 +105,14 @@ def test_active_defense_zones_are_physically_adjacent() -> None:
     cyclic_separation = (team0_index - team1_index).abs()
 
     assert ((cyclic_separation == 1) | (cyclic_separation == 4)).all()
+
+
+def test_playtest_capture_time_is_three_adjacent_zone_travel_times() -> None:
+    adjacent_distance = 2.0 * 1200.0 * math.sin(math.pi / 5.0)
+
+    assert capture_seconds_from_zone_spacing(1200.0) == pytest.approx(
+        3.0 * adjacent_distance / 100.0
+    )
 
 
 def test_reset_uses_one_toroidal_translation_for_map_geometry() -> None:
@@ -164,6 +175,54 @@ def test_simultaneous_capture_is_atomic_and_net_zero() -> None:
     assert torch.equal(state.ship_health, health_before)
     assert torch.equal(state.ship_pos, position_before)
     assert not done.item()
+
+
+@pytest.mark.parametrize(
+    ("team0_count", "team1_count", "expected_direction"),
+    [
+        (4, 0, 1),
+        (4, 2, 1),
+        (1, 0, 1),
+        (2, 1, 1),
+        (0, 4, -1),
+        (0, 2, -1),
+        (1, 2, -1),
+        (2, 4, -1),
+        (2, 2, 0),
+    ],
+)
+def test_capture_pressure_depends_only_on_which_team_has_more_ships(
+    team0_count: int,
+    team1_count: int,
+    expected_direction: int,
+) -> None:
+    config = _frontline(capture_seconds=10.0, defense_damage_per_second=0.0)
+    env = _env(config, num_ships=8)
+    state = env.state
+    defense_index = _zone_index(env, ZoneRole.TEAM1_DEFENSE)
+    defense = state.zone_pos[0, defense_index]
+
+    state.ship_alive.zero_()
+    state.ship_pos.fill_(state.map_center[0])
+    state.ship_team_id.zero_()
+    if team0_count:
+        state.ship_alive[0, :team0_count] = True
+        state.ship_pos[0, :team0_count] = defense
+    if team1_count:
+        start = team0_count
+        stop = start + team1_count
+        state.ship_team_id[0, start:stop] = 1
+        state.ship_alive[0, start:stop] = True
+        state.ship_pos[0, start:stop] = defense
+    state.zone_capture_progress[0, defense_index] = 0.5
+
+    apply_frontline_tick(state, config, env.ship_config)
+
+    expected_progress = 0.5 + expected_direction * env.ship_config.dt / 10.0
+    assert state.zone_capture_direction[0, defense_index].item() == expected_direction
+    assert state.zone_capture_progress[0, defense_index].item() == pytest.approx(
+        expected_progress
+    )
 
 
 @pytest.mark.parametrize(
