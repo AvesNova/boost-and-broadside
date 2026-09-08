@@ -28,9 +28,9 @@ def _frontline_state(*, teams: list[int] | None = None):
     state.zone_roles = torch.tensor(
         [
             [
+                int(ZoneRole.NEUTRAL),
                 int(ZoneRole.TEAM0_SPAWN),
                 int(ZoneRole.TEAM0_DEFENSE),
-                int(ZoneRole.NEUTRAL),
                 int(ZoneRole.TEAM1_DEFENSE),
                 int(ZoneRole.TEAM1_SPAWN),
             ]
@@ -55,7 +55,7 @@ def _bearing(source: complex, target: complex, world_size: tuple[float, float]) 
     return displacement / abs(displacement)
 
 
-def test_low_health_returns_to_own_spawn_even_with_enemy_nearby() -> None:
+def test_low_health_engages_instead_of_healing_with_enemy_nearby() -> None:
     config, state = _frontline_state()
     state.ship_pos[0] = torch.tensor(
         [1000.0 + 100.0j, 2000.0 + 100.0j, 1100.0 + 100.0j, 10000.0 + 100.0j]
@@ -71,9 +71,39 @@ def test_low_health_returns_to_own_spawn_even_with_enemy_nearby() -> None:
 
     distance, bearing, engage = _targeting(agent, state)
 
+    assert engage[0, 0]
+    assert distance[0, 0].item() == pytest.approx(100.0)
+    assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
+
+
+def test_low_health_returns_to_spawn_when_safe_and_defenses_uncontested() -> None:
+    config, state = _frontline_state()
+    state.ship_pos[0] = torch.tensor(
+        [1000.0 + 100.0j, 2000.0 + 100.0j, 9000.0 + 100.0j, 10000.0 + 100.0j]
+    )
+    state.ship_health[0, 0] = 49.0
+    agent = StochasticScriptedAgent(config, StochasticAgentConfig())
+
+    distance, bearing, engage = _targeting(agent, state)
+
     assert not engage[0, 0]
-    assert distance[0, 0].item() == pytest.approx(900.0)
-    assert bearing[0, 0].item() == pytest.approx(-1.0 + 0.0j)
+    assert distance[0, 0].item() == pytest.approx(2000.0)
+    assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
+
+
+def test_low_health_does_not_heal_while_a_defense_is_contested() -> None:
+    config, state = _frontline_state()
+    state.ship_pos[0] = torch.tensor(
+        [1000.0 + 100.0j, 9000.0 + 100.0j, 9000.0 + 100.0j, 12000.0 + 100.0j]
+    )
+    state.ship_health[0, 0] = 49.0
+    agent = StochasticScriptedAgent(config, StochasticAgentConfig())
+
+    distance, bearing, engage = _targeting(agent, state)
+
+    assert not engage[0, 0]
+    assert distance[0, 0].item() == pytest.approx(8000.0)
+    assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
 
 
 def test_healthy_ship_engages_nearby_enemy_over_objective_with_toroidal_bearing() -> None:
@@ -107,8 +137,8 @@ def test_stable_within_team_slots_split_between_attack_and_defense() -> None:
 
     expected_targets = [
         9000.0 + 100.0j,  # first team-0 slot attacks team-1 defense
-        3000.0 + 100.0j,  # first team-1 slot attacks team-0 defense
-        3000.0 + 100.0j,  # second team-0 slot defends team-0 defense
+        6000.0 + 100.0j,  # first team-1 slot attacks team-0 defense
+        6000.0 + 100.0j,  # second team-0 slot defends team-0 defense
         9000.0 + 100.0j,  # second team-1 slot defends team-1 defense
     ]
     expected = torch.tensor(
@@ -143,7 +173,7 @@ def test_four_ship_team_sends_three_attackers_and_one_defender() -> None:
 
     _, bearing, engage = _targeting(agent, state)
 
-    expected_targets = [9000.0 + 100.0j] * 3 + [3000.0 + 100.0j]
+    expected_targets = [9000.0 + 100.0j] * 3 + [6000.0 + 100.0j]
     expected = torch.tensor(
         [
             _bearing(state.ship_pos[0, i].item(), target, config.world_size)

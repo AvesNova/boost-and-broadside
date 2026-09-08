@@ -71,8 +71,9 @@ uv run bnb watch \
 
 Play mode runs the provisional five-zone Frontline configuration in a 16384 × 16384
 toroidal world. Human controls are WASD for flight, Shift for sharp turns, and Space to
-shoot. Tab cycles the selected allied ship; C follows/releases it; F fits the playable
-area; R resets to the full world; the mouse wheel zooms and middle/right drag pans. The
+shoot. Tab cycles allied ships and then spectator mode; C follows/releases; F fits the
+playable area; R resets to the full world; `+`/`-` adjust game speed; the mouse wheel
+zooms and middle/right drag pans. The
 `Unlimited HP/PW` button remains available for inspection. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
 `scripted`, an explicit checkpoint path, and the named scripted controllers listed by

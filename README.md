@@ -105,7 +105,7 @@ uv sync
 # Resolve and inspect the RL launch without allocating the trainer
 uv run bnb train --profile rl --print-config
 
-# Play the provisional five-zone Frontline prototype
+# Play the provisional five-zone Frontline prototype; Tab includes spectator mode
 uv run bnb play
 
 # Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)

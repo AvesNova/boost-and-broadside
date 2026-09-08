@@ -45,9 +45,9 @@ def roles_from_front(front_position: torch.Tensor) -> torch.Tensor:
 
     base_roles = torch.tensor(
         [
+            ZoneRole.NEUTRAL,
             ZoneRole.TEAM0_SPAWN,
             ZoneRole.TEAM0_DEFENSE,
-            ZoneRole.NEUTRAL,
             ZoneRole.TEAM1_DEFENSE,
             ZoneRole.TEAM1_SPAWN,
         ],

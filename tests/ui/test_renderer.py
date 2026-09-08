@@ -112,6 +112,13 @@ def test_renderer_events_zoom_pan_release_follow_and_reset(monkeypatch):
         assert renderer.camera.zoom == renderer.camera.min_zoom
         renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_r))
         assert renderer.camera.center == complex(renderer._world_w / 2.0, renderer._world_h / 2.0)
+
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_EQUALS))
+        assert renderer.game_speed == 2.0
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHTBRACKET))
+        assert renderer.game_speed == 4.0
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_MINUS))
+        assert renderer.game_speed == 2.0
     finally:
         renderer.close()
 
@@ -232,5 +239,11 @@ def test_headless_frontline_frame_draws_boundary_zones_hud_and_selection(monkeyp
         assert renderer.camera.zoom > renderer.camera.min_zoom
         renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
         assert renderer.selected_ship == 2
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
+        assert renderer.selected_ship is None
+        renderer.set_selectable_ships((0, 2))
+        assert renderer.selected_ship is None
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
+        assert renderer.selected_ship == 0
     finally:
         renderer.close()

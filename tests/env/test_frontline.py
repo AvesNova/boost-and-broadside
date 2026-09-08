@@ -73,11 +73,11 @@ def _zone_index(env: TensorEnv, role: ZoneRole) -> int:
 @pytest.mark.parametrize(
     ("front", "expected"),
     [
-        (0, [0, 1, 2, 3, 4]),
-        (1, [4, 0, 1, 2, 3]),
-        (-1, [1, 2, 3, 4, 0]),
-        (5, [0, 1, 2, 3, 4]),
-        (-6, [1, 2, 3, 4, 0]),
+        (0, [2, 0, 1, 3, 4]),
+        (1, [4, 2, 0, 1, 3]),
+        (-1, [0, 1, 3, 4, 2]),
+        (5, [2, 0, 1, 3, 4]),
+        (-6, [0, 1, 3, 4, 2]),
     ],
 )
 def test_roles_are_derived_from_unwrapped_front(front: int, expected: list[int]) -> None:
@@ -93,6 +93,15 @@ def test_frontline_requires_design_world_size() -> None:
             EnvConfig(4, 0, 60, frontline=_frontline()),
             "cpu",
         )
+
+
+def test_active_defense_zones_are_physically_adjacent() -> None:
+    roles = roles_from_front(torch.arange(-12, 13))
+    team0_index = (roles == int(ZoneRole.TEAM0_DEFENSE)).long().argmax(dim=1)
+    team1_index = (roles == int(ZoneRole.TEAM1_DEFENSE)).long().argmax(dim=1)
+    cyclic_separation = (team0_index - team1_index).abs()
+
+    assert ((cyclic_separation == 1) | (cyclic_separation == 4)).all()
 
 
 def test_reset_uses_one_toroidal_translation_for_map_geometry() -> None:
@@ -130,7 +139,7 @@ def test_team0_capture_advances_unwrapped_front_and_rotates_roles() -> None:
     dones, _ = env.tick(torch.zeros((1, 4, 3), dtype=torch.long))
 
     assert env.state.front_position.item() == 1
-    assert env.state.zone_roles.tolist() == [[4, 0, 1, 2, 3]]
+    assert env.state.zone_roles.tolist() == [[4, 2, 0, 1, 3]]
     assert env.state.zone_capture_progress.count_nonzero().item() == 0
     assert not dones.item()
 

@@ -8,6 +8,7 @@ from boost_and_broadside.agents.scripted_utils import (
 )
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.config import ShipConfig, ZoneRole
+from boost_and_broadside.env.frontline import zone_membership
 from boost_and_broadside.env.state import TensorState
 
 
@@ -196,11 +197,10 @@ class StochasticScriptedAgent:
         """Choose spawn, enemy, or stable attack/defense destinations.
 
         Priority is deliberately simple for the Gate-1 baseline: low-health ships
-        return to their own spawn; healthy ships engage a nearby enemy; every
-        remaining team sends three of every four stable within-team slots to the
-        enemy defense and keeps the fourth at home. The first slot attacks, so a
-        small team does not deadlock by defending forever; a four-ship team has
-        enough local superiority to demonstrate capture during the Gate-1 smoke.
+        heal only when no enemy is nearby and neither defense is contested; local
+        enemies otherwise take priority. Every remaining team sends three of every
+        four stable within-team slots to the enemy defense and keeps the fourth at
+        home. The first slot attacks, so a small team cannot deadlock by defending.
 
         Returns:
             distance:     ``(B, N)`` toroidal distance to the chosen destination.
@@ -226,17 +226,34 @@ class StochasticScriptedAgent:
         enemy_defense = torch.where(team0, team1_defense.unsqueeze(1), team0_defense.unsqueeze(1))
 
         # Rank is stable for the life of a match because slot and team identity
-        # survive respawn. Alternating within each team keeps shuffled global slot
-        # layouts from accidentally assigning a whole team to one objective.
+        # survive respawn. Ranking within each team keeps shuffled global slots
+        # from accidentally changing the three-attack/one-defense allocation.
         rank0 = team0.long().cumsum(dim=1) - 1
         rank1 = (~team0).long().cumsum(dim=1) - 1
         team_rank = torch.where(team0, rank0, rank1)
         attack = team_rank.remainder(4) != 3
         objective = torch.where(attack, enemy_defense, own_defense)
 
-        needs_healing = state.ship_health < (
-            self.config.frontline_heal_health_fraction * self.ship_config.max_health
+        membership = zone_membership(
+            state.ship_pos,
+            state.zone_pos,
+            state.zone_radius,
+            self.ship_config.world_size,
         )
+        occupied = membership & state.ship_alive.unsqueeze(2)
+        team0_present = (occupied & team0.unsqueeze(2)).any(dim=1)
+        team1_present = (occupied & (~team0).unsqueeze(2)).any(dim=1)
+        defense = (roles == int(ZoneRole.TEAM0_DEFENSE)) | (
+            roles == int(ZoneRole.TEAM1_DEFENSE)
+        )
+        any_defense_contested = (team0_present & team1_present & defense).any(dim=1)
+        nearby_enemy = has_target & (
+            closest_dist <= self.config.frontline_enemy_engage_distance
+        )
+        needs_healing = (
+            state.ship_health
+            < self.config.frontline_heal_health_fraction * self.ship_config.max_health
+        ) & ~nearby_enemy & ~any_defense_contested.unsqueeze(1)
         engage_enemy = (
             has_target
             & (closest_dist <= self.config.frontline_enemy_engage_distance)

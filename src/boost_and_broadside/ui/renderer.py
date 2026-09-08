@@ -307,6 +307,7 @@ class GameRenderer:
         self._camera_drag_button: int | None = None
         self.selected_ship: int | None = None
         self._selectable_ships: tuple[int, ...] = ()
+        self._selection_initialized = False
         self._selected_position: complex | None = None
         self._frontline_fit: tuple[complex, float] | None = None
         self._did_initial_frontline_fit = False
@@ -378,6 +379,26 @@ class GameRenderer:
         # Map frac to FPS (e.g. 1 to 120)
         self.target_fps = int(1 + frac * 119)
 
+    @property
+    def game_speed(self) -> float:
+        """Simulation speed implied by the frame-coupled interactive loop."""
+
+        return self.target_fps / self._render_config.fps
+
+    def _adjust_game_speed(self, direction: int) -> None:
+        """Step among explicit 1x/2x/4x/8x interactive simulation rates."""
+
+        levels = (1.0, 2.0, 4.0, 8.0)
+        current = self.game_speed
+        if direction > 0:
+            selected = next((level for level in levels if level > current + 1e-6), levels[-1])
+        else:
+            selected = next(
+                (level for level in reversed(levels) if level < current - 1e-6),
+                levels[0],
+            )
+        self.target_fps = round(self._render_config.fps * selected)
+
     def _handle_event(self, event: pygame.event.Event) -> bool:
         """Apply one renderer event; return false only for window close."""
         if event.type == pygame.QUIT:
@@ -415,6 +436,10 @@ class GameRenderer:
                     self.camera.fit_region(*self._frontline_fit)
             elif event.key == pygame.K_TAB:
                 self._cycle_selected_ship()
+            elif event.key in (pygame.K_EQUALS, pygame.K_RIGHTBRACKET):
+                self._adjust_game_speed(1)
+            elif event.key in (pygame.K_MINUS, pygame.K_LEFTBRACKET):
+                self._adjust_game_speed(-1)
             elif event.key == pygame.K_c:
                 if self.camera.is_following:
                     self.camera.release_follow()
@@ -503,13 +528,15 @@ class GameRenderer:
         pygame.draw.rect(surf, (100, 100, 100), self._slider_track_rect)
 
         # Draw slider handle
-        frac = (self.target_fps - 1) / 119.0
+        frac = max(0.0, min(1.0, (self.target_fps - 1) / 119.0))
         handle_x = self._slider_track_rect.x + int(frac * self._slider_track_rect.width)
         handle_rect = pygame.Rect(handle_x - 5, self._slider_track_rect.y - 5, 10, 20)
         pygame.draw.rect(surf, (200, 200, 200), handle_rect)
 
         # Draw FPS text
-        fps_label = self._font.render(f"{self.target_fps} FPS", True, (200, 200, 200))
+        fps_label = self._font.render(
+            f"GAME {self.game_speed:g}x", True, (200, 200, 200)
+        )
         surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
 
         if self._render_config.show_unlimited_button:
@@ -545,8 +572,8 @@ class GameRenderer:
             remaining = max(0.0, (max_steps - steps) * self._ship_config.dt)
             lines = (
                 f"TEAM 0  FRONT {front:+d}/{threshold}  TEAM 1",
-                f"TIME {remaining:05.1f}s   VIEW FULL",
-                "F fit  R full world  wheel zoom  drag pan  C follow  TAB select",
+                f"TIME {remaining:05.1f}s   VIEW FULL   SPEED {self.game_speed:g}x",
+                "F fit  R world  wheel zoom  drag pan  C follow  TAB select/observe  -/+ speed",
             )
             for row, text in enumerate(lines):
                 label = self._font.render(text, True, (225, 225, 235))
@@ -569,11 +596,16 @@ class GameRenderer:
         self.camera.release_follow()
 
     def set_selectable_ships(self, ship_indices: tuple[int, ...]) -> None:
-        """Set human-controllable slots and retain a valid selection."""
+        """Set controllable slots while preserving an explicit spectator state."""
 
         self._selectable_ships = ship_indices
-        if self.selected_ship not in ship_indices:
+        if not ship_indices:
+            self.selected_ship = None
+        elif not self._selection_initialized:
             self.selected_ship = ship_indices[0] if ship_indices else None
+            self._selection_initialized = True
+        elif self.selected_ship is not None and self.selected_ship not in ship_indices:
+            self.selected_ship = ship_indices[0]
 
     def _cycle_selected_ship(self) -> None:
         if not self._selectable_ships:
@@ -583,7 +615,12 @@ class GameRenderer:
             self.selected_ship = self._selectable_ships[0]
             return
         index = self._selectable_ships.index(self.selected_ship)
-        self.selected_ship = self._selectable_ships[(index + 1) % len(self._selectable_ships)]
+        if index == len(self._selectable_ships) - 1:
+            self.selected_ship = None
+            self._selected_position = None
+            self.camera.release_follow()
+        else:
+            self.selected_ship = self._selectable_ships[index + 1]
 
     # ------------------------------------------------------------------
     # Private drawing helpers

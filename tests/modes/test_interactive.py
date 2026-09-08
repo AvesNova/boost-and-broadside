@@ -33,3 +33,15 @@ def test_keyboard_controls_only_one_selected_ally() -> None:
 
     assert torch.equal(result[0, 0], torch.zeros(3, dtype=torch.int32))
     assert torch.equal(result[0, 2], keyboard)
+
+
+def test_spectator_selection_leaves_every_ship_scripted() -> None:
+    action = torch.tensor(
+        [[[1, 2, 1], [2, 4, 0], [0, 1, 1], [1, 0, 0]]], dtype=torch.int32
+    )
+    team_id = torch.tensor([[0, 1, 0, 1]], dtype=torch.int32)
+    keyboard = torch.tensor([2, 6, 1], dtype=torch.int32)
+
+    result = _apply_keyboard_override(action, team_id, keyboard, frozenset({0}), None)
+
+    assert torch.equal(result, action)
