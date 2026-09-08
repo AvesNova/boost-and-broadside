@@ -46,6 +46,9 @@ from boost_and_broadside.evaluation.match import agent_view, merge_team_actions
 from boost_and_broadside.evaluation.next_state import imagine_trajectory
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
+_PLAY_ZONE_RADIUS = 330.0
+_PLAY_ZONE_RING_RADIUS = 1200.0
+
 PLAY_ENV_CONFIG = EnvConfig(
     num_ships=8,
     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
@@ -54,10 +57,10 @@ PLAY_ENV_CONFIG = EnvConfig(
     action_repeat=2,
     spawn_resource_spread=0.0,
     frontline=FrontlineConfig(
-        zone_radius=220.0,
-        zone_ring_radius=1200.0,
+        zone_radius=_PLAY_ZONE_RADIUS,
+        zone_ring_radius=_PLAY_ZONE_RING_RADIUS,
         playable_radius=2600.0,
-        capture_seconds=6.0,
+        capture_seconds=20.0,
         defense_damage_per_second=2.0,
         respawn_health=25.0,
         spawn_heal_per_second=12.0,

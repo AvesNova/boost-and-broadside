@@ -92,7 +92,9 @@ class StochasticAgentConfig:
     # flat-vector tuning interface: combat-mode behavior is intentionally frozen,
     # while the Gate-1 objective controller remains provisional and independently
     # configurable for playtesting.
-    frontline_heal_health_fraction: float = 0.5
+    # Timid ships latch a retreat below this health fraction and stay at spawn
+    # until fully healed. Non-timid ships use healing only after a respawn.
+    frontline_heal_health_fraction: float = 0.3
     frontline_enemy_engage_distance: float = 500.0
 
     def __post_init__(self) -> None:

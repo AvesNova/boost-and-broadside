@@ -64,6 +64,7 @@ def run_suite(
     )
     duration = torch.zeros(games, dtype=torch.int32, device=device)
     first_capture = torch.full((games,), -1, dtype=torch.int32, device=device)
+    second_capture = torch.full((games,), -1, dtype=torch.int32, device=device)
     team0_captures = torch.zeros_like(duration)
     team1_captures = torch.zeros_like(duration)
     simultaneous = torch.zeros_like(duration)
@@ -90,11 +91,24 @@ def run_suite(
         ticks_run = tick + 1
 
         active = running
-        captured = (env.state.team0_captured | env.state.team1_captured) & active
+        capture_count = (
+            env.state.team0_captured.to(torch.int32)
+            + env.state.team1_captured.to(torch.int32)
+        ) * active
+        captures_before = team0_captures + team1_captures
+        captured = (capture_count > 0) & active
         first_capture = torch.where(
             captured & (first_capture < 0),
             torch.full_like(first_capture, tick + 1),
             first_capture,
+        )
+        reached_second = ((captures_before >= 1) & (capture_count >= 1)) | (
+            (captures_before == 0) & (capture_count >= 2)
+        )
+        second_capture = torch.where(
+            reached_second & (second_capture < 0),
+            torch.full_like(second_capture, tick + 1),
+            second_capture,
         )
         team0_captures += env.state.team0_captured.to(torch.int32) * active
         team1_captures += env.state.team1_captured.to(torch.int32) * active
@@ -128,11 +142,14 @@ def run_suite(
     result_cpu = result.cpu()
     duration_seconds = duration.cpu().float() * ship_config.dt
     first_capture_seconds = first_capture.cpu().float() * ship_config.dt
-    captured_mask = first_capture.cpu() >= 0
+    second_capture_seconds = second_capture.cpu().float() * ship_config.dt
+    first_capture_mask = first_capture.cpu() >= 0
+    second_capture_mask = second_capture.cpu() >= 0
     per_game = {
         "result": result_cpu.tolist(),
         "duration_seconds": duration_seconds.tolist(),
         "first_capture_seconds": first_capture_seconds.tolist(),
+        "second_capture_seconds": second_capture_seconds.tolist(),
         "team0_captures": team0_captures.cpu().tolist(),
         "team1_captures": team1_captures.cpu().tolist(),
         "simultaneous_captures": simultaneous.cpu().tolist(),
@@ -160,7 +177,12 @@ def run_suite(
         "spawn_healing": _summary(healing.cpu()),
     }
     summaries["first_capture_seconds"] = (
-        _summary(first_capture_seconds[captured_mask]) if captured_mask.any() else None
+        _summary(first_capture_seconds[first_capture_mask]) if first_capture_mask.any() else None
+    )
+    summaries["second_capture_seconds"] = (
+        _summary(second_capture_seconds[second_capture_mask])
+        if second_capture_mask.any()
+        else None
     )
 
     return {
@@ -181,7 +203,8 @@ def run_suite(
             "team1_wins": int((result_cpu == int(MatchResult.TEAM1_WIN)).sum().item()),
             "draws": int((result_cpu == int(MatchResult.DRAW)).sum().item()),
         },
-        "capture_reached_fraction": captured_mask.float().mean().item(),
+        "capture_reached_fraction": first_capture_mask.float().mean().item(),
+        "second_capture_reached_fraction": second_capture_mask.float().mean().item(),
         "termination_causes": {
             "front_threshold": int(
                 (final_front.abs() >= env_config.frontline.front_win_threshold).sum().item()

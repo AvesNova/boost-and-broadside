@@ -298,6 +298,8 @@ def _advance_capture_state(
     alive_in_zone = membership & state.ship_alive.unsqueeze(2)
     team0_count = (alive_in_zone & (state.ship_team_id == 0).unsqueeze(2)).sum(dim=1)
     team1_count = (alive_in_zone & (state.ship_team_id == 1).unsqueeze(2)).sum(dim=1)
+    # Deliberately discard the size of the advantage: every non-tied majority
+    # applies one fixed capture/stabilization rate.
     majority = torch.sign(team0_count - team1_count).to(torch.int8)
 
     roles = state.zone_roles
