@@ -26,6 +26,19 @@ damage increases with distance outside it. A match ends at a net front lead of f
 after five minutes; timeout uses the sign of the front and zero is a draw. All values are
 provisional Gate-1 tuning, not settled balance.
 
+At episode start, every scripted ship independently draws an offensive, defensive, or
+timid tendency. With neither defense under attack, offensive ships head for the enemy
+defense, defensive ships hold their own, and timid ships follow their team's non-timid
+majority (a per-team episode coin breaks ties). If enemies occupy exactly one defense,
+both fleets converge on it; if enemies occupy both defenses, ships return to their
+tendencies. Thus “contested” includes an undefended capture attempt, not only a fight
+with both teams already inside the point. Nearby enemies take priority over point orders.
+
+Timid ships retreat below 30% health and remain in their spawn until fully healed; they
+also fully heal after every respawn. Offensive and defensive ships normally fully heal
+after respawning, but local fights or a contested defense interrupt that healing. A
+ship's tendency survives death and is redrawn only for a new episode.
+
 Controls:
 
 - `W`/`S`: boost/reverse; `A`/`D`: turn; Shift: sharp turn; Space: shoot.

@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from enum import IntEnum
+
 import numpy as np
 import torch
 
@@ -10,6 +13,24 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.config import ShipConfig, ZoneRole
 from boost_and_broadside.env.frontline import zone_membership
 from boost_and_broadside.env.state import TensorState
+
+
+class FrontlineTendency(IntEnum):
+    """Episode-long strategic preference for a scripted ship."""
+
+    OFFENSIVE = 0
+    DEFENSIVE = 1
+    TIMID = 2
+
+
+@dataclass
+class _FrontlineMemory:
+    """Mutable decisions that must survive controller calls within an episode."""
+
+    tendencies: torch.Tensor
+    healing: torch.Tensor
+    tie_attack: torch.Tensor
+    last_step_count: torch.Tensor
 
 
 class StochasticScriptedAgent:
@@ -25,6 +46,60 @@ class StochasticScriptedAgent:
     def __init__(self, ship_config: ShipConfig, agent_config: StochasticAgentConfig):
         self.ship_config = ship_config
         self.config = agent_config
+        self._frontline_state: TensorState | None = None
+        self._frontline_memory: _FrontlineMemory | None = None
+
+    def _new_frontline_memory(self, state: TensorState) -> _FrontlineMemory:
+        batch_size, num_ships = state.ship_pos.shape
+        return _FrontlineMemory(
+            tendencies=torch.randint(
+                len(FrontlineTendency),
+                (batch_size, num_ships),
+                device=state.device,
+            ),
+            healing=torch.zeros(
+                (batch_size, num_ships), dtype=torch.bool, device=state.device
+            ),
+            # Timid ships follow the non-timid majority. A stable per-team coin
+            # breaks exact offensive/defensive ties without favoring either role.
+            tie_attack=torch.rand((batch_size, 2), device=state.device) < 0.5,
+            last_step_count=state.step_count.clone(),
+        )
+
+    def _frontline_episode_memory(self, state: TensorState) -> _FrontlineMemory:
+        """Return episode memory, rerolling only environments that reset.
+
+        A scripted controller is called with the authoritative state, sometimes
+        more than once for the same frame (for example when it controls both
+        teams). Tracking the last observed counter makes the reset operation
+        idempotent while preserving tendencies through same-slot respawns.
+        """
+
+        if self._frontline_state is not state or self._frontline_memory is None:
+            self._frontline_state = state
+            self._frontline_memory = self._new_frontline_memory(state)
+            return self._frontline_memory
+
+        memory = self._frontline_memory
+        if memory.tendencies.shape != state.ship_pos.shape:
+            memory = self._new_frontline_memory(state)
+            self._frontline_memory = memory
+            return memory
+
+        reset = (state.step_count == 0) & (memory.last_step_count != 0)
+        if reset.any():
+            fresh = self._new_frontline_memory(state)
+            ship_reset = reset.unsqueeze(1)
+            team_reset = reset.unsqueeze(1)
+            memory.tendencies = torch.where(
+                ship_reset, fresh.tendencies, memory.tendencies
+            )
+            memory.healing = memory.healing & ~ship_reset
+            memory.tie_attack = torch.where(
+                team_reset, fresh.tie_attack, memory.tie_attack
+            )
+        memory.last_step_count = state.step_count.clone()
+        return memory
 
     def _linear_ramp(
         self, x: torch.Tensor, low: float, high: float, prob_lo: float, prob_hi: float
@@ -194,13 +269,18 @@ class StochasticScriptedAgent:
         target_idx: torch.Tensor,
         has_target: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Choose spawn, enemy, or stable attack/defense destinations.
+        """Choose a local enemy, spawn, or strategic frontline destination.
 
-        Priority is deliberately simple for the Gate-1 baseline: low-health ships
-        heal only when no enemy is nearby and neither defense is contested; local
-        enemies otherwise take priority. Every remaining team sends three of every
-        four stable within-team slots to the enemy defense and keeps the fourth at
-        home. The first slot attacks, so a small team cannot deadlock by defending.
+        Each ship keeps an offensive, defensive, or timid tendency for the whole
+        episode. One contested point pulls the fleet there; when both or neither
+        are contested, non-timid ships follow their tendency and timid ships follow
+        that team's non-timid majority. A point is contested from its owner's
+        perspective whenever one or more enemy ships currently occupy it.
+
+        Nearby fights override strategy and non-timid healing. Timid ships below
+        the retreat threshold (and timid ships that just respawned) instead latch a
+        retreat to their spawn until fully healed. Other respawned ships heal to
+        full only while neither point is contested.
 
         Returns:
             distance:     ``(B, N)`` toroidal distance to the chosen destination.
@@ -225,15 +305,6 @@ class StochasticScriptedAgent:
         own_defense = torch.where(team0, team0_defense.unsqueeze(1), team1_defense.unsqueeze(1))
         enemy_defense = torch.where(team0, team1_defense.unsqueeze(1), team0_defense.unsqueeze(1))
 
-        # Rank is stable for the life of a match because slot and team identity
-        # survive respawn. Ranking within each team keeps shuffled global slots
-        # from accidentally changing the three-attack/one-defense allocation.
-        rank0 = team0.long().cumsum(dim=1) - 1
-        rank1 = (~team0).long().cumsum(dim=1) - 1
-        team_rank = torch.where(team0, rank0, rank1)
-        attack = team_rank.remainder(4) != 3
-        objective = torch.where(attack, enemy_defense, own_defense)
-
         membership = zone_membership(
             state.ship_pos,
             state.zone_pos,
@@ -243,27 +314,74 @@ class StochasticScriptedAgent:
         occupied = membership & state.ship_alive.unsqueeze(2)
         team0_present = (occupied & team0.unsqueeze(2)).any(dim=1)
         team1_present = (occupied & (~team0).unsqueeze(2)).any(dim=1)
-        defense = (roles == int(ZoneRole.TEAM0_DEFENSE)) | (
-            roles == int(ZoneRole.TEAM1_DEFENSE)
+        team0_defense_role = roles == int(ZoneRole.TEAM0_DEFENSE)
+        team1_defense_role = roles == int(ZoneRole.TEAM1_DEFENSE)
+
+        # "Contested" intentionally means enemy presence, not simultaneous
+        # presence. An undefended capture attempt must trigger the same response
+        # as a point where both teams are fighting.
+        team0_own_contested = (team1_present & team0_defense_role).any(dim=1)
+        team0_enemy_contested = (team0_present & team1_defense_role).any(dim=1)
+        own_contested = torch.where(
+            team0, team0_own_contested.unsqueeze(1), team0_enemy_contested.unsqueeze(1)
         )
-        any_defense_contested = (team0_present & team1_present & defense).any(dim=1)
+        enemy_contested = torch.where(
+            team0, team0_enemy_contested.unsqueeze(1), team0_own_contested.unsqueeze(1)
+        )
+
+        memory = self._frontline_episode_memory(state)
+        tendencies = memory.tendencies
+        offensive = tendencies == int(FrontlineTendency.OFFENSIVE)
+        defensive = tendencies == int(FrontlineTendency.DEFENSIVE)
+        timid = tendencies == int(FrontlineTendency.TIMID)
+
+        team0_offensive = (offensive & team0).sum(dim=1)
+        team0_defensive = (defensive & team0).sum(dim=1)
+        team1_offensive = (offensive & ~team0).sum(dim=1)
+        team1_defensive = (defensive & ~team0).sum(dim=1)
+        team0_majority_attack = (team0_offensive > team0_defensive) | (
+            (team0_offensive == team0_defensive) & memory.tie_attack[:, 0]
+        )
+        team1_majority_attack = (team1_offensive > team1_defensive) | (
+            (team1_offensive == team1_defensive) & memory.tie_attack[:, 1]
+        )
+        majority_attack = torch.where(
+            team0, team0_majority_attack.unsqueeze(1), team1_majority_attack.unsqueeze(1)
+        )
+        tendency_attack = offensive | (timid & majority_attack)
+        tendency_objective = torch.where(tendency_attack, enemy_defense, own_defense)
+
+        only_enemy_contested = enemy_contested & ~own_contested
+        only_own_contested = own_contested & ~enemy_contested
+        objective = torch.where(
+            only_enemy_contested,
+            enemy_defense,
+            torch.where(only_own_contested, own_defense, tendency_objective),
+        )
+
         nearby_enemy = has_target & (
             closest_dist <= self.config.frontline_enemy_engage_distance
         )
-        needs_healing = (
-            state.ship_health
-            < self.config.frontline_heal_health_fraction * self.ship_config.max_health
-        ) & ~nearby_enemy & ~any_defense_contested.unsqueeze(1)
-        engage_enemy = (
-            has_target
-            & (closest_dist <= self.config.frontline_enemy_engage_distance)
-            & ~needs_healing
+
+        below_timid_threshold = state.ship_health < (
+            self.config.frontline_heal_health_fraction * self.ship_config.max_health
         )
+        memory.healing |= state.ship_respawned | (timid & below_timid_threshold)
+        memory.healing &= state.ship_health < self.ship_config.max_health
+
+        timid_healing = timid & memory.healing
+        other_healing = (~timid) & memory.healing
+        any_contested = own_contested | enemy_contested
+        engage_enemy = nearby_enemy & ~timid_healing
         enemy_pos = state.ship_pos.gather(1, target_idx)
         destination = torch.where(
-            needs_healing,
+            timid_healing,
             own_spawn,
-            torch.where(engage_enemy, enemy_pos, objective),
+            torch.where(
+                engage_enemy,
+                enemy_pos,
+                torch.where(other_healing & ~any_contested, own_spawn, objective),
+            ),
         )
 
         world_width, world_height = self.ship_config.world_size
