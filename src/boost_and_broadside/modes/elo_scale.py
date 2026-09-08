@@ -136,12 +136,8 @@ def _scale_result(
 ) -> dict:
     labels = [player.label for player in tournament.players]
     primary_wins = tournament.scored_wins(config.tie_mode)
-    primary = fit_bradley_terry(
-        primary_wins, anchor=reference, prior_games=config.prior_games
-    )
-    primary_views = rating_views(
-        primary.ratings, tournament.pair_games(config.tie_mode), labels
-    )
+    primary = fit_bradley_terry(primary_wins, anchor=reference, prior_games=config.prior_games)
+    primary_views = rating_views(primary.ratings, tournament.pair_games(config.tie_mode), labels)
 
     alternate_mode = "decisive" if config.tie_mode == "half_win" else "half_win"
     alternate = fit_bradley_terry(
@@ -149,9 +145,7 @@ def _scale_result(
         anchor=reference,
         prior_games=config.prior_games,
     )
-    alternate_views = rating_views(
-        alternate.ratings, tournament.pair_games(alternate_mode), labels
-    )
+    alternate_views = rating_views(alternate.ratings, tournament.pair_games(alternate_mode), labels)
     return {
         "team_size": team_size,
         "total_ships": 2 * team_size,
@@ -172,7 +166,12 @@ def _scale_result(
 
 
 def _scale_recipe(
-    run: str, metadata: list[dict], team_sizes: list[int], config: EloCalibrateConfig, base_env
+    run: str,
+    metadata: list[dict],
+    team_sizes: list[int],
+    config: EloCalibrateConfig,
+    base_env,
+    ship_config: ShipConfig,
 ) -> ArtifactRecipe:
     """Identify this sweep by its exact player field and stopping rule."""
 
@@ -198,7 +197,7 @@ def _scale_recipe(
             "tie_mode": config.tie_mode,
             "prior_games": config.prior_games,
             "seed_base": _SEED_BASE,
-            "environment": describe_environment(base_env),
+            "environment": describe_environment(base_env, ship_config=ship_config),
         },
     )
 
@@ -215,14 +214,15 @@ def run_elo_scale_mode(
     """Run or resume checkpoint tournaments across symmetric team sizes."""
     run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
     roster = json.loads((run_dir / "roster.json").read_text())
-    base_env, model_config, paradigm, field_map_config = load_run_config(run_dir)
+    base_env, model_config, run_ship_config, paradigm, field_map_config = load_run_config(run_dir)
+    ship_config = run_ship_config
     final_path = select_final_training_checkpoint(run_dir).path
     metadata = _player_metadata(run_dir, roster, final_path)
     labels = [record["label"] for record in metadata]
 
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
     artifact, resumed = store.open_resumable(
-        _scale_recipe(run_dir.name, metadata, team_sizes, config, base_env),
+        _scale_recipe(run_dir.name, metadata, team_sizes, config, base_env, ship_config),
         store.run_owner(run_dir.name),
     )
     if resumed and artifact.has("result.json"):

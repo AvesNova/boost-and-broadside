@@ -173,7 +173,9 @@ def run_noise_calibration_mode(
     # The policy's own provenance decides the field distribution. num_tokens is
     # derived after it: a fields policy predicts field tokens too, and sizing the
     # report from a field-free environment would silently drop those dimensions.
-    env_config, field_map_config = resolve_evaluation_environment(env_config, (agent0, agent1))
+    env_config, field_map_config = resolve_evaluation_environment(
+        env_config, (agent0, agent1), ship_config=ship_config
+    )
     num_tokens = N + env_config.num_fields
 
     if agent0.kind != "policy":
@@ -251,7 +253,7 @@ def run_noise_calibration_mode(
             "num_ar_windows": num_ar_windows,
             "ar_window_len": _AR_WINDOW,
             "warmup_steps": _WARMUP_STEPS,
-            "environment": describe_environment(env_config),
+            "environment": describe_environment(env_config, ship_config=ship_config),
         },
     )
     owner = store.owner_for(

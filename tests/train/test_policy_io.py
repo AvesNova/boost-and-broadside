@@ -12,6 +12,10 @@ import pytest
 import torch
 
 from boost_and_broadside.config import ModelConfig, ShipConfig
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    observation_contract,
+    position_fourier_frequencies,
+)
 from boost_and_broadside.train.rl.policy_io import (
     FEATURE_SHIP_CONFIG_FIELDS,
     CheckpointProvenanceWarning,
@@ -79,8 +83,7 @@ class TestBuildPolicy:
         assert silent.bullet_encoder is None
 
     def test_encoder_width_follows_ship_config(self):
-        """The feature list is fixed, so a physics change moves constants, not dims —
-        which is exactly why a drifted ShipConfig loads cleanly and plays wrong."""
+        """The large world widens position features to preserve 128 px detail."""
         import dataclasses
 
         narrow = build_policy(
@@ -92,12 +95,22 @@ class TestBuildPolicy:
         )
         wide = build_policy(
             self._config(),
-            dataclasses.replace(ShipConfig(), world_size=(2048.0, 2048.0)),
+            dataclasses.replace(ShipConfig(), world_size=(16384.0, 16384.0)),
             num_value_components=3,
             num_ships=4,
             team_pma_k=(),
         )
         assert set(narrow.state_dict()) == set(wide.state_dict())
+        narrow_input = narrow.state_dict()["encoder.feature_extractor.0.weight"].shape[1]
+        wide_input = wide.state_dict()["encoder.feature_extractor.0.weight"].shape[1]
+        assert wide_input - narrow_input == 16
+
+    def test_position_frequency_contract_is_explicit_and_scale_preserving(self):
+        assert position_fourier_frequencies(1024.0) == 4
+        assert position_fourier_frequencies(16384.0) == 8
+        assert observation_contract(ShipConfig(world_size=(16384.0, 16384.0)))[
+            "position_frequencies"
+        ] == (8, 8)
 
 
 class TestCheckpointProvenance:
@@ -197,15 +210,31 @@ class TestCheckpointProvenance:
 
 
 class TestLegacyCheckpoints:
-    def test_missing_provenance_falls_back_and_says_so(self, tmp_path):
-        """Payloads written before provenance stay loadable, but not silently."""
+    def test_v4_checkpoint_without_ship_feature_contract_is_refused(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        path = trainer._save_ladder_snapshot()
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        payload.pop("ship_config")
+        torch.save(payload, path)
+
+        with pytest.raises(ValueError, match="ship_config.world_size"):
+            load_policy_bundle(
+                str(path),
+                device="cpu",
+                num_ships=trainer.wrapper.num_ships,
+                ship_config=trainer.ship_config,
+            )
+
+    def test_missing_model_provenance_falls_back_and_says_so(self, tmp_path):
+        """Model provenance can fall back; v4 ship semantics cannot."""
         from tests.train.test_ppo import _make_trainer
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         path = trainer._save_ladder_snapshot()
         payload = torch.load(path, map_location="cpu", weights_only=False)
         payload.pop("model_config", None)
-        payload.pop("ship_config", None)
         torch.save(payload, path)
 
         with pytest.warns(CheckpointProvenanceWarning, match="model_config"):

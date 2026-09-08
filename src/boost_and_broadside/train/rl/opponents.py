@@ -79,6 +79,7 @@ class EnvironmentStepOutput(NamedTuple):
     reward: torch.Tensor
     dones: torch.Tensor
     truncated: torch.Tensor
+    transition_contiguous: torch.Tensor
     network: RolloutNetworkOutput
 
 
@@ -327,19 +328,33 @@ class OpponentMixin:
     ) -> EnvironmentStepOutput:
         """Advance the environment and policy, overlapping them on CUDA streams."""
         if env_stream is None:
-            next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
+            next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
             network = self._rollout_network_forwards(*network_args)
-            return EnvironmentStepOutput(next_obs, reward, dones, truncated, network)
+            return EnvironmentStepOutput(
+                next_obs,
+                reward,
+                dones,
+                truncated,
+                info["transition_contiguous"],
+                network,
+            )
 
         env_stream.wait_stream(torch.cuda.current_stream())
         net_stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(env_stream):
-            next_obs, reward, dones, truncated, _ = self.wrapper.step(action_buffer)
+            next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
         with torch.cuda.stream(net_stream):
             network = self._rollout_network_forwards(*network_args)
         torch.cuda.current_stream().wait_stream(env_stream)
         torch.cuda.current_stream().wait_stream(net_stream)
-        return EnvironmentStepOutput(next_obs, reward, dones, truncated, network)
+        return EnvironmentStepOutput(
+            next_obs,
+            reward,
+            dones,
+            truncated,
+            info["transition_contiguous"],
+            network,
+        )
 
     def _select_primary_actions(
         self,
@@ -428,6 +443,7 @@ class OpponentMixin:
             actor_mask=actor_mask,
             expert_probs=scripted.expert_probs,
             terminated=done_any,
+            transition_contiguous=step.transition_contiguous,
         )
 
         hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)

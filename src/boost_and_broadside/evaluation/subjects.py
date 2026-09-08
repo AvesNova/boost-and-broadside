@@ -64,18 +64,20 @@ def describe_checkpoint_configuration(payload: Mapping[str, Any]) -> dict[str, A
     return {"profile": recorded.get("profile")}
 
 
-def describe_agents(
-    *, checkpoint_root: str | Path = "checkpoints", **specs: str
-) -> dict[str, Any]:
+def describe_agents(*, checkpoint_root: str | Path = "checkpoints", **specs: str) -> dict[str, Any]:
     """Describe several named agent specs, e.g. ``team0=..., team1=...``."""
 
     return {
-        name: describe_agent(spec, checkpoint_root=checkpoint_root)
-        for name, spec in specs.items()
+        name: describe_agent(spec, checkpoint_root=checkpoint_root) for name, spec in specs.items()
     }
 
 
-def describe_environment(env_config: Any, *, matchups: Any = None) -> dict[str, Any]:
+def describe_environment(
+    env_config: Any,
+    *,
+    ship_config: Any = None,
+    matchups: Any = None,
+) -> dict[str, Any]:
     """The environment shape a measurement ran under, as recipe parameters."""
 
     described: dict[str, Any] = {
@@ -83,7 +85,20 @@ def describe_environment(env_config: Any, *, matchups: Any = None) -> dict[str, 
         "num_fields": env_config.num_fields,
         "max_bullets": env_config.max_bullets,
         "max_episode_steps": env_config.max_episode_steps,
+        "action_repeat": env_config.action_repeat,
+        "spawn_resource_spread": env_config.spawn_resource_spread,
+        "game_mode": "frontline" if env_config.frontline is not None else "combat",
+        "frontline": (
+            dataclasses.asdict(env_config.frontline) if env_config.frontline is not None else None
+        ),
     }
+    if ship_config is not None:
+        described["world_size"] = list(ship_config.world_size)
+    if env_config.frontline is not None:
+        described["map_translation"] = {
+            "distribution": "uniform_toroidal_per_episode",
+            "shared_by": ["zones", "playable_boundary", "initial_spawn", "respawn"],
+        }
     if matchups is not None:
         described["matchups"] = [f"{team0}v{team1}" for team0, team1 in matchups]
     return described

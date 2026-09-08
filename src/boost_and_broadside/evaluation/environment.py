@@ -10,25 +10,64 @@ from boost_and_broadside.evaluation.agents import ResolvedAgent
 
 
 def resolve_evaluation_environment(
-    env_config: EnvConfig, agents: Iterable[ResolvedAgent]
+    env_config: EnvConfig,
+    agents: Iterable[ResolvedAgent],
+    *,
+    ship_config: ShipConfig | None = None,
 ) -> tuple[EnvConfig, FieldMapConfig | None]:
-    """Resolve a shared field distribution from policy checkpoint provenance.
+    """Resolve one compatible task from policy checkpoint provenance.
 
-    Random and scripted agents have no environment provenance. Every field
-    policy in one evaluation must declare the same field count and map
-    distribution; otherwise the requested matchup has no faithful shared task.
+    Random and scripted agents have no environment provenance. Policies must
+    agree on their game mode and timing semantics; field policies must also
+    declare one compatible field count and map distribution.
     """
 
+    agents = tuple(agents)
     declarations = [
-        (agent.bundle.env_config, agent.bundle.field_map_config)
+        (
+            agent.bundle.env_config,
+            agent.bundle.field_map_config,
+            getattr(agent.bundle, "ship_config", None),
+        )
         for agent in agents
         if agent.kind == "policy"
         and agent.bundle is not None
         and agent.bundle.env_config is not None
     ]
+    if ship_config is not None:
+        for _, _, candidate_ship in declarations:
+            if candidate_ship is not None and candidate_ship.world_size != ship_config.world_size:
+                raise ValueError(
+                    "policy checkpoint world size is incompatible with the evaluation world"
+                )
+
+    if declarations:
+        selected_env = declarations[0][0]
+        for candidate_env, _, _ in declarations[1:]:
+            if (
+                candidate_env.frontline != selected_env.frontline
+                or candidate_env.action_repeat != selected_env.action_repeat
+                or candidate_env.max_episode_steps != selected_env.max_episode_steps
+                or candidate_env.spawn_resource_spread != selected_env.spawn_resource_spread
+            ):
+                raise ValueError("policy checkpoints declare incompatible game-mode environments")
+        if env_config.frontline != selected_env.frontline:
+            raise ValueError(
+                "requested evaluation game mode is incompatible with policy checkpoint provenance"
+            )
+        if selected_env.frontline is not None and (
+            env_config.action_repeat != selected_env.action_repeat
+            or env_config.max_episode_steps != selected_env.max_episode_steps
+            or env_config.spawn_resource_spread != selected_env.spawn_resource_spread
+        ):
+            raise ValueError(
+                "requested frontline timing/spawn configuration is incompatible with checkpoint "
+                "provenance"
+            )
+
     field_declarations = [
         (candidate, field_map)
-        for candidate, field_map in declarations
+        for candidate, field_map, _ in declarations
         if candidate.num_fields > 0
     ]
     if not field_declarations:

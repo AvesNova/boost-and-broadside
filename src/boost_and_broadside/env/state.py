@@ -11,7 +11,7 @@ class TensorState:
 
     All tensors share the same device. Shape notation:
       B = num_envs, N = max_ships, K = max_bullets per ship,
-      M = num_fields.
+      M = num_fields, Z = num frontline zones (zero or five).
 
     The dataclass is NOT frozen so physics functions can advance state between
     steps (the refractive-field map itself remains static). The load-bearing
@@ -51,6 +51,24 @@ class TensorState:
     ship_team_id: torch.Tensor  # (B, N) int32
     ship_alive: torch.Tensor  # (B, N) bool
     ship_is_shooting: torch.Tensor  # (B, N) bool
+
+    # Frontline match/map state. Combat-mode states keep a zero-length zone
+    # axis and ``match_result`` is still the authoritative terminal outcome.
+    map_center: torch.Tensor  # (B,) complex64 — common translated map origin
+    playable_boundary_radius: torch.Tensor  # (B,) float32
+    front_position: torch.Tensor  # (B,) int64 — unwrapped strategic coordinate
+    front_delta: torch.Tensor  # (B,) int8 — {-1, 0, +1} this physics tick
+    front_win_threshold: torch.Tensor  # (B,) int64
+    match_max_steps: torch.Tensor  # (B,) int64 — zero means unlimited
+    match_result: torch.Tensor  # (B,) int8 — MatchResult
+    zone_pos: torch.Tensor  # (B, Z) complex64 — fixed physical locations
+    zone_radius: torch.Tensor  # (B, Z) float32
+    zone_roles: torch.Tensor  # (B, Z) int8 — ZoneRole
+    zone_capture_progress: torch.Tensor  # (B, Z) float32 in [0, 1]
+    zone_capture_direction: torch.Tensor  # (B, Z) int8 — {-1, 0, +1}
+    team0_captured: torch.Tensor  # (B,) bool — completed this tick
+    team1_captured: torch.Tensor  # (B,) bool — completed this tick
+    simultaneous_capture: torch.Tensor  # (B,) bool — both completed this tick
 
     # Action taken at the previous step (for observation)
     prev_action: torch.Tensor  # (B, N, 3) float32  — [power, turn, shoot]
@@ -98,6 +116,14 @@ class TensorState:
     ship_combat_damage: torch.Tensor  # (B, N) float32 — applied projectile health loss
     ship_field_death: torch.Tensor  # (B, N) bool — field damage killed this ship this step
     ship_combat_death: torch.Tensor  # (B, N) bool — projectile damage killed this ship this step
+    ship_zone_damage: torch.Tensor  # (B, N) float32 — active-defense hazard loss
+    ship_spawn_damage: torch.Tensor  # (B, N) float32 — hostile-spawn hazard loss
+    ship_boundary_damage: torch.Tensor  # (B, N) float32 — soft-boundary loss
+    ship_zone_death: torch.Tensor  # (B, N) bool
+    ship_spawn_death: torch.Tensor  # (B, N) bool
+    ship_boundary_death: torch.Tensor  # (B, N) bool
+    ship_respawned: torch.Tensor  # (B, N) bool — death -> spawn teleport this tick
+    ship_spawn_healing: torch.Tensor  # (B, N) float32 — applied healing this tick
 
     # ------------------------------------------------------------------
     # Convenience properties
@@ -118,6 +144,10 @@ class TensorState:
     @property
     def num_fields(self) -> int:
         return self.field_pos.shape[1]
+
+    @property
+    def num_zones(self) -> int:
+        return self.zone_pos.shape[1]
 
     @property
     def num_obstacles(self) -> int:

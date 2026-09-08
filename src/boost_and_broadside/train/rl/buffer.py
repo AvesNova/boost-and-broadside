@@ -33,6 +33,7 @@ class MicroBatch(NamedTuple):
     actor_mask: torch.Tensor
     expert_probs: torch.Tensor
     terminated: torch.Tensor
+    transition_contiguous: torch.Tensor
     adv_agg: torch.Tensor
     ret_agg: torch.Tensor
     ns_labels: torch.Tensor | None
@@ -59,6 +60,7 @@ class MicroBatch(NamedTuple):
             actor_mask=self.actor_mask.pin_memory(),
             expert_probs=self.expert_probs.pin_memory(),
             terminated=self.terminated.pin_memory(),
+            transition_contiguous=self.transition_contiguous.pin_memory(),
             adv_agg=self.adv_agg.pin_memory(),
             ret_agg=self.ret_agg.pin_memory(),
             ns_labels=self.ns_labels.pin_memory() if self.ns_labels is not None else None,
@@ -87,6 +89,9 @@ class MicroBatch(NamedTuple):
             actor_mask=self.actor_mask.to(device=device, non_blocking=non_blocking),
             expert_probs=self.expert_probs.to(device=device, non_blocking=non_blocking),
             terminated=self.terminated.to(device=device, non_blocking=non_blocking),
+            transition_contiguous=self.transition_contiguous.to(
+                device=device, non_blocking=non_blocking
+            ),
             adv_agg=self.adv_agg.to(device=device, non_blocking=non_blocking),
             ret_agg=self.ret_agg.to(device=device, non_blocking=non_blocking),
             ns_labels=(
@@ -139,6 +144,7 @@ class MicroBatch(NamedTuple):
             actor_mask=self.actor_mask[:, start:end],
             expert_probs=self.expert_probs[:, start:end],
             terminated=self.terminated[:, start:end],
+            transition_contiguous=self.transition_contiguous[:, start:end],
             adv_agg=self.adv_agg[:, start:end],
             ret_agg=self.ret_agg[:, start:end],
             ns_labels=self.ns_labels[:, start:end] if self.ns_labels is not None else None,
@@ -624,6 +630,9 @@ class RolloutBuffer:
         # Episode termination mask: done | truncated — used to exclude terminal transitions
         # from the aux next-state prediction loss.
         self.terminated = torch.zeros((T, B), device=device, dtype=torch.bool)
+        # Per-ship physical continuity. False excludes a death->respawn teleport
+        # from auxiliary dynamics targets without ending the strategic episode.
+        self.transition_contiguous = torch.ones((T, B, N), device=device, dtype=torch.bool)
 
         # Initial GRU hidden state at the start of this rollout
         self.initial_hidden: torch.Tensor | None = None
@@ -640,6 +649,7 @@ class RolloutBuffer:
         self.initial_hidden = None
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
         self.terminated.zero_()
+        self.transition_contiguous.fill_(True)
         # obs[T] slot is overwritten by store_final_obs() — no need to zero it
 
     def store_initial_hidden(self, hidden: torch.Tensor) -> None:
@@ -661,6 +671,7 @@ class RolloutBuffer:
         actor_mask: torch.Tensor | None = None,
         expert_probs: torch.Tensor | None = None,
         terminated: torch.Tensor | None = None,
+        transition_contiguous: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
@@ -677,6 +688,8 @@ class RolloutBuffer:
                           Zero for envs without a scripted opponent.
             terminated:   (B,) bool — True when the episode ended (done | truncated).
                           Cuts the GAE trace and masks the aux loss at boundaries.
+            transition_contiguous: (B, N) bool — False where the physical next
+                          state is a respawn teleport. Does not cut GAE/recurrent state.
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
@@ -698,6 +711,8 @@ class RolloutBuffer:
             self.expert_probs[t] = expert_probs
         if terminated is not None:
             self.terminated[t] = terminated
+        if transition_contiguous is not None:
+            self.transition_contiguous[t] = transition_contiguous
 
         self.ptr += 1
 
@@ -851,6 +866,7 @@ class RolloutBuffer:
                         actor_mask=self.actor_masks[:, idx],
                         expert_probs=self.expert_probs[:, idx],
                         terminated=self.terminated[:, idx],
+                        transition_contiguous=self.transition_contiguous[:, idx],
                         adv_agg=self.adv_agg[:, idx],
                         ret_agg=self.ret_agg[:, idx],
                         ns_labels=self.ns_labels[:, idx] if self.ns_labels is not None else None,
@@ -895,6 +911,9 @@ class StoredRollout:
         self.actor_masks = source.actor_masks.detach().to(device="cpu", copy=True)
         self.expert_probs = source.expert_probs.detach().to(device="cpu", copy=True)
         self.terminated = source.terminated.detach().to(device="cpu", copy=True)
+        self.transition_contiguous = source.transition_contiguous.detach().to(
+            device="cpu", copy=True
+        )
         self.initial_hidden = source.initial_hidden.detach().to(device="cpu", copy=True)
 
         self.adv_agg: torch.Tensor | None = None
@@ -985,6 +1004,7 @@ class StoredRollout:
                     actor_mask=self.actor_masks[:, indices],
                     expert_probs=self.expert_probs[:, indices],
                     terminated=self.terminated[:, indices],
+                    transition_contiguous=self.transition_contiguous[:, indices],
                     adv_agg=self.adv_agg[:, indices],
                     ret_agg=self.ret_agg[:, indices],
                     ns_labels=(self.ns_labels[:, indices] if self.ns_labels is not None else None),

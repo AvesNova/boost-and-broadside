@@ -50,6 +50,7 @@ from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.run_manifest import RunStatus
+from boost_and_broadside.train.rl.allocation import allocation_weights
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     LogicalRolloutBuffer,
@@ -60,9 +61,6 @@ from boost_and_broadside.train.rl.buffer import (
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
 from boost_and_broadside.train.rl.elo_diagnostics import LiveEloDiagnostics
-from boost_and_broadside.train.rl.match_matrix import MatchMatrix
-from boost_and_broadside.train.rl.allocation import allocation_weights
-from boost_and_broadside.train.rl.live_rating import TwoStageRating
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import (
     FeatureCoordinator,
@@ -74,7 +72,9 @@ from boost_and_broadside.train.rl.grad_diagnostics import (
     scope_metric_records,
     scope_statistics,
 )
+from boost_and_broadside.train.rl.live_rating import TwoStageRating
 from boost_and_broadside.train.rl.logging import LoggingMixin
+from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
@@ -126,6 +126,8 @@ _BC_CUTOFF_UPDATES = 3
 _TIER: dict[str, str] = {
     "ally_win": "outcome_scale",
     "enemy_win": "outcome_scale",
+    "ally_front_advance": "outcome_scale",
+    "enemy_front_advance": "outcome_scale",
     "ally_combat_death": "kill_death_scale",
     "enemy_combat_death": "kill_death_scale",
     "ally_field_death": "kill_death_scale",
@@ -648,8 +650,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Grid points are absolute, so the first one to claim is the highest
         # multiple of the gap at or below where the run starts.
         self._elo_milestone: float = (
-            (LIVE_RANDOM_ELO // train_config.elo_milestone_gap)
-            * train_config.elo_milestone_gap
+            (LIVE_RANDOM_ELO // train_config.elo_milestone_gap) * train_config.elo_milestone_gap
             if train_config.elo_milestone_gap > 0
             else 0.0
         )
@@ -889,7 +890,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_action, aux_actor_mask = self._combine_actions(
                 aux_action_t0, aux_action_t1, aux_team_id
             )
-            next_aux_obs, aux_reward, aux_dones, aux_truncated, _ = aux_w.step(
+            next_aux_obs, aux_reward, aux_dones, aux_truncated, aux_info = aux_w.step(
                 aux_action_buffers[i]
             )
             # Inject aux decided action into next obs previous_action
@@ -905,6 +906,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 actor_mask=aux_actor_mask,
                 expert_probs=None,
                 terminated=aux_done_any,
+                transition_contiguous=aux_info["transition_contiguous"],
             )
             aux_hiddens[i] = self.policy.reset_hidden_for_envs(aux_hiddens[i], aux_done_any, aux_N)
             if self._ego_pass:
@@ -1512,7 +1514,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 bc_valid = mb_expert_probs.sum(-1) > 0
                 bc_sum += (bc_valid & mb_actor_mask & mb_alive).sum()
             if need_ns:
-                ns_sum += (mb_alive & ~mb_terminated.unsqueeze(-1)).sum()
+                ns_sum += (
+                    mb_alive & ~mb_terminated.unsqueeze(-1) & chunk.transition_contiguous
+                ).sum()
         return {
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
@@ -1583,6 +1587,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         mb_actor_mask = batch.actor_mask
         mb_expert_probs = batch.expert_probs
         mb_terminated = batch.terminated
+        mb_transition_contiguous = batch.transition_contiguous
         mb_adv_agg = batch.adv_agg
         mb_ret_agg = batch.ret_agg
         mb_ns_labels = batch.ns_labels
@@ -1688,7 +1693,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         if _need_aux:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
-            ns_mask = mb_alive & non_terminal  # (T, B_mb, N)
+            ns_mask = mb_alive & non_terminal & mb_transition_contiguous
             ns_mask_f = ns_mask.float()
             ns_sum = denoms["ns_sum"]
 
@@ -1944,9 +1949,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         Returns:
             Term name → weighted scalar loss, one per active component.
         """
-        per_component = (vf_loss_raw * alive_k).sum((0, 1, 2)) / (
-            mask_sum * num_components
-        )  # (K,)
+        per_component = (vf_loss_raw * alive_k).sum((0, 1, 2)) / (mask_sum * num_components)  # (K,)
         coefficient = self._schedule_state.value_function_coef
         return {
             f"value/{name}": coefficient * per_component[index]

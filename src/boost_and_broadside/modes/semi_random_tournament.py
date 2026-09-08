@@ -229,7 +229,8 @@ def run_semi_random_tournament(
     else:
         run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
         subject = {"run": run_dir.name}
-        base_env, _, paradigm, field_map_config = load_run_config(run_dir)
+        base_env, _, run_ship_config, paradigm, field_map_config = load_run_config(run_dir)
+        ship_config = run_ship_config
         field_map = run_field_map(ship_config, base_env, field_map_config, device)
     labels = [_label(probability) for probability in probabilities]
 
@@ -245,7 +246,7 @@ def run_semi_random_tournament(
             "max_parallel_envs": max_parallel_envs,
             "paradigm": paradigm,
             "seed_base": _SEED_BASE,
-            "environment": describe_environment(base_env),
+            "environment": describe_environment(base_env, ship_config=ship_config),
         },
     )
     artifact, resumed = store.open_resumable(recipe, store.owner_for(subject.get("run")))

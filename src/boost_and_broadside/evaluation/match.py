@@ -18,6 +18,7 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, FieldMapConfig, ShipConfig
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
+from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     agents_read_bullets,
@@ -232,12 +233,7 @@ def evaluate_matchup(
         newly_done = done_any & ~finished
         if newly_done.any():
             episode_lengths[newly_done] = env.state.step_count[newly_done].long()
-            alive = env.state.ship_alive
-            team = env.state.ship_team_id
-            team0_alive = (alive & (team == 0)).any(dim=1)
-            team1_alive = (alive & (team == 1)).any(dim=1)
-            team0_won = newly_done & team0_alive & ~team1_alive
-            team1_won = newly_done & team1_alive & ~team0_alive
+            team0_won, team1_won, _ = outcome_masks(env.state, newly_done)
             results[team0_won] = 0
             results[team1_won] = 1
             results[newly_done & ~team0_won & ~team1_won] = 2

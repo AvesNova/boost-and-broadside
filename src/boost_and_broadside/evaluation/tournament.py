@@ -23,6 +23,7 @@ from boost_and_broadside.config import (
     ShipConfig,
 )
 from boost_and_broadside.env.field_cache import FieldMapCache
+from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import MatchRunner
@@ -175,8 +176,8 @@ class BatchStat:
 
 def load_run_config(
     run_dir: Path,
-) -> tuple[EnvConfig, ModelConfig, str, FieldMapConfig | None]:
-    """Recover the environment, model, paradigm, and field distribution a run trained under.
+) -> tuple[EnvConfig, ModelConfig, ShipConfig, str, FieldMapConfig | None]:
+    """Recover the task and model provenance a run trained under.
 
     Ladder snapshots are policy-only, so this reads the resumable checkpoint.
     Calibrating under a different ship count or paradigm than the run used would
@@ -196,11 +197,13 @@ def load_run_config(
     require_observation_schema(checkpoint, str(selected.path))
     env_config = EnvConfig(**checkpoint["env_config"])
     model_config = ModelConfig(**checkpoint["model_config"])
+    ship_config = ShipConfig(**checkpoint["ship_config"])
     train_config = checkpoint.get("train_config", {})
     paradigm = train_config.get("paradigm", "ego_pass")
     return (
         env_config,
         model_config,
+        ship_config,
         paradigm,
         recorded_field_map(checkpoint, env_config, run_dir.name),
     )
@@ -518,13 +521,7 @@ class Tournament:
         self, newly_done: torch.Tensor, env_team0: torch.Tensor, env_team1: torch.Tensor
     ) -> None:
         """Accumulate wins and ties for the episodes that just ended."""
-        alive = self.env.state.ship_alive
-        team = self.env.state.ship_team_id
-        team0_alive = (alive & (team == 0)).any(dim=1)
-        team1_alive = (alive & (team == 1)).any(dim=1)
-        team0_won = newly_done & team0_alive & ~team1_alive
-        team1_won = newly_done & team1_alive & ~team0_alive
-        tied = newly_done & ~team0_won & ~team1_won
+        team0_won, team1_won, tied = outcome_masks(self.env.state, newly_done)
 
         flat = self.size * env_team0 + env_team1
         for outcome_index, outcome in enumerate((team0_won, team1_won, tied)):

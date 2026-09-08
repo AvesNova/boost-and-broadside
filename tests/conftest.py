@@ -52,6 +52,21 @@ def make_state(
         ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=dev),
         ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=dev),
         ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        map_center=torch.zeros((num_envs,), dtype=torch.complex64, device=dev),
+        playable_boundary_radius=torch.zeros((num_envs,), dtype=torch.float32, device=dev),
+        front_position=torch.zeros((num_envs,), dtype=torch.long, device=dev),
+        front_delta=torch.zeros((num_envs,), dtype=torch.int8, device=dev),
+        front_win_threshold=torch.zeros((num_envs,), dtype=torch.long, device=dev),
+        match_max_steps=torch.zeros((num_envs,), dtype=torch.long, device=dev),
+        match_result=torch.full((num_envs,), -1, dtype=torch.int8, device=dev),
+        zone_pos=torch.zeros((num_envs, 0), dtype=torch.complex64, device=dev),
+        zone_radius=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
+        zone_roles=torch.zeros((num_envs, 0), dtype=torch.int8, device=dev),
+        zone_capture_progress=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
+        zone_capture_direction=torch.zeros((num_envs, 0), dtype=torch.int8, device=dev),
+        team0_captured=torch.zeros((num_envs,), dtype=torch.bool, device=dev),
+        team1_captured=torch.zeros((num_envs,), dtype=torch.bool, device=dev),
+        simultaneous_capture=torch.zeros((num_envs,), dtype=torch.bool, device=dev),
         prev_action=torch.zeros((num_envs, max_ships, 3), dtype=torch.float32, device=dev),
         bullet_pos=torch.zeros(
             (num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev
@@ -102,6 +117,14 @@ def make_state(
         ship_combat_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_field_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
         ship_combat_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_zone_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_spawn_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_boundary_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_zone_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_spawn_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_boundary_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_respawned=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_spawn_healing=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
     )
 
 

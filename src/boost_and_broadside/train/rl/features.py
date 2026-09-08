@@ -23,6 +23,7 @@ import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
+from boost_and_broadside.train.rl.checkpoint_schema import position_fourier_frequencies
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -770,7 +771,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
         Feature(
             name="position_x",
             accessor=Accessor(ObsKey.POS, channels=[0]),
-            input_encoder=Fourier(n_freqs=4, periods=world_w),
+            input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
             target_encoder=Fourier(n_freqs=1, periods=world_w),
             predictor=UnitCirclePredictor(cosine_first=False),  # Fourier gives (sin, cos)
             label_scale=177.4,
@@ -779,7 +780,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
         Feature(
             name="position_y",
             accessor=Accessor(ObsKey.POS, channels=[1]),
-            input_encoder=Fourier(n_freqs=4, periods=world_h),
+            input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
             target_encoder=Fourier(n_freqs=1, periods=world_h),
             predictor=UnitCirclePredictor(cosine_first=False),
             label_scale=177.4,
@@ -979,13 +980,13 @@ def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
         Feature(
             name="bullet_position_x",
             accessor=BulletAccessor(BulletObsKey.POS, channels=[0]),
-            input_encoder=Fourier(n_freqs=4, periods=world_w),
+            input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
             target_encoder=Identity(),
         ),
         Feature(
             name="bullet_position_y",
             accessor=BulletAccessor(BulletObsKey.POS, channels=[1]),
-            input_encoder=Fourier(n_freqs=4, periods=world_h),
+            input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
             target_encoder=Identity(),
         ),
         Feature(

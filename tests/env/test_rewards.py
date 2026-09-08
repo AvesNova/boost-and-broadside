@@ -11,7 +11,7 @@ import math
 import pytest
 import torch
 
-from boost_and_broadside.config import RewardConfig, ShipConfig
+from boost_and_broadside.config import MatchResult, RewardConfig, ShipConfig
 from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
@@ -19,6 +19,7 @@ from boost_and_broadside.env.rewards import (
     AllyCombatDeathReward,
     AllyFieldDamageReward,
     AllyFieldDeathReward,
+    AllyFrontAdvanceReward,
     AllyWinReward,
     ClosingSpeedReward,
     EnemyCombatDamageReward,
@@ -102,7 +103,7 @@ def _make_4ship_state(cfg):
 
 class TestRewardComponentNames:
     def test_k_equals_25(self):
-        assert len(REWARD_COMPONENT_NAMES) == 25
+        assert len(REWARD_COMPONENT_NAMES) == 27
 
     def test_source_split_starts_the_registry(self):
         assert REWARD_COMPONENT_NAMES[:8] == (
@@ -139,6 +140,10 @@ class TestRewardComponentNames:
 
     def test_source_split_local_death_is_registered(self):
         assert REWARD_COMPONENT_NAMES[21:23] == ("combat_death", "field_death")
+        assert REWARD_COMPONENT_NAMES[25:27] == (
+            "ally_front_advance",
+            "enemy_front_advance",
+        )
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
@@ -562,6 +567,7 @@ class TestAllyWinReward:
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False  # team 1 eliminated
+        next_.match_result[0] = int(MatchResult.TEAM0_WIN)
         dones = torch.tensor([True, False], dtype=torch.bool)
 
         r = AllyWinReward(weight=1.0)
@@ -576,6 +582,7 @@ class TestAllyWinReward:
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False
+        next_.match_result[0] = int(MatchResult.TEAM0_WIN)
         dones = torch.tensor([True, False], dtype=torch.bool)
 
         r = AllyWinReward(weight=1.0)
@@ -595,6 +602,19 @@ class TestAllyWinReward:
         assert reward.abs().max().item() == 0.0
 
 
+def test_front_advance_reward_follows_the_advancing_team(cfg):
+    state = _make_4ship_state(cfg)
+    state.front_delta[0] = 1
+    state.front_delta[1] = -1
+
+    reward = AllyFrontAdvanceReward(weight=1.0).compute(
+        state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
+    )
+
+    assert reward[0].tolist() == [1.0, 1.0, 0.0, 0.0]
+    assert reward[1].tolist() == [0.0, 0.0, 1.0, 1.0]
+
+
 class TestEnemyWinReward:
     def test_winning_team_gets_positive_reward(self, cfg):
         """EnemyWinReward also gives +1 to winning-team ships.
@@ -603,6 +623,7 @@ class TestEnemyWinReward:
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False
+        next_.match_result[0] = int(MatchResult.TEAM0_WIN)
         dones = torch.tensor([True, False], dtype=torch.bool)
 
         r = EnemyWinReward(weight=1.0)
@@ -616,6 +637,7 @@ class TestEnemyWinReward:
         next_ = _make_4ship_state(cfg)
         next_.ship_alive[0, 2] = False
         next_.ship_alive[0, 3] = False
+        next_.match_result[0] = int(MatchResult.TEAM0_WIN)
         dones = torch.tensor([True, False], dtype=torch.bool)
 
         r = EnemyWinReward(weight=1.0)

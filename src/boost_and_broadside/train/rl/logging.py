@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Empty
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig, TrainConfig
+from boost_and_broadside.env.wrapper import SOURCE_STAT_NAMES
 
 
 class LoggingMixin:
@@ -65,31 +66,63 @@ class LoggingMixin:
         for aux_w in self.aux_wrappers:
             aux_w.pop_episode_stats()  # discarded, but keeps accumulators bounded
         n_eps = ep_stats["episodes"].item()
-        source_stats = ep_stats["source_stats"].cpu()
-        live_ship_steps = source_stats[6].item()
+        source_values = ep_stats["source_stats"].cpu()
+        source_stats = dict(zip(SOURCE_STAT_NAMES, source_values, strict=True))
+        live_ship_steps = source_stats["live_steps"].item()
         if live_ship_steps > 0:
-            field_damage = source_stats[0].item()
-            combat_damage = source_stats[1].item()
-            total_damage = field_damage + combat_damage
+            field_damage = source_stats["field_damage"].item()
+            combat_damage = source_stats["combat_damage"].item()
+            zone_damage = source_stats["zone_damage"].item()
+            spawn_damage = source_stats["spawn_damage"].item()
+            boundary_damage = source_stats["boundary_damage"].item()
+            total_damage = (
+                field_damage + combat_damage + zone_damage + spawn_damage + boundary_damage
+            )
             metrics["physics/field_damage_per_live_ship_step"] = field_damage / live_ship_steps
             metrics["physics/combat_damage_per_live_ship_step"] = combat_damage / live_ship_steps
+            metrics["frontline/zone_damage_per_live_ship_step"] = zone_damage / live_ship_steps
+            metrics["frontline/spawn_damage_per_live_ship_step"] = spawn_damage / live_ship_steps
+            metrics["frontline/boundary_damage_per_live_ship_step"] = (
+                boundary_damage / live_ship_steps
+            )
             metrics["physics/field_deaths_per_million_live_ship_steps"] = (
-                source_stats[2].item() * 1_000_000.0 / live_ship_steps
+                source_stats["field_deaths"].item() * 1_000_000.0 / live_ship_steps
             )
             metrics["physics/combat_deaths_per_million_live_ship_steps"] = (
-                source_stats[3].item() * 1_000_000.0 / live_ship_steps
+                source_stats["combat_deaths"].item() * 1_000_000.0 / live_ship_steps
             )
-            metrics["physics/field_damage_step_fraction"] = source_stats[4].item() / live_ship_steps
+            for source in ("zone", "spawn", "boundary"):
+                metrics[f"frontline/{source}_deaths_per_million_live_ship_steps"] = (
+                    source_stats[f"{source}_deaths"].item() * 1_000_000.0 / live_ship_steps
+                )
+                metrics[f"frontline/{source}_damage_step_fraction"] = (
+                    source_stats[f"{source}_damage_steps"].item() / live_ship_steps
+                )
+            metrics["physics/field_damage_step_fraction"] = (
+                source_stats["field_damage_steps"].item() / live_ship_steps
+            )
             metrics["physics/nonambient_live_ship_fraction"] = (
-                source_stats[5].item() / live_ship_steps
+                source_stats["nonambient_live_steps"].item() / live_ship_steps
             )
             metrics["physics/field_damage_fraction"] = (
                 field_damage / total_damage if total_damage > 0.0 else 0.0
             )
             # Resource economy, per live ship-step.
-            metrics["physics/mean_power"] = source_stats[7].item() / live_ship_steps
-            metrics["physics/mean_speed"] = source_stats[8].item() / live_ship_steps
-            metrics["physics/out_of_power_fraction"] = source_stats[9].item() / live_ship_steps
+            metrics["physics/mean_power"] = source_stats["power_sum"].item() / live_ship_steps
+            metrics["physics/mean_speed"] = source_stats["speed_sum"].item() / live_ship_steps
+            metrics["physics/out_of_power_fraction"] = (
+                source_stats["out_of_power_steps"].item() / live_ship_steps
+            )
+            metrics["frontline/spawn_healing_per_live_ship_step"] = (
+                source_stats["spawn_healing"].item() / live_ship_steps
+            )
+            metrics["frontline/respawns_per_million_live_ship_steps"] = (
+                source_stats["respawns"].item() * 1_000_000.0 / live_ship_steps
+            )
+            metrics["frontline/front_advances"] = source_stats["front_advances"].item()
+            metrics["frontline/simultaneous_captures"] = source_stats[
+                "simultaneous_captures"
+            ].item()
         if n_eps > 0:
             n_ship_eps = n_eps * self.wrapper.num_ships
             comp_sum = ep_stats["comp_sum"].cpu()
@@ -103,6 +136,10 @@ class LoggingMixin:
                 metrics[f"episode/scaled_{name}"] = comp_scaled_sum[i].item() / n_ship_eps
             metrics["episode/win_rate"] = ep_stats["wins_sum"].item() / n_ship_eps
             metrics["episode/lifespan_mean"] = ep_stats["lifespan_sum"].item() / n_ship_eps
+            result_counts = ep_stats["result_counts"].cpu()
+            metrics["episode/team0_win_rate"] = result_counts[0].item() / n_eps
+            metrics["episode/team1_win_rate"] = result_counts[1].item() / n_eps
+            metrics["episode/draw_rate"] = result_counts[2].item() / n_eps
 
         self._ship_steps += ship_tokens_per_update
         self._grad_tokens += int(metrics["train/epochs_completed"] * self._entity_tokens_per_epoch)
@@ -198,11 +235,7 @@ class LoggingMixin:
                 self.match_matrix,
                 self._match_counts,
                 {entry.label: entry.elo for entry in self.roster.entries},
-                {
-                    entry.label: entry.elo
-                    for entry in self.roster.entries
-                    if entry.is_stationary
-                },
+                {entry.label: entry.elo for entry in self.roster.entries if entry.is_stationary},
             )
         )
         metrics["elo_diag/ladder_matrix_games"] = self.match_matrix.total_games
@@ -212,9 +245,7 @@ class LoggingMixin:
                 live_elo=self._live_elo,
                 match_counts=self._match_counts,
                 ratings={entry.label: entry.elo for entry in self.roster.entries},
-                stationary={
-                    entry.label: entry.is_stationary for entry in self.roster.entries
-                },
+                stationary={entry.label: entry.is_stationary for entry in self.roster.entries},
             )
         )
 

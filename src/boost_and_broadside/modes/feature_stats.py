@@ -28,7 +28,10 @@ from boost_and_broadside.evaluation.agents import (
     reset_done_envs,
     resolve_agent_spec,
 )
-from boost_and_broadside.evaluation.environment import create_evaluation_env
+from boost_and_broadside.evaluation.environment import (
+    create_evaluation_env,
+    resolve_evaluation_environment,
+)
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
 from boost_and_broadside.train.rl.features import build_standard_coordinator
@@ -50,7 +53,6 @@ def run_feature_stats_mode(
 ) -> dict:
     B = num_envs
     N = env_config.num_ships
-    num_tokens = N + env_config.num_fields
     dev = torch.device(device)
 
     coordinator = build_standard_coordinator(ship_config)
@@ -64,10 +66,20 @@ def run_feature_stats_mode(
     agent1 = resolve_agent_spec(
         team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
     )
+    env_config, field_map_config = resolve_evaluation_environment(
+        env_config, (agent0, agent1), ship_config=ship_config
+    )
+    num_tokens = N + env_config.num_fields
 
     include_bullets = agents_read_bullets(agent0, agent1)
 
-    env = create_evaluation_env(B, ship_config, env_config, device)
+    env = create_evaluation_env(
+        B,
+        ship_config,
+        env_config,
+        device,
+        field_map_config=field_map_config,
+    )
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(agent1, B, num_tokens, dev)
     env.reset()
@@ -97,7 +109,7 @@ def run_feature_stats_mode(
 
         # Valid: both ships alive this step and no episode boundary
         episode_end = (dones | truncated).unsqueeze(-1)  # (B, 1)
-        valid = prev_alive & next_alive & ~episode_end  # (B, N)
+        valid = prev_alive & next_alive & ~episode_end & ~env.state.ship_respawned
 
         if valid.any():
             v_curr = prev_targets[valid]  # (K, target_dim)
@@ -170,7 +182,7 @@ def run_feature_stats_mode(
         parameters={
             "num_envs": num_envs,
             "decision_steps": num_steps,
-            "environment": describe_environment(env_config),
+            "environment": describe_environment(env_config, ship_config=ship_config),
         },
     )
     owner = store.owner_for(

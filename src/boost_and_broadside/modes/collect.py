@@ -54,7 +54,7 @@ def run_collect_stats_mode(
         )
 
         current_env_config, field_map_config = resolve_evaluation_environment(
-            env_config, (agent0, agent1)
+            env_config, (agent0, agent1), ship_config=ship_config
         )
         t0 = time.perf_counter()
         num_0, num_1, n_tie, avg_len = evaluate_matchup(

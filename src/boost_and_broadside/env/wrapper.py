@@ -16,7 +16,7 @@ from typing import Any
 
 import torch
 
-from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, MatchResult, RewardConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import (
@@ -24,12 +24,42 @@ from boost_and_broadside.env.observation import (
     YemongObservation,
     observation_from_state,
 )
+from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
     RewardComponent,
     build_reward_components,
 )
 from boost_and_broadside.env.state import TensorState
+
+# Fixed GPU accumulator schema. Existing entries retain their indices so older
+# metric code and focused regression tests remain comparable; frontline sources
+# are appended and all consumers address them by name.
+SOURCE_STAT_NAMES: tuple[str, ...] = (
+    "field_damage",
+    "combat_damage",
+    "field_deaths",
+    "combat_deaths",
+    "field_damage_steps",
+    "nonambient_live_steps",
+    "live_steps",
+    "power_sum",
+    "speed_sum",
+    "out_of_power_steps",
+    "zone_damage",
+    "spawn_damage",
+    "boundary_damage",
+    "zone_deaths",
+    "spawn_deaths",
+    "boundary_deaths",
+    "zone_damage_steps",
+    "spawn_damage_steps",
+    "boundary_damage_steps",
+    "spawn_healing",
+    "respawns",
+    "front_advances",
+    "simultaneous_captures",
+)
 
 
 class YemongEnvWrapper:
@@ -118,7 +148,7 @@ class YemongEnvWrapper:
         # comp.weight is mutated each update step by ppo.py; the trainer must call
         # refresh_component_weights() afterwards to re-sync the cached tensor.
         self._ep_comp_scaled = torch.zeros((B, N, K_active), device=self.device)
-        # Win flag: +1 for ships on the surviving team, 0 otherwise (draws = 0).
+        # Win flag: +1 for ships on the winning team, 0 otherwise (draws = 0).
         self._ep_wins = torch.zeros((B, N), device=self.device)
         # Steps each ship has been alive this episode (stops at death, resets on episode end).
         self._ship_age = torch.zeros((B, N), device=self.device, dtype=torch.int32)
@@ -201,10 +231,8 @@ class YemongEnvWrapper:
         self._acc_comp_scaled_sum = torch.zeros((K,), device=d)
         self._acc_wins_sum = torch.zeros((), device=d)
         self._acc_lifespan_sum = torch.zeros((), device=d)
-        # field damage, combat damage, field deaths, combat deaths,
-        # field-damage steps, non-ambient live steps, total live steps,
-        # power, speed, out-of-power live steps.
-        self._acc_source_stats = torch.zeros((10,), device=d)
+        self._acc_source_stats = torch.zeros((len(SOURCE_STAT_NAMES),), device=d)
+        self._acc_result_counts = torch.zeros((3,), device=d)
 
     def pop_episode_stats(self) -> dict[str, torch.Tensor]:
         """Return finished-episode stats accumulated since the last call, and reset.
@@ -232,6 +260,7 @@ class YemongEnvWrapper:
             "wins_sum": self._acc_wins_sum,
             "lifespan_sum": self._acc_lifespan_sum,
             "source_stats": self._acc_source_stats,
+            "result_counts": self._acc_result_counts,
         }
         self._zero_stat_accumulators()
         return stats
@@ -245,6 +274,7 @@ class YemongEnvWrapper:
         actions: torch.Tensor,
         *,
         unlimited_resources: bool = False,
+        auto_reset: bool = True,
     ) -> tuple[YemongObservation, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Advance all environments and return (obs, rewards, dones, truncated, info).
 
@@ -258,6 +288,8 @@ class YemongEnvWrapper:
         Args:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
             unlimited_resources: Protect and refill alive ships for interactive play.
+            auto_reset: Reset completed environments before returning. Interactive
+                callers may disable this to render the actual terminal state.
 
         One call is one *decision*: the action is held for ``action_repeat``
         physics ticks. Physics, collisions and projectile integration always run
@@ -275,23 +307,24 @@ class YemongEnvWrapper:
         physics would cost more than the wasted ticks) but nothing it produces
         afterwards is read, and it is reset once at the end.
 
-        Args:
-            actions: (B, N, 3) int tensor — [power, turn, shoot].
-            unlimited_resources: Protect and refill alive ships for interactive play.
-
         Returns:
             obs:          dict of (B, N, ...) tensors.
             comp_rewards: (B, N, K) float32 — per-component per-ship rewards
                           summed over the held ticks (no zero-sum).
             dones:        (B,) bool — game-over (physics termination).
             truncated:    (B,) bool — episode length limit reached.
-            info:         empty dict (episode stats moved to pop_episode_stats).
+            info:         per-ship transition continuity and the terminal match
+                          result captured before automatic reset.
         """
         B, N = self.env.state.ship_health.shape
         K = len(self._active_names)
         comp_rewards = torch.zeros(B, N, K, device=self.device, dtype=torch.float32)
         dones = torch.zeros(B, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
+        transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        terminal_result = torch.full(
+            (B,), int(MatchResult.ONGOING), dtype=torch.int8, device=self.device
+        )
 
         for _ in range(self.env_config.action_repeat):
             # Envs that already finished earlier in this hold contribute nothing.
@@ -299,23 +332,40 @@ class YemongEnvWrapper:
             tick_dones, tick_truncated = self._physics_tick(
                 actions, comp_rewards, running, unlimited_resources
             )
+            transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            ended_this_tick = (tick_dones | tick_truncated) & running
+            terminal_result = torch.where(
+                ended_this_tick,
+                self.env.state.match_result,
+                terminal_result,
+            )
             dones = dones | (tick_dones & running)
             truncated = truncated | (tick_truncated & running)
 
         done_mask = dones | truncated
         done_n = done_mask.unsqueeze(1)
+        if auto_reset:
+            # State is mutated in-place only after every terminal output and
+            # statistic above has been captured.
+            self.env.reset_envs(done_mask)
+            self._refresh_field_obs(done_mask)
+            self._ep_reward.masked_fill_(done_n, 0.0)
+            self._ep_length.masked_fill_(done_mask, 0)
+            self._ep_comp.masked_fill_(done_mask.view(B, 1, 1), 0.0)
+            self._ep_comp_scaled.masked_fill_(done_mask.view(B, 1, 1), 0.0)
+            self._ep_wins.masked_fill_(done_n, 0.0)
+            self._ship_age.masked_fill_(done_n, 0)
 
-        # Reset done environments (state mutated in-place) and their trackers
-        self.env.reset_envs(done_mask)
-        self._refresh_field_obs(done_mask)
-        self._ep_reward.masked_fill_(done_n, 0.0)
-        self._ep_length.masked_fill_(done_mask, 0)
-        self._ep_comp.masked_fill_(done_mask.view(B, 1, 1), 0.0)
-        self._ep_comp_scaled.masked_fill_(done_mask.view(B, 1, 1), 0.0)
-        self._ep_wins.masked_fill_(done_n, 0.0)
-        self._ship_age.masked_fill_(done_n, 0)
-
-        return self._get_obs(), comp_rewards, dones, truncated, {}
+        return (
+            self._get_obs(),
+            comp_rewards,
+            dones,
+            truncated,
+            {
+                "transition_contiguous": transition_contiguous,
+                "match_result": terminal_result,
+            },
+        )
 
     def _physics_tick(
         self,
@@ -371,13 +421,31 @@ class YemongEnvWrapper:
                 (source_state.ship_power * live).sum(),
                 (source_state.ship_vel.abs() * live).sum(),
                 ((source_state.ship_power <= 1.0) & live).sum(),
+                (source_state.ship_zone_damage * running_n).sum(),
+                (source_state.ship_spawn_damage * running_n).sum(),
+                (source_state.ship_boundary_damage * running_n).sum(),
+                (source_state.ship_zone_death & running_n).sum(),
+                (source_state.ship_spawn_death & running_n).sum(),
+                (source_state.ship_boundary_death & running_n).sum(),
+                ((source_state.ship_zone_damage > 0.0) & running_n).sum(),
+                ((source_state.ship_spawn_damage > 0.0) & running_n).sum(),
+                ((source_state.ship_boundary_damage > 0.0) & running_n).sum(),
+                (source_state.ship_spawn_healing * running_n).sum(),
+                (source_state.ship_respawned & running_n).sum(),
+                (source_state.front_delta.abs() * running).sum(),
+                (source_state.simultaneous_capture & running).sum(),
             ]
         )
 
         # Compute rewards for active components only — (B, N, K_active)
         tick_rewards = torch.zeros_like(comp_rewards)
         for k, comp in enumerate(self._active_components):
-            tick_rewards[:, :, k] = comp.compute(prev_state, actions, self.env.state, dones)
+            tick_rewards[:, :, k] = comp.compute(
+                prev_state,
+                actions,
+                self.env.state,
+                dones | truncated,
+            )
 
         # Normalize all rewards by total ship count so reward scale is invariant
         # to game size across 1v1, 2v2, 4v4, etc. Win rewards are included: in 2v2
@@ -391,7 +459,9 @@ class YemongEnvWrapper:
         # ages are in physics ticks, so they stay comparable across action_repeat.
         self._ep_reward += tick_rewards.sum(dim=-1)
         self._ep_length += running.int()
-        self._ship_age += (prev_alive & running_n).int()  # freeze at death step
+        # Frontline slots persist across lives, so this is match-slot age there;
+        # in elimination mode it retains the historical first-life behavior.
+        self._ship_age += (prev_alive & running_n).int()
         self._ep_comp += tick_rewards
         self._ep_comp_scaled += tick_rewards * self._weight_t
 
@@ -399,15 +469,14 @@ class YemongEnvWrapper:
         # env that ended earlier in the hold was already counted.
         done_mask = (dones | truncated) & running
 
-        # Win tracking — +1 for ships on the surviving team, 0 otherwise. Read at
+        # Win tracking — +1 for ships on the winning team, 0 otherwise. Read at
         # the tick the env finished, so extra held ticks cannot rewrite the result.
         s = self.env.state
         team0 = s.ship_team_id == 0  # (B, N)
         team1 = s.ship_team_id == 1  # (B, N)
-        t0_alive = (team0 & s.ship_alive).sum(dim=1)  # (B,)
-        t1_alive = (team1 & s.ship_alive).sum(dim=1)  # (B,)
-        t0_wins = ((t0_alive > 0) & (t1_alive == 0) & done_mask).unsqueeze(1)
-        t1_wins = ((t1_alive > 0) & (t0_alive == 0) & done_mask).unsqueeze(1)
+        t0_result, t1_result, tied_result = outcome_masks(s, done_mask)
+        t0_wins = t0_result.unsqueeze(1)
+        t1_wins = t1_result.unsqueeze(1)
         self._ep_wins += ((team0 & t0_wins) | (team1 & t1_wins)).float()
 
         # Fold finished episodes into the per-update accumulators. Episodes seeded
@@ -430,11 +499,18 @@ class YemongEnvWrapper:
         )
         self._acc_length_sum += (self._ep_length.float() * counted_f).sum()
         self._acc_comp_sum += (self._ep_comp * counted_nf.unsqueeze(-1)).sum(dim=(0, 1))
-        self._acc_comp_scaled_sum += (
-            self._ep_comp_scaled * counted_nf.unsqueeze(-1)
-        ).sum(dim=(0, 1))
+        self._acc_comp_scaled_sum += (self._ep_comp_scaled * counted_nf.unsqueeze(-1)).sum(
+            dim=(0, 1)
+        )
         self._acc_wins_sum += (self._ep_wins * counted_nf).sum()
         self._acc_lifespan_sum += (self._ship_age.float() * counted_nf).sum()
+        self._acc_result_counts += torch.stack(
+            [
+                (t0_result & counted).sum(),
+                (t1_result & counted).sum(),
+                (tied_result & counted).sum(),
+            ]
+        )
 
         return dones, truncated
 
