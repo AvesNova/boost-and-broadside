@@ -25,6 +25,7 @@ import pygame
 import torch
 
 from boost_and_broadside.config import EnvConfig, FieldMapConfig, ModelConfig, ShipConfig
+from boost_and_broadside.env.outcome import winner_name
 from boost_and_broadside.evaluation.agents import ResolvedAgent, resolve_agent_spec
 from boost_and_broadside.evaluation.environment import create_evaluation_env
 from boost_and_broadside.evaluation.match import MatchRunner
@@ -147,14 +148,17 @@ def _capture_match(
     winner = "tie"
     try:
         for step in range(max_steps + hold_frames):
-            dones, truncated = runner.step()
+            if ended_at is None:
+                dones, truncated = runner.step()
+            else:
+                dones = truncated = torch.zeros(1, dtype=torch.bool, device=device)
 
-            renderer._draw_frame(env.state)  # no UI, no ghost trajectories
+            renderer.draw_frame(env.state)  # no UI, no ghost trajectories
             encoder.stdin.write(pygame.image.tostring(renderer._screen, "RGB"))
             frames += 1
 
-            # Once decided, record the winner from the terminal survivors, then
-            # keep playing for the hold before stopping.
+            # Once decided, freeze and duplicate the actual terminal frame for
+            # the hold rather than continuing to advance an already-ended game.
             if ended_at is None and bool((dones | truncated).any()):
                 ended_at = step
                 winner = _winner(env.state)
@@ -169,15 +173,8 @@ def _capture_match(
 
 
 def _winner(state) -> str:
-    """Which side survives at a terminal state: 'team0', 'team1', or 'tie'."""
-    alive, team = state.ship_alive, state.ship_team_id
-    team0 = bool((alive & (team == 0)).any())
-    team1 = bool((alive & (team == 1)).any())
-    if team0 and not team1:
-        return "team0"
-    if team1 and not team0:
-        return "team1"
-    return "tie"
+    """Return the authoritative terminal outcome."""
+    return winner_name(state)
 
 
 def _write_gif(mp4: Path, fps: int, width: int) -> Path:
@@ -229,6 +226,10 @@ def run_capture_mode(
     checkpoint = _final_checkpoint(run_dir)
     checkpoint_data = load_checkpoint_payload(checkpoint, map_location="cpu")
     require_observation_schema(checkpoint_data, str(checkpoint))
+    # The recorded physics contract is part of the subject. In particular, a
+    # Frontline checkpoint's 16K Fourier semantics and renderer geometry must
+    # not be silently replaced by the caller's current profile.
+    ship_config = ShipConfig(**checkpoint_data["ship_config"])
     base_env = EnvConfig(**checkpoint_data["env_config"])
     # A clip of a fielded policy in an empty arena is not a clip of that policy,
     # so the run's own map distribution travels with its environment.

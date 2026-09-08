@@ -88,6 +88,19 @@ class StochasticAgentConfig:
         0.0,
     )  # disabled by default; use scripted_team spec to enable
 
+    # Frontline objective selection. These do not participate in the legacy
+    # flat-vector tuning interface: combat-mode behavior is intentionally frozen,
+    # while the Gate-1 objective controller remains provisional and independently
+    # configurable for playtesting.
+    frontline_heal_health_fraction: float = 0.5
+    frontline_enemy_engage_distance: float = 500.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.frontline_heal_health_fraction <= 1.0:
+            raise ValueError("frontline_heal_health_fraction must lie in [0, 1]")
+        if self.frontline_enemy_engage_distance < 0.0:
+            raise ValueError("frontline_enemy_engage_distance must be non-negative")
+
     # ---------------------------------------------------------------------------
     # Flat-vector interface for hyperparameter search
     # ---------------------------------------------------------------------------

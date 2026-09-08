@@ -7,7 +7,7 @@ from boost_and_broadside.agents.scripted_utils import (
     select_targets,
 )
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.config import ShipConfig, ZoneRole
 from boost_and_broadside.env.state import TensorState
 
 
@@ -186,6 +186,132 @@ class StochasticScriptedAgent:
 
         return power_probs, turn_probs, shoot_probs
 
+    def _frontline_targets(
+        self,
+        state: TensorState,
+        closest_dist: torch.Tensor,
+        target_idx: torch.Tensor,
+        has_target: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Choose spawn, enemy, or stable attack/defense destinations.
+
+        Priority is deliberately simple for the Gate-1 baseline: low-health ships
+        return to their own spawn; healthy ships engage a nearby enemy; every
+        remaining team sends three of every four stable within-team slots to the
+        enemy defense and keeps the fourth at home. The first slot attacks, so a
+        small team does not deadlock by defending forever; a four-ship team has
+        enough local superiority to demonstrate capture during the Gate-1 smoke.
+
+        Returns:
+            distance:     ``(B, N)`` toroidal distance to the chosen destination.
+            bearing:      ``(B, N)`` unit complex bearing to that destination.
+            engage_enemy: ``(B, N)`` whether shooting should use the intercept.
+        """
+
+        team = state.ship_team_id
+        team0 = team == 0
+        roles = state.zone_roles
+
+        def zone_for_role(role: ZoneRole) -> torch.Tensor:
+            zone_idx = (roles == int(role)).long().argmax(dim=1)
+            return state.zone_pos.gather(1, zone_idx.unsqueeze(1)).squeeze(1)
+
+        team0_spawn = zone_for_role(ZoneRole.TEAM0_SPAWN)
+        team1_spawn = zone_for_role(ZoneRole.TEAM1_SPAWN)
+        own_spawn = torch.where(team0, team0_spawn.unsqueeze(1), team1_spawn.unsqueeze(1))
+
+        team0_defense = zone_for_role(ZoneRole.TEAM0_DEFENSE)
+        team1_defense = zone_for_role(ZoneRole.TEAM1_DEFENSE)
+        own_defense = torch.where(team0, team0_defense.unsqueeze(1), team1_defense.unsqueeze(1))
+        enemy_defense = torch.where(team0, team1_defense.unsqueeze(1), team0_defense.unsqueeze(1))
+
+        # Rank is stable for the life of a match because slot and team identity
+        # survive respawn. Alternating within each team keeps shuffled global slot
+        # layouts from accidentally assigning a whole team to one objective.
+        rank0 = team0.long().cumsum(dim=1) - 1
+        rank1 = (~team0).long().cumsum(dim=1) - 1
+        team_rank = torch.where(team0, rank0, rank1)
+        attack = team_rank.remainder(4) != 3
+        objective = torch.where(attack, enemy_defense, own_defense)
+
+        needs_healing = state.ship_health < (
+            self.config.frontline_heal_health_fraction * self.ship_config.max_health
+        )
+        engage_enemy = (
+            has_target
+            & (closest_dist <= self.config.frontline_enemy_engage_distance)
+            & ~needs_healing
+        )
+        enemy_pos = state.ship_pos.gather(1, target_idx)
+        destination = torch.where(
+            needs_healing,
+            own_spawn,
+            torch.where(engage_enemy, enemy_pos, objective),
+        )
+
+        world_width, world_height = self.ship_config.world_size
+        displacement = destination - state.ship_pos
+        displacement = torch.complex(
+            (displacement.real + world_width / 2.0) % world_width - world_width / 2.0,
+            (displacement.imag + world_height / 2.0) % world_height - world_height / 2.0,
+        )
+        distance = displacement.abs()
+        bearing = displacement / distance.clamp(min=1e-8)
+        return distance, bearing, engage_enemy
+
+    def _get_frontline_actions_and_probs(
+        self, state: TensorState
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run the existing flight controller against frontline destinations."""
+
+        closest_dist, target_idx, has_target, _ = select_targets(state, self.ship_config)
+        objective_dist, objective_bearing, engage_enemy = self._frontline_targets(
+            state, closest_dist, target_idx, has_target
+        )
+        intercept = predict_interception(state, self.ship_config, target_idx, closest_dist)
+        intercept = torch.where(engage_enemy, intercept, torch.zeros_like(intercept))
+
+        p_power, p_turn, p_shoot = self._compute_action_probs(
+            state,
+            objective_dist,
+            torch.where(engage_enemy, intercept, objective_bearing),
+            intercept,
+            state.ship_alive,
+        )
+        # Navigation targets are not things to shoot. This explicit gate avoids
+        # treating an aligned nearby zone center like a ship-sized target.
+        no_shoot = torch.zeros_like(p_shoot)
+        no_shoot[..., 0] = 1.0
+        p_shoot = torch.where(engage_enemy.unsqueeze(-1), p_shoot, no_shoot)
+
+        batch_size, num_ships = state.ship_pos.shape
+        if self.config.flat_action_sampling:
+            joint_probs = (
+                p_power.unsqueeze(-1).unsqueeze(-1)
+                * p_turn.unsqueeze(-2).unsqueeze(-1)
+                * p_shoot.unsqueeze(-2).unsqueeze(-2)
+            ).reshape(batch_size, num_ships, 42)
+            expert_probs = joint_probs
+            sampled_flat = torch.multinomial(joint_probs.view(-1, 42), num_samples=1).view(
+                batch_size, num_ships
+            )
+            actions_shoot = sampled_flat % 2
+            sampled_flat = sampled_flat // 2
+            actions_turn = sampled_flat % 7
+            actions_power = sampled_flat // 7
+            actions = torch.stack([actions_power, actions_turn, actions_shoot], dim=-1)
+        else:
+            expert_probs = torch.cat([p_power, p_turn, p_shoot], dim=-1)
+            actions = torch.stack(
+                [
+                    torch.multinomial(p_power.view(-1, 3), 1).view(batch_size, num_ships),
+                    torch.multinomial(p_turn.view(-1, 7), 1).view(batch_size, num_ships),
+                    torch.multinomial(p_shoot.view(-1, 2), 1).view(batch_size, num_ships),
+                ],
+                dim=-1,
+            )
+        return actions, expert_probs
+
     def get_actions_and_probs(self, state: TensorState) -> tuple[torch.Tensor, torch.Tensor]:
         """Sample actions and return the expert probability distribution as soft labels.
 
@@ -194,6 +320,12 @@ class StochasticScriptedAgent:
             expert_probs: (B, N, 12) float tensor (independent marginals) or
                           (B, N, 42) float tensor (joint, if flat_action_sampling=True)
         """
+        # A zero-length zone axis is the exact legacy combat contract. Keep its
+        # control path below unchanged so adding frontline objectives cannot alter
+        # existing scripted anchors, BC targets, or calibrated ratings.
+        if state.num_zones > 0:
+            return self._get_frontline_actions_and_probs(state)
+
         closest_dist, target_idx, has_target, _ = select_targets(state, self.ship_config)
         dir_pred = predict_interception(state, self.ship_config, target_idx, closest_dist)
 

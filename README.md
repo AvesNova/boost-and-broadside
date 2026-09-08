@@ -105,7 +105,7 @@ uv sync
 # Resolve and inspect the RL launch without allocating the trainer
 uv run bnb train --profile rl --print-config
 
-# Play a 1v1 match against a null ship in four refractive fields
+# Play the provisional five-zone Frontline prototype
 uv run bnb play
 
 # Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)

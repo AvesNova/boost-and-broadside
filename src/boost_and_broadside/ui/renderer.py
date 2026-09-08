@@ -1,8 +1,9 @@
 """Pygame renderer for a single-environment game state.
 
 Reads env index 0 from TensorState and draws ships, bullets, and health
-bars at a fixed frame rate. All tensor reads call .cpu() after slicing —
-acceptable overhead at 60fps on a single interactive environment.
+bars through a toroidal camera at a fixed frame rate. All tensor reads call
+.cpu() after slicing — acceptable overhead at 60fps on a single interactive
+environment.
 """
 
 import math
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 import pygame
 import torch
 
-from boost_and_broadside.config import InterfaceDamageLevel, ShipConfig
+from boost_and_broadside.config import InterfaceDamageLevel, ShipConfig, ZoneRole
 from boost_and_broadside.env.state import TensorState
 
 # Prediction-vector channel indices used to decode ghost trajectories: the
@@ -75,6 +76,184 @@ def wrapped_field_centers(
     return result
 
 
+@dataclass
+class Camera:
+    """Pure toroidal world/view transform.
+
+    ``zoom == min_zoom`` fits the complete world inside the viewport. World
+    points are projected from their nearest toroidal image relative to
+    ``center``; the inverse always returns the canonical point in the physical
+    world. The class deliberately knows nothing about pygame so transform and
+    interaction semantics can be tested without a display.
+    """
+
+    world_size: tuple[float, float]
+    viewport_size: tuple[int, int]
+    center: complex | None = None
+    zoom: float = 1.0
+    min_zoom: float = 1.0
+    max_zoom: float = 64.0
+
+    def __post_init__(self) -> None:
+        world_w, world_h = self.world_size
+        view_w, view_h = self.viewport_size
+        if world_w <= 0.0 or world_h <= 0.0:
+            raise ValueError("camera world dimensions must be positive")
+        if view_w <= 0 or view_h <= 0:
+            raise ValueError("camera viewport dimensions must be positive")
+        if not 0.0 < self.min_zoom <= self.max_zoom:
+            raise ValueError("camera zoom bounds must satisfy 0 < min_zoom <= max_zoom")
+        self.zoom = max(self.min_zoom, min(self.max_zoom, self.zoom))
+        if self.center is None:
+            self.center = complex(world_w / 2.0, world_h / 2.0)
+        self.center = self._wrap(self.center)
+        self._following = False
+        self._follow_position: complex | None = None
+
+    @property
+    def scale(self) -> float:
+        """Screen pixels per world unit at the current zoom."""
+        world_w, world_h = self.world_size
+        view_w, view_h = self.viewport_size
+        return min(view_w / world_w, view_h / world_h) * self.zoom
+
+    @property
+    def is_following(self) -> bool:
+        return self._following
+
+    def _wrap(self, position: complex) -> complex:
+        world_w, world_h = self.world_size
+        return complex(position.real % world_w, position.imag % world_h)
+
+    def shortest_displacement(self, position: complex) -> complex:
+        """Displacement from camera center to the nearest image of ``position``."""
+        assert self.center is not None
+        world_w, world_h = self.world_size
+        dx = (position.real - self.center.real + world_w / 2.0) % world_w - world_w / 2.0
+        dy = (position.imag - self.center.imag + world_h / 2.0) % world_h - world_h / 2.0
+        return complex(dx, dy)
+
+    def nearest_image(self, position: complex) -> complex:
+        """Unwrapped image of ``position`` nearest to the camera center."""
+        assert self.center is not None
+        return self.center + self.shortest_displacement(position)
+
+    def world_to_screen(self, position: complex) -> tuple[float, float]:
+        """Project a world point using its shortest toroidal displacement."""
+        delta = self.shortest_displacement(position)
+        view_w, view_h = self.viewport_size
+        return (view_w / 2.0 + delta.real * self.scale, view_h / 2.0 + delta.imag * self.scale)
+
+    def unwrapped_world_to_screen(self, position: complex) -> tuple[float, float]:
+        """Project a chosen unwrapped image, used for repeated edge geometry."""
+        assert self.center is not None
+        delta = position - self.center
+        view_w, view_h = self.viewport_size
+        return (view_w / 2.0 + delta.real * self.scale, view_h / 2.0 + delta.imag * self.scale)
+
+    def screen_to_world(self, position: tuple[float, float]) -> complex:
+        """Invert a screen point to its canonical toroidal world coordinate."""
+        assert self.center is not None
+        view_w, view_h = self.viewport_size
+        world = self.center + complex(
+            (position[0] - view_w / 2.0) / self.scale,
+            (position[1] - view_h / 2.0) / self.scale,
+        )
+        return self._wrap(world)
+
+    def visible_images(self, position: complex, extent: float = 0.0) -> list[complex]:
+        """Return unwrapped toroidal images whose extent intersects the viewport."""
+        assert self.center is not None
+        world_w, world_h = self.world_size
+        view_w, view_h = self.viewport_size
+        half_w = view_w / (2.0 * self.scale)
+        half_h = view_h / (2.0 * self.scale)
+        nearest = self.nearest_image(position)
+        result = []
+        for offset_x in (-world_w, 0.0, world_w):
+            for offset_y in (-world_h, 0.0, world_h):
+                candidate = nearest + complex(offset_x, offset_y)
+                if (
+                    abs(candidate.real - self.center.real) <= half_w + extent
+                    and abs(candidate.imag - self.center.imag) <= half_h + extent
+                ):
+                    result.append(candidate)
+        return result
+
+    def fit(self) -> None:
+        """Fit the complete world while retaining the current toroidal center."""
+        self.release_follow()
+        self.zoom = self.min_zoom
+
+    def fit_region(self, center: complex, radius: float, padding: float = 1.15) -> None:
+        """Fit a circular playable region inside the viewport."""
+
+        if radius <= 0.0 or padding < 1.0:
+            raise ValueError("camera fit radius must be positive and padding at least one")
+        world_w, world_h = self.world_size
+        view_w, view_h = self.viewport_size
+        base_scale = min(view_w / world_w, view_h / world_h)
+        desired_scale = min(view_w, view_h) / (2.0 * radius * padding)
+        self.release_follow()
+        self.center = self._wrap(center)
+        self.zoom = max(self.min_zoom, min(self.max_zoom, desired_scale / base_scale))
+
+    def reset(self) -> None:
+        """Return to the centered full-world view."""
+        world_w, world_h = self.world_size
+        self.release_follow()
+        self.center = complex(world_w / 2.0, world_h / 2.0)
+        self.zoom = self.min_zoom
+
+    def pan(self, delta: complex) -> None:
+        """Move the camera by a world-space displacement and leave follow mode."""
+        assert self.center is not None
+        self.release_follow()
+        self.center = self._wrap(self.center + delta)
+
+    def pan_screen(self, delta: tuple[float, float]) -> None:
+        """Drag the world by a screen-space displacement."""
+        self.pan(complex(-delta[0] / self.scale, -delta[1] / self.scale))
+
+    def zoom_at(self, factor: float, cursor: tuple[float, float]) -> None:
+        """Zoom around ``cursor``, retaining the world point beneath it."""
+        if factor <= 0.0:
+            raise ValueError("camera zoom factor must be positive")
+        assert self.center is not None
+        anchor = self.screen_to_world(cursor)
+        new_zoom = max(self.min_zoom, min(self.max_zoom, self.zoom * factor))
+        if new_zoom == self.zoom:
+            return
+        self.release_follow()
+        self.zoom = new_zoom
+        view_w, view_h = self.viewport_size
+        offset = complex(
+            (cursor[0] - view_w / 2.0) / self.scale,
+            (cursor[1] - view_h / 2.0) / self.scale,
+        )
+        self.center = self._wrap(anchor - offset)
+
+    def follow(self, position: complex) -> None:
+        """Enter follow mode at ``position``."""
+        self._following = True
+        self._follow_position = self._wrap(position)
+        self.center = self._follow_position
+
+    def update_follow(self, position: complex | None = None) -> None:
+        """Move an active follow target; no-op after manual release."""
+        if not self._following:
+            return
+        if position is not None:
+            self._follow_position = self._wrap(position)
+        if self._follow_position is not None:
+            self.center = self._follow_position
+
+    def release_follow(self) -> None:
+        """Return cleanly to free-camera mode without moving the view."""
+        self._following = False
+        self._follow_position = None
+
+
 @dataclass(frozen=True)
 class RenderConfig:
     """Display settings for the pygame renderer.
@@ -109,13 +288,13 @@ class GameRenderer:
         self._ship_config = ship_config
         self._render_config = render_config
         self._world_w, self._world_h = ship_config.world_size
-        self._scale = render_config.window_size / self._world_w
 
         if os.environ.get("HEADLESS"):
             os.environ["SDL_VIDEODRIVER"] = "dummy"
         pygame.init()
         s = render_config.window_size
         self._screen = pygame.display.set_mode((s, s))
+        self.camera = Camera(ship_config.world_size, (s, s))
         pygame.display.set_caption("Boost and Broadside")
         self._clock = pygame.time.Clock()
 
@@ -124,6 +303,13 @@ class GameRenderer:
         self.unlimited_resources = False
         self.target_fps = render_config.fps
         self.slider_dragging = False
+        self.camera_dragging = False
+        self._camera_drag_button: int | None = None
+        self.selected_ship: int | None = None
+        self._selectable_ships: tuple[int, ...] = ()
+        self._selected_position: complex | None = None
+        self._frontline_fit: tuple[complex, float] | None = None
+        self._did_initial_frontline_fit = False
 
         W = s
         H = s
@@ -148,17 +334,8 @@ class GameRenderer:
             True to keep running, False if the user closed the window.
         """
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if not self._handle_event(event):
                 return False
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    self._handle_left_click(event.pos)
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:
-                    self.slider_dragging = False
-            elif event.type == pygame.MOUSEMOTION:
-                if self.slider_dragging:
-                    self._update_slider(event.pos[0])
 
         if isinstance(pred_nexts, torch.Tensor):
             pred_nexts = [pred_nexts]
@@ -180,7 +357,7 @@ class GameRenderer:
             True to keep running, False if the user closed the window.
         """
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if not self._handle_event(event):
                 return False
 
         if state is not None:
@@ -200,6 +377,50 @@ class GameRenderer:
         frac = max(0.0, min(1.0, rel_x / self._slider_track_rect.width))
         # Map frac to FPS (e.g. 1 to 120)
         self.target_fps = int(1 + frac * 119)
+
+    def _handle_event(self, event: pygame.event.Event) -> bool:
+        """Apply one renderer event; return false only for window close."""
+        if event.type == pygame.QUIT:
+            return False
+        if event.type == pygame.MOUSEWHEEL:
+            self.camera.zoom_at(1.2**event.y, pygame.mouse.get_pos())
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                self._handle_left_click(event.pos)
+            elif event.button in (2, 3):
+                self.camera.release_follow()
+                self.camera_dragging = True
+                self._camera_drag_button = event.button
+            elif event.button in (4, 5):
+                factor = 1.2 if event.button == 4 else 1.0 / 1.2
+                self.camera.zoom_at(factor, event.pos)
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                self.slider_dragging = False
+            if event.button == self._camera_drag_button:
+                self.camera_dragging = False
+                self._camera_drag_button = None
+        elif event.type == pygame.MOUSEMOTION:
+            if self.slider_dragging:
+                self._update_slider(event.pos[0])
+            elif self.camera_dragging:
+                self.camera.pan_screen(event.rel)
+        elif event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_r, pygame.K_HOME):
+                self.camera.reset()
+            elif event.key == pygame.K_f:
+                if self._frontline_fit is None:
+                    self.camera.fit()
+                else:
+                    self.camera.fit_region(*self._frontline_fit)
+            elif event.key == pygame.K_TAB:
+                self._cycle_selected_ship()
+            elif event.key == pygame.K_c:
+                if self.camera.is_following:
+                    self.camera.release_follow()
+                elif self._selected_position is not None:
+                    self.camera.follow(self._selected_position)
+        return True
 
     def _handle_left_click(self, position: tuple[int, int]) -> None:
         """Apply one UI click, including the play-only unlimited toggle."""
@@ -222,13 +443,36 @@ class GameRenderer:
     def _draw_frame(self, state: TensorState, pred_nexts: list[torch.Tensor] | None = None) -> None:
         surf = self._screen
         surf.fill(self._render_config.background_color)
+        if self.selected_ship is not None and self.selected_ship < state.max_ships:
+            if bool(state.ship_alive[0, self.selected_ship].item()):
+                self._selected_position = complex(state.ship_pos[0, self.selected_ship].item())
+                self.camera.update_follow(self._selected_position)
+        if state.num_zones > 0:
+            center = complex(state.map_center[0].item())
+            radius = float(state.playable_boundary_radius[0].item())
+            self._frontline_fit = (center, radius)
+            if not self._did_initial_frontline_fit:
+                self.camera.fit_region(center, radius)
+                self._did_initial_frontline_fit = True
+            self._draw_boundary(state, surf)
+            self._draw_zones(state, surf)
         self._draw_fields(state, surf)
         self._draw_bullets(state, surf)
         if pred_nexts is not None:
             self._draw_ghost_ships(state, pred_nexts, surf)
         self._draw_ships(state, surf)
         if self._render_config.show_ui:
-            self._draw_ui(surf)
+            self._draw_ui(state, surf)
+
+    def draw_frame(
+        self,
+        state: TensorState,
+        pred_nexts: list[torch.Tensor] | None = None,
+    ) -> pygame.Surface:
+        """Supported offscreen frame API used by capture and smoke tests."""
+
+        self._draw_frame(state, pred_nexts)
+        return self._screen
 
     def _blit_label(self, text: str, color: tuple[int, int, int]) -> None:
         if not hasattr(self, "_font_large"):
@@ -239,7 +483,7 @@ class GameRenderer:
         y = surf.get_height() - label.get_height() - 16
         surf.blit(label, (x, y))
 
-    def _draw_ui(self, surf: pygame.Surface) -> None:
+    def _draw_ui(self, state: TensorState, surf: pygame.Surface) -> None:
         if not hasattr(self, "_font"):
             self._font = pygame.font.SysFont("monospace", 16, bold=True)
 
@@ -293,9 +537,53 @@ class GameRenderer:
         )
         surf.blit(legend, (12, surf.get_height() - legend.get_height() - 10))
 
+        if state.num_zones > 0:
+            front = int(state.front_position[0].item())
+            threshold = int(state.front_win_threshold[0].item())
+            max_steps = int(state.match_max_steps[0].item())
+            steps = int(state.step_count[0].item())
+            remaining = max(0.0, (max_steps - steps) * self._ship_config.dt)
+            lines = (
+                f"TEAM 0  FRONT {front:+d}/{threshold}  TEAM 1",
+                f"TIME {remaining:05.1f}s   VIEW FULL",
+                "F fit  R full world  wheel zoom  drag pan  C follow  TAB select",
+            )
+            for row, text in enumerate(lines):
+                label = self._font.render(text, True, (225, 225, 235))
+                surf.blit(label, (12, 10 + row * 20))
+
     def close(self) -> None:
         """Tear down the pygame window."""
         pygame.quit()
+
+    def follow_position(self, position: complex) -> None:
+        """Start following a world position; callers may update it each frame."""
+        self.camera.follow(position)
+
+    def update_follow_position(self, position: complex) -> None:
+        """Update the followed position without re-entering released follow mode."""
+        self.camera.update_follow(position)
+
+    def release_follow(self) -> None:
+        """Leave follow mode at the current view."""
+        self.camera.release_follow()
+
+    def set_selectable_ships(self, ship_indices: tuple[int, ...]) -> None:
+        """Set human-controllable slots and retain a valid selection."""
+
+        self._selectable_ships = ship_indices
+        if self.selected_ship not in ship_indices:
+            self.selected_ship = ship_indices[0] if ship_indices else None
+
+    def _cycle_selected_ship(self) -> None:
+        if not self._selectable_ships:
+            self.selected_ship = None
+            return
+        if self.selected_ship not in self._selectable_ships:
+            self.selected_ship = self._selectable_ships[0]
+            return
+        index = self._selectable_ships.index(self.selected_ship)
+        self.selected_ship = self._selectable_ships[(index + 1) % len(self._selectable_ships)]
 
     # ------------------------------------------------------------------
     # Private drawing helpers
@@ -303,7 +591,12 @@ class GameRenderer:
 
     def _world_to_screen(self, c: complex) -> tuple[int, int]:
         """Convert a world-space complex position to screen pixel coords."""
-        return (int(c.real * self._scale), int(c.imag * self._scale))
+        x, y = self.camera.world_to_screen(c)
+        return round(x), round(y)
+
+    def _unwrapped_world_to_screen(self, c: complex) -> tuple[int, int]:
+        x, y = self.camera.unwrapped_world_to_screen(c)
+        return round(x), round(y)
 
     def _draw_toroidal_line(
         self,
@@ -316,28 +609,30 @@ class GameRenderer:
         world_w, world_h = self._world_w, self._world_h
         dx = to_pos.real - from_pos.real
         dy = to_pos.imag - from_pos.imag
-        wrapped = False
         if dx > world_w / 2:
             dx -= world_w
-            wrapped = True
         elif dx < -world_w / 2:
             dx += world_w
-            wrapped = True
         if dy > world_h / 2:
             dy -= world_h
-            wrapped = True
         elif dy < -world_h / 2:
             dy += world_h
-            wrapped = True
-        sx0, sy0 = self._world_to_screen(from_pos)
-        target = complex(from_pos.real + dx, from_pos.imag + dy)
-        sx1, sy1 = self._world_to_screen(target)
-        pygame.draw.line(surf, color, (sx0, sy0), (sx1, sy1), 1)
-        if wrapped:
-            src = complex(to_pos.real - dx, to_pos.imag - dy)
-            pygame.draw.line(
-                surf, color, self._world_to_screen(src), self._world_to_screen(to_pos), 1
-            )
+        start = self.camera.nearest_image(from_pos)
+        target = start + complex(dx, dy)
+        width, height = surf.get_size()
+        for offset_x in (-world_w, 0.0, world_w):
+            for offset_y in (-world_h, 0.0, world_h):
+                offset = complex(offset_x, offset_y)
+                screen_start = self._unwrapped_world_to_screen(start + offset)
+                screen_target = self._unwrapped_world_to_screen(target + offset)
+                if (
+                    max(screen_start[0], screen_target[0]) < 0
+                    or min(screen_start[0], screen_target[0]) >= width
+                    or max(screen_start[1], screen_target[1]) < 0
+                    or min(screen_start[1], screen_target[1]) >= height
+                ):
+                    continue
+                pygame.draw.line(surf, color, screen_start, screen_target, 1)
 
     def _draw_ghost_ships(
         self, state: TensorState, pred_nexts: list[torch.Tensor], surf: pygame.Surface
@@ -395,10 +690,11 @@ class GameRenderer:
                 att_angle = prev_att_angle + pn[n, _GHOST_DPHI_ATT].item()
                 ghost_a = complex(math.cos(att_angle), math.sin(att_angle))
 
-                tip = ghost_p + ghost_a * sz
-                left = ghost_p + ghost_a * (-sz * 0.6) + ghost_a * 1j * (sz * 0.6)
-                right = ghost_p + ghost_a * (-sz * 0.6) - ghost_a * 1j * (sz * 0.6)
-                verts = [self._world_to_screen(v) for v in (tip, left, right)]
+                center = complex(*self._world_to_screen(ghost_p))
+                tip = center + ghost_a * sz
+                left = center + ghost_a * (-sz * 0.6) + ghost_a * 1j * (sz * 0.6)
+                right = center + ghost_a * (-sz * 0.6) - ghost_a * 1j * (sz * 0.6)
+                verts = [(round(v.real), round(v.imag)) for v in (tip, left, right)]
                 pygame.draw.polygon(surf, fade, verts, width=1)
 
                 self._draw_toroidal_line(surf, prev_p, ghost_p, fade)
@@ -427,17 +723,26 @@ class GameRenderer:
             a = complex(att[n].item())
             color = cfg.team_colors[int(team_id[n].item()) % 2]
 
-            tip = p + a * sz
-            left = p + a * (-sz * 0.6) + a * 1j * (sz * 0.6)
-            right = p + a * (-sz * 0.6) - a * 1j * (sz * 0.6)
-            verts = [self._world_to_screen(v) for v in (tip, left, right)]
+            center = complex(*self._world_to_screen(p))
+            if n == self.selected_ship:
+                pygame.draw.circle(
+                    surf,
+                    (255, 255, 255),
+                    (round(center.real), round(center.imag)),
+                    sz + 6,
+                    width=2,
+                )
+            tip = center + a * sz
+            left = center + a * (-sz * 0.6) + a * 1j * (sz * 0.6)
+            right = center + a * (-sz * 0.6) - a * 1j * (sz * 0.6)
+            verts = [(round(v.real), round(v.imag)) for v in (tip, left, right)]
             pygame.draw.polygon(surf, color, verts)
 
             # Health bar above ship
             hp_frac = float(health[n].item()) / sc.max_health
             bar_w = sz * 2
-            bar_x = int(p.real * self._scale) - sz
-            bar_y = int(p.imag * self._scale) - sz - cfg.health_bar_height - 2
+            bar_x = round(center.real) - sz
+            bar_y = round(center.imag) - sz - cfg.health_bar_height - 2
             pygame.draw.rect(surf, (60, 0, 0), (bar_x, bar_y, bar_w, cfg.health_bar_height))
             pygame.draw.rect(
                 surf,
@@ -455,6 +760,66 @@ class GameRenderer:
                 (bar_x, pw_bar_y, int(bar_w * pw_frac), cfg.power_bar_height),
             )
 
+    def _draw_boundary(self, state: TensorState, surf: pygame.Surface) -> None:
+        center = complex(state.map_center[0].item())
+        radius = float(state.playable_boundary_radius[0].item())
+        radius_px = max(1, round(radius * self.camera.scale))
+        for image in self.camera.visible_images(center, radius):
+            screen = self._unwrapped_world_to_screen(image)
+            pygame.draw.circle(surf, (170, 70, 70), screen, radius_px, width=3)
+            pygame.draw.circle(surf, (90, 45, 55), screen, max(1, radius_px - 6), width=1)
+
+    def _draw_zones(self, state: TensorState, surf: pygame.Surface) -> None:
+        """Draw role, affiliation, hazard meaning, and capture progress."""
+
+        if not hasattr(self, "_font_small"):
+            self._font_small = pygame.font.SysFont("monospace", 13, bold=True)
+        positions = state.zone_pos[0].cpu()
+        radii = state.zone_radius[0].cpu()
+        roles = state.zone_roles[0].cpu()
+        progress = state.zone_capture_progress[0].cpu()
+        role_style = {
+            int(ZoneRole.TEAM0_SPAWN): ((100, 180, 255), "S0 HEAL"),
+            int(ZoneRole.TEAM0_DEFENSE): ((100, 180, 255), "D0 DMG"),
+            int(ZoneRole.NEUTRAL): ((180, 180, 180), "NEUTRAL"),
+            int(ZoneRole.TEAM1_DEFENSE): ((255, 120, 80), "D1 DMG"),
+            int(ZoneRole.TEAM1_SPAWN): ((255, 120, 80), "S1 HEAL"),
+        }
+        for index in range(positions.shape[0]):
+            position = complex(positions[index].item())
+            radius = float(radii[index].item())
+            role = int(roles[index].item())
+            color, text = role_style[role]
+            radius_px = max(2, round(radius * self.camera.scale))
+            for image in self.camera.visible_images(position, radius):
+                center = self._unwrapped_world_to_screen(image)
+                pygame.draw.circle(surf, color, center, radius_px, width=3)
+                if role in (int(ZoneRole.TEAM0_DEFENSE), int(ZoneRole.TEAM1_DEFENSE)):
+                    attacker = (
+                        self._render_config.team_colors[1]
+                        if role == int(ZoneRole.TEAM0_DEFENSE)
+                        else self._render_config.team_colors[0]
+                    )
+                    rect = pygame.Rect(
+                        center[0] - radius_px - 5,
+                        center[1] - radius_px - 5,
+                        2 * (radius_px + 5),
+                        2 * (radius_px + 5),
+                    )
+                    pygame.draw.arc(
+                        surf,
+                        attacker,
+                        rect,
+                        -math.pi / 2,
+                        -math.pi / 2 + 2 * math.pi * float(progress[index].item()),
+                        width=5,
+                    )
+                label = self._font_small.render(text, True, color)
+                surf.blit(
+                    label,
+                    (center[0] - label.get_width() // 2, center[1] - label.get_height() // 2),
+                )
+
     def _draw_fields(self, state: TensorState, surf: pygame.Surface) -> None:
         """Draw refractive fields as patterned, unfilled toroidal outlines."""
         if state.num_fields == 0:
@@ -471,15 +836,13 @@ class GameRenderer:
             center = complex(positions[field_idx].item())
             radius_world = float(radii[field_idx].item())
             outer = radius_world + 0.5 * float(widths[field_idx].item())
-            radius_px = max(1, int(round(radius_world * self._scale)))
+            radius_px = max(1, int(round(radius_world * self.camera.scale)))
             color = field_color(int(index_levels[field_idx].item()))
             pattern, line_width = field_border_pattern(int(damage_levels[field_idx].item()))
-            for wrapped_center in wrapped_field_centers(
-                center, outer, self._ship_config.world_size
-            ):
+            for wrapped_center in self.camera.visible_images(center, outer):
                 self._draw_field_outline(
                     surf,
-                    self._world_to_screen(wrapped_center),
+                    self._unwrapped_world_to_screen(wrapped_center),
                     radius_px,
                     color,
                     pattern,
