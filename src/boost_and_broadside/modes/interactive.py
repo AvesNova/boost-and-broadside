@@ -15,7 +15,6 @@ import torch
 
 from boost_and_broadside.config import (
     EnvConfig,
-    FieldMapConfig,
     FrontlineConfig,
     MatchResult,
     ModelConfig,
@@ -38,10 +37,7 @@ from boost_and_broadside.evaluation.agents import (
     reset_done_envs,
     resolve_agent_spec,
 )
-from boost_and_broadside.evaluation.environment import (
-    create_evaluation_field_map,
-    resolve_evaluation_environment,
-)
+from boost_and_broadside.evaluation.environment import resolve_evaluation_environment
 from boost_and_broadside.evaluation.match import agent_view, merge_team_actions
 from boost_and_broadside.evaluation.next_state import imagine_trajectory
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
@@ -53,7 +49,9 @@ PLAY_ENV_CONFIG = EnvConfig(
     num_ships=8,
     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
     max_episode_steps=18_000,
-    num_fields=0,
+    # Preserves roughly the old four-field density inside the much larger
+    # practical battlefield. This is provisional for the Gate 2 playtest.
+    num_fields=20,
     action_repeat=2,
     spawn_resource_spread=0.0,
     frontline=FrontlineConfig(
@@ -80,12 +78,12 @@ def run_play_mode(
     device: str,
     checkpoint_dir: str = "checkpoints",
 ) -> None:
-    """Run the provisional playable Gate-1 frontline preset.
+    """Run the provisional playable Frontline preset.
 
     One selected blue ship is keyboard-controlled; the remaining blue ships and
     all red ships use the crude frontline scripted controller. Tab cycles the
     human ship and C toggles camera follow. Tuning values are intentionally
-    provisional pending the Gate-1 playtest.
+    provisional pending the current human playtest gate.
     """
     ship_config = replace(ship_config, world_size=FRONTLINE_WORLD_SIZE)
     render_config = replace(render_config, show_unlimited_button=True)
@@ -157,7 +155,7 @@ def run_watch_mode(
         checkpoint_dir,
         num_ships=env_config.num_ships,
     )
-    env_config, field_map_config = resolve_evaluation_environment(
+    env_config = resolve_evaluation_environment(
         env_config,
         (agent0, agent1),
         ship_config=ship_config,
@@ -175,7 +173,6 @@ def run_watch_mode(
         render_config,
         device,
         keyboard_teams=keyboard_teams,
-        field_map_config=field_map_config,
     )
 
 
@@ -188,21 +185,10 @@ def _run_resolved_interactive_mode(
     render_config: RenderConfig,
     device: str,
     keyboard_teams: frozenset[int],
-    field_map_config: FieldMapConfig | None = None,
 ) -> None:
     """Build the single environment and render two already-resolved agents."""
 
     renderer = GameRenderer(ship_config, render_config)
-
-    # Static maps need no orbital settling phase.
-    field_map = None
-    if env_config.num_fields > 0:
-        field_map = create_evaluation_field_map(
-            ship_config,
-            env_config,
-            field_map_config or FieldMapConfig(cache_size=1, max_generation_attempts=256),
-            torch.device(device),
-        )
 
     wrapper = YemongEnvWrapper(
         num_envs=1,
@@ -210,7 +196,6 @@ def _run_resolved_interactive_mode(
         env_config=env_config,
         rewards=rewards,
         device=device,
-        field_map=field_map,
         include_bullets=agents_read_bullets(agent0, agent1),
     )
 

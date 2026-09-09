@@ -48,7 +48,6 @@ def _single_field_bullet_state(
     state.field_radius[:] = radius
     state.field_transition_width[:] = width
     state.field_index[:] = index
-    state.field_delta_index[:] = index - 1.0
     activate_bullet(state, config, position=position, velocity=velocity)
     _refresh_bullet_cache(state, config)
     return state
@@ -61,7 +60,7 @@ def _refresh_bullet_cache(state, config: ShipConfig) -> None:
         state.field_pos,
         state.field_radius,
         state.field_transition_width,
-        state.field_delta_index,
+        state.field_index,
         config.world_size,
     )
     state.bullet_field_alpha = evaluation.alpha.view(
@@ -212,9 +211,8 @@ def _two_damage_field_state(config: ShipConfig):
     state.field_pos[:] = torch.tensor([[300.0 + 512.0j, 700.0 + 512.0j]])
     state.field_radius[:] = 50.0
     state.field_transition_width[:] = 40.0
-    # Zero delta-index isolates damage-potential loss from refraction.
+    # Ambient targets isolate damage-potential loss from refraction.
     state.field_index[:] = 1.0
-    state.field_delta_index[:] = 0.0
     state.field_damage[:] = torch.tensor([[10.0, 20.0]])
     activate_bullet(
         state,

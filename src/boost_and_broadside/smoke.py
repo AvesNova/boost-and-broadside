@@ -148,11 +148,6 @@ def _smoke_resolved_profile(
             num_fields=num_fields,
             max_bullets=2,
             max_episode_steps=2,
-            field_map=(
-                replace(base.field_map, cache_size=1, max_generation_attempts=256)
-                if num_fields and base.field_map is not None
-                else None
-            ),
             logical_batch_tokens=(2 + num_fields) * num_steps,
             num_steps=num_steps,
             num_minibatches=1,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from boost_and_broadside.config import EnvConfig, FieldMapConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.config.defaults import MODEL_CONFIG
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.sizes import MatchupParseError
@@ -28,10 +28,9 @@ def test_collect_stats_rejects_an_invalid_matchup_instead_of_skipping(monkeypatc
         )
 
 
-def test_collect_stats_uses_the_field_distribution_declared_by_a_checkpoint(monkeypatch) -> None:
+def test_collect_stats_uses_the_field_count_declared_by_a_checkpoint(monkeypatch) -> None:
     field_env = EnvConfig(num_ships=8, max_bullets=4, max_episode_steps=8, num_fields=2)
-    field_map = FieldMapConfig(cache_size=3)
-    bundle = type("Bundle", (), {"env_config": field_env, "field_map_config": field_map})()
+    bundle = type("Bundle", (), {"env_config": field_env, "ship_config": ShipConfig()})()
     policy = ResolvedAgent("policy", object(), bundle=bundle)
     captured = {}
     monkeypatch.setattr(
@@ -40,8 +39,7 @@ def test_collect_stats_uses_the_field_distribution_declared_by_a_checkpoint(monk
     )
     monkeypatch.setattr(
         "boost_and_broadside.modes.collect.evaluate_matchup",
-        lambda *args, **kwargs: captured.update(env=args[6], field_map=kwargs["field_map_config"])
-        or (1, 0, 0, 1.0),
+        lambda *args, **kwargs: captured.update(env=args[6]) or (1, 0, 0, 1.0),
     )
 
     run_collect_stats_mode(
@@ -55,4 +53,3 @@ def test_collect_stats_uses_the_field_distribution_declared_by_a_checkpoint(monk
         matchups=["4v4"],
     )
     assert captured["env"].num_fields == 2
-    assert captured["field_map"] == field_map

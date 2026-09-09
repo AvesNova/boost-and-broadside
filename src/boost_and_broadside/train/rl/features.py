@@ -567,9 +567,7 @@ class FeatureCoordinator:
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
                 ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
                 ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),
-                ObsKey.FIELD_INSIDE_LOG_INDEX: torch.zeros((1, 1, 1)),
-                ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.zeros((1, 1, 1)),
-                ObsKey.FIELD_LOG_INDEX_RATIO: torch.zeros((1, 1, 1)),
+                ObsKey.FIELD_TARGET_LOG_INDEX: torch.zeros((1, 1, 1)),
                 ObsKey.FIELD_DAMAGE: torch.zeros((1, 1, 1)),
             }
         )
@@ -889,22 +887,8 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             scope=FeatureScope.FIELD,
         ),
         Feature(
-            "field_inside_log_index",
-            Accessor(ObsKey.FIELD_INSIDE_LOG_INDEX),
-            Identity(),
-            Identity(),
-            scope=FeatureScope.FIELD,
-        ),
-        Feature(
-            "field_outside_log_index",
-            Accessor(ObsKey.FIELD_OUTSIDE_LOG_INDEX),
-            Identity(),
-            Identity(),
-            scope=FeatureScope.FIELD,
-        ),
-        Feature(
-            "field_log_index_ratio",
-            Accessor(ObsKey.FIELD_LOG_INDEX_RATIO),
+            "field_target_log_index",
+            Accessor(ObsKey.FIELD_TARGET_LOG_INDEX),
             Identity(),
             Identity(),
             scope=FeatureScope.FIELD,

@@ -55,11 +55,7 @@ from boost_and_broadside.evaluation.agents import (
     agents_read_bullets,
     resolve_agent_spec,
 )
-from boost_and_broadside.evaluation.environment import (
-    create_evaluation_field_map,
-    resolve_evaluation_environment,
-    run_field_map,
-)
+from boost_and_broadside.evaluation.environment import resolve_evaluation_environment
 from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.subjects import (
     describe_agent,
@@ -420,9 +416,7 @@ def run_elo_calibrate_mode(
             raise FileNotFoundError(f"no roster.json in {run_dir}; nothing to calibrate")
 
         roster = json.loads(roster_path.read_text())
-        env_config, model_config, run_ship_config, paradigm, field_map_config = load_run_config(
-            run_dir
-        )
+        env_config, model_config, run_ship_config, paradigm = load_run_config(run_dir)
         ship_config = run_ship_config
         print(f"\n=== Elo calibration: {run_dir.name} ===")
         print(
@@ -467,7 +461,6 @@ def run_elo_calibrate_mode(
             num_envs,
             device,
             include_bullets=model_config.reads_bullets,
-            field_map=run_field_map(ship_config, env_config, field_map_config, device),
         )
         pairs = len(players) * (len(players) - 1) // 2
         progress.stage(
@@ -490,7 +483,7 @@ def run_elo_calibrate_mode(
             device,
             checkpoint_dir,
         )
-        evaluation_config, field_map_config = resolve_evaluation_environment(
+        evaluation_config = resolve_evaluation_environment(
             env_config,
             [player.agent for player in players],
             ship_config=ship_config,
@@ -518,13 +511,6 @@ def run_elo_calibrate_mode(
             config.num_envs,
             device,
             include_bullets=agents_read_bullets(*(player.agent for player in players)),
-            field_map=(
-                None
-                if field_map_config is None
-                else create_evaluation_field_map(
-                    ship_config, evaluation_config, field_map_config, device
-                )
-            ),
         )
         anchor = next(
             (index for index, player in enumerate(players) if player.label == "random"), 0

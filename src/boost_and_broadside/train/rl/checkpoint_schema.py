@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "frontline_world_v4"
+OBSERVATION_SCHEMA = "overlapping_fields_v5"
 POSITION_FINEST_PERIOD = 128.0
 
 
@@ -25,7 +25,8 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 4,
+        "version": 5,
+        "field_composition": "bounded_union_log_blend",
         "position_fourier_basis": "base2",
         "position_finest_period": POSITION_FINEST_PERIOD,
         "position_frequencies": tuple(
@@ -58,7 +59,9 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
-    v4 makes the world-size-dependent base-2 position-frequency count explicit;
+    v5 replaces parent-relative field channels with one absolute target
+    log-index and changes overlap composition. v4 made the world-size-dependent
+    base-2 position-frequency count explicit;
     1024 uses four frequencies and the 16384 frontline world uses eight, both
     preserving an approximately 128 px finest period. There is no faithful
     tensor-only migration for the widened learned projection.

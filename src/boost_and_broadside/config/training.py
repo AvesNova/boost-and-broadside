@@ -39,34 +39,6 @@ class _FrozenFloatMapping(Mapping[str, float]):
 
 
 @dataclass(frozen=True)
-class FieldMapConfig:
-    """Bounded static refractive-field map generation settings.
-
-    Map construction happens once before rollout. Every candidate is checked for
-    a laminar (strictly nested or disjoint) relationship, including transition
-    bands; no hierarchy discovery or rejection sampling occurs in ``step()``.
-    """
-
-    cache_size: int
-    max_generation_attempts: int = 128
-    nesting_probability: float = 0.25
-
-    def __post_init__(self) -> None:
-        if self.cache_size < 1:
-            raise ValueError("cache_size must be positive")
-        if self.max_generation_attempts < 1:
-            raise ValueError("max_generation_attempts must be positive")
-        if not 0.0 <= self.nesting_probability <= 1.0:
-            raise ValueError("nesting_probability must lie in [0, 1]")
-
-
-# Import compatibility for callers that only stored the old class name. Its
-# constructor intentionally follows the new static-map API: orbital/PBD options
-# cannot be meaningfully migrated.
-ObstacleCacheConfig = FieldMapConfig
-
-
-@dataclass(frozen=True)
 class EloCalibrateConfig:
     """Configuration for the post-training Elo calibration tournament.
 
@@ -267,15 +239,6 @@ class TrainConfig:
     next_state_coef: float = 1.0  # weight for per-step aux prediction loss; 0 to disable
     windowed_loss_coef: float = 0.1  # weight for windowed cumulative bias loss; 0 to disable
 
-    # --- Static field map cache (None when num_fields=0) ---
-    field_map: FieldMapConfig | None = None
-
-    @property
-    def obstacle_cache(self) -> FieldMapConfig | None:
-        """Deprecated read-only alias for pre-field integrations."""
-
-        return self.field_map
-
     # --- Logging ---
     log_interval: int = 10  # print to terminal every N updates
 
@@ -297,11 +260,6 @@ class TrainConfig:
         )
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")
-        has_fields = any(scale.env_config.num_fields > 0 for scale in self.scales)
-        if has_fields and self.field_map is None:
-            raise ValueError("field_map is required when any training scale has num_fields > 0")
-        if not has_fields and self.field_map is not None:
-            raise ValueError("field_map must be None when every training scale has zero fields")
         if self.paradigm not in ("ego_pass", "shared_pass"):
             raise ValueError(f"paradigm must be 'ego_pass' or 'shared_pass', got {self.paradigm!r}")
         primary_envs = self.scales[0].num_envs

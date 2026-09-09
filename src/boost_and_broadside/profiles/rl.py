@@ -24,7 +24,6 @@ from boost_and_broadside.config.defaults import (
     make_rl_schedule_spec,
 )
 from boost_and_broadside.config.schema import LaunchSizingSpec, ProfileSpec
-from boost_and_broadside.config.training import FieldMapConfig
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 
 RL_PROFILE = ProfileSpec(
@@ -40,11 +39,6 @@ RL_PROFILE = ProfileSpec(
     # therefore spans 4.3 seconds, close to a full episode.
     action_repeat=2,
     spawn_resource_spread=0.25,
-    field_map=FieldMapConfig(
-        cache_size=512,
-        max_generation_attempts=256,
-        nesting_probability=0.35,
-    ),
     # --- Rollout shape ---
     logical_batch_tokens=12_000_000,
     num_steps=128,
