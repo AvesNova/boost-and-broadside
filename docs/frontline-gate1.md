@@ -16,7 +16,7 @@ The five physical zones stay fixed while their roles rotate with the unwrapped f
 Their cyclic order is neutral → Team 0 spawn → Team 0 defense → Team 1 defense → Team 1
 spawn → neutral, so the two capturable damaging defenses are adjacent. Every zone has a
 330 px radius. Team 0 advances the front toward `+5`; Team 1 toward `-5`. A defense
-capture takes 20 seconds. Capture pressure is flat and based only on which team has more
+capture takes 8 seconds. Capture pressure is flat and based only on which team has more
 ships in the defense: `4v0`, `4v2`, `1v0`, and `2v1` all advance at the same rate, while
 a defending majority stabilizes at that same rate. Equal counts pause the meter.
 Simultaneous completion changes the front by zero and resets both meters.

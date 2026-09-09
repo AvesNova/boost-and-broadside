@@ -12,7 +12,7 @@ def test_play_preset_is_timed_frontline_with_scriptable_fleets() -> None:
     assert PLAY_ENV_CONFIG.frontline is not None
     assert not PLAY_ENV_CONFIG.single_team
     assert PLAY_ENV_CONFIG.frontline.zone_radius == 330.0
-    assert PLAY_ENV_CONFIG.frontline.capture_seconds == 20.0
+    assert PLAY_ENV_CONFIG.frontline.capture_seconds == 8.0
 
 
 def test_play_keyboard_controls_team_zero_but_not_null_team_one() -> None:
