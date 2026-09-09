@@ -41,6 +41,7 @@ def run_suite(
     seed: int,
     device: torch.device,
     max_ticks: int,
+    capture_seconds: float | None = None,
 ) -> dict:
     """Run independent matches in one tensor batch and retain per-game samples."""
 
@@ -48,12 +49,21 @@ def run_suite(
         raise ValueError("games must be at least two for distribution statistics")
     if max_ticks < 1:
         raise ValueError("max_ticks must be positive")
+    if capture_seconds is not None and capture_seconds <= 0.0:
+        raise ValueError("capture_seconds must be positive")
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but torch.cuda.is_available() is false")
 
     torch.manual_seed(seed)
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE)
-    env_config = replace(PLAY_ENV_CONFIG, max_episode_steps=max_ticks)
+    frontline = PLAY_ENV_CONFIG.frontline
+    if capture_seconds is not None:
+        frontline = replace(frontline, capture_seconds=capture_seconds)
+    env_config = replace(
+        PLAY_ENV_CONFIG,
+        max_episode_steps=max_ticks,
+        frontline=frontline,
+    )
     env = TensorEnv(games, ship_config, env_config, device)
     env.reset(options={"team_sizes": (4, 4)}, seed=seed)
     agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
@@ -227,6 +237,7 @@ def main() -> None:
     parser.add_argument("--games", type=int, default=256)
     parser.add_argument("--seed", type=int, default=20260908)
     parser.add_argument("--max-ticks", type=int, default=PLAY_ENV_CONFIG.max_episode_steps)
+    parser.add_argument("--capture-seconds", type=float)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -235,6 +246,7 @@ def main() -> None:
         seed=args.seed,
         device=torch.device(args.device),
         max_ticks=args.max_ticks,
+        capture_seconds=args.capture_seconds,
     )
     if args.output is not None:
         args.output.write_text(json.dumps(result, indent=2) + "\n")
