@@ -279,7 +279,7 @@ def _evaluate_state_fields(
         state.field_pos,
         state.field_radius,
         state.field_transition_width,
-        state.field_delta_index,
+        state.field_index,
         world_size,
     )
 

@@ -41,11 +41,11 @@ def _fetched_run(run: str) -> Path:
 
 
 @pytest.mark.parametrize("run", sorted(_LANDMARKS))
-def test_a_v3_landmark_policy_is_rejected_by_the_v4_observation_contract(run) -> None:
+def test_a_v3_landmark_policy_is_rejected_by_the_v5_observation_contract(run) -> None:
     run_dir = _fetched_run(run)
     resolve_exact_run(run, "checkpoints")
 
-    with pytest.raises(ValueError, match="frontline_world_v4"):
+    with pytest.raises(ValueError, match="overlapping_fields_v5"):
         load_run_config(run_dir)
 
 

@@ -45,7 +45,6 @@ from boost_and_broadside.config.diagnostics import (
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
 from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
-from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
@@ -412,27 +411,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if base_state.policy_gradient_coef == 0.0 and scripted_agent is None:
             raise ValueError("policy_gradient_coef=0.0 (BC mode) requires a scripted_agent.")
 
-        # Generate valid static field maps before training begins. The cache is
-        # shared across all wrappers (primary + auxiliary scales).
-        M = train_config.scales[0].env_config.num_fields
-        if M > 0 and train_config.field_map is not None:
-            cache_cfg = train_config.field_map
-            print(
-                f"[PPOTrainer] Generating refractive-field map cache "
-                f"({cache_cfg.cache_size} maps)..."
-            )
-            self._field_map = FieldMapCache.generate(
-                ship_config,
-                train_config.scales[0].env_config,
-                cache_cfg,
-                self.device,
-            )
-            print(f"[PPOTrainer] Field map cache ready: {len(self._field_map)} maps")
-        else:
-            self._field_map = None
-        if M > 0 and self._field_map is None:
-            raise ValueError("field-enabled training requires TrainConfig.field_map")
-
         collision_compile_mode = (
             ("max-autotune" if compile_mode == "max-autotune" else "default")
             if compile_mode is not None
@@ -444,7 +422,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             env_config=train_config.scales[0].env_config,
             rewards=train_config.rewards,
             device=device,
-            field_map=self._field_map,
             collision_compile_mode=collision_compile_mode,
             include_bullets=model_config.reads_bullets,
         )
@@ -500,6 +477,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # Build the buffer using a sample observation to infer shapes and dtypes
         sample_obs = self.wrapper.reset()
+        M = train_config.scales[0].env_config.num_fields
 
         self.buffer = RolloutBuffer(
             num_steps=train_config.num_steps,
@@ -738,7 +716,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 env_config=sc.env_config,
                 rewards=train_config.rewards,
                 device=device,
-                field_map=self._field_map,
                 collision_compile_mode=collision_compile_mode,
                 include_bullets=model_config.reads_bullets,
             )
@@ -1018,7 +995,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 ship_config=self.ship_config,
                 env_config=self.env_config,
                 device=self.device,
-                field_map=self._field_map,
                 live_policy=self.policy,
                 avg_policy=self.avg_policy,
                 scripted_agent=self.scripted_agent,
@@ -1061,12 +1037,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.reset()
             aux_buffer.store_initial_hidden(aux_hidden)
 
-        # Fresh maps every rollout. A fixed bank is a small enough distribution
-        # that a full run sees each map thousands of times; regenerating it here
-        # gives roughly one distinct map per episode for a few milliseconds,
-        # entirely on device and without a host sync.
-        if self._field_map is not None:
-            self._field_map.refresh()
         slots = self._prepare_league_slots(runtime.num_recurrent)
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(

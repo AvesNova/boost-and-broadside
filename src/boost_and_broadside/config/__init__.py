@@ -44,8 +44,6 @@ from boost_and_broadside.config.schema import (
 from boost_and_broadside.config.training import (
     EloCalibrateConfig,
     EloEvalConfig,
-    FieldMapConfig,
-    ObstacleCacheConfig,
     ScaleConfig,
     TrainConfig,
 )
@@ -70,8 +68,6 @@ __all__ = [
     "exponential",
     "cosine_anneal",
     "join",
-    "ObstacleCacheConfig",
-    "FieldMapConfig",
     "ScaleConfig",
     "TrainConfig",
     "LaunchOverrides",

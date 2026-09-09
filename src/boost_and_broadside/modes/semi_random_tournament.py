@@ -27,10 +27,6 @@ from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import ShipConfig, TrainConfig
 from boost_and_broadside.config.live_elo import live_reference_elo
 from boost_and_broadside.evaluation.agents import ResolvedAgent
-from boost_and_broadside.evaluation.environment import (
-    create_evaluation_field_map,
-    run_field_map,
-)
 from boost_and_broadside.evaluation.run_catalog import resolve_exact_run
 from boost_and_broadside.evaluation.subjects import describe_agent, describe_environment
 from boost_and_broadside.evaluation.tournament import (
@@ -214,24 +210,15 @@ def run_semi_random_tournament(
     """
     if games_per_pair <= 0:
         raise ValueError("games_per_pair must be positive")
-    field_map = None
     if train_config is not None:
         subject = {"profile": run_spec}
         base_env = train_config.scales[0].env_config
         paradigm = train_config.paradigm
-        if base_env.num_fields > 0:
-            if train_config.field_map is None:
-                raise ValueError(f"profile {run_spec!r} has fields but no field_map config")
-            print(f"  generating field map cache ({train_config.field_map.cache_size} maps)...")
-            field_map = create_evaluation_field_map(
-                ship_config, base_env, train_config.field_map, torch.device(device)
-            )
     else:
         run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
         subject = {"run": run_dir.name}
-        base_env, _, run_ship_config, paradigm, field_map_config = load_run_config(run_dir)
+        base_env, _, run_ship_config, paradigm = load_run_config(run_dir)
         ship_config = run_ship_config
-        field_map = run_field_map(ship_config, base_env, field_map_config, device)
     labels = [_label(probability) for probability in probabilities]
 
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
@@ -298,9 +285,7 @@ def run_semi_random_tournament(
 
         players = _players(ship_config, probabilities)
         env_config = replace(base_env, num_ships=2 * team_size)
-        tournament = Tournament(
-            players, ship_config, env_config, paradigm, num_envs, device, field_map=field_map
-        )
+        tournament = Tournament(players, ship_config, env_config, paradigm, num_envs, device)
         batches = list(stored.get("batches", [])) if stored else []
         if stored:
             tournament.wins[:] = np.asarray(stored["wins_matrix"], dtype=float)

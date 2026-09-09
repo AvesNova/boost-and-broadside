@@ -106,7 +106,7 @@ def run_crossover_mode(
     # The trained policy's own provenance decides the field distribution, and the
     # recipe has to record the environment actually played, so this resolves
     # before the artifact is opened rather than at the first matchup.
-    base_env, field_map_config = resolve_evaluation_environment(
+    base_env = resolve_evaluation_environment(
         base_env, (trained, scripted), ship_config=ship_config
     )
 
@@ -164,7 +164,6 @@ def run_crossover_mode(
                     ship_config,
                     base_env,
                     device,
-                    field_map_config=field_map_config,
                 )
                 curve[scripted_n] = _outcome_record(
                     t0_wins, t1_wins, ties, games, mean_episode_steps

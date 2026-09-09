@@ -92,8 +92,8 @@ class TensorState:
         torch.Tensor
     )  # (B, N, N) float32  — accumulated this episode; zeroed on reset
 
-    # Static refractive-field map. Parent and delta-index values are computed
-    # during map construction and never discovered in the per-step hot path.
+    # Static-for-one-episode refractive-field map. Each field carries an
+    # absolute target material; arbitrary overlaps are composed at evaluation.
     field_pos: torch.Tensor  # (B, M) complex64
     field_radius: torch.Tensor  # (B, M) float32 — nominal interface radius
     field_transition_width: torch.Tensor  # (B, M) float32 — complete interface band
@@ -101,8 +101,6 @@ class TensorState:
     field_index: torch.Tensor  # (B, M) float32 — absolute interior n
     field_damage_level: torch.Tensor  # (B, M) int8 — {0, 1, 2}
     field_damage: torch.Tensor  # (B, M) float32 — damage per complete crossing
-    field_parent: torch.Tensor  # (B, M) int64 — direct parent, -1 for roots
-    field_delta_index: torch.Tensor  # (B, M) float32 — n_inside - n_parent
 
     # Cached ship-field evaluation. The alpha cache is also the previous alpha
     # used by smooth total-variation interface damage.

@@ -12,24 +12,25 @@ and fields as fixed-shape tensors. [`TensorEnv`](../src/boost_and_broadside/env/
 advances thousands of environments without Python loops over environments or ships.
 Ship field evaluation is an `O(B*N*M)` reduction over `(environment, ship, field)`.
 Projectile transport applies the same fixed-shape reduction to the `N*K` ring-buffer
-slots; inactive slots remain masked rather than being dynamically compacted. Hierarchy
-and material deltas are precomputed by
-[`FieldMapCache`](../src/boost_and_broadside/env/field_cache.py), so stepping performs no
-sorting, region selection, rejection sampling, or host synchronization.
+slots; inactive slots remain masked rather than being dynamically compacted. Each reset
+generates a fresh independent layout directly on device. Stepping performs no sorting,
+region selection, rejection sampling, or host synchronization.
 
 The main layers are:
 
 - [`physics.py`](../src/boost_and_broadside/env/physics.py): shared ship/projectile
   effective-mass transport, control, power, firing, drag, and swept collisions;
 - [`field_physics.py`](../src/boost_and_broadside/env/field_physics.py): toroidal field
-  profiles, hierarchy validation, and telescoping index composition;
+  profiles and bounded overlapping log-index composition;
+- [`field_generation.py`](../src/boost_and_broadside/env/field_generation.py): direct
+  on-reset layouts, including Frontline's common map translation;
 - [`env.py`](../src/boost_and_broadside/env/env.py): reset, teams, stepping, and episode
   termination;
 - [`wrapper.py`](../src/boost_and_broadside/env/wrapper.py): observations, decomposed
   rewards, statistics, and automatic reset.
 
 `EnvConfig.num_ships` is the total across both teams, and `EnvConfig.num_fields` the count
-of cached static fields. `profiles/rl.py` trains at eight ships (4-vs-4) and four fields.
+of static-for-one-episode fields. `profiles/rl.py` trains at eight ships (4-vs-4) and four fields.
 There is no separate field-free profile: `num_fields` sets the token count and no weight
 shape depends on it, so zero fields is a configuration -- the one run 682 trained under, and
 the ambient-only hot path it still exercises -- rather than a different model.
@@ -156,34 +157,35 @@ A projectile deactivates when its positive damage potential is fully depleted. B
 loss is not attributed to a ship, while projectile damage that reaches a target continues
 through normal combat attribution and the projectile-specific health-loss reward.
 
-## Nesting and map validity
+## Arbitrary overlap and map generation
 
-Fields are either completely disjoint or strictly nested. Partial intersections and
-overlapping transition bands are rejected. A child `c` is contained in parent `p` only if
+Fields may partially intersect, share transition bands, coincide, or nest in any order.
+For target `L_i=log(n_i)` and memberships `alpha_i`, composition is
 
 ```text
-distance(c,p) + r_c + w_c/2 <= r_p - w_p/2.
+A = 1 - product_i(1-alpha_i)
+log(n) = A * sum_i(alpha_i*L_i) / sum_i(alpha_i)
 ```
 
-Disjoint bands require `distance(i,j) >= r_i+r_j+w_i/2+w_j/2`. All distances use the
-same minimum-image toroidal geometry as runtime evaluation and rendering. Outer extent
+with zero log-index when no field contributes. Identical overlaps reinforce partial
+coverage without exceeding their shared target. Different materials blend in signed log
+space, so equally covered reciprocal targets cancel to ambient. The union coverage keeps
+optical strength bounded as field count grows. Interface damage remains an independent
+sum per field and therefore does not cancel.
+
+The analytic gradient accumulates union coverage recurrently, without unstable division
+by `1-alpha` or prefix/suffix products. All distances use minimum-image toroidal geometry.
+Outer extent
 `r+w/2` must be strictly less than half the shorter world dimension, avoiding ambiguous
 antipodal circle topology. For the default 1024×1024 world and 40-pixel transition width,
 this requires `r < 492`; changing the maximum radius beyond that requires a larger world
 or a different field-topology definition.
 
-Construction selects the smallest direct enclosing parent. Each cached field stores
-`delta_n = n_child - n_parent` (roots subtract ambient 1), and runtime composes
-
-```text
-n(x) = 1 + sum(delta_n_i * alpha_i(x))
-grad(n) = sum(delta_n_i * grad(alpha_i(x))).
-```
-
-This telescopes through arbitrary depth: a child core has the child's absolute index,
-regardless of whether it is higher or lower than its parent, without hard per-step
-`argmin`/`max` priority or derivative ridges. Cached map generation has bounded attempts
-and fails clearly when requested geometry cannot be packed.
+Centers, radii, widths, target materials, and damage levels are sampled directly on every
+episode reset. Combat maps use the whole toroid. Frontline maps sample inside the practical
+battlefield around the same random translated map center as the zones and boundary, keeping
+each field's complete outer extent inside that boundary. The zero-field branch allocates an
+empty field axis and bypasses field evaluation.
 
 ## Projectiles, collisions, and rendering
 
@@ -206,38 +208,42 @@ On impact, incidence scaling is applied to the projectile's remaining damage pot
 Friendly fire is enabled. Ship-to-ship collision is not implemented, and fields remain
 traversable rather than absorbing projectiles as solid obstacles.
 
-Fields render as unfilled outlines with toroidal edge copies. Cyan/blue means lower/faster
+Fields render as translucent transition annuli plus outlines with toroidal edge copies.
+Cyan/blue means lower/faster
 index; violet means higher/slower index, with stronger levels brighter and more saturated.
 Dotted, dashed, and solid borders mean none, standard, and severe damage respectively.
-Solid means severe interface damage, not an impermeable wall. Parents draw first so nested
-children remain visible.
+Solid means severe interface damage, not an impermeable wall. Alpha-blended annuli make
+partial and coincident overlaps visible while nominal contours stay individually legible.
 
 ## Measured field cost
 
 The pure-environment benchmark (no bullets or policy inference) on an NVIDIA GeForce RTX
-4070 Laptop GPU, with 4,096 environments, eight ships, 50 warmup ticks, and 500 timed
+4070 Laptop GPU, with 4,096 environments, eight ships, 30 warmup ticks, and 300 timed
 ticks, measured:
 
-| Fields | Environment steps/s | Relative | State memory | Peak allocation | Tokens | Attention-pair factor |
-|---:|---:|---:|---:|---:|---:|---:|
-| 0 | 9,490,454 | 1.000× | 4.58 MiB | 8.89 MiB | 8 | 1.000× |
-| 1 | 1,194,662 | 0.126× | 4.85 MiB | 12.29 MiB | 9 | 1.266× |
-| 2 | 1,201,744 | 0.127× | 5.12 MiB | 15.22 MiB | 10 | 1.562× |
-| 4 | 1,194,044 | 0.126× | 5.67 MiB | 21.08 MiB | 12 | 2.250× |
+| Fields | Environment steps/s | Relative | State memory | Reset µs/env | Peak allocation | Tokens | Attention-pair factor |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 1,850,454 | 1.000× | 5.58 MiB | 0.608 | 9.90 MiB | 8 | 1.000× |
+| 1 | 253,705 | 0.137× | 5.80 MiB | 1.362 | 15.27 MiB | 9 | 1.266× |
+| 2 | 243,812 | 0.132× | 6.03 MiB | 1.258 | 16.89 MiB | 10 | 1.562× |
+| 4 | 219,253 | 0.118× | 6.48 MiB | 1.404 | 22.65 MiB | 12 | 2.250× |
+| 20 | 494,177 | 0.267× | 10.11 MiB | 0.879 | 68.78 MiB | 28 | 12.250× |
 
-The field path is launch-bound at these modest `M` values, so one through four fields
-have similar throughput. The zero-field branch bypasses every field evaluation and retains
-the old kinematics implementation. Policy inference is intentionally separate: fields add
-tokens, so attention pair count grows theoretically as `(N+M)^2/N^2`; the benchmark's
-last column reports that factor rather than blending policy cost into physics cost. Results
-depend on hardware and clocks; reproduce them with `benchmarks/field_throughput.py`.
+The zero-field branch bypasses every field evaluation and retains the old kinematics
+implementation. GPU throughput is not monotonic at these small tensor sizes: the 20-field
+case uses the device more efficiently than the launch-bound one-to-four-field cases. Policy
+inference is intentionally separate: fields add tokens, so attention pair count grows
+theoretically as `(N+M)^2/N^2`; the benchmark's last column reports that factor rather than
+blending policy cost into physics cost. Results depend on hardware and clocks; reproduce
+them with `benchmarks/field_throughput.py`.
 
 ## Validation
 
 - [`test_physics.py`](../tests/env/test_physics.py): unchanged ambient motion, power,
   firing, wraparound, and bullet collision;
-- [`test_field_physics.py`](../tests/env/test_field_physics.py): profile gradients,
-  toroidal geometry, hierarchy, materials, generation, and reset;
+- [`test_field_physics.py`](../tests/env/test_field_physics.py): profile/composition
+  gradients, reciprocal cancellation, identical and toroidal overlap, materials,
+  generation, and reset;
 - [`test_field_transport.py`](../tests/env/test_field_transport.py): long-run energy,
   refraction/TIR, power exchange, and smooth ship damage;
 - [`test_bullet_fields.py`](../tests/env/test_bullet_fields.py): selectable projectile
@@ -248,7 +254,7 @@ depend on hardware and clocks; reproduce them with `benchmarks/field_throughput.
   [`test_renderer.py`](../tests/ui/test_renderer.py): integration, attribution, numeric
   observations, and outline rendering.
 
-The zero/one/two/four-field environment benchmark is in
+The zero/one/two/four/Frontline-field environment benchmark is in
 [`benchmarks/field_throughput.py`](../benchmarks/field_throughput.py). Saturated projectile
 storage, drag, integrator, damage-depletion, compilation, and capacity comparisons are in
 [`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).

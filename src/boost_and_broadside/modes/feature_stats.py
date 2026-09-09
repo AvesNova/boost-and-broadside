@@ -66,7 +66,7 @@ def run_feature_stats_mode(
     agent1 = resolve_agent_spec(
         team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
     )
-    env_config, field_map_config = resolve_evaluation_environment(
+    env_config = resolve_evaluation_environment(
         env_config, (agent0, agent1), ship_config=ship_config
     )
     num_tokens = N + env_config.num_fields
@@ -78,7 +78,6 @@ def run_feature_stats_mode(
         ship_config,
         env_config,
         device,
-        field_map_config=field_map_config,
     )
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(agent1, B, num_tokens, dev)

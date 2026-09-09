@@ -53,7 +53,7 @@ def run_collect_stats_mode(
             team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
         )
 
-        current_env_config, field_map_config = resolve_evaluation_environment(
+        current_env_config = resolve_evaluation_environment(
             env_config, (agent0, agent1), ship_config=ship_config
         )
         t0 = time.perf_counter()
@@ -66,7 +66,6 @@ def run_collect_stats_mode(
             ship_config,
             current_env_config,
             device,
-            field_map_config=field_map_config,
         )
         elapsed = time.perf_counter() - t0
         sim_fps = 1.0 / ship_config.dt

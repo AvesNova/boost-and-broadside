@@ -172,7 +172,7 @@ def place_ships_at_spawns(
         state.field_pos,
         state.field_radius,
         state.field_transition_width,
-        state.field_delta_index,
+        state.field_index,
         ship_config.world_size,
     )
     velocity = ship_config.default_speed * bearing / field_eval.index

@@ -49,7 +49,6 @@ def _single_field_state(
     state.field_radius[:] = radius
     state.field_transition_width[:] = width
     state.field_index[:] = index
-    state.field_delta_index[:] = index - 1.0
     state.field_damage[:] = damage
     state.ship_power[:] = 50.0
     return state
@@ -307,7 +306,6 @@ def test_child_crossing_does_not_reapply_parent_damage():
     parent_n = config.field_index_step
     child_n = config.field_index_step**-2
     state.field_index[:] = torch.tensor([[parent_n, child_n]])
-    state.field_delta_index[:] = torch.tensor([[parent_n - 1.0, child_n - parent_n]])
     state.field_damage[:] = torch.tensor(
         [[2.0 * config.field_interface_damage, config.field_interface_damage]]
     )
@@ -324,6 +322,37 @@ def test_child_crossing_does_not_reapply_parent_damage():
     assert state.ship_field_alpha[0, 0, 0].item() == 1.0
     assert 100.0 - state.ship_health.item() == pytest.approx(
         config.field_interface_damage, abs=3e-4
+    )
+
+
+def test_reciprocal_optical_cancellation_does_not_cancel_interface_damage():
+    config = _passive_config()
+    state = make_state(
+        num_envs=1,
+        max_ships=1,
+        max_bullets=0,
+        ship_config=config,
+        num_fields=2,
+    )
+    state.field_pos[:] = 512.0 + 512.0j
+    state.field_radius[:] = 100.0
+    state.field_transition_width[:] = 80.0
+    state.field_index[:] = torch.tensor([[2.0, 0.5]])
+    state.field_damage[:] = config.field_interface_damage
+    state.ship_pos[:] = 350.0 + 512.0j
+    state.ship_vel[:] = 100.0 + 0.0j
+    state.ship_attitude[:] = 1.0 + 0.0j
+    refresh_ship_field_cache(state, config)
+
+    for _ in range(180):
+        state = update_ships(state, _coast_actions(), config)
+        assert state.ship_local_index.item() == pytest.approx(1.0, abs=2e-6)
+        if torch.all(state.ship_field_alpha > 0.999999):
+            break
+
+    assert torch.all(state.ship_field_alpha > 0.999999)
+    assert 100.0 - state.ship_health.item() == pytest.approx(
+        2.0 * config.field_interface_damage, abs=4e-4
     )
 
 

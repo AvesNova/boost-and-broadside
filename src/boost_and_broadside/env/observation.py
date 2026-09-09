@@ -24,9 +24,7 @@ class ObsKey(StrEnum):
     LOCAL_LOG_INDEX = "local_log_index"
     LOCAL_INDEX_GRADIENT = "local_index_gradient"
     FIELD_TRANSITION_WIDTH = "field_transition_width"
-    FIELD_INSIDE_LOG_INDEX = "field_inside_log_index"
-    FIELD_OUTSIDE_LOG_INDEX = "field_outside_log_index"
-    FIELD_LOG_INDEX_RATIO = "field_log_index_ratio"
+    FIELD_TARGET_LOG_INDEX = "field_target_log_index"
     FIELD_DAMAGE = "field_damage"
 
 
@@ -348,10 +346,10 @@ def index_gradient_scale(ship_config: ShipConfig) -> float:
 
     The interface profile is the quintic smoothstep ``alpha = 6z^5 - 15z^4 + 10z^3``
     with ``z = clamp(0.5 - d/w, 0, 1)``. Its slope ``30z^2(z-1)^2`` peaks at 15/8
-    when ``z = 1/2``, so ``|d alpha/d d| <= 1.875/w``. Composition telescopes as
-    ``grad(n) = sum(delta_n_i grad(alpha_i))``, and the widest index span a single
-    interface can carry is ``s^2 - s^-2``. The narrowest configured band therefore
-    bounds the whole map's gradient.
+    when ``z = 1/2``, so ``|d alpha/d d| <= 1.875/w``. The full overlap gradient
+    is bounded and smooth but depends on local material mixtures. The complete
+    configured index span across the narrowest band supplies a stable reference
+    scale shared by every field count.
     """
     step = ship_config.field_index_step
     max_delta_index = step**2 - step**-2
@@ -434,9 +432,7 @@ def observation_from_state(
                 ObsKey.LOCAL_LOG_INDEX: ship_local_log_index,
                 ObsKey.LOCAL_INDEX_GRADIENT: ship_index_gradient,
                 ObsKey.FIELD_TRANSITION_WIDTH: zeros,
-                ObsKey.FIELD_INSIDE_LOG_INDEX: zeros,
-                ObsKey.FIELD_OUTSIDE_LOG_INDEX: zeros,
-                ObsKey.FIELD_LOG_INDEX_RATIO: zeros,
+                ObsKey.FIELD_TARGET_LOG_INDEX: zeros,
                 ObsKey.FIELD_DAMAGE: zeros,
             },
         )
@@ -450,15 +446,7 @@ def observation_from_state(
     assert buffers.ship_field_feature_zeros is not None
 
     field_pos = torch.stack([state.field_pos.real, state.field_pos.imag], dim=-1)
-    field_inside = torch.log(state.field_index).unsqueeze(-1) / log_scale
-    parent_index = state.field_index - state.field_delta_index
-    field_outside = torch.log(parent_index).unsqueeze(-1) / log_scale
-    # Absolute encodings use ±2 levels. A parent/child interface can span four
-    # levels, so ratio encoding uses 4*log(step) to retain [-1, 1].
-    ratio_scale = 4.0 * torch.log(
-        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
-    )
-    field_ratio = torch.log(state.field_index / parent_index).unsqueeze(-1) / ratio_scale
+    field_target = torch.log(state.field_index).unsqueeze(-1) / log_scale
     max_damage = max(2.0 * ship_config.field_interface_damage, EPS)
     field_damage = state.field_damage.unsqueeze(-1) / max_damage
     ship_zero = buffers.ship_field_feature_zeros
@@ -487,9 +475,7 @@ def observation_from_state(
             ObsKey.FIELD_TRANSITION_WIDTH: torch.cat(
                 [ship_zero, state.field_transition_width.unsqueeze(-1)], dim=1
             ),
-            ObsKey.FIELD_INSIDE_LOG_INDEX: torch.cat([ship_zero, field_inside], dim=1),
-            ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.cat([ship_zero, field_outside], dim=1),
-            ObsKey.FIELD_LOG_INDEX_RATIO: torch.cat([ship_zero, field_ratio], dim=1),
+            ObsKey.FIELD_TARGET_LOG_INDEX: torch.cat([ship_zero, field_target], dim=1),
             ObsKey.FIELD_DAMAGE: torch.cat([ship_zero, field_damage], dim=1),
         },
     )

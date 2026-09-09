@@ -96,36 +96,26 @@ def _write_run_checkpoint(run_dir: Path, *, num_fields: int, field_map: dict | N
     return path
 
 
-def test_a_fields_run_reports_the_map_distribution_it_trained_on(tmp_path):
-    """Rating a fields policy on a different map distribution rates a different task."""
-    from boost_and_broadside.config import FieldMapConfig
-
+def test_a_fields_run_needs_no_cached_map_distribution(tmp_path):
     _write_run_checkpoint(
         tmp_path / "run",
         num_fields=4,
         field_map={"cache_size": 512, "max_generation_attempts": 256, "nesting_probability": 0.35},
     )
 
-    env_config, _, ship_config, paradigm, field_map = load_run_config(tmp_path / "run")
+    env_config, _, ship_config, paradigm = load_run_config(tmp_path / "run")
 
     assert env_config.num_fields == 4
     assert paradigm == "ego_pass"
     assert ship_config == ShipConfig()
-    assert field_map == FieldMapConfig(
-        cache_size=512, max_generation_attempts=256, nesting_probability=0.35
-    )
 
 
-def test_a_fields_run_without_recorded_map_intent_is_refused(tmp_path):
-    """Silently evaluating on a default distribution would be a wrong measurement
-    reported as a right one."""
+def test_a_fields_run_without_old_map_intent_loads(tmp_path):
     _write_run_checkpoint(tmp_path / "run", num_fields=4, field_map=None)
-
-    with pytest.raises(InvalidCheckpointError, match="no field-map intent"):
-        load_run_config(tmp_path / "run")
+    assert load_run_config(tmp_path / "run")[0].num_fields == 4
 
 
-def test_a_field_free_run_reports_no_map(tmp_path):
+def test_a_field_free_run_reports_zero_fields(tmp_path):
     _write_run_checkpoint(tmp_path / "run", num_fields=0, field_map=None)
 
-    assert load_run_config(tmp_path / "run")[4] is None
+    assert load_run_config(tmp_path / "run")[0].num_fields == 0

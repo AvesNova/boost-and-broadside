@@ -47,12 +47,12 @@ def built_envs(monkeypatch):
 
     import boost_and_broadside.env.env as env_module
 
-    built: list[tuple[EnvConfig, bool]] = []
+    built: list[EnvConfig] = []
     original = env_module.TensorEnv.__init__
 
-    def recording_init(self, num_envs, ship_config, env_config, device, field_map=None, *a, **kw):
-        built.append((env_config, field_map is not None))
-        return original(self, num_envs, ship_config, env_config, device, field_map, *a, **kw)
+    def recording_init(self, num_envs, ship_config, env_config, device, *a, **kw):
+        built.append(env_config)
+        return original(self, num_envs, ship_config, env_config, device, *a, **kw)
 
     monkeypatch.setattr(env_module.TensorEnv, "__init__", recording_init)
     return built
@@ -60,13 +60,11 @@ def built_envs(monkeypatch):
 
 def _assert_played_with_fields(built) -> None:
     assert built, "no environment was built at all"
-    fielded = [(config, has_map) for config, has_map in built if config.num_fields > 0]
+    fielded = [config for config in built if config.num_fields > 0]
     assert fielded, (
         "every environment was built field-free for a run trained with fields; "
-        f"saw num_fields={[c.num_fields for c, _ in built]}"
+        f"saw num_fields={[c.num_fields for c in built]}"
     )
-    missing_map = [config for config, has_map in fielded if not has_map]
-    assert not missing_map, "fields were configured but no map distribution was generated"
 
 
 def _calibration(**overrides) -> EloCalibrateConfig:
@@ -260,5 +258,4 @@ def test_a_field_free_run_is_still_played_at_zero_fields(built_envs, tmp_path):
     )
 
     assert built_envs, "no environment was built at all"
-    assert [config.num_fields for config, _ in built_envs] == [0] * len(built_envs)
-    assert not any(has_map for _, has_map in built_envs)
+    assert [config.num_fields for config in built_envs] == [0] * len(built_envs)

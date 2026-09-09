@@ -7,7 +7,7 @@ from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG, _apply_keyboa
 
 def test_play_preset_is_timed_frontline_with_scriptable_fleets() -> None:
     assert PLAY_ENV_CONFIG.num_ships == 8
-    assert PLAY_ENV_CONFIG.num_fields == 0
+    assert PLAY_ENV_CONFIG.num_fields == 20
     assert PLAY_ENV_CONFIG.max_episode_steps == 18_000
     assert PLAY_ENV_CONFIG.frontline is not None
     assert not PLAY_ENV_CONFIG.single_team

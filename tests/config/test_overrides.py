@@ -38,11 +38,10 @@ def test_an_override_lands_before_anything_is_derived_from_it() -> None:
     a different environment.
     """
 
-    resolved = resolve_profile(_apply("num_fields=0", "field_map=none"))
+    resolved = resolve_profile(_apply("num_fields=0"))
 
     assert resolved.env_config.num_fields == 0
     assert resolved.train_config.scales[0].num_envs == 3904
-    assert resolved.train_config.field_map is None
 
 
 def test_a_misspelled_key_is_refused_with_the_nearest_real_one() -> None:
@@ -61,12 +60,5 @@ def test_a_value_that_does_not_fit_its_field_is_refused() -> None:
         parse_override("clip_coef")
 
 
-def test_an_override_that_breaks_a_cross_field_rule_still_fails_validation() -> None:
-    """Overrides are not a way around the launch checks.
-
-    Zero fields with a field map left in place is incoherent, and the resolver
-    says so rather than quietly building a cache nothing will read.
-    """
-
-    with pytest.raises(ValueError, match="field_map must be None"):
-        resolve_profile(_apply("num_fields=0"))
+def test_zero_fields_needs_no_separate_map_configuration() -> None:
+    assert resolve_profile(_apply("num_fields=0")).env_config.num_fields == 0

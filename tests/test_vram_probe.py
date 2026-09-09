@@ -218,11 +218,11 @@ def test_the_child_is_told_the_overrides_the_launch_asked_for() -> None:
     command = _child_command(
         VramKnobs(2592, 25_000, False),
         profile="rl",
-        overrides={"num_fields": "0", "field_map": "none"},
+        overrides={"num_fields": "0"},
         device="cuda",
         compile_mode=None,
     )
-    assert command[-2:] == ["field_map=none", "num_fields=0"]
+    assert command[-1:] == ["num_fields=0"]
 
 
 def test_the_child_refuses_a_device_it_cannot_measure(tmp_path: Path) -> None:

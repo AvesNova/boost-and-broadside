@@ -3,15 +3,8 @@
 import pytest
 import torch
 
-from boost_and_broadside.config import (
-    EnvConfig,
-    InterfaceDamageLevel,
-    RefractiveIndexLevel,
-    RewardConfig,
-    ShipConfig,
-)
+from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from tests.conftest import activate_bullet
@@ -507,14 +500,6 @@ class TestYemongEnvWrapper:
 
     def test_observation_from_state_copies_field_geometry(self, ship_cfg):
         """The standalone builder retains static field radius and transition width."""
-        field_map = FieldMapCache(
-            pos=torch.tensor([[100.0 + 100.0j]]),
-            radius=torch.tensor([[42.0]]),
-            transition_width=torch.tensor([[20.0]]),
-            index_level=torch.tensor([[RefractiveIndexLevel.HIGH]], dtype=torch.int8),
-            damage_level=torch.tensor([[InterfaceDamageLevel.NONE]], dtype=torch.int8),
-            ship_config=ship_cfg,
-        )
         env = TensorEnv(
             num_envs=2,
             ship_config=ship_cfg,
@@ -525,9 +510,10 @@ class TestYemongEnvWrapper:
                 num_fields=1,
             ),
             device="cpu",
-            field_map=field_map,
         )
         env.reset(options={"team_sizes": (1, 1)})
+        env.state.field_radius[:] = 42.0
+        env.state.field_transition_width[:] = 20.0
         obs = observation_from_state(env.state, ship_cfg)
 
         assert torch.equal(obs.radius[:, -1, 0], torch.full((2,), 42.0))

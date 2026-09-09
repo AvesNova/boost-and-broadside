@@ -289,7 +289,7 @@ def test_identity_is_stable_and_order_independent() -> None:
     (
         ("compile_mode", None),
         ("compile_mode", "max-autotune"),
-        ("profile", named_profile_spec("rl", {"num_fields": "0", "field_map": "none"})),
+        ("profile", named_profile_spec("rl", {"num_fields": "0"})),
         ("profile", named_profile_spec("rl", {"model_config.d_model": "512"})),
     ),
 )

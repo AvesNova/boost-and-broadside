@@ -16,11 +16,7 @@ from typing import Literal
 
 from boost_and_broadside.config.core import EnvConfig, ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.config.schedule_spec import TrainingScheduleSpec
-from boost_and_broadside.config.training import (
-    EloEvalConfig,
-    FieldMapConfig,
-    TrainConfig,
-)
+from boost_and_broadside.config.training import EloEvalConfig, TrainConfig
 
 type ResolutionSource = Literal[
     "profile",
@@ -80,8 +76,6 @@ class ProfileSpec:
     max_episode_steps: int | None
     action_repeat: int
     spawn_resource_spread: float
-    field_map: FieldMapConfig | None
-
     # --- Rollout shape ---
     logical_batch_tokens: int
     num_steps: int

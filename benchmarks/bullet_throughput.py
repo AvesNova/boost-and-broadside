@@ -19,18 +19,9 @@ from dataclasses import fields, replace
 
 import torch
 
-from boost_and_broadside.config import EnvConfig, FieldMapConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP, ShootActions
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.field_cache import FieldMapCache
-
-
-def _tensor_bytes(obj: object) -> int:
-    return sum(
-        value.numel() * value.element_size()
-        for value in vars(obj).values()
-        if isinstance(value, torch.Tensor)
-    )
 
 
 def _state_bytes(env: TensorEnv) -> int:
@@ -79,24 +70,13 @@ def benchmark(args: argparse.Namespace) -> dict[str, float]:
         max_bullets=args.max_bullets,
         max_episode_steps=None,
     )
-    field_map = None
-    if args.num_fields:
-        field_map = FieldMapCache.generate(
-            ship_config,
-            env_config,
-            FieldMapConfig(cache_size=args.map_cache_size, max_generation_attempts=256),
-            device,
-            seed=args.seed,
-        )
-
     collision_compile_mode = args.compile_mode if args.compile_mode != "none" else None
     env = TensorEnv(
         args.num_envs,
         ship_config,
         env_config,
         device,
-        field_map,
-        collision_compile_mode,
+        collision_compile_mode=collision_compile_mode,
     )
     actions = _actions(args.workload, args.num_envs, args.num_ships, device)
     elapsed_samples: list[float] = []
@@ -124,7 +104,6 @@ def benchmark(args: argparse.Namespace) -> dict[str, float]:
     env_steps = args.num_envs * args.timed_steps
     env_sps = env_steps / elapsed
     state_mib = _state_bytes(env) / 2**20
-    cache_mib = _tensor_bytes(field_map) / 2**20 if field_map is not None else 0.0
     return {
         "env_sps": env_sps,
         "ship_tokens_per_sec": env_sps * args.num_ships,
@@ -132,8 +111,7 @@ def benchmark(args: argparse.Namespace) -> dict[str, float]:
         "active_fraction": statistics.median(occupancy_samples),
         "active_per_ship": statistics.median(occupancy_samples) * args.max_bullets,
         "state_mib": state_mib,
-        "cache_mib": cache_mib,
-        "peak_mib": statistics.median(peak_samples) if peak_samples else state_mib + cache_mib,
+        "peak_mib": statistics.median(peak_samples) if peak_samples else state_mib,
     }
 
 
@@ -164,7 +142,6 @@ def main() -> None:
         choices=("none", "default", "max-autotune"),
         default="none",
     )
-    parser.add_argument("--map-cache-size", type=int, default=64)
     parser.add_argument("--warmup-steps", type=int, default=60)
     parser.add_argument("--timed-steps", type=int, default=240)
     parser.add_argument("--repeats", type=int, default=3)
@@ -193,7 +170,6 @@ def main() -> None:
         f"active/ship={result['active_per_ship']:.2f} "
         f"active={result['active_fraction']:.1%} "
         f"state={result['state_mib']:.2f}MiB "
-        f"cache={result['cache_mib']:.2f}MiB "
         f"peak={result['peak_mib']:.2f}MiB"
     )
 
