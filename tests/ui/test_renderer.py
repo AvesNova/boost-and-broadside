@@ -204,6 +204,19 @@ def test_field_outline_patterns_leave_the_interior_unfilled():
         assert surface.get_at((40, 40))[:3] == background
 
 
+def test_field_transition_band_shows_overlap_but_leaves_core_clear():
+    background = (10, 10, 20)
+    surface = pygame.Surface((100, 80))
+    surface.fill(background)
+    GameRenderer._draw_field_band(surface, (40, 40), 25, 12, (40, 225, 255))
+    once = surface.get_at((46, 16))[:3]
+    GameRenderer._draw_field_band(surface, (52, 40), 25, 12, (255, 90, 210))
+    overlap = surface.get_at((46, 16))[:3]
+    assert surface.get_at((40, 40))[:3] == background
+    assert once != background
+    assert overlap != once
+
+
 def test_play_resource_button_toggles_unlimited_health_and_power(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     renderer = GameRenderer(
