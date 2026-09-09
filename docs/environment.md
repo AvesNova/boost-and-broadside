@@ -29,6 +29,36 @@ The main layers are:
 - [`wrapper.py`](../src/boost_and_broadside/env/wrapper.py): observations, decomposed
   rewards, statistics, and automatic reset.
 
+## Team perception and map tokens
+
+Frontline uses finite, team-shared sight. Every living allied ship tests targets within
+`EnvConfig.vision_range` along the shortest toroidal displacement. A target seen by any ally
+is visible to the whole team. A refractive field blocks a segment through its flat core when
+the core lies strictly between the endpoints; a ship inside that core is exempt from being
+self-blinded by the same field. This is natural map occlusion only—there are no synthetic
+fog volumes.
+
+The environment constructs Team 0 and Team 1 observations independently. An unseen enemy
+ship has an explicit false visibility mask, is excluded from attention, and has every state
+channel replaced with zero as defense in depth. This includes position, velocity, health,
+power, cooldown, alive state, local refractive state, and bullets. Enemy pending actions are
+private even while the enemy itself is visible. Allies and static map geometry remain known.
+`vision_range=None` is the explicit omniscient compatibility mode.
+
+The entity-token axis is typed rather than inferred from position:
+
+| Token type | Frontline count | Globally visible information |
+|---|---:|---|
+| Ship | 8 | Team-relative dynamic state when visible |
+| Field | configured (`10` in play) | Geometry, target index, interface damage |
+| Zone | 5 | Position, role/owner, capture progress and direction |
+| Boundary/global | 1 | Playable radius, front, win threshold, time remaining, mode |
+
+The boundary and global state intentionally share one token. Team canonicalization swaps
+zone ownership and roles as well as ship/bullet labels, and negates front/capture direction.
+Finite-vision training therefore requires `ego_pass`; the legacy `shared_pass` cannot safely
+serve one masked team view to both sides and is rejected.
+
 `EnvConfig.num_ships` is the total across both teams, and `EnvConfig.num_fields` the count
 of static-for-one-episode fields. `profiles/rl.py` trains at eight ships (4-vs-4) and four fields.
 There is no separate field-free profile: `num_fields` sets the token count and no weight
@@ -265,6 +295,13 @@ The zero/one/two/four/ten/twenty-field environment benchmark is in
 [`benchmarks/field_throughput.py`](../benchmarks/field_throughput.py). Saturated projectile
 storage, drag, integrator, damage-depletion, compilation, and capacity comparisons are in
 [`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).
+
+The 256-map fog distribution and isolated GPU observation profile are reproducible with
+[`benchmarks/frontline_fog_suite.py`](../benchmarks/frontline_fog_suite.py). At the provisional
+1600 px range, the 60-second scripted sample saw enemies 74.2% of the time; team sharing added
+21.5 percentage points over individual sight, and fields blocked 11.6% of otherwise in-range
+exposure. A 256-environment visibility pass measured 3.39 ms, while visibility plus both
+masked team observations measured 13.97 ms on an RTX 4070 Laptop GPU.
 
 Frontline play uses one CPU thread, a 30 Hz tick/decision rate, and a state-only scripted
 loop that skips unused reward and policy-observation work. The end-to-end headless benchmark,
