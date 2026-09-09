@@ -55,12 +55,18 @@ class StochasticScriptedAgent:
 
     def _new_frontline_memory(self, state: TensorState) -> _FrontlineMemory:
         batch_size, num_ships = state.ship_pos.shape
-        return _FrontlineMemory(
-            tendencies=torch.randint(
-                len(FrontlineTendency),
-                (batch_size, num_ships),
-                device=state.device,
+        identity_draw = torch.rand((batch_size, num_ships), device=state.device)
+        tendencies = torch.where(
+            identity_draw < 0.5,
+            int(FrontlineTendency.OFFENSIVE),
+            torch.where(
+                identity_draw < 0.75,
+                int(FrontlineTendency.DEFENSIVE),
+                int(FrontlineTendency.TIMID),
             ),
+        )
+        return _FrontlineMemory(
+            tendencies=tendencies,
             healing=torch.zeros(
                 (batch_size, num_ships), dtype=torch.bool, device=state.device
             ),
@@ -341,6 +347,10 @@ class StochasticScriptedAgent:
             + defense_radial_direction * orbit_lookahead * defense_patrol_radius,
             world_size,
         )
+        attack_route = toroidal_displacement(enemy_defense - own_spawn, world_size)
+        attack_route_distance = attack_route.abs()
+        attack_route_direction = attack_route / attack_route_distance.clamp(min=1e-8)
+        rally_point = wrap_positions(own_spawn + attack_route / 3.0, world_size)
 
         membership = zone_membership(
             state.ship_pos,
@@ -386,13 +396,33 @@ class StochasticScriptedAgent:
             team0, team0_majority_attack.unsqueeze(1), team1_majority_attack.unsqueeze(1)
         )
         tendency_attack = offensive | (timid & majority_attack)
+
+        # Offensive waves gather one-third of the way from spawn to the enemy
+        # defense. Readiness is derived entirely from visible geometry: once every
+        # living offensive ship has reached or passed the rally threshold, the
+        # team proceeds. A respawn naturally rearms gathering without hidden state.
+        from_spawn = toroidal_displacement(state.ship_pos - own_spawn, world_size)
+        attack_progress = (from_spawn * torch.conj(attack_route_direction)).real
+        rally_tolerance = state.zone_radius[:, :1] * 0.5
+        reached_rally = attack_progress >= (attack_route_distance / 3.0 - rally_tolerance)
+        active_offensive = offensive & state.ship_alive
+        team0_wave_ready = (~(active_offensive & team0) | reached_rally).all(dim=1)
+        team1_wave_ready = (~(active_offensive & ~team0) | reached_rally).all(dim=1)
+        wave_ready = torch.where(
+            team0, team0_wave_ready.unsqueeze(1), team1_wave_ready.unsqueeze(1)
+        )
+        attack_objective = torch.where(
+            enemy_contested,
+            enemy_defense,
+            torch.where(wave_ready, enemy_defense, rally_point),
+        )
         # Idle defenders chase a short moving waypoint around the safe perimeter.
         # Alternating direction by stable within-team rank reduces bunching. Once
         # enemies enter, the contested-point override sends defenders into the
         # point to fight and stabilize it.
         tendency_objective = torch.where(
             tendency_attack,
-            enemy_defense,
+            attack_objective,
             torch.where(own_contested, own_defense, own_defense_patrol),
         )
 

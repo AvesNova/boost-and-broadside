@@ -72,6 +72,23 @@ def _bearing(source: complex, target: complex, world_size: tuple[float, float]) 
     return displacement / abs(displacement)
 
 
+def test_frontline_identity_draw_is_fifty_twenty_five_twenty_five() -> None:
+    config = ShipConfig(world_size=(16384.0, 16384.0))
+    state = make_state(
+        num_envs=4096,
+        max_ships=8,
+        max_bullets=0,
+        ship_config=config,
+    )
+    with torch.random.fork_rng():
+        torch.manual_seed(20260909)
+        agent = StochasticScriptedAgent(config, StochasticAgentConfig())
+        tendencies = agent._frontline_episode_memory(state).tendencies.flatten()
+
+    proportions = torch.bincount(tendencies, minlength=3).float() / tendencies.numel()
+    assert proportions.tolist() == pytest.approx([0.5, 0.25, 0.25], abs=0.01)
+
+
 def test_timid_low_health_disengages_from_nearby_enemy_until_fully_healed() -> None:
     config, state = _frontline_state()
     state.ship_pos[0] = torch.tensor(
@@ -134,7 +151,7 @@ def test_timid_at_thirty_percent_does_not_retreat() -> None:
     distance, bearing, engage = _targeting(agent, state)
 
     assert not engage[0, 0]
-    assert distance[0, 0].item() == pytest.approx(8000.0)
+    assert distance[0, 0].item() == pytest.approx(4000.0)
     assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
 
 
@@ -285,7 +302,7 @@ def test_neither_point_contested_uses_tendencies_and_stable_tie_break() -> None:
 
     expected = torch.tensor(
         [
-            _bearing(state.ship_pos[0, i].item(), 9000.0 + 100.0j, config.world_size)
+            _bearing(state.ship_pos[0, i].item(), 5000.0 + 100.0j, config.world_size)
             for i in (0, 2, 3)
         ],
         dtype=torch.complex64,
@@ -294,6 +311,54 @@ def test_neither_point_contested_uses_tendencies_and_stable_tie_break() -> None:
     assert not engage.any()
     assert torch.allclose(bearing[0, [0, 2, 3]], expected)
     assert abs(defender_target.item() - (6000.0 + 100.0j)) == pytest.approx(220.0)
+
+
+def test_offensive_wave_gathers_one_third_from_spawn_before_advancing() -> None:
+    config, state = _frontline_state()
+    state.ship_pos[0] = torch.tensor(
+        [1000.0 + 100.0j, 2000.0 + 100.0j, 10000.0 + 100.0j, 11000.0 + 100.0j]
+    )
+    agent = StochasticScriptedAgent(
+        config,
+        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
+    )
+    _set_tendencies(
+        agent,
+        state,
+        [
+            FrontlineTendency.OFFENSIVE,
+            FrontlineTendency.OFFENSIVE,
+            FrontlineTendency.DEFENSIVE,
+            FrontlineTendency.DEFENSIVE,
+        ],
+    )
+
+    _, bearing, engage = _targeting(agent, state)
+    expected_rally = torch.tensor(
+        [
+            _bearing(state.ship_pos[0, i].item(), 5000.0 + 100.0j, config.world_size)
+            for i in (0, 1)
+        ]
+    )
+    assert not engage.any()
+    assert torch.allclose(bearing[0, :2], expected_rally)
+
+    state.ship_pos[0, 0] = 4900.0 + 100.0j
+    state.ship_pos[0, 1] = 5000.0 + 100.0j
+    _, bearing, _ = _targeting(agent, state)
+    expected_attack = torch.tensor(
+        [
+            _bearing(state.ship_pos[0, i].item(), 9000.0 + 100.0j, config.world_size)
+            for i in (0, 1)
+        ]
+    )
+    assert torch.allclose(bearing[0, :2], expected_attack)
+
+    state.ship_pos[0, 0] = 3000.0 + 100.0j
+    state.ship_pos[0, 1] = 7000.0 + 100.0j
+    state.ship_respawned[0, 0] = True
+    _, bearing, _ = _targeting(agent, state)
+    assert bearing[0, 1].item() == pytest.approx(-1.0 + 0.0j)
 
 
 def test_idle_defender_patrol_waypoint_moves_around_safe_perimeter() -> None:
@@ -370,7 +435,7 @@ def test_respawn_healing_rules_and_local_battle_priority() -> None:
 
     state.ship_health[0, 1] = config.max_health
     distance, _, _ = _targeting(agent, state)
-    assert distance[0, 1].item() == pytest.approx(8000.0)
+    assert distance[0, 1].item() == pytest.approx(4000.0)
 
 
 def test_contested_point_interrupts_non_timid_but_not_timid_respawn_healing() -> None:

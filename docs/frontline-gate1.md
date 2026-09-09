@@ -28,11 +28,14 @@ damage increases with distance outside it. A match ends at a net front lead of f
 after five minutes; timeout uses the sign of the front and zero is a draw. All values are
 provisional Gate-1 tuning, not settled balance.
 
-At episode start, every scripted ship independently draws an offensive, defensive, or
-timid tendency. With neither defense under attack, offensive ships head for the enemy
-defense, defensive ships hold their own, and timid ships follow their team's non-timid
-majority (a per-team episode coin breaks ties). Uncontested defensive ships orbit just
-outside their damaging point, alternating direction to reduce bunching. If an enemy
+At episode start, every scripted ship independently draws an offensive (50%), defensive
+(25%), or timid (25%) tendency. With neither defense under attack, offensive ships first
+gather one-third of the way from their spawn to the enemy defense. The wave advances
+once every living offensive ship has reached or passed that rally; a respawn naturally
+causes another regroup. Defensive ships hold their own, and timid ships follow their
+team's non-timid majority (a per-team episode coin breaks ties). Timid followers join an
+offensive rally but do not count toward its readiness. Uncontested defensive ships orbit
+just outside their damaging point, alternating direction to reduce bunching. If an enemy
 comes within local engagement range they leave the patrol to fight. If enemies occupy
 exactly one defense, both fleets converge on it; if enemies occupy both defenses, ships
 return to their tendencies. Thus “contested” includes an undefended capture attempt,
