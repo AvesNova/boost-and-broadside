@@ -836,6 +836,20 @@ class TestParadigm:
         with pytest.raises(ValueError, match="paradigm"):
             _make_train_config(paradigm="both_sides")
 
+    def test_finite_vision_rejects_shared_pass(self, tmp_path):
+        env_config = EnvConfig(
+            num_ships=4,
+            max_bullets=8,
+            max_episode_steps=50,
+            vision_range=300.0,
+        )
+        with pytest.raises(ValueError, match="finite vision requires paradigm='ego_pass'"):
+            _make_trainer(
+                paradigm="shared_pass",
+                env_config=env_config,
+                checkpoint_dir=str(tmp_path),
+            )
+
     def test_ego_pass_actor_mask_covers_only_team0(self, tmp_path):
         """ego_pass: exactly the team 0 ships contribute to the actor loss."""
         trainer = _make_trainer(paradigm="ego_pass", checkpoint_dir=str(tmp_path))

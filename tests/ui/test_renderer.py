@@ -9,6 +9,7 @@ import torch
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
+from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 from boost_and_broadside.ui.renderer import (
@@ -18,6 +19,7 @@ from boost_and_broadside.ui.renderer import (
     Camera,
     GameRenderer,
     RenderConfig,
+    VisionMode,
     field_border_pattern,
     field_color,
     wrapped_field_centers,
@@ -119,6 +121,8 @@ def test_renderer_events_zoom_pan_release_follow_and_reset(monkeypatch):
         assert renderer.game_speed == 4.0
         renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_MINUS))
         assert renderer.game_speed == 2.0
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_v))
+        assert renderer.vision_mode is VisionMode.TEAM_0
     finally:
         renderer.close()
 
@@ -258,5 +262,86 @@ def test_headless_frontline_frame_draws_boundary_zones_hud_and_selection(monkeyp
         assert renderer.selected_ship is None
         renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
         assert renderer.selected_ship == 0
+    finally:
+        renderer.close()
+
+
+def test_team_view_hides_enemy_sprites_ghosts_bullets_and_minimap_markers(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
+    env = TensorEnv(1, ship_config, PLAY_ENV_CONFIG, "cpu")
+    env.reset(seed=19)
+    # Two compact fleets outside one another's provisional sensor range.
+    team0 = env.state.ship_team_id[0] == 0
+    team1 = ~team0
+    env.state.ship_pos[0, team0] = torch.tensor(
+        [8000 + 8000j, 8050 + 8000j, 8000 + 8050j, 8050 + 8050j]
+    )
+    env.state.ship_pos[0, team1] = torch.tensor(
+        [11000 + 11000j, 11050 + 11000j, 11000 + 11050j, 11050 + 11050j]
+    )
+    enemy_shooter = int(team1.nonzero()[0, 0])
+    env.state.bullet_active[0, enemy_shooter, 0] = True
+    env.state.bullet_pos[0, enemy_shooter, 0] = 11000 + 11000j
+    visibility = team_visibility_from_state(env.state, ship_config, PLAY_ENV_CONFIG)
+    assert visibility.ship[0, 0, team0].all()
+    assert not visibility.ship[0, 0, team1].any()
+
+    renderer = GameRenderer(
+        ship_config,
+        RenderConfig(window_size=320, show_ui=False, vision_mode=VisionMode.TEAM_0),
+    )
+    polygons = []
+    rectangles = []
+    minimap_masks = []
+    monkeypatch.setattr(
+        pygame.draw,
+        "polygon",
+        lambda surface, color, points, width=0: polygons.append(points),
+    )
+    monkeypatch.setattr(
+        pygame.draw,
+        "rect",
+        lambda surface, color, rect, width=0: rectangles.append(rect),
+    )
+    monkeypatch.setattr(
+        renderer,
+        "_draw_minimap",
+        lambda state, surface, mask: minimap_masks.append(mask.clone()),
+    )
+    try:
+        renderer.draw_frame(env.state, visibility=visibility)
+        assert len(polygons) == 4
+        assert torch.equal(minimap_masks[0], visibility.ship[0, 0] & env.state.ship_alive[0])
+
+        polygons.clear()
+        prediction = torch.ones((1, env.state.max_ships, 10))
+        renderer._draw_ghost_ships(
+            env.state,
+            [prediction],
+            renderer._screen,
+            visibility.ship[0, 0],
+        )
+        assert len(polygons) == 4
+
+        rectangles.clear()
+        renderer._draw_bullets(env.state, renderer._screen, visibility.bullet[0, 0])
+        assert rectangles == []
+    finally:
+        renderer.close()
+
+
+def test_team_view_requires_environment_visibility_instead_of_guessing(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
+    env = TensorEnv(1, ship_config, PLAY_ENV_CONFIG, "cpu")
+    env.reset(seed=20)
+    renderer = GameRenderer(
+        ship_config,
+        RenderConfig(window_size=240, show_ui=False, vision_mode=VisionMode.TEAM_1),
+    )
+    try:
+        with pytest.raises(ValueError, match="authoritative visibility"):
+            renderer.draw_frame(env.state)
     finally:
         renderer.close()

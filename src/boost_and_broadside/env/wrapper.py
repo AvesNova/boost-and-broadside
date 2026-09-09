@@ -21,7 +21,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import (
     ObservationBuffers,
     YemongObservation,
-    observation_from_state,
+    perceived_observation_from_state,
 )
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.rewards import (
@@ -58,6 +58,15 @@ SOURCE_STAT_NAMES: tuple[str, ...] = (
     "respawns",
     "front_advances",
     "simultaneous_captures",
+    "perception_enemy_slots",
+    "perception_visible_enemy_slots",
+    "perception_range_enemy_slots",
+    "perception_observer_enemy_pairs",
+    "perception_observer_visible_pairs",
+    "perception_never_seen_enemy_slots",
+    "perception_hidden_age_sum",
+    "perception_hidden_samples",
+    "perception_reacquisitions",
 )
 
 
@@ -109,6 +118,7 @@ class YemongEnvWrapper:
         # otherwise the profile pays the reduction and the rollout storage for
         # channels nothing consumes.
         self.include_bullets = include_bullets
+        self.last_visibility = None
 
         # All components (group-scale multipliers update individual weights each training step).
         self._all_components: list[RewardComponent] = build_reward_components(rewards, ship_config)
@@ -129,6 +139,7 @@ class YemongEnvWrapper:
             num_envs,
             env_config.num_ships,
             env_config.num_fields,
+            5 if env_config.frontline is not None else 0,
             ship_config,
             self.device,
         )
@@ -137,6 +148,17 @@ class YemongEnvWrapper:
         # one (B, N, K) tensor (not a per-name dict) so per-step accumulation is
         # a single kernel.
         B, N = num_envs, env_config.num_ships
+        self._perception_ever_seen = torch.zeros((B, 2, N), dtype=torch.bool, device=self.device)
+        self._perception_prev_visible = torch.zeros_like(self._perception_ever_seen)
+        self._perception_hidden_age = torch.zeros(
+            (B, 2, N), dtype=torch.int32, device=self.device
+        )
+        seconds = torch.tensor(
+            (0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0), device=self.device
+        )
+        self._occlusion_bin_steps = torch.ceil(
+            seconds / (ship_config.dt * env_config.action_repeat)
+        ).to(torch.int32)
         K_active = len(self._active_names)
         self._ep_reward = torch.zeros((B, N), device=self.device)
         self._ep_length = torch.zeros((B,), device=self.device, dtype=torch.int32)
@@ -178,6 +200,7 @@ class YemongEnvWrapper:
         self._ship_age.zero_()
         self._counted.fill_(True)
         self._zero_stat_accumulators()
+        self._reset_perception(torch.ones(self.num_envs, dtype=torch.bool, device=self.device))
         return self._get_obs()
 
     def mark_seeded_uncounted(self) -> None:
@@ -230,6 +253,9 @@ class YemongEnvWrapper:
         self._acc_lifespan_sum = torch.zeros((), device=d)
         self._acc_source_stats = torch.zeros((len(SOURCE_STAT_NAMES),), device=d)
         self._acc_result_counts = torch.zeros((3,), device=d)
+        self._acc_occlusion_hist = torch.zeros(
+            (self._occlusion_bin_steps.numel() + 1,), device=d
+        )
 
     def pop_episode_stats(self) -> dict[str, torch.Tensor]:
         """Return finished-episode stats accumulated since the last call, and reset.
@@ -258,6 +284,9 @@ class YemongEnvWrapper:
             "lifespan_sum": self._acc_lifespan_sum,
             "source_stats": self._acc_source_stats,
             "result_counts": self._acc_result_counts,
+            "occlusion_hist": self._acc_occlusion_hist,
+            "occlusion_bin_seconds": self._occlusion_bin_steps.float()
+            * (self.ship_config.dt * self.env_config.action_repeat),
         }
         self._zero_stat_accumulators()
         return stats
@@ -345,6 +374,7 @@ class YemongEnvWrapper:
             # State is mutated in-place only after every terminal output and
             # statistic above has been captured.
             self.env.reset_envs(done_mask)
+            self._reset_perception(done_mask)
             self._refresh_field_obs(done_mask)
             self._ep_reward.masked_fill_(done_n, 0.0)
             self._ep_length.masked_fill_(done_mask, 0)
@@ -403,7 +433,8 @@ class YemongEnvWrapper:
 
         source_state = self.env.state
         live = prev_alive & running_n
-        self._acc_source_stats += torch.stack(
+        perception_start = SOURCE_STAT_NAMES.index("perception_enemy_slots")
+        self._acc_source_stats[:perception_start] += torch.stack(
             [
                 (source_state.ship_field_damage * running_n).sum(),
                 (source_state.ship_combat_damage * running_n).sum(),
@@ -521,11 +552,72 @@ class YemongEnvWrapper:
         All values are in native units — no normalization. Feature chains in
         FeatureCoordinator handle all encoding (Fourier, symlog, one-hot, etc.).
         """
-        return observation_from_state(
+        observation, self.last_visibility = perceived_observation_from_state(
             self.env.state,
             self.ship_config,
+            self.env_config,
             self._obs_buffers,
             include_bullets=self.include_bullets,
+        )
+        self._accumulate_perception()
+        return observation
+
+    def _reset_perception(self, env_mask: torch.Tensor) -> None:
+        mask = env_mask[:, None, None]
+        self._perception_ever_seen &= ~mask
+        self._perception_prev_visible &= ~mask
+        self._perception_hidden_age.masked_fill_(mask, 0)
+
+    def _accumulate_perception(self) -> None:
+        """Accumulate sampled fog diagnostics entirely on the environment device."""
+
+        if self.env_config.vision_range is None or self.last_visibility is None:
+            return
+        state = self.env.state
+        perspective = torch.arange(2, device=self.device).view(1, 2, 1)
+        enemy = state.ship_team_id[:, None, :] != perspective
+        enemy_alive = enemy & state.ship_alive[:, None, :]
+        visible = self.last_visibility.ship & enemy_alive
+        range_visible = self.last_visibility.range_only_ship & enemy_alive
+        ever_before = self._perception_ever_seen
+        reacquired = visible & ~self._perception_prev_visible & ever_before
+
+        completed_age = self._perception_hidden_age
+        for index, upper in enumerate(self._occlusion_bin_steps):
+            lower = 0 if index == 0 else self._occlusion_bin_steps[index - 1]
+            self._acc_occlusion_hist[index] += (
+                reacquired & (completed_age > lower) & (completed_age <= upper)
+            ).sum()
+        self._acc_occlusion_hist[-1] += (
+            reacquired & (completed_age > self._occlusion_bin_steps[-1])
+        ).sum()
+
+        ever_after = ever_before | visible
+        hidden = enemy_alive & ever_after & ~visible
+        self._perception_hidden_age = torch.where(
+            hidden, self._perception_hidden_age + 1, 0
+        )
+        self._perception_ever_seen = ever_after
+        self._perception_prev_visible = visible
+
+        observer_team = state.ship_team_id[:, :, None]
+        observer_enemy = (
+            observer_team != state.ship_team_id[:, None, :]
+        ) & state.ship_alive[:, :, None] & state.ship_alive[:, None, :]
+        observer_visible = self.last_visibility.observer_ship & observer_enemy
+        start = SOURCE_STAT_NAMES.index("perception_enemy_slots")
+        self._acc_source_stats[start:] += torch.stack(
+            [
+                enemy_alive.sum(),
+                visible.sum(),
+                range_visible.sum(),
+                observer_enemy.sum(),
+                observer_visible.sum(),
+                (enemy_alive & ~ever_after).sum(),
+                (self._perception_hidden_age * hidden).sum(),
+                hidden.sum(),
+                reacquired.sum(),
+            ]
         )
 
     # ------------------------------------------------------------------

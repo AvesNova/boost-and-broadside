@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from boost_and_broadside.config import ModelConfig
-from boost_and_broadside.env.observation import YemongObservation
+from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
 from boost_and_broadside.train.rl.features import FeatureCoordinator, FeatureScope
 
 
@@ -93,11 +93,23 @@ class ShipEncoder(nn.Module):
         if num_ships is None:
             raise ValueError("encoder_split requires num_ships to locate the ship/field boundary")
 
-        ship_dim = coordinator.scoped_input_dimension(FeatureScope.SHIP)
-        field_dim = coordinator.scoped_input_dimension(FeatureScope.FIELD)
-        # Per-type input projection: each entity type reads only its own channels.
-        self.ship_proj = nn.Sequential(nn.Linear(ship_dim, 2 * D), nn.RMSNorm(2 * D), nn.GELU())
-        self.field_proj = nn.Sequential(nn.Linear(field_dim, 2 * D), nn.RMSNorm(2 * D), nn.GELU())
+        scopes = {
+            ObjectType.SHIP: FeatureScope.SHIP,
+            ObjectType.FIELD: FeatureScope.FIELD,
+            ObjectType.ZONE: FeatureScope.ZONE,
+            ObjectType.BOUNDARY: FeatureScope.BOUNDARY,
+        }
+        self._type_scopes = scopes
+        self.type_proj = nn.ModuleDict(
+            {
+                str(int(object_type)): nn.Sequential(
+                    nn.Linear(coordinator.scoped_input_dimension(scope), 2 * D),
+                    nn.RMSNorm(2 * D),
+                    nn.GELU(),
+                )
+                for object_type, scope in scopes.items()
+            }
+        )
         # Shared output projection: one latent space for both types.
         self.shared_proj = nn.Sequential(nn.Linear(2 * D, D), nn.RMSNorm(D))
 
@@ -114,17 +126,23 @@ class ShipEncoder(nn.Module):
             raw = self.coordinator.get_input_vector(obs)
             return self.feature_extractor(raw)
 
-        num_ships = self.num_ships
-        num_tokens = obs.pos.shape[-2]
-        ship_raw = self.coordinator.get_scoped_input_vector(
-            obs.slice_tokens(0, num_ships), FeatureScope.SHIP
-        )
-        hidden = self.ship_proj(ship_raw)
-
-        if num_tokens > num_ships:
-            field_raw = self.coordinator.get_scoped_input_vector(
-                obs.slice_tokens(num_ships, num_tokens), FeatureScope.FIELD
-            )
-            hidden = torch.cat([hidden, self.field_proj(field_raw)], dim=-2)
-
+        object_types = obs[ObsKey.OBJECT_TYPE]
+        hidden = obs.pos.new_zeros((*object_types.shape, self.shared_proj[0].in_features))
+        for object_type, scope in self._type_scopes.items():
+            raw = self.coordinator.get_scoped_input_vector(obs, scope)
+            candidate = self.type_proj[str(int(object_type))](raw)
+            type_mask = (object_types == int(object_type)).unsqueeze(-1)
+            hidden = torch.where(type_mask, candidate, hidden)
         return self.shared_proj(hidden)
+
+    @property
+    def ship_proj(self) -> nn.Sequential:
+        """Compatibility name for the ship type's first-stage projection."""
+
+        return self.type_proj[str(int(ObjectType.SHIP))]
+
+    @property
+    def field_proj(self) -> nn.Sequential:
+        """Compatibility name for the field type's first-stage projection."""
+
+        return self.type_proj[str(int(ObjectType.FIELD))]

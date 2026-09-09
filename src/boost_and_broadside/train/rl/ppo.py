@@ -376,6 +376,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Paradigm: "ego_pass" (dual-perspective pass, team 0 trains) vs
         # "shared_pass" (single pass, both teams train). See TrainConfig docstring.
         self._ego_pass = train_config.paradigm == "ego_pass"
+        if not self._ego_pass and any(
+            scale.env_config.vision_range is not None for scale in train_config.scales
+        ):
+            raise ValueError(
+                "finite vision requires paradigm='ego_pass'; shared_pass exposes one "
+                "team's masked observation to both teams"
+            )
         self.coordinator: FeatureCoordinator = build_standard_coordinator(ship_config)
         # Built only when the trunk reads bullets; None keeps the bullet axis off
         # the observation, out of the rollout buffer, and out of the model.
@@ -477,8 +484,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # Build the buffer using a sample observation to infer shapes and dtypes
         sample_obs = self.wrapper.reset()
-        M = train_config.scales[0].env_config.num_fields
-
         self.buffer = RolloutBuffer(
             num_steps=train_config.num_steps,
             num_envs=train_config.scales[0].num_envs,
@@ -488,7 +493,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             gamma=self._gamma_t,
             gae_lambda=self._lambda_t,
             device=self.device,
-            num_tokens=N + M,
+            num_tokens=sample_obs.pos.shape[1],
         )
 
         # Pre-compute lambda masks for active components only.
@@ -665,7 +670,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._entity_tokens_per_epoch = (
             train_config.num_steps
             * sum(
-                sc.num_envs * (sc.env_config.num_ships + sc.env_config.num_fields)
+                sc.num_envs * sc.env_config.num_entity_tokens
                 for sc in train_config.scales
             )
             * train_config.rollouts_per_update
@@ -729,7 +734,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 gamma=self._gamma_t,
                 gae_lambda=self._lambda_t,
                 device=self.device,
-                num_tokens=sc.env_config.num_ships + sc.env_config.num_fields,
+                num_tokens=aux_sample_obs.pos.shape[1],
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
@@ -821,7 +826,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             return action, None, logprob, value_norm, pred_next, hidden, None
 
         batch = hidden.shape[1] // num_recurrent
-        obs_t1 = flip_team_obs(obs, num_ships)
+        obs_t1 = flip_team_obs(obs.for_team(1), num_ships)
         obs_both = obs.concat_batch(obs_t1)
         hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*N, CONV_KERNEL*D)
         action_both, logprob_both, value_both, pred_next_both, hidden_out = (

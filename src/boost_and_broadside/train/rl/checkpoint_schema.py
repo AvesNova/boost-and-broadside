@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "overlapping_fields_v5"
+OBSERVATION_SCHEMA = "team_perception_v6"
 POSITION_FINEST_PERIOD = 128.0
 
 
@@ -25,8 +25,11 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 5,
+        "version": 6,
         "field_composition": "bounded_union_log_blend",
+        "perception": "team_shared_range_field_core_los",
+        "hidden_tokens": "zero_plus_explicit_visibility_mask",
+        "enemy_actions": "always_private",
         "position_fourier_basis": "base2",
         "position_finest_period": POSITION_FINEST_PERIOD,
         "position_frequencies": tuple(
@@ -59,6 +62,8 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
+    v6 adds typed map tokens, independently masked team views, explicit
+    visibility, private enemy actions, and the range/field-core LOS contract.
     v5 replaces parent-relative field channels with one absolute target
     log-index and changes overlap composition. v4 made the world-size-dependent
     base-2 position-frequency count explicit;

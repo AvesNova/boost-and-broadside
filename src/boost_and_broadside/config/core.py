@@ -261,6 +261,12 @@ class EnvConfig:
     # ``None`` preserves the original elimination combat mode. Active
     # frontline parameters are explicit and checkpointed with the environment.
     frontline: FrontlineConfig | None = None
+    # Team-shared enemy sight radius in world pixels. ``None`` preserves the
+    # omniscient legacy combat environment; Frontline enables a finite value.
+    # Fields whose opaque core lies strictly between observer and target block
+    # sight. This is provisional and deliberately lives in the environment
+    # contract rather than in renderer-only state.
+    vision_range: float | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.frontline, Mapping):
@@ -271,6 +277,12 @@ class EnvConfig:
             )
         if self.num_fields < 0:
             raise ValueError(f"num_fields must be non-negative, got {self.num_fields}")
+        if self.vision_range is not None and (
+            not np.isfinite(self.vision_range) or self.vision_range <= 0.0
+        ):
+            raise ValueError(
+                f"vision_range must be positive and finite or None, got {self.vision_range}"
+            )
         if self.action_repeat < 1:
             raise ValueError(f"action_repeat must be positive, got {self.action_repeat}")
         if not 0.0 <= self.spawn_resource_spread < 1.0:
@@ -283,6 +295,12 @@ class EnvConfig:
         """Deprecated read-only alias for pre-field integrations."""
 
         return self.num_fields
+
+    @property
+    def num_entity_tokens(self) -> int:
+        """Ships plus fields and, in Frontline, five zones and one boundary/global token."""
+
+        return self.num_ships + self.num_fields + (6 if self.frontline is not None else 0)
 
 
 @dataclass(frozen=True)

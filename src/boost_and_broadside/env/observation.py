@@ -1,11 +1,12 @@
 from collections.abc import Callable, ItemsView
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 import torch
 
-from boost_and_broadside.config.core import ShipConfig
+from boost_and_broadside.config.core import EnvConfig, ShipConfig
 from boost_and_broadside.constants import EPS
+from boost_and_broadside.env.perception import TeamVisibility, team_visibility_from_state
 from boost_and_broadside.env.state import TensorState
 
 
@@ -19,6 +20,8 @@ class ObsKey(StrEnum):
     COOLDOWN = "cooldown"
     TEAM_ID = "team_id"
     ALIVE = "alive"
+    VISIBLE = "visible"
+    OBJECT_TYPE = "object_type"
     RADIUS = "radius"
     PREVIOUS_ACTION = "previous_action"
     LOCAL_LOG_INDEX = "local_log_index"
@@ -26,6 +29,20 @@ class ObsKey(StrEnum):
     FIELD_TRANSITION_WIDTH = "field_transition_width"
     FIELD_TARGET_LOG_INDEX = "field_target_log_index"
     FIELD_DAMAGE = "field_damage"
+    ZONE_ROLE = "zone_role"
+    CAPTURE_PROGRESS = "capture_progress"
+    CAPTURE_DIRECTION = "capture_direction"
+    FRONT_POSITION = "front_position"
+    FRONT_WIN_THRESHOLD = "front_win_threshold"
+    TIME_REMAINING = "time_remaining"
+    GAME_MODE = "game_mode"
+
+
+class ObjectType(IntEnum):
+    SHIP = 0
+    FIELD = 1
+    ZONE = 2
+    BOUNDARY = 3
 
 
 class BulletObsKey(StrEnum):
@@ -44,21 +61,25 @@ class BulletObsKey(StrEnum):
     LOCAL_INDEX_GRADIENT = "bullet_local_index_gradient"
     TEAM_ID = "bullet_team_id"
     ACTIVE = "bullet_active"
+    VISIBLE = "bullet_visible"
 
 
 # Channels whose last axis IS the token axis — everything else has a trailing
 # feature dim. Used by YemongObservation.slice_tokens.
-_TOKEN_LAST_KEYS = frozenset({ObsKey.TEAM_ID, ObsKey.ALIVE})
+_TOKEN_LAST_KEYS = frozenset(
+    {ObsKey.TEAM_ID, ObsKey.ALIVE, ObsKey.VISIBLE, ObsKey.OBJECT_TYPE, ObsKey.ZONE_ROLE}
+)
 
 
 @dataclass(frozen=True)
 class YemongObservation:
     """Typed immutable observation for all entities.
 
-    data: maps ObsKey → tensor of shape (B, N+M, ...) or (T, B, N+M, ...) etc.
+    data: maps ObsKey → tensors whose token axis contains ships, fields, zones,
+    and the combined boundary/global token.
 
-    team_id:  (B, N+M)   int32 — 0/1 ships, 2 fields
-    alive:    (B, N+M)   bool
+    team_id:  (B, tokens) int32 — 0/1 owned objects, 2 neutral objects
+    alive:    (B, tokens) bool
     all others have a trailing feature dimension.
     """
 
@@ -67,15 +88,46 @@ class YemongObservation:
     # than passed alongside so every structural op (slice/concat/flip) carries
     # them automatically and cannot fall out of sync with the entity tokens.
     bullets: dict["BulletObsKey", torch.Tensor] | None = None
+    # A root observation returned by an environment carries the independently
+    # masked team-1 perspective here. Rollout storage intentionally stores only
+    # the selected team-0 view used by ego-pass training. Keeping the alternate
+    # attached during live action selection prevents callers from manufacturing
+    # team-1 sight by swapping labels on team-0 truth.
+    team1_data: dict[ObsKey, torch.Tensor] | None = None
+    team1_bullets: dict["BulletObsKey", torch.Tensor] | None = None
 
     # ------------------------------------------------------------------
     # Key access — supports ObsKey enum or str
     # ------------------------------------------------------------------
 
     def __getitem__(self, key: "ObsKey | str") -> torch.Tensor:
-        if isinstance(key, ObsKey):
-            return self.data[key]
-        return self.data[ObsKey(key)]
+        resolved = key if isinstance(key, ObsKey) else ObsKey(key)
+        if resolved in self.data:
+            return self.data[resolved]
+        # Test fixtures and old in-process ship-only observations can omit new
+        # map metadata. Their unambiguous defaults preserve the compact fixture
+        # API; serialized checkpoints remain rejected by schema v6.
+        team_id = self.data[ObsKey.TEAM_ID]
+        if resolved == ObsKey.VISIBLE:
+            return self.data[ObsKey.ALIVE]
+        if resolved == ObsKey.OBJECT_TYPE:
+            return torch.where(
+                team_id == 2,
+                torch.full_like(team_id, int(ObjectType.FIELD)),
+                torch.full_like(team_id, int(ObjectType.SHIP)),
+            )
+        if resolved == ObsKey.ZONE_ROLE:
+            return torch.full_like(team_id, 5)
+        if resolved in {
+            ObsKey.CAPTURE_PROGRESS,
+            ObsKey.CAPTURE_DIRECTION,
+            ObsKey.FRONT_POSITION,
+            ObsKey.FRONT_WIN_THRESHOLD,
+            ObsKey.TIME_REMAINING,
+            ObsKey.GAME_MODE,
+        }:
+            return torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
+        raise KeyError(resolved)
 
     def __contains__(self, key: "ObsKey | str") -> bool:
         if isinstance(key, ObsKey):
@@ -129,6 +181,10 @@ class YemongObservation:
         return self.data[ObsKey.ALIVE]
 
     @property
+    def visible(self) -> torch.Tensor:
+        return self.data[ObsKey.VISIBLE]
+
+    @property
     def radius(self) -> torch.Tensor:
         return self.data[ObsKey.RADIUS]
 
@@ -147,17 +203,57 @@ class YemongObservation:
     def update(self, key: ObsKey, value: torch.Tensor) -> "YemongObservation":
         new_data = dict(self.data)
         new_data[key] = value
-        return YemongObservation(data=new_data, bullets=self.bullets)
+        return YemongObservation(
+            data=new_data,
+            bullets=self.bullets,
+            team1_data=self.team1_data,
+            team1_bullets=self.team1_bullets,
+        )
+
+    def for_team(self, team: int) -> "YemongObservation":
+        """Return one independently masked team view with no alternate attached."""
+
+        if team == 0:
+            return YemongObservation(data=self.data, bullets=self.bullets)
+        if team != 1:
+            raise ValueError(f"team perspective must be 0 or 1, got {team}")
+        if self.team1_data is None:
+            raise ValueError("observation does not carry a team-1 perception")
+        return YemongObservation(data=self.team1_data, bullets=self.team1_bullets)
+
+    def select_team(self, as_team1: torch.Tensor) -> "YemongObservation":
+        """Select team-0/team-1 perception independently for every environment."""
+
+        if self.team1_data is None:
+            # Omniscient/fixture observations predate attached team views; label
+            # flipping remains a valid compatibility operation for those only.
+            return self.for_team(0)
+
+        def choose(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+            selector = as_team1
+            while selector.dim() < a.dim():
+                selector = selector.unsqueeze(-1)
+            return torch.where(selector, b, a)
+
+        bullets = None
+        if self.bullets is not None and self.team1_bullets is not None:
+            bullets = {k: choose(v, self.team1_bullets[k]) for k, v in self.bullets.items()}
+        return YemongObservation(
+            data={k: choose(v, self.team1_data[k]) for k, v in self.data.items()},
+            bullets=bullets,
+        )
 
     def flip_team(
         self, num_ships: int, mask: "torch.Tensor | None" = None
     ) -> "YemongObservation":
-        """Swap team IDs 0 and 1 for the first num_ships entity slots.
+        """Swap team IDs 0 and 1 across ships and owned strategic tokens.
 
         Ship and bullet team IDs flip *together*. A bullet's team is its
         shooter's, so mirroring one without the other shows a policy its own
         fire as the enemy's. Inactive bullet slots flip too, which is harmless —
-        they are masked out of attention. Field tokens keep their own team.
+        they are masked out of attention. Field and boundary tokens use the
+        neutral team ID and therefore remain unchanged. Zone ownership swaps
+        with the ship teams so the canonical team-0 view stays self-relative.
 
         ``mask`` selects which environments flip; None flips all of them. It must
         broadcast against the leading (batch) dims — an ``(B,)`` bool for a
@@ -171,9 +267,38 @@ class YemongObservation:
             swapped = torch.where(values == 0, 1, torch.where(values == 1, 0, values))
             return swapped if selector is None else torch.where(selector, swapped, values)
 
-        team_id = self.data[ObsKey.TEAM_ID].clone()
-        team_id[..., :num_ships] = swap(team_id[..., :num_ships])
+        # ``num_ships`` remains in the public signature because callers and
+        # checkpoint-era fixtures use it, but typed map tokens also carry team
+        # ownership now and must be canonicalized with the ships.
+        del num_ships
+        team_id = swap(self.data[ObsKey.TEAM_ID])
         flipped_obs = self.update(ObsKey.TEAM_ID, team_id)
+        flipped_data = dict(flipped_obs.data)
+
+        def select_env(original: torch.Tensor, changed: torch.Tensor) -> torch.Tensor:
+            if mask is None:
+                return changed
+            env_selector = mask
+            while env_selector.dim() < original.dim():
+                env_selector = env_selector.unsqueeze(-1)
+            return torch.where(env_selector, changed, original)
+
+        if ObsKey.ZONE_ROLE in flipped_data:
+            roles = flipped_data[ObsKey.ZONE_ROLE]
+            swapped_roles = torch.where(
+                roles == 0,
+                4,
+                torch.where(
+                    roles == 4,
+                    0,
+                    torch.where(roles == 1, 3, torch.where(roles == 3, 1, roles)),
+                ),
+            )
+            flipped_data[ObsKey.ZONE_ROLE] = select_env(roles, swapped_roles)
+        for key in (ObsKey.CAPTURE_DIRECTION, ObsKey.FRONT_POSITION):
+            if key in flipped_data:
+                flipped_data[key] = select_env(flipped_data[key], -flipped_data[key])
+        flipped_obs = YemongObservation(data=flipped_data, bullets=flipped_obs.bullets)
         if self.bullets is None:
             return flipped_obs
         new_bullets = dict(self.bullets)
@@ -189,12 +314,28 @@ class YemongObservation:
         return YemongObservation(
             data={k: fn(v) for k, v in self.data.items()},
             bullets=None if self.bullets is None else {k: fn(v) for k, v in self.bullets.items()},
+            team1_data=(
+                None if self.team1_data is None else {k: fn(v) for k, v in self.team1_data.items()}
+            ),
+            team1_bullets=(
+                None
+                if self.team1_bullets is None
+                else {k: fn(v) for k, v in self.team1_bullets.items()}
+            ),
         )
 
     def slice_envs(self, idx: "slice | torch.Tensor") -> "YemongObservation":
         return YemongObservation(
             data={k: v[idx] for k, v in self.data.items()},
             bullets=None if self.bullets is None else {k: v[idx] for k, v in self.bullets.items()},
+            team1_data=(
+                None if self.team1_data is None else {k: v[idx] for k, v in self.team1_data.items()}
+            ),
+            team1_bullets=(
+                None
+                if self.team1_bullets is None
+                else {k: v[idx] for k, v in self.team1_bullets.items()}
+            ),
         )
 
     def slice_time(self, start: int, end: int) -> "YemongObservation":
@@ -202,6 +343,16 @@ class YemongObservation:
             data={k: v[start:end] for k, v in self.data.items()},
             bullets=(
                 None if self.bullets is None else {k: v[start:end] for k, v in self.bullets.items()}
+            ),
+            team1_data=(
+                None
+                if self.team1_data is None
+                else {k: v[start:end] for k, v in self.team1_data.items()}
+            ),
+            team1_bullets=(
+                None
+                if self.team1_bullets is None
+                else {k: v[start:end] for k, v in self.team1_bullets.items()}
             ),
         )
 
@@ -218,6 +369,15 @@ class YemongObservation:
                 for k, v in self.data.items()
             },
             bullets=self.bullets,
+            team1_data=(
+                None
+                if self.team1_data is None
+                else {
+                    k: (v[..., start:end] if k in _TOKEN_LAST_KEYS else v[..., start:end, :])
+                    for k, v in self.team1_data.items()
+                }
+            ),
+            team1_bullets=self.team1_bullets,
         )
 
     def concat_batch(self, other: "YemongObservation") -> "YemongObservation":
@@ -228,6 +388,22 @@ class YemongObservation:
         return YemongObservation(
             data={k: torch.cat([v, other.data[k]], dim=0) for k, v in self.data.items()},
             bullets=bullets,
+            team1_data=(
+                None
+                if self.team1_data is None or other.team1_data is None
+                else {
+                    k: torch.cat([v, other.team1_data[k]], dim=0)
+                    for k, v in self.team1_data.items()
+                }
+            ),
+            team1_bullets=(
+                None
+                if self.team1_bullets is None or other.team1_bullets is None
+                else {
+                    k: torch.cat([v, other.team1_bullets[k]], dim=0)
+                    for k, v in self.team1_bullets.items()
+                }
+            ),
         )
 
 
@@ -241,13 +417,12 @@ class ObservationBuffers:
     """
 
     ship_radius: torch.Tensor
-    field_zero_vec: torch.Tensor | None = None
-    field_zero_scalar: torch.Tensor | None = None
-    field_health: torch.Tensor | None = None
-    field_team_id: torch.Tensor | None = None
-    field_alive: torch.Tensor | None = None
-    field_prev_action: torch.Tensor | None = None
-    ship_field_feature_zeros: torch.Tensor | None = None
+    object_zero_vec: torch.Tensor | None = None
+    object_zero_scalar: torch.Tensor | None = None
+    object_team_id: torch.Tensor | None = None
+    object_alive: torch.Tensor | None = None
+    object_prev_action: torch.Tensor | None = None
+    ship_object_feature_zeros: torch.Tensor | None = None
 
     @classmethod
     def allocate(
@@ -255,6 +430,7 @@ class ObservationBuffers:
         num_envs: int,
         num_ships: int,
         num_fields: int,
+        num_zones: int,
         ship_config: ShipConfig,
         device: torch.device,
     ) -> "ObservationBuffers":
@@ -265,20 +441,22 @@ class ObservationBuffers:
             device=device,
             dtype=torch.float32,
         )
-        if num_fields == 0:
+        num_objects = num_fields + num_zones + (1 if num_zones > 0 else 0)
+        if num_objects == 0:
             return cls(ship_radius=ship_radius)
 
         return cls(
             ship_radius=ship_radius,
-            field_zero_vec=torch.zeros(num_envs, num_fields, 2, device=device),
-            field_zero_scalar=torch.zeros(num_envs, num_fields, 1, device=device),
-            field_health=torch.full(
-                (num_envs, num_fields, 1), ship_config.max_health, device=device
+            object_zero_vec=torch.zeros(num_envs, num_objects, 2, device=device),
+            object_zero_scalar=torch.zeros(num_envs, num_objects, 1, device=device),
+            object_team_id=torch.full(
+                (num_envs, num_objects), 2, device=device, dtype=torch.int32
             ),
-            field_team_id=torch.full((num_envs, num_fields), 2, device=device, dtype=torch.int32),
-            field_alive=torch.ones(num_envs, num_fields, device=device, dtype=torch.bool),
-            field_prev_action=torch.zeros(num_envs, num_fields, 3, device=device, dtype=torch.long),
-            ship_field_feature_zeros=torch.zeros(num_envs, num_ships, 1, device=device),
+            object_alive=torch.ones(num_envs, num_objects, device=device, dtype=torch.bool),
+            object_prev_action=torch.zeros(
+                num_envs, num_objects, 3, device=device, dtype=torch.long
+            ),
+            ship_object_feature_zeros=torch.zeros(num_envs, num_ships, 1, device=device),
         )
 
     def refresh_field_state_all(self, state: TensorState) -> None:
@@ -291,6 +469,7 @@ class ObservationBuffers:
 def bullet_observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
+    visibility: torch.Tensor | None = None,
 ) -> dict[BulletObsKey, torch.Tensor]:
     """Flatten the per-ship bullet ring buffers into one (B, N*K, ...) axis.
 
@@ -327,7 +506,9 @@ def bullet_observation_from_state(
     # A bullet's team is its shooter's; the ring buffer's ship axis supplies it.
     shooter_team = state.ship_team_id.unsqueeze(-1).expand(B, N, K).reshape(flat)
 
-    return {
+    active = state.bullet_active.reshape(flat)
+    visible = active if visibility is None else visibility.reshape(flat) & active
+    result = {
         BulletObsKey.POS: bullet_pos,
         BulletObsKey.VEL: bullet_vel,
         BulletObsKey.DAMAGE: state.bullet_remaining_damage.reshape(flat).unsqueeze(-1)
@@ -337,8 +518,23 @@ def bullet_observation_from_state(
         BulletObsKey.LOCAL_LOG_INDEX: bullet_log_index,
         BulletObsKey.LOCAL_INDEX_GRADIENT: bullet_gradient,
         BulletObsKey.TEAM_ID: shooter_team.to(torch.int32),
-        BulletObsKey.ACTIVE: state.bullet_active.reshape(flat),
+        BulletObsKey.ACTIVE: visible,
+        BulletObsKey.VISIBLE: visible,
     }
+    if visibility is None:
+        return result
+
+    # Ignored tokens carry literal zeros as well as an explicit false mask. This
+    # defense in depth catches accidental consumers that forget the attention
+    # mask, and prevents hidden projectile state from entering auxiliary paths.
+    for key, value in tuple(result.items()):
+        if key in (BulletObsKey.ACTIVE, BulletObsKey.VISIBLE):
+            continue
+        mask = visible
+        while mask.dim() < value.dim():
+            mask = mask.unsqueeze(-1)
+        result[key] = torch.where(mask, value, torch.zeros_like(value))
+    return result
 
 
 def index_gradient_scale(ship_config: ShipConfig) -> float:
@@ -364,6 +560,9 @@ def observation_from_state(
     ship_config: ShipConfig,
     buffers: ObservationBuffers | None = None,
     include_bullets: bool = False,
+    ship_visibility: torch.Tensor | None = None,
+    bullet_visibility: torch.Tensor | None = None,
+    perspective_team: int | None = None,
 ) -> YemongObservation:
     """Build the raw policy observation for the supplied environment state.
 
@@ -373,13 +572,15 @@ def observation_from_state(
 
     ``include_bullets`` attaches the bullet cross-attention channels. It is off by
     default so profiles that do not read bullets pay neither the reduction nor the
-    rollout storage.
+    rollout storage. ``perspective_team`` keeps allied pending actions while
+    replacing enemy actions with zero, even when the enemy ship is visible.
     """
     if buffers is None:
         buffers = ObservationBuffers.allocate(
             state.num_envs,
             state.max_ships,
             state.num_fields,
+            state.num_zones,
             ship_config,
             state.device,
         )
@@ -393,6 +594,13 @@ def observation_from_state(
     ship_power = state.ship_power.unsqueeze(-1)
     ship_cooldown = state.ship_cooldown.unsqueeze(-1)
     ship_prev_action = state.prev_action.long()
+    if perspective_team is not None:
+        if perspective_team not in (0, 1):
+            raise ValueError(f"perspective_team must be 0 or 1, got {perspective_team}")
+        own_ship = (state.ship_team_id == perspective_team).unsqueeze(-1)
+        ship_prev_action = torch.where(
+            own_ship, ship_prev_action, torch.zeros_like(ship_prev_action)
+        )
 
     log_scale = 2.0 * torch.log(
         torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
@@ -408,74 +616,230 @@ def observation_from_state(
     ) / index_gradient_scale(ship_config)
 
     bullets = (
-        bullet_observation_from_state(state, ship_config)
+        bullet_observation_from_state(state, ship_config, bullet_visibility)
         if include_bullets and state.max_bullets > 0
         else None
     )
 
-    if state.num_fields == 0:
-        zeros = torch.zeros_like(ship_local_log_index)
-        return YemongObservation(
-            bullets=bullets,
-            data={
-                ObsKey.POS: ship_pos,
-                ObsKey.VEL: ship_vel,
-                ObsKey.ATT: ship_att,
-                ObsKey.ANG_VEL: ship_ang,
-                ObsKey.HEALTH: ship_health,
-                ObsKey.POWER: ship_power,
-                ObsKey.COOLDOWN: ship_cooldown,
-                ObsKey.TEAM_ID: state.ship_team_id,
-                ObsKey.ALIVE: state.ship_alive,
-                ObsKey.PREVIOUS_ACTION: ship_prev_action,
-                ObsKey.RADIUS: buffers.ship_radius,
-                ObsKey.LOCAL_LOG_INDEX: ship_local_log_index,
-                ObsKey.LOCAL_INDEX_GRADIENT: ship_index_gradient,
-                ObsKey.FIELD_TRANSITION_WIDTH: zeros,
-                ObsKey.FIELD_TARGET_LOG_INDEX: zeros,
-                ObsKey.FIELD_DAMAGE: zeros,
-            },
+    visible_ships = (
+        torch.ones_like(state.ship_alive) if ship_visibility is None else ship_visibility
+    )
+    observed_alive = state.ship_alive & visible_ships
+
+    batch = state.num_envs
+    num_fields = state.num_fields
+    num_zones = state.num_zones
+    has_frontline = num_zones > 0
+    num_objects = num_fields + num_zones + int(has_frontline)
+    ship_zero = torch.zeros_like(ship_local_log_index)
+    ship_type = torch.zeros_like(state.ship_team_id)
+    ship_no_zone = torch.full_like(state.ship_team_id, 5)
+
+    if num_objects == 0:
+        object_pos = ship_pos[:, :0]
+        object_radius = ship_zero[:, :0]
+        object_type = state.ship_team_id[:, :0]
+        object_zone_role = state.ship_team_id[:, :0]
+        object_team = state.ship_team_id[:, :0]
+        object_alive = state.ship_alive[:, :0]
+        object_zero_vec = ship_pos[:, :0]
+        object_zero_scalar = ship_zero[:, :0]
+        object_prev_action = ship_prev_action[:, :0]
+    else:
+        assert buffers.object_zero_vec is not None
+        assert buffers.object_zero_scalar is not None
+        assert buffers.object_team_id is not None
+        assert buffers.object_alive is not None
+        assert buffers.object_prev_action is not None
+        assert buffers.ship_object_feature_zeros is not None
+        object_zero_vec = buffers.object_zero_vec
+        object_zero_scalar = buffers.object_zero_scalar
+        object_prev_action = buffers.object_prev_action
+
+        field_pos = torch.stack([state.field_pos.real, state.field_pos.imag], dim=-1)
+        position_parts = [
+            field_pos,
+            torch.stack([state.zone_pos.real, state.zone_pos.imag], dim=-1),
+        ]
+        radius_parts = [state.field_radius.unsqueeze(-1), state.zone_radius.unsqueeze(-1)]
+        type_parts = [
+            torch.full((batch, num_fields), 1, dtype=torch.int32, device=state.device),
+            torch.full((batch, num_zones), 2, dtype=torch.int32, device=state.device),
+        ]
+        role_parts = [
+            torch.full((batch, num_fields), 5, dtype=torch.int32, device=state.device),
+            state.zone_roles.to(torch.int32),
+        ]
+        zone_team = torch.where(
+            state.zone_roles <= 1,
+            torch.zeros_like(state.zone_roles, dtype=torch.int32),
+            torch.where(
+                state.zone_roles >= 3,
+                torch.ones_like(state.zone_roles, dtype=torch.int32),
+                torch.full_like(state.zone_roles, 2, dtype=torch.int32),
+            ),
         )
+        team_parts = [
+            torch.full((batch, num_fields), 2, dtype=torch.int32, device=state.device),
+            zone_team,
+        ]
+        if has_frontline:
+            position_parts.append(
+                torch.stack([state.map_center.real, state.map_center.imag], dim=-1).unsqueeze(1)
+            )
+            radius_parts.append(state.playable_boundary_radius[:, None, None])
+            type_parts.append(torch.full((batch, 1), 3, dtype=torch.int32, device=state.device))
+            role_parts.append(torch.full((batch, 1), 5, dtype=torch.int32, device=state.device))
+            team_parts.append(torch.full((batch, 1), 2, dtype=torch.int32, device=state.device))
+        object_pos = torch.cat(position_parts, dim=1)
+        object_radius = torch.cat(radius_parts, dim=1)
+        object_type = torch.cat(type_parts, dim=1)
+        object_zone_role = torch.cat(role_parts, dim=1)
+        object_team = torch.cat(team_parts, dim=1)
+        object_alive = buffers.object_alive
 
-    assert buffers.field_zero_vec is not None
-    assert buffers.field_zero_scalar is not None
-    assert buffers.field_health is not None
-    assert buffers.field_team_id is not None
-    assert buffers.field_alive is not None
-    assert buffers.field_prev_action is not None
-    assert buffers.ship_field_feature_zeros is not None
+    def object_scalar(
+        field: torch.Tensor | None = None,
+        zone: torch.Tensor | None = None,
+        boundary: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        parts = [
+            object_zero_scalar[:, :num_fields] if field is None else field,
+            object_zero_scalar[:, num_fields : num_fields + num_zones] if zone is None else zone,
+        ]
+        if has_frontline:
+            parts.append(object_zero_scalar[:, -1:] if boundary is None else boundary)
+        return torch.cat(parts, dim=1) if parts else object_zero_scalar
 
-    field_pos = torch.stack([state.field_pos.real, state.field_pos.imag], dim=-1)
     field_target = torch.log(state.field_index).unsqueeze(-1) / log_scale
     max_damage = max(2.0 * ship_config.field_interface_damage, EPS)
     field_damage = state.field_damage.unsqueeze(-1) / max_damage
-    ship_zero = buffers.ship_field_feature_zeros
-    return YemongObservation(
+    remaining = torch.where(
+        state.match_max_steps > 0,
+        (state.match_max_steps - state.step_count).clamp(min=0).float()
+        / state.match_max_steps.clamp(min=1).float(),
+        0.0,
+    )
+    observation = YemongObservation(
         bullets=bullets,
         data={
-            ObsKey.POS: torch.cat([ship_pos, field_pos], dim=1),
-            ObsKey.VEL: torch.cat([ship_vel, buffers.field_zero_vec], dim=1),
-            ObsKey.ATT: torch.cat([ship_att, buffers.field_zero_vec], dim=1),
-            ObsKey.ANG_VEL: torch.cat([ship_ang, buffers.field_zero_scalar], dim=1),
-            ObsKey.HEALTH: torch.cat([ship_health, buffers.field_health], dim=1),
-            ObsKey.POWER: torch.cat([ship_power, buffers.field_zero_scalar], dim=1),
-            ObsKey.COOLDOWN: torch.cat([ship_cooldown, buffers.field_zero_scalar], dim=1),
-            ObsKey.TEAM_ID: torch.cat([state.ship_team_id, buffers.field_team_id], dim=1),
-            ObsKey.ALIVE: torch.cat([state.ship_alive, buffers.field_alive], dim=1),
-            ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action, buffers.field_prev_action], dim=1),
-            ObsKey.RADIUS: torch.cat(
-                [buffers.ship_radius, state.field_radius.unsqueeze(-1)], dim=1
-            ),
-            ObsKey.LOCAL_LOG_INDEX: torch.cat(
-                [ship_local_log_index, buffers.field_zero_scalar], dim=1
-            ),
-            ObsKey.LOCAL_INDEX_GRADIENT: torch.cat(
-                [ship_index_gradient, buffers.field_zero_vec], dim=1
-            ),
+            ObsKey.POS: torch.cat([ship_pos, object_pos], dim=1),
+            ObsKey.VEL: torch.cat([ship_vel, object_zero_vec], dim=1),
+            ObsKey.ATT: torch.cat([ship_att, object_zero_vec], dim=1),
+            ObsKey.ANG_VEL: torch.cat([ship_ang, object_zero_scalar], dim=1),
+            ObsKey.HEALTH: torch.cat([ship_health, object_zero_scalar], dim=1),
+            ObsKey.POWER: torch.cat([ship_power, object_zero_scalar], dim=1),
+            ObsKey.COOLDOWN: torch.cat([ship_cooldown, object_zero_scalar], dim=1),
+            ObsKey.TEAM_ID: torch.cat([state.ship_team_id, object_team], dim=1),
+            ObsKey.ALIVE: torch.cat([observed_alive, object_alive], dim=1),
+            ObsKey.VISIBLE: torch.cat([visible_ships, object_alive], dim=1),
+            ObsKey.OBJECT_TYPE: torch.cat([ship_type, object_type], dim=1),
+            ObsKey.ZONE_ROLE: torch.cat([ship_no_zone, object_zone_role], dim=1),
+            ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action, object_prev_action], dim=1),
+            ObsKey.RADIUS: torch.cat([buffers.ship_radius, object_radius], dim=1),
+            ObsKey.LOCAL_LOG_INDEX: torch.cat([ship_local_log_index, object_zero_scalar], dim=1),
+            ObsKey.LOCAL_INDEX_GRADIENT: torch.cat([ship_index_gradient, object_zero_vec], dim=1),
             ObsKey.FIELD_TRANSITION_WIDTH: torch.cat(
-                [ship_zero, state.field_transition_width.unsqueeze(-1)], dim=1
+                [ship_zero, object_scalar(field=state.field_transition_width.unsqueeze(-1))],
+                dim=1,
             ),
-            ObsKey.FIELD_TARGET_LOG_INDEX: torch.cat([ship_zero, field_target], dim=1),
-            ObsKey.FIELD_DAMAGE: torch.cat([ship_zero, field_damage], dim=1),
+            ObsKey.FIELD_TARGET_LOG_INDEX: torch.cat(
+                [ship_zero, object_scalar(field=field_target)], dim=1
+            ),
+            ObsKey.FIELD_DAMAGE: torch.cat(
+                [ship_zero, object_scalar(field=field_damage)], dim=1
+            ),
+            ObsKey.CAPTURE_PROGRESS: torch.cat(
+                [ship_zero, object_scalar(zone=state.zone_capture_progress.unsqueeze(-1))], dim=1
+            ),
+            ObsKey.CAPTURE_DIRECTION: torch.cat(
+                [ship_zero, object_scalar(zone=state.zone_capture_direction.float().unsqueeze(-1))],
+                dim=1,
+            ),
+            ObsKey.FRONT_POSITION: torch.cat(
+                [ship_zero, object_scalar(boundary=state.front_position.float()[:, None, None])],
+                dim=1,
+            ),
+            ObsKey.FRONT_WIN_THRESHOLD: torch.cat(
+                [
+                    ship_zero,
+                    object_scalar(boundary=state.front_win_threshold.float()[:, None, None]),
+                ],
+                dim=1,
+            ),
+            ObsKey.TIME_REMAINING: torch.cat(
+                [ship_zero, object_scalar(boundary=remaining[:, None, None])], dim=1
+            ),
+            ObsKey.GAME_MODE: torch.cat(
+                [
+                    ship_zero,
+                    object_scalar(
+                        boundary=torch.ones((batch, 1, 1), device=state.device)
+                        if has_frontline
+                        else None
+                    ),
+                ],
+                dim=1,
+            ),
         },
     )
+    return _mask_hidden_ships(observation, visible_ships, state.max_ships)
+
+
+def _mask_hidden_ships(
+    observation: YemongObservation,
+    visible_ships: torch.Tensor,
+    num_ships: int,
+) -> YemongObservation:
+    """Zero every hidden ship channel while retaining explicit false masks."""
+
+    data = dict(observation.data)
+    for key, value in tuple(data.items()):
+        if key == ObsKey.VISIBLE:
+            continue
+        ship_value = (
+            value[..., :num_ships]
+            if key in _TOKEN_LAST_KEYS
+            else value[..., :num_ships, :]
+        )
+        mask = visible_ships
+        while mask.dim() < ship_value.dim():
+            mask = mask.unsqueeze(-1)
+        masked = torch.where(mask, ship_value, torch.zeros_like(ship_value))
+        value = value.clone()
+        if key in _TOKEN_LAST_KEYS:
+            value[..., :num_ships] = masked
+        else:
+            value[..., :num_ships, :] = masked
+        data[key] = value
+    return YemongObservation(data=data, bullets=observation.bullets)
+
+
+def perceived_observation_from_state(
+    state: TensorState,
+    ship_config: ShipConfig,
+    env_config: EnvConfig,
+    buffers: ObservationBuffers | None = None,
+    include_bullets: bool = False,
+) -> tuple[YemongObservation, TeamVisibility]:
+    """Build independently masked team observations and return team 0 as root."""
+
+    visibility = team_visibility_from_state(state, ship_config, env_config)
+    views = [
+        observation_from_state(
+            state,
+            ship_config,
+            buffers,
+            include_bullets,
+            ship_visibility=visibility.ship[:, team],
+            bullet_visibility=visibility.bullet[:, team],
+            perspective_team=team,
+        )
+        for team in (0, 1)
+    ]
+    return YemongObservation(
+        data=views[0].data,
+        bullets=views[0].bullets,
+        team1_data=views[1].data,
+        team1_bullets=views[1].bullets,
+    ), visibility

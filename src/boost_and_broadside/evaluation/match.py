@@ -17,7 +17,10 @@ from dataclasses import replace
 import torch
 
 from boost_and_broadside.config import EnvConfig, ShipConfig
-from boost_and_broadside.env.observation import YemongObservation, observation_from_state
+from boost_and_broadside.env.observation import (
+    YemongObservation,
+    perceived_observation_from_state,
+)
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -60,11 +63,16 @@ def agent_view(
     read the raw state rather than the observation (scripted, random) are
     unaffected, and a shared_pass policy was trained on both sides already.
     """
-    if agent.kind != "policy" or not agent_is_ego_pass(agent):
-        return obs
     if obs is None:
-        raise ValueError("policy agents require an observation")
-    return obs.flip_team(num_ships, mask=as_team1)
+        if agent.kind == "policy":
+            raise ValueError("policy agents require an observation")
+        return None
+    if obs.team1_data is None and (agent.kind != "policy" or not agent_is_ego_pass(agent)):
+        return obs
+    selected = obs.select_team(as_team1)
+    if agent.kind != "policy" or not agent_is_ego_pass(agent):
+        return selected
+    return selected.flip_team(num_ships, mask=as_team1)
 
 
 class MatchRunner:
@@ -117,7 +125,7 @@ class MatchRunner:
     def num_tokens(self) -> int:
         """Entity tokens per env. Read from the config, not the state, so hidden
         state can be allocated before the first reset."""
-        return self.num_ships + self.env.env_config.num_fields
+        return self.env.env_config.num_entity_tokens
 
     def init_hidden(self) -> None:
         """Allocate each policy's recurrent state over the envs it plays in."""
@@ -126,9 +134,13 @@ class MatchRunner:
 
     def observe(self) -> YemongObservation:
         """Build the observation for the current state."""
-        return observation_from_state(
-            self.env.state, self.ship_config, include_bullets=self.include_bullets
+        observation, self.visibility = perceived_observation_from_state(
+            self.env.state,
+            self.ship_config,
+            self.env.env_config,
+            include_bullets=self.include_bullets,
         )
+        return observation
 
     def actions(self, obs: YemongObservation) -> torch.Tensor:
         """Every ship's action, taken from the agent that controls its team."""
@@ -150,7 +162,9 @@ class MatchRunner:
             if agent.kind == "semi_random":
                 key = id(agent.agent.scripted_agent)
                 if key not in scripted_cache:
-                    scripted_cache[key] = agent.agent.scripted_agent.get_actions(self.env.state)
+                    scripted_cache[key] = agent.agent.scripted_agent.get_actions(
+                        self.env.state, self.visibility.ship
+                    )
                 scripted = scripted_cache[key]
                 if random_draw is None:
                     random_draw = agent.agent.random_actions_like(scripted)
@@ -160,7 +174,13 @@ class MatchRunner:
                 # Reads the state, not the observation: one vectorized call covers
                 # the batch, and the merge discards the envs it does not control.
                 per_agent[index] = get_actions(
-                    agent, None, self.env.state, self.num_envs, self.num_ships, self.device
+                    agent,
+                    None,
+                    self.env.state,
+                    self.num_envs,
+                    self.num_ships,
+                    self.device,
+                    team_visibility=self.visibility.ship,
                 ).int()
                 continue
             if active.numel() == 0:

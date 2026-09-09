@@ -52,7 +52,10 @@ import torch
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import YemongObservation, observation_from_state
+from boost_and_broadside.env.observation import (
+    YemongObservation,
+    perceived_observation_from_state,
+)
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -518,7 +521,7 @@ class EloEvaluator:
 
     def _opponent_obs(self, obs: YemongObservation, lo: int, hi: int) -> YemongObservation:
         """Return the team-1 perspective for policy opponents in envs [lo, hi)."""
-        sliced = obs.slice_envs(slice(lo, hi))
+        sliced = obs.slice_envs(slice(lo, hi)).for_team(1)
         return sliced.flip_team(self.num_ships) if self.ego_pass else sliced
 
     def _anchor_actions(
@@ -558,7 +561,13 @@ class EloEvaluator:
                 action = random_action
             else:
                 scripted_action = get_actions(
-                    self.scripted_agent, None, state, size, self.num_ships, self.device
+                    self.scripted_agent,
+                    None,
+                    state,
+                    size,
+                    self.num_ships,
+                    self.device,
+                    team_visibility=self.visibility.ship[lo:hi],
                 ).long()
                 # One coherent scripted decision per ship per step, matching
                 # SemiRandomScriptedAgent — not a per-head coin flip. The random
@@ -618,6 +627,7 @@ class EloEvaluator:
                 size,
                 self.num_ships,
                 self.device,
+                team_visibility=self.visibility.ship[2 * size : 3 * size],
             ).long()
         else:  # idle slot — outcomes are never scored
             action_scripted = self._random_actions(size)
@@ -676,8 +686,11 @@ class EloEvaluator:
 
         with torch.no_grad():
             state = self.env.state
-            obs = observation_from_state(
-                state, self.ship_config, include_bullets=self.include_bullets
+            obs, self.visibility = perceived_observation_from_state(
+                state,
+                self.ship_config,
+                self.env.env_config,
+                include_bullets=self.include_bullets,
             )
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_team0, action_team1 = self._compute_team_actions(obs)

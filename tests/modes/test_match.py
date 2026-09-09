@@ -99,14 +99,16 @@ class TestPerspective:
         runner = _runner([agent], team0=[0, 0], team1=[0, 0])
         obs = runner.observe()
 
-        assert agent_view(agent, obs, ENV_CONFIG.num_ships, runner.team1_index == 0) is obs
+        view = agent_view(agent, obs, ENV_CONFIG.num_ships, runner.team1_index == 0)
+        assert torch.equal(view[ObsKey.TEAM_ID], obs.for_team(1)[ObsKey.TEAM_ID])
 
     def test_scripted_agents_are_never_mirrored(self):
-        """They read the raw state, where teams are unambiguous."""
+        """They keep absolute labels while receiving the selected sight mask separately."""
         agent = ResolvedAgent("scripted", None)
         obs = _runner([agent], team0=[0, 0], team1=[0, 0]).observe()
 
-        assert agent_view(agent, obs, ENV_CONFIG.num_ships, torch.tensor([True, True])) is obs
+        view = agent_view(agent, obs, ENV_CONFIG.num_ships, torch.tensor([True, True]))
+        assert torch.equal(view[ObsKey.TEAM_ID], obs.for_team(1)[ObsKey.TEAM_ID])
 
 
 class TestBulletAxis:

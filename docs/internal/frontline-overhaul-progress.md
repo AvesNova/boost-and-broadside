@@ -1,6 +1,6 @@
 # Frontline overhaul progress and plan
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 This is the living internal record for the Frontline Conquest Overhaul. Update it when
 a gameplay contract changes, evidence changes a recommendation, a milestone advances,
@@ -9,14 +9,15 @@ remain the source of truth for scope and human gates.
 
 ## Current position
 
-- Branch: `frontline/02-fields`
+- Branch: `frontline/05-perception`
 - Integration base: `feat/frontline-overhaul`
-- Human gate: Gate 2, overlapping field physics
-- Status: ready for human Gate 2 review
+- Human gate: Gate 3, perception and fog distribution
+- Status: ready for human Gate 3 review
 - Gate 1 was approved by the user's instruction to continue and merged into the
   integration base on 2026-09-09.
-- Boundary: stop after overlap physics, on-reset generation, renderer changes, examples,
-  and performance evidence are ready for human review.
+- Gate 2 was approved explicitly and merged into the integration base on 2026-09-10.
+- Boundary: stop after perception, non-leaking team views, render modes, typed map tokens,
+  diagnostics, and fog-distribution evidence are ready for human review.
 - Draft PR: not opened because GitHub CLI/credentials are unavailable in this workspace
 - Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/02-fields?expand=1>
 
@@ -58,6 +59,7 @@ remain the source of truth for scope and human gates.
 | Match duration | 300 s | Provisional |
 | Frontline field count | 10 | Provisional; low-discrepancy placement |
 | Frontline field radius | 30–750 px | Provisional; maximum raised from 490 px |
+| Team vision range | 1600 px | Provisional; Gate 3 distribution measured |
 | Frontline physics/decision rate | 30 Hz | Per-second rules unchanged |
 
 Capture and stabilization use the same fixed rate. A larger majority does not accelerate
@@ -84,9 +86,9 @@ optimal hand-coded strategist.
   them away.
 - Tendencies survive death and are redrawn only at episode reset.
 
-Until team perception exists, the Gate 1 scripted controller reads authoritative state.
-It must move to the same perception contract as learned agents during the fog-of-war
-milestone.
+The scripted controller now receives the same authoritative team-shared visibility mask
+as the learned policy. Hidden enemies cannot trigger local combat, point-contested logic,
+or targeting, so behavior-cloning labels do not leak privileged state.
 
 ## Capture-duration evidence
 
@@ -143,6 +145,16 @@ results guide tuning but do not replace human playtesting.
 - A full 64-game scripted batch was deliberately stopped after roughly six minutes because
   it no longer met the requested lightweight iteration budget; no statistics are claimed
   from the interrupted run.
+- Gate 3 focused perception/observation/scripted/model/match/checkpoint/UI suite: 326 passed,
+  2 skipped; the final visible-enemy-action privacy change then passed 137 directly affected
+  tests. Static checks and whitespace checks pass.
+- Gate 3 fog suite: 256 independent 4v4 maps for 60 simulated seconds on an RTX 4070 Laptop
+  GPU, completed in 88.20 seconds (174.15 aggregate simulated game-seconds/wall-second),
+  peaking at 59.40 MiB while computing three visibility ranges every tick.
+- Isolated 256-environment CUDA profile: production visibility computes in 3.39 ms/batch
+  (75,482 envs/s); visibility plus both masked team observations computes in 13.97 ms/batch
+  (18,322 envs/s), excluding bullets. This is far above the recent end-to-end PPO spot-check
+  rate, so perception is vectorized and is not currently the training bottleneck.
 
 ## Gate 2 implementation
 
@@ -167,7 +179,63 @@ results guide tuning but do not replace human playtesting.
   [10-field Frontline map, seed 20260909](frontline-field-example-seed-20260909.png),
   reproducible with `benchmarks/render_field_example.py`.
 
-## Gate 2 human review requested
+## Gate 3 implementation
+
+- Finite range and natural field-core line-of-sight use shortest toroidal displacement.
+  Sight is shared across living allies; no synthetic occlusion was added.
+- Each environment observation carries independently masked Team 0 and Team 1 views.
+  Hidden enemy position, velocity, health, power, cooldown, alive state, local field state,
+  bullets, and actions are zeroed behind explicit visibility masks. Enemy pending actions
+  remain private even while the enemy ship is visible.
+- Static fields remain globally known. Typed entity tokens now cover ships, fields, five
+  zones, and one combined boundary/global token with zone roles, capture state, front,
+  threshold, timer, and game-mode channels.
+- Team canonicalization swaps ship and zone ownership, zone roles, front direction, capture
+  direction, and bullet ownership. Finite vision rejects legacy `shared_pass` training;
+  `ego_pass` selects the correct masked team view before canonicalization.
+- Scripted, policy, match, tournament, Elo, behavior-cloning, and opponent paths all consume
+  the same team perception. A regression test perturbs every hidden enemy channel and keeps
+  the scripted ally action distribution byte-identical.
+- Renderer modes `FULL`, `TEAM_0`, and `TEAM_1` apply the authoritative mask to ships, health
+  bars, bullets, prediction ghosts, and the new minimap. `V` cycles the perspective; team
+  render modes refuse to draw without an authoritative visibility result.
+- W&B reports enemy visible/range-only fractions, field occlusion, never-seen fraction,
+  individual sight, team-sharing gain, hidden age, reacquisitions, and duration bins.
+  Checkpoint observation schema `team_perception_v6` rejects older incompatible encoders.
+
+## Fog-distribution evidence
+
+The suite used 256 independent field layouts and scripted 4v4 trajectories controlled with
+the production 1600 px range. The 1200 and 2000 px columns are counterfactual geometry probes
+over those same trajectories, so range comparisons do not confound map or combat randomness.
+
+| Vision range | Enemy visible | Range-only visible | In-range blocked by fields | Individual visible | Team-sharing gain | Mean hidden age |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1200 px | 57.7% | 61.6% | 6.4% | 36.5% | +21.2 pp | 5.16 s |
+| **1600 px** | **74.2%** | **83.8%** | **11.6%** | **52.7%** | **+21.5 pp** | **3.66 s** |
+| 2000 px | 81.3% | 95.7% | 15.1% | 60.9% | +20.4 pp | 2.85 s |
+
+At 1600 px, per-map enemy visibility ranged from 59.5% at p10 to 87.1% at p90. All enemy
+slots were seen at least once within 60 seconds, with 22.8 reacquisitions/game and 91.8% of
+started hidden runs completing inside the horizon. Completed occlusions were broadly useful:
+438 lasted at most 0.1 s, 918 fell in 0.1–0.5 s, 732 in 0.5–1 s, 810 in 1–2 s, 1,207 in
+2–5 s, 1,178 in 5–10 s, and 543 in 10–30 s.
+
+Interpretation: team sharing is substantial rather than cosmetic (+21.5 percentage points),
+and fields materially interrupt otherwise valid sight without dominating it (11.6% of
+in-range exposure). The 1600 px setting is permissive—roughly three quarters of enemy-slot
+time is visible—but still produces multi-second uncertainty and strong map variance. Keep it
+for the first belief-model experiments; 1200 px would create heavier fog but would mix the
+recursive-belief comparison with a major observation-distribution change.
+
+Raw outputs:
+
+- [`frontline-fog-gate3.json`](frontline-fog-gate3.json)
+- [`frontline-perception-throughput.json`](frontline-perception-throughput.json)
+
+Reproduce with [`benchmarks/frontline_fog_suite.py`](../../benchmarks/frontline_fog_suite.py).
+
+## Gate 2 human review (approved)
 
 - Play the field-enabled 8-second Frontline preset with `uv run bnb play` or
   `.venv/bin/bnb play`.
@@ -175,6 +243,15 @@ results guide tuning but do not replace human playtesting.
 - Check projectile trajectories through overlaps and reciprocal-cancellation regions.
 - Judge the provisional 10-field low-discrepancy density and 30–750 px radius range.
 - Check whether overlap bands and independent damage patterns remain legible during combat.
+
+## Gate 3 human review requested
+
+- Play or spectate with `V` cycling full/Team 0/Team 1 and confirm the information density
+  feels right at the provisional 1600 px range.
+- Check field-core occlusion at overlaps, map seams, and while a ship is inside a field.
+- Confirm the minimap, health bars, bullets, and prediction ghosts never reveal hidden ships.
+- Decide whether 74% average enemy visibility is suitable for the initial recursive-belief
+  work, or whether the range should be reduced before Gate 4.
 
 ## Known limitations and open questions
 
@@ -185,12 +262,14 @@ results guide tuning but do not replace human playtesting.
   balance exactly.
 - No capture-time sweep setting above 7 seconds reached ±5 in the sampled population;
   timeout sign currently decides most matches.
-- The full vision-mode and minimap requirements are deferred until the perception work
-  that can enforce non-leakage correctly.
+- Current sight is memoryless ground truth. Recurrent belief construction, belief confidence,
+  and recursive opponent-belief inputs are deliberately deferred to Gate 4.
+- The combined boundary/global token is the first architecture, not the Gate 5 map-memory
+  comparison. Static fields remain globally visible by design.
 - Actual draft PR creation remains blocked by unavailable GitHub tooling/credentials.
 
 ## Next plan
 
-1. Wait for explicit Gate 2 review and approval before merging or starting perception work.
-2. Preserve the later mandatory stops: fog distribution, recursive beliefs, map
-   architecture comparison, and curriculum decision.
+1. Wait for explicit Gate 3 review and approval before merging or starting recursive beliefs.
+2. Gate 4: implement recursive beliefs and stop for belief diagnostics.
+3. Preserve the later mandatory stops for map-architecture comparison and curriculum choice.

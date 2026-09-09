@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
+from boost_and_broadside.env.observation import BulletObsKey, ObjectType, ObsKey, YemongObservation
 from boost_and_broadside.train.rl.checkpoint_schema import position_fourier_frequencies
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,34 @@ class Accessor:
         self.channels = channels
 
     def get(self, obs: YemongObservation) -> torch.Tensor:
-        val = obs[self.key]
+        try:
+            val = obs[self.key]
+        except KeyError:
+            # Compact ship-only dict fixtures predate map metadata. Serialized
+            # checkpoints do not use this compatibility path and are schema
+            # gated; these defaults only preserve direct in-process callers.
+            team_id = obs[ObsKey.TEAM_ID]
+            if self.key == ObsKey.OBJECT_TYPE:
+                val = torch.where(
+                    team_id == 2,
+                    torch.full_like(team_id, int(ObjectType.FIELD)),
+                    torch.full_like(team_id, int(ObjectType.SHIP)),
+                )
+            elif self.key == ObsKey.ZONE_ROLE:
+                val = torch.full_like(team_id, 5)
+            elif self.key in {
+                ObsKey.CAPTURE_PROGRESS,
+                ObsKey.CAPTURE_DIRECTION,
+                ObsKey.FRONT_POSITION,
+                ObsKey.FRONT_WIN_THRESHOLD,
+                ObsKey.TIME_REMAINING,
+                ObsKey.GAME_MODE,
+            }:
+                val = torch.zeros(
+                    (*team_id.shape, 1), dtype=torch.float32, device=team_id.device
+                )
+            else:
+                raise
         if self.channels is not None:
             return val[..., self.channels]
         return val
@@ -435,6 +462,8 @@ class FeatureScope(StrEnum):
     SHARED = "shared"  # meaningful for both ships and fields
     SHIP = "ship"  # zero-filled on field tokens
     FIELD = "field"  # zero-filled on ship tokens
+    ZONE = "zone"
+    BOUNDARY = "boundary"
 
 
 class Feature:
@@ -850,6 +879,8 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
         # Categoricals and static (no predictor)
         Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3), Identity()),
         Feature("alive", Accessor(ObsKey.ALIVE), Identity(), Identity()),
+        Feature("object_type", Accessor(ObsKey.OBJECT_TYPE), OneHot(4), Identity()),
+        Feature("zone_role", Accessor(ObsKey.ZONE_ROLE), OneHot(6), Identity()),
         Feature(
             "prev_power",
             Accessor(ObsKey.PREVIOUS_ACTION, [0]),
@@ -899,6 +930,48 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             Identity(),
             Identity(),
             scope=FeatureScope.FIELD,
+        ),
+        Feature(
+            "capture_progress",
+            Accessor(ObsKey.CAPTURE_PROGRESS),
+            Identity(),
+            Identity(),
+            scope=FeatureScope.ZONE,
+        ),
+        Feature(
+            "capture_direction",
+            Accessor(ObsKey.CAPTURE_DIRECTION),
+            Identity(),
+            Identity(),
+            scope=FeatureScope.ZONE,
+        ),
+        Feature(
+            "front_position",
+            Accessor(ObsKey.FRONT_POSITION),
+            Symlog(),
+            Identity(),
+            scope=FeatureScope.BOUNDARY,
+        ),
+        Feature(
+            "front_win_threshold",
+            Accessor(ObsKey.FRONT_WIN_THRESHOLD),
+            Symlog(),
+            Identity(),
+            scope=FeatureScope.BOUNDARY,
+        ),
+        Feature(
+            "time_remaining",
+            Accessor(ObsKey.TIME_REMAINING),
+            Identity(),
+            Identity(),
+            scope=FeatureScope.BOUNDARY,
+        ),
+        Feature(
+            "game_mode",
+            Accessor(ObsKey.GAME_MODE),
+            Identity(),
+            Identity(),
+            scope=FeatureScope.BOUNDARY,
         ),
         Feature(
             name="local_log_index",

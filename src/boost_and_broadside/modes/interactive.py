@@ -28,6 +28,7 @@ from boost_and_broadside.constants import (
     TurnActions,
 )
 from boost_and_broadside.env.frontline import frontline_ship_config
+from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -40,7 +41,7 @@ from boost_and_broadside.evaluation.agents import (
 from boost_and_broadside.evaluation.environment import resolve_evaluation_environment
 from boost_and_broadside.evaluation.match import agent_view, merge_team_actions
 from boost_and_broadside.evaluation.next_state import imagine_trajectory
-from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
+from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig, VisionMode
 
 _PLAY_ZONE_RADIUS = 330.0
 _PLAY_ZONE_RING_RADIUS = 1200.0
@@ -55,6 +56,9 @@ PLAY_ENV_CONFIG = EnvConfig(
     num_fields=10,
     action_repeat=1,
     spawn_resource_spread=0.0,
+    # Provisional Gate-3 value: adjacent objectives remain mutually scoutable,
+    # while the opposite side of the playable disk does not.
+    vision_range=1600.0,
     frontline=FrontlineConfig(
         zone_radius=_PLAY_ZONE_RADIUS,
         zone_ring_radius=_PLAY_ZONE_RING_RADIUS,
@@ -98,6 +102,7 @@ def run_play_mode(
         render_config,
         fps=decision_fps,
         show_unlimited_button=True,
+        vision_mode=VisionMode.TEAM_0,
     )
     agent0 = resolve_agent_spec(
         "scripted",
@@ -251,15 +256,19 @@ def _run_interactive_loop(
 
     N = wrapper.num_ships
     M = wrapper.env_config.num_fields
-    num_tokens = N + M
+    num_tokens = wrapper.env_config.num_entity_tokens
 
     first_episode = True
     while True:
         if state_only:
             wrapper.env.reset()
             obs = None
+            visibility = team_visibility_from_state(
+                wrapper.state, wrapper.ship_config, wrapper.env_config
+            )
         else:
             obs = wrapper.reset()
+            visibility = wrapper.last_visibility
         init_hidden(agent0, 1, num_tokens, device)
         init_hidden(agent1, 1, num_tokens, device)
         pred_nexts = None
@@ -272,7 +281,10 @@ def _run_interactive_loop(
             first_episode = False
             for _ in range(renderer._render_config.fps // 2):
                 if not renderer.render_with_label(
-                    wrapper.state, "Reloading from snapshot", color=(180, 180, 255)
+                    wrapper.state,
+                    "Reloading from snapshot",
+                    color=(180, 180, 255),
+                    visibility=visibility,
                 ):
                     return
                 renderer.tick()
@@ -280,6 +292,13 @@ def _run_interactive_loop(
         while True:
             if not renderer.paused and terminal_frames == 0:
                 state = wrapper.state
+                visibility = (
+                    team_visibility_from_state(
+                        state, wrapper.ship_config, wrapper.env_config
+                    )
+                    if state_only
+                    else wrapper.last_visibility
+                )
 
                 controllable = tuple(
                     index
@@ -306,13 +325,27 @@ def _run_interactive_loop(
                 imag_nexts1 = imagine_trajectory(agent1, team1_view, N_IMAGINE_STEPS, N, device)
 
                 action0, _ = get_actions(
-                    agent0, team0_view, state, 1, N, device, return_pred_next=True
+                    agent0,
+                    team0_view,
+                    state,
+                    1,
+                    N,
+                    device,
+                    return_pred_next=True,
+                    team_visibility=visibility.ship,
                 )
                 if agent1 is agent0:
                     action1 = action0
                 else:
                     action1, _ = get_actions(
-                        agent1, team1_view, state, 1, N, device, return_pred_next=True
+                        agent1,
+                        team1_view,
+                        state,
+                        1,
+                        N,
+                        device,
+                        return_pred_next=True,
+                        team_visibility=visibility.ship,
                     )
 
                 # Select each agent's actions for their respective team (ship tokens only)
@@ -359,6 +392,9 @@ def _run_interactive_loop(
                         unlimited_resources=renderer.unlimited_resources,
                     )
                     result_tensor = wrapper.state.match_result
+                    visibility = team_visibility_from_state(
+                        wrapper.state, wrapper.ship_config, wrapper.env_config
+                    )
                 else:
                     obs, _, dones, truncated, info = wrapper.step(
                         action,
@@ -366,6 +402,7 @@ def _run_interactive_loop(
                         auto_reset=False,
                     )
                     result_tensor = info["match_result"]
+                    visibility = wrapper.last_visibility
 
                 if (dones | truncated).any():
                     reset_done_envs(agent0, dones | truncated, num_tokens)
@@ -380,10 +417,14 @@ def _run_interactive_loop(
                     terminal_frames = renderer.target_fps
 
             if terminal_frames > 0:
-                running = renderer.render_with_label(wrapper.state, terminal_label or "")
+                running = renderer.render_with_label(
+                    wrapper.state, terminal_label or "", visibility=visibility
+                )
                 terminal_frames -= 1
             else:
-                running = renderer.render(wrapper.state, pred_nexts=pred_nexts)
+                running = renderer.render(
+                    wrapper.state, pred_nexts=pred_nexts, visibility=visibility
+                )
             if not running:
                 return
             renderer.tick()

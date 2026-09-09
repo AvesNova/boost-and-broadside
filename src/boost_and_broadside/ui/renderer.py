@@ -9,11 +9,13 @@ environment.
 import math
 import os
 from dataclasses import dataclass
+from enum import StrEnum
 
 import pygame
 import torch
 
 from boost_and_broadside.config import InterfaceDamageLevel, ShipConfig, ZoneRole
+from boost_and_broadside.env.perception import TeamVisibility
 from boost_and_broadside.env.state import TensorState
 
 # Prediction-vector channel indices used to decode ghost trajectories: the
@@ -25,6 +27,12 @@ from boost_and_broadside.env.state import TensorState
 _GHOST_DPHI_X = 0
 _GHOST_DPHI_Y = 1
 _GHOST_DPHI_ATT = 4
+
+
+class VisionMode(StrEnum):
+    FULL = "FULL"
+    TEAM_0 = "TEAM_0"
+    TEAM_1 = "TEAM_1"
 
 
 def field_color(index_level: int) -> tuple[int, int, int]:
@@ -265,6 +273,7 @@ class RenderConfig:
     fps: int = 60
     show_ui: bool = True  # pause button + FPS slider; off for clean video capture
     show_unlimited_button: bool = False  # play-only health/power toggle
+    vision_mode: VisionMode = VisionMode.FULL
     team_colors: tuple[tuple[int, int, int], tuple[int, int, int]] = (
         (100, 180, 255),  # team 0: blue
         (255, 120, 80),  # team 1: red
@@ -302,6 +311,7 @@ class GameRenderer:
         self.paused = False
         self.unlimited_resources = False
         self.target_fps = render_config.fps
+        self.vision_mode = VisionMode(render_config.vision_mode)
         self.slider_dragging = False
         self.camera_dragging = False
         self._camera_drag_button: int | None = None
@@ -322,6 +332,7 @@ class GameRenderer:
         self,
         state: TensorState,
         pred_nexts: list[torch.Tensor] | torch.Tensor | None = None,
+        visibility: TeamVisibility | None = None,
     ) -> bool:
         """Draw one frame from env 0 of state.
 
@@ -340,7 +351,7 @@ class GameRenderer:
 
         if isinstance(pred_nexts, torch.Tensor):
             pred_nexts = [pred_nexts]
-        self._draw_frame(state, pred_nexts)
+        self._draw_frame(state, pred_nexts, visibility)
         pygame.display.flip()
         return True
 
@@ -349,6 +360,7 @@ class GameRenderer:
         state: TensorState | None,
         text: str,
         color: tuple[int, int, int] = (220, 220, 220),
+        visibility: TeamVisibility | None = None,
     ) -> bool:
         """Draw one frame then overlay a centered text label before flipping.
 
@@ -362,7 +374,7 @@ class GameRenderer:
                 return False
 
         if state is not None:
-            self._draw_frame(state)
+            self._draw_frame(state, visibility=visibility)
         else:
             self._screen.fill(self._render_config.background_color)
         self._blit_label(text, color)
@@ -436,6 +448,9 @@ class GameRenderer:
                     self.camera.fit_region(*self._frontline_fit)
             elif event.key == pygame.K_TAB:
                 self._cycle_selected_ship()
+            elif event.key == pygame.K_v:
+                modes = tuple(VisionMode)
+                self.vision_mode = modes[(modes.index(self.vision_mode) + 1) % len(modes)]
             elif event.key in (pygame.K_EQUALS, pygame.K_RIGHTBRACKET):
                 self._adjust_game_speed(1)
             elif event.key in (pygame.K_MINUS, pygame.K_LEFTBRACKET):
@@ -465,9 +480,15 @@ class GameRenderer:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _draw_frame(self, state: TensorState, pred_nexts: list[torch.Tensor] | None = None) -> None:
+    def _draw_frame(
+        self,
+        state: TensorState,
+        pred_nexts: list[torch.Tensor] | None = None,
+        visibility: TeamVisibility | None = None,
+    ) -> None:
         surf = self._screen
         surf.fill(self._render_config.background_color)
+        ship_visible, bullet_visible = self._perspective_masks(state, visibility)
         if self.selected_ship is not None and self.selected_ship < state.max_ships:
             if bool(state.ship_alive[0, self.selected_ship].item()):
                 self._selected_position = complex(state.ship_pos[0, self.selected_ship].item())
@@ -482,10 +503,12 @@ class GameRenderer:
             self._draw_boundary(state, surf)
             self._draw_zones(state, surf)
         self._draw_fields(state, surf)
-        self._draw_bullets(state, surf)
+        self._draw_bullets(state, surf, bullet_visible)
         if pred_nexts is not None:
-            self._draw_ghost_ships(state, pred_nexts, surf)
-        self._draw_ships(state, surf)
+            self._draw_ghost_ships(state, pred_nexts, surf, ship_visible)
+        self._draw_ships(state, surf, ship_visible)
+        if state.num_zones > 0:
+            self._draw_minimap(state, surf, ship_visible)
         if self._render_config.show_ui:
             self._draw_ui(state, surf)
 
@@ -493,11 +516,26 @@ class GameRenderer:
         self,
         state: TensorState,
         pred_nexts: list[torch.Tensor] | None = None,
+        visibility: TeamVisibility | None = None,
     ) -> pygame.Surface:
         """Supported offscreen frame API used by capture and smoke tests."""
 
-        self._draw_frame(state, pred_nexts)
+        self._draw_frame(state, pred_nexts, visibility)
         return self._screen
+
+    def _perspective_masks(
+        self,
+        state: TensorState,
+        visibility: TeamVisibility | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Resolve draw masks from the renderer's selected perception contract."""
+
+        if self.vision_mode is VisionMode.FULL:
+            return state.ship_alive[0], state.bullet_active[0]
+        if visibility is None:
+            raise ValueError("team vision rendering requires authoritative visibility masks")
+        team = 0 if self.vision_mode is VisionMode.TEAM_0 else 1
+        return visibility.ship[0, team] & state.ship_alive[0], visibility.bullet[0, team]
 
     def _blit_label(self, text: str, color: tuple[int, int, int]) -> None:
         if not hasattr(self, "_font_large"):
@@ -572,8 +610,11 @@ class GameRenderer:
             remaining = max(0.0, (max_steps - steps) * self._ship_config.dt)
             lines = (
                 f"TEAM 0  FRONT {front:+d}/{threshold}  TEAM 1",
-                f"TIME {remaining:05.1f}s   VIEW FULL   SPEED {self.game_speed:g}x",
-                "F fit  R world  wheel zoom  drag pan  C follow  TAB select/observe  -/+ speed",
+                (
+                    f"TIME {remaining:05.1f}s   VIEW {self.vision_mode.value}   "
+                    f"SPEED {self.game_speed:g}x"
+                ),
+                "V view  F fit  R world  wheel zoom  drag pan  C follow  TAB select  -/+ speed",
             )
             for row, text in enumerate(lines):
                 label = self._font.render(text, True, (225, 225, 235))
@@ -672,7 +713,11 @@ class GameRenderer:
                 pygame.draw.line(surf, color, screen_start, screen_target, 1)
 
     def _draw_ghost_ships(
-        self, state: TensorState, pred_nexts: list[torch.Tensor], surf: pygame.Surface
+        self,
+        state: TensorState,
+        pred_nexts: list[torch.Tensor],
+        surf: pygame.Surface,
+        visible: torch.Tensor | None = None,
     ) -> None:
         """Draw autoregressive predicted positions as fading hollow triangles.
 
@@ -686,7 +731,8 @@ class GameRenderer:
 
         cfg = self._render_config
 
-        alive = state.ship_alive[0].cpu()  # (N,) bool
+        visible = state.ship_alive[0] if visible is None else visible
+        alive = (state.ship_alive[0] & visible).cpu()  # (N,) bool
         team_id = state.ship_team_id[0].cpu()  # (N,) int32
         real_pos = state.ship_pos[0].cpu()  # (N,) complex64
         real_att = state.ship_attitude[0].cpu()  # (N,) complex64
@@ -739,7 +785,12 @@ class GameRenderer:
                 prev_p = ghost_p
                 prev_att_angle = att_angle
 
-    def _draw_ships(self, state: TensorState, surf: pygame.Surface) -> None:
+    def _draw_ships(
+        self,
+        state: TensorState,
+        surf: pygame.Surface,
+        visible: torch.Tensor | None = None,
+    ) -> None:
         """Draw all alive ships in env 0 as colored triangles with health bars."""
         cfg = self._render_config
         sc = self._ship_config
@@ -748,7 +799,8 @@ class GameRenderer:
         att = state.ship_attitude[0].cpu()  # (N,) complex64
         health = state.ship_health[0].cpu()  # (N,) float32
         power = state.ship_power[0].cpu()  # (N,) float32
-        alive = state.ship_alive[0].cpu()  # (N,) bool
+        visible = state.ship_alive[0] if visible is None else visible
+        alive = (state.ship_alive[0] & visible).cpu()  # (N,) bool
         team_id = state.ship_team_id[0].cpu()  # (N,) int32
 
         sz = cfg.ship_size
@@ -950,11 +1002,83 @@ class GameRenderer:
             start = dash_idx * step
             pygame.draw.arc(surf, color, rect, start, start + 0.55 * step, line_width)
 
-    def _draw_bullets(self, state: TensorState, surf: pygame.Surface) -> None:
+    def _draw_minimap(
+        self,
+        state: TensorState,
+        surf: pygame.Surface,
+        ship_visible: torch.Tensor,
+    ) -> None:
+        """Draw static map geometry and only dynamically visible ships."""
+
+        size = 180
+        margin = 12
+        left = surf.get_width() - size - margin
+        top = 52
+        panel = pygame.Rect(left, top, size, size)
+        pygame.draw.rect(surf, (16, 18, 30), panel)
+        pygame.draw.rect(surf, (105, 110, 130), panel, width=1)
+
+        map_center = complex(state.map_center[0].item())
+        playable = float(state.playable_boundary_radius[0].item())
+        scale = (size / 2.0 - 8.0) / max(playable, 1.0)
+        center_px = complex(panel.centerx, panel.centery)
+
+        def point(position: complex) -> tuple[int, int]:
+            dx = (position.real - map_center.real + self._world_w / 2.0) % self._world_w
+            dy = (position.imag - map_center.imag + self._world_h / 2.0) % self._world_h
+            delta = complex(dx - self._world_w / 2.0, dy - self._world_h / 2.0)
+            mapped = center_px + delta * scale
+            return round(mapped.real), round(mapped.imag)
+
+        pygame.draw.circle(surf, (130, 65, 75), panel.center, round(playable * scale), width=2)
+        for position, radius, level in zip(
+            state.field_pos[0].cpu(),
+            state.field_radius[0].cpu(),
+            state.field_index_level[0].cpu(),
+        ):
+            pygame.draw.circle(
+                surf,
+                field_color(int(level.item())),
+                point(complex(position.item())),
+                max(1, round(float(radius.item()) * scale)),
+                width=1,
+            )
+        for position, role in zip(state.zone_pos[0].cpu(), state.zone_roles[0].cpu()):
+            team = 0 if int(role.item()) <= 1 else 1 if int(role.item()) >= 3 else None
+            color = (175, 175, 175) if team is None else self._render_config.team_colors[team]
+            pygame.draw.circle(surf, color, point(complex(position.item())), 4, width=2)
+
+        positions = state.ship_pos[0].cpu()
+        teams = state.ship_team_id[0].cpu()
+        alive_visible = (state.ship_alive[0] & ship_visible).cpu()
+        for index in range(state.max_ships):
+            if not bool(alive_visible[index].item()):
+                continue
+            p = point(complex(positions[index].item()))
+            color = self._render_config.team_colors[int(teams[index].item())]
+            pygame.draw.circle(surf, color, p, 3)
+            if index == self.selected_ship:
+                pygame.draw.circle(surf, (255, 255, 255), p, 5, width=1)
+
+        assert self.camera.center is not None
+        camera_center = point(self.camera.center)
+        view_w = surf.get_width() / self.camera.scale * scale
+        view_h = surf.get_height() / self.camera.scale * scale
+        viewport = pygame.Rect(0, 0, max(2, round(view_w)), max(2, round(view_h)))
+        viewport.center = camera_center
+        pygame.draw.rect(surf, (220, 220, 230), viewport, width=1)
+
+    def _draw_bullets(
+        self,
+        state: TensorState,
+        surf: pygame.Surface,
+        visible: torch.Tensor | None = None,
+    ) -> None:
         """Draw all active bullets in env 0 as small rectangles."""
         cfg = self._render_config
         bpos = state.bullet_pos[0].cpu()  # (N, K) complex64
-        bact = state.bullet_active[0].cpu()  # (N, K) bool
+        visible = state.bullet_active[0] if visible is None else visible
+        bact = (state.bullet_active[0] & visible).cpu()  # (N, K) bool
         team_id = state.ship_team_id[0].cpu()  # (N,) int32
 
         N, K = bpos.shape
