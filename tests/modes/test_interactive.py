@@ -2,17 +2,27 @@
 
 import torch
 
+from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.env.frontline import (
+    FRONTLINE_FIELD_RADIUS_MAX,
+    frontline_ship_config,
+)
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG, _apply_keyboard_override
 
 
 def test_play_preset_is_timed_frontline_with_scriptable_fleets() -> None:
     assert PLAY_ENV_CONFIG.num_ships == 8
-    assert PLAY_ENV_CONFIG.num_fields == 0
-    assert PLAY_ENV_CONFIG.max_episode_steps == 18_000
+    assert PLAY_ENV_CONFIG.num_fields == 10
+    assert PLAY_ENV_CONFIG.max_episode_steps == 9_000
     assert PLAY_ENV_CONFIG.frontline is not None
     assert not PLAY_ENV_CONFIG.single_team
     assert PLAY_ENV_CONFIG.frontline.zone_radius == 330.0
     assert PLAY_ENV_CONFIG.frontline.capture_seconds == 8.0
+    assert FRONTLINE_FIELD_RADIUS_MAX == 750.0
+    ship_config = frontline_ship_config(ShipConfig())
+    assert ship_config.dt == 1.0 / 30.0
+    assert ship_config.field_integrator == "two_step"
+    assert ship_config.field_integration_substeps == 1
 
 
 def test_play_keyboard_controls_team_zero_but_not_null_team_one() -> None:

@@ -858,7 +858,7 @@ class GameRenderer:
                 )
 
     def _draw_fields(self, state: TensorState, surf: pygame.Surface) -> None:
-        """Draw refractive fields as patterned, unfilled toroidal outlines."""
+        """Draw each overlapping field's transition band and damage outline."""
         if state.num_fields == 0:
             return
         positions = state.field_pos[0].cpu()
@@ -867,24 +867,53 @@ class GameRenderer:
         index_levels = state.field_index_level[0].cpu()
         damage_levels = state.field_damage_level[0].cpu()
 
-        # Larger parents first; child interfaces remain crisp on top.
+        # Large contours first keeps small/coincident field outlines legible.
         order = sorted(range(positions.shape[0]), key=lambda i: radii[i].item(), reverse=True)
         for field_idx in order:
             center = complex(positions[field_idx].item())
             radius_world = float(radii[field_idx].item())
             outer = radius_world + 0.5 * float(widths[field_idx].item())
             radius_px = max(1, int(round(radius_world * self.camera.scale)))
+            width_px = max(1, int(round(float(widths[field_idx].item()) * self.camera.scale)))
             color = field_color(int(index_levels[field_idx].item()))
             pattern, line_width = field_border_pattern(int(damage_levels[field_idx].item()))
             for wrapped_center in self.camera.visible_images(center, outer):
+                screen_center = self._unwrapped_world_to_screen(wrapped_center)
+                self._draw_field_band(surf, screen_center, radius_px, width_px, color)
                 self._draw_field_outline(
                     surf,
-                    self._unwrapped_world_to_screen(wrapped_center),
+                    screen_center,
                     radius_px,
                     color,
                     pattern,
                     line_width,
                 )
+
+    @staticmethod
+    def _draw_field_band(
+        surf: pygame.Surface,
+        center: tuple[int, int],
+        radius: int,
+        transition_width: int,
+        color: tuple[int, int, int],
+    ) -> None:
+        """Tint one interface annulus without filling the field core.
+
+        Independent alpha blits make partial and coincident overlaps visible as
+        stronger/mixed bands while every nominal contour remains separately
+        outlined by its material and damage pattern.
+        """
+
+        half_width = max(1, transition_width // 2)
+        outer = radius + half_width
+        inner = max(0, radius - half_width)
+        size = 2 * outer + 1
+        band = pygame.Surface((size, size), pygame.SRCALPHA)
+        local_center = (outer, outer)
+        pygame.draw.circle(band, (*color, 34), local_center, outer)
+        if inner > 0:
+            pygame.draw.circle(band, (0, 0, 0, 0), local_center, inner)
+        surf.blit(band, (center[0] - outer, center[1] - outer))
 
     @staticmethod
     def _draw_field_outline(

@@ -4,14 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from boost_and_broadside.config import EnvConfig, FieldMapConfig, FrontlineConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, FrontlineConfig, ShipConfig
 from boost_and_broadside.evaluation import environment as evaluation_environment
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.subjects import describe_environment
-
-
-class _FieldMap:
-    num_fields = 1
 
 
 def _env_config(num_fields: int) -> EnvConfig:
@@ -27,53 +23,30 @@ def test_zero_field_factory_builds_without_a_map():
     env = evaluation_environment.create_evaluation_env(
         2, ShipConfig(), _env_config(num_fields=0), "cpu"
     )
-    assert env.field_map is None
+    env.reset(seed=3)
+    assert env.state.num_fields == 0
 
 
-def test_field_factory_generates_and_attaches_the_declared_map(monkeypatch):
-    captured = {}
-
-    def generate(ship_config, env_config, map_config, device, seed=None):
-        captured.update(
-            ship=ship_config,
-            env=env_config,
-            map=map_config,
-            device=device,
-            seed=seed,
-        )
-        return _FieldMap()
-
-    monkeypatch.setattr(evaluation_environment.FieldMapCache, "generate", generate)
+def test_field_factory_generates_layout_on_reset():
     ship = ShipConfig()
     env_config = _env_config(num_fields=1)
-    map_config = FieldMapConfig(cache_size=3)
     env = evaluation_environment.create_evaluation_env(
         2,
         ship,
         env_config,
         "cpu",
-        field_map_config=map_config,
-        field_map_seed=17,
     )
-    assert env.field_map is not None
-    assert captured == {
-        "ship": ship,
-        "env": env_config,
-        "map": map_config,
-        "device": env.device,
-        "seed": 17,
-    }
+    env.reset(seed=17)
+    assert env.state.field_pos.shape == (2, 1)
+    assert (env.state.field_radius > 0.0).all()
 
 
-def test_field_environment_requires_map_generation_intent():
-    try:
-        evaluation_environment.create_evaluation_env(
-            1, ShipConfig(), _env_config(num_fields=1), "cpu"
-        )
-    except ValueError as error:
-        assert "field_map_config" in str(error)
-    else:
-        raise AssertionError("field evaluation unexpectedly constructed without map intent")
+def test_field_environment_needs_no_external_map_generation_intent():
+    env = evaluation_environment.create_evaluation_env(
+        1, ShipConfig(), _env_config(num_fields=1), "cpu"
+    )
+    env.reset(seed=4)
+    assert env.state.num_fields == 1
 
 
 def _frontline_env() -> EnvConfig:
@@ -101,7 +74,6 @@ def _frontline_env() -> EnvConfig:
 def _policy_with_task(env_config: EnvConfig, ship_config: ShipConfig) -> ResolvedAgent:
     bundle = SimpleNamespace(
         env_config=env_config,
-        field_map_config=None,
         ship_config=ship_config,
     )
     return ResolvedAgent("policy", object(), bundle=bundle)

@@ -10,7 +10,7 @@ from boost_and_broadside.train.rl.features import build_standard_coordinator
 from tests.conftest import make_state
 
 
-def _nested_observation():
+def _overlapping_observation():
     config = ShipConfig(world_size=(512.0, 512.0), field_radius_max=200.0)
     state = make_state(
         num_envs=1,
@@ -24,34 +24,29 @@ def _nested_observation():
     state.field_transition_width[:] = 20.0
     state.field_index_level[:] = torch.tensor([[1, -2]], dtype=torch.int8)
     state.field_damage_level[:] = torch.tensor([[1, 2]], dtype=torch.int8)
-    state.field_parent[:] = torch.tensor([[-1, 0]])
-    index, damage, delta = material_tensors(
+    index, damage = material_tensors(
         state.field_index_level,
         state.field_damage_level,
-        state.field_parent,
         config,
     )
     state.field_index[:] = index
     state.field_damage[:] = damage
-    state.field_delta_index[:] = delta
     state.ship_pos[:] = torch.tensor([[256.0 + 256.0j, 10.0 + 10.0j]])
     refresh_ship_field_cache(state, config)
     return config, observation_from_state(state, config)
 
 
 def test_field_material_features_and_ship_local_index_are_numeric_and_bounded():
-    config, obs = _nested_observation()
+    config, obs = _overlapping_observation()
     assert obs.pos.shape == (1, 4, 2)
     assert obs.team_id[0, 2:].tolist() == [2, 2]
     assert obs.alive[0, 2:].tolist() == [True, True]
 
-    # Absolute log encoding is k/2. Root outside is ambient; child outside is
-    # its HIGH parent. Ratio uses (k_inside-k_outside)/4.
-    assert obs[ObsKey.FIELD_INSIDE_LOG_INDEX][0, 2:, 0].tolist() == pytest.approx([0.5, -1.0])
-    assert obs[ObsKey.FIELD_OUTSIDE_LOG_INDEX][0, 2:, 0].tolist() == pytest.approx([0.0, 0.5])
-    assert obs[ObsKey.FIELD_LOG_INDEX_RATIO][0, 2:, 0].tolist() == pytest.approx([0.25, -0.75])
+    # Absolute target log encoding is k/2. At the shared center the HIGH and
+    # VERY_LOW targets blend to exponent -0.5, hence normalized value -0.25.
+    assert obs[ObsKey.FIELD_TARGET_LOG_INDEX][0, 2:, 0].tolist() == pytest.approx([0.5, -1.0])
     assert obs[ObsKey.FIELD_DAMAGE][0, 2:, 0].tolist() == pytest.approx([0.5, 1.0])
-    assert obs.local_log_index[0, :, 0].tolist() == pytest.approx([-1.0, 0.0, 0.0, 0.0])
+    assert obs.local_log_index[0, :, 0].tolist() == pytest.approx([-0.25, 0.0, 0.0, 0.0])
 
     coordinator = build_standard_coordinator(config)
     encoded = coordinator.get_input_vector(obs)
@@ -72,7 +67,7 @@ def test_field_material_features_and_ship_local_index_are_numeric_and_bounded():
 
 
 def test_team_flip_changes_only_ship_team_ids_and_preserves_field_properties():
-    _, obs = _nested_observation()
+    _, obs = _overlapping_observation()
     flipped = obs.flip_team(num_ships=2)
     for key, value in obs.items():
         if key == ObsKey.TEAM_ID:
@@ -82,7 +77,7 @@ def test_team_flip_changes_only_ship_team_ids_and_preserves_field_properties():
 
 
 def test_local_index_is_registered_as_auxiliary_prediction_target():
-    config, obs = _nested_observation()
+    config, obs = _overlapping_observation()
     coordinator = build_standard_coordinator(config)
     assert "local_log_index" in coordinator.target_slices()
     targets = coordinator.get_target_vector(obs)

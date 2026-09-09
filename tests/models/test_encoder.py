@@ -50,9 +50,7 @@ def _make_obs(B: int, N: int) -> YemongObservation:
             ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
             ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),
             ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros(B, N, 1),
-            ObsKey.FIELD_INSIDE_LOG_INDEX: torch.zeros(B, N, 1),
-            ObsKey.FIELD_OUTSIDE_LOG_INDEX: torch.zeros(B, N, 1),
-            ObsKey.FIELD_LOG_INDEX_RATIO: torch.zeros(B, N, 1),
+            ObsKey.FIELD_TARGET_LOG_INDEX: torch.zeros(B, N, 1),
             ObsKey.FIELD_DAMAGE: torch.zeros(B, N, 1),
         }
     )

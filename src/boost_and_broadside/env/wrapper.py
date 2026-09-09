@@ -18,7 +18,6 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, MatchResult, RewardConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import (
     ObservationBuffers,
     YemongObservation,
@@ -93,7 +92,6 @@ class YemongEnvWrapper:
         env_config: EnvConfig,
         rewards: RewardConfig,
         device: str | torch.device,
-        field_map: FieldMapCache | None = None,
         collision_compile_mode: str | None = None,
         include_bullets: bool = False,
     ) -> None:
@@ -102,7 +100,6 @@ class YemongEnvWrapper:
             ship_config,
             env_config,
             device,
-            field_map,
             collision_compile_mode,
         )
         self.ship_config = ship_config

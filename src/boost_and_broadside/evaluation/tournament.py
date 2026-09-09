@@ -2,7 +2,7 @@
 
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,11 +18,9 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import (
     EloCalibrateConfig,
     EnvConfig,
-    FieldMapConfig,
     ModelConfig,
     ShipConfig,
 )
-from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.environment import create_evaluation_env
@@ -176,7 +174,7 @@ class BatchStat:
 
 def load_run_config(
     run_dir: Path,
-) -> tuple[EnvConfig, ModelConfig, ShipConfig, str, FieldMapConfig | None]:
+) -> tuple[EnvConfig, ModelConfig, ShipConfig, str]:
     """Recover the task and model provenance a run trained under.
 
     Ladder snapshots are policy-only, so this reads the resumable checkpoint.
@@ -200,35 +198,7 @@ def load_run_config(
     ship_config = ShipConfig(**checkpoint["ship_config"])
     train_config = checkpoint.get("train_config", {})
     paradigm = train_config.get("paradigm", "ego_pass")
-    return (
-        env_config,
-        model_config,
-        ship_config,
-        paradigm,
-        recorded_field_map(checkpoint, env_config, run_dir.name),
-    )
-
-
-def recorded_field_map(
-    checkpoint: Mapping[str, object],
-    env_config: EnvConfig,
-    label: str,
-) -> FieldMapConfig | None:
-    """The map distribution a checkpoint trained under, or ``None`` if it had none.
-
-    Absence is only legitimate at zero fields. A fielded run that records no
-    intent cannot be evaluated on the distribution it learned, and guessing one
-    from the current profile would produce a confident number about a different
-    game -- so this raises rather than substituting.
-    """
-
-    field_map = checkpoint.get("train_config", {}).get("field_map")
-    if env_config.num_fields > 0 and field_map is None:
-        raise InvalidCheckpointError(
-            f"{label} trained with {env_config.num_fields} fields but records no "
-            f"field-map intent; it cannot be evaluated on the distribution it trained on"
-        )
-    return None if field_map is None else FieldMapConfig(**field_map)
+    return env_config, model_config, ship_config, paradigm
 
 
 def load_ladder_policy(
@@ -401,9 +371,6 @@ class Tournament:
         num_envs: int,
         device: str,
         include_bullets: bool = False,
-        # Required when env_config has fields: TensorEnv refuses to build without
-        # one, and the rungs must play the same map distribution the run trains on.
-        field_map: FieldMapCache | None = None,
     ) -> None:
         self.players = players
         self.size = len(players)
@@ -420,9 +387,7 @@ class Tournament:
         self.max_steps = env_config.max_episode_steps
         self.team_sizes = (self.num_ships // 2, self.num_ships - self.num_ships // 2)
 
-        self.env = create_evaluation_env(
-            num_envs, ship_config, env_config, self.device, field_map=field_map
-        )
+        self.env = create_evaluation_env(num_envs, ship_config, env_config, self.device)
         self.wins = np.zeros((self.size, self.size), dtype=np.float64)
         self.ties = np.zeros((self.size, self.size), dtype=np.float64)
         # [team-0 player, team-1 player, team0 win/team1 win/tie]. Unlike the

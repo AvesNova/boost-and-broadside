@@ -286,7 +286,7 @@ Any profile value can be changed positionally, before anything is derived from i
 
 ```bash
 uv run bnb train --profile rl clip_coef=0.2 elo_eval.window_size=64
-uv run bnb train --profile rl num_fields=0 field_map=none   # re-derives the shard width
+uv run bnb train --profile rl num_fields=0   # re-derives the shard width
 ```
 
 An unknown key is refused with the nearest real one rather than ignored. Overrides are

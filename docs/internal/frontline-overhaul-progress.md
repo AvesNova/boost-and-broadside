@@ -9,13 +9,16 @@ remain the source of truth for scope and human gates.
 
 ## Current position
 
-- Branch: `frontline/01-camera-world`
+- Branch: `frontline/02-fields`
 - Integration base: `feat/frontline-overhaul`
-- Human gate: Gate 1, Frontline gameplay prototype
-- Status: implemented and under human balance/playability review
-- Boundary: do not begin Gate 2 overlapping-field work until Gate 1 is approved
+- Human gate: Gate 2, overlapping field physics
+- Status: ready for human Gate 2 review
+- Gate 1 was approved by the user's instruction to continue and merged into the
+  integration base on 2026-09-09.
+- Boundary: stop after overlap physics, on-reset generation, renderer changes, examples,
+  and performance evidence are ready for human review.
 - Draft PR: not opened because GitHub CLI/credentials are unavailable in this workspace
-- Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/01-camera-world?expand=1>
+- Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/02-fields?expand=1>
 
 ## Gate 1 implemented
 
@@ -53,6 +56,9 @@ remain the source of truth for scope and human gates.
 | Hostile spawn damage | 8 health/s | Provisional |
 | Front win threshold | ±5 | Provisional |
 | Match duration | 300 s | Provisional |
+| Frontline field count | 10 | Provisional; low-discrepancy placement |
+| Frontline field radius | 30–750 px | Provisional; maximum raised from 490 px |
+| Frontline physics/decision rate | 30 Hz | Per-second rules unchanged |
 
 Capture and stabilization use the same fixed rate. A larger majority does not accelerate
 the meter: 4v0, 4v2, 1v0, and 2v1 are equivalent; ties pause it.
@@ -84,8 +90,10 @@ milestone.
 
 ## Capture-duration evidence
 
-Each setting used 256 full 4v4 games, the same seed, the current 50/25/25 identities,
-attacker rally, defender patrol, and flat-majority capture rule.
+This Gate 1 sweep predates enabled fields and the 30 Hz Frontline runtime. Each setting
+used 256 full 4v4 games, the same seed, the current 50/25/25 identities, attacker rally,
+defender patrol, and flat-majority capture rule. Treat it as the rationale for selecting
+eight seconds, not as current field-enabled match statistics.
 
 | Seconds | Any capture | Two captures | Captures/game | Mean first | Mean second | T0/T1/draw |
 |---:|---:|---:|---:|---:|---:|---:|
@@ -113,20 +121,60 @@ results guide tuning but do not replace human playtesting.
 - Capture sweep: 2,560 full games across ten capture durations on an RTX 4070 Laptop GPU.
 - Gate 1 boundary full repository suite: 1,359 passed, 6 skipped, 0 failed in 397.99
   seconds after the final scripted-policy and 8-second capture changes.
+- Gate 2 focused physics/transport/projectile/schema/UI suite: 162 passed, 2 skipped.
+- Gate 2 pre-performance-revision full repository suite: 1,358 passed, 6 skipped, 0
+  failed in 402.65 seconds. The current lightweight revision ran 129 focused field,
+  transport, projectile, Frontline, interactive, evaluation, tournament, and UI tests,
+  all passing; the full suite was not repeated during this tuning iteration.
+- Gate 2 field benchmark: 4,096 environments on an RTX 4070 Laptop GPU. Zero/four/ten/
+  twenty fields measured 1,543,526/223,241/228,889/231,166 environment steps/s. The
+  ten-field state used 7.84 MiB, peaked at 39.95 MiB, and reset in 1.538 µs/environment.
+  Policy inference was excluded.
+- Three-update, 128-environment CUDA PPO spot check without compilation: final cumulative
+  throughput was 447 SPS at zero fields, 365 SPS at the production four fields, and 380 SPS
+  at ten fields. These deliberately short runs show a roughly 15–18% fielded penalty at
+  this underfilled width, not a stable training forecast.
+- End-to-end one-environment play benchmark, including scripted decisions, physics, and
+  offscreen rendering: 27.54 ms/decision or 1.21× realtime with one CPU thread. The same
+  tiny-tensor workload at 16 threads measured 94.12 ms/decision or 0.35× realtime.
+- In 4,096 ten-field unit-disk samples, low-discrepancy placement increased mean nearest-
+  neighbor spacing from 0.320 to 0.507 radius units and reduced its coefficient of variation
+  from 0.566 to 0.111 versus IID area-uniform samples.
+- A full 64-game scripted batch was deliberately stopped after roughly six minutes because
+  it no longer met the requested lightweight iteration budget; no statistics are claimed
+  from the interrupted run.
 
-## Human review still needed
+## Gate 2 implementation
 
-- Play the selected 8-second capture preset with `uv run bnb play` or
+- Fields compose with bounded union coverage and an alpha-weighted target average in
+  signed log-index space, using vectorized exclusive products for the analytic gradient.
+- Partial, coincident, toroidal, and nested overlaps are legal. Parent relationships,
+  parent-relative deltas, laminar packing, cached map banks, retry settings, and their
+  training/evaluation plumbing have been removed.
+- Layouts generate directly on every masked episode reset. Randomized sunflower/R2
+  low-discrepancy samples reduce clustering without rejection loops. Frontline centers use
+  the same translated origin as zones and stay wholly inside the practical boundary.
+- Field observations expose one absolute target log-index instead of three
+  parent-relative channels. Checkpoint observation schema v5 rejects old weights.
+- Renderer transition annuli alpha-blend at intersections while each field keeps its
+  material color and independent dotted/dashed/solid damage outline.
+- Tests cover identical reinforcement, reciprocal cancellation, arbitrary and toroidal
+  overlap, finite-difference gradients, on-reset generation, and independent overlap damage.
+- Frontline play is a state-only CPU path: one thread avoids tiny-tensor thread-pool
+  overhead, one shared scripted controller avoids duplicate analysis, and 30 Hz physics
+  avoids computing two 60 Hz ticks per displayed decision. Batched training remains CUDA.
+- Deterministic visual fixture:
+  [10-field Frontline map, seed 20260909](frontline-field-example-seed-20260909.png),
+  reproducible with `benchmarks/render_field_example.py`.
+
+## Gate 2 human review requested
+
+- Play the field-enabled 8-second Frontline preset with `uv run bnb play` or
   `.venv/bin/bnb play`.
-- Judge whether zone spacing and travel time feel legible at human scale.
-- Judge whether 8 seconds permits “win the fight, then commit” without making a brief
-  opening decisive.
-- Check whether defender patrols look intentional and remain outside the hazard under
-  ordinary combat disruption.
-- Check whether attacker gathering reduces trickle without creating obvious rally-point
-  camping or indecision.
-- Review respawn healing choices, simultaneous captures, central scrum behavior, and
-  spectator/game-speed controls.
+- Judge optical feel and whether bending/reflection remains understandable in mixed overlaps.
+- Check projectile trajectories through overlaps and reciprocal-cancellation regions.
+- Judge the provisional 10-field low-discrepancy density and 30–750 px radius range.
+- Check whether overlap bands and independent damage patterns remain legible during combat.
 
 ## Known limitations and open questions
 
@@ -143,11 +191,6 @@ results guide tuning but do not replace human playtesting.
 
 ## Next plan
 
-1. Human-playtest the 8-second Gate 1 preset.
-2. Apply only concrete Gate 1 feedback and keep iteration checks focused.
-3. At stable Gate 1 handoff, run the full repository suite, refresh benchmark evidence,
-   update this document and the draft PR body, and stop for explicit approval.
-4. After Gate 1 approval, integrate the milestone into `feat/frontline-overhaul` as
-   directed and begin Gate 2 arbitrary-overlap field physics.
-5. Preserve the later mandatory stops: fog distribution, recursive beliefs, map
+1. Wait for explicit Gate 2 review and approval before merging or starting perception work.
+2. Preserve the later mandatory stops: fog distribution, recursive beliefs, map
    architecture comparison, and curriculum decision.

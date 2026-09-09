@@ -16,7 +16,7 @@ from dataclasses import replace
 
 import torch
 
-from boost_and_broadside.config import EnvConfig, FieldMapConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import (
@@ -49,10 +49,10 @@ def agent_is_ego_pass(agent: ResolvedAgent) -> bool:
 
 def agent_view(
     agent: ResolvedAgent,
-    obs: YemongObservation,
+    obs: YemongObservation | None,
     num_ships: int,
     as_team1: torch.Tensor,
-) -> YemongObservation:
+) -> YemongObservation | None:
     """Return the observation from ``agent``'s own side of the match.
 
     An ego_pass policy only ever learned to act as team 0, so wherever it plays
@@ -62,6 +62,8 @@ def agent_view(
     """
     if agent.kind != "policy" or not agent_is_ego_pass(agent):
         return obs
+    if obs is None:
+        raise ValueError("policy agents require an observation")
     return obs.flip_team(num_ships, mask=as_team1)
 
 
@@ -198,8 +200,6 @@ def evaluate_matchup(
     ship_config: ShipConfig,
     env_config: EnvConfig,
     device: str,
-    *,
-    field_map_config: FieldMapConfig | None = None,
 ) -> tuple[int, int, int, float]:
     """Run parallel games to completion and return wins, ties, and mean length."""
     num_ships = n0 + n1
@@ -209,7 +209,6 @@ def evaluate_matchup(
         ship_config,
         replace(env_config, num_ships=num_ships),
         torch_device,
-        field_map_config=field_map_config,
     )
     results = torch.zeros(num_envs, dtype=torch.int32, device=torch_device)
     episode_lengths = torch.zeros(num_envs, dtype=torch.int64, device=torch_device)

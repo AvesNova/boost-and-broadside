@@ -64,7 +64,7 @@ position, velocity, attitude, angular velocity, health, power, cooldown, team id
 alive state, radius, previous action, ship-local encoded log index, and the local
 refractive-index gradient. Fields are appended as always-alive entity tokens with team ID
 2, zero motion/action channels, and numeric physical features: transition width, absolute
-inside and parent/outside log index, log index ratio, and normalized interface damage.
+target log index, and normalized interface damage.
 Field properties are unchanged by team flipping.
 
 The index gradient is the force term in `a = F/m + 0.5|v|² grad(log m) - (v·grad(log m))v`.
@@ -92,7 +92,7 @@ channel to:
 | previous power/turn/shoot | categorical one-hot | none |
 | radius | shared ship/field scalar divided by half the shorter world dimension | none |
 | field width | normalized scalar | none |
-| field inside/outside log index and ratio | normalized physical scalars | none |
+| field target log index | normalized physical scalar | none |
 | interface damage | normalized scalar | none |
 | ship-local log index | `log(n)/(2 log(s))` | additive next-step delta |
 | ship-local index gradient | normalized `grad(n)` pair | none |

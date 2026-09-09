@@ -86,7 +86,6 @@ def _field_steering_state(*, num_fields: int):
         state.field_radius[0, 0] = 40.0
         state.field_transition_width[0, 0] = 40.0
         state.field_index[0, 0] = 2.0
-        state.field_delta_index[0, 0] = 1.0
         state.field_damage[0, 0] = 20.0
     return config, state
 

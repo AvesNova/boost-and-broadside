@@ -106,8 +106,6 @@ def make_state(
         field_index=torch.ones((num_envs, num_fields), dtype=torch.float32, device=dev),
         field_damage_level=torch.zeros((num_envs, num_fields), dtype=torch.int8, device=dev),
         field_damage=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
-        field_parent=torch.full((num_envs, num_fields), -1, dtype=torch.long, device=dev),
-        field_delta_index=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
         ship_field_alpha=torch.zeros(
             (num_envs, max_ships, num_fields), dtype=torch.float32, device=dev
         ),

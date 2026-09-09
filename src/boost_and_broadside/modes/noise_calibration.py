@@ -24,7 +24,7 @@ import numpy as np
 import torch
 
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
-from boost_and_broadside.config import EnvConfig, FieldMapConfig, ModelConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -173,7 +173,7 @@ def run_noise_calibration_mode(
     # The policy's own provenance decides the field distribution. num_tokens is
     # derived after it: a fields policy predicts field tokens too, and sizing the
     # report from a field-free environment would silently drop those dimensions.
-    env_config, field_map_config = resolve_evaluation_environment(
+    env_config = resolve_evaluation_environment(
         env_config, (agent0, agent1), ship_config=ship_config
     )
     num_tokens = N + env_config.num_fields
@@ -205,7 +205,6 @@ def run_noise_calibration_mode(
         env_config,
         dev,
         coordinator,
-        field_map_config,
     )
 
     print(f"\n{'=' * 60}")
@@ -223,7 +222,6 @@ def run_noise_calibration_mode(
         env_config,
         dev,
         coordinator,
-        field_map_config,
     )
 
     print("\nBuilding output...")
@@ -296,10 +294,9 @@ def _run_phase1(
     env_config: EnvConfig,
     dev: torch.device,
     coordinator,
-    field_map_config: FieldMapConfig | None = None,
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, agent1)
-    env = create_evaluation_env(B, ship_config, env_config, dev, field_map_config=field_map_config)
+    env = create_evaluation_env(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(agent1, B, num_tokens, dev)
     env.reset()
@@ -439,10 +436,9 @@ def _run_phase2(
     env_config: EnvConfig,
     dev: torch.device,
     coordinator,
-    field_map_config: FieldMapConfig | None = None,
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, warmup_agent1)
-    env = create_evaluation_env(B, ship_config, env_config, dev, field_map_config=field_map_config)
+    env = create_evaluation_env(B, ship_config, env_config, dev)
     init_hidden(agent0, B, num_tokens, dev)
     init_hidden(warmup_agent1, B, num_tokens, dev)
     env.reset()

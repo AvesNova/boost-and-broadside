@@ -1,9 +1,9 @@
-"""Static circular refractive-field geometry and GPU-vectorized evaluation.
+"""Circular refractive-field geometry and GPU-vectorized evaluation.
 
 The nominal radius lies at the middle of the complete interface band: a width
-``w`` extends from ``radius - w/2`` through ``radius + w/2``. Field hierarchy is
-resolved while maps are built. Runtime evaluation is a fixed-shape
-``(B, N, M)`` reduction with telescoping absolute indices.
+``w`` extends from ``radius - w/2`` through ``radius + w/2``. Fields may overlap
+arbitrarily. Runtime evaluation is a fixed-shape ``(B, N, M)`` reduction that
+blends their absolute targets in signed log-index space.
 """
 
 from dataclasses import dataclass
@@ -98,18 +98,53 @@ def evaluate_field_profiles(
 def compose_refractive_index(
     alpha: torch.Tensor,
     grad_alpha: torch.Tensor,
-    delta_index: torch.Tensor,
+    target_index: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compose the absolute local index and gradient by telescoping deltas."""
+    """Compose overlapping field targets and their analytic gradient.
+
+    With ``L_i = log(n_i)`` and union coverage
+    ``A = 1 - product_i(1 - alpha_i)``, the local log-index is
+    ``A * sum(alpha_i L_i) / sum(alpha_i)``. Exclusive prefix/suffix products
+    evaluate the union gradient without division by ``1-alpha``. This remains
+    stable at full coverage and turns the former per-field Python/kernel loop
+    into a fixed set of batched tensor operations.
+    """
 
     if alpha.shape[-1] == 0:
         return (
             torch.ones(alpha.shape[:-1], dtype=torch.float32, device=alpha.device),
             torch.zeros(alpha.shape[:-1], dtype=torch.complex64, device=alpha.device),
         )
-    delta = delta_index.unsqueeze(1)
-    index = 1.0 + (alpha * delta).sum(dim=2)
-    grad_index = (grad_alpha * delta).sum(dim=2)
+    log_target = torch.log(target_index).unsqueeze(1)
+    weight = alpha.sum(dim=2)
+    weighted_log = (alpha * log_target).sum(dim=2)
+    grad_weight = grad_alpha.sum(dim=2)
+    grad_weighted_log = (grad_alpha * log_target).sum(dim=2)
+
+    remaining = 1.0 - alpha
+    prefix = torch.cumprod(remaining, dim=2)
+    suffix = torch.flip(
+        torch.cumprod(torch.flip(remaining, dims=(2,)), dim=2),
+        dims=(2,),
+    )
+    ones = torch.ones_like(remaining[:, :, :1])
+    product_before = torch.cat((ones, prefix[:, :, :-1]), dim=2)
+    product_after = torch.cat((suffix[:, :, 1:], ones), dim=2)
+    coverage = 1.0 - prefix[:, :, -1]
+    grad_coverage = (grad_alpha * product_before * product_after).sum(dim=2)
+
+    contributes = weight > EPS
+    safe_weight = weight.clamp(min=EPS)
+    mean_log = torch.where(contributes, weighted_log / safe_weight, 0.0)
+    grad_mean_log = torch.where(
+        contributes,
+        (grad_weighted_log - mean_log * grad_weight) / safe_weight,
+        0.0,
+    )
+    local_log_index = coverage * mean_log
+    grad_log_index = grad_coverage * mean_log + coverage * grad_mean_log
+    index = torch.exp(local_log_index)
+    grad_index = index * grad_log_index
     return index.float(), grad_index.to(torch.complex64)
 
 
@@ -118,7 +153,7 @@ def evaluate_fields(
     centers: torch.Tensor,
     radii: torch.Tensor,
     transition_widths: torch.Tensor,
-    delta_index: torch.Tensor,
+    target_index: torch.Tensor,
     world_size: tuple[float, float],
 ) -> FieldEvaluation:
     """Evaluate all field profiles and the composed medium at ``points``."""
@@ -126,7 +161,7 @@ def evaluate_fields(
     alpha, grad_alpha = evaluate_field_profiles(
         points, centers, radii, transition_widths, world_size
     )
-    index, grad_index = compose_refractive_index(alpha, grad_alpha, delta_index)
+    index, grad_index = compose_refractive_index(alpha, grad_alpha, target_index)
     return FieldEvaluation(alpha, grad_alpha, index, grad_index)
 
 
@@ -142,7 +177,7 @@ def refresh_ship_field_cache(state, config: ShipConfig) -> None:
         state.field_pos,
         state.field_radius,
         state.field_transition_width,
-        state.field_delta_index,
+        state.field_index,
         config.world_size,
     )
     state.ship_field_alpha = evaluation.alpha
@@ -165,49 +200,6 @@ def damage_from_level(level: torch.Tensor, base_damage: float) -> torch.Tensor:
     return level.float() * base_damage
 
 
-def field_parents(
-    centers: torch.Tensor,
-    radii: torch.Tensor,
-    transition_widths: torch.Tensor,
-    world_size: tuple[float, float],
-) -> torch.Tensor:
-    """Return each field's smallest/direct enclosing parent, or ``-1``.
-
-    This construction-time operation may use an argmin; the resulting indices
-    are cached and no categorical region selection occurs during simulation.
-    """
-
-    if centers.ndim == 1:
-        centers = centers.unsqueeze(0)
-        radii = radii.unsqueeze(0)
-        transition_widths = transition_widths.unsqueeze(0)
-        squeeze = True
-    else:
-        squeeze = False
-
-    batch_size, num_fields = centers.shape
-    if num_fields == 0:
-        result = torch.empty((batch_size, 0), dtype=torch.long, device=centers.device)
-        return result.squeeze(0) if squeeze else result
-
-    displacement = wrap_displacement(
-        centers.unsqueeze(2) - centers.unsqueeze(1), world_size
-    )  # (B, parent, child)
-    distance = displacement.abs()
-    parent_core = radii - 0.5 * transition_widths
-    child_outer = radii + 0.5 * transition_widths
-    contains = distance + child_outer.unsqueeze(1) <= parent_core.unsqueeze(2)
-    diagonal = torch.eye(num_fields, dtype=torch.bool, device=centers.device).unsqueeze(0)
-    contains &= ~diagonal
-
-    parent_size = radii.unsqueeze(2).expand(-1, -1, num_fields)
-    candidates = torch.where(contains, parent_size, torch.full_like(parent_size, float("inf")))
-    _, parent = candidates.min(dim=1)
-    has_parent = contains.any(dim=1)
-    parent = torch.where(has_parent, parent, torch.full_like(parent, -1))
-    return parent.squeeze(0) if squeeze else parent
-
-
 def validate_field_layout(
     centers: torch.Tensor,
     radii: torch.Tensor,
@@ -215,12 +207,11 @@ def validate_field_layout(
     index_levels: torch.Tensor,
     damage_levels: torch.Tensor,
     world_size: tuple[float, float],
-) -> torch.Tensor:
-    """Validate laminar toroidal geometry/materials and return direct parents.
+) -> None:
+    """Validate per-field toroidal geometry and material values.
 
-    Every pair must be strictly nested (including its complete transition band)
-    or disjoint with non-overlapping bands. Partially overlapping transition
-    bands are rejected with a clear ``ValueError``.
+    Pairwise geometry is intentionally unrestricted: nominal circles and their
+    transition bands may intersect, coincide, or nest in any order.
     """
 
     if centers.ndim == 1:
@@ -228,9 +219,6 @@ def validate_field_layout(
         centers, radii, transition_widths, index_levels, damage_levels = [
             tensor.unsqueeze(0) for tensor in tensors
         ]
-        squeeze = True
-    else:
-        squeeze = False
 
     shapes = {
         centers.shape,
@@ -275,39 +263,14 @@ def validate_field_layout(
     if invalid_damage.any().item():
         raise ValueError("field damage levels must be NONE, STANDARD, or SEVERE")
 
-    num_fields = centers.shape[1]
-    if num_fields > 1:
-        displacement = wrap_displacement(centers.unsqueeze(2) - centers.unsqueeze(1), world_size)
-        distance = displacement.abs()
-        core = radii - 0.5 * transition_widths
-        contains_ij = distance + outer.unsqueeze(1) <= core.unsqueeze(2)
-        contains_ji = contains_ij.transpose(1, 2)
-        disjoint = distance >= outer.unsqueeze(2) + outer.unsqueeze(1)
-        valid_pair = contains_ij | contains_ji | disjoint
-        upper = torch.triu(
-            torch.ones((num_fields, num_fields), dtype=torch.bool, device=centers.device),
-            diagonal=1,
-        ).unsqueeze(0)
-        if (~valid_pair & upper).any().item():
-            raise ValueError(
-                "fields must be disjoint or strictly nested with non-overlapping transition bands"
-            )
-
-    parents = field_parents(centers, radii, transition_widths, world_size)
-    return parents.squeeze(0) if squeeze else parents
-
 
 def material_tensors(
     index_levels: torch.Tensor,
     damage_levels: torch.Tensor,
-    parents: torch.Tensor,
     config: ShipConfig,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Return absolute index, crossing damage, and telescoping delta index."""
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return each field's absolute target index and independent damage."""
 
     absolute_index = index_from_level(index_levels, config.field_index_step)
     damage = damage_from_level(damage_levels, config.field_interface_damage)
-    parent_clamped = parents.clamp(min=0)
-    parent_index = absolute_index.gather(1, parent_clamped)
-    parent_index = torch.where(parents >= 0, parent_index, torch.ones_like(parent_index))
-    return absolute_index, damage, absolute_index - parent_index
+    return absolute_index, damage

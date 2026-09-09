@@ -10,7 +10,7 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, MatchResult, ShipConfig
-from boost_and_broadside.env.field_cache import FieldMapCache
+from boost_and_broadside.env.field_generation import generate_field_layout
 from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.frontline import (
     FRONTLINE_WORLD_SIZE,
@@ -47,26 +47,17 @@ class TensorEnv:
         ship_config: ShipConfig,
         env_config: EnvConfig,
         device: str | torch.device,
-        field_map: FieldMapCache | None = None,
         collision_compile_mode: str | None = None,
     ) -> None:
         self.num_envs = num_envs
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
-        self.field_map = field_map
         self._combat_damage_fn = (
             torch.compile(_combat_damage_tensors, mode=collision_compile_mode)
             if collision_compile_mode is not None and self.device.type == "cuda"
             else None
         )
-        if env_config.num_fields > 0:
-            if field_map is None:
-                raise ValueError("num_fields > 0 requires a precomputed FieldMapCache")
-            if field_map.num_fields != env_config.num_fields:
-                raise ValueError(
-                    f"field map has {field_map.num_fields} fields, expected {env_config.num_fields}"
-                )
         if env_config.frontline is not None:
             if tuple(ship_config.world_size) != FRONTLINE_WORLD_SIZE:
                 raise ValueError(
@@ -77,11 +68,6 @@ class TensorEnv:
                 raise ValueError("frontline mode requires two teams")
             if env_config.max_episode_steps is None:
                 raise ValueError("frontline mode requires a finite maximum match duration")
-            if env_config.num_fields:
-                raise ValueError(
-                    "frontline fields are disabled until Gate 2 can apply the common "
-                    "map translation"
-                )
             if env_config.frontline.respawn_health > ship_config.max_health:
                 raise ValueError("frontline respawn_health cannot exceed ship max_health")
         self.state: TensorState | None = None
@@ -172,8 +158,6 @@ class TensorEnv:
             field_index=torch.ones((B, M), dtype=torch.float32, device=dev),
             field_damage_level=torch.zeros((B, M), dtype=torch.int8, device=dev),
             field_damage=torch.zeros((B, M), dtype=torch.float32, device=dev),
-            field_parent=torch.full((B, M), -1, dtype=torch.long, device=dev),
-            field_delta_index=torch.zeros((B, M), dtype=torch.float32, device=dev),
             ship_field_alpha=torch.zeros((B, N, M), dtype=torch.float32, device=dev),
             ship_local_index=torch.ones((B, N), dtype=torch.float32, device=dev),
             ship_field_gradient=torch.zeros((B, N), dtype=torch.complex64, device=dev),
@@ -244,10 +228,19 @@ class TensorEnv:
         att = torch.polar(torch.ones_like(rand_angle), rand_angle)
         s.ship_attitude = torch.where(m, att, s.ship_attitude)
 
-        # Static field map. Sampling gathers fixed-shape cached maps and applies
-        # only a toroidal translation; hierarchy/material values stay unchanged.
-        if self.field_map is not None:
-            sampled = self.field_map.sample(B, self.ship_config.world_size, self.device)
+        # Each reset receives a fresh independent layout. Frontline fields share
+        # the same map translation as its zones and practical boundary.
+        if self.env_config.num_fields > 0:
+            sampled = generate_field_layout(
+                B,
+                self.ship_config,
+                self.env_config,
+                self.device,
+                map_center=(s.map_center if self.env_config.frontline is not None else None),
+                playable_radius=(
+                    s.playable_boundary_radius if self.env_config.frontline is not None else None
+                ),
+            )
             field_names = (
                 "field_pos",
                 "field_radius",
@@ -256,8 +249,6 @@ class TensorEnv:
                 "field_index",
                 "field_damage_level",
                 "field_damage",
-                "field_parent",
-                "field_delta_index",
             )
             for name, value in zip(field_names, sampled, strict=True):
                 setattr(s, name, torch.where(m, value, getattr(s, name)))
@@ -267,7 +258,7 @@ class TensorEnv:
             s.field_pos,
             s.field_radius,
             s.field_transition_width,
-            s.field_delta_index,
+            s.field_index,
             self.ship_config.world_size,
         )
         field_mask = mask.view(B, 1, 1)
