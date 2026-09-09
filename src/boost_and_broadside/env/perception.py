@@ -24,7 +24,9 @@ class TeamVisibility:
     range_only_observer_ship: torch.Tensor  # (B, N, N) bool
     ship: torch.Tensor  # (B, 2, N) bool
     range_only_ship: torch.Tensor  # (B, 2, N) bool
+    los_ship: torch.Tensor  # (B, 2, N) bool, before successful-shot reveal
     bullet: torch.Tensor  # (B, 2, N, K) bool
+    vision_range: float | None
 
     def for_team(self, team: int) -> torch.Tensor:
         if team not in (0, 1):
@@ -120,7 +122,15 @@ def team_visibility_from_state(
         bullet = state.bullet_active[:, None, :, :].expand(
             batch, 2, num_ships, state.max_bullets
         )
-        return TeamVisibility(observer, observer, team_ship, team_ship, bullet)
+        return TeamVisibility(
+            observer,
+            observer,
+            team_ship,
+            team_ship,
+            team_ship,
+            bullet,
+            env_config.vision_range,
+        )
 
     displacement = toroidal_displacement(
         state.ship_pos.unsqueeze(1) - state.ship_pos.unsqueeze(2),
@@ -131,7 +141,13 @@ def team_visibility_from_state(
     los_clear = _line_of_sight_clear(
         state.ship_pos, state.ship_pos, state, ship_config
     )
-    observer_ship = range_observer & los_clear
+    los_observer_ship = range_observer & los_clear
+    los_team_ship = _team_share(los_observer_ship, state)
+    # A successful shot is an observable event: it reveals the firing ship to
+    # both teams for this state sample even beyond ordinary range or through a
+    # field shadow. Dead or cooldown-blocked shoot commands never set this flag.
+    shooting_target = (state.ship_is_shooting & state.ship_alive).unsqueeze(1)
+    observer_ship = los_observer_ship | shooting_target
     team_ship = _team_share(observer_ship, state)
     range_team_ship = _team_share(range_observer, state)
 
@@ -141,6 +157,7 @@ def team_visibility_from_state(
         allies = state.ship_team_id == team
         team_ship[:, team] |= allies
         range_team_ship[:, team] |= allies
+        los_team_ship[:, team] |= allies
 
     if state.max_bullets == 0:
         bullet = torch.zeros((batch, 2, num_ships, 0), dtype=torch.bool, device=device)
@@ -168,5 +185,7 @@ def team_visibility_from_state(
         range_only_observer_ship=range_observer,
         ship=team_ship,
         range_only_ship=range_team_ship,
+        los_ship=los_team_ship,
         bullet=bullet,
+        vision_range=env_config.vision_range,
     )

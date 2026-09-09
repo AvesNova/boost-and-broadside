@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "team_perception_v6"
+OBSERVATION_SCHEMA = "team_perception_v7"
 POSITION_FINEST_PERIOD = 128.0
 
 
@@ -25,9 +25,10 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 6,
+        "version": 7,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
+        "shot_reveal": "successful_fire_global_current_sample",
         "hidden_tokens": "zero_plus_explicit_visibility_mask",
         "enemy_actions": "always_private",
         "position_fourier_basis": "base2",
@@ -62,6 +63,7 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
+    v7 globally reveals a ship on the state sample where it successfully fires.
     v6 adds typed map tokens, independently masked team views, explicit
     visibility, private enemy actions, and the range/field-core LOS contract.
     v5 replaces parent-relative field channels with one absolute target

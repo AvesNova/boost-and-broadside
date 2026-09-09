@@ -744,8 +744,9 @@ Three compatibility rules follow from that:
   perception, visibility masks, private enemy actions, and field-core LOS are part of the
   learned input contract. Radius is shared across object types and normalized by half the
   shorter world dimension; ship-local `grad(n)` remains explicit. Payloads carry
-  `observation_schema=team_perception_v6`. Earlier schemas have no faithful weight-only
-  migration, so they are rejected and retraining is required.
+  `observation_schema=team_perception_v7`. Successful firing globally reveals the shooter
+  for the current sample, which is also a learned-input semantic. Earlier schemas have no
+  faithful weight-only migration, so they are rejected and retraining is required.
 - **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so
   weights trained under different ones were fitted to differently-scaled inputs. A
   mismatch is refused by name; `--allow-config-drift` downgrades it to a warning, and the

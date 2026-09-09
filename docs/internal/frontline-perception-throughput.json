@@ -7,16 +7,16 @@
   "ticks": 3,
   "production_vision_range": 1600.0,
   "probe_note": "All ranges are counterfactual probes over trajectories controlled with the production vision range.",
-  "wall_seconds": 0.36479788400174584,
-  "simulated_game_seconds_per_wall_second": 70.17584564683902,
-  "peak_torch_memory_mib": 58.99853515625,
+  "wall_seconds": 0.3930095420073485,
+  "simulated_game_seconds_per_wall_second": 65.13836755526239,
+  "peak_torch_memory_mib": 59.02587890625,
   "perception_throughput": {
     "iterations": 200,
     "batch_size": 256,
-    "visibility_ms_per_batch": 3.3915281050576596,
-    "team_pair_observation_ms_per_batch": 13.971927149978,
-    "visibility_envs_per_second": 75482.19919458628,
-    "team_pair_observation_envs_per_second": 18322.454537018042
+    "visibility_ms_per_batch": 4.117663099968922,
+    "team_pair_observation_ms_per_batch": 15.799731410006643,
+    "visibility_envs_per_second": 62171.1863707189,
+    "team_pair_observation_envs_per_second": 16202.807083028278
   },
   "ranges": {
     "1600": {

@@ -148,13 +148,18 @@ results guide tuning but do not replace human playtesting.
 - Gate 3 focused perception/observation/scripted/model/match/checkpoint/UI suite: 326 passed,
   2 skipped; the final visible-enemy-action privacy change then passed 137 directly affected
   tests. Static checks and whitespace checks pass.
+- Shot-reveal/fog-overlay revision: 158 perception/environment/renderer/checkpoint tests
+  passed, 2 skipped; the direct overlay suite is 19/19 and includes field-shadow pixels.
 - Gate 3 fog suite: 256 independent 4v4 maps for 60 simulated seconds on an RTX 4070 Laptop
-  GPU, completed in 88.20 seconds (174.15 aggregate simulated game-seconds/wall-second),
+  GPU, completed in 109.24 seconds (140.61 aggregate simulated game-seconds/wall-second),
   peaking at 59.40 MiB while computing three visibility ranges every tick.
-- Isolated 256-environment CUDA profile: production visibility computes in 3.39 ms/batch
-  (75,482 envs/s); visibility plus both masked team observations computes in 13.97 ms/batch
-  (18,322 envs/s), excluding bullets. This is far above the recent end-to-end PPO spot-check
+- Isolated 256-environment CUDA profile: production visibility computes in 4.12 ms/batch
+  (62,171 envs/s); visibility plus both masked team observations computes in 15.80 ms/batch
+  (16,203 envs/s), excluding bullets. This is far above the recent end-to-end PPO spot-check
   rate, so perception is vectorized and is not currently the training bottleneck.
+- The fog-aware one-environment play path measures 32.74 ms/decision or 1.02× realtime at
+  900 px with one CPU thread. The quarter-resolution terrain stencil refreshes every eight
+  ticks, while ship/shot visibility stays at 30 Hz and camera/view changes refresh immediately.
 
 ## Gate 2 implementation
 
@@ -182,7 +187,9 @@ results guide tuning but do not replace human playtesting.
 ## Gate 3 implementation
 
 - Finite range and natural field-core line-of-sight use shortest toroidal displacement.
-  Sight is shared across living allies; no synthetic occlusion was added.
+  Sight is shared across living allies; no synthetic occlusion was added. A successful shot
+  globally reveals its firing ship for the current state sample, while failed shoot commands
+  do not.
 - Each environment observation carries independently masked Team 0 and Team 1 views.
   Hidden enemy position, velocity, health, power, cooldown, alive state, local field state,
   bullets, and actions are zeroed behind explicit visibility masks. Enemy pending actions
@@ -197,11 +204,13 @@ results guide tuning but do not replace human playtesting.
   the same team perception. A regression test perturbs every hidden enemy channel and keeps
   the scripted ally action distribution byte-identical.
 - Renderer modes `FULL`, `TEAM_0`, and `TEAM_1` apply the authoritative mask to ships, health
-  bars, bullets, prediction ghosts, and the new minimap. `V` cycles the perspective; team
-  render modes refuse to draw without an authoritative visibility result.
+  bars, bullets, prediction ghosts, and the new minimap. Team modes also place a mild gray
+  veil over unseen empty space, field-cast shadows, zones, fields, and boundary outlines.
+  `V` cycles the perspective; team render modes refuse to draw without an authoritative
+  visibility result.
 - W&B reports enemy visible/range-only fractions, field occlusion, never-seen fraction,
   individual sight, team-sharing gain, hidden age, reacquisitions, and duration bins.
-  Checkpoint observation schema `team_perception_v6` rejects older incompatible encoders.
+  Checkpoint observation schema `team_perception_v7` rejects older incompatible encoders.
 
 ## Fog-distribution evidence
 
@@ -212,16 +221,16 @@ over those same trajectories, so range comparisons do not confound map or combat
 | Vision range | Enemy visible | Range-only visible | In-range blocked by fields | Individual visible | Team-sharing gain | Mean hidden age |
 |---:|---:|---:|---:|---:|---:|---:|
 | 1200 px | 57.7% | 61.6% | 6.4% | 36.5% | +21.2 pp | 5.16 s |
-| **1600 px** | **74.2%** | **83.8%** | **11.6%** | **52.7%** | **+21.5 pp** | **3.66 s** |
+| **1600 px** | **74.2%** | **83.7%** | **11.6%** | **53.0%** | **+21.2 pp** | **3.66 s** |
 | 2000 px | 81.3% | 95.7% | 15.1% | 60.9% | +20.4 pp | 2.85 s |
 
 At 1600 px, per-map enemy visibility ranged from 59.5% at p10 to 87.1% at p90. All enemy
-slots were seen at least once within 60 seconds, with 22.8 reacquisitions/game and 91.8% of
+slots were seen at least once within 60 seconds, with 22.9 reacquisitions/game and 91.8% of
 started hidden runs completing inside the horizon. Completed occlusions were broadly useful:
-438 lasted at most 0.1 s, 918 fell in 0.1–0.5 s, 732 in 0.5–1 s, 810 in 1–2 s, 1,207 in
-2–5 s, 1,178 in 5–10 s, and 543 in 10–30 s.
+455 lasted at most 0.1 s, 924 fell in 0.1–0.5 s, 735 in 0.5–1 s, 813 in 1–2 s, 1,207 in
+2–5 s, 1,176 in 5–10 s, and 544 in 10–30 s.
 
-Interpretation: team sharing is substantial rather than cosmetic (+21.5 percentage points),
+Interpretation: team sharing is substantial rather than cosmetic (+21.2 percentage points),
 and fields materially interrupt otherwise valid sight without dominating it (11.6% of
 in-range exposure). The 1600 px setting is permissive—roughly three quarters of enemy-slot
 time is visible—but still produces multi-second uncertainty and strong map variance. Keep it

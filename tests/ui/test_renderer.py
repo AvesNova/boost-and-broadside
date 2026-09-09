@@ -1,5 +1,6 @@
 """Watch-mode renderer invariants."""
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pygame
@@ -309,6 +310,11 @@ def test_team_view_hides_enemy_sprites_ghosts_bullets_and_minimap_markers(monkey
         "_draw_minimap",
         lambda state, surface, mask: minimap_masks.append(mask.clone()),
     )
+    monkeypatch.setattr(
+        renderer,
+        "_draw_fog_overlay",
+        lambda state, surface, visibility: None,
+    )
     try:
         renderer.draw_frame(env.state, visibility=visibility)
         assert len(polygons) == 4
@@ -327,6 +333,47 @@ def test_team_view_hides_enemy_sprites_ghosts_bullets_and_minimap_markers(monkey
         rectangles.clear()
         renderer._draw_bullets(env.state, renderer._screen, visibility.bullet[0, 0])
         assert rectangles == []
+    finally:
+        renderer.close()
+
+
+def test_team_view_grays_unseen_space_and_field_shadow(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
+    env_config = replace(PLAY_ENV_CONFIG, num_fields=1)
+    env = TensorEnv(1, ship_config, env_config, "cpu")
+    env.reset(seed=21)
+    center = complex(env.state.map_center[0].item())
+    observer = center - 600.0
+    team0 = env.state.ship_team_id[0] == 0
+    team1 = ~team0
+    env.state.ship_pos[0, team0] = observer
+    env.state.ship_pos[0, team1] = center + 2200.0
+    env.state.field_pos[0, 0] = center
+    env.state.field_radius[0, 0] = 150.0
+    env.state.field_transition_width[0, 0] = 40.0
+    visibility = team_visibility_from_state(env.state, ship_config, env_config)
+
+    renderer = GameRenderer(
+        ship_config,
+        RenderConfig(window_size=320, show_ui=False, vision_mode=VisionMode.TEAM_0),
+    )
+    renderer.camera.fit_region(center, env_config.frontline.playable_radius)
+    surface = pygame.Surface((320, 320))
+    base_color = (200, 50, 50)
+    surface.fill(base_color)
+    try:
+        renderer._draw_fog_overlay(env.state, surface, visibility)
+        visible_pixel = surface.get_at(renderer._world_to_screen(observer + 100j))[:3]
+        shadow_pixel = surface.get_at(renderer._world_to_screen(center + 600.0))[:3]
+        deep_shadow_pixel = surface.get_at(renderer._world_to_screen(center + 950.0))[:3]
+        unseen_pixel = surface.get_at(renderer._world_to_screen(center + 2000.0))[:3]
+
+        assert visible_pixel == base_color
+        assert shadow_pixel != base_color
+        assert deep_shadow_pixel != base_color
+        assert unseen_pixel != base_color
+        assert max(shadow_pixel) - min(shadow_pixel) < max(base_color) - min(base_color)
     finally:
         renderer.close()
 

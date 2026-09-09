@@ -120,13 +120,14 @@ class LoggingMixin:
         if enemy_slots > 0:
             visible_slots = source_stats["perception_visible_enemy_slots"].item()
             range_slots = source_stats["perception_range_enemy_slots"].item()
+            los_slots = source_stats["perception_los_enemy_slots"].item()
             observer_pairs = source_stats["perception_observer_enemy_pairs"].item()
             observer_visible = source_stats["perception_observer_visible_pairs"].item()
             hidden_samples = source_stats["perception_hidden_samples"].item()
             metrics["fog/visible_fraction"] = visible_slots / enemy_slots
             metrics["fog/range_only_visible_fraction"] = range_slots / enemy_slots
             metrics["fog/field_occluded_fraction_of_in_range"] = (
-                (range_slots - visible_slots) / range_slots if range_slots > 0 else 0.0
+                (range_slots - los_slots) / range_slots if range_slots > 0 else 0.0
             )
             metrics["fog/never_seen_fraction"] = (
                 source_stats["perception_never_seen_enemy_slots"].item() / enemy_slots

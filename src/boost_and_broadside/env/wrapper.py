@@ -61,6 +61,7 @@ SOURCE_STAT_NAMES: tuple[str, ...] = (
     "perception_enemy_slots",
     "perception_visible_enemy_slots",
     "perception_range_enemy_slots",
+    "perception_los_enemy_slots",
     "perception_observer_enemy_pairs",
     "perception_observer_visible_pairs",
     "perception_never_seen_enemy_slots",
@@ -579,6 +580,7 @@ class YemongEnvWrapper:
         enemy_alive = enemy & state.ship_alive[:, None, :]
         visible = self.last_visibility.ship & enemy_alive
         range_visible = self.last_visibility.range_only_ship & enemy_alive
+        los_visible = self.last_visibility.los_ship & enemy_alive
         ever_before = self._perception_ever_seen
         reacquired = visible & ~self._perception_prev_visible & ever_before
 
@@ -611,6 +613,7 @@ class YemongEnvWrapper:
                 enemy_alive.sum(),
                 visible.sum(),
                 range_visible.sum(),
+                los_visible.sum(),
                 observer_enemy.sum(),
                 observer_visible.sum(),
                 (enemy_alive & ~ever_after).sum(),
