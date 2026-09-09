@@ -54,7 +54,7 @@ path.
 ## Watch or play
 
 ```bash
-# Fixed play mode: one player ship vs one null ship, with four fields
+# Gate-1 Frontline: one selected human ship plus scripted allies vs scripted enemies
 uv run bnb play
 
 # Human team 0 vs a newly trained current-schema checkpoint
@@ -69,12 +69,19 @@ uv run bnb watch \
   --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
-Play mode has no match timer and starts a new match as soon as either ship dies. The
-`Unlimited HP/PW` button in the upper-right corner toggles full health and power for both
-ships. Human controls are WASD for flight, Shift for sharp turns, and Space to shoot. Agent specs
+Play mode runs the provisional five-zone Frontline configuration in a 16384 × 16384
+toroidal world. Human controls are WASD for flight, Shift for sharp turns, and Space to
+shoot. Tab cycles allied ships and then spectator mode; C follows/releases; F fits the
+playable area; R resets to the full world; `+`/`-` adjust game speed; the mouse wheel
+zooms and middle/right drag pans. The
+`Unlimited HP/PW` button remains available for inspection. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
 `scripted`, an explicit checkpoint path, and the named scripted controllers listed by
 `bnb watch --help`. A checkpoint is always named explicitly.
+
+The Frontline prototype intentionally has no refractive fields until the common-map
+translation and overlapping-field work at Gate 2. See
+[the Gate-1 playtest guide](frontline-gate1.md) for provisional rules and review prompts.
 
 ## Train
 

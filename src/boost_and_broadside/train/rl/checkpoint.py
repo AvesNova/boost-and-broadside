@@ -23,10 +23,11 @@ from boost_and_broadside.run_manifest import (
 from boost_and_broadside.train.rl.checkpoint_schema import (
     OBSERVATION_SCHEMA,
     load_checkpoint_payload,
+    observation_contract,
     require_observation_schema,
 )
-from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
+from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 
 # Rolling window of full-resume (step_*.pt) and avg (avg_step_*.pt) checkpoints
 # kept per run. Ladder snapshots (ladder_step_*.pt) and named best checkpoints
@@ -58,6 +59,7 @@ def build_policy_checkpoint_payload(
 
     payload: dict[str, Any] = {
         "observation_schema": OBSERVATION_SCHEMA,
+        "observation_contract": observation_contract(ship_config),
         "policy_state_dict": policy_state_dict,
         "num_value_components": num_value_components,
         "team_pma_k": team_pma_k,
@@ -152,6 +154,7 @@ def build_training_checkpoint_payload(
 # own it is the whole of a ladder snapshot or a policy-only file.
 POLICY_CHECKPOINT_FIELDS: tuple[str, ...] = (
     "observation_schema",
+    "observation_contract",
     "policy_state_dict",
     "num_value_components",
     "team_pma_k",
@@ -349,9 +352,7 @@ class CheckpointMixin:
                 live_elo=self._live_elo,
                 device=launch.get("device"),
                 seed=launch.get("seed"),
-                wandb_run_id=(
-                    run_id_path.read_text().strip() if run_id_path.is_file() else None
-                ),
+                wandb_run_id=(run_id_path.read_text().strip() if run_id_path.is_file() else None),
                 git_commit=git_commit,
                 git_dirty=git_dirty,
             ),
@@ -461,9 +462,7 @@ class CheckpointMixin:
         as captured. The two families use separate thread slots so they never
         contend within a single update.
         """
-        if self._live_elo > self._best_live_elo and self._save_best_checkpoint(
-            "best_training.pt"
-        ):
+        if self._live_elo > self._best_live_elo and self._save_best_checkpoint("best_training.pt"):
             self._best_live_elo = self._live_elo
         if self._avg_update_count > 0:
             avg_elo = self._avg_live_elo
@@ -577,8 +576,7 @@ class CheckpointMixin:
             update=update,
             ship_steps=self._ship_steps,
             grad_tokens=self._grad_tokens,
-            elapsed_train_time=self._elapsed_train_time
-            + (time.time() - self._train_start_time),
+            elapsed_train_time=self._elapsed_train_time + (time.time() - self._train_start_time),
             avg_live_elo=self._avg_live_elo,
             floating_games=self._floating_games,
             eval_window_rand=list(self._eval_window_rand),

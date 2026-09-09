@@ -501,14 +501,20 @@ def test_incompatible_checkpoint_weights_are_a_concise_cli_error(
     tmp_path, capsys, monkeypatch
 ) -> None:
     from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
-    from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
+    from boost_and_broadside.train.rl.checkpoint_schema import (
+        OBSERVATION_SCHEMA,
+        observation_contract,
+    )
 
     checkpoint = tmp_path / "incompatible.pt"
     import torch
 
+    ship_config = {"world_size": (1024.0, 1024.0)}
     torch.save(
         {
             "observation_schema": OBSERVATION_SCHEMA,
+            "observation_contract": observation_contract(ship_config),
+            "ship_config": ship_config,
             "policy_state_dict": {"wrong": torch.zeros(1)},
         },
         checkpoint,
@@ -547,12 +553,18 @@ def test_non_mapping_checkpoint_weights_are_a_concise_cli_error(
     import torch
 
     from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
-    from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
+    from boost_and_broadside.train.rl.checkpoint_schema import (
+        OBSERVATION_SCHEMA,
+        observation_contract,
+    )
 
     checkpoint = tmp_path / "non-mapping.pt"
+    ship_config = {"world_size": (1024.0, 1024.0)}
     torch.save(
         {
             "observation_schema": OBSERVATION_SCHEMA,
+            "observation_contract": observation_contract(ship_config),
+            "ship_config": ship_config,
             "policy_state_dict": None,
         },
         checkpoint,

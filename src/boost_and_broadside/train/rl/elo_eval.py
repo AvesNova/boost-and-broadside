@@ -54,6 +54,7 @@ from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
+from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     get_actions,
@@ -302,9 +303,7 @@ class EloEvaluator:
         # loss, tie), by the anchor each episode was assigned. Both players are
         # weight-frozen, so these accumulate across the whole run rather than
         # being consumed each update.
-        self._ladder_counts = torch.zeros(
-            self._anchor_rows, 3, device=device, dtype=torch.float64
-        )
+        self._ladder_counts = torch.zeros(self._anchor_rows, 3, device=device, dtype=torch.float64)
 
         self._win_history: list[torch.Tensor] = []
         self._rated_history: list[torch.Tensor] = []
@@ -569,9 +568,7 @@ class EloEvaluator:
                 # agent's own probability is 0, so it falls out of the same
                 # expression rather than needing a branch.
                 probability = self._anchor_p[idx].unsqueeze(1)  # (size, 1)
-                follow = torch.rand(
-                    size, self.num_ships, device=self.device
-                ) < probability
+                follow = torch.rand(size, self.num_ships, device=self.device) < probability
                 action = torch.where(follow.unsqueeze(-1), scripted_action, random_action)
 
         for index, (spec, agent) in enumerate(zip(self._anchor_specs, agents, strict=True)):
@@ -588,8 +585,8 @@ class EloEvaluator:
             assigned = (idx == index).view(-1, 1, 1)
             # Written unconditionally rather than behind an ``.any()`` test: the
             # check would force a device sync every step to save a masked write.
-            action = policy_action if action is None else torch.where(
-                assigned, policy_action, action
+            action = (
+                policy_action if action is None else torch.where(assigned, policy_action, action)
             )
         assert action is not None, "the evaluator needs at least one anchor"
         return action
@@ -691,13 +688,7 @@ class EloEvaluator:
                 dones, truncated = self.env.step(action)
                 done_any = dones | truncated
 
-            alive = self.env.state.ship_alive
-            team = self.env.state.ship_team_id
-            team0_alive = (alive & (team == 0)).any(dim=1)
-            team1_alive = (alive & (team == 1)).any(dim=1)
-            team0_won = done_any & team0_alive & ~team1_alive
-            team1_won = done_any & team1_alive & ~team0_alive
-            tied = done_any & ~team0_won & ~team1_won
+            team0_won, team1_won, tied = outcome_masks(self.env.state, done_any)
             score = team0_won.float() + 0.5 * tied.float()  # (5·size,)
             rated = done_any & self._rated  # (5·size,)
             self._apply_rating_updates(score, rated.float(), avg_active)

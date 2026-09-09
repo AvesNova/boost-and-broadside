@@ -1,7 +1,7 @@
 """Interactive game modes: watch and human play.
 
 Entry points:
-  - run_play_mode: fixed 1v1 player-vs-null match with four fields.
+  - run_play_mode: human plus scripted allies in the Gate-1 frontline prototype.
   - run_watch_mode: render live gameplay between two specified agents at 60fps.
 
 Agent specs (--team0 / --team1) are resolved by evaluation/agents.py —
@@ -16,6 +16,8 @@ import torch
 from boost_and_broadside.config import (
     EnvConfig,
     FieldMapConfig,
+    FrontlineConfig,
+    MatchResult,
     ModelConfig,
     RewardConfig,
     ShipConfig,
@@ -26,6 +28,7 @@ from boost_and_broadside.constants import (
     ShootActions,
     TurnActions,
 )
+from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -35,16 +38,37 @@ from boost_and_broadside.evaluation.agents import (
     reset_done_envs,
     resolve_agent_spec,
 )
-from boost_and_broadside.evaluation.environment import create_evaluation_field_map
-from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.environment import (
+    create_evaluation_field_map,
+    resolve_evaluation_environment,
+)
+from boost_and_broadside.evaluation.match import agent_view, merge_team_actions
 from boost_and_broadside.evaluation.next_state import imagine_trajectory
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
+_PLAY_ZONE_RADIUS = 330.0
+_PLAY_ZONE_RING_RADIUS = 1200.0
+
 PLAY_ENV_CONFIG = EnvConfig(
-    num_ships=2,
+    num_ships=8,
     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
-    max_episode_steps=None,
-    num_fields=4,
+    max_episode_steps=18_000,
+    num_fields=0,
+    action_repeat=2,
+    spawn_resource_spread=0.0,
+    frontline=FrontlineConfig(
+        zone_radius=_PLAY_ZONE_RADIUS,
+        zone_ring_radius=_PLAY_ZONE_RING_RADIUS,
+        playable_radius=2600.0,
+        capture_seconds=8.0,
+        defense_damage_per_second=2.0,
+        respawn_health=25.0,
+        spawn_heal_per_second=12.0,
+        enemy_spawn_damage_per_second=8.0,
+        boundary_damage_per_second=5.0,
+        boundary_damage_per_pixel_second=0.05,
+        front_win_threshold=5,
+    ),
 )
 
 
@@ -56,16 +80,17 @@ def run_play_mode(
     device: str,
     checkpoint_dir: str = "checkpoints",
 ) -> None:
-    """Run the fixed player-vs-null game preset.
+    """Run the provisional playable Gate-1 frontline preset.
 
-    The player controls the blue team-0 ship. The red team-1 ship receives the
-    null (all-zero) action. Matches contain four static refractive fields, have
-    no time horizon, and restart automatically as soon as either ship dies.
-    An on-screen button toggles unlimited health and power for both ships.
+    One selected blue ship is keyboard-controlled; the remaining blue ships and
+    all red ships use the crude frontline scripted controller. Tab cycles the
+    human ship and C toggles camera follow. Tuning values are intentionally
+    provisional pending the Gate-1 playtest.
     """
+    ship_config = replace(ship_config, world_size=FRONTLINE_WORLD_SIZE)
     render_config = replace(render_config, show_unlimited_button=True)
     agent0 = resolve_agent_spec(
-        "null",
+        "scripted",
         ship_config,
         model_config,
         device,
@@ -73,7 +98,7 @@ def run_play_mode(
         num_ships=PLAY_ENV_CONFIG.num_ships,
     )
     agent1 = resolve_agent_spec(
-        "null",
+        "scripted",
         ship_config,
         model_config,
         device,
@@ -132,6 +157,11 @@ def run_watch_mode(
         checkpoint_dir,
         num_ships=env_config.num_ships,
     )
+    env_config, field_map_config = resolve_evaluation_environment(
+        env_config,
+        (agent0, agent1),
+        ship_config=ship_config,
+    )
 
     keyboard_teams = frozenset(
         team for team, agent in enumerate((agent0, agent1)) if agent.kind == "null"
@@ -145,6 +175,7 @@ def run_watch_mode(
         render_config,
         device,
         keyboard_teams=keyboard_teams,
+        field_map_config=field_map_config,
     )
 
 
@@ -157,6 +188,7 @@ def _run_resolved_interactive_mode(
     render_config: RenderConfig,
     device: str,
     keyboard_teams: frozenset[int],
+    field_map_config: FieldMapConfig | None = None,
 ) -> None:
     """Build the single environment and render two already-resolved agents."""
 
@@ -168,7 +200,7 @@ def _run_resolved_interactive_mode(
         field_map = create_evaluation_field_map(
             ship_config,
             env_config,
-            FieldMapConfig(cache_size=1, max_generation_attempts=256),
+            field_map_config or FieldMapConfig(cache_size=1, max_generation_attempts=256),
             torch.device(device),
         )
 
@@ -225,6 +257,8 @@ def _run_interactive_loop(
         init_hidden(agent0, 1, num_tokens, device)
         init_hidden(agent1, 1, num_tokens, device)
         pred_nexts = None
+        terminal_label: str | None = None
+        terminal_frames = 0
 
         # Show "Match starting!" for half a second on the first episode so the
         # user can see the reloaded snapshot before agents begin moving.
@@ -238,15 +272,39 @@ def _run_interactive_loop(
                 renderer.tick()
 
         while True:
-            if not renderer.paused:
+            if not renderer.paused and terminal_frames == 0:
                 state = wrapper.state
 
-                # Imagined trajectories use the hidden state BEFORE the real forward pass.
-                imag_nexts0 = imagine_trajectory(agent0, obs, N_IMAGINE_STEPS, N, device)
-                imag_nexts1 = imagine_trajectory(agent1, obs, N_IMAGINE_STEPS, N, device)
+                controllable = tuple(
+                    index
+                    for index, team in enumerate(state.ship_team_id[0].tolist())
+                    if team in keyboard_teams and bool(state.ship_alive[0, index].item())
+                )
+                renderer.set_selectable_ships(controllable)
 
-                action0, _ = get_actions(agent0, obs, state, 1, N, device, return_pred_next=True)
-                action1, _ = get_actions(agent1, obs, state, 1, N, device, return_pred_next=True)
+                team0_view = agent_view(
+                    agent0,
+                    obs,
+                    N,
+                    torch.zeros(1, dtype=torch.bool, device=device),
+                )
+                team1_view = agent_view(
+                    agent1,
+                    obs,
+                    N,
+                    torch.ones(1, dtype=torch.bool, device=device),
+                )
+
+                # Imagined trajectories use the hidden state BEFORE the real forward pass.
+                imag_nexts0 = imagine_trajectory(agent0, team0_view, N_IMAGINE_STEPS, N, device)
+                imag_nexts1 = imagine_trajectory(agent1, team1_view, N_IMAGINE_STEPS, N, device)
+
+                action0, _ = get_actions(
+                    agent0, team0_view, state, 1, N, device, return_pred_next=True
+                )
+                action1, _ = get_actions(
+                    agent1, team1_view, state, 1, N, device, return_pred_next=True
+                )
 
                 # Select each agent's actions for their respective team (ship tokens only)
                 team_id = obs["team_id"][:, :N]  # (1, N) — exclude field tokens
@@ -274,22 +332,42 @@ def _run_interactive_loop(
 
                 if keyboard_teams:
                     keyboard = _decode_keyboard().to(device)
-                    action = _apply_keyboard_override(action, team_id, keyboard, keyboard_teams)
+                    action = _apply_keyboard_override(
+                        action,
+                        team_id,
+                        keyboard,
+                        keyboard_teams,
+                        renderer.selected_ship,
+                    )
 
-                obs, _, dones, truncated, _ = wrapper.step(
+                obs, _, dones, truncated, info = wrapper.step(
                     action,
                     unlimited_resources=renderer.unlimited_resources,
+                    auto_reset=False,
                 )
 
                 if (dones | truncated).any():
                     reset_done_envs(agent0, dones | truncated, num_tokens)
                     reset_done_envs(agent1, dones | truncated, num_tokens)
                     pred_nexts = None
+                    result = int(info["match_result"][0].item())
+                    terminal_label = {
+                        int(MatchResult.TEAM0_WIN): "TEAM 0 WINS",
+                        int(MatchResult.TEAM1_WIN): "TEAM 1 WINS",
+                        int(MatchResult.DRAW): "DRAW",
+                    }[result]
+                    terminal_frames = renderer.target_fps
 
-            running = renderer.render(wrapper.state, pred_nexts=pred_nexts)
+            if terminal_frames > 0:
+                running = renderer.render_with_label(wrapper.state, terminal_label or "")
+                terminal_frames -= 1
+            else:
+                running = renderer.render(wrapper.state, pred_nexts=pred_nexts)
             if not running:
                 return
             renderer.tick()
+            if terminal_label is not None and terminal_frames == 0:
+                break
 
 
 def _apply_keyboard_override(
@@ -297,11 +375,16 @@ def _apply_keyboard_override(
     team_id: torch.Tensor,
     keyboard: torch.Tensor,
     keyboard_teams: frozenset[int],
+    selected_ship: int | None,
 ) -> torch.Tensor:
-    """Replace actions for only the explicitly player-controlled teams."""
+    """Replace only the selected eligible ship action with keyboard input."""
     keyboard_mask = torch.zeros_like(team_id, dtype=torch.bool)
-    for team in keyboard_teams:
-        keyboard_mask |= team_id == team
+    if selected_ship is not None and 0 <= selected_ship < team_id.shape[1]:
+        eligible = any(
+            bool((team_id[:, selected_ship] == team).all().item()) for team in keyboard_teams
+        )
+        if eligible:
+            keyboard_mask[:, selected_ship] = True
     return torch.where(keyboard_mask.unsqueeze(-1), keyboard.view(1, 1, 3), action)
 
 

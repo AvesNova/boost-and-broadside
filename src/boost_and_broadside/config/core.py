@@ -4,6 +4,7 @@ ShipConfig has defaults — it defines the reference game. Everything else has
 no defaults; all values must be set explicitly so nothing is ever silently wrong.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -26,6 +27,75 @@ class InterfaceDamageLevel(IntEnum):
     NONE = 0
     STANDARD = 1
     SEVERE = 2
+
+
+class ZoneRole(IntEnum):
+    """Dynamic strategic role assigned to one physical frontline zone."""
+
+    TEAM0_SPAWN = 0
+    TEAM0_DEFENSE = 1
+    NEUTRAL = 2
+    TEAM1_DEFENSE = 3
+    TEAM1_SPAWN = 4
+
+
+class MatchResult(IntEnum):
+    """Authoritative per-environment match result."""
+
+    ONGOING = -1
+    TEAM0_WIN = 0
+    TEAM1_WIN = 1
+    DRAW = 2
+
+
+@dataclass(frozen=True)
+class FrontlineConfig:
+    """Provisional gameplay parameters for the five-zone frontline mode.
+
+    These values are intentionally explicit: Gate 1 exists to playtest them,
+    so none should become an invisible default merely because the mechanics are
+    optional on :class:`EnvConfig`.
+    """
+
+    zone_radius: float
+    zone_ring_radius: float
+    playable_radius: float
+    capture_seconds: float
+    defense_damage_per_second: float
+    respawn_health: float
+    spawn_heal_per_second: float
+    enemy_spawn_damage_per_second: float
+    boundary_damage_per_second: float
+    boundary_damage_per_pixel_second: float
+    front_win_threshold: int
+
+    def __post_init__(self) -> None:
+        positive = (
+            "zone_radius",
+            "zone_ring_radius",
+            "playable_radius",
+            "capture_seconds",
+            "respawn_health",
+            "spawn_heal_per_second",
+        )
+        for name in positive:
+            value = getattr(self, name)
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError(f"frontline {name} must be positive and finite, got {value}")
+        non_negative = (
+            "defense_damage_per_second",
+            "enemy_spawn_damage_per_second",
+            "boundary_damage_per_second",
+            "boundary_damage_per_pixel_second",
+        )
+        for name in non_negative:
+            value = getattr(self, name)
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(f"frontline {name} must be non-negative and finite, got {value}")
+        if self.zone_ring_radius + self.zone_radius >= self.playable_radius:
+            raise ValueError("frontline zones must fit strictly inside the playable boundary")
+        if self.front_win_threshold < 1:
+            raise ValueError("frontline front_win_threshold must be positive")
 
 
 @dataclass(frozen=True)
@@ -188,8 +258,13 @@ class EnvConfig:
     # tightly with elapsed episode time and means damaged states are only ever
     # reached by playing into them.
     spawn_resource_spread: float = 0.0
+    # ``None`` preserves the original elimination combat mode. Active
+    # frontline parameters are explicit and checkpointed with the environment.
+    frontline: FrontlineConfig | None = None
 
     def __post_init__(self) -> None:
+        if isinstance(self.frontline, Mapping):
+            object.__setattr__(self, "frontline", FrontlineConfig(**self.frontline))
         if self.max_episode_steps is not None and self.max_episode_steps < 1:
             raise ValueError(
                 f"max_episode_steps must be positive or None, got {self.max_episode_steps}"
@@ -399,6 +474,10 @@ class RewardConfig:
     # no third party to pay, so there is no asymmetry to express.
     damage_payout_ratio: float = 1.0
 
+    # Strategic event weight. Disabled for the legacy combat profile; frontline
+    # training configs opt in so a one-step front movement is the primary event.
+    front_advance_weight: float = 0.0
+
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shoot_quality_weight: float = 0.0  # shot quality when firing
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
@@ -407,14 +486,12 @@ class RewardConfig:
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.kill_shot_fraction <= 1.0:
-            raise ValueError(
-                f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}"
-            )
+            raise ValueError(f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}")
         for name in ("kill_payout_ratio", "damage_payout_ratio"):
             ratio = getattr(self, name)
             if not np.isfinite(ratio) or ratio < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative, got {ratio}")
-        for name in ("win_weight", "death_weight", "damage_weight"):
+        for name in ("win_weight", "death_weight", "damage_weight", "front_advance_weight"):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative, got {value}")

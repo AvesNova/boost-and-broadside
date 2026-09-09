@@ -31,6 +31,7 @@ import torch
 
 from boost_and_broadside.config import RewardConfig, ShipConfig
 from boost_and_broadside.constants import EPS
+from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.state import TensorState
 
 
@@ -217,7 +218,15 @@ class _KillCreditReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        just_died = prev_state.ship_alive & ~next_state.ship_alive  # (B, N)
+        # Frontline respawns on the death tick, so an alive transition is no
+        # longer an event label. Objective hazards remain excluded here: they
+        # are environmental and must never pay enemy combat credit.
+        legacy_elimination = (
+            prev_state.ship_alive & ~next_state.ship_alive
+            if next_state.num_zones == 0
+            else torch.zeros_like(next_state.ship_alive)
+        )
+        just_died = next_state.ship_combat_death | next_state.ship_field_death | legacy_elimination
 
         _, N = next_state.ship_health.shape
         damage = getattr(next_state, self.source_attr)  # (B, N_shooter, N_target)
@@ -306,10 +315,9 @@ class AllyWinReward(RewardComponent):
         reward = torch.zeros_like(next_state.ship_health)
         team0 = next_state.ship_team_id == 0  # (B, N)
         team1 = next_state.ship_team_id == 1  # (B, N)
-        t0_alive = (team0 & next_state.ship_alive).sum(dim=1)  # (B,)
-        t1_alive = (team1 & next_state.ship_alive).sum(dim=1)  # (B,)
-        t0_wins = ((t0_alive > 0) & (t1_alive == 0) & dones).unsqueeze(1)  # (B, 1)
-        t1_wins = ((t1_alive > 0) & (t0_alive == 0) & dones).unsqueeze(1)  # (B, 1)
+        t0_wins, t1_wins, _ = outcome_masks(next_state, dones)
+        t0_wins = t0_wins.unsqueeze(1)
+        t1_wins = t1_wins.unsqueeze(1)
         reward[team0 & t0_wins.expand_as(team0)] = +1.0
         reward[team1 & t1_wins.expand_as(team1)] = +1.0
         return reward
@@ -326,6 +334,34 @@ class EnemyWinReward(AllyWinReward):
       loss → ally_win= 0, enemy_win=+1 (enemy sees +1; ally sees lambda*+1=-1)"""
 
     name = "enemy_win"
+
+
+class AllyFrontAdvanceReward(RewardComponent):
+    """+1 to ships whose team advanced the unwrapped front this tick."""
+
+    name = "ally_front_advance"
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        del prev_state, actions, dones
+        team0_advanced = next_state.front_delta > 0
+        team1_advanced = next_state.front_delta < 0
+        team0 = next_state.ship_team_id == 0
+        team1 = next_state.ship_team_id == 1
+        return (
+            (team0 & team0_advanced.unsqueeze(1)) | (team1 & team1_advanced.unsqueeze(1))
+        ).float()
+
+
+class EnemyFrontAdvanceReward(AllyFrontAdvanceReward):
+    """Enemy-perspective mirror used by the zero-sum lambda aggregation."""
+
+    name = "enemy_front_advance"
 
 
 # ---------------------------------------------------------------------------
@@ -659,6 +695,8 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "field_death",  # 22 — boundary death of this ship (self only)
     "shooting_penalty",  # 23 — negative reward on every shot (self only)
     "speed",  # 24 — penalty when proper speed < min_speed (self only)
+    "ally_front_advance",  # 25 — ally team advances the strategic front
+    "enemy_front_advance",  # 26 — enemy team advance (negative via lambda)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -745,6 +783,8 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
             "damage_dealt_ally": dealt,
             # The offensive side of damage nobody dealt.
             "enemy_field_damage": dealt,
+            "ally_front_advance": float(raw.get("front_advance_weight", 0.0)),
+            "enemy_front_advance": float(raw.get("front_advance_weight", 0.0)),
         }
     )
     # Shaping is not an event and has no opposing side, so it stays individual.
@@ -808,6 +848,8 @@ def build_reward_components(
         LocalFieldDeathReward(weight=w["field_death"]),
         ShootingPenaltyReward(weight=w["shooting_penalty"]),
         SpeedReward(weight=w["speed"], min_speed=rewards.speed_penalty_min),
+        AllyFrontAdvanceReward(weight=w["ally_front_advance"]),
+        EnemyFrontAdvanceReward(weight=w["enemy_front_advance"]),
     ]
 
 

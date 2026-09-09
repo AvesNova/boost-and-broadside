@@ -121,6 +121,7 @@ REWARDS = RewardConfig(
             "enemy_combat_death",
             "enemy_field_death",
             "enemy_win",
+            "enemy_front_advance",
         }
     ),
     ally_zero_components=frozenset(
@@ -130,9 +131,11 @@ REWARDS = RewardConfig(
             "enemy_combat_death",
             "enemy_field_death",
             "enemy_win",
+            "enemy_front_advance",
         }
     ),
     shooting_penalty_weight=0.0,
+    front_advance_weight=0.0,
     speed_weight=0.0,
     speed_penalty_min=10.0,
 )
@@ -145,6 +148,8 @@ REWARDS = RewardConfig(
 COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
     "ally_win": 0.999,
     "enemy_win": 0.999,
+    "ally_front_advance": 0.999,
+    "enemy_front_advance": 0.999,
     "ally_combat_death": 0.995,
     "enemy_combat_death": 0.995,
     "ally_field_death": 0.995,
@@ -173,6 +178,8 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
 COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "ally_win": 0.97,
     "enemy_win": 0.97,
+    "ally_front_advance": 0.97,
+    "enemy_front_advance": 0.97,
     "ally_combat_death": 0.95,
     "enemy_combat_death": 0.95,
     "ally_field_death": 0.95,

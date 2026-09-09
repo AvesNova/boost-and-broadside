@@ -312,6 +312,7 @@ def _calibration_recipe(
     config: EloCalibrateConfig,
     *,
     env_config: EnvConfig | None = None,
+    ship_config: ShipConfig | None = None,
     sources: dict | None = None,
 ) -> ArtifactRecipe:
     parameters: dict = {
@@ -324,7 +325,9 @@ def _calibration_recipe(
         "anchor_elo": SCRIPTED_ANCHOR_ELO,
     }
     if env_config is not None:
-        parameters["environment"] = describe_environment(env_config)
+        parameters["environment"] = describe_environment(
+            env_config, ship_config=ship_config
+        )
     if sources is not None:
         parameters["refit"] = True
     return ArtifactRecipe(
@@ -417,7 +420,10 @@ def run_elo_calibrate_mode(
             raise FileNotFoundError(f"no roster.json in {run_dir}; nothing to calibrate")
 
         roster = json.loads(roster_path.read_text())
-        env_config, model_config, paradigm, field_map_config = load_run_config(run_dir)
+        env_config, model_config, run_ship_config, paradigm, field_map_config = load_run_config(
+            run_dir
+        )
+        ship_config = run_ship_config
         print(f"\n=== Elo calibration: {run_dir.name} ===")
         print(
             f"  {env_config.num_ships} ships, {paradigm}, "
@@ -444,13 +450,13 @@ def run_elo_calibrate_mode(
                 "run": run_dir.name,
                 "paradigm": paradigm,
                 "players": [
-                    {"label": player.label, "global_step": player.global_step}
-                    for player in players
+                    {"label": player.label, "global_step": player.global_step} for player in players
                 ],
                 "scripted": describe_agent("scripted"),
             },
             config,
             env_config=env_config,
+            ship_config=ship_config,
         )
 
         tournament = Tournament(
@@ -485,7 +491,9 @@ def run_elo_calibrate_mode(
             checkpoint_dir,
         )
         evaluation_config, field_map_config = resolve_evaluation_environment(
-            env_config, [player.agent for player in players]
+            env_config,
+            [player.agent for player in players],
+            ship_config=ship_config,
         )
         labels = ", ".join(player.label for player in players)
         print(f"\n=== Elo calibration: explicit field ({labels}) ===")
@@ -500,6 +508,7 @@ def run_elo_calibrate_mode(
             },
             config,
             env_config=evaluation_config,
+            ship_config=ship_config,
         )
         tournament = Tournament(
             players,
@@ -664,9 +673,7 @@ def _print_summary(result: dict) -> None:
     # Spacing is the part a shared offset cannot flatter, so report it directly.
     # Random is excluded: the step from it to the first rung is the coarse anchor
     # link, not a rung-to-rung gap, and listing it here would read as one.
-    ladder = [
-        p for p in result["players"] if p["live_elo"] is not None and p["label"] != "random"
-    ]
+    ladder = [p for p in result["players"] if p["live_elo"] is not None and p["label"] != "random"]
     ladder.sort(key=lambda p: p["global_step"] or 0)
     if len(ladder) > 1:
         print(f"\n  {'rung-to-rung gap':<20} {'live':>10} {'calibrated':>12} {'delta':>9}")

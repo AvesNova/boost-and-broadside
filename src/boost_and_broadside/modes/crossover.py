@@ -98,6 +98,7 @@ def run_crossover_mode(
     checkpoint = select_final_training_checkpoint(run_dir).path
     checkpoint_data = load_checkpoint_payload(checkpoint, map_location="cpu")
     require_observation_schema(checkpoint_data, str(checkpoint))
+    ship_config = ShipConfig(**checkpoint_data["ship_config"])
     base_env = EnvConfig(**checkpoint_data["env_config"])
 
     trained = resolve_agent_spec(str(checkpoint), ship_config, model_config, device, num_ships=2)
@@ -105,7 +106,9 @@ def run_crossover_mode(
     # The trained policy's own provenance decides the field distribution, and the
     # recipe has to record the environment actually played, so this resolves
     # before the artifact is opened rather than at the first matchup.
-    base_env, field_map_config = resolve_evaluation_environment(base_env, (trained, scripted))
+    base_env, field_map_config = resolve_evaluation_environment(
+        base_env, (trained, scripted), ship_config=ship_config
+    )
 
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
     recipe = ArtifactRecipe(
@@ -126,7 +129,7 @@ def run_crossover_mode(
             "trained_counts": sorted(set(trained_counts)),
             "num_envs": num_envs,
             "max_total_ships": max_total_ships,
-            "environment": describe_environment(base_env),
+            "environment": describe_environment(base_env, ship_config=ship_config),
         },
     )
     # Resume: keep any rows already computed so a crash mid-sweep loses nothing.

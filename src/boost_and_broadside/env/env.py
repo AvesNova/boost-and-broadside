@@ -9,9 +9,18 @@ from typing import Any
 import numpy as np
 import torch
 
-from boost_and_broadside.config import EnvConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, MatchResult, ShipConfig
 from boost_and_broadside.env.field_cache import FieldMapCache
 from boost_and_broadside.env.field_physics import evaluate_fields
+from boost_and_broadside.env.frontline import (
+    FRONTLINE_WORLD_SIZE,
+    NUM_FRONTLINE_ZONES,
+    apply_frontline_tick,
+    apply_timeout_result,
+    clear_previous_life_attribution,
+    initialize_frontline_map,
+    place_ships_at_spawns,
+)
 from boost_and_broadside.env.physics import (
     _combat_damage_tensors,
     advance_bullets,
@@ -58,6 +67,23 @@ class TensorEnv:
                 raise ValueError(
                     f"field map has {field_map.num_fields} fields, expected {env_config.num_fields}"
                 )
+        if env_config.frontline is not None:
+            if tuple(ship_config.world_size) != FRONTLINE_WORLD_SIZE:
+                raise ValueError(
+                    "frontline mode requires the design-contract world size "
+                    f"{FRONTLINE_WORLD_SIZE}, got {ship_config.world_size}"
+                )
+            if env_config.single_team:
+                raise ValueError("frontline mode requires two teams")
+            if env_config.max_episode_steps is None:
+                raise ValueError("frontline mode requires a finite maximum match duration")
+            if env_config.num_fields:
+                raise ValueError(
+                    "frontline fields are disabled until Gate 2 can apply the common "
+                    "map translation"
+                )
+            if env_config.frontline.respawn_health > ship_config.max_health:
+                raise ValueError("frontline respawn_health cannot exceed ship max_health")
         self.state: TensorState | None = None
 
     # ------------------------------------------------------------------
@@ -88,6 +114,7 @@ class TensorEnv:
         N = self.env_config.num_ships
         K = self.env_config.max_bullets
         M = self.env_config.num_fields
+        Z = NUM_FRONTLINE_ZONES if self.env_config.frontline is not None else 0
         dev = self.device
 
         self.state = TensorState(
@@ -102,6 +129,30 @@ class TensorEnv:
             ship_team_id=torch.zeros((B, N), dtype=torch.int32, device=dev),
             ship_alive=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_is_shooting=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            map_center=torch.zeros((B,), dtype=torch.complex64, device=dev),
+            playable_boundary_radius=torch.zeros((B,), dtype=torch.float32, device=dev),
+            front_position=torch.zeros((B,), dtype=torch.long, device=dev),
+            front_delta=torch.zeros((B,), dtype=torch.int8, device=dev),
+            front_win_threshold=torch.full(
+                (B,),
+                self.env_config.frontline.front_win_threshold
+                if self.env_config.frontline is not None
+                else 0,
+                dtype=torch.long,
+                device=dev,
+            ),
+            match_max_steps=torch.full(
+                (B,), self.env_config.max_episode_steps or 0, dtype=torch.long, device=dev
+            ),
+            match_result=torch.full((B,), int(MatchResult.ONGOING), dtype=torch.int8, device=dev),
+            zone_pos=torch.zeros((B, Z), dtype=torch.complex64, device=dev),
+            zone_radius=torch.zeros((B, Z), dtype=torch.float32, device=dev),
+            zone_roles=torch.zeros((B, Z), dtype=torch.int8, device=dev),
+            zone_capture_progress=torch.zeros((B, Z), dtype=torch.float32, device=dev),
+            zone_capture_direction=torch.zeros((B, Z), dtype=torch.int8, device=dev),
+            team0_captured=torch.zeros((B,), dtype=torch.bool, device=dev),
+            team1_captured=torch.zeros((B,), dtype=torch.bool, device=dev),
+            simultaneous_capture=torch.zeros((B,), dtype=torch.bool, device=dev),
             prev_action=torch.zeros((B, N, 3), dtype=torch.float32, device=dev),
             bullet_pos=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_vel=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
@@ -130,6 +181,14 @@ class TensorEnv:
             ship_combat_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_field_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_combat_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_zone_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_spawn_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_boundary_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_zone_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_spawn_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_boundary_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_respawned=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_spawn_healing=torch.zeros((B, N), dtype=torch.float32, device=dev),
         )
 
     def reset_envs(
@@ -166,6 +225,14 @@ class TensorEnv:
         m = mask.unsqueeze(1)  # (B, 1) — broadcasts over ships/fields
 
         s.step_count = torch.where(mask, 0, s.step_count)
+        s.match_result = torch.where(mask, int(MatchResult.ONGOING), s.match_result)
+        if self.env_config.frontline is not None:
+            initialize_frontline_map(
+                s,
+                mask,
+                self.env_config.frontline,
+                self.ship_config.world_size,
+            )
 
         # Positions — uniformly random in world
         rand_x = torch.rand((B, N), device=self.device) * world_w
@@ -263,6 +330,10 @@ class TensorEnv:
             s.ship_team_id = torch.where(m, new_team_ids, s.ship_team_id)
             s.ship_alive = torch.where(m, new_alive, s.ship_alive)
 
+        if self.env_config.frontline is not None:
+            active_reset = m & s.ship_alive
+            place_ships_at_spawns(s, active_reset, self.ship_config, health)
+
         # Clear bullets
         m3 = mask.view(B, 1, 1)
         s.bullet_active = s.bullet_active & ~m3
@@ -289,6 +360,14 @@ class TensorEnv:
         s.ship_combat_damage = torch.where(m, 0.0, s.ship_combat_damage)
         s.ship_field_death = s.ship_field_death & ~m
         s.ship_combat_death = s.ship_combat_death & ~m
+        s.ship_zone_damage = torch.where(m, 0.0, s.ship_zone_damage)
+        s.ship_spawn_damage = torch.where(m, 0.0, s.ship_spawn_damage)
+        s.ship_boundary_damage = torch.where(m, 0.0, s.ship_boundary_damage)
+        s.ship_zone_death &= ~m
+        s.ship_spawn_death &= ~m
+        s.ship_boundary_death &= ~m
+        s.ship_respawned &= ~m
+        s.ship_spawn_healing = torch.where(m, 0.0, s.ship_spawn_healing)
 
     # ------------------------------------------------------------------
     # Step
@@ -325,9 +404,7 @@ class TensorEnv:
         dones = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         for _ in range(self.env_config.action_repeat):
-            tick_dones, tick_truncated = self.tick(
-                actions, unlimited_resources=unlimited_resources
-            )
+            tick_dones, tick_truncated = self.tick(actions, unlimited_resources=unlimited_resources)
             dones |= tick_dones
             truncated |= tick_truncated
         return dones, truncated
@@ -353,6 +430,8 @@ class TensorEnv:
             (dones, truncated) — each is a (B,) bool tensor.
         """
         protected_alive = self.state.ship_alive.clone() if unlimited_resources else None
+        if self.env_config.frontline is not None:
+            clear_previous_life_attribution(self.state)
         if protected_alive is not None:
             # A very large temporary health value prevents a lethal field or
             # bullet hit from setting ``alive=False`` before game-over is
@@ -385,6 +464,26 @@ class TensorEnv:
             bullet_trajectory,
         )
 
+        if self.env_config.frontline is not None:
+            dones = apply_frontline_tick(
+                self.state,
+                self.env_config.frontline,
+                self.ship_config,
+            )
+        else:
+            team0_alive = ((self.state.ship_team_id == 0) & self.state.ship_alive).any(dim=1)
+            team1_alive = ((self.state.ship_team_id == 1) & self.state.ship_alive).any(dim=1)
+            result = torch.where(
+                team0_alive & ~team1_alive,
+                int(MatchResult.TEAM0_WIN),
+                torch.where(
+                    team1_alive & ~team0_alive,
+                    int(MatchResult.TEAM1_WIN),
+                    int(MatchResult.DRAW),
+                ),
+            )
+            self.state.match_result = torch.where(dones, result, self.state.match_result)
+
         if protected_alive is not None:
             self.state.ship_alive |= protected_alive
             self.state.ship_health = torch.where(
@@ -405,12 +504,39 @@ class TensorEnv:
             )
             self.state.ship_field_death &= ~protected_alive
             self.state.ship_combat_death &= ~protected_alive
-            dones &= ~protected_alive.any(dim=1)
+            if self.env_config.frontline is None:
+                dones &= ~protected_alive.any(dim=1)
 
         self.state.step_count += 1
         if self.env_config.max_episode_steps is None:
             truncated = torch.zeros_like(dones)
         else:
             truncated = self.state.step_count >= self.env_config.max_episode_steps
+
+        if self.env_config.frontline is not None:
+            apply_timeout_result(self.state, truncated)
+        else:
+            unresolved_timeout = truncated & (self.state.match_result == int(MatchResult.ONGOING))
+            self.state.match_result = torch.where(
+                unresolved_timeout,
+                int(MatchResult.DRAW),
+                self.state.match_result,
+            )
+
+        if protected_alive is not None and self.env_config.frontline is not None:
+            self.state.ship_health = torch.where(
+                protected_alive,
+                torch.full_like(self.state.ship_health, self.ship_config.max_health),
+                self.state.ship_health,
+            )
+            self.state.ship_zone_damage = torch.where(
+                protected_alive, 0.0, self.state.ship_zone_damage
+            )
+            self.state.ship_spawn_damage = torch.where(
+                protected_alive, 0.0, self.state.ship_spawn_damage
+            )
+            self.state.ship_boundary_damage = torch.where(
+                protected_alive, 0.0, self.state.ship_boundary_damage
+            )
 
         return dones, truncated

@@ -11,6 +11,7 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import (
     EloEvalConfig,
     EnvConfig,
+    FrontlineConfig,
     ModelConfig,
     RewardConfig,
     ScaleConfig,
@@ -27,7 +28,7 @@ from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
-from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, _huber, PPOTrainer
+from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, PPOTrainer, _huber
 
 
 def _make_rewards(**overrides) -> RewardConfig:
@@ -96,13 +97,15 @@ def _make_train_config(
     min_games_to_freeze: int = 0,
     rollouts_per_update: int = 1,
     schedule: TrainingSchedule | None = None,
+    env_config: EnvConfig | None = None,
     **reward_overrides,
 ) -> TrainConfig:
     return TrainConfig(
         paradigm=paradigm,
         scales=(
             ScaleConfig(
-                env_config=EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
+                env_config=env_config
+                or EnvConfig(num_ships=4, max_bullets=8, max_episode_steps=50),
                 num_envs=4,
             ),
         ),
@@ -152,9 +155,11 @@ def _make_trainer(
     device: str = "cpu",
     model_config: ModelConfig | None = None,
     schedule: TrainingSchedule | None = None,
+    ship_config: ShipConfig | None = None,
+    env_config: EnvConfig | None = None,
     **reward_overrides,
 ) -> PPOTrainer:
-    ship_config = ShipConfig()
+    ship_config = ship_config or ShipConfig()
     # The scripted agent is an ordinary roster entry, so a league of any width
     # can draw it; tests that want a policy-free league pass with_scripted=False.
     scripted_agent = (
@@ -170,6 +175,7 @@ def _make_trainer(
             min_games_to_freeze=min_games_to_freeze,
             rollouts_per_update=rollouts_per_update,
             schedule=schedule,
+            env_config=env_config,
             **reward_overrides,
         ),
         model_config=model_config
@@ -190,6 +196,34 @@ class TestPPOSmokeTest:
     def test_full_training_loop_runs(self, paradigm, tmp_path):
         """One complete PPO training run (64 total timesteps) must not raise."""
         trainer = _make_trainer(paradigm=paradigm, checkpoint_dir=str(tmp_path))
+        trainer.train()
+
+    def test_frontline_training_loop_runs_with_wide_world_contract(self, tmp_path):
+        """Frontline collection, auxiliary labels, and PPO update compose at 16K."""
+        frontline = FrontlineConfig(
+            zone_radius=220.0,
+            zone_ring_radius=1200.0,
+            playable_radius=2600.0,
+            capture_seconds=6.0,
+            defense_damage_per_second=2.0,
+            respawn_health=25.0,
+            spawn_heal_per_second=12.0,
+            enemy_spawn_damage_per_second=8.0,
+            boundary_damage_per_second=5.0,
+            boundary_damage_per_pixel_second=0.05,
+            front_win_threshold=5,
+        )
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path),
+            ship_config=ShipConfig(world_size=(16384.0, 16384.0)),
+            env_config=EnvConfig(
+                num_ships=4,
+                max_bullets=8,
+                max_episode_steps=20,
+                frontline=frontline,
+            ),
+        )
+
         trainer.train()
 
     # test_encoder_works_with_non_default_n_fourier_freqs is removed because
@@ -1211,6 +1245,8 @@ class TestComponentClassification:
             "enemy_field_death",
             "ally_win",
             "enemy_win",
+            "ally_front_advance",
+            "enemy_front_advance",
         }
 
     def test_tiers_partition_the_registry(self):

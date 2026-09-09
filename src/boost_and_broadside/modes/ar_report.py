@@ -119,7 +119,9 @@ def run_ar_report_mode(
 
     # A fields policy reports on the map distribution it was trained on; without
     # this it would be diagnosed in an empty arena it never saw.
-    env_config, field_map_config = resolve_evaluation_environment(env_config, (agent0, agent1))
+    env_config, field_map_config = resolve_evaluation_environment(
+        env_config, (agent0, agent1), ship_config=ship_config
+    )
 
     wrapper = YemongEnvWrapper(
         num_envs=1,
@@ -213,7 +215,7 @@ def run_ar_report_mode(
         ),
         parameters={
             "decision_steps": num_steps,
-            "environment": describe_environment(env_config),
+            "environment": describe_environment(env_config, ship_config=ship_config),
         },
     )
     owner = store.owner_for(
@@ -245,9 +247,9 @@ def run_ar_report_mode(
     # replaying the environment, so they are retained as an ignored local payload.
     artifact.write_samples_npz(
         {
-            "actions": np.stack(
-                [action.squeeze(0).cpu().numpy() for action in actions_sim]
-            ).astype(np.float32),
+            "actions": np.stack([action.squeeze(0).cpu().numpy() for action in actions_sim]).astype(
+                np.float32
+            ),
             **{
                 f"init_{key}": value.squeeze(0).cpu().numpy().astype(np.float32)
                 for key, value in init_obs.items()

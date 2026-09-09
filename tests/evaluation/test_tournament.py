@@ -71,19 +71,24 @@ def _write_run_checkpoint(run_dir: Path, *, num_fields: int, field_map: dict | N
     import torch
 
     from boost_and_broadside.config import ModelConfig
-    from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
+    from boost_and_broadside.train.rl.checkpoint_schema import (
+        OBSERVATION_SCHEMA,
+        observation_contract,
+    )
 
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / "step_000000000064.pt"
     torch.save(
         {
             "observation_schema": OBSERVATION_SCHEMA,
+            "observation_contract": observation_contract(ShipConfig()),
             "env_config": dataclasses.asdict(
                 EnvConfig(num_ships=8, max_bullets=4, max_episode_steps=8, num_fields=num_fields)
             ),
             "model_config": dataclasses.asdict(
                 ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1)
             ),
+            "ship_config": dataclasses.asdict(ShipConfig()),
             "train_config": {"paradigm": "ego_pass", "field_map": field_map},
         },
         path,
@@ -101,10 +106,11 @@ def test_a_fields_run_reports_the_map_distribution_it_trained_on(tmp_path):
         field_map={"cache_size": 512, "max_generation_attempts": 256, "nesting_probability": 0.35},
     )
 
-    env_config, _, paradigm, field_map = load_run_config(tmp_path / "run")
+    env_config, _, ship_config, paradigm, field_map = load_run_config(tmp_path / "run")
 
     assert env_config.num_fields == 4
     assert paradigm == "ego_pass"
+    assert ship_config == ShipConfig()
     assert field_map == FieldMapConfig(
         cache_size=512, max_generation_attempts=256, nesting_probability=0.35
     )
@@ -122,4 +128,4 @@ def test_a_fields_run_without_recorded_map_intent_is_refused(tmp_path):
 def test_a_field_free_run_reports_no_map(tmp_path):
     _write_run_checkpoint(tmp_path / "run", num_fields=0, field_map=None)
 
-    assert load_run_config(tmp_path / "run")[3] is None
+    assert load_run_config(tmp_path / "run")[4] is None

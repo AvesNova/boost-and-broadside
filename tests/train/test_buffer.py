@@ -591,8 +591,51 @@ class TestGAEComputation:
         assert abs(buf.advantages[1, 0, 0, 0].item()) < 1e-3
         assert abs(buf.advantages[0, 0, 0, 0].item()) < 1e-3
 
+    def test_respawn_discontinuity_does_not_cut_gae(self):
+        """Physical teleport masking must not become an episode boundary."""
+        buf, T, B, N, _ = _make_buffer(T=3, B=1, N=1, num_components=1)
+        for t in range(T):
+            buf.add(
+                {
+                    "pos": torch.zeros(B, N, 2),
+                    "vel": torch.zeros(B, N, 2),
+                    "alive": torch.ones(B, N),
+                },
+                torch.zeros(B, N, 3),
+                torch.zeros(B, N),
+                torch.full((B, N, 1), float(t == 2)),
+                torch.zeros(B, N, 1),
+                torch.ones(B, N, dtype=torch.bool),
+                terminated=torch.zeros(B, dtype=torch.bool),
+                transition_contiguous=torch.tensor([[t != 1]]),
+            )
+
+        buf.compute_gae(torch.zeros(B, N, 1), torch.zeros(B))
+
+        assert buf.advantages[0, 0, 0, 0] > 0.0
+
 
 class TestMinibatchIterator:
+    def test_carries_per_ship_transition_continuity(self):
+        buf, T, B, N, D = _make_buffer(T=1, B=2, N=2)
+        continuity = torch.tensor([[True, False], [False, True]])
+        obs = {"pos": torch.zeros(B, N, 2), "vel": torch.zeros(B, N, 2), "alive": torch.ones(B, N)}
+        buf.add(
+            obs,
+            torch.zeros(B, N, 3),
+            torch.zeros(B, N),
+            torch.zeros(B, N, K),
+            torch.zeros(B, N, K),
+            torch.ones(B, N, dtype=torch.bool),
+            transition_contiguous=continuity,
+        )
+        buf.store_initial_hidden(torch.zeros(1, B * N, D))
+        buf.compute_gae(torch.zeros(B, N, K), torch.zeros(B))
+
+        batch = next(buf.get_minibatch_iterator(1))[0]
+
+        assert sorted(batch.transition_contiguous[0].tolist()) == sorted(continuity.tolist())
+
     def test_yields_correct_number_of_minibatches(self):
         T, B, N, D = 4, 8, 4, 16
         buf, _, _, _, _ = _make_buffer(T=T, B=B, N=N, D=D)

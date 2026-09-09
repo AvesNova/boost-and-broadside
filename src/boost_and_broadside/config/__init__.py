@@ -2,11 +2,14 @@
 
 from boost_and_broadside.config.core import (
     EnvConfig,
+    FrontlineConfig,
     InterfaceDamageLevel,
+    MatchResult,
     ModelConfig,
     RefractiveIndexLevel,
     RewardConfig,
     ShipConfig,
+    ZoneRole,
 )
 from boost_and_broadside.config.fingerprint import canonical_data, canonical_json, fingerprint
 from boost_and_broadside.config.resolve import (
@@ -50,8 +53,11 @@ from boost_and_broadside.config.training import (
 __all__ = [
     "ShipConfig",
     "EnvConfig",
+    "FrontlineConfig",
     "RefractiveIndexLevel",
     "InterfaceDamageLevel",
+    "MatchResult",
+    "ZoneRole",
     "EloCalibrateConfig",
     "EloEvalConfig",
     "ModelConfig",
