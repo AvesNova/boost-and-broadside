@@ -111,9 +111,8 @@ results guide tuning but do not replace human playtesting.
 - Defender patrol smoke: 1.89 circuits in 30 seconds, 0% of ticks inside the damage
   radius, full health retained.
 - Capture sweep: 2,560 full games across ten capture durations on an RTX 4070 Laptop GPU.
-- Last full repository suite: 1,344 passed, 6 skipped, 0 failed. This predates the latest
-  scripted-policy and balance iterations; rerun before Gate 1 handoff, not after every
-  tuning edit.
+- Gate 1 boundary full repository suite: 1,359 passed, 6 skipped, 0 failed in 397.99
+  seconds after the final scripted-policy and 8-second capture changes.
 
 ## Human review still needed
 
