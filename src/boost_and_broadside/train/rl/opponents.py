@@ -116,7 +116,8 @@ class OpponentMixin:
 
     def _opponent_obs(self, obs_slice: YemongObservation, num_ships: int) -> YemongObservation:
         """Return the observation perspective used by policy opponents."""
-        return flip_team_obs(obs_slice, num_ships) if self._ego_pass else obs_slice
+        team1 = obs_slice.for_team(1)
+        return flip_team_obs(team1, num_ships) if self._ego_pass else team1
 
     def _combine_actions(
         self,
@@ -283,7 +284,9 @@ class OpponentMixin:
         """Compute scripted BC targets and scripted-slot actions before stream launch."""
         if self._policy_gradient_coef == 0.0:
             with torch.no_grad():
-                _, expert_probs = self.scripted_agent.get_actions_and_probs(self.wrapper.env.state)
+                _, expert_probs = self.scripted_agent.get_actions_and_probs(
+                    self.wrapper.env.state, self.wrapper.last_visibility.ship
+                )
             return ScriptedStepOutput(expert_probs, {})
 
         scripted_slots = [index for index, slot in enumerate(slots) if slot.policy is None]
@@ -291,7 +294,7 @@ class OpponentMixin:
             # BC needs targets for every env anyway, so slot actions come free.
             with torch.no_grad():
                 actions, expert_probs = self.scripted_agent.get_actions_and_probs(
-                    self.wrapper.env.state
+                    self.wrapper.env.state, self.wrapper.last_visibility.ship
                 )
             return ScriptedStepOutput(
                 expert_probs,
@@ -309,7 +312,8 @@ class OpponentMixin:
         high = max(slots[index].end for index in scripted_slots)
         with torch.no_grad():
             actions = self.scripted_agent.get_actions(
-                slice_state(self.wrapper.env.state, low, high)
+                slice_state(self.wrapper.env.state, low, high),
+                self.wrapper.last_visibility.ship[low:high],
             )
         return ScriptedStepOutput(
             None,

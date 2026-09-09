@@ -116,6 +116,38 @@ class LoggingMixin:
             metrics["frontline/simultaneous_captures"] = source_stats[
                 "simultaneous_captures"
             ].item()
+        enemy_slots = source_stats["perception_enemy_slots"].item()
+        if enemy_slots > 0:
+            visible_slots = source_stats["perception_visible_enemy_slots"].item()
+            range_slots = source_stats["perception_range_enemy_slots"].item()
+            observer_pairs = source_stats["perception_observer_enemy_pairs"].item()
+            observer_visible = source_stats["perception_observer_visible_pairs"].item()
+            hidden_samples = source_stats["perception_hidden_samples"].item()
+            metrics["fog/visible_fraction"] = visible_slots / enemy_slots
+            metrics["fog/range_only_visible_fraction"] = range_slots / enemy_slots
+            metrics["fog/field_occluded_fraction_of_in_range"] = (
+                (range_slots - visible_slots) / range_slots if range_slots > 0 else 0.0
+            )
+            metrics["fog/never_seen_fraction"] = (
+                source_stats["perception_never_seen_enemy_slots"].item() / enemy_slots
+            )
+            metrics["fog/individual_visible_fraction"] = (
+                observer_visible / observer_pairs if observer_pairs > 0 else 0.0
+            )
+            metrics["fog/team_shared_gain"] = metrics["fog/visible_fraction"] - metrics[
+                "fog/individual_visible_fraction"
+            ]
+            metrics["fog/mean_hidden_age_steps"] = (
+                source_stats["perception_hidden_age_sum"].item() / hidden_samples
+                if hidden_samples > 0
+                else 0.0
+            )
+            metrics["fog/reacquisitions"] = source_stats["perception_reacquisitions"].item()
+            occlusion_hist = ep_stats["occlusion_hist"].cpu()
+            edges = ep_stats["occlusion_bin_seconds"].cpu()
+            for index, count in enumerate(occlusion_hist):
+                upper = "inf" if index == len(edges) else f"{edges[index].item():g}s"
+                metrics[f"fog/occlusion_duration_le_{upper}"] = count.item()
         if n_eps > 0:
             n_ship_eps = n_eps * self.wrapper.num_ships
             comp_sum = ep_stats["comp_sum"].cpu()
