@@ -434,11 +434,12 @@ the ship relative to every field, and that pressure is always on and never decay
 behavior-cloning weight.
 
 Every episode reset samples centers, radii, widths, target indices, and damage levels
-directly on device. Arbitrary overlap removes placement rejection, hierarchy discovery,
-retry budgets, and pre-generated banks. Masked vectorized resets generate a candidate row
-for every environment and retain the existing rows for environments that did not finish.
-Frontline layouts use the same translated map center as zones and sample inside the
-practical battlefield; combat layouts use the whole toroid.
+directly on device. Randomized R2/sunflower low-discrepancy placement reduces clustering.
+Arbitrary overlap removes placement rejection, hierarchy discovery, retry budgets, and
+pre-generated banks. Masked vectorized resets generate a candidate row for every
+environment and retain existing rows for environments that did not finish. Frontline
+layouts use the same translated map center as zones and sample inside the practical
+battlefield; combat layouts use the whole toroid.
 
 Per-update physics diagnostics report field/combat damage per live ship-step, source death
 rates, the fraction of steps taking boundary damage, time in non-ambient media, and the

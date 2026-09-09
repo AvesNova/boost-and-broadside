@@ -17,7 +17,9 @@ import pygame
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
+from boost_and_broadside.env.frontline import (
+    frontline_ship_config,
+)
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig
 
@@ -34,7 +36,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE)
+    ship_config = frontline_ship_config(ShipConfig())
     env_config = replace(PLAY_ENV_CONFIG, num_fields=args.num_fields)
     env = TensorEnv(1, ship_config, env_config, "cpu")
     env.reset(seed=args.seed)

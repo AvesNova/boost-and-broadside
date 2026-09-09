@@ -19,7 +19,9 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import MatchResult, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
+from boost_and_broadside.env.frontline import (
+    frontline_ship_config,
+)
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 
 
@@ -45,8 +47,8 @@ def run_suite(
 ) -> dict:
     """Run independent matches in one tensor batch and retain per-game samples."""
 
-    if games < 2:
-        raise ValueError("games must be at least two for distribution statistics")
+    if games < 1:
+        raise ValueError("games must be positive")
     if max_ticks < 1:
         raise ValueError("max_ticks must be positive")
     if capture_seconds is not None and capture_seconds <= 0.0:
@@ -55,7 +57,7 @@ def run_suite(
         raise RuntimeError("CUDA was requested but torch.cuda.is_available() is false")
 
     torch.manual_seed(seed)
-    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE)
+    ship_config = frontline_ship_config(ShipConfig())
     frontline = PLAY_ENV_CONFIG.frontline
     if capture_seconds is not None:
         frontline = replace(frontline, capture_seconds=capture_seconds)

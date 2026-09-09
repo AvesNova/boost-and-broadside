@@ -56,17 +56,25 @@ def generate_field_layout(
         generator,
     )
     if map_center is None:
-        pos = torch.complex(
-            torch.rand(shape, device=device, generator=generator) * world_w,
-            torch.rand(shape, device=device, generator=generator) * world_h,
+        unit_x, unit_y = _low_discrepancy_toroid(
+            batch_size,
+            count,
+            device,
+            generator,
         )
+        pos = torch.complex(unit_x * world_w, unit_y * world_h)
     else:
         if playable_radius is None:
             raise ValueError("playable_radius is required with map_center")
         outer = radius + 0.5 * width
         center_limit = (playable_radius.unsqueeze(1) - outer).clamp(min=0.0)
-        radial = center_limit * torch.rand(shape, device=device, generator=generator).sqrt()
-        angle = torch.rand(shape, device=device, generator=generator) * (2.0 * math.pi)
+        radial_fraction, angle = _low_discrepancy_disk(
+            batch_size,
+            count,
+            device,
+            generator,
+        )
+        radial = center_limit * radial_fraction
         offset = torch.polar(radial, angle)
         translated = map_center.unsqueeze(1) + offset
         pos = torch.complex(translated.real % world_w, translated.imag % world_h)
@@ -77,6 +85,51 @@ def generate_field_layout(
     damage_level = torch.randint(0, 3, shape, device=device, generator=generator).to(torch.int8)
     index, damage = material_tensors(index_level, damage_level, ship_config)
     return pos, radius, width, index_level, index, damage_level, damage
+
+
+def _low_discrepancy_disk(
+    batch_size: int,
+    count: int,
+    device: torch.device,
+    generator: torch.Generator | None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return randomized sunflower samples with one point per equal-area stratum."""
+
+    shape = (batch_size, count)
+    rank = torch.arange(count, dtype=torch.float32, device=device).unsqueeze(0)
+    radial_jitter = torch.rand(shape, device=device, generator=generator)
+    radial_fraction = ((rank + radial_jitter) / count).sqrt()
+
+    golden_angle = math.pi * (3.0 - math.sqrt(5.0))
+    rotation = torch.rand((batch_size, 1), device=device, generator=generator) * (
+        2.0 * math.pi
+    )
+    angular_jitter = (
+        torch.rand(shape, device=device, generator=generator) - 0.5
+    ) * (math.pi / count)
+    angle = rotation + rank * golden_angle + angular_jitter
+    return radial_fraction, angle
+
+
+def _low_discrepancy_toroid(
+    batch_size: int,
+    count: int,
+    device: torch.device,
+    generator: torch.Generator | None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return randomized R2-sequence samples on the unit torus."""
+
+    shape = (batch_size, count)
+    rank = torch.arange(count, dtype=torch.float32, device=device).unsqueeze(0)
+    plastic = 1.324717957244746
+    phase = torch.rand((batch_size, 2), device=device, generator=generator)
+    jitter_scale = 0.25 / math.sqrt(count)
+    jitter = (
+        torch.rand((*shape, 2), device=device, generator=generator) - 0.5
+    ) * jitter_scale
+    unit_x = (phase[:, :1] + rank / plastic + jitter[:, :, 0]) % 1.0
+    unit_y = (phase[:, 1:] + rank / (plastic * plastic) + jitter[:, :, 1]) % 1.0
+    return unit_x, unit_y
 
 
 def _uniform(
