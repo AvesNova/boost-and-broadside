@@ -1,6 +1,7 @@
 """Vectorized five-zone frontline mechanics and toroidal map geometry."""
 
 import math
+from dataclasses import replace
 
 import torch
 
@@ -9,7 +10,24 @@ from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.state import TensorState
 
 FRONTLINE_WORLD_SIZE = (16384.0, 16384.0)
+FRONTLINE_FIELD_RADIUS_MAX = 750.0
 NUM_FRONTLINE_ZONES = 5
+
+
+def frontline_ship_config(config: ShipConfig) -> ShipConfig:
+    """Apply the common provisional world, field-size, and integrator contract."""
+
+    return replace(
+        config,
+        world_size=FRONTLINE_WORLD_SIZE,
+        field_radius_max=FRONTLINE_FIELD_RADIUS_MAX,
+        dt=1.0 / 30.0,
+        # At <=6 px of travel per 30 Hz tick versus a 40 px interface, one
+        # explicit optical step resolves the transition while avoiding four
+        # field evaluations per ship tick in the latency-sensitive play loop.
+        field_integrator="two_step",
+        field_integration_substeps=1,
+    )
 
 
 def toroidal_displacement(

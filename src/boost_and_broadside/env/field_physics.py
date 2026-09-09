@@ -104,10 +104,10 @@ def compose_refractive_index(
 
     With ``L_i = log(n_i)`` and union coverage
     ``A = 1 - product_i(1 - alpha_i)``, the local log-index is
-    ``A * sum(alpha_i L_i) / sum(alpha_i)``. The implementation accumulates the
-    union gradient recurrently. That avoids
-    division by ``1-alpha`` at fully covered points and remains stable when
-    fields overlap exactly.
+    ``A * sum(alpha_i L_i) / sum(alpha_i)``. Exclusive prefix/suffix products
+    evaluate the union gradient without division by ``1-alpha``. This remains
+    stable at full coverage and turns the former per-field Python/kernel loop
+    into a fixed set of batched tensor operations.
     """
 
     if alpha.shape[-1] == 0:
@@ -121,14 +121,17 @@ def compose_refractive_index(
     grad_weight = grad_alpha.sum(dim=2)
     grad_weighted_log = (grad_alpha * log_target).sum(dim=2)
 
-    coverage = torch.zeros_like(weight)
-    grad_coverage = torch.zeros_like(grad_weight)
-    for field_idx in range(alpha.shape[2]):
-        field_alpha = alpha[:, :, field_idx]
-        field_gradient = grad_alpha[:, :, field_idx]
-        remaining = 1.0 - coverage
-        grad_coverage = grad_coverage * (1.0 - field_alpha) + remaining * field_gradient
-        coverage = coverage + remaining * field_alpha
+    remaining = 1.0 - alpha
+    prefix = torch.cumprod(remaining, dim=2)
+    suffix = torch.flip(
+        torch.cumprod(torch.flip(remaining, dims=(2,)), dim=2),
+        dims=(2,),
+    )
+    ones = torch.ones_like(remaining[:, :, :1])
+    product_before = torch.cat((ones, prefix[:, :, :-1]), dim=2)
+    product_after = torch.cat((suffix[:, :, 1:], ones), dim=2)
+    coverage = 1.0 - prefix[:, :, -1]
+    grad_coverage = (grad_alpha * product_before * product_after).sum(dim=2)
 
     contributes = weight > EPS
     safe_weight = weight.clamp(min=EPS)

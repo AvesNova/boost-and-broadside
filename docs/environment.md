@@ -120,6 +120,11 @@ correct refractive curvature. Projection is confined to the passive split and ca
 erase powered work. Two substeps at the configured 60 Hz, speeds, and minimum 40-pixel
 band keep each ordinary step far narrower than an interface.
 
+The provisional Frontline play contract instead uses one `two_step` ship step at 30 Hz.
+Its maximum configured displacement is 6 px against the same 40 px interface, and swept
+projectile collision plus two projectile field substeps remain enabled. This keeps every
+per-second gameplay rate unchanged while making single-game interactive latency practical.
+
 Projectile transport uses exact quadratic-drag half-steps around the passive field step.
 Its default `two_step` integrator uses an optical acceleration kick, drift, endpoint field
 evaluation, and the same projection that preserves `n*|v|`. The selectable `midpoint`
@@ -173,8 +178,9 @@ space, so equally covered reciprocal targets cancel to ambient. The union covera
 optical strength bounded as field count grows. Interface damage remains an independent
 sum per field and therefore does not cancel.
 
-The analytic gradient accumulates union coverage recurrently, without unstable division
-by `1-alpha` or prefix/suffix products. All distances use minimum-image toroidal geometry.
+The analytic gradient uses vectorized exclusive prefix/suffix products, without unstable
+division by `1-alpha` or a Python loop over fields. All distances use minimum-image
+toroidal geometry.
 Outer extent
 `r+w/2` must be strictly less than half the shorter world dimension, avoiding ambiguous
 antipodal circle topology. For the default 1024×1024 world and 40-pixel transition width,
@@ -182,10 +188,12 @@ this requires `r < 492`; changing the maximum radius beyond that requires a larg
 or a different field-topology definition.
 
 Centers, radii, widths, target materials, and damage levels are sampled directly on every
-episode reset. Combat maps use the whole toroid. Frontline maps sample inside the practical
-battlefield around the same random translated map center as the zones and boundary, keeping
-each field's complete outer extent inside that boundary. The zero-field branch allocates an
-empty field axis and bypasses field evaluation.
+episode reset. Randomized low-discrepancy R2 samples cover combat toroids; randomized
+sunflower samples stratify equal-area Frontline disks. Both reduce clustering without a
+pairwise rejection loop and still permit useful overlap. Frontline fields share the same
+random translated map center as the zones and boundary, with each complete outer extent
+inside that boundary. The zero-field branch allocates an empty field axis and bypasses
+field evaluation.
 
 ## Projectiles, collisions, and rendering
 
@@ -223,15 +231,14 @@ ticks, measured:
 
 | Fields | Environment steps/s | Relative | State memory | Reset µs/env | Peak allocation | Tokens | Attention-pair factor |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 0 | 1,850,454 | 1.000× | 5.58 MiB | 0.608 | 9.90 MiB | 8 | 1.000× |
-| 1 | 253,705 | 0.137× | 5.80 MiB | 1.362 | 15.27 MiB | 9 | 1.266× |
-| 2 | 243,812 | 0.132× | 6.03 MiB | 1.258 | 16.89 MiB | 10 | 1.562× |
-| 4 | 219,253 | 0.118× | 6.48 MiB | 1.404 | 22.65 MiB | 12 | 2.250× |
-| 20 | 494,177 | 0.267× | 10.11 MiB | 0.879 | 68.78 MiB | 28 | 12.250× |
+| 0 | 1,543,526 | 1.000× | 5.58 MiB | 0.687 | 9.90 MiB | 8 | 1.000× |
+| 4 | 223,241 | 0.145× | 6.48 MiB | 1.520 | 22.65 MiB | 12 | 2.250× |
+| 10 | 228,889 | 0.148× | 7.84 MiB | 1.538 | 39.95 MiB | 18 | 5.062× |
+| 20 | 231,166 | 0.150× | 10.11 MiB | 1.365 | 68.78 MiB | 28 | 12.250× |
 
 The zero-field branch bypasses every field evaluation and retains the old kinematics
-implementation. GPU throughput is not monotonic at these small tensor sizes: the 20-field
-case uses the device more efficiently than the launch-bound one-to-four-field cases. Policy
+implementation. GPU throughput is nearly flat once the field path is active because these
+small reductions are launch-bound. Policy
 inference is intentionally separate: fields add tokens, so attention pair count grows
 theoretically as `(N+M)^2/N^2`; the benchmark's last column reports that factor rather than
 blending policy cost into physics cost. Results depend on hardware and clocks; reproduce
@@ -254,7 +261,13 @@ them with `benchmarks/field_throughput.py`.
   [`test_renderer.py`](../tests/ui/test_renderer.py): integration, attribution, numeric
   observations, and outline rendering.
 
-The zero/one/two/four/Frontline-field environment benchmark is in
+The zero/one/two/four/ten/twenty-field environment benchmark is in
 [`benchmarks/field_throughput.py`](../benchmarks/field_throughput.py). Saturated projectile
 storage, drag, integrator, damage-depletion, compilation, and capacity comparisons are in
 [`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).
+
+Frontline play uses one CPU thread, a 30 Hz tick/decision rate, and a state-only scripted
+loop that skips unused reward and policy-observation work. The end-to-end headless benchmark,
+including scripted decisions and rendering, measured 27.54 ms per decision (1.21× realtime),
+versus 94.12 ms (0.35×) with a 16-thread tiny-tensor workload. Reproduce it with
+[`benchmarks/play_throughput.py`](../benchmarks/play_throughput.py).

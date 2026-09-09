@@ -17,7 +17,10 @@ from boost_and_broadside.env.field_physics import (
     validate_field_layout,
     wrap_displacement,
 )
-from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
+from boost_and_broadside.env.frontline import (
+    FRONTLINE_FIELD_RADIUS_MAX,
+    FRONTLINE_WORLD_SIZE,
+)
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 
 
@@ -188,7 +191,10 @@ def test_reset_generates_new_maps_only_for_selected_environments():
 
 
 def test_frontline_fields_share_map_translation_and_fit_playable_boundary():
-    config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE)
+    config = ShipConfig(
+        world_size=FRONTLINE_WORLD_SIZE,
+        field_radius_max=FRONTLINE_FIELD_RADIUS_MAX,
+    )
     env = TensorEnv(8, config, replace(PLAY_ENV_CONFIG, num_fields=16), "cpu")
     env.reset(seed=9)
     distance = wrap_displacement(
@@ -198,6 +204,27 @@ def test_frontline_fields_share_map_translation_and_fit_playable_boundary():
     assert torch.all(
         distance + outer <= env.state.playable_boundary_radius.unsqueeze(1) + 1e-4
     )
+    assert env.state.field_radius.max() > 490.0
+
+
+def test_frontline_generation_stratifies_area_instead_of_clumping_radially():
+    count = 20
+    config = ShipConfig(
+        world_size=FRONTLINE_WORLD_SIZE,
+        field_radius_max=FRONTLINE_FIELD_RADIUS_MAX,
+    )
+    env = TensorEnv(16, config, replace(PLAY_ENV_CONFIG, num_fields=count), "cpu")
+    env.reset(seed=19)
+    distance = wrap_displacement(
+        env.state.field_pos - env.state.map_center.unsqueeze(1),
+        config.world_size,
+    ).abs()
+    outer = env.state.field_radius + 0.5 * env.state.field_transition_width
+    center_limit = env.state.playable_boundary_radius.unsqueeze(1) - outer
+    area_fraction = (distance / center_limit).square().sort(dim=1).values
+    stratum = torch.arange(count, dtype=torch.float32).view(1, count)
+    assert torch.all(area_fraction >= stratum / count - 2e-5)
+    assert torch.all(area_fraction <= (stratum + 1.0) / count + 2e-5)
 
 
 def test_zero_field_fast_path_stays_ambient():

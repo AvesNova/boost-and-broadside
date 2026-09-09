@@ -27,7 +27,7 @@ from boost_and_broadside.constants import (
     ShootActions,
     TurnActions,
 )
-from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
+from boost_and_broadside.env.frontline import frontline_ship_config
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -48,11 +48,12 @@ _PLAY_ZONE_RING_RADIUS = 1200.0
 PLAY_ENV_CONFIG = EnvConfig(
     num_ships=8,
     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
-    max_episode_steps=18_000,
-    # Preserves roughly the old four-field density inside the much larger
-    # practical battlefield. This is provisional for the Gate 2 playtest.
-    num_fields=20,
-    action_repeat=2,
+    max_episode_steps=9_000,
+    # Ten low-discrepancy fields with the larger Frontline radius distribution
+    # preserve slightly more nominal coverage than the earlier 20 × 490 px
+    # uniform proposal while halving physics work and policy-map tokens.
+    num_fields=10,
+    action_repeat=1,
     spawn_resource_spread=0.0,
     frontline=FrontlineConfig(
         zone_radius=_PLAY_ZONE_RADIUS,
@@ -85,34 +86,46 @@ def run_play_mode(
     human ship and C toggles camera follow. Tuning values are intentionally
     provisional pending the current human playtest gate.
     """
-    ship_config = replace(ship_config, world_size=FRONTLINE_WORLD_SIZE)
-    render_config = replace(render_config, show_unlimited_button=True)
+    # A single tiny environment is dominated by CUDA launch/synchronization
+    # overhead. Play is scripted/human-only, so keep its simulation and agents
+    # on CPU even when training defaults to CUDA.
+    play_device = "cpu"
+    ship_config = frontline_ship_config(ship_config)
+    # A policy decision holds for action_repeat physics ticks. The Frontline
+    # contract is 30 Hz with repeat one, hence 30 rendered decisions per second.
+    decision_fps = round(1.0 / (ship_config.dt * PLAY_ENV_CONFIG.action_repeat))
+    render_config = replace(
+        render_config,
+        fps=decision_fps,
+        show_unlimited_button=True,
+    )
     agent0 = resolve_agent_spec(
         "scripted",
         ship_config,
         model_config,
-        device,
+        play_device,
         checkpoint_dir,
         num_ships=PLAY_ENV_CONFIG.num_ships,
     )
-    agent1 = resolve_agent_spec(
-        "scripted",
-        ship_config,
-        model_config,
-        device,
-        checkpoint_dir,
-        num_ships=PLAY_ENV_CONFIG.num_ships,
-    )
-    _run_resolved_interactive_mode(
-        agent0,
-        agent1,
-        ship_config,
-        PLAY_ENV_CONFIG,
-        rewards,
-        render_config,
-        device,
-        keyboard_teams=frozenset({0}),
-    )
+    # One controller draws independent per-ship tendencies for both teams. It
+    # can therefore supply both sides without doing the same state analysis twice.
+    agent1 = agent0
+    previous_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        _run_resolved_interactive_mode(
+            agent0,
+            agent1,
+            ship_config,
+            PLAY_ENV_CONFIG,
+            rewards,
+            render_config,
+            play_device,
+            keyboard_teams=frozenset({0}),
+            state_only=True,
+        )
+    finally:
+        torch.set_num_threads(previous_threads)
 
 
 def run_watch_mode(
@@ -185,6 +198,7 @@ def _run_resolved_interactive_mode(
     render_config: RenderConfig,
     device: str,
     keyboard_teams: frozenset[int],
+    state_only: bool = False,
 ) -> None:
     """Build the single environment and render two already-resolved agents."""
 
@@ -207,6 +221,7 @@ def _run_resolved_interactive_mode(
             renderer,
             torch.device(device),
             keyboard_teams,
+            state_only=state_only,
         )
     finally:
         renderer.close()
@@ -219,6 +234,8 @@ def _run_interactive_loop(
     renderer: GameRenderer,
     device: torch.device,
     keyboard_teams: frozenset[int],
+    *,
+    state_only: bool = False,
 ) -> None:
     """Core render loop.  Runs episodes back-to-back until the window is closed.
 
@@ -238,7 +255,11 @@ def _run_interactive_loop(
 
     first_episode = True
     while True:
-        obs = wrapper.reset()
+        if state_only:
+            wrapper.env.reset()
+            obs = None
+        else:
+            obs = wrapper.reset()
         init_hidden(agent0, 1, num_tokens, device)
         init_hidden(agent1, 1, num_tokens, device)
         pred_nexts = None
@@ -287,12 +308,19 @@ def _run_interactive_loop(
                 action0, _ = get_actions(
                     agent0, team0_view, state, 1, N, device, return_pred_next=True
                 )
-                action1, _ = get_actions(
-                    agent1, team1_view, state, 1, N, device, return_pred_next=True
-                )
+                if agent1 is agent0:
+                    action1 = action0
+                else:
+                    action1, _ = get_actions(
+                        agent1, team1_view, state, 1, N, device, return_pred_next=True
+                    )
 
                 # Select each agent's actions for their respective team (ship tokens only)
-                team_id = obs["team_id"][:, :N]  # (1, N) — exclude field tokens
+                team_id = (
+                    state.ship_team_id
+                    if obs is None
+                    else obs["team_id"][:, :N]  # (1, N) — exclude field tokens
+                )
                 action = merge_team_actions(action0, action1, team_id)
 
                 # Merge imagined trajectories by team into a single list of per-step tensors.
@@ -325,17 +353,25 @@ def _run_interactive_loop(
                         renderer.selected_ship,
                     )
 
-                obs, _, dones, truncated, info = wrapper.step(
-                    action,
-                    unlimited_resources=renderer.unlimited_resources,
-                    auto_reset=False,
-                )
+                if state_only:
+                    dones, truncated = wrapper.env.step(
+                        action,
+                        unlimited_resources=renderer.unlimited_resources,
+                    )
+                    result_tensor = wrapper.state.match_result
+                else:
+                    obs, _, dones, truncated, info = wrapper.step(
+                        action,
+                        unlimited_resources=renderer.unlimited_resources,
+                        auto_reset=False,
+                    )
+                    result_tensor = info["match_result"]
 
                 if (dones | truncated).any():
                     reset_done_envs(agent0, dones | truncated, num_tokens)
                     reset_done_envs(agent1, dones | truncated, num_tokens)
                     pred_nexts = None
-                    result = int(info["match_result"][0].item())
+                    result = int(result_tensor[0].item())
                     terminal_label = {
                         int(MatchResult.TEAM0_WIN): "TEAM 0 WINS",
                         int(MatchResult.TEAM1_WIN): "TEAM 1 WINS",

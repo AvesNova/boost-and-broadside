@@ -103,8 +103,8 @@ def main() -> None:
         "--field-counts",
         type=int,
         nargs="+",
-        default=(0, 1, 2, 4, 20),
-        help="Field counts to benchmark; 20 is the provisional Frontline preset.",
+        default=(0, 1, 2, 4, 10, 20),
+        help="Field counts to benchmark; 10 is the provisional Frontline preset.",
     )
     args = parser.parse_args()
     device = torch.device(args.device)
