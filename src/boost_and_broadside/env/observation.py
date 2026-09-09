@@ -106,7 +106,7 @@ class YemongObservation:
             return self.data[resolved]
         # Test fixtures and old in-process ship-only observations can omit new
         # map metadata. Their unambiguous defaults preserve the compact fixture
-        # API; serialized checkpoints remain rejected by schema v6.
+        # API; serialized checkpoints remain rejected by schema v7.
         team_id = self.data[ObsKey.TEAM_ID]
         if resolved == ObsKey.VISIBLE:
             return self.data[ObsKey.ALIVE]

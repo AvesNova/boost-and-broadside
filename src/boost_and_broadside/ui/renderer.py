@@ -280,6 +280,10 @@ class RenderConfig:
     )
     bullet_color: tuple[int, int, int] = (255, 255, 100)
     background_color: tuple[int, int, int] = (10, 10, 20)
+    fog_color: tuple[int, int, int] = (105, 105, 112)
+    fog_alpha: int = 55
+    fog_mask_scale: float = 0.25
+    fog_update_interval: int = 8
     ship_size: int = 10  # pixels from center to tip
     health_bar_height: int = 4
     power_bar_height: int = 4
@@ -327,6 +331,13 @@ class GameRenderer:
         self._pause_rect = pygame.Rect(W - 200, H - 40, 60, 30)
         self._slider_track_rect = pygame.Rect(W - 120, H - 30, 100, 10)
         self._unlimited_rect = pygame.Rect(W - 220, 10, 200, 30)
+        fog_size = max(1, round(s * render_config.fog_mask_scale))
+        self._fog_team_mask = pygame.Surface((fog_size, fog_size))
+        self._fog_observer_mask = pygame.Surface((fog_size, fog_size))
+        self._fog_overlay = pygame.Surface((fog_size, fog_size), pygame.SRCALPHA)
+        self._fog_overlay_scaled = pygame.Surface((s, s), pygame.SRCALPHA)
+        self._fog_last_step = -render_config.fog_update_interval
+        self._fog_last_view: tuple[VisionMode, complex | None, float, float] | None = None
 
     def render(
         self,
@@ -503,6 +514,7 @@ class GameRenderer:
             self._draw_boundary(state, surf)
             self._draw_zones(state, surf)
         self._draw_fields(state, surf)
+        self._draw_fog_overlay(state, surf, visibility)
         self._draw_bullets(state, surf, bullet_visible)
         if pred_nexts is not None:
             self._draw_ghost_ships(state, pred_nexts, surf, ship_visible)
@@ -940,6 +952,135 @@ class GameRenderer:
                     pattern,
                     line_width,
                 )
+
+    def _draw_fog_overlay(
+        self,
+        state: TensorState,
+        surf: pygame.Surface,
+        visibility: TeamVisibility | None,
+    ) -> None:
+        """Gray unseen world space using allied sight circles and field shadows.
+
+        Static geometry is drawn first and therefore desaturates with unseen
+        empty space. Visible ships, bullets, and prediction ghosts are drawn
+        afterwards at full contrast. The mask is a renderer representation of
+        the same range/core-LOS rule used by policy perception; firing reveals
+        the ship marker but does not illuminate the surrounding terrain.
+        """
+
+        if self.vision_mode is VisionMode.FULL:
+            return
+        if visibility is None:
+            raise ValueError("team vision rendering requires authoritative visibility masks")
+        if visibility.vision_range is None:
+            return
+
+        team = 0 if self.vision_mode is VisionMode.TEAM_0 else 1
+        vision_range = float(visibility.vision_range)
+        step = int(state.step_count[0].item())
+        view = (self.vision_mode, self.camera.center, self.camera.zoom, vision_range)
+        interval = max(1, self._render_config.fog_update_interval)
+        if (
+            self._fog_last_view == view
+            and step >= self._fog_last_step
+            and step - self._fog_last_step < interval
+        ):
+            surf.blit(self._fog_overlay_scaled, (0, 0))
+            return
+
+        mask = self._fog_team_mask
+        observer_mask = self._fog_observer_mask
+        mask.fill((0, 0, 0))
+        mask_scale_x = mask.get_width() / surf.get_width()
+        mask_scale_y = mask.get_height() / surf.get_height()
+
+        def mask_point(screen: tuple[int, int]) -> tuple[int, int]:
+            return round(screen[0] * mask_scale_x), round(screen[1] * mask_scale_y)
+
+        positions = state.ship_pos[0].cpu()
+        teams = state.ship_team_id[0].cpu()
+        alive = state.ship_alive[0].cpu()
+        field_positions = state.field_pos[0].cpu()
+        field_radii = state.field_radius[0].cpu()
+        field_widths = state.field_transition_width[0].cpu()
+        vision_px = max(1, round(vision_range * self.camera.scale * mask_scale_x))
+
+        for index in range(state.max_ships):
+            if not bool(alive[index].item()) or int(teams[index].item()) != team:
+                continue
+            observer = complex(positions[index].item())
+            for observer_image in self.camera.visible_images(observer, vision_range):
+                observer_mask.fill((0, 0, 0))
+                observer_screen = mask_point(
+                    self._unwrapped_world_to_screen(observer_image)
+                )
+                pygame.draw.circle(
+                    observer_mask,
+                    (255, 255, 255),
+                    observer_screen,
+                    vision_px,
+                )
+                for field_pos, field_radius, field_width in zip(
+                    field_positions,
+                    field_radii,
+                    field_widths,
+                    strict=True,
+                ):
+                    core_radius = max(
+                        0.0,
+                        float(field_radius.item()) - 0.5 * float(field_width.item()),
+                    )
+                    if core_radius <= 0.0:
+                        continue
+                    field = complex(field_pos.item())
+                    dx = (field.real - observer.real + self._world_w / 2.0) % self._world_w
+                    dy = (field.imag - observer.imag + self._world_h / 2.0) % self._world_h
+                    delta = complex(dx - self._world_w / 2.0, dy - self._world_h / 2.0)
+                    distance = abs(delta)
+                    if distance <= core_radius or distance - core_radius >= vision_range:
+                        continue
+
+                    center_angle = math.atan2(delta.imag, delta.real)
+                    half_angle = math.asin(min(1.0, core_radius / distance))
+                    tangent_distance = math.sqrt(
+                        max(0.0, distance * distance - core_radius * core_radius)
+                    )
+                    ray_angles = (
+                        center_angle - half_angle,
+                        center_angle + half_angle,
+                    )
+                    rays = [complex(math.cos(angle), math.sin(angle)) for angle in ray_angles]
+                    tangent = [
+                        observer_image + ray * tangent_distance for ray in rays
+                    ]
+                    # Extend beyond the sight circle so the polygon covers the
+                    # complete curved cap at maximum range; the circle already
+                    # clips all irrelevant pixels outside the sensor footprint.
+                    far_distance = vision_range * 4.0 + distance
+                    far = [observer_image + ray * far_distance for ray in rays]
+                    polygon = [
+                        mask_point(self._unwrapped_world_to_screen(tangent[0])),
+                        mask_point(self._unwrapped_world_to_screen(far[0])),
+                        mask_point(self._unwrapped_world_to_screen(far[1])),
+                        mask_point(self._unwrapped_world_to_screen(tangent[1])),
+                    ]
+                    pygame.draw.polygon(observer_mask, (0, 0, 0), polygon)
+                mask.blit(observer_mask, (0, 0), special_flags=pygame.BLEND_RGB_MAX)
+
+        self._fog_overlay.fill((*self._render_config.fog_color, self._render_config.fog_alpha))
+        alpha = pygame.surfarray.pixels_alpha(self._fog_overlay)
+        visible_pixels = pygame.surfarray.pixels3d(mask)
+        alpha[visible_pixels[:, :, 0] > 0] = 0
+        del visible_pixels
+        del alpha
+        pygame.transform.smoothscale(
+            self._fog_overlay,
+            surf.get_size(),
+            self._fog_overlay_scaled,
+        )
+        self._fog_last_step = step
+        self._fog_last_view = view
+        surf.blit(self._fog_overlay_scaled, (0, 0))
 
     @staticmethod
     def _draw_field_band(

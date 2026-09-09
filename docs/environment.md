@@ -38,12 +38,23 @@ the core lies strictly between the endpoints; a ship inside that core is exempt 
 self-blinded by the same field. This is natural map occlusion only—there are no synthetic
 fog volumes.
 
+A successful shot reveals its firing ship to both teams for that state sample, regardless
+of range or intervening field cores. The reveal uses `ship_is_shooting`, so a requested shot
+that fails because of cooldown, power, or death does not reveal anything. The reveal exposes
+the ship's ordinary visible state but not its private pending action.
+
 The environment constructs Team 0 and Team 1 observations independently. An unseen enemy
 ship has an explicit false visibility mask, is excluded from attention, and has every state
 channel replaced with zero as defense in depth. This includes position, velocity, health,
 power, cooldown, alive state, local refractive state, and bullets. Enemy pending actions are
 private even while the enemy itself is visible. Allies and static map geometry remain known.
 `vision_range=None` is the explicit omniscient compatibility mode.
+
+In Team 0/Team 1 rendering modes, unseen world pixels receive a mild neutral-gray overlay.
+The visible mask is the union of allied sight circles with tangent shadows cast behind field
+cores. It is applied after fields, zones, and the boundary, so unseen empty space and static
+outlines desaturate together; visible/revealed units are then drawn at full contrast. The
+full-information spectator mode has no overlay.
 
 The entity-token axis is typed rather than inferred from position:
 
@@ -299,12 +310,15 @@ storage, drag, integrator, damage-depletion, compilation, and capacity compariso
 The 256-map fog distribution and isolated GPU observation profile are reproducible with
 [`benchmarks/frontline_fog_suite.py`](../benchmarks/frontline_fog_suite.py). At the provisional
 1600 px range, the 60-second scripted sample saw enemies 74.2% of the time; team sharing added
-21.5 percentage points over individual sight, and fields blocked 11.6% of otherwise in-range
-exposure. A 256-environment visibility pass measured 3.39 ms, while visibility plus both
-masked team observations measured 13.97 ms on an RTX 4070 Laptop GPU.
+21.2 percentage points over individual sight, and fields blocked 11.6% of otherwise in-range
+exposure. A 256-environment visibility pass measured 4.12 ms, while visibility plus both
+masked team observations measured 15.80 ms on an RTX 4070 Laptop GPU.
 
 Frontline play uses one CPU thread, a 30 Hz tick/decision rate, and a state-only scripted
 loop that skips unused reward and policy-observation work. The end-to-end headless benchmark,
-including scripted decisions and rendering, measured 27.54 ms per decision (1.21× realtime),
-versus 94.12 ms (0.35×) with a 16-thread tiny-tensor workload. Reproduce it with
+including perception and fog-aware Team 0 rendering, measured 32.74 ms per decision
+(1.02× realtime) at 900 px. The terrain stencil is quarter resolution and cached for eight
+ticks; dynamic unit visibility remains 30 Hz, and camera/view changes invalidate the cache.
+The earlier omniscient path measured 27.54 ms (1.21× realtime), versus 94.12 ms (0.35×)
+with a 16-thread tiny-tensor workload. Reproduce it with
 [`benchmarks/play_throughput.py`](../benchmarks/play_throughput.py).

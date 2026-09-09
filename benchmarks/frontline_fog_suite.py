@@ -103,6 +103,7 @@ class FogAccumulator:
 
     visible: torch.Tensor
     range_visible: torch.Tensor
+    los_visible: torch.Tensor
     enemy_slots: torch.Tensor
     observer_visible: torch.Tensor
     observer_pairs: torch.Tensor
@@ -130,6 +131,7 @@ class FogAccumulator:
         return cls(
             visible=zeros_per_game.clone(),
             range_visible=zeros_per_game.clone(),
+            los_visible=zeros_per_game.clone(),
             enemy_slots=zeros_per_game.clone(),
             observer_visible=zeros_per_game.clone(),
             observer_pairs=zeros_per_game.clone(),
@@ -153,6 +155,7 @@ class FogAccumulator:
         enemy_alive = enemy & state.ship_alive[:, None, :]
         visible = sight.ship & enemy_alive
         range_visible = sight.range_only_ship & enemy_alive
+        los_visible = sight.los_ship & enemy_alive
         self.enemy_mask |= enemy
         ever_before = self.ever_seen
         reacquired = visible & ~self.previous_visible & ever_before
@@ -183,6 +186,7 @@ class FogAccumulator:
 
         self.visible += visible.sum(dim=(1, 2))
         self.range_visible += range_visible.sum(dim=(1, 2))
+        self.los_visible += los_visible.sum(dim=(1, 2))
         self.enemy_slots += enemy_alive.sum(dim=(1, 2))
         self.observer_visible += observer_visible.sum(dim=(1, 2))
         self.observer_pairs += observer_enemy.sum(dim=(1, 2))
@@ -195,7 +199,9 @@ class FogAccumulator:
         visible_fraction = self.visible / self.enemy_slots.clamp(min=1)
         range_fraction = self.range_visible / self.enemy_slots.clamp(min=1)
         individual_fraction = self.observer_visible / self.observer_pairs.clamp(min=1)
-        field_occluded = (self.range_visible - self.visible) / self.range_visible.clamp(min=1)
+        field_occluded = (
+            self.range_visible - self.los_visible
+        ) / self.range_visible.clamp(min=1)
         never_seen = (self.enemy_mask & ~self.ever_seen).sum(dim=(1, 2)).double()
         never_seen /= self.enemy_mask.sum(dim=(1, 2)).clamp(min=1)
         mean_hidden_seconds = (

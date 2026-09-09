@@ -51,6 +51,28 @@ def test_team_sharing_exposes_an_enemy_seen_by_only_one_ally() -> None:
     assert sight.ship[0, 1, 2:].all()
 
 
+def test_successful_shot_reveals_firing_ship_beyond_range_and_los() -> None:
+    ship, state = _state(num_fields=1)
+    state.ship_pos[0] = torch.tensor([100 + 100j, 120 + 100j, 800 + 100j, 820 + 100j])
+    state.field_pos[0, 0] = 450 + 100j
+    state.field_radius[0, 0] = 100.0
+    state.field_transition_width[0, 0] = 40.0
+    config = _config(vision_range=200.0, num_fields=1)
+
+    hidden = team_visibility_from_state(state, ship, config)
+    assert not hidden.ship[0, 0, 2]
+    assert not hidden.range_only_ship[0, 0, 2]
+    assert not hidden.los_ship[0, 0, 2]
+
+    state.ship_is_shooting[0, 2] = True
+    revealed = team_visibility_from_state(state, ship, config)
+
+    assert revealed.ship[0, 0, 2]
+    assert revealed.observer_ship[0, :2, 2].all()
+    assert not revealed.range_only_ship[0, 0, 2]
+    assert not revealed.los_ship[0, 0, 2]
+
+
 def test_range_uses_shortest_toroidal_displacement() -> None:
     ship, state = _state()
     state.ship_pos[0] = torch.tensor([20 + 200j, 500 + 500j, 1000 + 200j, 500 + 900j])
