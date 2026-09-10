@@ -21,6 +21,8 @@ class ObsKey(StrEnum):
     TEAM_ID = "team_id"
     ALIVE = "alive"
     VISIBLE = "visible"
+    BELIEF_VALID = "belief_valid"
+    TIME_SINCE_OBSERVATION = "time_since_observation"
     OBJECT_TYPE = "object_type"
     RADIUS = "radius"
     PREVIOUS_ACTION = "previous_action"
@@ -67,7 +69,14 @@ class BulletObsKey(StrEnum):
 # Channels whose last axis IS the token axis — everything else has a trailing
 # feature dim. Used by YemongObservation.slice_tokens.
 _TOKEN_LAST_KEYS = frozenset(
-    {ObsKey.TEAM_ID, ObsKey.ALIVE, ObsKey.VISIBLE, ObsKey.OBJECT_TYPE, ObsKey.ZONE_ROLE}
+    {
+        ObsKey.TEAM_ID,
+        ObsKey.ALIVE,
+        ObsKey.VISIBLE,
+        ObsKey.BELIEF_VALID,
+        ObsKey.OBJECT_TYPE,
+        ObsKey.ZONE_ROLE,
+    }
 )
 
 
@@ -110,6 +119,10 @@ class YemongObservation:
         team_id = self.data[ObsKey.TEAM_ID]
         if resolved == ObsKey.VISIBLE:
             return self.data[ObsKey.ALIVE]
+        if resolved == ObsKey.BELIEF_VALID:
+            return self.data[ObsKey.ALIVE]
+        if resolved == ObsKey.TIME_SINCE_OBSERVATION:
+            return torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
         if resolved == ObsKey.OBJECT_TYPE:
             return torch.where(
                 team_id == 2,
@@ -243,9 +256,7 @@ class YemongObservation:
             bullets=bullets,
         )
 
-    def flip_team(
-        self, num_ships: int, mask: "torch.Tensor | None" = None
-    ) -> "YemongObservation":
+    def flip_team(self, num_ships: int, mask: "torch.Tensor | None" = None) -> "YemongObservation":
         """Swap team IDs 0 and 1 across ships and owned strategic tokens.
 
         Ship and bullet team IDs flip *together*. A bullet's team is its
@@ -449,9 +460,7 @@ class ObservationBuffers:
             ship_radius=ship_radius,
             object_zero_vec=torch.zeros(num_envs, num_objects, 2, device=device),
             object_zero_scalar=torch.zeros(num_envs, num_objects, 1, device=device),
-            object_team_id=torch.full(
-                (num_envs, num_objects), 2, device=device, dtype=torch.int32
-            ),
+            object_team_id=torch.full((num_envs, num_objects), 2, device=device, dtype=torch.int32),
             object_alive=torch.ones(num_envs, num_objects, device=device, dtype=torch.bool),
             object_prev_action=torch.zeros(
                 num_envs, num_objects, 3, device=device, dtype=torch.long
@@ -733,6 +742,10 @@ def observation_from_state(
             ObsKey.TEAM_ID: torch.cat([state.ship_team_id, object_team], dim=1),
             ObsKey.ALIVE: torch.cat([observed_alive, object_alive], dim=1),
             ObsKey.VISIBLE: torch.cat([visible_ships, object_alive], dim=1),
+            # A raw perceived observation contains no remembered enemies yet.
+            # BeliefTracker promotes previously-seen hidden slots to valid tokens.
+            ObsKey.BELIEF_VALID: torch.cat([visible_ships, object_alive], dim=1),
+            ObsKey.TIME_SINCE_OBSERVATION: torch.cat([ship_zero, object_zero_scalar], dim=1),
             ObsKey.OBJECT_TYPE: torch.cat([ship_type, object_type], dim=1),
             ObsKey.ZONE_ROLE: torch.cat([ship_no_zone, object_zone_role], dim=1),
             ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action, object_prev_action], dim=1),
@@ -746,9 +759,7 @@ def observation_from_state(
             ObsKey.FIELD_TARGET_LOG_INDEX: torch.cat(
                 [ship_zero, object_scalar(field=field_target)], dim=1
             ),
-            ObsKey.FIELD_DAMAGE: torch.cat(
-                [ship_zero, object_scalar(field=field_damage)], dim=1
-            ),
+            ObsKey.FIELD_DAMAGE: torch.cat([ship_zero, object_scalar(field=field_damage)], dim=1),
             ObsKey.CAPTURE_PROGRESS: torch.cat(
                 [ship_zero, object_scalar(zone=state.zone_capture_progress.unsqueeze(-1))], dim=1
             ),
@@ -798,9 +809,7 @@ def _mask_hidden_ships(
         if key == ObsKey.VISIBLE:
             continue
         ship_value = (
-            value[..., :num_ships]
-            if key in _TOKEN_LAST_KEYS
-            else value[..., :num_ships, :]
+            value[..., :num_ships] if key in _TOKEN_LAST_KEYS else value[..., :num_ships, :]
         )
         mask = visible_ships
         while mask.dim() < ship_value.dim():

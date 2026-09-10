@@ -65,6 +65,7 @@ from boost_and_broadside.evaluation.agents import (
 )
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.models.yemong.policy import YemongPolicy
+from boost_and_broadside.train.rl.belief import BeliefTracker
 
 _ELO_RATING_SCALE = 400.0
 
@@ -243,6 +244,8 @@ class EloEvaluator:
         self.random_agent = ResolvedAgent("random", None)
         init_hidden(self.live_agent, 4 * size, num_tokens, device)
         init_hidden(self.avg_agent, size, num_tokens, device)
+        self._init_belief(self.live_agent, 4 * size)
+        self._init_belief(self.avg_agent, size)
 
         self.live_elo = torch.tensor(float(live_elo), device=device, dtype=torch.float64)
         self.avg_elo = torch.tensor(float(avg_elo), device=device, dtype=torch.float64)
@@ -365,6 +368,8 @@ class EloEvaluator:
         agent_float = ResolvedAgent("policy", policy)
         init_hidden(agent_live, size, self.num_tokens, self.device)
         init_hidden(agent_float, size, self.num_tokens, self.device)
+        self._init_belief(agent_live, size)
+        self._init_belief(agent_float, size)
         return agent_live, agent_float
 
     def _build_floating_agents(self) -> None:
@@ -378,6 +383,41 @@ class EloEvaluator:
         self.float_pro_agent = ResolvedAgent("policy", self._floating_policy)
         init_hidden(self.float_opp_agent, size, self.num_tokens, self.device)
         init_hidden(self.float_pro_agent, size, self.num_tokens, self.device)
+        self._init_belief(self.float_opp_agent, size)
+        self._init_belief(self.float_pro_agent, size)
+
+    def _init_belief(self, agent: ResolvedAgent, num_envs: int) -> None:
+        """Attach the policy-side point estimate for one evaluation stream."""
+
+        agent.belief = BeliefTracker(
+            num_envs,
+            self.num_ships,
+            self.ship_config.dt * self.env.env_config.action_repeat,
+            agent.agent.coordinator,
+            self.device,
+        )
+
+    def _policy_actions(
+        self,
+        agent: ResolvedAgent,
+        perceived: YemongObservation,
+        state,
+        num_envs: int,
+    ) -> torch.Tensor:
+        """Compose, act from, and recursively advance one policy's belief."""
+
+        view = agent.belief.compose(perceived)
+        action, prediction = get_actions(
+            agent,
+            view,
+            state,
+            num_envs,
+            self.num_ships,
+            self.device,
+            return_pred_next=True,
+        )
+        agent.belief.advance(view, prediction)
+        return action.long()
 
     def _build_ladder_agents(self) -> None:
         """Build anchor/floating agents and rating tensors from the specs.
@@ -580,14 +620,12 @@ class EloEvaluator:
         for index, (spec, agent) in enumerate(zip(self._anchor_specs, agents, strict=True)):
             if spec.is_stateless:
                 continue
-            policy_action = get_actions(
+            policy_action = self._policy_actions(
                 agent,
                 self._opponent_obs(obs, lo, hi),
                 state,
                 size,
-                self.num_ships,
-                self.device,
-            ).long()
+            )
             assigned = (idx == index).view(-1, 1, 1)
             # Written unconditionally rather than behind an ``.any()`` test: the
             # check would force a device sync every step to save a masked write.
@@ -602,22 +640,18 @@ class EloEvaluator:
         size = self.matchup_size
         state = self.env.state
 
-        action_live = get_actions(
+        action_live = self._policy_actions(
             self.live_agent,
             obs.slice_envs(slice(0, 4 * size)),
             state,
             4 * size,
-            self.num_ships,
-            self.device,
-        ).long()  # (4·size, N, 3)
-        action_avg = get_actions(
+        )  # (4·size, N, 3)
+        action_avg = self._policy_actions(
             self.avg_agent,
             self._opponent_obs(obs, 3 * size, 4 * size),
             state,
             size,
-            self.num_ships,
-            self.device,
-        ).long()
+        )
 
         if self.scripted_agent is not None:
             action_scripted = get_actions(
@@ -634,22 +668,18 @@ class EloEvaluator:
 
         action_anchor_live = self._anchor_actions(obs, 0, size, self._anchor_agents_live)
         if self.float_pro_agent is not None:
-            action_float_opp = get_actions(
+            action_float_opp = self._policy_actions(
                 self.float_opp_agent,
                 self._opponent_obs(obs, size, 2 * size),
                 state,
                 size,
-                self.num_ships,
-                self.device,
-            ).long()
-            action_float_pro = get_actions(
+            )
+            action_float_pro = self._policy_actions(
                 self.float_pro_agent,
                 obs.slice_envs(slice(4 * size, 5 * size)),
                 state,
                 size,
-                self.num_ships,
-                self.device,
-            ).long()
+            )
             action_anchor_float = self._anchor_actions(
                 obs, 4 * size, 5 * size, self._anchor_agents_float
             )

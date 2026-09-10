@@ -50,6 +50,7 @@ from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.allocation import allocation_weights
+from boost_and_broadside.train.rl.belief import DualBeliefTracker
 from boost_and_broadside.train.rl.buffer import (
     AdvantageScaler,
     LogicalRolloutBuffer,
@@ -220,10 +221,12 @@ class _RolloutRuntime:
     num_recurrent: int
     elo_eval: EloEvaluator
     obs: YemongObservation
+    beliefs: DualBeliefTracker | None
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
     action_buffer: torch.Tensor
     aux_obs: list[YemongObservation]
+    aux_beliefs: list[DualBeliefTracker | None]
     aux_hiddens: list[torch.Tensor]
     aux_hidden_t1s: list[torch.Tensor | None]
     aux_action_buffers: list[torch.Tensor]
@@ -494,6 +497,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             gae_lambda=self._lambda_t,
             device=self.device,
             num_tokens=sample_obs.pos.shape[1],
+            prediction_target_dim=self.coordinator.total_target_dimension,
+            prediction_dim=self.coordinator.total_prediction_dimension,
         )
 
         # Pre-compute lambda masks for active components only.
@@ -669,10 +674,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # one full pass over all scales' rollouts.
         self._entity_tokens_per_epoch = (
             train_config.num_steps
-            * sum(
-                sc.num_envs * sc.env_config.num_entity_tokens
-                for sc in train_config.scales
-            )
+            * sum(sc.num_envs * sc.env_config.num_entity_tokens for sc in train_config.scales)
             * train_config.rollouts_per_update
         )
         # Cumulative entity tokens consumed by backward passes (counts actual
@@ -792,6 +794,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         torch.Tensor,
         torch.Tensor,
         torch.Tensor,
+        torch.Tensor | None,
         torch.Tensor,
         torch.Tensor | None,
     ]:
@@ -823,7 +826,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             action, logprob, value_norm, pred_next, hidden = self.policy.get_action_and_value(
                 obs, hidden
             )
-            return action, None, logprob, value_norm, pred_next, hidden, None
+            return action, None, logprob, value_norm, pred_next, None, hidden, None
 
         batch = hidden.shape[1] // num_recurrent
         obs_t1 = flip_team_obs(obs.for_team(1), num_ships)
@@ -838,6 +841,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             logprob_both[:batch],  # (B, N)
             value_both[:batch],  # (B, N, K)
             pred_next_both[:batch],  # (B, N, pred_dim)
+            pred_next_both[batch:],  # (B, N, pred_dim)
             hidden_out[:, : batch * num_recurrent, :],  # (n_layers, B*N, CONV_KERNEL*D)
             hidden_out[:, batch * num_recurrent :, :],  # (n_layers, B*N, CONV_KERNEL*D)
         )
@@ -845,6 +849,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     def _collect_aux_steps(
         self,
         aux_obs: list[YemongObservation],
+        aux_beliefs: list[DualBeliefTracker | None],
         aux_hiddens: list[torch.Tensor],
         aux_hidden_t1s: list[torch.Tensor | None],
         aux_action_buffers: list[torch.Tensor],
@@ -862,7 +867,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     aux_action_t1,
                     aux_logprob,
                     aux_value_norm,
-                    _,
+                    aux_pred_t0,
+                    aux_pred_t1,
                     aux_hiddens[i],
                     aux_hidden_t1s[i],
                 ) = self._rollout_policy_pass(
@@ -898,6 +904,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_action_buffers[i] = aux_action.detach().clone()
             aux_action_buffers[i][aux_done_any] = 0
             aux_last_dones[i] = aux_done_any
+            if aux_beliefs[i] is not None:
+                aux_beliefs[i].advance(aux_obs[i], aux_pred_t0, aux_pred_t1)
+                aux_beliefs[i].reset(aux_done_any)
+                next_aux_obs = aux_beliefs[i].compose(next_aux_obs)
             aux_obs[i] = next_aux_obs
             self._global_step += sc.num_envs
 
@@ -948,6 +958,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # win rate that measure the seeding.
         self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
         self.wrapper.mark_seeded_uncounted()
+        beliefs = (
+            DualBeliefTracker(
+                num_envs,
+                num_ships,
+                self.ship_config.dt * self.env_config.action_repeat,
+                self.coordinator,
+                self.device,
+            )
+            if self._ego_pass
+            else None
+        )
+        if beliefs is not None:
+            obs = beliefs.compose(obs)
         hidden = self.policy.initial_hidden(num_envs, num_recurrent, self.device)
         hidden_t1 = (
             self.policy.initial_hidden(num_envs, num_recurrent, self.device)
@@ -957,14 +980,30 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         action_buffer = torch.zeros(num_envs, num_ships, 3, dtype=torch.int32, device=self.device)
 
         aux_obs: list[YemongObservation] = []
+        aux_beliefs: list[DualBeliefTracker | None] = []
         aux_hiddens: list[torch.Tensor] = []
         aux_hidden_t1s: list[torch.Tensor | None] = []
         aux_action_buffers: list[torch.Tensor] = []
         aux_last_dones: list[torch.Tensor] = []
         for scale, wrapper in zip(self.cfg.scales[1:], self.aux_wrappers):
-            aux_obs.append(wrapper.reset())
+            raw_aux_obs = wrapper.reset()
             wrapper.env.state.step_count.random_(0, scale.env_config.max_episode_steps)
             wrapper.mark_seeded_uncounted()
+            aux_belief = (
+                DualBeliefTracker(
+                    scale.num_envs,
+                    scale.env_config.num_ships,
+                    self.ship_config.dt * scale.env_config.action_repeat,
+                    self.coordinator,
+                    self.device,
+                )
+                if self._ego_pass
+                else None
+            )
+            aux_beliefs.append(aux_belief)
+            aux_obs.append(
+                aux_belief.compose(raw_aux_obs) if aux_belief is not None else raw_aux_obs
+            )
             aux_tokens = scale.env_config.num_ships  # recurrent tokens: ships only
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(
@@ -1019,10 +1058,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 include_bullets=eval_reads_bullets,
             ),
             obs=obs,
+            beliefs=beliefs,
             hidden=hidden,
             hidden_t1=hidden_t1,
             action_buffer=action_buffer,
             aux_obs=aux_obs,
+            aux_beliefs=aux_beliefs,
             aux_hiddens=aux_hiddens,
             aux_hidden_t1s=aux_hidden_t1s,
             aux_action_buffers=aux_action_buffers,
@@ -1046,6 +1087,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
                 obs=runtime.obs,
+                beliefs=runtime.beliefs,
                 hidden=runtime.hidden,
                 hidden_t1=runtime.hidden_t1,
                 action_buffer=runtime.action_buffer,
@@ -1065,6 +1107,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ) = primary
             self._collect_aux_steps(
                 runtime.aux_obs,
+                runtime.aux_beliefs,
                 runtime.aux_hiddens,
                 runtime.aux_hidden_t1s,
                 runtime.aux_action_buffers,
@@ -1135,7 +1178,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             update_scalers: Update statistics immediately for a single-shard batch.
                 Logical host batches defer this until every shard is available.
         """
-        self.buffer.store_final_obs(runtime.obs)
+        final_targets = self.coordinator.get_target_vector(self.wrapper.privileged_observation())[
+            :, : runtime.num_ships
+        ]
+        self.buffer.store_final_obs(runtime.obs, privileged_targets=final_targets)
         for index, aux_buffer in enumerate(self.aux_buffers):
             aux_buffer.store_final_obs(runtime.aux_obs[index])
 
@@ -1489,8 +1535,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 bc_valid = mb_expert_probs.sum(-1) > 0
                 bc_sum += (bc_valid & mb_actor_mask & mb_alive).sum()
             if need_ns:
+                belief_valid = chunk.obs[ObsKey.BELIEF_VALID][
+                    : mb_alive.shape[0], :, : self.buffer.num_ships
+                ].bool()
                 ns_sum += (
-                    mb_alive & ~mb_terminated.unsqueeze(-1) & chunk.transition_contiguous
+                    belief_valid & ~mb_terminated.unsqueeze(-1) & chunk.transition_contiguous
                 ).sum()
         return {
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
@@ -1574,7 +1623,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         need_sigreg = self._schedule_state.sigreg_coef > 0.0
         # evaluate_actions needs the full (T, B, N+M) alive mask so Yemong layers
         # can attend to field tokens; mb_alive is ships-only and used for loss masking.
-        alive_mask_full = curr_mb_obs["alive"].bool()  # (T, B_mb, N+M)
+        alive_mask_full = curr_mb_obs[ObsKey.BELIEF_VALID].bool()  # (T, B_mb, N+M)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(
                 obs=curr_mb_obs,
@@ -1668,7 +1717,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         if _need_aux:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
-            ns_mask = mb_alive & non_terminal & mb_transition_contiguous
+            # Privileged dynamics supervision covers visible and previously-seen
+            # hidden tokens. Never-seen enemies do not exist in the policy input,
+            # so training their unknowable state would add contradictory noise.
+            belief_valid = curr_mb_obs[ObsKey.BELIEF_VALID][:, :, : self.buffer.num_ships].bool()
+            ns_mask = belief_valid & non_terminal & mb_transition_contiguous
             ns_mask_f = ns_mask.float()
             ns_sum = denoms["ns_sum"]
 
@@ -2067,25 +2120,100 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         through the coordinator. Targets are computed once over all T+1 steps
         and diffed (labels[t] = f(target[t], target[t+1])).
         """
-        if self.cfg.next_state_coef <= 0.0 and self.cfg.windowed_loss_coef <= 0.0:
-            buf.ns_labels = None
+        need_labels = self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
+        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
+        if buf.privileged_targets is not None:
+            targets = buf.privileged_targets
+        else:
+            ship_obs = YemongObservation(
+                data={
+                    k: (
+                        v[:, :, :N].reshape((T + 1) * B, N, *v.shape[3:])
+                        if v.dim() > 3
+                        else v[:, :, :N].reshape((T + 1) * B, N)
+                    )
+                    for k, v in buf.obs.items()
+                }
+            )
+            targets = self.coordinator.get_target_vector(ship_obs)
+            targets = targets.reshape(T + 1, B, N, -1)
+        labels = self.coordinator.compute_labels(targets[:T], targets[1:])
+        buf.ns_labels = labels if need_labels else None  # (T, B, N, pred_dim)
+        self._precompute_belief_diagnostics(buf, targets)
+
+    @torch.no_grad()
+    def _precompute_belief_diagnostics(
+        self,
+        buf: RolloutBuffer,
+        truth_targets: torch.Tensor,
+    ) -> None:
+        """Compare behavior-policy forecasts with hidden truth in physical units."""
+
+        if buf.rollout_predictions is None:
+            buf.belief_diagnostics = {}
             return
         T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        ship_obs = YemongObservation(
+        curr_obs = YemongObservation(
             data={
-                k: (
-                    v[:, :, :N].reshape((T + 1) * B, N, *v.shape[3:])
-                    if v.dim() > 3
-                    else v[:, :, :N].reshape((T + 1) * B, N)
+                key: (
+                    value[:T, :, :N].reshape(T * B, N, *value.shape[3:])
+                    if value.dim() > 3
+                    else value[:T, :, :N].reshape(T * B, N)
                 )
-                for k, v in buf.obs.items()
+                for key, value in buf.obs.items()
             }
         )
-        targets = self.coordinator.get_target_vector(ship_obs)  # ((T+1)*B, N, t_dim)
-        targets = targets.reshape(T + 1, B, N, -1)
-        buf.ns_labels = self.coordinator.compute_labels(
-            targets[:T], targets[1:]
-        )  # (T, B, N, pred_dim)
+        belief_targets = self.coordinator.get_target_vector(curr_obs).reshape(T, B, N, -1)
+        forecast_targets = self.coordinator.apply_scaled_predictions(
+            belief_targets, buf.rollout_predictions
+        )
+        forecast = self.coordinator.decode_targets(forecast_targets)
+        truth = self.coordinator.decode_targets(truth_targets[1:])
+
+        world = torch.tensor(self.ship_config.world_size, device=self.device)
+        pred_pos = torch.cat([forecast["position_x"], forecast["position_y"]], dim=-1)
+        true_pos = torch.cat([truth["position_x"], truth["position_y"]], dim=-1)
+        pos_delta = torch.remainder(pred_pos - true_pos + world / 2.0, world) - world / 2.0
+        pred_att = torch.nn.functional.normalize(forecast["attitude"], dim=-1)
+        true_att = torch.nn.functional.normalize(truth["attitude"], dim=-1)
+        errors = {
+            "position_px": pos_delta.norm(dim=-1),
+            "velocity_px_s": (forecast["velocity"] - truth["velocity"]).norm(dim=-1),
+            "attitude_rad": torch.acos((pred_att * true_att).sum(dim=-1).clamp(-1.0, 1.0)),
+            "angular_velocity": (forecast["angular_velocity"] - truth["angular_velocity"])
+            .abs()
+            .squeeze(-1),
+            "health": (forecast["health"] - truth["health"]).abs().squeeze(-1),
+            "power": (forecast["power"] - truth["power"]).abs().squeeze(-1),
+            "cooldown_s": (forecast["cooldown"] - truth["cooldown"]).abs().squeeze(-1),
+            "local_log_index": (forecast["local_log_index"] - truth["local_log_index"])
+            .abs()
+            .squeeze(-1),
+        }
+        visible = buf.obs[ObsKey.VISIBLE][:T, :, :N].bool()
+        valid = buf.obs[ObsKey.BELIEF_VALID][:T, :, :N].bool()
+        enemy = buf.obs[ObsKey.TEAM_ID][:T, :, :N] == 1
+        transition = ~buf.terminated.unsqueeze(-1) & buf.transition_contiguous
+        visible_enemy = visible & enemy & transition
+        hidden_enemy = ~visible & valid & enemy & transition
+        age = buf.obs[ObsKey.TIME_SINCE_OBSERVATION][:T, :, :N, 0].float()
+
+        diagnostics: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+
+        def add(prefix: str, mask: torch.Tensor) -> None:
+            count = mask.sum().float()
+            for name, error in errors.items():
+                diagnostics[f"belief/{prefix}/{name}"] = ((error * mask).sum(), count)
+
+        add("visible", visible_enemy)
+        add("hidden", hidden_enemy)
+        lower = 0.0
+        for upper in (0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0):
+            bucket = hidden_enemy & (age > lower) & (age <= upper)
+            add(f"hidden_age_{lower:g}_{upper:g}s", bucket)
+            lower = upper
+        add("hidden_age_30_inf_s", hidden_enemy & (age > 30.0))
+        buf.belief_diagnostics = diagnostics
 
     def _gradient_diagnostic_groups(
         self, accumulator: TermGradientAccumulator
@@ -2566,6 +2694,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (pred_dim,)
             for i, name in enumerate(ns_feat_names):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
+
+        for name, (total, count) in all_buffers[0].belief_diagnostics.items():
+            metrics[name] = (total / count.clamp(min=1.0)).item()
 
         if grad_diag_records:
             # Averaged across the diagnosed minibatches. Every key is present in

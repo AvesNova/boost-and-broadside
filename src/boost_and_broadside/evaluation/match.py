@@ -30,6 +30,7 @@ from boost_and_broadside.evaluation.agents import (
     reset_done_envs,
 )
 from boost_and_broadside.evaluation.environment import create_evaluation_env
+from boost_and_broadside.train.rl.belief import BeliefTracker
 
 
 def merge_team_actions(
@@ -131,6 +132,14 @@ class MatchRunner:
         """Allocate each policy's recurrent state over the envs it plays in."""
         for agent, active in zip(self.agents, self.active):
             init_hidden(agent, int(active.numel()), self.num_tokens, self.device)
+            if agent.kind == "policy":
+                agent.belief = BeliefTracker(
+                    int(active.numel()),
+                    self.num_ships,
+                    self.ship_config.dt * self.env.env_config.action_repeat,
+                    agent.agent.coordinator,
+                    self.device,
+                )
 
     def observe(self) -> YemongObservation:
         """Build the observation for the current state."""
@@ -188,9 +197,18 @@ class MatchRunner:
             view = agent_view(
                 agent, obs.slice_envs(active), self.num_ships, self.team1_index[active] == index
             )
-            per_agent[index, active] = get_actions(
-                agent, view, self.env.state, int(active.numel()), self.num_ships, self.device
-            ).int()
+            view = agent.belief.compose(view)
+            action, prediction = get_actions(
+                agent,
+                view,
+                self.env.state,
+                int(active.numel()),
+                self.num_ships,
+                self.device,
+                return_pred_next=True,
+            )
+            agent.belief.advance(view, prediction)
+            per_agent[index, active] = action.int()
         return merge_team_actions(
             per_agent[self.team0_index, self._arange],
             per_agent[self.team1_index, self._arange],

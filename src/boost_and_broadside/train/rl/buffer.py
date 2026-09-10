@@ -562,6 +562,8 @@ class RolloutBuffer:
         gae_lambda: torch.Tensor,
         device: torch.device,
         num_tokens: int | None = None,
+        prediction_target_dim: int = 0,
+        prediction_dim: int = 0,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
@@ -623,6 +625,18 @@ class RolloutBuffer:
         # by PPOTrainer._precompute_ns_labels; None for aux scales or when the
         # aux losses are disabled.
         self.ns_labels: torch.Tensor | None = None
+        # Authoritative physical targets are auxiliary supervision only. They
+        # are deliberately stored outside ``obs`` so no actor/critic path can
+        # consume hidden enemy truth by key lookup.
+        self.privileged_targets: torch.Tensor | None = (
+            torch.zeros((T + 1, B, N, prediction_target_dim), device=device)
+            if prediction_target_dim > 0
+            else None
+        )
+        self.rollout_predictions: torch.Tensor | None = (
+            torch.zeros((T, B, N, prediction_dim), device=device) if prediction_dim > 0 else None
+        )
+        self.belief_diagnostics: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
 
         self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
         self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=_STORAGE_FLOAT)
@@ -650,6 +664,7 @@ class RolloutBuffer:
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
         self.terminated.zero_()
         self.transition_contiguous.fill_(True)
+        self.belief_diagnostics = {}
         # obs[T] slot is overwritten by store_final_obs() — no need to zero it
 
     def store_initial_hidden(self, hidden: torch.Tensor) -> None:
@@ -672,6 +687,8 @@ class RolloutBuffer:
         expert_probs: torch.Tensor | None = None,
         terminated: torch.Tensor | None = None,
         transition_contiguous: torch.Tensor | None = None,
+        privileged_targets: torch.Tensor | None = None,
+        scaled_predictions: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
@@ -713,10 +730,22 @@ class RolloutBuffer:
             self.terminated[t] = terminated
         if transition_contiguous is not None:
             self.transition_contiguous[t] = transition_contiguous
+        if self.privileged_targets is not None:
+            if privileged_targets is None:
+                raise ValueError("primary rollout requires privileged next-state targets")
+            self.privileged_targets[t].copy_(privileged_targets)
+        if self.rollout_predictions is not None:
+            if scaled_predictions is None:
+                raise ValueError("primary rollout requires rollout-time predictions")
+            self.rollout_predictions[t].copy_(scaled_predictions)
 
         self.ptr += 1
 
-    def store_final_obs(self, obs: YemongObservation) -> None:
+    def store_final_obs(
+        self,
+        obs: YemongObservation,
+        privileged_targets: torch.Tensor | None = None,
+    ) -> None:
         """Store the observation at the end of the rollout (the T+1-th obs slot).
 
         Called once after the rollout loop completes. This final obs enables
@@ -729,6 +758,10 @@ class RolloutBuffer:
         if self.bullet_obs is not None and obs.bullets is not None:
             for key, val in obs.bullets.items():
                 self.bullet_obs[key][T].copy_(val)
+        if self.privileged_targets is not None:
+            if privileged_targets is None:
+                raise ValueError("primary rollout requires final privileged targets")
+            self.privileged_targets[T].copy_(privileged_targets)
 
     # ------------------------------------------------------------------
     # GAE computation
@@ -923,6 +956,10 @@ class StoredRollout:
             if source.ns_labels is not None
             else None
         )
+        self.belief_diagnostics = {
+            key: (total.detach().cpu(), count.detach().cpu())
+            for key, (total, count) in source.belief_diagnostics.items()
+        }
 
     def restore_aggregate_inputs(self, destination: RolloutBuffer) -> None:
         """Restore only tensors required for lambda aggregation.
@@ -1046,6 +1083,14 @@ class LogicalRolloutBuffer:
         self.num_tokens = first.num_tokens
         self.num_components = first.num_components
         self.adv_rms = adv_rms
+        self.belief_diagnostics: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+        for shard in shards:
+            for key, (total, count) in shard.belief_diagnostics.items():
+                if key not in self.belief_diagnostics:
+                    self.belief_diagnostics[key] = (total.clone(), count.clone())
+                else:
+                    old_total, old_count = self.belief_diagnostics[key]
+                    self.belief_diagnostics[key] = (old_total + total, old_count + count)
 
     def get_minibatch_iterator(
         self,
