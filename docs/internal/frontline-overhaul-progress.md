@@ -12,16 +12,18 @@ remain the source of truth for scope and human gates.
 - Branch: `frontline/06-beliefs`
 - Integration base: `feat/frontline-overhaul`
 - Human gate: Gate 4, recursive belief model
-- Status: ready for human Gate 4 review
+- Status: approved; ready to merge into the integration branch
 - Gate 1 was approved by the user's instruction to continue and merged into the
   integration base on 2026-09-09.
 - Gate 2 was approved explicitly and merged into the integration base on 2026-09-10.
 - Gate 3 was approved by the user's instruction to proceed and merged into the integration
   base on 2026-09-10.
+- Gate 4 was approved on 2026-09-10. The point-estimate + age + recurrence design is sufficient
+  for now; uncertainty values, categorical targets, and other output representations are
+  deferred until a proper training run provides evidence.
 - Boundary: stop after recursive point estimates, privileged auxiliary supervision,
   belief diagnostics, and natural-occlusion evidence are ready for human review.
-- Draft PR: not opened because the execution environment did not authorize publishing the
-  local milestone branch to the external remote
+- Draft PR: not opened because GitHub CLI is unavailable; use the compare URL after publication
 - Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/06-beliefs?expand=1>
 
 ## Gate 1 implemented
@@ -342,22 +344,12 @@ Reproduce with [`benchmarks/frontline_fog_suite.py`](../../benchmarks/frontline_
 - Confirm the minimap, health bars, bullets, and prediction ghosts never reveal hidden ships.
 - The user approved proceeding with the 1600 px range for initial recursive-belief work.
 
-## Gate 4 human review requested
+## Gate 4 human review (approved)
 
-- Inspect W&B `belief/visible/*`, `belief/hidden/*`, and the age-bucket metrics during a
-  longer BC run; the 131k-step checkpoint is deliberately an early learning probe.
-- Compare the saved JSON's learned and same-trajectory baseline curves. In particular, judge
-  whether 5–30 second stale estimates should remain usable tokens or be more aggressively
-  discounted/invalidated.
-- Confirm that the intended next experiment is a serious point-estimate BC run before adding
-  output uncertainty. No renderer work is needed to validate the cache contract itself.
-- Choose one of these paths:
-  1. Recommended: keep point estimate + age + recurrence, gather a meaningful BC learning
-     curve, then proceed to Gate 5 if policy/evaluation quality is healthy.
-  2. Add a lifecycle/discontinuity indicator or invalidate beliefs when death is confidently
-     inferred, while leaving ordinary motion as a point estimate.
-  3. Run a bounded multi-scale/concentration or explicit-deviation output experiment now.
-  4. Ablate physical point estimates and retain only recurrent latent state plus age.
+- Keep point estimate + age + recurrence as the initial belief representation.
+- Do not interpret the 131k-step smoke checkpoint as a final model-quality comparison.
+- Revisit uncertainty values, categorical targets, multi-scale/concentration outputs,
+  lifecycle handling, and latent-only alternatives after a proper training run.
 
 ## Known limitations and open questions
 
@@ -375,13 +367,11 @@ Reproduce with [`benchmarks/frontline_fog_suite.py`](../../benchmarks/frontline_
   result. It should not decide the final uncertainty representation by itself.
 - The combined boundary/global token is the first architecture, not the Gate 5 map-memory
   comparison. Static fields remain globally visible by design.
-- The milestone is committed locally, but branch publication and draft PR creation remain
-  blocked until the user explicitly authorizes the external push.
+- GitHub CLI is unavailable, so draft PR creation must use the compare URL or GitHub UI.
 
 ## Next plan
 
-1. Wait for explicit Gate 4 review and approval; do not begin map-memory work meanwhile.
-2. After approval, merge `frontline/06-beliefs` into `feat/frontline-overhaul`.
-3. Gate 5: compare full-attention map objects with a small K/V-only map memory, including
+1. Merge `frontline/06-beliefs` into `feat/frontline-overhaul`.
+2. Gate 5: compare full-attention map objects with a small K/V-only map memory, including
    throughput, VRAM, scaling, learning curves, and final evaluation quality, then stop again.
-4. Preserve the later mandatory curriculum stop.
+3. Preserve the later mandatory curriculum stop.
