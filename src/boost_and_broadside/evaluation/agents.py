@@ -43,6 +43,7 @@ class ResolvedAgent:
         self.kind = kind  # "null" | "random" | "scripted" | "semi_random" | "policy"
         self.agent = agent  # None | StochasticScriptedAgent | YemongPolicy
         self.hidden = hidden  # (1, B*N, D) float tensor, policy agents only
+        self.belief = None  # BeliefTracker, allocated by MatchRunner for policy agents
         # PolicyBundle for checkpoint agents: the configs these weights were
         # trained under, which need not be the ones the current run uses.
         self.bundle = bundle
@@ -238,3 +239,5 @@ def reset_done_envs(agent: ResolvedAgent, done_mask: torch.Tensor, num_tokens: i
         agent.hidden = agent.agent.reset_hidden_for_envs(
             agent.hidden, done_mask, agent.agent.num_recurrent_tokens
         )
+        if agent.belief is not None:
+            agent.belief.reset(done_mask)

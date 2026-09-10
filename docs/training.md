@@ -142,6 +142,13 @@ builds independent team-shared perception for both sides. During rollout,
 masked observation and canonicalizes its team labels. The same weights therefore produce
 candidate actions for both perspectives without deriving one team's sight from the other's.
 
+Each policy instance owns a GPU-resident belief cache. Visible ships refresh that cache from
+perceived truth; never-seen enemies remain absent; and previously seen enemies retain a token
+whose physical channels are advanced recursively by the policy's next-state head. The token
+also carries explicit visibility, validity, and time-since-observation features. Team 0, Team
+1, every league checkpoint, and every evaluation policy keep independent caches, so one
+policy's estimate cannot leak into another's input.
+
 [`opponents.py`](../src/boost_and_broadside/train/rl/opponents.py) then composes the action
 tensor according to each environment group's assigned opponent. In self-play, the learned
 weights act for both teams, with team 1 using the flipped observation. In scripted or
@@ -741,10 +748,11 @@ can omit to produce a policy whose inputs disagree with its weights.
 Three compatibility rules follow from that:
 
 - **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
-  perception, visibility masks, private enemy actions, and field-core LOS are part of the
-  learned input contract. Radius is shared across object types and normalized by half the
-  shorter world dimension; ship-local `grad(n)` remains explicit. Payloads carry
-  `observation_schema=team_perception_v7`. Successful firing globally reveals the shooter
+  perception, visibility masks, private enemy actions, field-core LOS, recursively predicted
+  hidden-enemy point estimates, belief validity, and observation age are part of the learned
+  input contract. Radius is shared across object types and normalized by half the shorter
+  world dimension; ship-local `grad(n)` remains explicit. Payloads carry
+  `observation_schema=recursive_belief_v8`. Successful firing globally reveals the shooter
   for the current sample, which is also a learned-input semantic. Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.
 - **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so
@@ -807,6 +815,12 @@ field-occluded share of in-range targets, individual visibility, team-sharing ga
 never-seen share, mean hidden age, reacquisition count, and occlusion-duration bins. The
 wrapper accumulates these counters on-device and transfers them only with the existing
 once-per-update metric synchronization; no per-step host read was added.
+
+They also log `belief/visible/*`, `belief/hidden/*`, and hidden-age buckets for position,
+velocity, attitude, angular velocity, health, power, cooldown, and local refractive index.
+Authoritative next-state targets are stored in a separate rollout tensor used only by the
+auxiliary loss and diagnostics. Never-seen tokens are excluded from that loss; previously
+seen hidden tokens remain supervised, and respawn/terminal discontinuities remain masked.
 
 ### What `--vram` may and may not change
 

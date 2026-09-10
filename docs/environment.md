@@ -44,11 +44,14 @@ that fails because of cooldown, power, or death does not reveal anything. The re
 the ship's ordinary visible state but not its private pending action.
 
 The environment constructs Team 0 and Team 1 observations independently. An unseen enemy
-ship has an explicit false visibility mask, is excluded from attention, and has every state
-channel replaced with zero as defense in depth. This includes position, velocity, health,
-power, cooldown, alive state, local refractive state, and bullets. Enemy pending actions are
-private even while the enemy itself is visible. Allies and static map geometry remain known.
-`vision_range=None` is the explicit omniscient compatibility mode.
+ship has an explicit false visibility mask and every state channel is replaced with zero as
+defense in depth. This includes position, velocity, health, power, cooldown, alive state,
+local refractive state, and bullets. Policy-side belief tracking may retain a previously seen
+enemy as a valid token, recursively replacing only its predictable physical channels and
+adding time since observation. A never-seen enemy remains absent. Enemy pending actions and
+hidden local field gradients remain zero rather than being predicted. Enemy pending actions
+are private even while the enemy itself is visible. Allies and static map geometry remain
+known. `vision_range=None` is the explicit omniscient compatibility mode.
 
 In Team 0/Team 1 rendering modes, unseen world pixels receive a mild neutral-gray overlay.
 The visible mask is the union of allied sight circles with tangent shadows cast behind field
@@ -71,7 +74,7 @@ Finite-vision training therefore requires `ego_pass`; the legacy `shared_pass` c
 serve one masked team view to both sides and is rejected.
 
 `EnvConfig.num_ships` is the total across both teams, and `EnvConfig.num_fields` the count
-of static-for-one-episode fields. `profiles/rl.py` trains at eight ships (4-vs-4) and four fields.
+of static-for-one-episode fields. `profiles/rl.py` trains at eight ships (4-vs-4) and ten fields.
 There is no separate field-free profile: `num_fields` sets the token count and no weight
 shape depends on it, so zero fields is a configuration -- the one run 682 trained under, and
 the ambient-only hot path it still exercises -- rather than a different model.

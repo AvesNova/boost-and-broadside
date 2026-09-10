@@ -626,6 +626,10 @@ class TestAuxPredictionMetrics:
         )
         for name in names:
             assert f"next_state/{name}" in metrics, f"{name} was not logged"
+        for visibility in ("visible", "hidden"):
+            assert f"belief/{visibility}/position_px" in metrics
+            assert f"belief/{visibility}/velocity_px_s" in metrics
+        assert "belief/hidden_age_0.5_1s/health" in metrics
 
 
 class TestLiveEloMetricNaming:
@@ -662,9 +666,7 @@ class TestLiveEloMetricNaming:
     def test_live_ratings_are_logged_under_the_live_prefix(self, tmp_path):
         metrics = self._logged_metrics(tmp_path)
 
-        assert metrics["live_elo/policy"] == pytest.approx(
-            metrics["live_elo/ladder/policy"]
-        )
+        assert metrics["live_elo/policy"] == pytest.approx(metrics["live_elo/ladder/policy"])
         assert metrics["live_elo/scripted"] == 1000.0
         assert metrics["live_elo/ladder/random"] == LIVE_RANDOM_ELO
         assert metrics["live_elo/ladder/semi_scripted_0p3"] == 300.0
@@ -1310,10 +1312,10 @@ class TestRLSmokeTest:
             value_function_coef=constant(1.0),
             sigreg_coef=constant(0.0),
             outcome_scale=constant(1.0),
-        kill_death_scale=constant(1.0),
-        damage_scale=constant(1.0),
-        shaping_scale=constant(1.0),
-                    league_fraction=constant(0.5),
+            kill_death_scale=constant(1.0),
+            damage_scale=constant(1.0),
+            shaping_scale=constant(1.0),
+            league_fraction=constant(0.5),
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
             target_kl=constant(None),

@@ -17,6 +17,7 @@ import torch
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.models.yemong.policy import YemongPolicy
+from boost_and_broadside.train.rl.belief import BeliefTracker, DualBeliefTracker
 from boost_and_broadside.train.rl.roster import RosterEntry
 
 
@@ -37,6 +38,7 @@ class LeagueSlot:
     entry: RosterEntry
     policy: YemongPolicy | None
     hidden: torch.Tensor | None
+    belief: BeliefTracker | None = None
 
 
 class RolloutNetworkOutput(NamedTuple):
@@ -46,6 +48,8 @@ class RolloutNetworkOutput(NamedTuple):
     action_t1: torch.Tensor | None
     logprob: torch.Tensor
     value_norm: torch.Tensor
+    pred_next_t0: torch.Tensor
+    pred_next_t1: torch.Tensor | None
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
     # Per-slot opponent actions, aligned with the slot list. None where the slot
@@ -221,6 +225,17 @@ class OpponentMixin:
                 if policy is not None
                 else None
             )
+            belief = (
+                BeliefTracker(
+                    slot_width,
+                    num_recurrent,
+                    self.ship_config.dt * self.env_config.action_repeat,
+                    policy.coordinator,
+                    self.device,
+                )
+                if policy is not None and self._ego_pass
+                else None
+            )
             slots.append(
                 LeagueSlot(
                     start=offset,
@@ -228,6 +243,7 @@ class OpponentMixin:
                     entry=entry,
                     policy=policy,
                     hidden=hidden,
+                    belief=belief,
                 )
             )
             offset += slot_width
@@ -253,7 +269,8 @@ class OpponentMixin:
                 action_t1,
                 logprob,
                 value_norm,
-                _,
+                pred_next_t0,
+                pred_next_t1,
                 hidden,
                 hidden_t1,
             ) = self._rollout_policy_pass(obs, hidden, hidden_t1, num_ships, num_recurrent)
@@ -265,9 +282,13 @@ class OpponentMixin:
                 continue
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 obs_slot = self._opponent_obs(slice_obs(obs, slot.start, slot.end), num_ships)
-                action, _, _, _, slot.hidden = slot.policy.get_action_and_value(
+                if slot.belief is not None:
+                    obs_slot = slot.belief.compose(obs_slot)
+                action, _, _, prediction, slot.hidden = slot.policy.get_action_and_value(
                     obs_slot, slot.hidden
                 )
+                if slot.belief is not None:
+                    slot.belief.advance(obs_slot, prediction)
             slot_actions.append(action)
 
         return RolloutNetworkOutput(
@@ -275,6 +296,8 @@ class OpponentMixin:
             action_t1=action_t1,
             logprob=logprob,
             value_norm=value_norm,
+            pred_next_t0=pred_next_t0,
+            pred_next_t1=pred_next_t1,
             hidden=hidden,
             hidden_t1=hidden_t1,
             slot_actions=slot_actions,
@@ -399,6 +422,8 @@ class OpponentMixin:
                 slot.hidden = slot.policy.reset_hidden_for_envs(
                     slot.hidden, done_any[slot.start : slot.end], num_recurrent
                 )
+                if slot.belief is not None:
+                    slot.belief.reset(done_any[slot.start : slot.end])
         return hidden, hidden_t1
 
     def _refresh_opponent_team_flags(self, done_any: torch.Tensor) -> None:
@@ -417,6 +442,7 @@ class OpponentMixin:
     def _collect_primary_step(
         self,
         obs: YemongObservation,
+        beliefs: DualBeliefTracker | None,
         hidden: torch.Tensor,
         hidden_t1: torch.Tensor | None,
         action_buffer: torch.Tensor,
@@ -429,6 +455,9 @@ class OpponentMixin:
     ) -> PrimaryStepOutput:
         """Collect one primary-scale transition and update recurrent rollout state."""
         team_id = obs["team_id"][:, :num_ships]
+        privileged_targets = self.coordinator.get_target_vector(
+            self.wrapper.privileged_observation()
+        )[:, :num_ships]
         scripted = self._scripted_step_outputs(slots)
         network_args = (obs, hidden, hidden_t1, num_ships, num_recurrent, slots)
         step = self._step_environment_and_network(
@@ -448,15 +477,23 @@ class OpponentMixin:
             expert_probs=scripted.expert_probs,
             terminated=done_any,
             transition_contiguous=step.transition_contiguous,
+            privileged_targets=privileged_targets,
+            scaled_predictions=step.network.pred_next_t0,
         )
 
         hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)
+        if beliefs is not None:
+            beliefs.advance(obs, step.network.pred_next_t0, step.network.pred_next_t1)
+            beliefs.reset(done_any)
+            next_obs = beliefs.compose(step.obs)
+        else:
+            next_obs = step.obs
         action_buffer = action.detach().clone()
         action_buffer[done_any] = 0
         self._refresh_opponent_team_flags(done_any)
         self._global_step += num_envs
         return PrimaryStepOutput(
-            step.obs,
+            next_obs,
             hidden,
             hidden_t1,
             action_buffer,

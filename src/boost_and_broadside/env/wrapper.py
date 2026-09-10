@@ -21,6 +21,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import (
     ObservationBuffers,
     YemongObservation,
+    observation_from_state,
     perceived_observation_from_state,
 )
 from boost_and_broadside.env.outcome import outcome_masks
@@ -151,12 +152,8 @@ class YemongEnvWrapper:
         B, N = num_envs, env_config.num_ships
         self._perception_ever_seen = torch.zeros((B, 2, N), dtype=torch.bool, device=self.device)
         self._perception_prev_visible = torch.zeros_like(self._perception_ever_seen)
-        self._perception_hidden_age = torch.zeros(
-            (B, 2, N), dtype=torch.int32, device=self.device
-        )
-        seconds = torch.tensor(
-            (0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0), device=self.device
-        )
+        self._perception_hidden_age = torch.zeros((B, 2, N), dtype=torch.int32, device=self.device)
+        seconds = torch.tensor((0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0), device=self.device)
         self._occlusion_bin_steps = torch.ceil(
             seconds / (ship_config.dt * env_config.action_repeat)
         ).to(torch.int32)
@@ -254,9 +251,7 @@ class YemongEnvWrapper:
         self._acc_lifespan_sum = torch.zeros((), device=d)
         self._acc_source_stats = torch.zeros((len(SOURCE_STAT_NAMES),), device=d)
         self._acc_result_counts = torch.zeros((3,), device=d)
-        self._acc_occlusion_hist = torch.zeros(
-            (self._occlusion_bin_steps.numel() + 1,), device=d
-        )
+        self._acc_occlusion_hist = torch.zeros((self._occlusion_bin_steps.numel() + 1,), device=d)
 
     def pop_episode_stats(self) -> dict[str, torch.Tensor]:
         """Return finished-episode stats accumulated since the last call, and reset.
@@ -563,6 +558,20 @@ class YemongEnvWrapper:
         self._accumulate_perception()
         return observation
 
+    def privileged_observation(self) -> YemongObservation:
+        """Return omniscient state for auxiliary targets, never policy input.
+
+        Keeping this method explicitly named and separate from ``_get_obs`` makes
+        the one legal use of hidden truth auditable at rollout collection.
+        """
+
+        return observation_from_state(
+            self.env.state,
+            self.ship_config,
+            self._obs_buffers,
+            include_bullets=False,
+        )
+
     def _reset_perception(self, env_mask: torch.Tensor) -> None:
         mask = env_mask[:, None, None]
         self._perception_ever_seen &= ~mask
@@ -596,16 +605,16 @@ class YemongEnvWrapper:
 
         ever_after = ever_before | visible
         hidden = enemy_alive & ever_after & ~visible
-        self._perception_hidden_age = torch.where(
-            hidden, self._perception_hidden_age + 1, 0
-        )
+        self._perception_hidden_age = torch.where(hidden, self._perception_hidden_age + 1, 0)
         self._perception_ever_seen = ever_after
         self._perception_prev_visible = visible
 
         observer_team = state.ship_team_id[:, :, None]
         observer_enemy = (
-            observer_team != state.ship_team_id[:, None, :]
-        ) & state.ship_alive[:, :, None] & state.ship_alive[:, None, :]
+            (observer_team != state.ship_team_id[:, None, :])
+            & state.ship_alive[:, :, None]
+            & state.ship_alive[:, None, :]
+        )
         observer_visible = self.last_visibility.observer_ship & observer_enemy
         start = SOURCE_STAT_NAMES.index("perception_enemy_slots")
         self._acc_source_stats[start:] += torch.stack(
