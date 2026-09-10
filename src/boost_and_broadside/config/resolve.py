@@ -197,9 +197,7 @@ def _source_map(
     microbatch_source: ResolutionSource,
     grad_checkpoint_source: ResolutionSource,
 ) -> dict[str, ResolutionSource]:
-    sources: dict[str, ResolutionSource] = {
-        path: "profile" for path in _leaf_paths(config_payload)
-    }
+    sources: dict[str, ResolutionSource] = {path: "profile" for path in _leaf_paths(config_payload)}
     derived_prefixes = (
         "train_config.gamma",
         "train_config.gae_lambda",
@@ -336,7 +334,7 @@ def launch_geometry(profile: ProfileSpec) -> LaunchGeometry:
 
     _validate_profile(profile)
     launch = profile.launch
-    entity_tokens = profile.num_ships + profile.num_fields
+    entity_tokens = profile.num_ships + profile.num_fields + (6 if profile.frontline else 0)
 
     if launch.rollout_tokens is not None:
         default_num_envs = derive_aligned_num_envs(
@@ -364,9 +362,7 @@ def launch_geometry(profile: ProfileSpec) -> LaunchGeometry:
         if launch.rollout_tokens is None:
             raise ValueError("microbatches_per_minibatch requires a rollout token target")
         default_microbatch_tokens = (
-            launch.rollout_tokens
-            // profile.num_minibatches
-            // launch.microbatches_per_minibatch
+            launch.rollout_tokens // profile.num_minibatches // launch.microbatches_per_minibatch
         )
         default_microbatch_source: ResolutionSource = "vram-preset"
     else:
@@ -400,9 +396,7 @@ def resolve_profile(
     overrides = overrides or LaunchOverrides()
     entity_tokens = geometry.entity_tokens
 
-    num_envs = (
-        overrides.num_envs if overrides.num_envs is not None else geometry.default_num_envs
-    )
+    num_envs = overrides.num_envs if overrides.num_envs is not None else geometry.default_num_envs
     rollouts_per_update = derive_rollouts_per_update(
         aligned_logical_batch_tokens=geometry.aligned_logical_batch_tokens,
         num_envs=num_envs,
@@ -439,6 +433,8 @@ def resolve_profile(
         single_team=profile.single_team,
         action_repeat=profile.action_repeat,
         spawn_resource_spread=profile.spawn_resource_spread,
+        vision_range=profile.vision_range,
+        frontline=profile.frontline,
     )
     action_repeat = profile.action_repeat
     component_gammas = {

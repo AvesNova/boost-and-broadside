@@ -135,7 +135,10 @@ REWARDS = RewardConfig(
         }
     ),
     shooting_penalty_weight=0.0,
-    front_advance_weight=0.0,
+    # A front step is the primary non-terminal strategic event. This is a
+    # provisional scale for the first Frontline runs, intentionally below the
+    # terminal result while still dense enough to assign objective credit.
+    front_advance_weight=0.25,
     speed_weight=0.0,
     speed_penalty_min=10.0,
 )

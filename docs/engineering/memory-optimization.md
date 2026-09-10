@@ -67,10 +67,11 @@ Reserved peak is 96% of the card, so this row has essentially no allocator headr
 therefore reaches for gradient checkpointing before it narrows the shard.
 
 That row was measured at eight entity tokens per environment, when `rl` was field-free and
-resolved to 3904 envs. The profile now carries four fields and resolves to 2592, which is
-31,104 resident entity tokens against the measured 31,232 -- within 0.4%, and the microbatch
-is capped at 25,000 tokens either way. The number is therefore expected to carry, but it has
-not been re-probed at the current width, and it is a measurement rather than a derivation.
+resolved to 3904 envs. The Frontline profile now has 24 entity tokens—eight ships, ten fields,
+five zones, and one global token—and resolves to 1280 envs. That is 30,720 resident entity
+tokens against the measured 31,232, and the microbatch remains capped at 25,000 tokens. The
+number is therefore expected to carry, but it has not been re-probed with the wider observation
+features and belief buffers, and it is a measurement rather than a derivation.
 
 The 16, 24, and 32 GB rows are linear extrapolations of the persistent-buffer and
 rollout-peak figures in the production comparison below, and have never been run. Applying

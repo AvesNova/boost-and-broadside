@@ -14,7 +14,13 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Literal
 
-from boost_and_broadside.config.core import EnvConfig, ModelConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config.core import (
+    EnvConfig,
+    FrontlineConfig,
+    ModelConfig,
+    RewardConfig,
+    ShipConfig,
+)
 from boost_and_broadside.config.schedule_spec import TrainingScheduleSpec
 from boost_and_broadside.config.training import EloEvalConfig, TrainConfig
 
@@ -76,6 +82,8 @@ class ProfileSpec:
     max_episode_steps: int | None
     action_repeat: int
     spawn_resource_spread: float
+    vision_range: float | None
+    frontline: FrontlineConfig | None
     # --- Rollout shape ---
     logical_batch_tokens: int
     num_steps: int

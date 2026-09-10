@@ -13,6 +13,7 @@ remains a reachable *configuration* -- it is what run 682 trained under and how
 that run is still evaluated -- but it is a value to set, not a profile to pick.
 """
 
+from boost_and_broadside.config.core import FrontlineConfig
 from boost_and_broadside.config.defaults import (
     COMPONENT_GAMMAS_PER_TICK,
     COMPONENT_LAMBDAS_PER_TICK,
@@ -25,20 +26,35 @@ from boost_and_broadside.config.defaults import (
 )
 from boost_and_broadside.config.schema import LaunchSizingSpec, ProfileSpec
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
+from boost_and_broadside.env.frontline import frontline_ship_config
 
 RL_PROFILE = ProfileSpec(
     name="rl",
-    ship_config=SHIP_CONFIG,
+    ship_config=frontline_ship_config(SHIP_CONFIG),
     model_config=MODEL_CONFIG,
     # --- Environment ---
     num_ships=8,
-    num_fields=4,
+    num_fields=10,
     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
-    max_episode_steps=1024,
-    # Physics stays at 60 Hz; the policy chooses at 30 Hz.  The 128-step rollout
-    # therefore spans 4.3 seconds, close to a full episode.
-    action_repeat=2,
-    spawn_resource_spread=0.25,
+    max_episode_steps=9_000,
+    # Frontline physics and decisions both run at 30 Hz. The 128-step rollout
+    # spans 4.3 seconds without repeating field/visibility work inside a decision.
+    action_repeat=1,
+    spawn_resource_spread=0.0,
+    vision_range=1600.0,
+    frontline=FrontlineConfig(
+        zone_radius=330.0,
+        zone_ring_radius=1200.0,
+        playable_radius=2600.0,
+        capture_seconds=8.0,
+        defense_damage_per_second=2.0,
+        respawn_health=25.0,
+        spawn_heal_per_second=12.0,
+        enemy_spawn_damage_per_second=8.0,
+        boundary_damage_per_second=5.0,
+        boundary_damage_per_pixel_second=0.05,
+        front_win_threshold=5,
+    ),
     # --- Rollout shape ---
     logical_batch_tokens=12_000_000,
     num_steps=128,
