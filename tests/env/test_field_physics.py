@@ -50,9 +50,7 @@ def test_profile_gradient_matches_finite_difference_and_wraps_toroidally():
     plus, _ = _single_profile([150.0 + eps + 100.0j])
     minus, _ = _single_profile([150.0 - eps + 100.0j])
     finite_diff = (plus - minus) / (2.0 * eps)
-    assert gradient[0, 0, 0].real.item() == pytest.approx(
-        finite_diff[0, 0, 0].item(), rel=2e-3
-    )
+    assert gradient[0, 0, 0].real.item() == pytest.approx(finite_diff[0, 0, 0].item(), rel=2e-3)
     wrapped, center_gradient = _single_profile(
         [5.0 + 100.0j, 251.0 + 100.0j], center=251.0 + 100.0j
     )
@@ -79,11 +77,60 @@ def test_identical_overlaps_reinforce_partial_coverage_without_overshoot():
 def test_equal_reciprocal_fields_cancel_to_ambient_at_any_coverage():
     alpha = torch.tensor([[[0.2, 0.2], [1.0, 1.0]]])
     gradient = torch.tensor([[[0.1 + 0.2j, 0.1 + 0.2j]]]).expand(1, 2, 2)
-    index, grad_index = compose_refractive_index(
-        alpha, gradient, torch.tensor([[2.0, 0.5]])
-    )
+    index, grad_index = compose_refractive_index(alpha, gradient, torch.tensor([[2.0, 0.5]]))
     assert torch.allclose(index, torch.ones_like(index), atol=1e-6)
     assert torch.allclose(grad_index, torch.zeros_like(grad_index), atol=1e-6)
+
+
+def test_field_major_scan_matches_the_point_major_reference():
+    """The exclusive products are a layout change, not an arithmetic one.
+
+    ``compose_refractive_index`` scans the field axis field-major so CUDA can
+    parallelise across points; the reference below is the point-major form it
+    replaced. They multiply the same factors in the same order, so they may
+    differ only by float32 reassociation inside the scan kernel.
+    """
+    generator = torch.Generator().manual_seed(7)
+    alpha = torch.rand(64, 12, 6, generator=generator)
+    # Exercise both saturated ends: a fully covered point makes ``1 - alpha``
+    # exactly zero, which is the case the no-division formulation exists for.
+    alpha[alpha > 0.85] = 1.0
+    alpha[alpha < 0.15] = 0.0
+    grad_alpha = torch.complex(
+        torch.randn(64, 12, 6, generator=generator),
+        torch.randn(64, 12, 6, generator=generator),
+    )
+    target_index = torch.rand(64, 6, generator=generator) + 0.5
+
+    def reference(alpha, grad_alpha, target_index):
+        log_target = torch.log(target_index).unsqueeze(1)
+        weight = alpha.sum(dim=2)
+        weighted_log = (alpha * log_target).sum(dim=2)
+        grad_weight = grad_alpha.sum(dim=2)
+        grad_weighted_log = (grad_alpha * log_target).sum(dim=2)
+        remaining = 1.0 - alpha
+        prefix = torch.cumprod(remaining, dim=2)
+        suffix = torch.flip(torch.cumprod(torch.flip(remaining, dims=(2,)), dim=2), dims=(2,))
+        ones = torch.ones_like(remaining[:, :, :1])
+        product_before = torch.cat((ones, prefix[:, :, :-1]), dim=2)
+        product_after = torch.cat((suffix[:, :, 1:], ones), dim=2)
+        coverage = 1.0 - prefix[:, :, -1]
+        grad_coverage = (grad_alpha * product_before * product_after).sum(dim=2)
+        contributes = weight > 1e-8
+        safe_weight = weight.clamp(min=1e-8)
+        mean_log = torch.where(contributes, weighted_log / safe_weight, 0.0)
+        grad_mean_log = torch.where(
+            contributes, (grad_weighted_log - mean_log * grad_weight) / safe_weight, 0.0
+        )
+        local_log_index = coverage * mean_log
+        grad_log_index = grad_coverage * mean_log + coverage * grad_mean_log
+        index = torch.exp(local_log_index)
+        return index.float(), (index * grad_log_index).to(torch.complex64)
+
+    index, grad_index = compose_refractive_index(alpha, grad_alpha, target_index)
+    ref_index, ref_grad = reference(alpha, grad_alpha, target_index)
+    assert torch.allclose(index, ref_index, rtol=1e-6, atol=1e-6)
+    assert torch.allclose(grad_index, ref_grad, rtol=1e-6, atol=1e-6)
 
 
 def test_arbitrary_overlap_gradient_matches_finite_difference():
@@ -99,12 +146,8 @@ def test_arbitrary_overlap_gradient_matches_finite_difference():
 
     result = sample(128.0, 128.0)
     eps = 1e-2
-    dx = (sample(128.0 + eps, 128.0).index - sample(128.0 - eps, 128.0).index) / (
-        2.0 * eps
-    )
-    dy = (sample(128.0, 128.0 + eps).index - sample(128.0, 128.0 - eps).index) / (
-        2.0 * eps
-    )
+    dx = (sample(128.0 + eps, 128.0).index - sample(128.0 - eps, 128.0).index) / (2.0 * eps)
+    dy = (sample(128.0, 128.0 + eps).index - sample(128.0, 128.0 - eps).index) / (2.0 * eps)
     assert result.grad_index.real.item() == pytest.approx(dx.item(), rel=4e-3, abs=2e-5)
     assert result.grad_index.imag.item() == pytest.approx(dy.item(), rel=4e-3, abs=2e-5)
 
@@ -201,9 +244,7 @@ def test_frontline_fields_share_map_translation_and_fit_playable_boundary():
         env.state.field_pos - env.state.map_center.unsqueeze(1), config.world_size
     ).abs()
     outer = env.state.field_radius + 0.5 * env.state.field_transition_width
-    assert torch.all(
-        distance + outer <= env.state.playable_boundary_radius.unsqueeze(1) + 1e-4
-    )
+    assert torch.all(distance + outer <= env.state.playable_boundary_radius.unsqueeze(1) + 1e-4)
     assert env.state.field_radius.max() > 490.0
 
 
