@@ -1371,6 +1371,59 @@ class TestFeatureCoordinatorLayout:
         assert target_end == coordinator.total_target_dimension
 
 
+class TestAccessorChannelSelection:
+    """A channel list must not become a device index tensor on the hot path.
+
+    ``val[..., [0]]`` is advanced indexing: the index tensor is built on the host
+    and copied to the device, which drains the CUDA queue on every observation
+    read. Every channel list this pipeline declares is a contiguous run, so the
+    accessor narrows with an equivalent slice instead — same values, a view
+    rather than a gather, and no host round trip.
+    """
+
+    def test_contiguous_channels_resolve_to_a_slice(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        assert Accessor(ObsKey.POS, channels=[0])._channel_slice == slice(0, 1)
+        assert Accessor(ObsKey.POS, channels=[1])._channel_slice == slice(1, 2)
+        assert Accessor(ObsKey.VEL, channels=[0, 1])._channel_slice == slice(0, 2)
+        assert Accessor(ObsKey.VEL)._channel_slice is None
+
+    def test_non_contiguous_channels_keep_the_list_form(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        assert Accessor(ObsKey.POS, channels=[1, 0])._channel_slice is None
+        assert Accessor(ObsKey.POS, channels=[0, 2])._channel_slice is None
+
+    def test_selection_matches_advanced_indexing_exactly(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        obs = _make_obs(3, 5)
+        for channels in ([0], [1], [0, 1], [1, 0]):
+            selected = Accessor(ObsKey.POS, channels=channels).get(obs)
+            assert torch.equal(selected, obs[ObsKey.POS][..., channels])
+
+    def test_sliced_selection_is_a_view_not_a_copy(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        obs = _make_obs(3, 5)
+        selected = Accessor(ObsKey.POS, channels=[0]).get(obs)
+        assert selected.data_ptr() == obs[ObsKey.POS].data_ptr()
+
+    def test_every_shipped_accessor_avoids_advanced_indexing(self, ship_cfg):
+        """No feature in either shipped pipeline may fall back to the list path."""
+        from boost_and_broadside.train.rl.features import build_bullet_coordinator
+
+        coordinators = [build_standard_coordinator(ship_cfg), build_bullet_coordinator(ship_cfg)]
+        for coordinator in coordinators:
+            for feature in coordinator.features:
+                accessor = feature.accessor
+                assert accessor.channels is None or accessor._channel_slice is not None, (
+                    f"{feature.name} declares non-contiguous channels {accessor.channels}, "
+                    "which reintroduces a host-to-device index copy per read"
+                )
+
+
 class TestFeatureCoordinatorDecode:
     """AUDIT-022: decode_targets inverts each feature's target Transform."""
 
