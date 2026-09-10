@@ -84,9 +84,7 @@ def _causal_conv_tap_validity(done_mask: torch.Tensor) -> torch.Tensor:
     for lag in range(1, CONV_KERNEL):
         shift = lag - 1
         shifted = (
-            no_boundary
-            if shift == 0
-            else F.pad(no_boundary[:, :-shift], (shift, 0), value=True)
+            no_boundary if shift == 0 else F.pad(no_boundary[:, :-shift], (shift, 0), value=True)
         )
         running = running & shifted
         valids.append(running)
@@ -342,6 +340,11 @@ class YemongBlock(nn.Module):
                 TransformerBlock(
                     model_config,
                     reads_bullets=i < model_config.n_bullet_cross_per_block,
+                    map_memory_dim=(
+                        model_config.map_memory_dim
+                        if model_config.map_read_mode == "kv_memory"
+                        else None
+                    ),
                 )
                 for i in range(model_config.n_spatial_per_block)
             ]
@@ -352,15 +355,16 @@ class YemongBlock(nn.Module):
                 for _ in range(model_config.n_temporal_per_block)
             ]
         )
-        # Type-specific linear standing in for the temporal operator on
-        # non-recurrent (field) tokens; see GriffinTemporalBlock.forward_nonrecurrent.
-        # Allocated even when a profile has no fields so one checkpoint loads into
-        # both the zero-field and multi-field profiles.
+        # Full-attention map tokens take a non-recurrent temporal adapter. K/V
+        # memory never enters this trunk, so allocating these matrices there would
+        # create dead optimizer parameters.
         self.field_sub = nn.ModuleList(
             [
                 nn.Linear(model_config.d_model, model_config.d_model, bias=False)
                 for _ in range(model_config.n_temporal_per_block)
             ]
+            if model_config.map_read_mode == "full_attention"
+            else []
         )
         for sub in self.field_sub:
             # Identity, not zero: b1_out feeds a multiplicative gate, so zeroing it
@@ -382,6 +386,8 @@ class YemongBlock(nn.Module):
         num_recurrent: int | None = None,
         bullets: torch.Tensor | None = None,  # (B, NB, D)
         bullet_mask: torch.Tensor | None = None,  # (B, NB) bool
+        map_memory: torch.Tensor | None = None,  # (B, M, D_map)
+        map_mask: torch.Tensor | None = None,  # (B, M) bool
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Single-step forward for rollout inference.
 
@@ -398,7 +404,14 @@ class YemongBlock(nn.Module):
         B, NM, D = x.shape
         n_rec = NM if num_recurrent is None else num_recurrent
         for spatial in self.spatial:
-            x = spatial(x, alive, bullets, bullet_mask)  # (B, N+M, D)
+            x = spatial(
+                x,
+                alive,
+                bullets,
+                bullet_mask,
+                map_memory,
+                map_mask,
+            )  # (B, N+M, D), or ships only in K/V mode
 
         new_hs: list[torch.Tensor] = []
         new_cbs: list[torch.Tensor] = []
@@ -426,6 +439,8 @@ class YemongBlock(nn.Module):
         num_recurrent: int | None = None,
         bullets: torch.Tensor | None = None,  # (T*B, NB, D)
         bullet_mask: torch.Tensor | None = None,  # (T*B, NB) bool
+        map_memory: torch.Tensor | None = None,  # (T*B, M, D_map)
+        map_mask: torch.Tensor | None = None,  # (T*B, M) bool
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Full-sequence forward for PPO re-evaluation.
 
@@ -446,6 +461,8 @@ class YemongBlock(nn.Module):
                 alive_mask.reshape(T * B, NM),
                 bullets,
                 bullet_mask,
+                map_memory,
+                map_mask,
             ).reshape(T, B, NM, D)
 
         done_mask_bn = (

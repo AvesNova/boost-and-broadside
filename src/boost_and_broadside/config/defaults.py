@@ -26,8 +26,9 @@ MODEL_CONFIG = ModelConfig(
     # Two spatial sublayers per temporal sublayer buy relational depth cheaply.
     n_spatial_per_block=2,
     n_temporal_per_block=1,
-    # Read bullets early enough that a later spatial layer can share the signal.
-    n_bullet_cross_per_block=1,
+    # Projectile physics remains authoritative, but normal Frontline training
+    # does not spend policy memory/compute on per-bullet K/V observations.
+    n_bullet_cross_per_block=0,
     grad_checkpoint=False,
 )
 
