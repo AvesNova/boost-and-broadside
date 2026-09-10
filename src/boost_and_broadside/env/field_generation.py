@@ -7,6 +7,23 @@ import torch
 from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.env.field_physics import material_tensors
 
+# The four log-symmetric index levels are a constant. Building them from a
+# Python list copies from the host and drains the CUDA queue, and layout
+# generation runs on every environment reset -- which, across 1280 training and
+# 2560 evaluation environments, is most physics ticks.
+_INDEX_LEVEL_CACHE: dict[str, torch.Tensor] = {}
+
+
+def _index_levels(device: torch.device) -> torch.Tensor:
+    """The sampled log-index levels, cached per device."""
+
+    key = str(device)
+    levels = _INDEX_LEVEL_CACHE.get(key)
+    if levels is None:
+        levels = torch.tensor([-2, -1, 1, 2], device=device, dtype=torch.int8)
+        _INDEX_LEVEL_CACHE[key] = levels
+    return levels
+
 
 def generate_field_layout(
     batch_size: int,
@@ -79,7 +96,7 @@ def generate_field_layout(
         translated = map_center.unsqueeze(1) + offset
         pos = torch.complex(translated.real % world_w, translated.imag % world_h)
 
-    levels = torch.tensor([-2, -1, 1, 2], device=device, dtype=torch.int8)
+    levels = _index_levels(device)
     level_draw = torch.randint(0, 4, shape, device=device, generator=generator)
     index_level = levels[level_draw]
     damage_level = torch.randint(0, 3, shape, device=device, generator=generator).to(torch.int8)
@@ -101,12 +118,10 @@ def _low_discrepancy_disk(
     radial_fraction = ((rank + radial_jitter) / count).sqrt()
 
     golden_angle = math.pi * (3.0 - math.sqrt(5.0))
-    rotation = torch.rand((batch_size, 1), device=device, generator=generator) * (
-        2.0 * math.pi
+    rotation = torch.rand((batch_size, 1), device=device, generator=generator) * (2.0 * math.pi)
+    angular_jitter = (torch.rand(shape, device=device, generator=generator) - 0.5) * (
+        math.pi / count
     )
-    angular_jitter = (
-        torch.rand(shape, device=device, generator=generator) - 0.5
-    ) * (math.pi / count)
     angle = rotation + rank * golden_angle + angular_jitter
     return radial_fraction, angle
 
@@ -124,9 +139,7 @@ def _low_discrepancy_toroid(
     plastic = 1.324717957244746
     phase = torch.rand((batch_size, 2), device=device, generator=generator)
     jitter_scale = 0.25 / math.sqrt(count)
-    jitter = (
-        torch.rand((*shape, 2), device=device, generator=generator) - 0.5
-    ) * jitter_scale
+    jitter = (torch.rand((*shape, 2), device=device, generator=generator) - 0.5) * jitter_scale
     unit_x = (phase[:, :1] + rank / plastic + jitter[:, :, 0]) % 1.0
     unit_y = (phase[:, 1:] + rank / (plastic * plastic) + jitter[:, :, 1]) % 1.0
     return unit_x, unit_y

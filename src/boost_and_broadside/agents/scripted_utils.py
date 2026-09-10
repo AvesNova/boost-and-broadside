@@ -24,23 +24,16 @@ def turn_toward(rel_angle: torch.Tensor) -> torch.Tensor:
         between TURN_NORMAL_ANGLE and TURN_SHARP_ANGLE, SHARP_LEFT/RIGHT at or
         above TURN_SHARP_ANGLE.
     """
-    device = rel_angle.device
     abs_angle = rel_angle.abs()
     turn = torch.full_like(rel_angle, TurnActions.GO_STRAIGHT, dtype=torch.int32)
     normal = (abs_angle >= TURN_NORMAL_ANGLE) & (abs_angle < TURN_SHARP_ANGLE)
     sharp = abs_angle >= TURN_SHARP_ANGLE
-    turn = torch.where(
-        normal & (rel_angle > 0), torch.tensor(TurnActions.TURN_RIGHT, device=device), turn
-    )
-    turn = torch.where(
-        normal & (rel_angle < 0), torch.tensor(TurnActions.TURN_LEFT, device=device), turn
-    )
-    turn = torch.where(
-        sharp & (rel_angle > 0), torch.tensor(TurnActions.SHARP_RIGHT, device=device), turn
-    )
-    turn = torch.where(
-        sharp & (rel_angle < 0), torch.tensor(TurnActions.SHARP_LEFT, device=device), turn
-    )
+    # Python scalars rather than 0-d CUDA tensors: each construction copies from
+    # the host and drains the queue, and this runs on every scripted decision.
+    turn = torch.where(normal & (rel_angle > 0), int(TurnActions.TURN_RIGHT), turn)
+    turn = torch.where(normal & (rel_angle < 0), int(TurnActions.TURN_LEFT), turn)
+    turn = torch.where(sharp & (rel_angle > 0), int(TurnActions.SHARP_RIGHT), turn)
+    turn = torch.where(sharp & (rel_angle < 0), int(TurnActions.SHARP_LEFT), turn)
     return turn
 
 
@@ -130,9 +123,7 @@ def compute_team_target_bearings(
         diff_to_enemy.imag = (diff_to_enemy.imag + H / 2) % H - H / 2
         dist_to_enemy = torch.abs(diff_to_enemy)
 
-        dist_masked = torch.where(
-            enemy_mask, dist_to_enemy, torch.tensor(float("inf"), device=device)
-        )
+        dist_masked = torch.where(enemy_mask, dist_to_enemy, float("inf"))
         min_dists, team_tgt_idx = dist_masked.min(dim=1)  # (B,)
         team_has_target = min_dists < float("inf")  # (B,)
 
@@ -175,7 +166,6 @@ def select_targets(
         bearing:       (B, N) complex64 — unit vector from each ship toward its target
     """
     world_width, world_height = ship_config.world_size
-    device = state.device
 
     pos_targets = state.ship_pos.unsqueeze(1)  # (B, 1, N)
     pos_sources = state.ship_pos.unsqueeze(2)  # (B, N, 1)
@@ -196,7 +186,9 @@ def select_targets(
         visible_to_source_team = team_visibility.gather(1, source_team)
         valid_tgt &= visible_to_source_team
 
-    dist_masked = torch.where(valid_tgt, dist, torch.tensor(float("inf"), device=device))
+    # A Python scalar rather than a 0-d CUDA tensor: constructing the latter
+    # copies from the host and drains the queue on every scripted decision.
+    dist_masked = torch.where(valid_tgt, dist, float("inf"))
     closest_dist, target_idx = torch.min(dist_masked, dim=2)
     has_target = closest_dist < float("inf")
 

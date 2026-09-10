@@ -53,6 +53,34 @@ def wrap_positions(
     return torch.complex(position.real % world_w, position.imag % world_h)
 
 
+# The role pattern is a constant, and building it from a Python list on every
+# call copies it from the host, which drains the CUDA queue. `roles_from_front`
+# runs on every physics tick and on every reset, so the tensor is cached per
+# device instead (the same idiom `physics._lookup_tables` uses).
+_BASE_ROLE_CACHE: dict[str, torch.Tensor] = {}
+
+
+def _base_roles(device: torch.device) -> torch.Tensor:
+    """The physical zone-role pattern at front position zero, cached per device."""
+
+    key = str(device)
+    roles = _BASE_ROLE_CACHE.get(key)
+    if roles is None:
+        roles = torch.tensor(
+            [
+                ZoneRole.NEUTRAL,
+                ZoneRole.TEAM0_SPAWN,
+                ZoneRole.TEAM0_DEFENSE,
+                ZoneRole.TEAM1_DEFENSE,
+                ZoneRole.TEAM1_SPAWN,
+            ],
+            dtype=torch.int8,
+            device=device,
+        )
+        _BASE_ROLE_CACHE[key] = roles
+    return roles
+
+
 def roles_from_front(front_position: torch.Tensor) -> torch.Tensor:
     """Derive physical-zone roles from an arbitrary unwrapped front coordinate.
 
@@ -61,17 +89,7 @@ def roles_from_front(front_position: torch.Tensor) -> torch.Tensor:
     reduced or replaced by the visible modulo-five assignment.
     """
 
-    base_roles = torch.tensor(
-        [
-            ZoneRole.NEUTRAL,
-            ZoneRole.TEAM0_SPAWN,
-            ZoneRole.TEAM0_DEFENSE,
-            ZoneRole.TEAM1_DEFENSE,
-            ZoneRole.TEAM1_SPAWN,
-        ],
-        dtype=torch.int8,
-        device=front_position.device,
-    )
+    base_roles = _base_roles(front_position.device)
     physical_index = torch.arange(NUM_FRONTLINE_ZONES, device=front_position.device)
     source_index = (physical_index.unsqueeze(0) - front_position.unsqueeze(1)) % 5
     return base_roles[source_index]
