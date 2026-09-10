@@ -20,7 +20,7 @@ from __future__ import annotations
 import dataclasses
 from difflib import get_close_matches
 from functools import cache
-from typing import Any, get_args, get_origin, get_type_hints
+from typing import Any, Literal, get_args, get_origin, get_type_hints
 
 from boost_and_broadside.errors import UserFacingError
 
@@ -59,6 +59,12 @@ def _leaf_names(config: Any, prefix: str = "") -> list[str]:
 def _coerce(text: str, annotation: Any, path: str) -> Any:
     if text == "none" and _optional(annotation):
         return None
+    if get_origin(annotation) is Literal:
+        choices = get_args(annotation)
+        if text in choices:
+            return text
+        rendered = ", ".join(repr(choice) for choice in choices)
+        raise OverrideError(f"{path}={text!r}: expected one of {rendered}")
     target = _concrete(annotation)
     try:
         if target is bool:
@@ -122,6 +128,4 @@ def _apply_one(config: Any, path: str, parts: list[str], text: str) -> Any:
         if not dataclasses.is_dataclass(child):
             raise OverrideError(f"{head} is not a group, so {path!r} has nowhere to go")
         return dataclasses.replace(config, **{head: _apply_one(child, path, rest, text)})
-    return dataclasses.replace(
-        config, **{head: _coerce(text, _hints(type(config))[head], path)}
-    )
+    return dataclasses.replace(config, **{head: _coerce(text, _hints(type(config))[head], path)})

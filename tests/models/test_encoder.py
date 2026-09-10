@@ -403,6 +403,102 @@ class TestYemongPolicy:
             assert (new_hidden[0, 2 * N + ship, :] == 0).all()  # env 2
 
 
+class TestMapKVMemory:
+    @staticmethod
+    def _policy(coordinator, num_ships: int) -> YemongPolicy:
+        cfg = ModelConfig(
+            d_model=64,
+            n_heads=4,
+            n_yemong_blocks=2,
+            n_spatial_per_block=2,
+            map_read_mode="kv_memory",
+            map_memory_dim=24,
+        )
+        return YemongPolicy(
+            cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=num_ships,
+            team_pma_k=(),
+        ).eval()
+
+    def test_map_tokens_are_smaller_kv_only_inputs(self, coordinator):
+        B, N, M = 2, 3, 4
+        policy = self._policy(coordinator, N)
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        seen: dict[str, tuple[int, ...]] = {}
+
+        def record_shapes(_module, args):
+            seen["queries"] = tuple(args[0].shape)
+            seen["memory"] = tuple(args[4].shape)
+
+        handle = policy.yemong_layers[0].spatial[0].register_forward_pre_hook(record_shapes)
+        try:
+            action, _, value, _, new_hidden = policy.get_action_and_value(obs, hidden)
+        finally:
+            handle.remove()
+
+        assert seen == {"queries": (B, N, 64), "memory": (B, M, 24)}
+        assert all(len(layer.field_sub) == 0 for layer in policy.yemong_layers)
+        assert action.shape == (B, N, 3)
+        assert value.shape == (B, N, NUM_VALUE_COMPONENTS)
+        assert new_hidden.shape == hidden.shape
+
+    def test_map_memory_changes_ship_outputs(self, coordinator):
+        B, N, M, T = 1, 3, 2, 2
+        torch.manual_seed(5)
+        policy = self._policy(coordinator, N)
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        moved = YemongObservation(data={key: value.clone() for key, value in obs.items()})
+        moved.data[ObsKey.POS][:, N:] += 400.0
+
+        def logits(one: YemongObservation) -> torch.Tensor:
+            sequence = YemongObservation(
+                data={key: value.unsqueeze(0).expand(T, *value.shape) for key, value in one.items()}
+            )
+            actions = torch.zeros(T, B, N, 3, dtype=torch.long)
+            hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+            return policy.evaluate_actions(sequence, actions, hidden, sequence[ObsKey.ALIVE])[3]
+
+        with torch.no_grad():
+            assert not torch.allclose(logits(obs), logits(moved))
+
+    def test_step_and_sequence_paths_match(self, coordinator):
+        B, N, M, T = 2, 3, 2, 5
+        torch.manual_seed(11)
+        policy = self._policy(coordinator, N)
+        observations = [_make_obs(B, N + M) for _ in range(T)]
+        for obs in observations:
+            obs.data[ObsKey.TEAM_ID][:, N:] = 2
+
+        initial_hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        hidden = initial_hidden
+        step_values, actions = [], []
+        for obs in observations:
+            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            actions.append(action)
+            step_values.append(value)
+
+        sequence = YemongObservation(
+            data={
+                key: torch.stack([obs.data[key] for obs in observations])
+                for key in observations[0].data
+            }
+        )
+        with torch.no_grad():
+            sequence_values = policy.evaluate_actions(
+                sequence,
+                torch.stack(actions),
+                initial_hidden,
+                sequence[ObsKey.ALIVE],
+            )[2]
+
+        assert torch.allclose(torch.stack(step_values), sequence_values, atol=1e-5)
+
+
 class TestYemongBlockStructure:
     """Configurable spatial/temporal sublayer counts inside each Yemong block."""
 

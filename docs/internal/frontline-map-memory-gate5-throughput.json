@@ -1,0 +1,137 @@
+{
+  "device": "cuda",
+  "device_name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "inference_envs": 256,
+  "update_envs": 32,
+  "update_steps": 32,
+  "results": {
+    "0": {
+      "fields": 0,
+      "map_objects": 6,
+      "modes": {
+        "full_attention": {
+          "parameters": 1909156,
+          "inference": {
+            "milliseconds_per_batch": 26.706400233282086,
+            "environments_per_second": 9585.717197519092,
+            "incremental_peak_mib": 33.994140625
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 73.13278800575063,
+            "ship_tokens_per_second": 112015.4204890403,
+            "incremental_peak_mib": 1001.28564453125
+          }
+        },
+        "kv_memory": {
+          "parameters": 1950436,
+          "inference": {
+            "milliseconds_per_batch": 25.07740143337287,
+            "environments_per_second": 10208.39422617834,
+            "incremental_peak_mib": 34.494140625
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 75.67243600108971,
+            "ship_tokens_per_second": 108256.06301192725,
+            "incremental_peak_mib": 773.81640625
+          }
+        }
+      }
+    },
+    "10": {
+      "fields": 10,
+      "map_objects": 16,
+      "modes": {
+        "full_attention": {
+          "parameters": 1909156,
+          "inference": {
+            "milliseconds_per_batch": 24.140251232893206,
+            "environments_per_second": 10604.694935866184,
+            "incremental_peak_mib": 40.103515625
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 76.73642766894773,
+            "ship_tokens_per_second": 106755.03471886256,
+            "incremental_peak_mib": 1435.14501953125
+          }
+        },
+        "kv_memory": {
+          "parameters": 1950436,
+          "inference": {
+            "milliseconds_per_batch": 24.811173300258815,
+            "environments_per_second": 10317.932042227505,
+            "incremental_peak_mib": 36.015625
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 70.84337299844871,
+            "ship_tokens_per_second": 115635.37495849306,
+            "incremental_peak_mib": 840.634765625
+          }
+        }
+      }
+    },
+    "50": {
+      "fields": 50,
+      "map_objects": 56,
+      "modes": {
+        "full_attention": {
+          "parameters": 1909156,
+          "inference": {
+            "milliseconds_per_batch": 24.3869677001688,
+            "environments_per_second": 10497.410057185094,
+            "incremental_peak_mib": 104.0
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 137.34625500122397,
+            "ship_tokens_per_second": 59644.873461799136,
+            "incremental_peak_mib": 3232.30859375
+          }
+        },
+        "kv_memory": {
+          "parameters": 1950436,
+          "inference": {
+            "milliseconds_per_batch": 23.819313133329462,
+            "environments_per_second": 10747.581114830255,
+            "incremental_peak_mib": 46.25
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 77.15843766345643,
+            "ship_tokens_per_second": 106171.14923621468,
+            "incremental_peak_mib": 1123.3125
+          }
+        }
+      }
+    },
+    "100": {
+      "fields": 100,
+      "map_objects": 106,
+      "modes": {
+        "full_attention": {
+          "parameters": 1909156,
+          "inference": {
+            "milliseconds_per_batch": 24.865676467500936,
+            "environments_per_second": 10295.316129226892,
+            "incremental_peak_mib": 187.228515625
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 237.31450666673481,
+            "ship_tokens_per_second": 34519.592228317415,
+            "incremental_peak_mib": 5606.134765625
+          }
+        },
+        "kv_memory": {
+          "parameters": 1950436,
+          "inference": {
+            "milliseconds_per_batch": 24.55767190064459,
+            "environments_per_second": 10424.440925659592,
+            "incremental_peak_mib": 83.236328125
+          },
+          "sequence_forward_backward": {
+            "milliseconds_per_forward_backward": 89.4015033360726,
+            "ship_tokens_per_second": 91631.56875791162,
+            "incremental_peak_mib": 1478.716796875
+          }
+        }
+      }
+    }
+  }
+}

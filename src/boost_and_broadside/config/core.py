@@ -7,6 +7,7 @@ no defaults; all values must be set explicitly so nothing is ever silently wrong
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Literal
 
 import numpy as np
 
@@ -326,6 +327,11 @@ class ModelConfig:
     # that are hard zeros for it. The shared output layer is what keeps both token
     # types in one latent space, which the single spatial W_qkv depends on.
     encoder_split: bool = False
+    # Map objects either join ordinary entity self-attention or remain a smaller
+    # key/value-only memory read by ship queries. The latter never queries ships
+    # and never traverses the recurrent/FFN trunk.
+    map_read_mode: Literal["full_attention", "kv_memory"] = "full_attention"
+    map_memory_dim: int = 64
     # Spatial sublayers per block that cross-attend to bullets, counted from the
     # first. 0 disables bullet observation entirely. The read must precede at
     # least one further spatial layer for a ship to reason about fire aimed at
@@ -361,6 +367,10 @@ class ModelConfig:
             raise ValueError(f"n_spatial_per_block must be >= 0, got {self.n_spatial_per_block}")
         if self.n_temporal_per_block < 0:
             raise ValueError(f"n_temporal_per_block must be >= 0, got {self.n_temporal_per_block}")
+        if self.map_read_mode not in {"full_attention", "kv_memory"}:
+            raise ValueError(f"unknown map_read_mode {self.map_read_mode!r}")
+        if self.map_memory_dim < 1:
+            raise ValueError(f"map_memory_dim must be positive, got {self.map_memory_dim}")
         if not 0 <= self.n_bullet_cross_per_block <= self.n_spatial_per_block:
             raise ValueError(
                 "n_bullet_cross_per_block must be between 0 and n_spatial_per_block "

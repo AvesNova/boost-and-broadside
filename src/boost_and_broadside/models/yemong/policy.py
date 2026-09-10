@@ -1,9 +1,13 @@
 """YemongPolicy: the full per-ship actor-critic policy.
 
 Architecture (per timestep):
-    obs → EntityEncoder → (B, N+M, D)     [ships N then fields M]
+    obs → EntityEncoder → (B, N+M, D)     [ships N then map objects M]
     bullets → BulletEncoder → (B, N*K, D) [key/value only; optional]
+    full_attention:
          → n_yemong_blocks x YemongBlock → (B, N+M, D)
+    kv_memory:
+         → ships query projected (B, M, D_map) map K/V in every spatial layer
+         → n_yemong_blocks x YemongBlock → (B, N, D)
               [n_spatial_per_block spatial sublayers, the first
                n_bullet_cross_per_block of which cross-attend to bullets,
                then n_temporal_per_block temporal sublayers]
@@ -13,10 +17,10 @@ Architecture (per timestep):
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
-Three entity kinds, three levels of participation:
+Three object kinds, three levels of participation:
   ships  (team_id 0/1) — attention, recurrence, and all three heads.
-  fields (team_id 2)   — attention only. Static within an episode, so they take
-                         the non-recurrent Griffin path and receive no heads.
+  map objects (team_id 2) — either full attention plus a non-recurrent temporal
+                            adapter, or K/V-only reads with no trunk updates.
   bullets              — key/value only. Never queried, never recurrent, never
                          updated; they exist solely as things ships can look at.
 
@@ -164,6 +168,14 @@ class YemongPolicy(nn.Module):
         self.coordinator = coordinator
 
         self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
+        self.map_memory_proj = (
+            nn.Sequential(
+                nn.Linear(D, model_config.map_memory_dim, bias=False),
+                nn.RMSNorm(model_config.map_memory_dim),
+            )
+            if model_config.map_read_mode == "kv_memory"
+            else None
+        )
         # Bullets are encoded once per timestep and reused by every spatial
         # sublayer that reads them — re-encoding per layer would multiply the
         # dominant encoder cost for identical data.
@@ -228,6 +240,8 @@ class YemongPolicy(nn.Module):
         and their pooling, and the next-state head.
         """
         modules: list[nn.Module] = [self.encoder, self.yemong_layers]
+        if self.map_memory_proj is not None:
+            modules.append(self.map_memory_proj)
         if self.bullet_encoder is not None:
             modules.append(self.bullet_encoder)
         return tuple(modules)
@@ -318,7 +332,7 @@ class YemongPolicy(nn.Module):
 
         Args:
             obs:    YemongObservation with (B, N+M, ...) tensors.
-            hidden: (n_layers, B*(N+M), CONV_KERNEL*D) packed recurrent state.
+            hidden: (n_layers, B*N, CONV_KERNEL*D) packed recurrent state.
 
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
@@ -326,12 +340,22 @@ class YemongPolicy(nn.Module):
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
-            new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
+            new_hidden: (n_layers, B*N, CONV_KERNEL*D) updated packed state.
         """
         # Hidden-but-remembered enemies remain attention/recurrent tokens. Their
         # predicted ALIVE value is an input feature, never the existence mask.
         alive = obs[ObsKey.BELIEF_VALID]  # (B, N+M) bool — ships then map objects
-        x = self.encoder(obs)  # (B, N+M, D)
+        encoded = self.encoder(obs)  # (B, N+M, D)
+        N = self._num_ships
+        if self.map_memory_proj is not None:
+            map_memory = self.map_memory_proj(encoded[:, N:, :])
+            map_mask = alive[:, N:]
+            x = encoded[:, :N, :]
+            alive = alive[:, :N]
+        else:
+            map_memory = None
+            map_mask = None
+            x = encoded
         bullets, bullet_mask = self._encode_bullets(obs)  # (B, N*K, D), (B, N*K)
 
         B, NM, D = x.shape
@@ -357,6 +381,8 @@ class YemongPolicy(nn.Module):
                 n_rec,
                 bullets,
                 bullet_mask,
+                map_memory,
+                map_mask,
             )
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
@@ -371,12 +397,9 @@ class YemongPolicy(nn.Module):
             if new_cbs
             else conv_bufs.reshape(n_layers, B_rec, conv_width)
         )
-        new_hidden = torch.cat(
-            [new_rglru_t, new_cbs_t], dim=-1
-        )  # (n_layers, B*(N+M), CONV_KERNEL*D)
+        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)  # (n_layers, B*N, CONV_KERNEL*D)
 
         # Slice ship tokens only for action and value heads
-        N = self._num_ships
         x_ships = x[:, :N, :]  # (B, N, D)
         alive_ships = alive[:, :N]  # (B, N)
         team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
@@ -416,15 +439,15 @@ class YemongPolicy(nn.Module):
     ]:
         """Re-evaluate actions over a full rollout for PPO update.
 
-        The encoder runs over all T*B*(N+M) tokens in parallel. Each YemongBlock
-        runs its spatial attention over (T*B, N+M, D) in parallel, then its
-        temporal RG-LRU via parallel scan over T from the layer's initial hidden.
-        Action and value heads are applied only to the first N ship tokens.
+        The encoder runs over all T*B*(N+M) inputs in parallel. Full-attention
+        mode sends every encoded token through spatial layers; K/V-memory mode
+        sends only ships through the trunk and exposes map objects as a smaller
+        read-only memory. Temporal scans and heads always operate on ships only.
 
         Args:
             obs:                  YemongObservation with (T, B, N+M, ...) tensors.
             actions:              (T, B, N, 3) int actions taken during rollout.
-            initial_hidden:       (n_layers, B*(N+M), CONV_KERNEL*D) rollout-start state.
+            initial_hidden:       (n_layers, B*N, CONV_KERNEL*D) rollout-start state.
             alive_mask:           (T, B, N+M) bool — alive entities per timestep.
             done_mask:            (T, B) bool — True at step t means the episode ended
                                   at t; the RG-LRU resets hidden state for step t+1.
@@ -462,10 +485,20 @@ class YemongPolicy(nn.Module):
             ),
         )
 
-        x = self.encoder(flat_obs)  # (T*B, N+M, D)
-        x = x.reshape(T, B, NM, D)  # (T, B, N+M, D)
+        encoded = self.encoder(flat_obs)  # (T*B, N+M, D)
+        encoded_sequence = encoded.reshape(T, B, NM, D)
+        if self.map_memory_proj is not None:
+            map_memory = self.map_memory_proj(encoded[:, N:, :])
+            map_mask = alive_mask[:, :, N:].reshape(T * B, NM - N)
+            x = encoded_sequence[:, :, :N, :]
+            trunk_alive = alive_mask[:, :, :N]
+        else:
+            map_memory = None
+            map_mask = None
+            x = encoded_sequence
+            trunk_alive = alive_mask
         bullets, bullet_mask = self._encode_bullets(flat_obs)  # (T*B, N*K, D)
-        z = x if return_encoder_output else None
+        z = encoded_sequence if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
             # Each block owns a contiguous run of n_temporal hidden slots.
@@ -478,25 +511,29 @@ class YemongPolicy(nn.Module):
                     _yemong_forward,
                     layer,
                     x,
-                    alive_mask,
+                    trunk_alive,
                     rglru_states[block_slice],
                     conv_bufs[block_slice],
                     done_mask,
                     n_rec,
                     bullets,
                     bullet_mask,
+                    map_memory,
+                    map_mask,
                     use_reentrant=False,
                 )
             else:
                 x, _, _ = layer.sequence(
                     x,
-                    alive_mask,
+                    trunk_alive,
                     rglru_states[block_slice],
                     conv_bufs[block_slice],
                     done_mask,
                     n_rec,
                     bullets,
                     bullet_mask,
+                    map_memory,
+                    map_mask,
                 )
 
         # Slice ship tokens for heads
@@ -553,6 +590,8 @@ def _yemong_forward(
     num_recurrent: int,
     bullets: torch.Tensor | None,
     bullet_mask: torch.Tensor | None,
+    map_memory: torch.Tensor | None,
+    map_mask: torch.Tensor | None,
 ) -> torch.Tensor:
     """Run one Yemong block's full-sequence forward, returning only the output.
 
@@ -560,7 +599,16 @@ def _yemong_forward(
     it cleanly. The final hidden/conv states are unused by the update-time re-evaluation.
     """
     out, _, _ = layer.sequence(
-        x, alive_mask, h0, conv_buf0, done_mask, num_recurrent, bullets, bullet_mask
+        x,
+        alive_mask,
+        h0,
+        conv_buf0,
+        done_mask,
+        num_recurrent,
+        bullets,
+        bullet_mask,
+        map_memory,
+        map_mask,
     )
     return out
 
