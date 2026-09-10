@@ -383,7 +383,7 @@ class Tournament:
         self.num_envs = num_envs
         self.device = torch.device(device)
         self.num_ships = env_config.num_ships
-        self.num_tokens = env_config.num_ships + env_config.num_fields
+        self.num_tokens = env_config.num_entity_tokens
         self.max_steps = env_config.max_episode_steps
         self.team_sizes = (self.num_ships // 2, self.num_ships - self.num_ships // 2)
 

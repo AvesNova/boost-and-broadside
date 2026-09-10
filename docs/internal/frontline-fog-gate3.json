@@ -1,0 +1,280 @@
+{
+  "device": "cuda",
+  "device_name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "games": 256,
+  "seed": 20260910,
+  "horizon_seconds": 60.0,
+  "ticks": 1800,
+  "production_vision_range": 1600.0,
+  "probe_note": "All ranges are counterfactual probes over trajectories controlled with the production vision range.",
+  "wall_seconds": 109.24062315600167,
+  "simulated_game_seconds_per_wall_second": 140.6070338693058,
+  "peak_torch_memory_mib": 59.44873046875,
+  "perception_throughput": null,
+  "ranges": {
+    "1200": {
+      "visible_fraction": {
+        "mean": 0.5765668153762817,
+        "std": 0.09768123924732208,
+        "p10": 0.4605555534362793,
+        "median": 0.5789235830307007,
+        "p90": 0.6953819394111633
+      },
+      "range_only_visible_fraction": {
+        "mean": 0.6151934266090393,
+        "std": 0.0918809100985527,
+        "p10": 0.4916319251060486,
+        "median": 0.6275694370269775,
+        "p90": 0.7180207967758179
+      },
+      "field_occluded_fraction_of_in_range": {
+        "mean": 0.06441698223352432,
+        "std": 0.05632754787802696,
+        "p10": 0.008510150015354156,
+        "median": 0.04854469746351242,
+        "p90": 0.14137308299541473
+      },
+      "individual_visible_fraction": {
+        "mean": 0.3696326017379761,
+        "std": 0.08636271208524704,
+        "p10": 0.2624305486679077,
+        "median": 0.3670225739479065,
+        "p90": 0.48157116770744324
+      },
+      "team_shared_gain": {
+        "mean": 0.20693419873714447,
+        "std": 0.041025131940841675,
+        "p10": 0.1540798544883728,
+        "median": 0.20847222208976746,
+        "p90": 0.258142352104187
+      },
+      "never_seen_fraction_at_horizon": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "mean_hidden_age_seconds": {
+        "mean": 5.156940460205078,
+        "std": 1.3509912490844727,
+        "p10": 3.8447563648223877,
+        "median": 4.806586742401123,
+        "p90": 7.057321548461914
+      },
+      "reacquisitions_per_game": {
+        "mean": 23.609375,
+        "std": 7.351375579833984,
+        "p10": 15.0,
+        "median": 23.0,
+        "p90": 33.0
+      },
+      "hidden_runs_per_game": {
+        "mean": 27.0234375,
+        "std": 7.4686479568481445,
+        "p10": 18.0,
+        "median": 26.0,
+        "p90": 37.0
+      },
+      "completed_hidden_run_fraction": 0.8736629083550159,
+      "censored_hidden_slots_at_horizon": 874,
+      "occlusion_duration_histogram": {
+        "upper_bounds_seconds": [
+          0.1,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          30.0
+        ],
+        "counts": [
+          360,
+          668,
+          500,
+          663,
+          1023,
+          1520,
+          1304,
+          6
+        ]
+      }
+    },
+    "1600": {
+      "visible_fraction": {
+        "mean": 0.7418270111083984,
+        "std": 0.10372469574213028,
+        "p10": 0.5949652791023254,
+        "median": 0.7506944537162781,
+        "p90": 0.8710764050483704
+      },
+      "range_only_visible_fraction": {
+        "mean": 0.83738774061203,
+        "std": 0.07690483331680298,
+        "p10": 0.7458680868148804,
+        "median": 0.8466319441795349,
+        "p90": 0.9197916388511658
+      },
+      "field_occluded_fraction_of_in_range": {
+        "mean": 0.11614704877138138,
+        "std": 0.0756763145327568,
+        "p10": 0.028902370482683182,
+        "median": 0.09743029624223709,
+        "p90": 0.22422197461128235
+      },
+      "individual_visible_fraction": {
+        "mean": 0.5295741558074951,
+        "std": 0.11002068966627121,
+        "p10": 0.37724828720092773,
+        "median": 0.5364236235618591,
+        "p90": 0.6720746755599976
+      },
+      "team_shared_gain": {
+        "mean": 0.21225279569625854,
+        "std": 0.04639808461070061,
+        "p10": 0.1508333384990692,
+        "median": 0.21257811784744263,
+        "p90": 0.2727430462837219
+      },
+      "never_seen_fraction_at_horizon": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "mean_hidden_age_seconds": {
+        "mean": 3.664947032928467,
+        "std": 1.2471247911453247,
+        "p10": 2.3269782066345215,
+        "median": 3.553727149963379,
+        "p90": 5.074336051940918
+      },
+      "reacquisitions_per_game": {
+        "mean": 22.8671875,
+        "std": 10.055992126464844,
+        "p10": 11.0,
+        "median": 21.0,
+        "p90": 36.0
+      },
+      "hidden_runs_per_game": {
+        "mean": 24.90625,
+        "std": 10.43239974975586,
+        "p10": 13.0,
+        "median": 23.5,
+        "p90": 38.0
+      },
+      "completed_hidden_run_fraction": 0.9181304893350063,
+      "censored_hidden_slots_at_horizon": 522,
+      "occlusion_duration_histogram": {
+        "upper_bounds_seconds": [
+          0.1,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          30.0
+        ],
+        "counts": [
+          455,
+          924,
+          735,
+          813,
+          1207,
+          1176,
+          544,
+          0
+        ]
+      }
+    },
+    "2000": {
+      "visible_fraction": {
+        "mean": 0.8130694031715393,
+        "std": 0.0994129404425621,
+        "p10": 0.675208330154419,
+        "median": 0.828784704208374,
+        "p90": 0.9268749952316284
+      },
+      "range_only_visible_fraction": {
+        "mean": 0.9566829800605774,
+        "std": 0.02979755960404873,
+        "p10": 0.9220486283302307,
+        "median": 0.9644792079925537,
+        "p90": 0.9828819036483765
+      },
+      "field_occluded_fraction_of_in_range": {
+        "mean": 0.15131700038909912,
+        "std": 0.09179171919822693,
+        "p10": 0.040727488696575165,
+        "median": 0.13880984485149384,
+        "p90": 0.2850249111652374
+      },
+      "individual_visible_fraction": {
+        "mean": 0.6113665103912354,
+        "std": 0.12121962010860443,
+        "p10": 0.4515538215637207,
+        "median": 0.6165798902511597,
+        "p90": 0.7740191221237183
+      },
+      "team_shared_gain": {
+        "mean": 0.20170289278030396,
+        "std": 0.05055177956819534,
+        "p10": 0.13610243797302246,
+        "median": 0.1986718773841858,
+        "p90": 0.26493924856185913
+      },
+      "never_seen_fraction_at_horizon": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "mean_hidden_age_seconds": {
+        "mean": 2.8567895889282227,
+        "std": 1.0992774963378906,
+        "p10": 1.4574708938598633,
+        "median": 2.7712466716766357,
+        "p90": 4.215334892272949
+      },
+      "reacquisitions_per_game": {
+        "mean": 23.67578125,
+        "std": 11.598102569580078,
+        "p10": 10.0,
+        "median": 23.0,
+        "p90": 38.0
+      },
+      "hidden_runs_per_game": {
+        "mean": 25.11328125,
+        "std": 11.974862098693848,
+        "p10": 10.5,
+        "median": 24.0,
+        "p90": 40.5
+      },
+      "completed_hidden_run_fraction": 0.942759371597449,
+      "censored_hidden_slots_at_horizon": 368,
+      "occlusion_duration_histogram": {
+        "upper_bounds_seconds": [
+          0.1,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          30.0
+        ],
+        "counts": [
+          523,
+          1101,
+          901,
+          990,
+          1339,
+          939,
+          268,
+          0
+        ]
+      }
+    }
+  }
+}

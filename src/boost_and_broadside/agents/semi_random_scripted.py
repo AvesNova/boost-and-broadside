@@ -95,8 +95,12 @@ class SemiRandomScriptedAgent:
         )
         return torch.where(choose_scripted.unsqueeze(-1), scripted_action, random_action)
 
-    def get_actions(self, state: TensorState) -> torch.Tensor:
+    def get_actions(
+        self,
+        state: TensorState,
+        team_visibility: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Generate scripted and random candidates, then mix them per ship."""
-        scripted_action = self.scripted_agent.get_actions(state)
+        scripted_action = self.scripted_agent.get_actions(state, team_visibility)
         random_action = self.random_actions_like(scripted_action)
         return self.mix_actions(scripted_action, random_action)

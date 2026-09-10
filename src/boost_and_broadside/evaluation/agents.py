@@ -178,6 +178,7 @@ def get_actions(
     num_ships: int,
     device: str | torch.device,
     return_pred_next: bool = False,
+    team_visibility: torch.Tensor | None = None,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor | None]:
     """Return (B, N, 3) int actions for every ship in the batch.
 
@@ -203,12 +204,16 @@ def get_actions(
 
     if agent.kind == "scripted":
         with torch.no_grad():
-            action = agent.agent.get_actions(state)
+            action = (
+                agent.agent.get_actions(state, team_visibility)
+                if isinstance(agent.agent, StochasticScriptedAgent)
+                else agent.agent.get_actions(state)
+            )
         return (action, None) if return_pred_next else action
 
     if agent.kind == "semi_random":
         with torch.no_grad():
-            action = agent.agent.get_actions(state)
+            action = agent.agent.get_actions(state, team_visibility)
         return (action, None) if return_pred_next else action
 
     if agent.kind == "policy":

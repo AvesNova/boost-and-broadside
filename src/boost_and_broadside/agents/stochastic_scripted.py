@@ -278,6 +278,7 @@ class StochasticScriptedAgent:
         closest_dist: torch.Tensor,
         target_idx: torch.Tensor,
         has_target: torch.Tensor,
+        team_visibility: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Choose a local enemy, spawn, or strategic frontline destination.
 
@@ -359,21 +360,35 @@ class StochasticScriptedAgent:
             self.ship_config.world_size,
         )
         occupied = membership & state.ship_alive.unsqueeze(2)
-        team0_present = (occupied & team0.unsqueeze(2)).any(dim=1)
-        team1_present = (occupied & (~team0).unsqueeze(2)).any(dim=1)
+        team0_occupied = occupied & team0.unsqueeze(2)
+        team1_occupied = occupied & (~team0).unsqueeze(2)
+        team0_present = team0_occupied.any(dim=1)
+        team1_present = team1_occupied.any(dim=1)
         team0_defense_role = roles == int(ZoneRole.TEAM0_DEFENSE)
         team1_defense_role = roles == int(ZoneRole.TEAM1_DEFENSE)
 
         # "Contested" intentionally means enemy presence, not simultaneous
         # presence. An undefended capture attempt must trigger the same response
         # as a point where both teams are fighting.
-        team0_own_contested = (team1_present & team0_defense_role).any(dim=1)
+        if team_visibility is None:
+            team1_seen_by_team0 = team1_occupied
+            team0_seen_by_team1 = team0_occupied
+        else:
+            team1_seen_by_team0 = team1_occupied & team_visibility[:, 0, :, None]
+            team0_seen_by_team1 = team0_occupied & team_visibility[:, 1, :, None]
+        team0_own_contested = (
+            team1_seen_by_team0.any(dim=1) & team0_defense_role
+        ).any(dim=1)
         team0_enemy_contested = (team0_present & team1_defense_role).any(dim=1)
+        team1_own_contested = (
+            team0_seen_by_team1.any(dim=1) & team1_defense_role
+        ).any(dim=1)
+        team1_enemy_contested = (team1_present & team0_defense_role).any(dim=1)
         own_contested = torch.where(
-            team0, team0_own_contested.unsqueeze(1), team0_enemy_contested.unsqueeze(1)
+            team0, team0_own_contested.unsqueeze(1), team1_own_contested.unsqueeze(1)
         )
         enemy_contested = torch.where(
-            team0, team0_enemy_contested.unsqueeze(1), team0_own_contested.unsqueeze(1)
+            team0, team0_enemy_contested.unsqueeze(1), team1_enemy_contested.unsqueeze(1)
         )
 
         memory = self._frontline_episode_memory(state)
@@ -470,13 +485,17 @@ class StochasticScriptedAgent:
         return distance, bearing, engage_enemy
 
     def _get_frontline_actions_and_probs(
-        self, state: TensorState
+        self,
+        state: TensorState,
+        team_visibility: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run the existing flight controller against frontline destinations."""
 
-        closest_dist, target_idx, has_target, _ = select_targets(state, self.ship_config)
+        closest_dist, target_idx, has_target, _ = select_targets(
+            state, self.ship_config, team_visibility
+        )
         objective_dist, objective_bearing, engage_enemy = self._frontline_targets(
-            state, closest_dist, target_idx, has_target
+            state, closest_dist, target_idx, has_target, team_visibility
         )
         intercept = predict_interception(state, self.ship_config, target_idx, closest_dist)
         intercept = torch.where(engage_enemy, intercept, torch.zeros_like(intercept))
@@ -522,7 +541,11 @@ class StochasticScriptedAgent:
             )
         return actions, expert_probs
 
-    def get_actions_and_probs(self, state: TensorState) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_actions_and_probs(
+        self,
+        state: TensorState,
+        team_visibility: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Sample actions and return the expert probability distribution as soft labels.
 
         Returns:
@@ -534,9 +557,11 @@ class StochasticScriptedAgent:
         # control path below unchanged so adding frontline objectives cannot alter
         # existing scripted anchors, BC targets, or calibrated ratings.
         if state.num_zones > 0:
-            return self._get_frontline_actions_and_probs(state)
+            return self._get_frontline_actions_and_probs(state, team_visibility)
 
-        closest_dist, target_idx, has_target, _ = select_targets(state, self.ship_config)
+        closest_dist, target_idx, has_target, _ = select_targets(
+            state, self.ship_config, team_visibility
+        )
         dir_pred = predict_interception(state, self.ship_config, target_idx, closest_dist)
 
         # Guard against NaN in dir_pred when there is no target (closest_dist = inf)
@@ -545,7 +570,9 @@ class StochasticScriptedAgent:
         active_mask = state.ship_alive & has_target
 
         # Blend turn direction: personal intercept at close range, team target at far range
-        team_bearing, _, _, team_has_target = compute_team_target_bearings(state, self.ship_config)
+        team_bearing, _, _, team_has_target = compute_team_target_bearings(
+            state, self.ship_config, team_visibility
+        )
         p_team = (
             self._linear_ramp(
                 closest_dist,
@@ -597,7 +624,11 @@ class StochasticScriptedAgent:
 
         return actions, expert_probs
 
-    def get_actions(self, state: TensorState) -> torch.Tensor:
+    def get_actions(
+        self,
+        state: TensorState,
+        team_visibility: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Standard interface — returns (B, N, 3) int tensor of sampled actions."""
-        actions, _ = self.get_actions_and_probs(state)
+        actions, _ = self.get_actions_and_probs(state, team_visibility)
         return actions

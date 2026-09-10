@@ -109,9 +109,9 @@ later, which GAE handles through the value function.
 
 Two consequences worth knowing before touching the auxiliary losses:
 
-- The channel is `(B, N+M, 3)`, so spatial attention lets **every ship read every other
-  ship's pending action**, opponents included. One decision is 1/30 s against a ~0.4 s
-  bullet flight, so the lookahead is small, and it is symmetric.
+- The channel is `(B, tokens, 3)`, so spatial attention lets each team read its allies'
+  pending actions. Enemy pending actions are always replaced with zero, including when the
+  enemy ship is visible; the team label makes that absence unambiguous.
 - One-step next-state prediction is therefore a *deterministic* function of the
   observation (up to `bullet_spread`), not merely a short-horizon one. That is why it is
   a weak representation signal and why longer-horizon prediction is the useful version.
@@ -136,10 +136,11 @@ the reference run predates it.
 
 ## `ego_pass` and team perspective
 
-The combat policy is trained from a canonical team-0 perspective. During rollout,
-[`_rollout_policy_pass`](../src/boost_and_broadside/train/rl/ppo.py) batches the raw
-observation with a team-flipped view. The same weights therefore produce candidate actions
-for both perspectives in one evaluation.
+The combat policy is trained from a canonical team-0 perspective. The environment first
+builds independent team-shared perception for both sides. During rollout,
+[`_rollout_policy_pass`](../src/boost_and_broadside/train/rl/ppo.py) selects the correct
+masked observation and canonicalizes its team labels. The same weights therefore produce
+candidate actions for both perspectives without deriving one team's sight from the other's.
 
 [`opponents.py`](../src/boost_and_broadside/train/rl/opponents.py) then composes the action
 tensor according to each environment group's assigned opponent. In self-play, the learned
@@ -148,7 +149,8 @@ league games, the opponent's actions replace the corresponding side.
 
 Only the ego-side actor mask contributes the policy-gradient and behavior-cloning losses.
 This keeps the learning convention consistent while still generating both sides of a
-self-play battle efficiently.
+self-play battle efficiently. A finite `vision_range` rejects `shared_pass`, because one
+masked observation cannot correctly represent both teams.
 
 ## PPO and auxiliary losses
 
@@ -738,12 +740,13 @@ can omit to produce a policy whose inputs disagree with its weights.
 
 Three compatibility rules follow from that:
 
-- **Observation schema.** The refractive-field contract adds encoder inputs and a
-  local-index auxiliary target; radius is shared by ship and field tokens and normalized by
-  half the shorter world dimension, and the ship's local `grad(n)` widens the encoder's
-  first projection. Payloads carry `observation_schema=refractive_fields_v3`. Earlier
-  schemas have no faithful weight-only migration, so they are rejected and retraining is
-  required.
+- **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
+  perception, visibility masks, private enemy actions, and field-core LOS are part of the
+  learned input contract. Radius is shared across object types and normalized by half the
+  shorter world dimension; ship-local `grad(n)` remains explicit. Payloads carry
+  `observation_schema=team_perception_v7`. Successful firing globally reveals the shooter
+  for the current sample, which is also a learned-input semantic. Earlier schemas have no
+  faithful weight-only migration, so they are rejected and retraining is required.
 - **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so
   weights trained under different ones were fitted to differently-scaled inputs. A
   mismatch is refused by name; `--allow-config-drift` downgrades it to a warning, and the
@@ -798,6 +801,12 @@ W&B logging runs off the main training path. The reference run's sampled metric 
 configuration, summary, and run metadata are exported under
 [`wandb_export/`](../checkpoints/resilient-resonance-682/wandb_export/) so the published
 charts can be rebuilt without relying on a hosted dashboard.
+
+Finite-vision runs additionally log `fog/visible_fraction`, the range-only baseline,
+field-occluded share of in-range targets, individual visibility, team-sharing gain,
+never-seen share, mean hidden age, reacquisition count, and occlusion-duration bins. The
+wrapper accumulates these counters on-device and transfers them only with the existing
+once-per-update metric synchronization; no per-step host read was added.
 
 ### What `--vram` may and may not change
 

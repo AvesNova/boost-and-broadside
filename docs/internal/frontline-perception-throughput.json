@@ -1,0 +1,111 @@
+{
+  "device": "cuda",
+  "device_name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "games": 256,
+  "seed": 20260910,
+  "horizon_seconds": 0.1,
+  "ticks": 3,
+  "production_vision_range": 1600.0,
+  "probe_note": "All ranges are counterfactual probes over trajectories controlled with the production vision range.",
+  "wall_seconds": 0.3930095420073485,
+  "simulated_game_seconds_per_wall_second": 65.13836755526239,
+  "peak_torch_memory_mib": 59.02587890625,
+  "perception_throughput": {
+    "iterations": 200,
+    "batch_size": 256,
+    "visibility_ms_per_batch": 4.117663099968922,
+    "team_pair_observation_ms_per_batch": 15.799731410006643,
+    "visibility_envs_per_second": 62171.1863707189,
+    "team_pair_observation_envs_per_second": 16202.807083028278
+  },
+  "ranges": {
+    "1600": {
+      "visible_fraction": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "range_only_visible_fraction": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "field_occluded_fraction_of_in_range": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "individual_visible_fraction": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "team_shared_gain": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "never_seen_fraction_at_horizon": {
+        "mean": 1.0,
+        "std": 0.0,
+        "p10": 1.0,
+        "median": 1.0,
+        "p90": 1.0
+      },
+      "mean_hidden_age_seconds": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "reacquisitions_per_game": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "hidden_runs_per_game": {
+        "mean": 0.0,
+        "std": 0.0,
+        "p10": 0.0,
+        "median": 0.0,
+        "p90": 0.0
+      },
+      "completed_hidden_run_fraction": 0.0,
+      "censored_hidden_slots_at_horizon": 0,
+      "occlusion_duration_histogram": {
+        "upper_bounds_seconds": [
+          0.1,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          30.0
+        ],
+        "counts": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  }
+}

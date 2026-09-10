@@ -79,7 +79,9 @@ def predict_interception(
 
 
 def compute_team_target_bearings(
-    state: TensorState, ship_config: ShipConfig
+    state: TensorState,
+    ship_config: ShipConfig,
+    team_visibility: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """For each ship, return geometry toward its team's shared target.
 
@@ -107,6 +109,8 @@ def compute_team_target_bearings(
     for team in (0, 1):
         friend_mask = (state.ship_team_id == team) & state.ship_alive  # (B, N)
         enemy_mask = (state.ship_team_id != team) & state.ship_alive  # (B, N)
+        if team_visibility is not None:
+            enemy_mask &= team_visibility[:, team]
 
         # Toroidal CoM of alive friendlies
         disp = state.ship_pos - anchor.unsqueeze(1)
@@ -158,7 +162,9 @@ def compute_team_target_bearings(
 
 
 def select_targets(
-    state: TensorState, ship_config: ShipConfig
+    state: TensorState,
+    ship_config: ShipConfig,
+    team_visibility: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Find the nearest alive enemy for each ship and return the bearing to it.
 
@@ -185,6 +191,10 @@ def select_targets(
     enemy_mask = team_src != team_tgt
     alive_tgt = state.ship_alive.unsqueeze(1)
     valid_tgt = enemy_mask & alive_tgt
+    if team_visibility is not None:
+        source_team = state.ship_team_id.long().unsqueeze(-1).expand(-1, -1, state.max_ships)
+        visible_to_source_team = team_visibility.gather(1, source_team)
+        valid_tgt &= visible_to_source_team
 
     dist_masked = torch.where(valid_tgt, dist, torch.tensor(float("inf"), device=device))
     closest_dist, target_idx = torch.min(dist_masked, dim=2)
