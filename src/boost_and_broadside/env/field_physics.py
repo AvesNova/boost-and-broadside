@@ -190,8 +190,9 @@ def refresh_ship_field_cache(state, config: ShipConfig) -> None:
 def index_from_level(level: torch.Tensor, index_step: float) -> torch.Tensor:
     """Convert integer log-index levels to absolute refractive indices."""
 
-    base = torch.as_tensor(index_step, dtype=torch.float32, device=level.device)
-    return torch.pow(base, level.float())
+    # A Python base keeps the step out of a host-to-device copy; materializing it
+    # as a 0-d CUDA tensor drains the queue, and this runs on every reset.
+    return torch.pow(float(index_step), level.float())
 
 
 def damage_from_level(level: torch.Tensor, base_damage: float) -> torch.Tensor:

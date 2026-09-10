@@ -1,3 +1,4 @@
+import math
 from collections.abc import Callable, ItemsView
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
@@ -505,9 +506,7 @@ def bullet_observation_from_state(
         ship_config
     )
 
-    log_scale = 2.0 * torch.log(
-        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
-    )
+    log_scale = _index_log_scale(ship_config)
     # Inactive slots keep a stale index of 0 from reset, and log(0) is -inf.
     local_index = state.bullet_local_index.reshape(flat).clamp(min=EPS)
     bullet_log_index = torch.log(local_index).unsqueeze(-1) / log_scale
@@ -564,6 +563,17 @@ def index_gradient_scale(ship_config: ShipConfig) -> float:
     )
 
 
+def _index_log_scale(ship_config: ShipConfig) -> float:
+    """The divisor turning a local refractive index into encoded log-index units.
+
+    A constant of the ship config, so it stays a Python float: materializing it
+    as a 0-d CUDA tensor to take its log copies from the host and drains the
+    CUDA queue, once per team view per observation build.
+    """
+
+    return 2.0 * math.log(ship_config.field_index_step)
+
+
 def observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
@@ -611,9 +621,7 @@ def observation_from_state(
             own_ship, ship_prev_action, torch.zeros_like(ship_prev_action)
         )
 
-    log_scale = 2.0 * torch.log(
-        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
-    )
+    log_scale = _index_log_scale(ship_config)
     ship_local_log_index = torch.log(state.ship_local_index).unsqueeze(-1) / log_scale
 
     # grad(n) at the ship. This is the direction the medium is changing, and it is
