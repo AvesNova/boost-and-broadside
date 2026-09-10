@@ -1,0 +1,266 @@
+{
+  "device": "cuda",
+  "device_name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "games": 128,
+  "seconds_per_game": 60.0,
+  "seed": 20260910,
+  "wall_seconds": 73.02845300300396,
+  "simulated_game_seconds_per_wall_second": 105.16448978707093,
+  "peak_torch_memory_mib": 29.67138671875,
+  "predictor": "last_observation_plus_constant_velocity_position",
+  "prediction_error_mean": {
+    "visible": {
+      "samples": 1362563,
+      "position_px": 0.0571057472293646,
+      "velocity_px_s": 3.09006016069734,
+      "health": 0.15151330016512757,
+      "power": 0.45026775330957486,
+      "cooldown_s": 0.005126882409433984
+    },
+    "hidden": {
+      "samples": 366698,
+      "position_px": 831.0581221202369,
+      "velocity_px_s": 98.74577112808886,
+      "health": 34.24843047365549,
+      "power": 21.62524778423341,
+      "cooldown_s": 0.007490904944686186
+    },
+    "hidden_age_0_0.1s": {
+      "samples": 6323,
+      "position_px": 394.5739042917545,
+      "velocity_px_s": 34.73628004574384,
+      "health": 5.609053400570355,
+      "power": 0.8345246847937534,
+      "cooldown_s": 0.005472085982320732
+    },
+    "hidden_age_0.1_0.5s": {
+      "samples": 35891,
+      "position_px": 436.35656399836705,
+      "velocity_px_s": 49.11518945995821,
+      "health": 7.923932370575947,
+      "power": 2.554065597146689,
+      "cooldown_s": 0.005868694775805211
+    },
+    "hidden_age_0.5_1s": {
+      "samples": 34812,
+      "position_px": 497.9540471041133,
+      "velocity_px_s": 66.28697044975686,
+      "health": 11.55825088266037,
+      "power": 5.8055313690686985,
+      "cooldown_s": 0.00622486472196169
+    },
+    "hidden_age_1_2s": {
+      "samples": 57141,
+      "position_px": 585.718712693194,
+      "velocity_px_s": 78.4756002167288,
+      "health": 17.062577687079884,
+      "power": 11.502334319394222,
+      "cooldown_s": 0.006684050257001283
+    },
+    "hidden_age_2_5s": {
+      "samples": 114958,
+      "position_px": 807.0094269704867,
+      "velocity_px_s": 98.63196571356204,
+      "health": 32.870371098479296,
+      "power": 24.82562336840662,
+      "cooldown_s": 0.007509988752905717
+    },
+    "hidden_age_5_10s": {
+      "samples": 92130,
+      "position_px": 1139.3831445643248,
+      "velocity_px_s": 134.10266716125977,
+      "health": 60.5513122094023,
+      "power": 36.97831913059806,
+      "cooldown_s": 0.008063605313027486
+    },
+    "hidden_age_10_30s": {
+      "samples": 25063,
+      "position_px": 1497.1342116353119,
+      "velocity_px_s": 147.6581936530198,
+      "health": 59.819966655676865,
+      "power": 27.193281339190218,
+      "cooldown_s": 0.010831371225615536
+    },
+    "hidden_age_30_inf_s": {
+      "samples": 380,
+      "position_px": 1372.6954663728413,
+      "velocity_px_s": 109.26360184518914,
+      "health": 13.305695497362237,
+      "power": 82.55698169909026,
+      "cooldown_s": 0.06666666269302368
+    }
+  },
+  "belief_cache_profile": {
+    "iterations": 100,
+    "ms_per_team_pair_batch": 12.613355059875175,
+    "envs_per_second": 10147.974063394575
+  },
+  "learned_policy": {
+    "checkpoint": "/tmp/frontline-belief-train-long/20260910-144517/step_000000131072.pt",
+    "wall_seconds": 191.0748852850229,
+    "prediction_error_mean": {
+      "visible": {
+        "samples": 688439,
+        "position_px": 3.38786474577168,
+        "velocity_px_s": 2.9560378184689124,
+        "health": 0.10839720713034583,
+        "power": 0.4328837850974011,
+        "cooldown_s": 0.0028329351652155287
+      },
+      "hidden": {
+        "samples": 119287,
+        "position_px": 557.3761818873963,
+        "velocity_px_s": 103.54820487772199,
+        "health": 26.598537721240326,
+        "power": 19.762969778012735,
+        "cooldown_s": 0.004455592026226688
+      },
+      "hidden_age_0_0.1s": {
+        "samples": 2470,
+        "position_px": 208.7519643485184,
+        "velocity_px_s": 24.166242621242546,
+        "health": 3.316296283188106,
+        "power": 0.9393263301325713,
+        "cooldown_s": 0.0038442958657333593
+      },
+      "hidden_age_0.1_0.5s": {
+        "samples": 13060,
+        "position_px": 262.9872838129859,
+        "velocity_px_s": 41.77226112395479,
+        "health": 5.748157615774806,
+        "power": 2.5145425530934955,
+        "cooldown_s": 0.004056610525040922
+      },
+      "hidden_age_0.5_1s": {
+        "samples": 12171,
+        "position_px": 331.7623593452071,
+        "velocity_px_s": 60.66304624036582,
+        "health": 8.644951457583947,
+        "power": 5.61964374895251,
+        "cooldown_s": 0.004249162258547497
+      },
+      "hidden_age_1_2s": {
+        "samples": 19514,
+        "position_px": 415.53179768527815,
+        "velocity_px_s": 80.12989626393109,
+        "health": 12.567003542665601,
+        "power": 10.70796595857905,
+        "cooldown_s": 0.0045001267446901
+      },
+      "hidden_age_2_5s": {
+        "samples": 37239,
+        "position_px": 607.0339983566712,
+        "velocity_px_s": 113.06379330083006,
+        "health": 24.893399742095937,
+        "power": 22.839299401298923,
+        "cooldown_s": 0.004742047085351896
+      },
+      "hidden_age_5_10s": {
+        "samples": 27432,
+        "position_px": 808.0725536885989,
+        "velocity_px_s": 150.73617022848921,
+        "health": 50.13455623758538,
+        "power": 35.91581332103856,
+        "cooldown_s": 0.004810247820188111
+      },
+      "hidden_age_10_30s": {
+        "samples": 7372,
+        "position_px": 758.7641569769906,
+        "velocity_px_s": 148.62162939828178,
+        "health": 59.14011133538597,
+        "power": 28.374432818847897,
+        "cooldown_s": 0.00284096927694776
+      },
+      "hidden_age_30_inf_s": {
+        "samples": 29,
+        "position_px": 859.9776653421336,
+        "velocity_px_s": 128.19867732607085,
+        "health": 29.99999237060547,
+        "power": 0.7518208006332661,
+        "cooldown_s": 0.0
+      }
+    },
+    "same_trajectory_baseline_error_mean": {
+      "visible": {
+        "samples": 688439,
+        "position_px": 0.0558071247262709,
+        "velocity_px_s": 2.959737609133263,
+        "health": 0.09611395963070628,
+        "power": 0.4172334200226333,
+        "cooldown_s": 0.0028033954008671886
+      },
+      "hidden": {
+        "samples": 119287,
+        "position_px": 629.1312394855534,
+        "velocity_px_s": 105.81052358733483,
+        "health": 25.509368343948562,
+        "power": 18.970036390584497,
+        "cooldown_s": 0.005339223644563879
+      },
+      "hidden_age_0_0.1s": {
+        "samples": 2470,
+        "position_px": 200.95759674992988,
+        "velocity_px_s": 24.190765725026427,
+        "health": 3.2862515694216676,
+        "power": 0.9118153735934964,
+        "cooldown_s": 0.0038056680487717695
+      },
+      "hidden_age_0.1_0.5s": {
+        "samples": 13060,
+        "position_px": 237.79785520077024,
+        "velocity_px_s": 41.903001669966606,
+        "health": 5.630546276939956,
+        "power": 2.3990636923708375,
+        "cooldown_s": 0.003943338336716841
+      },
+      "hidden_age_0.5_1s": {
+        "samples": 12171,
+        "position_px": 282.11872396552565,
+        "velocity_px_s": 61.02817737603675,
+        "health": 8.349432892831112,
+        "power": 5.349459749797153,
+        "cooldown_s": 0.004023224484503254
+      },
+      "hidden_age_1_2s": {
+        "samples": 19514,
+        "position_px": 348.5268427482379,
+        "velocity_px_s": 80.9844883312465,
+        "health": 11.98670859413581,
+        "power": 10.201636510662237,
+        "cooldown_s": 0.0042875199277552225
+      },
+      "hidden_age_2_5s": {
+        "samples": 37239,
+        "position_px": 566.1029956242897,
+        "velocity_px_s": 115.44584708814479,
+        "health": 23.76678962700349,
+        "power": 21.794157999413503,
+        "cooldown_s": 0.005077114267769272
+      },
+      "hidden_age_5_10s": {
+        "samples": 27432,
+        "position_px": 1023.1681281796486,
+        "velocity_px_s": 155.53890087612172,
+        "health": 48.27978956709801,
+        "power": 34.31515012654867,
+        "cooldown_s": 0.00715101555969754
+      },
+      "hidden_age_10_30s": {
+        "samples": 7372,
+        "position_px": 1629.1272877751649,
+        "velocity_px_s": 152.16087909890982,
+        "health": 56.35130499085847,
+        "power": 28.776238672253363,
+        "cooldown_s": 0.007885693076733202
+      },
+      "hidden_age_30_inf_s": {
+        "samples": 29,
+        "position_px": 1785.1507820918641,
+        "velocity_px_s": 143.0782612767713,
+        "health": 29.99979019165039,
+        "power": 1.63737821990046,
+        "cooldown_s": 0.0
+      }
+    }
+  }
+}
