@@ -22,6 +22,7 @@ from boost_and_broadside.config.resolve import (
     LaunchOverrides,
     derive_aligned_num_envs,
     derive_time_normalized_value,
+    launch_geometry,
     resolve_profile,
 )
 from boost_and_broadside.config.schedule_spec import compile_keypoints, hold
@@ -77,18 +78,24 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
 
 
 def test_token_and_discount_derivations_are_named_and_exact() -> None:
-    assert derive_aligned_num_envs(
-        rollout_tokens=4_000_000,
-        entity_tokens=8,
-        num_steps=128,
-        num_minibatches=32,
-    ) == 3904
-    assert derive_aligned_num_envs(
-        rollout_tokens=4_000_000,
-        entity_tokens=12,
-        num_steps=128,
-        num_minibatches=32,
-    ) == 2592
+    assert (
+        derive_aligned_num_envs(
+            rollout_tokens=4_000_000,
+            entity_tokens=8,
+            num_steps=128,
+            num_minibatches=32,
+        )
+        == 3904
+    )
+    assert (
+        derive_aligned_num_envs(
+            rollout_tokens=4_000_000,
+            entity_tokens=12,
+            num_steps=128,
+            num_minibatches=32,
+        )
+        == 2592
+    )
     assert derive_time_normalized_value(0.99, action_repeat=2) == 0.9801
     assert derive_time_normalized_value(0.95, action_repeat=2) == 0.9025
 
@@ -114,11 +121,27 @@ def test_resolving_one_profile_twice_gives_the_same_configuration() -> None:
     second = resolve_profile(PROFILES["rl"])
     overridden = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=864, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=640, microbatch_tokens=20_000),
     )
 
     assert canonical_data(second.train_config) == canonical_data(base.train_config)
     assert canonical_data(overridden.train_config) != canonical_data(base.train_config)
+
+
+@pytest.mark.parametrize("name", ("rl", "bc"))
+def test_training_profiles_use_the_frontline_perception_contract(name: str) -> None:
+    resolved = resolve_profile(PROFILES[name])
+    scale = resolved.train_config.scales[0]
+
+    assert resolved.ship_config.world_size == (16_384.0, 16_384.0)
+    assert resolved.ship_config.dt == pytest.approx(1 / 30)
+    assert scale.env_config.frontline is not None
+    assert scale.env_config.frontline.capture_seconds == 8.0
+    assert scale.env_config.vision_range == 1600.0
+    assert scale.env_config.num_fields == 10
+    assert scale.env_config.num_entity_tokens == 24
+    assert launch_geometry(PROFILES[name]).entity_tokens == 24
+    assert resolved.train_config.paradigm == "ego_pass"
 
 
 def test_canonical_serialization_has_a_stable_golden_vector() -> None:
@@ -177,7 +200,7 @@ def test_a_malformed_keypoint_table_is_refused_by_name() -> None:
 def test_resolution_tracks_sources_and_cli_overrides() -> None:
     resolved = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=864, microbatch_tokens=20_000),
+        LaunchOverrides(num_envs=640, microbatch_tokens=20_000),
     )
 
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "cli"
@@ -185,11 +208,11 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
     assert resolved.value_sources["train_config.gamma"] == "derived"
     assert resolved.value_sources["train_config.component_gammas.ally_win"] == "derived"
     assert resolved.value_sources["model_config.d_model"] == "profile"
-    assert resolved.train_config.scales[0].num_envs == 864
+    assert resolved.train_config.scales[0].num_envs == 640
     assert resolved.train_config.microbatch_tokens == 20_000
 
     document = json.loads(
-        format_resolved_config(resolve_profile(PROFILES["rl"], LaunchOverrides(864, 20_000)))
+        format_resolved_config(resolve_profile(PROFILES["rl"], LaunchOverrides(640, 20_000)))
     )
 
     def leaves(value, prefix=""):
@@ -222,19 +245,19 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
 
 def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
     baseline = resolve_profile(PROFILES["rl"])
-    narrower = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=864))
+    narrower = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=640))
 
     def effective_batch_tokens(resolved) -> int:
         scale = resolved.train_config.scales[0]
         return (
             scale.num_envs
             * resolved.train_config.num_steps
-            * (scale.env_config.num_ships + scale.env_config.num_fields)
+            * scale.env_config.num_entity_tokens
             * resolved.train_config.rollouts_per_update
         )
 
     assert baseline.train_config.rollouts_per_update == 3
-    assert narrower.train_config.rollouts_per_update == 9
+    assert narrower.train_config.rollouts_per_update == 6
     assert effective_batch_tokens(narrower) == effective_batch_tokens(baseline)
     assert narrower.value_sources["train_config.scales.0.num_envs"] == "cli"
     assert narrower.value_sources["train_config.rollouts_per_update"] == "derived"
@@ -250,7 +273,7 @@ def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() ->
     baseline = resolve_profile(PROFILES["rl"])
     explicit = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=2592, microbatch_tokens=25_000),
+        LaunchOverrides(num_envs=1280, microbatch_tokens=25_000),
     )
     assert canonical_data(explicit.train_config) == canonical_data(baseline.train_config)
     assert explicit.value_sources["train_config.scales.0.num_envs"] == "cli"
@@ -284,14 +307,14 @@ def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
     """
     fixed_width = replace(
         PROFILES["rl"],
-        logical_batch_tokens=11_943_936,
-        launch=LaunchSizingSpec(num_envs=864),
+        logical_batch_tokens=11_796_480,
+        launch=LaunchSizingSpec(num_envs=640),
     )
     resolved = resolve_profile(fixed_width)
 
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "vram-preset"
     assert resolved.value_sources["train_config.rollouts_per_update"] == "derived"
-    assert resolved.train_config.rollouts_per_update == 9
+    assert resolved.train_config.rollouts_per_update == 6
 
 
 def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, capsys) -> None:
@@ -302,7 +325,7 @@ def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, c
     assert rendered == format_resolved_config(resolve_profile(PROFILES["rl"]))
     assert document["schema_version"] == 1
     assert document["profile"] == "rl"
-    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 2592
+    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 1280
     assert document["sources"]["train_config.scales.0.num_envs"] == "derived"
     assert list(tmp_path.iterdir()) == []
     assert capsys.readouterr() == ("", "")

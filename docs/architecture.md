@@ -89,6 +89,9 @@ channel to:
 | health, power, cooldown | circular bounded encoding | phase delta |
 | team identity | three-way one-hot | none |
 | alive state | scalar | none |
+| currently visible | scalar | none |
+| belief token valid | scalar; also the attention/existence mask | none |
+| time since observation | symlog scalar | none |
 | previous power/turn/shoot | categorical one-hot | none |
 | radius | shared ship/field scalar divided by half the shorter world dimension | none |
 | field width | normalized scalar | none |
@@ -239,6 +242,12 @@ Training applies:
 - normalized per-step mean-squared error across prediction channels; and
 - a triangle-window cumulative loss for position and velocity, which penalizes systematic
   multi-step drift more strongly than zero-mean step noise.
+
+With finite vision, visible ships refresh a policy-local point-estimate cache and the head's
+forecast becomes the next hidden input recursively. Previously seen hidden tokens receive
+privileged next-state supervision without exposing that truth to the actor or critic;
+never-seen tokens and death-to-respawn teleport labels are masked. Each policy/perspective
+owns its cache, including frozen league and evaluation policies.
 
 The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
 with deeper autoregressive diagnostics in the reference run's

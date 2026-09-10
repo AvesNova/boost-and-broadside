@@ -182,9 +182,10 @@ VRAM_PRESETS: Mapping[int, VramPreset] = {
             grad_checkpoint=False,
             measured_on="NVIDIA GeForce RTX 4070 Laptop GPU",
             basis=(
-                "the shipped launch preset, probed directly on that card (Aug 2026): one "
-                "complete rl update peaked at 6.00 GB allocated and 7.88 GB reserved of "
-                "8.19 GB, with no gradient checkpointing"
+                "the ~4M-token launch ceiling was probed directly on that card (Aug 2026): "
+                "one pre-Frontline rl update peaked at 6.00 GB allocated and 7.88 GB "
+                "reserved of 8.19 GB, with no gradient checkpointing; the wider belief "
+                "observation has not been re-probed"
             ),
         ),
         VramPreset(
@@ -481,9 +482,7 @@ class VramResolution:
             "status": self.status,
             "proposed": self.knobs.document(),
             "applied": applied,
-            "tiers": {
-                str(tier): TIER_GUARANTEES[tier] for tier in effective.tiers(baseline)
-            },
+            "tiers": {str(tier): TIER_GUARANTEES[tier] for tier in effective.tiers(baseline)},
             "identity_fingerprint": self.identity_fingerprint,
             "notes": list(self.notes),
         }
@@ -522,9 +521,7 @@ def resolution_from_preset(
 ) -> VramResolution:
     knobs = preset_knobs(preset, geometry)
     origin = (
-        f"row measured on {preset.measured_on}"
-        if preset.measured_on
-        else "row was never measured"
+        f"row measured on {preset.measured_on}" if preset.measured_on else "row was never measured"
     )
     return VramResolution(
         policy=str(policy),

@@ -204,9 +204,8 @@ def test_the_eight_gigabyte_row_is_exactly_the_shipped_launch(name: str) -> None
 def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
     """Wider rows buy residency, and a missing width honestly repeats a narrower one.
 
-    The profile's shard ladder is (7776, 2592, 864, ...): there is no 2-shard
-    split, so the 16 GB row cannot hold more than the 8 GB row and says so by
-    proposing the same width rather than inventing an intermediate one.
+    Frontline's six map tokens widen each row. The shard ladder and preset
+    choices must still preserve one fixed logical token batch exactly.
     """
 
     geometry = launch_geometry(PROFILES["rl"])
@@ -214,13 +213,30 @@ def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
         gigabytes: preset_knobs(VRAM_PRESETS[gigabytes], geometry).num_envs
         for gigabytes in sorted(VRAM_PRESETS)
     }
-    assert [width for width, _ in geometry.shard_widths()] == [7776, 2592, 864, 288, 96, 32]
-    assert widths == {8: 2592, 16: 2592, 24: 7776, 32: 7776}
+    assert [width for width, _ in geometry.shard_widths()] == [
+        3840,
+        1920,
+        1280,
+        960,
+        768,
+        640,
+        480,
+        384,
+        320,
+        256,
+        192,
+        160,
+        128,
+        96,
+        64,
+        32,
+    ]
+    assert widths == {8: 1280, 16: 1920, 24: 3840, 32: 3840}
     shards = [
         geometry.aligned_logical_batch_tokens // geometry.rollout_tokens(width)
         for width in widths.values()
     ]
-    assert shards == [3, 3, 1, 1]
+    assert shards == [3, 2, 1, 1]
 
 
 def test_every_shard_width_preserves_the_fixed_logical_batch() -> None:
@@ -229,8 +245,7 @@ def test_every_shard_width_preserves_the_fixed_logical_batch() -> None:
         for num_envs, shards in geometry.shard_widths():
             assert num_envs % geometry.num_minibatches == 0
             assert (
-                geometry.rollout_tokens(num_envs) * shards
-                == geometry.aligned_logical_batch_tokens
+                geometry.rollout_tokens(num_envs) * shards == geometry.aligned_logical_batch_tokens
             )
         assert (geometry.default_num_envs, geometry.default_rollouts_per_update) in (
             geometry.shard_widths()
@@ -325,10 +340,10 @@ def test_the_default_shard_width_is_not_part_of_the_question() -> None:
         )
         return identity_fingerprint(_identity(profile=spec, geometry=launch_geometry(spec)))
 
-    # 1536 envs over 5 shards against 1280 over 6: the same 11,796,480 tokens.
-    assert identity_for(2_400_000) == identity_for(2_000_000)
-    # 2592 over 3 aligns to a different batch, so it is a different question.
-    assert identity_for(4_000_000) != identity_for(2_000_000)
+    # 480 envs over 8 shards against 768 over 5: the same 11,796,480 tokens.
+    assert identity_for(1_500_000) == identity_for(2_400_000)
+    # 1952 over 2 aligns to a different batch, so it is a different question.
+    assert identity_for(6_000_000) != identity_for(1_500_000)
 
 
 def test_two_profiles_that_ask_the_same_question_share_one_measurement() -> None:
@@ -449,9 +464,7 @@ def test_a_cache_that_cannot_be_understood_is_an_error(
 @pytest.mark.parametrize(
     "content", ("not json at all", '{"schema_version": 99, "entries": []}', '{"schema_version": 1}')
 )
-def test_a_fresh_measurement_replaces_a_cache_it_cannot_read(
-    tmp_path: Path, content: str
-) -> None:
+def test_a_fresh_measurement_replaces_a_cache_it_cannot_read(tmp_path: Path, content: str) -> None:
     """The recovery ``read_cache`` names has to work.
 
     It tells the user to launch with ``--vram reprobe``; a reprobe reaches the
@@ -533,7 +546,7 @@ def test_an_unresolved_policy_changes_nothing() -> None:
 
 
 def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
-    proposal = resolution_from_cache(VramPolicy("auto"), _entry(VramKnobs(864, 20_000, True)))
+    proposal = resolution_from_cache(VramPolicy("auto"), _entry(VramKnobs(640, 20_000, True)))
     resolved = resolve_profile(
         PROFILES["rl"], launch_overrides(proposal, num_envs=None, microbatch_tokens=None)
     )
@@ -541,7 +554,7 @@ def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
     assert resolved.value_sources["train_config.microbatch_tokens"] == "vram-cache"
     assert resolved.value_sources["model_config.grad_checkpoint"] == "vram-cache"
     assert resolved.model_config.grad_checkpoint is True
-    assert resolved.train_config.rollouts_per_update == 9
+    assert resolved.train_config.rollouts_per_update == 6
 
 
 def test_the_resolution_document_states_the_guarantee_of_what_it_moved() -> None:

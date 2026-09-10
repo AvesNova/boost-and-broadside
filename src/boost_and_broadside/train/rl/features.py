@@ -82,6 +82,10 @@ class Accessor:
                 )
             elif self.key == ObsKey.ZONE_ROLE:
                 val = torch.full_like(team_id, 5)
+            elif self.key in {ObsKey.VISIBLE, ObsKey.BELIEF_VALID}:
+                val = obs[ObsKey.ALIVE]
+            elif self.key == ObsKey.TIME_SINCE_OBSERVATION:
+                val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
             elif self.key in {
                 ObsKey.CAPTURE_PROGRESS,
                 ObsKey.CAPTURE_DIRECTION,
@@ -90,9 +94,7 @@ class Accessor:
                 ObsKey.TIME_REMAINING,
                 ObsKey.GAME_MODE,
             }:
-                val = torch.zeros(
-                    (*team_id.shape, 1), dtype=torch.float32, device=team_id.device
-                )
+                val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
             else:
                 raise
         if self.channels is not None:
@@ -591,6 +593,9 @@ class FeatureCoordinator:
                 ObsKey.COOLDOWN: torch.zeros((1, 1, 1)),
                 ObsKey.TEAM_ID: torch.zeros((1, 1), dtype=torch.long),
                 ObsKey.ALIVE: torch.zeros((1, 1), dtype=torch.bool),
+                ObsKey.VISIBLE: torch.zeros((1, 1), dtype=torch.bool),
+                ObsKey.BELIEF_VALID: torch.zeros((1, 1), dtype=torch.bool),
+                ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((1, 1, 1)),
                 ObsKey.RADIUS: torch.zeros((1, 1, 1)),
                 ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
@@ -879,6 +884,23 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
         # Categoricals and static (no predictor)
         Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3), Identity()),
         Feature("alive", Accessor(ObsKey.ALIVE), Identity(), Identity()),
+        Feature(
+            "visible", Accessor(ObsKey.VISIBLE), Identity(), Identity(), scope=FeatureScope.SHIP
+        ),
+        Feature(
+            "belief_valid",
+            Accessor(ObsKey.BELIEF_VALID),
+            Identity(),
+            Identity(),
+            scope=FeatureScope.SHIP,
+        ),
+        Feature(
+            "time_since_observation",
+            Accessor(ObsKey.TIME_SINCE_OBSERVATION),
+            Symlog(),
+            Identity(),
+            scope=FeatureScope.SHIP,
+        ),
         Feature("object_type", Accessor(ObsKey.OBJECT_TYPE), OneHot(4), Identity()),
         Feature("zone_role", Accessor(ObsKey.ZONE_ROLE), OneHot(6), Identity()),
         Feature(

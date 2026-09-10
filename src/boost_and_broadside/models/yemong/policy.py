@@ -48,7 +48,7 @@ from boost_and_broadside.constants import (
     TOTAL_ACTION_LOGITS,
     TURN_SLICE,
 )
-from boost_and_broadside.env.observation import BulletObsKey, YemongObservation
+from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
 from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
 from boost_and_broadside.train.rl.features import FeatureCoordinator
@@ -328,7 +328,9 @@ class YemongPolicy(nn.Module):
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
             new_hidden: (n_layers, B*(N+M), CONV_KERNEL*D) updated packed state.
         """
-        alive = obs["alive"]  # (B, N+M) bool — ships then fields
+        # Hidden-but-remembered enemies remain attention/recurrent tokens. Their
+        # predicted ALIVE value is an input feature, never the existence mask.
+        alive = obs[ObsKey.BELIEF_VALID]  # (B, N+M) bool — ships then map objects
         x = self.encoder(obs)  # (B, N+M, D)
         bullets, bullet_mask = self._encode_bullets(obs)  # (B, N*K, D), (B, N*K)
 
