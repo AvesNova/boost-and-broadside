@@ -9,17 +9,20 @@ remain the source of truth for scope and human gates.
 
 ## Current position
 
-- Branch: `frontline/05-perception`
+- Branch: `frontline/06-beliefs`
 - Integration base: `feat/frontline-overhaul`
-- Human gate: Gate 3, perception and fog distribution
-- Status: ready for human Gate 3 review
+- Human gate: Gate 4, recursive belief model
+- Status: ready for human Gate 4 review
 - Gate 1 was approved by the user's instruction to continue and merged into the
   integration base on 2026-09-09.
 - Gate 2 was approved explicitly and merged into the integration base on 2026-09-10.
-- Boundary: stop after perception, non-leaking team views, render modes, typed map tokens,
-  diagnostics, and fog-distribution evidence are ready for human review.
-- Draft PR: not opened because GitHub CLI/credentials are unavailable in this workspace
-- Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/02-fields?expand=1>
+- Gate 3 was approved by the user's instruction to proceed and merged into the integration
+  base on 2026-09-10.
+- Boundary: stop after recursive point estimates, privileged auxiliary supervision,
+  belief diagnostics, and natural-occlusion evidence are ready for human review.
+- Draft PR: not opened because the execution environment did not authorize publishing the
+  local milestone branch to the external remote
+- Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/06-beliefs?expand=1>
 
 ## Gate 1 implemented
 
@@ -160,6 +163,20 @@ results guide tuning but do not replace human playtesting.
 - The fog-aware one-environment play path measures 32.74 ms/decision or 1.02× realtime at
   900 px with one CPU thread. The quarter-resolution terrain stencil refreshes every eight
   ticks, while ship/shot visibility stays at 30 Hz and camera/view changes refresh immediately.
+- Latest Gate 4 compact belief/buffer/PPO/evaluation/checkpoint/config regression: 192 passed,
+  2 skipped in 52.76 seconds after the never-seen auxiliary mask correction. After fixing
+  Frontline map-token launch sizing, all 96 resolution/VRAM tests passed in 0.74 seconds.
+  Earlier broader component runs also passed, but their coverage overlaps these sets. The full
+  repository suite was deliberately not repeated in line with the requested lighter cycle.
+- Two-update CUDA BC/PPO smoke at 256 environments completed under the Frontline v8 contract at
+  811 environment steps/s and 6,488 ship tokens/s; loss decreased from 7.617 to 6.157.
+- A 131,072-step, 16-update CUDA BC sample completed in roughly 2.4 minutes. Throughput rose
+  from 861 SPS at update 4 to 927 SPS at update 16, while total loss fell from 5.941 to 5.524.
+- Gate 4 natural-occlusion suite: 128 independent 4v4 games for 60 seconds on an RTX 4070
+  Laptop GPU. The scripted baseline simulated 7,680 aggregate game-seconds in 73.03 seconds
+  (105.16× aggregate realtime), peaking at 29.67 MiB. A two-team belief-cache batch measured
+  12.61 ms at width 128, or 10,148 environments/s. Learned-checkpoint inference was measured
+  separately and took 191.07 seconds.
 
 ## Gate 2 implementation
 
@@ -212,6 +229,70 @@ results guide tuning but do not replace human playtesting.
   individual sight, team-sharing gain, hidden age, reacquisitions, and duration bins.
   Checkpoint observation schema `team_perception_v7` rejects older incompatible encoders.
 
+## Gate 4 implementation
+
+- Every acting policy perspective owns a fixed-shape GPU belief cache. Visible truth refreshes
+  it, never-seen enemies stay absent, and a previously seen hidden enemy is advanced recursively
+  by that policy's learned next-state head. Reacquisition immediately overwrites the estimate.
+- Hidden belief tokens carry explicit validity and age. Predicted health may describe believed
+  alive state, but token existence is separate, so a low-health forecast cannot accidentally
+  erase memory. Hidden enemy actions and local field gradients remain zero.
+- Team 0 and Team 1 caches are independent. Frozen league policies, the running-average policy,
+  Elo ladder policies, and ordinary checkpoint match agents each advance their own prediction;
+  none reuse the live policy's belief or hidden truth.
+- Authoritative physical targets live in a separate rollout tensor used only for auxiliary
+  supervision and diagnostics. Visible and previously seen hidden ships are supervised;
+  never-seen slots, terminal transitions, and death-to-respawn teleports are masked.
+- W&B now reports visible/hidden physical error for position, velocity, attitude, angular
+  velocity, health, power, cooldown, and local refractive index, with hidden errors bucketed at
+  0.1, 0.5, 1, 2, 5, 10, and 30 seconds.
+- The registered RL and BC profiles now actually use the Frontline environment: 16384² world,
+  30 Hz, 4v4, ten fields, five zones plus global token, 1600 px team sight, eight-second capture,
+  and ego-only perception. `front_advance_weight=0.25` is provisional. This fixed a stale profile
+  integration that would otherwise have trained the old small omniscient deathmatch.
+- Checkpoint observation schema `recursive_belief_v8` rejects encoders trained before the new
+  visibility/validity/age semantics.
+
+## Belief-model evidence
+
+The offline comparison used natural 4v4 occlusions and an early 131,072-step BC checkpoint.
+For the learned-policy trajectory, its recursive head and a last-observation plus constant-
+velocity baseline saw exactly the same frames. Errors include the operational ambiguity after
+an enemy respawns unseen: the teleport label itself is excluded, but subsequent estimates remain
+wrong until evidence or learned dynamics corrects them.
+
+| Status/age | Samples | Learned position | Baseline position |
+|---|---:|---:|---:|
+| Visible | 688,439 | 3.4 px | 0.1 px |
+| Hidden, all | 119,287 | 557 px | 629 px |
+| Hidden ≤0.1 s | 2,470 | 209 px | 201 px |
+| Hidden 0.1–0.5 s | 13,060 | 263 px | 238 px |
+| Hidden 0.5–1 s | 12,171 | 332 px | 282 px |
+| Hidden 1–2 s | 19,514 | 416 px | 349 px |
+| Hidden 2–5 s | 37,239 | 607 px | 566 px |
+| Hidden 5–10 s | 27,432 | 808 px | 1,023 px |
+| Hidden 10–30 s | 7,372 | 759 px | 1,629 px |
+
+Across all hidden samples, learned/baseline mean errors were 103.5/105.8 px/s velocity,
+26.6/25.5 health, 19.8/19.0 power, and 0.0045/0.0053 seconds cooldown. The minimally trained
+head is worse than the kinematic baseline through roughly five seconds, but substantially
+better on long-hidden position and modestly better on aggregate position and cooldown. Its
+3.4 px visible one-step position error versus the baseline's 0.1 px shows it is still early in
+training, not a converged model comparison.
+
+Interpretation: the simple recursive point estimate is implemented correctly and already learns
+some useful long-horizon correction, but a 131k-step warm-up is not enough evidence to select a
+more complex output distribution. The immediate large error is consistent with lifecycle
+ambiguity: an unseen same-tick respawn can relocate a ship, while ordinary one-frame motion
+cannot explain a roughly 200 px mean by itself. This is an inference from the game contract and
+error scale; the benchmark does not yet split ordinary occlusion from post-respawn occlusion.
+Age exposes staleness to the policy, while recurrence can learn when to discount it. Keep the
+simple representation for the first serious BC curve; decide on concentration or explicit
+uncertainty only if downstream policy quality or a trained head still degrades sharply with age.
+
+Raw output: [`frontline-belief-gate4.json`](frontline-belief-gate4.json). Reproduce with
+[`benchmarks/frontline_belief_suite.py`](../../benchmarks/frontline_belief_suite.py).
+
 ## Fog-distribution evidence
 
 The suite used 256 independent field layouts and scripted 4v4 trajectories controlled with
@@ -253,14 +334,30 @@ Reproduce with [`benchmarks/frontline_fog_suite.py`](../../benchmarks/frontline_
 - Judge the provisional 10-field low-discrepancy density and 30–750 px radius range.
 - Check whether overlap bands and independent damage patterns remain legible during combat.
 
-## Gate 3 human review requested
+## Gate 3 human review (approved)
 
 - Play or spectate with `V` cycling full/Team 0/Team 1 and confirm the information density
   feels right at the provisional 1600 px range.
 - Check field-core occlusion at overlaps, map seams, and while a ship is inside a field.
 - Confirm the minimap, health bars, bullets, and prediction ghosts never reveal hidden ships.
-- Decide whether 74% average enemy visibility is suitable for the initial recursive-belief
-  work, or whether the range should be reduced before Gate 4.
+- The user approved proceeding with the 1600 px range for initial recursive-belief work.
+
+## Gate 4 human review requested
+
+- Inspect W&B `belief/visible/*`, `belief/hidden/*`, and the age-bucket metrics during a
+  longer BC run; the 131k-step checkpoint is deliberately an early learning probe.
+- Compare the saved JSON's learned and same-trajectory baseline curves. In particular, judge
+  whether 5–30 second stale estimates should remain usable tokens or be more aggressively
+  discounted/invalidated.
+- Confirm that the intended next experiment is a serious point-estimate BC run before adding
+  output uncertainty. No renderer work is needed to validate the cache contract itself.
+- Choose one of these paths:
+  1. Recommended: keep point estimate + age + recurrence, gather a meaningful BC learning
+     curve, then proceed to Gate 5 if policy/evaluation quality is healthy.
+  2. Add a lifecycle/discontinuity indicator or invalidate beliefs when death is confidently
+     inferred, while leaving ordinary motion as a point estimate.
+  3. Run a bounded multi-scale/concentration or explicit-deviation output experiment now.
+  4. Ablate physical point estimates and retain only recurrent latent state plus age.
 
 ## Known limitations and open questions
 
@@ -271,14 +368,20 @@ Reproduce with [`benchmarks/frontline_fog_suite.py`](../../benchmarks/frontline_
   balance exactly.
 - No capture-time sweep setting above 7 seconds reached ±5 in the sampled population;
   timeout sign currently decides most matches.
-- Current sight is memoryless ground truth. Recurrent belief construction, belief confidence,
-  and recursive opponent-belief inputs are deliberately deferred to Gate 4.
+- Beliefs are deterministic point estimates with age, not calibrated distributions. An unseen
+  respawn can make a fresh-looking estimate abruptly wrong; the acting team may not know that
+  the lifecycle discontinuity occurred.
+- The 131k-step learned checkpoint is an early pipeline/learning smoke, not a converged quality
+  result. It should not decide the final uncertainty representation by itself.
 - The combined boundary/global token is the first architecture, not the Gate 5 map-memory
   comparison. Static fields remain globally visible by design.
-- Actual draft PR creation remains blocked by unavailable GitHub tooling/credentials.
+- The milestone is committed locally, but branch publication and draft PR creation remain
+  blocked until the user explicitly authorizes the external push.
 
 ## Next plan
 
-1. Wait for explicit Gate 3 review and approval before merging or starting recursive beliefs.
-2. Gate 4: implement recursive beliefs and stop for belief diagnostics.
-3. Preserve the later mandatory stops for map-architecture comparison and curriculum choice.
+1. Wait for explicit Gate 4 review and approval; do not begin map-memory work meanwhile.
+2. After approval, merge `frontline/06-beliefs` into `feat/frontline-overhaul`.
+3. Gate 5: compare full-attention map objects with a small K/V-only map memory, including
+   throughput, VRAM, scaling, learning curves, and final evaluation quality, then stop again.
+4. Preserve the later mandatory curriculum stop.
