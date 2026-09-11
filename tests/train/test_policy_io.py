@@ -149,18 +149,11 @@ class TestCompilePolicy:
             "bypasses torch.compile and runs eager"
         )
 
-    def test_the_update_entry_point_stays_eager(self):
-        """A compiled backward cannot be traversed twice, and two probes do.
-
-        The gradient diagnostics and the actor/critic split probe both call
-        ``torch.autograd.grad(..., retain_graph=True)`` on a micro-batch before
-        the training backward runs over the same graph. Compiling this entry
-        point is worth 1.79x on the update phase and is blocked on giving those
-        probes a forward pass of their own.
-        """
+    def test_the_update_entry_point_is_compiled_too(self):
+        """Which of the two the update *uses* is PPOTrainer's decision."""
         policy = self._policy()
         compiled = compile_policy(policy, "default")
-        assert getattr(compiled.evaluate_actions, "__self__", None) is policy
+        assert getattr(compiled.evaluate_actions, "__self__", None) is not policy
 
     def test_the_policy_itself_comes_back_unchanged_otherwise(self):
         policy = self._policy()

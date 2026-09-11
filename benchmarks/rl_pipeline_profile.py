@@ -7,16 +7,16 @@ time, so the pipeline being measured is the shipped one.
 
 Two timing modes:
 
-``--mode wall``  Sync only at update boundaries. Phase totals are attributed to
+``--timing wall``  Sync only at update boundaries. Phase totals are attributed to
                  whichever call the CPU was inside, so they under-report GPU work
                  that was still queued, but the per-update total is the truth.
-``--mode sync``  ``torch.cuda.synchronize()`` on entry and exit of every timed
+``--timing sync``  ``torch.cuda.synchronize()`` on entry and exit of every timed
                  region. Attribution is correct; the per-update total inflates by
                  whatever CPU/GPU overlap the syncs destroy. Run both and compare.
 
 Usage:
     uv run --no-sync python benchmarks/rl_pipeline_profile.py \
-        --updates 3 --warmup 1 --mode sync --out /tmp/profile.json
+        --updates 3 --warmup 1 --timing sync --out /tmp/profile.json
 """
 
 from __future__ import annotations
@@ -249,7 +249,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--updates", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
-    parser.add_argument("--mode", choices=("wall", "sync"), default="wall")
+    parser.add_argument("--timing", choices=("wall", "sync"), default="wall")
     parser.add_argument("--detail", action="store_true", help="split env/net (disables overlap)")
     parser.add_argument("--no-overlap", action="store_true", help="serialize env and net streams")
     parser.add_argument("--compile", dest="compile_mode", default="default")
@@ -261,9 +261,12 @@ def main() -> None:
     parser.add_argument("--microbatch-tokens", type=int, default=None)
     parser.add_argument(
         "--compile-entry",
-        choices=("default", "none"),
+        choices=("default", "rollout", "none"),
         default="default",
-        help="'none' disables policy compilation entirely, for an A/B control",
+        help=(
+            "'rollout' compiles only get_action_and_value and 'none' nothing, "
+            "both as A/B controls against the shipped 'default'"
+        ),
     )
     parser.add_argument(
         "--no-microbatch",
@@ -279,20 +282,31 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    _SYNC = args.mode == "sync"
+    _SYNC = args.timing == "sync"
 
     from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
     from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
     from boost_and_broadside.launch import resolve_training_launch
     from boost_and_broadside.train.rl.ppo import PPOTrainer
 
-    if args.compile_entry == "none":
+    if args.compile_entry != "default":
         from boost_and_broadside.train.rl import policy_io as _policy_io
 
-        _policy_io.compile_policy = lambda policy, mode: policy
+        rollout_only = args.compile_entry == "rollout"
+
+        def selective_compile(policy, mode):
+            if mode is None:
+                return policy
+            if rollout_only:
+                policy.get_action_and_value = torch.compile(
+                    policy.get_action_and_value, mode=mode
+                )
+            return policy
+
+        _policy_io.compile_policy = selective_compile
         import boost_and_broadside.train.rl.ppo as _ppo
 
-        _ppo.compile_policy = _policy_io.compile_policy
+        _ppo.compile_policy = selective_compile
 
     overrides = dict(o.split("=", 1) for o in args.override)
     launch = resolve_training_launch(
@@ -420,7 +434,7 @@ def main() -> None:
         prof.export_chrome_trace(args.torch_profile)
         print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=45))
 
-    label = args.label or f"rl/{args.mode}"
+    label = args.label or f"rl/{args.timing}"
     payload = dump(label, args.updates, env_steps_per_update, wall, args.out)
     payload["per_update_seconds"] = per_update
     payload["epochs_completed"] = epochs
