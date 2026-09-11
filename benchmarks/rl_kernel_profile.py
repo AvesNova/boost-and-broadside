@@ -109,9 +109,12 @@ def main() -> None:
     parser.add_argument("--rows", type=int, default=30)
     parser.add_argument(
         "--phase",
-        choices=("rollout", "update"),
+        choices=("rollout", "update", "eval", "primary"),
         default="rollout",
-        help="rollout profiles a window of collection steps; update profiles optimizer minibatches",
+        help=(
+            "rollout profiles whole collection steps; primary and eval profile the two "
+            "halves of one separately; update profiles optimizer minibatches"
+        ),
     )
     parser.add_argument(
         "--update-minibatches",
@@ -119,7 +122,7 @@ def main() -> None:
         default=4,
         help="optimizer minibatches to profile in --phase update (whole epochs exhaust host RAM)",
     )
-    parser.add_argument("--compile", dest="compile_mode", default="reduce-overhead")
+    parser.add_argument("--compile", dest="compile_mode", default="default")
     args = parser.parse_args()
 
     from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
@@ -159,7 +162,7 @@ def main() -> None:
     trainer.buffer.store_initial_hidden(runtime.hidden)
     slots = trainer._prepare_league_slots(runtime.num_recurrent)
 
-    def rollout_step(index: int) -> None:
+    def primary_only(index: int) -> None:
         primary = trainer._collect_primary_step(
             obs=runtime.obs,
             beliefs=runtime.beliefs,
@@ -182,39 +185,67 @@ def main() -> None:
         ) = primary
         runtime.elo_eval.step(index, False)
 
+    def eval_only(index: int) -> None:
+        runtime.elo_eval.step(index, False)
+
+    def rollout_step(index: int) -> None:
+        primary_only(index)
+        eval_only(index)
+
+    # The training environment and the evaluator share no state within a step --
+    # separate TensorEnv instances, separate recurrent state, and the policy
+    # weights they both read do not change during a rollout. So either half can
+    # be advanced on its own, which is what makes profiling them separately
+    # meaningful rather than an artefact.
+    phases = {"rollout": rollout_step, "primary": primary_only, "eval": eval_only}
+    step = phases[args.phase]
+
     for index in range(args.warmup_steps):
-        rollout_step(index)
+        step(index)
     torch.cuda.synchronize()
 
-    start = time.perf_counter()
+    # Unprofiled wall for the same work, so the profiler's own overhead is visible.
+    plain_start = time.perf_counter()
+    for index in range(args.warmup_steps, args.warmup_steps + args.profile_steps):
+        step(index)
+    torch.cuda.synchronize()
+    plain = time.perf_counter() - plain_start
+
+    base = args.warmup_steps + args.profile_steps
+    wall_start = time.perf_counter()
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
             torch.profiler.ProfilerActivity.CUDA,
         ],
     ) as prof:
-        for index in range(args.warmup_steps, args.warmup_steps + args.profile_steps):
-            rollout_step(index)
+        for index in range(base, base + args.profile_steps):
+            step(index)
         torch.cuda.synchronize()
-    wall = time.perf_counter() - start
+    wall = time.perf_counter() - wall_start
 
     events = prof.key_averages()
     cuda_total = sum(e.self_device_time_total for e in events) / 1e6
     cpu_total = sum(e.self_cpu_time_total for e in events) / 1e6
     launches = sum(e.count for e in events)
-    print(f"\n=== rollout window: {args.profile_steps} steps ===")
-    print(f"wall (profiled, profiler overhead included) : {wall:.3f} s")
-    print(f"summed self CUDA time                       : {cuda_total:.3f} s")
+    print(f"\n=== {args.phase} window: {args.profile_steps} steps ===")
+    print(
+        f"unprofiled wall for the same work           : {plain:.3f} s "
+        f"({plain / args.profile_steps * 1e3:.1f} ms per step)"
+    )
+    print(f"profiled wall (profiler overhead included)  : {wall:.3f} s")
+    print(
+        f"summed self CUDA time                       : {cuda_total:.3f} s "
+        f"({cuda_total / args.profile_steps * 1e3:.1f} ms per step)"
+    )
     print(f"summed self CPU time                        : {cpu_total:.3f} s")
-    print(f"GPU busy fraction of profiled wall          : {100 * cuda_total / wall:.1f}%")
+    print(f"GPU busy fraction of UNPROFILED wall        : {100 * cuda_total / plain:.1f}%")
     print(f"total profiler events                       : {launches:,}")
-    print(f"events per rollout step                     : {launches / args.profile_steps:,.0f}")
+    print(f"events per step                             : {launches / args.profile_steps:,.0f}")
     print("\n--- top by self CUDA time ---")
     print(events.table(sort_by="self_device_time_total", row_limit=args.rows))
     print("\n--- top by self CPU time ---")
     print(events.table(sort_by="self_cpu_time_total", row_limit=args.rows))
-    print("\n--- top by call count ---")
-    print(events.table(sort_by="count", row_limit=args.rows))
     trainer.shutdown()
 
 

@@ -104,7 +104,7 @@ def feature_signature(ship_config: ShipConfig) -> dict[str, object]:
 
 
 def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
-    """Route a policy's rollout entry point through ``torch.compile``.
+    """Route a policy's two entry points through ``torch.compile``.
 
     ``torch.compile(module)`` wraps ``forward`` and nothing else, and
     ``OptimizedModule.__getattr__`` hands every other attribute straight back
@@ -121,15 +121,13 @@ def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
     attribute set on the wrapper lands on the policy regardless, while the
     wrapper's own ``state_dict`` prefixes every key with ``_orig_mod.``.
 
-    **``evaluate_actions`` is deliberately left eager.** Compiling it measures
-    1.79x on the PPO update, but a compiled backward is one fused function whose
-    saved tensors do not survive a second traversal, and two paths traverse a
-    micro-batch's graph more than once: the gradient diagnostics, and the
-    actor/critic split probe that runs on the histogram cadence in every
-    ordinary run. Running only the measured micro-batches eager would make the
-    applied gradient depend on whether it was measured, which
-    ``test_measuring_does_not_disturb_the_gradient_that_gets_applied`` exists to
-    forbid. Unlocking it means giving the probes their own forward pass.
+    Both are compiled here; choosing between the compiled and the eager
+    ``evaluate_actions`` is ``PPOTrainer``'s decision, because it depends on what
+    the run is measuring. A compiled backward is one fused function whose saved
+    tensors do not survive a second traversal, and two things want to traverse a
+    micro-batch's graph more than once -- the gradient diagnostics, once per
+    decomposed term, and the cheap actor/critic split probe. See
+    ``PPOTrainer._measure_actor_critic_split``.
 
     Dynamo holds the traced instance alive from its own caches, so dropping a
     compiled policy needs a collection pass before the card gets the memory
@@ -146,13 +144,14 @@ def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
         mode:   ``torch.compile`` mode, or None to leave the policy eager.
 
     Returns:
-        ``policy``, unchanged when ``mode`` is None and with a compiled rollout
-        entry point otherwise.
+        ``policy``, unchanged when ``mode`` is None and with compiled entry
+        points otherwise.
     """
 
     if mode is None:
         return policy
     policy.get_action_and_value = torch.compile(policy.get_action_and_value, mode=mode)
+    policy.evaluate_actions = torch.compile(policy.evaluate_actions, mode=mode)
     return policy
 
 
