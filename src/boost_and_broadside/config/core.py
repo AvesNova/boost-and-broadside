@@ -226,6 +226,35 @@ class ShipConfig:
             )
 
 
+# Zone tokens a Frontline environment presents, plus the single boundary token
+# that carries the front position and the match clock. Defined here rather than
+# in env/frontline so the launch arithmetic can size a batch without importing
+# the environment; ``env.frontline`` re-exports it.
+NUM_FRONTLINE_ZONES = 5
+NUM_FRONTLINE_GLOBAL_TOKENS = 1
+
+
+def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineConfig | None") -> int:
+    """Entity tokens one environment presents to the policy.
+
+    The single prediction of how wide ``observation_from_state`` will build the
+    token axis, so the launch arithmetic and the runtime cannot disagree about
+    it. Everything derived from the batch -- environment width, shard count, the
+    VRAM preset ceilings, the micro-batch bound -- is computed from this, and
+    they were computed from two different hand-written sums before.
+
+    Adding a token kind means adding a term here.
+    ``tests/config/test_entity_tokens.py`` pins the result against an
+    observation the environment actually builds, so a kind added in one place
+    and not the other fails rather than silently resizing the batch.
+    """
+
+    tokens = num_ships + num_fields
+    if frontline is not None:
+        tokens += NUM_FRONTLINE_ZONES + NUM_FRONTLINE_GLOBAL_TOKENS
+    return tokens
+
+
 @dataclass(frozen=True)
 class EnvConfig:
     """Environment sizing."""
@@ -268,6 +297,12 @@ class EnvConfig:
     # sight. This is provisional and deliberately lives in the environment
     # contract rather than in renderer-only state.
     vision_range: float | None = None
+
+    @property
+    def entity_tokens(self) -> int:
+        """Entity tokens per environment; see :func:`entity_token_count`."""
+
+        return entity_token_count(self.num_ships, self.num_fields, self.frontline)
 
     def __post_init__(self) -> None:
         if isinstance(self.frontline, Mapping):

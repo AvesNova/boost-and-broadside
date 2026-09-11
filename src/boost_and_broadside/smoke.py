@@ -18,6 +18,7 @@ from unittest.mock import patch
 import torch
 
 from boost_and_broadside.config import EnvConfig
+from boost_and_broadside.config.core import entity_token_count
 from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.config.schema import LaunchSizingSpec, ResolvedTrainConfig
 from boost_and_broadside.config.service import resolved_profile_document
@@ -148,7 +149,12 @@ def _smoke_resolved_profile(
             num_fields=num_fields,
             max_bullets=2,
             max_episode_steps=2,
-            logical_batch_tokens=(2 + num_fields) * num_steps,
+            # One environment's worth of tokens, for one two-step rollout. The
+            # width has to be the *whole* token axis or the geometry cannot fit
+            # a single environment into the batch: this read ships + fields and
+            # omitted Frontline's five zone tokens and its boundary token, which
+            # is why every smoke case died resolving its profile.
+            logical_batch_tokens=entity_token_count(2, num_fields, base.frontline) * num_steps,
             num_steps=num_steps,
             num_minibatches=1,
             total_timesteps=num_steps,

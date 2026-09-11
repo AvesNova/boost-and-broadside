@@ -6,12 +6,15 @@ from dataclasses import replace
 import torch
 
 from boost_and_broadside.config import FrontlineConfig, MatchResult, ShipConfig, ZoneRole
+from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES
 from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.state import TensorState
 
 FRONTLINE_WORLD_SIZE = (16384.0, 16384.0)
 FRONTLINE_FIELD_RADIUS_MAX = 750.0
-NUM_FRONTLINE_ZONES = 5
+# Re-exported from config, which owns it so the launch arithmetic can size a
+# batch without importing the environment. Importers here keep working.
+__all__ = ["NUM_FRONTLINE_ZONES"]
 
 
 def frontline_ship_config(config: ShipConfig) -> ShipConfig:

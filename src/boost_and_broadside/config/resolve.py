@@ -9,7 +9,7 @@ from decimal import Decimal
 from types import MappingProxyType
 from typing import Any
 
-from boost_and_broadside.config.core import EnvConfig
+from boost_and_broadside.config.core import EnvConfig, entity_token_count
 from boost_and_broadside.config.fingerprint import canonical_data
 from boost_and_broadside.config.live_elo import validate_live_reference_probabilities
 from boost_and_broadside.config.schema import (
@@ -307,10 +307,14 @@ def validate_resolved_config(config: TrainConfig) -> None:
             raise ValueError(
                 f"microbatch_tokens must be positive or None, got {config.microbatch_tokens}"
             )
+        # The same token count the geometry sized the batch from. These were two
+        # independent sums, and the validator's omitted the Frontline zone and
+        # boundary tokens -- so it capped the micro-batch at two thirds of the
+        # minibatch that actually exists.
         minibatch_tokens = (
             scale.num_envs
             * config.num_steps
-            * (scale.env_config.num_ships + scale.env_config.num_fields)
+            * scale.env_config.entity_tokens
             // config.num_minibatches
         )
         if config.microbatch_tokens > minibatch_tokens:
@@ -334,7 +338,7 @@ def launch_geometry(profile: ProfileSpec) -> LaunchGeometry:
 
     _validate_profile(profile)
     launch = profile.launch
-    entity_tokens = profile.num_ships + profile.num_fields + (6 if profile.frontline else 0)
+    entity_tokens = entity_token_count(profile.num_ships, profile.num_fields, profile.frontline)
 
     if launch.rollout_tokens is not None:
         default_num_envs = derive_aligned_num_envs(
