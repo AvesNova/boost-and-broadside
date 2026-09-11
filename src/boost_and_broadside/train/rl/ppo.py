@@ -426,6 +426,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if compile_mode is not None
             else None
         )
+        self._env_compile_mode = collision_compile_mode
         self.wrapper = YemongEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
             ship_config=ship_config,
@@ -1054,6 +1055,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 scripted_window=self._eval_window_sc,
                 live_vs_avg_window=self._eval_window_live_vs_avg,
                 include_bullets=eval_reads_bullets,
+                compile_mode=self._env_compile_mode,
             ),
             obs=obs,
             beliefs=beliefs,

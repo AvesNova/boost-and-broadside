@@ -832,6 +832,39 @@ def _mask_hidden_ships(
     return YemongObservation(data=data, bullets=observation.bullets)
 
 
+_PERCEPTION_CACHE: dict[str, object] = {}
+
+
+def compile_perception(mode: str | None):
+    """The observation builder, fused when a launch asks for compilation.
+
+    Building both team views is a few hundred small kernels over a wide, shallow
+    token axis, so it is bound by how fast the CPU can issue them. Fusing the
+    whole builder measured **4.84x** on the evaluator's 2560-environment batch
+    (14.90 ms to 3.08 ms), faithful to 6e-8 on every channel.
+
+    **Only valid without ``buffers``.** The buffered form writes its results into
+    tensors the caller owns, and dynamo does not replay those writes -- compiled,
+    positions came back off by 16,135 pixels on a 16,384-pixel torus. The
+    evaluator passes no buffers, so its call is a pure function of the state and
+    is the one this may be used for. See tests/env/test_compiled_tick.py.
+
+    Cached per mode so that callers sharing a mode share one compiled callable
+    rather than tracing it again.
+    """
+
+    if mode is None:
+        return perceived_observation_from_state
+    compiled = _PERCEPTION_CACHE.get(mode)
+    if compiled is None:
+        # Static shapes: the same power-of-two padding that breaks a dynamic
+        # graph in the policy's scan is a hazard anywhere dynamo generalizes,
+        # and the evaluator's width is fixed for a run anyway.
+        compiled = torch.compile(perceived_observation_from_state, mode=mode, dynamic=False)
+        _PERCEPTION_CACHE[mode] = compiled
+    return compiled
+
+
 def perceived_observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
