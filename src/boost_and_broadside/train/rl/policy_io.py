@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
@@ -103,6 +104,40 @@ def feature_signature(ship_config: ShipConfig) -> dict[str, object]:
     return {field: getattr(ship_config, field) for field in FEATURE_SHIP_CONFIG_FIELDS}
 
 
+def _owns_its_outputs(call):
+    """Wrap a compiled callable so the caller owns every tensor it returns.
+
+    CUDA-graph modes write each output into a static buffer inside the graph's
+    private pool, and replaying the graph writes those same addresses again.
+    Torch guards the hazard rather than letting it corrupt silently: reading an
+    output after the next replay raises "accessing tensor output of CUDAGraphs
+    that has been overwritten by a subsequent run".
+
+    This pipeline holds policy outputs across calls in three places, so the
+    guard fires on the first evaluator step. The recurrent hidden state is
+    carried from one rollout step into the next (``PPOTrainer._collect_rollout``,
+    every league slot's ``slot.hidden``, every evaluation agent's
+    ``agent.hidden``); the Elo evaluator draws five matchups from five
+    *different* policies and holds all five action tensors until it concatenates
+    the team action; and the belief tracker reads a step's ``pred_next`` after
+    later calls have run.
+
+    Copying what escapes is the documented remedy and the cheap one. The
+    rollout's hidden state is the largest output at (2, 20480, 512) float32 --
+    84 MB, about 0.4 ms to copy against a 250 ms rollout step. The alternative
+    torch offers, ``cudagraph_mark_step_begin()``, asserts the opposite of what
+    is true here: it promises the previous outputs are dead.
+    """
+
+    def owned(*args, **kwargs):
+        result = call(*args, **kwargs)
+        if isinstance(result, tuple):
+            return tuple(x.clone() if isinstance(x, torch.Tensor) else x for x in result)
+        return result.clone() if isinstance(result, torch.Tensor) else result
+
+    return owned
+
+
 def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
     """Route a policy's two entry points through ``torch.compile``.
 
@@ -134,10 +169,10 @@ def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
     back. ``EloRoster._unload`` does that, which is what keeps ``league_size`` a
     real bound on device memory.
 
-    ``mode="reduce-overhead"`` is **not** usable here: its CUDA-graph trees reuse
-    static output buffers, and both the rollout and the evaluator hold policy
-    outputs across calls, so it fails with "accessing tensor output of CUDAGraphs
-    that has been overwritten by a subsequent run".
+    The CUDA-graph modes (``reduce-overhead``, ``max-autotune``) need one more
+    thing: their outputs live in static buffers that the next replay overwrites,
+    and this pipeline holds policy outputs across calls. ``_owns_its_outputs``
+    copies what escapes, which is what makes those modes usable at all.
 
     Args:
         policy: The freshly built policy.
@@ -168,10 +203,17 @@ def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
     # The shape count is small and bounded -- the rollout width, the evaluator's
     # two, and the update's micro-batch -- so this cannot walk into a recompile
     # loop.
-    policy.get_action_and_value = torch.compile(
-        policy.get_action_and_value, mode=mode, dynamic=False
-    )
-    policy.evaluate_actions = torch.compile(policy.evaluate_actions, mode=mode, dynamic=False)
+    step = torch.compile(policy.get_action_and_value, mode=mode, dynamic=False)
+    update = torch.compile(policy.evaluate_actions, mode=mode, dynamic=False)
+    if mode in CUDA_GRAPH_COMPILE_MODES:
+        # Both, uniformly. Dropping the update's copy was measured at 17.70 s
+        # against 18.18 s per epoch and rejected: the whole mode is end-to-end
+        # neutral, so a rule that holds for every entry point is worth more here
+        # than half a second an epoch that does not show up in throughput.
+        step = _owns_its_outputs(step)
+        update = _owns_its_outputs(update)
+    policy.get_action_and_value = step
+    policy.evaluate_actions = update
     return policy
 
 

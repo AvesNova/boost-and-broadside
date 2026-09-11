@@ -242,9 +242,9 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 metavar="MODE",
                 help=(
                     "torch.compile profile. The CUDA-graph modes "
-                    "(reduce-overhead, max-autotune) are refused: their graph "
-                    "trees reuse output buffers that the rollout and the "
-                    "evaluator hold across calls."
+                    "(reduce-overhead, max-autotune) work but were measured as "
+                    "neutral on an RTX 4070 and cost ~1.1 GB of reserved "
+                    "memory; default is the measured best."
                 ),
             ),
             _option("--no-wandb", action="store_true", help="Disable W&B logging."),

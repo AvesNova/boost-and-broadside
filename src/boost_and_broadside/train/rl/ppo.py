@@ -48,6 +48,7 @@ from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.allocation import allocation_weights
 from boost_and_broadside.train.rl.belief import DualBeliefTracker
@@ -472,6 +473,28 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self.optim = optim.Adam(
             self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
+        # CUDA-graph modes capture the backward too, and a `.grad` tensor first
+        # allocated inside that capture lives in the graph's private pool -- the
+        # next replay overwrites it, and accumulating into it across
+        # micro-batches raises "accessing gradient tensor output of CUDAGraphs
+        # that has been overwritten by a subsequent run". Torch's remedy is
+        # stable buffers allocated before any capture, which then have to stay
+        # allocated: `zero_grad(set_to_none=True)` would free them again and put
+        # the next backward right back inside the pool.
+        #
+        # Keeping a zeroed grad where there would otherwise be None is exactly
+        # equivalent here. Adam skips a parameter whose grad is None; for one
+        # whose grad is all zeros it decays moments that are themselves zero and
+        # applies `-lr * 0 / (sqrt(0) + eps)`, which is exactly zero, with no
+        # weight decay configured to make it otherwise. The case that would
+        # differ -- a parameter that gets a gradient on some steps and not
+        # others -- cannot arise: participation is decided by token *counts*
+        # (`field_sub` runs only when the observation carries map tokens), and
+        # those are fixed for a run.
+        self._zero_grad_to_none = compile_mode not in CUDA_GRAPH_COMPILE_MODES
+        if not self._zero_grad_to_none:
+            for parameter in self._policy_module.parameters():
+                parameter.grad = torch.zeros_like(parameter)
 
         # --- Gradient diagnostics (observability; off changes nothing) ---
         # The parameter list and its trunk membership are fixed for the run, so
@@ -2504,7 +2527,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 for buf in all_buffers
             ]
             for batches in zip(*iters):
-                self.optim.zero_grad()
+                self.optim.zero_grad(set_to_none=self._zero_grad_to_none)
 
                 measure_gradients = (
                     diagnose_update

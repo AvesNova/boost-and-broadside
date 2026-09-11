@@ -17,9 +17,11 @@ from boost_and_broadside.config.diagnostics import (
     GradientDiagnosticsConfig,
 )
 
-# torch.compile modes that capture CUDA graphs. Both are refused: graph trees
-# reuse static output buffers, and this pipeline holds policy outputs across
-# calls. Harmless while compilation was a no-op, fatal once it was not.
+# torch.compile modes that capture CUDA graphs. They work -- see
+# `compile_policy._owns_its_outputs` and `PPOTrainer`'s stable gradient buffers,
+# both of which exist only for these two modes -- but they were measured as
+# end-to-end neutral on the development card and cost about 1.1 GB of reserved
+# memory, so neither is the default. See docs/engineering/rl-throughput.md.
 CUDA_GRAPH_COMPILE_MODES = frozenset({"reduce-overhead", "max-autotune"})
 
 
@@ -96,17 +98,6 @@ def resolve_execution_settings(
 ) -> ExecutionSettings:
     """Validate and resolve settings without mutating process RNG state."""
 
-    if compile_mode in CUDA_GRAPH_COMPILE_MODES:
-        raise ValueError(
-            f"--compile {compile_mode} is not usable here. Its CUDA-graph trees reuse "
-            "static output buffers, and both the rollout and the Elo evaluator hold "
-            "policy outputs -- hidden state, next-state predictions, sampled actions -- "
-            "across calls, so the second call overwrites what the first is still "
-            "reading. It fails with 'accessing tensor output of CUDAGraphs that has "
-            "been overwritten by a subsequent run' partway into the first update. "
-            "Use --compile default, or max-autotune-no-cudagraphs for the autotuning "
-            "without the graphs."
-        )
     resolved_seed = torch.initial_seed() if seed is None else seed
     if not -(2**63) <= resolved_seed <= 2**64 - 1:
         raise ValueError(f"--seed must be between {-(2**63)} and {2**64 - 1}, got {resolved_seed}")
