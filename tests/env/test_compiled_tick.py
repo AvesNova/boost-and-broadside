@@ -141,3 +141,42 @@ def test_a_compiled_launch_builds_the_same_observation() -> None:
         torch.testing.assert_close(
             left.float(), right.float(), rtol=0, atol=1e-4, msg=f"{key} differs"
         )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_reusable_buffers_track_the_map_across_resets() -> None:
+    """Buffered and unbuffered observation builds must agree after a reset.
+
+    The buffers cache the field-derived rows, which only change when an
+    environment draws a new map, so every ``reset_envs`` has to be paired with a
+    refresh. Miss one and the affected environments keep observing the map they
+    used to be in -- silently, because every other channel stays correct. The
+    evaluator builds its observation this way, so this pins the pairing.
+    """
+    from boost_and_broadside.env.observation import (
+        ObservationBuffers,
+        perceived_observation_from_state,
+    )
+
+    env = _env(None)
+    buffers = ObservationBuffers.allocate(
+        NUM_ENVS, NUM_SHIPS, env.env_config.num_fields, 5, env.ship_config, env.state.device
+    )
+    buffers.refresh_field_state_all(env.state)
+
+    reset = torch.zeros(NUM_ENVS, dtype=torch.bool, device="cuda")
+    reset[::2] = True
+    env.reset_envs(reset)
+    buffers.refresh_field_state(env.state, reset)
+
+    buffered, _ = perceived_observation_from_state(
+        env.state, env.ship_config, env.env_config, buffers
+    )
+    fresh, _ = perceived_observation_from_state(env.state, env.ship_config, env.env_config)
+    for key in fresh.data:
+        left, right = fresh[key], buffered[key]
+        if left.is_complex():
+            left, right = torch.view_as_real(left), torch.view_as_real(right)
+        torch.testing.assert_close(
+            left.float(), right.float(), rtol=0, atol=0, msg=f"{key} went stale"
+        )

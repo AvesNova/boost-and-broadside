@@ -7,41 +7,42 @@ covers the same pipeline's memory rather than its speed.
 
 The short version: the pipeline was **CPU-dispatch bound with a synchronization
 stall**, not compute bound. It issued 8,498 CUDA kernels per rollout step against
-118–148 ms of actual GPU work, and drained the launch queue 41 times per step on
-small tensors built from host data. The GPU idled roughly 40% of the time.
+118–148 ms of actual GPU work, drained the launch queue 41 times per step on
+small tensors built from host data, and — although every launch passed
+`--compile` — had never compiled a single frame of the policy.
 
 ## Result
 
 Interleaved against the pre-optimization commit (`d7ebb1c`), same machine, same
-launch, one warmup and two measured updates per run:
+launch, one warmup and two measured updates per run, twice each way:
 
 | | before | after | change |
 |---|---:|---:|---:|
-| **sustained throughput** | **2,413 env steps/s** | **3,083 env steps/s** | **+27.8%** |
-| seconds per update | 203.69 | 159.44 | −21.7% |
-| rollout collection | 131.07 s/update | 84.67 s/update | **−35.4%** |
-| PPO update | 45.43 s/epoch | 47.05 s/epoch | +3.6% (noise) |
-| peak allocated | 2527 MiB | 2526 MiB | — |
+| **sustained throughput** | **2,371 env steps/s** | **3,810 env steps/s** | **+60.6%** |
+| seconds per update | 207.32 | 129.03 | −37.8% |
+| rollout collection | 132.99 s/update | 86.34 s/update | −35.1% |
+| PPO update | 46.62 s/epoch | 25.83 s/epoch | −44.6% |
+| peak allocated | 2527 MiB | 2143 MiB | −15.2% |
 
-Run-to-run spread between the two "after" runs is 2.7%. The gain is concentrated
-entirely in rollout collection; the update phase is unchanged within noise, and
-none of the four changes targeted it directly.
+Run-to-run spread is 3.2% on the "before" arm and 1.5% on the "after" arm.
 
-The four changes, and what each was worth measured on its own:
+The five changes, and what each was worth measured on its own:
 
 | # | change | class | measured |
 |---|---|---|---|
 | 1 | read observation channels by slice, not list index | behaviour-preserving | +11.0% end to end; 41.3 → 16.3 host syncs per rollout step |
 | 2 | keep per-step constants off the host-to-device path | effectively equivalent | +15.0% end to end; 16.3 → **0.3** host syncs per rollout step |
 | 3 | scan the field axis field-major | effectively equivalent | 42x on the dominant shape; +1.5% end to end |
-| 4 | compile the policy entry point callers actually use | effectively equivalent | 1.97x on the rollout forward; **+6.5%** end to end, interleaved |
-
-Changes 1–3 compound to −16.3% per update against the old baseline; change 4
-takes another −6.1% on top. `203.69 × 0.837 × 0.939 = 160.1` against the 159.44
-measured, which is the two independent A/B suites agreeing.
+| 4a | compile the policy's rollout entry point | effectively equivalent | 1.97x on the forward; **+6.5%** end to end, interleaved |
+| 4b | compile the PPO update's forward too | effectively equivalent | **1.81x on the update phase**; **+23.1%** end to end, interleaved |
+| 5 | size a launch from every entity token | bug fix | no throughput change; unbreaks `bnb smoke` and 11 tests |
 
 Nothing here changes the objective, the batch construction, the opponent
 curriculum, or the learning algorithm.
+
+Four things were tried and rejected on evidence: larger micro-batches, compiling
+the environment (which is *wrong*, not merely unhelpful — see below), a
+work-efficient RG-LRU scan, and reusable observation buffers for the evaluator.
 
 ## Hardware, configuration, and method
 
@@ -121,8 +122,8 @@ end, not a code change.
 
 ## The baseline breakdown
 
-`--mode sync --detail`, two measured updates averaging 1.5 epochs, 154.92 s per
-update. Attribution is correct here; the syncs cost about 3% over `wall` mode,
+`--timing sync --detail`, two measured updates averaging 1.5 epochs, 154.92 s per
+update. Attribution is correct here; the syncs cost about 3% over `wall` timing,
 which by itself says the CPU was never running ahead of the GPU.
 
 | phase | s/update | share |
@@ -213,7 +214,7 @@ attributed by Python stack: **41.3 host synchronizations per step**.
 
 Every one is the same shape of mistake: **a small CUDA tensor built from host
 data inside a per-step loop**. Each costs a full queue drain — 1.42 ms of CPU
-waiting — which is also why the CPU never ran ahead and why `--mode sync` was
+waiting — which is also why the CPU never ran ahead and why `--timing sync` was
 almost free.
 
 Boolean-mask assignment (`tensor[done_mask] = 0`, used by the belief reset and
@@ -369,34 +370,59 @@ not bit-identical. Measured against eager on the same inputs under bf16 autocast
 `evaluate_actions` agreed to 2.0e-4 (logprob) and 1.5e-4 (value, logits) — below
 the ~4e-3 relative resolution of the bfloat16 the forward pass already runs in.
 
-#### `evaluate_actions` is left eager on purpose
+#### Then `evaluate_actions` too
 
-Compiling it is worth 1.79x on the update phase and is **not taken**. A compiled
-backward is one fused AOT-autograd function whose saved tensors do not survive a
-second traversal, and two paths traverse a micro-batch's graph more than once:
-the gradient diagnostics, and the actor/critic split probe that runs on the
-**histogram cadence in every ordinary run**, not only diagnostic ones.
+The update's entry point was left eager in the first pass because two paths
+re-traverse a micro-batch's backward graph and a compiled backward is one fused
+AOT-autograd function whose saved tensors do not survive the second:
 
 ```
 RuntimeError: This backward function was compiled with non-empty donated buffers
 which requires create_graph=False and retain_graph=False.
 ```
 
-`torch._functorch.config.donated_buffer = False` clears that and exposes the
-next one:
+and, once `torch._functorch.config.donated_buffer = False` clears that,
 
 ```
 RuntimeError: one of the variables needed for gradient computation has been
 modified by an inplace operation
 ```
 
-Running only the *measured* micro-batches eager fixes both, and was implemented
-and tested. It also makes the applied gradient depend on whether it was
-measured, by ~1.9e-9 absolute, and
-`test_measuring_does_not_disturb_the_gradient_that_gets_applied` exists to forbid
-exactly that. It caught it, and the approach was reverted. Unlocking the 1.79x
-means giving the probes a forward pass of their own — a change to the
-diagnostics, not to the training path, and out of scope here.
+The two callers need different answers, which is why the first attempt — route
+*measured micro-batches* to the eager implementation — was wrong and was caught
+by `test_measuring_does_not_disturb_the_gradient_that_gets_applied`. It made the
+applied gradient depend on whether a micro-batch had been measured.
+
+- The **actor/critic split probe** differentiates two loss terms, so two
+  traversals, and it runs on the histogram cadence in every ordinary run. It now
+  evaluates the micro-batch on a graph of its own and takes both gradients off
+  that. One extra forward and two extra backwards, on one micro-batch per
+  histogram interval, against a probe whose docstring already budgets two extra
+  backwards. The forward and backward that actually move the policy are then
+  identical to an unmeasured micro-batch's — the guarantee comes out stronger
+  than it went in, not weaker.
+- The **gradient diagnostics** differentiate once per decomposed term, up to
+  seventeen traversals at `reward_full`. Giving each its own forward is not
+  affordable, so a diagnosed run evaluates eagerly throughout.
+  `_update_evaluate_actions` reads that off the diagnostic level at call time,
+  which makes the choice a property of the *run* and never of the micro-batch.
+  That is exactly what the bit-identity test asserts.
+
+Interleaved twice against a control compiling only the rollout entry point:
+
+| | rollout s/upd | update s/epoch | total s/upd | env steps/s |
+|---|---:|---:|---:|---:|
+| rollout only, A | 83.75 | 46.33 | 157.75 | 3,116 |
+| both, A | 86.48 | 24.67 | 127.59 | 3,852 |
+| rollout only, B | 86.74 | 47.11 | 161.69 | 3,040 |
+| both, B | 87.15 | 26.83 | 131.84 | 3,728 |
+| **control mean** | 85.24 | **46.72** | **159.72** | 3,078 |
+| **variant mean** | 86.82 | **25.75** | **129.72** | **3,790** |
+| | +1.9% (noise) | **−44.9%** | **−18.8%** | **+23.1%** |
+
+Control spread 2.4%, variant 3.2%. The update phase is **1.81x** faster,
+matching the 1.79x measured in isolation, and the rollout column correctly does
+not move.
 
 #### Two things that fell out of making compilation real
 
@@ -418,6 +444,31 @@ traced instance alive from its own caches. `EloRoster._unload` now collects,
 because `league_size` is supposed to bound device memory and would otherwise stop
 doing so. A test pins the behaviour and says what to remove if a future torch
 makes the collect unnecessary.
+
+### 5. Size a launch from every entity token
+
+How wide the observation's token axis will be was written out three times, and
+two copies omitted Frontline's five zone tokens and its boundary token:
+`launch_geometry` counted all six and was right; `validate_resolved_config`
+counted ships plus fields, and so capped `microbatch_tokens` at 92,160 when the
+minibatch it guards holds 122,880; and `smoke._smoke_resolved_profile` sized its
+one-environment batch the same way, leaving it too small to hold a single
+environment — which is why **`bnb smoke` has never run on this branch**.
+
+`config.core.entity_token_count` is the one derivation now, with `EnvConfig`
+exposing it as a property and all three sites reading it. Adding a token kind
+means adding a term in one place.
+
+`tests/config/test_entity_tokens.py` pins the prediction against the token axis
+a real `TensorEnv` builds — across field counts, ship counts and both game modes
+— so a kind added to the environment without a matching term fails there rather
+than silently resizing the batch.
+
+The resolved `rl` launch is unchanged (1280 environments, 3 rollouts per update,
+25,000 microbatch tokens), so this is a bookkeeping correction and not a move of
+the experiment. It clears 11 of the branch's 40 pre-existing test failures: the
+four `test_mode_artifacts` errors and seven `test_fields_evaluation` errors, all
+of which were the smoke profile failing to resolve.
 
 ## Tried and rejected
 
@@ -443,6 +494,99 @@ chunking is faster on this VRAM-constrained card.
 Not taken. −3.2% end to end for 1.3 GB of allocator headroom on an 8 GB card is
 a poor trade, and the measurement predates the drift controls, so the number
 itself is soft. It remains available as `--microbatch-tokens 50000`.
+
+### Compiling the environment — rejected on correctness
+
+The environment is the largest remaining dispatch cost and none of it was
+compiled, so this looked like the obvious next win. A candidate sweep, one
+function at a time, in-process with a drift check (the two eager arms differed
+by 6.3%, so the reference is the faster of them):
+
+| compiled | ms / primary step | vs reference |
+|---|---:|---:|
+| eager baseline | 108.8 | — |
+| `observation_from_state` | 101.5 | −6.6% |
+| `perceived_observation_from_state` | 102.9 | −5.4% |
+| `update_ships` | 105.2 | −3.3% |
+| `advance_bullets` | 105.4 | −3.1% |
+| `evaluate_fields` | 113.4 | +4.3% |
+| `team_visibility_from_state` | 113.2 | +4.0% |
+| `_line_of_sight_clear` | 117.7 | +8.2% |
+| `apply_frontline_tick` | 117.9 | +8.4% |
+| `resolve_collisions` | 120.3 | +10.6% |
+| **all three winners together** | **86.7** | **−20.3%** |
+
+**That −20.3% is measuring broken code.** `update_ships`, `advance_bullets` and
+`perceived_observation_from_state` all communicate by writing their results back
+onto objects the caller owns — the state, and the reusable observation buffers —
+and dynamo does not replay those writes. Compiled, they run and produce nothing:
+
+- a tick commanding all 64 ships to fire produced **64 shots eager and 0
+  compiled**
+- the buffered observation came back with positions off by **16,135 pixels** on a
+  16,384-pixel torus
+
+A world with no shots has no bullet physics to simulate, which is exactly why the
+combined arm looked so good. Reverted in full.
+`tests/env/test_compiled_tick.py` now pins that a compiled launch simulates the
+same world and builds the same observation as an eager one — using a
+shoot-everything probe, because the shot gate is discrete and a dropped write
+shows up as *no shots at all* rather than as numeric drift.
+
+This is a structural block rather than an incidental one: making the environment
+compilable means making these stages functional, which is a refactor of
+`physics.py` and `observation.py`, not a flag.
+
+Note also the stages that got *slower* compiled. A graph boundary inside an
+otherwise eager region buys guard checks without buying fusion, and
+`resolve_collisions` already has a compiled kernel inside it.
+
+Two measurement traps turned up on the way, both in the harness rather than the
+code: the two environments draw from the same global CUDA RNG, so the arms have
+to save and restore it or bullet spread decorrelates them for an unrelated
+reason; and the rollout buffer holds `num_steps` transitions, so it has to be
+recycled between arms or it overflows mid-sweep. The first run of this sweep hit
+both and reported a spurious 2x.
+
+### A work-efficient RG-LRU scan — no longer worth it
+
+`_parallel_scan` is Hillis-Steele: O(T log T) work for an O(T) recurrence, seven
+full-size elementwise rounds at T=128, and it dominated `aten::mul` at 20.1% of
+update GPU time. A Blelloch or chunked scan would cut that memory traffic, and
+it would be a pure reassociation — same recurrence, same weights, same objective.
+
+Re-profiling the update with `evaluate_actions` compiled says not to bother:
+
+| | eager update | compiled update |
+|---|---:|---:|
+| wall per optimizer minibatch | 1509.3 ms | **1036.6 ms** |
+| self CUDA per minibatch | 665 ms | **445 ms** |
+| profiler events per minibatch | 234,430 | **86,149** |
+
+`aten::mul` is gone from the top of the compiled profile — inductor fused those
+rounds. `aten::mm` now leads at 31.25%, real matmul work, then SDPA backward at
+9.1% and two fused triton gelu kernels at 7.5% and 4.7%. A hand-written scan
+would be attacking a target compilation has already largely absorbed.
+
+### Reusable observation buffers for the evaluator — no measurable effect
+
+The evaluator allocates a fresh observation for all 2560 of its environments on
+every rollout step; the training wrapper reuses buffers. Giving the evaluator the
+same treatment, interleaved:
+
+| | total s/upd | env steps/s | Elo phase s/upd | peak allocated |
+|---|---:|---:|---:|---:|
+| fresh allocation each step | 129.72 | 3,790 | 44.43 | 2143 MiB |
+| reusable buffers | 129.20 | 3,805 | 44.14 | 2145 MiB |
+| | −0.4% | +0.4% | −0.7% | +2 MiB |
+
+Variant spread is 2.8%, so all of it is inside the noise, and the buffers are
+persistent so peak memory is marginally worse. It also adds an invariant: every
+`reset_envs` has to be paired with a field-state refresh, or those environments
+keep observing the map they used to be in — silently, because every other
+channel stays correct. No measurable gain for a new way to be quietly wrong.
+Reverted; the staleness guard test was kept, since the training wrapper relies
+on the same pairing.
 
 ### `torch.compile` mode, before the compile bug was found
 
@@ -470,7 +614,7 @@ doubling scan also has a larger numerical spread. Rejected.
 ### Overlapping the env and policy CUDA streams
 
 Already in the code, and measured to be worth nothing here. Serializing them
-(`--mode sync --detail`, which runs both on the default stream) gives a primary
+(`--timing sync --detail`, which runs both on the default stream) gives a primary
 step of 46.16 s per update against 45.48 s with the streams on — inside the
 noise. Both are issued by the same Python thread, so when the limit is CPU
 dispatch a second stream buys nothing. Left alone; it costs nothing either.
@@ -564,54 +708,88 @@ Ranked, with the shares from the final profile:
 
 ## Not implemented, worth doing
 
-- **Compile `evaluate_actions`** — 1.79x on the update phase, measured. Needs the
-  actor/critic split probe and the gradient diagnostics to run their own forward
-  pass rather than re-traversing the training graph. Roughly a 17% end-to-end
-  win at two epochs, and the single largest remaining item.
-- **A work-efficient RG-LRU scan.** `_parallel_scan` is Hillis-Steele: O(T log T)
-  work for an O(T) recurrence, seven full-size rounds at T=128, and it dominates
-  the `mul` count in the update. A Blelloch scan or a chunked two-level scan
-  would cut the elementwise traffic. Worth measuring before building.
-- **Build both team observation views in one batched pass.**
-  `perceived_observation_from_state` calls `observation_from_state` twice, once
-  per team, each assembling ~27 channels; only the visibility mask and the
-  pending-action masking differ. Folding the team axis into the batch would
-  roughly halve the op count of a path that costs 14.1 s per update across the
-  training and evaluator call sites.
-- **Cut the belief tracker's clone-everything.** `compose` clones all 27
-  observation channels and writes 17 of them. Small individually, but it runs
-  four times per rollout step.
+### Merge the evaluator's environment with the training one
+
+The evaluator is not a different kind of work. It uses the same `ship_config`,
+the same `env_config`, the same ship and token counts, and it steps once per
+training rollout step. It is a second `TensorEnv` of 2560 environments running
+beside the training one of 1280, doing structurally identical work — and it is
+strictly serial with it, on the same stream and the same Python thread.
+
+Nothing about it has to be separate at the tensor level. One environment of 3840
+would issue one set of kernels where there are now two, and the live policy's
+evaluation forward (4×512 environments) is the same weights as the training pass
+(2×1280) and could join one 4608-environment call. What cannot merge is the
+*other* policies — the running average, the anchor ladder, the floating
+checkpoint all have different weights.
+
+How much that is worth is bounded by how much of the evaluator is dispatch
+rather than GPU work, which is measurable:
+
+| half of a rollout step | wall | self CUDA | GPU busy | events |
+|---|---:|---:|---:|---:|
+| Elo evaluation | 113.9 ms | 51.1 ms | **45%** | 20,034 |
+| primary rollout | 245.9 ms | 95.0 ms | **39%** | 39,912 |
+
+So the evaluator is ~55% dispatch. Taking the phase split of its 53.05 s/update:
+`env.step` (25%) and the observation build (16%) fuse completely, and the
+live-policy forward (about two thirds of the 21.28 s policy line) fuses with the
+training pass. At 55% dispatch that is roughly **20 s of 53, about 13% end to
+end** — real, and less than it looks, because the GPU work does not go away and
+a merged environment would compute rewards for 3840 environments instead of 1280
+unless it masked.
+
+Not attempted here because it is a genuine refactor across two subsystems that
+both communicate by mutating shared state, and this session established twice
+over how quietly that goes wrong.
+
+### Make the environment compilable
+
+The blocked −5 to −7% from compiling the observation builder, and whatever the
+physics would give, are available to a version of `physics.py` and
+`observation.py` whose stages return their results instead of writing them onto
+the caller's objects. That is the structural fix behind the rejection above.
+
+### Other items
+
+- **A work-efficient RG-LRU scan.** Measured as no longer worth it once the
+  update is compiled; see above.
 - **Re-probe `--vram` on this configuration.** The 8 GB preset row was measured
-  in August 2026 on a pre-Frontline, field-free `rl` profile and the basis note
-  already says the wider belief observation was never re-probed. The profile now
-  peaks at 2.5 GB allocated and 3.5 GB reserved of 7.62 GB — a lot of unused
-  headroom that a fresh probe could spend.
+  in August 2026 on a pre-Frontline, field-free `rl` profile, and its own basis
+  note says the wider belief observation was never re-probed. The profile now
+  peaks at 2.1 GB allocated and 3.1 GB reserved of 7.62 GB — a lot of unused
+  headroom a fresh probe could spend. The rows are also stale in a way that
+  already shows: `--vram 16` proposes a width of 864 environments, which does
+  not divide the Frontline profile's logical batch, and that is what the two
+  remaining `test_print_config_*` failures are.
+- **Cut the belief tracker's clone-everything.** `compose` clones all 27
+  observation channels and writes 17 of them, four times per rollout step.
+  Small, but it is on the hottest path left.
 
-## A defect found along the way, not fixed
+## What `bnb smoke` says now
 
-The launch geometry counts entity tokens as `num_ships + num_fields`
-([`config/resolve.py`](../../src/boost_and_broadside/config/resolve.py)), which
-is 18 for the `rl` profile. The rollout buffer's real token width is 24: eight
-ships, ten fields, **five zones and one boundary**. Every derived quantity —
-`logical_batch_tokens`, the valid shard widths, the `--vram` preset ceilings, the
-`microbatch_tokens` validator bound — is therefore computed on two thirds of the
-tokens that exist. It is why `--microbatch-tokens 125000` is rejected as
-exceeding a "minibatch size" of 92,160 when the minibatch really holds 122,880
-tokens, and it is the likely cause of the two pre-existing
-`test_print_config_*` failures on this branch.
+It still does not pass, and it is worth being precise about why, because it was
+the one whole-system check unavailable for this work.
 
-It also breaks `bnb smoke` outright — every case dies in
-`smoke._smoke_resolved_profile` with
+Before the token-count fix above, every case died resolving its profile —
+`logical_batch_tokens must be divisible by the fixed-environment rollout size` —
+so the matrix had not run on this branch at all. That is fixed, and eleven of the
+branch's forty pre-existing test failures went with it. What remains is
+unrelated to throughput: the `rl` profile is a Frontline profile on a
+16,384-pixel world, and several fixtures build policies against a 1024-pixel
+one, so they stop at the physics-drift check:
 
 ```
-ValueError: logical_batch_tokens must be divisible by the fixed-environment rollout size
+ConfigDriftError: checkpoint ... trained under different physics constants than
+the current run (world_size: checkpoint=(16384.0, 16384.0) runtime=(1024.0, 1024.0))
 ```
 
-which is why the smoke matrix could not be used to validate this work. It fails
-identically at `d7ebb1c`, before any of these changes, and the same failure
-appears as the four `tests/artifacts/test_mode_artifacts.py` errors in the
-branch's pre-existing baseline. Out of scope for a throughput pass, but it
-should be reconciled before the VRAM presets are trusted again.
+In place of the smoke matrix, every measurement run in this document is itself a
+real training run: the harness drives `PPOTrainer` through rollout collection,
+GAE, the auxiliary labels, the full PPO update, Elo evaluation, logging and a
+38 MB checkpoint write on every update. The pipeline was exercised end to end
+several dozen times across these changes, and `bnb train --profile rl` was run
+directly through the CLI as a final check.
 
 ## Tradeoffs worth considering separately
 
@@ -663,15 +841,15 @@ headroom on an 8 GB card that the allocator was shown to want.
 ```bash
 # Phase breakdown, correct attribution, env and policy streams separated
 uv run --no-sync python benchmarks/rl_pipeline_profile.py \
-    --updates 2 --warmup 1 --mode sync --detail --checkpoint-dir /tmp/ckpt
+    --updates 2 --warmup 1 --timing sync --detail --checkpoint-dir /tmp/ckpt
 
 # End-to-end throughput, minimal perturbation
 uv run --no-sync python benchmarks/rl_pipeline_profile.py \
-    --updates 2 --warmup 1 --mode wall --checkpoint-dir /tmp/ckpt
+    --updates 2 --warmup 1 --timing wall --checkpoint-dir /tmp/ckpt
 
 # A/B control: the same launch with policy compilation disabled
 uv run --no-sync python benchmarks/rl_pipeline_profile.py \
-    --updates 2 --warmup 1 --mode wall --compile-entry none --checkpoint-dir /tmp/ckpt
+    --updates 2 --warmup 1 --timing wall --compile-entry none --checkpoint-dir /tmp/ckpt
 
 # Kernel-level: launches, CPU/GPU split, top operators
 uv run --no-sync python benchmarks/rl_kernel_profile.py --warmup-steps 24 --profile-steps 12
@@ -689,38 +867,63 @@ surfaced in the two years this pipeline has existed.
 
 ## Raw numbers
 
-Every run below is one warmup update plus two measured updates of the `rl`
-profile at 491,520 environment steps per update, `--mode wall` unless noted.
-Epochs per update were `[2, 1]` in every run, so the `update s/epoch` column is
-the comparable one.
+Every run is one warmup update plus two measured updates of the `rl` profile at
+491,520 environment steps per update, `--timing wall`, epochs `[2, 1]`. The
+`update s/epoch` column is the comparable one.
 
-| run | what | rollout s/upd | update s/epoch | total s/upd | env steps/s | alloc MiB | reserved MiB |
-|---|---|---:|---:|---:|---:|---:|---:|
-| M1 | baseline, 3 updates | 95.13 | — | 165.33 | 2,973 | 2527 | 3684 |
-| M2 | baseline, `--mode sync --detail` | 99.33 | 34.90 | 154.92 | 3,173 | 2517 | 2620 |
-| base2 | baseline | 96.44 | 32.42 | 148.29 | 3,315 | 2527 | 3684 |
-| mb50k | `--microbatch-tokens 50000` | 96.22 | 29.61 | 143.56 | 3,424 | 3655 | 5006 |
-| mb92k | `--microbatch-tokens 92160` | 95.22 | 30.53 | 143.93 | 3,415 | 4777 | 6012 |
-| noelo | Elo evaluator ablation | 45.48 | 34.14 | 99.85 | 4,923 | 2504 | 3646 |
-| compile_default | `--compile default` | 95.28 | 32.74 | 147.55 | 3,331 | 2527 | 3684 |
-| compile_none | `--compile none` | 98.69 | 33.86 | 152.85 | 3,216 | 2526 | 3690 |
-| o1a | + channel slicing | 87.38 | 28.67 | 133.58 | 3,680 | 2527 | 3684 |
-| o1b | + per-step constants | 69.21 | 29.20 | 116.15 | 4,232 | 2527 | 3684 |
-| o2 | + field-major scan | 67.35 | 29.26 | 114.41 | 4,296 | 2527 | 3684 |
-| o5 control A | no policy compile | 97.05 | 46.36 | 171.17 | 2,871 | 2527 | 3684 |
-| o5 compiled A | + compiled rollout | 83.96 | 46.95 | 158.52 | 3,101 | 2526 | 3530 |
-| o5 control B | no policy compile | 97.23 | 45.21 | 169.69 | 2,897 | 2527 | 3684 |
-| o5 compiled B | + compiled rollout | 85.93 | 47.64 | 161.68 | 3,040 | 2526 | 3530 |
-| o6 old B | `d7ebb1c`, clean | 131.07 | 45.43 | 203.69 | 2,413 | 2527 | 3684 |
-| o6 new A | HEAD | 83.41 | 46.63 | 157.23 | 3,126 | 2526 | 3530 |
-| o6 new B | HEAD | 85.93 | 47.46 | 161.65 | 3,041 | 2526 | 3530 |
+### First pass
 
-`o6 old A` is omitted: a leftover process from an earlier launch of the same
-script was sharing the GPU with it, which is why it took 16 minutes against the
-others' 11 and read 243.18 s/update. Caught by the run duration, not the number.
+| run | what | rollout s/upd | update s/epoch | total s/upd | env steps/s |
+|---|---|---:|---:|---:|---:|
+| M1 | baseline, 3 updates | 95.13 | — | 165.33 | 2,973 |
+| M2 | baseline, `--timing sync --detail` | 99.33 | 34.90 | 154.92 | 3,173 |
+| base2 | baseline | 96.44 | 32.42 | 148.29 | 3,315 |
+| mb50k | `--microbatch-tokens 50000` | 96.22 | 29.61 | 143.56 | 3,424 |
+| mb92k | `--microbatch-tokens 92160` | 95.22 | 30.53 | 143.93 | 3,415 |
+| noelo | Elo evaluator ablation | 45.48 | 34.14 | 99.85 | 4,923 |
+| compile_default | `--compile default` | 95.28 | 32.74 | 147.55 | 3,331 |
+| compile_none | `--compile none` | 98.69 | 33.86 | 152.85 | 3,216 |
+| o1a | + channel slicing | 87.38 | 28.67 | 133.58 | 3,680 |
+| o1b | + per-step constants | 69.21 | 29.20 | 116.15 | 4,232 |
+| o2 | + field-major scan | 67.35 | 29.26 | 114.41 | 4,296 |
+| o5 control A / B | no policy compile | 97.05 / 97.23 | 46.36 / 45.21 | 171.17 / 169.69 | 2,871 / 2,897 |
+| o5 compiled A / B | + compiled rollout | 83.96 / 85.93 | 46.95 / 47.64 | 158.52 / 161.68 | 3,101 / 3,040 |
+
+### Second pass
+
+| run | what | rollout s/upd | update s/epoch | total s/upd | env steps/s |
+|---|---|---:|---:|---:|---:|
+| e2 rollout-only A / B | compile the rollout entry point only | 83.75 / 86.74 | 46.33 / 47.11 | 157.75 / 161.69 | 3,116 / 3,040 |
+| e2 both A / B | + compiled update | 86.48 / 87.15 | 24.67 / 26.83 | 127.59 / 131.84 | 3,852 / 3,728 |
+| e5 buffered A / B | + evaluator observation buffers (reverted) | 83.65 / 87.90 | 26.34 / 25.84 | 127.36 / 131.03 | 3,859 / 3,751 |
+| **e6 old A / B** | **`d7ebb1c`** | **135.27 / 130.70** | **47.25 / 46.00** | **210.55 / 204.09** | **2,334 / 2,408** |
+| **e6 new A / B** | **HEAD** | **86.65 / 86.03** | **25.14 / 26.52** | **128.03 / 130.04** | **3,839 / 3,780** |
+
+### Component measurements
+
+| what | eager | changed | note |
+|---|---:|---:|---|
+| `get_action_and_value`, B=2560 | 49.69 ms | 25.20 ms | in-process |
+| whole primary rollout step | 159.3 ms | 112.9 ms | in-process |
+| `evaluate_actions`, per optimizer minibatch | 1442 ms | 807 ms | in-process, eager arm repeated (1.1% drift) |
+| `cumprod` (1280, 80, 10) | 4.089 ms | 0.097 ms | microbenchmark, 200 iterations |
+| update phase, per optimizer minibatch | 1509.3 ms | 1036.6 ms | kernel profile, 4 minibatches |
+| update self CUDA, per optimizer minibatch | 665 ms | 445 ms | " |
+| update profiler events, per optimizer minibatch | 234,430 | 86,149 | " |
+
+### Discarded runs
+
+`o6 old A` from the first pass: a leftover process from an earlier launch of the
+same script was sharing the GPU with it, which is why it took 16 minutes against
+the others' 11 and read 243.18 s/update. Caught by the run duration, not by the
+number.
+
+The first environment-compile sweep: the rollout buffer overflowed part way
+through, so the later arms measured a crashed pipeline and `advance_bullets`
+reported a spurious 54.1 ms against a 111.6 ms baseline.
 
 Runs M1 through o2 predate the CPU-clamp drift controls and were taken in one
-50-minute window; runs o5 and o6 are interleaved. The machine is measurably
-slower in the o5/o6 window than in the M1–o2 window — the same code path reads
-97 s/update in o5 against 67 s in o2 — which is why the cumulative claim is
-taken from o6 alone and not by chaining the earlier deltas.
+50-minute window. Everything from o5 onward is interleaved. The machine is
+measurably slower in the later windows — the same code path reads 97 s/update in
+o5 against 67 s in o2 — which is why the cumulative claim comes from e6 alone
+and not from chaining the earlier deltas.
