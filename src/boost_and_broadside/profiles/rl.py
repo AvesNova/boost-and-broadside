@@ -118,5 +118,18 @@ RL_PROFILE = ProfileSpec(
     histogram_interval=10,
     log_interval=10,
     # --- Machine sizing ---
-    launch=LaunchSizingSpec(rollout_tokens=4_000_000, microbatches_per_minibatch=5),
+    # Two micro-batches per shard minibatch, not five. The divisor was set when
+    # the PPO update ran eager, where finer chunking was measurably faster on a
+    # VRAM-constrained card. Compiling `evaluate_actions` inverted that: a
+    # compiled pass carries far less per-call overhead, so fewer and larger
+    # passes win. Measured on an RTX 4070 Laptop, update phase 26.38 -> 19.19 s
+    # per epoch and +9.4% end-to-end throughput, for 3897 MiB allocated against
+    # 2225 -- which still leaves about 2.4 GB of the card free.
+    #
+    # It must also divide the minibatch evenly. An uneven split gives dynamo two
+    # shapes, which sends it dynamic, and inductor then fails outright in the
+    # RG-LRU scan's power-of-two padding. `compile_policy` pins `dynamic=False`
+    # so that is a bounded recompile rather than a crash, but an even divisor
+    # avoids the second graph entirely.
+    launch=LaunchSizingSpec(rollout_tokens=4_000_000, microbatches_per_minibatch=2),
 )
