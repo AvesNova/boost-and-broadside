@@ -178,20 +178,23 @@ VRAM_PRESETS: Mapping[int, VramPreset] = {
         VramPreset(
             gigabytes=8,
             max_rollout_tokens=4_000_000,
-            microbatch_tokens=25_000,
+            microbatch_tokens=62_500,
             grad_checkpoint=False,
             measured_on="NVIDIA GeForce RTX 4070 Laptop GPU",
             basis=(
                 "the ~4M-token launch ceiling was probed directly on that card (Aug 2026): "
                 "one pre-Frontline rl update peaked at 6.00 GB allocated and 7.88 GB "
                 "reserved of 8.19 GB, with no gradient checkpointing; the wider belief "
-                "observation has not been re-probed"
+                "observation has not been re-probed. The microbatch rose from 25,000 "
+                "to 62,500 in Sep 2026 when compiling the update inverted the "
+                "chunking trade -- measured at 3.90 GB allocated and 5.13 GB reserved, "
+                "for 28% off the update phase"
             ),
         ),
         VramPreset(
             gigabytes=16,
             max_rollout_tokens=6_000_000,
-            microbatch_tokens=37_500,
+            microbatch_tokens=93_750,
             grad_checkpoint=False,
             measured_on=None,
             basis=(
@@ -203,7 +206,7 @@ VRAM_PRESETS: Mapping[int, VramPreset] = {
         VramPreset(
             gigabytes=24,
             max_rollout_tokens=12_000_000,
-            microbatch_tokens=37_500,
+            microbatch_tokens=93_750,
             grad_checkpoint=False,
             measured_on=None,
             basis=(
@@ -214,7 +217,7 @@ VRAM_PRESETS: Mapping[int, VramPreset] = {
         VramPreset(
             gigabytes=32,
             max_rollout_tokens=12_000_000,
-            microbatch_tokens=75_000,
+            microbatch_tokens=187_500,
             grad_checkpoint=False,
             measured_on=None,
             basis=(
