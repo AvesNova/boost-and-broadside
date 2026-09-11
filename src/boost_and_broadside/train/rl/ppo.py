@@ -79,7 +79,7 @@ from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
 )
-from boost_and_broadside.train.rl.policy_io import build_policy
+from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
@@ -365,7 +365,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         device: str | torch.device,
         use_wandb: bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
-        compile_mode: str | None = "reduce-overhead",
+        compile_mode: str | None = "default",
         resume_wandb_run_id: str | None = None,
         resolved_config_document: Mapping[str, object] | None = None,
         launch_provenance: Mapping[str, object] | None = None,
@@ -461,11 +461,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             team_pma_k=self._win_k,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
-        self.policy = (
-            torch.compile(self._policy_module, mode=compile_mode)
-            if compile_mode is not None
-            else self._policy_module
-        )
+        self.policy = compile_policy(self._policy_module, compile_mode)
         self.optim = optim.Adam(
             self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
@@ -543,11 +539,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_ships=N,
             team_pma_k=self._win_k,
         ).to(self.device)
-        self.avg_policy = (
-            torch.compile(self._avg_policy_module, mode=compile_mode)
-            if compile_mode is not None
-            else self._avg_policy_module
-        )
+        self.avg_policy = compile_policy(self._avg_policy_module, compile_mode)
         self._avg_policy_module.load_state_dict(self._policy_module.state_dict())
         for p in self._avg_policy_module.parameters():
             p.requires_grad_(False)

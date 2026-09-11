@@ -252,13 +252,19 @@ def main() -> None:
     parser.add_argument("--mode", choices=("wall", "sync"), default="wall")
     parser.add_argument("--detail", action="store_true", help="split env/net (disables overlap)")
     parser.add_argument("--no-overlap", action="store_true", help="serialize env and net streams")
-    parser.add_argument("--compile", dest="compile_mode", default="reduce-overhead")
+    parser.add_argument("--compile", dest="compile_mode", default="default")
     parser.add_argument("--out", default=None)
     parser.add_argument("--label", default=None)
     parser.add_argument("--override", action="append", default=[])
     parser.add_argument("--torch-profile", default=None, help="write a chrome trace here")
     parser.add_argument("--no-checkpoint", action="store_true", help="skip periodic saves")
     parser.add_argument("--microbatch-tokens", type=int, default=None)
+    parser.add_argument(
+        "--compile-entry",
+        choices=("default", "none"),
+        default="default",
+        help="'none' disables policy compilation entirely, for an A/B control",
+    )
     parser.add_argument(
         "--no-microbatch",
         action="store_true",
@@ -279,6 +285,14 @@ def main() -> None:
     from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
     from boost_and_broadside.launch import resolve_training_launch
     from boost_and_broadside.train.rl.ppo import PPOTrainer
+
+    if args.compile_entry == "none":
+        from boost_and_broadside.train.rl import policy_io as _policy_io
+
+        _policy_io.compile_policy = lambda policy, mode: policy
+        import boost_and_broadside.train.rl.ppo as _ppo
+
+        _ppo.compile_policy = _policy_io.compile_policy
 
     overrides = dict(o.split("=", 1) for o in args.override)
     launch = resolve_training_launch(

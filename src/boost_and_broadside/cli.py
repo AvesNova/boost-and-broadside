@@ -234,9 +234,13 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 "--compile",
                 dest="compile_mode",
                 choices=("none", "reduce-overhead", "default", "max-autotune"),
-                default="reduce-overhead",
+                default="default",
                 metavar="MODE",
-                help="torch.compile profile.",
+                help=(
+                    "torch.compile profile. reduce-overhead is rejected by the "
+                    "rollout: its CUDA graphs reuse output buffers the rollout "
+                    "and the evaluator hold across calls."
+                ),
             ),
             _option("--no-wandb", action="store_true", help="Disable W&B logging."),
             _option(
