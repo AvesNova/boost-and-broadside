@@ -9,24 +9,31 @@ The short version: the pipeline was **CPU-dispatch bound with a synchronization
 stall**, not compute bound. It issued 8,498 CUDA kernels per rollout step against
 118–148 ms of actual GPU work, drained the launch queue 41 times per step on
 small tensors built from host data, and — although every launch passed
-`--compile` — had never compiled a single frame of the policy.
+`--compile` — had never compiled a single frame of the policy. Nine changes
+later it sustains **2.09x** the throughput it started at, on the same hardware,
+with one deliberate change to training behaviour.
 
 ## Result
 
 Interleaved against the pre-optimization commit (`d7ebb1c`), same machine, same
-launch, one warmup and two measured updates per run, twice each way:
+launch, one warmup and two measured updates per run, alternating arms, twice
+each way:
 
 | | before | after | change |
 |---|---:|---:|---:|
-| **sustained throughput** | **2,371 env steps/s** | **3,810 env steps/s** | **+60.6%** |
-| seconds per update | 207.32 | 129.03 | −37.8% |
-| rollout collection | 132.99 s/update | 86.34 s/update | −35.1% |
-| PPO update | 46.62 s/epoch | 25.83 s/epoch | −44.6% |
-| peak allocated | 2527 MiB | 2143 MiB | −15.2% |
+| **sustained throughput** | **2,436 env steps/s** | **5,099 env steps/s** | **+109.3%** |
+| seconds per update | 201.83 | 96.39 | −52.2% |
+| rollout collection | 128.11 s/update | 65.44 s/update | −48.9% |
+| Elo evaluation | 68.79 s/update | 23.75 s/update | −65.5% |
+| PPO update | 46.29 s/epoch | 18.01 s/epoch | −61.1% |
+| peak allocated | 2527 MiB | 3901 MiB | +54.4% |
 
-Run-to-run spread is 3.2% on the "before" arm and 1.5% on the "after" arm.
+Run-to-run spread is 0.1% on the "before" arm and 0.8% on the "after" arm, so
+the interval on the headline figure is narrow. The memory went the other way on
+purpose: change 7 spends 1.7 GB of an 8 GB card to buy 11.5%, and still leaves
+about 2.4 GB free.
 
-The five changes, and what each was worth measured on its own:
+The nine changes, and what each was worth measured on its own:
 
 | # | change | class | measured |
 |---|---|---|---|
@@ -36,13 +43,43 @@ The five changes, and what each was worth measured on its own:
 | 4a | compile the policy's rollout entry point | effectively equivalent | 1.97x on the forward; **+6.5%** end to end, interleaved |
 | 4b | compile the PPO update's forward too | effectively equivalent | **1.81x on the update phase**; **+23.1%** end to end, interleaved |
 | 5 | size a launch from every entity token | bug fix | no throughput change; unbreaks `bnb smoke` and 11 tests |
+| 6 | trade evaluator cadence for width | **training behaviour** | **+15.7%** end to end; same rated env-decisions |
+| 7 | two micro-batches per shard minibatch, not five | tier 1 (memory) | **+11.5%** end to end; update phase −28% |
+| 8 | pin static shapes; refuse the CUDA-graph compile modes | bug fix | unbreaks `--microbatch-tokens`; the pin is also 6% faster on the forward |
+| 9 | compile the evaluator's observation build | effectively equivalent | 4.84x on that call; **+3.3%** end to end, interleaved |
 
-Nothing here changes the objective, the batch construction, the opponent
-curriculum, or the learning algorithm.
+Eight of the nine preserve the objective, the batch construction, the opponent
+curriculum and the learning algorithm exactly. The ninth, change 6, is called
+out below.
 
-Four things were tried and rejected on evidence: larger micro-batches, compiling
-the environment (which is *wrong*, not merely unhelpful — see below), a
-work-efficient RG-LRU scan, and reusable observation buffers for the evaluator.
+Seven things were tried and rejected on evidence, several of them the obvious
+guesses: larger micro-batches (twice, with opposite answers before and after
+compilation), gameplay trades in the projectile system, merging the evaluator's
+environment into the training one, compiling the environment (which is *wrong*,
+not merely unhelpful), alternating rollout lengths, a work-efficient RG-LRU
+scan, and reusable observation buffers for the evaluator.
+
+## The one behaviour change, stated plainly
+
+Everything here preserves the objective, the batch construction, the opponent
+curriculum and the learning algorithm, with **one exception**, which is applied
+in this branch and which you should decide on deliberately:
+
+> **Change #6 halves the evaluator's cadence and doubles its width.** The
+> evaluator now runs 1024 environments per matchup every *second* rollout step
+> instead of 512 every step. Rated env-decisions per update are identical by
+> construction (983,040 either way) and finished episodes per three updates were
+> counted, not assumed (93 before, 108 after — sampling noise at those counts).
+> What does change is that **an evaluation episode now spans twice as many
+> training updates**, so a rated game is played by a slightly more heterogeneous
+> mixture of live-policy versions. Worth **+15.7%** end to end. Details in
+> [#6](#6-trade-evaluator-cadence-for-width).
+
+**No gameplay rule was changed.** Bullet refraction, field potency loss and
+collision handling are exactly as they were. Skipping them was measured — the
+whole bullet system is 8.6% of wall clock, so the largest imaginable gameplay
+trade there is worth less than compiling one function was — and rejected. See
+[Gameplay trades](#gameplay-trades--none-of-them-worth-making).
 
 ## Hardware, configuration, and method
 
@@ -229,8 +266,8 @@ to `masked_fill_`. That pattern is innocent.
 > corroborated — the synchronization census for 1 and 2, the microbenchmark for
 > 3 — and their total is confirmed by the interleaved cumulative comparison
 > above. Their individual percentages, and in particular the update-phase
-> columns, carry drift uncertainty and should be read as indicative. Change 4
-> and the cumulative result were measured interleaved and do not.
+> columns, carry drift uncertainty and should be read as indicative. Changes 4
+> through 9 and the cumulative result were measured interleaved and do not.
 
 ### 1. Read observation channels by slice, not by list index
 
@@ -470,6 +507,108 @@ the experiment. It clears 11 of the branch's 40 pre-existing test failures: the
 four `test_mode_artifacts` errors and seven `test_fields_evaluation` errors, all
 of which were the smoke profile failing to resolve.
 
+### 6. Trade evaluator cadence for width
+
+The evaluator's cost tracks **how often it is called**, not how many
+environments each call covers. Measured across the two axes separately:
+
+| config | s/upd | env steps/s | Elo phase s/upd |
+|---|---:|---:|---:|
+| 512 env/matchup, interval 1 (previous default) | 128.66 | 3,820 | 44.00 |
+| 256 env/matchup, interval 1 | 129.84 | 3,786 | 44.44 |
+| 128 env/matchup, interval 1 | 127.19 | 3,864 | 43.10 |
+| 512 env/matchup, interval 2 | 105.51 | 4,659 | 21.48 |
+| 512 env/matchup, interval 4 | 94.82 | 5,184 | 10.72 |
+
+**Cutting the environment count by 4x buys +1.2% — nothing.** Cutting the call
+rate halves the cost exactly. Fitting the three points gives
+
+```
+cost per call = 0.0898 s  +  9.7e-6 s per environment
+                 ^ 78% fixed dispatch    ^ actual work
+```
+
+Rated games are proportional to environments × calls; cost is proportional to
+calls. So doubling the width and halving the cadence keeps the measurements and
+halves the bill. The default moves to **1024 environments per matchup every
+second rollout step**:
+
+| | previous | new |
+|---|---:|---:|
+| evaluator env-decisions per update | 983,040 | **983,040** |
+| episodes finished over 3 updates | 93 | 108 |
+| evaluator cost per update | 44.00 s | **26.76 s** |
+| end-to-end throughput | 3,820 | **4,420 (+15.7%)** |
+| peak allocated | 2143 MiB | 2225 MiB |
+
+The env-decision count is identical by construction and the episode counts were
+counted rather than assumed (93 against 108 is sampling noise at those counts).
+
+**This is a training-behaviour change and not a free lunch.** An evaluation
+episode now spans twice as many training updates, so a rated game is played by a
+slightly more heterogeneous mixture of live-policy versions. The live rating is
+a filtered online estimate either way, and `elo_diag/movement_z` is the series
+that would show the filter becoming noisier than its games support. Going
+further (2048 every fourth step) does not pay: the per-environment term starts
+to bite and peak memory jumps 1.4 GB for *less* throughput.
+
+### 7. Two micro-batches per shard minibatch, not five
+
+Compiling the update inverted the earlier result. Finer chunking used to be
+faster on this VRAM-constrained card; a compiled pass carries far less per-call
+overhead, so fewer and larger passes now win:
+
+| | s/upd | env steps/s | update s/epoch | peak alloc | reserved |
+|---|---:|---:|---:|---:|---:|
+| 5 micro-batches (25,000 tokens) | 111.88 | 4,393 | 26.38 | 2225 MiB | 3858 MiB |
+| **2 micro-batches (62,500 tokens)** | **100.34** | **4,899 (+11.5%)** | **19.07 (−28%)** | 3899 MiB | 5128 MiB |
+
+Tier 1 — the same objective, a memory-layout knob. It costs 1.7 GB of allocated
+memory and still leaves about 2.4 GB of the card free.
+
+### 8. Pin static shapes, and refuse the CUDA-graph compile modes
+
+Two landmines that only existed once compilation was real, both found by using
+the documented CLI flags:
+
+- **`--microbatch-tokens 50000` crashed.** It splits 40 environments as
+  14/13/13; two shapes sends dynamo dynamic, T becomes symbolic, and inductor
+  fails in `_parallel_scan`'s power-of-two padding
+  (`1 << (T_real - 1).bit_length()`) with `ValueError: Exponent must be
+  non-negative`. The shipped divisor survived only because 40/5 is even.
+  `compile_policy` now pins `dynamic=False`, specializing one graph per shape —
+  which is also *faster* (25.19 ms against 26.77 ms on the rollout forward). A
+  CUDA regression test calls the compiled policy at two deliberately unequal
+  widths.
+- **`--compile max-autotune` crashed**, exactly like `reduce-overhead`, because
+  it captures CUDA graphs too. Both are now refused at launch with an
+  explanation instead of failing four minutes into the first update, and
+  `max-autotune-no-cudagraphs` is offered as the autotuning option.
+
+### 9. Compile the evaluator's observation build
+
+The Elo evaluator builds its observation by calling
+`perceived_observation_from_state` with no reusable buffers, which makes that
+call a pure function of the state — the one perception path dynamo can handle.
+The training wrapper's buffered call is not, and compiling *that* is wrong: the
+writes into the caller's tensors are dropped, and positions come back off by
+16,135 pixels on a 16,384-pixel torus (see "Compiling the environment" below).
+
+On the evaluator's batch the compiled builder is **4.84x** faster, 14.90 ms to
+3.08 ms, and matches eager to 6e-8 on every channel. End to end, interleaved
+twice:
+
+| | s/upd | env steps/s | Elo phase s/upd |
+|---|---:|---:|---:|
+| before | 100.34 | 4,899 | 25.79 |
+| **after** | **97.16** | **5,060 (+3.3%)** | **23.76 (−7.9%)** |
+
+`compile_perception` caches per mode, so callers sharing a mode share one traced
+callable, and pins `dynamic=False` for the same reason the policy does.
+`tests/env/test_compiled_tick.py` pins both halves of the rule: the unbuffered
+builder matches its eager self under compilation, and the buffered one is left
+alone.
+
 ## Tried and rejected
 
 ### Larger micro-batches (tier 1, `--microbatch-tokens`)
@@ -494,6 +633,56 @@ chunking is faster on this VRAM-constrained card.
 Not taken. −3.2% end to end for 1.3 GB of allocator headroom on an 8 GB card is
 a poor trade, and the measurement predates the drift controls, so the number
 itself is soft. It remains available as `--microbatch-tokens 50000`.
+
+### Gameplay trades — none of them worth making
+
+The projectile system was priced directly, because it is the obvious place to
+look for a gameplay-for-speed trade:
+
+| ablation | s/upd | env steps/s | vs baseline |
+|---|---:|---:|---:|
+| baseline | 128.66 | 3,820 | — |
+| bullets fly straight (no refraction, no potency loss) | 123.63 | 3,976 | +4.1% |
+| bullets keep full potency through fields | 126.68 | 3,880 | +1.6% |
+| `max_bullets` 10 → 5 | 130.61 | 3,763 | −1.5% |
+| **no bullets at all** | 118.43 | 4,150 | **+8.6%** |
+
+**The entire projectile system — ring buffer, refraction, collisions, the bullet
+observation axis — is 8.6% of wall clock.** That is the ceiling on every trade
+in this family, and the specific ones proposed come to 4.1% and 1.6%. Halving
+the ring buffer is worth *nothing*, −1.5%, inside the noise.
+
+The reason is the same one that runs through this whole document: the pipeline
+is bound by how many kernels it issues, not by how much data they touch.
+**Sizes are free; calls are not.** So shrinking a buffer changes nothing, and
+only deleting a whole computation moves the needle.
+
+Conclusion: do not trade gameplay for this. The evaluator cadence change above
+is worth nearly twice the entire bullet system and costs no gameplay at all.
+
+### Merging the evaluator's environment into the training one — obsoleted
+
+The idea is right and the confound is smaller than it looks: the evaluator uses
+the same ship config, the same env config, the same token count, and four of its
+five slots have the live policy on team 0, which is structurally what a league
+training environment already is. Only slot 4 is different — floating checkpoint
+against anchor, with the live policy on neither side.
+
+Measured bound, from the dispatch/GPU split of each half:
+
+| half of a rollout step | wall | self CUDA | GPU busy | events |
+|---|---:|---:|---:|---:|
+| Elo evaluation | 113.9 ms | 51.1 ms | 45% | 20,034 |
+| primary rollout | 245.9 ms | 95.0 ms | 39% | 39,912 |
+
+At ~55% dispatch, folding the evaluator's environment and observation build into
+the training call was worth roughly 13% end to end.
+
+**Decoupling the cadence is strictly better, and the two are incompatible.** A
+merged environment is stepped once per training step by construction, which
+forces the evaluator back to 384 calls per update — exactly the cost the cadence
+change removes. Trading width for cadence gets the same saving for a
+two-line config change, and keeps the option of going further.
 
 ### Compiling the environment — rejected on correctness
 
@@ -547,6 +736,50 @@ to save and restore it or bullet spread decorrelates them for an unrelated
 reason; and the rollout buffer holds `num_steps` transitions, so it has to be
 recycled between arms or it overflows mid-sweep. The first run of this sweep hit
 both and reported a spurious 2x.
+
+### Shorter rollouts for speed — there is no speed to trade for
+
+The idea was to alternate short rollouts (cheap) with occasional long ones
+(deep credit assignment). `evaluate_actions` forward+backward at a fixed token
+budget, environments scaled inversely with T, one static graph per length:
+
+| T | envs | fwd+bwd ms | µs per 1k tokens | vs T=128 |
+|---:|---:|---:|---:|---:|
+| 16 | 64 | 32.83 | 1335.95 | 1.12x |
+| 32 | 32 | 28.98 | 1179.18 | 0.99x |
+| 64 | 16 | 29.43 | 1197.44 | 1.00x |
+| **128** | **8** | **29.40** | **1196.09** | **1.00x** |
+| 256 | 4 | 29.99 | 1220.42 | 1.02x |
+
+**Flat from 32 to 256, and T=16 is 12% worse.** The O(T log T) term in the
+Hillis-Steele scan is invisible against matmuls and dispatch, which are O(1) per
+token; short sequences just shrink the batch until occupancy suffers. So the
+scheme would cost BPTT depth and buy nothing.
+
+It would also break compilation: varying T is exactly the case that sends dynamo
+dynamic and trips the `Exponent must be non-negative` failure in the scan's
+padding. Workable with one static graph per length, but there is nothing to win.
+
+### complex64 as an anti-GPU representation — hypothesis disproven
+
+Every 2D vector in the simulator is `complex64`, and inductor says on every run
+that it cannot generate code for complex operators, so the suspicion is natural.
+The eager complex kernels are in fact *faster* than an `(..., 2)` float pair,
+because a complex op is one fused kernel where the pair version is several:
+
+| operation (at 1280 × 80) | complex64 | real pair | ratio |
+|---|---:|---:|---:|
+| `abs` | 30.8 µs | 43.9 µs | 0.70x |
+| `add` | 13.4 µs | 14.4 µs | 0.93x |
+| scale by a real | 13.7 µs | 19.4 µs | 0.71x |
+| complex multiply | 11.2 µs | 170.0 µs | 0.07x |
+| **toroidal wrap** | **69.7 µs** | **14.9 µs** | **4.69x** |
+| `where` | 33.8 µs | 40.4 µs | 0.84x |
+
+The representation is right and should stay. The one exception is real — the
+wrap is written `torch.complex(z.real % W, z.imag % H)`, three kernels against
+one on a viewed real pair — but across its six call sites it comes to about
+0.2 s per update out of 100, so it is a genuine inefficiency not worth fixing.
 
 ### A work-efficient RG-LRU scan — no longer worth it
 
@@ -631,10 +864,10 @@ kernel worth chasing — the wins are structural.
 ## Correctness
 
 Every change was checked against this branch's own test baseline rather than
-against zero: `frontline/07-map-memory` carries **40 pre-existing failures**
-(the Frontline reward components and the launch-geometry token count, neither
-related to this work). After all four changes the suite reports the **same 40
-failures, none new and none fixed**.
+against zero: `frontline/07-map-memory` carried **40 pre-existing failures** (the
+Frontline reward components and the launch-geometry token count, neither related
+to this work). After all nine changes the suite reports **29 failures — eleven
+fixed by the token-count fix, none new**.
 
 Tests added:
 
@@ -642,7 +875,17 @@ Tests added:
 |---|---|
 | channel slicing | five tests in `tests/models/test_encoder.py::TestAccessorChannelSelection` — slice resolution, non-contiguous fallback, exact agreement with advanced indexing, that the result is a view, and that no shipped feature declares non-contiguous channels |
 | field-major scan | `tests/env/test_field_physics.py::test_field_major_scan_matches_the_point_major_reference` — pins index and gradient against the point-major formulation, including fully-covered points where `1 - alpha` is exactly zero |
-| compiled entry point | four tests in `tests/train/test_policy_io.py::TestCompilePolicy` — that the rollout entry point no longer resolves to the eager bound method, that the update entry point deliberately still does, that the policy is otherwise unchanged, and that an evicted compiled policy is reclaimed |
+| compiled entry points | `tests/train/test_policy_io.py::TestCompilePolicy` — that the rollout entry point no longer resolves to the eager bound method, that the update entry point is compiled too, that the policy is otherwise unchanged, that an evicted compiled policy is reclaimed, and that a second, deliberately unequal batch width does not break the compile |
+| entity-token derivation | eight tests in `tests/config/test_entity_tokens.py` — one derivation, every token type counted, and the resolver and smoke matrix agreeing with it |
+| compiled perception | four tests in `tests/env/test_compiled_tick.py` — that a compiled launch simulates the same world and builds the same observation, that buffers still track the map across resets, and that the compiled *unbuffered* builder matches the plain one |
+
+The gradient-diagnostics interaction has its own pin: compiling
+`evaluate_actions` donates its buffers, and the actor/critic split probe
+modifies them in place. An early per-micro-batch eager fallback was caught by
+the pre-existing
+`test_measuring_does_not_disturb_the_gradient_that_gets_applied` (the applied
+gradient differed by ~1.9e-9) and replaced with a run-level decision plus a
+probe that runs its own forward.
 
 Numerical behaviour, stated plainly:
 
@@ -652,19 +895,11 @@ Numerical behaviour, stated plainly:
 | per-step constants | effectively equivalent | one observation channel's log scale now comes from a double-precision `math.log` rather than a float32 device `log` — more accurate, differing in the eighth significant digit of a channel stored in bfloat16 |
 | field-major scan | effectively equivalent | float32 reassociation inside the scan kernel; measured maximum 6e-8 absolute on values in [0, 1], two to four ulps |
 | compiled rollout entry point | effectively equivalent | inductor fusion and reassociation; measured against eager under bf16 autocast at 2.0e-4 (logprob) and 1.5e-4 (value, logits), below bfloat16's own ~4e-3 relative resolution |
-
-None of them changes the objective, the batch construction, the opponent
-curriculum, or the learning algorithm.
-
-`bnb smoke` was **not** available as a check: it is broken on this branch for an
-unrelated reason (see the defect below), identically before and after. In its
-place, every measurement run in this document is itself a real training run —
-the harness drives `PPOTrainer` through rollout collection, GAE, the auxiliary
-labels, the full PPO update, Elo evaluation, logging and a 38 MB checkpoint
-write on every update — so the pipeline was exercised end to end dozens of
-times across these changes. `--compile reduce-overhead` is no longer
-the default, which is a change to how a launch is *executed* and not to what it
-computes — and the mode it replaces does not run at all.
+| compiled update forward | effectively equivalent | same mechanism; the resulting gradient is pinned by the existing diagnostics test |
+| compiled evaluator perception | effectively equivalent | 6e-8 maximum absolute on every observation channel |
+| entity-token derivation | bug fix | the resolved micro-batch size changes because the old one was computed from an undercount |
+| two micro-batches per minibatch | tier 1 | accumulation order over two chunks instead of five; same objective, same effective batch |
+| evaluator cadence | **training behaviour** | see the callout near the top |
 
 ## Remaining bottlenecks
 
@@ -693,18 +928,50 @@ consumers are `mm` 20.5%, `mul` 20.1%, `copy_` 12.8%, `_fused_rms_norm_backward`
 parallel scan in the RG-LRU, which is work-inefficient by construction: seven
 rounds of full-size elementwise ops for a 128-step sequence.
 
-Ranked, with the shares from the final profile:
+Ranked, from the final phase profile (`--timing sync --detail`, which costs
+about 23% over wall-clock mode by forcing a synchronization at every boundary,
+so read the shares rather than the absolute seconds):
 
-1. **Elo evaluation, ~36% of wall clock.** A 2560-environment world — twice the
-   training width — stepped every rollout step, with two to six policy forwards
-   on top, producing no gradient. Nothing about it is *inefficient*; it is simply
-   a lot of work, and it grows once the floating-checkpoint slots stop idling.
-   No behaviour-preserving win was found. See the tradeoffs below.
-2. **PPO update, ~38% of wall clock at two epochs.** 44% GPU-occupied. The
-   1.79x from compiling `evaluate_actions` is measured and waiting on the
-   gradient probes.
-3. **Primary rollout step, ~23%.** Environment physics, observation
-   construction, belief tracking, the scripted agent.
+| phase | s/update | share |
+|---|---:|---:|
+| **primary rollout step** | **48.72** | **41.0%** |
+| — environment step | 24.49 | 20.6% |
+| — policy forward | 10.47 | 8.8% |
+| — observation build | 5.79 | 4.9% |
+| — belief compose + advance | 7.82 | 6.6% |
+| — scripted opponent | 4.29 | 3.6% |
+| **PPO update** (1.5 epochs) | **34.15** | **28.7%** |
+| — backward | 18.24 | 15.3% |
+| — forward + loss | 10.98 | 9.2% |
+| — host gather + H2D staging | 2.84 | 2.4% |
+| **Elo evaluation** | **31.93** | **26.9%** |
+| — policy forwards (live + anchor) | 15.61 | 13.1% |
+| — environment step | 6.38 | 5.4% |
+| — observation build | 4.19 | 3.5% |
+| rollout → host transfer | 1.34 | 1.1% |
+| GAE, labels, aggregates, logging | 0.74 | 0.6% |
+
+The ordering has inverted since the baseline. Then, Elo evaluation was the
+single largest phase; now the **primary rollout step** is, and the evaluator has
+gone from ~36% to ~27% while the update holds roughly steady. Nothing is
+pathological any more — no synchronization stalls, no accidental eager path, no
+quadratic-looking kernel. What is left is:
+
+1. **Dispatch, everywhere.** The pipeline issues ~8,480 kernels per rollout step
+   and ~33,000 per optimizer minibatch, at 39–45% GPU occupancy. The remaining
+   headroom is a launch-count problem, and the two levers that actually address
+   it are CUDA graphs (blocked by output-buffer reuse across calls — see change
+   8) and compiling the environment (blocked on correctness — see below).
+2. **The environment step, 20.6%.** Not compilable as written, because its
+   stages write onto the caller's objects instead of returning results.
+3. **Elo evaluation, 26.9%.** Still a second world of policy forwards producing
+   no gradient. Cadence is now the knob; merging is mostly obsoleted by it.
+4. **The RG-LRU scan.** Hillis-Steele is work-inefficient by construction, and
+   it dominates the `mul` count in both the forward and the backward — but it
+   was measured after compilation and is no longer worth replacing.
+
+Logging, checkpointing, metric assembly and the GAE/label passes together are
+under 2% and were never worth touching.
 
 ## Not implemented, worth doing
 
@@ -739,9 +1006,17 @@ end** — real, and less than it looks, because the GPU work does not go away an
 a merged environment would compute rewards for 3840 environments instead of 1280
 unless it masked.
 
-Not attempted here because it is a genuine refactor across two subsystems that
-both communicate by mutating shared state, and this session established twice
-over how quietly that goes wrong.
+**Change #6 then obsoleted most of it.** A merged environment is stepped once
+per training step *by construction* — that is the whole point of merging — so it
+cannot also run at half cadence. The cadence change took 15.7% for a
+configuration edit; the merge was worth ~13% for a cross-subsystem refactor, and
+the two are mutually exclusive. What remains available is merging at the new
+cadence, which would fuse only the steps on which the evaluator actually runs
+and is worth roughly half of the original estimate.
+
+Not attempted here in any case: it is a genuine refactor across two subsystems
+that both communicate by mutating shared state, and this session established
+twice over how quietly that goes wrong.
 
 ### Make the environment compilable
 
@@ -757,34 +1032,37 @@ the caller's objects. That is the structural fix behind the rejection above.
 - **Re-probe `--vram` on this configuration.** The 8 GB preset row was measured
   in August 2026 on a pre-Frontline, field-free `rl` profile, and its own basis
   note says the wider belief observation was never re-probed. The profile now
-  peaks at 2.1 GB allocated and 3.1 GB reserved of 7.62 GB — a lot of unused
-  headroom a fresh probe could spend. The rows are also stale in a way that
+  peaks at 3.9 GB allocated and 5.0 GB reserved of 7.62 GB after the micro-batch
+  change — still headroom, and less of it than before, so a fresh probe is worth
+  more now than it was. The rows are also stale in a way that
   already shows: `--vram 16` proposes a width of 864 environments, which does
   not divide the Frontline profile's logical batch, and that is what the two
-  remaining `test_print_config_*` failures are.
+  remaining `test_print_config_*` failures are. `tests/test_vram_probe.py`
+  hardcodes preset widths and micro-batch sizes throughout — its 14 failures are
+  the same 14 before and after this work, but a re-probe will have to rewrite
+  those expectations rather than just the table.
 - **Cut the belief tracker's clone-everything.** `compose` clones all 27
   observation channels and writes 17 of them, four times per rollout step.
   Small, but it is on the hottest path left.
 
 ## What `bnb smoke` says now
 
-It still does not pass, and it is worth being precise about why, because it was
-the one whole-system check unavailable for this work.
-
-Before the token-count fix above, every case died resolving its profile —
+**Thirteen of sixteen cases pass.** Before the token-count fix above, *none* of
+them did — every case died resolving its profile —
 `logical_batch_tokens must be divisible by the fixed-environment rollout size` —
 so the matrix had not run on this branch at all. That is fixed, and eleven of the
-branch's forty pre-existing test failures went with it. What remains is
-unrelated to throughput: the `rl` profile is a Frontline profile on a
-16,384-pixel world, and several fixtures build policies against a 1024-pixel
-one, so they stop at the physics-drift check:
+branch's forty pre-existing test failures went with it. The three that still
+fail — `ar-report`, `noise-calibration`, `feature-stats` — are unrelated to
+throughput: the `rl` profile is a Frontline profile on a 16,384-pixel world, and
+those fixtures build policies against a 1024-pixel one, so they stop at the
+physics-drift check:
 
 ```
 ConfigDriftError: checkpoint ... trained under different physics constants than
 the current run (world_size: checkpoint=(16384.0, 16384.0) runtime=(1024.0, 1024.0))
 ```
 
-In place of the smoke matrix, every measurement run in this document is itself a
+Beyond the smoke matrix, every measurement run in this document is itself a
 real training run: the harness drives `PPOTrainer` through rollout collection,
 GAE, the auxiliary labels, the full PPO update, Elo evaluation, logging and a
 38 MB checkpoint write on every update. The pipeline was exercised end to end
@@ -805,24 +1083,16 @@ this machine say the profile also limits the GPU — so it is a decision to make
 deliberately rather than a setting to flip. The size of the win has not been
 measured, because measuring it means changing the machine.
 
-### Elo evaluation budget (changes the rating estimator)
+### Going further on the evaluation budget (changes the rating estimator)
 
-Evaluation is ~36% of training wall clock and rising. Two knobs reduce it
-proportionally, and both reduce rated games proportionally too:
-
-| knob | current | effect of halving |
-|---|---:|---|
-| `elo_eval.envs_per_matchup` | 512 | halves the evaluator's environment count and its whole cost |
-| `elo_eval.step_interval` | 1 | halves how often the evaluator advances |
-
-Either one buys roughly 18% of training wall clock for half the games per
-update. Whether that is a good trade depends on how much precision the live
-rating needs, and the live rating steers opponent selection, milestone
-placement, the behaviour-cloning gate and the trust region — so this is a
-training-behaviour change, not an optimization. Worth a deliberate experiment:
-the `elo_diag/*` series already instrument how well-identified the rating is,
-and `elo_diag/movement_z` would show directly whether halved games make the
-filter noisier than it can afford.
+The applied change (#6) held rated games constant. Going *beyond* it does not:
+`step_interval 4` at 1024 environments was measured at 94.82 s/update and 5,184
+env steps/s — another **+2.5%** over the shipped configuration — but it halves
+rated games per update rather than rearranging them, and peak memory jumps if
+the width is raised to compensate. The live rating steers opponent selection,
+milestone placement, the behaviour-cloning gate and the trust region, so this is
+a training-behaviour decision, not an optimization. `elo_diag/movement_z` is the
+series that would show the filter becoming noisier than its games support.
 
 One free-ish observation within it: two of the five slots play unscored
 random-vs-random until the first checkpoint milestone. That is 20% of the
@@ -830,11 +1100,14 @@ evaluator's cost doing nothing, early in every run. It is transient, which is wh
 it was not chased, but a run that spends a long time below the first milestone
 pays it the whole time.
 
-### `--microbatch-tokens 50000` (tier 1)
+### A smaller micro-batch, for a smaller card (tier 1)
 
-Measured at −3.2% end to end for +1.3 GB of reserved memory, in the drift-prone
-window before the controls were in place. Available, marginal, and it eats
-headroom on an 8 GB card that the allocator was shown to want.
+Change 7 took the micro-batch the other way, so the tradeoff now runs in the
+direction of *giving memory back*. `--microbatch-tokens 50000` costs 1.2%
+(101.55 against 100.34 s/update) and returns 840 MiB of peak allocation; the old
+5-way split costs 11.5% and returns 1.7 GB. Both are available per launch and
+neither changes the objective. On a card smaller than this one, that is the knob
+to reach for first.
 
 ## Reproducing any of this
 
@@ -850,6 +1123,10 @@ uv run --no-sync python benchmarks/rl_pipeline_profile.py \
 # A/B control: the same launch with policy compilation disabled
 uv run --no-sync python benchmarks/rl_pipeline_profile.py \
     --updates 2 --warmup 1 --timing wall --compile-entry none --checkpoint-dir /tmp/ckpt
+
+# Price one simulation feature by removing it (changes the simulation)
+uv run --no-sync python benchmarks/rl_pipeline_profile.py \
+    --updates 2 --warmup 1 --timing wall --ablate bullets-fly-straight --checkpoint-dir /tmp/ckpt
 
 # Kernel-level: launches, CPU/GPU split, top operators
 uv run --no-sync python benchmarks/rl_kernel_profile.py --warmup-steps 24 --profile-steps 12
@@ -896,8 +1173,57 @@ Every run is one warmup update plus two measured updates of the `rl` profile at
 | e2 rollout-only A / B | compile the rollout entry point only | 83.75 / 86.74 | 46.33 / 47.11 | 157.75 / 161.69 | 3,116 / 3,040 |
 | e2 both A / B | + compiled update | 86.48 / 87.15 | 24.67 / 26.83 | 127.59 / 131.84 | 3,852 / 3,728 |
 | e5 buffered A / B | + evaluator observation buffers (reverted) | 83.65 / 87.90 | 26.34 / 25.84 | 127.36 / 131.03 | 3,859 / 3,751 |
-| **e6 old A / B** | **`d7ebb1c`** | **135.27 / 130.70** | **47.25 / 46.00** | **210.55 / 204.09** | **2,334 / 2,408** |
-| **e6 new A / B** | **HEAD** | **86.65 / 86.03** | **25.14 / 26.52** | **128.03 / 130.04** | **3,839 / 3,780** |
+| e6 old A / B | `d7ebb1c` | 135.27 / 130.70 | 47.25 / 46.00 | 210.55 / 204.09 | 2,334 / 2,408 |
+| e6 new A / B | HEAD at the end of the second pass | 86.65 / 86.03 | 25.14 / 26.52 | 128.03 / 130.04 | 3,839 / 3,780 |
+
+`e6` was the cumulative comparison at the end of the second pass (+60.6%). It is
+superseded by `g1` below, which repeats it against the same baseline after the
+third pass.
+
+### Third pass
+
+| run | what | rollout s/upd | update s/epoch | total s/upd | env steps/s | peak MiB |
+|---|---|---:|---:|---:|---:|---:|
+| f1_eval512 | 512 env/matchup, interval 1 (old default) | 85.17 | 26.21 | 128.66 | 3,820 | 2143 |
+| f1_eval256 | 256 env/matchup | 86.96 | 25.80 | 129.84 | 3,786 | 2079 |
+| f1_eval128 | 128 env/matchup | 83.82 | 26.13 | 127.19 | 3,864 | 2048 |
+| f1_interval2 | 512 env/matchup, interval 2 | 61.53 | 26.51 | 105.51 | 4,659 | 2122 |
+| f1_interval4 | 512 env/matchup, interval 4 | 50.72 | 26.66 | 94.82 | 5,184 | 2122 |
+| **f2_samegames2** | **1024 env/matchup, interval 2 (new default)** | **67.83** | **26.16** | **111.19** | **4,420** | **2225** |
+| f2_samegames4 | 2048 env/matchup, interval 4 | 69.25 | 26.52 | 113.42 | 4,334 | 3559 |
+| f2_straight | bullets ignore refraction (ablation) | 82.67 | 24.66 | 123.63 | 3,976 | 2142 |
+| f2_nopotency | bullets keep potency through fields (ablation) | 82.96 | 26.25 | 126.68 | 3,880 | 2143 |
+| f2_bullets5 | one fifth the bullet capacity (ablation) | 86.51 | 26.47 | 130.61 | 3,763 | 2128 |
+| f2_nobullets | no bullet system at all (ablation) | 74.92 | 26.17 | 118.43 | 4,150 | 2108 |
+| f5_base | 5 micro-batches per shard minibatch | 68.07 | 26.38 | 111.88 | 4,393 | 2225 |
+| **f5_mb92k** | **2 micro-batches per shard minibatch** | **69.69** | **19.19** | **102.22** | **4,808** | **3897** |
+| f6_shipped | both new defaults | 67.71 | 19.07 | 100.34 | 4,899 | 3899 |
+| f6_uneven_mb | `--microbatch-tokens 50000` (14/13/13 split) | 66.84 | 20.53 | 101.55 | 4,840 | 3060 |
+| f6_autotune_nograph | `--compile max-autotune-no-cudagraphs` | 69.30 | 19.52 | 102.80 | 4,781 | 3897 |
+| **f7_perceive A / B** | **+ compiled evaluator perception** | **66.19 / 64.12** | **18.65 / 18.68** | **98.22 / 96.10** | **5,005 / 5,115** | **3901** |
+
+The four bullet ablations are the pricing experiments behind
+[Gameplay trades](#gameplay-trades--none-of-them-worth-making). `f2_nobullets`
+deletes the entire bullet system — no firing, no transport, no collisions, no
+damage — and is worth 8.6%; that is the ceiling, and every partial trade inside
+it is worth less.
+
+### Final interleaved validation (`g1`)
+
+HEAD against `d7ebb1c`, alternating arms in one 38-minute window. The baseline
+arm runs from a detached worktree at `d7ebb1c` with `PYTHONPATH` selecting its
+own `src/` and `--compile reduce-overhead`, which was its shipped default and a
+no-op there.
+
+| run | rollout s/upd | Elo s/upd | update s/epoch | total s/upd | env steps/s | peak MiB |
+|---|---:|---:|---:|---:|---:|---:|
+| old A | 129.29 | 69.44 | 45.42 | 201.73 | 2,437 | 2527 |
+| old B | 126.93 | 68.13 | 47.15 | 201.92 | 2,434 | 2527 |
+| new A | 65.16 | 23.63 | 17.90 | 95.99 | 5,120 | 3901 |
+| new B | 65.71 | 23.87 | 18.11 | 96.79 | 5,078 | 3901 |
+| **old mean** | **128.11** | **68.79** | **46.29** | **201.83** | **2,436** | 2527 |
+| **new mean** | **65.44** | **23.75** | **18.01** | **96.39** | **5,099** | 3901 |
+| delta | −48.9% | −65.5% | −61.1% | −52.2% | **+109.3%** | +54.4% |
 
 ### Component measurements
 
@@ -925,5 +1251,8 @@ reported a spurious 54.1 ms against a 111.6 ms baseline.
 Runs M1 through o2 predate the CPU-clamp drift controls and were taken in one
 50-minute window. Everything from o5 onward is interleaved. The machine is
 measurably slower in the later windows — the same code path reads 97 s/update in
-o5 against 67 s in o2 — which is why the cumulative claim comes from e6 alone
-and not from chaining the earlier deltas.
+o5 against 67 s in o2 — which is why the cumulative claim comes from
+`g1` alone and not from chaining the earlier deltas. Note also that the baseline
+arm itself reads differently in different windows — 204–211 s/update in `e6`,
+201.7–201.9 in `g1` — which is exactly why every claim here is interleaved
+rather than compared across time.

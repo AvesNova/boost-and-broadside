@@ -208,7 +208,21 @@ def instrument(trainer, detail: bool) -> None:
         from boost_and_broadside.env import wrapper as wrapper_mod
 
         wrap(wrapper_mod, "perceived_observation_from_state", "01q_rollout/perceive")
-        wrap(elo_mod, "perceived_observation_from_state", "01k9_elo/perceive")
+        # The evaluator resolves its perception callable once, at construction,
+        # and the evaluator itself is built per rollout -- so hook the factory
+        # and time whatever it hands back.
+        _build_perceive = elo_mod.compile_perception
+
+        def timed_perceive(mode):
+            perceive = _build_perceive(mode)
+
+            def wrapper(*args, **kwargs):
+                with timed("01k9_elo/perceive"):
+                    return perceive(*args, **kwargs)
+
+            return wrapper
+
+        elo_mod.compile_perception = timed_perceive
 
 
 def dump(label: str, updates: int, env_steps_per_update: int, wall: float, out: str | None):
@@ -243,6 +257,32 @@ def dump(label: str, updates: int, env_steps_per_update: int, wall: float, out: 
     return payload
 
 
+def apply_ablation(name: str) -> None:
+    """Patch out one simulation feature so its cost can be priced.
+
+    These are measurements, not proposals: each one changes what the environment
+    simulates, and the number it produces is the ceiling on what removing that
+    feature could buy.
+    """
+
+    if name == "bullets-fly-straight":
+        from boost_and_broadside.env import physics as physics_mod
+
+        def straight(state, transport_vel, config):
+            """Bullets ignore the refractive medium entirely."""
+            start = state.bullet_pos
+            midpoint = physics_mod._wrap_positions(
+                start + transport_vel * (0.5 * config.dt), config.world_size
+            )
+            end = physics_mod._wrap_positions(start + transport_vel * config.dt, config.world_size)
+            return transport_vel, end, midpoint
+
+        physics_mod._transport_bullets_through_fields = straight
+        print("[ablation] bullets fly straight: no refraction, no potency loss")
+    else:  # pragma: no cover - argparse restricts the choices
+        raise SystemExit(f"unknown ablation {name!r}")
+
+
 def main() -> None:
     global _SYNC, _ENABLED
 
@@ -259,6 +299,16 @@ def main() -> None:
     parser.add_argument("--torch-profile", default=None, help="write a chrome trace here")
     parser.add_argument("--no-checkpoint", action="store_true", help="skip periodic saves")
     parser.add_argument("--microbatch-tokens", type=int, default=None)
+    parser.add_argument(
+        "--ablate",
+        action="append",
+        default=[],
+        choices=("bullets-fly-straight",),
+        help=(
+            "Apply a named experimental patch to measure what a feature costs. "
+            "These change the simulation and exist only to price it."
+        ),
+    )
     parser.add_argument(
         "--compile-entry",
         choices=("default", "rollout", "none"),
@@ -289,6 +339,9 @@ def main() -> None:
     from boost_and_broadside.launch import resolve_training_launch
     from boost_and_broadside.train.rl.ppo import PPOTrainer
 
+    for ablation in args.ablate:
+        apply_ablation(ablation)
+
     if args.compile_entry != "default":
         from boost_and_broadside.train.rl import policy_io as _policy_io
 
@@ -298,9 +351,7 @@ def main() -> None:
             if mode is None:
                 return policy
             if rollout_only:
-                policy.get_action_and_value = torch.compile(
-                    policy.get_action_and_value, mode=mode
-                )
+                policy.get_action_and_value = torch.compile(policy.get_action_and_value, mode=mode)
             return policy
 
         _policy_io.compile_policy = selective_compile
