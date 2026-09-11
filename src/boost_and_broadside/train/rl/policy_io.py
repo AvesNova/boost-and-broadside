@@ -150,8 +150,28 @@ def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
 
     if mode is None:
         return policy
-    policy.get_action_and_value = torch.compile(policy.get_action_and_value, mode=mode)
-    policy.evaluate_actions = torch.compile(policy.evaluate_actions, mode=mode)
+    # `dynamic=False` specializes one graph per shape instead of letting dynamo
+    # generalize after it sees a second one. Both reasons matter.
+    #
+    # Correctness first: a dynamic graph makes T symbolic, and `_parallel_scan`
+    # pads T to the next power of two with `1 << (T_real - 1).bit_length()`,
+    # which inductor cannot express -- it fails the whole compile with
+    # "ValueError: Exponent must be non-negative". That fires for any
+    # `--microbatch-tokens` whose split is uneven (50,000 gives 14/13/13
+    # environments), and would fire for any scheme that varied the rollout
+    # length. The shipped 25,000 happens to divide evenly, which is the only
+    # reason the default survives.
+    #
+    # And it is faster: measured 25.19 ms against 26.77 ms for the 2560-batch
+    # rollout forward once the evaluator's other widths have been seen.
+    #
+    # The shape count is small and bounded -- the rollout width, the evaluator's
+    # two, and the update's micro-batch -- so this cannot walk into a recompile
+    # loop.
+    policy.get_action_and_value = torch.compile(
+        policy.get_action_and_value, mode=mode, dynamic=False
+    )
+    policy.evaluate_actions = torch.compile(policy.evaluate_actions, mode=mode, dynamic=False)
     return policy
 
 

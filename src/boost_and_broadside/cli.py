@@ -45,9 +45,7 @@ def _exact_agent(value: str) -> str:
 def _checkpoint_path(value: str) -> str:
     path = Path(value)
     if not value or value != value.strip() or path.suffix != ".pt" or path.name == ".pt":
-        raise argparse.ArgumentTypeError(
-            f"expected an explicit .pt checkpoint path, got {value!r}"
-        )
+        raise argparse.ArgumentTypeError(f"expected an explicit .pt checkpoint path, got {value!r}")
     return value
 
 
@@ -233,13 +231,20 @@ COMMANDS: tuple[CommandSpec, ...] = (
             _option(
                 "--compile",
                 dest="compile_mode",
-                choices=("none", "reduce-overhead", "default", "max-autotune"),
+                choices=(
+                    "none",
+                    "default",
+                    "max-autotune-no-cudagraphs",
+                    "reduce-overhead",
+                    "max-autotune",
+                ),
                 default="default",
                 metavar="MODE",
                 help=(
-                    "torch.compile profile. reduce-overhead is rejected by the "
-                    "rollout: its CUDA graphs reuse output buffers the rollout "
-                    "and the evaluator hold across calls."
+                    "torch.compile profile. The CUDA-graph modes "
+                    "(reduce-overhead, max-autotune) are refused: their graph "
+                    "trees reuse output buffers that the rollout and the "
+                    "evaluator hold across calls."
                 ),
             ),
             _option("--no-wandb", action="store_true", help="Disable W&B logging."),
@@ -637,9 +642,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 microbatch_tokens=args.microbatch_tokens,
                 allow_probe=False,
             )
-            print_resolved_config(
-                launch.resolved, file=sys.stdout, launch=launch.document()
-            )
+            print_resolved_config(launch.resolved, file=sys.stdout, launch=launch.document())
             return 0
 
         if args.command == "smoke":
