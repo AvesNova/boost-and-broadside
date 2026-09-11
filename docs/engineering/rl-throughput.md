@@ -711,13 +711,31 @@ update is **1.4% faster**, the evaluator **4.4% slower**, the rollout unmoved.
 
 **Why so little.** The graphs genuinely replay — the diagnostic shows a live
 `CUDAGraphTreeManager` with its generation advancing per call, so this is not a
-silent fallback to eager. But it also reports
+silent fallback to eager. It also reports
 `cudagraph_recorded_non_static_inputs: 28`: twenty-eight inputs are copied into
-static buffers on every call. The launches went away and memcpys took their
-place. The evaluator pays that copy five times per step and pays the output
-copies on top, which is exactly where the regression shows up. The rollout could
-never have gained much anyway — its policy forward is 10.5 s of a 48.7 s step,
-the rest being eager environment work.
+static buffers on every call, because the observation the policy receives is
+assembled with `torch.cat` and is fresh memory every step no matter how many
+buffers the builder reuses underneath.
+
+Those copies are the obvious suspect, and they are probably **not** the answer.
+They are device-to-device, and the pipeline already pays 1.16 s per update to
+stage the same class of data host-to-device; at 30–40x the bandwidth the same
+bytes cost tens of milliseconds. As launches, 28 per call against 8,480 per
+rollout step is about 2%. The counter proves the copies happen; it does not show
+they are what ate the win.
+
+The better-supported explanation is that **being launch-bound as a pipeline is
+not the same as being launch-bound inside every region.** Launches are
+asynchronous, so idle GPU time only costs where the CPU is actually behind — and
+the evidence puts that in the eager environment, not in the compiled policy. The
+rollout was *exactly flat* (64.65 → 64.85 s): if its policy forward had idle GPU
+to reclaim, graphs would have reclaimed some. Its forward is 10.5 s of a 48.7 s
+step; the other 30 s is environment work no graph can touch. The update, the one
+region with real dispatch headroom on paper (44% GPU-occupied), returned 4.0% —
+roughly a twelfth of its theoretical share.
+
+The evaluator regression is the clearest cost: five slots, five different
+policies, output copies on every one, and the input copies on top.
 
 Dropping the update's output copy was tried separately: 17.70 s/epoch against
 18.18, and still 95.01 s/update end to end. Rejected — a uniform rule is worth
@@ -730,9 +748,25 @@ the 1.1 GB is irrelevant and the balance between launch overhead and input
 copies may differ, so the mode is worth re-measuring there rather than assuming
 this result transfers.
 
-**What would actually unlock it**: making the inputs static — the 28 copies are
-the whole cost. That is a change to how the observation is handed to the policy,
-not a compile flag.
+**What would unlock it, and what that is worth.** Making the inputs static means
+the *final* tensor reaching the policy must live at one address and be marked
+with `torch._dynamo.mark_static_address` — a much stronger condition than
+reusing buffers underneath, and it would mean assembling observations into a
+persistent layout instead of `torch.cat`, ping-ponging the hidden state, and
+giving the evaluator per-slot buffers it deliberately does not have (its
+buffer-free call is exactly what made its perception compilable for 4.84x).
+
+Expected return, reasoned rather than measured: the theoretical ceiling is
+about −25% wall clock if every bit of dispatch in the compiled regions
+vanished, but the two measurements above say most of that is not really there.
+The realistic case is that static inputs erase the evaluator's 4.4% regression
+and leave the update's win standing — **1–3% end to end, 5% at the outside.**
+
+It also carries a risk the output fix did not: `mark_static_address` is a
+promise, and breaking it raises nothing. The overwritten-output hazard announced
+itself with a clear exception; a stale input would simply compute on last step's
+numbers, the same silent-wrongness class as the environment-compile attempt that
+put positions 16,135 pixels off. Not worth it for 1–3%, on present evidence.
 
 ### Merging the evaluator's environment into the training one — obsoleted
 
@@ -1033,11 +1067,11 @@ quadratic-looking kernel. What is left is:
 
 1. **Dispatch, everywhere.** The pipeline issues ~8,480 kernels per rollout step
    and ~33,000 per optimizer minibatch, at 39–45% GPU occupancy. The remaining
-   headroom is a launch-count problem. CUDA graphs, the obvious lever, were
-   implemented and measured: they work and they are neutral, because the 28
-   non-static inputs they must copy per call cost what the removed launches
-   saved. Making those inputs static is the change that would unlock it.
-   Compiling the environment, the other lever, is blocked on correctness.
+   headroom is a launch-count problem — but not uniformly. CUDA graphs, the
+   obvious lever, were implemented and measured: they work and they are
+   neutral, and the rollout's flatness suggests the idle GPU time sits in the
+   eager environment rather than in the compiled policy. Compiling the
+   environment, the other lever, is blocked on correctness.
 2. **The environment step, 20.6%.** Not compilable as written, because its
    stages write onto the caller's objects instead of returning results.
 3. **Elo evaluation, 26.9%.** Still a second world of policy forwards producing
@@ -1120,6 +1154,14 @@ the caller's objects. That is the structural fix behind the rejection above.
 - **Cut the belief tracker's clone-everything.** `compose` clones all 27
   observation channels and writes 17 of them, four times per rollout step.
   Small, but it is on the hottest path left.
+- **Take the optimizer step off the eager path.** Noticed while working out why
+  CUDA graphs under-delivered, and not yet measured: `clip_grad_norm_`, a Python
+  loop calling `nan_to_num_` over all 90 parameters, and `optim.step()` all run
+  eager, 48 times per update, inside the phase with the most dispatch headroom
+  (44% GPU-occupied). A fused Adam and a `foreach` scrub would attack the same
+  idle the graphs were aiming at, with no static-address promises and nothing
+  ossified. It is the cheapest remaining experiment in this document and the
+  one worth running first.
 
 ## What `bnb smoke` says now
 

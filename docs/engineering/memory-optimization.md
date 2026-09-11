@@ -360,6 +360,16 @@ cache can need more warm calls to fully engage. `reduce-overhead` gets the same 
 cheapest compile-time cost, so it is the reasonable default here, and it matches `bnb train`'s
 default.
 
+> **Superseded (September 2026).** The conclusion above rests on a measurement that could not have
+> been measuring what it claimed: at the time, `--compile` compiled *nothing*. `torch.compile`
+> wrapped `forward`, and nothing in this project calls a policy's `forward`, so all four rows ran
+> eager and the ~6% between them was noise plus the reserved-workspace difference. Once the flag was
+> made real the modes stopped being interchangeable: `reduce-overhead` and `max-autotune` capture
+> CUDA graphs and initially crashed outright, and the default is now `default`. See
+> [RL throughput](rl-throughput.md) for the compile findings, the measured mode comparison, and the
+> current memory figures — the profile now peaks near 3.9 GB allocated and 5.1 GB reserved, which
+> also dates the 8 GB preset row above.
+
 **Bottom line for this card before host-backed batches:** `grad_checkpoint=True` plus a microbatch
 divisor ≥2 was required to fit a 5,000,000-token batch; divisor 5–6 and `_NUM_MINIBATCHES=32–64`
 gave the best VRAM/speed balance. The host-backed design above supersedes the requirement that the
