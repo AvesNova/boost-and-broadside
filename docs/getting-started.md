@@ -310,7 +310,9 @@ existed do not have one.
 - Keep physical behavior covered by real tensor tests rather than mocks; environment tests
   live in [`tests/env/`](../tests/env/).
 - Memory measurements and the host-backed rollout design are documented in
-  [memory optimization](engineering/memory-optimization.md).
+  [memory optimization](engineering/memory-optimization.md); where training wall clock
+  goes, and what has been done about it, is in
+  [RL throughput](engineering/rl-throughput.md).
 
 The project is [MIT-licensed](../LICENSE). There is no contribution guide or CI workflow
 yet.

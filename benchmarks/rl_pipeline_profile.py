@@ -208,7 +208,21 @@ def instrument(trainer, detail: bool) -> None:
         from boost_and_broadside.env import wrapper as wrapper_mod
 
         wrap(wrapper_mod, "perceived_observation_from_state", "01q_rollout/perceive")
-        wrap(elo_mod, "perceived_observation_from_state", "01k9_elo/perceive")
+        # The evaluator resolves its perception callable once, at construction,
+        # and the evaluator itself is built per rollout -- so hook the factory
+        # and time whatever it hands back.
+        _build_perceive = elo_mod.compile_perception
+
+        def timed_perceive(mode):
+            perceive = _build_perceive(mode)
+
+            def wrapper(*args, **kwargs):
+                with timed("01k9_elo/perceive"):
+                    return perceive(*args, **kwargs)
+
+            return wrapper
+
+        elo_mod.compile_perception = timed_perceive
 
 
 def dump(label: str, updates: int, env_steps_per_update: int, wall: float, out: str | None):
@@ -265,20 +279,6 @@ def apply_ablation(name: str) -> None:
 
         physics_mod._transport_bullets_through_fields = straight
         print("[ablation] bullets fly straight: no refraction, no potency loss")
-    elif name == "no-elo-perception":
-        from boost_and_broadside.train.rl import elo_eval as elo_mod
-
-        original = elo_mod.perceived_observation_from_state
-        cache: dict = {}
-
-        def cached(state, ship_config, env_config, *args, **kwargs):
-            """Build the evaluator's observation once and reuse it forever."""
-            if "value" not in cache:
-                cache["value"] = original(state, ship_config, env_config, *args, **kwargs)
-            return cache["value"]
-
-        elo_mod.perceived_observation_from_state = cached
-        print("[ablation] evaluator perception frozen after the first build")
     else:  # pragma: no cover - argparse restricts the choices
         raise SystemExit(f"unknown ablation {name!r}")
 
@@ -303,7 +303,7 @@ def main() -> None:
         "--ablate",
         action="append",
         default=[],
-        choices=("bullets-fly-straight", "no-elo-perception"),
+        choices=("bullets-fly-straight",),
         help=(
             "Apply a named experimental patch to measure what a feature costs. "
             "These change the simulation and exist only to price it."
