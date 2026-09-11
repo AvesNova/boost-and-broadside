@@ -5,7 +5,9 @@ before this module they were assembled separately at five call sites. These test
 pin the properties that make them impossible to separate again.
 """
 
+import gc
 import re
+import weakref
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from boost_and_broadside.train.rl.policy_io import (
     FEATURE_SHIP_CONFIG_FIELDS,
     CheckpointProvenanceWarning,
     build_policy,
+    compile_policy,
     feature_signature,
     load_policy_bundle,
 )
@@ -111,6 +114,81 @@ class TestBuildPolicy:
         assert observation_contract(ShipConfig(world_size=(16384.0, 16384.0)))[
             "position_frequencies"
         ] == (8, 8)
+
+
+class TestCompilePolicy:
+    """The entry points callers actually use must be the compiled ones.
+
+    ``torch.compile(module)`` wraps ``forward`` and nothing else, and
+    ``OptimizedModule.__getattr__`` hands every other attribute back from the
+    original module. Nothing here calls a policy's ``forward``, so wrapping the
+    module alone left both hot paths running eager and dynamo compiling zero
+    frames -- silently, for as long as the flag existed.
+    """
+
+    @staticmethod
+    def _policy():
+        return build_policy(
+            ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+            team_pma_k=(),
+        )
+
+    def test_no_mode_leaves_the_policy_untouched(self):
+        policy = self._policy()
+        assert compile_policy(policy, None) is policy
+
+    def test_the_rollout_entry_point_does_not_resolve_to_the_eager_bound_method(self):
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        entry = compiled.get_action_and_value
+        assert getattr(entry, "__self__", None) is not policy, (
+            "get_action_and_value resolves to the policy's own bound method, so it "
+            "bypasses torch.compile and runs eager"
+        )
+
+    def test_the_update_entry_point_stays_eager(self):
+        """A compiled backward cannot be traversed twice, and two probes do.
+
+        The gradient diagnostics and the actor/critic split probe both call
+        ``torch.autograd.grad(..., retain_graph=True)`` on a micro-batch before
+        the training backward runs over the same graph. Compiling this entry
+        point is worth 1.79x on the update phase and is blocked on giving those
+        probes a forward pass of their own.
+        """
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        assert getattr(compiled.evaluate_actions, "__self__", None) is policy
+
+    def test_the_policy_itself_comes_back_unchanged_otherwise(self):
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        assert compiled is policy
+        assert compiled.coordinator is policy.coordinator
+        assert compiled.num_recurrent_tokens == policy.num_recurrent_tokens
+        assert compiled.n_hidden_layers == policy.n_hidden_layers
+        assert set(compiled.state_dict()) == set(policy.state_dict())
+
+    def test_an_evicted_compiled_policy_is_reclaimed_by_the_roster(self):
+        """Dropping a compiled policy needs a collection pass, and gets one.
+
+        Dynamo keeps the traced instance alive from its own caches, so reference
+        counting alone does not return an evicted league entry's weights to the
+        card. ``EloRoster._unload`` collects for exactly this reason; without
+        that, ``max_size`` would stop bounding device memory.
+        """
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        alive = weakref.ref(policy)
+        del policy, compiled
+        assert alive() is not None, (
+            "reference counting now reclaims a compiled policy; the collect in "
+            "EloRoster._unload is no longer needed and should be removed"
+        )
+        gc.collect()
+        assert alive() is None
 
 
 class TestCheckpointProvenance:

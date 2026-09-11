@@ -103,6 +103,59 @@ def feature_signature(ship_config: ShipConfig) -> dict[str, object]:
     return {field: getattr(ship_config, field) for field in FEATURE_SHIP_CONFIG_FIELDS}
 
 
+def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
+    """Route a policy's rollout entry point through ``torch.compile``.
+
+    ``torch.compile(module)`` wraps ``forward`` and nothing else, and
+    ``OptimizedModule.__getattr__`` hands every other attribute straight back
+    from the original module. Nothing in this project calls a policy's
+    ``forward``: rollout calls ``get_action_and_value`` and the PPO update calls
+    ``evaluate_actions``. Both therefore bypassed the wrapper entirely and ran
+    eager -- dynamo reported zero frames compiled for a run launched with the
+    default compile mode. Compiling the method the callers actually use is what
+    makes the flag do anything.
+
+    The compiled callable replaces the method on the policy itself, and the
+    policy is what comes back. Wrapping was tried and is not available:
+    ``OptimizedModule.__setattr__`` forwards writes to the module it wraps, so an
+    attribute set on the wrapper lands on the policy regardless, while the
+    wrapper's own ``state_dict`` prefixes every key with ``_orig_mod.``.
+
+    **``evaluate_actions`` is deliberately left eager.** Compiling it measures
+    1.79x on the PPO update, but a compiled backward is one fused function whose
+    saved tensors do not survive a second traversal, and two paths traverse a
+    micro-batch's graph more than once: the gradient diagnostics, and the
+    actor/critic split probe that runs on the histogram cadence in every
+    ordinary run. Running only the measured micro-batches eager would make the
+    applied gradient depend on whether it was measured, which
+    ``test_measuring_does_not_disturb_the_gradient_that_gets_applied`` exists to
+    forbid. Unlocking it means giving the probes their own forward pass.
+
+    Dynamo holds the traced instance alive from its own caches, so dropping a
+    compiled policy needs a collection pass before the card gets the memory
+    back. ``EloRoster._unload`` does that, which is what keeps ``league_size`` a
+    real bound on device memory.
+
+    ``mode="reduce-overhead"`` is **not** usable here: its CUDA-graph trees reuse
+    static output buffers, and both the rollout and the evaluator hold policy
+    outputs across calls, so it fails with "accessing tensor output of CUDAGraphs
+    that has been overwritten by a subsequent run".
+
+    Args:
+        policy: The freshly built policy.
+        mode:   ``torch.compile`` mode, or None to leave the policy eager.
+
+    Returns:
+        ``policy``, unchanged when ``mode`` is None and with a compiled rollout
+        entry point otherwise.
+    """
+
+    if mode is None:
+        return policy
+    policy.get_action_and_value = torch.compile(policy.get_action_and_value, mode=mode)
+    return policy
+
+
 def build_policy(
     model_config: ModelConfig,
     ship_config: ShipConfig,
@@ -338,7 +391,7 @@ def load_policy_bundle(
         model_config is None or checkpoint_model_config == model_config
     )
     return PolicyBundle(
-        policy=torch.compile(policy, mode=compile_mode) if compile_it else policy,
+        policy=compile_policy(policy, compile_mode if compile_it else None),
         model_config=checkpoint_model_config,
         ship_config=checkpoint_ship_config,
         env_config=env_config,

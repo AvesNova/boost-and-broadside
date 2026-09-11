@@ -14,11 +14,111 @@ import time
 import torch
 
 
+def summarize(events, wall: float, label: str, unit_count: int, unit: str, rows: int) -> None:
+    """Print the CPU/GPU split and the top operators for one profiled window."""
+    cuda_total = sum(event.self_device_time_total for event in events) / 1e6
+    cpu_total = sum(event.self_cpu_time_total for event in events) / 1e6
+    calls = sum(event.count for event in events)
+    print(f"\n=== {label} ===")
+    print(f"wall (profiled, profiler overhead included) : {wall:.3f} s")
+    print(f"summed self CUDA time                       : {cuda_total:.3f} s")
+    print(f"summed self CPU time                        : {cpu_total:.3f} s")
+    print(f"GPU busy fraction of profiled wall          : {100 * cuda_total / wall:.1f}%")
+    print(f"total profiler events                       : {calls:,}")
+    print(f"events per {unit:<32s}: {calls / unit_count:,.0f}")
+    print("\n--- top by self CUDA time ---")
+    print(events.table(sort_by="self_device_time_total", row_limit=rows))
+    print("\n--- top by self CPU time ---")
+    print(events.table(sort_by="self_cpu_time_total", row_limit=rows))
+
+
+class _StopAfterMinibatches(Exception):
+    """Sentinel raised to end a profiled update after a bounded number of steps."""
+
+
+def profile_update(trainer, runtime, args) -> None:
+    """Collect one logical batch, then profile a bounded run of optimizer minibatches.
+
+    Profiling a whole epoch buffers millions of events and exhausts host RAM, so
+    the run is cut short with a sentinel after ``--update-minibatches`` optimizer
+    steps. Everything up to that point is the real ``_update_epochs`` body.
+    """
+    import time as _time
+
+    buffers = trainer._collect_host_rollouts(runtime, False)
+
+    limit = args.update_minibatches
+    original_step = trainer.optim.step
+    counter = {"n": 0}
+
+    def counted_step(*step_args, **step_kwargs):
+        original_step(*step_args, **step_kwargs)
+        counter["n"] += 1
+        if counter["n"] >= limit:
+            raise _StopAfterMinibatches
+
+    def run_bounded() -> None:
+        counter["n"] = 0
+        try:
+            trainer._update_epochs(all_buffers=buffers, precomputed=True, update=1)
+        except _StopAfterMinibatches:
+            pass
+
+    trainer.optim.step = counted_step
+    run_bounded()  # warm
+    torch.cuda.synchronize()
+
+    unprofiled = _time.perf_counter()
+    run_bounded()
+    torch.cuda.synchronize()
+    unprofiled = _time.perf_counter() - unprofiled
+
+    start = _time.perf_counter()
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ],
+    ) as prof:
+        run_bounded()
+        torch.cuda.synchronize()
+    wall = _time.perf_counter() - start
+    trainer.optim.step = original_step
+
+    micro = trainer.cfg.rollouts_per_update
+    print(f"\noptimizer minibatches profiled: {limit}  (shard chunks each: {micro})")
+    print(
+        f"unprofiled wall for the same work: {unprofiled:.3f} s "
+        f"({unprofiled / limit * 1e3:.1f} ms per optimizer minibatch)"
+    )
+    summarize(
+        prof.key_averages(),
+        wall,
+        f"PPO update window ({limit} optimizer minibatches)",
+        limit,
+        "optimizer minibatch",
+        args.rows,
+    )
+    trainer.shutdown()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--warmup-steps", type=int, default=24)
     parser.add_argument("--profile-steps", type=int, default=16)
     parser.add_argument("--rows", type=int, default=30)
+    parser.add_argument(
+        "--phase",
+        choices=("rollout", "update"),
+        default="rollout",
+        help="rollout profiles a window of collection steps; update profiles optimizer minibatches",
+    )
+    parser.add_argument(
+        "--update-minibatches",
+        type=int,
+        default=4,
+        help="optimizer minibatches to profile in --phase update (whole epochs exhaust host RAM)",
+    )
     parser.add_argument("--compile", dest="compile_mode", default="reduce-overhead")
     args = parser.parse_args()
 
@@ -50,6 +150,11 @@ def main() -> None:
         gradient_diagnostics=launch.execution.gradient_diagnostics,
     )
     runtime = trainer._initialize_rollout_runtime()
+
+    if args.phase == "update":
+        profile_update(trainer, runtime, args)
+        return
+
     trainer.buffer.reset()
     trainer.buffer.store_initial_hidden(runtime.hidden)
     slots = trainer._prepare_league_slots(runtime.num_recurrent)

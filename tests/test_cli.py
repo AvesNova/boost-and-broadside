@@ -781,7 +781,7 @@ def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -
     assert {key: provenance[key] for key in provenance if key != "vram"} == {
         "device": "cpu",
         "seed": 0,
-        "compile_mode": "reduce-overhead",
+        "compile_mode": "default",
         "wandb": False,
         "allow_config_drift": False,
         "gradient_diagnostics": {"level": "off", "interval": 1, "minibatches": 1},
