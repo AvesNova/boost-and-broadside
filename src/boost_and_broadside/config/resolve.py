@@ -314,7 +314,7 @@ def validate_resolved_config(config: TrainConfig) -> None:
         minibatch_tokens = (
             scale.num_envs
             * config.num_steps
-            * scale.env_config.entity_tokens
+            * scale.env_config.num_entity_tokens
             // config.num_minibatches
         )
         if config.microbatch_tokens > minibatch_tokens:
@@ -407,11 +407,18 @@ def resolve_profile(
         entity_tokens=entity_tokens,
         num_steps=profile.num_steps,
     )
-    microbatch_tokens = (
-        overrides.microbatch_tokens
-        if overrides.microbatch_tokens is not None
-        else geometry.default_microbatch_tokens
-    )
+    if overrides.microbatch_tokens is not None:
+        microbatch_tokens = overrides.microbatch_tokens
+    else:
+        # The derived value is sized against the profile's own width. A narrower
+        # shard has a smaller minibatch, and a micro-batch cannot exceed the
+        # minibatch it splits, so clamp rather than resolve into a launch the
+        # validator will reject. The preset path has always done this; the
+        # derived path did not, and only got away with it while the divisor was
+        # large enough that the default never reached the bound.
+        microbatch_tokens = geometry.default_microbatch_tokens
+        if microbatch_tokens is not None:
+            microbatch_tokens = min(microbatch_tokens, geometry.minibatch_tokens(num_envs))
     num_envs_source = (
         overrides.num_envs_source
         if overrides.num_envs is not None

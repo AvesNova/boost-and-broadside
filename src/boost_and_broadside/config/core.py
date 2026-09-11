@@ -238,10 +238,12 @@ def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineCon
     """Entity tokens one environment presents to the policy.
 
     The single prediction of how wide ``observation_from_state`` will build the
-    token axis, so the launch arithmetic and the runtime cannot disagree about
-    it. Everything derived from the batch -- environment width, shard count, the
-    VRAM preset ceilings, the micro-batch bound -- is computed from this, and
-    they were computed from two different hand-written sums before.
+    token axis. ``EnvConfig.num_entity_tokens`` is this; the free function exists
+    because ``launch_geometry`` sizes a batch from a ``ProfileSpec``, which is
+    not an ``EnvConfig``. Everything derived from the batch -- environment width,
+    shard count, the VRAM preset ceilings, the micro-batch bound -- is computed
+    from it, and it used to be written out three times with two of the copies
+    omitting Frontline's zone and boundary tokens.
 
     Adding a token kind means adding a term here.
     ``tests/config/test_entity_tokens.py`` pins the result against an
@@ -298,12 +300,6 @@ class EnvConfig:
     # contract rather than in renderer-only state.
     vision_range: float | None = None
 
-    @property
-    def entity_tokens(self) -> int:
-        """Entity tokens per environment; see :func:`entity_token_count`."""
-
-        return entity_token_count(self.num_ships, self.num_fields, self.frontline)
-
     def __post_init__(self) -> None:
         if isinstance(self.frontline, Mapping):
             object.__setattr__(self, "frontline", FrontlineConfig(**self.frontline))
@@ -334,9 +330,9 @@ class EnvConfig:
 
     @property
     def num_entity_tokens(self) -> int:
-        """Ships plus fields and, in Frontline, five zones and one boundary/global token."""
+        """Entity tokens this environment presents; see :func:`entity_token_count`."""
 
-        return self.num_ships + self.num_fields + (6 if self.frontline is not None else 0)
+        return entity_token_count(self.num_ships, self.num_fields, self.frontline)
 
 
 @dataclass(frozen=True)

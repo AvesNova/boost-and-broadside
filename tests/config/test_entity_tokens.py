@@ -56,7 +56,7 @@ def test_prediction_matches_a_frontline_observation(num_ships: int, num_fields: 
         num_fields=num_fields,
         frontline=_frontline(),
     )
-    assert env_config.entity_tokens == _built_token_width(env_config, ship_config)
+    assert env_config.num_entity_tokens == _built_token_width(env_config, ship_config)
 
 
 @pytest.mark.parametrize("num_fields", [0, 4])
@@ -68,7 +68,7 @@ def test_prediction_matches_an_elimination_observation(num_fields: int) -> None:
         max_episode_steps=600,
         num_fields=num_fields,
     )
-    assert env_config.entity_tokens == _built_token_width(env_config, ship_config)
+    assert env_config.num_entity_tokens == _built_token_width(env_config, ship_config)
 
 
 def test_the_property_and_the_function_are_one_derivation() -> None:
@@ -79,7 +79,7 @@ def test_the_property_and_the_function_are_one_derivation() -> None:
         num_fields=10,
         frontline=_frontline(),
     )
-    assert env_config.entity_tokens == entity_token_count(
+    assert env_config.num_entity_tokens == entity_token_count(
         env_config.num_ships, env_config.num_fields, env_config.frontline
     )
 
@@ -89,4 +89,4 @@ def test_frontline_adds_the_zone_and_boundary_tokens() -> None:
     shared = {"num_ships": 8, "max_bullets": 0, "max_episode_steps": 600, "num_fields": 10}
     plain = EnvConfig(**shared)
     fronted = EnvConfig(**shared, frontline=_frontline())
-    assert fronted.entity_tokens - plain.entity_tokens == 6
+    assert fronted.num_entity_tokens - plain.num_entity_tokens == 6
