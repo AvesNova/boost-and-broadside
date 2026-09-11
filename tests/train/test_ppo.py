@@ -241,6 +241,43 @@ class TestPPOSmokeTest:
         any_changed = any(not torch.equal(b, a) for b, a in zip(params_before, params_after))
         assert any_changed, "No parameters changed after training"
 
+    def test_stable_gradient_buffers_train_identically(self, tmp_path):
+        """The CUDA-graph modes keep `.grad` allocated; that must change nothing.
+
+        A graph-captured backward cannot allocate `.grad` inside the capture, so
+        those modes zero the buffers in place instead of dropping them. Adam
+        skips a parameter whose grad is None but decays the moments of one whose
+        grad is zero, so the two are equivalent only while no parameter's
+        participation varies from step to step. This config is the adversarial
+        case: with no map tokens, both ``field_sub`` matrices never receive a
+        gradient at all.
+        """
+        torch.manual_seed(0)
+        dropped = _make_trainer(checkpoint_dir=str(tmp_path / "dropped"))
+        dropped.train()
+
+        torch.manual_seed(0)
+        kept = _make_trainer(checkpoint_dir=str(tmp_path / "kept"))
+        kept._zero_grad_to_none = False
+        for parameter in kept._policy_module.parameters():
+            parameter.grad = torch.zeros_like(parameter)
+        kept.train()
+
+        never_differentiated = [
+            name
+            for name, parameter in dropped._policy_module.named_parameters()
+            if parameter.grad is None
+        ]
+        assert never_differentiated, (
+            "this config no longer has a gradient-free parameter, so it no "
+            "longer tests what it was written to test"
+        )
+
+        for (name, before), after in zip(
+            dropped._policy_module.named_parameters(), kept._policy_module.parameters()
+        ):
+            torch.testing.assert_close(before, after, msg=f"{name} diverged")
+
     def test_host_backed_logical_batch_runs_one_update(self, tmp_path):
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path),

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
@@ -101,6 +102,119 @@ class PolicyBundle:
 def feature_signature(ship_config: ShipConfig) -> dict[str, object]:
     """The ShipConfig values that decide what the policy's weights mean."""
     return {field: getattr(ship_config, field) for field in FEATURE_SHIP_CONFIG_FIELDS}
+
+
+def _owns_its_outputs(call):
+    """Wrap a compiled callable so the caller owns every tensor it returns.
+
+    CUDA-graph modes write each output into a static buffer inside the graph's
+    private pool, and replaying the graph writes those same addresses again.
+    Torch guards the hazard rather than letting it corrupt silently: reading an
+    output after the next replay raises "accessing tensor output of CUDAGraphs
+    that has been overwritten by a subsequent run".
+
+    This pipeline holds policy outputs across calls in three places, so the
+    guard fires on the first evaluator step. The recurrent hidden state is
+    carried from one rollout step into the next (``PPOTrainer._collect_rollout``,
+    every league slot's ``slot.hidden``, every evaluation agent's
+    ``agent.hidden``); the Elo evaluator draws five matchups from five
+    *different* policies and holds all five action tensors until it concatenates
+    the team action; and the belief tracker reads a step's ``pred_next`` after
+    later calls have run.
+
+    Copying what escapes is the documented remedy and the cheap one. The
+    rollout's hidden state is the largest output at (2, 20480, 512) float32 --
+    84 MB, about 0.4 ms to copy against a 250 ms rollout step. The alternative
+    torch offers, ``cudagraph_mark_step_begin()``, asserts the opposite of what
+    is true here: it promises the previous outputs are dead.
+    """
+
+    def owned(*args, **kwargs):
+        result = call(*args, **kwargs)
+        if isinstance(result, tuple):
+            return tuple(x.clone() if isinstance(x, torch.Tensor) else x for x in result)
+        return result.clone() if isinstance(result, torch.Tensor) else result
+
+    return owned
+
+
+def compile_policy(policy: YemongPolicy, mode: str | None) -> YemongPolicy:
+    """Route a policy's two entry points through ``torch.compile``.
+
+    ``torch.compile(module)`` wraps ``forward`` and nothing else, and
+    ``OptimizedModule.__getattr__`` hands every other attribute straight back
+    from the original module. Nothing in this project calls a policy's
+    ``forward``: rollout calls ``get_action_and_value`` and the PPO update calls
+    ``evaluate_actions``. Both therefore bypassed the wrapper entirely and ran
+    eager -- dynamo reported zero frames compiled for a run launched with the
+    default compile mode. Compiling the method the callers actually use is what
+    makes the flag do anything.
+
+    The compiled callable replaces the method on the policy itself, and the
+    policy is what comes back. Wrapping was tried and is not available:
+    ``OptimizedModule.__setattr__`` forwards writes to the module it wraps, so an
+    attribute set on the wrapper lands on the policy regardless, while the
+    wrapper's own ``state_dict`` prefixes every key with ``_orig_mod.``.
+
+    Both are compiled here; choosing between the compiled and the eager
+    ``evaluate_actions`` is ``PPOTrainer``'s decision, because it depends on what
+    the run is measuring. A compiled backward is one fused function whose saved
+    tensors do not survive a second traversal, and two things want to traverse a
+    micro-batch's graph more than once -- the gradient diagnostics, once per
+    decomposed term, and the cheap actor/critic split probe. See
+    ``PPOTrainer._measure_actor_critic_split``.
+
+    Dynamo holds the traced instance alive from its own caches, so dropping a
+    compiled policy needs a collection pass before the card gets the memory
+    back. ``EloRoster._unload`` does that, which is what keeps ``league_size`` a
+    real bound on device memory.
+
+    The CUDA-graph modes (``reduce-overhead``, ``max-autotune``) need one more
+    thing: their outputs live in static buffers that the next replay overwrites,
+    and this pipeline holds policy outputs across calls. ``_owns_its_outputs``
+    copies what escapes, which is what makes those modes usable at all.
+
+    Args:
+        policy: The freshly built policy.
+        mode:   ``torch.compile`` mode, or None to leave the policy eager.
+
+    Returns:
+        ``policy``, unchanged when ``mode`` is None and with compiled entry
+        points otherwise.
+    """
+
+    if mode is None:
+        return policy
+    # `dynamic=False` specializes one graph per shape instead of letting dynamo
+    # generalize after it sees a second one. Both reasons matter.
+    #
+    # Correctness first: a dynamic graph makes T symbolic, and `_parallel_scan`
+    # pads T to the next power of two with `1 << (T_real - 1).bit_length()`,
+    # which inductor cannot express -- it fails the whole compile with
+    # "ValueError: Exponent must be non-negative". That fires for any
+    # `--microbatch-tokens` whose split is uneven (50,000 gives 14/13/13
+    # environments), and would fire for any scheme that varied the rollout
+    # length. The shipped 25,000 happens to divide evenly, which is the only
+    # reason the default survives.
+    #
+    # And it is faster: measured 25.19 ms against 26.77 ms for the 2560-batch
+    # rollout forward once the evaluator's other widths have been seen.
+    #
+    # The shape count is small and bounded -- the rollout width, the evaluator's
+    # two, and the update's micro-batch -- so this cannot walk into a recompile
+    # loop.
+    step = torch.compile(policy.get_action_and_value, mode=mode, dynamic=False)
+    update = torch.compile(policy.evaluate_actions, mode=mode, dynamic=False)
+    if mode in CUDA_GRAPH_COMPILE_MODES:
+        # Both, uniformly. Dropping the update's copy was measured at 17.70 s
+        # against 18.18 s per epoch and rejected: the whole mode is end-to-end
+        # neutral, so a rule that holds for every entry point is worth more here
+        # than half a second an epoch that does not show up in throughput.
+        step = _owns_its_outputs(step)
+        update = _owns_its_outputs(update)
+    policy.get_action_and_value = step
+    policy.evaluate_actions = update
+    return policy
 
 
 def build_policy(
@@ -338,7 +452,7 @@ def load_policy_bundle(
         model_config is None or checkpoint_model_config == model_config
     )
     return PolicyBundle(
-        policy=torch.compile(policy, mode=compile_mode) if compile_it else policy,
+        policy=compile_policy(policy, compile_mode if compile_it else None),
         model_config=checkpoint_model_config,
         ship_config=checkpoint_ship_config,
         env_config=env_config,

@@ -26,16 +26,41 @@ MODEL_CONFIG = ModelConfig(
     # Two spatial sublayers per temporal sublayer buy relational depth cheaply.
     n_spatial_per_block=2,
     n_temporal_per_block=1,
-    # Read bullets early enough that a later spatial layer can share the signal.
-    n_bullet_cross_per_block=1,
+    # Projectile physics remains authoritative, but normal Frontline training
+    # does not spend policy memory/compute on per-bullet K/V observations.
+    n_bullet_cross_per_block=0,
     grad_checkpoint=False,
 )
 
 ELO_EVAL = EloEvalConfig(
-    # Five 512-env slices advance every rollout step; a floating ladder policy
-    # must settle for 1000 games before promotion.
-    envs_per_matchup=512,
-    step_interval=1,
+    # Five 1024-env slices advance every *second* rollout step; a floating ladder
+    # policy must settle for 1000 games before promotion.
+    #
+    # The width and the cadence are one decision, and the product is what buys
+    # measurements: rated games are proportional to environments x calls. Cost
+    # is not. The evaluator issues around twenty thousand operations per call
+    # whatever batch they cover, and this pipeline is dispatch-bound, so its
+    # bill tracks *calls alone* -- measured at 44.0, 21.5 and 10.7 seconds per
+    # update at intervals of 1, 2 and 4, and flat to within noise when the
+    # environment count moved by 4x at a fixed interval.
+    #
+    # So trading cadence for width is very close to free. Against the previous
+    # 512 every step, this simulates exactly the same 983,040 evaluator
+    # env-decisions per update, finishes the same number of episodes (93 against
+    # 108 over three updates, which is sampling noise at those counts), and
+    # costs 26.8 s per update instead of 44.0 -- **+15.7% end-to-end training
+    # throughput** on an RTX 4070 Laptop. Going further (2048 every fourth step)
+    # does not pay: the per-environment term starts to bite and peak memory
+    # jumps 1.4 GB.
+    #
+    # What it does change: an evaluation episode now spans twice as many
+    # training updates, so a rated game is played by a slightly more
+    # heterogeneous mixture of live-policy versions. The rating is a filtered
+    # online estimate either way, and `elo_diag/movement_z` is the series that
+    # would show it if the filter became noisier than the games support.
+    # See docs/engineering/rl-throughput.md.
+    envs_per_matchup=1024,
+    step_interval=2,
     k_factor=4.0,
     scripted_live_elo=LIVE_SCRIPTED_ELO,
     window_size=100,

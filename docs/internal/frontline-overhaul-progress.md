@@ -9,10 +9,11 @@ remain the source of truth for scope and human gates.
 
 ## Current position
 
-- Branch: `frontline/06-beliefs`
+- Branch: `frontline/07-map-memory`
 - Integration base: `feat/frontline-overhaul`
-- Human gate: Gate 4, recursive belief model
-- Status: approved; ready to merge into the integration branch
+- Human gate: Gate 5, map-memory architecture comparison
+- Status: in progress; implementation and preliminary performance evidence are ready, but
+  meaningful learning curves and evaluation quality remain outstanding
 - Gate 1 was approved by the user's instruction to continue and merged into the
   integration base on 2026-09-09.
 - Gate 2 was approved explicitly and merged into the integration base on 2026-09-10.
@@ -21,10 +22,11 @@ remain the source of truth for scope and human gates.
 - Gate 4 was approved on 2026-09-10. The point-estimate + age + recurrence design is sufficient
   for now; uncertainty values, categorical targets, and other output representations are
   deferred until a proper training run provides evidence.
-- Boundary: stop after recursive point estimates, privileged auxiliary supervision,
-  belief diagnostics, and natural-occlusion evidence are ready for human review.
+- Gate 4 was merged into the integration base and pushed on 2026-09-10 as `331d3d6`.
+- Boundary: stop after the full-attention versus K/V-only comparison includes meaningful
+  learning curves and final evaluation quality and is ready for human review.
 - Draft PR: not opened because GitHub CLI is unavailable; use the compare URL after publication
-- Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/06-beliefs?expand=1>
+- Compare URL: <https://github.com/AvesNova/boost-and-broadside/compare/feat/frontline-overhaul...frontline/07-map-memory?expand=1>
 
 ## Gate 1 implemented
 
@@ -179,6 +181,15 @@ results guide tuning but do not replace human playtesting.
   (105.16× aggregate realtime), peaking at 29.67 MiB. A two-team belief-cache batch measured
   12.61 ms at width 128, or 10,148 environments/s. Learned-checkpoint inference was measured
   separately and took 191.07 seconds.
+- Gate 5 config/model/checkpoint/policy-I/O regression: 316 passed, 2 skipped. A matched
+  129,024-step CUDA BC integration
+  sample completed in 170.1 seconds for full attention and 160.4 seconds for K/V memory, a
+  5.7% K/V wall-time reduction. Update-20 throughput was 758 versus 781 environment steps/s;
+  losses were 5.383 versus 5.375. This is a pipeline/throughput sample, not a learning result.
+- At the production 16 map objects, isolated CUDA sequence forward/backward peak allocation
+  fell from 1,435 MiB to 841 MiB with K/V memory (41.4%). In the latest timing pass it improved
+  sequence throughput by 8.3%, while inference was 2.7% slower. At 106 map objects, update peak
+  fell from 5,606 MiB to 1,479 MiB and K/V update throughput was 2.65x full attention.
 
 ## Gate 2 implementation
 
@@ -254,6 +265,33 @@ results guide tuning but do not replace human playtesting.
   integration that would otherwise have trained the old small omniscient deathmatch.
 - Checkpoint observation schema `recursive_belief_v8` rejects encoders trained before the new
   visibility/validity/age semantics.
+
+## Gate 5 implementation (in progress)
+
+- `ModelConfig.map_read_mode` selects `full_attention` or `kv_memory`; command-line overrides
+  accept and validate both literal values, so matched training and sweeps need no code edits.
+- Full attention preserves the existing path. K/V mode encodes map inputs once, projects them
+  to a 64-wide latent, and lets ship queries cross-attend to layer-specific map keys/values.
+  Map objects never query ships, enter the feed-forward or recurrent trunk, or receive heads.
+- The K/V bank is recomputed from the current observation on every rollout or update forward;
+  nothing derived from model weights is cached across optimizer steps.
+- Normal registered training now sets projectile cross-attention layers to zero. Projectile
+  physics and the reusable bullet encoder/K/V infrastructure remain available through model
+  configuration and checkpoint metadata.
+- The K/V model has 1.950M parameters versus 1.909M for full attention: its small map projection
+  and per-layer K/V projections add weights, while unused field temporal adapters are omitted.
+- Tests pin query/memory dimensions, map influence on ship logits, rollout/update agreement,
+  literal override validation, and the existing full-attention behavior.
+
+Raw preliminary evidence:
+
+- [`frontline-map-memory-gate5-throughput.json`](frontline-map-memory-gate5-throughput.json)
+- [`frontline-map-memory-gate5-training.json`](frontline-map-memory-gate5-training.json)
+
+Reproduce the isolated scaling comparison with
+[`benchmarks/map_memory_suite.py`](../../benchmarks/map_memory_suite.py). The short training
+pair establishes that both paths optimize end to end and estimates operational throughput;
+it is explicitly not the Gate 5 learning-curve or final-policy comparison.
 
 ## Belief-model evidence
 
@@ -368,10 +406,13 @@ Reproduce with [`benchmarks/frontline_fog_suite.py`](../../benchmarks/frontline_
 - The combined boundary/global token is the first architecture, not the Gate 5 map-memory
   comparison. Static fields remain globally visible by design.
 - GitHub CLI is unavailable, so draft PR creation must use the compare URL or GitHub UI.
+- Gate 5 timing varies with GPU compilation/power state; the memory deltas were stable across
+  repeats, while the matched end-to-end sample is the conservative throughput estimate.
 
 ## Next plan
 
-1. Merge `frontline/06-beliefs` into `feat/frontline-overhaul`.
-2. Gate 5: compare full-attention map objects with a small K/V-only map memory, including
-   throughput, VRAM, scaling, learning curves, and final evaluation quality, then stop again.
+1. Run a meaningfully long, matched BC learning comparison for full attention and K/V memory,
+   then evaluate both checkpoints against the same scripted/reference populations.
+2. Select the default architecture only after throughput, VRAM, learning curve, and final
+   evaluation evidence can be considered together; then stop for Gate 5 human review.
 3. Preserve the later mandatory curriculum stop.

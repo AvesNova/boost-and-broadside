@@ -20,6 +20,7 @@ Entry kinds:
                     height of the climb instead of only two saturated ones.
 """
 
+import gc
 import json
 import math
 from dataclasses import dataclass, field
@@ -422,6 +423,12 @@ class EloRoster:
     def _unload(entry: RosterEntry) -> None:
         entry.policy = None
         entry.bundle = None
+        # A compiled policy is not reclaimed by reference counting: dynamo holds
+        # the traced instance alive from its own caches, so dropping the last
+        # visible reference leaves the weights on the card until a collection
+        # pass. The LRU cap exists to bound device memory, which it only does if
+        # the memory actually comes back here.
+        gc.collect()
 
     def evict_all_checkpoint_policies(self) -> None:
         """Free loaded weights from all checkpoint entries to reclaim GPU memory."""

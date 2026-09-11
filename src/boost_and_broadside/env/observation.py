@@ -1,3 +1,4 @@
+import math
 from collections.abc import Callable, ItemsView
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
@@ -505,9 +506,7 @@ def bullet_observation_from_state(
         ship_config
     )
 
-    log_scale = 2.0 * torch.log(
-        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
-    )
+    log_scale = _index_log_scale(ship_config)
     # Inactive slots keep a stale index of 0 from reset, and log(0) is -inf.
     local_index = state.bullet_local_index.reshape(flat).clamp(min=EPS)
     bullet_log_index = torch.log(local_index).unsqueeze(-1) / log_scale
@@ -564,6 +563,17 @@ def index_gradient_scale(ship_config: ShipConfig) -> float:
     )
 
 
+def _index_log_scale(ship_config: ShipConfig) -> float:
+    """The divisor turning a local refractive index into encoded log-index units.
+
+    A constant of the ship config, so it stays a Python float: materializing it
+    as a 0-d CUDA tensor to take its log copies from the host and drains the
+    CUDA queue, once per team view per observation build.
+    """
+
+    return 2.0 * math.log(ship_config.field_index_step)
+
+
 def observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
@@ -611,9 +621,7 @@ def observation_from_state(
             own_ship, ship_prev_action, torch.zeros_like(ship_prev_action)
         )
 
-    log_scale = 2.0 * torch.log(
-        torch.tensor(ship_config.field_index_step, device=state.device, dtype=torch.float32)
-    )
+    log_scale = _index_log_scale(ship_config)
     ship_local_log_index = torch.log(state.ship_local_index).unsqueeze(-1) / log_scale
 
     # grad(n) at the ship. This is the direction the medium is changing, and it is
@@ -822,6 +830,39 @@ def _mask_hidden_ships(
             value[..., :num_ships, :] = masked
         data[key] = value
     return YemongObservation(data=data, bullets=observation.bullets)
+
+
+_PERCEPTION_CACHE: dict[str, object] = {}
+
+
+def compile_perception(mode: str | None):
+    """The observation builder, fused when a launch asks for compilation.
+
+    Building both team views is a few hundred small kernels over a wide, shallow
+    token axis, so it is bound by how fast the CPU can issue them. Fusing the
+    whole builder measured **4.84x** on the evaluator's 2560-environment batch
+    (14.90 ms to 3.08 ms), faithful to 6e-8 on every channel.
+
+    **Only valid without ``buffers``.** The buffered form writes its results into
+    tensors the caller owns, and dynamo does not replay those writes -- compiled,
+    positions came back off by 16,135 pixels on a 16,384-pixel torus. The
+    evaluator passes no buffers, so its call is a pure function of the state and
+    is the one this may be used for. See tests/env/test_compiled_tick.py.
+
+    Cached per mode so that callers sharing a mode share one compiled callable
+    rather than tracing it again.
+    """
+
+    if mode is None:
+        return perceived_observation_from_state
+    compiled = _PERCEPTION_CACHE.get(mode)
+    if compiled is None:
+        # Static shapes: the same power-of-two padding that breaks a dynamic
+        # graph in the policy's scan is a hazard anywhere dynamo generalizes,
+        # and the evaluator's width is fixed for a run anyway.
+        compiled = torch.compile(perceived_observation_from_state, mode=mode, dynamic=False)
+        _PERCEPTION_CACHE[mode] = compiled
+    return compiled
 
 
 def perceived_observation_from_state(

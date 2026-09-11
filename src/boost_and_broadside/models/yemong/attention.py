@@ -38,7 +38,7 @@ class GatedMLP(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    """Pre-norm transformer block with full self-attention and FFN.
+    """Pre-norm transformer block with self-attention and optional read-only memories.
 
     Ordering: RMSNorm → MHSA → Residual → RMSNorm → FFN → Residual.
     Dead ships are masked out of key/value positions in attention so they
@@ -46,9 +46,16 @@ class TransformerBlock(nn.Module):
 
     Args:
         model_config: Must supply d_model and n_heads.
+        reads_bullets: Whether this layer reads projectile K/V.
+        map_memory_dim: Width of map K/V inputs, or None to disable the read.
     """
 
-    def __init__(self, model_config: ModelConfig, reads_bullets: bool = False) -> None:
+    def __init__(
+        self,
+        model_config: ModelConfig,
+        reads_bullets: bool = False,
+        map_memory_dim: int | None = None,
+    ) -> None:
         super().__init__()
         D = model_config.d_model
 
@@ -56,10 +63,15 @@ class TransformerBlock(nn.Module):
         self.head_dim = D // model_config.n_heads
         self.d_model = D
         self.reads_bullets = reads_bullets
+        self.reads_map_memory = map_memory_dim is not None
 
         self.norm1 = nn.RMSNorm(D)
         self.qkv = nn.Linear(D, 3 * D, bias=False)
         self.out_proj = nn.Linear(D, D, bias=False)
+
+        if map_memory_dim is not None:
+            self.norm_map = nn.RMSNorm(map_memory_dim)
+            self.kv_map = nn.Linear(map_memory_dim, 2 * D, bias=False)
 
         if reads_bullets:
             # Bullets are key/value only: no query, no output projection, no FFN.
@@ -79,6 +91,8 @@ class TransformerBlock(nn.Module):
         alive_mask: torch.Tensor | None = None,
         bullets: torch.Tensor | None = None,
         bullet_mask: torch.Tensor | None = None,
+        map_memory: torch.Tensor | None = None,
+        map_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Apply one transformer block.
 
@@ -90,11 +104,13 @@ class TransformerBlock(nn.Module):
             bullets:    (B, NB, D) encoded bullet tokens, or None. Read as
                         key/value only; never updated and never queried.
             bullet_mask:(B, NB) bool — True for active ring-buffer slots.
+            map_memory: (B, M, D_map) encoded map objects, read as K/V only.
+            map_mask:   (B, M) bool — True for valid map-object slots.
 
         Returns:
             (B, N, D) updated entity tokens.
         """
-        x = x + self._attn(self.norm1(x), alive_mask, bullets, bullet_mask)
+        x = x + self._attn(self.norm1(x), alive_mask, bullets, bullet_mask, map_memory, map_mask)
         x = x + self.ffn(self.norm2(x))  # pre-norm FFN + residual
         return x
 
@@ -117,14 +133,16 @@ class TransformerBlock(nn.Module):
         alive_mask: torch.Tensor | None,
         bullets: torch.Tensor | None = None,
         bullet_mask: torch.Tensor | None = None,
+        map_memory: torch.Tensor | None = None,
+        map_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Self-attention over entities, plus optional cross-attention to bullets.
+        """Self-attention plus optional cross-attention to read-only memories.
 
         The two attention outputs are summed into one residual and share this
         block's out_proj and FFN. Keeping them as separate softmaxes rather than
-        one fused key set costs the same arithmetic but avoids letting N*K bullet
-        keys swamp the attention mass of a dozen entity keys, and gives bullets
-        their own k/v projection for free.
+        one fused key set avoids letting a large auxiliary memory swamp the
+        attention mass of ship keys and gives each memory its own learned K/V
+        projection.
 
         Returns:
             (B, N, D) attention output.
@@ -164,6 +182,18 @@ class TransformerBlock(nn.Module):
                 any_active = bullet_mask.any(dim=-1).view(B, 1, 1, 1).to(bullet_out.dtype)
                 bullet_out = bullet_out * any_active
             out = out + bullet_out
+
+        if self.reads_map_memory and map_memory is not None and map_memory.shape[1]:
+            NM = map_memory.shape[1]
+            km, vm = self.kv_map(self.norm_map(map_memory)).chunk(2, dim=-1)
+            km = km.view(B, NM, H, dh).permute(0, 2, 1, 3)
+            vm = vm.view(B, NM, H, dh).permute(0, 2, 1, 3)
+            map_bias = self._key_bias(map_mask, q, B) if map_mask is not None else None
+            map_out = F.scaled_dot_product_attention(q, km, vm, attn_mask=map_bias, dropout_p=0.0)
+            if map_mask is not None:
+                any_map = map_mask.any(dim=-1).view(B, 1, 1, 1).to(map_out.dtype)
+                map_out = map_out * any_map
+            out = out + map_out
 
         out = out.permute(0, 2, 1, 3).reshape(B, N, D)  # (B, N, D)
         return self.out_proj(out)

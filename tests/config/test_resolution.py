@@ -271,9 +271,15 @@ def test_num_envs_override_rejects_width_that_changes_logical_batch(num_envs: in
 
 def test_equal_explicit_values_keep_value_fingerprint_but_record_cli_source() -> None:
     baseline = resolve_profile(PROFILES["rl"])
+    # Read the values back off the baseline rather than restating them, so this
+    # keeps testing "the same value, a different source" when the profile's
+    # sizing moves.
     explicit = resolve_profile(
         PROFILES["rl"],
-        LaunchOverrides(num_envs=1280, microbatch_tokens=25_000),
+        LaunchOverrides(
+            num_envs=baseline.train_config.scales[0].num_envs,
+            microbatch_tokens=baseline.train_config.microbatch_tokens,
+        ),
     )
     assert canonical_data(explicit.train_config) == canonical_data(baseline.train_config)
     assert explicit.value_sources["train_config.scales.0.num_envs"] == "cli"

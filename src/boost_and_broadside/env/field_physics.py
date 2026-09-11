@@ -108,6 +108,9 @@ def compose_refractive_index(
     evaluate the union gradient without division by ``1-alpha``. This remains
     stable at full coverage and turns the former per-field Python/kernel loop
     into a fixed set of batched tensor operations.
+
+    The scans run field-major rather than point-major; see the comment on the
+    transpose below for why the layout, not the arithmetic, is what matters.
     """
 
     if alpha.shape[-1] == 0:
@@ -121,17 +124,27 @@ def compose_refractive_index(
     grad_weight = grad_alpha.sum(dim=2)
     grad_weighted_log = (grad_alpha * log_target).sum(dim=2)
 
-    remaining = 1.0 - alpha
-    prefix = torch.cumprod(remaining, dim=2)
+    # The exclusive products scan the field axis, which sits innermost. CUDA
+    # runs an innermost-dimension scan with one thread per row and no
+    # parallelism inside the scan itself, so a length-10 axis is close to the
+    # worst case for it: 4.1 ms for the (1280, 80, 10) bullet batch, which the
+    # rollout profile showed as a fifth of all GPU time. Transposing the field
+    # axis out of the innermost position hands the same work to the outer-dim
+    # scan kernel, which parallelises across the points instead -- 0.10 ms at
+    # that shape. Same factors in the same order; only the kernel's internal
+    # association changes, which moves results by a few float32 ulps.
+    remaining = (1.0 - alpha).transpose(1, 2).contiguous()  # (B, M, N)
+    prefix = torch.cumprod(remaining, dim=1)
     suffix = torch.flip(
-        torch.cumprod(torch.flip(remaining, dims=(2,)), dim=2),
-        dims=(2,),
+        torch.cumprod(torch.flip(remaining, dims=(1,)), dim=1),
+        dims=(1,),
     )
-    ones = torch.ones_like(remaining[:, :, :1])
-    product_before = torch.cat((ones, prefix[:, :, :-1]), dim=2)
-    product_after = torch.cat((suffix[:, :, 1:], ones), dim=2)
-    coverage = 1.0 - prefix[:, :, -1]
-    grad_coverage = (grad_alpha * product_before * product_after).sum(dim=2)
+    ones = torch.ones_like(remaining[:, :1])
+    product_before = torch.cat((ones, prefix[:, :-1]), dim=1)
+    product_after = torch.cat((suffix[:, 1:], ones), dim=1)
+    coverage = 1.0 - prefix[:, -1]
+    leave_one_out = (product_before * product_after).transpose(1, 2)  # (B, N, M)
+    grad_coverage = (grad_alpha * leave_one_out).sum(dim=2)
 
     contributes = weight > EPS
     safe_weight = weight.clamp(min=EPS)
@@ -190,8 +203,9 @@ def refresh_ship_field_cache(state, config: ShipConfig) -> None:
 def index_from_level(level: torch.Tensor, index_step: float) -> torch.Tensor:
     """Convert integer log-index levels to absolute refractive indices."""
 
-    base = torch.as_tensor(index_step, dtype=torch.float32, device=level.device)
-    return torch.pow(base, level.float())
+    # A Python base keeps the step out of a host-to-device copy; materializing it
+    # as a 0-d CUDA tensor drains the queue, and this runs on every reset.
+    return torch.pow(float(index_step), level.float())
 
 
 def damage_from_level(level: torch.Tensor, base_damage: float) -> torch.Tensor:

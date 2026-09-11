@@ -48,6 +48,7 @@ from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
 from boost_and_broadside.train.rl.allocation import allocation_weights
 from boost_and_broadside.train.rl.belief import DualBeliefTracker
@@ -79,7 +80,7 @@ from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
 )
-from boost_and_broadside.train.rl.policy_io import build_policy
+from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
@@ -365,7 +366,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         device: str | torch.device,
         use_wandb: bool = False,
         scripted_agent: StochasticScriptedAgent | None = None,
-        compile_mode: str | None = "reduce-overhead",
+        compile_mode: str | None = "default",
         resume_wandb_run_id: str | None = None,
         resolved_config_document: Mapping[str, object] | None = None,
         launch_provenance: Mapping[str, object] | None = None,
@@ -426,6 +427,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if compile_mode is not None
             else None
         )
+        self._env_compile_mode = collision_compile_mode
         self.wrapper = YemongEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
             ship_config=ship_config,
@@ -461,14 +463,38 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             team_pma_k=self._win_k,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
-        self.policy = (
-            torch.compile(self._policy_module, mode=compile_mode)
-            if compile_mode is not None
-            else self._policy_module
-        )
+        # Captured before compiling. Two things re-traverse a micro-batch's
+        # backward graph, which a compiled backward does not survive: the
+        # actor/critic split probe, which gets its own forward pass, and the
+        # gradient diagnostics, which decompose into too many terms to give each
+        # one and so run the whole update eagerly. See _update_evaluate_actions.
+        self._eager_evaluate_actions = self._policy_module.evaluate_actions
+        self.policy = compile_policy(self._policy_module, compile_mode)
         self.optim = optim.Adam(
             self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
         )
+        # CUDA-graph modes capture the backward too, and a `.grad` tensor first
+        # allocated inside that capture lives in the graph's private pool -- the
+        # next replay overwrites it, and accumulating into it across
+        # micro-batches raises "accessing gradient tensor output of CUDAGraphs
+        # that has been overwritten by a subsequent run". Torch's remedy is
+        # stable buffers allocated before any capture, which then have to stay
+        # allocated: `zero_grad(set_to_none=True)` would free them again and put
+        # the next backward right back inside the pool.
+        #
+        # Keeping a zeroed grad where there would otherwise be None is exactly
+        # equivalent here. Adam skips a parameter whose grad is None; for one
+        # whose grad is all zeros it decays moments that are themselves zero and
+        # applies `-lr * 0 / (sqrt(0) + eps)`, which is exactly zero, with no
+        # weight decay configured to make it otherwise. The case that would
+        # differ -- a parameter that gets a gradient on some steps and not
+        # others -- cannot arise: participation is decided by token *counts*
+        # (`field_sub` runs only when the observation carries map tokens), and
+        # those are fixed for a run.
+        self._zero_grad_to_none = compile_mode not in CUDA_GRAPH_COMPILE_MODES
+        if not self._zero_grad_to_none:
+            for parameter in self._policy_module.parameters():
+                parameter.grad = torch.zeros_like(parameter)
 
         # --- Gradient diagnostics (observability; off changes nothing) ---
         # The parameter list and its trunk membership are fixed for the run, so
@@ -543,11 +569,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_ships=N,
             team_pma_k=self._win_k,
         ).to(self.device)
-        self.avg_policy = (
-            torch.compile(self._avg_policy_module, mode=compile_mode)
-            if compile_mode is not None
-            else self._avg_policy_module
-        )
+        self.avg_policy = compile_policy(self._avg_policy_module, compile_mode)
         self._avg_policy_module.load_state_dict(self._policy_module.state_dict())
         for p in self._avg_policy_module.parameters():
             p.requires_grad_(False)
@@ -1056,6 +1078,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 scripted_window=self._eval_window_sc,
                 live_vs_avg_window=self._eval_window_live_vs_avg,
                 include_bullets=eval_reads_bullets,
+                compile_mode=self._env_compile_mode,
             ),
             obs=obs,
             beliefs=beliefs,
@@ -1559,6 +1582,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         measure_grad_split: bool = False,
         grad_terms: TermGradientAccumulator | None = None,
         grad_scale: float = 1.0,
+        evaluate_actions: Callable[..., tuple] | None = None,
     ) -> tuple[torch.Tensor, dict]:
         """Compute PPO loss for one micro-batch. Does NOT call zero_grad / backward / step.
 
@@ -1592,6 +1616,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             grad_scale:   The factor the training backward applies to this
                           micro-batch's loss, so accumulated term gradients sum
                           to the gradient the optimizer step receives.
+            evaluate_actions: Policy entry point to evaluate with. Defaults to
+                          the run's own, which is compiled unless gradient
+                          diagnostics are on. The actor/critic split probe
+                          passes the eager one so it can traverse its own graph
+                          twice without touching the training graph.
 
         Returns:
             (loss, diag) where diag is a dict of scalar/tensor diagnostics.
@@ -1624,8 +1653,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # evaluate_actions needs the full (T, B, N+M) alive mask so Yemong layers
         # can attend to field tokens; mb_alive is ships-only and used for loss masking.
         alive_mask_full = curr_mb_obs[ObsKey.BELIEF_VALID].bool()  # (T, B_mb, N+M)
+        evaluate = evaluate_actions or self._update_evaluate_actions()
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, new_value, policy_logits, z, pred_next = self.policy.evaluate_actions(
+            logprob, entropy, new_value, policy_logits, z, pred_next = evaluate(
                 obs=curr_mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
@@ -2274,6 +2304,61 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         records["grad_diag/level"] = float(GRADIENT_DIAGNOSTICS_LEVELS.index(self._grad_diag.level))
         return records
 
+    def _update_evaluate_actions(self) -> Callable[..., tuple]:
+        """The policy entry point the PPO update evaluates with.
+
+        Compiled, except while gradient diagnostics are on. Those differentiate
+        the micro-batch once per decomposed term -- up to seventeen traversals at
+        ``reward_full`` -- and a compiled backward is one fused function whose
+        saved tensors do not survive the second. Giving each term its own forward
+        is not affordable at that count, so a diagnosed run evaluates eagerly
+        throughout.
+
+        Read from the diagnostic level rather than fixed at construction, so it
+        is a property of the *run* and never of the micro-batch. That is what
+        keeps the applied gradient independent of whether it was measured, which
+        ``test_measuring_does_not_disturb_the_gradient_that_gets_applied``
+        asserts bit-for-bit.
+        """
+
+        if self._grad_diag.enabled:
+            return self._eager_evaluate_actions
+        return self.policy.evaluate_actions
+
+    def _measure_actor_critic_split(
+        self,
+        batch: MicroBatch,
+        denoms: dict,
+        frac: float,
+    ) -> dict[str, torch.Tensor]:
+        """Measure the actor/critic gradient split on a graph of the probe's own.
+
+        The probe differentiates two loss terms separately, which means two
+        traversals, and the training backward is a third. A compiled backward is
+        one fused function whose saved tensors do not survive the second, so the
+        probe re-evaluates the micro-batch eagerly and takes both gradients off
+        that. It costs one extra forward and two extra backwards, on one
+        micro-batch per histogram interval, against a probe that already budgets
+        two extra backwards.
+
+        The point of paying that rather than measuring on the training graph is
+        that the training forward and backward stay exactly what an unmeasured
+        micro-batch runs, so switching the histogram cadence on cannot move the
+        applied gradient. The reported norms come from the eager implementation
+        instead of the compiled one, which is a ratio of two gradients either
+        way.
+        """
+
+        _, diag = self._compute_minibatch_loss(
+            batch,
+            True,
+            denoms,
+            frac,
+            measure_grad_split=True,
+            evaluate_actions=self._eager_evaluate_actions,
+        )
+        return {key: diag[key] for key in ("grad_norm_actor", "grad_norm_critic")}
+
     def _actor_critic_split(self, accumulator: TermGradientAccumulator) -> dict[str, float]:
         """The long-standing actor/critic split, read off the top-level terms.
 
@@ -2442,7 +2527,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 for buf in all_buffers
             ]
             for batches in zip(*iters):
-                self.optim.zero_grad()
+                self.optim.zero_grad(set_to_none=self._zero_grad_to_none)
 
                 measure_gradients = (
                     diagnose_update
@@ -2542,23 +2627,26 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
                     for source_chunk, device_chunk in self._iter_device_chunks(chunks, buf):
                         frac = source_chunk.alive.shape[1] / mb_envs
+                        # Measured before the training pass and on its own graph,
+                        # so the forward and backward that actually move the
+                        # policy are identical to an unmeasured micro-batch's.
+                        if measure_split and is_primary:
+                            split = self._measure_actor_critic_split(device_chunk, denoms, frac)
+                            a, c = split["grad_norm_actor"], split["grad_norm_critic"]
+                            accum_scalar["train/grad_norm_actor"].append(a)
+                            accum_scalar["train/grad_norm_critic"].append(c)
+                            accum_scalar["train/actor_grad_share"].append(a / (a + c + 1e-12))
+                            measure_split = False
+
                         loss, diag = self._compute_minibatch_loss(
                             device_chunk,
                             is_primary,
                             denoms,
                             frac,
-                            measure_grad_split=measure_split and is_primary,
                             grad_terms=accumulator,
                             grad_scale=1.0 / n_scales,
                         )
                         (loss / n_scales).backward()
-
-                        if "grad_norm_actor" in diag:
-                            a, c = diag["grad_norm_actor"], diag["grad_norm_critic"]
-                            accum_scalar["train/grad_norm_actor"].append(a)
-                            accum_scalar["train/grad_norm_critic"].append(c)
-                            accum_scalar["train/actor_grad_share"].append(a / (a + c + 1e-12))
-                            measure_split = False
 
                         for key, dkey in _additive:
                             scalar_accum_step[key] += diag[dkey] / n_scales

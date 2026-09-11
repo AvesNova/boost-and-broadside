@@ -45,9 +45,7 @@ def _exact_agent(value: str) -> str:
 def _checkpoint_path(value: str) -> str:
     path = Path(value)
     if not value or value != value.strip() or path.suffix != ".pt" or path.name == ".pt":
-        raise argparse.ArgumentTypeError(
-            f"expected an explicit .pt checkpoint path, got {value!r}"
-        )
+        raise argparse.ArgumentTypeError(f"expected an explicit .pt checkpoint path, got {value!r}")
     return value
 
 
@@ -233,10 +231,21 @@ COMMANDS: tuple[CommandSpec, ...] = (
             _option(
                 "--compile",
                 dest="compile_mode",
-                choices=("none", "reduce-overhead", "default", "max-autotune"),
-                default="reduce-overhead",
+                choices=(
+                    "none",
+                    "default",
+                    "max-autotune-no-cudagraphs",
+                    "reduce-overhead",
+                    "max-autotune",
+                ),
+                default="default",
                 metavar="MODE",
-                help="torch.compile profile.",
+                help=(
+                    "torch.compile profile. The CUDA-graph modes "
+                    "(reduce-overhead, max-autotune) work but were measured as "
+                    "neutral on an RTX 4070 and cost ~1.1 GB of reserved "
+                    "memory; default is the measured best."
+                ),
             ),
             _option("--no-wandb", action="store_true", help="Disable W&B logging."),
             _option(
@@ -633,9 +642,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 microbatch_tokens=args.microbatch_tokens,
                 allow_probe=False,
             )
-            print_resolved_config(
-                launch.resolved, file=sys.stdout, launch=launch.document()
-            )
+            print_resolved_config(launch.resolved, file=sys.stdout, launch=launch.document())
             return 0
 
         if args.command == "smoke":

@@ -7,6 +7,7 @@ no defaults; all values must be set explicitly so nothing is ever silently wrong
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Literal
 
 import numpy as np
 
@@ -225,6 +226,37 @@ class ShipConfig:
             )
 
 
+# Zone tokens a Frontline environment presents, plus the single boundary token
+# that carries the front position and the match clock. Defined here rather than
+# in env/frontline so the launch arithmetic can size a batch without importing
+# the environment; ``env.frontline`` re-exports it.
+NUM_FRONTLINE_ZONES = 5
+NUM_FRONTLINE_GLOBAL_TOKENS = 1
+
+
+def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineConfig | None") -> int:
+    """Entity tokens one environment presents to the policy.
+
+    The single prediction of how wide ``observation_from_state`` will build the
+    token axis. ``EnvConfig.num_entity_tokens`` is this; the free function exists
+    because ``launch_geometry`` sizes a batch from a ``ProfileSpec``, which is
+    not an ``EnvConfig``. Everything derived from the batch -- environment width,
+    shard count, the VRAM preset ceilings, the micro-batch bound -- is computed
+    from it, and it used to be written out three times with two of the copies
+    omitting Frontline's zone and boundary tokens.
+
+    Adding a token kind means adding a term here.
+    ``tests/config/test_entity_tokens.py`` pins the result against an
+    observation the environment actually builds, so a kind added in one place
+    and not the other fails rather than silently resizing the batch.
+    """
+
+    tokens = num_ships + num_fields
+    if frontline is not None:
+        tokens += NUM_FRONTLINE_ZONES + NUM_FRONTLINE_GLOBAL_TOKENS
+    return tokens
+
+
 @dataclass(frozen=True)
 class EnvConfig:
     """Environment sizing."""
@@ -298,9 +330,9 @@ class EnvConfig:
 
     @property
     def num_entity_tokens(self) -> int:
-        """Ships plus fields and, in Frontline, five zones and one boundary/global token."""
+        """Entity tokens this environment presents; see :func:`entity_token_count`."""
 
-        return self.num_ships + self.num_fields + (6 if self.frontline is not None else 0)
+        return entity_token_count(self.num_ships, self.num_fields, self.frontline)
 
 
 @dataclass(frozen=True)
@@ -326,6 +358,11 @@ class ModelConfig:
     # that are hard zeros for it. The shared output layer is what keeps both token
     # types in one latent space, which the single spatial W_qkv depends on.
     encoder_split: bool = False
+    # Map objects either join ordinary entity self-attention or remain a smaller
+    # key/value-only memory read by ship queries. The latter never queries ships
+    # and never traverses the recurrent/FFN trunk.
+    map_read_mode: Literal["full_attention", "kv_memory"] = "full_attention"
+    map_memory_dim: int = 64
     # Spatial sublayers per block that cross-attend to bullets, counted from the
     # first. 0 disables bullet observation entirely. The read must precede at
     # least one further spatial layer for a ship to reason about fire aimed at
@@ -361,6 +398,10 @@ class ModelConfig:
             raise ValueError(f"n_spatial_per_block must be >= 0, got {self.n_spatial_per_block}")
         if self.n_temporal_per_block < 0:
             raise ValueError(f"n_temporal_per_block must be >= 0, got {self.n_temporal_per_block}")
+        if self.map_read_mode not in {"full_attention", "kv_memory"}:
+            raise ValueError(f"unknown map_read_mode {self.map_read_mode!r}")
+        if self.map_memory_dim < 1:
+            raise ValueError(f"map_memory_dim must be positive, got {self.map_memory_dim}")
         if not 0 <= self.n_bullet_cross_per_block <= self.n_spatial_per_block:
             raise ValueError(
                 "n_bullet_cross_per_block must be between 0 and n_spatial_per_block "

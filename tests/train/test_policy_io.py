@@ -5,7 +5,9 @@ before this module they were assembled separately at five call sites. These test
 pin the properties that make them impossible to separate again.
 """
 
+import gc
 import re
+import weakref
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from boost_and_broadside.train.rl.policy_io import (
     FEATURE_SHIP_CONFIG_FIELDS,
     CheckpointProvenanceWarning,
     build_policy,
+    compile_policy,
     feature_signature,
     load_policy_bundle,
 )
@@ -111,6 +114,163 @@ class TestBuildPolicy:
         assert observation_contract(ShipConfig(world_size=(16384.0, 16384.0)))[
             "position_frequencies"
         ] == (8, 8)
+
+
+def _cuda_obs(envs: int, ships: int):
+    """A minimal well-formed observation on CUDA, for shape-specialization tests."""
+    from boost_and_broadside.env.observation import ObsKey, YemongObservation
+
+    def f(*shape):
+        return torch.randn(*shape, device="cuda")
+
+    return YemongObservation(
+        data={
+            ObsKey.POS: f(envs, ships, 2) * 100,
+            ObsKey.VEL: f(envs, ships, 2),
+            ObsKey.ATT: torch.nn.functional.normalize(f(envs, ships, 2), dim=-1),
+            ObsKey.ANG_VEL: f(envs, ships, 1),
+            ObsKey.HEALTH: f(envs, ships, 1).abs(),
+            ObsKey.POWER: f(envs, ships, 1).abs(),
+            ObsKey.COOLDOWN: f(envs, ships, 1).abs(),
+            ObsKey.TEAM_ID: torch.randint(0, 2, (envs, ships), device="cuda"),
+            ObsKey.ALIVE: torch.ones(envs, ships, dtype=torch.bool, device="cuda"),
+            ObsKey.VISIBLE: torch.ones(envs, ships, dtype=torch.bool, device="cuda"),
+            ObsKey.BELIEF_VALID: torch.ones(envs, ships, dtype=torch.bool, device="cuda"),
+            ObsKey.TIME_SINCE_OBSERVATION: f(envs, ships, 1).abs(),
+            ObsKey.OBJECT_TYPE: torch.zeros(envs, ships, dtype=torch.long, device="cuda"),
+            ObsKey.RADIUS: f(envs, ships, 1).abs(),
+            ObsKey.PREVIOUS_ACTION: torch.zeros(envs, ships, 3, dtype=torch.long, device="cuda"),
+            ObsKey.LOCAL_LOG_INDEX: f(envs, ships, 1),
+            ObsKey.LOCAL_INDEX_GRADIENT: f(envs, ships, 2),
+            ObsKey.FIELD_TRANSITION_WIDTH: f(envs, ships, 1).abs(),
+            ObsKey.FIELD_TARGET_LOG_INDEX: f(envs, ships, 1),
+            ObsKey.FIELD_DAMAGE: f(envs, ships, 1).abs(),
+            ObsKey.ZONE_ROLE: torch.zeros(envs, ships, dtype=torch.long, device="cuda"),
+            ObsKey.CAPTURE_PROGRESS: f(envs, ships, 1),
+            ObsKey.CAPTURE_DIRECTION: f(envs, ships, 1),
+            ObsKey.FRONT_POSITION: f(envs, ships, 1),
+            ObsKey.FRONT_WIN_THRESHOLD: f(envs, ships, 1),
+            ObsKey.TIME_REMAINING: f(envs, ships, 1),
+            ObsKey.GAME_MODE: f(envs, ships, 1),
+        }
+    )
+
+
+class TestCompilePolicy:
+    """The entry points callers actually use must be the compiled ones.
+
+    ``torch.compile(module)`` wraps ``forward`` and nothing else, and
+    ``OptimizedModule.__getattr__`` hands every other attribute back from the
+    original module. Nothing here calls a policy's ``forward``, so wrapping the
+    module alone left both hot paths running eager and dynamo compiling zero
+    frames -- silently, for as long as the flag existed.
+    """
+
+    @staticmethod
+    def _policy():
+        return build_policy(
+            ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ShipConfig(),
+            num_value_components=3,
+            num_ships=4,
+            team_pma_k=(),
+        )
+
+    def test_no_mode_leaves_the_policy_untouched(self):
+        policy = self._policy()
+        assert compile_policy(policy, None) is policy
+
+    def test_the_rollout_entry_point_does_not_resolve_to_the_eager_bound_method(self):
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        entry = compiled.get_action_and_value
+        assert getattr(entry, "__self__", None) is not policy, (
+            "get_action_and_value resolves to the policy's own bound method, so it "
+            "bypasses torch.compile and runs eager"
+        )
+
+    def test_the_update_entry_point_is_compiled_too(self):
+        """Which of the two the update *uses* is PPOTrainer's decision."""
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        assert getattr(compiled.evaluate_actions, "__self__", None) is not policy
+
+    def test_the_policy_itself_comes_back_unchanged_otherwise(self):
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        assert compiled is policy
+        assert compiled.coordinator is policy.coordinator
+        assert compiled.num_recurrent_tokens == policy.num_recurrent_tokens
+        assert compiled.n_hidden_layers == policy.n_hidden_layers
+        assert set(compiled.state_dict()) == set(policy.state_dict())
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_a_second_batch_shape_does_not_break_the_compile(self):
+        """Two shapes must give two static graphs, not one dynamic one.
+
+        Letting dynamo generalize makes T symbolic, and ``_parallel_scan`` pads T
+        to the next power of two with ``1 << (T_real - 1).bit_length()`` --
+        inductor cannot express that and fails the whole compile with
+        "ValueError: Exponent must be non-negative". The rollout, the evaluator
+        and the update all call at different widths, and any
+        ``--microbatch-tokens`` whose split is uneven adds another; the shipped
+        divisor survived only because it happened to divide evenly.
+        """
+        policy = compile_policy(self._policy().to("cuda"), "default")
+        hidden_width = policy.n_hidden_layers
+
+        for envs in (7, 5):  # deliberately not equal, and not the same as before
+            obs = _cuda_obs(envs, ships=4)
+            hidden = torch.zeros(hidden_width, envs * 4, 4 * 32, device="cuda")
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+                action, _, _, _, _ = policy.get_action_and_value(obs, hidden)
+            assert action.shape == (envs, 4, 3)
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_a_cuda_graph_mode_returns_outputs_that_survive_the_next_call(self):
+        """The property every caller here depends on, and the one graphs break.
+
+        ``reduce-overhead`` writes its outputs into static buffers that the next
+        replay overwrites. This pipeline holds them: the recurrent hidden state
+        is carried into the following rollout step, and the Elo evaluator keeps
+        five policies' sampled actions alive at once while it builds the team
+        action. Without a copy the second call either raises "accessing tensor
+        output of CUDAGraphs that has been overwritten by a subsequent run" or,
+        worse, hands back the next step's numbers.
+        """
+        policy = compile_policy(self._policy().to("cuda"), "reduce-overhead")
+        hidden = torch.zeros(policy.n_hidden_layers, 6 * 4, 4 * 32, device="cuda")
+
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            first = policy.get_action_and_value(_cuda_obs(6, ships=4), hidden)
+        kept = [tensor.clone() for tensor in first]
+
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            policy.get_action_and_value(_cuda_obs(6, ships=4), first[4])
+
+        for index, (held, expected) in enumerate(zip(first, kept)):
+            torch.testing.assert_close(
+                held, expected, msg=f"output {index} changed under a later call"
+            )
+
+    def test_an_evicted_compiled_policy_is_reclaimed_by_the_roster(self):
+        """Dropping a compiled policy needs a collection pass, and gets one.
+
+        Dynamo keeps the traced instance alive from its own caches, so reference
+        counting alone does not return an evicted league entry's weights to the
+        card. ``EloRoster._unload`` collects for exactly this reason; without
+        that, ``max_size`` would stop bounding device memory.
+        """
+        policy = self._policy()
+        compiled = compile_policy(policy, "default")
+        alive = weakref.ref(policy)
+        del policy, compiled
+        assert alive() is not None, (
+            "reference counting now reclaims a compiled policy; the collect in "
+            "EloRoster._unload is no longer needed and should be removed"
+        )
+        gc.collect()
+        assert alive() is None
 
 
 class TestCheckpointProvenance:

@@ -1,0 +1,46 @@
+{
+  "status": "preliminary_integration_and_throughput_only",
+  "date": "2026-09-10",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "profile": "bc",
+  "seed": 20260910,
+  "shared_launch": {
+    "total_timesteps_requested": 131072,
+    "global_step_completed": 129024,
+    "updates": 21,
+    "num_steps": 32,
+    "num_minibatches": 2,
+    "logical_batch_tokens": 147456,
+    "rollout_tokens": 147456,
+    "microbatch_tokens": 55296,
+    "bullet_cross_attention_layers": 0
+  },
+  "results": {
+    "full_attention": {
+      "run": "20260910-214719",
+      "elapsed_seconds": 170.07898902893066,
+      "update_20_environment_steps_per_second": 758,
+      "update_20_ship_tokens_per_second": 6064,
+      "update_4_loss": 5.7362,
+      "update_20_loss": 5.3829
+    },
+    "kv_memory": {
+      "run": "20260910-215659",
+      "elapsed_seconds": 160.39326190948486,
+      "update_20_environment_steps_per_second": 781,
+      "update_20_ship_tokens_per_second": 6250,
+      "update_4_loss": 5.715,
+      "update_20_loss": 5.3753
+    }
+  },
+  "comparison": {
+    "kv_wall_time_reduction_percent": 5.69,
+    "kv_update_20_throughput_increase_percent": 3.03
+  },
+  "limitations": [
+    "This sample verifies training integration and gives a preliminary throughput estimate.",
+    "It is too short to compare policy quality or select the Gate 5 architecture.",
+    "The architectures use the same seed but do not have weight-identical initializations.",
+    "Live Elo remained zero because this deliberately tiny evaluation configuration accumulated no matchup counts."
+  ]
+}

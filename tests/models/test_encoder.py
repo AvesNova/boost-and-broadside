@@ -403,6 +403,102 @@ class TestYemongPolicy:
             assert (new_hidden[0, 2 * N + ship, :] == 0).all()  # env 2
 
 
+class TestMapKVMemory:
+    @staticmethod
+    def _policy(coordinator, num_ships: int) -> YemongPolicy:
+        cfg = ModelConfig(
+            d_model=64,
+            n_heads=4,
+            n_yemong_blocks=2,
+            n_spatial_per_block=2,
+            map_read_mode="kv_memory",
+            map_memory_dim=24,
+        )
+        return YemongPolicy(
+            cfg,
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=num_ships,
+            team_pma_k=(),
+        ).eval()
+
+    def test_map_tokens_are_smaller_kv_only_inputs(self, coordinator):
+        B, N, M = 2, 3, 4
+        policy = self._policy(coordinator, N)
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        seen: dict[str, tuple[int, ...]] = {}
+
+        def record_shapes(_module, args):
+            seen["queries"] = tuple(args[0].shape)
+            seen["memory"] = tuple(args[4].shape)
+
+        handle = policy.yemong_layers[0].spatial[0].register_forward_pre_hook(record_shapes)
+        try:
+            action, _, value, _, new_hidden = policy.get_action_and_value(obs, hidden)
+        finally:
+            handle.remove()
+
+        assert seen == {"queries": (B, N, 64), "memory": (B, M, 24)}
+        assert all(len(layer.field_sub) == 0 for layer in policy.yemong_layers)
+        assert action.shape == (B, N, 3)
+        assert value.shape == (B, N, NUM_VALUE_COMPONENTS)
+        assert new_hidden.shape == hidden.shape
+
+    def test_map_memory_changes_ship_outputs(self, coordinator):
+        B, N, M, T = 1, 3, 2, 2
+        torch.manual_seed(5)
+        policy = self._policy(coordinator, N)
+        obs = _make_obs(B, N + M)
+        obs.data[ObsKey.TEAM_ID][:, N:] = 2
+        moved = YemongObservation(data={key: value.clone() for key, value in obs.items()})
+        moved.data[ObsKey.POS][:, N:] += 400.0
+
+        def logits(one: YemongObservation) -> torch.Tensor:
+            sequence = YemongObservation(
+                data={key: value.unsqueeze(0).expand(T, *value.shape) for key, value in one.items()}
+            )
+            actions = torch.zeros(T, B, N, 3, dtype=torch.long)
+            hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+            return policy.evaluate_actions(sequence, actions, hidden, sequence[ObsKey.ALIVE])[3]
+
+        with torch.no_grad():
+            assert not torch.allclose(logits(obs), logits(moved))
+
+    def test_step_and_sequence_paths_match(self, coordinator):
+        B, N, M, T = 2, 3, 2, 5
+        torch.manual_seed(11)
+        policy = self._policy(coordinator, N)
+        observations = [_make_obs(B, N + M) for _ in range(T)]
+        for obs in observations:
+            obs.data[ObsKey.TEAM_ID][:, N:] = 2
+
+        initial_hidden = policy.initial_hidden(B, N, torch.device("cpu"))
+        hidden = initial_hidden
+        step_values, actions = [], []
+        for obs in observations:
+            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            actions.append(action)
+            step_values.append(value)
+
+        sequence = YemongObservation(
+            data={
+                key: torch.stack([obs.data[key] for obs in observations])
+                for key in observations[0].data
+            }
+        )
+        with torch.no_grad():
+            sequence_values = policy.evaluate_actions(
+                sequence,
+                torch.stack(actions),
+                initial_hidden,
+                sequence[ObsKey.ALIVE],
+            )[2]
+
+        assert torch.allclose(torch.stack(step_values), sequence_values, atol=1e-5)
+
+
 class TestYemongBlockStructure:
     """Configurable spatial/temporal sublayer counts inside each Yemong block."""
 
@@ -1273,6 +1369,59 @@ class TestFeatureCoordinatorLayout:
         assert len(names) == coordinator.total_prediction_dimension
         assert scales.shape[0] == coordinator.total_prediction_dimension
         assert target_end == coordinator.total_target_dimension
+
+
+class TestAccessorChannelSelection:
+    """A channel list must not become a device index tensor on the hot path.
+
+    ``val[..., [0]]`` is advanced indexing: the index tensor is built on the host
+    and copied to the device, which drains the CUDA queue on every observation
+    read. Every channel list this pipeline declares is a contiguous run, so the
+    accessor narrows with an equivalent slice instead — same values, a view
+    rather than a gather, and no host round trip.
+    """
+
+    def test_contiguous_channels_resolve_to_a_slice(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        assert Accessor(ObsKey.POS, channels=[0])._channel_slice == slice(0, 1)
+        assert Accessor(ObsKey.POS, channels=[1])._channel_slice == slice(1, 2)
+        assert Accessor(ObsKey.VEL, channels=[0, 1])._channel_slice == slice(0, 2)
+        assert Accessor(ObsKey.VEL)._channel_slice is None
+
+    def test_non_contiguous_channels_keep_the_list_form(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        assert Accessor(ObsKey.POS, channels=[1, 0])._channel_slice is None
+        assert Accessor(ObsKey.POS, channels=[0, 2])._channel_slice is None
+
+    def test_selection_matches_advanced_indexing_exactly(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        obs = _make_obs(3, 5)
+        for channels in ([0], [1], [0, 1], [1, 0]):
+            selected = Accessor(ObsKey.POS, channels=channels).get(obs)
+            assert torch.equal(selected, obs[ObsKey.POS][..., channels])
+
+    def test_sliced_selection_is_a_view_not_a_copy(self):
+        from boost_and_broadside.train.rl.features import Accessor
+
+        obs = _make_obs(3, 5)
+        selected = Accessor(ObsKey.POS, channels=[0]).get(obs)
+        assert selected.data_ptr() == obs[ObsKey.POS].data_ptr()
+
+    def test_every_shipped_accessor_avoids_advanced_indexing(self, ship_cfg):
+        """No feature in either shipped pipeline may fall back to the list path."""
+        from boost_and_broadside.train.rl.features import build_bullet_coordinator
+
+        coordinators = [build_standard_coordinator(ship_cfg), build_bullet_coordinator(ship_cfg)]
+        for coordinator in coordinators:
+            for feature in coordinator.features:
+                accessor = feature.accessor
+                assert accessor.channels is None or accessor._channel_slice is not None, (
+                    f"{feature.name} declares non-contiguous channels {accessor.channels}, "
+                    "which reintroduces a host-to-device index copy per read"
+                )
 
 
 class TestFeatureCoordinatorDecode:

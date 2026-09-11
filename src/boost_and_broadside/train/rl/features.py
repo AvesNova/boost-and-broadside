@@ -65,6 +65,12 @@ class Accessor:
     def __init__(self, key: ObsKey, channels: list[int] | None = None):
         self.key = key
         self.channels = channels
+        # A Python list index makes advanced indexing build the index tensor on
+        # the host and copy it over, which drains the CUDA queue on every read.
+        # Every channel list this pipeline uses is a contiguous run, so it is
+        # expressible as a slice: same values, a view instead of a gather, and
+        # no host synchronization. Non-contiguous lists keep the list form.
+        self._channel_slice = _contiguous_slice(channels)
 
     def get(self, obs: YemongObservation) -> torch.Tensor:
         try:
@@ -97,9 +103,26 @@ class Accessor:
                 val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
             else:
                 raise
+        return self._select(val)
+
+    def _select(self, val: torch.Tensor) -> torch.Tensor:
+        """Narrow ``val`` to this accessor's channels without a host round trip."""
+
+        if self._channel_slice is not None:
+            return val[..., self._channel_slice]
         if self.channels is not None:
             return val[..., self.channels]
         return val
+
+
+def _contiguous_slice(channels: list[int] | None) -> slice | None:
+    """The equivalent slice for an ascending, step-one channel list, else None."""
+
+    if not channels:
+        return None
+    if any(b - a != 1 for a, b in zip(channels, channels[1:])):
+        return None
+    return slice(channels[0], channels[-1] + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -1029,10 +1052,7 @@ class BulletAccessor(Accessor):
 
     def get(self, obs: YemongObservation) -> torch.Tensor:
         assert obs.bullets is not None, "observation carries no bullet channels"
-        val = obs.bullets[self.key]
-        if self.channels is not None:
-            return val[..., self.channels]
-        return val
+        return self._select(obs.bullets[self.key])
 
 
 def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
