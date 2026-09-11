@@ -226,6 +226,33 @@ class TestCompilePolicy:
                 action, _, _, _, _ = policy.get_action_and_value(obs, hidden)
             assert action.shape == (envs, 4, 3)
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_a_cuda_graph_mode_returns_outputs_that_survive_the_next_call(self):
+        """The property every caller here depends on, and the one graphs break.
+
+        ``reduce-overhead`` writes its outputs into static buffers that the next
+        replay overwrites. This pipeline holds them: the recurrent hidden state
+        is carried into the following rollout step, and the Elo evaluator keeps
+        five policies' sampled actions alive at once while it builds the team
+        action. Without a copy the second call either raises "accessing tensor
+        output of CUDAGraphs that has been overwritten by a subsequent run" or,
+        worse, hands back the next step's numbers.
+        """
+        policy = compile_policy(self._policy().to("cuda"), "reduce-overhead")
+        hidden = torch.zeros(policy.n_hidden_layers, 6 * 4, 4 * 32, device="cuda")
+
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            first = policy.get_action_and_value(_cuda_obs(6, ships=4), hidden)
+        kept = [tensor.clone() for tensor in first]
+
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            policy.get_action_and_value(_cuda_obs(6, ships=4), first[4])
+
+        for index, (held, expected) in enumerate(zip(first, kept)):
+            torch.testing.assert_close(
+                held, expected, msg=f"output {index} changed under a later call"
+            )
+
     def test_an_evicted_compiled_policy_is_reclaimed_by_the_roster(self):
         """Dropping a compiled policy needs a collection pass, and gets one.
 

@@ -52,12 +52,13 @@ Eight of the nine preserve the objective, the batch construction, the opponent
 curriculum and the learning algorithm exactly. The ninth, change 6, is called
 out below.
 
-Seven things were tried and rejected on evidence, several of them the obvious
-guesses: larger micro-batches (twice, with opposite answers before and after
-compilation), gameplay trades in the projectile system, merging the evaluator's
-environment into the training one, compiling the environment (which is *wrong*,
-not merely unhelpful), alternating rollout lengths, a work-efficient RG-LRU
-scan, and reusable observation buffers for the evaluator.
+Eight things were tried and rejected on evidence, several of them the obvious
+guesses: **CUDA graphs** (made to work, then measured at +0.7% against a 2.4%
+noise floor), larger micro-batches (twice, with opposite answers before and
+after compilation), gameplay trades in the projectile system, merging the
+evaluator's environment into the training one, compiling the environment (which
+is *wrong*, not merely unhelpful), alternating rollout lengths, a work-efficient
+RG-LRU scan, and reusable observation buffers for the evaluator.
 
 ## The one behaviour change, stated plainly
 
@@ -581,9 +582,10 @@ the documented CLI flags:
   CUDA regression test calls the compiled policy at two deliberately unequal
   widths.
 - **`--compile max-autotune` crashed**, exactly like `reduce-overhead`, because
-  it captures CUDA graphs too. Both are now refused at launch with an
-  explanation instead of failing four minutes into the first update, and
-  `max-autotune-no-cudagraphs` is offered as the autotuning option.
+  it captures CUDA graphs too. Both were refused at launch rather than left to
+  fail four minutes into the first update. That refusal was later **lifted**:
+  the modes were made to work (see [CUDA graphs](#cuda-graphs--they-work-now-and-they-are-a-wash)),
+  measured as neutral, and left available but not default.
 
 ### 9. Compile the evaluator's observation build
 
@@ -659,6 +661,78 @@ only deleting a whole computation moves the needle.
 
 Conclusion: do not trade gameplay for this. The evaluator cadence change above
 is worth nearly twice the entire bullet system and costs no gameplay at all.
+
+### CUDA graphs — they work now, and they are a wash
+
+The profile says the pipeline is kernel-launch bound, and CUDA graphs are the
+one tool that attacks launch count directly rather than trimming around it. So
+this was the most promising idea left. It was implemented, it works, and it buys
+nothing measurable.
+
+**Why it used to crash.** Not where the earlier note in this document guessed.
+The first failure is in the *evaluator*, at `_compute_team_actions`: five
+matchup slots draw actions from five different policies and hold all five
+tensors alive until `torch.cat` builds the team action, while graph trees write
+every output into a static buffer the next replay overwrites. Copying what
+escapes fixes it (`compile_policy._owns_its_outputs`), and the recurrent hidden
+state — carried from one rollout step into the next, and held per league slot
+and per evaluation agent — needs the same treatment.
+
+**Then it crashes again, in the backward.** `accessing gradient tensor output of
+CUDAGraphs`. PPO accumulates gradients over micro-batches and scales, and
+`zero_grad(set_to_none=True)` frees `.grad` at every optimizer step, so the next
+backward allocates it *inside* the capture. The fix is stable buffers allocated
+before any capture, which then have to stay allocated.
+
+That last part is a semantics question, not just a mechanical one: Adam skips a
+parameter whose grad is None but decays the moments of one whose grad is zero.
+Two of the policy's 90 parameters — the `field_sub` map-token adapters — receive
+no gradient at all when the observation carries no map tokens. It is still
+exactly equivalent, because participation is decided by a token *count* that is
+fixed for a run, never intermittent, and because Adam's update for an
+always-zero gradient with zero moments and no weight decay is exactly
+`-lr · 0 / (√0 + eps)` = 0. `test_stable_gradient_buffers_train_identically`
+runs the adversarial config both ways and asserts every parameter matches.
+
+**The measurement.** Interleaved, two arms each way:
+
+| arm | s/upd | env steps/s | rollout | update s/epoch | Elo s/upd | peak alloc | reserved |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| default A | 97.43 | 5,045 | 65.67 | 18.49 | 23.90 | 3901 | 5120 |
+| default B | 95.12 | 5,167 | 63.62 | 18.38 | 23.50 | 3901 | 5120 |
+| graphs A | 96.77 | 5,079 | 65.71 | 18.17 | 25.04 | 1956 | 6236 |
+| graphs B | 94.52 | 5,200 | 63.98 | 18.19 | 24.46 | 1956 | 6236 |
+| **control mean** | **96.28** | **5,106** | 64.65 | 18.44 | 23.70 | 3901 | 5120 |
+| **graphs mean** | **95.65** | **5,140** | 64.85 | 18.18 | 24.75 | 1956 | 6236 |
+
+**+0.7% against a control-to-control spread of 2.4%** — indistinguishable from
+noise. The phase split is consistent in both pairs and explains itself: the
+update is **1.4% faster**, the evaluator **4.4% slower**, the rollout unmoved.
+
+**Why so little.** The graphs genuinely replay — the diagnostic shows a live
+`CUDAGraphTreeManager` with its generation advancing per call, so this is not a
+silent fallback to eager. But it also reports
+`cudagraph_recorded_non_static_inputs: 28`: twenty-eight inputs are copied into
+static buffers on every call. The launches went away and memcpys took their
+place. The evaluator pays that copy five times per step and pays the output
+copies on top, which is exactly where the regression shows up. The rollout could
+never have gained much anyway — its policy forward is 10.5 s of a 48.7 s step,
+the rest being eager environment work.
+
+Dropping the update's output copy was tried separately: 17.70 s/epoch against
+18.18, and still 95.01 s/update end to end. Rejected — a uniform rule is worth
+more than half a second an epoch that does not reach throughput.
+
+**What was kept.** The two modes are no longer refused at launch, because they
+now work, and the code that makes them work is confined to them: with `default`
+the shipped path is byte-identical. They stay off by default. On a larger card
+the 1.1 GB is irrelevant and the balance between launch overhead and input
+copies may differ, so the mode is worth re-measuring there rather than assuming
+this result transfers.
+
+**What would actually unlock it**: making the inputs static — the 28 copies are
+the whole cost. That is a change to how the observation is handed to the policy,
+not a compile flag.
 
 ### Merging the evaluator's environment into the training one — obsoleted
 
@@ -959,9 +1033,11 @@ quadratic-looking kernel. What is left is:
 
 1. **Dispatch, everywhere.** The pipeline issues ~8,480 kernels per rollout step
    and ~33,000 per optimizer minibatch, at 39–45% GPU occupancy. The remaining
-   headroom is a launch-count problem, and the two levers that actually address
-   it are CUDA graphs (blocked by output-buffer reuse across calls — see change
-   8) and compiling the environment (blocked on correctness — see below).
+   headroom is a launch-count problem. CUDA graphs, the obvious lever, were
+   implemented and measured: they work and they are neutral, because the 28
+   non-static inputs they must copy per call cost what the removed launches
+   saved. Making those inputs static is the change that would unlock it.
+   Compiling the environment, the other lever, is blocked on correctness.
 2. **The environment step, 20.6%.** Not compilable as written, because its
    stages write onto the caller's objects instead of returning results.
 3. **Elo evaluation, 26.9%.** Still a second world of policy forwards producing
