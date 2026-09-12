@@ -56,8 +56,8 @@ remain the source of truth for scope and human gates.
 | Zone ring radius | 1200 px | Provisional |
 | Zone radius | 330 px | Provisional; enlarged after playtest |
 | Playable radius | 2600 px | Provisional |
-| Capture duration | 8 s | Selected from 256-game sweep; still needs human playtest |
-| Capture pressure | Sign of ship-count majority | Provisional, intentionally flat |
+| Capture duration | 8 s at a one-ship lead | Selected from 256-game sweep under the old flat rule; needs recalibration |
+| Capture pressure | `H(net ship lead)` | Harmonic, table-free (digamma) so it holds at unseen fleet sizes |
 | Defense damage | 2 health/s | Provisional |
 | Respawn health | 25 | Provisional |
 | Friendly spawn healing | 12 health/s | Provisional |
@@ -69,8 +69,17 @@ remain the source of truth for scope and human gates.
 | Team vision range | 1600 px | Provisional; Gate 3 distribution measured |
 | Frontline physics/decision rate | 30 Hz | Per-second rules unchanged |
 
-Capture and stabilization use the same fixed rate. A larger majority does not accelerate
-the meter: 4v0, 4v2, 1v0, and 2v1 are equivalent; ties pause it.
+Capture and stabilization use the same curve. The meter advances at `H(n)` for a net lead
+of `n` ships, so what matters is the size of the lead rather than the absolute counts:
+1v0, 2v1 and 4v3 are equivalent at `1.0`, while 2v0 and 4v2 are `1.5` and 4v0 is `2.083`.
+Ties pause it. `H` is evaluated as `psi(n+1) + gamma` rather than from a table, so the
+rule stays defined at fleet sizes no training run visited.
+
+This replaces the original flat `sign()` rule, which discarded the size of the advantage
+entirely. Under that rule no policy could capture faster by winning a fight harder, so
+nothing converted combat dominance into territory and the front behaved as a near-
+symmetric random walk: 256 unlocked scripted games averaged 4.89 capture events but a
+mean *peak* net front of only 1.91, with 25.8% still drawn after 27,000 steps.
 
 ## Current scripted baseline
 

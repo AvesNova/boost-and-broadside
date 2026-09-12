@@ -168,23 +168,32 @@ def test_simultaneous_capture_is_atomic_and_net_zero() -> None:
 
 
 @pytest.mark.parametrize(
-    ("team0_count", "team1_count", "expected_direction"),
+    ("team0_count", "team1_count", "expected_direction", "expected_pressure"),
     [
-        (4, 0, 1),
-        (4, 2, 1),
-        (1, 0, 1),
-        (2, 1, 1),
-        (0, 4, -1),
-        (0, 2, -1),
-        (1, 2, -1),
-        (2, 4, -1),
-        (2, 2, 0),
+        # A lead of one is the unit, whatever the absolute counts.
+        (1, 0, 1, 1.0),
+        (2, 1, 1, 1.0),
+        (4, 3, 1, 1.0),
+        (0, 1, -1, 1.0),
+        (3, 4, -1, 1.0),
+        # Harmonic in the size of the lead: 1, 1.5, 1.833..., 2.083...
+        (2, 0, 1, 1.5),
+        (4, 2, 1, 1.5),
+        (3, 0, 1, 1.0 + 1 / 2 + 1 / 3),
+        (4, 1, 1, 1.0 + 1 / 2 + 1 / 3),
+        (4, 0, 1, 1.0 + 1 / 2 + 1 / 3 + 1 / 4),
+        (0, 2, -1, 1.5),
+        (0, 4, -1, 1.0 + 1 / 2 + 1 / 3 + 1 / 4),
+        # Level or empty applies nothing.
+        (2, 2, 0, 0.0),
+        (0, 0, 0, 0.0),
     ],
 )
-def test_capture_pressure_depends_only_on_which_team_has_more_ships(
+def test_capture_rate_is_harmonic_in_the_net_ship_advantage(
     team0_count: int,
     team1_count: int,
     expected_direction: int,
+    expected_pressure: float,
 ) -> None:
     config = _frontline(capture_seconds=10.0, defense_damage_per_second=0.0)
     env = _env(config, num_ships=8)
@@ -208,9 +217,80 @@ def test_capture_pressure_depends_only_on_which_team_has_more_ships(
 
     apply_frontline_tick(state, config, env.ship_config)
 
-    expected_progress = 0.5 + expected_direction * env.ship_config.dt / 10.0
+    expected_progress = 0.5 + expected_direction * expected_pressure * env.ship_config.dt / 10.0
     assert state.zone_capture_direction[0, defense_index].item() == expected_direction
     assert state.zone_capture_progress[0, defense_index].item() == pytest.approx(expected_progress)
+
+
+def _ticks_to_capture(lead: int, capture_seconds: float, num_ships: int = 8) -> tuple[int, float]:
+    """Drive one uncontested defense with ``lead`` attackers; return ticks and dt."""
+
+    config = _frontline(capture_seconds=capture_seconds, defense_damage_per_second=0.0)
+    env = _env(config, num_ships=num_ships)
+    state = env.state
+    defense_index = _zone_index(env, ZoneRole.TEAM1_DEFENSE)
+
+    state.ship_alive.zero_()
+    state.ship_pos.fill_(state.map_center[0])
+    state.ship_team_id.zero_()
+    state.ship_alive[0, :lead] = True
+    state.ship_pos[0, :lead] = state.zone_pos[0, defense_index]
+
+    for tick in range(1, 100_000):
+        apply_frontline_tick(state, config, env.ship_config)
+        if state.team0_captured[0].item():
+            return tick, env.ship_config.dt
+    raise AssertionError("the point never captured")
+
+
+def test_a_one_ship_lead_captures_in_capture_seconds() -> None:
+    """The unit of the rule: ``capture_seconds`` is the time a lead of one takes.
+
+    Allowed one tick of slack because the meter accumulates in float32, which
+    lands just under 1.0 after the nominal count. That predates this rule --
+    the flat rate accumulated identically -- and is a third of a tick of game
+    time, not a contract.
+    """
+
+    ticks, dt = _ticks_to_capture(lead=1, capture_seconds=2.0)
+
+    assert ticks * dt == pytest.approx(2.0, abs=dt)
+
+
+def test_each_extra_ship_of_the_lead_is_worth_progressively_less() -> None:
+    """A lead of two captures 1.5x faster, of three 1.833x, of four 2.083x."""
+
+    baseline, dt = _ticks_to_capture(lead=1, capture_seconds=2.0)
+
+    for lead, speedup in ((2, 1.5), (3, 1.0 + 1 / 2 + 1 / 3), (4, 1.0 + 1 / 2 + 1 / 3 + 1 / 4)):
+        ticks, _ = _ticks_to_capture(lead=lead, capture_seconds=2.0)
+        assert baseline / ticks == pytest.approx(speedup, rel=0.01)
+
+
+def test_capture_rate_stays_defined_far_above_the_trained_team_size() -> None:
+    """Zero-shot scaling: the rule has no table and therefore no team-size bound."""
+
+    config = _frontline(capture_seconds=10.0, defense_damage_per_second=0.0)
+    env = _env(config, num_ships=128)
+    state = env.state
+    defense_index = _zone_index(env, ZoneRole.TEAM1_DEFENSE)
+    defense = state.zone_pos[0, defense_index]
+
+    lead = 40
+    state.ship_alive.zero_()
+    state.ship_pos.fill_(state.map_center[0])
+    state.ship_team_id.zero_()
+    state.ship_alive[0, :lead] = True
+    state.ship_pos[0, :lead] = defense
+    state.zone_capture_progress[0, defense_index] = 0.5
+
+    apply_frontline_tick(state, config, env.ship_config)
+
+    expected_pressure = sum(1.0 / i for i in range(1, lead + 1))
+    expected_progress = 0.5 + expected_pressure * env.ship_config.dt / 10.0
+    assert state.zone_capture_progress[0, defense_index].item() == pytest.approx(
+        expected_progress, rel=1e-5
+    )
 
 
 @pytest.mark.parametrize(
