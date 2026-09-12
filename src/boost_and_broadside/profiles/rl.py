@@ -57,6 +57,34 @@ RL_PROFILE = ProfileSpec(
         front_win_threshold=3,
     ),
     # --- Rollout shape ---
+    # 12M, after run 733 tested 24M and measured worse.
+    #
+    # The idea was to buy back the batch the Frontline observation spent: zones
+    # plus ten fields took the per-decision token count from run 731's 12 (8
+    # ships + 4 fields) to 24, so a fixed budget bought half the decisions. The
+    # error was in believing that could be fixed by spending more tokens. At a
+    # fixed epoch count the two quantities are reciprocal in the budget --
+    #
+    #     batch per step   = logical_batch / num_minibatches
+    #     steps per sample = num_minibatches * epochs / logical_batch
+    #
+    # -- so doubling it bought a 2x batch per optimizer step by giving up half
+    # the optimizer steps per sample, and the critic is what paid. Measured at
+    # 13M steps: 1,856 optimizer steps and 0.538 explained variance at 12M,
+    # against 992 and 0.352 at 24M. Live Elo tracked slightly below too.
+    #
+    # Nor was it a large-batch run that would repay the slow start later. Run 731
+    # has almost exactly the 24M optimizer geometry -- ~1M decisions per update,
+    # the same steps per sample -- and reached 0.45 explained variance by 13M
+    # where 733 was at 0.35. 733 was below both references, not on a different
+    # trajectory through them.
+    #
+    # What 731 actually had was twice the decisions inside the same token budget,
+    # because a decision cost it half as many tokens. That axis is real and still
+    # open: routing map objects through K/V memory instead of the trunk, and
+    # sizing the batch on trunk tokens rather than observation tokens, raises
+    # decisions per update without touching the reciprocal above. Spending more
+    # tokens cannot substitute for it.
     logical_batch_tokens=12_000_000,
     num_steps=128,
     num_minibatches=32,

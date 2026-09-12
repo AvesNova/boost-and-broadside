@@ -554,7 +554,10 @@ def test_a_vram_proposal_is_recorded_as_its_own_source() -> None:
     assert resolved.value_sources["train_config.microbatch_tokens"] == "vram-cache"
     assert resolved.value_sources["model_config.grad_checkpoint"] == "vram-cache"
     assert resolved.model_config.grad_checkpoint is True
-    assert resolved.train_config.rollouts_per_update == 6
+    # The cached width is narrower than the profile's own, so the same logical
+    # batch has to be spread over proportionally more shards.
+    default = resolve_profile(PROFILES["rl"])
+    assert resolved.train_config.rollouts_per_update > default.train_config.rollouts_per_update
 
 
 def test_the_resolution_document_states_the_guarantee_of_what_it_moved() -> None:

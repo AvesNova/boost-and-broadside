@@ -257,8 +257,12 @@ def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
             * resolved.train_config.rollouts_per_update
         )
 
-    assert baseline.train_config.rollouts_per_update == 3
-    assert narrower.train_config.rollouts_per_update == 6
+    # Derived from the baseline rather than restated, so a deliberate change to
+    # `logical_batch_tokens` moves this with the profile instead of failing it.
+    assert narrower.train_config.scales[0].num_envs * 2 == baseline.train_config.scales[0].num_envs
+    assert (
+        narrower.train_config.rollouts_per_update == 2 * baseline.train_config.rollouts_per_update
+    )
     assert effective_batch_tokens(narrower) == effective_batch_tokens(baseline)
     assert narrower.value_sources["train_config.scales.0.num_envs"] == "cli"
     assert narrower.value_sources["train_config.rollouts_per_update"] == "derived"
