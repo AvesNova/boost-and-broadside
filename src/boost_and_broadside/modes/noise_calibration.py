@@ -170,13 +170,11 @@ def run_noise_calibration_mode(
         team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
     )
 
-    # The policy's own provenance decides the field distribution. num_tokens is
-    # derived after it: a fields policy predicts field tokens too, and sizing the
-    # report from a field-free environment would silently drop those dimensions.
+    # The policy's own provenance decides the field distribution: a fields policy
+    # is measured in a field arena or it is not being measured at all.
     env_config = resolve_evaluation_environment(
         env_config, (agent0, agent1), ship_config=ship_config
     )
-    num_tokens = N + env_config.num_fields
 
     if agent0.kind != "policy":
         raise ValueError(
@@ -199,7 +197,6 @@ def run_noise_calibration_mode(
         agent1,
         num_envs,
         N,
-        num_tokens,
         num_steps,
         ship_config,
         env_config,
@@ -216,7 +213,6 @@ def run_noise_calibration_mode(
         scripted_for_warmup,
         num_ar_envs,
         N,
-        num_tokens,
         num_ar_windows,
         ship_config,
         env_config,
@@ -288,7 +284,6 @@ def _run_phase1(
     agent1: ResolvedAgent,
     B: int,
     N: int,
-    num_tokens: int,
     num_steps: int,
     ship_config: ShipConfig,
     env_config: EnvConfig,
@@ -297,8 +292,8 @@ def _run_phase1(
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, agent1)
     env = create_evaluation_env(B, ship_config, env_config, dev)
-    init_hidden(agent0, B, num_tokens, dev)
-    init_hidden(agent1, B, num_tokens, dev)
+    init_hidden(agent0, B, dev)
+    init_hidden(agent1, B, dev)
     env.reset()
 
     num_targets = coordinator.total_target_dimension
@@ -390,8 +385,8 @@ def _run_phase1(
 
         if done_any.any():
             env.reset_envs(done_any)
-            reset_done_envs(agent0, done_any, num_tokens)
-            reset_done_envs(agent1, done_any, num_tokens)
+            reset_done_envs(agent0, done_any)
+            reset_done_envs(agent1, done_any)
 
         if (step + 1) % 100 == 0:
             elapsed = time.perf_counter() - t0
@@ -430,7 +425,6 @@ def _run_phase2(
     warmup_agent1: ResolvedAgent,
     B: int,
     N: int,
-    num_tokens: int,
     num_windows: int,
     ship_config: ShipConfig,
     env_config: EnvConfig,
@@ -439,8 +433,8 @@ def _run_phase2(
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, warmup_agent1)
     env = create_evaluation_env(B, ship_config, env_config, dev)
-    init_hidden(agent0, B, num_tokens, dev)
-    init_hidden(warmup_agent1, B, num_tokens, dev)
+    init_hidden(agent0, B, dev)
+    init_hidden(warmup_agent1, B, dev)
     env.reset()
 
     ar_sq_sum = torch.zeros(_AR_WINDOW, coordinator.total_target_dimension, device=dev)
@@ -460,8 +454,8 @@ def _run_phase2(
             done_any = dones | truncated
             if done_any.any():
                 env.reset_envs(done_any)
-                reset_done_envs(agent0, done_any, num_tokens)
-                reset_done_envs(warmup_agent1, done_any, num_tokens)
+                reset_done_envs(agent0, done_any)
+                reset_done_envs(warmup_agent1, done_any)
 
         # --- Snapshot after warmup ---
         ar_start_obs = observation_from_state(
@@ -496,8 +490,8 @@ def _run_phase2(
 
             if done_any.any():
                 env.reset_envs(done_any)
-                reset_done_envs(agent0, done_any, num_tokens)
-                reset_done_envs(warmup_agent1, done_any, num_tokens)
+                reset_done_envs(agent0, done_any)
+                reset_done_envs(warmup_agent1, done_any)
 
         # --- AR replay from snapshot ---
         curr_obs = YemongObservation(data={k: v.clone() for k, v in ar_start_obs.items()})

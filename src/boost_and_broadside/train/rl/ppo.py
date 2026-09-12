@@ -1065,7 +1065,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 avg_policy=self.avg_policy,
                 scripted_agent=self.scripted_agent,
                 num_ships=num_ships,
-                num_tokens=num_recurrent,
                 ego_pass=self._ego_pass,
                 live_elo=self._live_elo,
                 avg_elo=self._avg_live_elo,

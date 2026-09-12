@@ -43,13 +43,25 @@ subcommand prints help and performs no simulation or training.
 ## Verify the checkout
 
 ```bash
-uv run pytest -q
+uv run pytest -q -n auto
+uv run bnb smoke
 uv run ruff check .
 ```
 
 The suite passes on CPU; a handful of hardware-specific tests skip when no CUDA device
 is visible. There is no CI workflow yet, so these local commands are the verification
 path.
+
+`pytest -n auto` runs one worker per core and pins each one to a single Torch thread, which
+is the difference between 2.5 minutes and 7.5 minutes on a 16-core machine -- without the
+pin every worker claims every core and parallelism costs more than it returns. Drop `-n
+auto` when you want a readable failure or a debugger; the sequential run keeps the whole
+machine to itself.
+
+`bnb smoke` runs each CLI command as an isolated subprocess, four at a time by default
+(about 55 seconds; `--jobs 1` is about 145). Use `--jobs 1` if the matrix ever reports that
+a case dirtied the checkout -- it is the mode that says which one. `--case NAME` runs a
+single case for focused diagnosis.
 
 ## Watch or play
 

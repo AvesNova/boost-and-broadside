@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import subprocess
 from pathlib import Path
@@ -21,6 +22,7 @@ from boost_and_broadside.smoke import (
     _case_environment,
     _repository_output_snapshot,
     build_synthetic_run,
+    default_smoke_jobs,
     run_case_subprocess,
     run_smoke_matrix,
     validate_case_root,
@@ -264,3 +266,125 @@ def test_cli_focused_case_selection_dispatches_one_case(monkeypatch) -> None:
     )
     cli_commands.execute("smoke", _parse(["smoke", "--case", "collect-stats"]))
     assert captured == {"selected": "collect-stats"}
+
+
+# ----------------------------------------------------------------------
+# Running several cases at once
+# ----------------------------------------------------------------------
+
+
+class TestParallelMatrix:
+    """Cases already run in their own interpreter under their own roots, so what
+    is worth pinning is that running several changes nothing about what each one
+    is allowed to touch -- and that the matrix still refuses a dirty checkout."""
+
+    @staticmethod
+    def _harness(monkeypatch, tmp_path, *, dirty: bool = False):
+        """A matrix over fake cases, recording the root each one was handed."""
+
+        roots: list[Path] = []
+        snapshots = iter([b"clean", b"dirty"] if dirty else [b"clean", b"clean", b"clean"])
+        last = [b"clean"]
+
+        def _snapshot(_repository):
+            last[0] = next(snapshots, last[0])
+            return last[0]
+
+        monkeypatch.setattr("boost_and_broadside.smoke._repository_root", lambda: tmp_path)
+        monkeypatch.setattr("boost_and_broadside.smoke._checkout_snapshot", _snapshot)
+        monkeypatch.setattr(
+            "boost_and_broadside.smoke._repository_output_snapshot",
+            lambda _repository: (),
+        )
+        monkeypatch.setattr("boost_and_broadside.smoke.validate_case_root", lambda _root: None)
+
+        def _run(case, root, *, threads=None):
+            roots.append(Path(root))
+            return subprocess.CompletedProcess(["child"], 0, "", "")
+
+        monkeypatch.setattr("boost_and_broadside.smoke.run_case_subprocess", _run)
+        return roots
+
+    def test_no_case_is_a_sibling_of_another(self, monkeypatch, tmp_path, capsys) -> None:
+        """The escape check inside ``run_case_subprocess`` compares a case root's
+        siblings before and after. Cases sharing a parent would each see the
+        others writing legitimately into it, so every case gets its own."""
+
+        roots = self._harness(monkeypatch, tmp_path)
+
+        run_smoke_matrix(jobs=4)
+
+        assert len(roots) == len(SMOKE_CASES)
+        parents = [root.parent for root in roots]
+        assert len(set(parents)) == len(parents), "two cases share a parent directory"
+
+    def test_a_dirty_checkout_still_fails_the_matrix(self, monkeypatch, tmp_path) -> None:
+        """Attribution is what parallelism costs, not detection."""
+
+        self._harness(monkeypatch, tmp_path, dirty=True)
+
+        with pytest.raises(SmokeIsolationError, match="changed the source checkout"):
+            run_smoke_matrix(jobs=4)
+
+    def test_the_unattributed_failure_says_how_to_attribute_it(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        self._harness(monkeypatch, tmp_path, dirty=True)
+
+        with pytest.raises(SmokeIsolationError, match=r"--jobs 1"):
+            run_smoke_matrix(jobs=4)
+
+    def test_one_job_is_the_sequential_path_and_names_the_case(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        self._harness(monkeypatch, tmp_path, dirty=True)
+
+        with pytest.raises(SmokeIsolationError, match=r"case '\w[\w-]*' changed"):
+            run_smoke_matrix(jobs=1)
+
+    def test_every_case_is_reported_exactly_once(self, monkeypatch, tmp_path, capsys) -> None:
+        self._harness(monkeypatch, tmp_path)
+
+        run_smoke_matrix(jobs=4)
+
+        output = capsys.readouterr().out
+        for case in SMOKE_CASES:
+            assert output.count(f"{case.name} ... ") == 1, case.name
+        assert output.count("PASS") == len(SMOKE_CASES)
+        assert "4 at a time" in output
+
+    def test_a_single_case_never_spins_up_a_pool(self, monkeypatch, tmp_path, capsys) -> None:
+        """``jobs`` is clamped to the work available, so a focused diagnosis
+        stays the sequential path that names its case."""
+
+        self._harness(monkeypatch, tmp_path)
+
+        run_smoke_matrix("play", jobs=8)
+
+        assert "sequential" in capsys.readouterr().out
+
+    def test_the_default_leaves_each_case_room_to_run(self) -> None:
+        """One job per four cores, and never fewer than one -- a small machine
+        ends up sequential rather than thrashing."""
+
+        assert default_smoke_jobs() >= 1
+        assert default_smoke_jobs() <= max(1, (os.cpu_count() or 1) // 4)
+
+
+class TestParallelChildEnvironment:
+    def test_a_shared_machine_caps_each_child_s_thread_pool(self, tmp_path) -> None:
+        """Torch sizes its intra-op pool from the whole machine. Four cases each
+        claiming every core spend the matrix descheduling each other."""
+
+        roots = SmokeRoots.create(tmp_path / "case")
+        environment = _case_environment(roots, 4)
+
+        assert environment["OMP_NUM_THREADS"] == "4"
+        assert environment["MKL_NUM_THREADS"] == "4"
+
+    def test_a_case_running_alone_keeps_the_whole_machine(self, tmp_path) -> None:
+        roots = SmokeRoots.create(tmp_path / "case")
+        environment = _case_environment(roots)
+
+        assert "OMP_NUM_THREADS" not in environment
+        assert "MKL_NUM_THREADS" not in environment

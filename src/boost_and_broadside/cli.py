@@ -571,6 +571,15 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 metavar="NAME",
                 help="Run one registered case for focused diagnosis (default: full matrix).",
             ),
+            _option(
+                "--jobs",
+                type=int,
+                metavar="N",
+                help=(
+                    "Cases to run at once (default: one per four cores). "
+                    "1 also names which case dirtied the checkout, if one does."
+                ),
+            ),
         ),
     ),
 )
@@ -649,7 +658,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             from boost_and_broadside.smoke import SmokeError, run_smoke_matrix
 
             try:
-                run_smoke_matrix(args.case)
+                run_smoke_matrix(args.case, jobs=args.jobs)
             except SmokeError as error:
                 parser.error(str(error))
             return 0

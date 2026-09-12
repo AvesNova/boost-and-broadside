@@ -180,7 +180,6 @@ class EloEvaluator:
         avg_policy: YemongPolicy,
         scripted_agent: StochasticScriptedAgent | None,
         num_ships: int,
-        num_tokens: int,
         ego_pass: bool,
         live_elo: float,
         avg_elo: float,
@@ -219,7 +218,6 @@ class EloEvaluator:
         self.ship_config = ship_config
         self.include_bullets = include_bullets
         self.num_ships = num_ships
-        self.num_tokens = num_tokens
         self.ego_pass = ego_pass
         self.max_episode_steps = env_config.max_episode_steps
         self.matchup_size = config.envs_per_matchup
@@ -248,8 +246,8 @@ class EloEvaluator:
             ResolvedAgent("scripted", scripted_agent) if scripted_agent is not None else None
         )
         self.random_agent = ResolvedAgent("random", None)
-        init_hidden(self.live_agent, 4 * size, num_tokens, device)
-        init_hidden(self.avg_agent, size, num_tokens, device)
+        init_hidden(self.live_agent, 4 * size, device)
+        init_hidden(self.avg_agent, size, device)
         self._init_belief(self.live_agent, 4 * size)
         self._init_belief(self.avg_agent, size)
 
@@ -372,8 +370,8 @@ class EloEvaluator:
         size = self.matchup_size
         agent_live = ResolvedAgent("policy", policy)
         agent_float = ResolvedAgent("policy", policy)
-        init_hidden(agent_live, size, self.num_tokens, self.device)
-        init_hidden(agent_float, size, self.num_tokens, self.device)
+        init_hidden(agent_live, size, self.device)
+        init_hidden(agent_float, size, self.device)
         self._init_belief(agent_live, size)
         self._init_belief(agent_float, size)
         return agent_live, agent_float
@@ -387,8 +385,8 @@ class EloEvaluator:
         size = self.matchup_size
         self.float_opp_agent = ResolvedAgent("policy", self._floating_policy)
         self.float_pro_agent = ResolvedAgent("policy", self._floating_policy)
-        init_hidden(self.float_opp_agent, size, self.num_tokens, self.device)
-        init_hidden(self.float_pro_agent, size, self.num_tokens, self.device)
+        init_hidden(self.float_opp_agent, size, self.device)
+        init_hidden(self.float_pro_agent, size, self.device)
         self._init_belief(self.float_opp_agent, size)
         self._init_belief(self.float_pro_agent, size)
 
@@ -512,15 +510,15 @@ class EloEvaluator:
         staggered = torch.randint_like(self.env.state.step_count, 0, self.max_episode_steps)
         self.env.state.step_count[mask] = staggered[mask]
         self._rated = torch.where(mask, self.env.state.step_count == 0, self._rated)
-        reset_done_envs(self.live_agent, mask[: 4 * size], self.num_tokens)
+        reset_done_envs(self.live_agent, mask[: 4 * size])
         # Surviving anchors carry their hidden states over, so clear only the
         # restarted envs; every anchor observes every env regardless of assignment.
         for agent in self._anchor_agents_live:
             if agent is not None:
-                reset_done_envs(agent, stale_live, self.num_tokens)
+                reset_done_envs(agent, stale_live)
         for agent in self._anchor_agents_float:
             if agent is not None:
-                reset_done_envs(agent, mask[4 * size :], self.num_tokens)
+                reset_done_envs(agent, mask[4 * size :])
         self._anchor_idx_live = torch.where(
             self._anchor_idx_live >= stationary + dropped,
             self._anchor_idx_live - dropped,
@@ -912,17 +910,17 @@ class EloEvaluator:
     def _reset_agent_hiddens(self, done_any: torch.Tensor) -> None:
         """Reset recurrent state for every policy agent's finished envs."""
         size = self.matchup_size
-        reset_done_envs(self.live_agent, done_any[: 4 * size], self.num_tokens)
-        reset_done_envs(self.avg_agent, done_any[3 * size : 4 * size], self.num_tokens)
+        reset_done_envs(self.live_agent, done_any[: 4 * size])
+        reset_done_envs(self.avg_agent, done_any[3 * size : 4 * size])
         if self.float_opp_agent is not None:
-            reset_done_envs(self.float_opp_agent, done_any[size : 2 * size], self.num_tokens)
-            reset_done_envs(self.float_pro_agent, done_any[4 * size :], self.num_tokens)
+            reset_done_envs(self.float_opp_agent, done_any[size : 2 * size])
+            reset_done_envs(self.float_pro_agent, done_any[4 * size :])
         for agent in self._anchor_agents_live:
             if agent is not None:
-                reset_done_envs(agent, done_any[:size], self.num_tokens)
+                reset_done_envs(agent, done_any[:size])
         for agent in self._anchor_agents_float:
             if agent is not None:
-                reset_done_envs(agent, done_any[4 * size :], self.num_tokens)
+                reset_done_envs(agent, done_any[4 * size :])
 
     # ------------------------------------------------------------------
     # Flushing
