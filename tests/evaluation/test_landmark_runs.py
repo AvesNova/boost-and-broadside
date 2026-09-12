@@ -2,12 +2,17 @@
 
 The Gate-1 world contract widened position encodings and deliberately retired
 the v3 policy schema. Historical configuration records remain useful, but old
-weights must not be evaluated under v4 semantics merely because some tensor
+weights must not be evaluated under today's semantics merely because some tensor
 shapes happen to agree at the old world size.
+
+The rejection is asserted against ``OBSERVATION_SCHEMA`` rather than a schema
+name typed out here: every bump since v5 has left this file asserting a refusal
+that no longer happens for the reason it names.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -18,6 +23,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_final_training_checkpoint,
 )
 from boost_and_broadside.evaluation.tournament import load_run_config
+from boost_and_broadside.train.rl.checkpoint_schema import OBSERVATION_SCHEMA
 
 # run name -> (num_ships, num_fields, records a field map). Only the two runs
 # kept in-repo: 716 was a local run whose checkpoints were never committed, so a
@@ -41,12 +47,16 @@ def _fetched_run(run: str) -> Path:
 
 
 @pytest.mark.parametrize("run", sorted(_LANDMARKS))
-def test_a_v3_landmark_policy_is_rejected_by_the_v5_observation_contract(run) -> None:
+def test_a_v3_landmark_policy_is_rejected_by_the_current_observation_contract(run) -> None:
     run_dir = _fetched_run(run)
     resolve_exact_run(run, "checkpoints")
 
-    with pytest.raises(ValueError, match="overlapping_fields_v5"):
+    with pytest.raises(ValueError, match=re.escape(OBSERVATION_SCHEMA)) as refusal:
         load_run_config(run_dir)
+
+    # The refusal has to name both sides, or it cannot be acted on.
+    assert "refractive_fields_v3" in str(refusal.value)
+    assert "must be retrained" in str(refusal.value)
 
 
 @pytest.mark.parametrize("run", sorted(_LANDMARKS))

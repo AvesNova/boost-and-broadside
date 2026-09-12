@@ -161,7 +161,7 @@ def test_no_preset_makes_a_tier_three_change(name: str, gigabytes: int) -> None:
 
     def batch_tokens(resolved) -> int:
         scale = resolved.train_config.scales[0]
-        entity = scale.env_config.num_ships + scale.env_config.num_fields
+        entity = scale.env_config.num_entity_tokens
         return (
             scale.num_envs
             * resolved.train_config.num_steps

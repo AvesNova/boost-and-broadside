@@ -365,6 +365,12 @@ class TestDamagePayoutRatio:
         assert w["damage_dealt_enemy"] == pytest.approx(w["combat_damage_taken"])
 
 
+# The frontline arena's own objective. It postdates both reconstruction targets
+# below, so the reconstruction tests hold it separately rather than counting it
+# as a change to the combat balance.
+FRONTLINE_COMPONENTS = frozenset({"ally_front_advance", "enemy_front_advance"})
+
+
 class TestRun719Reconstruction:
     """The derivation can rebuild run 719's reward vector exactly.
 
@@ -391,11 +397,17 @@ class TestRun719Reconstruction:
 
     @staticmethod
     def _run_725():
-        """719's effective vector, as the five free numbers that produce it."""
+        """719's effective vector, as the five free numbers that produce it.
+
+        ``front_advance_weight`` is zeroed rather than inherited: 719 trained in
+        the elimination arena, which has no front to advance, so the term is
+        absent from the vector being reconstructed rather than set to zero by
+        preference.
+        """
         return dataclasses.replace(
             REWARDS, win_weight=1.0, death_weight=1.0, damage_weight=0.5,
             kill_shot_fraction=0.5, kill_payout_ratio=2.0, damage_payout_ratio=1.0,
-            facing_weight=0.1, closing_speed_weight=0.1,
+            facing_weight=0.1, closing_speed_weight=0.1, front_advance_weight=0.0,
         )
 
     def test_every_component_719_carried_is_reproduced_exactly(self):
@@ -485,10 +497,32 @@ class TestShippedWeightsReconstructRun720:
             assert w[name] == pytest.approx(REWARDS.death_weight), name
 
     def test_the_additions_720_lacked_are_still_only_the_two(self):
+        """Excluding the frontline pair, which is a different task, not a
+        different balance: 720 trained in the elimination arena and had no front
+        to advance. ``test_the_frontline_pair_is_the_only_task_term`` holds it."""
         w = component_weights(REWARDS)
         added = {name for name, weight in w.items()
-                 if weight != 0.0 and name not in self.RUN_720}
+                 if weight != 0.0 and name not in self.RUN_720} - FRONTLINE_COMPONENTS
         assert added == {"enemy_field_death", "enemy_field_damage"}
+
+    def test_the_frontline_pair_is_the_only_task_term(self):
+        """It is symmetric, and it is exactly the free number that names it --
+        the balance rule does not touch it in either direction."""
+        w = component_weights(REWARDS)
+        assert set(FRONTLINE_COMPONENTS) <= set(w)
+        for name in FRONTLINE_COMPONENTS:
+            assert w[name] == pytest.approx(REWARDS.front_advance_weight), name
+        assert REWARDS.front_advance_weight > 0.0
+
+    def test_zeroing_the_frontline_term_leaves_the_720_fit_untouched(self):
+        """The frontline objective is additive: turning it off in the
+        elimination arena must not perturb a single combat weight."""
+        w = component_weights(REWARDS)
+        without = component_weights(dataclasses.replace(REWARDS, front_advance_weight=0.0))
+        assert {name: value for name, value in w.items() if name not in FRONTLINE_COMPONENTS} == {
+            name: value for name, value in without.items() if name not in FRONTLINE_COMPONENTS
+        }
+        assert all(without[name] == 0.0 for name in FRONTLINE_COMPONENTS)
 
 
 class TestComputePerComponentRewards:

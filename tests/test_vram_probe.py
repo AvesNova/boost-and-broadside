@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,28 @@ _IDENTITY = {
 }
 
 
+# The widths a profile can be sharded into follow from its entity-token count,
+# so every expectation about *which* width is derived from the geometry rather
+# than re-typed here.  Re-typing them is what went stale when Frontline's zone
+# and boundary tokens widened the token axis: the numbers moved and the tests
+# still asserted the old ones.  ``tests/config/test_entity_tokens.py`` pins the
+# token count itself against an observation the environment actually builds.
+#
+# Tests that only move knobs through the command builder or a stubbed runner use
+# whatever numbers read clearly; they never touch the geometry.
+_GEOMETRY = launch_geometry(PROFILES["rl"])
+_SHIPPED = preset_knobs(VRAM_PRESETS[8], _GEOMETRY)
+_LADDER = candidate_knobs(_GEOMETRY, total_memory_bytes=_EIGHT_GIB)
+# The exact fallback (same width, gradient checkpointing on) and the first
+# sampling one (a narrower shard) -- the two rows below the shipped preset.
+_CHECKPOINTED = _LADDER[1]
+_NARROWER = _LADDER[2]
+
+
+def _rollouts_for(num_envs: int) -> int:
+    return _GEOMETRY.aligned_logical_batch_tokens // _GEOMETRY.rollout_tokens(num_envs)
+
+
 @pytest.fixture
 def fake_cuda(monkeypatch):
     """Present a fixed CUDA device without needing one, or touching one."""
@@ -91,24 +114,39 @@ def _runner(*fitting: VramKnobs):
 
 
 def test_the_ladder_starts_at_the_largest_row_the_card_could_hold() -> None:
-    geometry = launch_geometry(PROFILES["rl"])
+    geometry = _GEOMETRY
     ladder = candidate_knobs(geometry, total_memory_bytes=_EIGHT_GIB)
 
     # An "8 GB" card reports about 7.6 GiB; the row still matches it, and no
-    # larger row is attempted.
-    assert ladder[0] == preset_knobs(VRAM_PRESETS[8], geometry)
-    assert all(knobs.num_envs <= 2592 for knobs in ladder)
+    # larger row is attempted -- the 16 GB row is wider and must be absent.
+    assert ladder[0] == _SHIPPED
+    assert preset_knobs(VRAM_PRESETS[16], geometry).num_envs > _SHIPPED.num_envs
+    assert all(knobs.num_envs <= _SHIPPED.num_envs for knobs in ladder)
     # Below the smallest row, the exact knob comes before the sampling one.
-    assert ladder[1] == VramKnobs(2592, 25_000, True)
-    assert [knobs.num_envs for knobs in ladder] == [2592, 2592, 864, 288]
+    assert ladder[1] == replace(_SHIPPED, grad_checkpoint=True)
+    # Then it samples narrower shards, in order, and never widens again.
+    widths = [knobs.num_envs for knobs in ladder]
+    assert widths == sorted(widths, reverse=True)
+    assert widths[2:] == [
+        num_envs
+        for num_envs, _shards in geometry.shard_widths()
+        if num_envs < _SHIPPED.num_envs
+    ][: len(widths) - 2]
     assert all(knobs.grad_checkpoint for knobs in ladder[1:])
 
 
 def test_a_larger_card_tries_larger_rows_first() -> None:
-    geometry = launch_geometry(PROFILES["rl"])
+    geometry = _GEOMETRY
     ladder = candidate_knobs(geometry, total_memory_bytes=32 * 1024**3)
-    assert [knobs.num_envs for knobs in ladder][:4] == [7776, 7776, 2592, 2592]
+    rows = [preset_knobs(VRAM_PRESETS[gigabytes], geometry) for gigabytes in (32, 24, 16, 8)]
+
+    assert list(ladder[: len(rows)]) == rows
     assert ladder[0].microbatch_tokens == VRAM_PRESETS[32].microbatch_tokens
+    # Widest first, and every row the card can afford is offered before the
+    # fallbacks below the smallest one.
+    widths = [knobs.num_envs for knobs in ladder]
+    assert widths == sorted(widths, reverse=True)
+    assert widths[0] > widths[-1]
 
 
 def test_the_ladder_is_bounded_and_every_candidate_is_a_valid_launch() -> None:
@@ -144,8 +182,8 @@ def _overrides(knobs: VramKnobs):
 
 
 def test_the_first_candidate_that_fits_wins_and_the_rest_are_recorded() -> None:
-    geometry = launch_geometry(PROFILES["rl"])
-    winner = VramKnobs(2592, 25_000, True)
+    geometry = _GEOMETRY
+    winner = _CHECKPOINTED
     run = _runner(winner)
 
     entry, attempts = probe_profile(
@@ -333,7 +371,7 @@ def test_auto_uses_a_matching_measurement(tmp_path: Path, fake_cuda) -> None:
         "rl",
         device="cuda",
         compile_mode=None,
-        runner=_runner(VramKnobs(864, 25_000, True)),
+        runner=_runner(_NARROWER),
         identity=_IDENTITY,
     )
     write_cache_entry(cache, entry)
@@ -347,7 +385,7 @@ def test_auto_uses_a_matching_measurement(tmp_path: Path, fake_cuda) -> None:
     )
     assert resolution.status == "measured"
     assert resolution.source == "vram-cache"
-    assert resolution.applied == VramKnobs(864, 25_000, True)
+    assert resolution.applied == _NARROWER
 
 
 def _measured_cache(tmp_path: Path) -> Path:
@@ -356,7 +394,7 @@ def _measured_cache(tmp_path: Path) -> Path:
         "rl",
         device="cuda",
         compile_mode=None,
-        runner=_runner(VramKnobs(864, 25_000, True)),
+        runner=_runner(_NARROWER),
         identity=_IDENTITY,
     )
     write_cache_entry(cache, entry)
@@ -403,7 +441,7 @@ def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
     tmp_path: Path, fake_cuda
 ) -> None:
     cache = tmp_path / ".vram.json"
-    first = _runner(VramKnobs(2592, 25_000, False))
+    first = _runner(_SHIPPED)
     resolve_vram(
         VramPolicy("probe"),
         profile_name="rl",
@@ -412,10 +450,10 @@ def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
         cache_file=cache,
         runner=first,
     )
-    assert first.attempted == [VramKnobs(2592, 25_000, False)]
+    assert first.attempted == [_SHIPPED]
     assert len(read_cache(cache)) == 1
 
-    idle = _runner(VramKnobs(2592, 25_000, False))
+    idle = _runner(_SHIPPED)
     reused = resolve_vram(
         VramPolicy("probe"),
         profile_name="rl",
@@ -427,7 +465,7 @@ def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
     assert idle.attempted == [], "probe must not re-measure what it already knows"
     assert reused.status == "measured"
 
-    again = _runner(VramKnobs(2592, 25_000, True))
+    again = _runner(_CHECKPOINTED)
     replaced = resolve_vram(
         VramPolicy("reprobe"),
         profile_name="rl",
@@ -436,8 +474,8 @@ def test_probe_reuses_a_stored_measurement_but_reprobe_replaces_it(
         cache_file=cache,
         runner=again,
     )
-    assert again.attempted == [VramKnobs(2592, 25_000, False), VramKnobs(2592, 25_000, True)]
-    assert replaced.applied == VramKnobs(2592, 25_000, True)
+    assert again.attempted == [_SHIPPED, _CHECKPOINTED]
+    assert replaced.applied == _CHECKPOINTED
     assert len(read_cache(cache)) == 1, "the same machine keeps one entry"
 
 
@@ -450,7 +488,7 @@ def test_probing_writes_the_cache_and_reports_what_it_rejected(tmp_path: Path, f
         device="cuda",
         compile_mode=None,
         cache_file=cache,
-        runner=_runner(VramKnobs(2592, 25_000, True)),
+        runner=_runner(_CHECKPOINTED),
         report=lines.append,
     )
     assert any("probing VRAM" in line for line in lines)
@@ -508,7 +546,7 @@ def test_a_preset_needs_no_device_at_all(monkeypatch) -> None:
         device="cpu",
         compile_mode=None,
     )
-    assert resolution.applied == VramKnobs(2592, 37_500, False)
+    assert resolution.applied == preset_knobs(VRAM_PRESETS[16], _GEOMETRY)
     assert resolution.status == "provisional"
     # `auto` calls a CPU launch "nothing to size" and a preset sizes it anyway;
     # the record says which happened rather than leaving the two to disagree.
@@ -547,12 +585,15 @@ def test_the_shipped_row_records_no_tier_because_it_moves_nothing() -> None:
     assert record["applied"] == launch.baseline.document()
     assert record["tiers"] == {}
     # The proposal is still recorded in full; only the claim about it changed.
-    assert record["proposed"]["num_envs"] == 2592
+    # The shipped row *is* the profile's own derived width; that is why it
+    # moves nothing.
+    assert record["proposed"]["num_envs"] == _GEOMETRY.default_num_envs
+    assert record["proposed"]["num_envs"] == _SHIPPED.num_envs
 
 
 @pytest.mark.parametrize(
     ("override", "expected"),
-    [({"num_envs": 864}, {"2"}), ({"microbatch_tokens": 12_500}, {"1"})],
+    [({"num_envs": _NARROWER.num_envs}, {"2"}), ({"microbatch_tokens": 12_500}, {"1"})],
 )
 def test_a_width_the_command_line_chose_still_claims_its_tier(
     override: dict[str, int], expected: set[str]
@@ -587,7 +628,7 @@ def test_a_measured_launch_records_every_source(tmp_path: Path, fake_cuda) -> No
         "rl",
         device="cuda",
         compile_mode=None,
-        runner=_runner(VramKnobs(864, 25_000, True)),
+        runner=_runner(_NARROWER),
         identity=_IDENTITY,
     )
     write_cache_entry(cache, entry)
@@ -599,8 +640,8 @@ def test_a_measured_launch_records_every_source(tmp_path: Path, fake_cuda) -> No
     assert sources["train_config.scales.0.num_envs"] == "vram-cache"
     assert sources["train_config.microbatch_tokens"] == "vram-cache"
     assert sources["model_config.grad_checkpoint"] == "vram-cache"
-    assert launch.resolved.train_config.scales[0].num_envs == 864
-    assert launch.resolved.train_config.rollouts_per_update == 9
+    assert launch.resolved.train_config.scales[0].num_envs == _NARROWER.num_envs
+    assert launch.resolved.train_config.rollouts_per_update == _rollouts_for(_NARROWER.num_envs)
     assert launch.resolved.model_config.grad_checkpoint is True
 
     record = launch.document()["vram"]
@@ -625,7 +666,7 @@ def test_the_vram_decision_is_stored_in_the_checkpoint(tmp_path: Path, fake_cuda
         "rl",
         device="cuda",
         compile_mode=None,
-        runner=_runner(VramKnobs(864, 25_000, True)),
+        runner=_runner(_NARROWER),
         identity=_IDENTITY,
     )
     write_cache_entry(cache, entry)
@@ -650,11 +691,7 @@ def test_the_vram_decision_is_stored_in_the_checkpoint(tmp_path: Path, fake_cuda
 
     assert stored["status"] == "measured"
     assert stored["source"] == "vram-cache"
-    assert stored["applied"] == {
-        "num_envs": 864,
-        "microbatch_tokens": 25_000,
-        "grad_checkpoint": True,
-    }
+    assert stored["applied"] == _NARROWER.document()
     assert stored["identity_fingerprint"] == entry.fingerprint
     assert payload["model_config"]["grad_checkpoint"] is True
 
@@ -665,7 +702,7 @@ def test_an_explicit_override_outranks_a_measurement(tmp_path: Path, fake_cuda) 
         "rl",
         device="cuda",
         compile_mode=None,
-        runner=_runner(VramKnobs(864, 25_000, True)),
+        runner=_runner(_NARROWER),
         identity=_IDENTITY,
     )
     write_cache_entry(cache, entry)
@@ -676,9 +713,9 @@ def test_an_explicit_override_outranks_a_measurement(tmp_path: Path, fake_cuda) 
         device="cuda",
         compile_mode=None,
         cache_file=cache,
-        num_envs=2592,
+        num_envs=_SHIPPED.num_envs,
     )
-    assert launch.resolved.train_config.scales[0].num_envs == 2592
+    assert launch.resolved.train_config.scales[0].num_envs == _SHIPPED.num_envs
     assert launch.resolved.value_sources["train_config.scales.0.num_envs"] == "cli"
     # The measurement still sized the knobs the command line did not name.
     assert launch.resolved.value_sources["train_config.microbatch_tokens"] == "vram-cache"
@@ -695,7 +732,9 @@ def test_print_config_refuses_to_probe() -> None:
         resolve_training_launch(profile="rl", vram="probe", device="cpu", allow_probe=False)
 
 
-@pytest.mark.parametrize("pin", ({"num_envs": 864}, {"microbatch_tokens": 25_000}))
+@pytest.mark.parametrize(
+    "pin", ({"num_envs": _NARROWER.num_envs}, {"microbatch_tokens": 25_000})
+)
 def test_a_probe_cannot_be_asked_to_measure_a_pinned_knob(pin: dict) -> None:
     with pytest.raises(UserFacingError, match="determines --num-envs and --microbatch-tokens"):
         resolve_training_launch(profile="rl", vram="reprobe", device="cuda", **pin)

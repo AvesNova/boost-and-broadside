@@ -17,7 +17,6 @@ from unittest.mock import patch
 
 import torch
 
-from boost_and_broadside.config import EnvConfig
 from boost_and_broadside.config.core import entity_token_count
 from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.config.schema import LaunchSizingSpec, ResolvedTrainConfig
@@ -340,13 +339,23 @@ def validate_case_root(root: str | Path) -> None:
         )
 
 
-def _basic_env(*, num_fields: int = 0) -> EnvConfig:
-    return EnvConfig(
-        num_ships=2,
-        num_fields=num_fields,
-        max_bullets=2,
-        max_episode_steps=2,
-    )
+def _fixture_arena(fixture: SyntheticRun) -> dict[str, object]:
+    """The arena the fixture's own policy was trained in, bounded as it already is.
+
+    The three modes that take a checkpoint path rather than a run name are handed
+    an environment and a ship config by the caller, and both have to match the
+    checkpoint's provenance: a policy trained in the Frontline world refuses to
+    load against the default 1024-px one, and an environment without the
+    frontline is a different game mode. ``_smoke_resolved_profile`` has already
+    cut this run down to two ships, two bullets and two steps, so there is
+    nothing left for a second hand-written bound to do -- and writing one is what
+    let these three cases drift away from the run they were pointed at.
+    """
+
+    return {
+        "env_config": fixture.resolved.env_config,
+        "ship_config": fixture.resolved.ship_config,
+    }
 
 
 def _run_training_case(case: SmokeCase, roots: SmokeRoots) -> None:
@@ -589,7 +598,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
             nonlocal calls
             calls += 1
             kwargs["num_steps"] = 2
-            kwargs["env_config"] = _basic_env()
+            kwargs.update(_fixture_arena(fixture))
             return run_ar_report_mode(**kwargs)
 
         with patch.object(cli_commands, "run_canonical_ar_report_mode", side_effect=bounded_ar):
@@ -617,7 +626,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
                 num_steps=2,
                 num_ar_envs=1,
                 num_ar_windows=1,
-                env_config=_basic_env(),
+                **_fixture_arena(fixture),
             )
             return run_noise_calibration_mode(**kwargs)
 
@@ -643,7 +652,7 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
         from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
 
         def bounded_feature_stats(**kwargs):
-            kwargs["env_config"] = _basic_env()
+            kwargs.update(_fixture_arena(fixture))
             return run_feature_stats_mode(**kwargs)
 
         with patch.object(

@@ -18,7 +18,7 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config.core import ModelConfig
+from boost_and_broadside.config.core import ModelConfig, entity_token_count
 from boost_and_broadside.config.defaults import LIVE_REFERENCE_PROBABILITIES
 from boost_and_broadside.config.live_elo import (
     LIVE_RANDOM_ELO,
@@ -39,7 +39,9 @@ def _bounded_bc(checkpoint_dir: str) -> ResolvedTrainConfig:
     """Resolve the registered BC profile at a launch size a CPU test can run."""
 
     profile = PROFILES["bc"]
-    entity_tokens = profile.num_ships + profile.num_fields
+    entity_tokens = entity_token_count(
+        profile.num_ships, profile.num_fields, profile.frontline
+    )
     rollout_tokens = _NUM_ENVS * entity_tokens * _NUM_STEPS
     bounded = replace(
         profile,
