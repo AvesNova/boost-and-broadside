@@ -59,8 +59,22 @@ ELO_EVAL = EloEvalConfig(
     # online estimate either way, and `elo_diag/movement_z` is the series that
     # would show it if the filter became noisier than the games support.
     # See docs/engineering/rl-throughput.md.
+    #
+    # Back to every rollout step. The +15.7% above was measured against a
+    # 1024-step episode, where the evaluator finished a game every 8 updates and
+    # the extra lag was 8 updates rather than a meaningful fraction of the run.
+    # Frontline episodes are 9,000 steps, which makes the same trade land very
+    # differently: the eval environment advances `num_steps / step_interval`
+    # steps per update, so at interval 2 it ran one step per 7,680 training
+    # steps and a rated game cost 69.1M of them -- about seven games' worth in a
+    # 500M-step run, with nothing rated at all for the first 141 updates. Since
+    # live Elo gates opponent selection, milestone placement, the
+    # behavior-cloning decay and the trust region, all four spent that time on
+    # their defaults. Interval 1 halves it to 34.6M steps per rated game and
+    # doubles the rate to 14.6 games per update, and the throughput it costs is
+    # the cheapest thing on the table to pay with.
     envs_per_matchup=1024,
-    step_interval=2,
+    step_interval=1,
     k_factor=4.0,
     scripted_live_elo=LIVE_SCRIPTED_ELO,
     window_size=100,

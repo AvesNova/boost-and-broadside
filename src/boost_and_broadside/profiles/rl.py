@@ -54,7 +54,7 @@ RL_PROFILE = ProfileSpec(
         enemy_spawn_damage_per_second=8.0,
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
-        front_win_threshold=5,
+        front_win_threshold=3,
     ),
     # --- Rollout shape ---
     logical_batch_tokens=12_000_000,
