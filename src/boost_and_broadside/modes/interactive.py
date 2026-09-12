@@ -256,7 +256,6 @@ def _run_interactive_loop(
 
     N = wrapper.num_ships
     M = wrapper.env_config.num_fields
-    num_tokens = wrapper.env_config.num_entity_tokens
 
     first_episode = True
     while True:
@@ -269,8 +268,8 @@ def _run_interactive_loop(
         else:
             obs = wrapper.reset()
             visibility = wrapper.last_visibility
-        init_hidden(agent0, 1, num_tokens, device)
-        init_hidden(agent1, 1, num_tokens, device)
+        init_hidden(agent0, 1, device)
+        init_hidden(agent1, 1, device)
         pred_nexts = None
         terminal_label: str | None = None
         terminal_frames = 0
@@ -405,8 +404,8 @@ def _run_interactive_loop(
                     visibility = wrapper.last_visibility
 
                 if (dones | truncated).any():
-                    reset_done_envs(agent0, dones | truncated, num_tokens)
-                    reset_done_envs(agent1, dones | truncated, num_tokens)
+                    reset_done_envs(agent0, dones | truncated)
+                    reset_done_envs(agent1, dones | truncated)
                     pred_nexts = None
                     result = int(result_tensor[0].item())
                     terminal_label = {

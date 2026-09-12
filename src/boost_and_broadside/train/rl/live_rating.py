@@ -31,7 +31,7 @@ from collections.abc import Mapping
 
 import numpy as np
 
-from boost_and_broadside.train.rl.bradley_terry import fit_bradley_terry, fit_single_rating
+from boost_and_broadside.train.rl.bradley_terry import fit_single_rating
 from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 
 # Virtual decisive games per player, split for and against the anchor. Without

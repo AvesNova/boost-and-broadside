@@ -69,7 +69,6 @@ def run_feature_stats_mode(
     env_config = resolve_evaluation_environment(
         env_config, (agent0, agent1), ship_config=ship_config
     )
-    num_tokens = N + env_config.num_fields
 
     include_bullets = agents_read_bullets(agent0, agent1)
 
@@ -79,8 +78,8 @@ def run_feature_stats_mode(
         env_config,
         device,
     )
-    init_hidden(agent0, B, num_tokens, dev)
-    init_hidden(agent1, B, num_tokens, dev)
+    init_hidden(agent0, B, dev)
+    init_hidden(agent1, B, dev)
     env.reset()
 
     sq_err_sum = torch.zeros(P, device=dev)
@@ -120,8 +119,8 @@ def run_feature_stats_mode(
         done_any = dones | truncated
         if done_any.any():
             env.reset_envs(done_any)
-            reset_done_envs(agent0, done_any, num_tokens)
-            reset_done_envs(agent1, done_any, num_tokens)
+            reset_done_envs(agent0, done_any)
+            reset_done_envs(agent1, done_any)
 
         next_obs_after_reset = observation_from_state(
             env.state, ship_config, include_bullets=include_bullets

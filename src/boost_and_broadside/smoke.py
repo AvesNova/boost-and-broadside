@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TextIO
@@ -718,7 +719,7 @@ def execute_case(case_name: str, root: str | Path) -> None:
     validate_case_root(roots.root)
 
 
-def _case_environment(roots: SmokeRoots) -> dict[str, str]:
+def _case_environment(roots: SmokeRoots, threads: int | None = None) -> dict[str, str]:
     home = roots.tmp / "home"
     cache = roots.tmp / "cache"
     config = roots.tmp / "config"
@@ -749,6 +750,12 @@ def _case_environment(roots: SmokeRoots) -> dict[str, str]:
             "CUDA_VISIBLE_DEVICES": "",
         }
     )
+    if threads is not None:
+        # Torch sizes its intra-op pool from the whole machine, which is right
+        # for one case and wrong for four at once: each would claim every core
+        # and they would spend the matrix descheduling each other.
+        environment["OMP_NUM_THREADS"] = str(threads)
+        environment["MKL_NUM_THREADS"] = str(threads)
     return environment
 
 
@@ -807,8 +814,14 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> tuple[str, str]:
 def run_case_subprocess(
     case: SmokeCase | str,
     root: str | Path,
+    *,
+    threads: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run one registry case in a fresh interpreter with a fixed timeout."""
+    """Run one registry case in a fresh interpreter with a fixed timeout.
+
+    ``threads`` caps the child's intra-op pool, for a matrix running several
+    cases at once. ``None`` leaves the child the whole machine.
+    """
 
     selected = _CASES_BY_NAME[case] if isinstance(case, str) else case
     root_path = Path(root).resolve()
@@ -826,7 +839,7 @@ def run_case_subprocess(
     process = subprocess.Popen(
         command,
         cwd=roots.root,
-        env=_case_environment(roots),
+        env=_case_environment(roots, threads),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -895,8 +908,57 @@ def _failure_tail(result: subprocess.CompletedProcess[str], lines: int = 12) -> 
     return "\n".join(output[-lines:])
 
 
-def run_smoke_matrix(selected_case: str | None = None, *, file: TextIO | None = None) -> None:
-    """Run the full sequential matrix, or one focused diagnostic case."""
+def default_smoke_jobs() -> int:
+    """Cases to run at once by default.
+
+    A case is a CPU-bound child process, so the useful number is set by cores
+    rather than by patience. Four leaves each of them four threads on a 16-core
+    machine, which is where the matrix stopped getting faster in measurement:
+    139s sequential to 47s. One core per job is the floor, so a small machine
+    ends up sequential on its own.
+    """
+
+    return max(1, min(4, (os.cpu_count() or 1) // 4))
+
+
+def _run_one_case(
+    case: SmokeCase, case_root: Path, threads: int | None
+) -> tuple[SmokeCase, subprocess.CompletedProcess[str] | None, Exception | None]:
+    """Run a case and return its outcome rather than raising, so a parallel
+    matrix reports every failure instead of only the first one to land."""
+
+    try:
+        result = run_case_subprocess(case, case_root, threads=threads)
+        validate_case_root(case_root)
+    except (SmokeIsolationError, subprocess.TimeoutExpired) as error:
+        return case, None, error
+    return case, result, None
+
+
+def run_smoke_matrix(
+    selected_case: str | None = None,
+    *,
+    file: TextIO | None = None,
+    jobs: int | None = None,
+) -> None:
+    """Run the full matrix, or one focused diagnostic case.
+
+    ``jobs`` is how many cases run at once; ``None`` takes
+    :func:`default_smoke_jobs`. Every case already runs in its own interpreter,
+    under its own root, with its own ``HOME``, ``TMPDIR`` and XDG directories,
+    so running several changes nothing about what a case can see.
+
+    What it does change is attribution. Sequentially the checkout is compared
+    after every case, so a case that writes into the repository is named. In
+    parallel that comparison can only be made around the batch, and the matrix
+    says a case dirtied the checkout without saying which -- ``--jobs 1``
+    recovers the name. Detection is not weakened either way; only the report is.
+
+    Each case also gets a private parent directory, so the sibling check inside
+    ``run_case_subprocess`` still means what it says: a case that escapes its own
+    root is caught, and it cannot be confused by a neighbour writing legitimately
+    into its own.
+    """
 
     stream = file or sys.stdout
     if selected_case is None:
@@ -910,44 +972,66 @@ def run_smoke_matrix(selected_case: str | None = None, *, file: TextIO | None = 
                 f"unknown smoke case {selected_case!r}; choose from {choices}"
             ) from error
 
+    jobs = max(1, min(default_smoke_jobs() if jobs is None else jobs, len(cases)))
+    threads = max(1, (os.cpu_count() or 1) // jobs) if jobs > 1 else None
+
     repository = _repository_root()
     checkout_before = _checkout_snapshot(repository)
     outputs_before = _repository_output_snapshot(repository)
     failures: list[str] = []
-    print(f"bnb smoke: {len(cases)} isolated case(s), sequential", file=stream, flush=True)
+    shape = "sequential" if jobs == 1 else f"{jobs} at a time"
+    print(f"bnb smoke: {len(cases)} isolated case(s), {shape}", file=stream, flush=True)
+
+    def _record(
+        case: SmokeCase,
+        result: subprocess.CompletedProcess[str] | None,
+        case_error: Exception | None,
+    ) -> None:
+        if case_error is not None:
+            failures.append(f"{case.name}: {case_error}")
+            print("FAIL", file=stream, flush=True)
+            return
+        assert result is not None
+        if result.returncode:
+            failures.append(f"{case.name}: exit {result.returncode}\n{_failure_tail(result)}")
+            print("FAIL", file=stream, flush=True)
+        else:
+            print("PASS", file=stream, flush=True)
+
+    def _check_repository(blame: str) -> None:
+        if _checkout_snapshot(repository) != checkout_before:
+            raise SmokeIsolationError(f"{blame} changed the source checkout")
+        if _repository_output_snapshot(repository) != outputs_before:
+            raise SmokeIsolationError(f"{blame} changed a real checkout output root")
+
+    # A private parent per case, so no case is ever a sibling of another.
+    def _root_for(matrix_root: Path, case: SmokeCase) -> Path:
+        return matrix_root / case.name / "case"
+
     with tempfile.TemporaryDirectory(prefix="bnb-smoke-") as temporary:
         matrix_root = Path(temporary)
-        for index, case in enumerate(cases, start=1):
-            print(f"[{index}/{len(cases)}] {case.name} ... ", end="", file=stream, flush=True)
-            case_root = matrix_root / case.name
-            result: subprocess.CompletedProcess[str] | None = None
-            case_error: SmokeIsolationError | subprocess.TimeoutExpired | None = None
-            try:
-                result = run_case_subprocess(case, case_root)
-                validate_case_root(case_root)
-            except (SmokeIsolationError, subprocess.TimeoutExpired) as error:
-                case_error = error
-            finally:
-                checkout_after = _checkout_snapshot(repository)
-                outputs_after = _repository_output_snapshot(repository)
-            if checkout_after != checkout_before:
-                raise SmokeIsolationError(f"case {case.name!r} changed the source checkout")
-            if outputs_after != outputs_before:
-                raise SmokeIsolationError(
-                    f"case {case.name!r} changed a real checkout output root"
-                )
-            if case_error is not None:
-                failures.append(f"{case.name}: {case_error}")
-                print("FAIL", file=stream, flush=True)
-                continue
-            assert result is not None
-            if result.returncode:
-                failures.append(
-                    f"{case.name}: exit {result.returncode}\n{_failure_tail(result)}"
-                )
-                print("FAIL", file=stream, flush=True)
-            else:
-                print("PASS", file=stream, flush=True)
+        if jobs == 1:
+            for index, case in enumerate(cases, start=1):
+                print(f"[{index}/{len(cases)}] {case.name} ... ", end="", file=stream, flush=True)
+                _, result, case_error = _run_one_case(case, _root_for(matrix_root, case), threads)
+                _check_repository(f"case {case.name!r}")
+                _record(case, result, case_error)
+        else:
+            with ThreadPoolExecutor(max_workers=jobs) as pool:
+                futures = {
+                    pool.submit(_run_one_case, case, _root_for(matrix_root, case), threads): case
+                    for case in cases
+                }
+                for index, future in enumerate(as_completed(futures), start=1):
+                    case, result, case_error = future.result()
+                    print(
+                        f"[{index}/{len(cases)}] {case.name} ... ",
+                        end="",
+                        file=stream,
+                        flush=True,
+                    )
+                    _record(case, result, case_error)
+            _check_repository(f"one of {len(cases)} cases (re-run with --jobs 1 to name it)")
 
     if failures:
         raise SmokeCaseError("smoke matrix failed:\n" + "\n\n".join(failures))

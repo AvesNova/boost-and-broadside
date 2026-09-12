@@ -189,41 +189,6 @@ def test_noise_calibration_measures_a_fields_policy_in_a_field_arena(
     _assert_played_with_fields(built_envs)
 
 
-def test_noise_calibration_sizes_its_hidden_state_for_the_field_tokens(
-    fields_run, tmp_path, monkeypatch
-):
-    """``num_tokens`` was derived before the environment was resolved, so a fields
-    policy was given recurrent state for its ships only, and the field tokens it
-    also predicts were dropped from its own error report."""
-
-    import boost_and_broadside.modes.noise_calibration as mode
-
-    widths: list[int] = []
-    original = mode.init_hidden
-
-    def recording_init_hidden(agent, batch, num_tokens, device):
-        widths.append(num_tokens)
-        return original(agent, batch, num_tokens, device)
-
-    monkeypatch.setattr(mode, "init_hidden", recording_init_hidden)
-    mode.run_noise_calibration_mode(
-        team0_spec=str(fields_run.checkpoint),
-        team1_spec="scripted",
-        num_envs=2,
-        num_steps=2,
-        num_ar_envs=2,
-        num_ar_windows=1,
-        ship_config=fields_run.resolved.ship_config,
-        env_config=_field_free_arena(fields_run),
-        model_config=MODEL_CONFIG,
-        device="cpu",
-        checkpoint_dir=str(tmp_path),
-    )
-
-    # Two ships plus four fields. Before the fix this read 2.
-    assert widths and set(widths) == {6}
-
-
 def test_capture_records_a_fields_run_in_a_field_arena(fields_run, built_envs, tmp_path):
     """The seventh mode, and the one step 7 missed.
 

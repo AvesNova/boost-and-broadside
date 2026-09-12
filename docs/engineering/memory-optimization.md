@@ -30,9 +30,12 @@ three categories differ in what they promise, so they are never mixed:
 
 `--vram` may move tier 1 and tier 2 only. A profile's logical batch is fixed, so a width is
 valid only when it divides that batch exactly and stays minibatch-aligned; anything else is
-rejected rather than silently rounded. For the `rl` profile the valid widths are 7776 (1
-shard), 2592 (3), 864 (9), 288 (27), 96 (81), and 32 (243) -- there is no two-shard split,
-so a preset that cannot afford 7776 proposes 2592 rather than inventing a width between.
+rejected rather than silently rounded. The widths follow from the profile's entity-token
+count, so they moved when Frontline widened the token axis from 18 to 24: for the `rl`
+profile they are now 3840 (1 shard), 1920 (2), 1280 (3), 960 (4), 768 (5), 640 (6), and on
+down to 32 (120). The old axis admitted only 7776 (1), 2592 (3), 864 (9) and 288 (27), with
+no two-shard split at all; the finer ladder means a preset that cannot afford the widest row
+now has somewhere close to fall back to rather than dropping by thirds.
 
 ### Policies
 

@@ -130,12 +130,11 @@ def run_ar_report_mode(
     )
 
     N = wrapper.num_ships
-    num_tokens = N + env_config.num_fields
 
     print("Running ground truth simulation...")
     obs = wrapper.reset()
-    init_hidden(agent0, 1, num_tokens, device)
-    init_hidden(agent1, 1, num_tokens, device)
+    init_hidden(agent0, 1, device)
+    init_hidden(agent1, 1, device)
 
     # Save initial state for AR
     init_obs = YemongObservation(data={k: v.clone() for k, v in obs.items()})

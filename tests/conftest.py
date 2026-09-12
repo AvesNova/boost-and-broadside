@@ -1,10 +1,24 @@
 """Shared pytest fixtures for all test modules."""
 
+import os
+
 import pytest
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.state import TensorState
+
+# Torch sizes its intra-op pool from the whole machine, which is right for one
+# process and wrong for sixteen: under ``-n auto`` every worker claims every
+# core and they spend the run descheduling each other. Measured on a 16-core
+# laptop, the full suite is 443s sequential, 391s at ``-n 8`` with this pin, and
+# 445s at ``-n 8`` without it -- parallelism that costs more than it returns.
+# One thread per worker and one worker per core is 195s.
+#
+# Only under xdist. A sequential run is a single process and should have the
+# machine.
+if os.environ.get("PYTEST_XDIST_WORKER"):
+    torch.set_num_threads(1)
 
 
 @pytest.fixture

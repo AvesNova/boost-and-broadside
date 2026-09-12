@@ -157,13 +157,19 @@ def resolve_agent_spec(
     return ResolvedAgent("policy", bundle.policy, bundle=bundle)
 
 
-def init_hidden(agent: ResolvedAgent, num_envs: int, num_tokens: int, device) -> None:
+def init_hidden(agent: ResolvedAgent, num_envs: int, device) -> None:
     """Allocate initial recurrent state for policy agents; no-op for all others.
 
-    ``num_tokens`` (N+M) is accepted for call-site compatibility but only ship
-    tokens carry recurrent state — field tokens are static within an episode and
-    take the non-recurrent path. The policy is the authority on its own ship count,
-    so the size comes from it rather than from the caller's token total.
+    The width is the policy's own ``num_recurrent_tokens``. Only ship tokens
+    carry recurrent state — field tokens, and Frontline's zone and boundary
+    tokens, are static within an episode and take the non-recurrent path, so
+    sizing this from the entity-token axis would allocate state the trunk never
+    consumes.
+
+    Every caller used to pass its token total in as a ``num_tokens`` argument
+    that was accepted and discarded; two of them computed it with a formula that
+    had gone stale. An argument nobody reads is an argument that can be wrong
+    forever, so there is no longer one to get wrong.
     """
     if agent.kind == "policy":
         agent.hidden = agent.agent.initial_hidden(
@@ -229,11 +235,10 @@ def get_actions(
     return (action, None) if return_pred_next else action
 
 
-def reset_done_envs(agent: ResolvedAgent, done_mask: torch.Tensor, num_tokens: int) -> None:
+def reset_done_envs(agent: ResolvedAgent, done_mask: torch.Tensor) -> None:
     """Reset recurrent state for completed envs; no-op for non-policy agents.
 
-    Like ``init_hidden``, the stride comes from the policy's ship count, not the
-    caller's N+M token total — only ships carry recurrent state.
+    Like ``init_hidden``, the stride is the policy's own recurrent-token count.
     """
     if agent.kind == "policy" and agent.hidden is not None:
         agent.hidden = agent.agent.reset_hidden_for_envs(

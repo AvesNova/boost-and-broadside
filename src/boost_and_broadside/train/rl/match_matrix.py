@@ -85,7 +85,7 @@ class MatchMatrix:
             seen.add(high)
         return sorted(seen)
 
-    def restrict(self, keep: Iterable[str]) -> "MatchMatrix":
+    def restrict(self, keep: Iterable[str]) -> MatchMatrix:
         """Return a copy holding only pairs where both players are in ``keep``.
 
         Used to drop a label the roster has retired. Dropping a *player* is not
@@ -165,7 +165,7 @@ class MatchMatrix:
         temporary.replace(destination)
 
     @classmethod
-    def load_json(cls, path: str | Path) -> "MatchMatrix":
+    def load_json(cls, path: str | Path) -> MatchMatrix:
         """Restore from disk. A missing file is an empty matrix, not an error.
 
         Resuming a run that predates this file, or one killed before its first
