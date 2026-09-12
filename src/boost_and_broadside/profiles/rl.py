@@ -57,7 +57,25 @@ RL_PROFILE = ProfileSpec(
         front_win_threshold=3,
     ),
     # --- Rollout shape ---
-    logical_batch_tokens=12_000_000,
+    # 24M rather than 12M, to buy back the batch the Frontline observation spent.
+    # The budget is denominated in *entity tokens*, and zones plus ten fields took
+    # the per-decision token count from run 731's 12 (8 ships + 4 fields) to 24
+    # (8 ships + 10 fields + 5 zones + 1 global). At a fixed 12M the update was
+    # therefore seeing half the ship decisions 731's did -- 3,932,160 against
+    # 7,962,624 -- which is a halved batch wearing a costume, and it showed:
+    # step-matched against 731 at 22M, KL ran 0.089 against 0.019 and clip
+    # fraction 0.41 against 0.21, with `target_kl` early-stopping most updates at
+    # two epochs instead of four. 24M restores 7,864,320 ship decisions per
+    # update, within 1.2% of 731.
+    #
+    # This is close to free on an 8GB card because the rollout buffer is
+    # host-backed: `rollout_tokens` stays at 4M, so the GPU-resident shard,
+    # `num_envs` (1280) and `microbatch_tokens` (62500) are all unchanged, and
+    # only `rollouts_per_update` moves, 3 -> 6. Doubling experience was measured
+    # at -0.2 MB of persistent VRAM; what it actually costs is about 4.3 GiB of
+    # host RAM and ~4.5% throughput at equal experience. See
+    # docs/engineering/memory-optimization.md.
+    logical_batch_tokens=24_000_000,
     num_steps=128,
     num_minibatches=32,
     # --- Objective ---
