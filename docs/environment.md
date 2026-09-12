@@ -32,11 +32,21 @@ The main layers are:
 ## Team perception and map tokens
 
 Frontline uses finite, team-shared sight. Every living allied ship tests targets within
-`EnvConfig.vision_range` along the shortest toroidal displacement. A target seen by any ally
-is visible to the whole team. A refractive field blocks a segment through its flat core when
-the core lies strictly between the endpoints; a ship inside that core is exempt from being
-self-blinded by the same field. This is natural map occlusion only—there are no synthetic
-fog volumes.
+`EnvConfig.vision_range` (1024 px in play and in the `rl` profile) along the shortest
+toroidal displacement. A target seen by any ally is visible to the whole team.
+
+Sight is broken by any opaque core the line crosses. A field's core is its nominal radius
+less half its transition band, so the graded part of the interface stays transparent. One
+test covers the three ways a line can be lost—looking into a core, out of one, or past
+one—because each crosses the boundary. The sole exemption is a line with both endpoints
+inside the same core: a disk is convex, so that line never leaves it and two ships sharing
+a field still see each other. This is natural map occlusion only—there are no synthetic fog
+volumes.
+
+Capture zones are transparent by default. `EnvConfig.zones_occlude` makes them opaque on the
+same rule, using the full zone radius since a zone has no transition band. It is off in every
+shipped profile: five 330 px zones on a 2600 px playable disk is a materially different game,
+not a tuning knob. Play mode toggles it live with `Z` so the difference can be inspected.
 
 A successful shot reveals its firing ship to both teams for that state sample, regardless
 of range or intervening field cores. The reveal uses `ship_is_shooting`, so a requested shot
@@ -54,10 +64,16 @@ are private even while the enemy itself is visible. Allies and static map geomet
 known. `vision_range=None` is the explicit omniscient compatibility mode.
 
 In Team 0/Team 1 rendering modes, unseen world pixels receive a mild neutral-gray overlay.
-The visible mask is the union of allied sight circles with tangent shadows cast behind field
-cores. It is applied after fields, zones, and the boundary, so unseen empty space and static
-outlines desaturate together; visible/revealed units are then drawn at full contrast. The
-full-information spectator mode has no overlay.
+The visible mask is the union of allied sight circles, each with every opaque core in range
+subtracted along with the umbra behind it, and clipped to the core the observer stands in
+when it stands in one. It is the same rule the environment applies, and
+`tests/ui/test_renderer.py` holds it to that by probing the drawn mask against the
+environment's own predicate across the viewport. The overlay is applied after fields, zones,
+and the boundary, so unseen empty space and static outlines desaturate together;
+visible/revealed units are then drawn at full contrast. It is rebuilt every frame — the
+shadow geometry costs far less than the full-viewport composite that follows it, so there is
+nothing to gain from holding a stale mask. The full-information spectator mode has no
+overlay.
 
 The entity-token axis is typed rather than inferred from position:
 
@@ -300,10 +316,14 @@ them with `benchmarks/field_throughput.py`.
 - [`test_bullet_fields.py`](../tests/env/test_bullet_fields.py): selectable projectile
   integrators, refraction/TIR, proper-speed conservation, barrier depletion, and
   high-resolution trajectory comparisons;
+- [`test_perception.py`](../tests/env/test_perception.py): the four sight rules —
+  team sharing, opaque-core occlusion in both directions, the circular range, and the
+  firing reveal — plus optional zone occlusion and declared projectile perception;
 - [`test_env.py`](../tests/env/test_env.py),
   [`test_rewards.py`](../tests/env/test_rewards.py), and
   [`test_renderer.py`](../tests/ui/test_renderer.py): integration, attribution, numeric
-  observations, and outline rendering.
+  observations, outline rendering, and the fog mask held against the environment's own
+  sight predicate across the viewport.
 
 The zero/one/two/four/ten/twenty-field environment benchmark is in
 [`benchmarks/field_throughput.py`](../benchmarks/field_throughput.py). Saturated projectile
@@ -311,9 +331,10 @@ storage, drag, integrator, damage-depletion, compilation, and capacity compariso
 [`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).
 
 The 256-map fog distribution and isolated GPU observation profile are reproducible with
-[`benchmarks/frontline_fog_suite.py`](../benchmarks/frontline_fog_suite.py). At the provisional
-1600 px range, the 60-second scripted sample saw enemies 74.2% of the time; team sharing added
-21.2 percentage points over individual sight, and fields blocked 11.6% of otherwise in-range
+[`benchmarks/frontline_fog_suite.py`](../benchmarks/frontline_fog_suite.py). At the earlier
+1600 px range and the earlier core rule, the 60-second scripted sample saw enemies 74.2% of the
+time; team sharing added 21.2 percentage points over individual sight, and fields blocked 11.6%
+of otherwise in-range
 exposure. A 256-environment visibility pass measured 4.12 ms, while visibility plus both
 masked team observations measured 15.80 ms on an RTX 4070 Laptop GPU.
 

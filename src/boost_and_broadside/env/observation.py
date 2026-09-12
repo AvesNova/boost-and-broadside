@@ -871,10 +871,22 @@ def perceived_observation_from_state(
     env_config: EnvConfig,
     buffers: ObservationBuffers | None = None,
     include_bullets: bool = False,
+    perceive_bullets: bool | None = None,
 ) -> tuple[YemongObservation, TeamVisibility]:
-    """Build independently masked team observations and return team 0 as root."""
+    """Build independently masked team observations and return team 0 as root.
 
-    visibility = team_visibility_from_state(state, ship_config, env_config)
+    ``perceive_bullets`` decides whether projectile visibility is computed at
+    all, and defaults to ``include_bullets`` -- a policy that does not read
+    bullets should not pay to occlude them. It is separate because the play
+    renderer draws projectiles from the returned masks whether or not the
+    policies consume them, and so asks for them explicitly.
+    """
+
+    if perceive_bullets is None:
+        perceive_bullets = include_bullets
+    if include_bullets and not perceive_bullets:
+        raise ValueError("bullet observations cannot be built without bullet perception")
+    visibility = team_visibility_from_state(state, ship_config, env_config, perceive_bullets)
     views = [
         observation_from_state(
             state,
@@ -882,7 +894,7 @@ def perceived_observation_from_state(
             buffers,
             include_bullets,
             ship_visibility=visibility.ship[:, team],
-            bullet_visibility=visibility.bullet[:, team],
+            bullet_visibility=None if visibility.bullet is None else visibility.bullet[:, team],
             perspective_team=team,
         )
         for team in (0, 1)

@@ -9,7 +9,7 @@ import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
+from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE, toroidal_displacement
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 from boost_and_broadside.train.rl.features import build_standard_coordinator
@@ -390,5 +390,219 @@ def test_team_view_requires_environment_visibility_instead_of_guessing(monkeypat
     try:
         with pytest.raises(ValueError, match="authoritative visibility"):
             renderer.draw_frame(env.state)
+    finally:
+        renderer.close()
+
+
+# ---------------------------------------------------------------------------
+# The fog overlay is the renderer's statement of the environment's sight rule.
+# These tests hold the two to each other rather than to a picture of a shadow.
+# ---------------------------------------------------------------------------
+
+
+def _fog_scene(monkeypatch, *, zones_occlude=False, window=320):
+    """A Frontline scene with two allied observers and three placed fields."""
+
+    monkeypatch.setenv("HEADLESS", "1")
+    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
+    env_config = replace(replace(PLAY_ENV_CONFIG, num_fields=3), zones_occlude=zones_occlude)
+    env = TensorEnv(1, ship_config, env_config, "cpu")
+    env.reset(seed=21)
+    center = complex(env.state.map_center[0].item())
+    team0 = env.state.ship_team_id[0] == 0
+    team1 = ~team0
+    # Two observers apart from one another, so team sharing is exercised.
+    env.state.ship_pos[0, team0] = torch.tensor(
+        [center - 900.0, center + 900.0, center - 900.0, center + 900.0]
+    )[: int(team0.sum())]
+    env.state.ship_pos[0, team1] = center + 2400.0
+    env.state.field_pos[0] = torch.tensor(
+        [center - 300.0, center + 400.0 + 500.0j, center - 200.0 - 700.0j]
+    )
+    env.state.field_radius[0] = torch.tensor([260.0, 200.0, 180.0])
+    env.state.field_transition_width[0] = torch.tensor([40.0, 40.0, 40.0])
+    visibility = team_visibility_from_state(env.state, ship_config, env_config)
+
+    renderer = GameRenderer(
+        ship_config,
+        RenderConfig(
+            window_size=window,
+            show_ui=False,
+            vision_mode=VisionMode.TEAM_0,
+            zone_occlusion=zones_occlude,
+        ),
+    )
+    renderer.camera.fit_region(center, env_config.frontline.playable_radius)
+    return ship_config, env_config, env, visibility, renderer, center
+
+
+def _sim_says_visible(state, ship_config, env_config, team, points):
+    """Whether the environment would show a ship standing at each point."""
+
+    from boost_and_broadside.env.perception import _line_of_sight_clear, _occluder_cores
+
+    observers = state.ship_pos[:, (state.ship_team_id[0] == team) & state.ship_alive[0]]
+    probes = torch.tensor([points], dtype=torch.complex64)
+    core_pos, core_radius = _occluder_cores(state, env_config)
+    displacement = toroidal_displacement(
+        probes.unsqueeze(1) - observers.unsqueeze(2), ship_config.world_size
+    )
+    in_range = displacement.abs() <= env_config.vision_range
+    clear = _line_of_sight_clear(observers, probes, core_pos, core_radius, ship_config.world_size)
+    return (in_range & clear).any(dim=1)[0]
+
+
+def test_fog_mask_agrees_with_environment_sight_over_the_whole_viewport(monkeypatch):
+    """Every pixel the fog leaves lit is a pixel the environment says is seen.
+
+    Probes near a boundary are skipped. The mask is rasterised below screen
+    resolution and upscaled, and both the circle centres and the sight radius
+    round to whole mask pixels, so a drawn edge can sit up to two mask pixels
+    from the true one. Disagreement inside that band is quantisation rather
+    than rule. The margin is derived from the mask the renderer actually built,
+    so it stays honest if ``fog_mask_scale`` changes.
+
+    Run at the play window size. The skipped band is a fixed count of screen
+    pixels whatever the window, so a small one would swallow whole field
+    interiors and the test would stop seeing them.
+    """
+
+    window = 900
+    ship_config, env_config, env, visibility, renderer, center = _fog_scene(
+        monkeypatch, window=window
+    )
+    surface = pygame.Surface((window, window))
+    base_color = (200, 50, 50)
+    surface.fill(base_color)
+    try:
+        renderer._draw_fog_overlay(env.state, surface, visibility)
+
+        step = env_config.frontline.playable_radius * 2.0 / 48.0
+        points = [
+            center + complex(x, y) * step for x in range(-24, 25, 2) for y in range(-24, 25, 2)
+        ]
+        world_per_pixel = 1.0 / renderer.camera.scale
+        mask_pixel = surface.get_width() / renderer._fog_team_mask.get_width()
+        margin = 1.0 + 2.0 * mask_pixel
+        verdicts = _sim_says_visible(env.state, ship_config, env_config, 0, points)
+        jitter = [
+            complex(margin * world_per_pixel, 0.0),
+            complex(0.0, margin * world_per_pixel),
+        ]
+        robust = torch.ones_like(verdicts)
+        for offset in jitter:
+            for sign in (1.0, -1.0):
+                nudged = _sim_says_visible(
+                    env.state, ship_config, env_config, 0, [p + sign * offset for p in points]
+                )
+                robust &= nudged == verdicts
+
+        compared = 0
+        for point, expected, is_robust in zip(points, verdicts, robust, strict=True):
+            screen = renderer._world_to_screen(point)
+            if not (0 <= screen[0] < window and 0 <= screen[1] < window) or not bool(is_robust):
+                continue
+            compared += 1
+            lit = surface.get_at(screen)[:3] == base_color
+            assert lit == bool(expected), f"{point} at {screen}: fog says {lit}"
+        assert compared > 300, f"only {compared} probes were compared"
+    finally:
+        renderer.close()
+
+
+def test_fog_hides_the_inside_of_a_field_from_an_observer_outside_it(monkeypatch):
+    ship_config, env_config, env, visibility, renderer, center = _fog_scene(monkeypatch)
+    surface = pygame.Surface((320, 320))
+    base_color = (200, 50, 50)
+    surface.fill(base_color)
+    try:
+        renderer._draw_fog_overlay(env.state, surface, visibility)
+        field = complex(env.state.field_pos[0, 0].item())
+
+        # The near rim of the core faces an observer 600 px away and is still
+        # inside it, so it must be dark along with the rest of the interior.
+        assert surface.get_at(renderer._world_to_screen(field))[:3] != base_color
+        assert surface.get_at(renderer._world_to_screen(field + 150.0))[:3] != base_color
+        assert surface.get_at(renderer._world_to_screen(field - 150.0))[:3] != base_color
+    finally:
+        renderer.close()
+
+
+def test_fog_confines_an_observer_standing_inside_a_field_to_that_field(monkeypatch):
+    ship_config, env_config, env, visibility, renderer, center = _fog_scene(monkeypatch)
+    field = complex(env.state.field_pos[0, 0].item())
+    # Move the whole observing team inside the first field's core.
+    team0 = env.state.ship_team_id[0] == 0
+    env.state.ship_pos[0, team0] = field
+    visibility = team_visibility_from_state(env.state, ship_config, env_config)
+    surface = pygame.Surface((320, 320))
+    base_color = (200, 50, 50)
+    surface.fill(base_color)
+    try:
+        renderer._draw_fog_overlay(env.state, surface, visibility)
+
+        assert surface.get_at(renderer._world_to_screen(field))[:3] == base_color
+        assert surface.get_at(renderer._world_to_screen(field + 100.0))[:3] == base_color
+        # 260 - 20 = 240 px of core; just beyond it sight has left the field.
+        assert surface.get_at(renderer._world_to_screen(field + 400.0))[:3] != base_color
+    finally:
+        renderer.close()
+
+
+def test_fog_follows_the_zone_occlusion_switch(monkeypatch):
+    """The Z toggle has to change the drawn mask, not only the sim masks."""
+
+    transparent = _fog_scene(monkeypatch, zones_occlude=False)
+    opaque = _fog_scene(monkeypatch, zones_occlude=True)
+    surfaces = []
+    try:
+        for ship_config, env_config, env, visibility, renderer, center in (transparent, opaque):
+            surface = pygame.Surface((320, 320))
+            surface.fill((200, 50, 50))
+            renderer._draw_fog_overlay(env.state, surface, visibility)
+            surfaces.append(pygame.image.tostring(surface, "RGB"))
+        assert surfaces[0] != surfaces[1]
+    finally:
+        for scene in (transparent, opaque):
+            scene[4].close()
+
+
+def test_renderer_occluder_cores_match_the_environments(monkeypatch):
+    from boost_and_broadside.env.perception import _occluder_cores
+
+    for zones_occlude in (False, True):
+        ship_config, env_config, env, _, renderer, _ = _fog_scene(
+            monkeypatch, zones_occlude=zones_occlude
+        )
+        try:
+            core_pos, core_radius = _occluder_cores(env.state, env_config)
+            expected = {
+                (
+                    round(complex(p.item()).real, 3),
+                    round(complex(p.item()).imag, 3),
+                    round(float(r), 3),
+                )
+                for p, r in zip(core_pos[0], core_radius[0], strict=True)
+                if float(r) > 0.0
+            }
+            actual = {
+                (round(c.real, 3), round(c.imag, 3), round(r, 3))
+                for c, r in renderer._occluder_cores(env.state)
+            }
+            assert actual == expected
+        finally:
+            renderer.close()
+
+
+def test_z_key_toggles_zone_occlusion(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
+    renderer = GameRenderer(ship_config, RenderConfig(window_size=160, show_ui=False))
+    try:
+        assert not renderer.zone_occlusion
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_z))
+        assert renderer.zone_occlusion
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_z))
+        assert not renderer.zone_occlusion
     finally:
         renderer.close()

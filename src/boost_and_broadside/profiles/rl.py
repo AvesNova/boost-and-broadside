@@ -41,7 +41,8 @@ RL_PROFILE = ProfileSpec(
     # spans 4.3 seconds without repeating field/visibility work inside a decision.
     action_repeat=1,
     spawn_resource_spread=0.0,
-    vision_range=1600.0,
+    vision_range=1024.0,
+    zones_occlude=False,
     frontline=FrontlineConfig(
         zone_radius=330.0,
         zone_ring_radius=1200.0,
