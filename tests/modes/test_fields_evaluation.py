@@ -19,6 +19,8 @@ not a legacy shape -- it is what run 682 trained under, and 682 is still cited.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from boost_and_broadside.config import EloCalibrateConfig, EnvConfig, ShipConfig
@@ -33,6 +35,19 @@ def fields_run(tmp_path):
     """A minimal complete run trained with four refractive fields."""
 
     return build_synthetic_run(tmp_path, num_fields=4, run_name=_RUN)
+
+
+def _field_free_arena(fields_run):
+    """The run's own arena, with the fields deliberately stripped back out.
+
+    The three modes below are handed an environment rather than a run, so the
+    game mode, world size and timing have to match the checkpoint's provenance
+    or the mode refuses to run at all.  ``num_fields`` is the one thing left
+    wrong on purpose: these tests pass only if the mode takes the field count
+    from the checkpoint instead of from what it was handed.
+    """
+
+    return replace(fields_run.resolved.env_config, num_fields=0)
 
 
 @pytest.fixture
@@ -143,8 +158,8 @@ def test_ar_report_diagnoses_a_fields_policy_in_a_field_arena(fields_run, built_
         team0_spec=str(fields_run.checkpoint),
         team1_spec=str(fields_run.checkpoint),
         num_steps=2,
-        ship_config=ShipConfig(),
-        env_config=EnvConfig(num_ships=2, max_bullets=2, max_episode_steps=16),
+        ship_config=fields_run.resolved.ship_config,
+        env_config=_field_free_arena(fields_run),
         rewards=REWARDS,
         model_config=MODEL_CONFIG,
         device="cpu",
@@ -165,8 +180,8 @@ def test_noise_calibration_measures_a_fields_policy_in_a_field_arena(
         num_steps=2,
         num_ar_envs=2,
         num_ar_windows=1,
-        ship_config=ShipConfig(),
-        env_config=EnvConfig(num_ships=2, max_bullets=2, max_episode_steps=2),
+        ship_config=fields_run.resolved.ship_config,
+        env_config=_field_free_arena(fields_run),
         model_config=MODEL_CONFIG,
         device="cpu",
         checkpoint_dir=str(tmp_path),
@@ -198,8 +213,8 @@ def test_noise_calibration_sizes_its_hidden_state_for_the_field_tokens(
         num_steps=2,
         num_ar_envs=2,
         num_ar_windows=1,
-        ship_config=ShipConfig(),
-        env_config=EnvConfig(num_ships=2, max_bullets=2, max_episode_steps=2),
+        ship_config=fields_run.resolved.ship_config,
+        env_config=_field_free_arena(fields_run),
         model_config=MODEL_CONFIG,
         device="cpu",
         checkpoint_dir=str(tmp_path),
