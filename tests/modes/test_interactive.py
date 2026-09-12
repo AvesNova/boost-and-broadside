@@ -48,9 +48,7 @@ def test_keyboard_controls_only_one_selected_ally() -> None:
 
 
 def test_spectator_selection_leaves_every_ship_scripted() -> None:
-    action = torch.tensor(
-        [[[1, 2, 1], [2, 4, 0], [0, 1, 1], [1, 0, 0]]], dtype=torch.int32
-    )
+    action = torch.tensor([[[1, 2, 1], [2, 4, 0], [0, 1, 1], [1, 0, 0]]], dtype=torch.int32)
     team_id = torch.tensor([[0, 1, 0, 1]], dtype=torch.int32)
     keyboard = torch.tensor([2, 6, 1], dtype=torch.int32)
 

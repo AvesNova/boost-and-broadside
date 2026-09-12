@@ -222,8 +222,7 @@ def subprocess_runner(
                 )
             except subprocess.TimeoutExpired as error:
                 raise VramError(
-                    f"VRAM probe candidate {knobs.document()} did not finish within "
-                    f"{timeout:.0f}s"
+                    f"VRAM probe candidate {knobs.document()} did not finish within {timeout:.0f}s"
                 ) from error
         measurement = _parse_child_output(completed.stdout)
         if measurement is None:
@@ -353,9 +352,7 @@ def resolve_vram(
     if policy.mode == "preset":
         assert policy.preset_gigabytes is not None
         geometry = launch_geometry(spec)
-        resolution = resolution_from_preset(
-            policy, VRAM_PRESETS[policy.preset_gigabytes], geometry
-        )
+        resolution = resolution_from_preset(policy, VRAM_PRESETS[policy.preset_gigabytes], geometry)
         if not device.startswith("cuda"):
             # An explicit row is honored on any device — it is how a launch is
             # printed on a laptop for a card that is not in this machine — but
@@ -543,11 +540,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             overrides=dict(parse_override(item) for item in args.overrides),
         )
     except torch.cuda.OutOfMemoryError as error:
-        print(
-            json.dumps(
-                {"outcome": "oom", "error": str(error)[:400], "knobs": knobs.document()}
-            )
-        )
+        print(json.dumps({"outcome": "oom", "error": str(error)[:400], "knobs": knobs.document()}))
         return OOM_EXIT_CODE
     except Exception as error:  # noqa: BLE001 - reported as JSON, never swallowed
         print(

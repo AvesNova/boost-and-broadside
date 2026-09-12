@@ -98,12 +98,29 @@ def ratio_chart(trained, beats, crossover, out: Path) -> Path:
     ratio = beats / trained
 
     axes.axhline(1.0, color=style.INK_MUTED, linewidth=1.3, linestyle=(0, (5, 4)), zorder=2)
-    axes.annotate("parity (1:1)", xy=(trained.max(), 1.0), xytext=(0, -12),
-                  textcoords="offset points", color=style.INK_MUTED, fontsize=9, ha="right")
-    axes.fill_between(trained, 1.0, ratio, where=ratio >= 1.0, color=style.BLUE,
-                      alpha=0.13, linewidth=0, zorder=2)
-    axes.plot(trained, ratio, color=style.BLUE, linewidth=2.0, marker="o", markersize=5,
-              markeredgecolor=style.SURFACE, markeredgewidth=1.2, zorder=4)
+    axes.annotate(
+        "parity (1:1)",
+        xy=(trained.max(), 1.0),
+        xytext=(0, -12),
+        textcoords="offset points",
+        color=style.INK_MUTED,
+        fontsize=9,
+        ha="right",
+    )
+    axes.fill_between(
+        trained, 1.0, ratio, where=ratio >= 1.0, color=style.BLUE, alpha=0.13, linewidth=0, zorder=2
+    )
+    axes.plot(
+        trained,
+        ratio,
+        color=style.BLUE,
+        linewidth=2.0,
+        marker="o",
+        markersize=5,
+        markeredgecolor=style.SURFACE,
+        markeredgewidth=1.2,
+        zorder=4,
+    )
 
     axes.set_xlabel("policy-controlled ships", color=style.INK_SECONDARY, fontsize=10)
     axes.set_ylabel(

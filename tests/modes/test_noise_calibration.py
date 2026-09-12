@@ -85,9 +85,7 @@ class TestReportLayout:
 
         coordinator = build_standard_coordinator(SHIP_CONFIG)
         forgetful = {
-            name: entry
-            for name, entry in _REPORT_FEATURES.items()
-            if name != "local_log_index"
+            name: entry for name, entry in _REPORT_FEATURES.items() if name != "local_log_index"
         }
         monkeypatch.setattr(
             "boost_and_broadside.modes.noise_calibration._REPORT_FEATURES", forgetful

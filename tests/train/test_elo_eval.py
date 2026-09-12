@@ -93,9 +93,7 @@ class TestLadderCountFlush:
 
     def test_trailing_rows_beyond_the_anchor_set_are_ignored(self) -> None:
         """The tensor is sized for the largest ladder promotion can reach."""
-        evaluator = self.evaluator(
-            [self.anchor("random")], [[3.0, 1.0, 0.0], [9.0, 9.0, 9.0]]
-        )
+        evaluator = self.evaluator([self.anchor("random")], [[3.0, 1.0, 0.0], [9.0, 9.0, 9.0]])
         assert evaluator._flush_ladder_counts() == {"random": (3, 1, 0)}
 
 
@@ -160,9 +158,12 @@ class TestAnchorProbabilityTable:
             stacked = torch.stack(
                 [torch.rand(envs, ships) < float(s.p_scripted or 0.0) for s in specs]
             )
-            per_rung += stacked.gather(
-                0, idx.view(1, -1, 1).expand(1, envs, ships)
-            ).squeeze(0).float().mean(dim=1)
+            per_rung += (
+                stacked.gather(0, idx.view(1, -1, 1).expand(1, envs, ships))
+                .squeeze(0)
+                .float()
+                .mean(dim=1)
+            )
 
         expected = table[idx] * draws
         assert collapsed.mean() == pytest.approx(expected.mean(), abs=0.4)

@@ -326,17 +326,13 @@ class TestParallelMatrix:
         with pytest.raises(SmokeIsolationError, match="changed the source checkout"):
             run_smoke_matrix(jobs=4)
 
-    def test_the_unattributed_failure_says_how_to_attribute_it(
-        self, monkeypatch, tmp_path
-    ) -> None:
+    def test_the_unattributed_failure_says_how_to_attribute_it(self, monkeypatch, tmp_path) -> None:
         self._harness(monkeypatch, tmp_path, dirty=True)
 
         with pytest.raises(SmokeIsolationError, match=r"--jobs 1"):
             run_smoke_matrix(jobs=4)
 
-    def test_one_job_is_the_sequential_path_and_names_the_case(
-        self, monkeypatch, tmp_path
-    ) -> None:
+    def test_one_job_is_the_sequential_path_and_names_the_case(self, monkeypatch, tmp_path) -> None:
         self._harness(monkeypatch, tmp_path, dirty=True)
 
         with pytest.raises(SmokeIsolationError, match=r"case '\w[\w-]*' changed"):

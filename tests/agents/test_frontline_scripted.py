@@ -335,10 +335,7 @@ def test_offensive_wave_gathers_one_third_from_spawn_before_advancing() -> None:
 
     _, bearing, engage = _targeting(agent, state)
     expected_rally = torch.tensor(
-        [
-            _bearing(state.ship_pos[0, i].item(), 5000.0 + 100.0j, config.world_size)
-            for i in (0, 1)
-        ]
+        [_bearing(state.ship_pos[0, i].item(), 5000.0 + 100.0j, config.world_size) for i in (0, 1)]
     )
     assert not engage.any()
     assert torch.allclose(bearing[0, :2], expected_rally)
@@ -347,10 +344,7 @@ def test_offensive_wave_gathers_one_third_from_spawn_before_advancing() -> None:
     state.ship_pos[0, 1] = 5000.0 + 100.0j
     _, bearing, _ = _targeting(agent, state)
     expected_attack = torch.tensor(
-        [
-            _bearing(state.ship_pos[0, i].item(), 9000.0 + 100.0j, config.world_size)
-            for i in (0, 1)
-        ]
+        [_bearing(state.ship_pos[0, i].item(), 9000.0 + 100.0j, config.world_size) for i in (0, 1)]
     )
     assert torch.allclose(bearing[0, :2], expected_attack)
 

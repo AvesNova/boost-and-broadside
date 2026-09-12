@@ -584,9 +584,7 @@ class GameRenderer:
         pygame.draw.rect(surf, (200, 200, 200), handle_rect)
 
         # Draw FPS text
-        fps_label = self._font.render(
-            f"GAME {self.game_speed:g}x", True, (200, 200, 200)
-        )
+        fps_label = self._font.render(f"GAME {self.game_speed:g}x", True, (200, 200, 200))
         surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
 
         if self._render_config.show_unlimited_button:
@@ -1011,9 +1009,7 @@ class GameRenderer:
             observer = complex(positions[index].item())
             for observer_image in self.camera.visible_images(observer, vision_range):
                 observer_mask.fill((0, 0, 0))
-                observer_screen = mask_point(
-                    self._unwrapped_world_to_screen(observer_image)
-                )
+                observer_screen = mask_point(self._unwrapped_world_to_screen(observer_image))
                 pygame.draw.circle(
                     observer_mask,
                     (255, 255, 255),
@@ -1050,9 +1046,7 @@ class GameRenderer:
                         center_angle + half_angle,
                     )
                     rays = [complex(math.cos(angle), math.sin(angle)) for angle in ray_angles]
-                    tangent = [
-                        observer_image + ray * tangent_distance for ray in rays
-                    ]
+                    tangent = [observer_image + ray * tangent_distance for ray in rays]
                     # Extend beyond the sight circle so the polygon covers the
                     # complete curved cap at maximum range; the circle already
                     # clips all irrelevant pixels outside the sensor footprint.

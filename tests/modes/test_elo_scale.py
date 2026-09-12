@@ -27,9 +27,7 @@ def test_rating_views_apply_the_three_anchor_conventions() -> None:
 
     assert views["random_zero"]["ratings"] == pytest.approx([0.0, 500.0, 800.0])
     assert views["scripted_1000"]["ratings"] == pytest.approx([500.0, 1000.0, 1300.0])
-    assert views["random_zero_scripted_1000"]["ratings"] == pytest.approx(
-        [0.0, 1000.0, 1600.0]
-    )
+    assert views["random_zero_scripted_1000"]["ratings"] == pytest.approx([0.0, 1000.0, 1600.0])
 
 
 def test_dual_anchor_uncertainty_pins_both_landmarks() -> None:

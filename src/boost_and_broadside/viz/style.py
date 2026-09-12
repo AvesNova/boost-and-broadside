@@ -110,9 +110,15 @@ def label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> Non
         target = fy if not placed else max(fy, placed[-1] + minimum)
         placed.append(target)
         axes.annotate(
-            text, (x, target), xycoords=("data", "axes fraction"),
-            xytext=(7, 0), textcoords="offset points",
-            color=color, fontsize=9.5, va="center", fontweight="medium",
+            text,
+            (x, target),
+            xycoords=("data", "axes fraction"),
+            xytext=(7, 0),
+            textcoords="offset points",
+            color=color,
+            fontsize=9.5,
+            va="center",
+            fontweight="medium",
         )
 
 
