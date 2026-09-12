@@ -295,10 +295,15 @@ class EnvConfig:
     frontline: FrontlineConfig | None = None
     # Team-shared enemy sight radius in world pixels. ``None`` preserves the
     # omniscient legacy combat environment; Frontline enables a finite value.
-    # Fields whose opaque core lies strictly between observer and target block
-    # sight. This is provisional and deliberately lives in the environment
-    # contract rather than in renderer-only state.
+    # A sight line is broken by any opaque core it crosses, so a ship can see
+    # neither into a field, nor out of one, nor past one. This lives in the
+    # environment contract rather than in renderer-only state.
     vision_range: float | None = None
+    # Whether capture zones are opaque as well as fields. Off by default: the
+    # five Frontline zones cover much of the playable disk, so making them
+    # occluders is a different game rather than a tuning knob. Play mode can
+    # toggle it live to inspect the difference.
+    zones_occlude: bool = False
 
     def __post_init__(self) -> None:
         if isinstance(self.frontline, Mapping):

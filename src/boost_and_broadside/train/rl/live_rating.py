@@ -31,7 +31,7 @@ from collections.abc import Mapping
 
 import numpy as np
 
-from boost_and_broadside.train.rl.bradley_terry import fit_bradley_terry, fit_single_rating
+from boost_and_broadside.train.rl.bradley_terry import fit_single_rating
 from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 
 # Virtual decisive games per player, split for and against the anchor. Without
@@ -103,9 +103,7 @@ def fit_ladder(
         movement = 0.0
         for label in free:
             counts = {
-                opponent: record
-                for opponent, record in games[label].items()
-                if opponent in ratings
+                opponent: record for opponent, record in games[label].items() if opponent in ratings
             }
             rating, _ = rate_live(
                 counts, ratings, prior_games=prior_games, prior_rating=max(known.values())
@@ -118,9 +116,7 @@ def fit_ladder(
     return {label: ratings[label] for label in labels}
 
 
-def _opponent_counts(
-    matrix: MatchMatrix, player: str
-) -> dict[str, tuple[float, float, float]]:
+def _opponent_counts(matrix: MatchMatrix, player: str) -> dict[str, tuple[float, float, float]]:
     """One player's raw win/loss/tie record against each opponent it has met."""
     counts: dict[str, tuple[float, float, float]] = {}
     for record in matrix.as_records():

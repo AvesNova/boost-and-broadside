@@ -66,11 +66,7 @@ class LadderPolicyRef:
 
 def resolve_exact_run(run_name: str, checkpoint_dir: str | Path = "checkpoints") -> RunRef:
     """Resolve one exact run name below ``checkpoint_dir``."""
-    if (
-        not run_name
-        or Path(run_name).name != run_name
-        or run_name in {".", "..", "latest", "none"}
-    ):
+    if not run_name or Path(run_name).name != run_name or run_name in {".", "..", "latest", "none"}:
         raise RunNotFoundError(f"invalid exact run name: {run_name!r}")
     path = Path(checkpoint_dir) / run_name
     if not path.is_dir():
@@ -168,9 +164,7 @@ def summarize_runs(
     return summaries
 
 
-def select_latest_resumable_run(
-    profile: str, checkpoint_dir: str | Path = "checkpoints"
-) -> RunRef:
+def select_latest_resumable_run(profile: str, checkpoint_dir: str | Path = "checkpoints") -> RunRef:
     """The most recently touched run of ``profile`` that has something to resume.
 
     Scoped to the profile because resuming an RL run into a BC launch, or the
@@ -235,9 +229,7 @@ def resolve_explicit_checkpoint(path: str | Path) -> CheckpointRef:
     return CheckpointRef(checkpoint, CheckpointKind.EXPLICIT, step=step)
 
 
-def select_tournament_ladder_policies(
-    run: RunRef | Path, roster: dict
-) -> list[LadderPolicyRef]:
+def select_tournament_ladder_policies(run: RunRef | Path, roster: dict) -> list[LadderPolicyRef]:
     """Select roster checkpoints strictly from one exact run.
 
     Roster paths are historical metadata and may be absolute paths from another

@@ -66,9 +66,7 @@ def main() -> None:
     finally:
         renderer.close()
 
-    simulated_seconds = (
-        args.timed_decisions * PLAY_ENV_CONFIG.action_repeat * ship_config.dt
-    )
+    simulated_seconds = args.timed_decisions * PLAY_ENV_CONFIG.action_repeat * ship_config.dt
     print(
         f"threads={args.threads} decisions={args.timed_decisions} "
         f"view={'full' if args.full_view else 'team0'} "

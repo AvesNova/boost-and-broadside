@@ -12,8 +12,10 @@ import pytest
 from boost_and_broadside import cli, cli_commands
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
 from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
-from boost_and_broadside.config.vram import TIER_GUARANTEES
+from boost_and_broadside.config.resolve import launch_geometry
+from boost_and_broadside.config.vram import TIER_GUARANTEES, VRAM_PRESETS, preset_knobs
 from boost_and_broadside.launch import resolve_training_launch
+from boost_and_broadside.profiles import PROFILES
 
 EXPECTED_COMMANDS = (
     "train",
@@ -259,8 +261,12 @@ def test_print_config_refuses_to_probe_from_the_command_line(policy: str, capsys
 
 
 def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None:
-    # The 24 GB row, not 16: the profile has no two-shard split, so its 16 GB row
-    # proposes the same width as its 8 GB one and would move tier 1 alone.
+    # The 24 GB row: it is the widest one the profile can spend, so it holds the
+    # whole logical batch in a single resident shard. That makes it the row where
+    # both tiers move and the shard count collapses to one.
+    geometry = launch_geometry(PROFILES["rl"])
+    row = preset_knobs(VRAM_PRESETS[24], geometry)
+
     assert (
         cli.main(["train", "--profile", "rl", "--device", "cpu", "--vram", "24", "--print-config"])
         == 0
@@ -271,8 +277,8 @@ def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None
         "policy": "24",
         "source": "vram-preset",
         "status": "provisional",
-        "proposed": {"num_envs": 7776, "microbatch_tokens": 37_500, "grad_checkpoint": False},
-        "applied": {"num_envs": 7776, "microbatch_tokens": 37_500, "grad_checkpoint": False},
+        "proposed": row.document(),
+        "applied": row.document(),
         "tiers": vram["tiers"],
         "identity_fingerprint": None,
         "notes": vram["notes"],
@@ -322,6 +328,11 @@ def test_figures_reports_a_missing_measurement_concisely(tmp_path, monkeypatch, 
     assert "Traceback" not in error
 
 
+# Half the profile's derived width, which is always a valid shard count: the
+# batch it has to divide is the same one, split into twice as many shards.
+_HALF_WIDTH = launch_geometry(PROFILES["rl"]).default_num_envs // 2
+
+
 def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
     capsys, monkeypatch
 ) -> None:
@@ -333,7 +344,7 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
                 "--profile",
                 "rl",
                 "--num-envs",
-                "864",
+                str(_HALF_WIDTH),
                 "--microbatch-tokens",
                 "20000",
                 "--device",

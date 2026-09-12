@@ -121,6 +121,7 @@ def test_a_directory_that_is_not_an_export_is_refused(ingest, tmp_path) -> None:
 
     with pytest.raises(FileNotFoundError, match="summary.json"):
         ingest.ingest_export_directory(
-            incomplete, checkpoint_root=tmp_path / "checkpoints",
+            incomplete,
+            checkpoint_root=tmp_path / "checkpoints",
             standalone_root=tmp_path / "artifacts",
         )

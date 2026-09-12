@@ -83,6 +83,7 @@ class ProfileSpec:
     action_repeat: int
     spawn_resource_spread: float
     vision_range: float | None
+    zones_occlude: bool
     frontline: FrontlineConfig | None
     # --- Rollout shape ---
     logical_batch_tokens: int

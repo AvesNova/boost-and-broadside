@@ -25,9 +25,7 @@ def _available(result: dict) -> list[dict]:
 
 
 def _series(scales: list[dict], view: str, player_index: int, key: str) -> np.ndarray:
-    return np.asarray(
-        [scale["ratings"][view][key][player_index] for scale in scales], dtype=float
-    )
+    return np.asarray([scale["ratings"][view][key][player_index] for scale in scales], dtype=float)
 
 
 def _plot_view(result: dict, path: Path) -> Path:

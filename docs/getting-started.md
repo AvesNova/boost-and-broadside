@@ -43,13 +43,25 @@ subcommand prints help and performs no simulation or training.
 ## Verify the checkout
 
 ```bash
-uv run pytest -q
+uv run pytest -q -n auto
+uv run bnb smoke
 uv run ruff check .
 ```
 
 The suite passes on CPU; a handful of hardware-specific tests skip when no CUDA device
 is visible. There is no CI workflow yet, so these local commands are the verification
 path.
+
+`pytest -n auto` runs one worker per core and pins each one to a single Torch thread, which
+is the difference between 2.5 minutes and 7.5 minutes on a 16-core machine -- without the
+pin every worker claims every core and parallelism costs more than it returns. Drop `-n
+auto` when you want a readable failure or a debugger; the sequential run keeps the whole
+machine to itself.
+
+`bnb smoke` runs each CLI command as an isolated subprocess, four at a time by default
+(about 55 seconds; `--jobs 1` is about 145). Use `--jobs 1` if the matrix ever reports that
+a case dirtied the checkout -- it is the mode that says which one. `--case NAME` runs a
+single case for focused diagnosis.
 
 ## Watch or play
 
@@ -72,8 +84,10 @@ uv run bnb watch \
 Play mode runs the provisional five-zone Frontline configuration in a 16384 × 16384
 toroidal world. Human controls are WASD for flight, Shift for sharp turns, and Space to
 shoot. Tab cycles allied ships and then spectator mode; C follows/releases; F fits the
-playable area; R resets to the full world; `+`/`-` adjust game speed; the mouse wheel
-zooms and middle/right drag pans. The
+playable area; R resets to the full world; `+`/`-` adjust game speed; V cycles whose vision
+is drawn; Z toggles whether capture zones block sight as well as fields; the mouse wheel
+zooms and middle/right drag pans. Z changes the environment rule, not just the drawing, so
+the agents lose and gain sight with you. The
 `Unlimited HP/PW` button remains available for inspection. Agent specs
 accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
 `scripted`, an explicit checkpoint path, and the named scripted controllers listed by

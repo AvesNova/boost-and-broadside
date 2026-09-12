@@ -91,9 +91,7 @@ def _profile_perception(
         "visibility_ms_per_batch": visibility_seconds * 1000.0 / iterations,
         "team_pair_observation_ms_per_batch": observation_seconds * 1000.0 / iterations,
         "visibility_envs_per_second": env.num_envs * iterations / visibility_seconds,
-        "team_pair_observation_envs_per_second": (
-            env.num_envs * iterations / observation_seconds
-        ),
+        "team_pair_observation_envs_per_second": (env.num_envs * iterations / observation_seconds),
     }
 
 
@@ -166,9 +164,7 @@ class FogAccumulator:
             self.duration_histogram[index] += (
                 reacquired & (self.hidden_age > lower) & (self.hidden_age <= upper)
             ).sum()
-        self.duration_histogram[-1] += (
-            reacquired & (self.hidden_age > self.bins_steps[-1])
-        ).sum()
+        self.duration_histogram[-1] += (reacquired & (self.hidden_age > self.bins_steps[-1])).sum()
 
         ever_after = ever_before | visible
         hidden = enemy_alive & ever_after & ~visible
@@ -199,9 +195,7 @@ class FogAccumulator:
         visible_fraction = self.visible / self.enemy_slots.clamp(min=1)
         range_fraction = self.range_visible / self.enemy_slots.clamp(min=1)
         individual_fraction = self.observer_visible / self.observer_pairs.clamp(min=1)
-        field_occluded = (
-            self.range_visible - self.los_visible
-        ) / self.range_visible.clamp(min=1)
+        field_occluded = (self.range_visible - self.los_visible) / self.range_visible.clamp(min=1)
         never_seen = (self.enemy_mask & ~self.ever_seen).sum(dim=(1, 2)).double()
         never_seen /= self.enemy_mask.sum(dim=(1, 2)).clamp(min=1)
         mean_hidden_seconds = (
@@ -270,13 +264,14 @@ def run_suite(
     )
     agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
     decision_seconds = ship_config.dt * env_config.action_repeat
-    bins_steps = torch.tensor(
-        [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0], device=device
-    ).div(decision_seconds).round().to(torch.int32)
+    bins_steps = (
+        torch.tensor([0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0], device=device)
+        .div(decision_seconds)
+        .round()
+        .to(torch.int32)
+    )
     probes = {
-        vision_range: FogAccumulator.create(
-            games, env_config.num_ships, device, bins_steps
-        )
+        vision_range: FogAccumulator.create(games, env_config.num_ships, device, bins_steps)
         for vision_range in probe_ranges
     }
     probe_configs = {
@@ -321,9 +316,7 @@ def run_suite(
         "wall_seconds": elapsed,
         "simulated_game_seconds_per_wall_second": games * seconds / elapsed,
         "peak_torch_memory_mib": (
-            torch.cuda.max_memory_allocated(device) / 2**20
-            if device.type == "cuda"
-            else None
+            torch.cuda.max_memory_allocated(device) / 2**20 if device.type == "cuda" else None
         ),
         "perception_throughput": throughput,
         "ranges": {

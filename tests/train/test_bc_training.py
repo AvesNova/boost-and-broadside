@@ -18,7 +18,7 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config.core import ModelConfig
+from boost_and_broadside.config.core import ModelConfig, entity_token_count
 from boost_and_broadside.config.defaults import LIVE_REFERENCE_PROBABILITIES
 from boost_and_broadside.config.live_elo import (
     LIVE_RANDOM_ELO,
@@ -39,7 +39,7 @@ def _bounded_bc(checkpoint_dir: str) -> ResolvedTrainConfig:
     """Resolve the registered BC profile at a launch size a CPU test can run."""
 
     profile = PROFILES["bc"]
-    entity_tokens = profile.num_ships + profile.num_fields
+    entity_tokens = entity_token_count(profile.num_ships, profile.num_fields, profile.frontline)
     rollout_tokens = _NUM_ENVS * entity_tokens * _NUM_STEPS
     bounded = replace(
         profile,
@@ -134,9 +134,9 @@ def test_bounded_bc_run_learns_from_supervision_and_freezes_no_milestone(tmp_pat
     trainer.train()
 
     after = list(trainer.policy.parameters())
-    assert any(
-        not torch.equal(one, other) for one, other in zip(before, after, strict=True)
-    ), "no policy parameter moved under the behavior-cloning objective"
+    assert any(not torch.equal(one, other) for one, other in zip(before, after, strict=True)), (
+        "no policy parameter moved under the behavior-cloning objective"
+    )
     assert trainer._global_step == _NUM_ENVS * _NUM_STEPS * _UPDATES
     # Milestones are gated on a live policy gradient, so BC contributes no
     # frozen ladder entry no matter how its rating moves.

@@ -73,9 +73,7 @@ def validate_live_reference_probabilities(probabilities: Sequence[float]) -> Non
     previous = 0.0
     for probability in probabilities:
         if not isinstance(probability, (int, float)) or isinstance(probability, bool):
-            raise ValueError(
-                f"live reference probabilities must be numbers, got {probability!r}"
-            )
+            raise ValueError(f"live reference probabilities must be numbers, got {probability!r}")
         if not math.isfinite(probability) or not previous < probability < 1.0:
             raise ValueError(
                 "live reference probabilities must be finite and strictly increasing "

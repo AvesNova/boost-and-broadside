@@ -1335,6 +1335,15 @@ class TestRLSmokeTest:
     Exercises the complete training stack with the production reward config
     (including kill_shot and kill_assist) for a small number of updates.
     Uses a scripted opponent to ensure combat happens and kill rewards fire.
+
+    This used to call ``train()`` and assert nothing, which made it the most
+    expensive way in the suite to learn that the stack does not raise -- a claim
+    the two cheaper cases above it already make. What it uniquely reaches is the
+    *production* reward vector rather than a test fixture's, so what it now
+    checks is that every component that vector switches on is carried through
+    the scalers and logged with a finite value. A component silently dropped
+    between ``REWARDS`` and the update is exactly the failure a run would not
+    show for days.
     """
 
     @pytest.mark.parametrize("paradigm", ["ego_pass", "shared_pass"])
@@ -1401,7 +1410,33 @@ class TestRLSmokeTest:
             use_wandb=False,
             scripted_agent=scripted,
         )
+        captured: dict = {}
+        trainer._enqueue_log = lambda metrics, step: captured.update(metrics)
+
         trainer.train()
+
+        assert captured, "the training loop logged nothing"
+        # Every component the production vector switches on, and nothing else:
+        # the scaler namespace is the last place a dropped component is visible.
+        weighted = {
+            component.name
+            for component in trainer.wrapper.active_components
+            if component.weight != 0.0
+        }
+        assert weighted, "the production reward vector activated no component"
+        scaled = {
+            key.rpartition("/")[2] for key in captured if key.startswith("scaler/return_mean/")
+        }
+        assert weighted <= scaled, f"never scaled: {sorted(weighted - scaled)}"
+        assert "kill_shot" in weighted and "kill_assist" in weighted
+
+        finite = {
+            key: value
+            for key, value in captured.items()
+            if isinstance(value, float | int) and not isinstance(value, bool)
+        }
+        nonfinite = {key: value for key, value in finite.items() if not math.isfinite(value)}
+        assert not nonfinite, f"non-finite metrics: {nonfinite}"
 
 
 class TestNumericalPrecision:

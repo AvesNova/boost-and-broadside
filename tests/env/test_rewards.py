@@ -160,13 +160,20 @@ class TestComponentWeightDerivation:
     @staticmethod
     def _cfg(**kw):
         base = dict(
-            win_weight=1.0, death_weight=0.4, damage_weight=0.3, kill_shot_fraction=0.5,
-            facing_weight=0.06, closing_speed_weight=0.09,
-            proximity_radius=400.0, shoot_quality_radius=200.0,
-            enemy_neg_lambda_components=frozenset({"enemy_field_damage", "enemy_field_death",
-                                                   "enemy_win"}),
-            ally_zero_components=frozenset({"enemy_field_damage", "enemy_field_death",
-                                            "enemy_win"}),
+            win_weight=1.0,
+            death_weight=0.4,
+            damage_weight=0.3,
+            kill_shot_fraction=0.5,
+            facing_weight=0.06,
+            closing_speed_weight=0.09,
+            proximity_radius=400.0,
+            shoot_quality_radius=200.0,
+            enemy_neg_lambda_components=frozenset(
+                {"enemy_field_damage", "enemy_field_death", "enemy_win"}
+            ),
+            ally_zero_components=frozenset(
+                {"enemy_field_damage", "enemy_field_death", "enemy_win"}
+            ),
         )
         base.update(kw)
         return RewardConfig(**base)
@@ -206,8 +213,14 @@ class TestComponentWeightDerivation:
         """Their events are already paid for by the local and dealer-attributed
         components; turning them on would charge the same event twice."""
         w = component_weights(self._cfg())
-        for name in ("ally_combat_damage", "enemy_combat_damage", "ally_field_damage",
-                     "ally_combat_death", "enemy_combat_death", "ally_field_death"):
+        for name in (
+            "ally_combat_damage",
+            "enemy_combat_damage",
+            "ally_field_damage",
+            "ally_combat_death",
+            "enemy_combat_death",
+            "ally_field_death",
+        ):
             assert w[name] == 0.0
 
     def test_kill_split_moves_only_within_the_death_budget(self):
@@ -223,8 +236,9 @@ class TestComponentWeightDerivation:
     def test_pre_derivation_checkpoints_read_their_recorded_weights(self):
         """An older run stored one weight per component; those are the record, and
         it still has to load for inference."""
-        w = component_weights({"ally_win_weight": 1.5, "kill_shot_weight": 1.0,
-                               "facing_weight": 0.1})
+        w = component_weights(
+            {"ally_win_weight": 1.5, "kill_shot_weight": 1.0, "facing_weight": 0.1}
+        )
         assert w["ally_win"] == 1.5
         assert w["kill_shot"] == 1.0
         assert w["combat_death"] == 0.0
@@ -239,9 +253,7 @@ class TestKillPayoutRatio:
     def test_default_is_the_balance_rule(self):
         """Unset, the knob must not move a single weight."""
         assert self._cfg().kill_payout_ratio == 1.0
-        assert component_weights(self._cfg()) == component_weights(
-            self._cfg(kill_payout_ratio=1.0)
-        )
+        assert component_weights(self._cfg()) == component_weights(self._cfg(kill_payout_ratio=1.0))
 
     def test_the_kill_side_is_paid_the_ratio_times_the_charge(self):
         w = component_weights(self._cfg(death_weight=0.4, kill_payout_ratio=2.0))
@@ -252,9 +264,7 @@ class TestKillPayoutRatio:
         """f partitions the payout, not the charge, so the two knobs stay
         independent: changing one must not move the other's total."""
         for fraction in (0.0, 0.25, 0.5, 1.0):
-            w = component_weights(
-                self._cfg(kill_shot_fraction=fraction, kill_payout_ratio=2.0)
-            )
+            w = component_weights(self._cfg(kill_shot_fraction=fraction, kill_payout_ratio=2.0))
             payout = w["kill_shot"] + w["kill_assist"]
             assert payout == pytest.approx(2 * w["combat_death"])
             assert w["kill_shot"] == pytest.approx(payout * fraction)
@@ -271,18 +281,25 @@ class TestKillPayoutRatio:
         it has to track the payout rather than the charge."""
         w = component_weights(self._cfg(kill_payout_ratio=2.0))
         assert w["enemy_field_death"] == pytest.approx(w["kill_shot"])
-        assert w["kill_assist"] + w["enemy_field_death"] == pytest.approx(
-            2 * w["field_death"]
-        )
+        assert w["kill_assist"] + w["enemy_field_death"] == pytest.approx(2 * w["field_death"])
 
     def test_damage_and_win_are_untouched(self):
         """The asymmetry is evidenced for the kill tier only."""
         balanced = component_weights(self._cfg())
         paid = component_weights(self._cfg(kill_payout_ratio=2.0))
-        for name in ("ally_win", "enemy_win", "combat_death", "field_death",
-                     "combat_damage_taken", "field_damage_taken",
-                     "damage_dealt_enemy", "damage_dealt_ally",
-                     "enemy_field_damage", "facing", "closing_speed"):
+        for name in (
+            "ally_win",
+            "enemy_win",
+            "combat_death",
+            "field_death",
+            "combat_damage_taken",
+            "field_damage_taken",
+            "damage_dealt_enemy",
+            "damage_dealt_ally",
+            "enemy_field_damage",
+            "facing",
+            "closing_speed",
+        ):
             assert paid[name] == pytest.approx(balanced[name])
 
     def test_zero_pays_the_kill_side_nothing(self):
@@ -299,8 +316,12 @@ class TestKillPayoutRatio:
     def test_a_checkpoint_without_the_field_reads_as_balanced(self):
         """Runs recorded before the knob existed derived at 1:1, and reloading
         one must not silently re-price its rewards."""
-        stored = {"win_weight": 1.0, "death_weight": 0.4, "damage_weight": 0.3,
-                  "kill_shot_fraction": 0.5}
+        stored = {
+            "win_weight": 1.0,
+            "death_weight": 0.4,
+            "damage_weight": 0.3,
+            "kill_shot_fraction": 0.5,
+        }
         w = component_weights(stored)
         assert w["kill_shot"] + w["kill_assist"] == pytest.approx(w["combat_death"])
 
@@ -338,17 +359,28 @@ class TestDamagePayoutRatio:
         """The two ratios are independent knobs on independent tiers."""
         balanced = component_weights(self._cfg())
         paid = component_weights(self._cfg(damage_payout_ratio=2.0))
-        for name in ("ally_win", "enemy_win", "combat_death", "field_death",
-                     "kill_shot", "kill_assist", "kill_ally_shot",
-                     "kill_ally_assist", "enemy_field_death",
-                     "combat_damage_taken", "field_damage_taken",
-                     "facing", "closing_speed"):
+        for name in (
+            "ally_win",
+            "enemy_win",
+            "combat_death",
+            "field_death",
+            "kill_shot",
+            "kill_assist",
+            "kill_ally_shot",
+            "kill_ally_assist",
+            "enemy_field_death",
+            "combat_damage_taken",
+            "field_damage_taken",
+            "facing",
+            "closing_speed",
+        ):
             assert paid[name] == pytest.approx(balanced[name])
 
     def test_the_two_ratios_compose(self):
         w = component_weights(
-            self._cfg(death_weight=0.4, damage_weight=0.3,
-                      kill_payout_ratio=2.0, damage_payout_ratio=3.0)
+            self._cfg(
+                death_weight=0.4, damage_weight=0.3, kill_payout_ratio=2.0, damage_payout_ratio=3.0
+            )
         )
         assert w["kill_shot"] + w["kill_assist"] == pytest.approx(0.8)
         assert w["damage_dealt_enemy"] == pytest.approx(0.9)
@@ -359,10 +391,20 @@ class TestDamagePayoutRatio:
             self._cfg(damage_payout_ratio=bad)
 
     def test_a_checkpoint_without_the_field_reads_as_balanced(self):
-        stored = {"win_weight": 1.0, "death_weight": 0.4, "damage_weight": 0.3,
-                  "kill_shot_fraction": 0.5}
+        stored = {
+            "win_weight": 1.0,
+            "death_weight": 0.4,
+            "damage_weight": 0.3,
+            "kill_shot_fraction": 0.5,
+        }
         w = component_weights(stored)
         assert w["damage_dealt_enemy"] == pytest.approx(w["combat_damage_taken"])
+
+
+# The frontline arena's own objective. It postdates both reconstruction targets
+# below, so the reconstruction tests hold it separately rather than counting it
+# as a change to the combat balance.
+FRONTLINE_COMPONENTS = frozenset({"ally_front_advance", "enemy_front_advance"})
 
 
 class TestRun719Reconstruction:
@@ -381,21 +423,40 @@ class TestRun719Reconstruction:
     """
 
     EFFECTIVE_719 = {
-        "ally_win": 1.0, "enemy_win": 1.0,
-        "combat_death": 1.0, "field_death": 1.0,
-        "kill_shot": 1.0, "kill_assist": 1.0,
-        "combat_damage_taken": 0.5, "field_damage_taken": 0.5,
-        "damage_dealt_enemy": 0.5, "damage_dealt_ally": 0.5,
-        "facing": 0.1, "closing_speed": 0.1,
+        "ally_win": 1.0,
+        "enemy_win": 1.0,
+        "combat_death": 1.0,
+        "field_death": 1.0,
+        "kill_shot": 1.0,
+        "kill_assist": 1.0,
+        "combat_damage_taken": 0.5,
+        "field_damage_taken": 0.5,
+        "damage_dealt_enemy": 0.5,
+        "damage_dealt_ally": 0.5,
+        "facing": 0.1,
+        "closing_speed": 0.1,
     }
 
     @staticmethod
     def _run_725():
-        """719's effective vector, as the five free numbers that produce it."""
+        """719's effective vector, as the five free numbers that produce it.
+
+        ``front_advance_weight`` is zeroed rather than inherited: 719 trained in
+        the elimination arena, which has no front to advance, so the term is
+        absent from the vector being reconstructed rather than set to zero by
+        preference.
+        """
         return dataclasses.replace(
-            REWARDS, win_weight=1.0, death_weight=1.0, damage_weight=0.5,
-            kill_shot_fraction=0.5, kill_payout_ratio=2.0, damage_payout_ratio=1.0,
-            facing_weight=0.1, closing_speed_weight=0.1,
+            REWARDS,
+            win_weight=1.0,
+            death_weight=1.0,
+            damage_weight=0.5,
+            kill_shot_fraction=0.5,
+            kill_payout_ratio=2.0,
+            damage_payout_ratio=1.0,
+            facing_weight=0.1,
+            closing_speed_weight=0.1,
+            front_advance_weight=0.0,
         )
 
     def test_every_component_719_carried_is_reproduced_exactly(self):
@@ -407,10 +468,15 @@ class TestRun719Reconstruction:
         """719 had no source-split offensive components, so a field death paid its
         killers nothing. Anything beyond these is a difference nobody argued for."""
         w = component_weights(self._run_725())
-        added = {name for name, weight in w.items()
-                 if weight != 0.0 and name not in self.EFFECTIVE_719}
-        assert added == {"enemy_field_death", "enemy_field_damage",
-                         "kill_ally_shot", "kill_ally_assist"}
+        added = {
+            name for name, weight in w.items() if weight != 0.0 and name not in self.EFFECTIVE_719
+        }
+        assert added == {
+            "enemy_field_death",
+            "enemy_field_damage",
+            "kill_ally_shot",
+            "kill_ally_assist",
+        }
 
     def test_the_friendly_kill_pair_matches_the_penalty_719_folded_in(self):
         """719 had no kill_ally_* components, but it did penalize friendly kills:
@@ -424,9 +490,7 @@ class TestRun719Reconstruction:
     def test_the_kill_ratio_is_what_makes_719_reachable(self):
         """Under the plain balance rule no setting of the free numbers reaches 719,
         because it paid a kill 2.0 while charging a death 1.0."""
-        balanced = component_weights(
-            dataclasses.replace(self._run_725(), kill_payout_ratio=1.0)
-        )
+        balanced = component_weights(dataclasses.replace(self._run_725(), kill_payout_ratio=1.0))
         assert balanced["kill_shot"] != pytest.approx(self.EFFECTIVE_719["kill_shot"])
 
 
@@ -447,13 +511,20 @@ class TestShippedWeightsReconstructRun720:
 
     # Run 720's active weights, from checkpoints/silvery-pond-720/config.json.
     RUN_720 = {
-        "ally_win": 1.0, "enemy_win": 1.0,
-        "combat_death": 0.27, "field_death": 0.28,
-        "kill_shot": 0.28, "kill_assist": 0.31,
-        "kill_ally_shot": 0.28, "kill_ally_assist": 0.28,
-        "combat_damage_taken": 0.32, "field_damage_taken": 0.26,
-        "damage_dealt_enemy": 0.54, "damage_dealt_ally": 0.50,
-        "facing": 0.09, "closing_speed": 0.08,
+        "ally_win": 1.0,
+        "enemy_win": 1.0,
+        "combat_death": 0.27,
+        "field_death": 0.28,
+        "kill_shot": 0.28,
+        "kill_assist": 0.31,
+        "kill_ally_shot": 0.28,
+        "kill_ally_assist": 0.28,
+        "combat_damage_taken": 0.32,
+        "field_damage_taken": 0.26,
+        "damage_dealt_enemy": 0.54,
+        "damage_dealt_ally": 0.50,
+        "facing": 0.09,
+        "closing_speed": 0.08,
     }
 
     def test_the_two_ratios_are_one_shared_number(self):
@@ -480,15 +551,45 @@ class TestShippedWeightsReconstructRun720:
         """k*U*f == U at k=2, f=0.5, so every kill/death component lands on U.
         Worth an assertion because it looks like a coincidence and is not."""
         w = component_weights(REWARDS)
-        for name in ("combat_death", "field_death", "kill_shot", "kill_assist",
-                     "kill_ally_shot", "kill_ally_assist", "enemy_field_death"):
+        for name in (
+            "combat_death",
+            "field_death",
+            "kill_shot",
+            "kill_assist",
+            "kill_ally_shot",
+            "kill_ally_assist",
+            "enemy_field_death",
+        ):
             assert w[name] == pytest.approx(REWARDS.death_weight), name
 
     def test_the_additions_720_lacked_are_still_only_the_two(self):
+        """Excluding the frontline pair, which is a different task, not a
+        different balance: 720 trained in the elimination arena and had no front
+        to advance. ``test_the_frontline_pair_is_the_only_task_term`` holds it."""
         w = component_weights(REWARDS)
-        added = {name for name, weight in w.items()
-                 if weight != 0.0 and name not in self.RUN_720}
+        added = {
+            name for name, weight in w.items() if weight != 0.0 and name not in self.RUN_720
+        } - FRONTLINE_COMPONENTS
         assert added == {"enemy_field_death", "enemy_field_damage"}
+
+    def test_the_frontline_pair_is_the_only_task_term(self):
+        """It is symmetric, and it is exactly the free number that names it --
+        the balance rule does not touch it in either direction."""
+        w = component_weights(REWARDS)
+        assert set(FRONTLINE_COMPONENTS) <= set(w)
+        for name in FRONTLINE_COMPONENTS:
+            assert w[name] == pytest.approx(REWARDS.front_advance_weight), name
+        assert REWARDS.front_advance_weight > 0.0
+
+    def test_zeroing_the_frontline_term_leaves_the_720_fit_untouched(self):
+        """The frontline objective is additive: turning it off in the
+        elimination arena must not perturb a single combat weight."""
+        w = component_weights(REWARDS)
+        without = component_weights(dataclasses.replace(REWARDS, front_advance_weight=0.0))
+        assert {name: value for name, value in w.items() if name not in FRONTLINE_COMPONENTS} == {
+            name: value for name, value in without.items() if name not in FRONTLINE_COMPONENTS
+        }
+        assert all(without[name] == 0.0 for name in FRONTLINE_COMPONENTS)
 
 
 class TestComputePerComponentRewards:

@@ -122,16 +122,10 @@ class MatchRunner:
         self.include_bullets = agents_read_bullets(*agents)
         self._arange = torch.arange(self.num_envs, device=self.device)
 
-    @property
-    def num_tokens(self) -> int:
-        """Entity tokens per env. Read from the config, not the state, so hidden
-        state can be allocated before the first reset."""
-        return self.env.env_config.num_entity_tokens
-
     def init_hidden(self) -> None:
         """Allocate each policy's recurrent state over the envs it plays in."""
         for agent, active in zip(self.agents, self.active):
-            init_hidden(agent, int(active.numel()), self.num_tokens, self.device)
+            init_hidden(agent, int(active.numel()), self.device)
             if agent.kind == "policy":
                 agent.belief = BeliefTracker(
                     int(active.numel()),
@@ -226,7 +220,7 @@ class MatchRunner:
         self.env.reset_envs(done_any, options=options)
         for agent, active in zip(self.agents, self.active):
             if agent.kind == "policy" and active.numel():
-                reset_done_envs(agent, done_any[active], self.num_tokens)
+                reset_done_envs(agent, done_any[active])
 
 
 def evaluate_matchup(

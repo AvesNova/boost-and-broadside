@@ -121,7 +121,9 @@ def potential(laplacian: np.ndarray, source: int, sink: int) -> np.ndarray | Non
     """
     size = laplacian.shape[0]
     if not 0 <= source < size or not 0 <= sink < size or source == sink:
-        raise ValueError(f"source and sink must be distinct nodes in [0, {size}), got {source}, {sink}")
+        raise ValueError(
+            f"source and sink must be distinct nodes in [0, {size}), got {source}, {sink}"
+        )
     current = np.zeros(size, dtype=np.float64)
     current[source] = 1.0
     current[sink] = -1.0

@@ -117,8 +117,13 @@ def trend(
     figure = style.new_figure(size)
     axes = figure.add_subplot(111)
     ends = _draw_panel(
-        axes, lines, title=title, ylabel=ylabel,
-        log_y=log_y, percent=percent, reference_lines=reference_lines,
+        axes,
+        lines,
+        title=title,
+        ylabel=ylabel,
+        log_y=log_y,
+        percent=percent,
+        reference_lines=reference_lines,
     )
     if points is not None and points.x.size:
         # Same hue family as the single-series line, one lightness step darker;
@@ -142,9 +147,7 @@ def trend(
             zorder=5,
             label=points.label,
         )
-        axes.legend(
-            frameon=False, labelcolor=style.INK_SECONDARY, fontsize=10, loc="lower right"
-        )
+        axes.legend(frameon=False, labelcolor=style.INK_SECONDARY, fontsize=10, loc="lower right")
     # Place direct labels last, after a draw settles the scale and limits —
     # label_series_ends maps data to axes-fraction, wrong if the y-scale (log) or
     # autoscaled limits are not yet final.
@@ -179,9 +182,14 @@ def grid(
         axes = figure.add_subplot(spec[divmod(index, ncols)])
         on_bottom_row = index >= len(panels) - ncols
         ends = _draw_panel(
-            axes, panel.lines, title=panel.title, ylabel=panel.ylabel,
-            log_y=panel.log_y, percent=panel.percent,
-            reference_lines=panel.reference_lines, xlabel=on_bottom_row,
+            axes,
+            panel.lines,
+            title=panel.title,
+            ylabel=panel.ylabel,
+            log_y=panel.log_y,
+            percent=panel.percent,
+            reference_lines=panel.reference_lines,
+            xlabel=on_bottom_row,
         )
         if ends:
             deferred.append((axes, ends))

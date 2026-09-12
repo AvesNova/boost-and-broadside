@@ -56,9 +56,10 @@ PLAY_ENV_CONFIG = EnvConfig(
     num_fields=10,
     action_repeat=1,
     spawn_resource_spread=0.0,
-    # Provisional Gate-3 value: adjacent objectives remain mutually scoutable,
-    # while the opposite side of the playable disk does not.
-    vision_range=1600.0,
+    # Adjacent objectives remain mutually scoutable, while the opposite side of
+    # the playable disk does not.
+    vision_range=1024.0,
+    zones_occlude=False,
     frontline=FrontlineConfig(
         zone_radius=_PLAY_ZONE_RADIUS,
         zone_ring_radius=_PLAY_ZONE_RING_RADIUS,
@@ -87,8 +88,9 @@ def run_play_mode(
 
     One selected blue ship is keyboard-controlled; the remaining blue ships and
     all red ships use the crude frontline scripted controller. Tab cycles the
-    human ship and C toggles camera follow. Tuning values are intentionally
-    provisional pending the current human playtest gate.
+    human ship, C toggles camera follow, V cycles whose vision is drawn, and Z
+    toggles whether capture zones block sight as well as fields. Tuning values
+    are intentionally provisional pending the current human playtest gate.
     """
     # A single tiny environment is dominated by CUDA launch/synchronization
     # overhead. Play is scripted/human-only, so keep its simulation and agents
@@ -207,7 +209,9 @@ def _run_resolved_interactive_mode(
 ) -> None:
     """Build the single environment and render two already-resolved agents."""
 
-    renderer = GameRenderer(ship_config, render_config)
+    renderer = GameRenderer(
+        ship_config, replace(render_config, zone_occlusion=env_config.zones_occlude)
+    )
 
     wrapper = YemongEnvWrapper(
         num_envs=1,
@@ -216,6 +220,9 @@ def _run_resolved_interactive_mode(
         rewards=rewards,
         device=device,
         include_bullets=agents_read_bullets(agent0, agent1),
+        # The renderer draws projectiles from the perception masks whether or
+        # not the policies read bullet tokens, so ask for them explicitly.
+        perceive_bullets=True,
     )
 
     try:
@@ -256,7 +263,6 @@ def _run_interactive_loop(
 
     N = wrapper.num_ships
     M = wrapper.env_config.num_fields
-    num_tokens = wrapper.env_config.num_entity_tokens
 
     first_episode = True
     while True:
@@ -269,8 +275,8 @@ def _run_interactive_loop(
         else:
             obs = wrapper.reset()
             visibility = wrapper.last_visibility
-        init_hidden(agent0, 1, num_tokens, device)
-        init_hidden(agent1, 1, num_tokens, device)
+        init_hidden(agent0, 1, device)
+        init_hidden(agent1, 1, device)
         pred_nexts = None
         terminal_label: str | None = None
         terminal_frames = 0
@@ -290,12 +296,16 @@ def _run_interactive_loop(
                 renderer.tick()
 
         while True:
+            # Zone occlusion is an environment rule, not a display filter, so
+            # the Z key has to reach the environment the agents perceive.
+            if renderer.zone_occlusion != wrapper.env_config.zones_occlude:
+                wrapper.env_config = replace(
+                    wrapper.env_config, zones_occlude=renderer.zone_occlusion
+                )
             if not renderer.paused and terminal_frames == 0:
                 state = wrapper.state
                 visibility = (
-                    team_visibility_from_state(
-                        state, wrapper.ship_config, wrapper.env_config
-                    )
+                    team_visibility_from_state(state, wrapper.ship_config, wrapper.env_config)
                     if state_only
                     else wrapper.last_visibility
                 )
@@ -405,8 +415,8 @@ def _run_interactive_loop(
                     visibility = wrapper.last_visibility
 
                 if (dones | truncated).any():
-                    reset_done_envs(agent0, dones | truncated, num_tokens)
-                    reset_done_envs(agent1, dones | truncated, num_tokens)
+                    reset_done_envs(agent0, dones | truncated)
+                    reset_done_envs(agent1, dones | truncated)
                     pred_nexts = None
                     result = int(result_tensor[0].item())
                     terminal_label = {

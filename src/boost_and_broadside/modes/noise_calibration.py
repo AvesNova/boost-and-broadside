@@ -170,13 +170,11 @@ def run_noise_calibration_mode(
         team1_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
     )
 
-    # The policy's own provenance decides the field distribution. num_tokens is
-    # derived after it: a fields policy predicts field tokens too, and sizing the
-    # report from a field-free environment would silently drop those dimensions.
+    # The policy's own provenance decides the field distribution: a fields policy
+    # is measured in a field arena or it is not being measured at all.
     env_config = resolve_evaluation_environment(
         env_config, (agent0, agent1), ship_config=ship_config
     )
-    num_tokens = N + env_config.num_fields
 
     if agent0.kind != "policy":
         raise ValueError(
@@ -199,7 +197,6 @@ def run_noise_calibration_mode(
         agent1,
         num_envs,
         N,
-        num_tokens,
         num_steps,
         ship_config,
         env_config,
@@ -216,7 +213,6 @@ def run_noise_calibration_mode(
         scripted_for_warmup,
         num_ar_envs,
         N,
-        num_tokens,
         num_ar_windows,
         ship_config,
         env_config,
@@ -288,7 +284,6 @@ def _run_phase1(
     agent1: ResolvedAgent,
     B: int,
     N: int,
-    num_tokens: int,
     num_steps: int,
     ship_config: ShipConfig,
     env_config: EnvConfig,
@@ -297,8 +292,8 @@ def _run_phase1(
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, agent1)
     env = create_evaluation_env(B, ship_config, env_config, dev)
-    init_hidden(agent0, B, num_tokens, dev)
-    init_hidden(agent1, B, num_tokens, dev)
+    init_hidden(agent0, B, dev)
+    init_hidden(agent1, B, dev)
     env.reset()
 
     num_targets = coordinator.total_target_dimension
@@ -390,8 +385,8 @@ def _run_phase1(
 
         if done_any.any():
             env.reset_envs(done_any)
-            reset_done_envs(agent0, done_any, num_tokens)
-            reset_done_envs(agent1, done_any, num_tokens)
+            reset_done_envs(agent0, done_any)
+            reset_done_envs(agent1, done_any)
 
         if (step + 1) % 100 == 0:
             elapsed = time.perf_counter() - t0
@@ -430,7 +425,6 @@ def _run_phase2(
     warmup_agent1: ResolvedAgent,
     B: int,
     N: int,
-    num_tokens: int,
     num_windows: int,
     ship_config: ShipConfig,
     env_config: EnvConfig,
@@ -439,8 +433,8 @@ def _run_phase2(
 ) -> dict:
     include_bullets = agents_read_bullets(agent0, warmup_agent1)
     env = create_evaluation_env(B, ship_config, env_config, dev)
-    init_hidden(agent0, B, num_tokens, dev)
-    init_hidden(warmup_agent1, B, num_tokens, dev)
+    init_hidden(agent0, B, dev)
+    init_hidden(warmup_agent1, B, dev)
     env.reset()
 
     ar_sq_sum = torch.zeros(_AR_WINDOW, coordinator.total_target_dimension, device=dev)
@@ -460,8 +454,8 @@ def _run_phase2(
             done_any = dones | truncated
             if done_any.any():
                 env.reset_envs(done_any)
-                reset_done_envs(agent0, done_any, num_tokens)
-                reset_done_envs(warmup_agent1, done_any, num_tokens)
+                reset_done_envs(agent0, done_any)
+                reset_done_envs(warmup_agent1, done_any)
 
         # --- Snapshot after warmup ---
         ar_start_obs = observation_from_state(
@@ -496,8 +490,8 @@ def _run_phase2(
 
             if done_any.any():
                 env.reset_envs(done_any)
-                reset_done_envs(agent0, done_any, num_tokens)
-                reset_done_envs(warmup_agent1, done_any, num_tokens)
+                reset_done_envs(agent0, done_any)
+                reset_done_envs(warmup_agent1, done_any)
 
         # --- AR replay from snapshot ---
         curr_obs = YemongObservation(data={k: v.clone() for k, v in ar_start_obs.items()})
@@ -569,12 +563,24 @@ def _build_output(
     sigma_per_dim = np.sqrt(phase1["err_sq_sum"] / n)  # (target_dim,)
     bias_per_dim = phase1["err_sum"] / n  # (target_dim,)
 
+    # Both lag-1 accumulators are summed over the same mask, so a dimension no
+    # ship was valid on twice in a row leaves each of them at exactly zero --
+    # routine on a short run, and the whole of one two-step smoke case.
+    #
+    # The guard has to be on the division rather than on its result: np.where
+    # picks between two arrays that have both already been evaluated, so
+    # guarding there still computes 0/0, still makes a nan, and still warns
+    # before discarding it. `where=` skips the divide instead, leaving those
+    # dimensions at the zero they were initialised to.
     lag_denom = phase1["lag1_sq_sum"]
-    rho_per_dim = np.where(
-        lag_denom > 1e-9,
-        phase1["lag1_cross_sum"] / lag_denom,
-        0.0,
-    ).clip(-1.0, 1.0)  # (target_dim,)
+    rho_per_dim = np.zeros_like(lag_denom)
+    np.divide(
+        phase1["lag1_cross_sum"],
+        lag_denom,
+        out=rho_per_dim,
+        where=lag_denom > 1e-9,
+    )
+    rho_per_dim = rho_per_dim.clip(-1.0, 1.0)  # (target_dim,)
 
     team_sigma = np.sqrt(
         phase1["team_err_sq_sum"] / np.maximum(phase1["team_count"][:, None], 1.0)
