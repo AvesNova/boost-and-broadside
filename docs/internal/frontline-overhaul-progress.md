@@ -36,7 +36,7 @@ remain the source of truth for scope and human gates.
 - Five fixed physical zones with roles derived from an unwrapped integer front.
 - Cyclic role order: neutral → Team 0 spawn → Team 0 defense → Team 1 defense → Team 1
   spawn → neutral. The damaging capturable defenses are adjacent.
-- Defense-only capture, atomic simultaneous captures, ±5 immediate victory, and a
+- Defense-only capture, atomic simultaneous captures, ±3 immediate victory (±5 at Gate 1), and a
   five-minute timeout resolved by the sign of the front.
 - Immediate same-slot low-health respawn, friendly spawn healing, hostile spawn damage,
   symmetric defense damage, soft-boundary damage, and separate source attribution.
@@ -62,7 +62,7 @@ remain the source of truth for scope and human gates.
 | Respawn health | 25 | Provisional |
 | Friendly spawn healing | 12 health/s | Provisional |
 | Hostile spawn damage | 8 health/s | Provisional |
-| Front win threshold | ±5 | Provisional |
+| Front win threshold | ±3 | Reduced from ±5; ±5 was one full role rotation |
 | Match duration | 300 s | Provisional |
 | Frontline field count | 10 | Provisional; low-discrepancy placement |
 | Frontline field radius | 30–750 px | Provisional; maximum raised from 490 px |

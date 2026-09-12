@@ -15,7 +15,7 @@ If `uv` cannot access its cache, the equivalent local entry point is:
 The five physical zones stay fixed while their roles rotate with the unwrapped front.
 Their cyclic order is neutral → Team 0 spawn → Team 0 defense → Team 1 defense → Team 1
 spawn → neutral, so the two capturable damaging defenses are adjacent. Every zone has a
-330 px radius. Team 0 advances the front toward `+5`; Team 1 toward `-5`. A defense
+330 px radius. Team 0 advances the front toward `+3`; Team 1 toward `-3`. A defense
 capture takes 8 seconds at a one-ship lead. Capture pressure is harmonic in the *net*
 ship advantage inside the defense: a lead of `n` advances the meter at `H(n) = 1 + 1/2 +
 … + 1/n`, so `2v1` and `4v3` both take 8 seconds, `2v0` takes 5.3, and `4v0` takes 3.8.
@@ -27,7 +27,7 @@ Simultaneous completion changes the front by zero and resets both meters.
 Ships die and immediately reappear in their current spawn at 25 health. Friendly spawn
 heals 12 health/second, enemy spawn deals 8 damage/second, and either defense deals 2
 environmental damage/second. The circular soft boundary starts at radius 2600 and its
-damage increases with distance outside it. A match ends at a net front lead of five or
+damage increases with distance outside it. A match ends at a net front lead of three or
 after five minutes; timeout uses the sign of the front and zero is a draw. All values are
 provisional Gate-1 tuning, not settled balance.
 
