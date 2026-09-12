@@ -12,6 +12,8 @@ from boost_and_broadside.env.state import TensorState
 
 FRONTLINE_WORLD_SIZE = (16384.0, 16384.0)
 FRONTLINE_FIELD_RADIUS_MAX = 750.0
+# H_n = psi(n+1) + gamma, which is exact at every integer n. See _harmonic.
+_EULER_MASCHERONI = 0.5772156649015329
 # Re-exported from config, which owns it so the launch arithmetic can size a
 # batch without importing the environment. Importers here keep working.
 __all__ = ["NUM_FRONTLINE_ZONES"]
@@ -326,6 +328,23 @@ def _apply_frontline_hazards(
     )
 
 
+def _harmonic(n: torch.Tensor) -> torch.Tensor:
+    """``H_n = 1 + 1/2 + ... + 1/n`` for a tensor of non-negative integer counts.
+
+    Evaluated as the digamma identity ``H_n = psi(n+1) + gamma`` rather than a
+    lookup table. A table would have to be sized at construction from the
+    training team size, which is exactly the bound this project does not accept:
+    a policy is expected to play fleet sizes it never trained on, and the
+    capture rule has to stay defined at any of them. The identity is exact at
+    every integer, has no upper bound, and needs no per-element loop.
+
+    ``H_0 = psi(1) + gamma = 0``, so an empty or evenly matched point applies no
+    pressure without a special case.
+    """
+
+    return torch.digamma(n.to(torch.float32) + 1.0) + _EULER_MASCHERONI
+
+
 def _advance_capture_state(
     state: TensorState,
     membership: torch.Tensor,
@@ -337,9 +356,16 @@ def _advance_capture_state(
     alive_in_zone = membership & state.ship_alive.unsqueeze(2)
     team0_count = (alive_in_zone & (state.ship_team_id == 0).unsqueeze(2)).sum(dim=1)
     team1_count = (alive_in_zone & (state.ship_team_id == 1).unsqueeze(2)).sum(dim=1)
-    # Deliberately discard the size of the advantage: every non-tied majority
-    # applies one fixed capture/stabilization rate.
-    majority = torch.sign(team0_count - team1_count).to(torch.int8)
+    # Capture rate rises with the *net* ship advantage, with diminishing
+    # returns: the first ship of the lead is worth 1, the second 1/2, the third
+    # 1/3, so a lead of n applies H_n. A lead of one is the unit, so
+    # ``capture_seconds`` still means what it says and a two-ship lead captures
+    # exactly 1.5x faster. Reinforcing a point you already dominate is worth
+    # progressively less, which is what stops one blob from being the whole game
+    # while still letting combat dominance convert into territory.
+    net = team0_count - team1_count
+    majority = torch.sign(net).to(torch.int8)
+    pressure = _harmonic(net.abs())
 
     roles = state.zone_roles
     t0_defense = roles == int(ZoneRole.TEAM0_DEFENSE)
@@ -350,7 +376,7 @@ def _advance_capture_state(
 
     attacker_direction = torch.where(t1_defense, 1, torch.where(t0_defense, -1, 0))
     signed_motion = direction * attacker_direction
-    delta = signed_motion.float() * (ship_config.dt / config.capture_seconds)
+    delta = signed_motion.float() * pressure * (ship_config.dt / config.capture_seconds)
     progress = (state.zone_capture_progress + delta).clamp(0.0, 1.0)
     progress = torch.where(active_defense, progress, 0.0)
 
