@@ -105,6 +105,7 @@ class YemongEnvWrapper:
         device: str | torch.device,
         collision_compile_mode: str | None = None,
         include_bullets: bool = False,
+        perceive_bullets: bool | None = None,
     ) -> None:
         self.env = TensorEnv(
             num_envs,
@@ -120,6 +121,10 @@ class YemongEnvWrapper:
         # otherwise the profile pays the reduction and the rollout storage for
         # channels nothing consumes.
         self.include_bullets = include_bullets
+        # Whether projectile occlusion is computed at all. It follows
+        # ``include_bullets`` unless a caller that reads ``last_visibility.bullet``
+        # directly — the play renderer — asks for it regardless.
+        self.perceive_bullets = include_bullets if perceive_bullets is None else perceive_bullets
         self.last_visibility = None
 
         # All components (group-scale multipliers update individual weights each training step).
@@ -554,6 +559,7 @@ class YemongEnvWrapper:
             self.env_config,
             self._obs_buffers,
             include_bullets=self.include_bullets,
+            perceive_bullets=self.perceive_bullets,
         )
         self._accumulate_perception()
         return observation

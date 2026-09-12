@@ -1,5 +1,8 @@
-"""Team-shared range and refractive-field LOS perception tests."""
+"""Team-shared range and opaque-core LOS perception tests."""
 
+from dataclasses import replace
+
+import pytest
 import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
@@ -97,9 +100,55 @@ def test_field_core_blocks_a_clear_range_sighting() -> None:
     assert not sight.ship[0, 0, 2]
 
 
-def test_field_containing_an_endpoint_does_not_self_blind() -> None:
+def test_a_ship_inside_a_field_cannot_see_out_of_it() -> None:
     ship, state = _state(num_fields=1)
     state.ship_pos[0] = torch.tensor([300 + 100j, 100 + 700j, 500 + 100j, 700 + 700j])
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 90.0
+    state.field_transition_width[0, 0] = 40.0
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=500.0, num_fields=1))
+
+    assert sight.range_only_observer_ship[0, 0, 2]
+    assert not sight.observer_ship[0, 0, 2]
+
+
+def test_a_ship_outside_a_field_cannot_see_into_it() -> None:
+    ship, state = _state(num_fields=1)
+    state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 700j, 300 + 100j, 700 + 700j])
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 90.0
+    state.field_transition_width[0, 0] = 40.0
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=500.0, num_fields=1))
+
+    assert sight.range_only_observer_ship[0, 0, 2]
+    assert not sight.observer_ship[0, 0, 2]
+    assert not sight.ship[0, 0, 2]
+
+
+def test_two_ships_sharing_one_field_still_see_each_other() -> None:
+    """The single exemption: a line that never leaves the core it starts in."""
+
+    ship, state = _state(num_fields=1)
+    state.ship_pos[0] = torch.tensor([260 + 100j, 100 + 700j, 340 + 100j, 700 + 700j])
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 90.0
+    state.field_transition_width[0, 0] = 40.0
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=500.0, num_fields=1))
+
+    assert sight.observer_ship[0, 0, 2]
+    assert sight.ship[0, 0, 2]
+
+
+def test_the_transparent_transition_band_does_not_block() -> None:
+    """Only the flat core is opaque; the graded interface is see-through."""
+
+    ship, state = _state(num_fields=1)
+    # Core radius is 90 - 20 = 70, so a target 80 px out sits in the band. It
+    # is on the near side, so reaching it never enters the core.
+    state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 700j, 220 + 100j, 700 + 700j])
     state.field_pos[0, 0] = 300 + 100j
     state.field_radius[0, 0] = 90.0
     state.field_transition_width[0, 0] = 40.0
@@ -335,3 +384,296 @@ def test_wrapper_accumulates_never_seen_hidden_age_and_reacquisition_on_device()
     assert source["perception_hidden_samples"] == 12
     assert source["perception_hidden_age_sum"] == 24
     assert stats["occlusion_hist"].sum() == 4
+
+
+# ---------------------------------------------------------------------------
+# Rule 1 — one team, one set of eyes
+# ---------------------------------------------------------------------------
+
+
+def test_an_ally_with_clear_sight_reveals_what_a_blocked_ally_cannot_see() -> None:
+    ship, state = _state(num_fields=1)
+    # Ally 0 is looking straight through the field at the enemy; ally 1 is off
+    # to the side with an unobstructed line.
+    state.ship_pos[0] = torch.tensor([100 + 100j, 500 + 400j, 500 + 100j, 900 + 900j])
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 90.0
+    state.field_transition_width[0, 0] = 40.0
+    config = _config(vision_range=500.0, num_fields=1)
+
+    sight = team_visibility_from_state(state, ship, config)
+
+    assert not sight.observer_ship[0, 0, 2]
+    assert sight.observer_ship[0, 1, 2]
+    assert sight.ship[0, 0, 2]
+
+
+def test_a_dead_ally_stops_contributing_its_sight() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([100 + 100j, 700 + 700j, 350 + 100j, 900 + 900j])
+    config = _config()
+
+    assert team_visibility_from_state(state, ship, config).ship[0, 0, 2]
+
+    state.ship_alive[0, 0] = False
+    assert not team_visibility_from_state(state, ship, config).ship[0, 0, 2]
+
+
+# ---------------------------------------------------------------------------
+# Rule 2 — opaque cores break sight lines
+# ---------------------------------------------------------------------------
+
+
+def test_occlusion_is_symmetric_across_random_layouts() -> None:
+    """If A cannot see B then B cannot see A, whatever the geometry.
+
+    Run on the production world at the production range. Occluders are located
+    by minimum image from the observer, which picks the same copy from both
+    ends of a sight line only while ``vision_range + core_radius`` stays inside
+    half a world; Frontline clears that by a factor of four.
+    """
+
+    ship = frontline_ship_config(ShipConfig())
+    torch.manual_seed(7)
+    state = make_state(num_envs=64, max_ships=6, max_bullets=0, ship_config=ship, num_fields=8)
+    width, height = ship.world_size
+    state.ship_team_id[:] = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.int32)
+    # A tight cluster, so most pairs are in range and most lines meet a core.
+    state.ship_pos = torch.complex(torch.rand(64, 6) * 2600.0, torch.rand(64, 6) * 2600.0).to(
+        torch.complex64
+    )
+    state.field_pos = torch.complex(torch.rand(64, 8) * 2600.0, torch.rand(64, 8) * 2600.0).to(
+        torch.complex64
+    )
+    state.field_radius = 200.0 + torch.rand(64, 8) * 550.0
+    state.field_transition_width = torch.full((64, 8), 40.0)
+    config = EnvConfig(
+        num_ships=6, max_bullets=0, max_episode_steps=60, num_fields=8, vision_range=1024.0
+    )
+
+    sight = team_visibility_from_state(state, ship, config)
+
+    # A meaningful sample of both verdicts, not a vacuous all-true matrix.
+    assert sight.observer_ship.float().mean() < 0.9
+    assert torch.equal(sight.observer_ship, sight.observer_ship.transpose(1, 2))
+
+
+def test_every_ship_sees_itself_from_inside_or_outside_a_core() -> None:
+    ship, state = _state(num_fields=1)
+    state.ship_pos[0] = torch.tensor([300 + 100j, 100 + 700j, 500 + 100j, 700 + 700j])
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 90.0
+    state.field_transition_width[0, 0] = 40.0
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=500.0, num_fields=1))
+
+    assert sight.observer_ship[0].diagonal().all()
+
+
+def test_a_core_blocks_the_wrapped_sight_line_it_straddles() -> None:
+    ship, state = _state(num_fields=1)
+    width, _ = ship.world_size
+    # Observer and target face each other across the seam, 120 px apart the
+    # short way, each outside a core that sits on the seam between them.
+    state.ship_pos[0] = torch.tensor([(width - 60) + 100j, 100 + 700j, 60 + 100j, 700 + 700j])
+    state.field_pos[0, 0] = 0 + 100j
+    state.field_radius[0, 0] = 40.0
+    state.field_transition_width[0, 0] = 0.0
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=200.0, num_fields=1))
+
+    assert sight.range_only_observer_ship[0, 0, 2]
+    assert not sight.observer_ship[0, 0, 2]
+
+
+def test_an_enemy_bullet_inside_a_field_is_hidden_from_outside() -> None:
+    ship, state = _state(num_fields=1)
+    state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 700j, 900 + 900j, 700 + 700j])
+    state.bullet_active[0, 2, 0] = True
+    state.bullet_pos[0, 2, 0] = 300 + 100j  # dead centre of the field
+    state.bullet_active[0, 2, 1] = True
+    state.bullet_pos[0, 2, 1] = 200 + 100j  # short of the core, in the clear
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 90.0
+    state.field_transition_width[0, 0] = 40.0
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=500.0, num_fields=1))
+
+    assert not sight.bullet[0, 0, 2, 0]
+    assert sight.bullet[0, 0, 2, 1]
+
+
+# ---------------------------------------------------------------------------
+# Rule 2 (optional) — zones as occluders
+# ---------------------------------------------------------------------------
+
+
+def _with_one_zone(state, position: complex, radius: float) -> None:
+    state.zone_pos = torch.tensor([[position]], dtype=torch.complex64)
+    state.zone_radius = torch.tensor([[radius]])
+    state.zone_roles = torch.zeros((1, 1), dtype=torch.int8)
+    state.zone_capture_progress = torch.zeros((1, 1))
+    state.zone_capture_direction = torch.zeros((1, 1), dtype=torch.int8)
+
+
+def test_zones_are_transparent_unless_the_environment_makes_them_opaque() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 700j, 500 + 100j, 700 + 700j])
+    _with_one_zone(state, 300 + 100j, 90.0)
+    config = _config(vision_range=500.0)
+
+    assert team_visibility_from_state(state, ship, config).observer_ship[0, 0, 2]
+
+    opaque = replace(config, zones_occlude=True)
+    sight = team_visibility_from_state(state, ship, opaque)
+    assert sight.range_only_observer_ship[0, 0, 2]
+    assert not sight.observer_ship[0, 0, 2]
+
+
+def test_an_opaque_zone_uses_its_whole_radius_and_keeps_the_shared_exemption() -> None:
+    ship, state = _state()
+    # Ally 0 and enemy 2 are both inside the zone; enemy 3 is just outside it.
+    state.ship_pos[0] = torch.tensor([260 + 100j, 100 + 700j, 340 + 100j, 420 + 100j])
+    _with_one_zone(state, 300 + 100j, 90.0)
+    config = replace(_config(vision_range=500.0), zones_occlude=True)
+
+    sight = team_visibility_from_state(state, ship, config)
+
+    assert sight.observer_ship[0, 0, 2]
+    assert not sight.observer_ship[0, 0, 3]
+
+
+# ---------------------------------------------------------------------------
+# Rule 3 — a circular sight radius
+# ---------------------------------------------------------------------------
+
+
+def test_the_sight_radius_is_a_circle_not_a_bounding_box() -> None:
+    ship, state = _state()
+    reach = 300.0
+    diagonal = reach * 0.72  # inside the square, outside the circle
+    state.ship_pos[0] = torch.tensor(
+        [
+            500 + 500j,
+            900 + 900j,
+            (500 + reach) + 500j,  # exactly at the rim
+            (500 + diagonal) + (500 + diagonal) * 1j,
+        ]
+    )
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=reach))
+
+    assert sight.observer_ship[0, 0, 2]
+    assert not sight.observer_ship[0, 0, 3]
+
+
+def test_range_is_measured_in_world_pixels_from_the_configured_value() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([100 + 100j, 900 + 900j, 100 + 400j, 900 + 100j])
+
+    near = team_visibility_from_state(state, ship, _config(vision_range=299.0))
+    far = team_visibility_from_state(state, ship, _config(vision_range=301.0))
+
+    assert not near.observer_ship[0, 0, 2]
+    assert far.observer_ship[0, 0, 2]
+
+
+# ---------------------------------------------------------------------------
+# Rule 4 — firing is an observable event
+# ---------------------------------------------------------------------------
+
+
+def test_firing_reveals_the_shooter_to_both_teams_at_once() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([100 + 100j, 120 + 100j, 900 + 900j, 880 + 900j])
+    state.ship_is_shooting[0, 2] = True
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=100.0))
+
+    assert sight.ship[0, 0, 2]
+    assert sight.ship[0, 1, 2]
+    assert not sight.ship[0, 0, 3]
+
+
+def test_firing_reveals_the_shooter_but_not_the_ally_beside_it() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([100 + 100j, 120 + 100j, 900 + 900j, 880 + 900j])
+    state.ship_is_shooting[0, 2] = True
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=100.0))
+
+    assert sight.ship[0, 0, 2]
+    assert not sight.ship[0, 0, 3]
+
+
+def test_a_dead_slot_is_never_revealed_by_a_stale_shooting_flag() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([100 + 100j, 120 + 100j, 900 + 900j, 880 + 900j])
+    state.ship_is_shooting[0, 2] = True
+    state.ship_alive[0, 2] = False
+
+    sight = team_visibility_from_state(state, ship, _config(vision_range=100.0))
+
+    assert not sight.ship[0, 0, 2]
+
+
+# ---------------------------------------------------------------------------
+# Declared projectile perception
+# ---------------------------------------------------------------------------
+
+
+def test_declining_bullet_perception_omits_it_without_changing_ship_sight() -> None:
+    ship, state = _state(num_fields=1)
+    state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 700j, 500 + 100j, 700 + 700j])
+    state.bullet_active[0, 2, 0] = True
+    state.bullet_pos[0, 2, 0] = 150 + 100j
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 90.0
+    state.field_transition_width[0, 0] = 40.0
+    config = _config(vision_range=500.0, num_fields=1)
+
+    full = team_visibility_from_state(state, ship, config)
+    lean = team_visibility_from_state(state, ship, config, perceive_bullets=False)
+
+    assert full.bullet is not None
+    assert lean.bullet is None
+    assert torch.equal(full.ship, lean.ship)
+    assert torch.equal(full.observer_ship, lean.observer_ship)
+
+
+def test_bullet_observations_cannot_be_requested_without_bullet_perception() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 700j, 500 + 100j, 700 + 700j])
+
+    with pytest.raises(ValueError, match="bullet perception"):
+        perceived_observation_from_state(
+            state, ship, _config(), include_bullets=True, perceive_bullets=False
+        )
+
+
+# ---------------------------------------------------------------------------
+# What the policy actually attends to
+# ---------------------------------------------------------------------------
+
+
+def test_an_occluded_enemy_is_masked_out_of_policy_attention() -> None:
+    """BELIEF_VALID is the key mask the trunk attends over, so it must drop."""
+
+    ship, state = _state(num_fields=1)
+    state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 140j, 500 + 100j, 540 + 100j])
+    state.field_pos[0, 0] = 300 + 100j
+    state.field_radius[0, 0] = 200.0
+    state.field_transition_width[0, 0] = 40.0
+    config = _config(vision_range=800.0, num_fields=1)
+
+    blocked, blocked_sight = perceived_observation_from_state(state, ship, config)
+    state.field_pos[0, 0] = 900 + 900j  # same field, nowhere near the sight line
+    clear, sight = perceived_observation_from_state(state, ship, config)
+
+    assert sight.ship[0, 0, 2:].all()
+    assert clear[ObsKey.BELIEF_VALID][0, 2:4].all()
+    assert not blocked_sight.ship[0, 0, 2:].any()
+    assert not blocked[ObsKey.BELIEF_VALID][0, 2:4].any()
+    assert not blocked[ObsKey.VISIBLE][0, 2:4].any()
+    # Field tokens stay attendable: terrain is not what fog hides.
+    assert blocked[ObsKey.BELIEF_VALID][0, 4:].all()

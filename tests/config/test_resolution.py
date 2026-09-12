@@ -137,7 +137,8 @@ def test_training_profiles_use_the_frontline_perception_contract(name: str) -> N
     assert resolved.ship_config.dt == pytest.approx(1 / 30)
     assert scale.env_config.frontline is not None
     assert scale.env_config.frontline.capture_seconds == 8.0
-    assert scale.env_config.vision_range == 1600.0
+    assert scale.env_config.vision_range == 1024.0
+    assert not scale.env_config.zones_occlude
     assert scale.env_config.num_fields == 10
     assert scale.env_config.num_entity_tokens == 24
     assert launch_geometry(PROFILES[name]).entity_tokens == 24
