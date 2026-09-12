@@ -563,12 +563,24 @@ def _build_output(
     sigma_per_dim = np.sqrt(phase1["err_sq_sum"] / n)  # (target_dim,)
     bias_per_dim = phase1["err_sum"] / n  # (target_dim,)
 
+    # Both lag-1 accumulators are summed over the same mask, so a dimension no
+    # ship was valid on twice in a row leaves each of them at exactly zero --
+    # routine on a short run, and the whole of one two-step smoke case.
+    #
+    # The guard has to be on the division rather than on its result: np.where
+    # picks between two arrays that have both already been evaluated, so
+    # guarding there still computes 0/0, still makes a nan, and still warns
+    # before discarding it. `where=` skips the divide instead, leaving those
+    # dimensions at the zero they were initialised to.
     lag_denom = phase1["lag1_sq_sum"]
-    rho_per_dim = np.where(
-        lag_denom > 1e-9,
-        phase1["lag1_cross_sum"] / lag_denom,
-        0.0,
-    ).clip(-1.0, 1.0)  # (target_dim,)
+    rho_per_dim = np.zeros_like(lag_denom)
+    np.divide(
+        phase1["lag1_cross_sum"],
+        lag_denom,
+        out=rho_per_dim,
+        where=lag_denom > 1e-9,
+    )
+    rho_per_dim = rho_per_dim.clip(-1.0, 1.0)  # (target_dim,)
 
     team_sigma = np.sqrt(
         phase1["team_err_sq_sum"] / np.maximum(phase1["team_count"][:, None], 1.0)
