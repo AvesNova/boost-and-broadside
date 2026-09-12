@@ -88,9 +88,20 @@ def label_series_ends(axes, entries: list[tuple[float, float, str, str]]) -> Non
     by how far apart they *look* — which stays correct on a log axis, where equal
     pixel gaps span very different data distances. Call after all series are drawn
     so the limits are settled. Each entry is (x, y, colour, text).
+
+    The limits are settled here rather than trusted from the caller. Matplotlib
+    autoscales lazily, so a freshly plotted axes still carries the default 0-1
+    data transform, and ``to_fraction`` then returns the data value itself. A
+    label placed at axes-fraction 1000 lands a thousand panel-heights above the
+    figure, and ``bbox_inches="tight"`` faithfully grows the canvas to include
+    it: that is how ``tie_conventions.png`` came to be encoded at 1.4 gigapixels,
+    which was 83% of the whole chart test suite's runtime. Two of the callers
+    already worked around this with a full ``canvas.draw()``; this is the same
+    guarantee for every caller, at a fraction of the cost.
     """
     if not entries:
         return
+    axes.autoscale_view()
     to_fraction = (axes.transData + axes.transAxes.inverted()).transform
     converted = [(x, *to_fraction((x, y)), color, text) for x, y, color, text in entries]
     minimum = 0.034  # a labelline-height gap, in fraction of the panel
