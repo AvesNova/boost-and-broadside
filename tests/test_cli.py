@@ -261,10 +261,9 @@ def test_print_config_refuses_to_probe_from_the_command_line(policy: str, capsys
 
 
 def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None:
-    # The 24 GB row: the widest one the profile can spend, so it holds as much of
-    # the logical batch resident as any row does and moves both tiers. It no
-    # longer collapses the shard count to one -- at a 24M batch the widest width
-    # the presets reach is still only half of it.
+    # The 24 GB row: it is the widest one the profile can spend, so it holds the
+    # whole logical batch in a single resident shard. That makes it the row where
+    # both tiers move and the shard count collapses to one.
     geometry = launch_geometry(PROFILES["rl"])
     row = preset_knobs(VRAM_PRESETS[24], geometry)
 
@@ -287,7 +286,7 @@ def test_print_config_records_a_provisional_preset_and_its_basis(capsys) -> None
     assert set(vram["tiers"]) == {"1", "2"}
     assert "never measured" in vram["notes"][0]
     # D9: the resolved shard count is recorded and reported.
-    assert document["config"]["train_config"]["rollouts_per_update"] == 2
+    assert document["config"]["train_config"]["rollouts_per_update"] == 1
     assert document["sources"]["train_config.scales.0.num_envs"] == "vram-preset"
     assert document["sources"]["model_config.grad_checkpoint"] == "vram-preset"
 

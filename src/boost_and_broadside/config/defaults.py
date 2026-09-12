@@ -77,7 +77,23 @@ ELO_EVAL = EloEvalConfig(
     step_interval=1,
     k_factor=4.0,
     scripted_live_elo=LIVE_SCRIPTED_ELO,
-    window_size=100,
+    # 500 games rather than 100. This window is a boxcar over rated games, and it
+    # is read by three things that are not just display: the behavior-cloning
+    # decay, the high-win-rate trust-region tightening, and the logged win rate.
+    # At the steady-state rate of roughly fifty rated games per update it held
+    # about two updates of evidence, so a sampling swing of a few points in the
+    # win rate moved `bc_coef` by 40% from one update to the next -- visible as a
+    # 1.2-to-2.0 sawtooth on run 732. That oscillates the objective itself, and
+    # through a shared trunk it reaches the critic and next-state heads, not only
+    # the actor.
+    #
+    # A boxcar rather than an EMA on purpose: this gate should fire once and stay
+    # fired, and an exponential tail keeps re-admitting stale low win rates long
+    # after the policy has passed the bar. Five hundred games is roughly a five
+    # to ten million step horizon at the steady-state rate, with a hard cutoff.
+    # It costs no device memory -- the windows are host-side deques of Python
+    # floats, filled after `.cpu().tolist()`.
+    window_size=500,
     min_games_to_freeze=1000,
 )
 
@@ -252,13 +268,29 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
     """The current RL schedule, as keypoint tables."""
 
     return TrainingScheduleSpec(
-        # Peak 4.5e-4, decaying to a third of it. The last row holds, so a budget
+        # Peak 3e-4, decaying to half of it. The last row holds, so a budget
         # longer than 500M steps trains its tail at the floor rather than
         # continuing to decay.
+        #
+        # 3e-4 rather than the 4.5e-4 that run 731 used, because `target_kl` is
+        # what actually bounds an update and Frontline reaches that bound in
+        # about half the passes. 731 completed a mean 3.33 epochs of four and
+        # pinned 4.0 from 12M steps on; runs 732 and 733 sit at 2.2 and 2.4. The
+        # trust region spends a fixed KL budget either way, so a smaller step
+        # does not buy less movement -- it buys the same movement in more, finer
+        # optimizer steps, which is what the critic is short of. Explained
+        # variance is the series to read: 731 reached 0.45 by 13M steps where 733
+        # was at 0.35.
+        #
+        # This is a hypothesis with a mechanism, not a measured result. Nothing
+        # here has been run at 3e-4. `train/epochs_completed` rising toward four
+        # and explained variance improving per step are what would confirm it;
+        # if epochs stay near two, the bound is the task rather than the step
+        # size and the peak should go back up rather than lower again.
         learning_rate=(
             (0, 1e-7, "linear"),
-            (5_000_000, 4.5e-4, "hold"),
-            (100_000_000, 4.5e-4, "exponential"),
+            (5_000_000, 3e-4, "hold"),
+            (100_000_000, 3e-4, "exponential"),
             (500_000_000, 1.5e-4, "hold"),
         ),
         policy_gradient_coef=hold(1.0),

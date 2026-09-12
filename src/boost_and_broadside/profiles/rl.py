@@ -57,25 +57,35 @@ RL_PROFILE = ProfileSpec(
         front_win_threshold=3,
     ),
     # --- Rollout shape ---
-    # 24M rather than 12M, to buy back the batch the Frontline observation spent.
-    # The budget is denominated in *entity tokens*, and zones plus ten fields took
-    # the per-decision token count from run 731's 12 (8 ships + 4 fields) to 24
-    # (8 ships + 10 fields + 5 zones + 1 global). At a fixed 12M the update was
-    # therefore seeing half the ship decisions 731's did -- 3,932,160 against
-    # 7,962,624 -- which is a halved batch wearing a costume, and it showed:
-    # step-matched against 731 at 22M, KL ran 0.089 against 0.019 and clip
-    # fraction 0.41 against 0.21, with `target_kl` early-stopping most updates at
-    # two epochs instead of four. 24M restores 7,864,320 ship decisions per
-    # update, within 1.2% of 731.
+    # 12M, after run 733 tested 24M and measured worse.
     #
-    # This is close to free on an 8GB card because the rollout buffer is
-    # host-backed: `rollout_tokens` stays at 4M, so the GPU-resident shard,
-    # `num_envs` (1280) and `microbatch_tokens` (62500) are all unchanged, and
-    # only `rollouts_per_update` moves, 3 -> 6. Doubling experience was measured
-    # at -0.2 MB of persistent VRAM; what it actually costs is about 4.3 GiB of
-    # host RAM and ~4.5% throughput at equal experience. See
-    # docs/engineering/memory-optimization.md.
-    logical_batch_tokens=24_000_000,
+    # The idea was to buy back the batch the Frontline observation spent: zones
+    # plus ten fields took the per-decision token count from run 731's 12 (8
+    # ships + 4 fields) to 24, so a fixed budget bought half the decisions. The
+    # error was in believing that could be fixed by spending more tokens. At a
+    # fixed epoch count the two quantities are reciprocal in the budget --
+    #
+    #     batch per step   = logical_batch / num_minibatches
+    #     steps per sample = num_minibatches * epochs / logical_batch
+    #
+    # -- so doubling it bought a 2x batch per optimizer step by giving up half
+    # the optimizer steps per sample, and the critic is what paid. Measured at
+    # 13M steps: 1,856 optimizer steps and 0.538 explained variance at 12M,
+    # against 992 and 0.352 at 24M. Live Elo tracked slightly below too.
+    #
+    # Nor was it a large-batch run that would repay the slow start later. Run 731
+    # has almost exactly the 24M optimizer geometry -- ~1M decisions per update,
+    # the same steps per sample -- and reached 0.45 explained variance by 13M
+    # where 733 was at 0.35. 733 was below both references, not on a different
+    # trajectory through them.
+    #
+    # What 731 actually had was twice the decisions inside the same token budget,
+    # because a decision cost it half as many tokens. That axis is real and still
+    # open: routing map objects through K/V memory instead of the trunk, and
+    # sizing the batch on trunk tokens rather than observation tokens, raises
+    # decisions per update without touching the reciprocal above. Spending more
+    # tokens cannot substitute for it.
+    logical_batch_tokens=12_000_000,
     num_steps=128,
     num_minibatches=32,
     # --- Objective ---

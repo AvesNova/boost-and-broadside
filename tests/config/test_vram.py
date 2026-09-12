@@ -214,16 +214,12 @@ def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
         for gigabytes in sorted(VRAM_PRESETS)
     }
     assert [width for width, _ in geometry.shard_widths()] == [
-        7680,
         3840,
-        2560,
         1920,
-        1536,
         1280,
         960,
         768,
         640,
-        512,
         480,
         384,
         320,
@@ -240,11 +236,7 @@ def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
         geometry.aligned_logical_batch_tokens // geometry.rollout_tokens(width)
         for width in widths.values()
     ]
-    # No row holds the 24M batch in one resident shard any more -- the widest
-    # width the presets reach is 3840, which is half of it. That is the intended
-    # shape: experience is grown through `rollouts_per_update` against a
-    # host-backed buffer, so residency stops being what bounds the batch.
-    assert shards == [6, 4, 2, 2]
+    assert shards == [3, 2, 1, 1]
 
 
 def test_every_shard_width_preserves_the_fixed_logical_batch() -> None:
