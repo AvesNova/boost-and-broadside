@@ -1425,9 +1425,7 @@ class TestRLSmokeTest:
         }
         assert weighted, "the production reward vector activated no component"
         scaled = {
-            key.rpartition("/")[2]
-            for key in captured
-            if key.startswith("scaler/return_mean/")
+            key.rpartition("/")[2] for key in captured if key.startswith("scaler/return_mean/")
         }
         assert weighted <= scaled, f"never scaled: {sorted(weighted - scaled)}"
         assert "kill_shot" in weighted and "kill_assist" in weighted

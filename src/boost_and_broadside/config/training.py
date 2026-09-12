@@ -226,7 +226,6 @@ class TrainConfig:
     bc_winrate_target: float  # win rate vs scripted at which the BC aux loss reaches zero
     histogram_interval: int  # record expensive histograms every N updates
 
-
     # --- Gradient accumulation (memory-only, per-machine knob) ---
     # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches
     # larger than this are split into micro-batches whose gradients are accumulated

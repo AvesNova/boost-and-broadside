@@ -33,14 +33,20 @@ from boost_and_broadside.viz.charts import Line, Panel, Points
 # (`local_log_index_0`) is deliberately not charted: no export that predates the
 # rename has it, and the landmark policy never learned it (see the S15 handoff).
 _NEXT_STATE = [
-    ("position", (
-        ["next_state/pos_x_dphase", "next_state/pos_y_dphase"],
-        ["next_state/position_x_0", "next_state/position_y_0"],
-    )),
-    ("velocity", (
-        ["next_state/vel_dvx_norm", "next_state/vel_dvy_norm"],
-        ["next_state/velocity_0", "next_state/velocity_1"],
-    )),
+    (
+        "position",
+        (
+            ["next_state/pos_x_dphase", "next_state/pos_y_dphase"],
+            ["next_state/position_x_0", "next_state/position_y_0"],
+        ),
+    ),
+    (
+        "velocity",
+        (
+            ["next_state/vel_dvx_norm", "next_state/vel_dvy_norm"],
+            ["next_state/velocity_0", "next_state/velocity_1"],
+        ),
+    ),
     ("angular vel", (["next_state/ang_vel_abs"], ["next_state/angular_velocity_0"])),
     ("attitude", (["next_state/att_dphase"], ["next_state/attitude_0"])),
     ("cooldown", (["next_state/cooldown_dphase"], ["next_state/cooldown_0"])),
@@ -79,8 +85,12 @@ def _next_state_line(rows: list[dict], label: str, spellings: tuple[list[str], .
         x, y = history.combine_series(rows, keys)
         if x.size:
             return Line(x, y, label=label)
-    return Line(*_required(*history.combine_series(rows, spellings[0]),
-                           [key for keys in spellings for key in keys]), label=label)
+    return Line(
+        *_required(
+            *history.combine_series(rows, spellings[0]), [key for keys in spellings for key in keys]
+        ),
+        label=label,
+    )
 
 
 def _wandb_rows(inputs: RenderInputs) -> list[dict]:
@@ -165,10 +175,7 @@ def _render_next_state_error(inputs: RenderInputs, out_dir: Path) -> list[Path]:
     rows = _wandb_rows(inputs)
     return [
         charts.trend(
-            [
-                _next_state_line(rows, label, spellings)
-                for label, spellings in _NEXT_STATE
-            ],
+            [_next_state_line(rows, label, spellings) for label, spellings in _NEXT_STATE],
             out_dir / "next_state_error.png",
             title="Next-state prediction error by dimension",
             ylabel="prediction error (normalised)",

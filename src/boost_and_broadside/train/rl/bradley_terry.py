@@ -166,9 +166,7 @@ def rating_stderr(pair_games: np.ndarray, ratings: np.ndarray, anchor: int) -> n
     return stderr
 
 
-def rating_covariance(
-    pair_games: np.ndarray, ratings: np.ndarray, anchor: int
-) -> np.ndarray:
+def rating_covariance(pair_games: np.ndarray, ratings: np.ndarray, anchor: int) -> np.ndarray:
     """Full rating covariance matrix in a gauge where ``anchor`` is fixed.
 
     Returning the full matrix makes uncertainty transformable along with the

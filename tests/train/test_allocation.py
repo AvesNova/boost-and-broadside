@@ -110,7 +110,10 @@ class TestAllocationWeights:
         """A starved edge can disconnect the graph, which is unrecoverable."""
         candidates = ["random", "semi_scripted_0p5", "scripted", "ckpt_1"]
         weights = allocation_weights(
-            chain(), RATINGS, protagonist="floating", anchor="scripted",
+            chain(),
+            RATINGS,
+            protagonist="floating",
+            anchor="scripted",
             candidates=candidates,
         )
         assert weights.min() >= DEFAULT_FLOOR_FRACTION / len(candidates) - 1e-12
@@ -118,7 +121,10 @@ class TestAllocationWeights:
     def test_the_floor_does_not_swamp_the_ranking(self):
         candidates = ["random", "ckpt_1"]
         weights = allocation_weights(
-            chain(), RATINGS, protagonist="floating", anchor="scripted",
+            chain(),
+            RATINGS,
+            protagonist="floating",
+            anchor="scripted",
             candidates=candidates,
         )
         assert weights[1] > weights[0]
@@ -126,16 +132,24 @@ class TestAllocationWeights:
     def test_a_full_floor_is_uniform(self):
         candidates = ["random", "scripted", "ckpt_1"]
         weights = allocation_weights(
-            chain(), RATINGS, protagonist="floating", anchor="scripted",
-            candidates=candidates, floor_fraction=0.999,
+            chain(),
+            RATINGS,
+            protagonist="floating",
+            anchor="scripted",
+            candidates=candidates,
+            floor_fraction=0.999,
         )
         assert weights == pytest.approx(np.full(3, 1 / 3), abs=1e-3)
 
     def test_an_impossible_floor_is_rejected(self):
         with pytest.raises(ValueError, match="floor_fraction"):
             allocation_weights(
-                chain(), RATINGS, protagonist="floating", anchor="scripted",
-                candidates=["scripted"], floor_fraction=1.0,
+                chain(),
+                RATINGS,
+                protagonist="floating",
+                anchor="scripted",
+                candidates=["scripted"],
+                floor_fraction=1.0,
             )
 
     def test_no_candidates_means_no_opinion(self):
@@ -149,7 +163,10 @@ class TestAllocationWeights:
     def test_an_unconnected_graph_means_no_opinion(self):
         assert (
             allocation_weights(
-                MatchMatrix(), RATINGS, protagonist="floating", anchor="scripted",
+                MatchMatrix(),
+                RATINGS,
+                protagonist="floating",
+                anchor="scripted",
                 candidates=["scripted"],
             )
             is None
@@ -190,9 +207,7 @@ class TestAgainstBaselines:
                 games = budget * share
                 if games <= 0.0:
                     continue
-                probability = 1.0 / (
-                    1.0 + 10.0 ** ((RATINGS[label] - RATINGS["floating"]) / 400.0)
-                )
+                probability = 1.0 / (1.0 + 10.0 ** ((RATINGS[label] - RATINGS["floating"]) / 400.0))
                 matrix.record(
                     "floating", label, games * probability, games * (1.0 - probability), 0.0
                 )
@@ -218,12 +233,13 @@ class TestAgainstBaselines:
     @staticmethod
     def c_optimal(matrix, candidates):
         weights = allocation_weights(
-            matrix, RATINGS, protagonist="floating", anchor="scripted",
+            matrix,
+            RATINGS,
+            protagonist="floating",
+            anchor="scripted",
             candidates=candidates,
         )
-        return weights if weights is not None else np.full(
-            len(candidates), 1.0 / len(candidates)
-        )
+        return weights if weights is not None else np.full(len(candidates), 1.0 / len(candidates))
 
     def test_it_beats_both_baselines_on_the_quantity_that_matters(self):
         c_optimal = self.spend(self.c_optimal)
@@ -236,6 +252,4 @@ class TestAgainstBaselines:
 
     def test_every_rule_improves_with_budget(self):
         """Guards the harness: a rule that ignored its games would tie itself."""
-        assert self.spend(self.c_optimal, batches=80) < self.spend(
-            self.c_optimal, batches=10
-        )
+        assert self.spend(self.c_optimal, batches=80) < self.spend(self.c_optimal, batches=10)

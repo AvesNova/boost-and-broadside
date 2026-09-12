@@ -67,9 +67,7 @@ class StochasticScriptedAgent:
         )
         return _FrontlineMemory(
             tendencies=tendencies,
-            healing=torch.zeros(
-                (batch_size, num_ships), dtype=torch.bool, device=state.device
-            ),
+            healing=torch.zeros((batch_size, num_ships), dtype=torch.bool, device=state.device),
             # Timid ships follow the non-timid majority. A stable per-team coin
             # breaks exact offensive/defensive ties without favoring either role.
             tie_attack=torch.rand((batch_size, 2), device=state.device) < 0.5,
@@ -101,13 +99,9 @@ class StochasticScriptedAgent:
             fresh = self._new_frontline_memory(state)
             ship_reset = reset.unsqueeze(1)
             team_reset = reset.unsqueeze(1)
-            memory.tendencies = torch.where(
-                ship_reset, fresh.tendencies, memory.tendencies
-            )
+            memory.tendencies = torch.where(ship_reset, fresh.tendencies, memory.tendencies)
             memory.healing = memory.healing & ~ship_reset
-            memory.tie_attack = torch.where(
-                team_reset, fresh.tie_attack, memory.tie_attack
-            )
+            memory.tie_attack = torch.where(team_reset, fresh.tie_attack, memory.tie_attack)
         memory.last_step_count = state.step_count.clone()
         return memory
 
@@ -321,9 +315,7 @@ class StochasticScriptedAgent:
         spawnward = spawnward / spawnward.abs().clamp(min=1e-8)
         # The Gate-1 map currently gives every zone one radius. Read it from
         # authoritative state so the holding position follows future map tuning.
-        defense_patrol_radius = state.zone_radius[:, :1] + (
-            2.0 * self.ship_config.collision_radius
-        )
+        defense_patrol_radius = state.zone_radius[:, :1] + (2.0 * self.ship_config.collision_radius)
         defense_radial = toroidal_displacement(state.ship_pos - own_defense, world_size)
         defense_radial_direction = defense_radial / defense_radial.abs().clamp(min=1e-8)
         defense_radial_direction = torch.where(
@@ -344,8 +336,7 @@ class StochasticScriptedAgent:
             orbit_direction * float(np.deg2rad(20.0)),
         )
         own_defense_patrol = wrap_positions(
-            own_defense
-            + defense_radial_direction * orbit_lookahead * defense_patrol_radius,
+            own_defense + defense_radial_direction * orbit_lookahead * defense_patrol_radius,
             world_size,
         )
         attack_route = toroidal_displacement(enemy_defense - own_spawn, world_size)
@@ -376,13 +367,9 @@ class StochasticScriptedAgent:
         else:
             team1_seen_by_team0 = team1_occupied & team_visibility[:, 0, :, None]
             team0_seen_by_team1 = team0_occupied & team_visibility[:, 1, :, None]
-        team0_own_contested = (
-            team1_seen_by_team0.any(dim=1) & team0_defense_role
-        ).any(dim=1)
+        team0_own_contested = (team1_seen_by_team0.any(dim=1) & team0_defense_role).any(dim=1)
         team0_enemy_contested = (team0_present & team1_defense_role).any(dim=1)
-        team1_own_contested = (
-            team0_seen_by_team1.any(dim=1) & team1_defense_role
-        ).any(dim=1)
+        team1_own_contested = (team0_seen_by_team1.any(dim=1) & team1_defense_role).any(dim=1)
         team1_enemy_contested = (team1_present & team0_defense_role).any(dim=1)
         own_contested = torch.where(
             team0, team0_own_contested.unsqueeze(1), team1_own_contested.unsqueeze(1)
@@ -449,9 +436,7 @@ class StochasticScriptedAgent:
             torch.where(only_own_contested, own_defense, tendency_objective),
         )
 
-        nearby_enemy = has_target & (
-            closest_dist <= self.config.frontline_enemy_engage_distance
-        )
+        nearby_enemy = has_target & (closest_dist <= self.config.frontline_enemy_engage_distance)
 
         below_timid_threshold = state.ship_health < (
             self.config.frontline_heal_health_fraction * self.ship_config.max_health

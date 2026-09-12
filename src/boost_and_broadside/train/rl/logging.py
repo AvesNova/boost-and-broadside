@@ -135,9 +135,9 @@ class LoggingMixin:
             metrics["fog/individual_visible_fraction"] = (
                 observer_visible / observer_pairs if observer_pairs > 0 else 0.0
             )
-            metrics["fog/team_shared_gain"] = metrics["fog/visible_fraction"] - metrics[
-                "fog/individual_visible_fraction"
-            ]
+            metrics["fog/team_shared_gain"] = (
+                metrics["fog/visible_fraction"] - metrics["fog/individual_visible_fraction"]
+            )
             metrics["fog/mean_hidden_age_steps"] = (
                 source_stats["perception_hidden_age_sum"].item() / hidden_samples
                 if hidden_samples > 0

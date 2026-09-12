@@ -292,9 +292,7 @@ def _run_interactive_loop(
             if not renderer.paused and terminal_frames == 0:
                 state = wrapper.state
                 visibility = (
-                    team_visibility_from_state(
-                        state, wrapper.ship_config, wrapper.env_config
-                    )
+                    team_visibility_from_state(state, wrapper.ship_config, wrapper.env_config)
                     if state_only
                     else wrapper.last_visibility
                 )

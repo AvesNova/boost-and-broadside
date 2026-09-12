@@ -210,9 +210,7 @@ def test_capture_pressure_depends_only_on_which_team_has_more_ships(
 
     expected_progress = 0.5 + expected_direction * env.ship_config.dt / 10.0
     assert state.zone_capture_direction[0, defense_index].item() == expected_direction
-    assert state.zone_capture_progress[0, defense_index].item() == pytest.approx(
-        expected_progress
-    )
+    assert state.zone_capture_progress[0, defense_index].item() == pytest.approx(expected_progress)
 
 
 @pytest.mark.parametrize(

@@ -194,9 +194,7 @@ class MatchMatrix:
             )
         return matrix
 
-    def record_all(
-        self, player: str, counts: Mapping[str, tuple[float, float, float]]
-    ) -> None:
+    def record_all(self, player: str, counts: Mapping[str, tuple[float, float, float]]) -> None:
         """Record one player's batch of results against several opponents."""
         for opponent, (wins, losses, ties) in counts.items():
             if wins or losses or ties:

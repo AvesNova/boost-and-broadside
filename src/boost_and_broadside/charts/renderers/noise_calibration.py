@@ -119,10 +119,7 @@ def write_outputs(
 def _feature_groups(data: dict) -> dict[str, tuple[list[int], str]]:
     """Rebuild the report layout the measurement recorded."""
 
-    return {
-        name: (list(feature["aux_dims"]), name)
-        for name, feature in data["features"].items()
-    }
+    return {name: (list(feature["aux_dims"]), name) for name, feature in data["features"].items()}
 
 
 def _render(inputs: RenderInputs, out_dir: Path) -> list[Path]:

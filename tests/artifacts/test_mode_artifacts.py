@@ -109,9 +109,7 @@ def test_an_interrupted_sweep_is_continued_rather_than_restarted(tmp_path, synth
 
     # Reopen the finished measurement as if the process had died mid-sweep.
     manifest_path = interrupted / "artifact.json"
-    manifest_path.write_text(
-        manifest_path.read_text().replace(STATUS_COMPLETE, STATUS_IN_PROGRESS)
-    )
+    manifest_path.write_text(manifest_path.read_text().replace(STATUS_COMPLETE, STATUS_IN_PROGRESS))
     _run(tmp_path, synthetic, _store(tmp_path))
 
     assert _artifacts(synthetic) == [interrupted]

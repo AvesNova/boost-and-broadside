@@ -68,19 +68,14 @@ def _line_of_sight_clear(
     projection = (center.real * segment_m.real + center.imag * segment_m.imag) / denom
     closest = center - projection.clamp(0.0, 1.0) * segment_m
 
-    core_radius = (
-        state.field_radius - 0.5 * state.field_transition_width
-    ).clamp(min=0.0)[:, None, None, :]
+    core_radius = (state.field_radius - 0.5 * state.field_transition_width).clamp(min=0.0)[
+        :, None, None, :
+    ]
     observer_inside = center.abs() < core_radius
     target_to_center = center - segment_m
     target_inside = target_to_center.abs() < core_radius
     strictly_between = (projection > 0.0) & (projection < 1.0)
-    blocked = (
-        strictly_between
-        & (closest.abs() < core_radius)
-        & ~observer_inside
-        & ~target_inside
-    )
+    blocked = strictly_between & (closest.abs() < core_radius) & ~observer_inside & ~target_inside
     return ~blocked.any(dim=-1)
 
 
@@ -93,10 +88,7 @@ def _team_share(
     observer_team = state.ship_team_id[:, :, None]
     observer_alive = state.ship_alive[:, :, None]
     return torch.stack(
-        [
-            (per_observer & observer_alive & (observer_team == team)).any(dim=1)
-            for team in (0, 1)
-        ],
+        [(per_observer & observer_alive & (observer_team == team)).any(dim=1) for team in (0, 1)],
         dim=1,
     )
 
@@ -119,9 +111,7 @@ def team_visibility_from_state(
     if env_config.vision_range is None:
         observer = target_alive.expand(batch, num_ships, num_ships)
         team_ship = state.ship_alive[:, None, :].expand(batch, 2, num_ships)
-        bullet = state.bullet_active[:, None, :, :].expand(
-            batch, 2, num_ships, state.max_bullets
-        )
+        bullet = state.bullet_active[:, None, :, :].expand(batch, 2, num_ships, state.max_bullets)
         return TeamVisibility(
             observer,
             observer,
@@ -138,9 +128,7 @@ def team_visibility_from_state(
     )
     in_range = displacement.abs() <= env_config.vision_range
     range_observer = in_range & target_alive
-    los_clear = _line_of_sight_clear(
-        state.ship_pos, state.ship_pos, state, ship_config
-    )
+    los_clear = _line_of_sight_clear(state.ship_pos, state.ship_pos, state, ship_config)
     los_observer_ship = range_observer & los_clear
     los_team_ship = _team_share(los_observer_ship, state)
     # A successful shot is an observable event: it reveals the firing ship to
@@ -168,9 +156,7 @@ def team_visibility_from_state(
             ship_config.world_size,
         )
         bullet_in_range = bullet_disp.abs() <= env_config.vision_range
-        bullet_los = _line_of_sight_clear(
-            state.ship_pos, flat_bullets, state, ship_config
-        )
+        bullet_los = _line_of_sight_clear(state.ship_pos, flat_bullets, state, ship_config)
         seen = _team_share(bullet_in_range & bullet_los, state).reshape(
             batch, 2, num_ships, state.max_bullets
         )

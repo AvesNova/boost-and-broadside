@@ -321,9 +321,7 @@ def _calibration_recipe(
         "anchor_elo": SCRIPTED_ANCHOR_ELO,
     }
     if env_config is not None:
-        parameters["environment"] = describe_environment(
-            env_config, ship_config=ship_config
-        )
+        parameters["environment"] = describe_environment(env_config, ship_config=ship_config)
     if sources is not None:
         parameters["refit"] = True
     return ArtifactRecipe(

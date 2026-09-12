@@ -71,9 +71,7 @@ def run_suite(
     agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
 
     running = torch.ones(games, dtype=torch.bool, device=device)
-    result = torch.full(
-        (games,), int(MatchResult.ONGOING), dtype=torch.int8, device=device
-    )
+    result = torch.full((games,), int(MatchResult.ONGOING), dtype=torch.int8, device=device)
     duration = torch.zeros(games, dtype=torch.int32, device=device)
     first_capture = torch.full((games,), -1, dtype=torch.int32, device=device)
     second_capture = torch.full((games,), -1, dtype=torch.int32, device=device)
@@ -104,8 +102,7 @@ def run_suite(
 
         active = running
         capture_count = (
-            env.state.team0_captured.to(torch.int32)
-            + env.state.team1_captured.to(torch.int32)
+            env.state.team0_captured.to(torch.int32) + env.state.team1_captured.to(torch.int32)
         ) * active
         captures_before = team0_captures + team1_captures
         captured = (capture_count > 0) & active
@@ -178,9 +175,7 @@ def run_suite(
     per_game["final_front"] = final_front.tolist()
     summaries = {
         "duration_seconds": _summary(duration_seconds),
-        "total_captures": _summary(
-            (team0_captures + team1_captures).cpu()
-        ),
+        "total_captures": _summary((team0_captures + team1_captures).cpu()),
         "respawns": _summary(respawns.cpu()),
         "combat_deaths": _summary(combat_deaths.cpu()),
         "defense_deaths": _summary(defense_deaths.cpu()),
@@ -192,9 +187,7 @@ def run_suite(
         _summary(first_capture_seconds[first_capture_mask]) if first_capture_mask.any() else None
     )
     summaries["second_capture_seconds"] = (
-        _summary(second_capture_seconds[second_capture_mask])
-        if second_capture_mask.any()
-        else None
+        _summary(second_capture_seconds[second_capture_mask]) if second_capture_mask.any() else None
     )
 
     return {
@@ -204,9 +197,7 @@ def run_suite(
         "seed": seed,
         "ticks_run": ticks_run,
         "wall_seconds": elapsed,
-        "simulated_game_seconds_per_wall_second": (
-            duration_seconds.sum().item() / elapsed
-        ),
+        "simulated_game_seconds_per_wall_second": (duration_seconds.sum().item() / elapsed),
         "peak_torch_memory_mib": (
             torch.cuda.max_memory_allocated(device) / 2**20 if device.type == "cuda" else None
         ),

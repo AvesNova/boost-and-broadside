@@ -140,9 +140,7 @@ def plot_live_curve(result: dict, path: Path) -> Path:
     lower.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 
@@ -197,9 +195,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
         label="Calibrated (±1 SE)",
     )
     if training_good.any():
-        ends.append(
-            (steps[training_good][-1], training[training_good][-1], TRAINING, "live")
-        )
+        ends.append((steps[training_good][-1], training[training_good][-1], TRAINING, "live"))
     ends.append((steps[good][-1], calibrated[good][-1], CALIBRATED, "calibrated"))
     _label_series_ends(axes, ends)
     axes.set_xlabel("environment steps (millions)", color=INK_SECONDARY, fontsize=10)
@@ -208,9 +204,7 @@ def plot_avg_curve(result: dict, path: Path) -> Path:
     axes.margins(x=0.06)
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 
@@ -270,9 +264,7 @@ def plot_live_and_avg(result: dict, path: Path) -> Path:
     axes.margins(x=0.06)
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 
@@ -339,9 +331,7 @@ def plot_tie_conventions(result: dict, path: Path) -> Path:
     axes.margins(x=0.1)
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 
@@ -389,9 +379,7 @@ def plot_calibrated_only(result: dict, path: Path, tie_mode: str) -> Path:
     axes.margins(x=0.02)
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 
@@ -400,9 +388,7 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
     """Per-checkpoint before/after — a dumbbell, one hue in two shades."""
     # The random anchor is excluded: it defines the zero, so its "before and
     # after" is 0 to 0 by construction and says nothing about the run.
-    players = [
-        p for p in result["players"] if p["live_elo"] is not None and p["label"] != "random"
-    ]
+    players = [p for p in result["players"] if p["live_elo"] is not None and p["label"] != "random"]
     players.sort(key=lambda p: p["calibrated_elo"])
     if not players:
         return path
@@ -466,9 +452,7 @@ def plot_checkpoint_ratings(result: dict, path: Path) -> Path:
     axes.margins(x=0.16, y=0.12)
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 
@@ -538,9 +522,7 @@ def plot_convergence(result: dict, path: Path) -> Path:
     axes.margins(x=0.12)
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 
@@ -607,9 +589,7 @@ def plot_tie_rates(result: dict, path: Path) -> Path:
         )
 
     figure.tight_layout()
-    figure.savefig(
-        path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None}
-    )
+    figure.savefig(path, facecolor=SURFACE, bbox_inches="tight", metadata={"Software": None})
     plt.close(figure)
     return path
 

@@ -16,8 +16,12 @@ from boost_and_broadside.viz.history import (
 # A W&B-shaped slice: sparse rows, an absent point, a None, and out-of-order steps.
 WANDB_ROWS = [
     {"_step": 3_000, "overview/kl": 0.03, "next_state/pos_x_dphase": 0.2},
-    {"_step": 1_000, "overview/kl": 0.01, "next_state/pos_x_dphase": 0.5,
-     "next_state/pos_y_dphase": 0.6},
+    {
+        "_step": 1_000,
+        "overview/kl": 0.01,
+        "next_state/pos_x_dphase": 0.5,
+        "next_state/pos_y_dphase": 0.6,
+    },
     {"_step": 2_000, "overview/kl": None},  # logged the step, not this metric
     {"_step": 4_000, "next_state/pos_x_dphase": float("nan")},  # non-finite
 ]
@@ -78,8 +82,10 @@ class TestCombineSeries:
 class TestCheckpointPoints:
     def test_reads_ckpt_ratings_and_stderr(self):
         summary = {
-            "calibrated_elo/ckpt_200": 1050.0, "calibrated_elo/ckpt_200_stderr": 7.0,
-            "calibrated_elo/ckpt_100": 900.0, "calibrated_elo/ckpt_100_stderr": 5.0,
+            "calibrated_elo/ckpt_200": 1050.0,
+            "calibrated_elo/ckpt_200_stderr": 7.0,
+            "calibrated_elo/ckpt_100": 900.0,
+            "calibrated_elo/ckpt_100_stderr": 5.0,
             "calibrated_elo/live": 1200.0,  # not a checkpoint
             "calibrated_elo/scripted": 800.0,
         }

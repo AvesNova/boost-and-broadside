@@ -16,19 +16,47 @@ def _result() -> dict:
         "target_stderr": 10.0,
         "anchor_offset_stderr": 42.0,
         "players": [
-            {"label": "random", "live_elo": 0.0, "calibrated_elo": 0.0, "stderr": 0.0,
-             "global_step": 0},
-            {"label": "scripted", "live_elo": None, "calibrated_elo": 822.0, "stderr": 5.0,
-             "global_step": None},
-            {"label": "ckpt_100", "live_elo": 480.0, "calibrated_elo": 975.0, "stderr": 7.5,
-             "global_step": 100},
+            {
+                "label": "random",
+                "live_elo": 0.0,
+                "calibrated_elo": 0.0,
+                "stderr": 0.0,
+                "global_step": 0,
+            },
+            {
+                "label": "scripted",
+                "live_elo": None,
+                "calibrated_elo": 822.0,
+                "stderr": 5.0,
+                "global_step": None,
+            },
+            {
+                "label": "ckpt_100",
+                "live_elo": 480.0,
+                "calibrated_elo": 975.0,
+                "stderr": 7.5,
+                "global_step": 100,
+            },
         ],
         "curve": [
-            {"update": 1, "global_step": 100, "live_elo": 10.0, "live_calibrated": 950.0,
-             "live_stderr": 12.0, "avg_calibrated": 900.0, "avg_stderr": 20.0,
-             "live_calibrated_alt": 1100.0, "live_stderr_alt": 13.0},
-            {"update": 2, "global_step": 200, "live_elo": 20.0, "live_calibrated": 1200.0,
-             "live_stderr": 8.0},
+            {
+                "update": 1,
+                "global_step": 100,
+                "live_elo": 10.0,
+                "live_calibrated": 950.0,
+                "live_stderr": 12.0,
+                "avg_calibrated": 900.0,
+                "avg_stderr": 20.0,
+                "live_calibrated_alt": 1100.0,
+                "live_stderr_alt": 13.0,
+            },
+            {
+                "update": 2,
+                "global_step": 200,
+                "live_elo": 20.0,
+                "live_calibrated": 1200.0,
+                "live_stderr": 8.0,
+            },
         ],
     }
 
@@ -105,8 +133,13 @@ class TestFinalCheckpointInclusion:
         training rating — but its tournament rating pins the curve's endpoint."""
         result = _result()
         result["players"].append(
-            {"label": "ckpt_999", "live_elo": None, "calibrated_elo": 1810.0,
-             "stderr": 4.0, "global_step": 999}
+            {
+                "label": "ckpt_999",
+                "live_elo": None,
+                "calibrated_elo": 1810.0,
+                "stderr": 4.0,
+                "global_step": 999,
+            }
         )
         row = next(r for r in to_history_rows(result) if r["_step"] == 999)
         assert row["calibrated_elo/ckpt_999"] == 1810.0

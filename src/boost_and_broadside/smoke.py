@@ -180,9 +180,7 @@ def _active_value_layout(resolved: ResolvedTrainConfig) -> tuple[int, tuple[int,
     components = build_reward_components(resolved.train_config.rewards, resolved.ship_config)
     by_name = {component.name: component for component in components}
     active = [
-        name
-        for name in REWARD_COMPONENT_NAMES
-        if name in by_name and by_name[name].weight != 0
+        name for name in REWARD_COMPONENT_NAMES if name in by_name and by_name[name].weight != 0
     ]
     team_pma_k = tuple(
         index for index, name in enumerate(active) if name in {"ally_win", "enemy_win"}

@@ -341,7 +341,5 @@ class TestSemiRandomProbabilityRoundTrip:
         restored = EloRoster()
         restored.load_json(path)
         assert all(
-            entry.p_scripted is None
-            for entry in restored.entries
-            if entry.kind != "semi_random"
+            entry.p_scripted is None for entry in restored.entries if entry.kind != "semi_random"
         )

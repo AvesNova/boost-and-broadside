@@ -373,9 +373,7 @@ class ArtifactStore:
         artifact._save_manifest()
         return artifact
 
-    def open_resumable(
-        self, recipe: ArtifactRecipe, owner: ArtifactOwner
-    ) -> tuple[Artifact, bool]:
+    def open_resumable(self, recipe: ArtifactRecipe, owner: ArtifactOwner) -> tuple[Artifact, bool]:
         """Continue the newest unfinished artifact for this exact recipe.
 
         A finished artifact is never reopened: a repeated measurement is a new

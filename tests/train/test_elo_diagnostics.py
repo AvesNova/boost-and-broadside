@@ -23,9 +23,7 @@ STATIONARY = dict.fromkeys(GAUGE, True)
 
 def two_node(games: float, gap: float) -> np.ndarray:
     """Laplacian for a single edge between players separated by ``gap``."""
-    return fisher_information(
-        np.array([[0.0, games], [games, 0.0]]), np.array([0.0, -gap])
-    )
+    return fisher_information(np.array([[0.0, games], [games, 0.0]]), np.array([0.0, -gap]))
 
 
 class TestEffectiveResistance:
@@ -145,8 +143,8 @@ class TestDriftDetector:
             stationary=STATIONARY,
         )
         # Pooling more opponents cannot be less certain than one of them alone.
-        assert metrics["elo_diag/implied_gauge_stderr"] < (
-            metrics["elo_diag/implied_scripted_stderr"]
+        assert (
+            metrics["elo_diag/implied_gauge_stderr"] < (metrics["elo_diag/implied_scripted_stderr"])
         )
 
     def test_self_generated_opponents_never_enter_the_gauge_fit(self):

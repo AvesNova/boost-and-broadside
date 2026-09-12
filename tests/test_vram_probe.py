@@ -127,11 +127,14 @@ def test_the_ladder_starts_at_the_largest_row_the_card_could_hold() -> None:
     # Then it samples narrower shards, in order, and never widens again.
     widths = [knobs.num_envs for knobs in ladder]
     assert widths == sorted(widths, reverse=True)
-    assert widths[2:] == [
-        num_envs
-        for num_envs, _shards in geometry.shard_widths()
-        if num_envs < _SHIPPED.num_envs
-    ][: len(widths) - 2]
+    assert (
+        widths[2:]
+        == [
+            num_envs
+            for num_envs, _shards in geometry.shard_widths()
+            if num_envs < _SHIPPED.num_envs
+        ][: len(widths) - 2]
+    )
     assert all(knobs.grad_checkpoint for knobs in ladder[1:])
 
 
@@ -732,9 +735,7 @@ def test_print_config_refuses_to_probe() -> None:
         resolve_training_launch(profile="rl", vram="probe", device="cpu", allow_probe=False)
 
 
-@pytest.mark.parametrize(
-    "pin", ({"num_envs": _NARROWER.num_envs}, {"microbatch_tokens": 25_000})
-)
+@pytest.mark.parametrize("pin", ({"num_envs": _NARROWER.num_envs}, {"microbatch_tokens": 25_000}))
 def test_a_probe_cannot_be_asked_to_measure_a_pinned_knob(pin: dict) -> None:
     with pytest.raises(UserFacingError, match="determines --num-envs and --microbatch-tokens"):
         resolve_training_launch(profile="rl", vram="reprobe", device="cuda", **pin)

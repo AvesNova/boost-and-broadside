@@ -590,8 +590,11 @@ class TestYemongEnvWrapper:
         """
         env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=4)
         wrapper = YemongEnvWrapper(
-            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
-            rewards=reward_cfg, device="cpu",
+            num_envs=1,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
         )
         wrapper.reset(options={"team_sizes": (1, 1)})
         wrapper.env.state.step_count.fill_(3)  # one step short of truncation
@@ -612,8 +615,11 @@ class TestYemongEnvWrapper:
         back -- the gate must not cost a run its first episode."""
         env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2)
         wrapper = YemongEnvWrapper(
-            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
-            rewards=reward_cfg, device="cpu",
+            num_envs=1,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
         )
         wrapper.reset(options={"team_sizes": (1, 1)})
         wrapper.mark_seeded_uncounted()
@@ -628,8 +634,11 @@ class TestYemongEnvWrapper:
         earlier seeding must not survive it."""
         env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=2)
         wrapper = YemongEnvWrapper(
-            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
-            rewards=reward_cfg, device="cpu",
+            num_envs=1,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
         )
         wrapper.reset(options={"team_sizes": (1, 1)})
         wrapper.env.state.step_count.fill_(1)
@@ -648,8 +657,11 @@ class TestYemongEnvWrapper:
         """
         env_cfg = EnvConfig(num_ships=2, max_bullets=5, max_episode_steps=4)
         wrapper = YemongEnvWrapper(
-            num_envs=1, ship_config=ship_cfg, env_config=env_cfg,
-            rewards=reward_cfg, device="cpu",
+            num_envs=1,
+            ship_config=ship_cfg,
+            env_config=env_cfg,
+            rewards=reward_cfg,
+            device="cpu",
         )
         wrapper.reset(options={"team_sizes": (1, 1)})
         wrapper.env.state.step_count.fill_(3)

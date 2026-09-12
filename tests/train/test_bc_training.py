@@ -39,9 +39,7 @@ def _bounded_bc(checkpoint_dir: str) -> ResolvedTrainConfig:
     """Resolve the registered BC profile at a launch size a CPU test can run."""
 
     profile = PROFILES["bc"]
-    entity_tokens = entity_token_count(
-        profile.num_ships, profile.num_fields, profile.frontline
-    )
+    entity_tokens = entity_token_count(profile.num_ships, profile.num_fields, profile.frontline)
     rollout_tokens = _NUM_ENVS * entity_tokens * _NUM_STEPS
     bounded = replace(
         profile,
@@ -136,9 +134,9 @@ def test_bounded_bc_run_learns_from_supervision_and_freezes_no_milestone(tmp_pat
     trainer.train()
 
     after = list(trainer.policy.parameters())
-    assert any(
-        not torch.equal(one, other) for one, other in zip(before, after, strict=True)
-    ), "no policy parameter moved under the behavior-cloning objective"
+    assert any(not torch.equal(one, other) for one, other in zip(before, after, strict=True)), (
+        "no policy parameter moved under the behavior-cloning objective"
+    )
     assert trainer._global_step == _NUM_ENVS * _NUM_STEPS * _UPDATES
     # Milestones are gated on a live policy gradient, so BC contributes no
     # frozen ladder entry no matter how its rating moves.

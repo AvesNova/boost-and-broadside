@@ -74,7 +74,6 @@ class TestFitLadder:
     def test_an_empty_matrix_yields_nothing(self):
         assert fit_ladder(MatchMatrix(), fixed=GAUGE) == {}
 
-
     def test_the_defined_players_are_never_moved(self):
         """They are the scale. Refitting them is refitting the ruler."""
         ladder = fit_ladder(ladder_matrix(), fixed=GAUGE)
@@ -129,6 +128,7 @@ class TestFitLadder:
             fit_ladder(matrix, fixed=GAUGE, passes=512)["ckpt_2"], abs=0.5
         )
 
+
 class TestRateLive:
     def test_it_recovers_a_known_rating(self):
         ratings = {"scripted": 1000.0, "ckpt_1": 1400.0}
@@ -181,22 +181,20 @@ class TestTwoStageRating:
         stage = self.build()
         metrics = self.call(stage, ladder_matrix(), {"ckpt_2": (500, 500, 0)}, {"ckpt_2": 0.0})
         assert metrics["two_stage/ladder_players"] == pytest.approx(4.0)
-        assert metrics["two_stage/live_elo"] == pytest.approx(
-            stage.ladder["ckpt_2"], abs=20.0
-        )
+        assert metrics["two_stage/live_elo"] == pytest.approx(stage.ladder["ckpt_2"], abs=20.0)
 
     def test_the_refit_ladder_overrides_the_fallback_ratings(self):
         """Stage 1's whole point: stop rating the live policy off filter output."""
         stage = self.build()
-        metrics = self.call(
-            stage, ladder_matrix(), {"ckpt_2": (500, 500, 0)}, {"ckpt_2": 9999.0}
-        )
+        metrics = self.call(stage, ladder_matrix(), {"ckpt_2": (500, 500, 0)}, {"ckpt_2": 9999.0})
         assert metrics["two_stage/live_elo"] < 5000.0
 
     def test_the_fallback_covers_opponents_the_matrix_has_never_seen(self):
         stage = self.build()
         metrics = self.call(
-            stage, MatchMatrix(), {"semi_scripted_0p5": (500, 500, 0)},
+            stage,
+            MatchMatrix(),
+            {"semi_scripted_0p5": (500, 500, 0)},
             {"semi_scripted_0p5": 500.0},
         )
         assert metrics["two_stage/live_elo"] == pytest.approx(500.0, abs=20.0)

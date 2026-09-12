@@ -130,8 +130,7 @@ def main() -> None:
         f"warmup={args.warmup_steps} timed={args.timed_steps}"
     )
     print(
-        "fields  env-steps/s  relative  state MiB  reset us/env  "
-        "peak MiB  tokens  attention-pairs"
+        "fields  env-steps/s  relative  state MiB  reset us/env  peak MiB  tokens  attention-pairs"
     )
     for row in results:
         relative = row["env_sps"] / baseline

@@ -60,9 +60,7 @@ def _render(name: str, sources: dict, out_dir: Path) -> list[str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     renderer = get_renderer(name)
     renderer.render(RenderInputs(artifacts=sources), out_dir)
-    return sorted(
-        str(path.relative_to(out_dir)) for path in out_dir.rglob("*") if path.is_file()
-    )
+    return sorted(str(path.relative_to(out_dir)) for path in out_dir.rglob("*") if path.is_file())
 
 
 # --- fixture measurements -------------------------------------------------
@@ -381,9 +379,7 @@ def test_elo_scale_joins_an_optional_reference_ladder(tmp_path) -> None:
     scale = _artifact(tmp_path, "elo-scale", _scale_result())
     ladder = _artifact(tmp_path, "semi-random-ladder", _ladder_result())
 
-    written = _render(
-        "elo-scale-v1", {"scale": scale, "reference": ladder}, tmp_path / "out"
-    )
+    written = _render("elo-scale-v1", {"scale": scale, "reference": ladder}, tmp_path / "out")
 
     assert written == ["elo_scale_scripted_1000.png"]
 
@@ -467,9 +463,7 @@ def test_the_elo_curve_renders_from_a_stored_calibration(tmp_path) -> None:
 def test_the_calibration_diagnostics_render_both_draw_conventions(tmp_path) -> None:
     artifact = _calibration_artifact(tmp_path)
 
-    written = _render(
-        "elo-calibration-diagnostics-v1", {"calibration": artifact}, tmp_path / "out"
-    )
+    written = _render("elo-calibration-diagnostics-v1", {"calibration": artifact}, tmp_path / "out")
 
     assert written == [
         "avg_curve.png",
@@ -527,11 +521,7 @@ def test_no_calibration_figure_renders_off_its_own_canvas(tmp_path) -> None:
 
     sizes = _figure_sizes(out, written)
     assert sizes, "the renderer wrote no figures to measure"
-    oversized = {
-        name: size
-        for name, size in sizes.items()
-        if max(size) > _MAX_FIGURE_PIXELS
-    }
+    oversized = {name: size for name, size in sizes.items() if max(size) > _MAX_FIGURE_PIXELS}
     assert not oversized, f"figures rendered off their own canvas: {oversized}"
 
 

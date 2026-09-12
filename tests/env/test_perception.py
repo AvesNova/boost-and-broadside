@@ -90,9 +90,7 @@ def test_field_core_blocks_a_clear_range_sighting() -> None:
     state.field_radius[0, 0] = 90.0
     state.field_transition_width[0, 0] = 40.0
 
-    sight = team_visibility_from_state(
-        state, ship, _config(vision_range=500.0, num_fields=1)
-    )
+    sight = team_visibility_from_state(state, ship, _config(vision_range=500.0, num_fields=1))
 
     assert sight.range_only_observer_ship[0, 0, 2]
     assert not sight.observer_ship[0, 0, 2]
@@ -106,9 +104,7 @@ def test_field_containing_an_endpoint_does_not_self_blind() -> None:
     state.field_radius[0, 0] = 90.0
     state.field_transition_width[0, 0] = 40.0
 
-    sight = team_visibility_from_state(
-        state, ship, _config(vision_range=500.0, num_fields=1)
-    )
+    sight = team_visibility_from_state(state, ship, _config(vision_range=500.0, num_fields=1))
 
     assert sight.observer_ship[0, 0, 2]
 
@@ -135,9 +131,7 @@ def test_none_range_is_explicit_omniscient_compatibility_mode() -> None:
     state.field_radius[0, 0] = 90.0
     state.field_transition_width[0, 0] = 40.0
 
-    sight = team_visibility_from_state(
-        state, ship, _config(vision_range=None, num_fields=1)
-    )
+    sight = team_visibility_from_state(state, ship, _config(vision_range=None, num_fields=1))
 
     assert sight.ship.all()
 
@@ -167,9 +161,7 @@ def test_hidden_enemy_channels_and_projectiles_are_zeroed_before_policy() -> Non
         hidden = value[0, 2:4] if value.dim() == 2 else value[0, 2:4, :]
         assert not hidden.any(), key
     assert obs.bullets is not None
-    assert not obs.bullets[next(k for k in obs.bullets if k.value == "bullet_active")][
-        0, 4
-    ]
+    assert not obs.bullets[next(k for k in obs.bullets if k.value == "bullet_active")][0, 4]
     assert not obs.bullets[next(k for k in obs.bullets if k.value == "bullet_pos")][0, 4].any()
 
 
