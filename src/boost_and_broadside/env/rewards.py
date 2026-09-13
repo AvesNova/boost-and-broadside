@@ -29,7 +29,7 @@ from typing import Any
 
 import torch
 
-from boost_and_broadside.config import RewardConfig, ShipConfig
+from boost_and_broadside.config import RewardConfig, ShipConfig, ZoneRole
 from boost_and_broadside.constants import EPS
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.state import TensorState
@@ -362,6 +362,60 @@ class EnemyFrontAdvanceReward(AllyFrontAdvanceReward):
     """Enemy-perspective mirror used by the zero-sum lambda aggregation."""
 
     name = "enemy_front_advance"
+
+
+class AllyCaptureProgressReward(RewardComponent):
+    """Signed movement of either defense meter, toward the ship's own team.
+
+    The dense half of the strategic tier. ``front_advance`` fires on the single
+    tick a meter completes, which left the whole capture unpaid and made the
+    objective a plateau the policy had to cross blind while every dense term
+    pulled the other way. This pays the crossing itself.
+
+    ``zone_capture_progress`` always measures progress toward whoever is
+    attacking that zone, and the attacker of a defense is the team that does not
+    own it. So a rise on the enemy defense and a fall on our own are both gains
+    for us, which is the sign convention this component applies -- taking ground
+    and pushing an attacker off our own point are the same event with the same
+    value.
+
+    Symmetric by construction: a meter driven up and then back down nets exactly
+    zero, so there is no oscillation to farm. The one place that could break is a
+    completed capture, where the meter resets 1 -> 0 and would read as a total
+    loss; that tick is excluded here and paid by ``front_advance`` instead.
+    """
+
+    name = "ally_capture_progress"
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        del actions, dones
+        delta = next_state.zone_capture_progress - prev_state.zone_capture_progress  # (B, Z)
+        # A completion resets the meter to zero. Excluded rather than clamped:
+        # the tick is a capture, not a loss of progress, and it is already paid.
+        captured = (next_state.team0_captured | next_state.team1_captured).unsqueeze(1)
+        delta = torch.where(captured, torch.zeros_like(delta), delta)
+
+        roles = next_state.zone_roles
+        t0_defense = roles == int(ZoneRole.TEAM0_DEFENSE)
+        t1_defense = roles == int(ZoneRole.TEAM1_DEFENSE)
+        # Progress on Team 1's defense is Team 0 attacking, and conversely.
+        team0_gain = (delta * t1_defense.float() - delta * t0_defense.float()).sum(dim=1)  # (B,)
+
+        team0 = next_state.ship_team_id == 0
+        gain = torch.where(team0, team0_gain.unsqueeze(1), -team0_gain.unsqueeze(1))
+        return gain * next_state.ship_alive.float()
+
+
+class EnemyCaptureProgressReward(AllyCaptureProgressReward):
+    """Enemy-perspective mirror used by the zero-sum lambda aggregation."""
+
+    name = "enemy_capture_progress"
 
 
 # ---------------------------------------------------------------------------
@@ -697,6 +751,8 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "speed",  # 24 — penalty when proper speed < min_speed (self only)
     "ally_front_advance",  # 25 — ally team advances the strategic front
     "enemy_front_advance",  # 26 — enemy team advance (negative via lambda)
+    "ally_capture_progress",  # 27 — signed defense-meter movement toward this team
+    "enemy_capture_progress",  # 28 — enemy-perspective mirror (negative via lambda)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -785,6 +841,11 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
             "enemy_field_damage": dealt,
             "ally_front_advance": float(raw.get("front_advance_weight", 0.0)),
             "enemy_front_advance": float(raw.get("front_advance_weight", 0.0)),
+            # A meter runs 0 -> 1 over one capture, so this weight is the total
+            # paid for taking a point rather than a per-tick rate -- which is what
+            # makes it directly comparable to the kill payout above.
+            "ally_capture_progress": float(raw.get("capture_progress_weight", 0.0)),
+            "enemy_capture_progress": float(raw.get("capture_progress_weight", 0.0)),
         }
     )
     # Shaping is not an event and has no opposing side, so it stays individual.
@@ -850,6 +911,8 @@ def build_reward_components(
         SpeedReward(weight=w["speed"], min_speed=rewards.speed_penalty_min),
         AllyFrontAdvanceReward(weight=w["ally_front_advance"]),
         EnemyFrontAdvanceReward(weight=w["enemy_front_advance"]),
+        AllyCaptureProgressReward(weight=w["ally_capture_progress"]),
+        EnemyCaptureProgressReward(weight=w["enemy_capture_progress"]),
     ]
 
 

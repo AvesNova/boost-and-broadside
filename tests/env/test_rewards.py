@@ -11,10 +11,11 @@ import math
 import pytest
 import torch
 
-from boost_and_broadside.config import MatchResult, RewardConfig, ShipConfig
+from boost_and_broadside.config import MatchResult, RewardConfig, ShipConfig, ZoneRole
 from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
+    AllyCaptureProgressReward,
     AllyCombatDamageReward,
     AllyCombatDeathReward,
     AllyFieldDamageReward,
@@ -102,8 +103,8 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_equals_25(self):
-        assert len(REWARD_COMPONENT_NAMES) == 27
+    def test_k_is_the_registry_length(self):
+        assert len(REWARD_COMPONENT_NAMES) == 29
 
     def test_source_split_starts_the_registry(self):
         assert REWARD_COMPONENT_NAMES[:8] == (
@@ -404,7 +405,17 @@ class TestDamagePayoutRatio:
 # The frontline arena's own objective. It postdates both reconstruction targets
 # below, so the reconstruction tests hold it separately rather than counting it
 # as a change to the combat balance.
-FRONTLINE_COMPONENTS = frozenset({"ally_front_advance", "enemy_front_advance"})
+# The strategic tier: the sparse completion pair and the dense progress pair that
+# pays the capture leading to it. None of the four is touched by the balance rule
+# -- each is exactly the free number that names it.
+FRONTLINE_COMPONENTS = frozenset(
+    {
+        "ally_front_advance",
+        "enemy_front_advance",
+        "ally_capture_progress",
+        "enemy_capture_progress",
+    }
+)
 
 
 class TestRun719Reconstruction:
@@ -441,10 +452,10 @@ class TestRun719Reconstruction:
     def _run_725():
         """719's effective vector, as the five free numbers that produce it.
 
-        ``front_advance_weight`` is zeroed rather than inherited: 719 trained in
-        the elimination arena, which has no front to advance, so the term is
-        absent from the vector being reconstructed rather than set to zero by
-        preference.
+        ``front_advance_weight`` and ``capture_progress_weight`` are zeroed
+        rather than inherited: 719 trained in the elimination arena, which has no
+        front to advance and no point to hold, so both terms are absent from the
+        vector being reconstructed rather than set to zero by preference.
         """
         return dataclasses.replace(
             REWARDS,
@@ -457,6 +468,7 @@ class TestRun719Reconstruction:
             facing_weight=0.1,
             closing_speed_weight=0.1,
             front_advance_weight=0.0,
+            capture_progress_weight=0.0,
         )
 
     def test_every_component_719_carried_is_reproduced_exactly(self):
@@ -470,7 +482,7 @@ class TestRun719Reconstruction:
         w = component_weights(self._run_725())
         added = {
             name for name, weight in w.items() if weight != 0.0 and name not in self.EFFECTIVE_719
-        }
+        } - FRONTLINE_COMPONENTS
         assert added == {
             "enemy_field_death",
             "enemy_field_damage",
@@ -510,9 +522,11 @@ class TestShippedWeightsReconstructRun720:
     """
 
     # Run 720's active weights, from checkpoints/silvery-pond-720/config.json.
-    RUN_720 = {
-        "ally_win": 1.0,
-        "enemy_win": 1.0,
+    #
+    # Split, because the profile no longer reconstructs all of it. The combat
+    # tier still does, exactly as before. The outcome and shaping entries were
+    # left behind on purpose for Frontline -- see ``DEPARTED_FROM_720`` below.
+    RUN_720_COMBAT = {
         "combat_death": 0.27,
         "field_death": 0.28,
         "kill_shot": 0.28,
@@ -523,9 +537,21 @@ class TestShippedWeightsReconstructRun720:
         "field_damage_taken": 0.26,
         "damage_dealt_enemy": 0.54,
         "damage_dealt_ally": 0.50,
-        "facing": 0.09,
-        "closing_speed": 0.08,
     }
+
+    # What 720 had here, and what the profile ships instead. 720 solved these in
+    # an elimination arena where fighting was the whole game; Frontline is a
+    # territorial objective, and run 735 demonstrated that carrying 720's shaping
+    # into it is not a small mismatch -- once behavior cloning decayed, the policy
+    # left the capture zones entirely and optimised the shaping instead.
+    DEPARTED_FROM_720 = {
+        "ally_win": (1.0, 7.0),
+        "enemy_win": (1.0, 7.0),
+        "facing": (0.09, 0.0),
+        "closing_speed": (0.08, 0.0),
+    }
+
+    RUN_720 = RUN_720_COMBAT | {name: was for name, (was, _) in DEPARTED_FROM_720.items()}
 
     def test_the_two_ratios_are_one_shared_number(self):
         """Both tiers were tilted in 720 and the shared ratio is the smaller
@@ -533,19 +559,33 @@ class TestShippedWeightsReconstructRun720:
         The solve returned 1.96, which the fit cannot tell from 2.0."""
         assert REWARDS.kill_payout_ratio == REWARDS.damage_payout_ratio == 2.0
 
-    def test_every_component_lands_within_the_fit_residual(self):
+    def test_every_combat_component_lands_within_the_fit_residual(self):
         w = component_weights(REWARDS)
-        for name, target in self.RUN_720.items():
+        for name, target in self.RUN_720_COMBAT.items():
             assert w[name] == pytest.approx(target, rel=0.15), name
 
-    def test_the_fit_is_no_worse_than_the_solve_that_produced_it(self):
-        """Guards the numbers against a well-meant round. The solved vector sits
-        at 6.01% RMS relative error against 720; anything materially worse means
-        the profile drifted off the fit."""
+    def test_the_departures_from_720_are_exactly_the_four_that_were_argued(self):
+        """The combat tier is 720's solve and the rest is not, which is a claim
+        worth stating rather than leaving as the absence of a test. Anything else
+        drifting off 720 is a change nobody made on purpose."""
         w = component_weights(REWARDS)
-        errs = [w[n] / t - 1.0 for n, t in self.RUN_720.items()]
+        for name, (was, now) in self.DEPARTED_FROM_720.items():
+            assert w[name] == pytest.approx(now), name
+            assert w[name] != pytest.approx(was, rel=0.15), name
+
+    def test_the_combat_fit_is_no_worse_than_the_solve_that_produced_it(self):
+        """Guards the numbers against a well-meant round. Anything materially
+        worse means the profile drifted off the fit.
+
+        The bound is 0.07 over the ten combat entries, where it was 0.065 over
+        fourteen. No combat weight moved -- the four departed entries sat at zero
+        error and were holding the mean down, so removing them raises the RMS from
+        0.0557 to 0.0659 by arithmetic alone. The bound is restated for the
+        narrowed set rather than relaxed for the same one."""
+        w = component_weights(REWARDS)
+        errs = [w[n] / t - 1.0 for n, t in self.RUN_720_COMBAT.items()]
         rms = math.sqrt(sum(e * e for e in errs) / len(errs))
-        assert rms < 0.065
+        assert rms < 0.07
 
     def test_the_kill_tier_is_flat_because_f_is_even_and_the_ratio_is_two(self):
         """k*U*f == U at k=2, f=0.5, so every kill/death component lands on U.
@@ -572,20 +612,38 @@ class TestShippedWeightsReconstructRun720:
         } - FRONTLINE_COMPONENTS
         assert added == {"enemy_field_death", "enemy_field_damage"}
 
-    def test_the_frontline_pair_is_the_only_task_term(self):
-        """It is symmetric, and it is exactly the free number that names it --
-        the balance rule does not touch it in either direction."""
+    def test_each_frontline_pair_is_symmetric_and_named_by_its_own_free_number(self):
+        """Both pairs are symmetric, and each is exactly the free number that
+        names it -- the balance rule does not touch either in either direction."""
         w = component_weights(REWARDS)
         assert set(FRONTLINE_COMPONENTS) <= set(w)
-        for name in FRONTLINE_COMPONENTS:
+        for name in ("ally_front_advance", "enemy_front_advance"):
             assert w[name] == pytest.approx(REWARDS.front_advance_weight), name
+        for name in ("ally_capture_progress", "enemy_capture_progress"):
+            assert w[name] == pytest.approx(REWARDS.capture_progress_weight), name
         assert REWARDS.front_advance_weight > 0.0
+        assert REWARDS.capture_progress_weight > 0.0
+
+    def test_the_strategic_tier_is_ordered_above_kills(self):
+        """A meter runs 0 -> 1 over one capture, so ``capture_progress_weight`` is
+        the total a capture pays through the dense term and compares directly to
+        the kill payout. Completing the capture is worth a step above that again,
+        and a win a step above three of them -- ``front_win_threshold`` is 3, so a
+        win scoring less than the captures producing it would leave the policy
+        indifferent to closing the match out."""
+        w = component_weights(REWARDS)
+        kill_payout = REWARDS.death_weight * REWARDS.kill_payout_ratio
+        assert w["ally_capture_progress"] > kill_payout
+        assert w["ally_front_advance"] > w["ally_capture_progress"]
+        assert w["ally_win"] > 3 * w["ally_front_advance"]
 
     def test_zeroing_the_frontline_term_leaves_the_720_fit_untouched(self):
         """The frontline objective is additive: turning it off in the
         elimination arena must not perturb a single combat weight."""
         w = component_weights(REWARDS)
-        without = component_weights(dataclasses.replace(REWARDS, front_advance_weight=0.0))
+        without = component_weights(
+            dataclasses.replace(REWARDS, front_advance_weight=0.0, capture_progress_weight=0.0)
+        )
         assert {name: value for name, value in w.items() if name not in FRONTLINE_COMPONENTS} == {
             name: value for name, value in without.items() if name not in FRONTLINE_COMPONENTS
         }
@@ -1356,3 +1414,86 @@ class TestSpeedReward:
         reward = r.compute(state, torch.zeros(1, 2, 3), state, torch.zeros(1, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-0.75)
+
+
+class TestCaptureProgress:
+    """The dense half of the strategic tier.
+
+    ``front_advance`` fires on the single tick a meter completes, which left the
+    whole capture unpaid: a policy had to cross an eight-second plateau blind
+    while every dense term pulled the other way. Run 735 declined to -- once
+    behavior cloning stopped supplying the scripted prior, zone occupancy fell
+    from 0.075 of live ship-steps to 0.0006. This component pays the crossing.
+    """
+
+    ZONES = 5
+    T0_DEFENSE = 1
+    T1_DEFENSE = 3
+
+    def _pair(self, before, after, *, captured=False):
+        """Two states differing only in the defense meters."""
+        states = []
+        for progress in (before, after):
+            state = make_state(num_envs=1, max_ships=4)
+            state.zone_roles = torch.full((1, self.ZONES), int(ZoneRole.NEUTRAL), dtype=torch.int8)
+            state.zone_roles[0, self.T0_DEFENSE] = int(ZoneRole.TEAM0_DEFENSE)
+            state.zone_roles[0, self.T1_DEFENSE] = int(ZoneRole.TEAM1_DEFENSE)
+            state.zone_capture_progress = torch.zeros((1, self.ZONES))
+            for index, value in progress.items():
+                state.zone_capture_progress[0, index] = value
+            state.team0_captured = torch.tensor([captured])
+            state.team1_captured = torch.tensor([False])
+            states.append(state)
+        prev, nxt = states
+        # Two ships per team, so both perspectives are present in one call.
+        nxt.ship_team_id = torch.tensor([[0, 0, 1, 1]], dtype=torch.int32)
+        prev.ship_team_id = nxt.ship_team_id
+        return prev, nxt
+
+    def _reward(self, before, after, *, captured=False):
+        prev, nxt = self._pair(before, after, captured=captured)
+        component = AllyCaptureProgressReward(weight=1.0)
+        out = component.compute(
+            prev, torch.zeros((1, 4, 3), dtype=torch.long), nxt, torch.zeros(1, dtype=torch.bool)
+        )
+        return out[0, 0].item(), out[0, 2].item()  # (team 0 ship, team 1 ship)
+
+    def test_taking_ground_on_the_enemy_defense_pays_the_attacker(self):
+        team0, team1 = self._reward({self.T1_DEFENSE: 0.2}, {self.T1_DEFENSE: 0.5})
+        assert team0 == pytest.approx(0.3)
+        assert team1 == pytest.approx(-0.3)
+
+    def test_pushing_an_attacker_off_your_own_defense_pays_the_same(self):
+        """Symmetric with taking ground: both move the meter toward your side,
+        and the component values them identically."""
+        team0, team1 = self._reward({self.T0_DEFENSE: 0.5}, {self.T0_DEFENSE: 0.2})
+        assert team0 == pytest.approx(0.3)
+        assert team1 == pytest.approx(-0.3)
+
+    def test_losing_ground_on_either_point_is_charged(self):
+        conceding, gaining = self._reward({self.T1_DEFENSE: 0.5}, {self.T1_DEFENSE: 0.2})
+        assert conceding == pytest.approx(-0.3)
+        assert gaining == pytest.approx(0.3)
+
+        defending, attacking = self._reward({self.T0_DEFENSE: 0.2}, {self.T0_DEFENSE: 0.5})
+        assert defending == pytest.approx(-0.3)
+        assert attacking == pytest.approx(0.3)
+
+    def test_a_meter_driven_up_and_back_down_nets_exactly_zero(self):
+        """There is no oscillation to farm: the component is signed, so a round
+        trip is worth what it cost."""
+        up, _ = self._reward({self.T1_DEFENSE: 0.1}, {self.T1_DEFENSE: 0.7})
+        down, _ = self._reward({self.T1_DEFENSE: 0.7}, {self.T1_DEFENSE: 0.1})
+        assert up + down == pytest.approx(0.0)
+
+    def test_the_completion_tick_is_excluded_rather_than_read_as_a_total_loss(self):
+        """A capture resets the meter 1 -> 0. Scored naively that is the largest
+        negative the component can produce, landing on the exact tick the team
+        succeeded. ``front_advance`` pays this tick instead."""
+        team0, team1 = self._reward({self.T1_DEFENSE: 0.99}, {self.T1_DEFENSE: 0.0}, captured=True)
+        assert team0 == pytest.approx(0.0)
+        assert team1 == pytest.approx(0.0)
+
+    def test_neutral_and_spawn_zones_contribute_nothing(self):
+        team0, _ = self._reward({0: 0.0}, {0: 0.9})
+        assert team0 == pytest.approx(0.0)

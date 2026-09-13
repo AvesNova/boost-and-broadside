@@ -48,7 +48,11 @@ RL_PROFILE = ProfileSpec(
         zone_ring_radius=1200.0,
         playable_radius=2600.0,
         capture_seconds=8.0,
-        defense_damage_per_second=2.0,
+        # Off. Standing on a point cost 2 health/s while paying nothing until the
+        # meter completed, which made contesting a zone strictly dominated early
+        # and compounded the shaping bias run 735 exploited. The capture tier now
+        # supplies the pressure that this was standing in for.
+        defense_damage_per_second=0.0,
         respawn_health=25.0,
         spawn_heal_per_second=12.0,
         enemy_spawn_damage_per_second=8.0,

@@ -145,7 +145,10 @@ REWARDS = RewardConfig(
     # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
     # scaling all of these together is a no-op. They are stated against a win of
     # 1.0 for that reason.
-    win_weight=1.0,
+    # Above the 6.78 that three full captures pay, because ``front_win_threshold``
+    # is 3 and a win that scored less than the captures producing it would leave
+    # the policy indifferent to actually closing the match out.
+    win_weight=7.0,
     death_weight=0.283,
     damage_weight=0.274,
     # The one ratio the balance rule leaves free. Solved at 0.4875 and set even:
@@ -162,11 +165,18 @@ REWARDS = RewardConfig(
     # 725 and 726 carry, which keeps one ratio across all three.
     kill_payout_ratio=2.0,
     damage_payout_ratio=2.0,
-    # Shaping is not an event, so it stays individually weighted, and these two
-    # are 720's own values rather than solved -- the derivation has nothing to say
-    # about them.
-    facing_weight=0.09,
-    closing_speed_weight=0.08,
+    # Both off. These were 720's values, carried over from a deathmatch where the
+    # only thing to do was fight. They are not potential-based, so they bias the
+    # optimum for as long as they are on, and in Frontline the bias points away
+    # from the objective: holding a point means breaking off a chase and sitting
+    # still, which costs both. Run 735 made the consequence concrete -- once
+    # behavior cloning decayed at 50M steps and stopped supplying the scripted
+    # prior, zone occupancy fell from 0.075 of live ship-steps to 0.0006, front
+    # advances from 220 an update to 1, and 90% of matches ended level with the
+    # clock run out while total reward rose 63%. The policy was not failing to
+    # capture; it had stopped entering the zones at all.
+    facing_weight=0.0,
+    closing_speed_weight=0.0,
     proximity_radius=400.0,
     shoot_quality_radius=200.0,
     enemy_neg_lambda_components=frozenset(
@@ -177,6 +187,7 @@ REWARDS = RewardConfig(
             "enemy_field_death",
             "enemy_win",
             "enemy_front_advance",
+            "enemy_capture_progress",
         }
     ),
     ally_zero_components=frozenset(
@@ -187,13 +198,19 @@ REWARDS = RewardConfig(
             "enemy_field_death",
             "enemy_win",
             "enemy_front_advance",
+            "enemy_capture_progress",
         }
     ),
     shooting_penalty_weight=0.0,
-    # A front step is the primary non-terminal strategic event. This is a
-    # provisional scale for the first Frontline runs, intentionally below the
-    # terminal result while still dense enough to assign objective credit.
-    front_advance_weight=0.25,
+    # The strategic tier, one step above kills and one above itself. A kill pays
+    # ``death_weight * kill_payout_ratio`` = 0.566; a capture is worth about twice
+    # that, and completing one about twice again.
+    #
+    # ``capture_progress_weight`` is a total, not a rate: a meter runs 0 -> 1 over
+    # one capture, so 1.13 is what taking a point pays through the dense term, and
+    # it is comparable to the kill payout without further arithmetic.
+    capture_progress_weight=1.13,
+    front_advance_weight=2.26,
     speed_weight=0.0,
     speed_penalty_min=10.0,
 )
@@ -208,6 +225,8 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
     "enemy_win": 0.999,
     "ally_front_advance": 0.999,
     "enemy_front_advance": 0.999,
+    "ally_capture_progress": 0.999,
+    "enemy_capture_progress": 0.999,
     "ally_combat_death": 0.995,
     "enemy_combat_death": 0.995,
     "ally_field_death": 0.995,
@@ -238,6 +257,8 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "enemy_win": 0.97,
     "ally_front_advance": 0.97,
     "enemy_front_advance": 0.97,
+    "ally_capture_progress": 0.97,
+    "enemy_capture_progress": 0.97,
     "ally_combat_death": 0.95,
     "enemy_combat_death": 0.95,
     "ally_field_death": 0.95,
