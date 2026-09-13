@@ -12,6 +12,25 @@ from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObserv
 
 ALIVE_HEALTH_EPS = 1.0
 
+# Numerical ceiling on a stored belief target. Not a physical bound: no thrust,
+# drag, speed or index constant appears in it, so nothing here rots when the
+# simulation changes.
+#
+# Targets live in symlog space and ``Symlog.invert`` is ``sign(x)*expm1(|x|)``,
+# so the cap has to be read through an exponential. 30 decodes to about 1.1e13
+# and squares to 1.1e26, which leaves twelve orders of headroom under float32's
+# 3.4e38 for the squarings downstream (``mass = n**2``, the thrust impulse's
+# energy term). Physical values occupy |target| <= ~7 -- symlog of the fastest
+# speed the thrust/drag equilibrium admits, about 632 px/s, is 6.45 -- so this
+# sits ten orders above anything legitimate and cannot bind on a working model.
+#
+# It replaces ``nan_to_num``'s defaults, which were the specific reason the
+# previous guard did not hold: the default ``posinf`` is float32's maximum,
+# 3.4e38, and in *symlog* space that decodes to expm1(3.4e38) = inf on the very
+# next compose. The old guard swapped an infinity for a value that became one
+# again immediately.
+BELIEF_TARGET_LIMIT = 30.0
+
 
 class BeliefTracker:
     """Fixed-shape, GPU-resident belief cache for one policy perspective."""
@@ -37,6 +56,7 @@ class BeliefTracker:
         )
         self.team_id = torch.zeros((num_envs, num_ships), dtype=torch.int32, device=self.device)
         self.radius = torch.zeros((num_envs, num_ships, 1), dtype=torch.float32, device=self.device)
+        self.clamp_events = torch.zeros((), dtype=torch.long, device=self.device)
 
     def reset(self, env_mask: torch.Tensor | None = None) -> None:
         """Forget completed episodes without touching recurrent policy history elsewhere."""
@@ -168,7 +188,26 @@ class BeliefTracker:
 
         curr_targets = self.coordinator.get_target_vector(current)[:, : self.num_ships]
         forecast = self.coordinator.apply_scaled_predictions(curr_targets, scaled_prediction)
-        self.predicted_targets.copy_(torch.nan_to_num(forecast.float()))
+        # A hidden ship's belief is an autoregressive rollout of the next-state
+        # head with nothing else bounding it, so a small bias compounds for as
+        # long as the ship stays unseen. Run 734 died that way: velocity error in
+        # the 30s+ hidden bucket went 99 -> 1178 px/s over ten updates and then
+        # overflowed, and the non-finite logits asserted inside multinomial.
+        raw = forecast.float()
+        # Counted against the *raw* forecast, before the replacement: nan_to_num
+        # maps an infinity onto the limit exactly, so a count taken afterwards
+        # reads zero for the one case that matters most. Accumulated on device
+        # and read once per update -- the guard must never bind on a working
+        # model, so a nonzero count is a signal rather than a repair, and
+        # counting it must not cost a host sync on the hot path.
+        self.clamp_events += ((~torch.isfinite(raw)) | (raw.abs() > BELIEF_TARGET_LIMIT)).sum()
+        forecast = torch.nan_to_num(
+            raw,
+            nan=0.0,
+            posinf=BELIEF_TARGET_LIMIT,
+            neginf=-BELIEF_TARGET_LIMIT,
+        )
+        self.predicted_targets.copy_(forecast.clamp(-BELIEF_TARGET_LIMIT, BELIEF_TARGET_LIMIT))
 
 
 class DualBeliefTracker:
