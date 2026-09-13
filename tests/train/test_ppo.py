@@ -721,8 +721,8 @@ class TestLiveEloMetricNaming:
     def test_win_rates_do_not_live_in_a_rating_namespace(self, tmp_path):
         metrics = self._logged_metrics(tmp_path)
 
-        rates = [key for key in metrics if key.startswith("eval/win_rate_vs_")]
-        assert rates, "no evaluation win-rate window was logged"
+        rates = [key for key in metrics if key.startswith("eval/score_vs_")]
+        assert rates, "no evaluation score window was logged"
         for key in rates:
             assert 0.0 <= metrics[key] <= 1.0
         assert not [key for key in metrics if key.startswith("live_elo/") and "win_rate" in key]

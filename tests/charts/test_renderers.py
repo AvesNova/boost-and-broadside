@@ -303,7 +303,7 @@ def _wandb_export(tmp_path, rows: list[dict] | None = None):
         store.standalone_owner(),
     )
     artifact.write_json({"profile": "rl"}, "config.json")
-    artifact.write_json({"overview/win_rate_vs_scripted": 0.85}, "summary.json")
+    artifact.write_json({"overview/score_vs_scripted": 0.85}, "summary.json")
     artifact.write_json(
         {"id": "abc123", "name": "fixture-run", "state": "finished"}, "run_meta.json"
     )
