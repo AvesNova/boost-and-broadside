@@ -4,7 +4,7 @@ import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
-from boost_and_broadside.train.rl.belief import BeliefTracker
+from boost_and_broadside.train.rl.belief import BELIEF_TARGET_LIMIT, BeliefTracker
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
@@ -95,3 +95,54 @@ def test_reacquisition_overwrites_prediction_and_reset_forgets() -> None:
     tracker.reset(torch.tensor([True]))
     forgotten = tracker.compose(_view(visible=False))
     assert not forgotten[ObsKey.BELIEF_VALID][0, 1]
+
+
+def test_a_runaway_forecast_cannot_reach_infinity() -> None:
+    """The belief is an unbounded autoregressive rollout, so it needs a floor of
+    numerical safety independent of whether the next-state head is well behaved.
+
+    Run 734 died here: a ship hidden long enough accumulated velocity error
+    until the stored target overflowed, and the resulting non-finite logits
+    asserted inside ``torch.multinomial``. The guard that existed used
+    ``nan_to_num``'s defaults, which map ``+inf`` to float32's maximum -- and
+    targets are symlog, so that decoded straight back to infinity on the next
+    ``compose``. What matters is therefore not merely that the stored target is
+    finite, but that it survives the exponential inverse.
+    """
+
+    coordinator = build_standard_coordinator(ShipConfig())
+    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
+    visible = tracker.compose(_view(visible=True, x=300.0))
+
+    prediction = torch.full((1, 2, coordinator.total_prediction_dimension), float("inf"))
+    prediction[0, 0, 0] = float("nan")
+    prediction[0, 1, 0] = -float("inf")
+    tracker.advance(visible, prediction)
+
+    stored = tracker.predicted_targets
+    assert torch.isfinite(stored).all()
+    assert stored.abs().max() <= BELIEF_TARGET_LIMIT
+    assert tracker.clamp_events > 0
+
+    # The property the old guard lacked: finite after decoding out of symlog.
+    for raw in coordinator.decode_targets(stored).values():
+        assert torch.isfinite(raw).all()
+        # And finite again after the squarings the physics applies downstream.
+        assert torch.isfinite(raw.double().square()).all()
+
+
+def test_the_guard_does_not_bind_on_ordinary_predictions() -> None:
+    """A guard that fires in normal operation would be silently reshaping the
+    model rather than catching a failure, so ordinary deltas must pass through
+    untouched and leave the counter at zero."""
+
+    coordinator = build_standard_coordinator(ShipConfig())
+    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
+    visible = tracker.compose(_view(visible=True, x=300.0))
+
+    prediction = torch.full((1, 2, coordinator.total_prediction_dimension), 0.5)
+    tracker.advance(visible, prediction)
+
+    assert torch.isfinite(tracker.predicted_targets).all()
+    assert tracker.predicted_targets.abs().max() < BELIEF_TARGET_LIMIT
+    assert int(tracker.clamp_events) == 0
