@@ -202,25 +202,25 @@ class LoggingMixin:
         # Win rates, not ratings — they keep their own prefix so no chart can
         # read one as an Elo.
         if self._eval_window_rand:
-            metrics["eval/win_rate_vs_random"] = sum(self._eval_window_rand) / len(
+            metrics["eval/score_vs_random"] = sum(self._eval_window_rand) / len(
                 self._eval_window_rand
             )
         if self._eval_window_sc:
-            metrics["eval/win_rate_vs_scripted"] = sum(self._eval_window_sc) / len(
+            metrics["eval/score_vs_scripted"] = sum(self._eval_window_sc) / len(
                 self._eval_window_sc
             )
         if self._eval_window_ladder:
-            metrics["eval/win_rate_vs_ladder"] = sum(self._eval_window_ladder) / len(
+            metrics["eval/score_vs_ladder"] = sum(self._eval_window_ladder) / len(
                 self._eval_window_ladder
             )
         if self._eval_window_floating:
-            metrics["eval/win_rate_vs_floating"] = sum(self._eval_window_floating) / len(
+            metrics["eval/score_vs_floating"] = sum(self._eval_window_floating) / len(
                 self._eval_window_floating
             )
         if self._avg_update_count > 0:
             metrics["live_elo/avg"] = self._avg_live_elo
             if self._eval_window_live_vs_avg:
-                metrics["eval/win_rate_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
+                metrics["eval/score_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
                     self._eval_window_live_vs_avg
                 )
         self._append_elo_history(update)
@@ -282,10 +282,15 @@ class LoggingMixin:
         # Overview — redundant copies of the most important global metrics
         for src, dst in [
             ("live_elo/policy", "overview/live_elo"),
-            ("eval/win_rate_vs_scripted", "overview/win_rate_vs_scripted"),
-            ("eval/win_rate_vs_random", "overview/win_rate_vs_random"),
-            ("eval/win_rate_vs_ladder", "overview/win_rate_vs_ladder"),
-            ("eval/win_rate_vs_avg", "overview/win_rate_vs_avg"),
+            ("eval/score_vs_scripted", "overview/score_vs_scripted"),
+            # The published figure is titled "win rate vs scripted", so it is now
+            # fed the raw win rate rather than the window, which counts a draw as
+            # half and is therefore a score. The key is unchanged so the chart
+            # still renders for runs recorded before the windows moved to score.
+            ("matches/scripted/win_rate", "overview/win_rate_vs_scripted"),
+            ("eval/score_vs_random", "overview/score_vs_random"),
+            ("eval/score_vs_ladder", "overview/score_vs_ladder"),
+            ("eval/score_vs_avg", "overview/score_vs_avg"),
             ("loss/total", "overview/loss_total"),
             ("loss_proxy/policy_gradient", "overview/loss_proxy_pg"),
             ("loss_proxy/behavioral_cloning", "overview/loss_proxy_bc"),

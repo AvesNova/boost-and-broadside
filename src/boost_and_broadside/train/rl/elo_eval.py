@@ -738,7 +738,22 @@ class EloEvaluator:
             self._apply_rating_updates(score, rated.float(), avg_active)
             self._accumulate_match_counts(team0_won, team1_won, tied, rated, avg_active)
 
-            self._win_history.append(team0_won.float())
+            # The windows carry the same score the rating update above consumes,
+            # draws included at a half. They previously stored bare wins, which
+            # made a draw indistinguishable from a loss -- tolerable in the
+            # elimination game these thresholds were chosen for, and wrong in
+            # Frontline, where about 41% of matches reach the clock at a net
+            # front of zero. A policy at true parity with the scripted
+            # controller read about 0.30 there rather than 0.50, so
+            # `bc_winrate_target` (0.45) demanded a policy far better than its
+            # teacher before behavior cloning would decay, and
+            # `high_winrate_threshold` (0.8) was close to unreachable, leaving
+            # the tightened trust region effectively dead. Both numbers were
+            # picked under a convention where 0.5 means parity; this is what
+            # restores it. Raw win/loss/draw counts are untouched in
+            # `_match_counts`, which is what the post-hoc Bradley-Terry fit and
+            # the raw logged win rate read.
+            self._win_history.append(score)
             self._rated_history.append(rated)
             self._anchor_idx_history.append(self._anchor_idx_live.clone())
 
