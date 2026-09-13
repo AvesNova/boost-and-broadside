@@ -129,6 +129,8 @@ _TIER: dict[str, str] = {
     "enemy_win": "outcome_scale",
     "ally_front_advance": "outcome_scale",
     "enemy_front_advance": "outcome_scale",
+    "ally_capture_progress": "outcome_scale",
+    "enemy_capture_progress": "outcome_scale",
     "ally_combat_death": "kill_death_scale",
     "enemy_combat_death": "kill_death_scale",
     "ally_field_death": "kill_death_scale",

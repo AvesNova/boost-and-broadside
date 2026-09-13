@@ -542,6 +542,19 @@ class RewardConfig:
     # training configs opt in so a one-step front movement is the primary event.
     front_advance_weight: float = 0.0
 
+    # The dense half of the strategic tier: signed movement of a defense meter,
+    # paid to whichever side the meter moved toward. A full capture moves a meter
+    # from 0 to 1, so this weight *is* the total paid for capturing a point --
+    # directly comparable to the kill payout rather than to a per-tick rate.
+    #
+    # It exists because ``front_advance_weight`` alone made the objective
+    # unreachable rather than merely sparse. Standing on a point paid nothing for
+    # the whole capture and then +1 on one tick, while every dense term pulled the
+    # other way; run 735 answered by leaving the zones entirely, taking zone
+    # occupancy from 0.075 of live ship-steps to 0.0006 once behavior cloning
+    # stopped supplying the scripted prior.
+    capture_progress_weight: float = 0.0
+
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shoot_quality_weight: float = 0.0  # shot quality when firing
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
@@ -555,7 +568,13 @@ class RewardConfig:
             ratio = getattr(self, name)
             if not np.isfinite(ratio) or ratio < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative, got {ratio}")
-        for name in ("win_weight", "death_weight", "damage_weight", "front_advance_weight"):
+        for name in (
+            "win_weight",
+            "death_weight",
+            "damage_weight",
+            "front_advance_weight",
+            "capture_progress_weight",
+        ):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative, got {value}")
