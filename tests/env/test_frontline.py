@@ -1,5 +1,6 @@
 """Frontline state-transition and hazard contract tests."""
 
+import math
 from dataclasses import replace
 
 import pytest
@@ -105,12 +106,56 @@ def test_active_defense_zones_are_physically_adjacent() -> None:
     assert ((cyclic_separation == 1) | (cyclic_separation == 4)).all()
 
 
-def test_reset_uses_one_toroidal_translation_for_map_geometry() -> None:
-    env = _env(num_envs=4)
+def _ring_offsets(env) -> torch.Tensor:
+    """Zone positions relative to the map centre, on the shortest toroidal image."""
     offsets = env.state.zone_pos - env.state.map_center.unsqueeze(1)
     offsets.real = (offsets.real + 8192.0) % 16384.0 - 8192.0
     offsets.imag = (offsets.imag + 8192.0) % 16384.0 - 8192.0
-    assert torch.allclose(offsets, offsets[:1].expand_as(offsets), atol=1e-3)
+    return offsets
+
+
+def test_the_ring_is_rigid_within_an_episode() -> None:
+    """Every zone sits on one circle about the centre, evenly spaced.
+
+    What varies per episode is the ring's orientation and handedness, not its
+    shape -- so this pins the shape and the next test pins the variation.
+    """
+    env = _env(num_envs=64)
+    offsets = _ring_offsets(env)
+    radii = offsets.abs()
+    assert torch.allclose(radii, radii[:, :1].expand_as(radii), atol=1e-2)
+
+    angles = torch.atan2(offsets.imag, offsets.real)
+    gaps = (angles[:, 1:] - angles[:, :-1] + math.pi) % (2 * math.pi) - math.pi
+    # Uniform spacing, in whichever direction this episode winds.
+    assert torch.allclose(gaps.abs(), torch.full_like(gaps, 2 * math.pi / 5), atol=1e-3)
+    assert torch.allclose(gaps, gaps[:, :1].expand_as(gaps), atol=1e-3)
+
+
+def test_orientation_and_handedness_are_drawn_per_episode() -> None:
+    """Both must vary, and both must be free.
+
+    A fixed ring made one handedness permanently team 0's. ``flip_team`` relabels
+    roles but never reflects space, so team 1's canonical view was the mirror of
+    team 0's rather than a copy -- and a policy, not being reflection-equivariant,
+    could read which side it was on straight off the chirality. Run 736 did: the
+    same weights won 99.8% of self-play from team 0 and drew 654 of 1024 against
+    *random* from team 1.
+    """
+    env = _env(num_envs=512)
+    offsets = _ring_offsets(env)
+    angles = torch.atan2(offsets.imag, offsets.real)
+
+    # Handedness: the sign of the winding, which must appear both ways.
+    gaps = (angles[:, 1] - angles[:, 0] + math.pi) % (2 * math.pi) - math.pi
+    clockwise = (gaps < 0).float().mean().item()
+    assert 0.35 < clockwise < 0.65, f"handedness not balanced: {clockwise:.2f} clockwise"
+
+    # Orientation: the first zone's bearing should cover the circle, not a point.
+    first = angles[:, 0]
+    assert first.std().item() > 1.0
+    assert (first > 0).float().mean().item() > 0.2
+    assert (first < 0).float().mean().item() > 0.2
 
 
 def test_initial_ships_spawn_inside_current_team_spawn() -> None:
@@ -477,3 +522,40 @@ def test_scripted_frontline_match_uses_authoritative_timeout_result() -> None:
 
     assert (team0_wins, team1_wins, draws) == (0, 0, 2)
     assert mean_length == 30.0
+
+
+def test_neither_team_is_given_a_favoured_handedness() -> None:
+    """The invariant that was never stated, and whose absence cost run 736.
+
+    ``flip_team`` relabels roles and negates the front but never reflects space,
+    so if the objective always lay the same way round the ring for team 0 it lay
+    the other way for team 1 -- making the two canonical views mirror images and
+    letting a policy read its own side off the chirality. Randomised handedness
+    is what removes the preference: over episodes each team must find its target
+    clockwise as often as counter-clockwise.
+    """
+    env = _env(num_envs=1024)
+    state = env.state
+
+    def bearing(role: ZoneRole) -> torch.Tensor:
+        index = (state.zone_roles == int(role)).float().argmax(dim=1)
+        offset = state.zone_pos[torch.arange(state.zone_pos.shape[0]), index] - state.map_center
+        offset.real = (offset.real + 8192.0) % 16384.0 - 8192.0
+        offset.imag = (offset.imag + 8192.0) % 16384.0 - 8192.0
+        return torch.atan2(offset.imag, offset.real)
+
+    def signed_turn(frm: torch.Tensor, to: torch.Tensor) -> torch.Tensor:
+        return (to - frm + math.pi) % (2 * math.pi) - math.pi
+
+    # Each team's own spawn to the point it must take.
+    team0 = signed_turn(bearing(ZoneRole.TEAM0_SPAWN), bearing(ZoneRole.TEAM1_DEFENSE))
+    team1 = signed_turn(bearing(ZoneRole.TEAM1_SPAWN), bearing(ZoneRole.TEAM0_DEFENSE))
+
+    for name, turn in (("team 0", team0), ("team 1", team1)):
+        share = (turn > 0).float().mean().item()
+        assert 0.35 < share < 0.65, f"{name} finds its objective one way {share:.2f} of the time"
+    # Within an episode the two sides are necessarily opposite-handed -- that is
+    # the mirror relationship itself, and no amount of randomisation removes it.
+    # What randomisation removes is the *preference*: neither hand belongs to a
+    # particular side across episodes, which is what the two checks above pin.
+    assert bool((torch.sign(team0) == -torch.sign(team1)).all())

@@ -15,13 +15,12 @@ from boost_and_broadside.config import MatchResult, RewardConfig, ShipConfig, Zo
 from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
-    AllyCaptureProgressReward,
     AllyCombatDamageReward,
     AllyCombatDeathReward,
     AllyFieldDamageReward,
     AllyFieldDeathReward,
-    AllyFrontAdvanceReward,
     AllyWinReward,
+    CaptureProgressReward,
     ClosingSpeedReward,
     EnemyCombatDamageReward,
     EnemyCombatDeathReward,
@@ -29,6 +28,7 @@ from boost_and_broadside.env.rewards import (
     EnemyFieldDeathReward,
     EnemyWinReward,
     FacingReward,
+    FrontAdvanceReward,
     KillAllyAssistReward,
     KillAllyShotReward,
     KillAssistReward,
@@ -104,7 +104,7 @@ def _make_4ship_state(cfg):
 
 class TestRewardComponentNames:
     def test_k_is_the_registry_length(self):
-        assert len(REWARD_COMPONENT_NAMES) == 29
+        assert len(REWARD_COMPONENT_NAMES) == 27
 
     def test_source_split_starts_the_registry(self):
         assert REWARD_COMPONENT_NAMES[:8] == (
@@ -141,10 +141,7 @@ class TestRewardComponentNames:
 
     def test_source_split_local_death_is_registered(self):
         assert REWARD_COMPONENT_NAMES[21:23] == ("combat_death", "field_death")
-        assert REWARD_COMPONENT_NAMES[25:27] == (
-            "ally_front_advance",
-            "enemy_front_advance",
-        )
+        assert REWARD_COMPONENT_NAMES[25:27] == ("capture_progress", "front_advance")
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
@@ -408,14 +405,7 @@ class TestDamagePayoutRatio:
 # The strategic tier: the sparse completion pair and the dense progress pair that
 # pays the capture leading to it. None of the four is touched by the balance rule
 # -- each is exactly the free number that names it.
-FRONTLINE_COMPONENTS = frozenset(
-    {
-        "ally_front_advance",
-        "enemy_front_advance",
-        "ally_capture_progress",
-        "enemy_capture_progress",
-    }
-)
+FRONTLINE_COMPONENTS = frozenset({"capture_progress", "front_advance"})
 
 
 class TestRun719Reconstruction:
@@ -612,30 +602,32 @@ class TestShippedWeightsReconstructRun720:
         } - FRONTLINE_COMPONENTS
         assert added == {"enemy_field_death", "enemy_field_damage"}
 
-    def test_each_frontline_pair_is_symmetric_and_named_by_its_own_free_number(self):
-        """Both pairs are symmetric, and each is exactly the free number that
-        names it -- the balance rule does not touch either in either direction."""
+    def test_each_strategic_term_is_exactly_its_own_free_number(self):
+        """The balance rule does not touch either: each is the charged weight it
+        is named by, and ``capture_payout_ratio`` supplies the paid side."""
         w = component_weights(REWARDS)
         assert set(FRONTLINE_COMPONENTS) <= set(w)
-        for name in ("ally_front_advance", "enemy_front_advance"):
-            assert w[name] == pytest.approx(REWARDS.front_advance_weight), name
-        for name in ("ally_capture_progress", "enemy_capture_progress"):
-            assert w[name] == pytest.approx(REWARDS.capture_progress_weight), name
+        assert w["front_advance"] == pytest.approx(REWARDS.front_advance_weight)
+        assert w["capture_progress"] == pytest.approx(REWARDS.capture_progress_weight)
         assert REWARDS.front_advance_weight > 0.0
         assert REWARDS.capture_progress_weight > 0.0
+        assert REWARDS.capture_payout_ratio > 1.0
 
     def test_the_strategic_tier_is_ordered_above_kills(self):
-        """A meter runs 0 -> 1 over one capture, so ``capture_progress_weight`` is
-        the total a capture pays through the dense term and compares directly to
-        the kill payout. Completing the capture is worth a step above that again,
-        and a win a step above three of them -- ``front_win_threshold`` is 3, so a
-        win scoring less than the captures producing it would leave the policy
-        indifferent to closing the match out."""
+        """A meter runs 0 -> 1 over one capture, so these weights are totals for
+        taking a point rather than per-tick rates, and the *paid* side compares
+        directly to the kill payout. Completing the capture is worth a step above
+        crossing it, and a win a step above three completions --
+        ``front_win_threshold`` is 3, so a win scoring less than the captures
+        producing it would leave the policy indifferent to closing out."""
         w = component_weights(REWARDS)
         kill_payout = REWARDS.death_weight * REWARDS.kill_payout_ratio
-        assert w["ally_capture_progress"] > kill_payout
-        assert w["ally_front_advance"] > w["ally_capture_progress"]
-        assert w["ally_win"] > 3 * w["ally_front_advance"]
+        ratio = REWARDS.capture_payout_ratio
+        progress_paid = w["capture_progress"] * ratio
+        capture_paid = w["front_advance"] * ratio
+        assert progress_paid > kill_payout
+        assert capture_paid > progress_paid
+        assert w["ally_win"] > 3 * capture_paid
 
     def test_zeroing_the_frontline_term_leaves_the_720_fit_untouched(self):
         """The frontline objective is additive: turning it off in the
@@ -759,19 +751,6 @@ class TestAllyWinReward:
         reward = r.compute(prev, torch.zeros(2, 4, 3), next_, dones)
 
         assert reward.abs().max().item() == 0.0
-
-
-def test_front_advance_reward_follows_the_advancing_team(cfg):
-    state = _make_4ship_state(cfg)
-    state.front_delta[0] = 1
-    state.front_delta[1] = -1
-
-    reward = AllyFrontAdvanceReward(weight=1.0).compute(
-        state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool)
-    )
-
-    assert reward[0].tolist() == [1.0, 1.0, 0.0, 0.0]
-    assert reward[1].tolist() == [0.0, 0.0, 1.0, 1.0]
 
 
 class TestEnemyWinReward:
@@ -1416,84 +1395,173 @@ class TestSpeedReward:
         assert reward[0, 0].item() == pytest.approx(-0.75)
 
 
-class TestCaptureProgress:
-    """The dense half of the strategic tier.
+class TestZoneCredit:
+    """Credit for a meter goes to who held the point, blame to who did not.
 
-    ``front_advance`` fires on the single tick a meter completes, which left the
-    whole capture unpaid: a policy had to cross an eight-second plateau blind
-    while every dense term pulled the other way. Run 735 declined to -- once
-    behavior cloning stopped supplying the scripted prior, zone occupancy fell
-    from 0.075 of live ship-steps to 0.0006. This component pays the crossing.
+    The tier is a team objective but its credit is not team-wide: a meter moves
+    because ships stood on the point and against you because ships did not. The
+    favoured side splits the payment among its ships inside the zone; the other
+    side splits the charge among its ships elsewhere, dead ones included. Ships
+    of the losing side who are *inside* are contesting and losing, which is not
+    the failure being priced, so they are charged nothing.
     """
 
     ZONES = 5
     T0_DEFENSE = 1
     T1_DEFENSE = 3
+    RADIUS = 50.0
+    HERE = complex(100.0, 100.0)
+    AWAY = complex(600.0, 600.0)
 
-    def _pair(self, before, after, *, captured=False):
-        """Two states differing only in the defense meters."""
-        states = []
+    def _states(self, before, after, *, inside, teams, alive=None, captured=(False, False)):
+        """Two states differing only in the meters, with placement controlled."""
+        made = []
         for progress in (before, after):
-            state = make_state(num_envs=1, max_ships=4)
-            state.zone_roles = torch.full((1, self.ZONES), int(ZoneRole.NEUTRAL), dtype=torch.int8)
-            state.zone_roles[0, self.T0_DEFENSE] = int(ZoneRole.TEAM0_DEFENSE)
-            state.zone_roles[0, self.T1_DEFENSE] = int(ZoneRole.TEAM1_DEFENSE)
-            state.zone_capture_progress = torch.zeros((1, self.ZONES))
+            st = make_state(num_envs=1, max_ships=len(teams))
+            st.zone_roles = torch.full((1, self.ZONES), int(ZoneRole.NEUTRAL), dtype=torch.int8)
+            st.zone_roles[0, self.T0_DEFENSE] = int(ZoneRole.TEAM0_DEFENSE)
+            st.zone_roles[0, self.T1_DEFENSE] = int(ZoneRole.TEAM1_DEFENSE)
+            st.zone_pos = torch.full((1, self.ZONES), self.AWAY, dtype=torch.complex64)
+            st.zone_pos[0, self.T0_DEFENSE] = self.HERE
+            st.zone_pos[0, self.T1_DEFENSE] = self.HERE
+            st.zone_radius = torch.full((1, self.ZONES), self.RADIUS)
+            st.zone_capture_progress = torch.zeros((1, self.ZONES))
             for index, value in progress.items():
-                state.zone_capture_progress[0, index] = value
-            state.team0_captured = torch.tensor([captured])
-            state.team1_captured = torch.tensor([False])
-            states.append(state)
-        prev, nxt = states
-        # Two ships per team, so both perspectives are present in one call.
-        nxt.ship_team_id = torch.tensor([[0, 0, 1, 1]], dtype=torch.int32)
-        prev.ship_team_id = nxt.ship_team_id
-        return prev, nxt
+                st.zone_capture_progress[0, index] = value
+            st.ship_team_id = torch.tensor([teams], dtype=torch.int32)
+            st.ship_pos = torch.tensor(
+                [[self.HERE if here else self.AWAY for here in inside]], dtype=torch.complex64
+            )
+            st.ship_alive = torch.tensor([alive if alive else [True] * len(teams)])
+            st.team0_captured = torch.tensor([captured[0]])
+            st.team1_captured = torch.tensor([captured[1]])
+            made.append(st)
+        return made
 
-    def _reward(self, before, after, *, captured=False):
-        prev, nxt = self._pair(before, after, captured=captured)
-        component = AllyCaptureProgressReward(weight=1.0)
-        out = component.compute(
-            prev, torch.zeros((1, 4, 3), dtype=torch.long), nxt, torch.zeros(1, dtype=torch.bool)
+    def _reward(self, component, **kwargs):
+        prev, nxt = self._states(**kwargs)
+        n = prev.ship_team_id.shape[1]
+        return component.compute(
+            prev, torch.zeros((1, n, 3), dtype=torch.long), nxt, torch.zeros(1, dtype=torch.bool)
+        )[0]
+
+    def _progress(self, ratio=1.0):
+        return CaptureProgressReward(weight=1.0, payout_ratio=ratio, world_size=(1024.0, 1024.0))
+
+    def test_the_present_attackers_split_the_payment(self):
+        # Team 0 attacks T1_DEFENSE; two of its ships are on the point, one is not.
+        r = self._reward(
+            self._progress(),
+            before={self.T1_DEFENSE: 0.2},
+            after={self.T1_DEFENSE: 0.5},
+            inside=[True, True, False, False],
+            teams=[0, 0, 1, 1],
         )
-        return out[0, 0].item(), out[0, 2].item()  # (team 0 ship, team 1 ship)
+        # 0.3 of movement split between the two who held it.
+        assert r[0].item() == pytest.approx(0.15)
+        assert r[1].item() == pytest.approx(0.15)
 
-    def test_taking_ground_on_the_enemy_defense_pays_the_attacker(self):
-        team0, team1 = self._reward({self.T1_DEFENSE: 0.2}, {self.T1_DEFENSE: 0.5})
-        assert team0 == pytest.approx(0.3)
-        assert team1 == pytest.approx(-0.3)
+    def test_the_absent_defenders_split_the_charge(self):
+        r = self._reward(
+            self._progress(),
+            before={self.T1_DEFENSE: 0.2},
+            after={self.T1_DEFENSE: 0.5},
+            inside=[True, True, False, False],
+            teams=[0, 0, 1, 1],
+        )
+        assert r[2].item() == pytest.approx(-0.15)
+        assert r[3].item() == pytest.approx(-0.15)
 
-    def test_pushing_an_attacker_off_your_own_defense_pays_the_same(self):
-        """Symmetric with taking ground: both move the meter toward your side,
-        and the component values them identically."""
-        team0, team1 = self._reward({self.T0_DEFENSE: 0.5}, {self.T0_DEFENSE: 0.2})
-        assert team0 == pytest.approx(0.3)
-        assert team1 == pytest.approx(-0.3)
+    def test_a_defender_who_showed_up_is_not_charged(self):
+        """Contesting and losing is not the failure being priced."""
+        r = self._reward(
+            self._progress(),
+            before={self.T1_DEFENSE: 0.2},
+            after={self.T1_DEFENSE: 0.5},
+            inside=[True, True, True, False],
+            teams=[0, 0, 1, 1],
+        )
+        assert r[2].item() == pytest.approx(0.0)  # inside, losing, not charged
+        assert r[3].item() == pytest.approx(-0.3)  # the only one absent takes it all
 
-    def test_losing_ground_on_either_point_is_charged(self):
-        conceding, gaining = self._reward({self.T1_DEFENSE: 0.5}, {self.T1_DEFENSE: 0.2})
-        assert conceding == pytest.approx(-0.3)
-        assert gaining == pytest.approx(0.3)
+    def test_a_dead_ship_counts_as_absent_and_is_charged(self):
+        """Identity survives death and respawn is immediate, so the charge lands
+        on a ship that still exists -- and a dead ship is precisely one not
+        holding the point."""
+        r = self._reward(
+            self._progress(),
+            before={self.T1_DEFENSE: 0.2},
+            after={self.T1_DEFENSE: 0.5},
+            inside=[True, True, True, False],
+            teams=[0, 0, 1, 1],
+            alive=[True, True, True, False],
+        )
+        assert r[3].item() == pytest.approx(-0.3)
 
-        defending, attacking = self._reward({self.T0_DEFENSE: 0.2}, {self.T0_DEFENSE: 0.5})
-        assert defending == pytest.approx(-0.3)
-        assert attacking == pytest.approx(0.3)
+    def test_the_payout_ratio_tilts_toward_holding_the_point(self):
+        r = self._reward(
+            self._progress(ratio=2.0),
+            before={self.T1_DEFENSE: 0.2},
+            after={self.T1_DEFENSE: 0.5},
+            inside=[True, False, False, False],
+            teams=[0, 0, 1, 1],
+        )
+        assert r[0].item() == pytest.approx(0.6)  # paid 2x
+        assert r[2].item() == pytest.approx(-0.15)  # charged 1x, split two ways
+        assert r[3].item() == pytest.approx(-0.15)
 
-    def test_a_meter_driven_up_and_back_down_nets_exactly_zero(self):
-        """There is no oscillation to farm: the component is signed, so a round
-        trip is worth what it cost."""
-        up, _ = self._reward({self.T1_DEFENSE: 0.1}, {self.T1_DEFENSE: 0.7})
-        down, _ = self._reward({self.T1_DEFENSE: 0.7}, {self.T1_DEFENSE: 0.1})
-        assert up + down == pytest.approx(0.0)
+    def test_the_charged_set_cannot_be_empty(self):
+        """A meter favours a side only when it has strictly more ships on the
+        point, so the other side always has at least one ship elsewhere."""
+        r = self._reward(
+            self._progress(),
+            before={self.T1_DEFENSE: 0.2},
+            after={self.T1_DEFENSE: 0.5},
+            inside=[True, True, True, False],
+            teams=[0, 0, 1, 1],
+        )
+        assert r.sum().item() == pytest.approx(0.0)  # still zero-sum at ratio 1
 
-    def test_the_completion_tick_is_excluded_rather_than_read_as_a_total_loss(self):
-        """A capture resets the meter 1 -> 0. Scored naively that is the largest
-        negative the component can produce, landing on the exact tick the team
-        succeeded. ``front_advance`` pays this tick instead."""
-        team0, team1 = self._reward({self.T1_DEFENSE: 0.99}, {self.T1_DEFENSE: 0.0}, captured=True)
-        assert team0 == pytest.approx(0.0)
-        assert team1 == pytest.approx(0.0)
+    def test_defending_your_own_point_pays_the_same_as_taking_theirs(self):
+        # Progress on T0_DEFENSE falling means team 0 pushed the attacker back.
+        r = self._reward(
+            self._progress(),
+            before={self.T0_DEFENSE: 0.5},
+            after={self.T0_DEFENSE: 0.2},
+            inside=[True, False, False, False],
+            teams=[0, 0, 1, 1],
+        )
+        assert r[0].item() == pytest.approx(0.3)
 
-    def test_neutral_and_spawn_zones_contribute_nothing(self):
-        team0, _ = self._reward({0: 0.0}, {0: 0.9})
-        assert team0 == pytest.approx(0.0)
+    def test_the_completion_tick_is_left_to_front_advance(self):
+        """A capture resets the meter 1 -> 0, which read naively is the largest
+        loss the component can report, on the exact tick a team succeeded."""
+        r = self._reward(
+            self._progress(),
+            before={self.T1_DEFENSE: 0.99},
+            after={self.T1_DEFENSE: 0.0},
+            inside=[True, True, False, False],
+            teams=[0, 0, 1, 1],
+            captured=(True, False),
+        )
+        assert r.abs().max().item() == pytest.approx(0.0)
+
+    def test_front_advance_pays_the_ships_that_finished_it(self):
+        """The finished zone is found by its new role: taking a point steps the
+        front, which rotates the roles, so it now reads as the captor's own
+        defense."""
+        component = FrontAdvanceReward(weight=1.0, payout_ratio=1.0, world_size=(1024.0, 1024.0))
+        prev, nxt = self._states(
+            before={}, after={}, inside=[True, False, False, False], teams=[0, 0, 1, 1]
+        )
+        nxt.team0_captured = torch.tensor([True])
+        # After a team-0 capture the taken zone carries TEAM0_DEFENSE.
+        nxt.zone_roles[0, self.T0_DEFENSE] = int(ZoneRole.TEAM0_DEFENSE)
+        nxt.zone_pos[0, self.T0_DEFENSE] = self.HERE
+        r = component.compute(
+            prev, torch.zeros((1, 4, 3), dtype=torch.long), nxt, torch.zeros(1, dtype=torch.bool)
+        )[0]
+        assert r[0].item() == pytest.approx(1.0)
+        assert r[1].item() == pytest.approx(0.0)
+        assert r[2].item() == pytest.approx(-0.5)
+        assert r[3].item() == pytest.approx(-0.5)
