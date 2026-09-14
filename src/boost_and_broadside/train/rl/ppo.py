@@ -127,10 +127,8 @@ _BC_CUTOFF_UPDATES = 3
 _TIER: dict[str, str] = {
     "ally_win": "outcome_scale",
     "enemy_win": "outcome_scale",
-    "ally_front_advance": "outcome_scale",
-    "enemy_front_advance": "outcome_scale",
-    "ally_capture_progress": "outcome_scale",
-    "enemy_capture_progress": "outcome_scale",
+    "front_advance": "outcome_scale",
+    "capture_progress": "outcome_scale",
     "ally_combat_death": "kill_death_scale",
     "enemy_combat_death": "kill_death_scale",
     "ally_field_death": "kill_death_scale",
@@ -183,6 +181,12 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
         "field_death",
         "shooting_penalty",
         "speed",
+        # The strategic tier attributes its own credit: the side a meter favours
+        # splits the payment among its ships on the point, the other side splits
+        # the charge among its ships elsewhere. A team-shared lambda would average
+        # that straight back out, which is the whole signal.
+        "capture_progress",
+        "front_advance",
     }
 )
 

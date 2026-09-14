@@ -131,11 +131,32 @@ def initialize_frontline_map(
     )
     state.map_center = torch.where(reset_mask, map_center, state.map_center)
 
-    angles = (
-        torch.arange(NUM_FRONTLINE_ZONES, device=state.device, dtype=torch.float32)
-        * (2.0 * math.pi / NUM_FRONTLINE_ZONES)
-        - math.pi / 2.0
+    # Random orientation and handedness per episode, on top of the random centre.
+    #
+    # The ring used to sit at a fixed rotation with a fixed winding, which made
+    # one handedness permanently team 0's. ``flip_team`` relabels roles but never
+    # reflects space, so team 1's canonical view was the *mirror* of team 0's
+    # rather than a copy, and a policy -- which is not reflection-equivariant --
+    # could tell the sides apart by chirality and learn only one of them. Run 736
+    # did exactly that: identical weights on both sides, team 0 winning 99.8% of
+    # self-play, and on team 1 drawing 654 of 1024 games against *random*.
+    #
+    # Randomising rather than mirroring the observation: a mirror would have to
+    # reflect every spatial channel -- positions, velocities, attitudes, angular
+    # velocity sign, index gradients, bullets -- and missing one recreates the
+    # same bug somewhere subtler. It also generalises, which a reflection tied to
+    # this ring would not: an N-zone map laid out semi-randomly has no canonical
+    # axis to reflect about, but chirality can always be drawn.
+    base = torch.arange(NUM_FRONTLINE_ZONES, device=state.device, dtype=torch.float32) * (
+        2.0 * math.pi / NUM_FRONTLINE_ZONES
     )
+    rotation = torch.rand((batch_size, 1), device=state.device) * (2.0 * math.pi)
+    handedness = torch.where(
+        torch.rand((batch_size, 1), device=state.device) < 0.5,
+        -1.0,
+        1.0,
+    )
+    angles = handedness * base.unsqueeze(0) + rotation  # (B, Z)
     offsets = torch.polar(torch.full_like(angles, config.zone_ring_radius), angles)
     translated = wrap_positions(state.map_center.unsqueeze(1) + offsets, world_size)
     reset_z = reset_mask.unsqueeze(1)

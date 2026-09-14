@@ -555,6 +555,13 @@ class RewardConfig:
     # stopped supplying the scripted prior.
     capture_progress_weight: float = 0.0
 
+    # The strategic tier's exception to the balance rule, alongside
+    # ``kill_payout_ratio`` and ``damage_payout_ratio`` and for the same reason:
+    # the side a meter favours is paid this multiple of what the absent side is
+    # charged. Priced evenly, contesting a point is a wash, and a policy that
+    # cannot reliably win the contest declines it.
+    capture_payout_ratio: float = 1.0
+
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shoot_quality_weight: float = 0.0  # shot quality when firing
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
@@ -564,7 +571,7 @@ class RewardConfig:
     def __post_init__(self) -> None:
         if not 0.0 <= self.kill_shot_fraction <= 1.0:
             raise ValueError(f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}")
-        for name in ("kill_payout_ratio", "damage_payout_ratio"):
+        for name in ("kill_payout_ratio", "damage_payout_ratio", "capture_payout_ratio"):
             ratio = getattr(self, name)
             if not np.isfinite(ratio) or ratio < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative, got {ratio}")

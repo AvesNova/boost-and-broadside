@@ -186,8 +186,6 @@ REWARDS = RewardConfig(
             "enemy_combat_death",
             "enemy_field_death",
             "enemy_win",
-            "enemy_front_advance",
-            "enemy_capture_progress",
         }
     ),
     ally_zero_components=frozenset(
@@ -197,20 +195,20 @@ REWARDS = RewardConfig(
             "enemy_combat_death",
             "enemy_field_death",
             "enemy_win",
-            "enemy_front_advance",
-            "enemy_capture_progress",
         }
     ),
     shooting_penalty_weight=0.0,
-    # The strategic tier, one step above kills and one above itself. A kill pays
-    # ``death_weight * kill_payout_ratio`` = 0.566; a capture is worth about twice
-    # that, and completing one about twice again.
+    # The strategic tier, each step twice the last, stated as what the *absent*
+    # side is charged. ``capture_payout_ratio`` then pays the side holding the
+    # point twice that, so the amounts actually paid are 1.13 for crossing a
+    # meter and 2.26 for completing it -- against a kill payout of
+    # ``death_weight * kill_payout_ratio`` = 0.566.
     #
-    # ``capture_progress_weight`` is a total, not a rate: a meter runs 0 -> 1 over
-    # one capture, so 1.13 is what taking a point pays through the dense term, and
-    # it is comparable to the kill payout without further arithmetic.
-    capture_progress_weight=1.13,
-    front_advance_weight=2.26,
+    # Both are totals rather than rates: a meter runs 0 -> 1 over one capture, so
+    # these compare to the kill payout without further arithmetic.
+    capture_payout_ratio=2.0,
+    capture_progress_weight=0.565,
+    front_advance_weight=1.13,
     speed_weight=0.0,
     speed_penalty_min=10.0,
 )
@@ -221,12 +219,18 @@ REWARDS = RewardConfig(
 # their approximate horizons are full episode, engagement, exchange, and
 # immediate geometry respectively.
 COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
-    "ally_win": 0.999,
-    "enemy_win": 0.999,
-    "ally_front_advance": 0.999,
-    "enemy_front_advance": 0.999,
-    "ally_capture_progress": 0.999,
-    "enemy_capture_progress": 0.999,
+    # Undiscounted. A win is terminal in a finite-horizon game with a hard step
+    # cap, and GAE cuts every trace at the episode boundary, so nothing can
+    # diverge. At 0.999/tick a win at the start of a typical match was worth
+    # 0.999^2557 = 7.7% of one at the end -- an artifact of a rate inherited from
+    # 1024-step episodes, not a statement about the game. At 1.0 the critic head
+    # learns P(win) itself. Expect its explained variance to *fall*: a discounted
+    # terminal target is about zero for most of an episode and trivially
+    # predictable, where P(win) early is genuinely uncertain.
+    "ally_win": 1.0,
+    "enemy_win": 1.0,
+    "front_advance": 0.999,
+    "capture_progress": 0.999,
     "ally_combat_death": 0.995,
     "enemy_combat_death": 0.995,
     "ally_field_death": 0.995,
@@ -255,10 +259,8 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
 COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "ally_win": 0.97,
     "enemy_win": 0.97,
-    "ally_front_advance": 0.97,
-    "enemy_front_advance": 0.97,
-    "ally_capture_progress": 0.97,
-    "enemy_capture_progress": 0.97,
+    "front_advance": 0.97,
+    "capture_progress": 0.97,
     "ally_combat_death": 0.95,
     "enemy_combat_death": 0.95,
     "ally_field_death": 0.95,

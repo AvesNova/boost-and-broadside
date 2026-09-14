@@ -31,6 +31,7 @@ import torch
 
 from boost_and_broadside.config import RewardConfig, ShipConfig, ZoneRole
 from boost_and_broadside.constants import EPS
+from boost_and_broadside.env.frontline import zone_membership
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.state import TensorState
 
@@ -336,56 +337,46 @@ class EnemyWinReward(AllyWinReward):
     name = "enemy_win"
 
 
-class AllyFrontAdvanceReward(RewardComponent):
-    """+1 to ships whose team advanced the unwrapped front this tick."""
+class _ZoneCreditReward(RewardComponent):
+    """Per-ship credit for a zone meter moving, split by who showed up.
 
-    name = "ally_front_advance"
+    The strategic tier is a team objective, but blame and credit for it are not
+    team-wide. A meter moves because ships stood on the point, and it moves
+    against you because ships did not. So the side the meter favours splits the
+    payment among its ships *inside* that zone, and the other side splits the
+    charge among its ships *outside* it. Ships of the losing side who are inside
+    are contesting and lose the contest; they are not charged, because showing up
+    is not the failure being priced.
 
-    def compute(
-        self,
-        prev_state: TensorState,
-        actions: torch.Tensor,
-        next_state: TensorState,
-        dones: torch.Tensor,
-    ) -> torch.Tensor:
-        del prev_state, actions, dones
-        team0_advanced = next_state.front_delta > 0
-        team1_advanced = next_state.front_delta < 0
-        team0 = next_state.ship_team_id == 0
-        team1 = next_state.ship_team_id == 1
-        return (
-            (team0 & team0_advanced.unsqueeze(1)) | (team1 & team1_advanced.unsqueeze(1))
-        ).float()
+    Dead ships count as outside. Identity survives death, respawn is immediate
+    and GAE runs across the boundary, so the charge lands on a ship that still
+    exists -- and a dead ship is precisely one that is not holding the point.
+    That also makes the charged set provably non-empty: the meter favours a side
+    only when it has strictly more ships in the zone, so the other side always
+    has at least one elsewhere, whatever the team size.
 
+    Keyed on which way the meter moves rather than on who owns the zone, so it
+    carries unchanged to maps whose zones have no fixed defense/spawn roles.
 
-class EnemyFrontAdvanceReward(AllyFrontAdvanceReward):
-    """Enemy-perspective mirror used by the zero-sum lambda aggregation."""
+    ``payout_ratio`` pays the present side more than the absent side is charged,
+    the same deliberate imbalance ``kill_payout_ratio`` and
+    ``damage_payout_ratio`` apply to their tiers: priced evenly, contesting a
+    point is a wash and a policy that cannot reliably win it declines.
 
-    name = "enemy_front_advance"
-
-
-class AllyCaptureProgressReward(RewardComponent):
-    """Signed movement of either defense meter, toward the ship's own team.
-
-    The dense half of the strategic tier. ``front_advance`` fires on the single
-    tick a meter completes, which left the whole capture unpaid and made the
-    objective a plateau the policy had to cross blind while every dense term
-    pulled the other way. This pays the crossing itself.
-
-    ``zone_capture_progress`` always measures progress toward whoever is
-    attacking that zone, and the attacker of a defense is the team that does not
-    own it. So a rise on the enemy defense and a fall on our own are both gains
-    for us, which is the sign convention this component applies -- taking ground
-    and pushing an attacker off our own point are the same event with the same
-    value.
-
-    Symmetric by construction: a meter driven up and then back down nets exactly
-    zero, so there is no oscillation to farm. The one place that could break is a
-    completed capture, where the meter resets 1 -> 0 and would read as a total
-    loss; that tick is excluded here and paid by ``front_advance`` instead.
+    Self-only. The split *is* the credit assignment, so a team-shared lambda
+    would average it straight back out -- and the pair of shared components this
+    replaces double-counted, because each reported an already-signed team
+    differential that the lambda then signed a second time.
     """
 
-    name = "ally_capture_progress"
+    def __init__(self, weight: float, payout_ratio: float, world_size: tuple[float, float]) -> None:
+        super().__init__(weight)
+        self.payout_ratio = payout_ratio
+        self.world_size = world_size
+
+    def team0_credit(self, prev_state: TensorState, next_state: TensorState) -> torch.Tensor:
+        """(B, Z) signed meter movement, positive where it favours team 0."""
+        raise NotImplementedError
 
     def compute(
         self,
@@ -395,27 +386,75 @@ class AllyCaptureProgressReward(RewardComponent):
         dones: torch.Tensor,
     ) -> torch.Tensor:
         del actions, dones
-        delta = next_state.zone_capture_progress - prev_state.zone_capture_progress  # (B, Z)
-        # A completion resets the meter to zero. Excluded rather than clamped:
-        # the tick is a capture, not a loss of progress, and it is already paid.
+        credit = self.team0_credit(prev_state, next_state)  # (B, Z), + favours team 0
+        inside = zone_membership(
+            next_state.ship_pos,
+            next_state.zone_pos,
+            next_state.zone_radius,
+            self.world_size,
+        )  # (B, N, Z)
+
+        team0 = (next_state.ship_team_id == 0).unsqueeze(-1)  # (B, N, 1)
+        team1 = ~team0
+        favours0 = (credit > 0).unsqueeze(1)  # (B, 1, Z)
+        favours1 = (credit < 0).unsqueeze(1)
+        magnitude = credit.abs().unsqueeze(1)  # (B, 1, Z)
+
+        # Paid: the favoured side's ships standing in the zone.
+        paid = (favours0 & team0 & inside) | (favours1 & team1 & inside)
+        # Charged: the other side's ships anywhere else, dead ones included.
+        charged = (favours0 & team1 & ~inside) | (favours1 & team0 & ~inside)
+
+        paid_n = paid.sum(dim=1, keepdim=True).clamp(min=1)
+        charged_n = charged.sum(dim=1, keepdim=True).clamp(min=1)
+        per_ship = (
+            paid.float() * magnitude * self.payout_ratio / paid_n
+            - charged.float() * magnitude / charged_n
+        )
+        return per_ship.sum(dim=-1)  # (B, N)
+
+
+class CaptureProgressReward(_ZoneCreditReward):
+    """The dense half of the tier: every increment of a capture meter.
+
+    ``front_advance`` fires only on the tick a meter completes, which left the
+    whole crossing unpaid and made the objective a plateau the policy had to
+    cross blind while every dense term pulled the other way. Run 735 declined to
+    cross it at all.
+    """
+
+    name = "capture_progress"
+
+    def team0_credit(self, prev_state: TensorState, next_state: TensorState) -> torch.Tensor:
+        delta = next_state.zone_capture_progress - prev_state.zone_capture_progress
+        # A completion resets the meter to zero, which read naively is the
+        # largest loss the component can report, on the exact tick a team
+        # succeeded. ``front_advance`` pays that tick instead.
         captured = (next_state.team0_captured | next_state.team1_captured).unsqueeze(1)
         delta = torch.where(captured, torch.zeros_like(delta), delta)
-
         roles = next_state.zone_roles
-        t0_defense = roles == int(ZoneRole.TEAM0_DEFENSE)
-        t1_defense = roles == int(ZoneRole.TEAM1_DEFENSE)
-        # Progress on Team 1's defense is Team 0 attacking, and conversely.
-        team0_gain = (delta * t1_defense.float() - delta * t0_defense.float()).sum(dim=1)  # (B,)
-
-        team0 = next_state.ship_team_id == 0
-        gain = torch.where(team0, team0_gain.unsqueeze(1), -team0_gain.unsqueeze(1))
-        return gain * next_state.ship_alive.float()
+        # A meter measures progress toward whoever attacks that zone, and the
+        # attacker of a defense is the side that does not hold it.
+        t0_defense = (roles == int(ZoneRole.TEAM0_DEFENSE)).float()
+        t1_defense = (roles == int(ZoneRole.TEAM1_DEFENSE)).float()
+        return delta * t1_defense - delta * t0_defense
 
 
-class EnemyCaptureProgressReward(AllyCaptureProgressReward):
-    """Enemy-perspective mirror used by the zero-sum lambda aggregation."""
+class FrontAdvanceReward(_ZoneCreditReward):
+    """The sparse half: the tick a meter completes and the front steps."""
 
-    name = "enemy_capture_progress"
+    name = "front_advance"
+
+    def team0_credit(self, prev_state: TensorState, next_state: TensorState) -> torch.Tensor:
+        del prev_state
+        # The meter is zeroed on completion, so the finished zone cannot be found
+        # by reading progress. It is identified by its *new* role: capturing a
+        # point steps the front, which rotates the roles one place, and the zone
+        # just taken is the one now labelled as the capturing team's own defense.
+        roles = next_state.zone_roles
+        t0_took = next_state.team0_captured.unsqueeze(1) & (roles == int(ZoneRole.TEAM0_DEFENSE))
+        t1_took = next_state.team1_captured.unsqueeze(1) & (roles == int(ZoneRole.TEAM1_DEFENSE))
+        return t0_took.float() - t1_took.float()
 
 
 # ---------------------------------------------------------------------------
@@ -749,10 +788,8 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "field_death",  # 22 — boundary death of this ship (self only)
     "shooting_penalty",  # 23 — negative reward on every shot (self only)
     "speed",  # 24 — penalty when proper speed < min_speed (self only)
-    "ally_front_advance",  # 25 — ally team advances the strategic front
-    "enemy_front_advance",  # 26 — enemy team advance (negative via lambda)
-    "ally_capture_progress",  # 27 — signed defense-meter movement toward this team
-    "enemy_capture_progress",  # 28 — enemy-perspective mirror (negative via lambda)
+    "capture_progress",  # 25 — meter movement, paid to who held the point (self only)
+    "front_advance",  # 26 — meter completion, paid the same way (self only)
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -839,13 +876,13 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
             "damage_dealt_ally": dealt,
             # The offensive side of damage nobody dealt.
             "enemy_field_damage": dealt,
-            "ally_front_advance": float(raw.get("front_advance_weight", 0.0)),
-            "enemy_front_advance": float(raw.get("front_advance_weight", 0.0)),
-            # A meter runs 0 -> 1 over one capture, so this weight is the total
-            # paid for taking a point rather than a per-tick rate -- which is what
-            # makes it directly comparable to the kill payout above.
-            "ally_capture_progress": float(raw.get("capture_progress_weight", 0.0)),
-            "enemy_capture_progress": float(raw.get("capture_progress_weight", 0.0)),
+            # The strategic tier follows the same charged/paid split as the two
+            # above: the weight is what the absent side is *charged*, and the
+            # present side is paid ``capture_payout_ratio`` times it. A meter runs
+            # 0 -> 1 over one capture, so these are totals for taking a point
+            # rather than per-tick rates, and compare to the kill payout directly.
+            "capture_progress": float(raw.get("capture_progress_weight", 0.0)),
+            "front_advance": float(raw.get("front_advance_weight", 0.0)),
         }
     )
     # Shaping is not an event and has no opposing side, so it stays individual.
@@ -909,10 +946,16 @@ def build_reward_components(
         LocalFieldDeathReward(weight=w["field_death"]),
         ShootingPenaltyReward(weight=w["shooting_penalty"]),
         SpeedReward(weight=w["speed"], min_speed=rewards.speed_penalty_min),
-        AllyFrontAdvanceReward(weight=w["ally_front_advance"]),
-        EnemyFrontAdvanceReward(weight=w["enemy_front_advance"]),
-        AllyCaptureProgressReward(weight=w["ally_capture_progress"]),
-        EnemyCaptureProgressReward(weight=w["enemy_capture_progress"]),
+        CaptureProgressReward(
+            weight=w["capture_progress"],
+            payout_ratio=rewards.capture_payout_ratio,
+            world_size=ship_config.world_size,
+        ),
+        FrontAdvanceReward(
+            weight=w["front_advance"],
+            payout_ratio=rewards.capture_payout_ratio,
+            world_size=ship_config.world_size,
+        ),
     ]
 
 

@@ -1281,11 +1281,14 @@ class TestComponentClassification:
         assert _LOCAL_COMPONENTS <= set(REWARD_COMPONENT_NAMES)
 
     def test_shared_components_are_exactly_the_team_signals(self):
-        """Everything that is not self-only is a source-split pair, a win
-        component, or a strategic one — those are the only signals with a team
-        perspective to propagate. A defense meter is owned by the team, not by
-        whichever ship happens to be standing on it, so both capture components
-        belong here rather than among the self-only signals."""
+        """Everything that is not self-only is a source-split pair or a win
+        component — those are the only signals with a team perspective to
+        propagate.
+
+        The strategic tier is deliberately absent. A meter moves because ships
+        stood on the point and against you because ships did not, so those two
+        components attribute their own credit per ship; a team-shared lambda
+        would average exactly that back out."""
         from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 
         shared = set(REWARD_COMPONENT_NAMES) - _LOCAL_COMPONENTS
@@ -1300,10 +1303,6 @@ class TestComponentClassification:
             "enemy_field_death",
             "ally_win",
             "enemy_win",
-            "ally_front_advance",
-            "enemy_front_advance",
-            "ally_capture_progress",
-            "enemy_capture_progress",
         }
 
     def test_tiers_partition_the_registry(self):
