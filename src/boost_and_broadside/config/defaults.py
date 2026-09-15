@@ -145,13 +145,26 @@ REWARDS = RewardConfig(
     # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
     # scaling all of these together is a no-op. They are stated against a win of
     # 1.0 for that reason.
-    # Deliberately *below* the 6.78 that three full captures pay, reversing the
-    # earlier reasoning. At 7.0 the win pair was 70.5% of the gradient weight
-    # while being the least predictable component in the system, so most of every
-    # update was noise from a term that arrives once per 8,600 steps. The captures
-    # are the signal that is actually dense and learnable, and they are the path
-    # to the win in any case.
-    win_weight=3.0,
+    # One free number per tier, solved so that the five tiers -- win, capture,
+    # capture progress, death, damage -- each carry about a fifth of the update.
+    # That was the deathmatch rule and it had never been applied to Frontline:
+    # 737 ran the win pair at 70.5% of the gradient and 738 still at 50.6%, both
+    # against a capture tier under 10%, so most of every update was noise from
+    # the least predictable term in the system, arriving once per 8,600 steps.
+    #
+    # ``AdvantageScaler`` normalizes every component to unit RMS -- run 737
+    # confirmed it, with all sixteen ``floor_bound_rms`` counters at zero -- and
+    # ``_lambda_matrix`` normalizes the unweighted pattern before applying the
+    # weight, so a tier's share of the weight *is* its share of the gradient.
+    # Death and damage were already near-equal at 1.981 and 2.192; they set the
+    # target, and the other three tiers are solved to match it.
+    #
+    # The win pair is two components, so 1.0 each pays the tier 2.0 -- which is
+    # also, exactly, what run 720 solved for in the elimination arena. The two
+    # arguments are independent: 720 fit it from data, this one derives it from
+    # five tiers sharing the update evenly. Runs 735 to 738 were the excursion,
+    # at 7.0 and then 3.0.
+    win_weight=1.0,
     death_weight=0.283,
     damage_weight=0.274,
     # The one ratio the balance rule leaves free. Solved at 0.4875 and set even:
@@ -201,19 +214,28 @@ REWARDS = RewardConfig(
         }
     ),
     shooting_penalty_weight=0.0,
-    # The strategic tier, each step twice the last, stated as what the *absent*
-    # side is charged. ``capture_payout_ratio`` then pays the side holding the
-    # point twice that, so the amounts actually paid are 1.13 for crossing a
-    # meter and 2.26 for completing it -- against a kill payout of
-    # ``death_weight * kill_payout_ratio`` = 0.566.
+    # The strategic tier, stated as what the *absent* side is charged.
+    # ``capture_payout_ratio`` then pays the side holding the point twice that,
+    # the same 2:1 the kill and damage tiers carry -- but expressed differently.
+    # Kills and deaths are separate components, so their ratio lives in the
+    # weights; a capture component carries both sides internally, so its ratio
+    # lives in the reward and the scaler normalizes the component as a whole.
+    # The ratio therefore shapes offense against defense *within* the tier and
+    # does not change the tier's share of the gradient.
+    #
+    # Capture and capture progress are now equal rather than the former 2:1
+    # ladder between them. They are two of the five tiers the balance rule
+    # names, and the rule asks for equal pressure across tiers; the ordering
+    # that used to separate them is what the ladder inside each tier is for.
     #
     # Both are totals rather than rates: a meter runs 0 -> 1 over one capture, so
     # these compare to the kill payout without further arithmetic.
     capture_payout_ratio=2.0,
-    # Token weight: trains the head, does not move the policy.
+    # Token weight: trains the head, does not move the policy. Outside the tier
+    # balance by design -- it is a value-head probe, not a fifth of the update.
     outcome_weight=0.01,
-    capture_progress_weight=0.565,
-    front_advance_weight=1.13,
+    capture_progress_weight=2.0,
+    front_advance_weight=2.0,
     speed_weight=0.0,
     speed_penalty_min=10.0,
 )

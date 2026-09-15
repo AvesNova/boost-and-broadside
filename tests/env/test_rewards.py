@@ -538,13 +538,23 @@ class TestShippedWeightsReconstructRun720:
     # into it is not a small mismatch -- once behavior cloning decayed, the policy
     # left the capture zones entirely and optimised the shaping instead.
     DEPARTED_FROM_720 = {
-        "ally_win": (1.0, 3.0),
-        "enemy_win": (1.0, 3.0),
         "facing": (0.09, 0.0),
         "closing_speed": (0.08, 0.0),
     }
 
-    RUN_720 = RUN_720_COMBAT | {name: was for name, (was, _) in DEPARTED_FROM_720.items()}
+    # The win pair left 720 and came back. 735 through 738 ran it at 7.0 and then
+    # 3.0 on the reasoning that the objective deserved the loudest term; the
+    # equal-pressure rule says instead that it deserves a fifth of the update,
+    # which for a two-component tier is 1.0 each -- exactly what 720 solved for
+    # in the elimination arena. Two different arguments reaching the same number
+    # is worth an assertion rather than a coincidence nobody noticed.
+    RETURNED_TO_720 = {"ally_win": 1.0, "enemy_win": 1.0}
+
+    RUN_720 = (
+        RUN_720_COMBAT
+        | RETURNED_TO_720
+        | {name: was for name, (was, _) in DEPARTED_FROM_720.items()}
+    )
 
     def test_the_two_ratios_are_one_shared_number(self):
         """Both tiers were tilted in 720 and the shared ratio is the smaller
@@ -565,6 +575,13 @@ class TestShippedWeightsReconstructRun720:
         for name, (was, now) in self.DEPARTED_FROM_720.items():
             assert w[name] == pytest.approx(now), name
             assert w[name] != pytest.approx(was, rel=0.15), name
+
+    def test_the_win_pair_came_back_to_the_720_solve(self):
+        """Not a departure any more. Equal pressure across five tiers puts the
+        two-component win tier at 1.0 each, which is where 720 had it."""
+        w = component_weights(REWARDS)
+        for name, value in self.RETURNED_TO_720.items():
+            assert w[name] == pytest.approx(value), name
 
     def test_the_combat_fit_is_no_worse_than_the_solve_that_produced_it(self):
         """Guards the numbers against a well-meant round. Anything materially
@@ -616,27 +633,71 @@ class TestShippedWeightsReconstructRun720:
         assert REWARDS.capture_progress_weight > 0.0
         assert REWARDS.capture_payout_ratio > 1.0
 
+    # The five tiers the balance rule names, each mapped to the components that
+    # carry it. ``outcome`` is deliberately absent: it is a token-weight value
+    # probe, not a tier.
+    TIERS: dict[str, tuple[str, ...]] = {
+        "win": ("ally_win", "enemy_win"),
+        "capture": ("front_advance",),
+        "capture_progress": ("capture_progress",),
+        "death": (
+            "combat_death",
+            "field_death",
+            "enemy_field_death",
+            "kill_shot",
+            "kill_assist",
+            "kill_ally_shot",
+            "kill_ally_assist",
+        ),
+        "damage": (
+            "combat_damage_taken",
+            "field_damage_taken",
+            "damage_dealt_enemy",
+            "damage_dealt_ally",
+            "enemy_field_damage",
+        ),
+    }
+
+    def test_every_tier_carries_roughly_equal_gradient_pressure(self):
+        """The balance rule, stated as the thing it actually controls.
+
+        ``AdvantageScaler`` normalizes each component to unit RMS and
+        ``_lambda_matrix`` normalizes the unweighted pattern before applying the
+        weight, so a tier's share of the total weight is its share of the
+        gradient. Run 737 ran the win pair at 70.5% against a capture tier under
+        6%, which is the imbalance this rule exists to prevent."""
+        w = component_weights(REWARDS)
+        totals = {tier: sum(w[name] for name in names) for tier, names in self.TIERS.items()}
+        total = sum(v for v in w.values() if v != 0.0)
+        shares = {tier: value / total for tier, value in totals.items()}
+        assert min(shares.values()) > 0.15
+        assert max(shares.values()) < 0.25
+        # No tier may be more than a third heavier than the lightest.
+        assert max(totals.values()) / min(totals.values()) < 1.34
+
+    def test_the_outcome_probe_stays_outside_the_tier_balance(self):
+        """It trains its value head without bidding for the policy gradient."""
+        w = component_weights(REWARDS)
+        total = sum(v for v in w.values() if v != 0.0)
+        assert 0.0 < w["outcome"] / total < 0.01
+
     def test_the_strategic_tier_is_ordered_above_kills(self):
         """A meter runs 0 -> 1 over one capture, so these weights are totals for
         taking a point rather than per-tick rates, and the *paid* side compares
-        directly to the kill payout. Completing the capture is worth a step above
-        crossing it, and a win a step above three completions --
-        ``front_win_threshold`` is 3, so a win scoring less than the captures
-        producing it would leave the policy indifferent to closing out."""
+        directly to the kill payout.
+
+        The ladder that used to run progress < capture < win is gone: those are
+        three of the five tiers the balance rule names, and the rule asks them to
+        carry equal pressure. What survives is the tier ordering that is not a
+        tier comparison -- taking ground outpays a kill -- and the ordering
+        inside each tier, which ``capture_payout_ratio`` supplies."""
         w = component_weights(REWARDS)
         kill_payout = REWARDS.death_weight * REWARDS.kill_payout_ratio
         ratio = REWARDS.capture_payout_ratio
         progress_paid = w["capture_progress"] * ratio
         capture_paid = w["front_advance"] * ratio
         assert progress_paid > kill_payout
-        assert capture_paid > progress_paid
-        # The win deliberately sits *below* the three captures that produce it.
-        # At 7.0 the pair was 70.5% of the gradient weight while being the least
-        # predictable term in the system, so most of every update was noise from
-        # something arriving once per 8,600 steps. The captures are the dense,
-        # learnable signal, and they are the path to the win in any case.
-        assert w["ally_win"] < 3 * capture_paid
-        assert w["ally_win"] > capture_paid
+        assert capture_paid > kill_payout
 
     def test_zeroing_the_frontline_term_leaves_the_720_fit_untouched(self):
         """The frontline objective is additive: turning it off in the

@@ -24,6 +24,19 @@ GRADIENT_DIAGNOSTICS_LEVELS: tuple[str, ...] = (
     "reward_full",
 )
 
+# What a training launch measures unless told otherwise. ``reward_full`` is the
+# level that makes per-tier gradient pressure observable, which the reward
+# balance is now set against; measuring it is the point of running at all.
+DEFAULT_DIAGNOSTIC_LEVEL: GradientDiagnosticsLevel = "reward_full"
+
+# A diagnosed update pays for one extra backward traversal per component per
+# decomposed term, so the marginal cost falls as this rises while the eager
+# forward -- which the level forces for the whole run either way -- does not.
+# Ten leaves that marginal cost around a tenth of an update and still returns
+# about a hundred measurements over a full run, far more resolution than a
+# balance that drifts over tens of millions of steps needs.
+DEFAULT_DIAGNOSTIC_INTERVAL: int = 10
+
 
 @dataclass(frozen=True)
 class GradientDiagnosticsConfig:
@@ -97,10 +110,12 @@ class GradientDiagnosticsConfig:
         return asdict(self)
 
 
-GRADIENT_DIAGNOSTICS_OFF = GradientDiagnosticsConfig()
+GRADIENT_DIAGNOSTICS_OFF = GradientDiagnosticsConfig(level="off")
 
 
 __all__ = [
+    "DEFAULT_DIAGNOSTIC_INTERVAL",
+    "DEFAULT_DIAGNOSTIC_LEVEL",
     "GRADIENT_DIAGNOSTICS_LEVELS",
     "GRADIENT_DIAGNOSTICS_OFF",
     "GradientDiagnosticsConfig",
