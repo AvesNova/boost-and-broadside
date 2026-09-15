@@ -11,7 +11,10 @@ import pytest
 
 from boost_and_broadside import cli, cli_commands
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
-from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
+from boost_and_broadside.config.diagnostics import (
+    DEFAULT_DIAGNOSTIC_INTERVAL,
+    GradientDiagnosticsConfig,
+)
 from boost_and_broadside.config.resolve import launch_geometry
 from boost_and_broadside.config.vram import TIER_GUARANTEES, VRAM_PRESETS, preset_knobs
 from boost_and_broadside.launch import resolve_training_launch
@@ -370,9 +373,10 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
         "device": "cpu",
         "seed": 17,
         "wandb": False,
-        # Observability, recorded like any other launch decision. Off is what a
-        # run that measured nothing has to say for itself.
-        "gradient_diagnostics": {"level": "off", "interval": 1, "minibatches": 1},
+        # Observability, recorded like any other launch decision -- here the
+        # default, which measures the full reward decomposition every tenth
+        # update so a run can account for its own per-tier gradient pressure.
+        "gradient_diagnostics": {"level": "reward_full", "interval": 10, "minibatches": 1},
         # A CPU launch has nothing to size, and says so rather than implying a
         # decision it did not make. The tiers are still claimed: this launch
         # really does run at half the profile's width and a smaller microbatch,
@@ -689,11 +693,20 @@ def test_analysis_adapters_use_the_locked_4v4_default(command, runtime_name, mon
     assert captured["env_config"].num_ships == 8
 
 
-def test_gradient_diagnostics_default_to_off() -> None:
-    """Nothing measures unless it was asked to."""
+def test_gradient_diagnostics_default_to_reward_full() -> None:
+    """A training launch measures its own per-tier gradient pressure by default."""
     settings = cli_commands.gradient_diagnostics_from_args(_parse(["train", "--profile", "rl"]))
-    assert settings == GradientDiagnosticsConfig(level="off", interval=1, minibatches=1)
-    assert not settings.enabled
+    assert settings == GradientDiagnosticsConfig(
+        level="reward_full", interval=DEFAULT_DIAGNOSTIC_INTERVAL, minibatches=1
+    )
+    assert settings.enabled
+    assert settings.decomposes_value_by_reward
+
+
+def test_gradient_diagnostics_can_still_be_turned_off() -> None:
+    """The compiled update stays one flag away."""
+    args = _parse(["train", "--profile", "rl", "--gradient-diagnostics", "off"])
+    assert not cli_commands.gradient_diagnostics_from_args(args).enabled
 
 
 @pytest.mark.parametrize("level", ["off", "top_level", "reward_policy", "reward_full"])

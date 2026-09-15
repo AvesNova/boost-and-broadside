@@ -46,8 +46,9 @@ class SmokeCase:
     command: str
     profile: str | None = None
     timeout_seconds: int = 90
-    # Gradient-diagnostic level this training case launches at. Off is the
-    # default every non-diagnostic case runs, and the one shipping runs use.
+    # Gradient-diagnostic level this training case launches at. Every case
+    # passes the flag explicitly, so the four levels stay covered whatever the
+    # CLI default is; shipping runs take that default, which is reward_full.
     gradient_diagnostics: str = "off"
 
 

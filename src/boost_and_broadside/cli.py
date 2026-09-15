@@ -14,7 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from boost_and_broadside.config.diagnostics import GRADIENT_DIAGNOSTICS_LEVELS
+from boost_and_broadside.config.diagnostics import (
+    DEFAULT_DIAGNOSTIC_INTERVAL,
+    DEFAULT_DIAGNOSTIC_LEVEL,
+    GRADIENT_DIAGNOSTICS_LEVELS,
+)
 from boost_and_broadside.errors import UserFacingError
 from boost_and_broadside.profiles import PROFILES
 
@@ -280,20 +284,25 @@ COMMANDS: tuple[CommandSpec, ...] = (
             _option(
                 "--gradient-diagnostics",
                 choices=GRADIENT_DIAGNOSTICS_LEVELS,
-                default="off",
+                default=DEFAULT_DIAGNOSTIC_LEVEL,
                 metavar="LEVEL",
                 help=(
                     "Decompose the update's gradient by loss term (top_level), also by "
                     "reward component for the policy (reward_policy), or for the policy "
-                    "and the critic (reward_full). Default: off."
+                    "and the critic (reward_full). Default: reward_full, which is what "
+                    "makes per-tier gradient pressure observable; pass off to restore "
+                    "the compiled update."
                 ),
             ),
             _option(
                 "--gradient-diagnostics-interval",
                 type=_positive_int,
-                default=1,
+                default=DEFAULT_DIAGNOSTIC_INTERVAL,
                 metavar="UPDATES",
-                help="Measure gradient diagnostics every N PPO updates (default: 1).",
+                help=(
+                    "Measure gradient diagnostics every N PPO updates "
+                    f"(default: {DEFAULT_DIAGNOSTIC_INTERVAL})."
+                ),
             ),
             _option(
                 "--gradient-diagnostics-minibatches",
