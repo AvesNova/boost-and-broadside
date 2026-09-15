@@ -145,10 +145,13 @@ REWARDS = RewardConfig(
     # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
     # scaling all of these together is a no-op. They are stated against a win of
     # 1.0 for that reason.
-    # Above the 6.78 that three full captures pay, because ``front_win_threshold``
-    # is 3 and a win that scored less than the captures producing it would leave
-    # the policy indifferent to actually closing the match out.
-    win_weight=7.0,
+    # Deliberately *below* the 6.78 that three full captures pay, reversing the
+    # earlier reasoning. At 7.0 the win pair was 70.5% of the gradient weight
+    # while being the least predictable component in the system, so most of every
+    # update was noise from a term that arrives once per 8,600 steps. The captures
+    # are the signal that is actually dense and learnable, and they are the path
+    # to the win in any case.
+    win_weight=3.0,
     death_weight=0.283,
     damage_weight=0.274,
     # The one ratio the balance rule leaves free. Solved at 0.4875 and set even:
@@ -207,6 +210,8 @@ REWARDS = RewardConfig(
     # Both are totals rather than rates: a meter runs 0 -> 1 over one capture, so
     # these compare to the kill payout without further arithmetic.
     capture_payout_ratio=2.0,
+    # Token weight: trains the head, does not move the policy.
+    outcome_weight=0.01,
     capture_progress_weight=0.565,
     front_advance_weight=1.13,
     speed_weight=0.0,
@@ -227,8 +232,19 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
     # learns P(win) itself. Expect its explained variance to *fall*: a discounted
     # terminal target is about zero for most of an episode and trivially
     # predictable, where P(win) early is genuinely uncertain.
-    "ally_win": 1.0,
-    "enemy_win": 1.0,
+    # 0.9997: a 3,333-step horizon against ~8,600-step episodes, which reaches
+    # well down the match while keeping a real contraction per rollout segment
+    # (0.9997^128 = 0.962). Undiscounted was worse here than the theory suggested:
+    # a 128-step rollout against that episode length bootstraps the value roughly
+    # 67 times before any terminal grounds it, and at gamma 1 there is no
+    # contraction to damp error across those hops. Run 737 showed it -- win
+    # explained variance fell from 0.994 to 0.42, and since the win pair carried
+    # 70% of the gradient weight, most of the update became noise: KL pinned at
+    # target and `epochs_completed` collapsed to 1.0 for most of the run.
+    "ally_win": 0.9997,
+    "enemy_win": 0.9997,
+    # The single stream stays markovian, which is the thing being measured.
+    "outcome": 1.0,
     "front_advance": 0.999,
     "capture_progress": 0.999,
     "ally_combat_death": 0.995,
@@ -261,6 +277,7 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "enemy_win": 0.97,
     "front_advance": 0.97,
     "capture_progress": 0.97,
+    "outcome": 0.97,
     "ally_combat_death": 0.95,
     "enemy_combat_death": 0.95,
     "ally_field_death": 0.95,

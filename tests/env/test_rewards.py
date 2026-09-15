@@ -104,7 +104,7 @@ def _make_4ship_state(cfg):
 
 class TestRewardComponentNames:
     def test_k_is_the_registry_length(self):
-        assert len(REWARD_COMPONENT_NAMES) == 27
+        assert len(REWARD_COMPONENT_NAMES) == 28
 
     def test_source_split_starts_the_registry(self):
         assert REWARD_COMPONENT_NAMES[:8] == (
@@ -141,7 +141,7 @@ class TestRewardComponentNames:
 
     def test_source_split_local_death_is_registered(self):
         assert REWARD_COMPONENT_NAMES[21:23] == ("combat_death", "field_death")
-        assert REWARD_COMPONENT_NAMES[25:27] == ("capture_progress", "front_advance")
+        assert REWARD_COMPONENT_NAMES[25:28] == ("capture_progress", "front_advance", "outcome")
 
     def test_no_duplicates(self):
         assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
@@ -405,7 +405,9 @@ class TestDamagePayoutRatio:
 # The strategic tier: the sparse completion pair and the dense progress pair that
 # pays the capture leading to it. None of the four is touched by the balance rule
 # -- each is exactly the free number that names it.
-FRONTLINE_COMPONENTS = frozenset({"capture_progress", "front_advance"})
+# The whole strategic tier, including the single undiscounted result stream that
+# is carried at a token weight purely so its value head can be watched.
+FRONTLINE_COMPONENTS = frozenset({"capture_progress", "front_advance", "outcome"})
 
 
 class TestRun719Reconstruction:
@@ -459,6 +461,7 @@ class TestRun719Reconstruction:
             closing_speed_weight=0.1,
             front_advance_weight=0.0,
             capture_progress_weight=0.0,
+            outcome_weight=0.0,
         )
 
     def test_every_component_719_carried_is_reproduced_exactly(self):
@@ -535,8 +538,8 @@ class TestShippedWeightsReconstructRun720:
     # into it is not a small mismatch -- once behavior cloning decayed, the policy
     # left the capture zones entirely and optimised the shaping instead.
     DEPARTED_FROM_720 = {
-        "ally_win": (1.0, 7.0),
-        "enemy_win": (1.0, 7.0),
+        "ally_win": (1.0, 3.0),
+        "enemy_win": (1.0, 3.0),
         "facing": (0.09, 0.0),
         "closing_speed": (0.08, 0.0),
     }
@@ -627,14 +630,25 @@ class TestShippedWeightsReconstructRun720:
         capture_paid = w["front_advance"] * ratio
         assert progress_paid > kill_payout
         assert capture_paid > progress_paid
-        assert w["ally_win"] > 3 * capture_paid
+        # The win deliberately sits *below* the three captures that produce it.
+        # At 7.0 the pair was 70.5% of the gradient weight while being the least
+        # predictable term in the system, so most of every update was noise from
+        # something arriving once per 8,600 steps. The captures are the dense,
+        # learnable signal, and they are the path to the win in any case.
+        assert w["ally_win"] < 3 * capture_paid
+        assert w["ally_win"] > capture_paid
 
     def test_zeroing_the_frontline_term_leaves_the_720_fit_untouched(self):
         """The frontline objective is additive: turning it off in the
         elimination arena must not perturb a single combat weight."""
         w = component_weights(REWARDS)
         without = component_weights(
-            dataclasses.replace(REWARDS, front_advance_weight=0.0, capture_progress_weight=0.0)
+            dataclasses.replace(
+                REWARDS,
+                front_advance_weight=0.0,
+                capture_progress_weight=0.0,
+                outcome_weight=0.0,
+            )
         )
         assert {name: value for name, value in w.items() if name not in FRONTLINE_COMPONENTS} == {
             name: value for name, value in without.items() if name not in FRONTLINE_COMPONENTS

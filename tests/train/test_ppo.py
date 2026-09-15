@@ -1303,6 +1303,7 @@ class TestComponentClassification:
             "enemy_field_death",
             "ally_win",
             "enemy_win",
+            "outcome",
         }
 
     def test_tiers_partition_the_registry(self):
@@ -1660,3 +1661,41 @@ class TestUpdateEpochsMetricKeys:
             key = f"critic/explained_variance/{name}"
             assert key in metrics, f"{key} dropped when the KL gate fired early"
             assert math.isfinite(metrics[key])
+
+
+class TestBehaviorCloningRatchet:
+    """The gate withdraws scripted labels once; the evidence for it is not ratcheted."""
+
+    def test_the_coefficient_never_climbs_back(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
+
+        trainer._eval_window_sc.clear()
+        trainer._eval_window_sc.extend([1.0] * 200)  # well past target
+        trainer._apply_schedule_state(0)
+        decayed = trainer._behavior_cloning_coef
+
+        trainer._eval_window_sc.clear()
+        trainer._eval_window_sc.extend([0.0] * 200)  # the window falls right back
+        trainer._apply_schedule_state(0)
+
+        assert decayed == pytest.approx(0.0)
+        assert trainer._behavior_cloning_coef == pytest.approx(0.0)
+
+    def test_the_latch_still_needs_consecutive_evidence(self, tmp_path):
+        """The raw factor drives the avg-model streak and is deliberately *not*
+        ratcheted: that gate is permanent, so if one lucky window pinned the floor
+        the streak could never break and the latch would trip on a single
+        observation three updates later."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._elo_eval_stub = trainer._initialize_rollout_runtime().elo_eval
+
+        trainer._eval_window_sc.clear()
+        trainer._eval_window_sc.extend([1.0] * 200)
+        assert trainer._apply_schedule_state(0) == pytest.approx(0.0)
+
+        trainer._eval_window_sc.clear()
+        trainer._eval_window_sc.extend([0.0] * 200)
+        # Raw factor recovers even though the coefficient does not.
+        assert trainer._apply_schedule_state(0) > 0.0
+        assert trainer._behavior_cloning_coef == pytest.approx(0.0)

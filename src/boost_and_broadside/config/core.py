@@ -562,6 +562,12 @@ class RewardConfig:
     # cannot reliably win the contest declines it.
     capture_payout_ratio: float = 1.0
 
+    # A single signed match result, undiscounted, carried at a token weight so its
+    # value head trains without the policy depending on it. Measurement first:
+    # whether one stream can replace the split pair is a question about whether
+    # the head is learnable, and that can be answered without risking a run on it.
+    outcome_weight: float = 0.0
+
     # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
     shoot_quality_weight: float = 0.0  # shot quality when firing
     shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
@@ -581,6 +587,7 @@ class RewardConfig:
             "damage_weight",
             "front_advance_weight",
             "capture_progress_weight",
+            "outcome_weight",
         ):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0.0:

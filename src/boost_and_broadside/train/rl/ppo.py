@@ -129,6 +129,7 @@ _TIER: dict[str, str] = {
     "enemy_win": "outcome_scale",
     "front_advance": "outcome_scale",
     "capture_progress": "outcome_scale",
+    "outcome": "outcome_scale",
     "ally_combat_death": "kill_death_scale",
     "enemy_combat_death": "kill_death_scale",
     "ally_field_death": "kill_death_scale",
@@ -656,6 +657,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         eval_window_size = train_config.elo_eval.window_size
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
+        # Monotone floor for the behavior-cloning gate; see _apply_schedule_state.
+        self._bc_factor_floor = 1.0
         self._eval_window_ladder = deque(maxlen=eval_window_size)
         self._eval_window_floating = deque(maxlen=eval_window_size)
         self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
@@ -1344,7 +1347,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         window_sc = self._eval_window_sc
         self._scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
         bc_factor = max(0.0, 1.0 - self._scripted_win_rate / self.cfg.bc_winrate_target)
-        self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
+        # Ratcheted: the gate fires once and stays fired. The window is a boxcar
+        # over rated games, so the win rate wanders even with 500 of them, and an
+        # unratcheted factor wanders with it -- run 737 walked 0.87, 0.99, 0.83,
+        # 0.92, 0.77 while trending down. That oscillates the objective itself,
+        # and through a shared trunk it reaches the critic and next-state heads,
+        # not only the actor. Scripted labels are a warm start being withdrawn;
+        # withdrawing them is not a thing to undo because a sample came back low.
+        # Only the *coefficient* is ratcheted. The raw factor is returned
+        # unchanged, because the avg-model latch keys its streak off it and that
+        # gate is permanent: ratcheting the streak's input too would mean one
+        # lucky window pinned the floor at zero, the streak could never break,
+        # and the latch would trip three updates later on a single observation.
+        # The withdrawal of scripted labels is monotone; the evidence for it is
+        # not.
+        self._bc_factor_floor = min(self._bc_factor_floor, bc_factor)
+        self._behavior_cloning_coef = (
+            self._schedule_state.behavior_cloning_coef * self._bc_factor_floor
+        )
         self._entropy_coef = _actor_entropy_coef(
             self._schedule_state.entropy_coef,
             policy_gradient_coef=self._policy_gradient_coef,
