@@ -337,6 +337,42 @@ class EnemyWinReward(AllyWinReward):
     name = "enemy_win"
 
 
+class OutcomeReward(RewardComponent):
+    """The match result as one signed number: +1 won, -1 lost, 0 drew.
+
+    The split ``ally_win``/``enemy_win`` pair exists because one number could not
+    separate "nobody is winning" from "nobody has the advantage yet, but someone
+    will" -- a 4v4 standoff from a 1v1 about to resolve. In a territorial game
+    the front position already carries that distinction in the state, so a single
+    stream is worth measuring.
+
+    Undiscounted, so its value head learns P(win) - P(loss) directly rather than
+    a number scaled by how much of the clock has run. It carries a token weight:
+    the point is to find out whether the head can be learned at all before
+    anything depends on it, so it must not move the policy meanwhile.
+
+    One component rather than a pair, so the lambda supplies no second sign --
+    with ally lambda 1 and enemy lambda 0 a ship's aggregate is simply its own
+    team's result.
+    """
+
+    name = "outcome"
+
+    def compute(
+        self,
+        prev_state: TensorState,
+        actions: torch.Tensor,
+        next_state: TensorState,
+        dones: torch.Tensor,
+    ) -> torch.Tensor:
+        del prev_state, actions
+        team0_won, team1_won, _tied = outcome_masks(next_state, dones)
+        # +1 where team 0 took it, -1 where team 1 did, 0 on a draw.
+        result = (team0_won.float() - team1_won.float()).unsqueeze(1)
+        team0 = next_state.ship_team_id == 0
+        return torch.where(team0, result, -result)
+
+
 class _ZoneCreditReward(RewardComponent):
     """Per-ship credit for a zone meter moving, split by who showed up.
 
@@ -790,6 +826,7 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "speed",  # 24 — penalty when proper speed < min_speed (self only)
     "capture_progress",  # 25 — meter movement, paid to who held the point (self only)
     "front_advance",  # 26 — meter completion, paid the same way (self only)
+    "outcome",  # 27 — the result as one signed number, undiscounted, token weight
 )
 
 _NAME_TO_K: dict[str, int] = {name: k for k, name in enumerate(REWARD_COMPONENT_NAMES)}
@@ -883,6 +920,7 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
             # rather than per-tick rates, and compare to the kill payout directly.
             "capture_progress": float(raw.get("capture_progress_weight", 0.0)),
             "front_advance": float(raw.get("front_advance_weight", 0.0)),
+            "outcome": float(raw.get("outcome_weight", 0.0)),
         }
     )
     # Shaping is not an event and has no opposing side, so it stays individual.
@@ -946,6 +984,7 @@ def build_reward_components(
         LocalFieldDeathReward(weight=w["field_death"]),
         ShootingPenaltyReward(weight=w["shooting_penalty"]),
         SpeedReward(weight=w["speed"], min_speed=rewards.speed_penalty_min),
+        OutcomeReward(weight=w["outcome"]),
         CaptureProgressReward(
             weight=w["capture_progress"],
             payout_ratio=rewards.capture_payout_ratio,
