@@ -86,7 +86,7 @@ class StochasticAgentConfig:
     team_target_distance_prob: tuple[float, float] = (
         0.0,
         0.0,
-    )  # disabled by default; use scripted_team spec to enable
+    )  # disabled in the sole public scripted-agent configuration
 
     # State-derived Frontline strategy; excluded from the legacy tuning vector.
     frontline_aggression: float = 1.0
