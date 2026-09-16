@@ -706,7 +706,6 @@ class CheckpointMixin:
             # The behavior-cloning gate is monotone, so its floor is run state
             # rather than a function of the window -- a resume that recomputed it
             # from the window alone could walk the gate back open.
-            "bc_factor_floor": self._bc_factor_floor,
             "elo_milestone": self._elo_milestone,
             "train_config": {
                 k: v for k, v in dataclasses.asdict(self.cfg).items() if k != "schedule"
@@ -845,7 +844,6 @@ class CheckpointMixin:
         self._eval_window_sc = deque(ckpt["eval_window_sc"], maxlen=window)
         # Defaulted rather than required: checkpoints written before the ratchet
         # existed still load, and start the gate fully open as they did then.
-        self._bc_factor_floor = float(ckpt.get("bc_factor_floor", 1.0))
         self._eval_window_ladder = deque(ckpt["eval_window_ladder"], maxlen=window)
         self._eval_window_floating = deque(ckpt["eval_window_floating"], maxlen=window)
         self._eval_window_live_vs_avg = deque(ckpt["eval_window_live_vs_avg"], maxlen=window)
