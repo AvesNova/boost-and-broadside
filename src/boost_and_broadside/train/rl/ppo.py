@@ -1361,7 +1361,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # scripted games have been recorded).
         window_sc = self._eval_window_sc
         self._scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
-        bc_factor = max(0.0, 1.0 - self._scripted_win_rate / self.cfg.bc_winrate_target)
+        bc_factor = (
+            1.0
+            if self.cfg.bc_winrate_target is None
+            else max(0.0, 1.0 - self._scripted_win_rate / self.cfg.bc_winrate_target)
+        )
         # Tracks the current win rate, and is allowed back up.
         #
         # This was ratcheted -- min() against a running floor -- to stop the
@@ -1827,27 +1831,31 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # walked unconditionally for every micro-batch, so a key that appears
         # only sometimes is a KeyError rather than a missing series.
         zero = policy_logits.new_zeros(())
-        diag_outcome = {"outcome_ce": zero, "outcome_acc": zero, "outcome_labelled": zero}
+        diag_outcome = {"outcome_ce": zero, "outcome_correct": zero, "outcome_labelled": zero}
         if self.cfg.outcome_categorical_coef > 0.0:
-            outcome_ce_loss = self._outcome_categorical_loss(
+            outcome_ce_loss, outcome_graded, outcome_target_class = self._outcome_categorical_loss(
                 outcome_logits, batch.outcome_class, alive_f, mask_sum
             )
             with torch.no_grad():
-                # Read the head where it is *graded*, on realised results only.
-                # Its loss is mostly bootstrap, which can look confident while
-                # being wrong about every match that actually finished.
-                graded = (batch.outcome_class >= 0) & mb_alive
-                graded_n = graded.sum().clamp(min=1)
+                # Graded on every step whose target is a realised result: the
+                # step a match ended on, and the steps before it the backward
+                # pass labelled from it. All ground truth. Grading the terminal
+                # step alone would sample about a thousandth of the batch.
+                #
+                # Both terms divide by the minibatch-total token count rather
+                # than their own per-chunk count, because ``_additive`` *sums*
+                # across micro-batches -- a ratio formed per chunk and then
+                # summed is not a ratio, and read as accuracies above 1.0 in run
+                # 740. The division happens once, after the accumulation.
+                graded = outcome_graded & mb_alive
                 predicted = outcome_logits.argmax(-1).to(batch.outcome_class.dtype)
-                # Keyed to match the ``_additive`` table: anything not named
-                # there is accumulated by nothing and never reaches the logger.
+                correct = (predicted == outcome_target_class) & graded
+                numel = denoms["numel"]
                 diag_outcome.update(
                     {
                         "outcome_ce": outcome_ce_loss.detach(),
-                        "outcome_labelled": graded.float().mean(),
-                        "outcome_acc": (
-                            ((predicted == batch.outcome_class) & graded).sum() / graded_n
-                        ).float(),
+                        "outcome_labelled": graded.sum() / numel,
+                        "outcome_correct": correct.sum() / numel,
                     }
                 )
 
@@ -2024,7 +2032,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             mask_sum:      Scalar denominator shared with the other masked means.
 
         Returns:
-            Scalar masked-mean cross-entropy against the backed-up target.
+            ``(loss, graded, graded_class)`` -- the masked-mean cross-entropy,
+            the mask of steps whose target is a realised result rather than a
+            bootstrap, and the class each of those was graded against.
         """
 
         horizon = logits.shape[0]
@@ -2050,7 +2060,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         log_probabilities = torch.nn.functional.log_softmax(logits.float(), dim=-1)
         cross_entropy = -(target * log_probabilities).sum(-1)  # (T, B, N)
-        return (cross_entropy * alive_f).sum() / mask_sum
+        graded_class = torch.gather(
+            outcome_class.clamp(min=0).long(), 0, nearest.clamp(max=horizon - 1)
+        ).to(outcome_class.dtype)
+        return (cross_entropy * alive_f).sum() / mask_sum, found, graded_class
 
     def _reward_policy_terms(
         self,
@@ -2600,7 +2613,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "returns/advantage_std": [],
             "episode/alive_fraction": [],
             "outcome_head/cross_entropy": [],
-            "outcome_head/accuracy": [],
+            "outcome_head/correct_fraction": [],
             "outcome_head/labelled_fraction": [],
             "train/gradient_norm": [],
             # Fraction of optimizer steps whose gradients were non-finite and
@@ -2705,7 +2718,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("entropy_turn", "entropy_turn"),
                     ("entropy_shoot", "entropy_shoot"),
                     ("outcome_ce", "outcome_ce"),
-                    ("outcome_acc", "outcome_acc"),
+                    ("outcome_correct", "outcome_correct"),
                     ("outcome_labelled", "outcome_labelled"),
                 )
                 _primary_k = (
@@ -2745,7 +2758,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("returns/aggregate_std", "ret_agg_std"),
                     ("episode/alive_fraction", "alive_frac"),
                     ("outcome_head/cross_entropy", "outcome_ce"),
-                    ("outcome_head/accuracy", "outcome_acc"),
+                    ("outcome_head/correct_fraction", "outcome_correct"),
                     ("outcome_head/labelled_fraction", "outcome_labelled"),
                 )
                 scalar_accum_step: dict[str, torch.Tensor] = {
@@ -2909,6 +2922,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         accum_k["critic/explained_variance"] = ev_epoch
 
         metrics: dict = {k: torch.stack(v).mean().item() for k, v in accum_scalar.items() if v}
+        # Accuracy is a ratio of two accumulated shares, so it is formed after
+        # the sum rather than inside it. Undefined when no match ended anywhere
+        # in the batch, which is ordinary: a 128-step rollout against ~8,000-step
+        # episodes labels well under a percent of steps.
+        labelled = metrics.get("outcome_head/labelled_fraction", 0.0)
+        correct = metrics.pop("outcome_head/correct_fraction", 0.0)
+        if labelled > 0.0:
+            metrics["outcome_head/accuracy"] = correct / labelled
         metrics["train/epochs_completed"] = float(epoch_idx + 1)
 
         for key, tensors in accum_k.items():

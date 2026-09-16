@@ -223,7 +223,14 @@ class TrainConfig:
     elo_temperature: float  # Elo bandwidth for proximity-weighted sampling
     league_uniform_sampling: bool  # if True, sample league opponents uniformly
     elo_eval: EloEvalConfig  # continuous evaluation batch and rating parameters
-    bc_winrate_target: float  # win rate vs scripted at which the BC aux loss reaches zero
+    # Win rate vs scripted at which the BC aux loss reaches zero. ``None``
+    # disables the decay: cloning holds at full strength for the whole run.
+    # That is what a *pretraining* run wants -- decaying the only signal that
+    # trains its actor caps the clone at roughly teacher parity, which is the
+    # thing the artifact exists to be as good as possible at. The same idiom
+    # ``target_kl=None`` uses in the BC profile, for the same reason: an
+    # RL-specific gate that does not apply under pure supervision.
+    bc_winrate_target: float | None
     histogram_interval: int  # record expensive histograms every N updates
 
     # --- Gradient accumulation (memory-only, per-machine knob) ---
@@ -282,5 +289,7 @@ class TrainConfig:
             raise ValueError(
                 f"rollouts_per_update must be positive, got {self.rollouts_per_update}"
             )
-        if not 0.0 < self.bc_winrate_target <= 1.0:
-            raise ValueError(f"bc_winrate_target must be in (0, 1], got {self.bc_winrate_target}")
+        if self.bc_winrate_target is not None and not 0.0 < self.bc_winrate_target <= 1.0:
+            raise ValueError(
+                f"bc_winrate_target must be in (0, 1] or None, got {self.bc_winrate_target}"
+            )

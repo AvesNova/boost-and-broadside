@@ -28,8 +28,16 @@ class _Head:
 
 
 def _loss(logits, outcome_class):
+    """The scalar loss alone; the mask and graded class are tested separately."""
     alive = torch.ones(logits.shape[:3])
-    return _Head.loss(None, logits, outcome_class, alive, alive.sum())
+    return _Head.loss(None, logits, outcome_class, alive, alive.sum())[0]
+
+
+def _graded(logits, outcome_class):
+    """``(mask, class)`` of the steps whose target is a realised result."""
+    alive = torch.ones(logits.shape[:3])
+    _, mask, cls = _Head.loss(None, logits, outcome_class, alive, alive.sum())
+    return mask, cls
 
 
 def test_the_classes_are_ordered_so_the_index_carries_the_result() -> None:
@@ -121,3 +129,25 @@ def test_the_tie_class_is_reachable_from_a_drawn_match() -> None:
     logits[..., OUTCOME_TIE_INDEX] = 8.0
     label = torch.full((1, 1, 1), OUTCOME_TIE_INDEX, dtype=torch.int8)
     assert float(_loss(logits, label)) < 0.01
+
+
+def test_grading_covers_the_steps_the_label_reached_not_just_the_terminal() -> None:
+    """Accuracy is read off realised results. Restricting that to the terminal
+    step alone would sample about a thousandth of a batch and read as noise, so
+    the mask has to include the steps the backward pass labelled from it."""
+    outcome = torch.full((4, 1, 1), -1, dtype=torch.int8)
+    outcome[3] = OUTCOME_WIN_INDEX
+    logits = torch.zeros(4, 1, 1, NUM_OUTCOME_CLASSES)
+
+    mask, graded_class = _graded(logits, outcome)
+    assert bool(mask.all()), "every step leads to the terminal, so every step is graded"
+    assert torch.equal(graded_class, torch.full((4, 1, 1), OUTCOME_WIN_INDEX, dtype=torch.int8))
+
+
+def test_a_batch_with_no_finished_match_grades_nothing() -> None:
+    """Bootstrapped steps are not ground truth, so they must not be counted as
+    correct or incorrect -- an accuracy over them would measure only how
+    self-consistent the head is."""
+    outcome = torch.full((5, 2, 3), -1, dtype=torch.int8)
+    mask, _ = _graded(torch.randn(5, 2, 3, NUM_OUTCOME_CLASSES), outcome)
+    assert not bool(mask.any())

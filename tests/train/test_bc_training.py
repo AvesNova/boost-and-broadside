@@ -146,15 +146,19 @@ def test_bounded_bc_run_learns_from_supervision_and_freezes_no_milestone(tmp_pat
 
 
 class TestEntropyAfterTheCloningCutoff:
-    """What the actor is left with once the cloning weight decays to zero.
+    """What the actor is left with if nothing trains it.
 
-    ``bc_winrate_target`` zeroes ``_behavior_cloning_coef`` at a 45% scripted win
-    rate, and BC's ``policy_gradient_coef`` is zero for its whole budget. Before
-    this gate the surviving actor term was ``entropy_coef * ent_loss``, whose
-    optimum is the uniform distribution: at a reduced launch width a policy
-    cloned to a KL of 1.12 and 60% of maximum action entropy came back to 99.8%
-    of maximum and a KL of 2.66 — its untrained value — within 400 updates,
-    while a control arm that kept cloning held at 1.10 and 60%.
+    With both coefficients at zero the surviving actor term is
+    ``entropy_coef * ent_loss``, whose optimum is the uniform distribution: at a
+    reduced launch width a policy cloned to a KL of 1.12 and 60% of maximum
+    action entropy came back to 99.8% of maximum and a KL of 2.66 — its
+    untrained value — within 400 updates, while a control arm that kept cloning
+    held at 1.10 and 60%.
+
+    The BC profile can no longer reach that state: ``bc_winrate_target`` is None
+    there, so cloning holds at full strength for the whole budget. The guard
+    stays because it is not about one profile -- any configuration that lets both
+    coefficients reach zero needs it.
     """
 
     def test_entropy_is_dropped_when_no_objective_trains_the_actor(self) -> None:
@@ -178,8 +182,14 @@ class TestEntropyAfterTheCloningCutoff:
             == 0.005
         )
 
-    def test_a_bc_run_holds_entropy_until_its_cloning_weight_decays(self, tmp_path) -> None:
-        """At the real trainer, through the schedule refresh that sets both."""
+    def test_a_bc_run_never_stops_cloning_however_well_it_plays(self, tmp_path) -> None:
+        """At the real trainer, through the schedule refresh that sets both.
+
+        A pretraining run has no second objective to hand over to, so decaying
+        the one gradient that reaches its actor would end the useful part of the
+        run -- and at a *perfect* win rate, which is where the clone is finally
+        worth keeping. Entropy therefore never gets dropped either.
+        """
         trainer = _trainer(tmp_path)
         metrics: dict = {}
         runtime = trainer._initialize_rollout_runtime()
@@ -190,14 +200,15 @@ class TestEntropyAfterTheCloningCutoff:
         assert trainer._behavior_cloning_coef > 0.0
         assert trainer._entropy_coef == scheduled == metrics["schedule/entropy_coef"]
 
-        # The cutoff: a full window at or above the target win rate.
+        # What used to be the cutoff: a full window of wins against scripted.
         window = trainer._eval_window_sc
         window.extend([1.0] * window.maxlen)
         trainer._refresh_training_schedule(metrics, runtime.elo_eval)
 
-        assert trainer._behavior_cloning_coef == 0.0
+        assert trainer.cfg.bc_winrate_target is None
+        assert trainer._behavior_cloning_coef > 0.0
         assert trainer._policy_gradient_coef == 0.0
-        assert trainer._entropy_coef == 0.0 == metrics["schedule/entropy_coef"]
+        assert trainer._entropy_coef == scheduled == metrics["schedule/entropy_coef"]
         trainer.shutdown()
 
     def test_an_rl_run_keeps_its_entropy_bonus(self, tmp_path) -> None:
