@@ -289,9 +289,9 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 help=(
                     "Decompose the update's gradient by loss term (top_level), also by "
                     "reward component for the policy (reward_policy), or for the policy "
-                    "and the critic (reward_full). Default: reward_full, which is what "
-                    "makes per-tier gradient pressure observable; pass off to restore "
-                    "the compiled update."
+                    "and the critic (reward_full). Default: off. Any level costs the "
+                    "compiled update for the whole run (~2x); measure post hoc by "
+                    "resuming a checkpoint with a level instead."
                 ),
             ),
             _option(
