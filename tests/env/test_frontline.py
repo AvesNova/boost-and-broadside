@@ -15,6 +15,7 @@ from boost_and_broadside.config import (
     ShipConfig,
     ZoneRole,
 )
+from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES
 from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import (
@@ -22,7 +23,9 @@ from boost_and_broadside.env.frontline import (
     apply_frontline_tick,
     roles_from_front,
     zone_membership,
+    zone_terminal_distances,
 )
+from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.evaluation.match import evaluate_matchup
@@ -559,3 +562,145 @@ def test_neither_team_is_given_a_favoured_handedness() -> None:
     # What randomisation removes is the *preference*: neither hand belongs to a
     # particular side across episodes, which is what the two checks above pin.
     assert bool((torch.sign(team0) == -torch.sign(team1)).all())
+
+
+class TestZoneTerminalDistances:
+    """Per-zone distance to the capture that ends the match.
+
+    The channels answer "if this zone changes hands, how far is the match from
+    over", which is a property of a place on the line rather than of an event,
+    so it is defined for every zone on every tick regardless of ownership.
+    """
+
+    @pytest.mark.parametrize("threshold", [1, 2, 3, 5, 7, 15])
+    def test_no_distance_is_ever_negative(self, threshold: int) -> None:
+        """A zone behind the line reads *far from deciding*, never a negative.
+
+        The fallback that produces this fires in both regimes -- for zones past
+        the winning line when the threshold is short, and near either terminal
+        when it is long -- so every reachable front position is swept.
+        """
+        positions = torch.arange(-threshold, threshold + 1)
+        offensive, defensive = zone_terminal_distances(
+            positions, torch.full_like(positions, threshold)
+        )
+        assert int(offensive.min()) >= 0
+        assert int(defensive.min()) >= 0
+
+    @pytest.mark.parametrize("threshold", [3, 15])
+    def test_the_contested_zone_reports_the_distance_left_after_taking_it(
+        self, threshold: int
+    ) -> None:
+        """The one zone each side can actually capture right now must agree with
+        simple arithmetic: Team 0 taking it leaves ``T - p - 1``.
+
+        ``roles_from_front`` puts Team 0's target at ``(z - p) % 5 ==
+        TEAM1_DEFENSE``'s slot and Team 1's at ``TEAM0_DEFENSE``'s, which is why
+        the two channels resolve different residues rather than one shared one.
+        """
+        for position in range(-threshold + 1, threshold):
+            front = torch.tensor([position])
+            offensive, defensive = zone_terminal_distances(front, torch.tensor([threshold]))
+            roles = roles_from_front(front)[0]
+            team0_target = int((roles == int(ZoneRole.TEAM1_DEFENSE)).nonzero()[0])
+            team1_target = int((roles == int(ZoneRole.TEAM0_DEFENSE)).nonzero()[0])
+            assert int(offensive[0, team0_target]) == threshold - position - 1
+            assert int(defensive[0, team1_target]) == threshold + position - 1
+
+    def test_the_zone_that_wins_the_match_reads_zero(self) -> None:
+        """Zero is reserved for *this capture ends it*, which is the whole point
+        of measuring from the terminal rather than from the centre."""
+        front = torch.tensor([2])  # one capture from a threshold-3 win
+        offensive, _ = zone_terminal_distances(front, torch.tensor([3]))
+        roles = roles_from_front(front)[0]
+        target = int((roles == int(ZoneRole.TEAM1_DEFENSE)).nonzero()[0])
+        assert int(offensive[0, target]) == 0
+
+    def test_a_zone_is_worth_less_each_lap_the_front_makes(self) -> None:
+        """With a threshold past the zone count the front laps the circle, and
+        the *same* zone must read smaller every time it comes round -- taking it
+        early leaves the most work, taking it last leaves none."""
+        threshold = 15
+        for zone in range(NUM_FRONTLINE_ZONES):
+            readings = []
+            for position in range(0, threshold, NUM_FRONTLINE_ZONES):
+                front = torch.tensor([position])
+                offensive, _ = zone_terminal_distances(front, torch.tensor([threshold]))
+                readings.append(int(offensive[0, zone]))
+            assert readings == sorted(readings, reverse=True), (zone, readings)
+            assert len(set(readings)) == len(readings), (zone, readings)
+            # Each lap costs exactly one circuit of the ring.
+            assert readings[0] - readings[-1] == 2 * NUM_FRONTLINE_ZONES, (zone, readings)
+
+    def test_exactly_one_zone_closes_the_match(self) -> None:
+        """Within a lap of the win, one and only one zone reads zero -- the
+        residue class that lands on the threshold itself. Which zone that is
+        depends on the threshold, not on the zone index."""
+        threshold = 15
+        offensive, _ = zone_terminal_distances(
+            torch.tensor([threshold - 1]), torch.tensor([threshold])
+        )
+        assert int((offensive[0] == 0).sum()) == 1
+
+    def test_the_ladder_covers_every_rung_once(self) -> None:
+        """Across the five zones the offensive channel is a permutation of five
+        consecutive distances: the line is tiled, with no gap and no duplicate."""
+        offensive, _ = zone_terminal_distances(torch.tensor([0]), torch.tensor([15]))
+        rungs = sorted(int(v) for v in offensive[0])
+        assert rungs == list(range(rungs[0], rungs[0] + NUM_FRONTLINE_ZONES))
+
+    def test_the_team_flip_exchanges_the_two_channels(self) -> None:
+        """A zone is a fixed place on the line. Flipping perspective changes
+        which side is attacking it, not where it is, so Team 1's offensive view
+        *is* Team 0's defensive one -- already computed, never recomputed.
+
+        This is the assertion that guards the run-736 failure class: a mirrored
+        feature that is wrong for one side produces a policy that plays that
+        side badly and shows nothing unusual in any aggregate metric.
+        """
+        env = _env(num_envs=2, num_ships=8)
+        agent = StochasticScriptedAgent(env.ship_config, StochasticAgentConfig())
+        for _ in range(40):
+            env.tick(agent.get_actions(env.state))
+        obs = observation_from_state(env.state, env.ship_config)
+        flipped = obs.flip_team(num_ships=env.state.ship_pos.shape[1])
+        assert torch.equal(
+            flipped[ObsKey.ZONE_OFFENSIVE_DISTANCE], obs[ObsKey.ZONE_DEFENSIVE_DISTANCE]
+        )
+        assert torch.equal(
+            flipped[ObsKey.ZONE_DEFENSIVE_DISTANCE], obs[ObsKey.ZONE_OFFENSIVE_DISTANCE]
+        )
+        # Flipping twice is the identity, so neither channel drifts.
+        assert torch.equal(
+            flipped.flip_team(num_ships=env.state.ship_pos.shape[1])[
+                ObsKey.ZONE_OFFENSIVE_DISTANCE
+            ],
+            obs[ObsKey.ZONE_OFFENSIVE_DISTANCE],
+        )
+
+    def test_the_flipped_channels_still_obey_the_flipped_roles(self) -> None:
+        """The swap has to survive contact with the role labels it ships beside.
+
+        ``flip_team`` relabels roles without reflecting space -- ``swap(base[i])
+        == base[-i % 5]`` -- so a flipped observation is a relabelled board, not
+        a mirrored one. Negating the front and recomputing therefore does *not*
+        reproduce the swap, and asserting that it does would be testing a board
+        nobody plays on. What must hold is the arithmetic: in the flipped view,
+        the zone now labelled ``TEAM1_DEFENSE`` is the ego team's target, and
+        taking it must leave ``T - (-p) - 1`` captures to win.
+        """
+        threshold = 15
+        for position in range(-13, 14):
+            front = torch.tensor([position])
+            offensive, defensive = zone_terminal_distances(front, torch.tensor([threshold]))
+            roles = roles_from_front(front)[0]
+            flipped_roles = torch.where(
+                roles == 0,
+                4,
+                torch.where(
+                    roles == 4, 0, torch.where(roles == 1, 3, torch.where(roles == 3, 1, roles))
+                ),
+            )
+            ego_target = int((flipped_roles == int(ZoneRole.TEAM1_DEFENSE)).nonzero()[0])
+            # After the swap the ego team's offensive channel is the old defensive one.
+            assert int(defensive[0, ego_target]) == threshold + position - 1, position
