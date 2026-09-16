@@ -373,10 +373,10 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
         "device": "cpu",
         "seed": 17,
         "wandb": False,
-        # Observability, recorded like any other launch decision -- here the
-        # default, which measures the full reward decomposition every tenth
-        # update so a run can account for its own per-tier gradient pressure.
-        "gradient_diagnostics": {"level": "reward_full", "interval": 10, "minibatches": 1},
+        # Observability, recorded like any other launch decision. Off is what a
+        # run that measured nothing has to say for itself, and what a run that
+        # wants its compiled update has to be.
+        "gradient_diagnostics": {"level": "off", "interval": 10, "minibatches": 1},
         # A CPU launch has nothing to size, and says so rather than implying a
         # decision it did not make. The tiers are still claimed: this launch
         # really does run at half the profile's width and a smaller microbatch,
@@ -693,20 +693,28 @@ def test_analysis_adapters_use_the_locked_4v4_default(command, runtime_name, mon
     assert captured["env_config"].num_ships == 8
 
 
-def test_gradient_diagnostics_default_to_reward_full() -> None:
-    """A training launch measures its own per-tier gradient pressure by default."""
+def test_gradient_diagnostics_default_to_off() -> None:
+    """Training keeps the compiled update; the measurement is taken post hoc.
+
+    Any level above off forces an eager forward for the whole run, which run 739
+    paid 2.05x for. Both scalers ride in the checkpoint, so resuming one with a
+    level restores the same normalization and reconstructs the same per-tier
+    curve afterwards.
+    """
     settings = cli_commands.gradient_diagnostics_from_args(_parse(["train", "--profile", "rl"]))
     assert settings == GradientDiagnosticsConfig(
-        level="reward_full", interval=DEFAULT_DIAGNOSTIC_INTERVAL, minibatches=1
+        level="off", interval=DEFAULT_DIAGNOSTIC_INTERVAL, minibatches=1
     )
+    assert not settings.enabled
+
+
+def test_gradient_diagnostics_stay_one_flag_away() -> None:
+    """The post-hoc probe is the default's whole justification, so the level it
+    needs has to remain reachable from the command line."""
+    args = _parse(["train", "--profile", "rl", "--gradient-diagnostics", "reward_full"])
+    settings = cli_commands.gradient_diagnostics_from_args(args)
     assert settings.enabled
     assert settings.decomposes_value_by_reward
-
-
-def test_gradient_diagnostics_can_still_be_turned_off() -> None:
-    """The compiled update stays one flag away."""
-    args = _parse(["train", "--profile", "rl", "--gradient-diagnostics", "off"])
-    assert not cli_commands.gradient_diagnostics_from_args(args).enabled
 
 
 @pytest.mark.parametrize("level", ["off", "top_level", "reward_policy", "reward_full"])

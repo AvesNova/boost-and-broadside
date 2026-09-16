@@ -24,17 +24,26 @@ GRADIENT_DIAGNOSTICS_LEVELS: tuple[str, ...] = (
     "reward_full",
 )
 
-# What a training launch measures unless told otherwise. ``reward_full`` is the
-# level that makes per-tier gradient pressure observable, which the reward
-# balance is now set against; measuring it is the point of running at all.
-DEFAULT_DIAGNOSTIC_LEVEL: GradientDiagnosticsLevel = "reward_full"
+# Off, because the measurement does not have to happen while training does.
+#
+# Any level above off costs the compiled update for the *whole run* -- the eager
+# switch reads ``enabled``, not the interval -- and run 739 paid 2.05x for it,
+# 1,969 steps a second against 738's 4,038. Raising the interval does not buy
+# that back: a diagnosed update adds roughly a tenth of an update's work at
+# interval ten, so the eager forward is nearly all of the bill.
+#
+# Nothing is lost by deferring it. Both scalers ride in the checkpoint
+# (``adv_scaler_state_dict`` holds the per-component EMA), so resuming a
+# checkpoint with ``--gradient-diagnostics reward_full`` for a handful of
+# updates normalizes exactly as training did and reconstructs the same per-tier
+# curve after the fact, for a few minutes of GPU per point. A balance that
+# drifts over tens of millions of steps does not need per-update resolution.
+DEFAULT_DIAGNOSTIC_LEVEL: GradientDiagnosticsLevel = "off"
 
-# A diagnosed update pays for one extra backward traversal per component per
-# decomposed term, so the marginal cost falls as this rises while the eager
-# forward -- which the level forces for the whole run either way -- does not.
-# Ten leaves that marginal cost around a tenth of an update and still returns
-# about a hundred measurements over a full run, far more resolution than a
-# balance that drifts over tens of millions of steps needs.
+# Only consulted once a level is asked for. A diagnosed update pays one extra
+# backward traversal per component per decomposed term, so ten keeps that
+# marginal cost near a tenth of an update while still returning about a hundred
+# measurements over a full run.
 DEFAULT_DIAGNOSTIC_INTERVAL: int = 10
 
 
