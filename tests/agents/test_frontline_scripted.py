@@ -1,14 +1,13 @@
-"""Focused tests for the Gate-1 frontline scripted-controller priorities."""
+"""State-derived Frontline strategy and exact dogfighter endpoint contracts."""
+
+import copy
 
 import pytest
 import torch
 
-from boost_and_broadside.agents.scripted_utils import select_targets
+from boost_and_broadside.agents.frontline_strategy import frontline_strategy
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.agents.stochastic_scripted import (
-    FrontlineTendency,
-    StochasticScriptedAgent,
-)
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig, ZoneRole
 from tests.conftest import make_state
 
@@ -45,495 +44,190 @@ def _frontline_state(*, teams: list[int] | None = None):
     return config, state
 
 
-def _targeting(agent: StochasticScriptedAgent, state):
-    closest_dist, target_idx, has_target, _ = select_targets(state, agent.ship_config)
-    return agent._frontline_targets(state, closest_dist, target_idx, has_target)
+def _scenario(size=4):
+    ship, state = _frontline_state(teams=[0] * size + [1] * size)
+    state.ship_pos[0, :size] = torch.linspace(5500, 6500, size).to(torch.complex64) + 100j
+    state.ship_pos[0, size:] = torch.linspace(8000, 9500, size).to(torch.complex64) + 200j
+    visibility = torch.ones((1, 2, 2 * size), dtype=torch.bool)
+    return ship, state, visibility
 
 
-def _set_tendencies(
-    agent: StochasticScriptedAgent,
-    state,
-    tendencies: list[FrontlineTendency],
-    *,
-    tie_attack: tuple[bool, bool] = (False, False),
-) -> None:
-    memory = agent._frontline_episode_memory(state)
-    memory.tendencies[0] = torch.tensor(tendencies)
-    memory.tie_attack[0] = torch.tensor(tie_attack)
+def test_valid_defender_reduces_redundant_demand():
+    ship, state, visibility = _scenario()
+    state.ship_pos[0, 1] = 12000 + 100j
+    before = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    state.ship_pos[0, 1] = 6000 + 100j
+    after = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    assert after.zone_need[0, 0, 2] < before.zone_need[0, 0, 2]
 
 
-def _bearing(source: complex, target: complex, world_size: tuple[float, float]) -> complex:
-    width, height = world_size
-    dx = (target.real - source.real + width / 2.0) % width - width / 2.0
-    dy = (target.imag - source.imag + height / 2.0) % height - height / 2.0
-    displacement = complex(dx, dy)
-    if displacement == 0.0j:
-        return 0.0j
-    return displacement / abs(displacement)
+def test_sole_defender_has_greater_marginal_need_than_remote_ally():
+    ship, state, visibility = _scenario(2)
+    state.ship_pos[0, :2] = torch.tensor([6000 + 100j, 3000 + 100j])
+    result = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    assert result.zone_need[0, 0, 2] > result.zone_need[0, 1, 2]
 
 
-def test_frontline_identity_draw_is_fifty_twenty_five_twenty_five() -> None:
-    config = ShipConfig(world_size=(16384.0, 16384.0))
-    state = make_state(
-        num_envs=4096,
-        max_ships=8,
-        max_bullets=0,
-        ship_config=config,
-    )
-    with torch.random.fork_rng():
-        torch.manual_seed(20260909)
-        agent = StochasticScriptedAgent(config, StochasticAgentConfig())
-        tendencies = agent._frontline_episode_memory(state).tendencies.flatten()
-
-    proportions = torch.bincount(tendencies, minlength=3).float() / tendencies.numel()
-    assert proportions.tolist() == pytest.approx([0.5, 0.25, 0.25], abs=0.01)
+def test_enemy_pressure_recruits_reinforcements():
+    ship, state, visibility = _scenario()
+    before = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    state.ship_pos[0, 4] = 6000 + 100j
+    after = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    assert torch.all(after.zone_need[0, :4, 2] > before.zone_need[0, :4, 2])
 
 
-def test_timid_low_health_disengages_from_nearby_enemy_until_fully_healed() -> None:
-    config, state = _frontline_state()
-    state.ship_pos[0] = torch.tensor(
-        [1000.0 + 100.0j, 2000.0 + 100.0j, 1100.0 + 100.0j, 10000.0 + 100.0j]
-    )
-    state.ship_health[0, 0] = 29.0
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=500.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.TIMID,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.TIMID,
-        ],
-    )
-
-    distance, bearing, engage = _targeting(agent, state)
-
-    assert not engage[0, 0]
-    assert distance[0, 0].item() == pytest.approx(2000.0)
-    assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
-
-    state.ship_health[0, 0] = 99.0
-    _, _, engage = _targeting(agent, state)
-    assert not engage[0, 0]
-
-    state.ship_health[0, 0] = config.max_health
-    distance, bearing, engage = _targeting(agent, state)
-    assert engage[0, 0]
-    assert distance[0, 0].item() == pytest.approx(100.0)
-    assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
-
-
-def test_timid_at_thirty_percent_does_not_retreat() -> None:
-    config, state = _frontline_state()
-    state.ship_pos[0] = torch.tensor(
-        [1000.0 + 100.0j, 2000.0 + 100.0j, 9000.0 + 100.0j, 10000.0 + 100.0j]
-    )
-    state.ship_health[0, 0] = 30.0
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.TIMID,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-        ],
-    )
-
-    distance, bearing, engage = _targeting(agent, state)
-
-    assert not engage[0, 0]
-    assert distance[0, 0].item() == pytest.approx(4000.0)
-    assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
-
-
-def test_single_enemy_on_point_rallies_both_teams_without_defender_presence() -> None:
-    config, state = _frontline_state(teams=[0, 0, 0, 1, 1, 1])
-    state.ship_pos[0] = torch.tensor(
-        [
-            9000.0 + 100.0j,  # lone team-0 attacker in team 1's defense
-            1000.0 + 100.0j,
-            2000.0 + 100.0j,
-            11000.0 + 100.0j,
-            12000.0 + 100.0j,
-            13000.0 + 100.0j,
-        ]
-    )
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [FrontlineTendency.DEFENSIVE] * 3 + [FrontlineTendency.OFFENSIVE] * 3,
-    )
-
-    distance, bearing, engage = _targeting(agent, state)
-
-    assert not engage.any()
-    expected = torch.tensor(
-        [
-            _bearing(state.ship_pos[0, i].item(), 9000.0 + 100.0j, config.world_size)
-            for i in range(6)
-        ],
-        dtype=torch.complex64,
-    )
-    assert torch.allclose(bearing[0], expected)
-    assert distance[0, 0].item() == pytest.approx(0.0)
-
-
-def test_healthy_ship_engages_nearby_enemy_over_objective_with_toroidal_bearing() -> None:
-    config, state = _frontline_state()
-    state.ship_pos[0] = torch.tensor(
-        [16370.0 + 100.0j, 4000.0 + 100.0j, 10.0 + 100.0j, 10000.0 + 100.0j]
-    )
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=500.0),
-    )
-
-    distance, bearing, engage = _targeting(agent, state)
-
-    assert engage[0, 0]
-    assert distance[0, 0].item() == pytest.approx(24.0)
-    assert bearing[0, 0].item() == pytest.approx(1.0 + 0.0j)
-
-
-def test_both_contested_points_restore_episode_tendencies_and_timid_majority() -> None:
-    config, state = _frontline_state(teams=[0, 0, 0, 0, 1, 1, 1, 1])
-    state.ship_pos[0] = torch.tensor(
-        [
-            9000.0 + 100.0j,  # team 0 contests team 1's defense
-            1000.0 + 100.0j,
-            2000.0 + 100.0j,
-            3000.0 + 100.0j,
-            6000.0 + 100.0j,  # team 1 contests team 0's defense
-            11000.0 + 100.0j,
-            12000.0 + 100.0j,
-            13000.0 + 100.0j,
-        ]
-    )
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.TIMID,  # team-0 majority attacks
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.TIMID,  # team-1 majority defends
-        ],
-    )
-
-    _, bearing, engage = _targeting(agent, state)
-
-    expected_targets = [
-        9000.0 + 100.0j,
-        9000.0 + 100.0j,
-        6000.0 + 100.0j,
-        9000.0 + 100.0j,
-        6000.0 + 100.0j,
-        9000.0 + 100.0j,
-        9000.0 + 100.0j,
-        9000.0 + 100.0j,
+def test_aggression_monotonically_biases_combat_and_objectives():
+    ship, state, visibility = _scenario()
+    results = [
+        frontline_strategy(state, ship, StochasticAgentConfig(frontline_aggression=a), visibility)
+        for a in (-1, 0, 1)
     ]
-    expected = torch.tensor(
-        [
-            _bearing(state.ship_pos[0, i].item(), target, config.world_size)
-            for i, target in enumerate(expected_targets)
-        ],
-        dtype=torch.complex64,
-    )
-    assert not engage.any()
-    assert torch.allclose(bearing[0], expected)
+    for lower, upper in zip(results, results[1:]):
+        assert torch.all(upper.combat_score >= lower.combat_score)
+        assert torch.all(upper.zone_preference[0, :4, 3] > lower.zone_preference[0, :4, 3])
 
 
-def test_neither_point_contested_uses_tendencies_and_stable_tie_break() -> None:
-    config, state = _frontline_state(teams=[0, 0, 0, 0, 1, 1, 1, 1])
-    state.ship_pos[0] = torch.tensor(
-        [
-            1000.0 + 100.0j,
-            1400.0 + 100.0j,
-            1800.0 + 100.0j,
-            2200.0 + 100.0j,
-            10000.0 + 100.0j,
-            10400.0 + 100.0j,
-            10800.0 + 100.0j,
-            11200.0 + 100.0j,
-        ]
-    )
+def test_hidden_enemy_changes_do_not_change_labels():
+    ship, state, visibility = _scenario()
+    visibility[:, 0, 4:] = False
+    agent = StochasticScriptedAgent(ship, StochasticAgentConfig())
+    before = agent.get_actions_and_probs(state, visibility)[1][:, :4]
+    state.ship_pos[:, 4:] = state.ship_pos[:, :4] + 1j
+    state.ship_health[:, 4:] = 1
+    state.ship_vel[:, 4:] = 100j
+    state.ship_alive[:, 4:] = False
+    after = agent.get_actions_and_probs(state, visibility)[1][:, :4]
+    assert torch.equal(before, after)
+
+
+@pytest.mark.parametrize("flat", [False, True])
+def test_close_range_is_exact_legacy_dogfighter(flat):
+    ship, state, visibility = _scenario(1)
+    state.ship_pos[0] = torch.tensor([6000 + 100j, 6100 + 110j])
+    state.ship_health[0, 0] = 1  # recovery cannot override close combat
     agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
+        ship, StochasticAgentConfig(flat_action_sampling=flat, team_target_distance_prob=(0.2, 0.8))
     )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.TIMID,
-            FrontlineTendency.TIMID,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.TIMID,
-            FrontlineTendency.TIMID,
-        ],
-        tie_attack=(True, False),
+    frontline = agent.get_actions_and_probs(state, visibility)[1]
+    state.zone_pos = state.zone_pos[:, :0]
+    legacy = agent.get_actions_and_probs(state, visibility)[1]
+    assert torch.equal(frontline, legacy)
+
+
+@pytest.mark.parametrize("alpha", [0.0, 1.0])
+def test_logit_blend_endpoints_are_exact_and_numerically_continuous(alpha):
+    old = torch.tensor([[[0.0, 0.2, 0.8]]])
+    new = torch.tensor([[[0.7, 0.3, 0.0]]])
+    endpoint = StochasticScriptedAgent._blend_probs(old, new, torch.tensor([[alpha]]))
+    nearby = StochasticScriptedAgent._blend_probs(
+        old, new, torch.tensor([[1e-7 if alpha == 0 else 1 - 1e-7]])
     )
-
-    distance, bearing, engage = _targeting(agent, state)
-
-    expected = torch.tensor(
-        [
-            _bearing(state.ship_pos[0, i].item(), 5000.0 + 100.0j, config.world_size)
-            for i in (0, 2, 3)
-        ],
-        dtype=torch.complex64,
-    )
-    defender_target = state.ship_pos[0, 1] + distance[0, 1] * bearing[0, 1]
-    assert not engage.any()
-    assert torch.allclose(bearing[0, [0, 2, 3]], expected)
-    assert abs(defender_target.item() - (6000.0 + 100.0j)) == pytest.approx(220.0)
+    assert torch.equal(endpoint, old if alpha == 0 else new)
+    torch.testing.assert_close(endpoint, nearby, atol=1e-6, rtol=1e-5)
 
 
-def test_offensive_wave_gathers_one_third_from_spawn_before_advancing() -> None:
-    config, state = _frontline_state()
-    state.ship_pos[0] = torch.tensor(
-        [1000.0 + 100.0j, 2000.0 + 100.0j, 10000.0 + 100.0j, 11000.0 + 100.0j]
-    )
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-        ],
-    )
-
-    _, bearing, engage = _targeting(agent, state)
-    expected_rally = torch.tensor(
-        [_bearing(state.ship_pos[0, i].item(), 5000.0 + 100.0j, config.world_size) for i in (0, 1)]
-    )
-    assert not engage.any()
-    assert torch.allclose(bearing[0, :2], expected_rally)
-
-    state.ship_pos[0, 0] = 4900.0 + 100.0j
-    state.ship_pos[0, 1] = 5000.0 + 100.0j
-    _, bearing, _ = _targeting(agent, state)
-    expected_attack = torch.tensor(
-        [_bearing(state.ship_pos[0, i].item(), 9000.0 + 100.0j, config.world_size) for i in (0, 1)]
-    )
-    assert torch.allclose(bearing[0, :2], expected_attack)
-
-    state.ship_pos[0, 0] = 3000.0 + 100.0j
-    state.ship_pos[0, 1] = 7000.0 + 100.0j
-    state.ship_respawned[0, 0] = True
-    _, bearing, _ = _targeting(agent, state)
-    assert bearing[0, 1].item() == pytest.approx(-1.0 + 0.0j)
+def test_interior_blends_logits_not_probabilities():
+    old = torch.tensor([[[0.1, 0.9]]])
+    new = torch.tensor([[[0.6, 0.4]]])
+    expected = (old * new).sqrt()
+    expected /= expected.sum(-1, keepdim=True)
+    actual = StochasticScriptedAgent._blend_probs(old, new, torch.tensor([[0.5]]))
+    torch.testing.assert_close(actual, expected)
 
 
-def test_idle_defender_patrol_waypoint_moves_around_safe_perimeter() -> None:
-    config, state = _frontline_state()
-    state.ship_pos[0] = torch.tensor(
-        [1000.0 + 100.0j, 2000.0 + 100.0j, 10000.0 + 100.0j, 11000.0 + 100.0j]
-    )
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.OFFENSIVE,
-        ],
-    )
-
-    distance, bearing, engage = _targeting(agent, state)
-    target = state.ship_pos[0, 0] + distance[0, 0] * bearing[0, 0]
-
-    assert not engage[0, 0]
-    assert abs(target.item() - (6000.0 + 100.0j)) == pytest.approx(220.0)
-    assert target.imag.item() < 100.0
-
-    state.ship_pos[0, 0] = 6000.0 + 1100.0j
-    distance, bearing, engage = _targeting(agent, state)
-    advanced_target = state.ship_pos[0, 0] + distance[0, 0] * bearing[0, 0]
-
-    assert not engage[0, 0]
-    assert abs(advanced_target.item() - (6000.0 + 100.0j)) == pytest.approx(220.0)
-    assert advanced_target != pytest.approx(target)
+@pytest.mark.parametrize("size", [4, 16, 64])
+def test_permutation_equivariance_and_finite_distributions(size):
+    ship, state, visibility = _scenario(size)
+    agent = StochasticScriptedAgent(ship, StochasticAgentConfig())
+    before = agent.get_actions_and_probs(state, visibility)[1]
+    permutation = torch.randperm(2 * size)
+    changed = copy.deepcopy(state)
+    for name, value in vars(state).items():
+        if name.startswith("ship_") and isinstance(value, torch.Tensor) and value.ndim >= 2:
+            setattr(changed, name, value[:, permutation])
+    after = agent.get_actions_and_probs(changed, visibility[:, :, permutation])[1]
+    torch.testing.assert_close(after, before[:, permutation], atol=1e-6, rtol=1e-5)
+    assert torch.isfinite(after).all() and (after >= 0).all()
+    for head in after.split([3, 7, 2], -1):
+        torch.testing.assert_close(head.sum(-1), torch.ones_like(head[..., 0]))
 
 
-def test_respawn_healing_rules_and_local_battle_priority() -> None:
-    config, state = _frontline_state(teams=[0, 0, 1, 1])
-    state.ship_pos[0] = torch.tensor(
-        [3000.0 + 100.0j, 1000.0 + 100.0j, 1100.0 + 100.0j, 9000.0 + 100.0j]
-    )
-    state.ship_health[0, :2] = 25.0
-    state.ship_respawned[0, :2] = True
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=500.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.TIMID,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-        ],
-    )
-
-    distance, _, engage = _targeting(agent, state)
-
-    assert not engage[0, 0]  # timid respawn healing overrides everything
-    assert distance[0, 0].item() == pytest.approx(0.0)
-    assert engage[0, 1]  # non-timid ships still prioritize a local battle
-    assert distance[0, 1].item() == pytest.approx(100.0)
-
-    state.ship_pos[0, 2] = 10000.0 + 100.0j
-    state.ship_respawned.zero_()
-    distance, bearing, engage = _targeting(agent, state)
-    assert not engage[0, 1]
-    assert distance[0, 1].item() == pytest.approx(2000.0)
-    assert bearing[0, 1].item() == pytest.approx(1.0 + 0.0j)
-
-    state.ship_health[0, 1] = config.max_health
-    distance, _, _ = _targeting(agent, state)
-    assert distance[0, 1].item() == pytest.approx(4000.0)
+def test_recovery_increases_smoothly_as_health_falls():
+    ship, state, visibility = _scenario()
+    values = []
+    for health in (100, 75, 50, 25, 1):
+        state.ship_health.fill_(health)
+        values.append(frontline_strategy(state, ship, StochasticAgentConfig(), visibility).recovery)
+    assert all(torch.all(a < b) for a, b in zip(values, values[1:]))
 
 
-def test_contested_point_interrupts_non_timid_but_not_timid_respawn_healing() -> None:
-    config, state = _frontline_state(teams=[0, 0, 1, 1])
-    state.ship_pos[0] = torch.tensor(
-        [3000.0 + 100.0j, 3000.0 + 100.0j, 6000.0 + 100.0j, 12000.0 + 100.0j]
-    )
-    state.ship_health[0, :2] = 25.0
-    state.ship_respawned[0, :2] = True
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
-    )
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.TIMID,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-        ],
-    )
-
-    distance, bearing, engage = _targeting(agent, state)
-
-    assert not engage.any()
-    assert distance[0, 0].item() == pytest.approx(0.0)
-    assert distance[0, 1].item() == pytest.approx(3000.0)
-    assert bearing[0, 1].item() == pytest.approx(1.0 + 0.0j)
-
-
-def test_tendency_survives_respawn_and_healing_latch_clears_on_episode_reset() -> None:
-    config, state = _frontline_state()
-    agent = StochasticScriptedAgent(config, StochasticAgentConfig())
-    _set_tendencies(
-        agent,
-        state,
-        [
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.OFFENSIVE,
-            FrontlineTendency.DEFENSIVE,
-            FrontlineTendency.OFFENSIVE,
-        ],
-    )
-    memory = agent._frontline_episode_memory(state)
-    expected = memory.tendencies.clone()
-
-    state.step_count.fill_(1)
-    state.ship_health[0, 0] = 25.0
-    state.ship_respawned[0, 0] = True
-    _targeting(agent, state)
-    assert memory.healing[0, 0]
-    assert torch.equal(memory.tendencies, expected)
-
-    state.step_count.zero_()
-    state.ship_respawned.zero_()
-    state.ship_health.fill_(config.max_health)
-    _targeting(agent, state)
-    assert not memory.healing.any()
-
-
-def test_navigation_targets_never_shoot() -> None:
-    config, state = _frontline_state()
-    state.ship_pos[0] = torch.tensor(
-        [1000.0 + 100.0j, 2000.0 + 100.0j, 10000.0 + 100.0j, 11000.0 + 100.0j]
-    )
-    agent = StochasticScriptedAgent(
-        config,
-        StochasticAgentConfig(frontline_enemy_engage_distance=0.0),
-    )
-
-    actions, probs = agent.get_actions_and_probs(state)
-
-    assert torch.equal(probs[..., -2], torch.ones_like(probs[..., -2]))
-    assert torch.equal(probs[..., -1], torch.zeros_like(probs[..., -1]))
-    assert not actions[..., 2].any()
-
-
-def test_zero_zone_combat_mode_never_enters_frontline_path(monkeypatch) -> None:
-    config = ShipConfig()
-    state = make_state(num_envs=1, max_ships=2, max_bullets=0, ship_config=config)
-    state.ship_team_id[0] = torch.tensor([0, 1], dtype=torch.int32)
-    state.ship_pos[0] = torch.tensor([100.0 + 100.0j, 200.0 + 100.0j])
-    agent = StochasticScriptedAgent(config, StochasticAgentConfig())
-
-    def fail(_state):
-        raise AssertionError("legacy combat mode entered the frontline controller")
-
-    monkeypatch.setattr(agent, "_get_frontline_actions_and_probs", fail)
-    actions, probs = agent.get_actions_and_probs(state)
-
-    assert actions.shape == (1, 2, 3)
-    assert probs.shape == (1, 2, 12)
+def test_separation_pushes_apart_and_stays_bounded_in_dense_fleet():
+    ship, state, visibility = _scenario(64)
+    state.ship_pos[0, :64] = torch.linspace(6000, 6010, 64).to(torch.complex64) + 100j
+    result = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    assert result.separation[0, 0].real < 0 < result.separation[0, 63].real
+    assert torch.all(result.separation.abs() <= 1)
 
 
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"frontline_heal_health_fraction": -0.01},
-        {"frontline_heal_health_fraction": 1.01},
-        {"frontline_enemy_engage_distance": -1.0},
+        {"frontline_combat_radius": 200},
+        {"frontline_zone_radius": 0},
+        {"frontline_aggression": float("nan")},
+        {"frontline_zone_margin": -1},
+        {"frontline_separation_radius": -1},
+        {"frontline_recovery_health": 0},
     ],
 )
-def test_frontline_scripted_config_rejects_invalid_values(overrides: dict[str, float]) -> None:
+def test_invalid_strategy_configuration_rejected(overrides):
     with pytest.raises(ValueError):
         StochasticAgentConfig(**overrides)
+
+
+def test_missing_visibility_cannot_reveal_enemies():
+    ship, state, _ = _scenario(1)
+    agent = StochasticScriptedAgent(ship, StochasticAgentConfig())
+    before = agent.get_actions_and_probs(state)[1][:, :1]
+    state.ship_pos[0, 1] = state.ship_pos[0, 0] + 1j
+    after = agent.get_actions_and_probs(state)[1][:, :1]
+    assert torch.equal(before, after)
+
+
+def test_distant_extra_ships_do_not_dilute_local_separation():
+    ship, small, visibility = _scenario(2)
+    small.ship_pos[0, :2] = torch.tensor([6000 + 100j, 6020 + 100j])
+    expected = frontline_strategy(small, ship, StochasticAgentConfig(), visibility)
+    _, large, large_visibility = _scenario(64)
+    large.ship_pos[:] = 13000 + 8000j
+    large.ship_pos[0, :2] = small.ship_pos[0, :2]
+    large.ship_pos[0, 64:66] = small.ship_pos[0, 2:]
+    actual = frontline_strategy(large, ship, StochasticAgentConfig(), large_visibility)
+    torch.testing.assert_close(actual.separation[:, :2], expected.separation[:, :2])
+    torch.testing.assert_close(actual.combat_score[:, :2], expected.combat_score[:, :2])
+    torch.testing.assert_close(actual.zone_need[:, :2], expected.zone_need[:, :2])
+
+
+def test_dead_ships_have_no_strategic_influence_and_take_noop():
+    ship, state, visibility = _scenario()
+    state.ship_alive[0, 1] = False
+    agent = StochasticScriptedAgent(ship, StochasticAgentConfig())
+    before = agent.get_actions_and_probs(state, visibility)[1]
+    state.ship_pos[0, 1] = 6000 + 100j
+    state.ship_health[0, 1] = 1
+    actions, after = agent.get_actions_and_probs(state, visibility)
+    torch.testing.assert_close(before[:, 0], after[:, 0])
+    assert torch.equal(actions[:, 1], torch.zeros_like(actions[:, 1]))
+
+
+def test_outer_range_is_exact_strategy_on_all_heads():
+    ship, state, visibility = _scenario(1)
+    state.ship_pos[0] = torch.tensor([6000 + 100j, 6800 + 100j])
+    config = StochasticAgentConfig()
+    agent = StochasticScriptedAgent(ship, config)
+    result = frontline_strategy(state, ship, config, visibility)
+    power, turn, _ = agent._compute_action_probs(
+        state, result.distance, result.bearing, torch.zeros_like(result.bearing), state.ship_alive
+    )
+    expected = torch.cat((power, turn, torch.tensor([[[1.0, 0.0], [1.0, 0.0]]])), -1)
+    assert torch.equal(agent.get_actions_and_probs(state, visibility)[1], expected)

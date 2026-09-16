@@ -245,7 +245,7 @@ def test_enemy_pending_actions_stay_private_while_ship_is_visible() -> None:
     assert torch.equal(team1.previous_action[0, 2:4], state.prev_action[0, 2:4])
 
 
-def test_frontline_scripted_team_does_not_target_hidden_enemy_truth() -> None:
+def test_frontline_scripted_agent_does_not_target_hidden_enemy_truth() -> None:
     from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 
     ship = ShipConfig(world_size=(16384.0, 16384.0), field_radius_max=750.0)

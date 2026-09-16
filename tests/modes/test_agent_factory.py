@@ -6,10 +6,12 @@ import pytest
 import torch
 
 from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
 from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
+from boost_and_broadside.evaluation.run_catalog import CheckpointNotFoundError
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
@@ -153,6 +155,27 @@ def test_semi_scripted_agent_spec_resolves_probability() -> None:
     assert resolved.kind == "semi_random"
     assert isinstance(resolved.agent, SemiRandomScriptedAgent)
     assert resolved.agent.p_scripted == pytest.approx(0.35)
+
+
+def test_scripted_spec_resolves_the_single_frontline_configuration() -> None:
+    resolved = resolve_agent_spec(
+        "scripted",
+        ShipConfig(),
+        None,  # type: ignore[arg-type]
+        "cpu",
+    )
+
+    assert isinstance(resolved.agent, StochasticScriptedAgent)
+    assert resolved.agent.config.frontline_aggression == pytest.approx(1.0)
+    assert resolved.agent.config.frontline_combat_radius == pytest.approx(600.0)
+
+    with pytest.raises(CheckpointNotFoundError):
+        resolve_agent_spec(
+            "scripted_team",
+            ShipConfig(),
+            None,  # type: ignore[arg-type]
+            "cpu",
+        )
 
 
 @pytest.mark.parametrize("spec", ["semi_scripted:nope", "semi_scripted:-0.1", "semi_scripted:1.1"])

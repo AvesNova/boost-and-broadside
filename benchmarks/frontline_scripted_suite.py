@@ -1,4 +1,4 @@
-"""Batched 4v4 Frontline scripted-v-scripted statistical playtest.
+"""Batched Frontline scripted-v-scripted statistical playtest.
 
 Example:
     .venv/bin/python benchmarks/frontline_scripted_suite.py \
@@ -22,6 +22,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import (
     frontline_ship_config,
 )
+from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 
 
@@ -44,9 +45,12 @@ def run_suite(
     device: torch.device,
     max_ticks: int,
     capture_seconds: float | None = None,
+    team_size: int = 4,
 ) -> dict:
     """Run independent matches in one tensor batch and retain per-game samples."""
 
+    if team_size < 1:
+        raise ValueError("team_size must be positive")
     if games < 1:
         raise ValueError("games must be positive")
     if max_ticks < 1:
@@ -65,9 +69,10 @@ def run_suite(
         PLAY_ENV_CONFIG,
         max_episode_steps=max_ticks,
         frontline=frontline,
+        num_ships=2 * team_size,
     )
     env = TensorEnv(games, ship_config, env_config, device)
-    env.reset(options={"team_sizes": (4, 4)}, seed=seed)
+    env.reset(options={"team_sizes": (team_size, team_size)}, seed=seed)
     agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
 
     running = torch.ones(games, dtype=torch.bool, device=device)
@@ -86,7 +91,7 @@ def run_suite(
     healing = torch.zeros(games, dtype=torch.float32, device=device)
     front_min = torch.zeros(games, dtype=torch.long, device=device)
     front_max = torch.zeros(games, dtype=torch.long, device=device)
-    action = torch.zeros((games, 8, 3), dtype=torch.long, device=device)
+    action = torch.zeros((games, 2 * team_size, 3), dtype=torch.long, device=device)
 
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
@@ -96,7 +101,8 @@ def run_suite(
     ticks_run = 0
     for tick in range(max_ticks):
         if tick % env_config.action_repeat == 0:
-            action = agent.get_actions(env.state)
+            visibility = team_visibility_from_state(env.state, ship_config, env_config, False)
+            action = agent.get_actions(env.state, visibility.ship)
         dones, truncated = env.tick(action)
         ticks_run = tick + 1
 
@@ -227,6 +233,7 @@ def run_suite(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--team-size", type=int, default=4)
     parser.add_argument("--games", type=int, default=256)
     parser.add_argument("--seed", type=int, default=20260908)
     parser.add_argument("--max-ticks", type=int, default=PLAY_ENV_CONFIG.max_episode_steps)
@@ -236,6 +243,7 @@ def main() -> None:
 
     result = run_suite(
         games=args.games,
+        team_size=args.team_size,
         seed=args.seed,
         device=torch.device(args.device),
         max_ticks=args.max_ticks,

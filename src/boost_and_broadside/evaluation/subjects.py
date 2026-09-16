@@ -33,7 +33,7 @@ def describe_agent(
 
     if not spec.endswith(_POLICY_SUFFIX):
         described: dict[str, Any] = {"kind": spec}
-        if spec in {"scripted", "scripted_team"}:
+        if spec == "scripted":
             described["scripted_config"] = dataclasses.asdict(StochasticAgentConfig())
         return described
 

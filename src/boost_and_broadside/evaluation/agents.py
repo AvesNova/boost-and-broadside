@@ -5,7 +5,6 @@ Supported specs:
     random         — uniform random actions every step
     <path.pt>      — specific .pt checkpoint file
     scripted       — StochasticScriptedAgent
-    scripted_team  — StochasticScriptedAgent with team target selection
     jouster / team_jouster / boom_zoom / abreast / reverse_turret /
     run_away / spiral_evader / jinking
                    — deterministic scripted agents (see agents/)
@@ -109,12 +108,6 @@ def resolve_agent_spec(
             raise ValueError(f"invalid semi-scripted probability in {spec!r}") from error
         agent = SemiRandomScriptedAgent(ship_config, probability)
         return ResolvedAgent("semi_random", agent)
-
-    if spec == "scripted_team":
-        agent = StochasticScriptedAgent(
-            ship_config, StochasticAgentConfig(team_target_distance_prob=(0.0, 1.0))
-        )
-        return ResolvedAgent("scripted", agent)
 
     if spec == "run_away":
         return ResolvedAgent("scripted", RunAwayAgent(ship_config))
