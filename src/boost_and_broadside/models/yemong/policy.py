@@ -47,6 +47,7 @@ from torch.utils.checkpoint import checkpoint
 
 from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.constants import (
+    NUM_OUTCOME_CLASSES,
     POWER_SLICE,
     SHOOT_SLICE,
     TOTAL_ACTION_LOGITS,
@@ -157,6 +158,7 @@ class YemongPolicy(nn.Module):
         num_ships: int,
         team_pma_k: tuple[int, ...],
         bullet_coordinator: FeatureCoordinator | None = None,
+        predict_outcome: bool = False,
     ) -> None:
         super().__init__()
         D = model_config.d_model
@@ -218,6 +220,29 @@ class YemongPolicy(nn.Module):
                 nn.GELU(),
                 nn.Linear(hidden_dim, len(team_pma_k)),
             )
+        # Categorical match-outcome head: three logits per ship for win / loss /
+        # tie from that ship's own perspective. It is a classifier, not a value
+        # head -- the scalar ``outcome`` component keeps its seat in the K-way
+        # critic, and this predicts the same event without feeding advantages.
+        #
+        # A scalar regressed onto {-1, 0, +1} cannot say whether an output of
+        # zero means "confident tie" or "even odds of winning", which are
+        # different game states. Three classes separate them, and run 739
+        # measured the tie class at 20% of episodes, so it is a real mode rather
+        # than a rounding of the other two.
+        # Built only when something trains it. An untrained head is dead weight
+        # in every checkpoint and trips the optimizer-moment integrity check,
+        # which exists to catch exactly this.
+        self.outcome_head = (
+            nn.Sequential(
+                nn.Linear(D, hidden_dim),
+                nn.RMSNorm(hidden_dim),
+                nn.GELU(),
+                nn.Linear(hidden_dim, NUM_OUTCOME_CLASSES),
+            )
+            if predict_outcome
+            else None
+        )
         self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
@@ -225,6 +250,8 @@ class YemongPolicy(nn.Module):
         # Dropout) into a head can't silently init the wrong module.
         for head in [self.action_head, self.value_head_local, self.next_state_head.net]:
             _init_head_orthogonal(head)
+        if self.outcome_head is not None:
+            _init_head_orthogonal(self.outcome_head)
         if team_pma_k:
             _init_head_orthogonal(self.value_head_win)
             nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
@@ -571,8 +598,9 @@ class YemongPolicy(nn.Module):
             new_value = local_value
 
         logprob, entropy = _evaluate_action(logits, actions)
+        outcome_logits = None if self.outcome_head is None else self.outcome_head(x_ships)
 
-        return logprob, entropy, new_value, logits, z, pred_next
+        return logprob, entropy, new_value, logits, z, pred_next, outcome_logits
 
 
 # ---------------------------------------------------------------------------

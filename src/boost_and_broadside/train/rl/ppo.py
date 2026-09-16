@@ -44,7 +44,12 @@ from boost_and_broadside.config.diagnostics import (
     GradientDiagnosticsConfig,
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
-from boost_and_broadside.constants import POWER_SLICE, SHOOT_SLICE, TURN_SLICE
+from boost_and_broadside.constants import (
+    NUM_OUTCOME_CLASSES,
+    POWER_SLICE,
+    SHOOT_SLICE,
+    TURN_SLICE,
+)
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
@@ -451,6 +456,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._win_k: tuple[int, ...] = tuple(
             i for i, n in enumerate(self._active_names) if n in {"ally_win", "enemy_win"}
         )
+        # Where the categorical head reads its labels from. None when `outcome`
+        # carries no weight, which is also when the head's loss is off.
+        self._outcome_k: int | None = (
+            self._active_names.index("outcome") if "outcome" in self._active_names else None
+        )
 
         # Build per-component (K,) discount tensors — used by all RolloutBuffers.
         self._gamma_t = _build_component_tensor(
@@ -468,6 +478,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_value_components=K,
             num_ships=N,
             team_pma_k=self._win_k,
+            predict_outcome=train_config.outcome_categorical_coef > 0.0,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         # Captured before compiling. Two things re-traverse a micro-batch's
@@ -575,6 +586,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_value_components=K,
             num_ships=N,
             team_pma_k=self._win_k,
+            predict_outcome=train_config.outcome_categorical_coef > 0.0,
         ).to(self.device)
         self.avg_policy = compile_policy(self._avg_policy_module, compile_mode)
         self._avg_policy_module.load_state_dict(self._policy_module.state_dict())
@@ -1221,6 +1233,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.obs, runtime.hidden
             )
         self.buffer.compute_gae(self.scaler.denormalize(next_value_norm), terminated.float())
+        if self._outcome_k is not None and self.cfg.outcome_categorical_coef > 0.0:
+            self.buffer.fill_outcome_class(self._outcome_k)
         for index, (aux_buffer, aux_hidden) in enumerate(
             zip(self.aux_buffers, runtime.aux_hiddens)
         ):
@@ -1232,6 +1246,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self.scaler.denormalize(next_aux_norm),
                 runtime.aux_last_dones[index].float(),
             )
+            if self._outcome_k is not None and self.cfg.outcome_categorical_coef > 0.0:
+                aux_buffer.fill_outcome_class(self._outcome_k)
         if update_scalers:
             self.scaler.update(self.buffer.returns, self.buffer.alive_mask)
             self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
@@ -1680,7 +1696,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         alive_mask_full = curr_mb_obs[ObsKey.BELIEF_VALID].bool()  # (T, B_mb, N+M)
         evaluate = evaluate_actions or self._update_evaluate_actions()
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, new_value, policy_logits, z, pred_next = evaluate(
+            logprob, entropy, new_value, policy_logits, z, pred_next, outcome_logits = evaluate(
                 obs=curr_mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
@@ -1810,8 +1826,29 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     (0, 1, 2)
                 ) / ns_sum  # (pred_dim,) gpu, additive across chunks
 
+        outcome_ce_loss = policy_logits.new_zeros(())
+        if self.cfg.outcome_categorical_coef > 0.0:
+            outcome_ce_loss = self._outcome_categorical_loss(
+                outcome_logits, batch.outcome_class, alive_f, mask_sum
+            )
+            with torch.no_grad():
+                # Read the head where it is *graded*, on realised results only.
+                # Its loss is mostly bootstrap, which can look confident while
+                # being wrong about every match that actually finished.
+                graded = (batch.outcome_class >= 0) & mb_alive
+                graded_n = graded.sum().clamp(min=1)
+                predicted = outcome_logits.argmax(-1).to(batch.outcome_class.dtype)
+                diag_outcome = {
+                    "outcome_head/cross_entropy": outcome_ce_loss.detach(),
+                    "outcome_head/labelled_fraction": graded.float().mean(),
+                    "outcome_head/accuracy": (
+                        ((predicted == batch.outcome_class) & graded).sum() / graded_n
+                    ).float(),
+                }
+
         loss = (
-            self._policy_gradient_coef * pg_loss
+            self.cfg.outcome_categorical_coef * outcome_ce_loss
+            + self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
             + self._entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
@@ -1821,6 +1858,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
 
         diag: dict = {}
+        if self.cfg.outcome_categorical_coef > 0.0:
+            diag.update(diag_outcome)
 
         # ---- Gradient decomposition -------------------------------------------
         # Differentiates the weighted terms that make up `loss` above, one
@@ -1944,6 +1983,71 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             dtype=torch.float32,
             device=self.device,
         )
+
+    def _outcome_categorical_loss(
+        self,
+        logits: torch.Tensor,
+        outcome_class: torch.Tensor,
+        alive_f: torch.Tensor,
+        mask_sum: torch.Tensor,
+    ) -> torch.Tensor:
+        """Cross-entropy for the win / loss / tie head.
+
+        With ``outcome``'s gamma at 1.0 and no reward before the terminal, the
+        return from any state *is* the match result, so the distributional
+        Bellman backup degenerates to "carry the terminal one-hot backwards".
+        No projection step, no discounting to shift the support -- the atoms are
+        the three real outcomes and they do not move.
+
+        Labels are sparse (a 128-step rollout rarely contains an episode end), so
+        a step with no realised result ahead of it bootstraps from the head's own
+        belief at the chunk's last step, detached. That is the same truncation
+        GAE makes when it bootstraps from the final value, one step earlier.
+
+        A step whose episode ends inside the rollout takes the nearest *future*
+        terminal, which is what keeps a step landing after one episode end from
+        inheriting the previous episode's result.
+
+        Note the reported value has a floor: cross-entropy against a soft target
+        bottoms out at the target's own entropy, not at zero, so a bootstrapped
+        step owes H(belief) even when perfectly self-consistent. Read
+        ``outcome_head/accuracy``, which is graded on realised results only, to
+        see whether the head is right rather than merely confident.
+
+        Args:
+            logits:        (T, B, N, 3) head output.
+            outcome_class: (T, B, N) int8 realised result, -1 where unknown.
+            alive_f:       (T, B, N) float liveness mask.
+            mask_sum:      Scalar denominator shared with the other masked means.
+
+        Returns:
+            Scalar masked-mean cross-entropy against the backed-up target.
+        """
+
+        horizon = logits.shape[0]
+        with torch.no_grad():
+            labelled = outcome_class >= 0  # (T, B, N)
+            step = torch.arange(horizon, device=logits.device).view(-1, 1, 1)
+            # Nearest labelled step at or after t; `horizon` where there is none.
+            reach = torch.where(labelled, step.expand_as(labelled), horizon)
+            nearest = reach.flip(0).cummin(0).values.flip(0)  # (T, B, N)
+            found = nearest < horizon
+            realised = torch.nn.functional.one_hot(
+                outcome_class.clamp(min=0).long(), NUM_OUTCOME_CLASSES
+            ).float()  # (T, B, N, 3)
+            carried = torch.gather(
+                realised,
+                0,
+                nearest.clamp(max=horizon - 1)
+                .unsqueeze(-1)
+                .expand(-1, -1, -1, NUM_OUTCOME_CLASSES),
+            )
+            bootstrap = logits[-1].detach().float().softmax(-1).unsqueeze(0)
+            target = torch.where(found.unsqueeze(-1), carried, bootstrap.expand_as(carried))
+
+        log_probabilities = torch.nn.functional.log_softmax(logits.float(), dim=-1)
+        cross_entropy = -(target * log_probabilities).sum(-1)  # (T, B, N)
+        return (cross_entropy * alive_f).sum() / mask_sum
 
     def _reward_policy_terms(
         self,

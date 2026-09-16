@@ -44,5 +44,14 @@ TOTAL_ACTION_LOGITS: int = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTI
 
 # Slices into the flat logit vector
 POWER_SLICE: slice = slice(0, NUM_POWER_ACTIONS)
+# Match outcome as a classification target, ego-relative: index 0 loss, 1 tie,
+# 2 win. Ordered so the index is monotone in the result, which lets
+# ``(probabilities * OUTCOME_VALUES).sum(-1)`` recover the signed expectation
+# the scalar ``outcome`` component regresses directly.
+NUM_OUTCOME_CLASSES: int = 3
+OUTCOME_LOSS_INDEX: int = 0
+OUTCOME_TIE_INDEX: int = 1
+OUTCOME_WIN_INDEX: int = 2
+
 TURN_SLICE: slice = slice(NUM_POWER_ACTIONS, NUM_POWER_ACTIONS + NUM_TURN_ACTIONS)
 SHOOT_SLICE: slice = slice(NUM_POWER_ACTIONS + NUM_TURN_ACTIONS, TOTAL_ACTION_LOGITS)
