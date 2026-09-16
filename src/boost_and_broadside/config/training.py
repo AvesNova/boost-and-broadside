@@ -236,6 +236,11 @@ class TrainConfig:
 
     # --- Next-state prediction loss ---
     next_state_coef: float = 1.0  # weight for per-step aux prediction loss; 0 to disable
+    # Cross-entropy weight for the categorical win/loss/tie head. A classifier
+    # run beside the scalar ``outcome`` component, not in place of it: it never
+    # reaches the advantage path, so this only buys representation in the trunk
+    # and a calibrated probability to read. 0 disables the term outright.
+    outcome_categorical_coef: float = 0.0
     windowed_loss_coef: float = 0.1  # weight for windowed cumulative bias loss; 0 to disable
 
     # --- Logging ---

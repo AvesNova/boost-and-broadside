@@ -86,6 +86,9 @@ class PolicyBundle:
     env_config: EnvConfig | None
     num_value_components: int
     team_pma_k: tuple[int, ...]
+    # Whether these weights carry the categorical win/loss/tie head. Recorded so
+    # a reload rebuilds the same architecture rather than a headless one.
+    predict_outcome: bool = False
     global_step: int | None = None
     update: int | None = None
     # "ego_pass" | "shared_pass" — which perspectives these weights ever acted
@@ -224,6 +227,7 @@ def build_policy(
     num_value_components: int,
     num_ships: int,
     team_pma_k: tuple[int, ...],
+    predict_outcome: bool = False,
 ) -> YemongPolicy:
     """Construct a policy with the feature pipelines its config implies.
 
@@ -248,6 +252,7 @@ def build_policy(
         bullet_coordinator=(
             build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
         ),
+        predict_outcome=predict_outcome,
     )
 
 
@@ -424,12 +429,21 @@ def load_policy_bundle(
 
     num_value_components = infer_num_value_components(checkpoint)
     checkpoint_team_pma_k = infer_team_pma_k(checkpoint, team_pma_k)
+    # Read the architecture off the weights rather than off the loading config:
+    # a checkpoint written before the head existed, or under a coefficient of
+    # zero, simply has no outcome_head.* keys, and rebuilding one would fail the
+    # strict load. The same reasoning as infer_team_pma_k.
+    stored_weights = checkpoint.get("policy_state_dict")
+    checkpoint_predicts_outcome = isinstance(stored_weights, Mapping) and any(
+        str(key).startswith("outcome_head.") for key in stored_weights
+    )
     policy = build_policy(
         checkpoint_model_config,
         checkpoint_ship_config,
         num_value_components=num_value_components,
         num_ships=num_ships,
         team_pma_k=checkpoint_team_pma_k,
+        predict_outcome=checkpoint_predicts_outcome,
     )
     policy_state = checkpoint["policy_state_dict"]
     if not isinstance(policy_state, Mapping):

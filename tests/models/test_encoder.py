@@ -370,7 +370,7 @@ class TestYemongPolicy:
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask = torch.ones(T, B, N, dtype=torch.bool)
 
-        logprob, entropy, new_value, logits, _, _ = policy.evaluate_actions(
+        logprob, entropy, new_value, logits, _, _, _ = policy.evaluate_actions(
             obs, actions, hidden, alive_mask
         )
 
@@ -599,7 +599,7 @@ class TestYemongBlockStructure:
         )
         alive_mask = stacked.data[ObsKey.ALIVE]  # (T, B, N+M)
         with torch.no_grad():
-            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
                 stacked, torch.stack(actions, dim=0), initial_hidden, alive_mask
             )
 
@@ -650,7 +650,7 @@ class TestYemongBlockStructure:
             }
         )
         with torch.no_grad():
-            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
@@ -898,7 +898,7 @@ class TestBulletCrossAttention:
             },
         )
         with torch.no_grad():
-            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
@@ -1275,7 +1275,7 @@ class TestNonRecurrentFieldPath:
             }
         )
         with torch.no_grad():
-            _, _, seq_value, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
@@ -1493,8 +1493,8 @@ class TestGradCheckpoint:
         hidden = base.initial_hidden(B, N, torch.device("cpu"))
         alive = torch.ones(T, B, N, dtype=torch.bool)
 
-        lp0, _, val0, _, _, pn0 = base.evaluate_actions(obs, actions, hidden, alive)
-        lp1, _, val1, _, _, pn1 = ckpt.evaluate_actions(obs, actions, hidden, alive)
+        lp0, _, val0, _, _, pn0, _ = base.evaluate_actions(obs, actions, hidden, alive)
+        lp1, _, val1, _, _, pn1, _ = ckpt.evaluate_actions(obs, actions, hidden, alive)
 
         assert torch.allclose(lp0, lp1, atol=1e-6)
         assert torch.allclose(val0, val1, atol=1e-6)

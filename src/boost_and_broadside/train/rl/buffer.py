@@ -17,6 +17,11 @@ from typing import NamedTuple
 
 import torch
 
+from boost_and_broadside.constants import (
+    OUTCOME_LOSS_INDEX,
+    OUTCOME_TIE_INDEX,
+    OUTCOME_WIN_INDEX,
+)
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
 
 
@@ -37,6 +42,12 @@ class MicroBatch(NamedTuple):
     adv_agg: torch.Tensor
     ret_agg: torch.Tensor
     ns_labels: torch.Tensor | None
+    # (T, B, N) int8 realised match outcome per ship, ego-relative: 0 loss,
+    # 1 tie, 2 win, and -1 where this step's episode does not end inside the
+    # rollout. Sparse by construction -- a 128-step rollout against ~7,900-step
+    # episodes labels barely one step in a hundred -- so the categorical head
+    # bootstraps the rest rather than training on labelled steps alone.
+    outcome_class: torch.Tensor
 
     def pin_memory(self) -> "MicroBatch":
         """Copy one CPU micro-batch into page-locked transfer memory.
@@ -60,6 +71,7 @@ class MicroBatch(NamedTuple):
             actor_mask=self.actor_mask.pin_memory(),
             expert_probs=self.expert_probs.pin_memory(),
             terminated=self.terminated.pin_memory(),
+            outcome_class=self.outcome_class.pin_memory(),
             transition_contiguous=self.transition_contiguous.pin_memory(),
             adv_agg=self.adv_agg.pin_memory(),
             ret_agg=self.ret_agg.pin_memory(),
@@ -89,6 +101,7 @@ class MicroBatch(NamedTuple):
             actor_mask=self.actor_mask.to(device=device, non_blocking=non_blocking),
             expert_probs=self.expert_probs.to(device=device, non_blocking=non_blocking),
             terminated=self.terminated.to(device=device, non_blocking=non_blocking),
+            outcome_class=self.outcome_class.to(device=device, non_blocking=non_blocking),
             transition_contiguous=self.transition_contiguous.to(
                 device=device, non_blocking=non_blocking
             ),
@@ -144,6 +157,7 @@ class MicroBatch(NamedTuple):
             actor_mask=self.actor_mask[:, start:end],
             expert_probs=self.expert_probs[:, start:end],
             terminated=self.terminated[:, start:end],
+            outcome_class=self.outcome_class[:, start:end],
             transition_contiguous=self.transition_contiguous[:, start:end],
             adv_agg=self.adv_agg[:, start:end],
             ret_agg=self.ret_agg[:, start:end],
@@ -644,6 +658,7 @@ class RolloutBuffer:
         # Episode termination mask: done | truncated — used to exclude terminal transitions
         # from the aux next-state prediction loss.
         self.terminated = torch.zeros((T, B), device=device, dtype=torch.bool)
+        self.outcome_class = torch.full((T, B, N), -1, device=device, dtype=torch.int8)
         # Per-ship physical continuity. False excludes a death->respawn teleport
         # from auxiliary dynamics targets without ending the strategic episode.
         self.transition_contiguous = torch.ones((T, B, N), device=device, dtype=torch.bool)
@@ -663,6 +678,33 @@ class RolloutBuffer:
         self.initial_hidden = None
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
         self.terminated.zero_()
+        self.outcome_class.fill_(-1)
+
+    def fill_outcome_class(self, outcome_k: int) -> None:
+        """Record the realised match result per ship, where the rollout saw one.
+
+        The ``outcome`` reward component is already ego-relative -- it pays a
+        ship ``+1`` for its own team's win and ``-1`` for its loss -- so its sign
+        at a terminal step is the label, and a draw's zero is the tie class. A
+        truncation at the step cap is a genuine draw under the frontline rules,
+        which is why it is labelled rather than skipped.
+
+        Non-terminal steps stay at ``-1``: they have no realised result yet, and
+        the categorical head bootstraps them instead.
+
+        Args:
+            outcome_k: Index of the ``outcome`` component in the active set.
+        """
+
+        reward = self.rewards[..., outcome_k]  # (T, B, N) symlog space
+        realised = torch.where(
+            reward > 0.0,
+            OUTCOME_WIN_INDEX,
+            torch.where(reward < 0.0, OUTCOME_LOSS_INDEX, OUTCOME_TIE_INDEX),
+        ).to(torch.int8)
+        self.outcome_class = torch.where(
+            self.terminated.unsqueeze(-1), realised, torch.full_like(realised, -1)
+        )
         self.transition_contiguous.fill_(True)
         self.belief_diagnostics = {}
         # obs[T] slot is overwritten by store_final_obs() — no need to zero it
@@ -899,6 +941,7 @@ class RolloutBuffer:
                         actor_mask=self.actor_masks[:, idx],
                         expert_probs=self.expert_probs[:, idx],
                         terminated=self.terminated[:, idx],
+                        outcome_class=self.outcome_class[:, idx],
                         transition_contiguous=self.transition_contiguous[:, idx],
                         adv_agg=self.adv_agg[:, idx],
                         ret_agg=self.ret_agg[:, idx],
@@ -944,6 +987,7 @@ class StoredRollout:
         self.actor_masks = source.actor_masks.detach().to(device="cpu", copy=True)
         self.expert_probs = source.expert_probs.detach().to(device="cpu", copy=True)
         self.terminated = source.terminated.detach().to(device="cpu", copy=True)
+        self.outcome_class = source.outcome_class.detach().to(device="cpu", copy=True)
         self.transition_contiguous = source.transition_contiguous.detach().to(
             device="cpu", copy=True
         )
@@ -1041,6 +1085,7 @@ class StoredRollout:
                     actor_mask=self.actor_masks[:, indices],
                     expert_probs=self.expert_probs[:, indices],
                     terminated=self.terminated[:, indices],
+                    outcome_class=self.outcome_class[:, indices],
                     transition_contiguous=self.transition_contiguous[:, indices],
                     adv_agg=self.adv_agg[:, indices],
                     ret_agg=self.ret_agg[:, indices],
