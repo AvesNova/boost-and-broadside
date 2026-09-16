@@ -670,7 +670,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._eval_window_rand = deque(maxlen=eval_window_size)
         self._eval_window_sc = deque(maxlen=eval_window_size)
         # Monotone floor for the behavior-cloning gate; see _apply_schedule_state.
-        self._bc_factor_floor = 1.0
         self._eval_window_ladder = deque(maxlen=eval_window_size)
         self._eval_window_floating = deque(maxlen=eval_window_size)
         self._eval_window_live_vs_avg = deque(maxlen=eval_window_size)
@@ -1363,24 +1362,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         window_sc = self._eval_window_sc
         self._scripted_win_rate = sum(window_sc) / len(window_sc) if window_sc else 0.0
         bc_factor = max(0.0, 1.0 - self._scripted_win_rate / self.cfg.bc_winrate_target)
-        # Ratcheted: the gate fires once and stays fired. The window is a boxcar
-        # over rated games, so the win rate wanders even with 500 of them, and an
-        # unratcheted factor wanders with it -- run 737 walked 0.87, 0.99, 0.83,
-        # 0.92, 0.77 while trending down. That oscillates the objective itself,
-        # and through a shared trunk it reaches the critic and next-state heads,
-        # not only the actor. Scripted labels are a warm start being withdrawn;
-        # withdrawing them is not a thing to undo because a sample came back low.
-        # Only the *coefficient* is ratcheted. The raw factor is returned
-        # unchanged, because the avg-model latch keys its streak off it and that
-        # gate is permanent: ratcheting the streak's input too would mean one
-        # lucky window pinned the floor at zero, the streak could never break,
-        # and the latch would trip three updates later on a single observation.
-        # The withdrawal of scripted labels is monotone; the evidence for it is
-        # not.
-        self._bc_factor_floor = min(self._bc_factor_floor, bc_factor)
-        self._behavior_cloning_coef = (
-            self._schedule_state.behavior_cloning_coef * self._bc_factor_floor
-        )
+        # Tracks the current win rate, and is allowed back up.
+        #
+        # This was ratcheted -- min() against a running floor -- to stop the
+        # coefficient oscillating with a boxcar window that wanders even over 500
+        # rated games. It did stop that, and it also turned a plateau into a trap.
+        # Run 740 peaked at 0.345 against the scripted agent at 45.7M steps, which
+        # pinned the floor at 1 - 0.345/0.45 = 0.233 and held it there for the
+        # next 28M steps while the score sat at 0.31 and never moved again. A
+        # ratchet keyed on best-ever performance cannot distinguish "the warm
+        # start is no longer needed" from "the policy stopped improving", and it
+        # answers both by freezing.
+        #
+        # Oscillation is the lesser problem: it is visible in the logs and it
+        # averages out. A frozen coefficient is neither.
+        self._behavior_cloning_coef = self._schedule_state.behavior_cloning_coef * bc_factor
         self._entropy_coef = _actor_entropy_coef(
             self._schedule_state.entropy_coef,
             policy_gradient_coef=self._policy_gradient_coef,
@@ -1827,6 +1823,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 ) / ns_sum  # (pred_dim,) gpu, additive across chunks
 
         outcome_ce_loss = policy_logits.new_zeros(())
+        # Always present, zeroed when the head is off: the ``_additive`` table is
+        # walked unconditionally for every micro-batch, so a key that appears
+        # only sometimes is a KeyError rather than a missing series.
+        zero = policy_logits.new_zeros(())
+        diag_outcome = {"outcome_ce": zero, "outcome_acc": zero, "outcome_labelled": zero}
         if self.cfg.outcome_categorical_coef > 0.0:
             outcome_ce_loss = self._outcome_categorical_loss(
                 outcome_logits, batch.outcome_class, alive_f, mask_sum
@@ -1838,13 +1839,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 graded = (batch.outcome_class >= 0) & mb_alive
                 graded_n = graded.sum().clamp(min=1)
                 predicted = outcome_logits.argmax(-1).to(batch.outcome_class.dtype)
-                diag_outcome = {
-                    "outcome_head/cross_entropy": outcome_ce_loss.detach(),
-                    "outcome_head/labelled_fraction": graded.float().mean(),
-                    "outcome_head/accuracy": (
-                        ((predicted == batch.outcome_class) & graded).sum() / graded_n
-                    ).float(),
-                }
+                # Keyed to match the ``_additive`` table: anything not named
+                # there is accumulated by nothing and never reaches the logger.
+                diag_outcome.update(
+                    {
+                        "outcome_ce": outcome_ce_loss.detach(),
+                        "outcome_labelled": graded.float().mean(),
+                        "outcome_acc": (
+                            ((predicted == batch.outcome_class) & graded).sum() / graded_n
+                        ).float(),
+                    }
+                )
 
         loss = (
             self.cfg.outcome_categorical_coef * outcome_ce_loss
@@ -1857,9 +1862,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             + self.cfg.windowed_loss_coef * windowed_ns_loss
         )
 
-        diag: dict = {}
-        if self.cfg.outcome_categorical_coef > 0.0:
-            diag.update(diag_outcome)
+        diag: dict = dict(diag_outcome)
 
         # ---- Gradient decomposition -------------------------------------------
         # Differentiates the weighted terms that make up `loss` above, one
@@ -2596,6 +2599,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "returns/aggregate_std": [],
             "returns/advantage_std": [],
             "episode/alive_fraction": [],
+            "outcome_head/cross_entropy": [],
+            "outcome_head/accuracy": [],
+            "outcome_head/labelled_fraction": [],
             "train/gradient_norm": [],
             # Fraction of optimizer steps whose gradients were non-finite and
             # got scrubbed. Any sustained non-zero reading means the forward or
@@ -2698,6 +2704,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("entropy_power", "entropy_power"),
                     ("entropy_turn", "entropy_turn"),
                     ("entropy_shoot", "entropy_shoot"),
+                    ("outcome_ce", "outcome_ce"),
+                    ("outcome_acc", "outcome_acc"),
+                    ("outcome_labelled", "outcome_labelled"),
                 )
                 _primary_k = (
                     "value_loss_k",
@@ -2735,6 +2744,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("returns/aggregate", "ret_agg_mean"),
                     ("returns/aggregate_std", "ret_agg_std"),
                     ("episode/alive_fraction", "alive_frac"),
+                    ("outcome_head/cross_entropy", "outcome_ce"),
+                    ("outcome_head/accuracy", "outcome_acc"),
+                    ("outcome_head/labelled_fraction", "outcome_labelled"),
                 )
                 scalar_accum_step: dict[str, torch.Tensor] = {
                     key: _z.clone() for key, _ in _additive
