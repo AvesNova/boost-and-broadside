@@ -100,6 +100,63 @@ def roles_from_front(front_position: torch.Tensor) -> torch.Tensor:
     return base_roles[source_index]
 
 
+def zone_terminal_distances(
+    front_position: torch.Tensor, front_win_threshold: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """How many captures separate each zone from ending the match.
+
+    Both channels answer the same question from opposite sides: *if this zone
+    changes hands, how far is the match from over?* Zero means the capture ends
+    it. Ownership is irrelevant -- a zone is a place on the line, not an event,
+    so the value is defined for every zone on every tick.
+
+    The front advances one step per capture, and ``roles_from_front`` rotates the
+    role pattern by ``front_position``, so zone ``z`` is Team 0's target when
+    ``(z - p) % 5 == TEAM1_DEFENSE``'s slot and the capture leaves the front at
+    ``p + 1``. Solving that for the post-capture coordinate gives ``q = z - 2``
+    (mod 5) for Team 0 and ``q = z - 3`` (mod 5) for Team 1 -- *different*
+    residues, because the two teams contest different zones at any instant.
+
+    Each residue class recurs every five captures, which is what makes this work
+    when ``front_win_threshold`` exceeds the zone count and the front laps the
+    circle. The nearest future occurrence is the one taken, so a zone's value
+    falls as the match progresses: the first lap over a zone leaves the most work
+    remaining, the last lap the least. A zone whose next occurrence lies past the
+    winning line falls back one lap, which is what keeps every value at or above
+    zero -- a zone deep in friendly territory reads *far from deciding
+    anything*, never a negative distance.
+
+    Args:
+        front_position:      (B,) int64 unwrapped strategic coordinate.
+        front_win_threshold: (B,) int64 captures needed to win.
+
+    Returns:
+        ``(offensive, defensive)``, each (B, Z) int64 and non-negative.
+        Offensive counts toward Team 0's victory, defensive toward Team 1's.
+        ``flip_team`` exchanges them rather than recomputing either.
+    """
+
+    zones = torch.arange(NUM_FRONTLINE_ZONES, device=front_position.device)
+    position = front_position.unsqueeze(1)  # (B, 1)
+    threshold = front_win_threshold.unsqueeze(1)  # (B, 1)
+
+    # Smallest q = z - 2 (mod 5) strictly ahead of the front.
+    forward = position + 1
+    q_offensive = forward + torch.remainder(zones - 2 - forward, NUM_FRONTLINE_ZONES)
+    q_offensive = torch.where(
+        q_offensive > threshold, q_offensive - NUM_FRONTLINE_ZONES, q_offensive
+    )
+
+    # Largest q = z - 3 (mod 5) strictly behind it.
+    backward = position - 1
+    q_defensive = backward - torch.remainder(backward - (zones - 3), NUM_FRONTLINE_ZONES)
+    q_defensive = torch.where(
+        q_defensive < -threshold, q_defensive + NUM_FRONTLINE_ZONES, q_defensive
+    )
+
+    return threshold - q_offensive, threshold + q_defensive
+
+
 def zone_membership(
     ship_pos: torch.Tensor,
     zone_pos: torch.Tensor,

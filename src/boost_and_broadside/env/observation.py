@@ -5,8 +5,9 @@ from enum import IntEnum, StrEnum
 
 import torch
 
-from boost_and_broadside.config.core import EnvConfig, ShipConfig
+from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES, EnvConfig, ShipConfig
 from boost_and_broadside.constants import EPS
+from boost_and_broadside.env.frontline import zone_terminal_distances
 from boost_and_broadside.env.perception import TeamVisibility, team_visibility_from_state
 from boost_and_broadside.env.state import TensorState
 
@@ -35,6 +36,8 @@ class ObsKey(StrEnum):
     ZONE_ROLE = "zone_role"
     CAPTURE_PROGRESS = "capture_progress"
     CAPTURE_DIRECTION = "capture_direction"
+    ZONE_OFFENSIVE_DISTANCE = "zone_offensive_distance"
+    ZONE_DEFENSIVE_DISTANCE = "zone_defensive_distance"
     FRONT_POSITION = "front_position"
     FRONT_WIN_THRESHOLD = "front_win_threshold"
     TIME_REMAINING = "time_remaining"
@@ -135,6 +138,8 @@ class YemongObservation:
         if resolved in {
             ObsKey.CAPTURE_PROGRESS,
             ObsKey.CAPTURE_DIRECTION,
+            ObsKey.ZONE_OFFENSIVE_DISTANCE,
+            ObsKey.ZONE_DEFENSIVE_DISTANCE,
             ObsKey.FRONT_POSITION,
             ObsKey.FRONT_WIN_THRESHOLD,
             ObsKey.TIME_REMAINING,
@@ -310,6 +315,17 @@ class YemongObservation:
         for key in (ObsKey.CAPTURE_DIRECTION, ObsKey.FRONT_POSITION):
             if key in flipped_data:
                 flipped_data[key] = select_env(flipped_data[key], -flipped_data[key])
+        # The distance channels swap rather than negate. A zone is a fixed place
+        # on the line; only which side is attacking it changes, so Team 1's
+        # offensive view *is* Team 0's defensive one, already computed.
+        if (
+            ObsKey.ZONE_OFFENSIVE_DISTANCE in flipped_data
+            and ObsKey.ZONE_DEFENSIVE_DISTANCE in flipped_data
+        ):
+            attack = flipped_data[ObsKey.ZONE_OFFENSIVE_DISTANCE]
+            defend = flipped_data[ObsKey.ZONE_DEFENSIVE_DISTANCE]
+            flipped_data[ObsKey.ZONE_OFFENSIVE_DISTANCE] = select_env(attack, defend)
+            flipped_data[ObsKey.ZONE_DEFENSIVE_DISTANCE] = select_env(defend, attack)
         flipped_obs = YemongObservation(data=flipped_data, bullets=flipped_obs.bullets)
         if self.bullets is None:
             return flipped_obs
@@ -731,6 +747,19 @@ def observation_from_state(
     field_target = torch.log(state.field_index).unsqueeze(-1) / log_scale
     max_damage = max(2.0 * ship_config.field_interface_damage, EPS)
     field_damage = state.field_damage.unsqueeze(-1) / max_damage
+    # Only the frontline layout has a front to measure against, and the residue
+    # arithmetic is defined over exactly NUM_FRONTLINE_ZONES. Anything else (the
+    # legacy elimination arena, which carries no zones at all) takes the zero
+    # slice object_scalar supplies for a missing channel.
+    if num_zones == NUM_FRONTLINE_ZONES:
+        offensive_counts, defensive_counts = zone_terminal_distances(
+            state.front_position, state.front_win_threshold
+        )
+        zone_offensive = offensive_counts.float().unsqueeze(-1)
+        zone_defensive = defensive_counts.float().unsqueeze(-1)
+    else:
+        zone_offensive = None
+        zone_defensive = None
     remaining = torch.where(
         state.match_max_steps > 0,
         (state.match_max_steps - state.step_count).clamp(min=0).float()
@@ -774,6 +803,12 @@ def observation_from_state(
             ObsKey.CAPTURE_DIRECTION: torch.cat(
                 [ship_zero, object_scalar(zone=state.zone_capture_direction.float().unsqueeze(-1))],
                 dim=1,
+            ),
+            ObsKey.ZONE_OFFENSIVE_DISTANCE: torch.cat(
+                [ship_zero, object_scalar(zone=zone_offensive)], dim=1
+            ),
+            ObsKey.ZONE_DEFENSIVE_DISTANCE: torch.cat(
+                [ship_zero, object_scalar(zone=zone_defensive)], dim=1
             ),
             ObsKey.FRONT_POSITION: torch.cat(
                 [ship_zero, object_scalar(boundary=state.front_position.float()[:, None, None])],
