@@ -54,5 +54,21 @@ BC_PROFILE = replace(
     name="bc",
     schedule_spec=BC_SCHEDULE_SPEC,
     next_state_coef=1.0,
-    total_timesteps=2_000_000_000,
+    # The only stop condition, and the same budget RL carries. With cloning held
+    # at full strength there is no self-terminating gate left here -- the 2B
+    # placeholder meant "runs until imitation saturates", and saturation is now
+    # something to read off ``loss/behavioral_cloning_kl`` rather than something
+    # the run detects.
+    total_timesteps=500_000_000,
+    # Cloning never decays here. In RL the decay withdraws a warm start as the
+    # policy outgrows it; in a pretraining run it is the *only* signal training
+    # the actor, and RL's 0.45 would switch it off at roughly teacher parity --
+    # exactly where a clone becomes worth keeping. Worse, with the policy
+    # gradient already at zero, a decayed BC weight leaves nothing training the
+    # actor at all: ``_actor_entropy_coef`` then drops entropy to zero to stop
+    # the policy walking back to uniform, and the run spends its remaining
+    # budget refining a critic for a frozen actor.
+    #
+    # Stop this run on a plateau in ``loss/behavioral_cloning_kl`` instead.
+    bc_winrate_target=None,
 )

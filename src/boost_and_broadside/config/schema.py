@@ -121,7 +121,7 @@ class ProfileSpec:
     elo_temperature: float
     league_uniform_sampling: bool
     elo_eval: EloEvalConfig
-    bc_winrate_target: float
+    bc_winrate_target: float | None
 
     # --- Persistence and logging ---
     checkpoint_dir: str

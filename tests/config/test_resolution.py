@@ -68,8 +68,19 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         # Full-strength next-state prediction while a dense supervised signal is
         # available to learn the trunk from.
         "next_state_coef",
-        # BC's own budget: it stops when imitation saturates.
-        "total_timesteps",
+        # ``total_timesteps`` is deliberately absent: BC no longer carries its own
+        # budget. It used to run to 2B on the reasoning that it stops when
+        # imitation saturates, but nothing self-terminates this profile any more
+        # -- cloning does not decay, so saturation is something to read off
+        # loss/behavioral_cloning_kl rather than something the run detects. The
+        # step budget is now the only stop condition, and it is RL's.
+        #
+        # None, not a number: cloning holds at full strength for the whole run.
+        # RL's 0.45 withdraws a warm start the policy has outgrown. Here it is
+        # the only gradient reaching the actor, so decaying it would end the
+        # useful part of the run at roughly teacher parity -- which is exactly
+        # the policy the pretraining exists to produce.
+        "bc_winrate_target",
         # Five entries -- learning_rate, policy_gradient_coef,
         # behavior_cloning_coef, league_fraction, target_kl -- each commented at
         # the point of override in profiles/bc.py.
