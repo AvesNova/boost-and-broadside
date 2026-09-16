@@ -1,6 +1,6 @@
 # Frontline overhaul progress and plan
 
-Last updated: 2026-09-10
+Last updated: 2026-09-15
 
 This is the living internal record for the Frontline Conquest Overhaul. Update it when
 a gameplay contract changes, evidence changes a recommendation, a milestone advances,
@@ -83,28 +83,13 @@ mean *peak* net front of only 1.91, with 25.8% still drawn after 27,000 steps.
 
 ## Current scripted baseline
 
-The scripted controller remains a crude baseline and behavior-cloning warm start, not an
-optimal hand-coded strategist.
+The state-derived redesign replaces episode identities, rallies, indexed patrols, and
+healing latches with marginal zone demand, local health ratios, separation, and smooth
+recovery. Exact close dogfighter behavior is shared with combat mode. See
+[the formulation, defaults, and validation](../frontline-scripted-strategy.md).
 
-- Episode identities: 50% offensive, 25% defensive, 25% timid.
-- A single enemy occupying a defense makes it contested, even if no defender is present.
-- Exactly one contested defense draws both available fleets there. With both or neither
-  contested, ships follow their tendencies.
-- Nearby combat takes priority over point navigation except for a timid healing retreat.
-- Offensive ships gather one-third of the shortest spawn-to-enemy-defense route. They
-  advance after every living offensive ship reaches or passes the rally threshold.
-  Respawns naturally cause regrouping. Timid offensive followers join but do not count
-  toward readiness.
-- Uncontested defensive ships orbit 20 px outside the damaging point, alternating orbit
-  direction by stable within-team rank. Nearby enemies interrupt patrol.
-- Timid ships retreat below 30% health and heal fully; timid respawns always heal fully.
-- Offensive/defensive respawns heal fully unless local combat or a contested point calls
-  them away.
-- Tendencies survive death and are redrawn only at episode reset.
-
-The scripted controller now receives the same authoritative team-shared visibility mask
-as the learned policy. Hidden enemies cannot trigger local combat, point-contested logic,
-or targeting, so behavior-cloning labels do not leak privileged state.
+This redesign is being reviewed on `frontline/state-derived-strategy`, based on
+`feat/frontline-overhaul`; it does not change the separate Gate 5 architecture work.
 
 ## Capture-duration evidence
 
@@ -400,9 +385,8 @@ Reproduce with [`benchmarks/frontline_fog_suite.py`](../../benchmarks/frontline_
 
 ## Known limitations and open questions
 
-- Scripted identities and strategy are not policy observation features. This adds
-  multimodal BC labels; keep heuristics simple until we decide whether roles should be
-  observable or deterministic.
+- The state-derived scripted teacher removes hidden identities. Strategic tuning still
+  needs larger statistical samples and human play feedback.
 - Capture statistics are scripted-policy dependent and do not predict learned or human
   balance exactly.
 - No capture-time sweep setting above 7 seconds reached ±5 in the sampled population;

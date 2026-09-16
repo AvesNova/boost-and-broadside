@@ -88,20 +88,34 @@ class StochasticAgentConfig:
         0.0,
     )  # disabled by default; use scripted_team spec to enable
 
-    # Frontline objective selection. These do not participate in the legacy
-    # flat-vector tuning interface: combat-mode behavior is intentionally frozen,
-    # while the Gate-1 objective controller remains provisional and independently
-    # configurable for playtesting.
-    # Timid ships latch a retreat below this health fraction and stay at spawn
-    # until fully healed. Non-timid ships use healing only after a respawn.
-    frontline_heal_health_fraction: float = 0.3
-    frontline_enemy_engage_distance: float = 500.0
+    # State-derived Frontline strategy; excluded from the legacy tuning vector.
+    frontline_aggression: float = 1.0
+    frontline_combat_radius: float = 600.0
+    frontline_zone_radius: float | None = 900.0
+    frontline_zone_margin: float = 1.0  # full-health ship equivalents
+    frontline_separation_radius: float | None = 120.0
+    frontline_recovery_health: float = 0.5
 
     def __post_init__(self) -> None:
-        if not 0.0 <= self.frontline_heal_health_fraction <= 1.0:
-            raise ValueError("frontline_heal_health_fraction must lie in [0, 1]")
-        if self.frontline_enemy_engage_distance < 0.0:
-            raise ValueError("frontline_enemy_engage_distance must be non-negative")
+        values = (
+            self.frontline_aggression,
+            self.frontline_combat_radius,
+            self.frontline_zone_margin,
+            self.frontline_recovery_health,
+        )
+        if not all(np.isfinite(v) for v in values):
+            raise ValueError("Frontline parameters must be finite")
+        if not -10 <= self.frontline_aggression <= 10:
+            raise ValueError("frontline_aggression must lie in [-10, 10]")
+        if self.frontline_combat_radius <= max(0, self.shoot_distance_ramp[0]):
+            raise ValueError("frontline_combat_radius must exceed the inner shooting range")
+        if self.frontline_zone_margin <= 0:
+            raise ValueError("frontline_zone_margin must be positive")
+        if not 0 < self.frontline_recovery_health <= 1:
+            raise ValueError("frontline_recovery_health must lie in (0, 1]")
+        for value in (self.frontline_zone_radius, self.frontline_separation_radius):
+            if value is not None and (not np.isfinite(value) or value <= 0):
+                raise ValueError("Frontline radius overrides must be finite and positive")
 
     # ---------------------------------------------------------------------------
     # Flat-vector interface for hyperparameter search
