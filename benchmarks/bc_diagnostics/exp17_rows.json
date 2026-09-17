@@ -1,0 +1,38 @@
+[
+ {
+  "depth": 1,
+  "relbias": false,
+  "params": 279687,
+  "heldout_turn_kl": 1.5441
+ },
+ {
+  "depth": 2,
+  "relbias": false,
+  "params": 477191,
+  "heldout_turn_kl": 1.817
+ },
+ {
+  "depth": 4,
+  "relbias": false,
+  "params": 872199,
+  "heldout_turn_kl": 1.9418
+ },
+ {
+  "depth": 6,
+  "relbias": false,
+  "params": 1267207,
+  "heldout_turn_kl": 1.9566
+ },
+ {
+  "depth": 2,
+  "relbias": true,
+  "params": 477903,
+  "heldout_turn_kl": 1.5368
+ },
+ {
+  "depth": 4,
+  "relbias": true,
+  "params": 873623,
+  "heldout_turn_kl": 1.7638
+ }
+]

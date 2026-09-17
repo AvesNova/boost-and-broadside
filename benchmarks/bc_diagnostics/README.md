@@ -61,3 +61,29 @@ committed. The `.pt` dumps are not: `probe_*.pt` is 213 MB each and `obs_*.pt`
   as the other misaligns states against labels, and a probe reports that as "this
   layer carries no information" rather than failing. `exp7_collect.py` handles
   both.
+
+## Session 3 — why the attribution changed
+
+Session 2 blamed the absolute-Fourier positional encoding. Session 3 withdrew
+that: its recommended fix would have broken zero-shot fleet-size transfer, and
+the structural claim behind it was wrong (`q·k` over a shared Fourier basis
+*does* compute displacement). See the write-up's "Corrections to session 2".
+
+```
+uv run --no-sync python benchmarks/bc_diagnostics/exp14_collect.py train   3 3 0
+uv run --no-sync python benchmarks/bc_diagnostics/exp14_collect.py heldout 3 3 1
+uv run --no-sync python benchmarks/bc_diagnostics/exp14_probe.py        # directions vs magnitudes
+uv run --no-sync python benchmarks/bc_diagnostics/exp15_belief.py       # belief mismatch (refuted)
+uv run --no-sync python benchmarks/bc_diagnostics/exp16_zone.py         # zone quantities
+uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py        # the three force terms
+uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py # |force| conditioning
+uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12   # matched relative-bias
+```
+
+`exp17_depth.py` is kept but **its levels must not be cited** — it is
+data-limited (held-out KL rises with depth), and only its matched
+within-experiment contrast survives, which `exp20_relbias.py` re-runs.
+
+Anything that mirrors `frontline_strategy` cross-checks itself against the real
+function on every recorded step and reports the drift; both mirrors here record
+`0.0`. Do not trust a mirror that does not.

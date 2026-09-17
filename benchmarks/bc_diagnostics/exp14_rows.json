@@ -1,0 +1,338 @@
+[
+ {
+  "tap": "encoder",
+  "target": "dir_combat_force",
+  "kind": "direction",
+  "median_deg": 31.72,
+  "p90_deg": 140.21
+ },
+ {
+  "tap": "encoder",
+  "target": "dir_enemy",
+  "kind": "direction",
+  "median_deg": 32.08,
+  "p90_deg": 141.31
+ },
+ {
+  "tap": "encoder",
+  "target": "dir_objective",
+  "kind": "direction",
+  "median_deg": 33.97,
+  "p90_deg": 134.08
+ },
+ {
+  "tap": "encoder",
+  "target": "dir_separation",
+  "kind": "direction",
+  "median_deg": 81.94,
+  "p90_deg": 159.65
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_allied_strength",
+  "kind": "magnitude",
+  "r2": 0.133,
+  "target_std": 0.932
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_combat",
+  "kind": "magnitude",
+  "r2": -0.091,
+  "target_std": 0.152
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_combat_force",
+  "kind": "magnitude",
+  "r2": -0.382,
+  "target_std": 0.212
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_enemy_strength",
+  "kind": "magnitude",
+  "r2": -0.213,
+  "target_std": 0.547
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_n_allies",
+  "kind": "magnitude",
+  "r2": 1.0,
+  "target_std": 0.0
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_n_visible_enemies",
+  "kind": "magnitude",
+  "r2": -0.478,
+  "target_std": 1.269
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_need_total",
+  "kind": "magnitude",
+  "r2": -0.498,
+  "target_std": 0.967
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_objective",
+  "kind": "magnitude",
+  "r2": -0.604,
+  "target_std": 0.136
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_recovery",
+  "kind": "magnitude",
+  "r2": 0.998,
+  "target_std": 0.248
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_separation",
+  "kind": "magnitude",
+  "r2": -0.612,
+  "target_std": 0.202
+ },
+ {
+  "tap": "encoder",
+  "target": "mag_spawn_dist",
+  "kind": "magnitude",
+  "r2": -0.28,
+  "target_std": 538.523
+ },
+ {
+  "tap": "encoder",
+  "target": "rel_front",
+  "kind": "direction",
+  "median_deg": 16.4,
+  "p90_deg": 117.57
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "dir_combat_force",
+  "kind": "direction",
+  "median_deg": 10.94,
+  "p90_deg": 76.57
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "dir_enemy",
+  "kind": "direction",
+  "median_deg": 10.97,
+  "p90_deg": 70.51
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "dir_objective",
+  "kind": "direction",
+  "median_deg": 13.4,
+  "p90_deg": 96.56
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "dir_separation",
+  "kind": "direction",
+  "median_deg": 19.76,
+  "p90_deg": 100.46
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_allied_strength",
+  "kind": "magnitude",
+  "r2": 0.808,
+  "target_std": 0.932
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_combat",
+  "kind": "magnitude",
+  "r2": 0.391,
+  "target_std": 0.152
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_combat_force",
+  "kind": "magnitude",
+  "r2": 0.868,
+  "target_std": 0.212
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_enemy_strength",
+  "kind": "magnitude",
+  "r2": 0.88,
+  "target_std": 0.547
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_n_allies",
+  "kind": "magnitude",
+  "r2": 1.0,
+  "target_std": 0.0
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_n_visible_enemies",
+  "kind": "magnitude",
+  "r2": 0.695,
+  "target_std": 1.269
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_need_total",
+  "kind": "magnitude",
+  "r2": 0.55,
+  "target_std": 0.967
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_objective",
+  "kind": "magnitude",
+  "r2": 0.192,
+  "target_std": 0.136
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_recovery",
+  "kind": "magnitude",
+  "r2": 0.992,
+  "target_std": 0.248
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_separation",
+  "kind": "magnitude",
+  "r2": 0.547,
+  "target_std": 0.202
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "mag_spawn_dist",
+  "kind": "magnitude",
+  "r2": 0.918,
+  "target_std": 538.523
+ },
+ {
+  "tap": "b0.temporal0",
+  "target": "rel_front",
+  "kind": "direction",
+  "median_deg": 10.47,
+  "p90_deg": 89.89
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "dir_combat_force",
+  "kind": "direction",
+  "median_deg": 9.14,
+  "p90_deg": 69.94
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "dir_enemy",
+  "kind": "direction",
+  "median_deg": 9.86,
+  "p90_deg": 63.97
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "dir_objective",
+  "kind": "direction",
+  "median_deg": 8.96,
+  "p90_deg": 81.56
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "dir_separation",
+  "kind": "direction",
+  "median_deg": 20.14,
+  "p90_deg": 94.47
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_allied_strength",
+  "kind": "magnitude",
+  "r2": 0.808,
+  "target_std": 0.932
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_combat",
+  "kind": "magnitude",
+  "r2": 0.349,
+  "target_std": 0.152
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_combat_force",
+  "kind": "magnitude",
+  "r2": 0.857,
+  "target_std": 0.212
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_enemy_strength",
+  "kind": "magnitude",
+  "r2": 0.842,
+  "target_std": 0.547
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_n_allies",
+  "kind": "magnitude",
+  "r2": 1.0,
+  "target_std": 0.0
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_n_visible_enemies",
+  "kind": "magnitude",
+  "r2": 0.679,
+  "target_std": 1.269
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_need_total",
+  "kind": "magnitude",
+  "r2": 0.675,
+  "target_std": 0.967
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_objective",
+  "kind": "magnitude",
+  "r2": 0.388,
+  "target_std": 0.136
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_recovery",
+  "kind": "magnitude",
+  "r2": 0.982,
+  "target_std": 0.248
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_separation",
+  "kind": "magnitude",
+  "r2": 0.51,
+  "target_std": 0.202
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "mag_spawn_dist",
+  "kind": "magnitude",
+  "r2": 0.908,
+  "target_std": 538.523
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "rel_front",
+  "kind": "direction",
+  "median_deg": 7.03,
+  "p90_deg": 76.74
+ }
+]

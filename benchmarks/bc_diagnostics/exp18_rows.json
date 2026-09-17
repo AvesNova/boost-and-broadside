@@ -1,0 +1,34 @@
+[
+ {
+  "extra": "none (frozen policy head)",
+  "turn_kl": 0.5709
+ },
+ {
+  "extra": "none (refit)",
+  "turn_kl": 0.6537
+ },
+ {
+  "extra": "+ objective",
+  "turn_kl": 0.5356
+ },
+ {
+  "extra": "+ separation",
+  "turn_kl": 0.6091
+ },
+ {
+  "extra": "+ recovery/spawn",
+  "turn_kl": 0.6523
+ },
+ {
+  "extra": "+ objective + separation",
+  "turn_kl": 0.3579
+ },
+ {
+  "extra": "+ all three force terms",
+  "turn_kl": 0.3407
+ },
+ {
+  "extra": "+ true bearing (control)",
+  "turn_kl": 0.0343
+ }
+]

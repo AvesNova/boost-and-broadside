@@ -1,0 +1,96 @@
+{
+ "by_ghosts": [
+  {
+   "ghosts": "[0,1)",
+   "n": 34476,
+   "turn_kl": 0.5375,
+   "mean_visible_enemies": 1.13,
+   "mean_alpha": 0.762
+  },
+  {
+   "ghosts": "[1,2)",
+   "n": 9660,
+   "turn_kl": 0.4551,
+   "mean_visible_enemies": 1.39,
+   "mean_alpha": 0.618
+  },
+  {
+   "ghosts": "[2,3)",
+   "n": 2932,
+   "turn_kl": 0.3999,
+   "mean_visible_enemies": 0.92,
+   "mean_alpha": 0.678
+  },
+  {
+   "ghosts": "[3,4)",
+   "n": 1632,
+   "turn_kl": 0.514,
+   "mean_visible_enemies": 0.5,
+   "mean_alpha": 0.87
+  },
+  {
+   "ghosts": "[4,99)",
+   "n": 452,
+   "turn_kl": 0.418,
+   "mean_visible_enemies": 0.0,
+   "mean_alpha": 1.0
+  }
+ ],
+ "matched": [
+  {
+   "visible_enemies": 0,
+   "n_no_ghost": 16040,
+   "n_ghost": 5272,
+   "kl_no_ghost": 0.5964,
+   "kl_ghost": 0.4932
+  },
+  {
+   "visible_enemies": 1,
+   "n_no_ghost": 7784,
+   "n_ghost": 4268,
+   "kl_no_ghost": 0.4807,
+   "kl_ghost": 0.414
+  },
+  {
+   "visible_enemies": 2,
+   "n_no_ghost": 4044,
+   "n_ghost": 2724,
+   "kl_no_ghost": 0.5243,
+   "kl_ghost": 0.4572
+  },
+  {
+   "visible_enemies": 3,
+   "n_no_ghost": 3424,
+   "n_ghost": 2412,
+   "kl_no_ghost": 0.4386,
+   "kl_ghost": 0.4081
+  }
+ ],
+ "by_visible": [
+  {
+   "visible_enemies": 0,
+   "n": 21312,
+   "turn_kl": 0.5709
+  },
+  {
+   "visible_enemies": 1,
+   "n": 12052,
+   "turn_kl": 0.457
+  },
+  {
+   "visible_enemies": 2,
+   "n": 6768,
+   "turn_kl": 0.4973
+  },
+  {
+   "visible_enemies": 3,
+   "n": 5836,
+   "turn_kl": 0.426
+  },
+  {
+   "visible_enemies": 4,
+   "n": 3184,
+   "turn_kl": 0.5028
+  }
+ ]
+}

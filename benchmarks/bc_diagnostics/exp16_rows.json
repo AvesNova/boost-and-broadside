@@ -1,0 +1,38 @@
+[
+ {
+  "extra": "none (frozen policy head)",
+  "turn_kl": 0.5709
+ },
+ {
+  "extra": "none (refit head on latent)",
+  "turn_kl": 0.6555
+ },
+ {
+  "extra": "+ zone directions (ego frame)",
+  "turn_kl": 0.652
+ },
+ {
+  "extra": "+ zone need (team-wide sum)",
+  "turn_kl": 0.6581
+ },
+ {
+  "extra": "+ allied pressure without self",
+  "turn_kl": 0.6796
+ },
+ {
+  "extra": "+ zone preference (normalised)",
+  "turn_kl": 0.6447
+ },
+ {
+  "extra": "+ need AND directions",
+  "turn_kl": 0.6369
+ },
+ {
+  "extra": "+ objective_force direction",
+  "turn_kl": 0.5578
+ },
+ {
+  "extra": "+ objective direction AND magnitude",
+  "turn_kl": 0.5406
+ }
+]

@@ -1,3 +1,6 @@
 /dump_*.pt
 /probe_*.pt
+/probe2_*.pt
 /obs_*.pt
+/zone_*.pt
+/rb_*.pt

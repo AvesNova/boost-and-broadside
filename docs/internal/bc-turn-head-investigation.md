@@ -6,11 +6,118 @@ checkpoint `checkpoints/icy-energy-741/step_000167608320.pt` (update 341,
 RTX 4070 Laptop (8 GB) at `num_envs=128`, `microbatch_tokens=12288`,
 `num_steps=128`, `num_ships=8`. The checkpoint was never modified.
 
-Two sessions are recorded here. Session 1 (Exp 1–6) established *what* the
-residual is. Session 2 (Exp 7–13) establishes *where it comes from*, and its
-conclusion supersedes session 1's "likely interpretations".
+Three sessions are recorded here. Session 1 (Exp 1–6) established *what* the
+residual is. Session 2 (Exp 7–13) attributed it to the positional encoding.
+**Session 3 (Exp 14–20) retracts that attribution** — see *Corrections to
+session 2* — and replaces it with a measured account in which no single
+missing quantity explains the residual.
 
 ## Executive summary
+
+**There is no single missing quantity. The residual is distributed bearing
+imprecision, part of which is an irreducible property of the teacher's own
+function, and the framing that a specific representational defect explains it
+did not survive being tested.**
+
+Session 2 concluded the cause was the absolute-Fourier positional encoding. That
+conclusion is **withdrawn** — see *Corrections to session 2* below for why the
+recommendation it produced would have broken zero-shot fleet-size transfer, and
+why its central structural claim about attention was wrong.
+
+What session 3 measured, all on fresh held-out rollouts under
+`bc_valid & actor_mask & alive`:
+
+1. **The trunk is not missing the teacher's intermediates.** It represents
+   `enemy_strength` at R² `0.84`, `allied_strength` `0.81`, a visible-enemy
+   *count* `0.68`, zone `need` `0.68`, and every constituent direction to
+   `9–20°`. Appending any single one of them to the frozen latent moves held-out
+   turn KL by `0.00–0.02`. The "softmax conveys *which* but not *how many*"
+   limitation from `docs/architecture.md` is real but is evidently worked around
+   (Exp 14, 16).
+2. **The trunk does not compute the teacher compositionally.** The bearing
+   itself (`7.03°`) is represented *more* accurately than any of its own inputs
+   — `dir_objective` `8.96°`, `dir_enemy` `9.86°`, `dir_separation` `20.14°`.
+   The output of a sum cannot beat its terms, so the trunk has learned a **direct
+   map to the answer**, not the teacher's derivation. This is why hunting for
+   "the missing intermediate" kept coming up empty: there is no such thing to
+   find (Exp 14).
+3. **The teacher's bearing is ill-conditioned, and that part is irreducible.**
+   It is the *angle of a sum* of near-cancelling vectors, so
+   `d(angle) ≈ |error| / |force|`. Analytically — perturbing one term by `0.02`
+   and re-taking the angle — the teacher's own bearing moves `1.52°` in the
+   lowest `|force|` octile against `0.10°` in the highest, a **15×**
+   amplification. Probe error (`23.0°` vs `4.6°`) and turn KL (`0.862` vs
+   `0.374`) both track it. No representation at finite precision can prevent
+   this, and the teacher is genuinely near-indifferent between directions there.
+   Worth ~32% of the affected stratum, so roughly 10–15% of the total residual —
+   real, mechanistic, and **not** the whole answer (Exp 19).
+4. **The hardest states are the simplest ones.** Turn KL peaks at `0.571` when
+   **zero** enemies are visible — where the teacher collapses to pure zone
+   navigation and every input it uses is exactly present in the observation.
+   Neither perception nor fleet coordination is the binding constraint (Exp 15).
+5. **Refuted:** the belief/visibility mismatch. `frontline_strategy` counts only
+   currently-visible enemies while the trunk attends over `BELIEF_VALID`
+   ("visible or previously observed"), but remembered-but-invisible tokens go
+   with **lower** KL at every matched enemy count (Exp 15).
+6. **Inconclusive:** whether the ceiling is this trunk or the observation. The
+   from-scratch depth sweep (Exp 17) is data-limited, not architecture-limited —
+   the tell is that KL *rose* with depth — so its absolute levels say nothing.
+   Only its matched within-experiment contrast is usable (Exp 20).
+
+**What this means for the run.** The BC profile stops on a plateau in
+`loss/behavioral_cloning_kl` and says so explicitly — it is the *only* stop
+condition. Defect **D3** is therefore not cosmetic: that metric averages over all
+four update epochs (`ppo.py:2586`, `2711`) and reads roughly `0.13` nats low, so
+the run's sole stopping criterion is biased. Fixing the logging is now the
+highest-value change in this document, and it is fifteen minutes of work.
+
+**And the framing worth questioning.** The README measures this policy at ~1748
+Elo against the scripted controller's 1000, beating fleets 1.4–1.5× its size. BC
+here is *pretraining* — a warm start RL improves on, not a clone to perfect. A
+policy that matched the teacher exactly would be markedly weaker. "Why can't it
+match?" may simply have the answer "because the teacher is a steep, partly
+ill-conditioned function that it has no reason to reproduce exactly, and it is
+already far past needing to." The evidence cannot settle whether the remaining
+`0.5` nats costs anything downstream; the cheap way to find out is to start RL
+from checkpoints at different BC KL and compare, which nobody has done.
+
+**Session 1 facts that still stand.** The old `0.81` was an evaluator missing
+`actor_mask`; the residual is a turn-head, and within it a direction, phenomenon;
+the policy under-turns and hedges; power and shoot are solved; `p_team ≡ 0`;
+next-state and entropy are orthogonal and small; fp32/bf16 and rollout-start
+hidden state are noise; fixed-rollout fitting is memorisation (fresh-rollout KL
+`2.6`). The layerwise probe curve of Exp 7 replicates to `0.8°`.
+
+## Corrections to session 2
+
+Three errors, all found by re-reading the project's own documents against the
+session-2 conclusion.
+
+1. **The recommended fix violated the project's central constraint.** The README's
+   headline claim is zero-shot transfer from 4-vs-4 to fleets of 1–64 ships, and
+   absolute positions in one shared global frame are what keep the encoder
+   **O(N) per entity**. Exp 10's winning probe quietly built a separate 24-token
+   set *per ego ship* — O(N²) encoder work, which at 64 ships breaks exactly the
+   property the project exists to demonstrate. Its `5.4°` was bought with a
+   structure the architecture cannot adopt. A relative-position *attention bias*
+   (one scalar per query/key pair, no per-pair token, no per-pair value) **is**
+   transfer-safe, and Exp 17 tests that instead.
+2. **"Self-attention cannot form relative geometry" is false.** Over a shared
+   Fourier basis, `sin(ωxᵢ)sin(ωxⱼ) + cos(ωxᵢ)cos(ωxⱼ) = cos(ω(xᵢ−xⱼ))`, so `q·k`
+   *is* a function of displacement. `docs/architecture.md` states this as the
+   design intent. What attention cannot do is put a pair-dependent term in the
+   **value**; the scores are relative already. Session 2 overstated a narrow
+   limitation into a structural impossibility.
+3. **The oracle control was over-weighted.** Handing a network the exact
+   arguments of a deterministic function and watching it learn that function is
+   near-tautological. It establishes that the action head has capacity and the
+   target is learnable — worth ruling out, not a discovery, and it should not
+   have led the evidence chain.
+
+## Session 2 summary (Exp 7–13) — superseded, kept for audit
+
+Every number below still replicates; the *attribution* built on them does not.
+Read it with the corrections above.
 
 **The residual BC loss is a bearing-precision deficit in the shared trunk, and
 the deficit is caused by the positional representation — not by the action
@@ -772,6 +879,180 @@ positive bearing. A leftward-biased estimator on a right-skewed target costs
 more on the right. Plausible but not proven; it is a cheap follow-up, not a
 blocker, and it is worth ≤ 20% of the residual either way.
 
+### Exp 14 — directions vs magnitudes, and a surprise about composition
+
+*Question:* `docs/architecture.md` notes that softmax "conveys *which* ... but not
+*how many*", and warns that sum-pooling "would grow without bound as fleets
+scale". The teacher's bearing is a sum of direction vectors whose *relative
+magnitudes* come from unnormalised sums (`enemy_strength`, `allied_strength`,
+zone `need`). Does the trunk represent the directions but not the magnitudes?
+*Method:* `exp14_collect.py` mirrors `frontline_strategy` to recover the
+intermediates it does not return, cross-checked against the values it does —
+the recorded drift was `0.0` exactly, so the mirror is bit-identical. Directions
+are scored in degrees, magnitudes as held-out R². *Runtime:* ~3 min per tag,
+~8 min of probes. *Sample:* 49 152 / 49 152.
+
+Final latent (`b1.temporal0`), held out:
+
+| direction | median | p90 | | magnitude | R² |
+|---|---|---|---|---|---|
+| `rel_front` (**the bearing itself**) | **7.03°** | 76.7° | | `mag_recovery` | 0.982 |
+| `dir_objective` | 8.96° | 81.6° | | `mag_spawn_dist` | 0.908 |
+| `dir_combat_force` | 9.14° | 69.9° | | `mag_combat_force` | 0.857 |
+| `dir_enemy` | 9.86° | 64.0° | | `mag_enemy_strength` | 0.842 |
+| `dir_separation` | 20.14° | 94.5° | | `mag_allied_strength` | 0.808 |
+| | | | | `mag_need_total` | 0.675 |
+| | | | | `mag_n_visible_enemies` | 0.679 |
+| | | | | `mag_separation` | 0.510 |
+| | | | | `mag_objective` | 0.388 |
+| | | | | `mag_combat` | 0.349 |
+
+*Interpretation.* The hypothesis is **not** supported as stated, and the table
+contains something more interesting than the answer it was looking for.
+
+* **Magnitudes are represented, imperfectly.** `enemy_strength` at R² `0.84` and
+  a visible-enemy *count* at `0.68` are not the signature of a representation
+  that has discarded magnitude. Softmax's normalisation is a real limitation but
+  it is evidently worked around. The weakest entries — `mag_combat` `0.35`,
+  `mag_objective` `0.39` — are the terms that set the *blend*, but both have
+  small variance (std `0.15` and `0.14`), and R² is unkind to a nearly constant
+  target, so this is suggestive rather than conclusive.
+* **The bearing is represented better than any of its own inputs.** `rel_front`
+  at `7.03°` beats `dir_objective` (`8.96°`), `dir_combat_force` (`9.14°`),
+  `dir_enemy` (`9.86°`) and `dir_separation` (`20.14°`). A trunk computing the
+  teacher compositionally could not do this: the output of a sum cannot be more
+  accurate than its terms. **The trunk has learned a direct map to the bearing,
+  not the teacher's derivation.** That is unsurprising in hindsight — BC
+  supervises only the final turn distribution, and nothing rewards an accurate
+  `dir_objective` — but it invalidates "find the missing intermediate" as a
+  strategy, which is what session 2 and the first half of session 3 were doing.
+* Block 1 *improves* the task-relevant quantity and slightly *degrades* the
+  incidental ones (`enemy_strength` `0.88 → 0.84`, `n_visible` `0.695 → 0.679`,
+  while `rel_front` goes `10.47 → 7.03`). The trunk is specialising toward what
+  BC asks for. Session 2 read the same curve as "no plateau, therefore
+  depth-limited"; "still specialising" fits it at least as well.
+
+### Exp 15 — the belief/visibility mismatch, refuted
+
+*Question:* `frontline_strategy` counts only **currently visible** enemies
+(`~allied & visible & alive`), while the trunk's spatial attention is masked by
+`BELIEF_VALID` = "visible or previously observed" (`policy.py:374`). Every
+remembered-but-invisible enemy is therefore a token competing for softmax mass
+that the teacher ignores outright. Does that cost KL? *Method:*
+`exp15_belief.py`, on held-out tokens, matched on the visible-enemy count so the
+comparison is at equal teacher input. *Runtime:* ~20 s.
+
+| visible enemies | KL, no ghost tokens | KL, ≥1 ghost token |
+|---|---|---|
+| 0 | 0.5964 | **0.4932** |
+| 1 | 0.4807 | **0.4140** |
+| 2 | 0.5243 | **0.4572** |
+| 3 | 0.4386 | **0.4081** |
+
+*Interpretation.* **Refuted, and in the opposite direction.** Ghost tokens go
+with *lower* KL at every matched enemy count. The policy has `visible` and
+`time_since_observation` as input features and has evidently learned to gate on
+them; remembering where enemies were is, if anything, useful context. Recorded
+because it was a plausible and concrete mismatch, and because a clean negative
+is worth as much here as a positive.
+
+The same run produced the finding that redirected the rest of the session:
+
+| visible enemies | tokens | turn KL |
+|---|---|---|
+| **0** | 21 312 | **0.5709** |
+| 1 | 12 052 | 0.4570 |
+| 2 | 6 768 | 0.4973 |
+| 3 | 5 836 | 0.4260 |
+| 4 | 3 184 | 0.5028 |
+
+**Turn KL is highest when nothing is visible.** With no visible enemies the
+teacher collapses to pure zone navigation: `combat_force` vanishes identically,
+`enemy_zone` is zero, and every input it uses is exactly present in the
+observation. The hardest states are the ones where the teacher's computation is
+simplest and fully observable — so neither perception nor fleet coordination is
+the binding constraint.
+
+### Exp 16 / 18 — hand the head the teacher's own terms
+
+*Question:* inside that zero-visible-enemy stratum, which teacher quantity is the
+trunk failing to build? *Method:* `exp16_zone.py` and `exp18_terms.py` append
+each candidate to the **frozen** final latent and refit a turn head, train on one
+rollout set and score on another. *Runtime:* ~6 min collection, ~5 min of heads.
+*Sample:* 23 872 train / 21 312 held-out tokens.
+
+| appended to the frozen latent | held-out turn KL |
+|---|---|
+| — (the checkpoint's own head) | 0.5709 |
+| — (refit head, latent only) | 0.6571 |
+| + zone `need` (the team-wide sum) | 0.6581 |
+| + allied zone pressure without self | 0.6796 |
+| + zone `preference` (normalised) | 0.6447 |
+| + per-zone directions and distances | 0.6520 |
+| + `need` **and** directions | 0.6369 |
+| + `objective_force` (direction + magnitude) | 0.5360 |
+| + `separation` (direction + magnitude) | 0.6120 |
+| + `recovery` and spawn distance | 0.6538 |
+| + **objective and separation** | **0.3502** |
+| + all three force terms | 0.3381 |
+| + the true bearing (positive control) | **0.0341** |
+
+*Interpretation.* Two things worth separating.
+
+* **No single intermediate rescues the KL.** The zone quantities — `need`,
+  `preference`, per-zone geometry — move it by `0.00`–`0.02`, and one *hurts*.
+  Whatever the trunk is short of, it is not the zone-pressure reduction, which
+  was the session's leading hypothesis when the experiment was written.
+* **The terms are strongly super-additive.** `objective` alone recovers `0.12`
+  and `separation` alone `0.05`, but the two together recover `0.31` — far more
+  than their sum. That is the signature of a **vector sum**: neither term means
+  anything on its own, because what the teacher uses is the *resultant*. And
+  even all three terms together leave `0.338` against the true bearing's
+  `0.034`, because the head is being handed `(angle, magnitude)` pairs and asked
+  to do the vector addition itself.
+
+### Exp 19 — the bearing is ill-conditioned, and that part is irreducible
+
+*Question:* if the residual is not a missing quantity, is it a property of the
+function? The teacher's bearing is the **angle of a sum**, and where the terms
+nearly cancel, `d(angle) ≈ |error| / |force|` — arbitrarily sensitive. *Method:*
+`exp19_conditioning.py` reconstructs the force from the recorded per-term
+`(direction, magnitude)` pairs and stratifies by `|force|`. *Runtime:* ~2 min.
+
+The reconstruction is exact where it should be: median angle error vs the
+teacher's own bearing is **`0.000°`** on the 14 512 tokens with `recovery < 0.01`
+(`1.222°` over all tokens, the gap being the spawn term, which was not recorded).
+So the stratification below is on the real quantity, not a proxy.
+
+| \|force\| octile | range | probe error median | p90 | turn KL | teacher's own bearing shift for a fixed 0.02 perturbation |
+|---|---|---|---|---|---|
+| 1 | 0.005–0.449 | 23.02° | 129.5° | **0.8618** | **1.52°** |
+| 2 | 0.449–0.638 | 8.15° | 55.5° | 0.6781 | 0.41° |
+| 3 | 0.638–0.776 | 6.11° | 42.5° | 0.6184 | 0.22° |
+| 4 | 0.776–0.883 | 4.98° | 38.6° | 0.5557 | 0.15° |
+| 5 | 0.883–0.975 | 3.82° | 24.8° | 0.4709 | 0.12° |
+| 6 | 0.975–1.071 | 3.68° | 25.3° | 0.4228 | 0.11° |
+| 7 | 1.071–1.249 | 4.11° | 40.3° | 0.4008 | 0.11° |
+| 8 | 1.249–2.315 | 4.61° | 32.3° | **0.3744** | **0.10°** |
+
+*Interpretation.* The last column is **analytic, not correlational** — it is a
+property of the teacher's own function, computed by perturbing one term and
+re-taking the angle. A fixed error in any term moves the bearing **15× more**
+where the terms cancel. Probe error (`23.0°` vs `4.6°`) and turn KL (`0.862` vs
+`0.374`) both track it.
+
+This part of the residual is **irreducible for any imitator**: no representation
+of the terms at finite precision can stop `angle(·)` amplifying error as
+`|force| → 0`, and the teacher is genuinely near-indifferent between directions
+there.
+
+*Size it honestly.* If every octile scored like the best-conditioned one, this
+stratum's mean KL would fall `0.5479 → 0.3744` — so conditioning accounts for
+**~32% of the zero-visible-enemy stratum**, whose own share of all tokens is
+~43%. Call it 10–15% of the total residual. It is a real, mechanically
+demonstrated amplifier and it is **not** the whole answer: the best-conditioned
+octile still sits at KL `0.374` with `4.6°` of probe error.
+
 ## Recurrent-state findings
 
 The rollout-start hidden state barely matters for this metric. On identical
@@ -854,117 +1135,117 @@ flattering itself by roughly `0.13` nats.
 applying it mid-investigation would break comparability with the run's own
 history. Log epoch 0 separately and use *that* for plateau detection.
 
-## Recommended fix
+## Recommendations
 
-Ranked by evidence, not by cost.
+Reordered by evidence after session 3 withdrew session 2's headline fix.
 
-### 1. Give the spatial sublayers relative position — the primary recommendation
+### 1. Fix the stop condition — highest value, ~15 minutes
 
-Supply `unit(p_j − p_i)` and `log(1 + |p_j − p_i|)`, toroidally wrapped and
-rotated into the query ship's frame, as a **pairwise** term inside spatial
-attention: project it and add it to the value (and/or as an attention bias), the
-way a geometric transformer does. This is the one quantity the current
-architecture structurally cannot form, and it is exactly the term the teacher
-sums.
+`loss/behavioral_cloning_kl` is accumulated across every micro-batch of all four
+update epochs (`accum_scalar` is built once per `_update_epochs`,
+`ppo.py:2586`; `bc_kl` sits in the `_additive` table, `ppo.py:2711`), so it
+reports the *average over the descent*, not the policy's pre-update value —
+about `0.13` nats low (D3).
 
-*Evidence:* Exp 10. Holding architecture, data and budget fixed, the ego-relative
-cell reaches median `5.37°` / p90 `21.6°` against `29.36°` / `129°` for the
-absolute-Fourier cell; withholding only the unit vector costs `5.37 → 13.77`. A
-200k-parameter probe on 49k tokens beats the 1.945M-parameter trunk trained on
-167.6M steps. Exp 12 converts an improvement in p90 into turn KL directly.
+This matters more than it looks. `profiles/bc.py` states that saturation "is now
+something to read off ``loss/behavioral_cloning_kl``" and that the run should be
+stopped "on a plateau" in it, with `bc_winrate_target=None`. **It is the only
+stop condition this profile has, and it is biased.** Log epoch 0 separately and
+plateau-detect on that.
 
-*Expected effect, with its caveat:* Exp 12's curve says p90 `7.5°` is worth turn
-KL ≈`0.24` and p90 `4.7°` ≈`0.14`. Read that as an order of magnitude, not a
-forecast — Exp 12 corrupts the bearing with a *Gaussian*, whose p90 is fixed at
-2.45× its median, while the trunk's error distribution is far heavier-tailed
-(p90 `76°` against median `7.0°`, a ratio of 10.9). The mapping from an error
-*distribution* to KL is therefore only calibrated in the middle of its range,
-which is why Exp 12's equivalent-noise reading of the checkpoint (median `8.5°`)
-sits above the probe's direct measurement (`7.0°`). What the evidence supports
-firmly is the direction and the rough size: the tail is what costs, and the
-ego-relative probe cuts the tail by 3.5× using four orders of magnitude less
-data than the run had.
+### 2. Decide whether the residual costs anything — the question nobody has asked
 
-*Cost:* one extra projection per spatial sublayer plus an `(N+M)²` displacement
-tensor — 24 tokens, so negligible. It does change `ModelConfig` and the
-checkpoint schema.
+Every session here has treated turn KL `≈0.5` as a defect to eliminate. The
+README measures this policy at ~1748 Elo against the scripted controller's 1000,
+winning against fleets 1.4–1.5× its size; BC is *pretraining*, and an exact clone
+of the teacher would be far weaker. Before spending GPU-months on the residual,
+run the experiment that prices it: **start RL from BC checkpoints at several
+different turn KLs and compare the RL curves.** If a `0.5`-KL warm start reaches
+the same place as a `0.3`-KL one, this document describes a non-problem, and that
+is worth knowing before acting on anything below.
 
-### 2. Bearing auxiliary loss — cheap, do it alongside, not instead
+### 3. Relative-position attention *bias*, if anything architectural — with caveats
 
-Add a diagnostic-turned-auxiliary head predicting `sin/cos` of
-`frontline_strategy().bearing` and of the intercept bearing, and log the angular
-error in degrees. Exp 7 shows the signal is learnable from the latent at every
-depth, so this is a real training signal and a permanent instrument. But it
-cannot create information the encoding does not afford — it presses the trunk to
-spend capacity on the bearing without making the bearing cheaper to compute.
-Pair it with (1); do not run it alone and conclude anything.
+Not the ego-relative token set from Exp 10: that is O(N²) in *encoder* cost and
+breaks the zero-shot transfer the project exists to demonstrate. The transfer-safe
+form is one scalar per (query, key, head) computed from the toroidal
+displacement — no per-pair token, no per-pair value, encoder still O(N), no
+weight whose shape depends on N.
 
-### 3. More spatial depth — supported, but the slow axis
+*Evidence:* weak but real. In Exp 17/20's matched from-scratch contrast, the bias
+beat plain attention at equal depth, equal data and equal parameters. Those runs
+are data-limited and their absolute KLs are far above the checkpoint's, so this
+is a directional signal, not a projected gain.
 
-Exp 7's curve is monotone and unsaturated at the last layer, so
-`n_spatial_per_block` `2 → 4` will help. But two spatial sublayers bought
-`10.38° → 7.19°`, so extrapolating to `3°` needs many more, at a linear cost in
-compute. Worth running as the control cell *against* (1) on matched data and
-matched optimizer steps — if (1) at depth 2 beats depth 4 without it, the
-representational claim is confirmed in the only way that counts.
+*Against it:* Exp 14 found the trunk already represents the teacher's geometric
+intermediates adequately and has learned a direct map to the bearing that beats
+all of them. It is not obvious that cheaper relative geometry buys much when the
+binding constraint is not the geometry. **Do (1) and (2) first.**
+
+### 4. Bearing auxiliary loss — cheap instrument, uncertain gain
+
+Predict `sin/cos` of the teacher's two bearings as an auxiliary head and log
+angular error in degrees. Exp 7 shows the signal is learnable at every depth, and
+degrees are a far quieter measurement than KL (the layerwise curve replicates to
+`0.8°`; whole-rollout KL swings ±0.1). Worth it as a permanent instrument
+regardless. As a *training* signal its value is unclear, since Exp 14 shows the
+trunk already reaches the bearing more accurately than the intermediates the loss
+would supervise.
 
 ### Explicitly not recommended
 
-* **Widening the model.** Nothing in Exp 7–10 implicates width; the winning probe
-  is an order of magnitude smaller than the trunk.
-* **More or more diverse BC data.** The winning probe used 49k tokens where the
-  run had 167.6M environment steps. Sample complexity is not the constraint.
-* **Removing the next-state auxiliary.** Closed in session 1 (Exp 4, Exp 5):
-  orthogonal, 6% of trunk gradient, and removing it is not faster.
-* **Touching the action head, or reweighting/resampling difficult angular
-  regions.** Exp 8 and Exp 11 exonerate the head at `0.011–0.040` given the
-  bearing. Reweighting redistributes a precision deficit; it does not fix one.
-* **Softening the teacher's ramp.** Session 1 suggested this as a diagnostic. It
-  is no longer needed — Exp 12 measures the ramp's price directly, with hedging
-  fitted rather than assumed — and changing the teacher would change what is
-  being imitated.
+* **Ego-relative token construction** (session 2's fix). Breaks O(N) encoder
+  scaling and therefore zero-shot fleet-size transfer.
+* **More spatial depth on its own.** Session 2 inferred "still improving at the
+  last layer, therefore depth-limited"; Exp 14 shows block 1 improving the
+  task-relevant quantity while *degrading* incidental ones, which reads as
+  specialisation rather than an unsaturated capacity curve. Exp 17's from-scratch
+  sweep could not adjudicate.
+* **Chasing a specific missing teacher quantity.** Exp 16 and 18 handed the
+  frozen latent zone `need`, `preference`, per-zone geometry, allied pressure,
+  `separation`, `recovery` and `objective_force` in every combination. Nothing
+  below the full resultant moved KL much, and the terms are strongly
+  super-additive, because what the teacher uses is a vector sum.
+* **Widening the model, more BC data, removing the next-state auxiliary, or
+  touching the action head** — unchanged from session 2, all still refuted.
+* **Eliminating the ill-conditioned fraction.** Exp 19 shows ~10–15% of the
+  residual is `angle(·)` amplifying error where the teacher's own force terms
+  cancel. That is a property of the teacher, not of the imitator, and the teacher
+  is near-indifferent between directions there anyway.
 
 ### How to measure any of these
 
 Both metrics, on fresh rollouts, or the result is not interpretable:
 
 1. **held-out turn KL** over `bc_valid & actor_mask & alive`, on rollouts the
-   update has not touched (`exp7_collect.py` + the KL block of `exp8_oracle.py`);
+   update has not touched;
 2. **held-out bearing-probe error** at the final latent, median **and p90**
-   (`exp7_probe.py`).
+   (`exp7_probe.py`) — and, after Exp 19, stratified by `|force|`, since a change
+   that only improves well-conditioned states is doing something different from
+   one that improves the tail.
 
-A change that improves both is real. A change that improves turn KL without
-improving probe error is fitting the rollout it is scored on — Exp 5 measured
-that failure mode at `0.43 → 0.20` on the frozen batch while the next fresh
-rollout scored `2.59`.
+A change that improves turn KL without improving probe error is fitting the
+rollout it is scored on: Exp 5 measured that failure at `0.43 → 0.20` on a frozen
+batch while the next fresh rollout scored `2.59`.
 
 ## Remaining uncertainties and the cheapest next experiments
 
-1. **Does (1) actually reach p90 < 5° end to end?** (~1–2 GPU-hours.) One `bc`
-   run with relative-position attention in the spatial sublayers against a
-   matched baseline, same seed, same data, same optimizer steps, tracking the
-   turn-KL curve and the probe error rather than a final number. This is the
-   experiment that settles the recommendation, and nothing above substitutes for
-   it.
-2. **Is the probe a tight lower bound on the head's error?** (~20 min.) Fit a
-   turn head on `[frozen latent + probe-predicted bearing]` *with the probe
-   trained to convergence on much more data* than 49k tokens. If the gap between
-   Exp 11's `0.556` and Exp 8's `0.040` closes as the probe improves, the whole
-   chain is confirmed; if it does not, the latent's bearing is less usable than
-   the probe suggests and (1) matters even more.
-3. **The `0.083` nat left/right gap.** (~30 min.) Test the leftward-bias
-   explanation directly: subtract the measured signed bias from the probe's
-   bearing and recompute the matched left/right KL. If the gap shrinks, it is a
-   calibration artefact of the estimator, not a defect.
-4. **Does the encoder really lose precision?** (~15 min.) Exp 7 shows the
-   101-channel raw features probing better than their own 128-d encoding
-   (`14.25°` vs `17.04°`). Re-run with more probe capacity and several seeds; if
-   it holds, the encoder's two RMSNorms on a 101→256→128 path are worth a look.
-5. **Log the pre-update BC KL separately** (~15 min, now a confirmed defect
-   rather than a hypothesis). `loss/behavioral_cloning_kl` averages all four
-   update epochs (`ppo.py:2586`, `2711`). Logging epoch 0 separately would move
-   the run's headline BC number by roughly `0.13` nats and is what plateau
-   detection should use.
+1. **Does the residual cost anything downstream?** (~2 GPU-hours.) Recommendation
+   (2). Unasked in three sessions and it gates the value of everything else.
+2. **Is the ceiling the trunk or the observation?** (~4–8 GPU-hours.) Exp 17 was
+   the right idea at the wrong budget: 12k scenes cannot stand in for 167.6M
+   environment steps, and KL rising with depth is the tell. Redo it with a real
+   training budget and a held-out split, or — cheaper and better — take the
+   existing trunk and train *only* added spatial depth on frozen lower layers.
+3. **Why is the best-conditioned octile still at KL `0.374` and `4.6°`?** This is
+   now the largest unexplained block. It is not conditioning, not a missing
+   intermediate, and not perception. Worth a targeted probe of what distinguishes
+   its errors.
+4. **The `0.083` nat left/right gap.** Exp 13 rules out a geometric cause and
+   finds a `0.7–1.5°` leftward signed bias; subtract it and re-measure.
+5. **Does the encoder lose precision?** Exp 7 has raw features probing better
+   than their own encoding (`15.1°` vs `16.5°`, replicated). Small, but the wrong
+   direction for a widening projection.
 
 ## Raw-data appendix
 
@@ -1093,4 +1374,64 @@ reads, 24 entity tokens, world size 16384 px with play inside a 2600-px radius,
 position encoded as 8 base-2 Fourier frequencies per axis (finest period 128 px),
 `n_bullet_cross_per_block=0`. `runtime.elo_eval.step/flush` are stubbed in every
 probe, so no ladder games were played and no rating was written; the checkpoint,
+its `roster.json` and its `elo_history.jsonl` are untouched.
+
+### Session 3 scripts, sample sizes and runtimes
+
+```
+exp14_collect.py    bit-exact mirror of frontline_strategy's internals + activations
+exp14_probe.py      directions (degrees) vs magnitudes (held-out R^2), by tap
+exp15_belief.py     belief/visibility mismatch; KL by visible-enemy count
+exp16_zone.py       per-zone teacher quantities appended to the frozen latent
+exp18_terms.py      the three force terms, singly and in combination
+exp19_conditioning.py  force reconstruction, |force| stratification, sensitivity
+exp17_depth.py      from-scratch depth sweep (DATA-LIMITED -- see below)
+exp20_relbias.py    the matched relative-bias contrast, on ~4x the data
+```
+
+Reproduction, from the repo root:
+
+```
+uv run --no-sync python benchmarks/bc_diagnostics/exp14_collect.py train   3 3 0   # ~3 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp14_collect.py heldout 3 3 1   # ~3 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp14_probe.py                   # ~8 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp15_belief.py                  # ~20 s
+uv run --no-sync python benchmarks/bc_diagnostics/exp16_zone.py                    # ~12 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py                   # ~5 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py            # ~2 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # ~30 min
+```
+
+Sample sizes are as session 2: 3 rollouts after 3 burn-in at `num_envs=128`,
+`num_steps=128`, every 4th timestep, giving **49 152** tokens per tag under
+`bc_valid & actor_mask & alive`. Exp 16/18/19 work inside the zero-visible-enemy
+stratum: 23 872 train / 21 312 held-out. Exp 17/20 operate on *scenes* rather
+than tokens — 12 288 per tag at 3 rollouts, ~49 000 at 12.
+
+**Exp 17 is recorded as a failure and should not be cited for its levels.**
+Training a transformer from scratch on 12 288 scenes cannot stand in for a
+checkpoint that saw 167.6M environment steps; held-out KL came out at `1.54–1.96`
+against the checkpoint's `0.51`, and *rose* monotonically with depth
+(`1.54 / 1.82 / 1.94 / 1.96` at depths 1/2/4/6), which is the signature of a
+data-limited fit rather than a capacity measurement. Only its matched
+within-experiment contrast is usable, and Exp 20 re-runs that alone.
+
+Two collection details, both silently fatal if missed (unchanged from session 2):
+temporal sublayers are reached via `forward_sequence`, so forward hooks never
+fire on them; and they emit `(B·N, T, D)` where spatial sublayers emit
+`(T·B, N+M, D)`. A third, new in session 3: the observation buffer carries one
+extra bootstrap timestep that the masks do not, so it must be trimmed to the mask
+length before anything is indexed.
+
+The `frontline_strategy` mirror in `exp14_collect.py` and `exp16_zone.py` is
+checked against the real function on every recorded step — `combat_score`,
+`recovery` and `|separation|` — and the recorded drift was `0.0` exactly. Exp 19's
+force reconstruction is likewise validated at `0.000°` median against the
+teacher's own bearing wherever `recovery < 0.01`. Neither is assumed.
+
+New dumps, all gitignored: `probe2_*.pt` (~250 MB each), `zone_*.pt` (~44 MB),
+`rb_*.pt`. Every `exp*_rows.json` is committed.
+
+Caveat on Elo, unchanged: `runtime.elo_eval.step/flush` are stubbed in every
+probe, so no ladder games were played and no rating was written. The checkpoint,
 its `roster.json` and its `elo_history.jsonl` are untouched.
