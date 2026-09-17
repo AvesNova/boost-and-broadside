@@ -1,4 +1,4 @@
-"""Effective-mass ship transport, energy, power, and interface damage."""
+"""Effective-mass ship transport, energy, and power."""
 
 import math
 from dataclasses import replace
@@ -37,7 +37,6 @@ def _single_field_state(
     config: ShipConfig,
     *,
     index: float,
-    damage: float = 0.0,
     radius: float = 100.0,
     width: float = 80.0,
     position: complex = 512.0 + 512.0j,

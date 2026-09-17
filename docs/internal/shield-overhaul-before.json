@@ -1,0 +1,55 @@
+{
+  "torch_version": "2.13.0+cu130",
+  "threads": 1,
+  "device": "cpu",
+  "results": [
+    {
+      "ships": 8,
+      "mode": "simulation",
+      "batch": 32,
+      "samples_ms": [
+        35.5418374016881,
+        32.51794297946617,
+        32.827276301104575
+      ],
+      "median_ms": 32.827276301104575,
+      "state_bytes": 264256
+    },
+    {
+      "ships": 8,
+      "mode": "scripted_observed",
+      "batch": 32,
+      "samples_ms": [
+        78.58797488035634,
+        75.48193017952144,
+        73.95896143978462
+      ],
+      "median_ms": 75.48193017952144,
+      "state_bytes": 264256
+    },
+    {
+      "ships": 10,
+      "mode": "simulation",
+      "batch": 32,
+      "samples_ms": [
+        32.76373591972515,
+        29.834535520058125,
+        31.9200243614614
+      ],
+      "median_ms": 31.9200243614614,
+      "state_bytes": 332224
+    },
+    {
+      "ships": 10,
+      "mode": "scripted_observed",
+      "batch": 32,
+      "samples_ms": [
+        102.09224518155679,
+        59.88582721911371,
+        26.89909647917375
+      ],
+      "median_ms": 59.88582721911371,
+      "state_bytes": 332224
+    }
+  ]
+}

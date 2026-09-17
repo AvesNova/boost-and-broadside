@@ -60,11 +60,12 @@ reason about fire aimed at an ally it might support.
 ## Observation and feature coordination
 
 [`observation_from_state`](../src/boost_and_broadside/env/observation.py) exposes global
-position, velocity, attitude, angular velocity, health, power, cooldown, team identity,
-alive state, radius, previous action, ship-local encoded log index, and the local
+position, velocity, attitude, angular velocity, shield/health, power, cooldown, shield
+recharge delay, team identity, alive state, radius, previous action, ship-local encoded
+log index, and the local
 refractive-index gradient. Fields are appended as always-alive entity tokens with team ID
 2, zero motion/action channels, and numeric physical features: transition width, absolute
-target log index, and normalized interface damage.
+target log index.
 Field properties are unchanged by team flipping.
 
 The index gradient is the force term in `a = F/m + 0.5|v|² grad(log m) - (v·grad(log m))v`.
@@ -84,7 +85,7 @@ channel to:
 |---|---|---|
 | position x/y | four-frequency Fourier features over the toroidal period | phase delta |
 | velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed | additive velocity delta |
-| attitude | four-frequency Fourier features | phase delta |
+| attitude | four-frequency Fourier features of the angle itself | phase delta |
 | angular velocity | symlog scalar | next absolute value |
 | health, power, cooldown | circular bounded encoding | phase delta |
 | team identity | three-way one-hot | none |
@@ -96,7 +97,7 @@ channel to:
 | radius | shared ship/field scalar divided by half the shorter world dimension | none |
 | field width | normalized scalar | none |
 | field target log index | normalized physical scalar | none |
-| interface damage | normalized scalar | none |
+| shield recharge delay | symlog seconds | absolute prediction |
 | ship-local log index | `log(n)/(2 log(s))` | additive next-step delta |
 | ship-local index gradient | normalized `grad(n)` pair | none |
 
@@ -116,7 +117,7 @@ Bullets have their own feature set on a separate axis, built by `build_bullet_co
 |---|---|
 | position x/y | four-frequency Fourier, **identical basis to ships** |
 | velocity | direction scaled by symlog speed, as for ships |
-| remaining damage, remaining lifetime | normalized scalars |
+| remaining lifetime | normalized scalar |
 | local log index, local index gradient | normalized physical scalars |
 | shooter team | two-way one-hot, never a per-ship index |
 | active | key-padding mask, not a feature |
@@ -158,7 +159,7 @@ Every live ship can therefore condition its action on every other live ship and 
 
 Bullets are observed directly rather than inferred. Refractive fields make inference
 impractical: a bullet curves under `grad(n)`, refracts, can totally internally reflect,
-travels at `500/n` locally, and loses damage crossing interfaces, so dead-reckoning one
+and travels at `500/n` locally, so dead-reckoning one
 from the shooter's pose amounts to integrating an ODE inside the recurrent state.
 
 They enter as **key/value-only** tokens: no query, no output projection, no FFN, no

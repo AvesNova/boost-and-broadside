@@ -1,0 +1,50 @@
+{
+  "device": "cpu",
+  "threads": 1,
+  "compile_mode": null,
+  "seed": 77,
+  "results": [
+    {
+      "revision": "85f2bf3",
+      "ships": 8,
+      "seconds": 14.696279947995208,
+      "steps": 512,
+      "steps_per_second": 34.83874843237757,
+      "metrics": [
+        {
+          "loss/total": 9.014814376831055
+        },
+        {
+          "loss/total": 8.335569381713867
+        },
+        {
+          "loss/total": 8.084309577941895
+        },
+        {
+          "loss/total": 8.01963996887207
+        }
+      ]
+    },
+    {
+      "revision": "shield overhaul",
+      "ships": 10,
+      "seconds": 14.53698361699935,
+      "steps": 512,
+      "steps_per_second": 35.22051159232746,
+      "metrics": [
+        {
+          "loss/total": 8.132061004638672
+        },
+        {
+          "loss/total": 7.932897567749023
+        },
+        {
+          "loss/total": 8.096857070922852
+        },
+        {
+          "loss/total": 8.103214263916016
+        }
+      ]
+    }
+  ]
+}

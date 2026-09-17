@@ -87,7 +87,7 @@ for the GAE lambdas, since variance accumulates per unit of game time rather tha
 decision. The horizons those values encode are tabulated in
 [`config/defaults.py`](../src/boost_and_broadside/config/defaults.py).
 
-Ships also spawn with randomised health, power and cooldown
+Legacy elimination ships can spawn with randomised health, power and cooldown
 (`EnvConfig.spawn_resource_spread`). Spawning at full resources every episode made health
 an almost deterministic function of elapsed time, which the critic can read off the clock
 instead of the state, and meant damaged-fleet positions were only reachable by playing
@@ -208,180 +208,32 @@ suppressed `field_death`'s critic gradient by four orders of magnitude; it now s
 `scaler/floor_bound_span/*` and
 `scaler/floor_bound_rms/*` report which components each floor is currently holding up.
 
-## Reward decomposition
+## Frontline reward accounting and curriculum
 
-Rewards are emitted as named components by [`rewards.py`](../src/boost_and_broadside/env/rewards.py).
-Each active component receives its own critic output and can have its own GAE gamma/lambda
-horizon. Weights are magnitudes; each component carries its own sign, noted below. The
-reference policy activated these components:
+The default RL and BC environments are 5v5 with opaque zones and shields. `health`
+is the retained resource channel name; it carries shield level in Frontline.
+`shield_delay` is observed and predicted. Attitude Fourier features consume the
+angle `atan2(sin(att), cos(att))`, while phase-prediction targets retain the unit vector.
+Checkpoints use `frontline_shields_v9`; older weights require retraining.
 
-| Component | Weight | Tier | Role |
-|---|---:|---|---|
-| `ally_win` | `W` = 1.00 | outcome | +1 to each surviving teammate on a win |
-| `enemy_win` | `W` = 1.00 | outcome | opponent's win signal, seen as −1 through a negative enemy lambda |
-| `combat_death` | `U` = 0.283 | kill/death | −1 when projectile damage kills this ship |
-| `field_death` | `U` = 0.283 | kill/death | −1 when boundary damage kills this ship |
-| `kill_shot` | `r·U·f` = 0.283 | kill/death | fatal-step credit (+), proportional to that step's damage |
-| `kill_assist` | `r·U(1−f)` = 0.283 | kill/death | assist credit (+), proportional to cumulative episode damage |
-| `kill_ally_shot` | `r·U·f` = 0.283 | kill/death | blame (−) for a teammate's death, by that step's damage |
-| `kill_ally_assist` | `r·U(1−f)` = 0.283 | kill/death | blame (−) for a teammate's death, by cumulative damage |
-| `enemy_field_death` | `r·U·f` = 0.283 | kill/death | credit (+) to the enemy team when a ship dies to a field |
-| `combat_damage_taken` | `V` = 0.274 | damage | −applied projectile health loss |
-| `field_damage_taken` | `V` = 0.274 | damage | −applied boundary health loss |
-| `damage_dealt_enemy` | `r·V` = 0.548 | damage | +proportional to damage dealt to enemies |
-| `damage_dealt_ally` | `r·V` = 0.548 | damage | −proportional to friendly fire dealt |
-| `enemy_field_damage` | `r·V` = 0.548 | damage | +to the enemy team when a ship takes field damage |
-| `facing` | 0.09 | shaping | dense aim geometry (+) |
-| `closing_speed` | 0.08 | shaping | dense approach geometry (+) |
-| `shoot_quality` | off | shaping | firing opportunity quality (+); head retained at zero weight |
+Projectile damage rewards use actual shield removed, proportionally divided among
+simultaneous attackers. Raw impact attribution remains separate so a finishing hit
+on zero shields still earns kill credit. Shield recovery pays the recovering ship
+and charges the enemy team equally in total. Boundary losses and friendly-fire blame
+have opposing payouts, preventing deliberate damage/recharge cycles from creating
+reward. Recharge grants neither energy nor speed.
 
-Only five of those numbers are set. The rest follow from one rule: **an event pays one
-side exactly what it charges the other.** A death costs the dying ship's team `U` and pays
-whoever caused it `U` between them; damage does the same with `V`; a win pays `W` and
-charges `W`. `f` — how the kill budget splits between "landed the finishing blow" and
-"contributed damage" — is the only ratio the rule leaves free, and it is even.
+The configured kill, damage and capture payout ratios start at 2:1. The schedule's
+`offensive_bias` retains this premium through 50M steps, decreases it linearly to zero
+by 300M, and holds 1:1 through the remaining 200M of the default 500M-step run.
+Shaping reaches zero by 300M as well. The schedule updates attribution weights and
+capture-component ratios together; restarting from a checkpoint uses the restored
+global step. Custom shortened runs should move these keypoints if they need the
+complete curriculum.
 
-`r` is the one named exception, and it applies to both event tiers. At `r = 1` the rule
-holds exactly; above it, the side that *caused* an event is paid more than the side it
-happened to is charged — at `r = 2` a death still charges the dying team `U` but pays its
-killers `2U`, and damage still charges its victim `V` but pays whoever dealt it `2V`.
-Nothing else in the system can express that, because raising `U` or `V` raises the charge
-and the payout together. It is carried as two config fields, `kill_payout_ratio` and
-`damage_payout_ratio`, so either tier can be moved alone; they are set to the same number
-because one shared ratio is the smaller claim, and because solving them separately gave
-2.09 and 1.80 — a difference the fit cannot resolve.
-
-Win stays balanced: it is one signal to each side of the same event, with no third party
-to pay.
-
-At `r = 2` and `f = 0.5` the kill payout `r·U·f` equals `U`, so every component in the
-kill/death tier lands on the same number. That looks like a coincidence and is not.
-
-The friendly-fire components follow the payout rather than the charge, so neither ratio
-makes harming a teammate quietly cheaper as it makes harming an opponent more attractive.
-
-Three things follow that look like coincidences and are not.
-
-`enemy_field_death` has to equal `kill_shot`. A ship killed by a field was shot by nobody
-on its fatal step, so `kill_shot` reads zero there and only `kill_assist` fires; the
-shortfall is exactly `kill_shot`, and something has to make it up or field kills would pay
-less than combat kills. `enemy_field_damage` equals `V` by the same argument. These are the
-only two source-split components with a non-zero weight, and that is what they are for:
-supplying the offensive side of events that have no shooter to attribute to. It is also the
-principled form of "reward for forcing an enemy into a field" — attributed by team rather
-than by proximity, so it survives a change of fleet size.
-
-Killing a teammate costs the team twice: the ally is charged `U` for dying and the shooter
-is charged `U` for causing it, while the enemy is paid nothing. Friendly fire is
-structurally twice as expensive as being killed by an opponent, with no special case saying
-so.
-
-The remaining `ally_*` and `enemy_combat_*` components stay at zero. Their events are
-already fully paid for by the local per-ship components and by damage attribution, so
-turning them on would charge the same event twice.
-
-Equal weight is not equal gradient, and is not meant to be. The kill side spends its weight
-across two correlated components (+0.509 cosine) while the death side spends it on one, so
-the kill side delivers roughly 87% of the death side's gradient magnitude. Weights state
-what an event *means*; how much pressure it exerts is allowed to follow how coherent the
-signal actually is. That is deliberate — a component whose behaviour the policy has already
-solved produces gradients that increasingly cancel, and its influence should fade on its
-own rather than be propped up. In the reference run `field_death`'s coherence halved as
-field deaths fell eightfold.
-
-The numbers are **solved, not chosen.** The target is the one configuration measured that
-beat the reference run, by +58 Elo at matched steps on a joint Bradley-Terry fit. That
-run's weights were not derived — they came from `w = share / d` against measured gradient
-coherence, which is why no two of them are equal — so these five numbers are the closest
-the derivation can come to that vector, by least squares on log weights. Log space because
-the weights span 0.08 to 1.0 and only ratios matter, so a 10% error on `facing` should
-count like a 10% error on `ally_win`. The fit has a closed form and was checked against a
-numeric optimiser.
-
-It lands within 6% RMS. The residual is irreducible rather than a tuning failure: the rule
-forces pairs equal that the target had unequal — `combat_damage_taken` 0.32 against
-`field_damage_taken` 0.26 is the worst of them, and that spread came out of a
-per-component solve rather than out of any principle.
-
-Two earlier vectors are worth knowing about, because they are what this replaced. Setting
-the numbers to a *tier-share target* was tried twice and lost both times. Copying the
-reference run's own vector exactly was tried once: it reproduced that run — parity at 133M
-and 154M steps — and came nowhere near the run being reconstructed here. Matching the
-reference is evidently enough to match it and not enough to beat it.
-
-Two components are new against the target rather than fitted to it. `enemy_field_death` and
-`enemy_field_damage` were both zero there, so a ship killed by a field paid its opponents
-nothing at all; the rule requires them. They also widen the critic from 14 heads to 16,
-which dilutes every other component's share of the per-component value loss by 14/16.
-
-The wrapper divides component rewards by total ship count for team-size normalization.
-A lambda aggregation matrix then maps local event signals to training targets:
-
-- local components use diagonal/self-only credit;
-- global outcome components aggregate across live teammates;
-- selected enemy-perspective components use negative enemy coefficients to recover
-  zero-sum outcome structure.
-
-Each row of that matrix is normalized to a mean over the contributors it actually has —
-one ship for a local component, the live teammates for a global one — and the component
-weight is applied afterwards. The order matters: normalizing a row that already carries
-its weight divides the weight back out, which is how the reference run's `ally_win`
-weight of 1.5 came to train identically to 0.25 per ally — an effective total of 1.0 across
-a four-ship team, whatever the configured number was. Because advantages are already
-per-component unit-RMS before aggregation, the weight is then a pure importance term,
-and only the ratios between weights affect training — the aggregate advantage is
-divided by its own RMS, so scaling every weight together is a no-op.
-
-Components are grouped into four tiers — outcome, kill/death, damage, shaping — and each
-tier carries a schedule scale applied on top of the per-component weights. The tiers are a
-credit-assignment ladder, and the per-component gammas and lambdas already follow the same
-partition: an outcome is discounted over a whole episode, a kill over an engagement, damage
-over an exchange, geometry over the next moment.
-
-Three of the four scales hold flat, and that is the settled answer for them: the realised
-tier shares already drift the way a curriculum would move them — measured on the reference run,
-the outcome tier's share of the policy gradient rises about 1.29x over a run while the
-kill/death tier falls to 0.73x — so scheduling them would fight a trend rather than create
-one.
-
-Shaping is the exception, and it is also the last remaining config difference between this
-profile and the run it reconstructs — that run carried this taper, so this one does too. It
-has to be pushed down rather than left alone: shaping's realised share *grows* about 1.58x
-over a run, and `facing` and `closing_speed` are not
-[potential-based](https://people.eecs.berkeley.edu/~pabbeel/cs287-fa09/readings/NgHaradaRussell-shaping-ICML1999.pdf),
-so they bias the optimum for as long as they are on, and they oppose the objective
-directly: `closing_speed` against `field_damage_taken` measures a mean gradient cosine of
-−0.446, negative in 99.9% of samples. They exist to stop early passive collapse, which is
-finished long before the budget is. `shaping_scale` therefore decays from 100M steps to a
-floor of 0.05 at 400M. The floor is not zero, so the components stay measurable to the end:
-their gradient share and explained variance remain readable, which is how the next run
-learns whether shaping was still buying anything.
-
-One caveat on that inheritance. The reconstructed run stopped at 127M, so it ran barely 27M
-steps into the taper and ended near 0.76. Everything the taper does past that point is
-untested by the evidence this profile is built on.
-
-Note that `kill_shot` is not winner-take-all: when several ships damage a target on its
-fatal step, each earns credit proportional to that step's damage. `kill_assist` remains
-proportional to cumulative episode damage even when a field delivers the final blow;
-that preserves partial credit for attacks that force a dangerous navigation choice.
-
-`kill_ally_shot` and `kill_ally_assist` mirror that pair for friendly fire, on the same two
-horizons and with the same attribution. They are components in their own right rather than
-negative terms inside the enemy pair. Folded in, one critic head had to predict the sum of
-a positive enemy-kill signal and a negative friendly-kill one, the friendly half could not
-be weighted separately, and it was invisible to every per-component diagnostic — it read as
-part of `kill_shot`'s gradient share. All four share one implementation, differing only in
-which damage matrix they read and whether they credit enemy deaths or blame friendly ones.
-
-The former solid-obstacle death, proximity, closing-speed, and time-to-impact components
-have been removed: refractive interfaces are traversable and should not receive universal
-wall-avoidance shaping. Applied interface and projectile health loss, plus their exclusive
-death causes, are recorded separately so neither source can double-count overkill.
-Interfaces also reduce projectile damage potential, but that
-barrier loss is not credited to a ship; only damage that reaches a target enters combat
-attribution. See [`config/defaults.py`](../src/boost_and_broadside/config/defaults.py) for
-current component horizons and schedules, and the preserved run config for historical weights.
+Respawn transitions are excluded from next-state labels. Recurrent match memory
+persists across lives; episode resets clear it. Hidden shield-depleted enemies remain
+believed alive, because a predicted zero shield is not evidence of death.
 
 ## Behavior-cloning profile
 
@@ -419,52 +271,17 @@ throughout, so it keeps the scheduled entropy bonus.
 
 ## Fields
 
-[`profiles/rl.py`](../src/boost_and_broadside/profiles/rl.py) trains in four cached static
-fields, with the two local field reward heads active and the environment count reduced to
-offset the extra attention tokens. The scripted controller ignores fields entirely: it aims
-and manoeuvres as if the medium were uniform.
+The current profiles use ten refractive fields. They change motion and occlude sight
+without damaging ships or reducing projectile damage. Field geometry and optical
+index remain map tokens; local index and its gradient describe ship/bullet motion.
+The auxiliary model learns local index from the surrounding field geometry.
 
-Fields are not a profile variant. `num_fields` is a sequence length -- it sets the token
-count `N + M`, and no weight shape depends on it -- so a run at zero fields uses the same
-network, and run 682 is still rated with the same evaluation stack.
+Fresh layouts use randomized low-discrepancy placement on device, with arbitrary
+overlap. Frontline layouts share the translated zone/boundary center. Elimination
+layouts use the whole toroid. No damage-level or attenuation curriculum remains.
 
-It used to carry a mild stay-on-your-side steering bias, on the theory that behavior
-cloning needed field-dependent targets to warm up the attention trunk. Measurement killed
-it. Against a uniform-random agent the bias produced *more* interface crossings (2.24
-against 1.60 per thousand ship-steps) and left ships in higher-index (slower) medium
-more often (mean log index +0.159 against +0.108). Both were occupancy artifacts rather
-than decisions, and since crossing an interface costs health that
-`field_damage_taken` then penalises, behaviour cloning was imprinting a habit RL had to
-unlearn.
-
-Field representation does not depend on the scripted agent in any case. The auxiliary
-next-state head predicts `local_log_index` directly, which cannot be done without locating
-the ship relative to every field, and that pressure is always on and never decays with the
-behavior-cloning weight.
-
-Every episode reset samples centers, radii, widths, target indices, and damage levels
-directly on device. Randomized R2/sunflower low-discrepancy placement reduces clustering.
-Arbitrary overlap removes placement rejection, hierarchy discovery, retry budgets, and
-pre-generated banks. Masked vectorized resets generate a candidate row for every
-environment and retain existing rows for environments that did not finish. Frontline
-layouts use the same translated map center as zones and sample inside the practical
-battlefield; combat layouts use the whole toroid.
-
-Per-update physics diagnostics report field/combat damage per live ship-step, source death
-rates, the fraction of steps taking boundary damage, time in non-ambient media, and the
-field share of total applied damage. These metrics are independent of reward weights.
-
-A recommended curriculum for a dedicated field run is:
-
-1. low/high index with no interface damage;
-2. all four log-symmetric index levels with no damage;
-3. add standard damage;
-4. add severe damage;
-5. enable nesting and larger parent/child index ratios.
-
-The current profile samples all index and damage combinations and nested maps directly;
-the staged curriculum is guidance, not a separate navigation-task implementation. Field
-utility is learned from combat outcome, navigation, speed, handling, and health tradeoffs.
+Physics diagnostics cover combat/boundary damage and deaths, shield recharge,
+resource economy, respawns, captures and visibility.
 
 ## Opponent curriculum
 

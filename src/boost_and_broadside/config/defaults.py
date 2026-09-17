@@ -120,65 +120,16 @@ ELO_CALIBRATE = EloCalibrateConfig(
 LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 
 REWARDS = RewardConfig(
-    # Five numbers, solved rather than chosen. Every event component follows from
-    # them by the balance rule documented on RewardConfig.
-    #
-    # The target is run 720 -- the only configuration measured that beat run 719,
-    # by +58 Elo at matched steps on a joint calibration. Its weights were not
-    # derived: they were solved per component as ``w = share / d`` against measured
-    # gradient coherence, which is why no two of them are equal. These five numbers
-    # are the closest the derivation can come to that vector, by least squares on
-    # log weights -- log space because the weights span 0.08 to 1.0 and only ratios
-    # matter, so a 10% error on ``facing`` should count like a 10% error on
-    # ``ally_win``. The fit is exact in closed form and was checked against a
-    # numeric optimiser; it lands within 6% RMS of 720, and the residual is
-    # irreducible because the rule forces pairs equal that 720 had unequal
-    # (``combat_damage_taken`` 0.32 against ``field_damage_taken`` 0.26 is the
-    # worst of them, and that spread came out of 720's per-component solve rather
-    # than out of any principle).
-    #
-    # Run 725 established what this is *not*: 719's own vector, which reproduced
-    # 719 exactly -- parity on a joint fit at 133M and 154M -- and did not come
-    # near 720. Matching 719 is evidently enough to match 719 and not enough to
-    # beat it, so this stops copying 719 and reconstructs 720 instead.
-    #
-    # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
-    # scaling all of these together is a no-op. They are stated against a win of
-    # 1.0 for that reason.
-    # One free number per tier, solved so that the five tiers -- win, capture,
-    # capture progress, death, damage -- each carry about a fifth of the update.
-    # That was the deathmatch rule and it had never been applied to Frontline:
-    # 737 ran the win pair at 70.5% of the gradient and 738 still at 50.6%, both
-    # against a capture tier under 10%, so most of every update was noise from
-    # the least predictable term in the system, arriving once per 8,600 steps.
-    #
-    # ``AdvantageScaler`` normalizes every component to unit RMS -- run 737
-    # confirmed it, with all sixteen ``floor_bound_rms`` counters at zero -- and
-    # ``_lambda_matrix`` normalizes the unweighted pattern before applying the
-    # weight, so a tier's share of the weight *is* its share of the gradient.
-    # Death and damage were already near-equal at 1.981 and 2.192; they set the
-    # target, and the other three tiers are solved to match it.
-    #
-    # The win pair is two components, so 1.0 each pays the tier 2.0 -- which is
-    # also, exactly, what run 720 solved for in the elimination arena. The two
-    # arguments are independent: 720 fit it from data, this one derives it from
-    # five tiers sharing the update evenly. Runs 735 to 738 were the excursion,
-    # at 7.0 and then 3.0.
+    # Event weights carry forward the previous Frontline tier balance as a
+    # starting point. Shield-game gradient shares still need a long training run.
+    # The balance rule derives paired component weights from these event costs.
     win_weight=1.0,
     death_weight=0.283,
     damage_weight=0.274,
-    # The one ratio the balance rule leaves free. Solved at 0.4875 and set even:
-    # nothing distinguishes them (6.0% RMS against 5.8%), and an even split is the
-    # standing principle.
+    # Divide kill credit evenly between the finishing shot and prior damage.
     kill_shot_fraction=0.5,
-    # The two ratios the rule forbids, tied to one another and solved as a single
-    # free number. Both tiers in 720 were tilted toward the side that caused the
-    # event -- kills 2.15 against deaths, damage dealt 1.86 against damage taken --
-    # and one shared ratio is the smaller claim: an event pays the aggressor twice
-    # what it charges the victim, everywhere, rather than two independently tuned
-    # numbers. The solve returns 1.96 for the shared ratio, which the fit cannot
-    # tell from 2.0 (5.97% RMS against 6.01%), so it is 2.0 -- also the value runs
-    # 725 and 726 carry, which keeps one ratio across all three.
+    # Initial offensive premium; offensive_bias tapers all three payout ratios
+    # to 1:1, including captures, for the final zero-sum training phase.
     kill_payout_ratio=2.0,
     damage_payout_ratio=2.0,
     # Both off. These were 720's values, carried over from a deathmatch where the

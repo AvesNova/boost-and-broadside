@@ -31,8 +31,8 @@ three categories differ in what they promise, so they are never mixed:
 `--vram` may move tier 1 and tier 2 only. A profile's logical batch is fixed, so a width is
 valid only when it divides that batch exactly and stays minibatch-aligned; anything else is
 rejected rather than silently rounded. The widths follow from the profile's entity-token
-count, so they moved when Frontline widened the token axis from 18 to 24: for the `rl`
-profile they are now 3840 (1 shard), 1920 (2), 1280 (3), 960 (4), 768 (5), 640 (6), and on
+count. The shield overhaul uses 26 tokens (10 ships, 10 fields, 5 zones and a
+global token) and preserves the previous logical environment count: valid widths are 3840 (1 shard), 1920 (2), 1280 (3), 960 (4), 768 (5), 640 (6), and on
 down to 32 (120). The old axis admitted only 7776 (1), 2592 (3), 864 (9) and 288 (27), with
 no two-shard split at all; the finer ladder means a preset that cannot afford the widest row
 now has somewhere close to fall back to rather than dropping by thirds.
@@ -69,12 +69,13 @@ Reserved peak is 96% of the card, so this row has essentially no allocator headr
 8 GB. It fits; a slightly larger shard or microbatch would not. The ladder below it
 therefore reaches for gradient checkpointing before it narrows the shard.
 
-That row was measured at eight entity tokens per environment, when `rl` was field-free and
-resolved to 3904 envs. The Frontline profile now has 24 entity tokens—eight ships, ten fields,
-five zones, and one global token—and resolves to 1280 envs. That is 30,720 resident entity
-tokens against the measured 31,232, and the microbatch remains capped at 25,000 tokens. The
-number is therefore expected to carry, but it has not been re-probed with the wider observation
-features and belief buffers, and it is a measurement rather than a derivation.
+That historical row was measured at eight entity tokens per environment, when `rl`
+was field-free. The current 5v5 shield profile has 26 tokens and defaults to 960
+resident environments, four rollout shards and 62,500 microbatch tokens. Numeric
+8/16/24/32 GB presets resolve to 960/1280/1920/1920 environments and 4/3/2/2 shards.
+The shield game has not been GPU-probed; the old measurements below are historical,
+not capacity validation for its changed state, features and reward decomposition.
+See the [CPU overhaul measurements](../internal/shield-overhaul.md).
 
 The 16, 24, and 32 GB rows are linear extrapolations of the persistent-buffer and
 rollout-peak figures in the production comparison below, and have never been run. Applying

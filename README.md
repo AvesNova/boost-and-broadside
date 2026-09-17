@@ -1,5 +1,10 @@
 # Boost and Broadside
 
+The current Frontline environment is **5v5**, with regenerating shields, opaque zones,
+and instant depleted respawns. See the [rules](docs/environment.md) and
+[overhaul validation](docs/internal/shield-overhaul.md). The learned-policy results
+below describe earlier elimination runs.
+
 ### Zero-shot fleet coordination from a 4-vs-4 policy
 
 ![Eight learned blue ships defeating eleven scripted red ships](docs/results/replays/vs_scripted_8v11_seed03.gif)

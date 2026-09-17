@@ -169,7 +169,7 @@ cache rather than an artifact. Probing needs a CUDA device and takes minutes, be
 runs one real training update per candidate in its own subprocess.
 
 A numeric preset (`8|16|24|32`, in GB) is a starting point rather than a measurement of
-your card: only the 8 GB row was measured, and applying any row is reported as
+your card: the 8 GB row was measured on the earlier mechanics, and applying any row is reported as
 `provisional`. `--print-config` shows the whole decision: which knobs moved, which
 equivalence tier each one belongs to, and the resolved shard count.
 
@@ -182,18 +182,22 @@ Training profiles live in
 [`src/boost_and_broadside/profiles/`](../src/boost_and_broadside/profiles/). Global ship, field,
 and projectile defaults are defined on `ShipConfig` in
 [`src/boost_and_broadside/config/core.py`](../src/boost_and_broadside/config/core.py).
-The most relevant field/projectile controls are:
+Frontline play and training now use 5v5, opaque zones and regenerating shields;
+see [the rules](environment.md) and [validation report](internal/shield-overhaul.md).
+Spawn resources are 15 shield, 20 power and 30 proper speed, with a four-second
+recharge delay. Field interfaces cause no damage or projectile attenuation.
+
+The base `ShipConfig` field/projectile controls are below. Frontline overrides the
+world to 16384×16384, runs at 30 Hz, and uses one `two_step` ship integration step:
 
 | Setting | Default | Meaning |
 |---|---:|---|
 | `field_index_step` | `sqrt(2)` | Four sampled levels span index 0.5 through 2 |
-| `field_interface_damage` | `10` | Base health exposure of a standard interface |
 | `field_integrator` | `midpoint` | Ship passive-field integrator |
 | `field_integration_substeps` | `2` | Ship field substeps per 60 Hz tick |
 | `bullet_field_integrator` | `two_step` | Projectile passive-field integrator |
 | `bullet_field_integration_substeps` | `2` | Projectile field substeps per tick |
 | `bullet_drag_coeff` | `8e-4` | Quadratic projectile drag coefficient |
-| `bullet_field_damage_scale` | `0.1` | Projectile potential lost per interface-damage point |
 
 Field geometry must satisfy
 `field_radius_max + field_transition_width_max/2 < min(world_size)/2`. With the default

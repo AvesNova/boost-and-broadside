@@ -194,14 +194,6 @@ def test_two_step_and_midpoint_track_high_resolution_reference():
     assert midpoint_error < two_step_error
 
 
-def _advance_to_field_core(state, config: ShipConfig, field_index: int) -> None:
-    for _ in range(20):
-        advance_bullets(state, config)
-        if _alpha(state, config)[0, 0, 0, field_index].item() > 0.999999:
-            return
-    pytest.fail(f"bullet did not enter field {field_index} core")
-
-
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
