@@ -398,7 +398,9 @@ def _fog_scene(monkeypatch, *, zones_occlude=False, window=320):
 
     monkeypatch.setenv("HEADLESS", "1")
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
-    env_config = replace(replace(PLAY_ENV_CONFIG, num_ships=8, num_fields=3), zones_occlude=zones_occlude)
+    env_config = replace(
+        replace(PLAY_ENV_CONFIG, num_ships=8, num_fields=3), zones_occlude=zones_occlude
+    )
     env = TensorEnv(1, ship_config, env_config, "cpu")
     env.reset(seed=21)
     center = complex(env.state.map_center[0].item())

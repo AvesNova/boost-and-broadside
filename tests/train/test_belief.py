@@ -146,3 +146,36 @@ def test_the_guard_does_not_bind_on_ordinary_predictions() -> None:
     assert torch.isfinite(tracker.predicted_targets).all()
     assert tracker.predicted_targets.abs().max() < BELIEF_TARGET_LIMIT
     assert int(tracker.clamp_events) == 0
+
+
+def test_hidden_frontline_enemy_with_zero_shields_remains_alive():
+    coordinator = build_standard_coordinator(ShipConfig())
+    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
+    observed = _view(visible=True)
+    observed.data[ObsKey.GAME_MODE] = torch.ones(1, 2, 1)
+    visible = tracker.compose(observed)
+    tracker.advance(visible, torch.zeros(1, 2, coordinator.total_prediction_dimension))
+    tracker.predicted_targets[..., coordinator.target_slices()["health"]] = 0
+    tracker.predicted_targets[..., coordinator.target_slices()["shield_delay"]] = -1
+    hidden = _view(visible=False)
+    hidden.data[ObsKey.GAME_MODE] = torch.ones(1, 2, 1)
+    composed = tracker.compose(hidden)
+    assert composed[ObsKey.HEALTH][0, 1, 0] == 0
+    assert composed[ObsKey.ALIVE][0, 1]
+    assert composed[ObsKey.BELIEF_VALID][0, 1]
+    assert composed[ObsKey.SHIELD_DELAY][0, 1, 0] == 0
+
+
+def test_imagined_frontline_ship_with_zero_shields_remains_alive():
+    from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
+
+    coordinator = build_standard_coordinator(ShipConfig())
+    observed = _view(visible=True)
+    observed.data[ObsKey.GAME_MODE] = torch.ones(1, 2, 1)
+    targets = coordinator.get_target_vector(observed)
+    targets[..., coordinator.target_slices()["health"]] = 0
+    imagined = decode_targets_to_observation(
+        targets, observed, torch.zeros(1, 2, 3, dtype=torch.long), 2, coordinator
+    )
+    assert imagined[ObsKey.ALIVE].all()
+    assert imagined[ObsKey.HEALTH].eq(0).all()

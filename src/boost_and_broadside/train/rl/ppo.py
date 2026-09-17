@@ -547,8 +547,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         # Pre-compute lambda masks for active components only.
         # Static for the entire run — derived from RewardConfig.
-        # Derived once: the per-component weights the four event weights imply.
-        self._component_weights = component_weights(train_config.rewards)
         self.enemy_neg_k = self._make_enemy_neg_k(train_config.rewards.enemy_neg_lambda_components)
         self.ally_zero_k = self._make_ally_zero_k(train_config.rewards.ally_zero_components)
         self.local_k = self._make_local_k()
@@ -1396,12 +1394,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             },
         )
         weights = component_weights(rewards)
-        for component in self.wrapper.reward_components:
-            if component.name in {"capture_progress", "front_advance"}:
-                component.payout_ratio = rewards.capture_payout_ratio
-            raw_weight = weights[component.name]
-            component.weight = raw_weight * getattr(self._schedule_state, _TIER[component.name])
-        self.wrapper.refresh_component_weights()
+        for wrapper in (self.wrapper, *self.aux_wrappers):
+            for component in wrapper.reward_components:
+                if component.name in {"capture_progress", "front_advance"}:
+                    component.payout_ratio = rewards.capture_payout_ratio
+                raw_weight = weights[component.name]
+                component.weight = raw_weight * getattr(self._schedule_state, _TIER[component.name])
+            wrapper.refresh_component_weights()
         return bc_factor
 
     def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:

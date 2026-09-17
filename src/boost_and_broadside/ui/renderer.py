@@ -582,8 +582,9 @@ class GameRenderer:
         if self._render_config.show_unlimited_button:
             resource_color = (80, 220, 120) if self.unlimited_resources else (110, 110, 125)
             pygame.draw.rect(surf, resource_color, self._unlimited_rect)
+            resource_name = "SH/PW" if state.num_zones else "HP/PW"
             resource_label = self._font.render(
-                f"Unlimited HP/PW: {'ON' if self.unlimited_resources else 'OFF'}",
+                f"Unlimited {resource_name}: {'ON' if self.unlimited_resources else 'OFF'}",
                 True,
                 (0, 0, 0),
             )
@@ -595,8 +596,7 @@ class GameRenderer:
                 ),
             )
 
-        # Interface legend: color carries index, pattern carries damage. In
-        # particular, a solid outline means severe damage—not impermeability.
+        # Field colour identifies optical material; every interface is harmless.
         legend = self._font.render(
             "Fields: cyan fast | violet slow (traversable, opaque cores)",
             True,
@@ -870,11 +870,11 @@ class GameRenderer:
         roles = state.zone_roles[0].cpu()
         progress = state.zone_capture_progress[0].cpu()
         role_style = {
-            int(ZoneRole.TEAM0_SPAWN): ((100, 180, 255), "S0 HEAL"),
-            int(ZoneRole.TEAM0_DEFENSE): ((100, 180, 255), "D0 DMG"),
+            int(ZoneRole.TEAM0_SPAWN): ((100, 180, 255), "S0 SAFE"),
+            int(ZoneRole.TEAM0_DEFENSE): ((100, 180, 255), "D0 DEF"),
             int(ZoneRole.NEUTRAL): ((180, 180, 180), "NEUTRAL"),
-            int(ZoneRole.TEAM1_DEFENSE): ((255, 120, 80), "D1 DMG"),
-            int(ZoneRole.TEAM1_SPAWN): ((255, 120, 80), "S1 HEAL"),
+            int(ZoneRole.TEAM1_DEFENSE): ((255, 120, 80), "D1 DEF"),
+            int(ZoneRole.TEAM1_SPAWN): ((255, 120, 80), "S1 SAFE"),
         }
         for index in range(positions.shape[0]):
             position = complex(positions[index].item())
@@ -912,7 +912,7 @@ class GameRenderer:
                 )
 
     def _draw_fields(self, state: TensorState, surf: pygame.Surface) -> None:
-        """Draw each overlapping field's transition band and damage outline."""
+        """Draw each overlapping field's transition band and material outline."""
         if state.num_fields == 0:
             return
         positions = state.field_pos[0].cpu()
@@ -1103,7 +1103,7 @@ class GameRenderer:
 
         Independent alpha blits make partial and coincident overlaps visible as
         stronger/mixed bands while every nominal contour remains separately
-        outlined by its material and damage pattern.
+        outlined by its optical material.
         """
 
         half_width = max(1, transition_width // 2)

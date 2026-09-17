@@ -115,31 +115,36 @@ def test_recharge_timer_is_observed_and_fourier_encodes_phase():
     assert AttitudeFourier().out_dim(2) == 8
 
 
-@pytest.mark.parametrize('owners', [(5, 6), (1, 5), (1, 2)])
+@pytest.mark.parametrize("owners", [(5, 6), (1, 5), (1, 2)])
 def test_damage_and_recovery_are_zero_sum_at_final_ratio(owners):
     from boost_and_broadside.config.defaults import REWARDS
     from boost_and_broadside.env.rewards import build_reward_components
+
     e = env()
     hit(e, owners)
     tick(e)
     cfg = replace(REWARDS, kill_payout_ratio=1, damage_payout_ratio=1, capture_payout_ratio=1)
     components = build_reward_components(cfg, e.ship_config)
-    total = sum(c.weight * c.compute(e.state, torch.zeros(1,10,3), e.state, torch.zeros(1,dtype=torch.bool))
-                for c in components if c.weight)
+    total = sum(
+        c.weight
+        * c.compute(e.state, torch.zeros(1, 10, 3), e.state, torch.zeros(1, dtype=torch.bool))
+        for c in components
+        if c.weight
+    )
     assert total.sum().abs() < 1e-5
 
 
 def test_boundary_cannot_finish_a_shield_broken_this_tick():
     e = env()
-    e.state.ship_pos[0,0] = e.state.map_center[0] + e.env_config.frontline.playable_radius + 20
-    hit(e, (5,6))
+    e.state.ship_pos[0, 0] = e.state.map_center[0] + e.env_config.frontline.playable_radius + 20
+    hit(e, (5, 6))
     tick(e)
-    assert e.state.ship_health[0,0] == 0
-    assert not e.state.ship_respawned[0,0]
+    assert e.state.ship_health[0, 0] == 0
+    assert not e.state.ship_respawned[0, 0]
     e.state.ship_combat_damage.zero_()
     e.state.damage_matrix.zero_()
     tick(e)
-    assert e.state.ship_respawned[0,0]
+    assert e.state.ship_respawned[0, 0]
 
 
 def test_initial_depletion_matches_respawn_and_masked_reset():
@@ -149,26 +154,29 @@ def test_initial_depletion_matches_respawn_and_masked_reset():
     assert torch.all(e.state.ship_health == cfg.respawn_health)
     assert torch.all(e.state.ship_power == cfg.respawn_power)
     assert torch.all(e.state.ship_shield_delay == cfg.shield_recharge_delay)
-    assert torch.allclose(e.state.ship_vel.abs()*e.state.ship_local_index,
-                          torch.full_like(e.state.ship_health,cfg.respawn_speed))
+    assert torch.allclose(
+        e.state.ship_vel.abs() * e.state.ship_local_index,
+        torch.full_like(e.state.ship_health, cfg.respawn_speed),
+    )
 
 
 def test_curriculum_has_a_long_final_zero_sum_phase():
     from boost_and_broadside.profiles import PROFILES
-    schedule = PROFILES['rl'].schedule_spec.compile()
+
+    schedule = PROFILES["rl"].schedule_spec.compile()
     assert schedule.offensive_bias(0) == 1
     assert schedule.offensive_bias(50_000_000) == 1
     assert schedule.offensive_bias(175_000_000) == pytest.approx(0.5)
-    for step in (300_000_000,400_000_000,500_000_000):
+    for step in (300_000_000, 400_000_000, 500_000_000):
         assert schedule.offensive_bias(step) == 0
         assert schedule.shaping_scale(step) == 0
-    assert PROFILES['rl'].total_timesteps - 300_000_000 >= 200_000_000
+    assert PROFILES["rl"].total_timesteps - 300_000_000 >= 200_000_000
 
 
 def test_recovery_is_zero_sum_even_with_unequal_teams():
-    e=env()
-    e.state.ship_team_id[0,4]=1
-    e.state.ship_shield_recharge[0,0]=3
-    reward=ShieldRechargeReward(1).compute(e.state,None,e.state,None)
-    assert reward[0,0] == 3
-    assert reward.sum().abs()<1e-6
+    e = env()
+    e.state.ship_team_id[0, 4] = 1
+    e.state.ship_shield_recharge[0, 0] = 3
+    reward = ShieldRechargeReward(1).compute(e.state, None, e.state, None)
+    assert reward[0, 0] == 3
+    assert reward.sum().abs() < 1e-6

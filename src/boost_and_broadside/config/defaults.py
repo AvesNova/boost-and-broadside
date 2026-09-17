@@ -360,22 +360,7 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
         offensive_bias=((0, 1.0, "hold"), (50_000_000, 1.0, "linear"), (300_000_000, 0.0, "hold")),
-        # Shaping is the exception, and it is also what run 720 carried -- this is
-        # the last config difference between that run and this one. It has to be
-        # pushed down rather than left alone: its realised share *grows* about
-        # 1.58x over a run. Facing and closing speed are not potential-based, so
-        # they bias the optimum for as long as they are on, and they oppose the
-        # objective directly -- closing_speed against field_damage_taken measured
-        # a mean gradient cosine of -0.446, negative in 99.9% of samples. They
-        # exist to stop early passive collapse, and that job is finished long
-        # before the budget is. The floor is 0.05 rather than 0 so the components
-        # stay measurable to the end: their gradient share and explained variance
-        # remain readable, which is how the next run learns whether shaping was
-        # still buying anything.
-        #
-        # Note 720 only reached 127M, so it ran barely 27M steps into this taper
-        # and ended near 0.76. Everything the taper does past that point is
-        # untested by the run this vector reconstructs.
+        # No unpaired shaping remains during the final zero-sum phase.
         shaping_scale=(
             (0, 1.0, "hold"),
             (50_000_000, 1.0, "linear"),

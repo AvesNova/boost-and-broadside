@@ -357,7 +357,7 @@ def friendly_spawn_mask(state: TensorState, ship_config: ShipConfig) -> torch.Te
 
 
 def _apply_frontline_hazards(
-    state: TensorState, membership: torch.Tensor, config: FrontlineConfig, ship_config: ShipConfig
+    state: TensorState, config: FrontlineConfig, ship_config: ShipConfig
 ) -> None:
     """The soft outer boundary is the only environmental hazard."""
     from_center = toroidal_displacement(
@@ -468,10 +468,9 @@ def apply_frontline_tick(
         state.zone_radius,
         ship_config.world_size,
     )
-    # Capture membership is sampled before the same zone's health commitment is
-    # charged. This is provisional and intentionally explicit for Gate-1 review.
+    # Resolve capture occupancy after combat and before boundary respawns.
     _advance_capture_state(state, membership, config, ship_config)
-    _apply_frontline_hazards(state, membership, config, ship_config)
+    _apply_frontline_hazards(state, config, ship_config)
 
     threshold = config.front_win_threshold
     team0_win = state.front_position >= threshold

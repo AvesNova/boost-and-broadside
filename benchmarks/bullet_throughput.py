@@ -61,8 +61,6 @@ def benchmark(args: argparse.Namespace) -> dict[str, float]:
         field_integration_substeps=args.ship_field_substeps,
         bullet_field_integrator=args.bullet_field_integrator,
         bullet_field_integration_substeps=args.bullet_field_substeps,
-        bullet_field_damage_scale=args.bullet_field_damage_scale,
-        field_interface_damage=0.0,
     )
     env_config = EnvConfig(
         num_ships=args.num_ships,
@@ -135,7 +133,6 @@ def main() -> None:
         default="two_step",
     )
     parser.add_argument("--bullet-field-substeps", type=int, default=2)
-    parser.add_argument("--bullet-field-damage-scale", type=float, default=0.1)
     parser.add_argument("--workload", choices=("idle", "saturated"), default="saturated")
     parser.add_argument(
         "--compile-mode",
@@ -160,7 +157,7 @@ def main() -> None:
         f"ship_substeps={args.ship_field_substeps} "
         f"bullet_integrator={args.bullet_field_integrator} "
         f"bullet_substeps={args.bullet_field_substeps} "
-        f"damage_scale={args.bullet_field_damage_scale:g} compile={args.compile_mode} "
+        f"compile={args.compile_mode} "
         f"warmup={args.warmup_steps} timed={args.timed_steps} repeats={args.repeats}"
     )
     print(

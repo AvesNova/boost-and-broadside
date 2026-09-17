@@ -33,7 +33,7 @@ def decode_targets_to_observation(
         ObsKey.ATT: raw["attitude"],
         ObsKey.ANG_VEL: raw["angular_velocity"],
         ObsKey.HEALTH: raw["health"],
-        ObsKey.SHIELD_DELAY: raw["shield_delay"],
+        ObsKey.SHIELD_DELAY: raw["shield_delay"].clamp_min(0),
         ObsKey.POWER: raw["power"],
         ObsKey.COOLDOWN: raw["cooldown"],
         ObsKey.LOCAL_LOG_INDEX: raw["local_log_index"],

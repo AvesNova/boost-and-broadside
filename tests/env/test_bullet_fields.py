@@ -194,30 +194,6 @@ def test_two_step_and_midpoint_track_high_resolution_reference():
     assert midpoint_error < two_step_error
 
 
-def _two_damage_field_state(config: ShipConfig):
-    state = make_state(
-        num_envs=1,
-        max_ships=1,
-        max_bullets=1,
-        ship_config=config,
-        num_fields=2,
-    )
-    state.field_pos[:] = torch.tensor([[300.0 + 512.0j, 700.0 + 512.0j]])
-    state.field_radius[:] = 50.0
-    state.field_transition_width[:] = 40.0
-    # Ambient targets isolate damage-potential loss from refraction.
-    state.field_index[:] = 1.0
-    state.field_damage[:] = torch.tensor([[10.0, 20.0]])
-    activate_bullet(
-        state,
-        config,
-        position=220.0 + 512.0j,
-        velocity=500.0 + 0.0j,
-    )
-    _refresh_bullet_cache(state, config)
-    return state
-
-
 def _advance_to_field_core(state, config: ShipConfig, field_index: int) -> None:
     for _ in range(20):
         advance_bullets(state, config)

@@ -1692,3 +1692,32 @@ class TestBehaviorCloningRatchet:
         # Raw factor recovers even though the coefficient does not.
         assert trainer._apply_schedule_state(0) > 0.0
         assert trainer._behavior_cloning_coef == pytest.approx(0.0)
+
+
+def test_offensive_schedule_updates_primary_and_auxiliary_rewards(tmp_path):
+    import copy
+
+    from boost_and_broadside.config.defaults import make_rl_schedule_spec
+
+    trainer = _make_trainer(
+        checkpoint_dir=str(tmp_path),
+        schedule=make_rl_schedule_spec().compile(),
+        kill_payout_ratio=2.0,
+        damage_payout_ratio=2.0,
+        capture_payout_ratio=2.0,
+    )
+    trainer.aux_wrappers.append(copy.deepcopy(trainer.wrapper))
+    for step, ratio in ((0, 2.0), (175_000_000, 1.5), (300_000_000, 1.0), (500_000_000, 1.0)):
+        trainer._apply_schedule_state(step)
+        for wrapper in (trainer.wrapper, *trainer.aux_wrappers):
+            components = {component.name: component for component in wrapper.reward_components}
+            assert components["capture_progress"].payout_ratio == pytest.approx(ratio)
+            assert components["front_advance"].payout_ratio == pytest.approx(ratio)
+            assert components["damage_dealt_enemy"].weight == pytest.approx(
+                ratio * components["combat_damage_taken"].weight
+            )
+            assert components["kill_shot"].weight + components[
+                "kill_assist"
+            ].weight == pytest.approx(ratio * components["combat_death"].weight)
+            if step >= 300_000_000:
+                assert components["facing"].weight == 0

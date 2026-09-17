@@ -402,7 +402,7 @@ class TensorEnv:
         if self.env_config.frontline is not None:
             clear_previous_life_attribution(self.state)
         if protected_alive is not None:
-            # A very large temporary health value prevents a lethal field or
+            # A very large temporary health value prevents a lethal boundary or
             # bullet hit from setting ``alive=False`` before game-over is
             # checked. The user-visible value is restored to max_health below.
             protected_health = torch.full_like(
