@@ -5,6 +5,11 @@ Local combat strength uses `0.2 + 0.8 * shield_fraction` for living ships: deple
 ships still shoot and capture. Zone demand retains harmonic-game-compatible marginal
 support, smooth separation and an aggression bias.
 
+Defense keeps a one-ship-equivalent demand floor independent of aggression. An active
+enemy capture adds urgency from public capture progress, so opaque
+zone sight cannot hide the strategic event. Marginal support still lets a defender on
+the point satisfy quiet demand and prevents the whole team from collapsing backward.
+
 Recovery rises as own shields fall and is gated by visible nearby enemy strength.
 It points away from those enemies, with a small bearing toward friendly spawn. Safe
 ships continue toward objectives while recharging, avoiding unnecessary round trips.

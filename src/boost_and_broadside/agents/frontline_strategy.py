@@ -38,7 +38,9 @@ def frontline_strategy(
     random identities, ship ranks, or fleet-size-dependent thresholds are used.
     """
     health = (state.ship_health / ship.max_health).clamp(0, 1)
-    health = torch.where(state.ship_alive, health, 0.0)
+    shield_fraction = health
+    # Depleted ships still shoot and capture; zero shields is not zero strength.
+    health = torch.where(state.ship_alive, 0.2 + 0.8 * health, 0.0)
     allied = state.ship_team_id[:, :, None] == state.ship_team_id[:, None, :]
     visible = visibility.gather(1, state.ship_team_id.long()[:, :, None].expand_as(allied))
     enemies = ~allied & visible & state.ship_alive[:, None, :]
@@ -86,9 +88,18 @@ def frontline_strategy(
     offense = torch.where(
         team0, roles == int(ZoneRole.TEAM1_DEFENSE), roles == int(ZoneRole.TEAM0_DEFENSE)
     )
+    # Keep one ship-equivalent of demand on our defense even when no attacker is
+    # visible.  Aggression increases offensive demand without suppressing that
+    # defensive floor.  The old symmetric exp(+a)/exp(-a) rule made offense
+    # 7.4x as attractive as defense at the shipped aggression of 1.0.
     margin = config.frontline_zone_margin * torch.where(
-        offense, math.exp(config.frontline_aggression), math.exp(-config.frontline_aggression)
+        offense, math.exp(config.frontline_aggression), 1.0
     )
+    # Capture state is public map information.  Use it to recruit defenders even
+    # when an opaque zone hides the attacker that is moving the meter.
+    defense_attacked = own_defense & (state.zone_capture_progress[:, None, :] > 0)
+    defense_urgency = defense_attacked * (1.0 + 3.0 * state.zone_capture_progress[:, None, :])
+    margin = margin + defense_urgency
     # Fixed half-ship softplus width; normalize later so pressure cannot explode.
     need = F.softplus(2 * (margin + enemy_zone - without_self)) / 2
     need = torch.where(own_defense | offense, need, 0)
@@ -111,14 +122,19 @@ def frontline_strategy(
     )
     spawn_delta = torch.where(own_spawn, zone_delta, 0).sum(-1)
     spawn_distance = spawn_delta.abs()
-    recovery = (1 - health).square() / (
-        (1 - health).square() + (health / config.frontline_recovery_health).square() + 1e-8
+    recovery = (1 - shield_fraction).square() / (
+        (1 - shield_fraction).square()
+        + (shield_fraction / config.frontline_recovery_health).square()
+        + 1e-8
     )
-    force = (
-        (1 - recovery) * (objective_force + combat_force)
-        + recovery * (spawn_delta / spawn_distance.clamp_min(1e-8))
-        + separation
-    )
+    # Recharge anywhere: do not travel all the way home when no enemy threatens us.
+    threat = 1 - torch.exp(-enemy_strength)
+    recovery = recovery * threat
+    escape = -enemy_direction
+    home = spawn_delta / spawn_distance.clamp_min(1e-8)
+    retreat = escape + 0.25 * home
+    retreat = retreat / retreat.abs().clamp_min(1e-8)
+    force = (1 - recovery) * (objective_force + combat_force) + recovery * retreat + separation
     bearing = force / force.abs().clamp_min(1e-8)
     # At a balanced/zero force, retain heading without inventing an identity.
     bearing = torch.where(force.abs() > 1e-8, bearing, state.ship_attitude)

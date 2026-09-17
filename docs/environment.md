@@ -14,8 +14,8 @@ shield and kill its ship. Friendly fire removes shields and delays recovery but 
 finish a depleted ship. The soft outer boundary also depletes shields, then kills on
 a later tick. Field interfaces and defense/spawn zones inflict no passive damage.
 
-Damage resets a four-second recharge delay. After that undamaged interval, shields
-recover at 20 units/second anywhere, capped at 100. A hit and recharge never pay out
+Damage resets a five-second recharge delay. After that undamaged interval, shields
+recover at 15 units/second anywhere, capped at 100. A hit and recharge never pay out
 on the same tick. The timer is an observed, predicted ship channel.
 
 Initial placement and instant respawns use 15 shields, 20 power and 30 px/s proper

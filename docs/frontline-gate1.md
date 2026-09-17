@@ -4,12 +4,12 @@ Run `.venv/bin/bnb play` for 5v5 Frontline. See [the current rules](environment.
 and [scripted strategy](frontline-scripted-strategy.md).
 
 Five 330 px zones sit on a 1200 px ring. Their cyclic roles are neutral → Team 0
-spawn → Team 0 defense → Team 1 defense → Team 1 spawn. Capture takes eight seconds
+spawn → Team 0 defense → Team 1 defense → Team 1 spawn. Capture takes ten seconds
 at a one-ship lead; a lead of n progresses at H(n), the harmonic number. Equal counts
 pause capture. Simultaneous captures net to zero and reset both meters.
 
 All zones are opaque. Ships sharing a zone can see each other. Own spawn protects
-ships; shields recover anywhere after four seconds without damage. Initial ships and
+ships; shields recover anywhere after five seconds without damage. Initial ships and
 instant respawns start at 15 shields, 20 energy and 30 proper speed. Defense zones,
 enemy spawn and field interfaces cause no passive damage. The outer boundary remains
 a hazard. The match ends at front ±3 or five minutes.

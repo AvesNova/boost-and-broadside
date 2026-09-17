@@ -16,7 +16,7 @@ The branch is prepared for review; it has not been merged or pushed.
   if shields were already zero before that tick's combat resolution. Breaking a
   shield cannot also kill, regardless of simultaneous hit count. Friendly fire
   depletes shields and delays recovery, but cannot deliver the finishing hit.
-- Damage restarts a four-second delay; undamaged ships then recharge at 20/s anywhere.
+- Damage restarts a five-second delay; undamaged ships then recharge at 15/s anywhere.
   Fractional delay expiry and the capacity cap are respected. Same-tick damage blocks
   recharge. Spawn protection masks damage before attribution and does not reset delay.
 - Respawns are instant, with 15 shield, 20 power, 30 proper speed, no firing cooldown,
@@ -80,8 +80,8 @@ lifecycle, checkpoint contracts, and launch sizing.
 
 The actual PPO and BC training integration selection passed (13 tests). Both revisions
 also completed four eager PPO updates with finite losses in the timing experiment below.
-The final `.venv/bin/pytest -q -n 8` run passed: **1,489 passed, 12 skipped** in
-158.08 seconds. An earlier full run exposed a stale CLI shard-count expectation;
+The latest `.venv/bin/pytest -q -n 8` run passed: **1,491 passed, 12 skipped** in
+163.73 seconds. An earlier full run exposed a stale CLI shard-count expectation;
 it was corrected, the affected 136 CLI/VRAM/belief tests passed, and the full suite
 was rerun successfully. Ruff check/format and whitespace validation passed.
 CUDA was unavailable; no GPU or full-budget learning run was attempted.
@@ -162,12 +162,38 @@ zero boundary deaths, first capture at 36.77 seconds, duration 202.56 seconds. S
 0/30/60 seconds were inspected for depleted starts, movement and readable zone roles.
 No interactive human playtest was performed.
 
+### Defensive-response and pacing follow-up
+
+Visual review found that the teacher rarely entered its own defense. This was a
+controller limitation rather than a tuned choice: the shield-era sweep varied only
+the recovery threshold, while the inherited aggression formula made baseline offense
+7.4 times as attractive as defense and ignored capture progress. Defense now keeps a
+one-ship-equivalent demand floor; nonzero enemy capture progress adds immediate urgency
+even when zone opacity hides the attacker. The scripted suite reports quiet and
+threatened defensive occupancy so future changes measure physical presence rather than
+only an internal demand score.
+
+The same review found every pacing constant too quick. Play and training now use a
+five-second recharge delay, 15 shield/second recharge, and ten-second one-ship capture,
+each a 25% move from the prior 4 s, 20/s and 8 s values. These remain provisional and
+need another human playtest; the automated match screen checks that slower pacing does
+not stop captures or produce universal timeouts.
+
+In four seeded 5v5 self-play matches, a friendly ship occupied its defense for 18.2%
+of quiet defense-team ticks and 50.8% of ticks with enemy capture progress. Every match
+reached at least two captures and the mean was 4.5, but all four reached the five-minute
+limit (two decided by front position, two level draws). Mean first capture was 129.6 s.
+This is evidence that defensive response exists, but it is a small, symmetric sample and
+the combined defense/pacing change is substantially more conservative than the prior
+teacher. [Raw follow-up results](shield-overhaul-defense-retune.json) retain per-game
+occupancy counters.
+
 ## Remaining work and uncertainty
 
 GPU throughput/VRAM verification, long training convergence, broader seed/opponent
-sweeps and human play remain unmeasured. The four-second delay, 20/s recharge and
-15/20/30 spawn resources are coherent provisional values, not a completed balance
-search. The small teacher sweep does not establish an Elo rating. Older learned-policy
+sweeps and human play remain unmeasured. The five-second delay, 15/s recharge,
+ten-second capture and 15/20/30 spawn resources are coherent provisional values, not a
+completed balance search. The small teacher sweep does not establish an Elo rating. Older learned-policy
 results elsewhere in the repository describe earlier mechanics and are historical.
 
 ## Commits

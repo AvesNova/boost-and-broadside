@@ -76,6 +76,26 @@ def test_enemy_pressure_recruits_reinforcements():
     assert torch.all(after.zone_need[0, :4, 2] > before.zone_need[0, :4, 2])
 
 
+def test_aggression_does_not_remove_preemptive_defense_demand():
+    ship, state, visibility = _scenario()
+    state.ship_pos[0, :4] = 3000 + 100j
+    defensive = frontline_strategy(
+        state, ship, StochasticAgentConfig(frontline_aggression=1), visibility
+    )
+    assert torch.all(defensive.zone_need[0, :4, 2] > 0.5)
+
+
+def test_capture_progress_recruits_defenders_through_occlusion():
+    ship, state, visibility = _scenario()
+    visibility[:, 0, 4:] = False
+    before = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    state.zone_capture_direction[0, 2] = -1
+    state.zone_capture_progress[0, 2] = 0.5
+    after = frontline_strategy(state, ship, StochasticAgentConfig(), visibility)
+    assert torch.all(after.zone_need[0, :4, 2] > before.zone_need[0, :4, 2])
+    assert torch.all(after.zone_preference[0, :4, 2] > before.zone_preference[0, :4, 2])
+
+
 def test_aggression_monotonically_biases_combat_and_objectives():
     ship, state, visibility = _scenario()
     results = [

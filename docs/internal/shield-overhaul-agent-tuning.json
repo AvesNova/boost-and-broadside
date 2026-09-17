@@ -1,0 +1,242 @@
+[
+  {
+    "games": 4,
+    "team_size": 5,
+    "seed": 9751,
+    "seconds": 120,
+    "wins": 3,
+    "losses": 0,
+    "draws": 1,
+    "expected_score": 0.875,
+    "candidate_captures": 7,
+    "opponent_captures": 3,
+    "candidate_combat_deaths": 87,
+    "opponent_combat_deaths": 90,
+    "mean_signed_front": 1.0,
+    "mean_steps": 3600.0,
+    "wall_seconds": 171.75703838502523,
+    "candidate_as_team0": {
+      "wins": 1,
+      "losses": 0,
+      "draws": 1,
+      "expected_score": 0.75
+    },
+    "candidate_as_team1": {
+      "wins": 2,
+      "losses": 0,
+      "draws": 0,
+      "expected_score": 1.0
+    },
+    "per_game": {
+      "candidate_team": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "result": [
+        "draw",
+        "win",
+        "win",
+        "win"
+      ],
+      "final_front": [
+        0.0,
+        2.0,
+        1.0,
+        1.0
+      ],
+      "candidate_captures": [
+        1,
+        2,
+        3,
+        1
+      ],
+      "opponent_captures": [
+        1,
+        0,
+        2,
+        0
+      ],
+      "candidate_combat_deaths": [
+        23,
+        24,
+        18,
+        22
+      ],
+      "opponent_combat_deaths": [
+        21,
+        27,
+        18,
+        24
+      ],
+      "steps": [
+        3600,
+        3600,
+        3600,
+        3600
+      ]
+    },
+    "recovery": 0.3
+  },
+  {
+    "games": 4,
+    "team_size": 5,
+    "seed": 9751,
+    "seconds": 120,
+    "wins": 4,
+    "losses": 0,
+    "draws": 0,
+    "expected_score": 1.0,
+    "candidate_captures": 10,
+    "opponent_captures": 2,
+    "candidate_combat_deaths": 63,
+    "opponent_combat_deaths": 72,
+    "mean_signed_front": 2.0,
+    "mean_steps": 3148.75,
+    "wall_seconds": 100.24192114698235,
+    "candidate_as_team0": {
+      "wins": 2,
+      "losses": 0,
+      "draws": 0,
+      "expected_score": 1.0
+    },
+    "candidate_as_team1": {
+      "wins": 2,
+      "losses": 0,
+      "draws": 0,
+      "expected_score": 1.0
+    },
+    "per_game": {
+      "candidate_team": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "result": [
+        "win",
+        "win",
+        "win",
+        "win"
+      ],
+      "final_front": [
+        1.0,
+        3.0,
+        1.0,
+        3.0
+      ],
+      "candidate_captures": [
+        3,
+        3,
+        1,
+        3
+      ],
+      "opponent_captures": [
+        2,
+        0,
+        0,
+        0
+      ],
+      "candidate_combat_deaths": [
+        21,
+        11,
+        21,
+        10
+      ],
+      "opponent_combat_deaths": [
+        10,
+        18,
+        24,
+        20
+      ],
+      "steps": [
+        3600,
+        2571,
+        3600,
+        2824
+      ]
+    },
+    "recovery": 0.5
+  },
+  {
+    "games": 4,
+    "team_size": 5,
+    "seed": 9751,
+    "seconds": 120,
+    "wins": 4,
+    "losses": 0,
+    "draws": 0,
+    "expected_score": 1.0,
+    "candidate_captures": 7,
+    "opponent_captures": 3,
+    "candidate_combat_deaths": 86,
+    "opponent_combat_deaths": 76,
+    "mean_signed_front": 1.0,
+    "mean_steps": 3600.0,
+    "wall_seconds": 90.64917440002318,
+    "candidate_as_team0": {
+      "wins": 2,
+      "losses": 0,
+      "draws": 0,
+      "expected_score": 1.0
+    },
+    "candidate_as_team1": {
+      "wins": 2,
+      "losses": 0,
+      "draws": 0,
+      "expected_score": 1.0
+    },
+    "per_game": {
+      "candidate_team": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "result": [
+        "win",
+        "win",
+        "win",
+        "win"
+      ],
+      "final_front": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "candidate_captures": [
+        2,
+        1,
+        3,
+        1
+      ],
+      "opponent_captures": [
+        1,
+        0,
+        2,
+        0
+      ],
+      "candidate_combat_deaths": [
+        19,
+        28,
+        17,
+        22
+      ],
+      "opponent_combat_deaths": [
+        18,
+        23,
+        16,
+        19
+      ],
+      "steps": [
+        3600,
+        3600,
+        3600,
+        3600
+      ]
+    },
+    "recovery": 0.7
+  }
+]

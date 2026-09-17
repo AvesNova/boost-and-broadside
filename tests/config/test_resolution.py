@@ -147,7 +147,9 @@ def test_training_profiles_use_the_frontline_perception_contract(name: str) -> N
     assert resolved.ship_config.world_size == (16_384.0, 16_384.0)
     assert resolved.ship_config.dt == pytest.approx(1 / 30)
     assert scale.env_config.frontline is not None
-    assert scale.env_config.frontline.capture_seconds == 8.0
+    assert scale.env_config.frontline.capture_seconds == 10.0
+    assert scale.env_config.frontline.shield_recharge_delay == 5.0
+    assert scale.env_config.frontline.shield_recharge_per_second == 15.0
     assert scale.env_config.vision_range == 1024.0
     assert scale.env_config.zones_occlude
     assert scale.env_config.num_fields == 10
