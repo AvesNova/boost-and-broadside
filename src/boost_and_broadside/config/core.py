@@ -22,14 +22,6 @@ class RefractiveIndexLevel(IntEnum):
     VERY_HIGH = 2
 
 
-class InterfaceDamageLevel(IntEnum):
-    """Interface damage multiplier; independent from refractive index."""
-
-    NONE = 0
-    STANDARD = 1
-    SEVERE = 2
-
-
 class ZoneRole(IntEnum):
     """Dynamic strategic role assigned to one physical frontline zone."""
 
@@ -62,10 +54,11 @@ class FrontlineConfig:
     zone_ring_radius: float
     playable_radius: float
     capture_seconds: float
-    defense_damage_per_second: float
+    respawn_power: float
+    respawn_speed: float
+    shield_recharge_delay: float
+    shield_recharge_per_second: float
     respawn_health: float
-    spawn_heal_per_second: float
-    enemy_spawn_damage_per_second: float
     boundary_damage_per_second: float
     boundary_damage_per_pixel_second: float
     front_win_threshold: int
@@ -77,15 +70,16 @@ class FrontlineConfig:
             "playable_radius",
             "capture_seconds",
             "respawn_health",
-            "spawn_heal_per_second",
+            "respawn_power",
+            "respawn_speed",
+            "shield_recharge_delay",
+            "shield_recharge_per_second",
         )
         for name in positive:
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0.0:
                 raise ValueError(f"frontline {name} must be positive and finite, got {value}")
         non_negative = (
-            "defense_damage_per_second",
-            "enemy_spawn_damage_per_second",
             "boundary_damage_per_second",
             "boundary_damage_per_pixel_second",
         )
@@ -132,13 +126,11 @@ class ShipConfig:
     # Static refractive fields. ``transition_width`` is the complete interface
     # band, extending half the width to either side of the nominal radius.
     field_index_step: float = float(np.sqrt(2.0))  # levels span n=1/2 through n=2
-    field_interface_damage: float = 10.0
     field_radius_min: float = 30.0
     field_radius_max: float = 490.0
     field_transition_width_min: float = 40.0
     field_transition_width_max: float = 40.0
-    # Fixed substeps keep the hot path static-shaped and make interface
-    # total-variation damage robust at the configured ship speeds.
+    # Fixed substeps keep optical transport static-shaped.
     field_integrator: str = "midpoint"  # "two_step" or "midpoint"
     field_integration_substeps: int = 2
 
@@ -171,9 +163,6 @@ class ShipConfig:
     bullet_drag_coeff: float = 8e-4  # quadratic drag, integrated exactly like ship drag
     bullet_field_integrator: str = "two_step"  # "two_step" or ship-quality "midpoint"
     bullet_field_integration_substeps: int = 2
-    # Bullet damage potential lost per point of interface damage crossed.
-    # At 0.1, a 10-damage interface reduces a 10-damage bullet to 9 damage.
-    bullet_field_damage_scale: float = 0.1
 
     # World
     world_size: tuple[float, float] = (1024.0, 1024.0)
@@ -184,8 +173,6 @@ class ShipConfig:
     def __post_init__(self) -> None:
         if not np.isfinite(self.field_index_step) or self.field_index_step <= 1.0:
             raise ValueError("field_index_step must be greater than 1")
-        if not np.isfinite(self.field_interface_damage) or self.field_interface_damage < 0.0:
-            raise ValueError("field_interface_damage must be non-negative")
         if len(self.world_size) != 2 or not all(
             np.isfinite(side) and side > 0.0 for side in self.world_size
         ):
@@ -212,8 +199,6 @@ class ShipConfig:
             or self.bullet_field_integration_substeps % 2 != 0
         ):
             raise ValueError("bullet_field_integration_substeps must be a positive even integer")
-        if not np.isfinite(self.bullet_field_damage_scale) or self.bullet_field_damage_scale < 0.0:
-            raise ValueError("bullet_field_damage_scale must be non-negative")
 
         # A toroidal circle must stay strictly below the nearest antipode. At or
         # beyond half the shorter world dimension its radial contour is ambiguous.
@@ -299,11 +284,8 @@ class EnvConfig:
     # neither into a field, nor out of one, nor past one. This lives in the
     # environment contract rather than in renderer-only state.
     vision_range: float | None = None
-    # Whether capture zones are opaque as well as fields. Off by default: the
-    # five Frontline zones cover much of the playable disk, so making them
-    # occluders is a different game rather than a tuning knob. Play mode can
-    # toggle it live to inspect the difference.
-    zones_occlude: bool = False
+    # Zones use the same convex-core line-of-sight rule as refractive fields.
+    zones_occlude: bool = True
 
     def __post_init__(self) -> None:
         if isinstance(self.frontline, Mapping):
@@ -428,24 +410,9 @@ class RewardConfig:
     caused it ``death_weight`` between them; damage works the same way with
     ``damage_weight``. That fixes every ratio in the system and leaves four numbers.
 
-    Three consequences are worth knowing, because they look like coincidences and
-    are not:
 
-    * ``enemy_field_death`` must equal ``kill_shot``. A ship killed by a field was
-      shot by nobody on its fatal step, so ``kill_shot`` pays zero there and only
-      ``kill_assist`` fires. Balance then needs the shortfall made up exactly, and
-      the shortfall is ``kill_shot``. The same argument gives ``enemy_field_damage
-      == damage_weight``. These two are the only source-split components with a
-      non-zero weight: they exist to supply the offensive side of events that have
-      no shooter to attribute to.
-    * Killing a teammate costs the team twice. The ally is charged
-      ``death_weight`` for dying and the shooter is charged ``death_weight`` for
-      causing it, while the enemy is paid nothing — so friendly fire is
-      structurally twice as expensive as being killed by an opponent, without a
-      special case saying so.
-    * The remaining ``ally_*`` and ``enemy_combat_*`` components stay at zero.
-      Their events are already fully paid for by the local per-ship components and
-      by damage attribution; turning them on would charge the same event twice.
+    Shield recovery pays its ship and charges the opposing team. Boundary loss
+    and friendly-fire penalties have matching opposing payouts.
 
     Equal weight is not equal gradient. The kill side spends its weight across two
     correlated components while the death side spends it on one, so the kill side

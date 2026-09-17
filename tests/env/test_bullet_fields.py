@@ -63,12 +63,6 @@ def _refresh_bullet_cache(state, config: ShipConfig) -> None:
         state.field_index,
         config.world_size,
     )
-    state.bullet_field_alpha = evaluation.alpha.view(
-        batch_size,
-        num_ships,
-        num_bullets,
-        state.num_fields,
-    )
     state.bullet_local_index = evaluation.index.view(batch_size, num_ships, num_bullets)
     state.bullet_field_gradient = evaluation.grad_index.view(
         batch_size,
@@ -112,7 +106,7 @@ def test_shooting_initializes_medium_cache_and_proper_muzzle_speed():
     update_ships(state, actions, config)
 
     assert state.bullet_active.item()
-    assert state.bullet_field_alpha.item() == pytest.approx(1.0)
+    assert _alpha(state, config).item() == pytest.approx(1.0)
     assert state.bullet_local_index.item() == pytest.approx(config.field_index_step**2)
     relative_proper_speed = (
         state.bullet_local_index * (state.bullet_vel - state.ship_vel.unsqueeze(-1)).abs()
@@ -135,7 +129,7 @@ def test_high_index_field_bends_bullet_toward_center(integrator: str):
     core_angle = None
     for _ in range(80):
         state, _ = advance_bullets(state, config)
-        if state.bullet_field_alpha.item() > 0.999:
+        if _alpha(state, config).item() > 0.999:
             core_angle = abs(torch.angle(state.bullet_vel).item())
             break
 
@@ -161,7 +155,7 @@ def test_low_index_high_incidence_bullet_reflects(integrator: str):
 
     for _ in range(64):
         state, _ = advance_bullets(state, config)
-        max_alpha = max(max_alpha, state.bullet_field_alpha.item())
+        max_alpha = max(max_alpha, _alpha(state, config).item())
         inward = wrap_displacement(
             state.field_pos[:, 0] - state.bullet_pos[:, 0, 0],
             config.world_size,
@@ -227,62 +221,9 @@ def _two_damage_field_state(config: ShipConfig):
 def _advance_to_field_core(state, config: ShipConfig, field_index: int) -> None:
     for _ in range(20):
         advance_bullets(state, config)
-        if state.bullet_field_alpha[0, 0, 0, field_index].item() > 0.999999:
+        if _alpha(state, config)[0, 0, 0, field_index].item() > 0.999999:
             return
     pytest.fail(f"bullet did not enter field {field_index} core")
-
-
-@pytest.mark.parametrize("integrator", ["two_step", "midpoint"])
-def test_barriers_reduce_bullet_damage_potential_by_ten_percent(integrator: str):
-    config = _bullet_config(bullet_field_integrator=integrator)
-    state = _two_damage_field_state(config)
-
-    _advance_to_field_core(state, config, 0)
-    assert state.bullet_remaining_damage.item() == pytest.approx(9.0, abs=2e-5)
-
-    # Begin a separate crossing just outside the second field. Refreshing the
-    # cache models arrival there without charging for the omitted travel.
-    state.bullet_pos[:] = 620.0 + 512.0j
-    _refresh_bullet_cache(state, config)
-    _advance_to_field_core(state, config, 1)
-    assert state.bullet_remaining_damage.item() == pytest.approx(7.0, abs=3e-5)
-
-
-@pytest.mark.parametrize("integrator", ["two_step", "midpoint"])
-def test_partial_reflection_charges_total_interface_variation(integrator: str):
-    config = _bullet_config(bullet_field_integrator=integrator)
-    incident_angle = math.radians(60.0)
-    state = _single_field_bullet_state(
-        config,
-        index=config.field_index_step**-2,
-        radius=300.0,
-        width=100.0,
-        position=155.0 + 512.0j,
-        velocity=500.0 * complex(math.cos(incident_angle), math.sin(incident_angle)),
-    )
-    state.field_damage[:] = 10.0
-    max_alpha = 0.0
-
-    for _ in range(64):
-        advance_bullets(state, config)
-        max_alpha = max(max_alpha, state.bullet_field_alpha.item())
-
-    expected = config.bullet_damage - 2.0 * max_alpha
-    assert state.bullet_remaining_damage.item() == pytest.approx(expected, abs=2e-3)
-
-
-def test_fully_depleted_bullet_deactivates():
-    config = _bullet_config(bullet_damage=1.0)
-    state = _two_damage_field_state(config)
-    state.field_damage[:, 0] = 20.0
-
-    for _ in range(20):
-        advance_bullets(state, config)
-        if not state.bullet_active.item():
-            break
-
-    assert not state.bullet_active.item()
-    assert state.bullet_remaining_damage.item() == 0.0
 
 
 @pytest.mark.parametrize(
@@ -292,9 +233,20 @@ def test_fully_depleted_bullet_deactivates():
         ({"field_integrator": "bad"}, "field_integrator"),
         ({"bullet_field_integrator": "bad"}, "bullet_field_integrator"),
         ({"bullet_field_integration_substeps": 3}, "positive even"),
-        ({"bullet_field_damage_scale": -0.1}, "bullet_field_damage_scale"),
     ],
 )
 def test_bullet_field_config_validation(overrides: dict, message: str):
     with pytest.raises(ValueError, match=message):
         ShipConfig(**overrides)
+
+
+def _alpha(state, config):
+    points = state.ship_pos if state.max_bullets == 0 else state.bullet_pos.flatten(1)
+    return evaluate_fields(
+        points,
+        state.field_pos,
+        state.field_radius,
+        state.field_transition_width,
+        state.field_index,
+        config.world_size,
+    ).alpha

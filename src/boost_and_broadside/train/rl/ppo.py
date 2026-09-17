@@ -130,6 +130,9 @@ _BC_CUTOFF_UPDATES = 3
 # exchange, geometry over the next moment. Scaling a whole tier at once is how a
 # run shifts weight between "what actually wins" and the proxies for it.
 _TIER: dict[str, str] = {
+    "shield_recharge": "damage_scale",
+    "boundary": "kill_death_scale",
+    "boundary_damage": "damage_scale",
     "ally_win": "outcome_scale",
     "enemy_win": "outcome_scale",
     "front_advance": "outcome_scale",
@@ -137,20 +140,14 @@ _TIER: dict[str, str] = {
     "outcome": "outcome_scale",
     "ally_combat_death": "kill_death_scale",
     "enemy_combat_death": "kill_death_scale",
-    "ally_field_death": "kill_death_scale",
-    "enemy_field_death": "kill_death_scale",
     "combat_death": "kill_death_scale",
-    "field_death": "kill_death_scale",
     "kill_shot": "kill_death_scale",
     "kill_assist": "kill_death_scale",
     "kill_ally_shot": "kill_death_scale",
     "kill_ally_assist": "kill_death_scale",
     "ally_combat_damage": "damage_scale",
     "enemy_combat_damage": "damage_scale",
-    "ally_field_damage": "damage_scale",
-    "enemy_field_damage": "damage_scale",
     "combat_damage_taken": "damage_scale",
-    "field_damage_taken": "damage_scale",
     "damage_dealt_enemy": "damage_scale",
     "damage_dealt_ally": "damage_scale",
     "facing": "shaping_scale",
@@ -172,6 +169,9 @@ _TIER: dict[str, str] = {
 # _classified`` pins that both maps stay complete.
 _LOCAL_COMPONENTS: frozenset[str] = frozenset(
     {
+        "shield_recharge",
+        "boundary",
+        "boundary_damage",
         "facing",
         "closing_speed",
         "shoot_quality",
@@ -180,11 +180,9 @@ _LOCAL_COMPONENTS: frozenset[str] = frozenset(
         "kill_ally_shot",
         "kill_ally_assist",
         "combat_damage_taken",
-        "field_damage_taken",
         "damage_dealt_enemy",
         "damage_dealt_ally",
         "combat_death",
-        "field_death",
         "shooting_penalty",
         "speed",
         # The strategic tier attributes its own credit: the side a meter favours
@@ -205,6 +203,7 @@ class _ResolvedSchedule:
     All fields are plain values — no callables, no Nones.
     """
 
+    offensive_bias: float
     learning_rate: float
     policy_gradient_coef: float
     entropy_coef: float
@@ -322,6 +321,7 @@ def _actor_entropy_coef(
 def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedule:
     """Evaluate every schedule field at ``step`` and return a resolved snapshot."""
     return _ResolvedSchedule(
+        offensive_bias=schedule.offensive_bias(step),
         learning_rate=schedule.learning_rate(step),
         policy_gradient_coef=schedule.policy_gradient_coef(step),
         entropy_coef=schedule.entropy_coef(step),
@@ -1387,8 +1387,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             behavior_cloning_coef=self._behavior_cloning_coef,
         )
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
+        bias = self._schedule_state.offensive_bias
+        rewards = dataclasses.replace(
+            self.cfg.rewards,
+            **{
+                name: 1.0 + bias * (getattr(self.cfg.rewards, name) - 1.0)
+                for name in ("kill_payout_ratio", "damage_payout_ratio", "capture_payout_ratio")
+            },
+        )
+        weights = component_weights(rewards)
         for component in self.wrapper.reward_components:
-            raw_weight = self._component_weights[component.name]
+            if component.name in {"capture_progress", "front_advance"}:
+                component.payout_ratio = rewards.capture_payout_ratio
+            raw_weight = weights[component.name]
             component.weight = raw_weight * getattr(self._schedule_state, _TIER[component.name])
         self.wrapper.refresh_component_weights()
         return bc_factor
@@ -1407,6 +1418,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/target_kl"] = self._effective_target_kl()
         metrics["schedule/outcome_scale"] = self._schedule_state.outcome_scale
         metrics["schedule/kill_death_scale"] = self._schedule_state.kill_death_scale
+        metrics["schedule/offensive_bias"] = self._schedule_state.offensive_bias
         metrics["schedule/damage_scale"] = self._schedule_state.damage_scale
         metrics["schedule/shaping_scale"] = self._schedule_state.shaping_scale
 

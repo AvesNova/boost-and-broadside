@@ -17,6 +17,7 @@ class ObsKey(StrEnum):
     VEL = "vel"
     ATT = "att"
     ANG_VEL = "ang_vel"
+    SHIELD_DELAY = "shield_delay"
     HEALTH = "health"
     POWER = "power"
     COOLDOWN = "cooldown"
@@ -32,7 +33,6 @@ class ObsKey(StrEnum):
     LOCAL_INDEX_GRADIENT = "local_index_gradient"
     FIELD_TRANSITION_WIDTH = "field_transition_width"
     FIELD_TARGET_LOG_INDEX = "field_target_log_index"
-    FIELD_DAMAGE = "field_damage"
     ZONE_ROLE = "zone_role"
     CAPTURE_PROGRESS = "capture_progress"
     CAPTURE_DIRECTION = "capture_direction"
@@ -61,7 +61,6 @@ class BulletObsKey(StrEnum):
 
     POS = "bullet_pos"
     VEL = "bullet_vel"
-    DAMAGE = "bullet_damage"
     LIFETIME = "bullet_lifetime"
     LOCAL_LOG_INDEX = "bullet_local_log_index"
     LOCAL_INDEX_GRADIENT = "bullet_local_index_gradient"
@@ -136,6 +135,7 @@ class YemongObservation:
         if resolved == ObsKey.ZONE_ROLE:
             return torch.full_like(team_id, 5)
         if resolved in {
+            ObsKey.SHIELD_DELAY,
             ObsKey.CAPTURE_PROGRESS,
             ObsKey.CAPTURE_DIRECTION,
             ObsKey.ZONE_OFFENSIVE_DISTANCE,
@@ -535,8 +535,6 @@ def bullet_observation_from_state(
     result = {
         BulletObsKey.POS: bullet_pos,
         BulletObsKey.VEL: bullet_vel,
-        BulletObsKey.DAMAGE: state.bullet_remaining_damage.reshape(flat).unsqueeze(-1)
-        / max(ship_config.bullet_damage, EPS),
         BulletObsKey.LIFETIME: state.bullet_time.reshape(flat).unsqueeze(-1)
         / max(ship_config.bullet_lifetime, EPS),
         BulletObsKey.LOCAL_LOG_INDEX: bullet_log_index,
@@ -745,8 +743,6 @@ def observation_from_state(
         return torch.cat(parts, dim=1) if parts else object_zero_scalar
 
     field_target = torch.log(state.field_index).unsqueeze(-1) / log_scale
-    max_damage = max(2.0 * ship_config.field_interface_damage, EPS)
-    field_damage = state.field_damage.unsqueeze(-1) / max_damage
     # Only the frontline layout has a front to measure against, and the residue
     # arithmetic is defined over exactly NUM_FRONTLINE_ZONES. Anything else (the
     # legacy elimination arena, which carries no zones at all) takes the zero
@@ -773,6 +769,13 @@ def observation_from_state(
             ObsKey.VEL: torch.cat([ship_vel, object_zero_vec], dim=1),
             ObsKey.ATT: torch.cat([ship_att, object_zero_vec], dim=1),
             ObsKey.ANG_VEL: torch.cat([ship_ang, object_zero_scalar], dim=1),
+            ObsKey.SHIELD_DELAY: torch.cat(
+                [
+                    state.ship_shield_delay.unsqueeze(-1) * visible_ships.unsqueeze(-1),
+                    object_zero_scalar,
+                ],
+                dim=1,
+            ),
             ObsKey.HEALTH: torch.cat([ship_health, object_zero_scalar], dim=1),
             ObsKey.POWER: torch.cat([ship_power, object_zero_scalar], dim=1),
             ObsKey.COOLDOWN: torch.cat([ship_cooldown, object_zero_scalar], dim=1),
@@ -796,7 +799,6 @@ def observation_from_state(
             ObsKey.FIELD_TARGET_LOG_INDEX: torch.cat(
                 [ship_zero, object_scalar(field=field_target)], dim=1
             ),
-            ObsKey.FIELD_DAMAGE: torch.cat([ship_zero, object_scalar(field=field_damage)], dim=1),
             ObsKey.CAPTURE_PROGRESS: torch.cat(
                 [ship_zero, object_scalar(zone=state.zone_capture_progress.unsqueeze(-1))], dim=1
             ),

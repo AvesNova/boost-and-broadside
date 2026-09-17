@@ -14,7 +14,7 @@ from enum import StrEnum
 import pygame
 import torch
 
-from boost_and_broadside.config import InterfaceDamageLevel, ShipConfig, ZoneRole
+from boost_and_broadside.config import ShipConfig, ZoneRole
 from boost_and_broadside.env.perception import TeamVisibility
 from boost_and_broadside.env.state import TensorState
 
@@ -48,20 +48,6 @@ def field_color(index_level: int) -> tuple[int, int, int]:
         return colors[int(index_level)]
     except KeyError as error:
         raise ValueError(f"invalid non-ambient field index level {index_level}") from error
-
-
-def field_border_pattern(damage_level: int) -> tuple[str, int]:
-    """Return orthogonal border pattern and line width for interface damage."""
-
-    patterns = {
-        int(InterfaceDamageLevel.NONE): ("dotted", 1),
-        int(InterfaceDamageLevel.STANDARD): ("dashed", 2),
-        int(InterfaceDamageLevel.SEVERE): ("solid", 3),
-    }
-    try:
-        return patterns[int(damage_level)]
-    except KeyError as error:
-        raise ValueError(f"invalid field damage level {damage_level}") from error
 
 
 def wrapped_field_centers(
@@ -612,7 +598,7 @@ class GameRenderer:
         # Interface legend: color carries index, pattern carries damage. In
         # particular, a solid outline means severe damage—not impermeability.
         legend = self._font.render(
-            "Fields: cyan fast | violet slow | · none  -- standard  — severe (traversable)",
+            "Fields: cyan fast | violet slow (traversable, opaque cores)",
             True,
             (175, 175, 190),
         )
@@ -933,7 +919,6 @@ class GameRenderer:
         radii = state.field_radius[0].cpu()
         widths = state.field_transition_width[0].cpu()
         index_levels = state.field_index_level[0].cpu()
-        damage_levels = state.field_damage_level[0].cpu()
 
         # Large contours first keeps small/coincident field outlines legible.
         order = sorted(range(positions.shape[0]), key=lambda i: radii[i].item(), reverse=True)
@@ -944,7 +929,7 @@ class GameRenderer:
             radius_px = max(1, int(round(radius_world * self.camera.scale)))
             width_px = max(1, int(round(float(widths[field_idx].item()) * self.camera.scale)))
             color = field_color(int(index_levels[field_idx].item()))
-            pattern, line_width = field_border_pattern(int(damage_levels[field_idx].item()))
+            pattern, line_width = "solid", 1
             for wrapped_center in self.camera.visible_images(center, outer):
                 screen_center = self._unwrapped_world_to_screen(wrapped_center)
                 self._draw_field_band(surf, screen_center, radius_px, width_px, color)

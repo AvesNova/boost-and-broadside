@@ -149,10 +149,10 @@ def test_training_profiles_use_the_frontline_perception_contract(name: str) -> N
     assert scale.env_config.frontline is not None
     assert scale.env_config.frontline.capture_seconds == 8.0
     assert scale.env_config.vision_range == 1024.0
-    assert not scale.env_config.zones_occlude
+    assert scale.env_config.zones_occlude
     assert scale.env_config.num_fields == 10
-    assert scale.env_config.num_entity_tokens == 24
-    assert launch_geometry(PROFILES[name]).entity_tokens == 24
+    assert scale.env_config.num_entity_tokens == 26
+    assert launch_geometry(PROFILES[name]).entity_tokens == 26
     assert resolved.train_config.paradigm == "ego_pass"
 
 
@@ -257,7 +257,7 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
 
 def test_num_envs_override_recomputes_shards_at_fixed_logical_batch() -> None:
     baseline = resolve_profile(PROFILES["rl"])
-    narrower = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=640))
+    narrower = resolve_profile(PROFILES["rl"], LaunchOverrides(num_envs=480))
 
     def effective_batch_tokens(resolved) -> int:
         scale = resolved.train_config.scales[0]
@@ -329,7 +329,7 @@ def test_fixed_environment_legacy_preset_has_honest_machine_source() -> None:
     """
     fixed_width = replace(
         PROFILES["rl"],
-        logical_batch_tokens=11_796_480,
+        logical_batch_tokens=26 * 128 * 640 * 6,
         launch=LaunchSizingSpec(num_envs=640),
     )
     resolved = resolve_profile(fixed_width)
@@ -347,7 +347,7 @@ def test_format_resolved_config_is_complete_stable_json(tmp_path, monkeypatch, c
     assert rendered == format_resolved_config(resolve_profile(PROFILES["rl"]))
     assert document["schema_version"] == 1
     assert document["profile"] == "rl"
-    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 1280
+    assert document["config"]["train_config"]["scales"][0]["num_envs"] == 960
     assert document["sources"]["train_config.scales.0.num_envs"] == "derived"
     assert list(tmp_path.iterdir()) == []
     assert capsys.readouterr() == ("", "")

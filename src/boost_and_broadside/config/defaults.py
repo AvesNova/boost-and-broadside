@@ -198,18 +198,14 @@ REWARDS = RewardConfig(
     enemy_neg_lambda_components=frozenset(
         {
             "enemy_combat_damage",
-            "enemy_field_damage",
             "enemy_combat_death",
-            "enemy_field_death",
             "enemy_win",
         }
     ),
     ally_zero_components=frozenset(
         {
             "enemy_combat_damage",
-            "enemy_field_damage",
             "enemy_combat_death",
-            "enemy_field_death",
             "enemy_win",
         }
     ),
@@ -271,20 +267,17 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
     "capture_progress": 0.999,
     "ally_combat_death": 0.995,
     "enemy_combat_death": 0.995,
-    "ally_field_death": 0.995,
-    "enemy_field_death": 0.995,
     "combat_death": 0.995,
-    "field_death": 0.995,
     "kill_shot": 0.995,
     "kill_assist": 0.995,
     "kill_ally_shot": 0.995,
     "kill_ally_assist": 0.995,
+    "shield_recharge": 0.991,
+    "boundary": 0.995,
+    "boundary_damage": 0.991,
     "ally_combat_damage": 0.991,
     "enemy_combat_damage": 0.991,
-    "ally_field_damage": 0.991,
-    "enemy_field_damage": 0.991,
     "combat_damage_taken": 0.991,
-    "field_damage_taken": 0.991,
     "damage_dealt_enemy": 0.991,
     "damage_dealt_ally": 0.991,
     "facing": 0.975,
@@ -302,20 +295,17 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "outcome": 0.97,
     "ally_combat_death": 0.95,
     "enemy_combat_death": 0.95,
-    "ally_field_death": 0.95,
-    "enemy_field_death": 0.95,
     "combat_death": 0.95,
-    "field_death": 0.95,
     "kill_shot": 0.87,
     "kill_assist": 0.97,
     "kill_ally_shot": 0.87,
     "kill_ally_assist": 0.97,
+    "shield_recharge": 0.90,
+    "boundary": 0.90,
+    "boundary_damage": 0.90,
     "ally_combat_damage": 0.90,
     "enemy_combat_damage": 0.90,
-    "ally_field_damage": 0.90,
-    "enemy_field_damage": 0.90,
     "combat_damage_taken": 0.90,
-    "field_damage_taken": 0.90,
     "damage_dealt_enemy": 0.90,
     "damage_dealt_ally": 0.90,
     "facing": 0.80,
@@ -369,6 +359,7 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         outcome_scale=hold(1.0),
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
+        offensive_bias=((0, 1.0, "hold"), (50_000_000, 1.0, "linear"), (300_000_000, 0.0, "hold")),
         # Shaping is the exception, and it is also what run 720 carried -- this is
         # the last config difference between that run and this one. It has to be
         # pushed down rather than left alone: its realised share *grows* about
@@ -387,8 +378,8 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         # untested by the run this vector reconstructs.
         shaping_scale=(
             (0, 1.0, "hold"),
-            (100_000_000, 1.0, "exponential"),
-            (400_000_000, 0.05, "hold"),
+            (50_000_000, 1.0, "linear"),
+            (300_000_000, 0.0, "hold"),
         ),
         league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy

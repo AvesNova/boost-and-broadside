@@ -60,6 +60,8 @@ def make_state(
         ship_vel=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
         ship_attitude=torch.ones((num_envs, max_ships), dtype=torch.complex64, device=dev),
         ship_ang_vel=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_shield_delay=torch.zeros((num_envs, max_ships), device=dev),
+        ship_shield_recharge=torch.zeros((num_envs, max_ships), device=dev),
         ship_health=torch.full((num_envs, max_ships), ship_config.max_health, device=dev),
         ship_power=torch.full((num_envs, max_ships), ship_config.max_power, device=dev),
         ship_cooldown=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
@@ -92,14 +94,6 @@ def make_state(
             (num_envs, max_ships, max_bullets), dtype=torch.float32, device=dev
         ),
         bullet_active=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev),
-        bullet_remaining_damage=torch.zeros(
-            (num_envs, max_ships, max_bullets),
-            dtype=torch.float32,
-            device=dev,
-        ),
-        bullet_field_alpha=torch.zeros(
-            (num_envs, max_ships, max_bullets, num_fields), dtype=torch.float32, device=dev
-        ),
         bullet_local_index=torch.ones(
             (num_envs, max_ships, max_bullets), dtype=torch.float32, device=dev
         ),
@@ -118,25 +112,13 @@ def make_state(
         field_transition_width=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
         field_index_level=torch.zeros((num_envs, num_fields), dtype=torch.int8, device=dev),
         field_index=torch.ones((num_envs, num_fields), dtype=torch.float32, device=dev),
-        field_damage_level=torch.zeros((num_envs, num_fields), dtype=torch.int8, device=dev),
-        field_damage=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),
-        ship_field_alpha=torch.zeros(
-            (num_envs, max_ships, num_fields), dtype=torch.float32, device=dev
-        ),
         ship_local_index=torch.ones((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_field_gradient=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
-        ship_field_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_combat_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
-        ship_field_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
         ship_combat_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
-        ship_zone_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
-        ship_spawn_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_boundary_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
-        ship_zone_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
-        ship_spawn_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
         ship_boundary_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
         ship_respawned=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
-        ship_spawn_healing=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
     )
 
 
@@ -150,7 +132,6 @@ def activate_bullet(
     position: complex | torch.Tensor = 0.0j,
     velocity: complex | torch.Tensor = 0.0j,
     lifetime: float | None = None,
-    damage: float | None = None,
 ) -> None:
     """Activate one internally consistent test bullet.
 
@@ -160,5 +141,4 @@ def activate_bullet(
     state.bullet_pos[key] = position
     state.bullet_vel[key] = velocity
     state.bullet_time[key] = config.bullet_lifetime if lifetime is None else lifetime
-    state.bullet_remaining_damage[key] = config.bullet_damage if damage is None else damage
     state.bullet_active[key] = True

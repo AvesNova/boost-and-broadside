@@ -21,7 +21,6 @@ from boost_and_broadside.ui.renderer import (
     GameRenderer,
     RenderConfig,
     VisionMode,
-    field_border_pattern,
     field_color,
     wrapped_field_centers,
 )
@@ -188,12 +187,6 @@ def test_field_colors_separate_fast_and_slow_and_strengthen_with_magnitude():
     assert sum(very_high) > sum(high)
 
 
-def test_field_damage_levels_map_to_dotted_dashed_and_solid():
-    assert field_border_pattern(0) == ("dotted", 1)
-    assert field_border_pattern(1) == ("dashed", 2)
-    assert field_border_pattern(2) == ("solid", 3)
-
-
 def test_wrapped_field_centers_include_visible_edge_copies():
     copies = wrapped_field_centers(2.0 + 2.0j, 10.0, (100.0, 100.0))
     assert set(copies) == {2.0 + 2.0j, 102.0 + 2.0j, 2.0 + 102.0j, 102.0 + 102.0j}
@@ -241,7 +234,7 @@ def test_play_resource_button_toggles_unlimited_health_and_power(monkeypatch):
 def test_headless_frontline_frame_draws_boundary_zones_hud_and_selection(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE)
-    env = TensorEnv(1, ship_config, PLAY_ENV_CONFIG, "cpu")
+    env = TensorEnv(1, ship_config, replace(PLAY_ENV_CONFIG, num_ships=8), "cpu")
     env.reset(seed=11)
     renderer = GameRenderer(ship_config, RenderConfig(window_size=320))
     renderer.set_selectable_ships((0, 2))
@@ -270,7 +263,7 @@ def test_headless_frontline_frame_draws_boundary_zones_hud_and_selection(monkeyp
 def test_team_view_hides_enemy_sprites_ghosts_bullets_and_minimap_markers(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
-    env = TensorEnv(1, ship_config, PLAY_ENV_CONFIG, "cpu")
+    env = TensorEnv(1, ship_config, replace(PLAY_ENV_CONFIG, num_ships=8), "cpu")
     env.reset(seed=19)
     # Two compact fleets outside one another's provisional sensor range.
     team0 = env.state.ship_team_id[0] == 0
@@ -340,7 +333,7 @@ def test_team_view_hides_enemy_sprites_ghosts_bullets_and_minimap_markers(monkey
 def test_team_view_grays_unseen_space_and_field_shadow(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
-    env_config = replace(PLAY_ENV_CONFIG, num_fields=1)
+    env_config = replace(PLAY_ENV_CONFIG, num_ships=8, num_fields=1)
     env = TensorEnv(1, ship_config, env_config, "cpu")
     env.reset(seed=21)
     center = complex(env.state.map_center[0].item())
@@ -381,7 +374,7 @@ def test_team_view_grays_unseen_space_and_field_shadow(monkeypatch):
 def test_team_view_requires_environment_visibility_instead_of_guessing(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
-    env = TensorEnv(1, ship_config, PLAY_ENV_CONFIG, "cpu")
+    env = TensorEnv(1, ship_config, replace(PLAY_ENV_CONFIG, num_ships=8), "cpu")
     env.reset(seed=20)
     renderer = GameRenderer(
         ship_config,
@@ -405,7 +398,7 @@ def _fog_scene(monkeypatch, *, zones_occlude=False, window=320):
 
     monkeypatch.setenv("HEADLESS", "1")
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)
-    env_config = replace(replace(PLAY_ENV_CONFIG, num_fields=3), zones_occlude=zones_occlude)
+    env_config = replace(replace(PLAY_ENV_CONFIG, num_ships=8, num_fields=3), zones_occlude=zones_occlude)
     env = TensorEnv(1, ship_config, env_config, "cpu")
     env.reset(seed=21)
     center = complex(env.state.map_center[0].item())

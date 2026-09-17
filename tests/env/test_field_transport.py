@@ -8,7 +8,11 @@ import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import PowerActions, TurnActions
-from boost_and_broadside.env.field_physics import refresh_ship_field_cache, wrap_displacement
+from boost_and_broadside.env.field_physics import (
+    evaluate_fields,
+    refresh_ship_field_cache,
+    wrap_displacement,
+)
 from boost_and_broadside.env.physics import update_ships
 from tests.conftest import make_state
 
@@ -49,7 +53,6 @@ def _single_field_state(
     state.field_radius[:] = radius
     state.field_transition_width[:] = width
     state.field_index[:] = index
-    state.field_damage[:] = damage
     state.ship_power[:] = 50.0
     return state
 
@@ -78,7 +81,7 @@ def test_passive_entry_exit_restores_speed_and_preserves_long_run_energy(integra
     for _ in range(800):
         state = update_ships(state, _coast_actions(), config)
         min_speed = min(min_speed, state.ship_vel.abs().item())
-        entered_core |= state.ship_field_alpha.item() > 0.999
+        entered_core |= _alpha(state, config).item() > 0.999
         if entered_core and state.ship_local_index.item() == pytest.approx(1.0, abs=1e-5):
             break
     else:
@@ -137,7 +140,7 @@ def test_higher_index_bends_toward_interface_normal():
     core_angle = None
     for _ in range(180):
         state = update_ships(state, _coast_actions(), config)
-        if state.ship_field_alpha.item() > 0.999:
+        if _alpha(state, config).item() > 0.999:
             core_angle = abs(torch.angle(state.ship_vel).item())
             break
     assert core_angle is not None
@@ -152,7 +155,6 @@ def test_low_index_high_incidence_reflects_smoothly_and_preserves_energy():
     state = _single_field_state(
         config,
         index=config.field_index_step**-2,
-        damage=config.field_interface_damage,
         radius=300.0,
         width=100.0,
     )
@@ -167,7 +169,7 @@ def test_low_index_high_incidence_reflects_smoothly_and_preserves_energy():
 
     for _ in range(240):
         state = update_ships(state, _coast_actions(), config)
-        max_alpha = max(max_alpha, state.ship_field_alpha.item())
+        max_alpha = max(max_alpha, _alpha(state, config).item())
         inward = wrap_displacement(state.field_pos[:, 0] - state.ship_pos[:, 0], config.world_size)
         inward = inward / inward.abs()
         inward_speeds.append((state.ship_vel[:, 0] * torch.conj(inward)).real.item())
@@ -176,184 +178,7 @@ def test_low_index_high_incidence_reflects_smoothly_and_preserves_energy():
     assert 0.0 < max_alpha < 1.0
     assert min(inward_speeds[-80:]) < 0.0
     assert final_h.item() == pytest.approx(initial_h.item(), rel=3e-5)
-    assert 100.0 - state.ship_health.item() == pytest.approx(
-        2.0 * max_alpha * config.field_interface_damage, rel=2e-3
-    )
-
-
-@pytest.mark.parametrize("speed", [60.0, 140.0])
-@pytest.mark.parametrize("width", [30.0, 90.0])
-def test_monotonic_interface_damage_is_speed_and_width_invariant(speed: float, width: float):
-    config = _passive_config()
-    state = _single_field_state(
-        config,
-        index=config.field_index_step,
-        damage=config.field_interface_damage,
-        width=width,
-    )
-    outer_left = 512.0 - 100.0 - width / 2.0
-    state.ship_pos[:] = complex(outer_left - 5.0, 512.0)
-    state.ship_vel[:] = speed + 0.0j
-    state.ship_attitude[:] = 1.0 + 0.0j
-    refresh_ship_field_cache(state, config)
-    start_health = state.ship_health.item()
-
-    for _ in range(400):
-        state = update_ships(state, _coast_actions(), config)
-        if state.ship_field_alpha.item() > 0.999999:
-            break
-
-    assert state.ship_field_alpha.item() > 0.999999
-    assert start_health - state.ship_health.item() == pytest.approx(
-        config.field_interface_damage, abs=2e-4
-    )
-
-
-def test_field_source_bookkeeping_caps_lethal_overkill():
-    config = _passive_config()
-    state = _single_field_state(
-        config,
-        index=config.field_index_step,
-        damage=config.field_interface_damage,
-        width=40.0,
-    )
-    state.ship_health[:] = 3.0
-    state.ship_pos[:] = 387.0 + 512.0j
-    state.ship_vel[:] = 140.0 + 0.0j
-    state.ship_attitude[:] = 1.0 + 0.0j
-    refresh_ship_field_cache(state, config)
-
-    applied = 0.0
-    for _ in range(120):
-        state = update_ships(state, _coast_actions(), config)
-        applied += state.ship_field_damage.item()
-        if not state.ship_alive.item():
-            break
-
-    assert applied == pytest.approx(3.0, abs=1e-6)
-    assert state.ship_field_death.item()
-    assert not state.ship_combat_death.item()
-    assert state.ship_health.item() == 0.0
-
-
-def test_stationary_ship_in_interface_takes_no_repeated_damage():
-    config = _passive_config()
-    state = _single_field_state(
-        config,
-        index=config.field_index_step,
-        damage=config.field_interface_damage,
-    )
-    state.ship_pos[:] = 412.0 + 512.0j
-    state.ship_vel[:] = complex(1e-6, 0.0)
-    state.ship_attitude[:] = 1.0 + 0.0j
-    refresh_ship_field_cache(state, config)
-    health = state.ship_health.clone()
-    for _ in range(20):
-        state = update_ships(state, _coast_actions(), config)
-    assert torch.allclose(state.ship_health, health, atol=1e-6)
-
-
-def test_repeated_partial_crossings_accumulate_total_variation_damage():
-    config = _passive_config()
-    # delta-index zero isolates damage travel from refraction. This is a direct
-    # integrator test; construction correctly forbids ambient fields.
-    state = _single_field_state(
-        config,
-        index=1.0,
-        damage=config.field_interface_damage,
-        width=80.0,
-    )
-    state.ship_pos[:] = 392.0 + 512.0j
-    state.ship_vel[:] = 60.0 + 0.0j
-    state.ship_attitude[:] = 1.0 + 0.0j
-    refresh_ship_field_cache(state, config)
-    previous_alpha = state.ship_field_alpha.item()
-    expected_variation = 0.0
-    turns = 0
-    for _ in range(600):
-        state = update_ships(state, _coast_actions(), config)
-        alpha = state.ship_field_alpha.item()
-        expected_variation += abs(alpha - previous_alpha)
-        previous_alpha = alpha
-        if state.ship_vel.real.item() > 0.0 and alpha >= 0.75:
-            state.ship_vel *= -1.0
-            state.ship_attitude *= -1.0
-            turns += 1
-        elif state.ship_vel.real.item() < 0.0 and alpha <= 0.25:
-            state.ship_vel *= -1.0
-            state.ship_attitude *= -1.0
-            turns += 1
-        if turns == 4:
-            break
-    assert turns == 4
-    assert 100.0 - state.ship_health.item() == pytest.approx(
-        config.field_interface_damage * expected_variation, abs=3e-4
-    )
-
-
-def test_child_crossing_does_not_reapply_parent_damage():
-    config = _passive_config()
-    state = make_state(
-        num_envs=1,
-        max_ships=1,
-        max_bullets=0,
-        ship_config=config,
-        num_fields=2,
-    )
-    state.field_pos[:] = torch.tensor([[512.0 + 512.0j, 512.0 + 512.0j]])
-    state.field_radius[:] = torch.tensor([[180.0, 60.0]])
-    state.field_transition_width[:] = torch.tensor([[40.0, 40.0]])
-    parent_n = config.field_index_step
-    child_n = config.field_index_step**-2
-    state.field_index[:] = torch.tensor([[parent_n, child_n]])
-    state.field_damage[:] = torch.tensor(
-        [[2.0 * config.field_interface_damage, config.field_interface_damage]]
-    )
-    state.ship_pos[:] = 420.0 + 512.0j  # parent core, outside child's band
-    state.ship_vel[:] = 60.0 + 0.0j
-    state.ship_attitude[:] = 1.0 + 0.0j
-    refresh_ship_field_cache(state, config)
-    assert state.ship_field_alpha[0, 0, 0].item() == 1.0
-
-    for _ in range(180):
-        state = update_ships(state, _coast_actions(), config)
-        if state.ship_field_alpha[0, 0, 1].item() > 0.999999:
-            break
-    assert state.ship_field_alpha[0, 0, 0].item() == 1.0
-    assert 100.0 - state.ship_health.item() == pytest.approx(
-        config.field_interface_damage, abs=3e-4
-    )
-
-
-def test_reciprocal_optical_cancellation_does_not_cancel_interface_damage():
-    config = _passive_config()
-    state = make_state(
-        num_envs=1,
-        max_ships=1,
-        max_bullets=0,
-        ship_config=config,
-        num_fields=2,
-    )
-    state.field_pos[:] = 512.0 + 512.0j
-    state.field_radius[:] = 100.0
-    state.field_transition_width[:] = 80.0
-    state.field_index[:] = torch.tensor([[2.0, 0.5]])
-    state.field_damage[:] = config.field_interface_damage
-    state.ship_pos[:] = 350.0 + 512.0j
-    state.ship_vel[:] = 100.0 + 0.0j
-    state.ship_attitude[:] = 1.0 + 0.0j
-    refresh_ship_field_cache(state, config)
-
-    for _ in range(180):
-        state = update_ships(state, _coast_actions(), config)
-        assert state.ship_local_index.item() == pytest.approx(1.0, abs=2e-6)
-        if torch.all(state.ship_field_alpha > 0.999999):
-            break
-
-    assert torch.all(state.ship_field_alpha > 0.999999)
-    assert 100.0 - state.ship_health.item() == pytest.approx(
-        2.0 * config.field_interface_damage, abs=4e-4
-    )
+    assert state.ship_health.item() == 100.0
 
 
 def test_drag_dissipates_generalized_kinetic_energy():
@@ -439,3 +264,15 @@ def test_reverse_recovers_only_the_generalized_energy_lost():
     after = _energy(state, config)
     assert after.item() == pytest.approx(before.item(), abs=2e-3)
     assert state.ship_power.item() > 50.0
+
+
+def _alpha(state, config):
+    points = state.ship_pos if state.max_bullets == 0 else state.bullet_pos.flatten(1)
+    return evaluate_fields(
+        points,
+        state.field_pos,
+        state.field_radius,
+        state.field_transition_width,
+        state.field_index,
+        config.world_size,
+    ).alpha

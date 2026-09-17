@@ -254,7 +254,7 @@ def place_ships_at_spawns(
     state: TensorState,
     ship_mask: torch.Tensor,
     ship_config: ShipConfig,
-    health: torch.Tensor,
+    config: FrontlineConfig,
 ) -> None:
     """Place selected slots at their team's current spawn with fresh flight state."""
 
@@ -294,21 +294,19 @@ def place_ships_at_spawns(
         state.field_index,
         ship_config.world_size,
     )
-    velocity = ship_config.default_speed * bearing / field_eval.index
-    ship_field_mask = ship_mask.unsqueeze(-1)
+    velocity = config.respawn_speed * bearing / field_eval.index
     state.ship_pos = torch.where(ship_mask, spawn_pos, state.ship_pos)
     state.ship_attitude = torch.where(ship_mask, bearing, state.ship_attitude)
     state.ship_vel = torch.where(ship_mask, velocity, state.ship_vel)
     state.ship_ang_vel = torch.where(ship_mask, 0.0, state.ship_ang_vel)
-    state.ship_health = torch.where(ship_mask, health, state.ship_health)
+    state.ship_health = torch.where(ship_mask, config.respawn_health, state.ship_health)
+    state.ship_power = torch.where(ship_mask, config.respawn_power, state.ship_power)
+    state.ship_shield_delay = torch.where(
+        ship_mask, config.shield_recharge_delay, state.ship_shield_delay
+    )
     state.ship_cooldown = torch.where(ship_mask, 0.0, state.ship_cooldown)
     state.ship_is_shooting &= ~ship_mask
     state.ship_alive |= ship_mask
-    state.ship_field_alpha = torch.where(
-        ship_field_mask,
-        field_eval.alpha,
-        state.ship_field_alpha,
-    )
     state.ship_local_index = torch.where(ship_mask, field_eval.index, state.ship_local_index)
     state.ship_field_gradient = torch.where(
         ship_mask,
@@ -338,56 +336,30 @@ def _apply_damage_source(
     alive_before = state.ship_alive
     health_after = (health_before - requested_damage * alive_before.float()).clamp(min=0.0)
     damage_output.copy_(health_before - health_after)
-    death_output.copy_(alive_before & (health_after <= 0.0))
+    death_output.copy_(
+        alive_before
+        & (health_before <= 0.0)
+        & (requested_damage > 0.0)
+        & (state.ship_combat_damage <= 0.0)
+    )
     state.ship_health = health_after
     state.ship_alive = alive_before & ~death_output
 
 
+def friendly_spawn_mask(state: TensorState, ship_config: ShipConfig) -> torch.Tensor:
+    membership = zone_membership(
+        state.ship_pos, state.zone_pos, state.zone_radius, ship_config.world_size
+    )
+    role = torch.where(
+        state.ship_team_id == 0, int(ZoneRole.TEAM0_SPAWN), int(ZoneRole.TEAM1_SPAWN)
+    )
+    return (membership & (state.zone_roles[:, None, :] == role[:, :, None])).any(-1)
+
+
 def _apply_frontline_hazards(
-    state: TensorState,
-    membership: torch.Tensor,
-    config: FrontlineConfig,
-    ship_config: ShipConfig,
+    state: TensorState, membership: torch.Tensor, config: FrontlineConfig, ship_config: ShipConfig
 ) -> None:
-    """Apply spawn healing and ordered defense/spawn/boundary damage sources."""
-
-    team = state.ship_team_id
-    roles = state.zone_roles
-    team0 = team == 0
-    team1 = team == 1
-    t0_spawn = (roles == int(ZoneRole.TEAM0_SPAWN)).unsqueeze(1)
-    t1_spawn = (roles == int(ZoneRole.TEAM1_SPAWN)).unsqueeze(1)
-    friendly_spawn = (
-        membership & ((team0.unsqueeze(2) & t0_spawn) | (team1.unsqueeze(2) & t1_spawn))
-    ).any(dim=2)
-    hostile_spawn = (
-        membership & ((team0.unsqueeze(2) & t1_spawn) | (team1.unsqueeze(2) & t0_spawn))
-    ).any(dim=2)
-
-    heal_request = config.spawn_heal_per_second * ship_config.dt
-    missing_health = (ship_config.max_health - state.ship_health).clamp(min=0.0)
-    healing = torch.minimum(missing_health, torch.full_like(missing_health, heal_request))
-    healing = healing * (friendly_spawn & state.ship_alive).float()
-    state.ship_health = state.ship_health + healing
-    state.ship_spawn_healing.copy_(healing)
-
-    defense = (
-        (roles == int(ZoneRole.TEAM0_DEFENSE)) | (roles == int(ZoneRole.TEAM1_DEFENSE))
-    ).unsqueeze(1)
-    in_defense = (membership & defense).any(dim=2)
-    _apply_damage_source(
-        state,
-        in_defense.float() * config.defense_damage_per_second * ship_config.dt,
-        state.ship_zone_damage,
-        state.ship_zone_death,
-    )
-    _apply_damage_source(
-        state,
-        hostile_spawn.float() * config.enemy_spawn_damage_per_second * ship_config.dt,
-        state.ship_spawn_damage,
-        state.ship_spawn_death,
-    )
-
+    """The soft outer boundary is the only environmental hazard."""
     from_center = toroidal_displacement(
         state.ship_pos - state.map_center.unsqueeze(1),
         ship_config.world_size,
@@ -400,7 +372,7 @@ def _apply_frontline_hazards(
     )
     _apply_damage_source(
         state,
-        boundary_rate * ship_config.dt,
+        boundary_rate * ship_config.dt * ~friendly_spawn_mask(state, ship_config),
         state.ship_boundary_damage,
         state.ship_boundary_death,
     )
@@ -487,13 +459,8 @@ def apply_frontline_tick(
     state.team0_captured.zero_()
     state.team1_captured.zero_()
     state.simultaneous_capture.zero_()
-    state.ship_zone_damage.zero_()
-    state.ship_spawn_damage.zero_()
     state.ship_boundary_damage.zero_()
-    state.ship_zone_death.zero_()
-    state.ship_spawn_death.zero_()
     state.ship_boundary_death.zero_()
-    state.ship_spawn_healing.zero_()
 
     membership = zone_membership(
         state.ship_pos,
@@ -515,16 +482,23 @@ def apply_frontline_tick(
         torch.where(team1_win, int(MatchResult.TEAM1_WIN), state.match_result),
     )
 
-    respawned = (
-        state.ship_field_death
-        | state.ship_combat_death
-        | state.ship_zone_death
-        | state.ship_spawn_death
-        | state.ship_boundary_death
+    # Recharge only after a full undamaged delay; a hit at zero still resets it.
+    damaged = (state.damage_matrix.sum(1) > 0) | (state.ship_boundary_damage > 0)
+    old_delay = state.ship_shield_delay
+    state.ship_shield_delay = torch.where(
+        damaged, config.shield_recharge_delay, (old_delay - ship_config.dt).clamp_min(0)
     )
+    available = (ship_config.dt - old_delay).clamp(0, ship_config.dt)
+    recharge = torch.minimum(
+        (ship_config.max_health - state.ship_health).clamp_min(0),
+        available * config.shield_recharge_per_second,
+    )
+    recharge = recharge * (state.ship_alive & ~damaged)
+    state.ship_shield_recharge = recharge
+    state.ship_health = state.ship_health + recharge
+    respawned = state.ship_combat_death | state.ship_boundary_death
     state.ship_respawned.copy_(respawned)
-    respawn_health = torch.full_like(state.ship_health, config.respawn_health)
-    place_ships_at_spawns(state, respawned, ship_config, respawn_health)
+    place_ships_at_spawns(state, respawned, ship_config, config)
     return state.match_result != int(MatchResult.ONGOING)
 
 

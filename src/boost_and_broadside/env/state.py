@@ -43,7 +43,9 @@ class TensorState:
     ship_ang_vel: torch.Tensor  # (B, N) float32    — angular velocity (rad/s)
 
     # Ship resource state
-    ship_health: torch.Tensor  # (B, N) float32
+    ship_shield_delay: torch.Tensor  # (B, N) seconds until recharge
+    ship_shield_recharge: torch.Tensor  # (B, N) applied recharge this tick
+    ship_health: torch.Tensor  # (B, N) shield in Frontline, hull in elimination combat
     ship_power: torch.Tensor  # (B, N) float32
     ship_cooldown: torch.Tensor  # (B, N) float32    — seconds until next shot
 
@@ -78,8 +80,6 @@ class TensorState:
     bullet_vel: torch.Tensor  # (B, N, K) complex64
     bullet_time: torch.Tensor  # (B, N, K) float32  — remaining lifetime (s)
     bullet_active: torch.Tensor  # (B, N, K) bool
-    bullet_remaining_damage: torch.Tensor  # (B, N, K) float32
-    bullet_field_alpha: torch.Tensor  # (B, N, K, M) float32
     bullet_local_index: torch.Tensor  # (B, N, K) float32
     bullet_field_gradient: torch.Tensor  # (B, N, K) complex64 — grad(n)
 
@@ -99,29 +99,17 @@ class TensorState:
     field_transition_width: torch.Tensor  # (B, M) float32 — complete interface band
     field_index_level: torch.Tensor  # (B, M) int8 — {-2, -1, +1, +2}
     field_index: torch.Tensor  # (B, M) float32 — absolute interior n
-    field_damage_level: torch.Tensor  # (B, M) int8 — {0, 1, 2}
-    field_damage: torch.Tensor  # (B, M) float32 — damage per complete crossing
 
-    # Cached ship-field evaluation. The alpha cache is also the previous alpha
-    # used by smooth total-variation interface damage.
-    ship_field_alpha: torch.Tensor  # (B, N, M) float32
+    # Cached local optical index and gradient for transport.
     ship_local_index: torch.Tensor  # (B, N) float32
     ship_field_gradient: torch.Tensor  # (B, N) complex64 — grad(n)
     # Per-step source bookkeeping uses applied health loss, after clamping to
-    # the ship's remaining health. Death flags are mutually exclusive because
-    # field transport resolves before projectile collisions.
-    ship_field_damage: torch.Tensor  # (B, N) float32 — applied interface health loss
+    # remaining shield. Combat resolves before the outer-boundary hazard.
     ship_combat_damage: torch.Tensor  # (B, N) float32 — applied projectile health loss
-    ship_field_death: torch.Tensor  # (B, N) bool — field damage killed this ship this step
     ship_combat_death: torch.Tensor  # (B, N) bool — projectile damage killed this ship this step
-    ship_zone_damage: torch.Tensor  # (B, N) float32 — active-defense hazard loss
-    ship_spawn_damage: torch.Tensor  # (B, N) float32 — hostile-spawn hazard loss
     ship_boundary_damage: torch.Tensor  # (B, N) float32 — soft-boundary loss
-    ship_zone_death: torch.Tensor  # (B, N) bool
-    ship_spawn_death: torch.Tensor  # (B, N) bool
     ship_boundary_death: torch.Tensor  # (B, N) bool
     ship_respawned: torch.Tensor  # (B, N) bool — death -> spawn teleport this tick
-    ship_spawn_healing: torch.Tensor  # (B, N) float32 — applied healing this tick
 
     # ------------------------------------------------------------------
     # Convenience properties

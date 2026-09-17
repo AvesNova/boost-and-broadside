@@ -65,6 +65,7 @@ _REPORT_FEATURES = {
     ),
     "attitude": ("att", "attitude (cos, sin)", ("att_cos", "att_sin")),
     "angular_velocity": ("ang_vel", "angular velocity (symlog)", ("ang_vel_symlog",)),
+    "shield_delay": ("shield_delay", "shield recharge delay (symlog)", ("shield_delay_symlog",)),
     "health": ("health", "health (sin, cos)", ("health_sin", "health_cos")),
     "power": ("power", "power (sin, cos)", ("power_sin", "power_cos")),
     "cooldown": (

@@ -70,6 +70,10 @@ class TensorEnv:
                 raise ValueError("frontline mode requires a finite maximum match duration")
             if env_config.frontline.respawn_health > ship_config.max_health:
                 raise ValueError("frontline respawn_health cannot exceed ship max_health")
+            if env_config.frontline.respawn_power > ship_config.max_power:
+                raise ValueError("frontline respawn_power cannot exceed ship max_power")
+            if env_config.frontline.respawn_speed < ship_config.min_speed:
+                raise ValueError("frontline respawn_speed must retain steering authority")
         self.state: TensorState | None = None
 
     # ------------------------------------------------------------------
@@ -109,6 +113,8 @@ class TensorEnv:
             ship_vel=torch.zeros((B, N), dtype=torch.complex64, device=dev),
             ship_attitude=torch.zeros((B, N), dtype=torch.complex64, device=dev),
             ship_ang_vel=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_shield_delay=torch.zeros((B, N), device=dev),
+            ship_shield_recharge=torch.zeros((B, N), device=dev),
             ship_health=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_power=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_cooldown=torch.zeros((B, N), dtype=torch.float32, device=dev),
@@ -144,8 +150,6 @@ class TensorEnv:
             bullet_vel=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_time=torch.zeros((B, N, K), dtype=torch.float32, device=dev),
             bullet_active=torch.zeros((B, N, K), dtype=torch.bool, device=dev),
-            bullet_remaining_damage=torch.zeros((B, N, K), dtype=torch.float32, device=dev),
-            bullet_field_alpha=torch.zeros((B, N, K, M), dtype=torch.float32, device=dev),
             bullet_local_index=torch.ones((B, N, K), dtype=torch.float32, device=dev),
             bullet_field_gradient=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_cursor=torch.zeros((B, N), dtype=torch.long, device=dev),
@@ -156,23 +160,13 @@ class TensorEnv:
             field_transition_width=torch.zeros((B, M), dtype=torch.float32, device=dev),
             field_index_level=torch.zeros((B, M), dtype=torch.int8, device=dev),
             field_index=torch.ones((B, M), dtype=torch.float32, device=dev),
-            field_damage_level=torch.zeros((B, M), dtype=torch.int8, device=dev),
-            field_damage=torch.zeros((B, M), dtype=torch.float32, device=dev),
-            ship_field_alpha=torch.zeros((B, N, M), dtype=torch.float32, device=dev),
             ship_local_index=torch.ones((B, N), dtype=torch.float32, device=dev),
             ship_field_gradient=torch.zeros((B, N), dtype=torch.complex64, device=dev),
-            ship_field_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_combat_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
-            ship_field_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_combat_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
-            ship_zone_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
-            ship_spawn_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_boundary_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
-            ship_zone_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
-            ship_spawn_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_boundary_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_respawned=torch.zeros((B, N), dtype=torch.bool, device=dev),
-            ship_spawn_healing=torch.zeros((B, N), dtype=torch.float32, device=dev),
         )
 
     def reset_envs(
@@ -247,8 +241,6 @@ class TensorEnv:
                 "field_transition_width",
                 "field_index_level",
                 "field_index",
-                "field_damage_level",
-                "field_damage",
             )
             for name, value in zip(field_names, sampled, strict=True):
                 setattr(s, name, torch.where(m, value, getattr(s, name)))
@@ -261,8 +253,6 @@ class TensorEnv:
             s.field_index,
             self.ship_config.world_size,
         )
-        field_mask = mask.view(B, 1, 1)
-        s.ship_field_alpha = torch.where(field_mask, field_eval.alpha, s.ship_field_alpha)
         s.ship_local_index = torch.where(m, field_eval.index, s.ship_local_index)
         s.ship_field_gradient = torch.where(m, field_eval.grad_index, s.ship_field_gradient)
 
@@ -296,6 +286,8 @@ class TensorEnv:
             power = power * (lo + torch.rand((B, N), device=self.device) * spread)
             cooldown = torch.rand((B, N), device=self.device) * self.ship_config.firing_cooldown
         s.ship_health = torch.where(m, health, s.ship_health)
+        s.ship_shield_delay = torch.where(m, 0.0, s.ship_shield_delay)
+        s.ship_shield_recharge = torch.where(m, 0.0, s.ship_shield_recharge)
         s.ship_power = torch.where(m, power, s.ship_power)
         s.ship_cooldown = torch.where(m, cooldown, s.ship_cooldown)
         s.ship_ang_vel = torch.where(m, 0.0, s.ship_ang_vel)
@@ -323,18 +315,12 @@ class TensorEnv:
 
         if self.env_config.frontline is not None:
             active_reset = m & s.ship_alive
-            place_ships_at_spawns(s, active_reset, self.ship_config, health)
+            place_ships_at_spawns(s, active_reset, self.ship_config, self.env_config.frontline)
 
         # Clear bullets
         m3 = mask.view(B, 1, 1)
         s.bullet_active = s.bullet_active & ~m3
         s.bullet_time = torch.where(m3, 0.0, s.bullet_time)
-        s.bullet_remaining_damage = torch.where(m3, 0.0, s.bullet_remaining_damage)
-        s.bullet_field_alpha = torch.where(
-            mask.view(B, 1, 1, 1),
-            0.0,
-            s.bullet_field_alpha,
-        )
         s.bullet_local_index = torch.where(m3, 1.0, s.bullet_local_index)
         s.bullet_field_gradient = torch.where(m3, 0.0, s.bullet_field_gradient)
         s.bullet_cursor = torch.where(m, 0, s.bullet_cursor)
@@ -345,20 +331,12 @@ class TensorEnv:
         # Clear previous action
         s.prev_action = torch.where(m3, 0.0, s.prev_action)
 
-        # Resetting/spawning initializes alpha rather than comparing against
-        # ambient, so it cannot cause artificial crossing damage.
-        s.ship_field_damage = torch.where(m, 0.0, s.ship_field_damage)
+        # Clear per-tick lifecycle events for reset environments.
         s.ship_combat_damage = torch.where(m, 0.0, s.ship_combat_damage)
-        s.ship_field_death = s.ship_field_death & ~m
         s.ship_combat_death = s.ship_combat_death & ~m
-        s.ship_zone_damage = torch.where(m, 0.0, s.ship_zone_damage)
-        s.ship_spawn_damage = torch.where(m, 0.0, s.ship_spawn_damage)
         s.ship_boundary_damage = torch.where(m, 0.0, s.ship_boundary_damage)
-        s.ship_zone_death &= ~m
-        s.ship_spawn_death &= ~m
         s.ship_boundary_death &= ~m
         s.ship_respawned &= ~m
-        s.ship_spawn_healing = torch.where(m, 0.0, s.ship_spawn_healing)
 
     # ------------------------------------------------------------------
     # Step
@@ -453,6 +431,7 @@ class TensorEnv:
             self.ship_config,
             self._combat_damage_fn,
             bullet_trajectory,
+            self.env_config.frontline,
         )
 
         if self.env_config.frontline is not None:
@@ -487,13 +466,9 @@ class TensorEnv:
                 torch.full_like(self.state.ship_power, self.ship_config.max_power),
                 self.state.ship_power,
             )
-            self.state.ship_field_damage = torch.where(
-                protected_alive, 0.0, self.state.ship_field_damage
-            )
             self.state.ship_combat_damage = torch.where(
                 protected_alive, 0.0, self.state.ship_combat_damage
             )
-            self.state.ship_field_death &= ~protected_alive
             self.state.ship_combat_death &= ~protected_alive
             if self.env_config.frontline is None:
                 dones &= ~protected_alive.any(dim=1)
@@ -519,12 +494,6 @@ class TensorEnv:
                 protected_alive,
                 torch.full_like(self.state.ship_health, self.ship_config.max_health),
                 self.state.ship_health,
-            )
-            self.state.ship_zone_damage = torch.where(
-                protected_alive, 0.0, self.state.ship_zone_damage
-            )
-            self.state.ship_spawn_damage = torch.where(
-                protected_alive, 0.0, self.state.ship_spawn_damage
             )
             self.state.ship_boundary_damage = torch.where(
                 protected_alive, 0.0, self.state.ship_boundary_damage

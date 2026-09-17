@@ -28,7 +28,7 @@ class BulletEncoder(nn.Module):
     Deliberately narrow. It runs over N*K entities rather than N+M — 80 against
     12 in the four-field profile — so its hidden width, not the entity encoder's,
     sets encoder cost. A bullet is also a much simpler entity: position,
-    velocity, remaining damage and lifetime, plus local field context.
+    velocity and lifetime, plus local field context.
 
     Its output space is unconstrained because the blocks that read bullets own
     private key/value projections for them, which absorb any change of basis.

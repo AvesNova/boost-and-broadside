@@ -22,13 +22,18 @@ def decode_targets_to_observation(
     """
     raw = coordinator.decode_targets(targets)
     pos = torch.cat([raw["position_x"], raw["position_y"]], dim=-1)
-    alive = raw["health"].squeeze(-1) > ALIVE_HEALTH_EPS
+    alive = torch.where(
+        prev_obs[ObsKey.GAME_MODE][:, -1, 0:1] > 0,
+        prev_obs.alive[:, :num_ships],
+        raw["health"].squeeze(-1) > ALIVE_HEALTH_EPS,
+    )
     ship_values = {
         ObsKey.POS: pos,
         ObsKey.VEL: raw["velocity"],
         ObsKey.ATT: raw["attitude"],
         ObsKey.ANG_VEL: raw["angular_velocity"],
         ObsKey.HEALTH: raw["health"],
+        ObsKey.SHIELD_DELAY: raw["shield_delay"],
         ObsKey.POWER: raw["power"],
         ObsKey.COOLDOWN: raw["cooldown"],
         ObsKey.LOCAL_LOG_INDEX: raw["local_log_index"],

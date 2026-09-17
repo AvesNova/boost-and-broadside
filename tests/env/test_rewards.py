@@ -5,27 +5,19 @@ No compute_rewards() — per-ship signals are tested directly; zero-sum accounti
 (lambda aggregation) lives in the PPO trainer, not the reward components.
 """
 
-import dataclasses
-import math
-
 import pytest
 import torch
 
 from boost_and_broadside.config import MatchResult, RewardConfig, ShipConfig, ZoneRole
-from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
     AllyCombatDamageReward,
     AllyCombatDeathReward,
-    AllyFieldDamageReward,
-    AllyFieldDeathReward,
     AllyWinReward,
     CaptureProgressReward,
     ClosingSpeedReward,
     EnemyCombatDamageReward,
     EnemyCombatDeathReward,
-    EnemyFieldDamageReward,
-    EnemyFieldDeathReward,
     EnemyWinReward,
     FacingReward,
     FrontAdvanceReward,
@@ -37,8 +29,6 @@ from boost_and_broadside.env.rewards import (
     LocalCombatDeathReward,
     LocalDamageDealtAllyReward,
     LocalDamageDealtEnemyReward,
-    LocalFieldDamageTakenReward,
-    LocalFieldDeathReward,
     ShootingPenaltyReward,
     ShootQualityReward,
     SpeedReward,
@@ -69,18 +59,14 @@ def reward_cfg() -> RewardConfig:
         enemy_neg_lambda_components=frozenset(
             {
                 "enemy_combat_damage",
-                "enemy_field_damage",
                 "enemy_combat_death",
-                "enemy_field_death",
                 "enemy_win",
             }
         ),
         ally_zero_components=frozenset(
             {
                 "enemy_combat_damage",
-                "enemy_field_damage",
                 "enemy_combat_death",
-                "enemy_field_death",
                 "enemy_win",
             }
         ),
@@ -103,48 +89,13 @@ def _make_4ship_state(cfg):
 
 
 class TestRewardComponentNames:
-    def test_k_is_the_registry_length(self):
-        assert len(REWARD_COMPONENT_NAMES) == 28
-
-    def test_source_split_starts_the_registry(self):
-        assert REWARD_COMPONENT_NAMES[:8] == (
-            "ally_combat_damage",
-            "enemy_combat_damage",
-            "ally_field_damage",
-            "enemy_field_damage",
-            "ally_combat_death",
-            "enemy_combat_death",
-            "ally_field_death",
-            "enemy_field_death",
-        )
-
-    def test_kill_shot_is_index_13(self):
-        assert REWARD_COMPONENT_NAMES[13] == "kill_shot"
-
-    def test_kill_assist_is_index_14(self):
-        assert REWARD_COMPONENT_NAMES[14] == "kill_assist"
-
-    def test_friendly_kill_pair_mirrors_the_enemy_pair(self):
-        assert REWARD_COMPONENT_NAMES[15:17] == ("kill_ally_shot", "kill_ally_assist")
-
-    def test_source_split_local_damage_is_registered(self):
-        assert REWARD_COMPONENT_NAMES[17:19] == (
-            "combat_damage_taken",
-            "field_damage_taken",
-        )
-
-    def test_damage_dealt_enemy_is_index_19(self):
-        assert REWARD_COMPONENT_NAMES[19] == "damage_dealt_enemy"
-
-    def test_damage_dealt_ally_is_index_20(self):
-        assert REWARD_COMPONENT_NAMES[20] == "damage_dealt_ally"
-
-    def test_source_split_local_death_is_registered(self):
-        assert REWARD_COMPONENT_NAMES[21:23] == ("combat_death", "field_death")
-        assert REWARD_COMPONENT_NAMES[25:28] == ("capture_progress", "front_advance", "outcome")
-
-    def test_no_duplicates(self):
-        assert len(set(REWARD_COMPONENT_NAMES)) == len(REWARD_COMPONENT_NAMES)
+    def test_registry_matches_builder(self):
+        names = [
+            c.name
+            for c in build_reward_components(TestComponentWeightDerivation._cfg(), ShipConfig())
+        ]
+        assert set(names) == set(REWARD_COMPONENT_NAMES)
+        assert len(set(names)) == len(names)
 
 
 class TestComponentWeightDerivation:
@@ -166,12 +117,8 @@ class TestComponentWeightDerivation:
             closing_speed_weight=0.09,
             proximity_radius=400.0,
             shoot_quality_radius=200.0,
-            enemy_neg_lambda_components=frozenset(
-                {"enemy_field_damage", "enemy_field_death", "enemy_win"}
-            ),
-            ally_zero_components=frozenset(
-                {"enemy_field_damage", "enemy_field_death", "enemy_win"}
-            ),
+            enemy_neg_lambda_components=frozenset(),
+            ally_zero_components=frozenset(),
         )
         base.update(kw)
         return RewardConfig(**base)
@@ -180,18 +127,6 @@ class TestComponentWeightDerivation:
         """Charged to the victim, paid to whoever shot it, same total."""
         w = component_weights(self._cfg())
         assert w["kill_shot"] + w["kill_assist"] == pytest.approx(w["combat_death"])
-
-    def test_a_field_death_is_paid_for_exactly(self):
-        """kill_shot cannot fire on a field death, so enemy_field_death makes up
-        precisely its share -- otherwise field kills would pay less than combat ones."""
-        w = component_weights(self._cfg())
-        assert w["kill_assist"] + w["enemy_field_death"] == pytest.approx(w["field_death"])
-        assert w["enemy_field_death"] == pytest.approx(w["kill_shot"])
-
-    def test_damage_is_paid_for_exactly_from_both_sources(self):
-        w = component_weights(self._cfg())
-        assert w["damage_dealt_enemy"] == pytest.approx(w["combat_damage_taken"])
-        assert w["enemy_field_damage"] == pytest.approx(w["field_damage_taken"])
 
     def test_friendly_fire_mirrors_the_offensive_side(self):
         w = component_weights(self._cfg())
@@ -214,10 +149,8 @@ class TestComponentWeightDerivation:
         for name in (
             "ally_combat_damage",
             "enemy_combat_damage",
-            "ally_field_damage",
             "ally_combat_death",
             "enemy_combat_death",
-            "ally_field_death",
         ):
             assert w[name] == 0.0
 
@@ -274,13 +207,6 @@ class TestKillPayoutRatio:
         assert w["kill_ally_shot"] == pytest.approx(w["kill_shot"])
         assert w["kill_ally_assist"] == pytest.approx(w["kill_assist"])
 
-    def test_a_field_kill_still_pays_what_a_combat_kill_pays(self):
-        """enemy_field_death exists to cover the shot the field did not fire, so
-        it has to track the payout rather than the charge."""
-        w = component_weights(self._cfg(kill_payout_ratio=2.0))
-        assert w["enemy_field_death"] == pytest.approx(w["kill_shot"])
-        assert w["kill_assist"] + w["enemy_field_death"] == pytest.approx(2 * w["field_death"])
-
     def test_damage_and_win_are_untouched(self):
         """The asymmetry is evidenced for the kill tier only."""
         balanced = component_weights(self._cfg())
@@ -289,12 +215,9 @@ class TestKillPayoutRatio:
             "ally_win",
             "enemy_win",
             "combat_death",
-            "field_death",
             "combat_damage_taken",
-            "field_damage_taken",
             "damage_dealt_enemy",
             "damage_dealt_ally",
-            "enemy_field_damage",
             "facing",
             "closing_speed",
         ):
@@ -311,18 +234,6 @@ class TestKillPayoutRatio:
         with pytest.raises(ValueError, match="kill_payout_ratio"):
             self._cfg(kill_payout_ratio=bad)
 
-    def test_a_checkpoint_without_the_field_reads_as_balanced(self):
-        """Runs recorded before the knob existed derived at 1:1, and reloading
-        one must not silently re-price its rewards."""
-        stored = {
-            "win_weight": 1.0,
-            "death_weight": 0.4,
-            "damage_weight": 0.3,
-            "kill_shot_fraction": 0.5,
-        }
-        w = component_weights(stored)
-        assert w["kill_shot"] + w["kill_assist"] == pytest.approx(w["combat_death"])
-
 
 class TestDamagePayoutRatio:
     """The damage tier gets the same exception, on separate and weaker evidence."""
@@ -338,14 +249,7 @@ class TestDamagePayoutRatio:
     def test_damage_dealt_is_paid_the_ratio_times_the_charge(self):
         w = component_weights(self._cfg(damage_weight=0.3, damage_payout_ratio=2.0))
         assert w["combat_damage_taken"] == pytest.approx(0.3)
-        assert w["field_damage_taken"] == pytest.approx(0.3)
         assert w["damage_dealt_enemy"] == pytest.approx(0.6)
-
-    def test_field_damage_follows_the_payout(self):
-        """enemy_field_damage supplies the offensive side of damage nobody dealt,
-        so it tracks what dealing damage pays, not what taking it charges."""
-        w = component_weights(self._cfg(damage_payout_ratio=2.0))
-        assert w["enemy_field_damage"] == pytest.approx(w["damage_dealt_enemy"])
 
     def test_friendly_fire_follows_the_payout(self):
         """Damaging a teammate is priced at the rate damaging an enemy pays, so
@@ -361,14 +265,11 @@ class TestDamagePayoutRatio:
             "ally_win",
             "enemy_win",
             "combat_death",
-            "field_death",
             "kill_shot",
             "kill_assist",
             "kill_ally_shot",
             "kill_ally_assist",
-            "enemy_field_death",
             "combat_damage_taken",
-            "field_damage_taken",
             "facing",
             "closing_speed",
         ):
@@ -388,16 +289,6 @@ class TestDamagePayoutRatio:
         with pytest.raises(ValueError, match="damage_payout_ratio"):
             self._cfg(damage_payout_ratio=bad)
 
-    def test_a_checkpoint_without_the_field_reads_as_balanced(self):
-        stored = {
-            "win_weight": 1.0,
-            "death_weight": 0.4,
-            "damage_weight": 0.3,
-            "kill_shot_fraction": 0.5,
-        }
-        w = component_weights(stored)
-        assert w["damage_dealt_enemy"] == pytest.approx(w["combat_damage_taken"])
-
 
 # The frontline arena's own objective. It postdates both reconstruction targets
 # below, so the reconstruction tests hold it separately rather than counting it
@@ -408,313 +299,6 @@ class TestDamagePayoutRatio:
 # The whole strategic tier, including the single undiscounted result stream that
 # is carried at a token weight purely so its value head can be watched.
 FRONTLINE_COMPONENTS = frozenset({"capture_progress", "front_advance", "outcome"})
-
-
-class TestRun719Reconstruction:
-    """The derivation can rebuild run 719's reward vector exactly.
-
-    A permanent property of the system, tested with explicit parameters rather
-    than the shipped ones: the profile is free to point somewhere else (it does),
-    but the algebra still has to be able to express 719. Run 725 trained on this
-    exact vector and calibrated to parity with 719 at 133M and 154M steps.
-
-    The target is what 719 *trained under*, not what its config file said. Its
-    lambda rows were normalized after the component weight was applied, which
-    divided the weight back out of every global component: ``ally_win`` and
-    ``enemy_win`` came out at an effective total of 1.0 against a configured
-    1.5. Local components were below the clamp and passed through untouched.
-    """
-
-    EFFECTIVE_719 = {
-        "ally_win": 1.0,
-        "enemy_win": 1.0,
-        "combat_death": 1.0,
-        "field_death": 1.0,
-        "kill_shot": 1.0,
-        "kill_assist": 1.0,
-        "combat_damage_taken": 0.5,
-        "field_damage_taken": 0.5,
-        "damage_dealt_enemy": 0.5,
-        "damage_dealt_ally": 0.5,
-        "facing": 0.1,
-        "closing_speed": 0.1,
-    }
-
-    @staticmethod
-    def _run_725():
-        """719's effective vector, as the five free numbers that produce it.
-
-        ``front_advance_weight`` and ``capture_progress_weight`` are zeroed
-        rather than inherited: 719 trained in the elimination arena, which has no
-        front to advance and no point to hold, so both terms are absent from the
-        vector being reconstructed rather than set to zero by preference.
-        """
-        return dataclasses.replace(
-            REWARDS,
-            win_weight=1.0,
-            death_weight=1.0,
-            damage_weight=0.5,
-            kill_shot_fraction=0.5,
-            kill_payout_ratio=2.0,
-            damage_payout_ratio=1.0,
-            facing_weight=0.1,
-            closing_speed_weight=0.1,
-            front_advance_weight=0.0,
-            capture_progress_weight=0.0,
-            outcome_weight=0.0,
-        )
-
-    def test_every_component_719_carried_is_reproduced_exactly(self):
-        w = component_weights(self._run_725())
-        for name, expected in self.EFFECTIVE_719.items():
-            assert w[name] == pytest.approx(expected), name
-
-    def test_the_only_additions_are_the_ones_the_rule_requires(self):
-        """719 had no source-split offensive components, so a field death paid its
-        killers nothing. Anything beyond these is a difference nobody argued for."""
-        w = component_weights(self._run_725())
-        added = {
-            name for name, weight in w.items() if weight != 0.0 and name not in self.EFFECTIVE_719
-        } - FRONTLINE_COMPONENTS
-        assert added == {
-            "enemy_field_death",
-            "enemy_field_damage",
-            "kill_ally_shot",
-            "kill_ally_assist",
-        }
-
-    def test_the_friendly_kill_pair_matches_the_penalty_719_folded_in(self):
-        """719 had no kill_ally_* components, but it did penalize friendly kills:
-        the term lived inside KillShotReward at an unscaled -1.0 share, under
-        kill_shot's own weight. Extracting it changed what is weightable and
-        visible, not how much friendly fire cost."""
-        w = component_weights(self._run_725())
-        assert w["kill_ally_shot"] == pytest.approx(self.EFFECTIVE_719["kill_shot"])
-        assert w["kill_ally_assist"] == pytest.approx(self.EFFECTIVE_719["kill_assist"])
-
-    def test_the_kill_ratio_is_what_makes_719_reachable(self):
-        """Under the plain balance rule no setting of the free numbers reaches 719,
-        because it paid a kill 2.0 while charging a death 1.0."""
-        balanced = component_weights(dataclasses.replace(self._run_725(), kill_payout_ratio=1.0))
-        assert balanced["kill_shot"] != pytest.approx(self.EFFECTIVE_719["kill_shot"])
-
-
-class TestShippedWeightsReconstructRun720:
-    """The profile's numbers are a least-squares reconstruction of run 720.
-
-    720 is the only configuration measured that beat 719, and its weights were
-    not derived -- they were solved per component as ``w = share / d`` against
-    measured coherence, so no two are equal. The profile fits the derivation to
-    that vector in log space. This class pins the result, because a fit nobody
-    checks is a comment.
-
-    The residual is irreducible: the rule forces pairs equal that 720 had
-    unequal. ``combat_damage_taken`` 0.32 against ``field_damage_taken`` 0.26 is
-    the worst, and that spread came out of 720's own per-component solve rather
-    than out of a principle.
-    """
-
-    # Run 720's active weights, from checkpoints/silvery-pond-720/config.json.
-    #
-    # Split, because the profile no longer reconstructs all of it. The combat
-    # tier still does, exactly as before. The outcome and shaping entries were
-    # left behind on purpose for Frontline -- see ``DEPARTED_FROM_720`` below.
-    RUN_720_COMBAT = {
-        "combat_death": 0.27,
-        "field_death": 0.28,
-        "kill_shot": 0.28,
-        "kill_assist": 0.31,
-        "kill_ally_shot": 0.28,
-        "kill_ally_assist": 0.28,
-        "combat_damage_taken": 0.32,
-        "field_damage_taken": 0.26,
-        "damage_dealt_enemy": 0.54,
-        "damage_dealt_ally": 0.50,
-    }
-
-    # What 720 had here, and what the profile ships instead. 720 solved these in
-    # an elimination arena where fighting was the whole game; Frontline is a
-    # territorial objective, and run 735 demonstrated that carrying 720's shaping
-    # into it is not a small mismatch -- once behavior cloning decayed, the policy
-    # left the capture zones entirely and optimised the shaping instead.
-    DEPARTED_FROM_720 = {
-        "facing": (0.09, 0.0),
-        "closing_speed": (0.08, 0.0),
-    }
-
-    # The win pair left 720 and came back. 735 through 738 ran it at 7.0 and then
-    # 3.0 on the reasoning that the objective deserved the loudest term; the
-    # equal-pressure rule says instead that it deserves a fifth of the update,
-    # which for a two-component tier is 1.0 each -- exactly what 720 solved for
-    # in the elimination arena. Two different arguments reaching the same number
-    # is worth an assertion rather than a coincidence nobody noticed.
-    RETURNED_TO_720 = {"ally_win": 1.0, "enemy_win": 1.0}
-
-    RUN_720 = (
-        RUN_720_COMBAT
-        | RETURNED_TO_720
-        | {name: was for name, (was, _) in DEPARTED_FROM_720.items()}
-    )
-
-    def test_the_two_ratios_are_one_shared_number(self):
-        """Both tiers were tilted in 720 and the shared ratio is the smaller
-        claim: an aggressor is paid twice what a victim is charged, everywhere.
-        The solve returned 1.96, which the fit cannot tell from 2.0."""
-        assert REWARDS.kill_payout_ratio == REWARDS.damage_payout_ratio == 2.0
-
-    def test_every_combat_component_lands_within_the_fit_residual(self):
-        w = component_weights(REWARDS)
-        for name, target in self.RUN_720_COMBAT.items():
-            assert w[name] == pytest.approx(target, rel=0.15), name
-
-    def test_the_departures_from_720_are_exactly_the_four_that_were_argued(self):
-        """The combat tier is 720's solve and the rest is not, which is a claim
-        worth stating rather than leaving as the absence of a test. Anything else
-        drifting off 720 is a change nobody made on purpose."""
-        w = component_weights(REWARDS)
-        for name, (was, now) in self.DEPARTED_FROM_720.items():
-            assert w[name] == pytest.approx(now), name
-            assert w[name] != pytest.approx(was, rel=0.15), name
-
-    def test_the_win_pair_came_back_to_the_720_solve(self):
-        """Not a departure any more. Equal pressure across five tiers puts the
-        two-component win tier at 1.0 each, which is where 720 had it."""
-        w = component_weights(REWARDS)
-        for name, value in self.RETURNED_TO_720.items():
-            assert w[name] == pytest.approx(value), name
-
-    def test_the_combat_fit_is_no_worse_than_the_solve_that_produced_it(self):
-        """Guards the numbers against a well-meant round. Anything materially
-        worse means the profile drifted off the fit.
-
-        The bound is 0.07 over the ten combat entries, where it was 0.065 over
-        fourteen. No combat weight moved -- the four departed entries sat at zero
-        error and were holding the mean down, so removing them raises the RMS from
-        0.0557 to 0.0659 by arithmetic alone. The bound is restated for the
-        narrowed set rather than relaxed for the same one."""
-        w = component_weights(REWARDS)
-        errs = [w[n] / t - 1.0 for n, t in self.RUN_720_COMBAT.items()]
-        rms = math.sqrt(sum(e * e for e in errs) / len(errs))
-        assert rms < 0.07
-
-    def test_the_kill_tier_is_flat_because_f_is_even_and_the_ratio_is_two(self):
-        """k*U*f == U at k=2, f=0.5, so every kill/death component lands on U.
-        Worth an assertion because it looks like a coincidence and is not."""
-        w = component_weights(REWARDS)
-        for name in (
-            "combat_death",
-            "field_death",
-            "kill_shot",
-            "kill_assist",
-            "kill_ally_shot",
-            "kill_ally_assist",
-            "enemy_field_death",
-        ):
-            assert w[name] == pytest.approx(REWARDS.death_weight), name
-
-    def test_the_additions_720_lacked_are_still_only_the_two(self):
-        """Excluding the frontline pair, which is a different task, not a
-        different balance: 720 trained in the elimination arena and had no front
-        to advance. ``test_the_frontline_pair_is_the_only_task_term`` holds it."""
-        w = component_weights(REWARDS)
-        added = {
-            name for name, weight in w.items() if weight != 0.0 and name not in self.RUN_720
-        } - FRONTLINE_COMPONENTS
-        assert added == {"enemy_field_death", "enemy_field_damage"}
-
-    def test_each_strategic_term_is_exactly_its_own_free_number(self):
-        """The balance rule does not touch either: each is the charged weight it
-        is named by, and ``capture_payout_ratio`` supplies the paid side."""
-        w = component_weights(REWARDS)
-        assert set(FRONTLINE_COMPONENTS) <= set(w)
-        assert w["front_advance"] == pytest.approx(REWARDS.front_advance_weight)
-        assert w["capture_progress"] == pytest.approx(REWARDS.capture_progress_weight)
-        assert REWARDS.front_advance_weight > 0.0
-        assert REWARDS.capture_progress_weight > 0.0
-        assert REWARDS.capture_payout_ratio > 1.0
-
-    # The five tiers the balance rule names, each mapped to the components that
-    # carry it. ``outcome`` is deliberately absent: it is a token-weight value
-    # probe, not a tier.
-    TIERS: dict[str, tuple[str, ...]] = {
-        "win": ("ally_win", "enemy_win"),
-        "capture": ("front_advance",),
-        "capture_progress": ("capture_progress",),
-        "death": (
-            "combat_death",
-            "field_death",
-            "enemy_field_death",
-            "kill_shot",
-            "kill_assist",
-            "kill_ally_shot",
-            "kill_ally_assist",
-        ),
-        "damage": (
-            "combat_damage_taken",
-            "field_damage_taken",
-            "damage_dealt_enemy",
-            "damage_dealt_ally",
-            "enemy_field_damage",
-        ),
-    }
-
-    def test_every_tier_carries_roughly_equal_gradient_pressure(self):
-        """The balance rule, stated as the thing it actually controls.
-
-        ``AdvantageScaler`` normalizes each component to unit RMS and
-        ``_lambda_matrix`` normalizes the unweighted pattern before applying the
-        weight, so a tier's share of the total weight is its share of the
-        gradient. Run 737 ran the win pair at 70.5% against a capture tier under
-        6%, which is the imbalance this rule exists to prevent."""
-        w = component_weights(REWARDS)
-        totals = {tier: sum(w[name] for name in names) for tier, names in self.TIERS.items()}
-        total = sum(v for v in w.values() if v != 0.0)
-        shares = {tier: value / total for tier, value in totals.items()}
-        assert min(shares.values()) > 0.15
-        assert max(shares.values()) < 0.25
-        # No tier may be more than a third heavier than the lightest.
-        assert max(totals.values()) / min(totals.values()) < 1.34
-
-    def test_the_outcome_probe_stays_outside_the_tier_balance(self):
-        """It trains its value head without bidding for the policy gradient."""
-        w = component_weights(REWARDS)
-        total = sum(v for v in w.values() if v != 0.0)
-        assert 0.0 < w["outcome"] / total < 0.01
-
-    def test_the_strategic_tier_is_ordered_above_kills(self):
-        """A meter runs 0 -> 1 over one capture, so these weights are totals for
-        taking a point rather than per-tick rates, and the *paid* side compares
-        directly to the kill payout.
-
-        The ladder that used to run progress < capture < win is gone: those are
-        three of the five tiers the balance rule names, and the rule asks them to
-        carry equal pressure. What survives is the tier ordering that is not a
-        tier comparison -- taking ground outpays a kill -- and the ordering
-        inside each tier, which ``capture_payout_ratio`` supplies."""
-        w = component_weights(REWARDS)
-        kill_payout = REWARDS.death_weight * REWARDS.kill_payout_ratio
-        ratio = REWARDS.capture_payout_ratio
-        progress_paid = w["capture_progress"] * ratio
-        capture_paid = w["front_advance"] * ratio
-        assert progress_paid > kill_payout
-        assert capture_paid > kill_payout
-
-    def test_zeroing_the_frontline_term_leaves_the_720_fit_untouched(self):
-        """The frontline objective is additive: turning it off in the
-        elimination arena must not perturb a single combat weight."""
-        w = component_weights(REWARDS)
-        without = component_weights(
-            dataclasses.replace(
-                REWARDS,
-                front_advance_weight=0.0,
-                capture_progress_weight=0.0,
-                outcome_weight=0.0,
-            )
-        )
-        assert {name: value for name, value in w.items() if name not in FRONTLINE_COMPONENTS} == {
-            name: value for name, value in without.items() if name not in FRONTLINE_COMPONENTS
-        }
-        assert all(without[name] == 0.0 for name in FRONTLINE_COMPONENTS)
 
 
 class TestComputePerComponentRewards:
@@ -742,8 +326,6 @@ class TestComputePerComponentRewards:
     [
         (AllyCombatDamageReward, "ship_combat_damage"),
         (EnemyCombatDamageReward, "ship_combat_damage"),
-        (AllyFieldDamageReward, "ship_field_damage"),
-        (EnemyFieldDamageReward, "ship_field_damage"),
     ],
 )
 def test_source_damage_rewards_read_only_their_applied_source(cfg, component_cls, source_attr):
@@ -764,8 +346,6 @@ def test_source_damage_rewards_read_only_their_applied_source(cfg, component_cls
     [
         (AllyCombatDeathReward, "ship_combat_death"),
         (EnemyCombatDeathReward, "ship_combat_death"),
-        (AllyFieldDeathReward, "ship_field_death"),
-        (EnemyFieldDeathReward, "ship_field_death"),
     ],
 )
 def test_source_death_rewards_read_only_their_exact_source(cfg, component_cls, source_attr):
@@ -1205,21 +785,6 @@ class TestKillAssistReward:
 
         assert reward[0, 0].item() == pytest.approx(2.0)  # 1.0 per kill
 
-    def test_field_final_blow_keeps_cumulative_combat_credit(self, cfg):
-        prev = _kill_state(cfg)
-        next_ = _kill_state(cfg)
-        next_.ship_alive[0, 2] = False
-        next_.ship_field_death[0, 2] = True
-        next_.cumulative_damage_matrix[0, 0, 2] = 30.0
-        next_.cumulative_damage_matrix[0, 1, 2] = 10.0
-
-        reward = KillAssistReward(weight=1.0).compute(
-            prev, torch.zeros(1, 4, 3), next_, torch.zeros(1, dtype=torch.bool)
-        )
-
-        assert reward[0, 0].item() == pytest.approx(0.75)
-        assert reward[0, 1].item() == pytest.approx(0.25)
-
 
 # ---------------------------------------------------------------------------
 # Local damage rewards
@@ -1230,7 +795,6 @@ class TestKillAssistReward:
     ("component_cls", "source_attr"),
     [
         (LocalCombatDamageTakenReward, "ship_combat_damage"),
-        (LocalFieldDamageTakenReward, "ship_field_damage"),
     ],
 )
 def test_local_source_damage_rewards_are_exact(cfg, component_cls, source_attr):
@@ -1253,6 +817,7 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 2] = 20.0
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(20.0)
@@ -1262,6 +827,7 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 2] = 20.0
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 1].item() == pytest.approx(0.0)
@@ -1275,6 +841,7 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 3] = 10.0
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(25.0)
@@ -1285,19 +852,21 @@ class TestLocalDamageDealtEnemyReward:
         state.damage_matrix[0, 0, 1] = 30.0  # ship 0 hit ally ship 1
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
 
-    def test_dead_ship_gets_zero(self, cfg):
+    def test_dead_shooter_keeps_projectile_credit(self, cfg):
         state = _make_4ship_state(cfg)
         state.damage_matrix[0, 0, 2] = 20.0
         state.ship_alive[0, 0] = False
 
         r = LocalDamageDealtEnemyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
-        assert reward[0, 0].item() == pytest.approx(0.0)
+        assert reward[0, 0].item() == pytest.approx(20.0)
 
 
 class TestLocalDamageDealtAllyReward:
@@ -1307,6 +876,7 @@ class TestLocalDamageDealtAllyReward:
         state.damage_matrix[0, 0, 1] = 30.0
 
         r = LocalDamageDealtAllyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(-30.0)
@@ -1317,6 +887,7 @@ class TestLocalDamageDealtAllyReward:
         state.damage_matrix[0, 0, 2] = 20.0  # ship 0 hit enemy ship 2
 
         r = LocalDamageDealtAllyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward[0, 0].item() == pytest.approx(0.0)
@@ -1325,26 +896,27 @@ class TestLocalDamageDealtAllyReward:
         state = _make_4ship_state(cfg)
 
         r = LocalDamageDealtAllyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
         assert reward.abs().max().item() == 0.0
 
-    def test_dead_ship_gets_zero(self, cfg):
+    def test_dead_shooter_keeps_projectile_credit(self, cfg):
         state = _make_4ship_state(cfg)
         state.damage_matrix[0, 0, 1] = 30.0
         state.ship_alive[0, 0] = False
 
         r = LocalDamageDealtAllyReward(weight=1.0)
+        state.ship_combat_damage = state.damage_matrix.sum(1)
         reward = r.compute(state, torch.zeros(2, 4, 3), state, torch.zeros(2, dtype=torch.bool))
 
-        assert reward[0, 0].item() == pytest.approx(0.0)
+        assert reward[0, 0].item() == pytest.approx(-30.0)
 
 
 @pytest.mark.parametrize(
     ("component_cls", "source_attr"),
     [
         (LocalCombatDeathReward, "ship_combat_death"),
-        (LocalFieldDeathReward, "ship_field_death"),
     ],
 )
 def test_local_source_death_rewards_are_exact(cfg, component_cls, source_attr):

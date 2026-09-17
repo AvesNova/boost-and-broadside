@@ -45,18 +45,14 @@ def _make_rewards(**overrides) -> RewardConfig:
         enemy_neg_lambda_components=frozenset(
             {
                 "enemy_combat_damage",
-                "enemy_field_damage",
                 "enemy_combat_death",
-                "enemy_field_death",
                 "enemy_win",
             }
         ),
         ally_zero_components=frozenset(
             {
                 "enemy_combat_damage",
-                "enemy_field_damage",
                 "enemy_combat_death",
-                "enemy_field_death",
                 "enemy_win",
             }
         ),
@@ -205,10 +201,11 @@ class TestPPOSmokeTest:
             zone_ring_radius=1200.0,
             playable_radius=2600.0,
             capture_seconds=6.0,
-            defense_damage_per_second=2.0,
             respawn_health=25.0,
-            spawn_heal_per_second=12.0,
-            enemy_spawn_damage_per_second=8.0,
+            respawn_power=20.0,
+            respawn_speed=30.0,
+            shield_recharge_delay=4.0,
+            shield_recharge_per_second=20.0,
             boundary_damage_per_second=5.0,
             boundary_damage_per_pixel_second=0.05,
             front_win_threshold=5,
@@ -1295,12 +1292,8 @@ class TestComponentClassification:
         assert shared == {
             "ally_combat_damage",
             "enemy_combat_damage",
-            "ally_field_damage",
-            "enemy_field_damage",
             "ally_combat_death",
             "enemy_combat_death",
-            "ally_field_death",
-            "enemy_field_death",
             "ally_win",
             "enemy_win",
             "outcome",

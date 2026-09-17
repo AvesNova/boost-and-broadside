@@ -5,7 +5,7 @@ import math
 import torch
 
 from boost_and_broadside.config import EnvConfig, ShipConfig
-from boost_and_broadside.env.field_physics import material_tensors
+from boost_and_broadside.env.field_physics import index_from_level
 
 # The four log-symmetric index levels are a constant. Building them from a
 # Python list copies from the host and drains the CUDA queue, and layout
@@ -54,8 +54,6 @@ def generate_field_layout(
             torch.empty(shape, dtype=torch.float32, device=device),
             torch.empty(shape, dtype=torch.int8, device=device),
             torch.empty(shape, dtype=torch.float32, device=device),
-            torch.empty(shape, dtype=torch.int8, device=device),
-            torch.empty(shape, dtype=torch.float32, device=device),
         )
 
     width = _uniform(
@@ -99,9 +97,8 @@ def generate_field_layout(
     levels = _index_levels(device)
     level_draw = torch.randint(0, 4, shape, device=device, generator=generator)
     index_level = levels[level_draw]
-    damage_level = torch.randint(0, 3, shape, device=device, generator=generator).to(torch.int8)
-    index, damage = material_tensors(index_level, damage_level, ship_config)
-    return pos, radius, width, index_level, index, damage_level, damage
+    index = index_from_level(index_level, ship_config.field_index_step)
+    return pos, radius, width, index_level, index
 
 
 def _low_discrepancy_disk(

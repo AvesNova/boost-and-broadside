@@ -90,7 +90,7 @@ class Accessor:
                 val = torch.full_like(team_id, 5)
             elif self.key in {ObsKey.VISIBLE, ObsKey.BELIEF_VALID}:
                 val = obs[ObsKey.ALIVE]
-            elif self.key == ObsKey.TIME_SINCE_OBSERVATION:
+            elif self.key in {ObsKey.TIME_SINCE_OBSERVATION, ObsKey.SHIELD_DELAY}:
                 val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
             elif self.key in {
                 ObsKey.CAPTURE_PROGRESS,
@@ -613,6 +613,7 @@ class FeatureCoordinator:
                 ObsKey.VEL: torch.zeros((1, 1, 2)),
                 ObsKey.ATT: torch.zeros((1, 1, 2)),
                 ObsKey.ANG_VEL: torch.zeros((1, 1, 1)),
+                ObsKey.SHIELD_DELAY: torch.zeros((1, 1, 1)),
                 ObsKey.HEALTH: torch.zeros((1, 1, 1)),
                 ObsKey.POWER: torch.zeros((1, 1, 1)),
                 ObsKey.COOLDOWN: torch.zeros((1, 1, 1)),
@@ -627,7 +628,6 @@ class FeatureCoordinator:
                 ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
                 ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),
                 ObsKey.FIELD_TARGET_LOG_INDEX: torch.zeros((1, 1, 1)),
-                ObsKey.FIELD_DAMAGE: torch.zeros((1, 1, 1)),
             }
         )
 
@@ -861,7 +861,7 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
         Feature(
             name="attitude",
             accessor=Accessor(ObsKey.ATT),
-            input_encoder=Fourier(n_freqs=4, periods=2.0 * math.pi),
+            input_encoder=AttitudeFourier(),
             target_encoder=Identity(),
             predictor=UnitCirclePredictor(cosine_first=True),
             label_scale=1.5,
@@ -875,6 +875,15 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=Symlog(),
             predictor=AbsolutePredictor(),
             label_scale=0.447,
+            scope=FeatureScope.SHIP,
+        ),
+        Feature(
+            name="shield_delay",
+            accessor=Accessor(ObsKey.SHIELD_DELAY),
+            input_encoder=Symlog(),
+            target_encoder=Symlog(),
+            predictor=AbsolutePredictor(),
+            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         # Resources: quarter-wave (sin,cos) target + phase-delta prediction.
@@ -967,13 +976,6 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
         Feature(
             "field_target_log_index",
             Accessor(ObsKey.FIELD_TARGET_LOG_INDEX),
-            Identity(),
-            Identity(),
-            scope=FeatureScope.FIELD,
-        ),
-        Feature(
-            "field_damage",
-            Accessor(ObsKey.FIELD_DAMAGE),
             Identity(),
             Identity(),
             scope=FeatureScope.FIELD,
@@ -1111,12 +1113,6 @@ def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             target_encoder=Identity(),
         ),
         Feature(
-            name="bullet_damage",
-            accessor=BulletAccessor(BulletObsKey.DAMAGE),
-            input_encoder=Identity(),
-            target_encoder=Identity(),
-        ),
-        Feature(
             name="bullet_lifetime",
             accessor=BulletAccessor(BulletObsKey.LIFETIME),
             input_encoder=Identity(),
@@ -1157,7 +1153,6 @@ def _dummy_bullet_obs() -> YemongObservation:
         bullets={
             BulletObsKey.POS: torch.zeros((1, 1, 2)),
             BulletObsKey.VEL: torch.zeros((1, 1, 2)),
-            BulletObsKey.DAMAGE: torch.zeros((1, 1, 1)),
             BulletObsKey.LIFETIME: torch.zeros((1, 1, 1)),
             BulletObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
             BulletObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
@@ -1165,3 +1160,16 @@ def _dummy_bullet_obs() -> YemongObservation:
             BulletObsKey.ACTIVE: torch.zeros((1, 1), dtype=torch.bool),
         },
     )
+
+
+class AttitudeFourier(Fourier):
+    """Encode heading phase, retaining Cartesian targets for phase prediction."""
+
+    def __init__(self):
+        super().__init__(n_freqs=4, periods=2.0 * math.pi)
+
+    def out_dim(self, in_dim):
+        return 2 * self.n_freqs
+
+    def __call__(self, x):
+        return super().__call__(torch.atan2(x[..., 1:2], x[..., 0:1]))

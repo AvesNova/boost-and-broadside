@@ -134,16 +134,23 @@ class BeliefTracker:
             ObsKey.ATT: raw["attitude"],
             ObsKey.ANG_VEL: raw["angular_velocity"],
             ObsKey.HEALTH: raw["health"],
+            ObsKey.SHIELD_DELAY: raw["shield_delay"],
             ObsKey.POWER: raw["power"],
             ObsKey.COOLDOWN: raw["cooldown"],
             ObsKey.LOCAL_LOG_INDEX: raw["local_log_index"],
         }
         for key, belief_value in decoded.items():
+            if key not in data:
+                data[key] = perceived[key].clone()
             belief_value = torch.nan_to_num(belief_value)
             mask = hidden_belief.unsqueeze(-1)
             data[key][:, :n] = torch.where(mask, belief_value, data[key][:, :n])
 
-        predicted_alive = decoded[ObsKey.HEALTH].squeeze(-1) > ALIVE_HEALTH_EPS
+        predicted_alive = torch.where(
+            perceived[ObsKey.GAME_MODE][:, -1, 0:1] > 0,
+            self.valid,
+            decoded[ObsKey.HEALTH].squeeze(-1) > ALIVE_HEALTH_EPS,
+        )
         data[ObsKey.ALIVE][:, :n] = torch.where(
             hidden_belief, predicted_alive, data[ObsKey.ALIVE][:, :n]
         )
