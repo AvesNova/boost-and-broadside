@@ -176,4 +176,5 @@ def main():
               open(f"{S}/exp8_rows.json", "w"), indent=1)
 
 
-main()
+if __name__ == "__main__":
+    main()

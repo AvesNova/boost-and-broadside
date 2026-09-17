@@ -71,7 +71,15 @@ What session 3 measured, all on fresh held-out rollouts under
    currently-visible enemies while the trunk attends over `BELIEF_VALID`
    ("visible or previously observed"), but remembered-but-invisible tokens go
    with **lower** KL at every matched enemy count (Exp 15).
-6. **Depth is not the answer, and neither is relative position.** Adding spatial
+6. **The expensive step is composition, and its cost depends on format.** Give
+   the frozen latent the teacher's force terms as `(sin, cos, magnitude)` and
+   held-out turn KL is `0.5114`; give it the *same two vectors* as `(x, y)` and
+   it is `0.3223`. Nothing is added between those — a vector sum is linear in
+   Cartesian coordinates and needs sin/cos products in polar form. Supply the
+   summed resultant and it reaches `0.19`, against `0.178` for the true bearing:
+   once the composition is done, extracting the angle is nearly free. The chain
+   closes with no unexplained remainder (Exp 22).
+7. **Depth is not the answer, and neither is relative position.** Adding spatial
    layers on top of the **frozen** trunk, at 65 536 scenes, is flat-to-worse:
    `0.3886` (head only) → `0.4005` (one layer) → `0.4242` (two). A transfer-safe
    relative-position attention bias scores `0.4192` against `0.4242` at matched
@@ -1087,6 +1095,66 @@ stratum's mean KL would fall `0.5479 → 0.3744` — so conditioning accounts fo
 demonstrated amplifier and it is **not** the whole answer: the best-conditioned
 octile still sits at KL `0.374` with `4.6°` of probe error.
 
+### Exp 22 — the composition gap is a format effect
+
+*Question:* Exp 18 handed the frozen latent all three force terms as
+`(direction, magnitude)` and reached `0.338`, against `0.034` for the true
+bearing. Those two feature sets carry the *same information* — the bearing is a
+deterministic function of the terms — so the gap is the head failing to perform
+the composition, not a missing quantity. The composition is a vector sum, which
+is **linear in Cartesian coordinates** and needs sin/cos products in polar form.
+Does the format account for the gap? *Method:* `exp22_format.py`, same cells,
+terms expressed as `(x, y)` instead of `(sin, cos, magnitude)`.
+
+Restricted to **zero visible enemies and `recovery < 0.01`**, where
+`combat_force` and the spawn term both vanish and
+`force = objective_force + separation` *exactly* — Exp 19 validated that
+reconstruction at `0.000°`. So the "resultant" rows below are the real
+resultant, not an approximation of it. *Runtime:* ~5 min.
+*Sample:* 8 934 train / 7 758 held-out.
+
+| appended to the frozen latent | held-out turn KL |
+|---|---|
+| — (the checkpoint's own head) | 0.5890 |
+| — (refit head, latent only) | 0.6968 |
+| + the two terms, **polar** `(sin, cos, magnitude)` | 0.5114 |
+| + the two terms, **Cartesian** `(x, y)` | **0.3223** |
+| + the **resultant**, Cartesian `(x, y)` | 0.2068 |
+| + the **resultant**, polar `(sin, cos, magnitude)` | 0.1896 |
+| + the true bearing (control) | 0.1780 |
+
+*Interpretation.*
+
+* **Format is worth `0.19` nats on identical information.** Cartesian terms
+  reach `0.3223` where polar terms reach `0.5114`. Nothing is added between those
+  two rows — the same two vectors, written down two ways. A vector sum is a
+  linear map in Cartesian coordinates and a 2-layer MLP does it easily; in polar
+  form the same sum needs products of sines and cosines, and it largely fails.
+* **The chain now closes.** `0.697` (latent) → `0.322` (terms, right format) →
+  `0.19`–`0.21` (resultant) → `0.178` (true bearing). The resultant nearly
+  matches the bearing control, exactly as it must, since `angle(resultant)` *is*
+  the bearing in this sub-stratum. Once the composition has been done, the
+  remaining step — extracting an angle from one vector — is nearly free. There is
+  no unexplained residual left in this decomposition.
+* Absolute levels differ from Exp 18's because the sub-stratum is smaller
+  (7 758 held-out tokens against 21 312) and the true-bearing control accordingly
+  sits at `0.178` rather than `0.034`. Only the ordering and the gaps *within*
+  this table are being read.
+
+*What this does and does not license.* It shows that **composing directional
+quantities is the expensive step, and that its cost depends on representation**.
+It does **not** show that the trunk's internal format is polar — that would need
+probing the latent's geometry directly, which was not done. But the feature
+pipeline does encode attitude and position as Fourier phases and predicts them as
+phase deltas (`features.py`, `UnitCirclePredictor`), so a phase-like internal
+representation of direction is at least plausible, and it would make exactly this
+composition expensive.
+
+The concrete consequence is a refinement of the auxiliary-loss recommendation:
+**supervise the force as a vector `(x, y)`, not as a bearing angle.** Predicting
+an angle asks the trunk for the output of the hard step; predicting a vector asks
+it for something that composes linearly and from which the angle is nearly free.
+
 ### Exp 17 / 20 — from-scratch depth sweep (a failed experiment) and the relative-bias contrast
 
 *Question:* is the ceiling this trunk, or the observation? *Method:*
@@ -1312,7 +1380,31 @@ different turn KLs and compare the RL curves.** If a `0.5`-KL warm start reaches
 the same place as a `0.3`-KL one, this document describes a non-problem, and that
 is worth knowing before acting on anything below.
 
-### 3. Relative-position attention *bias* — tested, and not supported
+### 3. Auxiliary loss on the force **vector**, not the bearing angle
+
+The one positive, actionable result in session 3. Exp 22 shows that composing
+the teacher's direction terms costs `0.19` nats purely through representation:
+Cartesian `(x, y)` against polar `(sin, cos, magnitude)`, same two vectors. And
+once the resultant exists, the angle is nearly free (`0.19` against `0.178` for
+the true bearing).
+
+So supervise `frontline_strategy`'s **force vector** — two numbers, ego-frame
+`(x, y)` — rather than the bearing. Predicting an angle asks the trunk for the
+output of the expensive step; predicting a vector asks for something that
+composes linearly and from which the bearing follows almost for free. It is also
+transfer-safe: two extra outputs per ship, no dependence on `N`.
+
+*Caveat:* Exp 22 measures what a *small head* does with features handed to it,
+not the trunk's internal format. That the feature pipeline encodes attitude and
+position as Fourier phases and predicts them as phase deltas (`features.py`,
+`UnitCirclePredictor`) makes a phase-like internal representation plausible, but
+it was not verified. Probing the latent's directional geometry directly is the
+cheap way to check before committing to a run.
+
+As an instrument this is worth it regardless: degrees are far quieter than KL
+(the layerwise probe curve replicates to `0.8°`; whole-rollout KL swings ±0.1).
+
+### 4. Relative-position attention *bias* — tested, and not supported
 
 Recorded because it was the transfer-safe descendant of session 2's fix and the
 obvious thing to try next. One scalar per (query, key, head) from the toroidal
@@ -1329,16 +1421,6 @@ this document.** If someone wants to test it properly it has to be end-to-end,
 because a frozen trunk cannot show what the lower layers would have done with
 cheaper relative geometry — but there is now no positive evidence to motivate
 that run.
-
-### 4. Bearing auxiliary loss — cheap instrument, uncertain gain
-
-Predict `sin/cos` of the teacher's two bearings as an auxiliary head and log
-angular error in degrees. Exp 7 shows the signal is learnable at every depth, and
-degrees are a far quieter measurement than KL (the layerwise curve replicates to
-`0.8°`; whole-rollout KL swings ±0.1). Worth it as a permanent instrument
-regardless. As a *training* signal its value is unclear, since Exp 14 shows the
-trunk already reaches the bearing more accurately than the intermediates the loss
-would supervise.
 
 ### Explicitly not recommended
 
@@ -1534,6 +1616,7 @@ exp15_belief.py     belief/visibility mismatch; KL by visible-enemy count
 exp16_zone.py       per-zone teacher quantities appended to the frozen latent
 exp18_terms.py      the three force terms, singly and in combination
 exp19_conditioning.py  force reconstruction, |force| stratification, sensitivity
+exp22_format.py     polar vs Cartesian composition of the force terms
 exp17_depth.py      from-scratch depth sweep (DATA-LIMITED -- see below)
 exp20_relbias.py    the matched relative-bias contrast on ~4x the data
                     -- WRITTEN BUT NOT RUN; no numbers in this document
@@ -1553,6 +1636,7 @@ uv run --no-sync python benchmarks/bc_diagnostics/exp15_belief.py               
 uv run --no-sync python benchmarks/bc_diagnostics/exp16_zone.py                    # ~12 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py                   # ~5 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py            # ~2 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp22_format.py                  # ~5 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 3 25       # ~25 min (data-limited)
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 16 5      # ~35 min (the usable pass)
 uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # 2-3 h, NOT RUN
@@ -1566,7 +1650,9 @@ precisely so the failure mode is visible rather than hidden.
 Sample sizes are as session 2: 3 rollouts after 3 burn-in at `num_envs=128`,
 `num_steps=128`, every 4th timestep, giving **49 152** tokens per tag under
 `bc_valid & actor_mask & alive`. Exp 16/18/19 work inside the zero-visible-enemy
-stratum: 23 872 train / 21 312 held-out. Exp 17/20 operate on *scenes* rather
+stratum: 23 872 train / 21 312 held-out. Exp 22 restricts further to
+`recovery < 0.01` inside it (8 934 / 7 758), which is where the force
+reconstruction is exact and the "resultant" rows therefore mean what they say. Exp 17/20 operate on *scenes* rather
 than tokens — 12 288 per tag at 3 rollouts, ~49 000 at 12.
 
 **Exp 17 is recorded as a failure and should not be cited for its levels.**
@@ -1586,7 +1672,11 @@ temporal sublayers are reached via `forward_sequence`, so forward hooks never
 fire on them; and they emit `(B·N, T, D)` where spatial sublayers emit
 `(T·B, N+M, D)`. A third, new in session 3: the observation buffer carries one
 extra bootstrap timestep that the masks do not, so it must be trimmed to the mask
-length before anything is indexed.
+length before anything is indexed. A fourth, procedural: `YemongBlock.sequence`
+is *also* called directly, so hooking the block does not work either — Exp 21
+wraps the method. And every script here now carries an `if __name__` guard,
+because several did not, and importing a helper from one silently re-ran its
+entire experiment.
 
 The `frontline_strategy` mirror in `exp14_collect.py` and `exp16_zone.py` is
 checked against the real function on every recorded step — `combat_score`,

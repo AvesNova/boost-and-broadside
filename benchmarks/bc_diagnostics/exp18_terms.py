@@ -82,4 +82,5 @@ def main():
     json.dump(rows, open(f"{S}/exp18_rows.json", "w"), indent=1)
 
 
-main()
+if __name__ == "__main__":
+    main()

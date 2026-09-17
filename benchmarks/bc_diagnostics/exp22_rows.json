@@ -1,0 +1,30 @@
+[
+ {
+  "features": "frozen policy head",
+  "turn_kl": 0.589
+ },
+ {
+  "features": "latent only",
+  "turn_kl": 0.6968
+ },
+ {
+  "features": "+ terms, POLAR (sin,cos,mag)",
+  "turn_kl": 0.5114
+ },
+ {
+  "features": "+ terms, CARTESIAN (x,y)",
+  "turn_kl": 0.3223
+ },
+ {
+  "features": "+ resultant, CARTESIAN (x,y)",
+  "turn_kl": 0.2068
+ },
+ {
+  "features": "+ resultant, POLAR (sin,cos,mag)",
+  "turn_kl": 0.1896
+ },
+ {
+  "features": "+ true bearing (control)",
+  "turn_kl": 0.178
+ }
+]
