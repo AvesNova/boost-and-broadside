@@ -215,7 +215,10 @@ class StochasticScriptedAgent:
         r0 = self.config.shoot_distance_ramp[0]
         alpha = ((closest_dist - r0) / (self.config.frontline_combat_radius - r0)).clamp(0, 1)
         p_power, p_turn, p_shoot = (
-            self._blend_probs(old_head, new_head, alpha) for old_head, new_head in zip(old, new)
+            self._blend_probs(
+                old_head, new_head, torch.maximum(alpha, strategy.recovery) if i < 2 else alpha
+            )
+            for i, (old_head, new_head) in enumerate(zip(old, new))
         )
 
         batch_size, num_ships = state.ship_pos.shape

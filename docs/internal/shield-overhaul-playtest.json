@@ -1,0 +1,357 @@
+{
+  "device": "cpu",
+  "device_name": "CPU",
+  "games": 8,
+  "seed": 20260908,
+  "ticks_run": 9000,
+  "wall_seconds": 375.8857677199412,
+  "simulated_game_seconds_per_wall_second": 4.311061859842352,
+  "peak_torch_memory_mib": null,
+  "outcomes": {
+    "team0_wins": 3,
+    "team1_wins": 5,
+    "draws": 0
+  },
+  "capture_reached_fraction": 1.0,
+  "second_capture_reached_fraction": 1.0,
+  "termination_causes": {
+    "front_threshold": 5,
+    "timeout": 3
+  },
+  "summaries": {
+    "duration_seconds": {
+      "mean": 202.558349609375,
+      "std": 92.11345672607422,
+      "p10": 70.63999938964844,
+      "median": 204.66668701171875,
+      "p90": 300.0000305175781
+    },
+    "total_captures": {
+      "mean": 8.25,
+      "std": 3.7332961559295654,
+      "p10": 3.0,
+      "median": 9.0,
+      "p90": 12.19999885559082
+    },
+    "respawns": {
+      "mean": 71.625,
+      "std": 39.15972900390625,
+      "p10": 17.200000762939453,
+      "median": 74.0,
+      "p90": 120.9000015258789
+    },
+    "combat_deaths": {
+      "mean": 71.625,
+      "std": 39.15972900390625,
+      "p10": 17.200000762939453,
+      "median": 74.0,
+      "p90": 120.9000015258789
+    },
+    "boundary_deaths": {
+      "mean": 0.0,
+      "std": 0.0,
+      "p10": 0.0,
+      "median": 0.0,
+      "p90": 0.0
+    },
+    "shield_recharge": {
+      "mean": 9003.1796875,
+      "std": 4185.283203125,
+      "p10": 3065.494140625,
+      "median": 9041.0048828125,
+      "p90": 14054.5419921875
+    },
+    "first_capture_seconds": {
+      "mean": 36.77083206176758,
+      "std": 20.084041595458984,
+      "p10": 23.296669006347656,
+      "median": 28.71666717529297,
+      "p90": 56.519989013671875
+    },
+    "second_capture_seconds": {
+      "mean": 56.166664123535156,
+      "std": 23.790691375732422,
+      "p10": 39.0966682434082,
+      "median": 49.30000305175781,
+      "p90": 79.83665466308594
+    }
+  },
+  "ship_config": {
+    "collision_radius": 10.0,
+    "max_health": 100.0,
+    "max_power": 100.0,
+    "random_speed": false,
+    "min_speed": 1.0,
+    "max_speed": 180.0,
+    "default_speed": 100.0,
+    "base_thrust": 8.0,
+    "boost_thrust": 80.0,
+    "reverse_thrust": -80.0,
+    "gravity_factor": 0.0,
+    "gravity_eps": 10000.0,
+    "field_index_step": 1.4142135623730951,
+    "field_radius_min": 30.0,
+    "field_radius_max": 750.0,
+    "field_transition_width_min": 40.0,
+    "field_transition_width_max": 40.0,
+    "field_integrator": "two_step",
+    "field_integration_substeps": 1,
+    "power_speed_constant": 200.0,
+    "passive_power_gain": 10.0,
+    "no_turn_drag_coeff": 0.0008,
+    "normal_turn_drag_coeff": 0.0012,
+    "normal_turn_lift_coeff": 0.015,
+    "sharp_turn_drag_coeff": 0.005,
+    "sharp_turn_lift_coeff": 0.027,
+    "normal_turn_angle": 0.08726646259971647,
+    "sharp_turn_angle": 0.2617993877991494,
+    "bullet_speed": 500.0,
+    "bullet_energy_cost": 2,
+    "bullet_damage": 10.0,
+    "bullet_min_damage_frac": 0.3,
+    "bullet_lifetime": 1.0,
+    "bullet_spread": 12.0,
+    "firing_cooldown": 0.1,
+    "bullet_drag_coeff": 0.0008,
+    "bullet_field_integrator": "two_step",
+    "bullet_field_integration_substeps": 2,
+    "world_size": [
+      16384.0,
+      16384.0
+    ],
+    "dt": 0.03333333333333333
+  },
+  "env_config": {
+    "num_ships": 10,
+    "max_bullets": 10,
+    "max_episode_steps": 9000,
+    "num_fields": 10,
+    "single_team": false,
+    "action_repeat": 1,
+    "spawn_resource_spread": 0.0,
+    "frontline": {
+      "zone_radius": 330.0,
+      "zone_ring_radius": 1200.0,
+      "playable_radius": 2600.0,
+      "capture_seconds": 8.0,
+      "respawn_power": 20.0,
+      "respawn_speed": 30.0,
+      "shield_recharge_delay": 4.0,
+      "shield_recharge_per_second": 20.0,
+      "respawn_health": 15.0,
+      "boundary_damage_per_second": 5.0,
+      "boundary_damage_per_pixel_second": 0.05,
+      "front_win_threshold": 3
+    },
+    "vision_range": 1024.0,
+    "zones_occlude": true
+  },
+  "scripted_config": {
+    "flat_action_sampling": false,
+    "prob_offset": 0.1,
+    "boost_speed_ramp": [
+      16,
+      32
+    ],
+    "boost_speed_prob": [
+      0.68,
+      0.04
+    ],
+    "close_range_ramp": [
+      10,
+      50
+    ],
+    "close_range_prob": [
+      0.5,
+      0.05
+    ],
+    "turn_angle_ramp": [
+      0.03,
+      0.12
+    ],
+    "turn_angle_prob": [
+      0.068,
+      0.95
+    ],
+    "sharp_turn_angle_ramp": [
+      0.24,
+      0.42
+    ],
+    "sharp_turn_angle_prob": [
+      0.05,
+      0.95
+    ],
+    "shoot_angle_ramp": [
+      1.0,
+      1.5
+    ],
+    "shoot_angle_prob": [
+      0.95,
+      0.05
+    ],
+    "shoot_distance_ramp": [
+      200,
+      500
+    ],
+    "shoot_distance_prob": [
+      0.95,
+      0.05
+    ],
+    "team_target_distance_ramp": [
+      60.0,
+      100.0
+    ],
+    "team_target_distance_prob": [
+      0.0,
+      0.0
+    ],
+    "frontline_aggression": 1.0,
+    "frontline_combat_radius": 600.0,
+    "frontline_zone_radius": 900.0,
+    "frontline_zone_margin": 1.0,
+    "frontline_separation_radius": 120.0,
+    "frontline_recovery_health": 0.5
+  },
+  "per_game": {
+    "result": [
+      1,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      1
+    ],
+    "duration_seconds": [
+      80.4000015258789,
+      47.866668701171875,
+      196.1333465576172,
+      300.0000305175781,
+      300.0000305175781,
+      182.86666870117188,
+      300.0000305175781,
+      213.20001220703125
+    ],
+    "first_capture_seconds": [
+      23.366668701171875,
+      23.13333511352539,
+      29.76666831970215,
+      27.666667938232422,
+      87.36666870117188,
+      25.96666717529297,
+      43.30000305175781,
+      33.60000228881836
+    ],
+    "second_capture_seconds": [
+      52.43333435058594,
+      36.60000228881836,
+      51.366668701171875,
+      41.63333511352539,
+      115.23333740234375,
+      40.16666793823242,
+      64.66667175292969,
+      47.23333740234375
+    ],
+    "team0_captures": [
+      0,
+      0,
+      5,
+      7,
+      6,
+      6,
+      4,
+      3
+    ],
+    "team1_captures": [
+      3,
+      3,
+      2,
+      8,
+      5,
+      3,
+      5,
+      6
+    ],
+    "simultaneous_captures": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "respawns": [
+      22,
+      6,
+      74,
+      92,
+      123,
+      62,
+      120,
+      74
+    ],
+    "combat_deaths": [
+      22,
+      6,
+      74,
+      92,
+      123,
+      62,
+      120,
+      74
+    ],
+    "boundary_deaths": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "shield_recharge": [
+      3449.044677734375,
+      2170.543212890625,
+      8589.619140625,
+      11957.3896484375,
+      14321.0458984375,
+      8105.078125,
+      13940.326171875,
+      9492.390625
+    ],
+    "front_min": [
+      -3,
+      -3,
+      0,
+      -2,
+      0,
+      -1,
+      -2,
+      -3
+    ],
+    "front_max": [
+      0,
+      0,
+      3,
+      1,
+      2,
+      3,
+      2,
+      0
+    ],
+    "final_front": [
+      -3,
+      -3,
+      3,
+      -1,
+      1,
+      3,
+      -1,
+      -3
+    ]
+  }
+}

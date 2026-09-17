@@ -17,7 +17,8 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import MatchResult, ShipConfig
+from boost_and_broadside.config import MatchResult
+from boost_and_broadside.config.defaults import SHIP_CONFIG
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import (
     frontline_ship_config,
@@ -45,7 +46,7 @@ def run_suite(
     device: torch.device,
     max_ticks: int,
     capture_seconds: float | None = None,
-    team_size: int = 4,
+    team_size: int = 5,
 ) -> dict:
     """Run independent matches in one tensor batch and retain per-game samples."""
 
@@ -61,7 +62,7 @@ def run_suite(
         raise RuntimeError("CUDA was requested but torch.cuda.is_available() is false")
 
     torch.manual_seed(seed)
-    ship_config = frontline_ship_config(ShipConfig())
+    ship_config = frontline_ship_config(SHIP_CONFIG)
     frontline = PLAY_ENV_CONFIG.frontline
     if capture_seconds is not None:
         frontline = replace(frontline, capture_seconds=capture_seconds)
@@ -85,8 +86,6 @@ def run_suite(
     simultaneous = torch.zeros_like(duration)
     respawns = torch.zeros_like(duration)
     combat_deaths = torch.zeros_like(duration)
-    defense_deaths = torch.zeros_like(duration)
-    spawn_deaths = torch.zeros_like(duration)
     boundary_deaths = torch.zeros_like(duration)
     healing = torch.zeros(games, dtype=torch.float32, device=device)
     front_min = torch.zeros(games, dtype=torch.long, device=device)
@@ -130,10 +129,8 @@ def run_suite(
         simultaneous += env.state.simultaneous_capture.to(torch.int32) * active
         respawns += env.state.ship_respawned.sum(dim=1).to(torch.int32) * active
         combat_deaths += env.state.ship_combat_death.sum(dim=1).to(torch.int32) * active
-        defense_deaths += env.state.ship_zone_death.sum(dim=1).to(torch.int32) * active
-        spawn_deaths += env.state.ship_spawn_death.sum(dim=1).to(torch.int32) * active
         boundary_deaths += env.state.ship_boundary_death.sum(dim=1).to(torch.int32) * active
-        healing += env.state.ship_spawn_healing.sum(dim=1) * active
+        healing += env.state.ship_shield_recharge.sum(dim=1) * active
         front_min = torch.where(
             active, torch.minimum(front_min, env.state.front_position), front_min
         )
@@ -170,10 +167,8 @@ def run_suite(
         "simultaneous_captures": simultaneous.cpu().tolist(),
         "respawns": respawns.cpu().tolist(),
         "combat_deaths": combat_deaths.cpu().tolist(),
-        "defense_deaths": defense_deaths.cpu().tolist(),
-        "spawn_deaths": spawn_deaths.cpu().tolist(),
         "boundary_deaths": boundary_deaths.cpu().tolist(),
-        "spawn_healing": healing.cpu().tolist(),
+        "shield_recharge": healing.cpu().tolist(),
         "front_min": front_min.cpu().tolist(),
         "front_max": front_max.cpu().tolist(),
     }
@@ -184,10 +179,8 @@ def run_suite(
         "total_captures": _summary((team0_captures + team1_captures).cpu()),
         "respawns": _summary(respawns.cpu()),
         "combat_deaths": _summary(combat_deaths.cpu()),
-        "defense_deaths": _summary(defense_deaths.cpu()),
-        "spawn_deaths": _summary(spawn_deaths.cpu()),
         "boundary_deaths": _summary(boundary_deaths.cpu()),
-        "spawn_healing": _summary(healing.cpu()),
+        "shield_recharge": _summary(healing.cpu()),
     }
     summaries["first_capture_seconds"] = (
         _summary(first_capture_seconds[first_capture_mask]) if first_capture_mask.any() else None
@@ -233,7 +226,7 @@ def run_suite(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--team-size", type=int, default=4)
+    parser.add_argument("--team-size", type=int, default=5)
     parser.add_argument("--games", type=int, default=256)
     parser.add_argument("--seed", type=int, default=20260908)
     parser.add_argument("--max-ticks", type=int, default=PLAY_ENV_CONFIG.max_episode_steps)
