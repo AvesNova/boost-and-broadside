@@ -1,0 +1,104 @@
+{
+ "heads": [
+  {
+   "head": "frozen policy action head (checkpoint)",
+   "heldout_turn_kl": 0.5112
+  },
+  {
+   "head": "latent only",
+   "heldout_turn_kl": 0.6312
+  },
+  {
+   "head": "latent + oracle bearing",
+   "heldout_turn_kl": 0.0416
+  },
+  {
+   "head": "oracle bearing only",
+   "heldout_turn_kl": 0.0114
+  },
+  {
+   "head": "raw ego features only",
+   "heldout_turn_kl": 1.3498
+  }
+ ],
+ "error_bins": [
+  {
+   "bin": "[0,1)",
+   "n": 4134,
+   "turn_kl": 0.3114,
+   "straight_miss": 0.187,
+   "lr_flip": 0.006,
+   "sharp_miss": 0.017
+  },
+  {
+   "bin": "[1,2)",
+   "n": 3989,
+   "turn_kl": 0.3534,
+   "straight_miss": 0.202,
+   "lr_flip": 0.005,
+   "sharp_miss": 0.019
+  },
+  {
+   "bin": "[2,3)",
+   "n": 3517,
+   "turn_kl": 0.3855,
+   "straight_miss": 0.223,
+   "lr_flip": 0.007,
+   "sharp_miss": 0.018
+  },
+  {
+   "bin": "[3,5)",
+   "n": 5513,
+   "turn_kl": 0.4742,
+   "straight_miss": 0.252,
+   "lr_flip": 0.009,
+   "sharp_miss": 0.025
+  },
+  {
+   "bin": "[5,8)",
+   "n": 4978,
+   "turn_kl": 0.623,
+   "straight_miss": 0.321,
+   "lr_flip": 0.018,
+   "sharp_miss": 0.042
+  },
+  {
+   "bin": "[8,12)",
+   "n": 3522,
+   "turn_kl": 0.7825,
+   "straight_miss": 0.334,
+   "lr_flip": 0.041,
+   "sharp_miss": 0.075
+  },
+  {
+   "bin": "[12,20)",
+   "n": 2862,
+   "turn_kl": 0.8303,
+   "straight_miss": 0.234,
+   "lr_flip": 0.096,
+   "sharp_miss": 0.148
+  },
+  {
+   "bin": "[20,45)",
+   "n": 2309,
+   "turn_kl": 0.8495,
+   "straight_miss": 0.091,
+   "lr_flip": 0.181,
+   "sharp_miss": 0.217
+  },
+  {
+   "bin": "[45,181)",
+   "n": 1330,
+   "turn_kl": 1.0612,
+   "straight_miss": 0.013,
+   "lr_flip": 0.447,
+   "sharp_miss": 0.135
+  }
+ ],
+ "plugin": {
+  "tokens_alpha1": 32154,
+  "probe_median_err_deg": 4.54,
+  "kl_from_plugging_probe_bearing_into_teacher": 2.5071,
+  "measured_policy_turn_kl": 0.5683
+ }
+}

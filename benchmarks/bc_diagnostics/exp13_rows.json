@@ -1,0 +1,34 @@
+[
+ {
+  "tap": "b1.temporal0",
+  "target": "rel_front",
+  "side": "left",
+  "n": 13494,
+  "median_err_deg": 5.33,
+  "p90_err_deg": 24.08
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "rel_front",
+  "side": "right",
+  "n": 16080,
+  "median_err_deg": 5.14,
+  "p90_err_deg": 23.32
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "rel_personal",
+  "side": "left",
+  "n": 4417,
+  "median_err_deg": 8.87,
+  "p90_err_deg": 39.08
+ },
+ {
+  "tap": "b1.temporal0",
+  "target": "rel_personal",
+  "side": "right",
+  "n": 5515,
+  "median_err_deg": 8.44,
+  "p90_err_deg": 36.32
+ }
+]

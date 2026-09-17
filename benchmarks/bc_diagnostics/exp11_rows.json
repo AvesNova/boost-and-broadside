@@ -1,0 +1,58 @@
+{
+ "bearing": [
+  {
+   "target": "rel_front",
+   "probe": "ego_relative sum-pool",
+   "split": "heldout2",
+   "median": 5.75,
+   "mean": 10.84,
+   "p90": 23.29,
+   "p95": 36.95,
+   "within_1deg": 0.102,
+   "within_3deg": 0.291,
+   "within_5deg": 0.45,
+   "within_10deg": 0.693,
+   "within_20deg": 0.876
+  },
+  {
+   "target": "rel_personal",
+   "probe": "ego_relative sum-pool",
+   "split": "heldout2",
+   "median": 4.41,
+   "mean": 14.89,
+   "p90": 36.34,
+   "p95": 65.11,
+   "within_1deg": 0.177,
+   "within_3deg": 0.418,
+   "within_5deg": 0.524,
+   "within_10deg": 0.656,
+   "within_20deg": 0.802
+  }
+ ],
+ "heads": [
+  {
+   "head": "frozen policy action head",
+   "turn_kl": 0.5105
+  },
+  {
+   "head": "latent",
+   "turn_kl": 0.619
+  },
+  {
+   "head": "latent+pred",
+   "turn_kl": 0.5497
+  },
+  {
+   "head": "pred only",
+   "turn_kl": 0.7092
+  },
+  {
+   "head": "latent+true",
+   "turn_kl": 0.0355
+  },
+  {
+   "head": "true only",
+   "turn_kl": 0.0109
+  }
+ ]
+}

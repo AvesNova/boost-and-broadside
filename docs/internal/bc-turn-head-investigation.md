@@ -2,13 +2,101 @@
 
 Run `icy-energy-741` (W&B `xs3whcqt`), profile `bc`, source commit `85f2bf3`,
 checkpoint `checkpoints/icy-energy-741/step_000167608320.pt` (update 341,
-167.6M steps). All measurements below were taken on 2026-09-17 on the dev
+167.6M steps). All measurements were taken on 2026-09-17 on the dev
 RTX 4070 Laptop (8 GB) at `num_envs=128`, `microbatch_tokens=12288`,
-`num_steps=128`, `num_ships=8`, seed 0. The checkpoint was never modified.
+`num_steps=128`, `num_ships=8`. The checkpoint was never modified.
+
+Two sessions are recorded here. Session 1 (Exp 1–6) established *what* the
+residual is. Session 2 (Exp 7–13) establishes *where it comes from*, and its
+conclusion supersedes session 1's "likely interpretations".
 
 ## Executive summary
 
-**Established facts (direct measurement, this session).**
+**The residual BC loss is a bearing-precision deficit in the shared trunk, and
+the deficit is caused by the positional representation — not by the action
+head, not by capacity, not by optimisation, not by recurrence, and not by data
+volume.**
+
+The evidence chain, all on fresh held-out rollouts under the production mask
+`bc_valid & actor_mask & alive`:
+
+1. **The action head is exonerated.** Append the teacher's true
+   `sin/cos` bearings to the *frozen* final latent and fit a small turn head:
+   held-out turn KL falls `0.511 → 0.036`. From the bearings *alone*, with no
+   latent at all, it reaches `0.011`. The map from bearing to the teacher's turn
+   distribution is trivially learnable; the only thing missing from the latent
+   is the bearing (Exp 8, Exp 11).
+2. **The trunk never acquires the bearing to the needed precision, and never
+   plateaus.** Layerwise probes on the frozen checkpoint reduce frontline-bearing
+   error monotonically from `17.0°` (encoder output) to `7.0°` median at the
+   final latent — still improving at the last layer. The tail is worse than the
+   median suggests: p90 `76°` (Exp 7).
+3. **That error quantitatively explains the observed KL.** A turn head *fitted*
+   on a bearing corrupted to median `7.7°` / p90 `18.9°` scores held-out turn KL
+   `0.477`; the checkpoint scores `0.511`. To reach KL `0.14` the bearing must be
+   known to median `1.9°` / p90 `4.7°` (Exp 12). This replaces session 1's
+   "≈11° of equivalent Gaussian uncertainty", which was an assumed-hedging
+   estimate rather than a measured one.
+4. **The representation, not the capacity, is the binding constraint.** A
+   ~200k-parameter sum-pooling probe over *ego-relative* tokens — displacement
+   rotated into the ego frame plus an explicit unit vector — trained on 49k
+   tokens reaches median `5.4°` / p90 `21.6°`. The 1.945M-parameter trunk,
+   trained on 167.6M environment steps, reaches `7.0°` / p90 `76°`. The **same
+   probe** fed the trunk's own absolute-Fourier encoding (with the ego's absolute
+   position handed over for free) reaches only `29.4°` / p90 `129°`. Withholding
+   just the unit vector from the ego-relative cell costs `5.4° → 13.8°`
+   (Exp 9, Exp 10).
+
+**The mechanism.** The teacher's bearing is a masked weighted sum of *pairwise*
+unit vectors,
+
+```
+force_i = Σ_j w_j · unit(p_j − p_i)          bearing_i = angle(force_i) − attitude_i
+```
+
+over all 8 ships and all zones (`frontline_strategy`, plus `predict_interception`
+for the combat term). Self-attention cannot form that sum: a value vector `v_j`
+depends on `j` alone, so `Σ_j a_ij v_j` can never contain `unit(p_j − p_i)`,
+which depends on the *pair*. And the trunk has no relative positional encoding
+of any kind — position enters only as an **absolute** 8-frequency Fourier
+expansion of world `x` and `y` per token
+(`features.py:829-844`), over a 16384-px world in which play occupies a
+2600-radius disc, and attention is plain dot-product with no positional bias
+(`attention.py:40-140`). The trunk must therefore approximate the entire
+relational reduction inside FFNs acting on pooled vectors. That is exactly why
+depth helps monotonically but slowly, and why a network ten times smaller with
+the pairwise term supplied outright beats it on a rounding error of the data.
+
+**Honest limit of the demonstration.** Feeding the sum-pooling probe's
+*predicted* bearing (median `5.8°`) into a turn head moves held-out turn KL only
+`0.619 → 0.556` against its own latent-only baseline. The link function is steep
+enough that the median is the wrong statistic — the p90 is what sets the KL. A
+better representation is therefore *necessary but not by itself sufficient*: the
+recommendation below is an end-to-end architecture change, where the trunk gets
+167M steps to exploit it, not a bolt-on probe (Exp 11).
+
+**Session 1 facts that still stand.** The old `0.81` was an evaluator missing
+`actor_mask`; the residual is a turn-head, and within it a direction, phenomenon;
+the policy under-turns and hedges; power and shoot are solved; `p_team ≡ 0`;
+next-state and entropy are orthogonal and small; fp32/bf16 and rollout-start
+hidden state are noise; fixed-rollout fitting is memorisation (fresh-rollout KL
+`2.6`). None of session 2's measurements contradict these.
+
+**Confirmed defect (was "unresolved").** `loss/behavioral_cloning_kl` is the mean
+over *all four update epochs*, not a pre-update value. `accum_scalar` is created
+once per `_update_epochs` (`ppo.py:2586`) and `bc_kl` sits in the `_additive`
+table (`ppo.py:2711`), so every micro-batch of every epoch contributes. With
+Exp 5's measured descent (`0.4335 →``0.3303` over four epochs) this fully accounts
+for the run logging ≈`0.316` where the checkpoint measures `0.44–0.57`.
+
+**Remaining uncertainties.** Whether an end-to-end run with relative-position
+attention actually reaches p90 < 5°; the ~`0.08` nat left/right gap (Exp 13
+rules out a geometric cause); whether the probe is a tight lower bound on the
+error the action head actually suffers.
+
+## Session 1 summary (Exp 1–6)
+
+**Established facts (direct measurement).**
 
 1. The `0.34` vs `0.81` discrepancy is a **masking defect in one of the
    evaluators, not a property of the checkpoint**. On one identical rollout,
@@ -63,7 +151,10 @@ RTX 4070 Laptop (8 GB) at `num_envs=128`, `microbatch_tokens=12288`,
    `frontline_strategy().bearing` (`alpha` mean 0.74, 64% of tokens at
    `alpha = 1`).
 
-**Likely interpretations.**
+**Likely interpretations — superseded by session 2.** Kept for the record. The
+direction of these guesses was right (angular precision on a global bearing) but
+the attribution was not: they left capacity, representation and sample
+complexity open, and Exp 9/10 settle it on representation.
 
 * The limiting factor is **angular precision on a globally-computed bearing**,
   not action-head capacity, not optimisation interference, not recurrence.
@@ -81,7 +172,8 @@ RTX 4070 Laptop (8 GB) at `num_envs=128`, `microbatch_tokens=12288`,
   frontline bearing requiring a zone/fleet-wide reduction, but the gap (0.10)
   is much smaller than the overall level, so *both* bearings are imprecise.
 
-**Unresolved.**
+**Unresolved at the end of session 1** (both since closed — see the executive
+summary):
 
 * Why the online logged `loss/behavioral_cloning_kl ≈ 0.316` sits below the
   pre-update checkpoint value measured here (`0.44–0.50` in steady state,
@@ -352,6 +444,334 @@ elevated turn entropy, 0.772 vs 0.473, says it is). The teacher is not complex;
 it is *steep*. Any imitator that estimates the frontline bearing to ±10° will
 report exactly this KL.
 
+### Exp 7 — layerwise bearing probes on the frozen checkpoint
+
+*Question:* where in the trunk does the teacher's bearing appear, improve,
+degrade or plateau? *Method:* `exp7_collect.py` freezes the checkpoint, burns in
+3 rollouts to reach the steady-state distribution, then collects 3 more while
+forward hooks capture every ship token's activation at eight tap points. Probes
+(linear, and a 2×512 GELU MLP) are fitted on one set of rollouts to predict
+`(sin θ, cos θ)` and scored on an **independent** set collected from a different
+seed — no probe ever sees its own test states. Loss is `1 − cos(error)`; error is
+reported in degrees because that is the unit the teacher's ramps are steep in.
+*Runtime:* ~3 min collection per tag, ~6 min per target for 16 probes.
+*Sample:* 49 152 valid tokens train, 49 152 held out.
+
+Temporal sublayers are invoked through `forward_sequence`, not `forward`, so a
+plain forward hook never fires on them; the collector wraps the method instead.
+They also emit `(B·N, T, D)` where the spatial sublayers emit `(T·B, N+M, D)` —
+reshaping one as the other silently shuffles states against their labels and
+would report a real signal as noise.
+
+MLP probe, held-out, frontline bearing (`frontline_strategy().bearing`):
+
+| tap | median | mean | p90 | <3° | <10° | median @ `alpha≈1` | median @ turn ramp |
+|---|---|---|---|---|---|---|---|
+| raw ego input features (101 ch) | 14.25 | 36.71 | 115.5 | 0.148 | 0.407 | 9.45 | 5.88 |
+| encoder output | 17.04 | 38.72 | 117.8 | 0.127 | 0.363 | 11.33 | 7.47 |
+| b0.spatial0 | 14.13 | 36.79 | 115.7 | 0.149 | 0.411 | 9.18 | 6.07 |
+| b0.spatial1 | 11.23 | 29.53 | 92.3 | 0.170 | 0.467 | 7.59 | 5.16 |
+| b0.temporal0 | 10.38 | 28.40 | 90.0 | 0.188 | 0.489 | 6.97 | 4.67 |
+| b1.spatial0 | 7.84 | 25.00 | 82.4 | 0.242 | 0.570 | 5.24 | 3.84 |
+| b1.spatial1 | 7.19 | 23.47 | 76.9 | 0.259 | 0.590 | 4.83 | 3.46 |
+| **b1.temporal0 (final latent)** | **7.00** | 23.20 | **76.1** | 0.272 | 0.596 | **4.69** | 3.29 |
+
+MLP probe, held-out, personal intercept bearing (`predict_interception`):
+
+| tap | median | p90 | <3° | median @ `alpha≈1` |
+|---|---|---|---|---|
+| raw ego input features | 30.74 | 139.6 | 0.082 | 26.20 |
+| encoder output | 31.96 | 143.9 | 0.067 | 27.46 |
+| b0.spatial0 | 21.97 | 118.1 | 0.107 | 16.89 |
+| b0.spatial1 | 9.97 | 64.9 | 0.208 | 8.63 |
+| b0.temporal0 | 9.07 | 63.5 | 0.233 | 7.53 |
+| b1.spatial0 | 8.33 | 58.5 | 0.247 | 7.21 |
+| b1.spatial1 | 8.12 | 55.1 | 0.262 | 6.86 |
+| **b1.temporal0 (final latent)** | **7.92** | **55.4** | 0.264 | 7.09 |
+
+*Replication.* The whole pipeline was re-run end to end — fresh rollout
+collection, fresh probe fits — and reproduces every tap within `0.8°`:
+`15.08 / 16.52 / 14.72 / 11.03 / 10.38 / 7.81 / 7.04 / 6.84` against the
+`14.25 / 17.04 / 14.13 / 11.23 / 10.38 / 7.84 / 7.19 / 7.00` tabulated above.
+The monotone curve, the absence of a plateau at the last layer, and the
+encoder's apparent regression (`15.08 → 16.52`) all survive. `exp7_rows.json`
+holds the replication run. Given session 1's finding that whole-rollout KL
+varies by ±0.1 between rollouts, this stability is worth noting: probe error is
+a much quieter measurement than KL, which is part of why it is the better
+instrument for judging an intervention.
+
+Linear probes are far worse everywhere (final latent: `12.1°` frontline, `27.0°`
+personal) — the bearing is present but nonlinearly encoded, so every number above
+is the MLP.
+
+*Interpretation.*
+
+* **No plateau.** Frontline error is still falling at the last layer
+  (`7.19 → 7.00`), and every spatial sublayer in block 1 still pays. Whatever the
+  trunk is doing, two blocks is not enough of it. This is a depth-of-computation
+  signal, and it is the one piece of evidence that pointed at capacity before
+  Exp 10 reframed it.
+* **The spatial sublayers do the work; the temporal ones add almost nothing.**
+  `b0.spatial1` buys `2.9°`, `b1.spatial0` buys `2.5°`; `b0.temporal0` buys
+  `0.85°` and `b1.temporal0` buys `0.19°`. Even those small gains are not
+  necessarily *recurrence* — a Griffin temporal block contains a gated MLP path,
+  so part of any gain is simply more nonlinearity. Consistent with the teacher
+  being memoryless: there is nothing for recurrence to contribute.
+* **The encoder appears to lose precision.** The 101-channel raw feature vector
+  probes to `14.25°` and its own 128-d encoding to `17.04°` (frontline); the
+  personal bearing shows the same ordering. Modest and near the probe's noise
+  floor, but it is the wrong direction for a widening projection and worth one
+  cheap check.
+* **`alpha≈0` is uninformative for the frontline target** (`61°` at the final
+  latent). When `alpha = 0` the teacher does not use the frontline bearing, so
+  nothing ever pressed the trunk to represent it there. Not a defect; read the
+  `alpha≈1` column instead.
+* The personal bearing plateaus early (`9.97°` at `b0.spatial1`, `7.92°` at the
+  end); the frontline bearing keeps improving. Consistent with the frontline
+  bearing needing a fleet-wide and zone-wide reduction while the intercept
+  bearing needs one target.
+
+### Exp 8 — oracle-bearing control and the achievable floor
+
+*Question:* is the residual in the action head or in the bearing? *Method:*
+`exp8_oracle.py` fits 2×512 MLP turn heads on the **frozen** final latent with
+and without the teacher's true bearings appended, trains on one rollout set and
+scores held-out turn KL on another. Oracle features are the teacher's complete
+sufficient statistic: `sin/cos` of both bearings, `alpha`, and both `|bearing|`.
+*Runtime:* ~4 min. *Sample:* 49 152 / 49 152.
+
+| turn head | held-out turn KL |
+|---|---|
+| frozen policy action head (the checkpoint) | 0.511 |
+| fresh head, frozen final latent only | 0.640 |
+| **fresh head, frozen final latent + true bearings** | **0.040** |
+| fresh head, **true bearings only** (no latent) | **0.011** |
+| fresh head, raw ego input features only | 1.348 |
+
+*Interpretation.* Turn KL collapses by 16× the moment the bearing is supplied,
+and a head that sees *only* the bearings — no latent, no observation — reaches
+`0.011` — the same order as the bf16 storage noise of `expert_probs` (D1) plus
+the fitted head's own slack, though this session did not separate the two. So the
+achievable floor is zero for practical purposes, the action head has ample capacity, and
+the entire residual is the bearing. The `0.640` for latent-only against the real
+head's `0.511` is the probe's handicap, not a finding: 49k samples cannot match a
+head trained for 167.6M steps. Comparisons are therefore made against `0.640`
+wherever a fitted head is involved.
+
+Measured angular error against outcome, on the `alpha > 0.99` tokens where the
+frontline bearing is the whole teacher (error from a final-latent probe, so the
+error attached to each token is an honest held-out error):
+
+| probe error | tokens | turn KL | teacher-turn → policy-straight | left↔right flip | sharp↔normal |
+|---|---|---|---|---|---|
+| [0°, 1°) | 4071 | 0.353 | 0.201 | 0.006 | 0.016 |
+| [1°, 2°) | 3779 | 0.354 | 0.211 | 0.004 | 0.015 |
+| [2°, 3°) | 3459 | 0.403 | 0.224 | 0.007 | 0.023 |
+| [3°, 5°) | 5560 | 0.452 | 0.239 | 0.009 | 0.028 |
+| [5°, 8°) | 5156 | 0.594 | 0.304 | 0.019 | 0.039 |
+| [8°, 12°) | 3648 | 0.757 | 0.329 | 0.039 | 0.073 |
+| [12°, 20°) | 2890 | 0.847 | 0.247 | 0.093 | 0.153 |
+| [20°, 45°) | 2275 | 0.855 | 0.090 | 0.193 | 0.214 |
+| [45°, 180°] | 1316 | 1.048 | 0.011 | 0.441 | 0.131 |
+
+Turn KL rises monotonically with measured bearing error, and the *kind* of error
+changes with it: under-turning dominates up to ~12° and left/right flips take
+over past 20°. Two cautions. The floor of `0.35` in the lowest bin is not a
+contradiction of Exp 8's `0.040` — the probe's accuracy on a token is not the
+head's accuracy on that token, and the two extract different, partially
+overlapping approximations. And plugging the probe's *point estimate* into the
+analytic teacher scores `2.54`, far worse than the policy's `0.568`: a steep ramp
+punishes point estimates, and the policy is correctly hedging instead. The
+fitted-head calibration in Exp 12 is the sound way to price an error, and is what
+the executive summary quotes.
+
+### Exp 9 — representation audit: absolute Fourier vs ego-relative geometry
+
+*Question:* is the geometry lost before the trunk, or does the trunk fail to
+compute it? *Method:* `exp9_collect_obs.py` dumps the policy's own observation
+channels unencoded; `exp9_repr.py` builds two feature sets carrying **identical
+information** and fits the same flat MLP probe to each, held out as before.
+Set A is every token's absolute position through the model's own 8-frequency
+Fourier expansion plus its scalar channels — what the ship encoder actually
+receives. Set B is the same tokens with the toroidal displacement to the ego ship
+rotated into the ego frame, handed over as `(dx, dy, distance, unit vector)`.
+*Runtime:* ~8 min. *Sample:* 49 152 / 49 152.
+
+| target | features | dim | median | p90 | median @ `alpha≈1` |
+|---|---|---|---|---|---|
+| frontline | A absolute Fourier | 1248 | 27.94 | 131.9 | 19.22 |
+| frontline | **B ego-relative** | 624 | **16.69** | **84.3** | **13.25** |
+| personal | A absolute Fourier | 1248 | 35.33 | 164.6 | 16.56 |
+| personal | **B ego-relative** | 624 | **23.58** | **160.0** | **15.86** |
+
+*Interpretation.* Same information, same probe, same budget: the ego-relative
+encoding is ~1.6× more accurate. But note that **both** are far worse than the
+trunk's own final latent (`7.0°`), so this flat probe is sample-complexity
+limited and its absolute levels say nothing about the observation's ceiling. Only
+the A-vs-B gap is informative here. Exp 10 removes the confound by giving the
+probe the teacher's own inductive bias.
+
+### Exp 10 — sum-pooling probe: the decisive representation result
+
+*Question:* with the right structure, how precisely can the bearing be recovered
+from the observation — and does the encoding matter once structure is available?
+*Method:* `exp10_deepsets.py` fits a masked sum-pooling probe (per-token φ →
+masked mean and max → ρ, ~200k parameters, `h=192`) over the 24 entity tokens.
+Three cells differ **only** in each token's geometric channels. `abs_fourier`
+gets absolute Fourier positions *plus the ego's own absolute position broadcast
+to every token* — the friendliest possible absolute encoding. `ego_relative` gets
+ego-frame displacement, distance and an explicit unit vector. `ego_rel_nounit`
+gets the same minus the unit vector. Held out as before.
+*Runtime:* ~6 min. *Sample:* 49 152 / 49 152.
+
+| cell | token dim | target | median | mean | p90 | <3° | <10° | median @ `alpha≈1` |
+|---|---|---|---|---|---|---|---|---|
+| abs_fourier | 84 | frontline | 29.36 | 48.02 | 129.3 | 0.069 | 0.217 | 22.62 |
+| **ego_relative** | 26 | frontline | **5.37** | **10.22** | **21.6** | 0.307 | 0.725 | **4.71** |
+| ego_rel_nounit | 24 | frontline | 13.77 | 29.42 | 84.7 | 0.137 | 0.397 | 10.71 |
+| abs_fourier | 84 | personal | 23.39 | 46.85 | 135.3 | 0.167 | 0.363 | 10.49 |
+| **ego_relative** | 26 | personal | **5.49** | 16.52 | **40.7** | 0.411 | 0.623 | **2.42** |
+| ego_rel_nounit | 24 | personal | 7.76 | 21.09 | 57.6 | 0.319 | 0.548 | 4.21 |
+
+For reference, the trunk's final latent (Exp 7): frontline `7.00` median / `76.1`
+p90; personal `7.92` / `55.4`, from 1.945M parameters and 167.6M environment
+steps.
+
+*Interpretation.* This is the session's strongest result.
+
+* A **200k-parameter** probe trained on **49k tokens** matches or beats the full
+  trunk: frontline median `5.37` vs `7.00`, and p90 `21.6` vs `76.1` — a 3.5×
+  smaller tail, which is where the KL lives. On the personal bearing at
+  `alpha≈1` it reaches `2.42°` against the trunk's `7.09°`. The one stratum where
+  it does not win is the frontline bearing at `alpha≈1` (`4.71°` vs the trunk's
+  `4.69°`) — a tie, and worth stating plainly: on its best-served states the
+  trunk is already as good as the probe, and the probe's advantage is
+  concentrated in the tail and in the states the trunk handles worst.
+* The **same probe** on the trunk's own absolute-Fourier encoding gets `29.36°`.
+  The gap between `29.36` and `5.37` is caused by nothing but the geometric
+  channels, holding architecture, data and budget fixed.
+* The **unit vector alone is worth 2.6×** (`5.37` vs `13.77`). This is the
+  pairwise term `unit(p_j − p_i)` that attention structurally cannot produce, and
+  it is the single most load-bearing feature in the comparison.
+
+Together these say the observation contains the geometry, the trunk's encoding
+does not make it cheaply available, and the deficit is representational rather
+than a matter of parameters or samples.
+
+### Exp 11 — does the better representation actually buy turn KL?
+
+*Question:* chain Exp 10 into the metric that matters. *Method:*
+`exp11_intervention.py` fits the ego-relative sum-pooling bearing probe on the
+`train` rollouts, reads its bearing estimate out on `heldout` and `heldout2`
+(out-of-sample in both), fits a turn head on `heldout` and scores it on
+`heldout2`. Every number is an unseen-state number.
+*Runtime:* ~6 min. *Sample:* three independent 49 152-token sets.
+
+Bearing probe on `heldout2`: frontline median `5.82` / p90 `23.1`; personal
+median `4.58` / p90 `37.9`.
+
+| turn head | held-out turn KL |
+|---|---|
+| frozen policy action head | 0.511 |
+| fresh head, latent only | 0.619 |
+| fresh head, latent + **predicted** bearing | 0.556 |
+| fresh head, predicted bearing only | 0.710 |
+| fresh head, latent + **true** bearing | 0.035 |
+| fresh head, true bearing only | 0.011 |
+
+*Interpretation.* The predicted bearing improves its own baseline by 10%
+(`0.619 → 0.556`) and lands nowhere near the oracle's `0.035`. A median of `5.8°`
+is simply not accurate enough: Exp 12 shows that KL is set by the p90, and `23°`
+at p90 costs most of the residual on its own. **A better representation is
+necessary but not sufficient on its own at probe budget** — which is why the
+recommendation is an end-to-end architecture change, where the trunk gets 167M
+steps to exploit the representation rather than 49k tokens. Reporting this cell
+as a success would be the easiest mistake available here.
+
+### Exp 12 — how accurate must the bearing be, and the left/right gap
+
+*Question (part 1):* price a bearing error properly, replacing Exp 6's
+assumed-hedging estimate. *Method:* `exp12_calib.py` corrupts the teacher's true
+bearings with a wrapped Gaussian of known scale, **fits** a turn head on the
+corrupted bearing (so optimal hedging is learned, not assumed), and scores
+held-out turn KL. *Runtime:* ~5 min.
+
+| σ (rad) | median error | p90 error | held-out turn KL |
+|---|---|---|---|
+| 0 | 0.00° | 0.00° | 0.011 |
+| 0.005 | 0.19° | 0.47° | 0.013 |
+| 0.01 | 0.38° | 0.94° | 0.018 |
+| 0.02 | 0.77° | 1.88° | 0.039 |
+| 0.035 | 1.35° | 3.31° | 0.085 |
+| 0.05 | 1.94° | 4.72° | 0.138 |
+| 0.08 | 3.08° | 7.51° | 0.237 |
+| 0.12 | 4.61° | 11.27° | 0.340 |
+| 0.20 | 7.70° | 18.88° | 0.477 |
+| 0.35 | 13.51° | 32.83° | 0.620 |
+
+The checkpoint measures turn KL `0.511`, which sits between the `σ = 0.20` and
+`σ = 0.35` rows — i.e. an equivalent bearing error of roughly median `8.5°` /
+p90 `21°`. The direct layerwise probe measures the final latent at median `7.0°`.
+Those agree as well as they can: a probe is a *lower bound* on the error the head
+suffers, so the head's effective error must be at least the probe's, and it is.
+**Measured bearing error quantitatively explains the observed turn KL.**
+
+Read as a requirement: turn KL `0.24` needs p90 `7.5°`; turn KL `0.14` needs p90
+`4.7°`; turn KL `0.04` needs p90 `1.9°`. The ego-relative sum probe's p90 of
+`21.6°` interpolates to ≈`0.51`, against the `0.556` Exp 11 measured — close, but
+the agreement should not be read as tighter than it is: this curve is generated
+by Gaussian corruption, whose p90 is always 2.45× its median, and neither the
+trunk's error distribution nor the probe's has that shape. The curve is reliable
+for *how steep* the requirement is and unreliable as a point predictor for any
+particular estimator.
+
+*Question (part 2):* does the left/right gap survive matching on `|bearing|`?
+Re-weighting the right-hand bands to the left-hand `|bearing|` histogram:
+
+| band (rad) | n left | n right | KL left | KL right |
+|---|---|---|---|---|
+| [0, 0.03) | 3038 | 3065 | 0.392 | 0.413 |
+| [0.03, 0.06) | 2637 | 2923 | 0.343 | 0.346 |
+| [0.06, 0.09) | 2235 | 2437 | 0.441 | 0.462 |
+| [0.09, 0.12) | 1774 | 2073 | 0.701 | 0.819 |
+| [0.12, 0.2) | 2973 | 3871 | 0.817 | 0.959 |
+| [0.2, 0.3) | 1814 | 2447 | 0.622 | 0.733 |
+| [0.3, 0.42) | 1136 | 1556 | 0.552 | 0.754 |
+| [0.42, 0.7) | 1310 | 1707 | 0.475 | 0.697 |
+| [0.7, 1.2) | 1586 | 1888 | 0.230 | 0.315 |
+| [1.2, 2.0) | 2342 | 2323 | 0.144 | 0.193 |
+| [2.0, 3.2) | 2007 | 2010 | 0.267 | 0.355 |
+
+Matched: left `0.454`, right `0.537` — a `0.083` nat gap that survives and is
+present in every band, widening with `|bearing|`.
+
+### Exp 13 — is the left/right gap geometric?
+
+*Method:* `exp13_side.py` splits the final-latent bearing probe's held-out error
+by side, matched to the band `0.03 < |bearing| < 0.7`. *Runtime:* ~2 min.
+
+| target | side | n | median error | p90 error |
+|---|---|---|---|---|
+| frontline | left | 13 494 | 5.33° | 24.08° |
+| frontline | right | 16 080 | 5.14° | 23.32° |
+| personal | left | 4 417 | 8.87° | 39.08° |
+| personal | right | 5 515 | 8.44° | 36.32° |
+
+Signed error (positive = predicted anticlockwise of truth): frontline median
+`+0.12°`, mean `−0.73°`; personal median `−0.20°`, mean `−1.51°`.
+
+*Interpretation.* The representation is **symmetric in error magnitude** — if
+anything marginally better on the right — so the `0.083` nat gap is not a
+geometric or sign-convention defect. Exp 6 already verified the teacher
+reconstruction to `8.4e-4`, which rules out action indexing independently. Two
+things push in the observed direction instead: a small **leftward signed bias**
+of `0.7–1.5°` in the latent's bearing (at this ramp's steepness a `0.57°`
+systematic offset is worth `0.042` nats, per Exp 6), and a genuinely
+**right-skewed teacher** — 54% of turning tokens in the matched band have a
+positive bearing. A leftward-biased estimator on a right-skewed target costs
+more on the right. Plausible but not proven; it is a cheap follow-up, not a
+blocker, and it is worth ≤ 20% of the residual either way.
+
 ## Recurrent-state findings
 
 The rollout-start hidden state barely matters for this metric. On identical
@@ -365,6 +785,17 @@ states is **not** meaningfully contaminated by staleness at this scale — but
 that is because the model is nearly memoryless *for the BC target*, which is
 itself a finding: the teacher's turn head is a pure function of the current
 state, so there is nothing for recurrence to contribute.
+
+Session 2 checked this the way the brief asked — by probing *before and after*
+each temporal sublayer rather than inferring memorylessness from a zeroed
+rollout-start state. The recurrent stack still runs through the whole sequence
+in both cases, so this is the sound test. `b0.temporal0` improves the
+frontline-bearing probe from `11.23°` to `10.38°`; `b1.temporal0` improves it
+from `7.19°` to `7.00°` (Exp 7). Both gains are small, and neither is
+attributable to recurrence as such — a Griffin temporal block carries a gated
+MLP path, so some of it is simply more nonlinearity. Recurrence does not
+meaningfully improve bearing estimation, and the spatial sublayers account for
+essentially all of the trunk's progress on it (`2.9°` and `2.5°` per layer).
 
 ## Auxiliary-loss findings
 
@@ -406,45 +837,134 @@ production value. Any future offline evaluator must use the same three masks;
 the check is cheap — the valid denominator must equal
 `num_steps × num_envs × num_ships / 2` in `ego_pass`.
 
-## Recommended next experiments
+### D3 — `loss/behavioral_cloning_kl` averages over the update epochs (confirmed)
 
-Ordered by information per GPU-minute, given what the hour established.
+*Symptom:* the run logs BC KL ≈`0.316` while the checkpoint measures `0.44–0.57`
+pre-update on fresh rollouts.
+*Root cause:* `accum_scalar` is created once per `_update_epochs`
+(`ppo.py:2586`) and `bc_kl` is listed in the `_additive` diagnostics table
+(`ppo.py:2711`), so every micro-batch of every minibatch of all four epochs
+contributes to one mean. The logged number is the average over the descent, not
+the policy's value before it.
+*Measured effect:* Exp 5 measured four production epochs moving turn KL from
+`0.4335` to `0.3303` **on the rollout being scored**; the mean over that descent
+is ≈`0.32`, which is what the run reports. So the headline BC number has been
+flattering itself by roughly `0.13` nats.
+*Fix:* not applied — it is a logging change with no effect on training, and
+applying it mid-investigation would break comparability with the run's own
+history. Log epoch 0 separately and use *that* for plateau detection.
 
-1. **Regress the bearing directly (1 GPU-hour).** Add a diagnostic head that
-   predicts `sin/cos` of the teacher's `frontline_strategy().bearing` and of the
-   personal intercept bearing, trained alongside BC, and log the angular error
-   in degrees. The turn KL is now a known monotone function of that error
-   (Exp 6 table), so this converts an opaque nats number into a degrees number
-   that can be compared against the ~3° needed. It also separates "the trunk
-   does not encode the bearing" from "the action head cannot express it".
-2. **Bearing-error attribution by input ablation (30 min).** Recompute the
-   frontline bearing from the observation alone offline and compare with the
-   privileged `TensorState` computation. `frontline_strategy` uses toroidal
-   displacements over *all* ships plus zone geometry; if the observation's
-   encoding loses precision in any of those (quantisation, vision range,
-   belief-imputed enemies), the ceiling is a representation problem, not a
-   capacity problem. This is the largest unresolved question and it is cheap.
-3. **Spatial-depth cell, matched data (1–2 GPU-hours).** Only after (2). Compare
-   `n_spatial_per_block` 2 → 4 at `d_model=128` against baseline, same rollouts,
-   same optimizer steps, tracking the *turn* KL learning curve rather than a
-   final value. Global bearing is a relational reduction over 24 entity tokens,
-   so spatial depth is the right first knob, ahead of width.
-4. **Teacher-steepness sensitivity (30 min, diagnostic only).** Re-run BC
-   briefly against a diagnostic teacher with `turn_angle_ramp=(0.03, 0.30)` —
-   the same decision boundary, a gentler link function. If the achievable KL
-   scales with the ramp width as Exp 6 predicts, the residual is confirmed as
-   estimator precision passed through a steep ramp, and the number to quote for
-   the production teacher becomes "±N degrees", not "0.44 nats". Do **not**
-   change the production teacher.
-5. **Reconcile the online metric (15 min).** Log `loss/behavioral_cloning_kl`
-   for epoch 0 separately from the 4-epoch mean. If the pre-update value is
-   ~0.45 and the logged mean is ~0.32, the run's headline BC number has been
-   flattering itself by roughly 0.13 nats all along, and plateau detection
-   should use the epoch-0 value.
+## Recommended fix
 
-Deliberately **not** recommended: removing the next-state auxiliary (Exp 4/5
-show it is orthogonal and small), widening the model before (2), or repeating
-the dataset-size sweep.
+Ranked by evidence, not by cost.
+
+### 1. Give the spatial sublayers relative position — the primary recommendation
+
+Supply `unit(p_j − p_i)` and `log(1 + |p_j − p_i|)`, toroidally wrapped and
+rotated into the query ship's frame, as a **pairwise** term inside spatial
+attention: project it and add it to the value (and/or as an attention bias), the
+way a geometric transformer does. This is the one quantity the current
+architecture structurally cannot form, and it is exactly the term the teacher
+sums.
+
+*Evidence:* Exp 10. Holding architecture, data and budget fixed, the ego-relative
+cell reaches median `5.37°` / p90 `21.6°` against `29.36°` / `129°` for the
+absolute-Fourier cell; withholding only the unit vector costs `5.37 → 13.77`. A
+200k-parameter probe on 49k tokens beats the 1.945M-parameter trunk trained on
+167.6M steps. Exp 12 converts an improvement in p90 into turn KL directly.
+
+*Expected effect, with its caveat:* Exp 12's curve says p90 `7.5°` is worth turn
+KL ≈`0.24` and p90 `4.7°` ≈`0.14`. Read that as an order of magnitude, not a
+forecast — Exp 12 corrupts the bearing with a *Gaussian*, whose p90 is fixed at
+2.45× its median, while the trunk's error distribution is far heavier-tailed
+(p90 `76°` against median `7.0°`, a ratio of 10.9). The mapping from an error
+*distribution* to KL is therefore only calibrated in the middle of its range,
+which is why Exp 12's equivalent-noise reading of the checkpoint (median `8.5°`)
+sits above the probe's direct measurement (`7.0°`). What the evidence supports
+firmly is the direction and the rough size: the tail is what costs, and the
+ego-relative probe cuts the tail by 3.5× using four orders of magnitude less
+data than the run had.
+
+*Cost:* one extra projection per spatial sublayer plus an `(N+M)²` displacement
+tensor — 24 tokens, so negligible. It does change `ModelConfig` and the
+checkpoint schema.
+
+### 2. Bearing auxiliary loss — cheap, do it alongside, not instead
+
+Add a diagnostic-turned-auxiliary head predicting `sin/cos` of
+`frontline_strategy().bearing` and of the intercept bearing, and log the angular
+error in degrees. Exp 7 shows the signal is learnable from the latent at every
+depth, so this is a real training signal and a permanent instrument. But it
+cannot create information the encoding does not afford — it presses the trunk to
+spend capacity on the bearing without making the bearing cheaper to compute.
+Pair it with (1); do not run it alone and conclude anything.
+
+### 3. More spatial depth — supported, but the slow axis
+
+Exp 7's curve is monotone and unsaturated at the last layer, so
+`n_spatial_per_block` `2 → 4` will help. But two spatial sublayers bought
+`10.38° → 7.19°`, so extrapolating to `3°` needs many more, at a linear cost in
+compute. Worth running as the control cell *against* (1) on matched data and
+matched optimizer steps — if (1) at depth 2 beats depth 4 without it, the
+representational claim is confirmed in the only way that counts.
+
+### Explicitly not recommended
+
+* **Widening the model.** Nothing in Exp 7–10 implicates width; the winning probe
+  is an order of magnitude smaller than the trunk.
+* **More or more diverse BC data.** The winning probe used 49k tokens where the
+  run had 167.6M environment steps. Sample complexity is not the constraint.
+* **Removing the next-state auxiliary.** Closed in session 1 (Exp 4, Exp 5):
+  orthogonal, 6% of trunk gradient, and removing it is not faster.
+* **Touching the action head, or reweighting/resampling difficult angular
+  regions.** Exp 8 and Exp 11 exonerate the head at `0.011–0.040` given the
+  bearing. Reweighting redistributes a precision deficit; it does not fix one.
+* **Softening the teacher's ramp.** Session 1 suggested this as a diagnostic. It
+  is no longer needed — Exp 12 measures the ramp's price directly, with hedging
+  fitted rather than assumed — and changing the teacher would change what is
+  being imitated.
+
+### How to measure any of these
+
+Both metrics, on fresh rollouts, or the result is not interpretable:
+
+1. **held-out turn KL** over `bc_valid & actor_mask & alive`, on rollouts the
+   update has not touched (`exp7_collect.py` + the KL block of `exp8_oracle.py`);
+2. **held-out bearing-probe error** at the final latent, median **and p90**
+   (`exp7_probe.py`).
+
+A change that improves both is real. A change that improves turn KL without
+improving probe error is fitting the rollout it is scored on — Exp 5 measured
+that failure mode at `0.43 → 0.20` on the frozen batch while the next fresh
+rollout scored `2.59`.
+
+## Remaining uncertainties and the cheapest next experiments
+
+1. **Does (1) actually reach p90 < 5° end to end?** (~1–2 GPU-hours.) One `bc`
+   run with relative-position attention in the spatial sublayers against a
+   matched baseline, same seed, same data, same optimizer steps, tracking the
+   turn-KL curve and the probe error rather than a final number. This is the
+   experiment that settles the recommendation, and nothing above substitutes for
+   it.
+2. **Is the probe a tight lower bound on the head's error?** (~20 min.) Fit a
+   turn head on `[frozen latent + probe-predicted bearing]` *with the probe
+   trained to convergence on much more data* than 49k tokens. If the gap between
+   Exp 11's `0.556` and Exp 8's `0.040` closes as the probe improves, the whole
+   chain is confirmed; if it does not, the latent's bearing is less usable than
+   the probe suggests and (1) matters even more.
+3. **The `0.083` nat left/right gap.** (~30 min.) Test the leftward-bias
+   explanation directly: subtract the measured signed bias from the probe's
+   bearing and recompute the matched left/right KL. If the gap shrinks, it is a
+   calibration artefact of the estimator, not a defect.
+4. **Does the encoder really lose precision?** (~15 min.) Exp 7 shows the
+   101-channel raw features probing better than their own 128-d encoding
+   (`14.25°` vs `17.04°`). Re-run with more probe capacity and several seeds; if
+   it holds, the encoder's two RMSNorms on a 101→256→128 path are worth a look.
+5. **Log the pre-update BC KL separately** (~15 min, now a confirmed defect
+   rather than a hypothesis). `loss/behavioral_cloning_kl` averages all four
+   update epochs (`ppo.py:2586`, `2711`). Logging epoch 0 separately would move
+   the run's headline BC number by roughly `0.13` nats and is what plateau
+   detection should use.
 
 ## Raw-data appendix
 
@@ -459,6 +979,9 @@ exp4_grad.py        top_level gradient diagnostics
 exp5_ns.py          next_state_coef 1 vs 0 matched fitting
 exp6_angle.py       teacher reconstruction + bearing-error pricing
 ```
+
+Session 2's scripts are listed below; Exp 6's bearing-error pricing is superseded
+by Exp 12, which fits the hedging rather than assuming it.
 
 `dump_rollout11.pt` (18 MB, not committed) holds the per-token evidence for
 Exp 3 and Exp 6: teacher probabilities, policy turn log-probs, the three masks,
@@ -506,3 +1029,68 @@ tokens, and the per-shard spread (Exp 1) bounds the sampling error at ±0.06.
 Caveat on Elo: `runtime.elo_eval.step/flush` are stubbed out in every probe, so
 no ladder games were played and no rating was written. The checkpoint, its
 `roster.json` and its `elo_history.jsonl` are untouched.
+
+### Session 2 scripts, sample sizes and runtimes
+
+```
+exp7_collect.py     freeze checkpoint, burn in, collect rollouts, capture the 8
+                    trunk tap points + raw observation channels -> probe_<tag>.pt
+exp7_probe.py       layerwise (sin, cos) bearing probes, train/held-out split
+exp8_oracle.py      oracle-bearing turn heads, achievable floor, error -> KL bins
+exp9_collect_obs.py raw observation dump (superseded: exp7_collect.py now does this)
+exp9_repr.py        flat-MLP probe, absolute Fourier vs ego-relative features
+exp10_deepsets.py   sum-pooling probe; the decisive representation comparison
+exp11_intervention.py  predicted bearing -> turn KL, three-way split
+exp12_calib.py      fitted-head bearing-error calibration; left/right matching
+exp13_side.py       probe error and signed bias by side
+```
+
+Reproduction, in order, from the repo root:
+
+```
+uv run --no-sync python benchmarks/bc_diagnostics/exp7_collect.py train    3 3 0   # ~3 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp7_collect.py heldout  3 3 1   # ~3 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp7_collect.py heldout2 3 3 2   # ~3 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp7_probe.py frontline          # ~6 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp7_probe.py personal           # ~6 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp8_oracle.py                   # ~4 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp9_collect_obs.py train   3 3 0
+uv run --no-sync python benchmarks/bc_diagnostics/exp9_collect_obs.py heldout 3 3 1
+uv run --no-sync python benchmarks/bc_diagnostics/exp9_repr.py                     # ~8 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp10_deepsets.py                # ~6 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp11_intervention.py            # ~6 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp12_calib.py                   # ~5 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp13_side.py                    # ~2 min
+```
+
+Arguments are `<tag> <n_rollouts> <n_burn_in> <seed>`. Total ≈55 GPU-minutes on
+the 8 GB dev card. Each `probe_<tag>.pt` is 213 MB and each `obs_<tag>.pt` 25 MB;
+both patterns are gitignored. Every `exp*_rows.json` alongside them is the raw
+output backing the tables above and *is* committed — they are a few kB each.
+
+Sample sizes. Each tag is 3 rollouts after 3 burn-in rollouts at `num_envs=128`,
+`num_steps=128`, subsampled to every 4th timestep (`TSTRIDE = 4`; consecutive
+steps are near-duplicates). That is 32 × 384 × 8 = 98 304 ship tokens per tag, of
+which exactly **49 152** pass `bc_valid & actor_mask & alive` — half, because
+`ego_pass` makes only team 0 actor tokens. Probes train on `train` and report on
+`heldout` (Exp 7–10) or on `heldout2` (Exp 11–13, where `heldout` is spent
+fitting the turn head). The three tags come from seeds 0/1/2 and are independent
+draws, so no probe or head is ever scored on a state it was fitted on.
+
+Two collection details that are easy to get wrong and silently fatal:
+
+* Temporal sublayers are reached through `forward_sequence`, not `forward`, so a
+  `register_forward_hook` never fires on them. `exp7_collect.py` wraps the method
+  and restores it afterwards.
+* Spatial sublayers and the encoder emit `(T·B, N+M, D)`; a temporal sublayer in
+  sequence mode emits `(B·N, T, D)`. Reshaping one as the other misaligns states
+  against labels, and the probe reports the result as "this layer carries no
+  information" rather than failing.
+
+Configuration is otherwise identical to session 1 (see the block above):
+`d_model=128`, 2 Yemong blocks × (2 spatial + 1 temporal), `full_attention` map
+reads, 24 entity tokens, world size 16384 px with play inside a 2600-px radius,
+position encoded as 8 base-2 Fourier frequencies per axis (finest period 128 px),
+`n_bullet_cross_per_block=0`. `runtime.elo_eval.step/flush` are stubbed in every
+probe, so no ladder games were played and no rating was written; the checkpoint,
+its `roster.json` and its `elo_history.jsonl` are untouched.
