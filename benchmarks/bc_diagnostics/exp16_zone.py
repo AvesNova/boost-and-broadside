@@ -1,7 +1,10 @@
 """Exp 16: in pure zone navigation, which teacher quantity is the trunk missing?
 
-Exp 15 found turn KL is *highest* with zero visible enemies (0.571), where the
-teacher reduces to
+With zero visible enemies the teacher reduces to three terms instead of four --
+`combat_force` vanishes identically -- which makes it the cleanest stratum for
+isolating the zone machinery. (It is *not* a harder stratum: its apparently
+elevated KL is the `alpha = 1` effect, since no visible enemies implies
+`alpha = 1`. See Exp 15.) There,
 
     force = (1-recovery)*objective_force + recovery*spawn_dir + separation
     objective_force = sum_z preference_z * unit(zone_z - me)

@@ -1,0 +1,37 @@
+[
+ {
+  "depth": "frozen policy head",
+  "relbias": false,
+  "heldout_turn_kl": 0.5112
+ },
+ {
+  "depth": 0,
+  "relbias": false,
+  "params": 35079,
+  "heldout_turn_kl": 0.5029
+ },
+ {
+  "depth": 1,
+  "relbias": false,
+  "params": 232583,
+  "heldout_turn_kl": 0.6678
+ },
+ {
+  "depth": 2,
+  "relbias": false,
+  "params": 430087,
+  "heldout_turn_kl": 0.8175
+ },
+ {
+  "depth": 4,
+  "relbias": false,
+  "params": 825095,
+  "heldout_turn_kl": 0.9652
+ },
+ {
+  "depth": 2,
+  "relbias": true,
+  "params": 430799,
+  "heldout_turn_kl": 0.797
+ }
+]

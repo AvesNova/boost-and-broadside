@@ -30,17 +30,23 @@ What session 3 measured, all on fresh held-out rollouts under
 1. **The trunk is not missing the teacher's intermediates.** It represents
    `enemy_strength` at R² `0.84`, `allied_strength` `0.81`, a visible-enemy
    *count* `0.68`, zone `need` `0.68`, and every constituent direction to
-   `9–20°`. Appending any single one of them to the frozen latent moves held-out
-   turn KL by `0.00–0.02`. The "softmax conveys *which* but not *how many*"
+   `9–20°`. Of the quantities actually tested as *appended features* — the zone
+   family (`need`, `preference`, per-zone geometry, allied pressure) and the
+   three force terms — no single one moves held-out turn KL by more than `0.12`,
+   and the zone family moves it by `0.00–0.02`. (`enemy_strength` and the counts
+   were probed but not appended, since the stratum where they matter is not the
+   hard one.) The "softmax conveys *which* but not *how many*"
    limitation from `docs/architecture.md` is real but is evidently worked around
    (Exp 14, 16).
 2. **The trunk does not compute the teacher compositionally.** The bearing
    itself (`7.03°`) is represented *more* accurately than any of its own inputs
    — `dir_objective` `8.96°`, `dir_enemy` `9.86°`, `dir_separation` `20.14°`.
-   The output of a sum cannot beat its terms, so the trunk has learned a **direct
-   map to the answer**, not the teacher's derivation. This is why hunting for
-   "the missing intermediate" kept coming up empty: there is no such thing to
-   find (Exp 14).
+   A probe measures how *accessibly* a quantity is encoded, so strictly this
+   says the trunk retains the answer more accessibly than the ingredients —
+   either because it never computes them, or because it discards them once used.
+   Either way it is not carrying the teacher's derivation, which is why hunting
+   for "the missing intermediate" kept coming up empty: there is no maintained
+   intermediate to be missing (Exp 14).
 3. **The teacher's bearing is ill-conditioned, and that part is irreducible.**
    It is the *angle of a sum* of near-cancelling vectors, so
    `d(angle) ≈ |error| / |force|`. Analytically — perturbing one term by `0.02`
@@ -51,10 +57,16 @@ What session 3 measured, all on fresh held-out rollouts under
    this, and the teacher is genuinely near-indifferent between directions there.
    Worth ~32% of the affected stratum, so roughly 10–15% of the total residual —
    real, mechanistic, and **not** the whole answer (Exp 19).
-4. **The hardest states are the simplest ones.** Turn KL peaks at `0.571` when
-   **zero** enemies are visible — where the teacher collapses to pure zone
-   navigation and every input it uses is exactly present in the observation.
-   Neither perception nor fleet coordination is the binding constraint (Exp 15).
+4. **Frontline navigation is the harder half, and it is not a perception
+   problem.** Turn KL is `0.568` at `alpha ≈ 1` (pure frontline navigation)
+   against `0.419` at `alpha ≈ 0` (pure combat). Within `alpha > 0.99`, whether
+   *any* enemies are visible makes no difference — `0.5709` with none against
+   `0.5633` with one or more. So the difficulty tracks which objective the
+   teacher is pursuing, not how much it can see. (An earlier reading of this —
+   "KL peaks when nothing is visible, so the hardest states are the simplest" —
+   was a confound: zero visible enemies *implies* `alpha = 1`. Corrected here;
+   the stratum is still the right clean subset for Exp 16/18/19, because
+   `combat_force` vanishes identically in it.) (Exp 15)
 5. **Refuted:** the belief/visibility mismatch. `frontline_strategy` counts only
    currently-visible enemies while the trunk attends over `BELIEF_VALID`
    ("visible or previously observed"), but remembered-but-invisible tokens go
@@ -966,12 +978,28 @@ The same run produced the finding that redirected the rest of the session:
 | 3 | 5 836 | 0.4260 |
 | 4 | 3 184 | 0.5028 |
 
-**Turn KL is highest when nothing is visible.** With no visible enemies the
-teacher collapses to pure zone navigation: `combat_force` vanishes identically,
-`enemy_zone` is zero, and every input it uses is exactly present in the
-observation. The hardest states are the ones where the teacher's computation is
-simplest and fully observable — so neither perception nor fleet coordination is
-the binding constraint.
+At first reading this says turn KL is highest when nothing is visible, and that
+the hardest states are therefore the ones where the teacher's computation is
+simplest. **That reading is a confound and is withdrawn.** Zero visible enemies
+*implies* `alpha = 1`, and session 1 already had `alpha ≈ 1` harder than
+`alpha ≈ 0`. Conditioning on `alpha > 0.99` removes the effect entirely:
+
+| within `alpha > 0.99` | tokens | turn KL |
+|---|---|---|
+| 0 visible enemies | 21 312 | 0.5709 |
+| ≥1 visible enemy | 10 842 | 0.5633 |
+
+| stratum | tokens | turn KL |
+|---|---|---|
+| `alpha ≈ 0` (pure combat) | 8 983 | **0.4191** |
+| `alpha ≈ 1` (pure frontline navigation) | 32 154 | **0.5683** |
+
+What survives is the `alpha` split, which is session 1's finding at a larger
+sample: **pure frontline navigation is the harder half, and visibility is not
+what makes it hard.** The zero-visible-enemy stratum remains the right subset
+for Exp 16/18/19 — `combat_force` vanishes identically there, so the teacher
+reduces to three terms instead of four — but it is a *clean* stratum, not a
+*hard* one.
 
 ### Exp 16 / 18 — hand the head the teacher's own terms
 
@@ -1052,6 +1080,86 @@ stratum's mean KL would fall `0.5479 → 0.3744` — so conditioning accounts fo
 ~43%. Call it 10–15% of the total residual. It is a real, mechanically
 demonstrated amplifier and it is **not** the whole answer: the best-conditioned
 octile still sits at KL `0.374` with `4.6°` of probe error.
+
+### Exp 17 / 20 — from-scratch depth sweep (a failed experiment) and the relative-bias contrast
+
+*Question:* is the ceiling this trunk, or the observation? *Method:*
+`exp17_depth.py` trains small transformers from scratch on
+(observation → teacher turn distribution), supervised. Every arm keeps the
+project's transfer constraints: absolute Fourier positions in one shared global
+frame, O(N) encoder cost, permutation-equivariant attention, no weight whose
+shape depends on N. The `relbias` arms add one scalar per (query, key, head)
+built from the toroidal displacement — no per-pair token, no per-pair value, so
+the encoder stays O(N) and the weights stay size-agnostic. This is the
+transfer-safe form of the thing Exp 10 tested in a transfer-unsafe way.
+*Runtime:* ~60 min. *Sample:* 12 288 scenes per tag.
+
+| depth | relative bias | parameters | held-out turn KL |
+|---|---|---|---|
+| 1 | no | 279 687 | 1.5441 |
+| 2 | no | 477 191 | 1.8170 |
+| 4 | no | 872 199 | 1.9418 |
+| 6 | no | 1 267 207 | 1.9566 |
+| 2 | **yes** | 477 903 | **1.5368** |
+| 4 | **yes** | 873 623 | **1.7638** |
+
+***This experiment failed and its levels must not be cited.*** Every arm scores
+`1.5`–`2.0` against the checkpoint's `0.51`, and held-out KL **rises**
+monotonically with depth. That is the signature of a data-limited fit, not a
+capacity measurement: 12 288 scenes cannot stand in for 167.6M environment
+steps. Exp 21 later pinned the threshold — on this collection size anything
+above roughly 200k parameters overfits — which explains every row here.
+
+The one contrast drawn *within* the experiment is matched on depth, data and
+parameter count, and favours the relative-position bias: `1.537` vs `1.817` at
+depth 2, `1.764` vs `1.942` at depth 4. A contrast taken from inside a broken
+run is suggestive at best, and it is quoted here only because Exp 21 repeats the
+same comparison under better conditions.
+
+`exp20_relbias.py` was written to re-run that contrast alone on ~4× the data.
+Scaled from the timings above it needs 2–3 hours, which did not fit the session;
+it was stopped rather than left half-run, and **no number in this document comes
+from it.**
+
+### Exp 21 — extra relational depth on top of the frozen trunk
+
+*Question:* Exp 17 failed to answer "is the ceiling this trunk or the
+observation?" because training from scratch on 12k scenes is hopeless against a
+checkpoint that saw 167.6M steps. This asks the same question far more cheaply:
+freeze the checkpoint, take the last `YemongBlock`'s output for **all 24 entity
+tokens**, and train only *N additional spatial layers plus a turn head* on top.
+The expensive representational work is already done and paid for; only the extra
+depth is learned. *Method:* `exp21_frozen_depth.py`. The block's `sequence()` is
+called directly by `evaluate_actions`, so — as with the temporal sublayers — a
+forward hook never fires and the method has to be wrapped. *Sanity check:* the
+frozen policy's own head scores `0.5112` on this data, matching the checkpoint.
+
+*Caveat stated up front:* a frozen latent may already have discarded information
+that end-to-end depth would have kept, so this is a **lower bound** on what depth
+buys, not an estimate of it.
+
+First pass, 3 rollouts (12 288 scenes):
+
+| extra layers | parameters | held-out turn KL |
+|---|---|---|
+| — (the checkpoint's own head) | — | 0.5112 |
+| 0 (a fresh head on the frozen latent) | 35 079 | **0.5029** |
+| 1 | 232 583 | 0.6678 |
+| 2 | 430 087 | 0.8175 |
+| 4 | 825 095 | 0.9652 |
+
+*Interpretation of the first pass:* **this is overfitting, not a capacity
+result.** Held-out KL degrades monotonically as parameters grow 35k → 825k on a
+fixed 12 288 scenes, which is the same failure that invalidated Exp 17. The one
+solid number is the depth-0 row: a 35k-parameter head on the frozen latent
+reaches `0.5029`, slightly *better* than the checkpoint's own head — so the
+latent is not the constraint on the head, and nothing here is broken.
+
+It also retro-diagnoses Exp 17: that sweep was not a weak experiment because
+transformers need more data than I gave them in general, but because **every arm
+above ~200k parameters overfits this collection size**. Any future capacity
+question on this pipeline needs ≥10× the scenes or end-to-end training, and the
+cheap diagnostic for the failure is "does held-out KL rise with parameters?"
 
 ## Recurrent-state findings
 

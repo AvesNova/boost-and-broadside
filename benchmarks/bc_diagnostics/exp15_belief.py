@@ -10,6 +10,10 @@ The policy can learn to gate on this -- `visible` and `time_since_observation`
 are both input features -- but it has to learn it, and a stale token still
 takes attention mass in the meantime. If turn KL rises with the number of
 such ghost tokens, the mismatch is real and costed.
+
+Also prints turn KL by visible-enemy count. Read that table with care: zero
+visible enemies implies alpha=1, so the split is confounded with the alpha
+effect. Conditioning on alpha>0.99 removes it (0.5709 vs 0.5633).
 """
 
 import json
