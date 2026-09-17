@@ -1,0 +1,26 @@
+[
+ {
+  "target": "force_x",
+  "linear_r2": 0.855,
+  "mlp_r2": 0.882,
+  "gap": 0.028
+ },
+ {
+  "target": "force_y",
+  "linear_r2": 0.645,
+  "mlp_r2": 0.729,
+  "gap": 0.084
+ },
+ {
+  "target": "force_unit_x",
+  "linear_r2": 0.646,
+  "mlp_r2": 0.725,
+  "gap": 0.079
+ },
+ {
+  "target": "force_unit_y",
+  "linear_r2": 0.41,
+  "mlp_r2": 0.483,
+  "gap": 0.073
+ }
+]

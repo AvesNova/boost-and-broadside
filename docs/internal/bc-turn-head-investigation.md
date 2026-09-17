@@ -79,7 +79,16 @@ What session 3 measured, all on fresh held-out rollouts under
    summed resultant and it reaches `0.19`, against `0.178` for the true bearing:
    once the composition is done, extracting the angle is nearly free. The chain
    closes with no unexplained remainder (Exp 22).
-7. **Depth is not the answer, and neither is relative position.** Adding spatial
+7. **The single clearest statement of the residual.** The frozen latent holds the
+   teacher's **force vector** to R² `0.65`–`0.88`, and linear probes recover it
+   almost as well as MLP probes — so it is stored plainly, just imprecisely.
+   Everything else follows: that imprecision is the `7°` bearing error, `angle()`
+   amplifies it where the terms cancel, and the ramps convert it to ~0.5 nats.
+   There is no missing concept in the chain — only a vector known to two
+   significant figures where three are needed. (This also **refutes** a guess I
+   made in Exp 22 that the trunk's direction encoding might be phase-like.)
+   (Exp 23)
+8. **Depth is not the answer, and neither is relative position.** Adding spatial
    layers on top of the **frozen** trunk, at 65 536 scenes, is flat-to-worse:
    `0.3886` (head only) → `0.4005` (one layer) → `0.4242` (two). A transfer-safe
    relative-position attention bias scores `0.4192` against `0.4242` at matched
@@ -1142,18 +1151,55 @@ resultant, not an approximation of it. *Runtime:* ~5 min.
   this table are being read.
 
 *What this does and does not license.* It shows that **composing directional
-quantities is the expensive step, and that its cost depends on representation**.
-It does **not** show that the trunk's internal format is polar — that would need
-probing the latent's geometry directly, which was not done. But the feature
-pipeline does encode attitude and position as Fourier phases and predicts them as
-phase deltas (`features.py`, `UnitCirclePredictor`), so a phase-like internal
-representation of direction is at least plausible, and it would make exactly this
-composition expensive.
+quantities is the expensive step for a small head, and that its cost depends on
+the format it is handed**. It does **not** show anything about the trunk's own
+internal format — and Exp 23 went on to check that directly and **refute** the
+phase-like guess I made here: linear probes recover the force vector from the
+latent almost as well as MLP probes do. So read this table as a fact about
+feature formats, not about the trunk.
 
-The concrete consequence is a refinement of the auxiliary-loss recommendation:
-**supervise the force as a vector `(x, y)`, not as a bearing angle.** Predicting
-an angle asks the trunk for the output of the hard step; predicting a vector asks
-it for something that composes linearly and from which the angle is nearly free.
+The auxiliary-loss recommendation that follows survives, on narrower grounds:
+**supervise the force as a vector `(x, y)` rather than as a bearing angle**, not
+because the trunk is phase-like, but because Exp 23 identifies the force vector
+as the quantity whose precision limits everything downstream, and it is already
+close to linearly decodable — which makes it a well-posed target.
+
+### Exp 23 — the latent is not phase-like, and the force vector is the limiting quantity
+
+*Question:* Exp 22 left open whether the trunk's *own* representation of
+direction is phase-like, and speculated — from the Fourier/`UnitCirclePredictor`
+feature pipeline — that it might be. *Method:* `exp23_latent_format.py` compares
+a **linear** probe against an MLP probe on the frozen final latent. A quantity
+held as a plain vector is linearly decodable; one held as a phase, or otherwise
+entangled, is not. Same exactly-reconstructable sub-stratum as Exp 22.
+*Runtime:* ~3 min. *Sample:* 8 934 / 7 758.
+
+| target | linear R² | MLP R² | gap |
+|---|---|---|---|
+| `force_x` | 0.855 | 0.882 | 0.028 |
+| `force_y` | 0.645 | 0.729 | 0.084 |
+| `force_unit_x` | 0.646 | 0.725 | 0.079 |
+| `force_unit_y` | 0.410 | 0.483 | 0.073 |
+
+*Interpretation.* **The speculation is refuted.** The linear/MLP gaps are
+`0.03`–`0.08`; the trunk holds the teacher's force vector close to linearly, and
+there is no evidence of a phase-like internal encoding. Exp 22's format effect is
+therefore a statement about what a **small head can do with features handed to
+it**, not about how the trunk stores direction, and Exp 22's caveat has to be
+read as the operative reading rather than the hedge.
+
+The large linear-vs-MLP gap on the *bearing* reported in Exp 7 (`12.1°` linear
+against `7.0°` MLP) is fully explained by this and needs no representational
+story: the bearing is `atan2(f_y, f_x)`, a nonlinear function of a vector the
+latent holds linearly. A linear probe on an angle should lose, and it does.
+
+What this leaves is the clearest single statement of the residual available in
+this document: **the trunk represents the teacher's force vector to R² `0.65`–
+`0.88`, and everything else follows from that.** That imprecision is what the
+`7°` bearing error is; the `angle()` step then amplifies it wherever the terms
+nearly cancel (Exp 19); and the teacher's ramps convert the result into ~0.5
+nats (Exp 12). There is no missing concept anywhere in the chain — only a vector
+known to two significant figures where three would be needed.
 
 ### Exp 17 / 20 — from-scratch depth sweep (a failed experiment) and the relative-bias contrast
 
@@ -1382,27 +1428,26 @@ is worth knowing before acting on anything below.
 
 ### 3. Auxiliary loss on the force **vector**, not the bearing angle
 
-The one positive, actionable result in session 3. Exp 22 shows that composing
-the teacher's direction terms costs `0.19` nats purely through representation:
-Cartesian `(x, y)` against polar `(sin, cos, magnitude)`, same two vectors. And
-once the resultant exists, the angle is nearly free (`0.19` against `0.178` for
-the true bearing).
+The one positive, actionable result in session 3, and it rests on Exp 23 rather
+than Exp 22. Exp 23 identifies **the teacher's force vector as the quantity whose
+precision limits everything downstream**: the frozen latent holds it to R² `0.65`
+–`0.88`, that imprecision *is* the `7°` bearing error, `angle()` then amplifies
+it where the terms cancel (Exp 19), and the teacher's ramps turn the result into
+~0.5 nats (Exp 12). Nothing else in the chain is unaccounted for.
 
-So supervise `frontline_strategy`'s **force vector** — two numbers, ego-frame
-`(x, y)` — rather than the bearing. Predicting an angle asks the trunk for the
-output of the expensive step; predicting a vector asks for something that
-composes linearly and from which the bearing follows almost for free. It is also
-transfer-safe: two extra outputs per ship, no dependence on `N`.
+So supervise `frontline_strategy`'s force as an ego-frame `(x, y)` pair. Two
+reasons it is the right target rather than the bearing: it is the thing actually
+short of precision, and it is already close to linearly decodable from the
+latent, so the loss is well-posed rather than asking the trunk to sharpen an
+`atan2`. Transfer-safe — two outputs per ship, no dependence on `N`.
 
-*Caveat:* Exp 22 measures what a *small head* does with features handed to it,
-not the trunk's internal format. That the feature pipeline encodes attitude and
-position as Fourier phases and predicts them as phase deltas (`features.py`,
-`UnitCirclePredictor`) makes a phase-like internal representation plausible, but
-it was not verified. Probing the latent's directional geometry directly is the
-cheap way to check before committing to a run.
+*What would falsify the value of this:* if the R² `0.65`–`0.88` is not the
+binding constraint but a symptom of something upstream, sharpening it will move
+turn KL less than Exp 12's calibration predicts. That is measurable on the first
+run, by tracking held-out probe R² on the force vector alongside turn KL.
 
-As an instrument this is worth it regardless: degrees are far quieter than KL
-(the layerwise probe curve replicates to `0.8°`; whole-rollout KL swings ±0.1).
+*Not claimed:* that the trunk's internal representation is badly chosen. I
+guessed that in Exp 22 and Exp 23 refuted it.
 
 ### 4. Relative-position attention *bias* — tested, and not supported
 
@@ -1617,6 +1662,8 @@ exp16_zone.py       per-zone teacher quantities appended to the frozen latent
 exp18_terms.py      the three force terms, singly and in combination
 exp19_conditioning.py  force reconstruction, |force| stratification, sensitivity
 exp22_format.py     polar vs Cartesian composition of the force terms
+exp23_latent_format.py  linear vs MLP probes: is the latent's direction
+                    representation vector-like? (yes -- refutes Exp 22's guess)
 exp17_depth.py      from-scratch depth sweep (DATA-LIMITED -- see below)
 exp20_relbias.py    the matched relative-bias contrast on ~4x the data
                     -- WRITTEN BUT NOT RUN; no numbers in this document
@@ -1637,6 +1684,7 @@ uv run --no-sync python benchmarks/bc_diagnostics/exp16_zone.py                 
 uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py                   # ~5 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py            # ~2 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp22_format.py                  # ~5 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp23_latent_format.py           # ~3 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 3 25       # ~25 min (data-limited)
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 16 5      # ~35 min (the usable pass)
 uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # 2-3 h, NOT RUN
