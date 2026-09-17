@@ -1,58 +1,29 @@
-# Frontline Gate-1 playtest
+# Frontline playtest
 
-Run the playable prototype with:
+Run `.venv/bin/bnb play` for 5v5 Frontline. See [the current rules](environment.md)
+and [scripted strategy](frontline-scripted-strategy.md).
 
-```bash
-uv run bnb play
-```
+Five 330 px zones sit on a 1200 px ring. Their cyclic roles are neutral → Team 0
+spawn → Team 0 defense → Team 1 defense → Team 1 spawn. Capture takes eight seconds
+at a one-ship lead; a lead of n progresses at H(n), the harmonic number. Equal counts
+pause capture. Simultaneous captures net to zero and reset both meters.
 
-If `uv` cannot access its cache, the equivalent local entry point is:
+All zones are opaque. Ships sharing a zone can see each other. Own spawn protects
+ships; shields recover anywhere after four seconds without damage. Initial ships and
+instant respawns start at 15 shields, 20 energy and 30 proper speed. Defense zones,
+enemy spawn and field interfaces cause no passive damage. The outer boundary remains
+a hazard. The match ends at front ±3 or five minutes.
 
-```bash
-.venv/bin/bnb play
-```
+Controls: WASD, Shift to turn sharply, Space to fire; Tab cycles ships and spectator;
+C follows the selected ship; F fits the battlefield; R/Home resets the camera;
+mouse wheel zooms; middle/right drag pans; +/- changes simulation speed.
 
-The five physical zones stay fixed while their roles rotate with the unwrapped front.
-Their cyclic order is neutral → Team 0 spawn → Team 0 defense → Team 1 defense → Team 1
-spawn → neutral, so the two capturable damaging defenses are adjacent. Every zone has a
-330 px radius. Team 0 advances the front toward `+3`; Team 1 toward `-3`. A defense
-capture takes 8 seconds at a one-ship lead. Capture pressure is harmonic in the *net*
-ship advantage inside the defense: a lead of `n` advances the meter at `H(n) = 1 + 1/2 +
-… + 1/n`, so `2v1` and `4v3` both take 8 seconds, `2v0` takes 5.3, and `4v0` takes 3.8.
-Each further ship of the lead is worth less than the last, which lets combat dominance
-convert into territory without making one blob the whole game. A defending lead
-stabilizes on the same curve. Equal counts pause the meter.
-Simultaneous completion changes the front by zero and resets both meters.
+Evaluate whether zone occlusion creates useful approaches, retreat earns recovery,
+spawn protection prevents repeated spawn kills, and fights convert into captures.
 
-Ships die and immediately reappear in their current spawn at 25 health. Friendly spawn
-heals 12 health/second, enemy spawn deals 8 damage/second, and either defense deals 2
-environmental damage/second. The circular soft boundary starts at radius 2600 and its
-damage increases with distance outside it. A match ends at a net front lead of three or
-after five minutes; timeout uses the sign of the front and zero is a draw. All values are
-provisional Gate-1 tuning, not settled balance.
-
-Scripted strategy now follows visible local combat strength, leave-one-out zone demand,
-short-range allied separation, and continuous recovery pressure. It has no assigned
-roles or healing latch. The existing dogfighter takes over exactly within 200 px,
-with a logit transition to pure navigation at 600 px. See
-[the strategic formulation and validation](frontline-scripted-strategy.md).
-
-Controls:
-
-- `W`/`S`: boost/reverse; `A`/`D`: turn; Shift: sharp turn; Space: shoot.
-- Tab: cycle allied ships, then spectator mode. No ring means all ships are scripted.
-- C: follow/release the selected ship.
-- F: fit the playable region; R/Home: reset to the full toroidal world.
-- Mouse wheel: zoom; middle/right drag: pan.
-- `+`/`]` and `-`/`[`: raise/lower game speed through 1x, 2x, 4x, and 8x.
-
-Please judge attack/defend clarity, zone spacing and travel time, capture pacing,
-defense damage, spawn healing, low-health respawn, simultaneous captures, whether combat
-collapses into a point-centered scrum, and whether “win the fight, then commit” emerges.
-
-Reproduce the batched scripted-v-scripted diagnostic on CUDA with:
+Batched playtest:
 
 ```bash
-.venv/bin/python benchmarks/frontline_scripted_suite.py \
-  --device cuda --games 256 --output /tmp/frontline-scripted-suite-256.json
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 .venv/bin/python benchmarks/frontline_scripted_suite.py \
+  --device cpu --games 8 --team-size 5 --max-ticks 9000 --output /tmp/frontline.json
 ```

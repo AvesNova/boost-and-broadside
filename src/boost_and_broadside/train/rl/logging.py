@@ -63,42 +63,15 @@ class LoggingMixin:
         source_stats = dict(zip(SOURCE_STAT_NAMES, source_values, strict=True))
         live_ship_steps = source_stats["live_steps"].item()
         if live_ship_steps > 0:
-            field_damage = source_stats["field_damage"].item()
-            combat_damage = source_stats["combat_damage"].item()
-            zone_damage = source_stats["zone_damage"].item()
-            spawn_damage = source_stats["spawn_damage"].item()
-            boundary_damage = source_stats["boundary_damage"].item()
-            total_damage = (
-                field_damage + combat_damage + zone_damage + spawn_damage + boundary_damage
-            )
-            metrics["physics/field_damage_per_live_ship_step"] = field_damage / live_ship_steps
-            metrics["physics/combat_damage_per_live_ship_step"] = combat_damage / live_ship_steps
-            metrics["frontline/zone_damage_per_live_ship_step"] = zone_damage / live_ship_steps
-            metrics["frontline/spawn_damage_per_live_ship_step"] = spawn_damage / live_ship_steps
-            metrics["frontline/boundary_damage_per_live_ship_step"] = (
-                boundary_damage / live_ship_steps
-            )
-            metrics["physics/field_deaths_per_million_live_ship_steps"] = (
-                source_stats["field_deaths"].item() * 1_000_000.0 / live_ship_steps
-            )
-            metrics["physics/combat_deaths_per_million_live_ship_steps"] = (
-                source_stats["combat_deaths"].item() * 1_000_000.0 / live_ship_steps
-            )
-            for source in ("zone", "spawn", "boundary"):
-                metrics[f"frontline/{source}_deaths_per_million_live_ship_steps"] = (
+            for source in ("combat", "boundary"):
+                metrics[f"physics/{source}_damage_per_live_ship_step"] = (
+                    source_stats[f"{source}_damage"].item() / live_ship_steps
+                )
+                metrics[f"physics/{source}_deaths_per_million_live_ship_steps"] = (
                     source_stats[f"{source}_deaths"].item() * 1_000_000.0 / live_ship_steps
                 )
-                metrics[f"frontline/{source}_damage_step_fraction"] = (
-                    source_stats[f"{source}_damage_steps"].item() / live_ship_steps
-                )
-            metrics["physics/field_damage_step_fraction"] = (
-                source_stats["field_damage_steps"].item() / live_ship_steps
-            )
             metrics["physics/nonambient_live_ship_fraction"] = (
                 source_stats["nonambient_live_steps"].item() / live_ship_steps
-            )
-            metrics["physics/field_damage_fraction"] = (
-                field_damage / total_damage if total_damage > 0.0 else 0.0
             )
             # Resource economy, per live ship-step.
             metrics["physics/mean_power"] = source_stats["power_sum"].item() / live_ship_steps
@@ -106,8 +79,8 @@ class LoggingMixin:
             metrics["physics/out_of_power_fraction"] = (
                 source_stats["out_of_power_steps"].item() / live_ship_steps
             )
-            metrics["frontline/spawn_healing_per_live_ship_step"] = (
-                source_stats["spawn_healing"].item() / live_ship_steps
+            metrics["frontline/shield_recharge_per_live_ship_step"] = (
+                source_stats["shield_recharge"].item() / live_ship_steps
             )
             metrics["frontline/respawns_per_million_live_ship_steps"] = (
                 source_stats["respawns"].item() * 1_000_000.0 / live_ship_steps
@@ -354,14 +327,6 @@ class LoggingMixin:
             if "episode/lifespan_mean" in metrics
             else ""
         )
-        field_sources = (
-            "  "
-            f"field_dmg={metrics['physics/field_damage_per_live_ship_step']:.4f}  "
-            "field_deaths/M="
-            f"{metrics['physics/field_deaths_per_million_live_ship_steps']:.1f}"
-            if "physics/field_damage_per_live_ship_step" in metrics
-            else ""
-        )
         print(
             f"update={update}/{self._num_updates}  "
             f"step={self._global_step:,}  "
@@ -370,7 +335,7 @@ class LoggingMixin:
             f"loss={metrics.get('loss/total', 0.0):.4f}"
             f"  live_elo={self._live_elo:.0f}"
             f"{lifespan}"
-            f"{field_sources}"
+            f""
         )
 
     def _init_wandb(

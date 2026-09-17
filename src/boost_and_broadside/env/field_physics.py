@@ -11,7 +11,6 @@ from dataclasses import dataclass
 import torch
 
 from boost_and_broadside.config import (
-    InterfaceDamageLevel,
     RefractiveIndexLevel,
     ShipConfig,
 )
@@ -193,11 +192,8 @@ def refresh_ship_field_cache(state, config: ShipConfig) -> None:
         state.field_index,
         config.world_size,
     )
-    state.ship_field_alpha = evaluation.alpha
     state.ship_local_index = evaluation.index
     state.ship_field_gradient = evaluation.grad_index
-    state.ship_field_damage = torch.zeros_like(state.ship_field_damage)
-    state.ship_field_death = torch.zeros_like(state.ship_field_death)
 
 
 def index_from_level(level: torch.Tensor, index_step: float) -> torch.Tensor:
@@ -208,18 +204,11 @@ def index_from_level(level: torch.Tensor, index_step: float) -> torch.Tensor:
     return torch.pow(float(index_step), level.float())
 
 
-def damage_from_level(level: torch.Tensor, base_damage: float) -> torch.Tensor:
-    """Convert independent interface-damage levels to crossing damage."""
-
-    return level.float() * base_damage
-
-
 def validate_field_layout(
     centers: torch.Tensor,
     radii: torch.Tensor,
     transition_widths: torch.Tensor,
     index_levels: torch.Tensor,
-    damage_levels: torch.Tensor,
     world_size: tuple[float, float],
 ) -> None:
     """Validate per-field toroidal geometry and material values.
@@ -229,8 +218,8 @@ def validate_field_layout(
     """
 
     if centers.ndim == 1:
-        tensors = [centers, radii, transition_widths, index_levels, damage_levels]
-        centers, radii, transition_widths, index_levels, damage_levels = [
+        tensors = [centers, radii, transition_widths, index_levels]
+        centers, radii, transition_widths, index_levels = [
             tensor.unsqueeze(0) for tensor in tensors
         ]
 
@@ -239,7 +228,6 @@ def validate_field_layout(
         radii.shape,
         transition_widths.shape,
         index_levels.shape,
-        damage_levels.shape,
     }
     if len(shapes) != 1:
         raise ValueError("all field layout tensors must share shape (B, M) or (M,)")
@@ -271,20 +259,3 @@ def validate_field_layout(
         allowed_index |= index_levels == int(level)
     if not allowed_index.all().item():
         raise ValueError("field index levels must be one of {-2, -1, +1, +2}; ambient is invalid")
-    invalid_damage = (damage_levels < int(InterfaceDamageLevel.NONE)) | (
-        damage_levels > int(InterfaceDamageLevel.SEVERE)
-    )
-    if invalid_damage.any().item():
-        raise ValueError("field damage levels must be NONE, STANDARD, or SEVERE")
-
-
-def material_tensors(
-    index_levels: torch.Tensor,
-    damage_levels: torch.Tensor,
-    config: ShipConfig,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return each field's absolute target index and independent damage."""
-
-    absolute_index = index_from_level(index_levels, config.field_index_step)
-    damage = damage_from_level(damage_levels, config.field_interface_damage)
-    return absolute_index, damage

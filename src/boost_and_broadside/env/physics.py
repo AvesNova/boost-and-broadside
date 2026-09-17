@@ -255,10 +255,8 @@ def _quadratic_drag_scale(
 class _FieldTransportResult(NamedTuple):
     position: torch.Tensor
     velocity: torch.Tensor
-    alpha: torch.Tensor
     index: torch.Tensor
     grad_index: torch.Tensor
-    interface_variation: torch.Tensor
     half_tick_position: torch.Tensor
 
 
@@ -287,13 +285,12 @@ def _evaluate_state_fields(
 def _two_step_field_substep(
     position: torch.Tensor,
     velocity: torch.Tensor,
-    alpha: torch.Tensor,
     index: torch.Tensor,
     grad_index: torch.Tensor,
     step_dt: float,
     state: TensorState,
     world_size: tuple[float, float],
-) -> tuple[torch.Tensor, torch.Tensor, FieldEvaluation, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, FieldEvaluation]:
     """Fast explicit optical kick followed by drift and endpoint evaluation."""
     acceleration = _field_optical_acceleration(velocity, index, grad_index)
     direction_velocity = velocity + acceleration * step_dt
@@ -302,21 +299,19 @@ def _two_step_field_substep(
         world_size,
     )
     next_eval = _evaluate_state_fields(next_position, state, world_size)
-    variation = (next_eval.alpha - alpha).abs()
-    return next_position, direction_velocity, next_eval, variation
+    return next_position, direction_velocity, next_eval
 
 
 def _midpoint_field_substep(
     position: torch.Tensor,
     velocity: torch.Tensor,
-    alpha: torch.Tensor,
     index: torch.Tensor,
     grad_index: torch.Tensor,
     step_dt: float,
     state: TensorState,
     world_size: tuple[float, float],
-) -> tuple[torch.Tensor, torch.Tensor, FieldEvaluation, torch.Tensor]:
-    """Midpoint optical integration with midpoint-aware interface variation."""
+) -> tuple[torch.Tensor, torch.Tensor, FieldEvaluation]:
+    """Midpoint optical integration."""
     acceleration = _field_optical_acceleration(velocity, index, grad_index)
     midpoint_velocity = velocity + 0.5 * acceleration * step_dt
     midpoint_position = _wrap_positions(
@@ -335,8 +330,7 @@ def _midpoint_field_substep(
         world_size,
     )
     next_eval = _evaluate_state_fields(next_position, state, world_size)
-    variation = (midpoint_eval.alpha - alpha).abs() + (next_eval.alpha - midpoint_eval.alpha).abs()
-    return next_position, direction_velocity, next_eval, variation
+    return next_position, direction_velocity, next_eval
 
 
 _FIELD_INTEGRATORS = {
@@ -348,7 +342,6 @@ _FIELD_INTEGRATORS = {
 def _transport_field_points(
     position: torch.Tensor,
     velocity: torch.Tensor,
-    alpha: torch.Tensor,
     index: torch.Tensor,
     grad_index: torch.Tensor,
     state: TensorState,
@@ -362,13 +355,11 @@ def _transport_field_points(
     integrator = _FIELD_INTEGRATORS[integrator_name]
     step_dt = duration / substeps
     half_tick_position = position
-    total_variation = None
 
     for substep in range(substeps):
-        next_position, direction_velocity, next_eval, variation = integrator(
+        next_position, direction_velocity, next_eval = integrator(
             position,
             velocity,
-            alpha,
             index,
             grad_index,
             step_dt,
@@ -386,8 +377,6 @@ def _transport_field_points(
             )
         velocity = direction * (proper_speed / next_eval.index)
         position = next_position
-        total_variation = variation if total_variation is None else total_variation + variation
-        alpha = next_eval.alpha
         index = next_eval.index
         grad_index = next_eval.grad_index
 
@@ -397,10 +386,8 @@ def _transport_field_points(
     return _FieldTransportResult(
         position,
         velocity,
-        alpha,
         index,
         grad_index,
-        total_variation,
         half_tick_position,
     )
 
@@ -533,7 +520,6 @@ def _transport_through_fields(state: TensorState, config: ShipConfig) -> TensorS
     result = _transport_field_points(
         state.ship_pos,
         state.ship_vel,
-        state.ship_field_alpha,
         state.ship_local_index,
         state.ship_field_gradient,
         state,
@@ -543,18 +529,8 @@ def _transport_through_fields(state: TensorState, config: ShipConfig) -> TensorS
         config.dt,
         state.ship_attitude,
     )
-    total_damage = (result.interface_variation * state.field_damage.unsqueeze(1)).sum(dim=2)
-
-    alive_before = state.ship_alive
-    health_before = state.ship_health
-    health_after = (health_before - total_damage * alive_before.float()).clamp(min=0.0)
-    state.ship_field_damage.copy_(health_before - health_after)
-    state.ship_field_death.copy_(alive_before & (health_after <= 0.0))
-    state.ship_health = health_after
-    state.ship_alive = alive_before & ~state.ship_field_death
     state.ship_pos = result.position
     state.ship_vel = result.velocity
-    state.ship_field_alpha = result.alpha
     state.ship_local_index = result.index
     state.ship_field_gradient = result.grad_index
     return state
@@ -660,16 +636,6 @@ def _handle_shooting(
     state.bullet_vel = torch.where(slot_onehot, spawn_vel.unsqueeze(-1), state.bullet_vel)
     state.bullet_time = torch.where(slot_onehot, config.bullet_lifetime, state.bullet_time)
     state.bullet_active = state.bullet_active | slot_onehot
-    state.bullet_remaining_damage = torch.where(
-        slot_onehot,
-        config.bullet_damage,
-        state.bullet_remaining_damage,
-    )
-    state.bullet_field_alpha = torch.where(
-        slot_onehot.unsqueeze(-1),
-        state.ship_field_alpha.unsqueeze(2),
-        state.bullet_field_alpha,
-    )
     state.bullet_local_index = torch.where(
         slot_onehot,
         state.ship_local_index.unsqueeze(-1),
@@ -701,8 +667,6 @@ def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) 
     Returns:
         The mutated state.
     """
-    state.ship_field_damage.zero_()
-    state.ship_field_death.zero_()
     tables = _get_lookup_tables(config, state.device)
     if state.num_fields == 0:
         # Preserve the exact ambient-only baseline and its cheap hot path.
@@ -724,7 +688,6 @@ def _transport_bullets_through_fields(
     result = _transport_field_points(
         state.bullet_pos.view(batch_size, num_flat_bullets),
         transport_vel.view(batch_size, num_flat_bullets),
-        state.bullet_field_alpha.view(batch_size, num_flat_bullets, state.num_fields),
         state.bullet_local_index.view(batch_size, num_flat_bullets),
         state.bullet_field_gradient.view(batch_size, num_flat_bullets),
         state,
@@ -734,28 +697,8 @@ def _transport_bullets_through_fields(
         config.dt,
     )
 
-    state.bullet_field_alpha = result.alpha.view(
-        batch_size,
-        num_ships,
-        num_bullets,
-        state.num_fields,
-    )
     state.bullet_local_index = result.index.view(batch_size, num_ships, num_bullets)
     state.bullet_field_gradient = result.grad_index.view(batch_size, num_ships, num_bullets)
-    if config.bullet_field_damage_scale != 0.0:
-        damage_loss = (result.interface_variation * state.field_damage.unsqueeze(1)).sum(dim=2)
-        remaining_damage = state.bullet_remaining_damage.view(batch_size, num_flat_bullets)
-        active = state.bullet_active.view(batch_size, num_flat_bullets)
-        next_remaining_damage = (
-            remaining_damage - config.bullet_field_damage_scale * damage_loss
-        ).clamp(min=0.0)
-        depleted = (remaining_damage > 0.0) & (next_remaining_damage <= 0.0)
-        state.bullet_remaining_damage = torch.where(
-            active,
-            next_remaining_damage,
-            remaining_damage,
-        ).view(batch_size, num_ships, num_bullets)
-        state.bullet_active = (active & ~depleted).view(batch_size, num_ships, num_bullets)
     return (
         result.velocity.view(batch_size, num_ships, num_bullets),
         result.position.view(batch_size, num_ships, num_bullets),
@@ -816,6 +759,7 @@ def resolve_collisions(
     config: ShipConfig,
     combat_damage_fn: Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor]] | None = None,
     trajectory: BulletTrajectory | None = None,
+    frontline=None,
 ) -> tuple[TensorState, torch.Tensor]:
     """Detect bullet-ship collisions, apply damage, and check game-over.
 
@@ -831,6 +775,7 @@ def resolve_collisions(
         config,
         combat_damage_fn,
         trajectory,
+        frontline,
     )
     dones = _check_game_over(state)
     return state, dones
@@ -845,7 +790,7 @@ def _combat_damage_tensors(
     bullet_pos: torch.Tensor,
     bullet_vel: torch.Tensor,
     bullet_active: torch.Tensor,
-    bullet_remaining_damage: torch.Tensor,
+    bullet_damage: float,
     collision_radius: float,
     bullet_min_damage_frac: float,
     world_size: tuple[float, float],
@@ -863,7 +808,6 @@ def _combat_damage_tensors(
     flat_bullet_midpoint = bullet_midpoint_pos.view(batch_size, num_flat_bullets)
     flat_bullet_pos = bullet_pos.view(batch_size, num_flat_bullets)
     flat_bullet_vel = bullet_vel.view(batch_size, num_flat_bullets)
-    flat_bullet_damage = bullet_remaining_damage.view(batch_size, num_flat_bullets)
 
     def segment_dist_sq(start: torch.Tensor, end: torch.Tensor) -> torch.Tensor:
         delta_r = (end.real - start.real + world_w / 2) % world_w - world_w / 2
@@ -896,7 +840,7 @@ def _combat_damage_tensors(
     )
 
     if bullet_min_damage_frac == 1.0:
-        damage_per_hit = valid_hit.float() * flat_bullet_damage.unsqueeze(2)
+        damage_per_hit = valid_hit.float() * bullet_damage
     else:
         hit_angles = torch.angle(
             -flat_bullet_vel.unsqueeze(2) * torch.conj(ship_attitude.unsqueeze(1))
@@ -904,7 +848,7 @@ def _combat_damage_tensors(
         damage_scale = 1.0 - (1.0 - bullet_min_damage_frac) * torch.exp(
             -(hit_angles**2) * 4.0 / torch.pi
         )
-        damage_per_hit = damage_scale * valid_hit.float() * flat_bullet_damage.unsqueeze(2)
+        damage_per_hit = damage_scale * valid_hit.float() * bullet_damage
 
     total_damage = damage_per_hit.sum(dim=1)
     per_shooter = damage_per_hit.view(batch_size, num_ships, num_bullets, num_ships).sum(dim=2)
@@ -920,6 +864,7 @@ def _apply_combat_damage(
     config: ShipConfig,
     combat_damage_fn: Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor]] | None = None,
     trajectory: BulletTrajectory | None = None,
+    frontline=None,
 ) -> TensorState:
     """Apply vectorized bullet damage and attribution to mutable state.
 
@@ -954,22 +899,33 @@ def _apply_combat_damage(
         state.bullet_pos,
         state.bullet_vel,
         state.bullet_active,
-        state.bullet_remaining_damage,
+        config.bullet_damage,
         config.collision_radius,
         config.bullet_min_damage_frac,
         config.world_size,
     )
+    if frontline is not None:
+        from boost_and_broadside.env.frontline import friendly_spawn_mask
+
+        protected = friendly_spawn_mask(state, config)
+        per_shooter = per_shooter * ~protected[:, None, :]
+        total_damage = per_shooter.sum(1)
     state.damage_matrix.copy_(per_shooter)
     state.cumulative_damage_matrix += per_shooter
 
     # Record only applied health loss: simultaneous hits and overkill cannot
-    # inflate source-specific damage rewards. Ships killed by fields earlier in
-    # the tick are excluded by the collision mask and remain field deaths.
+    # inflate source-specific damage rewards.
     alive_before = state.ship_alive
     health_before = state.ship_health
     health_after = (health_before - total_damage).clamp(min=0.0)
     state.ship_combat_damage.copy_(health_before - health_after)
-    state.ship_combat_death.copy_(alive_before & (health_after <= 0.0))
+    if frontline is None:
+        died = health_after <= 0.0
+    else:
+        enemy = state.ship_team_id[:, :, None] != state.ship_team_id[:, None, :]
+        enemy_hit = (per_shooter * enemy).sum(1) > 0
+        died = (health_before <= 0.0) & enemy_hit
+    state.ship_combat_death.copy_(alive_before & died)
     state.ship_health = health_after
     state.ship_alive = alive_before & ~state.ship_combat_death
 

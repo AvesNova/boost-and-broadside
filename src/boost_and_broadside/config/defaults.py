@@ -120,65 +120,16 @@ ELO_CALIBRATE = EloCalibrateConfig(
 LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 
 REWARDS = RewardConfig(
-    # Five numbers, solved rather than chosen. Every event component follows from
-    # them by the balance rule documented on RewardConfig.
-    #
-    # The target is run 720 -- the only configuration measured that beat run 719,
-    # by +58 Elo at matched steps on a joint calibration. Its weights were not
-    # derived: they were solved per component as ``w = share / d`` against measured
-    # gradient coherence, which is why no two of them are equal. These five numbers
-    # are the closest the derivation can come to that vector, by least squares on
-    # log weights -- log space because the weights span 0.08 to 1.0 and only ratios
-    # matter, so a 10% error on ``facing`` should count like a 10% error on
-    # ``ally_win``. The fit is exact in closed form and was checked against a
-    # numeric optimiser; it lands within 6% RMS of 720, and the residual is
-    # irreducible because the rule forces pairs equal that 720 had unequal
-    # (``combat_damage_taken`` 0.32 against ``field_damage_taken`` 0.26 is the
-    # worst of them, and that spread came out of 720's per-component solve rather
-    # than out of any principle).
-    #
-    # Run 725 established what this is *not*: 719's own vector, which reproduced
-    # 719 exactly -- parity on a joint fit at 133M and 154M -- and did not come
-    # near 720. Matching 719 is evidently enough to match 719 and not enough to
-    # beat it, so this stops copying 719 and reconstructs 720 instead.
-    #
-    # Only ratios matter -- the aggregate advantage is divided by its own RMS, so
-    # scaling all of these together is a no-op. They are stated against a win of
-    # 1.0 for that reason.
-    # One free number per tier, solved so that the five tiers -- win, capture,
-    # capture progress, death, damage -- each carry about a fifth of the update.
-    # That was the deathmatch rule and it had never been applied to Frontline:
-    # 737 ran the win pair at 70.5% of the gradient and 738 still at 50.6%, both
-    # against a capture tier under 10%, so most of every update was noise from
-    # the least predictable term in the system, arriving once per 8,600 steps.
-    #
-    # ``AdvantageScaler`` normalizes every component to unit RMS -- run 737
-    # confirmed it, with all sixteen ``floor_bound_rms`` counters at zero -- and
-    # ``_lambda_matrix`` normalizes the unweighted pattern before applying the
-    # weight, so a tier's share of the weight *is* its share of the gradient.
-    # Death and damage were already near-equal at 1.981 and 2.192; they set the
-    # target, and the other three tiers are solved to match it.
-    #
-    # The win pair is two components, so 1.0 each pays the tier 2.0 -- which is
-    # also, exactly, what run 720 solved for in the elimination arena. The two
-    # arguments are independent: 720 fit it from data, this one derives it from
-    # five tiers sharing the update evenly. Runs 735 to 738 were the excursion,
-    # at 7.0 and then 3.0.
+    # Event weights carry forward the previous Frontline tier balance as a
+    # starting point. Shield-game gradient shares still need a long training run.
+    # The balance rule derives paired component weights from these event costs.
     win_weight=1.0,
     death_weight=0.283,
     damage_weight=0.274,
-    # The one ratio the balance rule leaves free. Solved at 0.4875 and set even:
-    # nothing distinguishes them (6.0% RMS against 5.8%), and an even split is the
-    # standing principle.
+    # Divide kill credit evenly between the finishing shot and prior damage.
     kill_shot_fraction=0.5,
-    # The two ratios the rule forbids, tied to one another and solved as a single
-    # free number. Both tiers in 720 were tilted toward the side that caused the
-    # event -- kills 2.15 against deaths, damage dealt 1.86 against damage taken --
-    # and one shared ratio is the smaller claim: an event pays the aggressor twice
-    # what it charges the victim, everywhere, rather than two independently tuned
-    # numbers. The solve returns 1.96 for the shared ratio, which the fit cannot
-    # tell from 2.0 (5.97% RMS against 6.01%), so it is 2.0 -- also the value runs
-    # 725 and 726 carry, which keeps one ratio across all three.
+    # Initial offensive premium; offensive_bias tapers all three payout ratios
+    # to 1:1, including captures, for the final zero-sum training phase.
     kill_payout_ratio=2.0,
     damage_payout_ratio=2.0,
     # Both off. These were 720's values, carried over from a deathmatch where the
@@ -198,18 +149,14 @@ REWARDS = RewardConfig(
     enemy_neg_lambda_components=frozenset(
         {
             "enemy_combat_damage",
-            "enemy_field_damage",
             "enemy_combat_death",
-            "enemy_field_death",
             "enemy_win",
         }
     ),
     ally_zero_components=frozenset(
         {
             "enemy_combat_damage",
-            "enemy_field_damage",
             "enemy_combat_death",
-            "enemy_field_death",
             "enemy_win",
         }
     ),
@@ -271,20 +218,17 @@ COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
     "capture_progress": 0.999,
     "ally_combat_death": 0.995,
     "enemy_combat_death": 0.995,
-    "ally_field_death": 0.995,
-    "enemy_field_death": 0.995,
     "combat_death": 0.995,
-    "field_death": 0.995,
     "kill_shot": 0.995,
     "kill_assist": 0.995,
     "kill_ally_shot": 0.995,
     "kill_ally_assist": 0.995,
+    "shield_recharge": 0.991,
+    "boundary": 0.995,
+    "boundary_damage": 0.991,
     "ally_combat_damage": 0.991,
     "enemy_combat_damage": 0.991,
-    "ally_field_damage": 0.991,
-    "enemy_field_damage": 0.991,
     "combat_damage_taken": 0.991,
-    "field_damage_taken": 0.991,
     "damage_dealt_enemy": 0.991,
     "damage_dealt_ally": 0.991,
     "facing": 0.975,
@@ -302,20 +246,17 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "outcome": 0.97,
     "ally_combat_death": 0.95,
     "enemy_combat_death": 0.95,
-    "ally_field_death": 0.95,
-    "enemy_field_death": 0.95,
     "combat_death": 0.95,
-    "field_death": 0.95,
     "kill_shot": 0.87,
     "kill_assist": 0.97,
     "kill_ally_shot": 0.87,
     "kill_ally_assist": 0.97,
+    "shield_recharge": 0.90,
+    "boundary": 0.90,
+    "boundary_damage": 0.90,
     "ally_combat_damage": 0.90,
     "enemy_combat_damage": 0.90,
-    "ally_field_damage": 0.90,
-    "enemy_field_damage": 0.90,
     "combat_damage_taken": 0.90,
-    "field_damage_taken": 0.90,
     "damage_dealt_enemy": 0.90,
     "damage_dealt_ally": 0.90,
     "facing": 0.80,
@@ -369,26 +310,12 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         outcome_scale=hold(1.0),
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
-        # Shaping is the exception, and it is also what run 720 carried -- this is
-        # the last config difference between that run and this one. It has to be
-        # pushed down rather than left alone: its realised share *grows* about
-        # 1.58x over a run. Facing and closing speed are not potential-based, so
-        # they bias the optimum for as long as they are on, and they oppose the
-        # objective directly -- closing_speed against field_damage_taken measured
-        # a mean gradient cosine of -0.446, negative in 99.9% of samples. They
-        # exist to stop early passive collapse, and that job is finished long
-        # before the budget is. The floor is 0.05 rather than 0 so the components
-        # stay measurable to the end: their gradient share and explained variance
-        # remain readable, which is how the next run learns whether shaping was
-        # still buying anything.
-        #
-        # Note 720 only reached 127M, so it ran barely 27M steps into this taper
-        # and ended near 0.76. Everything the taper does past that point is
-        # untested by the run this vector reconstructs.
+        offensive_bias=((0, 1.0, "hold"), (50_000_000, 1.0, "linear"), (300_000_000, 0.0, "hold")),
+        # No unpaired shaping remains during the final zero-sum phase.
         shaping_scale=(
             (0, 1.0, "hold"),
-            (100_000_000, 1.0, "exponential"),
-            (400_000_000, 0.05, "hold"),
+            (50_000_000, 1.0, "linear"),
+            (300_000_000, 0.0, "hold"),
         ),
         league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy

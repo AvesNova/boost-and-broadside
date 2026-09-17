@@ -101,10 +101,10 @@ def test_hidden_enemy_changes_do_not_change_labels():
 
 
 @pytest.mark.parametrize("flat", [False, True])
-def test_close_range_is_exact_legacy_dogfighter(flat):
+def test_healthy_close_range_is_exact_legacy_dogfighter(flat):
     ship, state, visibility = _scenario(1)
     state.ship_pos[0] = torch.tensor([6000 + 100j, 6100 + 110j])
-    state.ship_health[0, 0] = 1  # recovery cannot override close combat
+    state.ship_health[:] = ship.max_health
     agent = StochasticScriptedAgent(
         ship, StochasticAgentConfig(flat_action_sampling=flat, team_target_distance_prob=(0.2, 0.8))
     )
@@ -154,10 +154,13 @@ def test_permutation_equivariance_and_finite_distributions(size):
 
 def test_recovery_increases_smoothly_as_health_falls():
     ship, state, visibility = _scenario()
+    state.ship_pos[:] = state.ship_pos[:, :1] + torch.arange(state.max_ships) * 30
     values = []
     for health in (100, 75, 50, 25, 1):
-        state.ship_health.fill_(health)
-        values.append(frontline_strategy(state, ship, StochasticAgentConfig(), visibility).recovery)
+        state.ship_health[:, :4] = health
+        values.append(
+            frontline_strategy(state, ship, StochasticAgentConfig(), visibility).recovery[:, :4]
+        )
     assert all(torch.all(a < b) for a, b in zip(values, values[1:]))
 
 

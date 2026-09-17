@@ -231,12 +231,12 @@ def test_a_bigger_row_holds_more_of_the_fixed_batch_resident() -> None:
         64,
         32,
     ]
-    assert widths == {8: 1280, 16: 1920, 24: 3840, 32: 3840}
+    assert widths == {8: 960, 16: 1280, 24: 1920, 32: 1920}
     shards = [
         geometry.aligned_logical_batch_tokens // geometry.rollout_tokens(width)
         for width in widths.values()
     ]
-    assert shards == [3, 2, 1, 1]
+    assert shards == [4, 3, 2, 2]
 
 
 def test_every_shard_width_preserves_the_fixed_logical_batch() -> None:
@@ -333,17 +333,18 @@ def test_the_default_shard_width_is_not_part_of_the_question() -> None:
     legal at all -- resizing it is a tier 3 experiment change, not a launch one.
     """
 
-    def identity_for(rollout_tokens: int) -> str:
+    def identity_for(rollout_tokens: int, logical_batch=None) -> str:
         spec = replace(
             PROFILES["rl"],
             launch=replace(PROFILES["rl"].launch, rollout_tokens=rollout_tokens),
+            logical_batch_tokens=logical_batch or PROFILES["rl"].logical_batch_tokens,
         )
         return identity_fingerprint(_identity(profile=spec, geometry=launch_geometry(spec)))
 
     # 480 envs over 8 shards against 768 over 5: the same 11,796,480 tokens.
-    assert identity_for(1_500_000) == identity_for(2_400_000)
+    assert identity_for(26 * 128 * 480) == identity_for(26 * 128 * 768)
     # 1952 over 2 aligns to a different batch, so it is a different question.
-    assert identity_for(6_000_000) != identity_for(1_500_000)
+    assert identity_for(26 * 128 * 480, 26 * 128 * 480 * 10) != identity_for(26 * 128 * 480)
 
 
 def test_two_profiles_that_ask_the_same_question_share_one_measurement() -> None:

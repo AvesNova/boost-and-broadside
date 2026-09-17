@@ -1,5 +1,10 @@
 # Frontline overhaul progress and plan
 
+**Historical Gate 1–5 record.** The September 18 shield/5v5 overhaul is tracked in
+[shield-overhaul.md](shield-overhaul.md); its rules supersede the attrition mechanics
+and working-branch status below. Earlier learning-curve questions remain historical
+evidence, not validation of the shield game.
+
 Last updated: 2026-09-15
 
 This is the living internal record for the Frontline Conquest Overhaul. Update it when

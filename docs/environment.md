@@ -1,9 +1,35 @@
 # Environment and physics
 
-Boost and Broadside is a two-team, continuous 2D combat environment. Ships maneuver and
-fire projectiles on a 1024×1024 toroidal map at 60 Hz until one team is eliminated or the
-configured episode horizon is reached, when enabled. Optional static circular refractive
-fields continuously change ship and projectile motion without becoming solid walls.
+Frontline is a 5v5 objective game at 30 Hz on a translated 16384×16384 torus,
+with five rotating-role zones and a 2600 px playable radius. A match ends at a net
+front lead of three or after 300 seconds; timeout uses the front's sign.
+Legacy elimination combat remains available on its smaller 60 Hz map.
+
+## Frontline shields and lives
+
+Ships carry 100 shield capacity. Enemy hits remove shields; a ship that entered a
+physics tick with zero shields dies on subsequent enemy damage. All projectile hits
+are aggregated before applying that rule, so simultaneous shots cannot both break a
+shield and kill its ship. Friendly fire removes shields and delays recovery but cannot
+finish a depleted ship. The soft outer boundary also depletes shields, then kills on
+a later tick. Field interfaces and defense/spawn zones inflict no passive damage.
+
+Damage resets a four-second recharge delay. After that undamaged interval, shields
+recover at 20 units/second anywhere, capped at 100. A hit and recharge never pay out
+on the same tick. The timer is an observed, predicted ship channel.
+
+Initial placement and instant respawns use 15 shields, 20 power and 30 px/s proper
+speed, facing the enemy defense, with the full recharge delay. This avoids a special
+full-resource opening and leaves enough power and steering speed to act immediately.
+Ships inside their current friendly spawn are invulnerable. Spawn membership is
+sampled after movement at collision time; a zone-role change takes effect for the next
+collision tick. Spawn offers protection, not a special healing rate.
+
+Respawns preserve slot identity, clear previous-life damage attribution on the next
+tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
+memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
+zero shields no longer implies death. Existing checkpoints are incompatible with the
+new `frontline_shields_v9` observation/feature contract.
 
 ## Tensorized simulation
 
@@ -43,10 +69,9 @@ inside the same core: a disk is convex, so that line never leaves it and two shi
 a field still see each other. This is natural map occlusion only—there are no synthetic fog
 volumes.
 
-Capture zones are transparent by default. `EnvConfig.zones_occlude` makes them opaque on the
-same rule, using the full zone radius since a zone has no transition band. It is off in every
-shipped profile: five 330 px zones on a 2600 px playable disk is a materially different game,
-not a tuning knob. Play mode toggles it live with `Z` so the difference can be inspected.
+Capture zones are opaque by default under the same convex-core rule: ships sharing
+one zone can see one another, but lines crossing its boundary are blocked. The explicit
+`zones_occlude=False` override remains useful for controlled visibility experiments.
 
 A successful shot reveals its firing ship to both teams for that state sample, regardless
 of range or intervening field cores. The reveal uses `ship_is_shooting`, so a requested shot
@@ -79,8 +104,8 @@ The entity-token axis is typed rather than inferred from position:
 
 | Token type | Frontline count | Globally visible information |
 |---|---:|---|
-| Ship | 8 | Team-relative dynamic state when visible |
-| Field | configured (`10` in play) | Geometry, target index, interface damage |
+| Ship | 10 | Team-relative dynamic state when visible |
+| Field | configured (`10` in play) | Geometry, target index |
 | Zone | 5 | Position, role/owner, capture progress and direction |
 | Boundary/global | 1 | Playable radius, front, win threshold, time remaining, mode |
 
@@ -90,7 +115,7 @@ Finite-vision training therefore requires `ego_pass`; the legacy `shared_pass` c
 serve one masked team view to both sides and is rejected.
 
 `EnvConfig.num_ships` is the total across both teams, and `EnvConfig.num_fields` the count
-of static-for-one-episode fields. `profiles/rl.py` trains at eight ships (4-vs-4) and ten fields.
+of static-for-one-episode fields. `profiles/rl.py` trains at ten ships (5-vs-5) and ten fields.
 There is no separate field-free profile: `num_fields` sets the token count and no weight
 shape depends on it, so zero fields is a configuration -- the one run 682 trained under, and
 the ambient-only hot path it still exercises -- rather than a different model.
@@ -141,7 +166,7 @@ energy. Passive regeneration remains an explicit external source.
 ## Refractive-field profile
 
 A field has a center, nominal radius `r`, complete transition width `w`, absolute interior
-index, and independent interface damage. The band extends from `r-w/2` to `r+w/2`. For
+index. The band extends from `r-w/2` to `r+w/2`. For
 minimum-image toroidal distance `d=distance(x, center)-r`:
 
 ```text
@@ -192,36 +217,6 @@ integrator uses the ship-quality midpoint force at additional cost. Both paths r
 half-tick position needed for two-segment swept collision detection. Integrator selection
 is static Python configuration; it does not read tensor values or synchronize the GPU.
 
-## Smooth interface damage
-
-Index and interface damage are independent. The three levels are `NONE=0`,
-`STANDARD=D`, and `SEVERE=2D`, with default `D=10`. For cached previous and newly
-evaluated alpha values, each field contributes
-
-```text
-damage_i = D_i * abs(alpha_i_next - alpha_i_previous).
-```
-
-Midpoint total variation also accounts for an approach and reflection within one step.
-A complete monotonic crossing therefore costs exactly `D_i`, independent of speed and
-band width; remaining still costs nothing, partial reflection costs proportionally, and
-oscillation accumulates its traveled alpha variation. Reset initializes cached alpha at
-the spawn point, so spawning inside a field does no artificial damage.
-
-Ships subtract this exposure from health. Projectiles instead subtract it from remaining
-damage potential:
-
-```text
-bullet_damage_next = max(0, bullet_damage_previous
-                            - bullet_field_damage_scale * sum(D_i * variation_i)).
-```
-
-The default scale is `0.1`, so entering a standard 10-damage interface changes a
-10-damage projectile to 9 damage; a subsequent 20-damage interface changes it to 7.
-A projectile deactivates when its positive damage potential is fully depleted. Barrier
-loss is not attributed to a ship, while projectile damage that reaches a target continues
-through normal combat attribution and the projectile-specific health-loss reward.
-
 ## Arbitrary overlap and map generation
 
 Fields may partially intersect, share transition bands, coincide, or nest in any order.
@@ -235,8 +230,7 @@ log(n) = A * sum_i(alpha_i*L_i) / sum_i(alpha_i)
 with zero log-index when no field contributes. Identical overlaps reinforce partial
 coverage without exceeding their shared target. Different materials blend in signed log
 space, so equally covered reciprocal targets cancel to ambient. The union coverage keeps
-optical strength bounded as field count grows. Interface damage remains an independent
-sum per field and therefore does not cancel.
+optical strength bounded as field count grows.
 
 The analytic gradient uses vectorized exclusive prefix/suffix products, without unstable
 division by `1-alpha` or a Python loop over fields. All distances use minimum-image
@@ -247,7 +241,7 @@ antipodal circle topology. For the default 1024×1024 world and 40-pixel transit
 this requires `r < 492`; changing the maximum radius beyond that requires a larger world
 or a different field-topology definition.
 
-Centers, radii, widths, target materials, and damage levels are sampled directly on every
+Centers, radii, widths, and target materials are sampled directly on every
 episode reset. Randomized low-discrepancy R2 samples cover combat toroids; randomized
 sunflower samples stratify equal-area Frontline disks. Both reduce clustering without a
 pairwise rejection loop and still permit useful overlap. Frontline fields share the same
@@ -265,25 +259,24 @@ The production pool uses ten slots, sufficient for the default one-second lifeti
 
 Projectiles are also observable by the policy. `observation_from_state(...,
 include_bullets=True)` flattens the per-ship ring buffers into one `(B, N*K, ...)` axis
-carrying position, velocity, remaining damage, remaining lifetime, local index and index
+carrying position, velocity, remaining lifetime, local index and index
 gradient, and the shooter's team. Every slot is emitted; inactive ones are masked out of
 attention rather than compacted, so the shape stays static. See
 [architecture](architecture.md#bullet-cross-attention) for how the policy reads them.
 
 Each tick retains start, half-tick, and final positions ephemerally and tests both swept
 segments against ships, preventing fast projectiles from tunneling between endpoints.
-On impact, incidence scaling is applied to the projectile's remaining damage potential.
+On impact, incidence scaling is applied to the configured fixed bullet damage.
 Friendly fire is enabled. Ship-to-ship collision is not implemented, and fields remain
 traversable rather than absorbing projectiles as solid obstacles.
 
 Fields render as translucent transition annuli plus outlines with toroidal edge copies.
 Cyan/blue means lower/faster
 index; violet means higher/slower index, with stronger levels brighter and more saturated.
-Dotted, dashed, and solid borders mean none, standard, and severe damage respectively.
-Solid means severe interface damage, not an impermeable wall. Alpha-blended annuli make
+Fields use uniform thin outlines. Alpha-blended annuli make
 partial and coincident overlaps visible while nominal contours stay individually legible.
 
-## Measured field cost
+## Historical field cost (before the shield overhaul)
 
 The pure-environment benchmark (no bullets or policy inference) on an NVIDIA GeForce RTX
 4070 Laptop GPU, with 4,096 environments, eight ships, 30 warmup ticks, and 300 timed
@@ -312,9 +305,9 @@ them with `benchmarks/field_throughput.py`.
   gradients, reciprocal cancellation, identical and toroidal overlap, materials,
   generation, and reset;
 - [`test_field_transport.py`](../tests/env/test_field_transport.py): long-run energy,
-  refraction/TIR, power exchange, and smooth ship damage;
+  refraction/TIR and power exchange;
 - [`test_bullet_fields.py`](../tests/env/test_bullet_fields.py): selectable projectile
-  integrators, refraction/TIR, proper-speed conservation, barrier depletion, and
+  integrators, refraction/TIR, proper-speed conservation, and
   high-resolution trajectory comparisons;
 - [`test_perception.py`](../tests/env/test_perception.py): the four sight rules —
   team sharing, opaque-core occlusion in both directions, the circular range, and the
@@ -327,7 +320,7 @@ them with `benchmarks/field_throughput.py`.
 
 The zero/one/two/four/ten/twenty-field environment benchmark is in
 [`benchmarks/field_throughput.py`](../benchmarks/field_throughput.py). Saturated projectile
-storage, drag, integrator, damage-depletion, compilation, and capacity comparisons are in
+storage, drag, integrator, compilation, and capacity comparisons are in
 [`benchmarks/bullet_throughput.py`](../benchmarks/bullet_throughput.py).
 
 The 256-map fog distribution and isolated GPU observation profile are reproducible with

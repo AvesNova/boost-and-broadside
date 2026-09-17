@@ -3,7 +3,6 @@
 from boost_and_broadside.config.core import (
     EnvConfig,
     FrontlineConfig,
-    InterfaceDamageLevel,
     MatchResult,
     ModelConfig,
     RefractiveIndexLevel,
@@ -53,7 +52,6 @@ __all__ = [
     "EnvConfig",
     "FrontlineConfig",
     "RefractiveIndexLevel",
-    "InterfaceDamageLevel",
     "MatchResult",
     "ZoneRole",
     "EloCalibrateConfig",

@@ -210,7 +210,7 @@ VRAM_PRESETS: Mapping[int, VramPreset] = {
             grad_checkpoint=False,
             measured_on=None,
             basis=(
-                "provisional: the whole logical batch resident in one shard, with "
+                "provisional: up to a 12M-token resident shard, with "
                 "the microbatch held at the measured production value"
             ),
         ),

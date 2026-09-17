@@ -1,4 +1,24 @@
-# State-derived Frontline teacher
+# Shield-aware Frontline teacher
+
+The controller remains state-derived and team-visible, with no persistent roles.
+Local combat strength uses `0.2 + 0.8 * shield_fraction` for living ships: depleted
+ships still shoot and capture. Zone demand retains harmonic-game-compatible marginal
+support, smooth separation and an aggression bias.
+
+Recovery rises as own shields fall and is gated by visible nearby enemy strength.
+It points away from those enemies, with a small bearing toward friendly spawn. Safe
+ships continue toward objectives while recharging, avoiding unnecessary round trips.
+Recovery can override close-range steering, while the dogfighter retains its firing
+probabilities. Healthy close-range behavior remains the original dogfighter.
+
+The configurable recovery threshold, aggression and support radii are tuned through
+side-balanced seeded matches. See [overhaul validation](internal/shield-overhaul.md)
+for the current sample and limitations. The earlier teacher's experiments below are
+historical and describe the superseded attrition game.
+
+---
+
+# Historical state-derived teacher
 
 Working branch: `frontline/state-derived-strategy`, based on `feat/frontline-overhaul`.
 

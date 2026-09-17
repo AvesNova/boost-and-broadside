@@ -51,7 +51,6 @@ def _make_obs(B: int, N: int) -> YemongObservation:
             ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),
             ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros(B, N, 1),
             ObsKey.FIELD_TARGET_LOG_INDEX: torch.zeros(B, N, 1),
-            ObsKey.FIELD_DAMAGE: torch.zeros(B, N, 1),
         }
     )
 
@@ -690,7 +689,6 @@ def _make_bullets(B: int, NB: int, active: bool = True) -> dict:
     return {
         BulletObsKey.POS: torch.rand(B, NB, 2) * 1024.0,
         BulletObsKey.VEL: torch.randn(B, NB, 2) * 400.0,
-        BulletObsKey.DAMAGE: torch.rand(B, NB, 1),
         BulletObsKey.LIFETIME: torch.rand(B, NB, 1),
         BulletObsKey.LOCAL_LOG_INDEX: torch.randn(B, NB, 1) * 0.1,
         BulletObsKey.LOCAL_INDEX_GRADIENT: torch.randn(B, NB, 2) * 0.1,
@@ -1447,6 +1445,7 @@ class TestFeatureCoordinatorDecode:
                 ObsKey.POWER: torch.tensor([[[0.6 * ship_cfg.max_power]]]),
                 ObsKey.COOLDOWN: torch.tensor([[[0.5 * ship_cfg.firing_cooldown]]]),
                 ObsKey.LOCAL_LOG_INDEX: torch.tensor([[[0.25]]]),
+                ObsKey.SHIELD_DELAY: torch.tensor([[[2.0]]]),
             }
         )
 

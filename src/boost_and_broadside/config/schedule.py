@@ -250,3 +250,5 @@ class TrainingSchedule:
     # express one tightening point and not a second, later one.
     high_winrate_threshold: Callable[[int], float | None]
     high_winrate_target_kl: Callable[[int], float | None]
+    # Fraction of the configured offensive premium retained (1 -> 0).
+    offensive_bias: Callable[[int], float] = constant(0.0)

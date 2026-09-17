@@ -47,7 +47,7 @@ _PLAY_ZONE_RADIUS = 330.0
 _PLAY_ZONE_RING_RADIUS = 1200.0
 
 PLAY_ENV_CONFIG = EnvConfig(
-    num_ships=8,
+    num_ships=10,
     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
     max_episode_steps=9_000,
     # Ten low-discrepancy fields with the larger Frontline radius distribution
@@ -59,16 +59,17 @@ PLAY_ENV_CONFIG = EnvConfig(
     # Adjacent objectives remain mutually scoutable, while the opposite side of
     # the playable disk does not.
     vision_range=1024.0,
-    zones_occlude=False,
+    zones_occlude=True,
     frontline=FrontlineConfig(
         zone_radius=_PLAY_ZONE_RADIUS,
         zone_ring_radius=_PLAY_ZONE_RING_RADIUS,
         playable_radius=2600.0,
         capture_seconds=8.0,
-        defense_damage_per_second=2.0,
-        respawn_health=25.0,
-        spawn_heal_per_second=12.0,
-        enemy_spawn_damage_per_second=8.0,
+        respawn_health=15.0,
+        respawn_power=20.0,
+        respawn_speed=30.0,
+        shield_recharge_delay=4.0,
+        shield_recharge_per_second=20.0,
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,

@@ -3,8 +3,6 @@
 Tests physical invariants rather than exact floating-point values where possible.
 """
 
-from dataclasses import replace
-
 import pytest
 import torch
 
@@ -328,17 +326,6 @@ class TestBulletLifetime:
 
 
 class TestCollisions:
-    def test_bullet_hit_uses_remaining_damage_potential(self, cfg):
-        cfg = replace(cfg, bullet_min_damage_frac=1.0)
-        state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
-        state.ship_pos[0] = torch.tensor([0.0 + 0.0j, 100.0 + 100.0j])
-        activate_bullet(state, cfg, position=100.0 + 100.0j, damage=3.0)
-
-        health_before = state.ship_health[0, 1].item()
-        state, _ = resolve_collisions(state, cfg)
-
-        assert state.ship_health[0, 1].item() == pytest.approx(health_before - 3.0)
-
     def test_swept_collision_catches_fast_bullet_between_endpoints(self, cfg):
         state = make_state(num_envs=1, max_ships=2, max_bullets=1, ship_config=cfg)
         state.ship_pos[0] = torch.tensor([0.0 + 0.0j, 120.0 + 100.0j])

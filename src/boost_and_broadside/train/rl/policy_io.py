@@ -47,8 +47,6 @@ FEATURE_SHIP_CONFIG_FIELDS = (
     "field_transition_width_max",
     "field_transition_width_min",
     "field_index_step",
-    "field_interface_damage",
-    "bullet_damage",
     "bullet_lifetime",
     "collision_radius",
 )

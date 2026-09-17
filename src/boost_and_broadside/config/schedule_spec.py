@@ -115,6 +115,7 @@ class TrainingScheduleSpec:
     target_kl: Keypoints
     high_winrate_threshold: Keypoints
     high_winrate_target_kl: Keypoints
+    offensive_bias: Keypoints = ((0, 0.0, "hold"),)
 
     def __post_init__(self) -> None:
         for field in fields(self):

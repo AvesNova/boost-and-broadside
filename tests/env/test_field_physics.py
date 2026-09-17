@@ -6,14 +6,13 @@ from dataclasses import replace
 import pytest
 import torch
 
-from boost_and_broadside.config import EnvConfig, InterfaceDamageLevel, ShipConfig
+from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_generation import generate_field_layout
 from boost_and_broadside.env.field_physics import (
     compose_refractive_index,
     evaluate_field_profiles,
     evaluate_fields,
-    material_tensors,
     validate_field_layout,
     wrap_displacement,
 )
@@ -171,7 +170,6 @@ def test_layout_validation_allows_partial_coincident_and_nested_overlaps():
         torch.tensor([60.0, 50.0, 25.0]),
         torch.tensor([20.0, 20.0, 10.0]),
         torch.tensor([1, -1, 2], dtype=torch.int8),
-        torch.tensor([0, 1, 2], dtype=torch.int8),
         (512.0, 512.0),
     )
 
@@ -183,7 +181,6 @@ def test_layout_validation_still_rejects_invalid_individual_fields():
             torch.tensor([20.0]),
             torch.tensor([40.0]),
             torch.tensor([1], dtype=torch.int8),
-            torch.tensor([0], dtype=torch.int8),
             (512.0, 512.0),
         )
     with pytest.raises(ValueError, match="ambient is invalid"):
@@ -192,29 +189,17 @@ def test_layout_validation_still_rejects_invalid_individual_fields():
             torch.tensor([30.0]),
             torch.tensor([20.0]),
             torch.tensor([0], dtype=torch.int8),
-            torch.tensor([0], dtype=torch.int8),
             (512.0, 512.0),
         )
-
-
-def test_all_index_and_damage_materials_are_representable():
-    config = ShipConfig()
-    levels = torch.tensor([[-2, -1, 1, 2]], dtype=torch.int8)
-    damages = torch.tensor([[0, 1, 1, 2]], dtype=torch.int8)
-    index, crossing_damage = material_tensors(levels, damages, config)
-    assert index.tolist()[0] == pytest.approx([0.5, 2.0**-0.5, 2.0**0.5, 2.0])
-    assert crossing_damage.tolist() == [[0.0, 10.0, 10.0, 20.0]]
 
 
 def test_generation_is_direct_bounded_and_allows_overlap():
     config = ShipConfig()
     env_config = EnvConfig(num_ships=2, max_bullets=0, max_episode_steps=10, num_fields=32)
     layout = generate_field_layout(16, config, env_config, torch.device("cpu"))
-    pos, radius, width, levels, index, damage_levels, damage = layout
+    pos, radius, width, levels, index = layout
     assert pos.shape == (16, 32)
-    validate_field_layout(pos, radius, width, levels, damage_levels, config.world_size)
     assert torch.allclose(index, config.field_index_step ** levels.float())
-    assert torch.allclose(damage, damage_levels.float() * config.field_interface_damage)
     displacement = wrap_displacement(pos[:, :, None] - pos[:, None, :], config.world_size).abs()
     outer = radius + 0.5 * width
     overlaps = displacement < outer[:, :, None] + outer[:, None, :]
@@ -277,7 +262,6 @@ def test_zero_field_fast_path_stays_ambient():
         "cpu",
     )
     env.reset(seed=1)
-    assert env.state.ship_field_alpha.shape == (3, 2, 0)
     assert torch.equal(env.state.ship_local_index, torch.ones(3, 2))
     assert torch.allclose(env.state.ship_vel.abs(), torch.full((3, 2), config.default_speed))
 
@@ -290,7 +274,3 @@ def test_config_rejects_ambiguous_toroidal_field_extent():
             field_transition_width_min=20.0,
             field_transition_width_max=20.0,
         )
-
-
-def test_damage_level_enum_bounds_remain_zero_through_severe():
-    assert [int(level) for level in InterfaceDamageLevel] == [0, 1, 2]

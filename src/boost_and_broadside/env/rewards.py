@@ -147,15 +147,6 @@ class EnemyCombatDamageReward(AllyCombatDamageReward):
     name = "enemy_combat_damage"
 
 
-class AllyFieldDamageReward(_DamageTakenReward):
-    name = "ally_field_damage"
-    source_attr = "ship_field_damage"
-
-
-class EnemyFieldDamageReward(AllyFieldDamageReward):
-    name = "enemy_field_damage"
-
-
 class _DeathReward(RewardComponent):
     """Negative one on a death attributed to one exact physics source."""
 
@@ -178,15 +169,6 @@ class AllyCombatDeathReward(_DeathReward):
 
 class EnemyCombatDeathReward(AllyCombatDeathReward):
     name = "enemy_combat_death"
-
-
-class AllyFieldDeathReward(_DeathReward):
-    name = "ally_field_death"
-    source_attr = "ship_field_death"
-
-
-class EnemyFieldDeathReward(AllyFieldDeathReward):
-    name = "enemy_field_death"
 
 
 class _KillCreditReward(RewardComponent):
@@ -227,7 +209,7 @@ class _KillCreditReward(RewardComponent):
             if next_state.num_zones == 0
             else torch.zeros_like(next_state.ship_alive)
         )
-        just_died = next_state.ship_combat_death | next_state.ship_field_death | legacy_elimination
+        just_died = next_state.ship_combat_death | legacy_elimination
 
         _, N = next_state.ship_health.shape
         damage = getattr(next_state, self.source_attr)  # (B, N_shooter, N_target)
@@ -244,7 +226,10 @@ class _KillCreditReward(RewardComponent):
         dying = just_died.unsqueeze(1).float()  # (B, 1, N_target)
         attributed = damage * relevant.float() * dying  # (B, N_shooter, N_target)
         total = attributed.sum(dim=1, keepdim=True).clamp(min=1e-8)  # (B, 1, N_target)
-        return self.sign * (attributed / total).sum(dim=2)  # (B, N_shooter)
+        reward = self.sign * (attributed / total).sum(dim=2)
+        if next_state.num_zones and not self.targets_enemy:
+            reward = reward - enemy_team_share(reward, next_state)
+        return reward
 
 
 class KillShotReward(_KillCreditReward):
@@ -259,8 +244,7 @@ class KillShotReward(_KillCreditReward):
 class KillAssistReward(_KillCreditReward):
     """Kill credit from cumulative episode damage.
 
-    Survives a field delivering the final blow, which preserves partial credit
-    for attacks that forced a dangerous navigation choice.
+    Frontline attribution is cleared when a slot respawns.
     """
 
     name = "kill_assist"
@@ -441,6 +425,8 @@ class _ZoneCreditReward(RewardComponent):
         # Charged: the other side's ships anywhere else, dead ones included.
         charged = (favours0 & team1 & ~inside) | (favours1 & team0 & ~inside)
 
+        opponent = (favours0 & team1) | (favours1 & team0)
+        charged = torch.where(charged.any(1, keepdim=True), charged, opponent)
         paid_n = paid.sum(dim=1, keepdim=True).clamp(min=1)
         charged_n = charged.sum(dim=1, keepdim=True).clamp(min=1)
         per_ship = (
@@ -504,22 +490,10 @@ class LocalCombatDeathReward(AllyCombatDeathReward):
     name = "combat_death"
 
 
-class LocalFieldDeathReward(AllyFieldDeathReward):
-    """Self-only field-boundary death penalty."""
-
-    name = "field_death"
-
-
 class LocalCombatDamageTakenReward(AllyCombatDamageReward):
     """Self-only applied projectile health-loss penalty."""
 
     name = "combat_damage_taken"
-
-
-class LocalFieldDamageTakenReward(AllyFieldDamageReward):
-    """Self-only applied field-boundary health-loss penalty."""
-
-    name = "field_damage_taken"
 
 
 class LocalDamageDealtEnemyReward(RewardComponent):
@@ -538,13 +512,19 @@ class LocalDamageDealtEnemyReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        dm = next_state.damage_matrix  # (B, N_shooter, N_target)
+        dm = next_state.damage_matrix
+        # All simultaneous hits share only the shield actually removed.
+        applied = next_state.ship_combat_damage
+        dm = dm * (applied / dm.sum(1).clamp_min(1e-8))[:, None, :]
         B, N = next_state.ship_team_id.shape
         is_enemy = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
             1
         )  # (B, N_shooter, N_target)
         enemy_damage = (dm * is_enemy.float()).sum(dim=2)  # (B, N_shooter)
-        return enemy_damage * next_state.ship_alive.float()
+        if next_state.num_zones:
+            friendly_loss = (dm * ~is_enemy).sum(1)
+            enemy_damage = enemy_damage + enemy_team_share(friendly_loss, next_state)
+        return enemy_damage
 
 
 class LocalDamageDealtAllyReward(RewardComponent):
@@ -563,7 +543,10 @@ class LocalDamageDealtAllyReward(RewardComponent):
         next_state: TensorState,
         dones: torch.Tensor,
     ) -> torch.Tensor:
-        dm = next_state.damage_matrix  # (B, N_shooter, N_target)
+        dm = next_state.damage_matrix
+        # All simultaneous hits share only the shield actually removed.
+        applied = next_state.ship_combat_damage
+        dm = dm * (applied / dm.sum(1).clamp_min(1e-8))[:, None, :]
         B, N = next_state.ship_team_id.shape
         is_enemy = next_state.ship_team_id.unsqueeze(2) != next_state.ship_team_id.unsqueeze(
             1
@@ -571,7 +554,9 @@ class LocalDamageDealtAllyReward(RewardComponent):
         self_mask = torch.eye(N, dtype=torch.bool, device=dm.device).unsqueeze(0)
         is_friendly = ~is_enemy & ~self_mask  # same team, not self
         friendly_damage = (dm * is_friendly.float()).sum(dim=2)  # (B, N_shooter)
-        return -friendly_damage * next_state.ship_alive.float()
+        if next_state.num_zones:
+            return enemy_team_share(friendly_damage, next_state) - friendly_damage
+        return -friendly_damage
 
 
 # ---------------------------------------------------------------------------
@@ -799,14 +784,13 @@ class SpeedReward(RewardComponent):
 # ---------------------------------------------------------------------------
 
 REWARD_COMPONENT_NAMES: tuple[str, ...] = (
+    "shield_recharge",
+    "boundary",
+    "boundary_damage",
     "ally_combat_damage",  #  0 — applied projectile damage to allies
     "enemy_combat_damage",  #  1 — applied projectile damage to enemies
-    "ally_field_damage",  #  2 — applied boundary damage to allies
-    "enemy_field_damage",  #  3 — applied boundary damage to enemies
     "ally_combat_death",  #  4 — ally projectile deaths
     "enemy_combat_death",  #  5 — enemy projectile deaths
-    "ally_field_death",  #  6 — ally boundary deaths
-    "enemy_field_death",  #  7 — enemy boundary deaths
     "ally_win",  #  8 — ally team wins (positive)
     "enemy_win",  #  9 — enemy team wins (negative for allies via lambda)
     "facing",  # 10 — pointing at nearest enemy (shaping, self only)
@@ -817,11 +801,9 @@ REWARD_COMPONENT_NAMES: tuple[str, ...] = (
     "kill_ally_shot",  # 15 — step-level blame for a teammate's death (self only)
     "kill_ally_assist",  # 16 — cumulative blame for a teammate's death (self only)
     "combat_damage_taken",  # 17 — applied projectile damage to this ship
-    "field_damage_taken",  # 18 — applied boundary damage to this ship
     "damage_dealt_enemy",  # 19 — damage dealt to enemies this step (self only)
     "damage_dealt_ally",  # 20 — damage dealt to allies — friendly-fire penalty
     "combat_death",  # 21 — projectile death of this ship (self only)
-    "field_death",  # 22 — boundary death of this ship (self only)
     "shooting_penalty",  # 23 — negative reward on every shot (self only)
     "speed",  # 24 — penalty when proper speed < min_speed (self only)
     "capture_progress",  # 25 — meter movement, paid to who held the point (self only)
@@ -842,19 +824,8 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
     combat death of a ship      charged ``U`` (``combat_death``), paid
                                 ``k*U`` split over ``kill_shot`` and
                                 ``kill_assist``
-    field death of a ship       charged ``U`` (``field_death``), paid
-                                ``kill_assist`` plus ``enemy_field_death``
-                                -- and since ``kill_shot`` cannot fire on a
-                                field death, that second term has to equal
-                                ``kill_shot`` for the totals to match
     combat damage               charged ``V`` (``combat_damage_taken``),
                                 paid ``d*V`` (``damage_dealt_enemy``)
-    field damage                charged ``V`` (``field_damage_taken``),
-                                paid ``d*V`` (``enemy_field_damage``)
-    a win                       paid ``W``, charged ``W`` through the
-                                negative enemy lambda on ``enemy_win``
-    ==========================  ==========================================
-
     ``k`` is ``kill_payout_ratio`` and ``d`` is ``damage_payout_ratio``, the two
     named exceptions: at 1.0 the table above balances exactly, and above it the
     side that caused an event is paid more than the side it happened to is
@@ -900,19 +871,18 @@ def component_weights(rewards: "RewardConfig | Mapping[str, Any]") -> dict[str, 
             "ally_win": win,
             "enemy_win": win,
             "combat_death": death,
-            "field_death": death,
+            "shield_recharge": damage,
+            "boundary": death,
+            "boundary_damage": damage,
             "kill_shot": shot,
             "kill_ally_shot": shot,
             # The offensive side of a death nobody shot.
-            "enemy_field_death": shot,
             "kill_assist": assist,
             "kill_ally_assist": assist,
             "combat_damage_taken": damage,
-            "field_damage_taken": damage,
             "damage_dealt_enemy": dealt,
             "damage_dealt_ally": dealt,
             # The offensive side of damage nobody dealt.
-            "enemy_field_damage": dealt,
             # The strategic tier follows the same charged/paid split as the two
             # above: the weight is what the absent side is *charged*, and the
             # present side is paid ``capture_payout_ratio`` times it. A meter runs
@@ -947,14 +917,13 @@ def build_reward_components(
     """
     w = component_weights(rewards)
     return [
+        ShieldRechargeReward(weight=w["shield_recharge"]),
+        BoundaryReward(weight=w["boundary"]),
+        BoundaryDamageReward(weight=w["boundary_damage"]),
         AllyCombatDamageReward(weight=w["ally_combat_damage"]),
         EnemyCombatDamageReward(weight=w["enemy_combat_damage"]),
-        AllyFieldDamageReward(weight=w["ally_field_damage"]),
-        EnemyFieldDamageReward(weight=w["enemy_field_damage"]),
         AllyCombatDeathReward(weight=w["ally_combat_death"]),
         EnemyCombatDeathReward(weight=w["enemy_combat_death"]),
-        AllyFieldDeathReward(weight=w["ally_field_death"]),
-        EnemyFieldDeathReward(weight=w["enemy_field_death"]),
         AllyWinReward(weight=w["ally_win"]),
         EnemyWinReward(weight=w["enemy_win"]),
         FacingReward(
@@ -977,11 +946,9 @@ def build_reward_components(
         KillAllyShotReward(weight=w["kill_ally_shot"]),
         KillAllyAssistReward(weight=w["kill_ally_assist"]),
         LocalCombatDamageTakenReward(weight=w["combat_damage_taken"]),
-        LocalFieldDamageTakenReward(weight=w["field_damage_taken"]),
         LocalDamageDealtEnemyReward(weight=w["damage_dealt_enemy"]),
         LocalDamageDealtAllyReward(weight=w["damage_dealt_ally"]),
         LocalCombatDeathReward(weight=w["combat_death"]),
-        LocalFieldDeathReward(weight=w["field_death"]),
         ShootingPenaltyReward(weight=w["shooting_penalty"]),
         SpeedReward(weight=w["speed"], min_speed=rewards.speed_penalty_min),
         OutcomeReward(weight=w["outcome"]),
@@ -1028,3 +995,42 @@ def compute_per_component_rewards(
         if k is not None:
             result[:, :, k] = comp.compute(prev_state, actions, next_state, dones)
     return result
+
+
+class ShieldRechargeReward(RewardComponent):
+    """Pay the recovering ship and charge the opposing team the identical total."""
+
+    name = "shield_recharge"
+
+    def compute(self, prev_state, actions, next_state, dones):
+        gain = next_state.ship_shield_recharge
+        charge = enemy_team_share(gain, next_state)
+        return gain - charge
+
+
+class BoundaryReward(RewardComponent):
+    """Boundary deaths charge the lost ship and pay the opposing team."""
+
+    name = "boundary"
+
+    def compute(self, prev_state, actions, next_state, dones):
+        loss = next_state.ship_boundary_death.float()
+        return enemy_team_share(loss, next_state) - loss
+
+
+def enemy_team_share(value, state):
+    """Split each team's total equally among the opposing team's slots."""
+    enemy = state.ship_team_id[:, :, None] != state.ship_team_id[:, None, :]
+    # Divide by the recipient team's size, including depleted/respawned slots.
+    recipients = (~enemy).sum(-1).clamp_min(1)
+    return (enemy * value[:, None, :]).sum(-1) / recipients
+
+
+class BoundaryDamageReward(RewardComponent):
+    """Price boundary shield loss exactly like combat loss, preventing recharge farming."""
+
+    name = "boundary_damage"
+
+    def compute(self, prev_state, actions, next_state, dones):
+        loss = next_state.ship_boundary_damage
+        return enemy_team_share(loss, next_state) - loss

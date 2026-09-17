@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.field_physics import material_tensors, refresh_ship_field_cache
+from boost_and_broadside.env.field_physics import index_from_level, refresh_ship_field_cache
 from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 from tests.conftest import make_state
@@ -23,14 +23,7 @@ def _overlapping_observation():
     state.field_radius[:] = torch.tensor([[140.0, 50.0]])
     state.field_transition_width[:] = 20.0
     state.field_index_level[:] = torch.tensor([[1, -2]], dtype=torch.int8)
-    state.field_damage_level[:] = torch.tensor([[1, 2]], dtype=torch.int8)
-    index, damage = material_tensors(
-        state.field_index_level,
-        state.field_damage_level,
-        config,
-    )
-    state.field_index[:] = index
-    state.field_damage[:] = damage
+    state.field_index[:] = index_from_level(state.field_index_level, config.field_index_step)
     state.ship_pos[:] = torch.tensor([[256.0 + 256.0j, 10.0 + 10.0j]])
     refresh_ship_field_cache(state, config)
     return config, observation_from_state(state, config)
@@ -45,7 +38,6 @@ def test_field_material_features_and_ship_local_index_are_numeric_and_bounded():
     # Absolute target log encoding is k/2. At the shared center the HIGH and
     # VERY_LOW targets blend to exponent -0.5, hence normalized value -0.25.
     assert obs[ObsKey.FIELD_TARGET_LOG_INDEX][0, 2:, 0].tolist() == pytest.approx([0.5, -1.0])
-    assert obs[ObsKey.FIELD_DAMAGE][0, 2:, 0].tolist() == pytest.approx([0.5, 1.0])
     assert obs.local_log_index[0, :, 0].tolist() == pytest.approx([-0.25, 0.0, 0.0, 0.0])
 
     coordinator = build_standard_coordinator(config)

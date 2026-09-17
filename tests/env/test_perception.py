@@ -516,11 +516,11 @@ def _with_one_zone(state, position: complex, radius: float) -> None:
     state.zone_capture_direction = torch.zeros((1, 1), dtype=torch.int8)
 
 
-def test_zones_are_transparent_unless_the_environment_makes_them_opaque() -> None:
+def test_zones_are_opaque_by_default_and_can_be_explicitly_transparent() -> None:
     ship, state = _state()
     state.ship_pos[0] = torch.tensor([100 + 100j, 100 + 700j, 500 + 100j, 700 + 700j])
     _with_one_zone(state, 300 + 100j, 90.0)
-    config = _config(vision_range=500.0)
+    config = replace(_config(vision_range=500.0), zones_occlude=False)
 
     assert team_visibility_from_state(state, ship, config).observer_ship[0, 0, 2]
 

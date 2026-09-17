@@ -37,10 +37,11 @@ def _frontline(**overrides: float | int) -> FrontlineConfig:
         "zone_ring_radius": 1200.0,
         "playable_radius": 2600.0,
         "capture_seconds": 20.0,
-        "defense_damage_per_second": 2.0,
         "respawn_health": 25.0,
-        "spawn_heal_per_second": 12.0,
-        "enemy_spawn_damage_per_second": 8.0,
+        "respawn_power": 20.0,
+        "respawn_speed": 30.0,
+        "shield_recharge_delay": 4.0,
+        "shield_recharge_per_second": 20.0,
         "boundary_damage_per_second": 5.0,
         "boundary_damage_per_pixel_second": 0.05,
         "front_win_threshold": 5,
@@ -194,7 +195,7 @@ def test_team0_capture_advances_unwrapped_front_and_rotates_roles() -> None:
 
 
 def test_simultaneous_capture_is_atomic_and_net_zero() -> None:
-    config = _frontline(capture_seconds=1.0 / 60.0, defense_damage_per_second=0.0)
+    config = _frontline(capture_seconds=1.0 / 60.0)
     env = _env(config)
     state = env.state
     team0 = state.ship_team_id[0] == 0
@@ -243,7 +244,7 @@ def test_capture_rate_is_harmonic_in_the_net_ship_advantage(
     expected_direction: int,
     expected_pressure: float,
 ) -> None:
-    config = _frontline(capture_seconds=10.0, defense_damage_per_second=0.0)
+    config = _frontline(capture_seconds=10.0)
     env = _env(config, num_ships=8)
     state = env.state
     defense_index = _zone_index(env, ZoneRole.TEAM1_DEFENSE)
@@ -273,7 +274,7 @@ def test_capture_rate_is_harmonic_in_the_net_ship_advantage(
 def _ticks_to_capture(lead: int, capture_seconds: float, num_ships: int = 8) -> tuple[int, float]:
     """Drive one uncontested defense with ``lead`` attackers; return ticks and dt."""
 
-    config = _frontline(capture_seconds=capture_seconds, defense_damage_per_second=0.0)
+    config = _frontline(capture_seconds=capture_seconds)
     env = _env(config, num_ships=num_ships)
     state = env.state
     defense_index = _zone_index(env, ZoneRole.TEAM1_DEFENSE)
@@ -318,7 +319,7 @@ def test_each_extra_ship_of_the_lead_is_worth_progressively_less() -> None:
 def test_capture_rate_stays_defined_far_above_the_trained_team_size() -> None:
     """Zero-shot scaling: the rule has no table and therefore no team-size bound."""
 
-    config = _frontline(capture_seconds=10.0, defense_damage_per_second=0.0)
+    config = _frontline(capture_seconds=10.0)
     env = _env(config, num_ships=128)
     state = env.state
     defense_index = _zone_index(env, ZoneRole.TEAM1_DEFENSE)
@@ -357,43 +358,6 @@ def test_timeout_result_uses_unwrapped_front_sign(front: int, expected: MatchRes
 
     assert truncated.item()
     assert env.state.match_result.item() == int(expected)
-
-
-def test_friendly_spawn_heals_and_hostile_spawn_damages() -> None:
-    config = _frontline(
-        spawn_heal_per_second=60.0,
-        enemy_spawn_damage_per_second=60.0,
-        defense_damage_per_second=0.0,
-    )
-    env = _env(config)
-    state = env.state
-    state.ship_team_id[0] = torch.tensor([0, 1, 0, 1], dtype=torch.int32)
-    team0_spawn = state.zone_pos[0, _zone_index(env, ZoneRole.TEAM0_SPAWN)]
-    state.ship_pos[0, 0] = team0_spawn
-    state.ship_pos[0, 1] = team0_spawn
-    state.ship_pos[0, 2:] = state.map_center[0]
-    state.ship_health[0, :2] = 50.0
-
-    apply_frontline_tick(state, config, env.ship_config)
-
-    assert state.ship_health[0, 0].item() == pytest.approx(51.0)
-    assert state.ship_health[0, 1].item() == pytest.approx(49.0)
-    assert state.ship_spawn_healing[0, 0].item() == pytest.approx(1.0)
-    assert state.ship_spawn_damage[0, 1].item() == pytest.approx(1.0)
-
-
-def test_defense_hazard_uses_capture_membership() -> None:
-    config = _frontline(defense_damage_per_second=60.0)
-    env = _env(config)
-    state = env.state
-    defense = state.zone_pos[0, _zone_index(env, ZoneRole.TEAM0_DEFENSE)]
-    state.ship_pos[0, 0] = defense
-    state.ship_pos[0, 1:] = state.map_center[0]
-
-    apply_frontline_tick(state, config, env.ship_config)
-
-    assert state.ship_zone_damage[0, 0].item() == pytest.approx(1.0)
-    assert state.ship_zone_damage[0, 1:].count_nonzero().item() == 0
 
 
 def test_boundary_damage_increases_with_distance_outside() -> None:
@@ -452,8 +416,6 @@ def test_front_lead_sets_authoritative_winner() -> None:
 
 def test_wrapper_reports_respawn_discontinuity_without_ending_episode() -> None:
     config = _frontline(
-        defense_damage_per_second=0.0,
-        enemy_spawn_damage_per_second=0.0,
         boundary_damage_per_second=6000.0,
         boundary_damage_per_pixel_second=0.0,
     )
@@ -467,7 +429,7 @@ def test_wrapper_reports_respawn_discontinuity_without_ending_episode() -> None:
     wrapper.reset(seed=3)
     slot = 0
     team_before = wrapper.state.ship_team_id[0, slot].clone()
-    wrapper.state.ship_health[0, slot] = 1.0
+    wrapper.state.ship_health[0, slot] = 0.0
     wrapper.state.ship_pos[0, slot] = wrapper.state.map_center[0] + complex(
         config.playable_radius + 10.0, 0.0
     )

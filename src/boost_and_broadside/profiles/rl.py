@@ -33,7 +33,7 @@ RL_PROFILE = ProfileSpec(
     ship_config=frontline_ship_config(SHIP_CONFIG),
     model_config=MODEL_CONFIG,
     # --- Environment ---
-    num_ships=8,
+    num_ships=10,
     num_fields=10,
     max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
     max_episode_steps=9_000,
@@ -42,7 +42,7 @@ RL_PROFILE = ProfileSpec(
     action_repeat=1,
     spawn_resource_spread=0.0,
     vision_range=1024.0,
-    zones_occlude=False,
+    zones_occlude=True,
     frontline=FrontlineConfig(
         zone_radius=330.0,
         zone_ring_radius=1200.0,
@@ -52,15 +52,18 @@ RL_PROFILE = ProfileSpec(
         # meter completed, which made contesting a zone strictly dominated early
         # and compounded the shaping bias run 735 exploited. The capture tier now
         # supplies the pressure that this was standing in for.
-        defense_damage_per_second=0.0,
-        respawn_health=25.0,
-        spawn_heal_per_second=12.0,
-        enemy_spawn_damage_per_second=8.0,
+        respawn_health=15.0,
+        respawn_power=20.0,
+        respawn_speed=30.0,
+        shield_recharge_delay=4.0,
+        shield_recharge_per_second=20.0,
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,
     ),
     # --- Rollout shape ---
+    # Preserve 3840 environments per logical update at 26 tokens.
+    # Four 960-env shards fit the existing 4M-token VRAM preset.
     # 12M, after run 733 tested 24M and measured worse.
     #
     # The idea was to buy back the batch the Frontline observation spent: zones
@@ -89,7 +92,7 @@ RL_PROFILE = ProfileSpec(
     # sizing the batch on trunk tokens rather than observation tokens, raises
     # decisions per update without touching the reciprocal above. Spending more
     # tokens cannot substitute for it.
-    logical_batch_tokens=12_000_000,
+    logical_batch_tokens=12_779_520,
     num_steps=128,
     num_minibatches=32,
     # --- Objective ---
@@ -171,5 +174,5 @@ RL_PROFILE = ProfileSpec(
     # RG-LRU scan's power-of-two padding. `compile_policy` pins `dynamic=False`
     # so that is a bounded recompile rather than a crash, but an even divisor
     # avoids the second graph entirely.
-    launch=LaunchSizingSpec(rollout_tokens=4_000_000, microbatches_per_minibatch=2),
+    launch=LaunchSizingSpec(rollout_tokens=3_194_880, microbatch_tokens=62_500),
 )

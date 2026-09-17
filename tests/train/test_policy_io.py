@@ -144,7 +144,6 @@ def _cuda_obs(envs: int, ships: int):
             ObsKey.LOCAL_INDEX_GRADIENT: f(envs, ships, 2),
             ObsKey.FIELD_TRANSITION_WIDTH: f(envs, ships, 1).abs(),
             ObsKey.FIELD_TARGET_LOG_INDEX: f(envs, ships, 1),
-            ObsKey.FIELD_DAMAGE: f(envs, ships, 1).abs(),
             ObsKey.ZONE_ROLE: torch.zeros(envs, ships, dtype=torch.long, device="cuda"),
             ObsKey.CAPTURE_PROGRESS: f(envs, ships, 1),
             ObsKey.CAPTURE_DIRECTION: f(envs, ships, 1),

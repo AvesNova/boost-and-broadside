@@ -14,7 +14,7 @@ from enum import StrEnum
 import pygame
 import torch
 
-from boost_and_broadside.config import InterfaceDamageLevel, ShipConfig, ZoneRole
+from boost_and_broadside.config import ShipConfig, ZoneRole
 from boost_and_broadside.env.perception import TeamVisibility
 from boost_and_broadside.env.state import TensorState
 
@@ -48,20 +48,6 @@ def field_color(index_level: int) -> tuple[int, int, int]:
         return colors[int(index_level)]
     except KeyError as error:
         raise ValueError(f"invalid non-ambient field index level {index_level}") from error
-
-
-def field_border_pattern(damage_level: int) -> tuple[str, int]:
-    """Return orthogonal border pattern and line width for interface damage."""
-
-    patterns = {
-        int(InterfaceDamageLevel.NONE): ("dotted", 1),
-        int(InterfaceDamageLevel.STANDARD): ("dashed", 2),
-        int(InterfaceDamageLevel.SEVERE): ("solid", 3),
-    }
-    try:
-        return patterns[int(damage_level)]
-    except KeyError as error:
-        raise ValueError(f"invalid field damage level {damage_level}") from error
 
 
 def wrapped_field_centers(
@@ -596,8 +582,9 @@ class GameRenderer:
         if self._render_config.show_unlimited_button:
             resource_color = (80, 220, 120) if self.unlimited_resources else (110, 110, 125)
             pygame.draw.rect(surf, resource_color, self._unlimited_rect)
+            resource_name = "SH/PW" if state.num_zones else "HP/PW"
             resource_label = self._font.render(
-                f"Unlimited HP/PW: {'ON' if self.unlimited_resources else 'OFF'}",
+                f"Unlimited {resource_name}: {'ON' if self.unlimited_resources else 'OFF'}",
                 True,
                 (0, 0, 0),
             )
@@ -609,10 +596,9 @@ class GameRenderer:
                 ),
             )
 
-        # Interface legend: color carries index, pattern carries damage. In
-        # particular, a solid outline means severe damage—not impermeability.
+        # Field colour identifies optical material; every interface is harmless.
         legend = self._font.render(
-            "Fields: cyan fast | violet slow | · none  -- standard  — severe (traversable)",
+            "Fields: cyan fast | violet slow (traversable, opaque cores)",
             True,
             (175, 175, 190),
         )
@@ -884,11 +870,11 @@ class GameRenderer:
         roles = state.zone_roles[0].cpu()
         progress = state.zone_capture_progress[0].cpu()
         role_style = {
-            int(ZoneRole.TEAM0_SPAWN): ((100, 180, 255), "S0 HEAL"),
-            int(ZoneRole.TEAM0_DEFENSE): ((100, 180, 255), "D0 DMG"),
+            int(ZoneRole.TEAM0_SPAWN): ((100, 180, 255), "S0 SAFE"),
+            int(ZoneRole.TEAM0_DEFENSE): ((100, 180, 255), "D0 DEF"),
             int(ZoneRole.NEUTRAL): ((180, 180, 180), "NEUTRAL"),
-            int(ZoneRole.TEAM1_DEFENSE): ((255, 120, 80), "D1 DMG"),
-            int(ZoneRole.TEAM1_SPAWN): ((255, 120, 80), "S1 HEAL"),
+            int(ZoneRole.TEAM1_DEFENSE): ((255, 120, 80), "D1 DEF"),
+            int(ZoneRole.TEAM1_SPAWN): ((255, 120, 80), "S1 SAFE"),
         }
         for index in range(positions.shape[0]):
             position = complex(positions[index].item())
@@ -926,14 +912,13 @@ class GameRenderer:
                 )
 
     def _draw_fields(self, state: TensorState, surf: pygame.Surface) -> None:
-        """Draw each overlapping field's transition band and damage outline."""
+        """Draw each overlapping field's transition band and material outline."""
         if state.num_fields == 0:
             return
         positions = state.field_pos[0].cpu()
         radii = state.field_radius[0].cpu()
         widths = state.field_transition_width[0].cpu()
         index_levels = state.field_index_level[0].cpu()
-        damage_levels = state.field_damage_level[0].cpu()
 
         # Large contours first keeps small/coincident field outlines legible.
         order = sorted(range(positions.shape[0]), key=lambda i: radii[i].item(), reverse=True)
@@ -944,7 +929,7 @@ class GameRenderer:
             radius_px = max(1, int(round(radius_world * self.camera.scale)))
             width_px = max(1, int(round(float(widths[field_idx].item()) * self.camera.scale)))
             color = field_color(int(index_levels[field_idx].item()))
-            pattern, line_width = field_border_pattern(int(damage_levels[field_idx].item()))
+            pattern, line_width = "solid", 1
             for wrapped_center in self.camera.visible_images(center, outer):
                 screen_center = self._unwrapped_world_to_screen(wrapped_center)
                 self._draw_field_band(surf, screen_center, radius_px, width_px, color)
@@ -1118,7 +1103,7 @@ class GameRenderer:
 
         Independent alpha blits make partial and coincident overlaps visible as
         stronger/mixed bands while every nominal contour remains separately
-        outlined by its material and damage pattern.
+        outlined by its optical material.
         """
 
         half_width = max(1, transition_width // 2)

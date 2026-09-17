@@ -45,18 +45,14 @@ def _make_rewards(**overrides) -> RewardConfig:
         enemy_neg_lambda_components=frozenset(
             {
                 "enemy_combat_damage",
-                "enemy_field_damage",
                 "enemy_combat_death",
-                "enemy_field_death",
                 "enemy_win",
             }
         ),
         ally_zero_components=frozenset(
             {
                 "enemy_combat_damage",
-                "enemy_field_damage",
                 "enemy_combat_death",
-                "enemy_field_death",
                 "enemy_win",
             }
         ),
@@ -205,10 +201,11 @@ class TestPPOSmokeTest:
             zone_ring_radius=1200.0,
             playable_radius=2600.0,
             capture_seconds=6.0,
-            defense_damage_per_second=2.0,
             respawn_health=25.0,
-            spawn_heal_per_second=12.0,
-            enemy_spawn_damage_per_second=8.0,
+            respawn_power=20.0,
+            respawn_speed=30.0,
+            shield_recharge_delay=4.0,
+            shield_recharge_per_second=20.0,
             boundary_damage_per_second=5.0,
             boundary_damage_per_pixel_second=0.05,
             front_win_threshold=5,
@@ -1295,12 +1292,8 @@ class TestComponentClassification:
         assert shared == {
             "ally_combat_damage",
             "enemy_combat_damage",
-            "ally_field_damage",
-            "enemy_field_damage",
             "ally_combat_death",
             "enemy_combat_death",
-            "ally_field_death",
-            "enemy_field_death",
             "ally_win",
             "enemy_win",
             "outcome",
@@ -1699,3 +1692,32 @@ class TestBehaviorCloningRatchet:
         # Raw factor recovers even though the coefficient does not.
         assert trainer._apply_schedule_state(0) > 0.0
         assert trainer._behavior_cloning_coef == pytest.approx(0.0)
+
+
+def test_offensive_schedule_updates_primary_and_auxiliary_rewards(tmp_path):
+    import copy
+
+    from boost_and_broadside.config.defaults import make_rl_schedule_spec
+
+    trainer = _make_trainer(
+        checkpoint_dir=str(tmp_path),
+        schedule=make_rl_schedule_spec().compile(),
+        kill_payout_ratio=2.0,
+        damage_payout_ratio=2.0,
+        capture_payout_ratio=2.0,
+    )
+    trainer.aux_wrappers.append(copy.deepcopy(trainer.wrapper))
+    for step, ratio in ((0, 2.0), (175_000_000, 1.5), (300_000_000, 1.0), (500_000_000, 1.0)):
+        trainer._apply_schedule_state(step)
+        for wrapper in (trainer.wrapper, *trainer.aux_wrappers):
+            components = {component.name: component for component in wrapper.reward_components}
+            assert components["capture_progress"].payout_ratio == pytest.approx(ratio)
+            assert components["front_advance"].payout_ratio == pytest.approx(ratio)
+            assert components["damage_dealt_enemy"].weight == pytest.approx(
+                ratio * components["combat_damage_taken"].weight
+            )
+            assert components["kill_shot"].weight + components[
+                "kill_assist"
+            ].weight == pytest.approx(ratio * components["combat_death"].weight)
+            if step >= 300_000_000:
+                assert components["facing"].weight == 0

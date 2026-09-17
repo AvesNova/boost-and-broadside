@@ -86,18 +86,15 @@ def _field_steering_state(*, num_fields: int):
         state.field_radius[0, 0] = 40.0
         state.field_transition_width[0, 0] = 40.0
         state.field_index[0, 0] = 2.0
-        state.field_damage[0, 0] = 20.0
     return config, state
 
 
 def test_scripted_turn_targets_ignore_nearby_fields() -> None:
     """The scripted controller aims and manoeuvres as if the medium were uniform.
 
-    Its former material-aware steering measured net-negative: against a
-    uniform-random agent it produced *more* interface crossings, so behaviour
-    cloning imprinted extra crossing damage that the field_damage_taken penalty
-    then had to unteach. Field representation comes from the auxiliary
-    local_log_index prediction head, which never decays, rather than from BC.
+    The teacher keeps its geometric turning labels independent of local field
+    material. Policies learn optical effects through local_log_index prediction
+    and interaction with the environment.
     """
     config, ambient = _field_steering_state(num_fields=0)
     _, fielded = _field_steering_state(num_fields=1)
