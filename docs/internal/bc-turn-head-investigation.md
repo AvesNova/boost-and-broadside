@@ -71,10 +71,16 @@ What session 3 measured, all on fresh held-out rollouts under
    currently-visible enemies while the trunk attends over `BELIEF_VALID`
    ("visible or previously observed"), but remembered-but-invisible tokens go
    with **lower** KL at every matched enemy count (Exp 15).
-6. **Inconclusive:** whether the ceiling is this trunk or the observation. The
-   from-scratch depth sweep (Exp 17) is data-limited, not architecture-limited —
-   the tell is that KL *rose* with depth — so nothing in it can be cited for its
-   levels. Redoing it properly is the largest open question here (Exp 17).
+6. **Depth is not the answer, and neither is relative position.** Adding spatial
+   layers on top of the **frozen** trunk, at 65 536 scenes, is flat-to-worse:
+   `0.3886` (head only) → `0.4005` (one layer) → `0.4242` (two). A transfer-safe
+   relative-position attention bias scores `0.4192` against `0.4242` at matched
+   depth — noise, so **the last surviving support for session 2's recommendation
+   is withdrawn too**. And a 35 000-parameter head on the frozen latent reaches
+   `0.3886` against the deployed head's `0.4415`, so neither the head nor the
+   latent's usability is the constraint. These are lower bounds — a frozen latent
+   cannot show what end-to-end depth would have preserved — but they are lower
+   bounds showing no benefit whatsoever (Exp 21).
 
 **What this means for the run.** The BC profile stops on a plateau in
 `loss/behavioral_cloning_kl` and says so explicitly — it is the *only* stop
@@ -1150,16 +1156,50 @@ First pass, 3 rollouts (12 288 scenes):
 
 *Interpretation of the first pass:* **this is overfitting, not a capacity
 result.** Held-out KL degrades monotonically as parameters grow 35k → 825k on a
-fixed 12 288 scenes, which is the same failure that invalidated Exp 17. The one
-solid number is the depth-0 row: a 35k-parameter head on the frozen latent
-reaches `0.5029`, slightly *better* than the checkpoint's own head — so the
-latent is not the constraint on the head, and nothing here is broken.
+fixed 12 288 scenes, which is the same failure that invalidated Exp 17. It
+retro-diagnoses Exp 17 precisely: that sweep failed not because transformers
+need more data in general, but because **every arm above ~200k parameters
+overfits this collection size**. The cheap diagnostic is "does held-out KL rise
+with parameters?"
 
-It also retro-diagnoses Exp 17: that sweep was not a weak experiment because
-transformers need more data than I gave them in general, but because **every arm
-above ~200k parameters overfits this collection size**. Any future capacity
-question on this pipeline needs ≥10× the scenes or end-to-end training, and the
-cheap diagnostic for the failure is "does held-out KL rise with parameters?"
+Second pass, 16 rollouts (65 536 scenes, 5.3×), epochs cut 25 → 5 so the
+gradient-step budget is roughly unchanged and the model simply sees more
+distinct states:
+
+| extra layers | parameters | held-out turn KL |
+|---|---|---|
+| — (the checkpoint's own head) | — | 0.4415 |
+| 0 (a fresh head on the frozen latent) | 35 079 | **0.3886** |
+| 1 | 232 583 | 0.4005 |
+| 2 | 430 087 | 0.4242 |
+| 2 **+ relative-position bias** | 430 799 | 0.4192 |
+
+*Interpretation.* Three conclusions, two of them negative and one of them a
+retraction.
+
+* **Extra relational depth on the frozen trunk buys nothing.** With 5.3× the
+  data the overfitting mostly resolves — depth 1 moves from `0.668` to `0.401` —
+  but the ordering does not change: more layers are flat-to-worse, never better.
+  Since parameter count still rises with depth, some residual overfitting cannot
+  be excluded, so the honest statement is **no evidence of benefit** rather than
+  proof of harm. Either way, nothing here supports "the trunk is too shallow".
+* **The relative-position bias does not replicate.** At matched depth, data and
+  parameter count it scores `0.4192` against `0.4242` — a `0.005` difference,
+  noise at this scale. Exp 17's apparent `0.28` and `0.18` advantages were an
+  artefact of comparing two differently-overfitting arms. This was the only
+  surviving evidence for the transfer-safe descendant of session 2's
+  recommendation, and **it is now withdrawn too.**
+* **The head is not the constraint and neither is the latent's usability.** A
+  35 000-parameter head on the frozen latent scores `0.3886` against the
+  deployed head's `0.4415` — 12% better, from 65k scenes against the
+  checkpoint's 167.6M steps. Whatever the residual is, the final latent supports
+  a better mapping to turn probabilities than the checkpoint currently realises.
+
+*The standing caveat.* All of this is on a **frozen** trunk. A latent that has
+already discarded something cannot show what end-to-end depth would have
+preserved, so these are lower bounds. They are, however, lower bounds that show
+no benefit at all, which is weak evidence against depth being the answer and
+strong evidence against spending a multi-hour end-to-end run to find out next.
 
 ## Recurrent-state findings
 
@@ -1272,28 +1312,23 @@ different turn KLs and compare the RL curves.** If a `0.5`-KL warm start reaches
 the same place as a `0.3`-KL one, this document describes a non-problem, and that
 is worth knowing before acting on anything below.
 
-### 3. Relative-position attention *bias*, if anything architectural — with caveats
+### 3. Relative-position attention *bias* — tested, and not supported
 
-Not the ego-relative token set from Exp 10: that is O(N²) in *encoder* cost and
-breaks the zero-shot transfer the project exists to demonstrate. The transfer-safe
-form is one scalar per (query, key, head) computed from the toroidal
-displacement — no per-pair token, no per-pair value, encoder still O(N), no
-weight whose shape depends on N.
+Recorded because it was the transfer-safe descendant of session 2's fix and the
+obvious thing to try next. One scalar per (query, key, head) from the toroidal
+displacement: no per-pair token, no per-pair value, encoder still O(N), no weight
+whose shape depends on N — so unlike Exp 10's construction it does not break
+zero-shot fleet-size transfer.
 
-*Evidence:* weak, and weaker than it looks. In Exp 17's matched from-scratch
-contrast the bias beat plain attention at equal depth, equal data and equal
-parameter count — `1.537` vs `1.817` at depth 2, `1.764` vs `1.942` at depth 4.
-But **Exp 17 as a whole is a failed experiment** (its KL rises with depth, the
-signature of a data-limited fit), and a contrast drawn from inside a broken run
-is only suggestive. `exp20_relbias.py` was written to re-run this contrast alone
-on ~4× the data and **was not run to completion** — scaled from Exp 17's timings
-it needs 2–3 hours, which did not fit this session. Treat the direction as a
-hypothesis with a script attached, not as a measurement.
-
-*Against it:* Exp 14 found the trunk already represents the teacher's geometric
-intermediates adequately and has learned a direct map to the bearing that beats
-all of them. It is not obvious that cheaper relative geometry buys much when the
-binding constraint is not the geometry. **Do (1) and (2) first.**
+*It did not survive testing.* Exp 17's matched contrast appeared to favour it by
+`0.28` at depth 2, but Exp 17 is a failed, data-limited run and that gap was an
+artefact of comparing two differently-overfitting arms. Repeating the comparison
+on 5.3× the data on a frozen trunk gives `0.4192` against `0.4242` — a `0.005`
+difference, noise. **Do not spend a run on this on the strength of what is in
+this document.** If someone wants to test it properly it has to be end-to-end,
+because a frozen trunk cannot show what the lower layers would have done with
+cheaper relative geometry — but there is now no positive evidence to motivate
+that run.
 
 ### 4. Bearing auxiliary loss — cheap instrument, uncertain gain
 
@@ -1312,8 +1347,9 @@ would supervise.
 * **More spatial depth on its own.** Session 2 inferred "still improving at the
   last layer, therefore depth-limited"; Exp 14 shows block 1 improving the
   task-relevant quantity while *degrading* incidental ones, which reads as
-  specialisation rather than an unsaturated capacity curve. Exp 17's from-scratch
-  sweep could not adjudicate.
+  specialisation rather than an unsaturated capacity curve. Exp 21 then tested it
+  directly: extra layers on the frozen trunk are flat-to-worse at 65k scenes
+  (`0.389 / 0.401 / 0.424`). No evidence of benefit.
 * **Chasing a specific missing teacher quantity.** Exp 16 and 18 handed the
   frozen latent zone `need`, `preference`, per-zone geometry, allied pressure,
   `separation`, `recovery` and `objective_force` in every combination. Nothing
@@ -1345,11 +1381,11 @@ batch while the next fresh rollout scored `2.59`.
 
 1. **Does the residual cost anything downstream?** (~2 GPU-hours.) Recommendation
    (2). Unasked in three sessions and it gates the value of everything else.
-2. **Is the ceiling the trunk or the observation?** (~4–8 GPU-hours.) Exp 17 was
-   the right idea at the wrong budget: 12k scenes cannot stand in for 167.6M
-   environment steps, and KL rising with depth is the tell. Redo it with a real
-   training budget and a held-out split, or — cheaper and better — take the
-   existing trunk and train *only* added spatial depth on frozen lower layers.
+2. **Is the ceiling the trunk or the observation?** (~4–8 GPU-hours.) Still open,
+   but narrower now. Exp 21 did the cheap version — added depth on frozen lower
+   layers — and found no benefit, so the remaining question is specifically
+   whether *end-to-end* depth behaves differently from depth on a frozen latent.
+   Given Exp 21's result that is a speculative run, not an indicated one.
 3. **Why is the best-conditioned octile still at KL `0.374` and `4.6°`?** This is
    now the largest unexplained block. It is not conditioning, not a missing
    intermediate, and not perception. Worth a targeted probe of what distinguishes
@@ -1501,7 +1537,10 @@ exp19_conditioning.py  force reconstruction, |force| stratification, sensitivity
 exp17_depth.py      from-scratch depth sweep (DATA-LIMITED -- see below)
 exp20_relbias.py    the matched relative-bias contrast on ~4x the data
                     -- WRITTEN BUT NOT RUN; no numbers in this document
-                       come from it
+                       come from it. Exp 21 answered the same question
+                       more cheaply, so it is probably not worth running.
+exp21_frozen_depth.py  added spatial depth on the FROZEN trunk; takes
+                    <n_rollouts> <epochs>, default 3 and 25
 ```
 
 Reproduction, from the repo root:
@@ -1514,8 +1553,15 @@ uv run --no-sync python benchmarks/bc_diagnostics/exp15_belief.py               
 uv run --no-sync python benchmarks/bc_diagnostics/exp16_zone.py                    # ~12 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py                   # ~5 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py            # ~2 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 3 25       # ~25 min (data-limited)
+uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 16 5      # ~35 min (the usable pass)
 uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # 2-3 h, NOT RUN
 ```
+
+Exp 21 must be run at `16 5`, not the default `3 25`, for its numbers to mean
+anything: at 12 288 scenes every arm above ~200k parameters overfits and the
+depth ordering inverts. The two passes are both tabulated in the write-up
+precisely so the failure mode is visible rather than hidden.
 
 Sample sizes are as session 2: 3 rollouts after 3 burn-in at `num_envs=128`,
 `num_steps=128`, every 4th timestep, giving **49 152** tokens per tag under
@@ -1549,6 +1595,7 @@ force reconstruction is likewise validated at `0.000°` median against the
 teacher's own bearing wherever `recovery < 0.01`. Neither is assumed.
 
 New dumps, all gitignored: `probe2_*.pt` (~250 MB each), `zone_*.pt` (~44 MB),
+`fd_*.pt` and `fd_*_16.pt` (frozen-latent activations for all 24 tokens),
 `rb_*.pt`. Every `exp*_rows.json` is committed.
 
 Caveat on Elo, unchanged: `runtime.elo_eval.step/flush` are stubbed in every

@@ -89,3 +89,10 @@ needs 2-3 hours. No number in the write-up comes from it.
 Anything that mirrors `frontline_strategy` cross-checks itself against the real
 function on every recorded step and reports the drift; both mirrors here record
 `0.0`. Do not trust a mirror that does not.
+
+`exp21_frozen_depth.py` takes `<n_rollouts> <epochs>` and **must be run at
+`16 5`**, not the default `3 25`. At 12 288 scenes every arm above ~200k
+parameters overfits and the depth ordering inverts; the write-up tabulates both
+passes so that failure mode stays visible. It is also the cheap way to ask a
+capacity question on this pipeline — the trunk is frozen, so only the added
+layers are learned.

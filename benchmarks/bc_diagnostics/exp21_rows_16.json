@@ -1,0 +1,31 @@
+[
+ {
+  "depth": "frozen policy head",
+  "relbias": false,
+  "heldout_turn_kl": 0.4415
+ },
+ {
+  "depth": 0,
+  "relbias": false,
+  "params": 35079,
+  "heldout_turn_kl": 0.3886
+ },
+ {
+  "depth": 1,
+  "relbias": false,
+  "params": 232583,
+  "heldout_turn_kl": 0.4005
+ },
+ {
+  "depth": 2,
+  "relbias": false,
+  "params": 430087,
+  "heldout_turn_kl": 0.4242
+ },
+ {
+  "depth": 2,
+  "relbias": true,
+  "params": 430799,
+  "heldout_turn_kl": 0.4192
+ }
+]
