@@ -1,0 +1,24 @@
+{
+ "ns=1.0": {
+  "train_turn_kl": [
+   0.4335,
+   0.3303,
+   0.2246,
+   0.1958
+  ],
+  "fresh_rollout_turn_kl": 2.5885,
+  "epochs_per_call": 4,
+  "seconds": 35.1
+ },
+ "ns=0.0": {
+  "train_turn_kl": [
+   0.4335,
+   0.3743,
+   0.232,
+   0.1854
+  ],
+  "fresh_rollout_turn_kl": 3.005,
+  "epochs_per_call": 4,
+  "seconds": 34.6
+ }
+}

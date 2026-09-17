@@ -1328,6 +1328,76 @@ same seed, both scored as `KL / H(teacher)` on fresh rollouts. Nothing short of
 that separates "the new teacher is harder", "the new environment is harder", and
 "the entropy changed".
 
+### Exp 27 — is the run training? Measured honestly, no.
+
+*Question:* not "is the new task harder" — that is obvious by inspection — but
+**why is this run not making progress now.** Every KL the run logs is taken
+during the update, on the rollout being fitted (D3), which is the one
+measurement that cannot answer it. *Method:* `exp27_is_it_training.py` runs the
+production loop — collect, score, GAE, one `_update_epochs` call — and records
+per update: `pre` (turn KL on the freshly collected on-policy rollout *before*
+the update sees it), `post` (the same rollout after), and the next update's
+`pre`. *Runtime:* ~4 min. *Sample:* 12 updates at `num_envs=128`, 8 at 256.
+
+| update | pre-update, fresh | post-update, same rollout | fitted |
+|---|---|---|---|
+| 1 | **0.6092** | 0.5799 | 0.03 |
+| 2 | **1.4489** | 0.4364 | 1.01 |
+| 3 | 0.9204 | 0.5388 | 0.38 |
+| 4 | 0.9970 | 0.4869 | 0.51 |
+| 6 | 0.8497 | 0.4969 | 0.35 |
+| 8 | 0.8721 | 0.4513 | 0.42 |
+| 10 | 0.8370 | 0.4178 | 0.42 |
+| 12 | 0.8659 | 0.4168 | 0.45 |
+
+| | `num_envs=128` | `num_envs=256` |
+|---|---|---|
+| mean fresh KL, first 3 updates | 0.9928 | 0.9509 |
+| mean fresh KL, last 3 | 0.8238 | 0.8139 |
+| mean fitted per update | 0.4234 | 0.4016 |
+
+*Interpretation.* Three findings, and this is the most directly actionable
+material in the document.
+
+1. **The first update roughly doubles fresh-rollout turn KL** — `0.609 → 1.449`
+   at 128 envs, `0.576 → 1.349` at 256. The checkpoint is *damaged* on unseen
+   states by one production update, and over the next 11 updates it recovers only
+   to ~`0.82`, never back to the ~`0.58` it started from.
+2. **Almost nothing generalises.** Each update fits its own rollout by ~`0.40`
+   nats and essentially all of it is gone by the next rollout. `post` sits at
+   `0.42`–`0.52` throughout while `pre` sits at ~`0.85`: a persistent ~`0.40` nat
+   gap that does not close across twelve updates.
+3. **That gap is exactly what the logged metric hides.** `loss/behavioral_cloning_kl`
+   is accumulated across the update (D3), so it lives between `pre` and `post` —
+   around `0.45`, which looks healthy and stable. The honest on-policy number is
+   ~`0.85` and got *worse* after the first update. **The run can look converged
+   and well-behaved while not training at all**, and its only stop condition
+   reads the flattering number.
+
+**Not a batch-size artifact.** Doubling `num_envs` changes the numbers by less
+than the rollout-to-rollout noise session 1 measured (±0.1). The dev card cannot
+reach the production 1280, so this is a trend across a 2× range rather than a
+proof at production scale — but the mechanism is clearly not "the batch is too
+small", which was the obvious alternative explanation.
+
+**Hyperparameters were checked, not assumed.** The BC profile *holds* its
+schedule (`behavior_cloning_coef=hold(1.0)`, "cloning never decays here"), and at
+the loaded checkpoint `optim.param_groups[0]["lr"] = 3e-4`,
+`behavior_cloning_coef = 1.0`, `entropy_coef = 0.005` — all matching the profile.
+The `update` argument to `_update_epochs` only gates gradient-diagnostic cadence,
+not the learning rate. So the loop is running the real update at the real
+settings.
+
+**What this does not establish.** Twelve updates is short, and the `pre` trend is
+mildly downward (`0.99 → 0.82`), so this could be a re-equilibration transient
+rather than permanent damage — the distinction needs a few hundred updates, which
+is a real run. It also does not identify *why* the update fails to generalise;
+candidates worth separating are the four-epoch reuse of each rollout, the
+on-policy distribution shifting under a changing policy (BC on self-generated
+rollouts is a DAgger-like loop with no correction), and the shared trunk being
+pulled by the critic and next-state heads. Each is testable by ablation from
+here, cheaply, and none of them has been tested.
+
 ### Exp 17 / 20 — from-scratch depth sweep (a failed experiment) and the relative-bias contrast
 
 *Question:* is the ceiling this trunk, or the observation? *Method:*
@@ -1527,6 +1597,22 @@ history. Log epoch 0 separately and use *that* for plateau detection.
 ## Recommendations
 
 Reordered by evidence after session 3 withdrew session 2's headline fix.
+
+### 0. The run is not training, and the metric cannot see it — start here
+
+Exp 27 ran the production loop and measured turn KL on fresh on-policy rollouts
+*before* each update touched them. One update takes the checkpoint from `0.61` to
+`1.45` on unseen states; over twelve updates it recovers only to `0.82`, never
+back to where it started. Each update fits its own rollout by ~`0.40` nats and
+loses essentially all of it. Meanwhile `post`-update KL — which is roughly what
+gets logged — sits at a healthy-looking `0.45` the whole time.
+
+So the run's own instrumentation cannot distinguish "converged" from "fitting
+each rollout and generalising none of it", and its only stop condition reads the
+flattering number. **Everything else in this document is downstream of that.**
+Three ablations separate the likely causes, all cheap from `exp27_is_it_training.py`:
+drop to one epoch per rollout; freeze the critic and next-state heads for a few
+updates; and hold the rollout distribution fixed while updating. None has been run.
 
 ### 1. Fix the stop condition — highest value, ~15 minutes
 

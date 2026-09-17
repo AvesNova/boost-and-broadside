@@ -1,0 +1,68 @@
+{
+ "rows": [
+  {
+   "update": 1,
+   "pre_update_fresh_kl": 0.5761,
+   "post_update_same_rollout_kl": 0.5664,
+   "fitted": 0.0098,
+   "seconds": 26.6
+  },
+  {
+   "update": 2,
+   "pre_update_fresh_kl": 1.3487,
+   "post_update_same_rollout_kl": 0.5303,
+   "fitted": 0.8185,
+   "seconds": 25.9
+  },
+  {
+   "update": 3,
+   "pre_update_fresh_kl": 0.928,
+   "post_update_same_rollout_kl": 0.4283,
+   "fitted": 0.4997,
+   "seconds": 28.5
+  },
+  {
+   "update": 4,
+   "pre_update_fresh_kl": 0.8438,
+   "post_update_same_rollout_kl": 0.4785,
+   "fitted": 0.3652,
+   "seconds": 29.8
+  },
+  {
+   "update": 5,
+   "pre_update_fresh_kl": 0.7916,
+   "post_update_same_rollout_kl": 0.4123,
+   "fitted": 0.3793,
+   "seconds": 27.7
+  },
+  {
+   "update": 6,
+   "pre_update_fresh_kl": 0.7704,
+   "post_update_same_rollout_kl": 0.4549,
+   "fitted": 0.3154,
+   "seconds": 26.6
+  },
+  {
+   "update": 7,
+   "pre_update_fresh_kl": 0.9115,
+   "post_update_same_rollout_kl": 0.4129,
+   "fitted": 0.4986,
+   "seconds": 26.1
+  },
+  {
+   "update": 8,
+   "pre_update_fresh_kl": 0.7599,
+   "post_update_same_rollout_kl": 0.4333,
+   "fitted": 0.3266,
+   "seconds": 26.1
+  }
+ ],
+ "summary": {
+  "num_envs": 256,
+  "epochs_per_update": 4,
+  "mean_pre_first3": 0.9509,
+  "mean_pre_last3": 0.8139,
+  "progress_over_run": 0.137,
+  "mean_fitted_per_update": 0.4016
+ }
+}
