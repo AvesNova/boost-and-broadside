@@ -8,7 +8,7 @@ RTX 4070 Laptop (8 GB) at `num_envs=128`, `microbatch_tokens=12288`,
 
 Three sessions are recorded here. Session 1 (Exp 1–6) established *what* the
 residual is. Session 2 (Exp 7–13) attributed it to the positional encoding.
-**Session 3 (Exp 14–20) retracts that attribution** — see *Corrections to
+**Session 3 (Exp 14–19) retracts that attribution** — see *Corrections to
 session 2* — and replaces it with a measured account in which no single
 missing quantity explains the residual.
 
@@ -61,8 +61,8 @@ What session 3 measured, all on fresh held-out rollouts under
    with **lower** KL at every matched enemy count (Exp 15).
 6. **Inconclusive:** whether the ceiling is this trunk or the observation. The
    from-scratch depth sweep (Exp 17) is data-limited, not architecture-limited —
-   the tell is that KL *rose* with depth — so its absolute levels say nothing.
-   Only its matched within-experiment contrast is usable (Exp 20).
+   the tell is that KL *rose* with depth — so nothing in it can be cited for its
+   levels. Redoing it properly is the largest open question here (Exp 17).
 
 **What this means for the run.** The BC profile stops on a plateau in
 `loss/behavioral_cloning_kl` and says so explicitly — it is the *only* stop
@@ -1172,10 +1172,15 @@ form is one scalar per (query, key, head) computed from the toroidal
 displacement — no per-pair token, no per-pair value, encoder still O(N), no
 weight whose shape depends on N.
 
-*Evidence:* weak but real. In Exp 17/20's matched from-scratch contrast, the bias
-beat plain attention at equal depth, equal data and equal parameters. Those runs
-are data-limited and their absolute KLs are far above the checkpoint's, so this
-is a directional signal, not a projected gain.
+*Evidence:* weak, and weaker than it looks. In Exp 17's matched from-scratch
+contrast the bias beat plain attention at equal depth, equal data and equal
+parameter count — `1.537` vs `1.817` at depth 2, `1.764` vs `1.942` at depth 4.
+But **Exp 17 as a whole is a failed experiment** (its KL rises with depth, the
+signature of a data-limited fit), and a contrast drawn from inside a broken run
+is only suggestive. `exp20_relbias.py` was written to re-run this contrast alone
+on ~4× the data and **was not run to completion** — scaled from Exp 17's timings
+it needs 2–3 hours, which did not fit this session. Treat the direction as a
+hypothesis with a script attached, not as a measurement.
 
 *Against it:* Exp 14 found the trunk already represents the teacher's geometric
 intermediates adequately and has learned a direct map to the bearing that beats
@@ -1386,7 +1391,9 @@ exp16_zone.py       per-zone teacher quantities appended to the frozen latent
 exp18_terms.py      the three force terms, singly and in combination
 exp19_conditioning.py  force reconstruction, |force| stratification, sensitivity
 exp17_depth.py      from-scratch depth sweep (DATA-LIMITED -- see below)
-exp20_relbias.py    the matched relative-bias contrast, on ~4x the data
+exp20_relbias.py    the matched relative-bias contrast on ~4x the data
+                    -- WRITTEN BUT NOT RUN; no numbers in this document
+                       come from it
 ```
 
 Reproduction, from the repo root:
@@ -1399,7 +1406,7 @@ uv run --no-sync python benchmarks/bc_diagnostics/exp15_belief.py               
 uv run --no-sync python benchmarks/bc_diagnostics/exp16_zone.py                    # ~12 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py                   # ~5 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py            # ~2 min
-uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # ~30 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # 2-3 h, NOT RUN
 ```
 
 Sample sizes are as session 2: 3 rollouts after 3 burn-in at `num_envs=128`,
@@ -1414,7 +1421,11 @@ checkpoint that saw 167.6M environment steps; held-out KL came out at `1.54–1.
 against the checkpoint's `0.51`, and *rose* monotonically with depth
 (`1.54 / 1.82 / 1.94 / 1.96` at depths 1/2/4/6), which is the signature of a
 data-limited fit rather than a capacity measurement. Only its matched
-within-experiment contrast is usable, and Exp 20 re-runs that alone.
+within-experiment contrast is even suggestive (`relbias` beating plain attention
+by `0.28` at depth 2 and `0.18` at depth 4), and a contrast drawn from inside a
+broken run should not be leaned on. `exp20_relbias.py` exists to re-run that
+contrast properly and was not run — there are no Exp 20 numbers anywhere in this
+document.
 
 Two collection details, both silently fatal if missed (unchanged from session 2):
 temporal sublayers are reached via `forward_sequence`, so forward hooks never

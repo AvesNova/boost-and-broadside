@@ -77,12 +77,14 @@ uv run --no-sync python benchmarks/bc_diagnostics/exp15_belief.py       # belief
 uv run --no-sync python benchmarks/bc_diagnostics/exp16_zone.py         # zone quantities
 uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py        # the three force terms
 uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py # |force| conditioning
-uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12   # matched relative-bias
+uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12   # NOT RUN (2-3 h)
 ```
 
 `exp17_depth.py` is kept but **its levels must not be cited** — it is
-data-limited (held-out KL rises with depth), and only its matched
-within-experiment contrast survives, which `exp20_relbias.py` re-runs.
+data-limited (held-out KL rises with depth). Only its matched within-experiment
+contrast is even suggestive. `exp20_relbias.py` was written to re-run that
+contrast properly on ~4x the data and **has never been run to completion**; it
+needs 2-3 hours. No number in the write-up comes from it.
 
 Anything that mirrors `frontline_strategy` cross-checks itself against the real
 function on every recorded step and reports the drift; both mirrors here record
