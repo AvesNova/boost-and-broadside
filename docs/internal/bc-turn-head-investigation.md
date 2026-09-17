@@ -106,15 +106,20 @@ four update epochs (`ppo.py:2586`, `2711`) and reads roughly `0.13` nats low, so
 the run's sole stopping criterion is biased. Fixing the logging is now the
 highest-value change in this document, and it is fifteen minutes of work.
 
-**And the framing worth questioning.** The README measures this policy at ~1748
-Elo against the scripted controller's 1000, beating fleets 1.4–1.5× its size. BC
-here is *pretraining* — a warm start RL improves on, not a clone to perfect. A
-policy that matched the teacher exactly would be markedly weaker. "Why can't it
-match?" may simply have the answer "because the teacher is a steep, partly
-ill-conditioned function that it has no reason to reproduce exactly, and it is
-already far past needing to." The evidence cannot settle whether the remaining
-`0.5` nats costs anything downstream; the cheap way to find out is to start RL
-from checkpoints at different BC KL and compare, which nobody has done.
+**A framing correction.** An earlier draft argued the residual might not matter,
+on the grounds that the README measures this policy at ~1748 Elo against the
+scripted controller's 1000. **That reasoning was wrong and is withdrawn.** Those
+results — the Elo, the crossover table, the zero-shot transfer claim — are all
+*TDM against the pre-zones scripted agent*; Frontline appears in the README only
+as a "provisional prototype". The policy's demonstrated superiority is over a
+*different, simpler* agent in a *different* mode. Against the frontline
+controller, in the frontline environment, its relative strength is not
+established anywhere, and BC here is pretraining *for that new mode*. If
+anything this raises the stakes of the residual rather than lowering them.
+
+It remains true that BC is a warm start rather than a clone to perfect, and the
+cheap way to price the residual is still to start RL from checkpoints at
+different BC KL and compare — which nobody has done.
 
 **Session 1 facts that still stand.** The old `0.81` was an evaluator missing
 `actor_mask`; the residual is a turn-head, and within it a direction, phenomenon;
@@ -1245,6 +1250,84 @@ predictions, which are optimistic; only the held-out column is scored honestly,
 so the curve's *shape* is trustworthy and its absolute intercept is not directly
 comparable to Exp 22's table.
 
+### Exp 25 / 26 — the old-agent comparison, attempted twice and not settled
+
+*Question, and it is the right one:* behaviour cloning is reported to have closed
+against the older, pre-zones TDM scripted agent — the one the README's 1748 Elo
+and crossover results are measured against — and to have stopped closing when
+`frontline_strategy` landed (commit `2b7ba18`). That is a natural A/B which
+removes "is BC hard in general" as a confound, and **no experiment in sessions
+1–3 used it.** Everything above reasons from the current run alone.
+
+Two attempts, both confounded in opposite directions.
+
+**Exp 25 — legacy *labels* on frontline states.** `get_actions_and_probs` still
+contains the pre-frontline controller verbatim (`_combat_probs`; "a zero-length
+zone axis is the exact legacy combat contract"), so both teachers can be scored
+on identical states.
+
+| | held-out turn KL |
+|---|---|
+| deployed head vs frontline teacher | 0.5112 |
+| deployed head vs legacy teacher | 1.6328 |
+| head refit on frozen latent → frontline | 0.6324 |
+| head refit on frozen latent → legacy | 0.6357 |
+
+The two refits are identical — but the comparison is **contaminated**. With zones
+present, ~43% of tokens have no visible enemy, and the legacy dogfighter
+degenerates there (`dir_pred = 0` with no target, so "go straight"). Its entropy
+on these states is `0.2503` against the frontline teacher's `0.4746`, and the two
+teachers disagree by KL `6.75`. The legacy controller is being run outside the
+states it was written for.
+
+**Exp 26 — legacy teacher in the legacy *environment*.** `EnvConfig.frontline =
+None` restores the pre-zones setup: 18 entity tokens instead of 24, and the
+teacher takes its legacy branch automatically.
+
+| | value |
+|---|---|
+| tokens | 48 362 |
+| teacher entropy | **0.1009** |
+| frozen policy head (frontline-trained, so OOD) | 1.4309 |
+| head refit on the frozen latent | 0.5451 |
+
+Also confounded, the other way: the checkpoint was *trained* in the frontline
+environment, so its latent is out of distribution here. A low KL would have been
+strong evidence; `0.5451` is weak evidence, because it could be the distribution
+shift rather than the target.
+
+**The one clean in-domain comparison.** Inside the current run, `alpha` selects
+which controller the teacher is: at `alpha ≈ 0` the turn head *is* the legacy
+combat controller, at `alpha ≈ 1` it is pure frontline navigation. Same
+environment, same policy, same rollouts:
+
+| stratum | tokens | turn KL | H(teacher) | KL / H |
+|---|---|---|---|---|
+| `alpha ≈ 0` — legacy combat controller | 8 983 | 0.4191 | 0.4533 | 0.92 |
+| `alpha ≈ 1` — frontline navigation | 32 154 | 0.5683 | 0.4866 | 1.17 |
+
+So the frontline objective *is* harder, but only by `0.15` nats — and crucially
+**the legacy-style behaviour is not being matched either** (`0.4191`, nowhere
+near zero). Whatever changed between the old runs and this one is therefore not
+explained by the teacher's turn function alone.
+
+**A methodological warning for any cross-run comparison.** The two teachers have
+very different entropies — `0.1009` for the legacy controller in its own
+environment against `0.4746` for the frontline one. Raw BC KL is not comparable
+across them, and `KL / H(teacher)` is the least-bad normalisation. A historical
+run reporting KL `0.05` against an entropy-`0.10` teacher is at `0.5` normalised,
+against this run's `1.08`. Still worse now, but far less dramatically than the
+raw numbers suggest, and some of the apparent regression may be this effect
+rather than a real loss of fit.
+
+**What would actually settle it** (~2–4 GPU-hours, and it is the single most
+informative experiment left in this document): two matched BC runs from
+*identical* initialisation, one in the TDM environment against the legacy
+teacher, one in the frontline environment against the current one, same budget,
+same seed, both scored as `KL / H(teacher)` on fresh rollouts. Nothing short of
+that separates "the new teacher is harder", "the new environment is harder", and
+"the entropy changed".
+
 ### Exp 17 / 20 — from-scratch depth sweep (a failed experiment) and the relative-bias contrast
 
 *Question:* is the ceiling this trunk, or the observation? *Method:*
@@ -1461,10 +1544,11 @@ plateau-detect on that.
 
 ### 2. Decide whether the residual costs anything — the question nobody has asked
 
-Every session here has treated turn KL `≈0.5` as a defect to eliminate. The
-README measures this policy at ~1748 Elo against the scripted controller's 1000,
-winning against fleets 1.4–1.5× its size; BC is *pretraining*, and an exact clone
-of the teacher would be far weaker. Before spending GPU-months on the residual,
+Every session here has treated turn KL `≈0.5` as a defect to eliminate. BC is
+*pretraining*, and an exact clone of the teacher would not be the goal. (An
+earlier draft supported this with the README's 1748 Elo; that was wrong — those
+numbers are TDM against the *pre-zones* agent, not the frontline controller this
+run imitates. See Exp 25/26.) Before spending GPU-months on the residual,
 run the experiment that prices it: **start RL from BC checkpoints at several
 different turn KLs and compare the RL curves.** If a `0.5`-KL warm start reaches
 the same place as a `0.3`-KL one, this document describes a non-problem, and that
@@ -1555,7 +1639,16 @@ batch while the next fresh rollout scored `2.59`.
 
 ## Remaining uncertainties and the cheapest next experiments
 
-1. **Does the residual cost anything downstream?** (~2 GPU-hours.) Recommendation
+1. **The old-agent A/B** (~2–4 GPU-hours) — now the most informative experiment
+   left, and the one this investigation should have started from. BC reportedly
+   closed against the pre-zones TDM agent and stopped when `frontline_strategy`
+   landed. Two matched BC runs from identical initialisation — TDM/legacy teacher
+   against frontline/current teacher, same budget and seed, both scored as
+   `KL / H(teacher)` on fresh rollouts — separate "the new teacher is harder"
+   from "the new environment is harder" from "the teacher's entropy changed"
+   (`0.10` against `0.47`, which alone distorts every raw cross-run comparison).
+   Exp 25 and 26 each attacked half of this and each was confounded; see there.
+2. **Does the residual cost anything downstream?** (~2 GPU-hours.) Recommendation
    (2). Unasked in three sessions and it gates the value of everything else.
 2. **Is the ceiling the trunk or the observation?** (~4–8 GPU-hours.) Still open,
    but narrower now. Exp 21 did the cheap version — added depth on frozen lower
@@ -1714,6 +1807,8 @@ exp22_format.py     polar vs Cartesian composition of the force terms
 exp23_latent_format.py  linear vs MLP probes: is the latent's direction
                     representation vector-like? (yes -- refutes Exp 22's guess)
 exp24_force_calib.py  dose-response: turn KL vs force-vector R^2
+exp25_old_vs_new.py   legacy vs frontline teacher labels on identical states
+exp26_tdm.py          the legacy teacher in the legacy (zones-off) environment
 exp17_depth.py      from-scratch depth sweep (DATA-LIMITED -- see below)
 exp20_relbias.py    the matched relative-bias contrast on ~4x the data
                     -- WRITTEN BUT NOT RUN; no numbers in this document
@@ -1736,6 +1831,8 @@ uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py         
 uv run --no-sync python benchmarks/bc_diagnostics/exp22_format.py                  # ~5 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp23_latent_format.py           # ~3 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp24_force_calib.py             # ~6 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp25_old_vs_new.py              # ~6 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp26_tdm.py                     # ~6 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 3 25       # ~25 min (data-limited)
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 16 5      # ~35 min (the usable pass)
 uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # 2-3 h, NOT RUN

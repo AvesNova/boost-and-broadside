@@ -1,0 +1,18 @@
+[
+ {
+  "target": "frontline (deployed policy head)",
+  "turn_kl": 0.5112
+ },
+ {
+  "target": "legacy (deployed policy head)",
+  "turn_kl": 1.6328
+ },
+ {
+  "target": "frontline (head refit on frozen latent)",
+  "turn_kl": 0.6324
+ },
+ {
+  "target": "legacy (head refit on frozen latent)",
+  "turn_kl": 0.6357
+ }
+]

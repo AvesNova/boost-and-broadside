@@ -1,0 +1,18 @@
+[
+ {
+  "what": "TDM tokens",
+  "n": 48362
+ },
+ {
+  "what": "teacher entropy",
+  "v": 0.1009
+ },
+ {
+  "what": "frozen policy head (OOD: frontline-trained)",
+  "turn_kl": 1.4309
+ },
+ {
+  "what": "head refit on frozen latent -> legacy teacher, TDM env",
+  "turn_kl": 0.5451
+ }
+]
