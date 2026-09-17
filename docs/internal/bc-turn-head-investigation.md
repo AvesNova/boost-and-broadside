@@ -1201,6 +1201,50 @@ nearly cancel (Exp 19); and the teacher's ramps convert the result into ~0.5
 nats (Exp 12). There is no missing concept anywhere in the chain — only a vector
 known to two significant figures where three would be needed.
 
+### Exp 24 — what sharpening the force vector is actually worth
+
+*Question:* Recommendation 3 rests on Exp 23's claim that the force vector's
+precision is the binding constraint, and carries a falsification condition: if it
+is not, sharpening it will move turn KL less than Exp 12 predicts. That is
+testable with no training run. *Method:* `exp24_force_calib.py` interpolates the
+probe's estimate of the force vector toward the true one, fits a turn head on the
+frozen latent plus each blend, and reads held-out turn KL against the achieved
+R². Same exactly-reconstructable sub-stratum as Exp 22/23. *Runtime:* ~6 min.
+*Sample:* 8 934 / 7 758.
+
+Probe accuracy at blend 0 is the latent's own: R² `0.888` on `f_x`, `0.727` on
+`f_y`.
+
+| blend | R²(`f_x`) | R²(`f_y`) | held-out turn KL |
+|---|---|---|---|
+| — (the checkpoint's own head) | — | — | 0.5890 |
+| 0.00 (the latent as it is) | 0.888 | 0.727 | 0.6992 |
+| 0.25 | 0.937 | 0.846 | 0.5893 |
+| 0.50 | 0.972 | 0.932 | 0.4493 |
+| 0.75 | 0.993 | 0.983 | 0.3138 |
+| 0.90 | 0.999 | 0.997 | 0.2533 |
+| 1.00 (exact) | 1.000 | 1.000 | 0.2265 |
+
+*Interpretation.* **The falsification condition is not met; the recommendation
+survives.** Turn KL responds strongly, smoothly and monotonically to
+force-vector accuracy, with no threshold and no plateau — which is what "this is
+the binding constraint" has to look like. The response is also steep enough to be
+worth chasing: lifting R²(`f_y`) from `0.727` to `0.932` is worth `0.25` nats in
+this stratum, and even the first modest step (`0.727 → 0.846`) is worth `0.11`.
+
+Two numbers to carry into any attempt at the fix. **The expectation:** an
+auxiliary loss that moves R²(`f_y`) into the low 0.9s should show ~`0.2`–`0.25`
+nats of held-out turn KL here — if it moves R² without moving KL, Exp 23's chain
+is wrong somewhere and the run should be stopped rather than tuned. **The floor:**
+an exact force vector still leaves `0.2265`, against `0.178` for the exact
+bearing (Exp 22). That gap is the `atan2` step plus the teacher's ramps, and it
+is the part no amount of force-vector precision reaches.
+
+*Caveat.* The blend's training-side features are the probe's in-sample
+predictions, which are optimistic; only the held-out column is scored honestly,
+so the curve's *shape* is trustworthy and its absolute intercept is not directly
+comparable to Exp 22's table.
+
 ### Exp 17 / 20 — from-scratch depth sweep (a failed experiment) and the relative-bias contrast
 
 *Question:* is the ceiling this trunk, or the observation? *Method:*
@@ -1441,10 +1485,15 @@ short of precision, and it is already close to linearly decodable from the
 latent, so the loss is well-posed rather than asking the trunk to sharpen an
 `atan2`. Transfer-safe — two outputs per ship, no dependence on `N`.
 
-*What would falsify the value of this:* if the R² `0.65`–`0.88` is not the
-binding constraint but a symptom of something upstream, sharpening it will move
-turn KL less than Exp 12's calibration predicts. That is measurable on the first
-run, by tracking held-out probe R² on the force vector alongside turn KL.
+*Already tested, and it passed.* Exp 24 traced the dose-response directly:
+interpolating the probe's force estimate toward the true one moves held-out turn
+KL smoothly and monotonically — `0.699` at the latent's own accuracy, `0.449` at
+R²(`f_y`) `0.93`, `0.227` at exact. No threshold, no plateau. **Expect ~`0.2`–
+`0.25` nats** from an auxiliary loss that lifts R²(`f_y`) from `0.73` into the low
+0.9s; if R² moves and KL does not, the chain in Exp 23 is wrong and the run
+should be stopped rather than tuned. **The floor** is `0.227` even with an exact
+force vector — the `atan2` step plus the ramps — so this fix cannot take turn KL
+below roughly that in this stratum.
 
 *Not claimed:* that the trunk's internal representation is badly chosen. I
 guessed that in Exp 22 and Exp 23 refuted it.
@@ -1664,6 +1713,7 @@ exp19_conditioning.py  force reconstruction, |force| stratification, sensitivity
 exp22_format.py     polar vs Cartesian composition of the force terms
 exp23_latent_format.py  linear vs MLP probes: is the latent's direction
                     representation vector-like? (yes -- refutes Exp 22's guess)
+exp24_force_calib.py  dose-response: turn KL vs force-vector R^2
 exp17_depth.py      from-scratch depth sweep (DATA-LIMITED -- see below)
 exp20_relbias.py    the matched relative-bias contrast on ~4x the data
                     -- WRITTEN BUT NOT RUN; no numbers in this document
@@ -1685,6 +1735,7 @@ uv run --no-sync python benchmarks/bc_diagnostics/exp18_terms.py                
 uv run --no-sync python benchmarks/bc_diagnostics/exp19_conditioning.py            # ~2 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp22_format.py                  # ~5 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp23_latent_format.py           # ~3 min
+uv run --no-sync python benchmarks/bc_diagnostics/exp24_force_calib.py             # ~6 min
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 3 25       # ~25 min (data-limited)
 uv run --no-sync python benchmarks/bc_diagnostics/exp21_frozen_depth.py 16 5      # ~35 min (the usable pass)
 uv run --no-sync python benchmarks/bc_diagnostics/exp20_relbias.py 12              # 2-3 h, NOT RUN
