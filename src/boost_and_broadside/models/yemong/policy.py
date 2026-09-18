@@ -183,7 +183,6 @@ class YemongPolicy(nn.Module):
             self.rotary = SpatialRotary(ship_config, model_config.spatial_head_dim)
         else:
             self.rotary = None
-
         self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
         self.map_memory_proj = (
             nn.Sequential(

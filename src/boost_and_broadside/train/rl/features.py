@@ -549,6 +549,151 @@ class Feature:
 
 
 # ---------------------------------------------------------------------------
+# Local presence (ally / enemy density)
+# ---------------------------------------------------------------------------
+
+# Radius of the presence kernel, in world pixels.
+#
+# A physical length rather than a fraction of the map, because that is what makes
+# it mean the same thing at every fleet size: "how crowded is my 500 px
+# neighbourhood" transfers from 5v5 to 50v50, while "how crowded is my
+# map-sixteenth" does not. 500 px is one bullet's travel -- ``bullet_speed`` 500
+# px/s for a ``bullet_lifetime`` of 1 s -- so the kernel's half-weight contour sits
+# at roughly the distance from which a ship can be shot.
+#
+# Measured against 250 and 1000 px on real Frontline scenes
+# (``benchmarks/presence_density_study.py``, artifacts/benchmarks/presence_density.json):
+# at 250 px the 5v5 enemy channel is dead, median 0.18 with most ships reading
+# zero; at 1000 px the 5v5 ally channel's 10th-to-90th percentile spread collapses
+# from 1.51 to 0.84 because every ship reads crowded. 500 px is the setting where
+# both channels carry a distribution at 5v5 and still separate at 50v50.
+PRESENCE_RADIUS = 500.0
+# Divisor applied after ``log1p``. 1.0 -- the compression alone already lands the
+# feature in a usable range (5v5 medians 1.40 ally / 1.04 enemy, 50v50 on the same
+# map 3.44 / 3.16), so there is nothing left for a scale factor to fix.
+#
+# ``log1p`` rather than a bounded ``s / (s + k)``, decided on the same scenes. Both
+# compress; only one keeps the crowded end legible. At 50 ships a side on the
+# training map, the upper half of the population (median to 99th percentile) spans
+# 0.38 ally / 0.52 enemy under log1p -- about as much range as the whole 5v5 median
+# -- against 0.02 / 0.03 under saturation, which is to say the saturating form
+# tells a swarmed ship and a very swarmed ship apart to two decimal places of a
+# quantity whose units are nothing in particular.
+PRESENCE_SCALE = 1.0
+
+
+def local_presence(
+    position: torch.Tensor,
+    team_id: torch.Tensor,
+    source: torch.Tensor,
+    world_size: tuple[float, float],
+    radius: float = PRESENCE_RADIUS,
+    scale: float = PRESENCE_SCALE,
+) -> torch.Tensor:
+    """Smooth, self-excluding ally and enemy presence around every ship token.
+
+    Softmax attention returns proportions, which is exactly the invariant that
+    survives a change in fleet size -- and exactly why it cannot report *how
+    many*. "Outnumbered two to one" reads the same at any scale; "three enemies
+    within weapons range" does not, and nothing else in the observation says it.
+    These two scalars are that missing quantity, in the one form that transfers.
+
+    The aggregate is a Gaussian kernel over toroidal distance, summed over every
+    contributing ship and then compressed with ``log1p``:
+
+        presence = log1p( sum_j exp(-|d_ij|^2 / (2 r^2)) ) / scale
+
+    Each property is load-bearing:
+
+    * a *sum* over all ships (not a top-k, not a nearest-N) is permutation
+      invariant and has no fleet-size-dependent shape;
+    * a *smooth* kernel means a ship drifting across the radius moves the feature
+      continuously, where a hard count would step;
+    * *toroidal* distance means the seam is not a wall;
+    * ``log1p`` keeps the value finite and well-scaled as crowding grows without
+      flattening the high end the way a bounded ``s/(s+k)`` saturation does -- at
+      the fleet sizes this has to span, 10 and 30 neighbours must not read the
+      same. It is the difference between a count and a *sense of crowding*, which
+      is the semantics wanted here.
+
+    Args:
+        position:  (..., T, 2) world x/y for every token.
+        team_id:   (..., T) 0/1 for ships, 2 for neutral map objects.
+        source:    (..., T) bool — tokens allowed to contribute presence. Pass the
+            same mask attention keys on, so a ship never counts a neighbour it is
+            not allowed to see.
+        world_size: (width, height) of the toroid.
+        radius:    Kernel radius in pixels.
+        scale:     Divisor applied after ``log1p``.
+
+    Returns:
+        (..., T, 2) — [ally, enemy] presence. Rows for non-ship tokens are zero:
+        presence is a property of a ship's neighbourhood, and a zone does not
+        have one.
+    """
+
+    width, height = world_size
+    delta_x = position[..., :, None, 0] - position[..., None, :, 0]
+    delta_y = position[..., :, None, 1] - position[..., None, :, 1]
+    # Minimum image on the torus, matching env.frontline.toroidal_displacement.
+    delta_x = (delta_x + width / 2.0) % width - width / 2.0
+    delta_y = (delta_y + height / 2.0) % height - height / 2.0
+    weight = torch.exp(-(delta_x * delta_x + delta_y * delta_y) / (2.0 * radius * radius))
+
+    contributes = source.unsqueeze(-2)  # (..., 1, T) — over the *source* axis
+    same_team = team_id.unsqueeze(-1) == team_id.unsqueeze(-2)  # (..., T, T)
+    identity = torch.eye(weight.shape[-1], dtype=torch.bool, device=weight.device)
+
+    ally = (weight * (contributes & same_team & ~identity)).sum(dim=-1)
+    enemy = (weight * (contributes & ~same_team)).sum(dim=-1)
+    presence = torch.log1p(torch.stack((ally, enemy), dim=-1)) / scale
+    # Only ships have a neighbourhood; ``source`` already restricts who counts,
+    # this restricts who is counted *for*.
+    is_ship = (team_id < 2).unsqueeze(-1)
+    return presence * is_ship
+
+
+class LocalPresenceFeature(Feature):
+    """Ally/enemy presence, computed from several observation channels at once.
+
+    A plain ``Feature`` reads one channel through one ``Accessor``; this one needs
+    positions, team identities and the belief-validity mask together, so it
+    overrides the input path and declares its own width. It has no target
+    encoding and no predictor: it is a deterministic function of channels the
+    auxiliary head already predicts, so predicting it again would supervise the
+    same information twice under an invented label scale.
+    """
+
+    def __init__(self, ship_config: ShipConfig, radius: float = PRESENCE_RADIUS):
+        super().__init__(
+            name="local_presence",
+            accessor=Accessor(ObsKey.POS),
+            input_encoder=Identity(),
+            target_encoder=Identity(),
+            scope=FeatureScope.SHIP,
+        )
+        self.world_size = tuple(float(side) for side in ship_config.world_size)
+        self.radius = radius
+
+    def input_dimension(self, dummy: YemongObservation) -> int:
+        return 2  # ally, enemy
+
+    def get_input(self, obs: YemongObservation) -> torch.Tensor:
+        team_id = obs[ObsKey.TEAM_ID]
+        # The same mask spatial attention keys on. A remembered-but-hidden enemy
+        # is a token the policy is allowed to reason about, so it contributes;
+        # a never-seen one is not, and does not.
+        source = obs[ObsKey.BELIEF_VALID].bool() & (team_id < 2)
+        return local_presence(
+            obs[ObsKey.POS].float(),
+            team_id,
+            source,
+            self.world_size,
+            radius=self.radius,
+        )
+
+
+# ---------------------------------------------------------------------------
 # FeatureCoordinator
 # ---------------------------------------------------------------------------
 
@@ -831,7 +976,9 @@ class FeatureCoordinator:
 # ---------------------------------------------------------------------------
 
 
-def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
+def build_standard_coordinator(
+    ship_config: ShipConfig, *, local_presence: bool = False
+) -> FeatureCoordinator:
     """Standard feature pipeline matching the current game's physics.
 
     Prediction layout (10 dims total):
@@ -1079,6 +1226,9 @@ def build_standard_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             scope=FeatureScope.SHIP,
         ),
     ]
+
+    if local_presence:
+        features.append(LocalPresenceFeature(ship_config))
 
     return FeatureCoordinator(features)
 

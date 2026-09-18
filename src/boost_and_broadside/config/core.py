@@ -378,6 +378,12 @@ class ModelConfig:
     # parameters, so a rotated and an unrotated checkpoint have identical state
     # dicts and would load into each other silently.
     spatial_rope: bool = False
+    # Two extra ship-token scalars: smooth ally and enemy presence within a fixed
+    # physical radius. Attention returns proportions and cannot report cardinality,
+    # so nothing else in the observation says how crowded a ship's neighbourhood
+    # is. Lives on ModelConfig rather than in the environment because it widens
+    # the encoder's input projection -- it is part of what the weights mean.
+    local_presence: bool = False
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True
