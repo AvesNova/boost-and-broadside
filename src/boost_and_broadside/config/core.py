@@ -333,6 +333,17 @@ class ModelConfig:
     d_model: int  # token embedding dimension
     n_heads: int  # attention heads (must divide d_model)
     n_yemong_blocks: int  # number of Yemong blocks in the trunk
+    # Heads used by the *spatial* attention only, when it should differ from the
+    # pooling attention's. None means "the same as n_heads".
+    #
+    # Spatial attention is where relative geometry is formed, and head width is
+    # what bounds how much of it one comparison can carry: rotary position
+    # encoding spends two dimensions on every frequency pair it rotates, and the
+    # Frontline basis wants 40 of them (8 x-frequencies + 8 y + 4 attitude).
+    # That does not fit in a 32-wide head at all. Splitting the knob keeps the
+    # value head's TeamPMA pooling at its own width so a spatial head-count
+    # change is measurable on its own.
+    n_spatial_heads: int | None = None
     # Sublayers inside every Yemong block. All blocks share one structure, so the
     # trunk is n_yemong_blocks repetitions of (n_spatial_per_block spatial layers
     # followed by n_temporal_per_block temporal layers). Spatial layers cost roughly
@@ -358,6 +369,15 @@ class ModelConfig:
     # Bullet encoder hidden width. Deliberately narrow: it runs over N*K entities
     # rather than N+M, so it, not the entity encoder, sets encoder cost.
     bullet_encoder_hidden: int = 64
+    # Rotate spatial Q/K by world x, world y, and entity attitude, on exactly the
+    # frequency basis the encoder's Fourier features already use. Relative
+    # geometry then enters the attention score as a rotation instead of something
+    # the trunk has to reconstruct from absolute-position features.
+    #
+    # Recorded here, not inferred from the weights: the rotation adds no
+    # parameters, so a rotated and an unrotated checkpoint have identical state
+    # dicts and would load into each other silently.
+    spatial_rope: bool = False
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True
@@ -376,9 +396,29 @@ class ModelConfig:
 
         return self.n_bullet_cross_per_block > 0 and self.n_yemong_blocks > 0
 
+    @property
+    def spatial_heads(self) -> int:
+        """Attention heads in every spatial sublayer."""
+
+        return self.n_heads if self.n_spatial_heads is None else self.n_spatial_heads
+
+    @property
+    def spatial_head_dim(self) -> int:
+        """Width of one spatial attention head — the rotary dimension budget."""
+
+        return self.d_model // self.spatial_heads
+
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
             raise ValueError(f"d_model={self.d_model} must be divisible by n_heads={self.n_heads}")
+        if self.n_spatial_heads is not None:
+            if self.n_spatial_heads < 1:
+                raise ValueError(f"n_spatial_heads must be positive, got {self.n_spatial_heads}")
+            if self.d_model % self.n_spatial_heads != 0:
+                raise ValueError(
+                    f"d_model={self.d_model} must be divisible by "
+                    f"n_spatial_heads={self.n_spatial_heads}"
+                )
         if self.n_yemong_blocks < 0:
             raise ValueError(f"n_yemong_blocks must be >= 0, got {self.n_yemong_blocks}")
         if self.n_spatial_per_block < 0:

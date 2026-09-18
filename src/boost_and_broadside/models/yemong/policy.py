@@ -45,7 +45,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 from torch.utils.checkpoint import checkpoint
 
-from boost_and_broadside.config import ModelConfig
+from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.constants import (
     NUM_OUTCOME_CLASSES,
     POWER_SLICE,
@@ -54,8 +54,10 @@ from boost_and_broadside.constants import (
     TURN_SLICE,
 )
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
+from boost_and_broadside.models.yemong.attention import SpatialGeometry
 from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
+from boost_and_broadside.models.yemong.rope import SpatialRotary, check_rotary_budget
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
 
@@ -159,6 +161,7 @@ class YemongPolicy(nn.Module):
         team_pma_k: tuple[int, ...],
         bullet_coordinator: FeatureCoordinator | None = None,
         predict_outcome: bool = False,
+        ship_config: ShipConfig | None = None,
     ) -> None:
         super().__init__()
         D = model_config.d_model
@@ -168,6 +171,18 @@ class YemongPolicy(nn.Module):
         self._team_pma_k = team_pma_k  # K indices that use TeamPMA path for value
         self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
+
+        # Rotary spatial attention needs the world's physical periods, which is
+        # the one thing the feature coordinator holds implicitly and the policy
+        # does not. ``build_policy`` always supplies it; the argument stays
+        # optional so an un-rotated policy can still be built from a bare config.
+        if model_config.spatial_rope:
+            if ship_config is None:
+                raise ValueError("spatial_rope requires ship_config to derive its frequencies")
+            check_rotary_budget(model_config, ship_config)
+            self.rotary = SpatialRotary(ship_config, model_config.spatial_head_dim)
+        else:
+            self.rotary = None
 
         self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
         self.map_memory_proj = (
@@ -280,6 +295,44 @@ class YemongPolicy(nn.Module):
             id(parameter) for module in self.trunk_modules() for parameter in module.parameters()
         )
 
+    def _spatial_geometry(
+        self,
+        obs: YemongObservation,
+        num_entity_tokens: int,
+        bullets_present: bool,
+        map_is_memory: bool,
+    ) -> SpatialGeometry | None:
+        """Rotary tables for one forward pass, shared by every spatial sublayer.
+
+        Built from the flattened ``(B, tokens, ...)`` observation the spatial
+        layers actually see, so the rollout and the full-sequence path use one
+        code path with ``B`` standing for ``B`` or ``T*B`` respectively.
+
+        Args:
+            obs: Observation whose leading dims match the spatial layers' batch.
+            num_entity_tokens: N — where ships end and map objects begin, needed
+                only in K/V-memory mode, where the two are rotated separately
+                because they are passed to attention as separate tensors.
+            bullets_present: Whether bullet K/V tokens are attached this call.
+            map_is_memory: Whether map objects are K/V-only rather than queries.
+        """
+
+        if self.rotary is None:
+            return None
+        position = obs[ObsKey.POS]
+        attitude = obs[ObsKey.ATT]
+        cos, sin = self.rotary.tables(position, attitude)
+        map_tables = None
+        if map_is_memory:
+            map_tables = (cos[:, num_entity_tokens:], sin[:, num_entity_tokens:])
+            cos, sin = cos[:, :num_entity_tokens], sin[:, :num_entity_tokens]
+        bullet_tables = None
+        if bullets_present and obs.bullets is not None:
+            # A bullet has a world position and no heading, so it is rotated on
+            # the same x/y basis and left unrotated on the attitude axis.
+            bullet_tables = self.rotary.tables(obs.bullets[BulletObsKey.POS], None)
+        return SpatialGeometry(entity=(cos, sin), bullet=bullet_tables, map_memory=map_tables)
+
     def _encode_bullets(
         self, obs: YemongObservation
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
@@ -384,6 +437,9 @@ class YemongPolicy(nn.Module):
             map_mask = None
             x = encoded
         bullets, bullet_mask = self._encode_bullets(obs)  # (B, N*K, D), (B, N*K)
+        geometry = self._spatial_geometry(
+            obs, N, bullets is not None, self.map_memory_proj is not None
+        )
 
         B, NM, D = x.shape
         n_layers = hidden.shape[0]
@@ -410,6 +466,7 @@ class YemongPolicy(nn.Module):
                 bullet_mask,
                 map_memory,
                 map_mask,
+                geometry,
             )
             new_rglru.append(new_h)
             new_cbs.append(new_cb)
@@ -525,6 +582,9 @@ class YemongPolicy(nn.Module):
             x = encoded_sequence
             trunk_alive = alive_mask
         bullets, bullet_mask = self._encode_bullets(flat_obs)  # (T*B, N*K, D)
+        geometry = self._spatial_geometry(
+            flat_obs, N, bullets is not None, self.map_memory_proj is not None
+        )
         z = encoded_sequence if return_encoder_output else None
 
         for i, layer in enumerate(self.yemong_layers):
@@ -547,6 +607,7 @@ class YemongPolicy(nn.Module):
                     bullet_mask,
                     map_memory,
                     map_mask,
+                    geometry,
                     use_reentrant=False,
                 )
             else:
@@ -561,6 +622,7 @@ class YemongPolicy(nn.Module):
                     bullet_mask,
                     map_memory,
                     map_mask,
+                    geometry,
                 )
 
         # Slice ship tokens for heads
@@ -620,6 +682,7 @@ def _yemong_forward(
     bullet_mask: torch.Tensor | None,
     map_memory: torch.Tensor | None,
     map_mask: torch.Tensor | None,
+    geometry: SpatialGeometry | None,
 ) -> torch.Tensor:
     """Run one Yemong block's full-sequence forward, returning only the output.
 
@@ -637,6 +700,7 @@ def _yemong_forward(
         bullet_mask,
         map_memory,
         map_mask,
+        geometry,
     )
     return out
 

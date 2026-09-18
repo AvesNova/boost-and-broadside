@@ -11,11 +11,37 @@ Input/output convention: (B, N, D) — no time dimension is handled here.
 The caller reshapes (B*T, N, D) if multiple timesteps are needed at once.
 """
 
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ModelConfig
+from boost_and_broadside.models.yemong.rope import apply_rotary
+
+
+@dataclass(frozen=True)
+class SpatialGeometry:
+    """Per-token geometry every spatial sublayer in one forward pass shares.
+
+    Built once by the policy and passed down, because all of it is a function of
+    the observation rather than of the layer: recomputing the rotary tables in
+    each of the four spatial sublayers would pay for identical trigonometry four
+    times and allocate four copies of it.
+
+    Every tensor is laid out to broadcast against a head-major
+    ``(B, tokens, heads, head_dim)`` query, i.e. ``(B, tokens, 1, pairs)``.
+
+    Attributes:
+        entity:  ``(cos, sin)`` for the entity tokens that carry queries.
+        bullet:  ``(cos, sin)`` for bullet key/value tokens, or None.
+        map_memory: ``(cos, sin)`` for K/V-only map tokens, or None.
+    """
+
+    entity: tuple[torch.Tensor, torch.Tensor] | None = None
+    bullet: tuple[torch.Tensor, torch.Tensor] | None = None
+    map_memory: tuple[torch.Tensor, torch.Tensor] | None = None
 
 
 class GatedMLP(nn.Module):
@@ -59,8 +85,8 @@ class TransformerBlock(nn.Module):
         super().__init__()
         D = model_config.d_model
 
-        self.n_heads = model_config.n_heads
-        self.head_dim = D // model_config.n_heads
+        self.n_heads = model_config.spatial_heads
+        self.head_dim = model_config.spatial_head_dim
         self.d_model = D
         self.reads_bullets = reads_bullets
         self.reads_map_memory = map_memory_dim is not None
@@ -93,6 +119,7 @@ class TransformerBlock(nn.Module):
         bullet_mask: torch.Tensor | None = None,
         map_memory: torch.Tensor | None = None,
         map_mask: torch.Tensor | None = None,
+        geometry: SpatialGeometry | None = None,
     ) -> torch.Tensor:
         """Apply one transformer block.
 
@@ -106,11 +133,15 @@ class TransformerBlock(nn.Module):
             bullet_mask:(B, NB) bool — True for active ring-buffer slots.
             map_memory: (B, M, D_map) encoded map objects, read as K/V only.
             map_mask:   (B, M) bool — True for valid map-object slots.
+            geometry:   Shared per-token rotary tables, or None to leave Q/K
+                        unrotated.
 
         Returns:
             (B, N, D) updated entity tokens.
         """
-        x = x + self._attn(self.norm1(x), alive_mask, bullets, bullet_mask, map_memory, map_mask)
+        x = x + self._attn(
+            self.norm1(x), alive_mask, bullets, bullet_mask, map_memory, map_mask, geometry
+        )
         x = x + self.ffn(self.norm2(x))  # pre-norm FFN + residual
         return x
 
@@ -135,6 +166,7 @@ class TransformerBlock(nn.Module):
         bullet_mask: torch.Tensor | None = None,
         map_memory: torch.Tensor | None = None,
         map_mask: torch.Tensor | None = None,
+        geometry: SpatialGeometry | None = None,
     ) -> torch.Tensor:
         """Self-attention plus optional cross-attention to read-only memories.
 
@@ -153,8 +185,14 @@ class TransformerBlock(nn.Module):
         qkv = self.qkv(x)  # (B, N, 3*D)
         q, k, v = qkv.chunk(3, dim=-1)
 
-        q = q.view(B, N, H, dh).permute(0, 2, 1, 3)  # (B, H, N, dh)
-        k = k.view(B, N, H, dh).permute(0, 2, 1, 3)
+        q = q.view(B, N, H, dh)  # (B, N, H, dh) — heads last-but-one for rotation
+        k = k.view(B, N, H, dh)
+        if geometry is not None and geometry.entity is not None:
+            cos, sin = geometry.entity
+            q = apply_rotary(q, cos, sin)
+            k = apply_rotary(k, cos, sin)
+        q = q.permute(0, 2, 1, 3)  # (B, H, N, dh)
+        k = k.permute(0, 2, 1, 3)
         v = v.view(B, N, H, dh).permute(0, 2, 1, 3)
 
         attn_bias = None
@@ -167,7 +205,14 @@ class TransformerBlock(nn.Module):
         if self.reads_bullets and bullets is not None:
             NB = bullets.shape[1]
             kb, vb = self.kv_bullet(self.norm_bullet(bullets)).chunk(2, dim=-1)
-            kb = kb.view(B, NB, H, dh).permute(0, 2, 1, 3)  # (B, H, NB, dh)
+            kb = kb.view(B, NB, H, dh)
+            if geometry is not None and geometry.bullet is not None:
+                # A bullet is a world position on the same toroid, so its key is
+                # rotated on the same x/y basis as the ship query it meets. It
+                # carries no heading, so the attitude block's rotation is the
+                # identity for it (see ``SpatialRotary``).
+                kb = apply_rotary(kb, *geometry.bullet)
+            kb = kb.permute(0, 2, 1, 3)  # (B, H, NB, dh)
             vb = vb.view(B, NB, H, dh).permute(0, 2, 1, 3)
             bullet_bias = self._key_bias(bullet_mask, q, B) if bullet_mask is not None else None
             bullet_out = F.scaled_dot_product_attention(
@@ -186,7 +231,10 @@ class TransformerBlock(nn.Module):
         if self.reads_map_memory and map_memory is not None and map_memory.shape[1]:
             NM = map_memory.shape[1]
             km, vm = self.kv_map(self.norm_map(map_memory)).chunk(2, dim=-1)
-            km = km.view(B, NM, H, dh).permute(0, 2, 1, 3)
+            km = km.view(B, NM, H, dh)
+            if geometry is not None and geometry.map_memory is not None:
+                km = apply_rotary(km, *geometry.map_memory)
+            km = km.permute(0, 2, 1, 3)
             vm = vm.view(B, NM, H, dh).permute(0, 2, 1, 3)
             map_bias = self._key_bias(map_mask, q, B) if map_mask is not None else None
             map_out = F.scaled_dot_product_attention(q, km, vm, attn_mask=map_bias, dropout_p=0.0)

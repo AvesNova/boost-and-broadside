@@ -10,12 +10,29 @@ import torch
 
 OBSERVATION_SCHEMA = "frontline_shields_v9"
 POSITION_FINEST_PERIOD = 128.0
+# Harmonics the attitude Fourier feature expands the heading angle on. Defined
+# here, beside the position count, because rotary spatial attention reuses both
+# bases verbatim and a second definition of either would let the input features
+# and the Q/K rotations drift apart silently.
+ATTITUDE_FOURIER_FREQUENCIES = 4
 
 
 def position_fourier_frequencies(period: float) -> int:
     """Base-2 frequencies needed to keep the finest period at most 128 px."""
 
     return max(1, math.ceil(math.log2(period / POSITION_FINEST_PERIOD)) + 1)
+
+
+def base2_frequencies(period: float, n_freqs: int) -> tuple[float, ...]:
+    """Angular frequencies of a base-2 Fourier expansion over ``period``.
+
+    The single definition of ``(2*pi / period) * 2**k``. ``Fourier`` builds these
+    on device for the encoder inputs and ``SpatialRotary`` builds them for the
+    Q/K rotations; both call this so the two cannot disagree about what "the same
+    frequency basis" means.
+    """
+
+    return tuple((2.0 * math.pi / period) * (2.0**k) for k in range(n_freqs))
 
 
 def observation_contract(ship_config: Any) -> dict[str, Any]:

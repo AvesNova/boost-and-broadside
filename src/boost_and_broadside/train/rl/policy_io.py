@@ -251,6 +251,7 @@ def build_policy(
             build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
         ),
         predict_outcome=predict_outcome,
+        ship_config=ship_config,
     )
 
 
