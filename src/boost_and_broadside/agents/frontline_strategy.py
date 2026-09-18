@@ -88,9 +88,18 @@ def frontline_strategy(
     offense = torch.where(
         team0, roles == int(ZoneRole.TEAM1_DEFENSE), roles == int(ZoneRole.TEAM0_DEFENSE)
     )
+    # Keep one ship-equivalent of demand on our defense even when no attacker is
+    # visible.  Aggression increases offensive demand without suppressing that
+    # defensive floor.  The old symmetric exp(+a)/exp(-a) rule made offense
+    # 7.4x as attractive as defense at the shipped aggression of 1.0.
     margin = config.frontline_zone_margin * torch.where(
-        offense, math.exp(config.frontline_aggression), math.exp(-config.frontline_aggression)
+        offense, math.exp(config.frontline_aggression), 1.0
     )
+    # Capture state is public map information.  Use it to recruit defenders even
+    # when an opaque zone hides the attacker that is moving the meter.
+    defense_attacked = own_defense & (state.zone_capture_progress[:, None, :] > 0)
+    defense_urgency = defense_attacked * (1.0 + 3.0 * state.zone_capture_progress[:, None, :])
+    margin = margin + defense_urgency
     # Fixed half-ship softplus width; normalize later so pressure cannot explode.
     need = F.softplus(2 * (margin + enemy_zone - without_self)) / 2
     need = torch.where(own_defense | offense, need, 0)

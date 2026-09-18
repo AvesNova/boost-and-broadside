@@ -47,7 +47,7 @@ RL_PROFILE = ProfileSpec(
         zone_radius=330.0,
         zone_ring_radius=1200.0,
         playable_radius=2600.0,
-        capture_seconds=8.0,
+        capture_seconds=10.0,
         # Off. Standing on a point cost 2 health/s while paying nothing until the
         # meter completed, which made contesting a zone strictly dominated early
         # and compounded the shaping bias run 735 exploited. The capture tier now
@@ -55,8 +55,8 @@ RL_PROFILE = ProfileSpec(
         respawn_health=15.0,
         respawn_power=20.0,
         respawn_speed=30.0,
-        shield_recharge_delay=4.0,
-        shield_recharge_per_second=20.0,
+        shield_recharge_delay=5.0,
+        shield_recharge_per_second=15.0,
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,

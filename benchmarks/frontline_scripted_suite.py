@@ -17,12 +17,10 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import MatchResult
+from boost_and_broadside.config import MatchResult, ZoneRole
 from boost_and_broadside.config.defaults import SHIP_CONFIG
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.frontline import (
-    frontline_ship_config,
-)
+from boost_and_broadside.env.frontline import frontline_ship_config, zone_membership
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 
@@ -87,9 +85,14 @@ def run_suite(
     respawns = torch.zeros_like(duration)
     combat_deaths = torch.zeros_like(duration)
     boundary_deaths = torch.zeros_like(duration)
-    healing = torch.zeros(games, dtype=torch.float32, device=device)
+    shield_recharge = torch.zeros(games, dtype=torch.float32, device=device)
     front_min = torch.zeros(games, dtype=torch.long, device=device)
     front_max = torch.zeros(games, dtype=torch.long, device=device)
+    defensive_ship_steps = torch.zeros(games, dtype=torch.long, device=device)
+    quiet_defense_team_ticks = torch.zeros(games, dtype=torch.long, device=device)
+    quiet_defense_occupied_ticks = torch.zeros(games, dtype=torch.long, device=device)
+    threatened_defense_team_ticks = torch.zeros(games, dtype=torch.long, device=device)
+    threatened_defense_occupied_ticks = torch.zeros(games, dtype=torch.long, device=device)
     action = torch.zeros((games, 2 * team_size, 3), dtype=torch.long, device=device)
 
     if device.type == "cuda":
@@ -130,7 +133,35 @@ def run_suite(
         respawns += env.state.ship_respawned.sum(dim=1).to(torch.int32) * active
         combat_deaths += env.state.ship_combat_death.sum(dim=1).to(torch.int32) * active
         boundary_deaths += env.state.ship_boundary_death.sum(dim=1).to(torch.int32) * active
-        healing += env.state.ship_shield_recharge.sum(dim=1) * active
+        shield_recharge += env.state.ship_shield_recharge.sum(dim=1) * active
+        membership = zone_membership(
+            env.state.ship_pos,
+            env.state.zone_pos,
+            env.state.zone_radius,
+            ship_config.world_size,
+        )
+        alive_membership = membership & env.state.ship_alive.unsqueeze(2)
+        team0_defense = env.state.zone_roles == int(ZoneRole.TEAM0_DEFENSE)
+        team1_defense = env.state.zone_roles == int(ZoneRole.TEAM1_DEFENSE)
+        team0_defenders = (
+            alive_membership
+            & (env.state.ship_team_id == 0).unsqueeze(2)
+            & team0_defense.unsqueeze(1)
+        ).sum((1, 2))
+        team1_defenders = (
+            alive_membership
+            & (env.state.ship_team_id == 1).unsqueeze(2)
+            & team1_defense.unsqueeze(1)
+        ).sum((1, 2))
+        threatened0 = (team0_defense & (env.state.zone_capture_progress > 0)).any(1)
+        threatened1 = (team1_defense & (env.state.zone_capture_progress > 0)).any(1)
+        occupied = torch.stack([team0_defenders > 0, team1_defenders > 0], dim=1)
+        threatened = torch.stack([threatened0, threatened1], dim=1)
+        defensive_ship_steps += (team0_defenders + team1_defenders) * active
+        threatened_defense_team_ticks += threatened.sum(1) * active
+        threatened_defense_occupied_ticks += (threatened & occupied).sum(1) * active
+        quiet_defense_team_ticks += (~threatened).sum(1) * active
+        quiet_defense_occupied_ticks += ((~threatened) & occupied).sum(1) * active
         front_min = torch.where(
             active, torch.minimum(front_min, env.state.front_position), front_min
         )
@@ -168,7 +199,12 @@ def run_suite(
         "respawns": respawns.cpu().tolist(),
         "combat_deaths": combat_deaths.cpu().tolist(),
         "boundary_deaths": boundary_deaths.cpu().tolist(),
-        "shield_recharge": healing.cpu().tolist(),
+        "shield_recharge": shield_recharge.cpu().tolist(),
+        "defensive_ship_steps": defensive_ship_steps.cpu().tolist(),
+        "quiet_defense_team_ticks": quiet_defense_team_ticks.cpu().tolist(),
+        "quiet_defense_occupied_ticks": quiet_defense_occupied_ticks.cpu().tolist(),
+        "threatened_defense_team_ticks": threatened_defense_team_ticks.cpu().tolist(),
+        "threatened_defense_occupied_ticks": threatened_defense_occupied_ticks.cpu().tolist(),
         "front_min": front_min.cpu().tolist(),
         "front_max": front_max.cpu().tolist(),
     }
@@ -180,7 +216,7 @@ def run_suite(
         "respawns": _summary(respawns.cpu()),
         "combat_deaths": _summary(combat_deaths.cpu()),
         "boundary_deaths": _summary(boundary_deaths.cpu()),
-        "shield_recharge": _summary(healing.cpu()),
+        "shield_recharge": _summary(shield_recharge.cpu()),
     }
     summaries["first_capture_seconds"] = (
         _summary(first_capture_seconds[first_capture_mask]) if first_capture_mask.any() else None
@@ -188,6 +224,15 @@ def run_suite(
     summaries["second_capture_seconds"] = (
         _summary(second_capture_seconds[second_capture_mask]) if second_capture_mask.any() else None
     )
+    summaries["defensive_ships_per_team_tick"] = (
+        defensive_ship_steps.sum() / (2 * duration.sum()).clamp_min(1)
+    ).item()
+    summaries["quiet_defense_occupied_fraction"] = (
+        quiet_defense_occupied_ticks.sum() / quiet_defense_team_ticks.sum().clamp_min(1)
+    ).item()
+    summaries["threatened_defense_occupied_fraction"] = (
+        threatened_defense_occupied_ticks.sum() / threatened_defense_team_ticks.sum().clamp_min(1)
+    ).item()
 
     return {
         "device": str(device),
