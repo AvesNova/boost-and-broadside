@@ -100,10 +100,27 @@ channel to:
 | shield recharge delay | symlog seconds | absolute prediction |
 | ship-local log index | `log(n)/(2 log(s))` | additive next-step delta |
 | ship-local index gradient | normalized `grad(n)` pair | none |
+| ally / enemy presence | two `log1p` Gaussian aggregates, optional | none |
 
 Phase targets make wraparound natural: crossing the map boundary is a small rotation, not
 a large coordinate jump. Feature dimensions and prediction layout are derived from the
 registered features rather than hardcoded in model code.
+
+Ally and enemy presence are the two channels `local_presence` adds. Softmax attention
+returns *proportions*, which is the invariant that survives a change in fleet size and is
+exactly why it cannot report cardinality: "outnumbered two to one" reads the same at any
+scale, while "three enemies within weapons range" does not, and nothing else in the
+observation says it. Each scalar is a Gaussian kernel over toroidal distance summed over
+every contributing ship and compressed with `log1p` — permutation invariant, self-excluded
+on the ally channel, and masked by the same belief validity attention keys on, so a ship
+never counts a neighbour it is not allowed to see.
+
+The 500 px radius and the `log1p` compression are measured rather than assumed
+([`presence_density_study.py`](../benchmarks/presence_density_study.py)). At 250 px the
+5v5 enemy channel is dead; at 1000 px the 5v5 ally spread collapses because every ship
+reads crowded. A bounded `s/(s+k)` compresses the crowded end into 0.02 of its range at
+50 ships a side, where `log1p` keeps 0.38 — the difference between a count and a sense of
+crowding, which is the semantics wanted.
 
 The index gradient is an input only. Given the static field map it is a deterministic
 function of position. Making it a target would also mean inventing a `label_scale`, since
@@ -155,6 +172,81 @@ Within each timestep, [`TransformerBlock`](../src/boost_and_broadside/models/yem
 applies pre-normalized multi-head self-attention and a gated MLP with residual connections.
 Every live ship can therefore condition its action on every other live ship and field.
 
+`n_spatial_heads` sets the head count here alone, separately from the pooling attention
+in the value head. Head *width* is what bounds how much relative geometry a single
+comparison can carry, and the critic's `TeamPMA` has no reason to follow a change made
+for that reason. Two 64-wide heads and four 32-wide ones are the same weights read
+differently — the parameter count is identical.
+
+### Rotary position and attitude
+
+With `spatial_rope` set, [`SpatialRotary`](../src/boost_and_broadside/models/yemong/rope.py)
+rotates spatial Q/K by world x, world y, and entity attitude before the score is taken.
+One rotated dimension pair then contributes
+
+```text
+|q| |k| cos(phi_q - phi_k + w (x_q - x_k))
+```
+
+so displacement enters the comparison directly instead of being something the trunk must
+reconstruct from absolute-position features it first has to preserve through two
+projections and a norm.
+
+The frequencies are not a second scheme. They come from `base2_frequencies`, the same
+function the encoder's `Fourier` transform calls, at the same periods: world width, world
+height, and `2*pi`. Every frequency is an integer multiple of `2*pi / period`, so each is
+exactly periodic over its own physical period — crossing the toroidal seam or turning
+through a full circle returns the rotation to where it started, exactly rather than
+approximately. The explicit Fourier features stay in the token; the rotation is additive
+to them, using the same basis in a second place on purpose.
+
+Each frequency costs one dimension pair. The Frontline world wants `2*(8 + 8 + 4) = 40`
+of them, which does not fit a 32-wide head at all and leaves 24 unrotated dimensions in a
+64-wide one — which is why the head-width change and the rotation arrive together. A
+configuration needing more than the head provides raises rather than truncating: dropping
+the coarsest frequency costs toroidal periodicity, and dropping the finest costs exactly
+the short-range resolution the rotation exists to sharpen.
+
+Cross-attention follows coordinate semantics. A bullet is a position on the same toroid,
+so its key rotates on the same x/y basis as the ship query it meets. It has no heading, so
+its attitude rotation is the identity — which is already what the encoder does with that
+token's `ATT = (0, 0)`. Map objects carry the same zero attitude and behave the same way,
+making those dimensions an absolute-heading preference toward map features rather than a
+relative-heading comparison. Tables are built once per forward pass and shared by every
+spatial sublayer.
+
+### Relational attention bias
+
+With `relational_bias` set, each spatial sublayer adds a shared pairwise term to its
+attention scores, computed by one linear map from six scalars per ordered pair:
+proximity, the ego-frame bearing cosine and sine both proximity-weighted and raw, and a
+proximity-weighted range rate. See
+[`relation.py`](../src/boost_and_broadside/models/yemong/relation.py).
+
+It exists for the two things the rotation structurally cannot say. A base-2 ladder of
+`cos(w dx)` is not a monotone sense of range. And the rotation's attitude block compares
+*headings*, never the angle between a ship's nose and the direction to another ship —
+which is the quantity the behaviour-cloning turn-head diagnostics identify as limiting.
+
+One linear map per sublayer is `6*H` weights, twelve at two heads, shared by every pair.
+Permutation equivariance is structural, and no parameter has a fleet-size dimension. The
+bias is added into the same additive mask the key padding already uses, so a masked key
+stays masked: the relational term is finite where the padding term is not.
+
+Entity self-attention only. Bullets and K/V map memories are separate softmaxes over
+tokens of a different kind, and one relation function would have to mean the same thing
+for a ship pair and a ship/bullet pair.
+
+### Attention kernel
+
+The spatial layers pass an additive `(B, 1, 1, K)` alive-mask bias on every call, and
+flash attention does not accept an additive mask — so this attention has always run on
+PyTorch's memory-efficient backend, not flash. The relational bias does not change that;
+it adds a `(B, H, N, N)` term to a tensor that already existed. Its measured cost is
+materialization, not a lost kernel. Note that a compiled policy cannot be probed with
+`sdpa_kernel(...)`: inductor lowers the attention itself and never consults it. See
+[`frontline_inference_scaling.py`](../benchmarks/frontline_inference_scaling.py).
+
 ## Bullet cross-attention
 
 Bullets are observed directly rather than inferred. Refractive fields make inference
@@ -175,9 +267,10 @@ carried as a team one-hot and never as an index over ships, which would fix `N` 
 weights and break zero-shot transfer.
 
 Softmax normalises, so this read conveys *which* bullets are relevant but not *how many*.
-Threat intensity is not yet available. The transfer-safe fix is an environment-side
-saturating count and a lethality ratio; sum-pooling would grow without bound as fleets
-scale.
+Threat intensity is still not available on the bullet axis. The ship axis now has the
+transfer-safe form of that answer — the ally/enemy presence scalars above — and a
+projectile equivalent would follow the same recipe: a smooth aggregate compressed so it
+stays bounded, never a raw count, which would grow without bound as fleets scale.
 
 ## Temporal recurrence
 
