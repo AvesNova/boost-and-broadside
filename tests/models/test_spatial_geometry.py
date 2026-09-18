@@ -81,6 +81,26 @@ class TestReusedFourierBasis:
         assert (axis_x.period, axis_y.period) == (width, height)
         assert axis_att.period == pytest.approx(2.0 * math.pi)
 
+    def test_the_encoder_builds_the_written_frequency_definition(self):
+        """``Fourier`` constructs on device; ``base2_frequencies`` is the definition.
+
+        They are checked against each other rather than sharing a runtime
+        object. A cached device tensor would be a CUDA-graph hazard -- one
+        created inside a capture is invalidated by the next replay -- so the
+        encoder rebuilds inline and this is what keeps the two honest.
+        """
+        for n_freqs, period in ((8, 16384.0), (ATTITUDE_FOURIER_FREQUENCIES, 2.0 * math.pi)):
+            built = Fourier(n_freqs, period)._frequencies(period, torch.zeros(1))
+            assert torch.allclose(built, torch.tensor(base2_frequencies(period, n_freqs)))
+
+    def test_the_encoder_caches_no_device_tensor_across_calls(self):
+        """Caching one silently broke every CUDA-graph compile mode."""
+        transform = Fourier(4, 1024.0)
+        first = transform._frequencies(1024.0, torch.zeros(1))
+        second = transform._frequencies(1024.0, torch.zeros(1))
+        assert first is not second
+        assert torch.allclose(first, second)
+
     def test_rotary_frequencies_are_the_encoder_input_frequencies(self, rotary):
         """The angles RoPE rotates by are the angles ``Fourier`` already builds.
 

@@ -25,7 +25,6 @@ from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import BulletObsKey, ObjectType, ObsKey, YemongObservation
 from boost_and_broadside.train.rl.checkpoint_schema import (
     ATTITUDE_FOURIER_FREQUENCIES,
-    base2_frequencies,
     position_fourier_frequencies,
 )
 
@@ -228,20 +227,30 @@ class Fourier(Transform):
     def __init__(self, n_freqs: int, periods: float | list[float]):
         self.n_freqs = n_freqs
         self.periods = periods
-        # Built from ``base2_frequencies`` once per (period, device, dtype) and
-        # cached: this runs on every encoder forward, and rebuilding a host-side
-        # tensor there costs a synchronizing copy per call.
-        self._freq_cache: dict[tuple[float, torch.device, torch.dtype], torch.Tensor] = {}
 
     def _frequencies(self, period: float, like: torch.Tensor) -> torch.Tensor:
-        key = (period, like.device, like.dtype)
-        cached = self._freq_cache.get(key)
-        if cached is None:
-            cached = torch.tensor(
-                base2_frequencies(period, self.n_freqs), device=like.device, dtype=like.dtype
-            )
-            self._freq_cache[key] = cached
-        return cached
+        """``(2*pi / period) * 2**k`` on ``like``'s device and dtype.
+
+        Built inline on every call, which is deliberate in both directions.
+
+        Not from a host-side list: ``torch.tensor([...], device=cuda)`` is a
+        synchronizing copy, and this runs on every encoder forward.
+
+        And not cached either. A device tensor first created inside a
+        CUDA-graph capture belongs to that graph's private memory pool, and the
+        next replay overwrites it -- so a cache hit on a later call hands back a
+        tensor whose storage has been reused, which torch catches as "accessing
+        tensor output of CUDAGraphs that has been overwritten by a subsequent
+        run". Caching here silently broke `--compile reduce-overhead` and
+        `max-autotune` for every policy.
+
+        ``base2_frequencies`` stays the written definition and
+        ``tests/models/test_spatial_geometry.py`` pins this against it, so the
+        encoder and the rotary encoding cannot drift apart.
+        """
+
+        exponents = torch.arange(self.n_freqs, device=like.device, dtype=like.dtype)
+        return (2.0 * math.pi / period) * (2.0**exponents)
 
     def out_dim(self, in_dim: int) -> int:
         return in_dim * 2 * self.n_freqs
