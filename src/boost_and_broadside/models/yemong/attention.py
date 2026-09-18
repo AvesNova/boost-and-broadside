@@ -18,6 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ModelConfig
+from boost_and_broadside.models.yemong.relation import RelationalBias
 from boost_and_broadside.models.yemong.rope import apply_rotary
 
 
@@ -37,11 +38,15 @@ class SpatialGeometry:
         entity:  ``(cos, sin)`` for the entity tokens that carry queries.
         bullet:  ``(cos, sin)`` for bullet key/value tokens, or None.
         map_memory: ``(cos, sin)`` for K/V-only map tokens, or None.
+        relation: ``(B, T, T, F)`` shared pairwise relational scalars for entity
+            self-attention, or None. Built once and mapped to a per-head bias by
+            each sublayer's own weights.
     """
 
     entity: tuple[torch.Tensor, torch.Tensor] | None = None
     bullet: tuple[torch.Tensor, torch.Tensor] | None = None
     map_memory: tuple[torch.Tensor, torch.Tensor] | None = None
+    relation: torch.Tensor | None = None
 
 
 class GatedMLP(nn.Module):
@@ -107,6 +112,12 @@ class TransformerBlock(nn.Module):
             # encoder's latent space with the entity tokens' — this matrix absorbs it.
             self.norm_bullet = nn.RMSNorm(D)
             self.kv_bullet = nn.Linear(D, 2 * D, bias=False)
+
+        # Entity self-attention only. Bullets and K/V map memories are separate
+        # softmaxes over tokens of a different kind; a shared relation function
+        # over mixed kinds would have to mean the same thing for a ship pair and
+        # a ship/bullet pair, and it does not.
+        self.relational = RelationalBias(self.n_heads) if model_config.relational_bias else None
 
         self.norm2 = nn.RMSNorm(D)
         self.ffn = GatedMLP(D)
@@ -199,6 +210,13 @@ class TransformerBlock(nn.Module):
         if alive_mask is not None:
             # Mask out dead entities as keys — they cannot emit information.
             attn_bias = self._key_bias(alive_mask, q, B)
+
+        if self.relational is not None and geometry is not None and geometry.relation is not None:
+            # Added into the *same* additive mask the key padding already uses:
+            # SDPA takes one bias tensor, and a masked key stays masked because
+            # the relational term is finite while the padding term is not.
+            relational_bias = self.relational(geometry.relation).to(q.dtype)
+            attn_bias = relational_bias if attn_bias is None else attn_bias + relational_bias
 
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=0.0)
 

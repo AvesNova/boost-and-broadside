@@ -384,6 +384,10 @@ class ModelConfig:
     # is. Lives on ModelConfig rather than in the environment because it widens
     # the encoder's input projection -- it is part of what the weights mean.
     local_presence: bool = False
+    # Add a shared pairwise bias to spatial attention scores, computed from
+    # proximity, ego-frame bearing and range rate by one linear map per sublayer.
+    # Zero-initialised, so enabling it does not by itself change the function.
+    relational_bias: bool = False
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True
