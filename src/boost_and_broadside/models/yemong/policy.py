@@ -57,6 +57,7 @@ from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObse
 from boost_and_broadside.models.yemong.attention import SpatialGeometry
 from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
+from boost_and_broadside.models.yemong.relation import relation_inputs_from_observation
 from boost_and_broadside.models.yemong.rope import SpatialRotary, check_rotary_budget
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
@@ -183,6 +184,15 @@ class YemongPolicy(nn.Module):
             self.rotary = SpatialRotary(ship_config, model_config.spatial_head_dim)
         else:
             self.rotary = None
+        # The relation function wraps on the same toroid the rotation does.
+        if model_config.relational_bias and ship_config is None:
+            raise ValueError("relational_bias requires ship_config to derive its toroid")
+        self._relation_world = (
+            (float(ship_config.world_size[0]), float(ship_config.world_size[1]))
+            if model_config.relational_bias and ship_config is not None
+            else None
+        )
+
         self.encoder = ShipEncoder(model_config, coordinator, num_ships=num_ships)
         self.map_memory_proj = (
             nn.Sequential(
@@ -316,8 +326,15 @@ class YemongPolicy(nn.Module):
             map_is_memory: Whether map objects are K/V-only rather than queries.
         """
 
-        if self.rotary is None:
+        if self.rotary is None and self._relation_world is None:
             return None
+        relation = (
+            None
+            if self._relation_world is None
+            else relation_inputs_from_observation(obs, self._relation_world)
+        )
+        if self.rotary is None:
+            return SpatialGeometry(relation=relation)
         position = obs[ObsKey.POS]
         attitude = obs[ObsKey.ATT]
         cos, sin = self.rotary.tables(position, attitude)
@@ -330,7 +347,12 @@ class YemongPolicy(nn.Module):
             # A bullet has a world position and no heading, so it is rotated on
             # the same x/y basis and left unrotated on the attitude axis.
             bullet_tables = self.rotary.tables(obs.bullets[BulletObsKey.POS], None)
-        return SpatialGeometry(entity=(cos, sin), bullet=bullet_tables, map_memory=map_tables)
+        return SpatialGeometry(
+            entity=(cos, sin),
+            bullet=bullet_tables,
+            map_memory=map_tables,
+            relation=relation,
+        )
 
     def _encode_bullets(
         self, obs: YemongObservation

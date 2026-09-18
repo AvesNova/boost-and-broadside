@@ -14,6 +14,11 @@ import torch
 
 from boost_and_broadside.config.core import EnvConfig, ModelConfig
 from boost_and_broadside.config.defaults import MODEL_CONFIG
+from boost_and_broadside.models.yemong.relation import (
+    RELATION_FEATURES,
+    RelationalBias,
+    relation_features,
+)
 from boost_and_broadside.models.yemong.rope import (
     RotaryBudgetError,
     SpatialRotary,
@@ -425,6 +430,7 @@ class TestRotaryPolicy:
 WORLD = tuple(float(side) for side in FRONTLINE_SHIP_CONFIG.world_size)
 
 DENSITY_MODEL_CONFIG = replace(ROPE_MODEL_CONFIG, local_presence=True)
+RELATION_MODEL_CONFIG = replace(DENSITY_MODEL_CONFIG, relational_bias=True)
 
 
 def _fleet(num_per_team: int, spread: float = 400.0, seed: int = 0):
@@ -581,3 +587,172 @@ class TestPresenceFeatureWiring:
         hidden = policy.initial_hidden(3, 40, torch.device("cpu"))
         _, _, value, _, _ = policy.get_action_and_value(observation, hidden)
         assert torch.isfinite(value).all()
+
+
+# ---------------------------------------------------------------------------
+# Relational attention bias
+# ---------------------------------------------------------------------------
+
+
+def _relation_inputs(position, attitude, velocity):
+    return relation_features(position, attitude, velocity, WORLD)
+
+
+class TestRelationFeatures:
+    def test_permutation_equivariance(self):
+        generator = torch.Generator().manual_seed(11)
+        position = 8192.0 + 500.0 * torch.randn(1, 6, 2, generator=generator)
+        angle = torch.randn(1, 6, generator=generator)
+        attitude = torch.stack([angle.cos(), angle.sin()], dim=-1)
+        velocity = 50.0 * torch.randn(1, 6, 2, generator=generator)
+
+        base = _relation_inputs(position, attitude, velocity)
+        order = torch.randperm(6, generator=torch.Generator().manual_seed(12))
+        shuffled = _relation_inputs(position[:, order], attitude[:, order], velocity[:, order])
+        assert torch.allclose(base[:, order][:, :, order], shuffled, atol=1e-5)
+
+    def test_the_bearing_is_in_the_query_frame(self):
+        """A key dead ahead reads forward=1 whichever way the query is pointing."""
+        for angle in (0.0, 1.0, -2.5, 3.0):
+            heading = torch.tensor([[[math.cos(angle), math.sin(angle)], [1.0, 0.0]]])
+            ahead = torch.tensor([[[0.0, 0.0], [300.0 * math.cos(angle), 300.0 * math.sin(angle)]]])
+            features = _relation_inputs(ahead, heading, torch.zeros(1, 2, 2))
+            assert features[0, 0, 1, 3] == pytest.approx(1.0, abs=1e-4)  # forward
+            assert features[0, 0, 1, 4] == pytest.approx(0.0, abs=1e-4)  # lateral
+
+    def test_proximity_is_monotone_and_bounded(self):
+        for near, far in ((0.0, 100.0), (100.0, 500.0), (500.0, 5000.0)):
+            position = torch.tensor([[[0.0, 0.0], [near, 0.0], [far, 0.0]]])
+            features = _relation_inputs(position, torch.zeros(1, 3, 2), torch.zeros(1, 3, 2))
+            assert features[0, 0, 1, 0] > features[0, 0, 2, 0]
+            assert 0.0 <= features[0, 0, 2, 0] <= 1.0
+
+    def test_toroidal_wraparound(self):
+        width, _ = WORLD
+        seam = torch.tensor([[[width - 30.0, 0.0], [70.0, 0.0]]])
+        interior = torch.tensor([[[8000.0, 0.0], [8100.0, 0.0]]])
+        attitude = torch.tensor([[[1.0, 0.0], [1.0, 0.0]]])
+        velocity = torch.zeros(1, 2, 2)
+        assert torch.allclose(
+            _relation_inputs(seam, attitude, velocity),
+            _relation_inputs(interior, attitude, velocity),
+            atol=1e-5,
+        )
+
+    def test_closing_sign_follows_the_range_rate(self):
+        position = torch.tensor([[[0.0, 0.0], [300.0, 0.0]]])
+        attitude = torch.tensor([[[1.0, 0.0], [1.0, 0.0]]])
+        approaching = torch.tensor([[[0.0, 0.0], [-80.0, 0.0]]])  # key moving toward query
+        receding = torch.tensor([[[0.0, 0.0], [80.0, 0.0]]])
+        closing_index = 5
+        near = _relation_inputs(position, attitude, approaching)[0, 0, 1, closing_index]
+        away = _relation_inputs(position, attitude, receding)[0, 0, 1, closing_index]
+        assert near < 0.0 < away
+
+    def test_a_heading_less_query_falls_back_to_the_world_frame(self):
+        position = torch.tensor([[[0.0, 0.0], [250.0, 0.0]]])
+        attitude = torch.zeros(1, 2, 2)  # map-object convention
+        features = _relation_inputs(position, attitude, torch.zeros(1, 2, 2))
+        assert torch.isfinite(features).all()
+        assert features[0, 0, 1, 3] == pytest.approx(1.0, abs=1e-4)
+
+    def test_coincident_tokens_stay_finite(self):
+        position = torch.zeros(1, 3, 2)
+        attitude = torch.tensor([[[1.0, 0.0]] * 3])
+        features = _relation_inputs(position, attitude, torch.zeros(1, 3, 2))
+        assert torch.isfinite(features).all()
+
+
+class TestRelationalBias:
+    def test_the_projection_is_shared_and_fleet_size_free(self):
+        bias = RelationalBias(n_heads=2)
+        assert bias.project.weight.shape == (2, RELATION_FEATURES)
+        assert sum(p.numel() for p in bias.parameters()) == 2 * RELATION_FEATURES
+
+    def test_output_is_permutation_equivariant(self):
+        torch.manual_seed(0)
+        bias = RelationalBias(n_heads=2)
+        with torch.no_grad():
+            bias.project.weight.copy_(torch.randn(2, RELATION_FEATURES) * 0.1)
+        relation = torch.randn(1, 5, 5, RELATION_FEATURES)
+        base = bias(relation)
+        order = torch.randperm(5, generator=torch.Generator().manual_seed(3))
+        shuffled = bias(relation[:, order][:, :, order])
+        assert torch.allclose(base[:, :, order][:, :, :, order], shuffled, atol=1e-6)
+
+    def test_zero_init_is_exactly_a_no_op(self):
+        bias = RelationalBias(n_heads=2)
+        relation = torch.randn(2, 4, 4, RELATION_FEATURES)
+        assert torch.all(bias(relation) == 0.0)
+
+    def test_scales_to_fifty_versus_fifty_without_new_parameters(self):
+        small = _policy(RELATION_MODEL_CONFIG, num_ships=10)
+        large = _policy(RELATION_MODEL_CONFIG, num_ships=100)
+        assert sum(p.numel() for p in small.parameters()) == sum(
+            p.numel() for p in large.parameters()
+        )
+
+    def test_masked_keys_stay_masked_under_a_trained_bias(self):
+        """A finite relational term must not resurrect an infinitely-masked key."""
+        policy = _policy(RELATION_MODEL_CONFIG)
+        with torch.no_grad():
+            for block in policy.yemong_layers:
+                for sublayer in block.spatial:
+                    sublayer.relational.project.weight.normal_(0.0, 5.0)
+
+        observation = _observation()
+        valid = observation["belief_valid"].clone()
+        valid[:, 6:] = False
+        masked = observation.update("belief_valid", valid)
+        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
+        _, _, base_value, _, _ = policy.get_action_and_value(masked, hidden)
+
+        position = masked["pos"].clone()
+        position[:, 6:] += 1234.0
+        moved = masked.update("pos", position)
+        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+        assert torch.allclose(base_value[:, :6], moved_value[:, :6], atol=1e-5)
+
+    def test_the_bias_changes_the_output_once_trained(self):
+        policy = _policy(RELATION_MODEL_CONFIG)
+        observation = _observation()
+        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
+        _, _, before, _, _ = policy.get_action_and_value(observation, hidden)
+        with torch.no_grad():
+            for block in policy.yemong_layers:
+                for sublayer in block.spatial:
+                    sublayer.relational.project.weight.normal_(0.0, 1.0)
+        _, _, after, _, _ = policy.get_action_and_value(observation, hidden)
+        assert not torch.allclose(before, after)
+
+    def test_step_and_sequence_paths_agree_with_the_full_stack(self):
+        policy = _policy(RELATION_MODEL_CONFIG)
+        with torch.no_grad():
+            for block in policy.yemong_layers:
+                for sublayer in block.spatial:
+                    sublayer.relational.project.weight.normal_(0.0, 0.5)
+        policy.eval()
+        steps = 3
+        observations = [_observation(seed=20 + t) for t in range(steps)]
+
+        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
+        step_values = []
+        with torch.no_grad():
+            for observation in observations:
+                _, _, value, _, hidden = policy.get_action_and_value(observation, hidden)
+                step_values.append(value)
+
+        from boost_and_broadside.env.observation import YemongObservation
+
+        stacked = {key: torch.stack([o[key] for o in observations]) for key in observations[0].data}
+        sequence_obs = YemongObservation(data=stacked)
+        actions = torch.zeros(steps, 3, 10, 3, dtype=torch.long)
+        alive = torch.stack([o["belief_valid"] for o in observations])
+        with torch.no_grad():
+            _, _, sequence_value, _, _, _, _ = policy.evaluate_actions(
+                sequence_obs,
+                actions,
+                policy.initial_hidden(3, 10, torch.device("cpu")),
+                alive,
+            )
+        assert torch.allclose(torch.stack(step_values), sequence_value, atol=1e-4)
