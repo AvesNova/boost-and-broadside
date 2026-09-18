@@ -73,3 +73,39 @@ def test_an_unknown_literal_value_lists_the_supported_modes() -> None:
 
 def test_zero_fields_needs_no_separate_map_configuration() -> None:
     assert resolve_profile(_apply("num_fields=0")).env_config.num_fields == 0
+
+
+def test_profile_overrides_survive_vram_sizing() -> None:
+    """A ``key=value`` edit must reach the launch even when VRAM resizes it.
+
+    These are two different kinds of override -- a profile edit and machine
+    sizing -- and they used to share one local name in ``resolve_training_launch``.
+    The sizing object won, so every profile edit was silently discarded whenever
+    VRAM sizing resolved to anything but a no-op. A ``--vram 8`` sweep arm then
+    trained the *unedited* profile while its recorded config claimed otherwise,
+    which is the failure mode a sweep cannot detect from its own logs.
+    """
+
+    from boost_and_broadside.launch import resolve_training_launch
+
+    launch = resolve_training_launch(
+        profile="bc",
+        vram="8",
+        device="cpu",
+        allow_probe=False,
+        wandb=False,
+        report=lambda _message: None,
+        overrides={
+            "model_config.n_spatial_heads": "2",
+            "model_config.spatial_rope": "true",
+            "total_timesteps": "200000000",
+        },
+    )
+
+    # The sizing decision still lands.
+    assert launch.vram.applied.num_envs is not None or launch.vram.applied.microbatch_tokens
+
+    # And so does every profile edit.
+    assert launch.resolved.model_config.n_spatial_heads == 2
+    assert launch.resolved.model_config.spatial_rope is True
+    assert launch.resolved.train_config.total_timesteps == 200_000_000

@@ -144,10 +144,16 @@ def resolve_training_launch(
     resolution = apply_cli_overrides(
         resolution, num_envs=num_envs, microbatch_tokens=microbatch_tokens
     )
-    overrides: LaunchOverrides = launch_overrides(
+    # Named, not rebound onto ``overrides``. The two are different things --
+    # ``overrides`` is the user's ``key=value`` edit to the profile, this is
+    # machine sizing -- and shadowing one with the other silently dropped every
+    # profile edit whenever VRAM sizing resolved to anything but a no-op. A
+    # ``--vram 8`` sweep arm then trained the unedited profile while its config
+    # claimed otherwise.
+    sizing: LaunchOverrides = launch_overrides(
         resolution, num_envs=num_envs, microbatch_tokens=microbatch_tokens
     )
-    resolved = intent if _is_noop(overrides) else resolve(profile, overrides)
+    resolved = intent if _is_noop(sizing) else resolve(profile, sizing, overrides=overrides)
     return TrainingLaunch(
         resolved=resolved,
         execution=execution,
