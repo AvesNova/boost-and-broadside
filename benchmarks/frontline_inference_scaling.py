@@ -44,7 +44,7 @@ from pathlib import Path
 
 import torch
 
-from boost_and_broadside.config.core import EnvConfig, entity_token_count
+from boost_and_broadside.config.core import EnvConfig, ModelConfig, entity_token_count
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import perceived_observation_from_state
 from boost_and_broadside.profiles import PROFILES
@@ -132,25 +132,73 @@ def _sync() -> None:
         torch.cuda.synchronize()
 
 
-def _observed_backend(policy, obs, hidden) -> str:
-    """Name the SDPA backend the spatial attention dispatched to."""
+def _attention_backends(model_config: ModelConfig, tokens: int, num_envs: int) -> dict:
+    """Which fused SDPA kernels can serve this architecture's spatial attention.
+
+    Asked of ``torch.backends.cuda`` with the exact query/key/value and mask
+    shapes the spatial sublayer builds, rather than by running the policy under
+    an ``sdpa_kernel`` context: the shipped policy is compiled, inductor lowers
+    the attention itself, and the context manager it would be wrapped in is
+    simply not consulted. A probe that runs a compiled policy therefore reports
+    the first backend it is asked about, whatever the kernel really was.
+
+    Three mask shapes are reported because they are the three regimes this
+    investigation moves between:
+
+    ``unmasked``     no bias at all -- the only case flash attention serves.
+    ``key_padding``  the (B, 1, 1, K) alive-mask bias every shipped layer
+                     already passes, which is why "flash" was never the kernel
+                     in use here.
+    ``relational``   the (B, H, N, N) bias BC-4 adds on top.
+    """
 
     if not torch.cuda.is_available():
-        return "cpu"
-    from torch.nn.attention import SDPBackend, sdpa_kernel
+        return {"device": "cpu"}
 
-    for backend, name in (
-        (SDPBackend.FLASH_ATTENTION, "flash"),
-        (SDPBackend.EFFICIENT_ATTENTION, "mem_efficient"),
-        (SDPBackend.CUDNN_ATTENTION, "cudnn"),
-    ):
-        try:
-            with sdpa_kernel(backend), torch.inference_mode():
-                policy.get_action_and_value(obs, hidden)
-            return name
-        except RuntimeError:
-            continue
-    return "math"
+    heads = model_config.spatial_heads
+    head_dim = model_config.spatial_head_dim
+    shape = (num_envs, heads, tokens, head_dim)
+    query = torch.zeros(shape, device="cuda", dtype=torch.bfloat16)
+    masks = {
+        "unmasked": None,
+        "key_padding": torch.zeros(
+            (num_envs, 1, 1, tokens), device="cuda", dtype=torch.bfloat16
+        ),
+        "relational": torch.zeros(
+            (num_envs, heads, tokens, tokens), device="cuda", dtype=torch.bfloat16
+        ),
+    }
+    report = {}
+    for name, mask in masks.items():
+        params = torch.backends.cuda.SDPAParams(query, query, query, mask, 0.0, False, False)
+        if torch.backends.cuda.can_use_flash_attention(params, False):
+            report[name] = "flash"
+        elif torch.backends.cuda.can_use_efficient_attention(params, False):
+            report[name] = "mem_efficient"
+        else:
+            report[name] = "math"
+    return report
+
+
+#: The cumulative architecture ladder, matching ``bc_architecture_ladder``.
+STAGES: dict[str, dict] = {
+    "baseline": {},  # the shipped four 32-wide heads
+    "BC-1": {"n_spatial_heads": 2},
+    "BC-2": {"n_spatial_heads": 2, "spatial_rope": True},
+    "BC-3": {"n_spatial_heads": 2, "spatial_rope": True, "local_presence": True},
+    "BC-4": {
+        "n_spatial_heads": 2,
+        "spatial_rope": True,
+        "local_presence": True,
+        "relational_bias": True,
+    },
+}
+
+
+def stage_model_config(stage: str) -> ModelConfig:
+    """The profile's architecture with one ladder rung's flags applied."""
+
+    return replace(_PROFILE.model_config, **STAGES[stage])
 
 
 @torch.inference_mode()
@@ -162,6 +210,7 @@ def run_scenario(
     compile_mode: str | None,
     device: torch.device,
     seed: int,
+    model_config: ModelConfig,
 ) -> dict:
     """Time one regime end to end and the policy forward on its own."""
 
@@ -172,7 +221,7 @@ def run_scenario(
     env.reset(seed=seed)
 
     policy = build_policy(
-        _PROFILE.model_config,
+        model_config,
         ship_config,
         num_value_components=12,
         num_ships=scenario.num_ships,
@@ -241,6 +290,10 @@ def run_scenario(
         "vision_range": round(env_config.vision_range, 1),
         "steps": steps,
         "compile_mode": compile_mode,
+        "n_spatial_heads": model_config.spatial_heads,
+        "spatial_rope": model_config.spatial_rope,
+        "local_presence": model_config.local_presence,
+        "relational_bias": model_config.relational_bias,
         "end_to_end_env_steps_per_s": steps * scenario.num_envs / elapsed,
         "end_to_end_decisions_per_s": decisions / elapsed,
         "end_to_end_ms_per_batched_step": 1000.0 * elapsed / steps,
@@ -249,7 +302,7 @@ def run_scenario(
         "policy_decisions_per_s": (
             scenario.num_envs * scenario.num_ships / (statistics.median(samples) / 1000.0)
         ),
-        "sdpa_backend": _observed_backend(policy, view, hidden),
+        "sdpa_backends": _attention_backends(model_config, scenario.tokens, scenario.num_envs),
     }
     if device.type == "cuda":
         result["peak_allocated_mib"] = torch.cuda.max_memory_allocated() / 2**20
@@ -264,6 +317,12 @@ def main() -> None:
     parser.add_argument("--compile-mode", default="default", help="'none' leaves the policy eager")
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--scenario", action="append", choices=[s.name for s in SCENARIOS])
+    parser.add_argument(
+        "--stage",
+        default="baseline",
+        choices=sorted(STAGES),
+        help="architecture ladder rung to measure",
+    )
     parser.add_argument("--label", default="", help="architecture stage this run measures")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
@@ -283,17 +342,19 @@ def main() -> None:
             compile_mode=compile_mode,
             device=device,
             seed=args.seed,
+            model_config=stage_model_config(args.stage),
         )
-        row["label"] = args.label
+        row["label"] = args.label or args.stage
+        row["stage"] = args.stage
         rows.append(row)
         print(
-            f"[{args.label or 'run'}] {row['scenario']:>6s}  "
+            f"[{row['label']:>18s}] {row['scenario']:>6s}  "
             f"tokens={row['entity_tokens']:>4d}  "
             f"env_sps={row['end_to_end_env_steps_per_s']:>10,.0f}  "
             f"decisions/s={row['end_to_end_decisions_per_s']:>12,.0f}  "
             f"fwd={row['policy_forward_ms_median']:>7.3f} ms  "
             f"peak={row.get('peak_allocated_mib', 0):>7.1f} MiB  "
-            f"backend={row['sdpa_backend']}"
+            f"kernel={row['sdpa_backends'].get('key_padding')}"
         )
 
     if args.out:
