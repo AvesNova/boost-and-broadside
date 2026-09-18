@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import time
 from dataclasses import replace
@@ -51,6 +52,31 @@ from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
+
+
+def _headless_renderer(ship_config, window_size: int):
+    """Build an offscreen ``GameRenderer``.
+
+    Imported here rather than at module scope because ``ui.renderer`` selects
+    its video driver when pygame is imported, so ``HEADLESS`` has to be set
+    first -- and a module-level assignment between two import blocks is the one
+    thing the import linter will not allow. ``play_throughput.py`` sets the same
+    variable for the same reason.
+    """
+
+    os.environ.setdefault("HEADLESS", "1")
+    from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig, VisionMode
+
+    return GameRenderer(
+        ship_config,
+        RenderConfig(
+            window_size=window_size,
+            fps=DECISION_HZ,
+            show_ui=True,
+            vision_mode=VisionMode.TEAM_0,
+        ),
+    )
+
 
 PROFILE = PROFILES["rl"]
 
@@ -128,6 +154,7 @@ def measure(
     stage: str,
     perceive_bullets: bool,
     policy_sides: int,
+    window_size: int | None,
 ) -> dict:
     """Time one interactive frame's worth of work, repeatedly."""
 
@@ -174,8 +201,14 @@ def measure(
             }
         )
 
+    # Offscreen, via the same ``draw_frame`` capture and the smoke tests use, so
+    # the drawing work is real while the display flip and the frame-rate sleep --
+    # which are the parts that would *hide* an overrun rather than cause one --
+    # are not counted. ``play_throughput.py`` measures the same way.
+    renderer = _headless_renderer(ship_config, window_size) if window_size else None
+
     as_team1 = torch.ones(1, dtype=torch.bool, device=device)
-    phases = {"policy": 0.0, "env_step": 0.0}
+    phases = {"policy": 0.0, "env_step": 0.0, "render": 0.0}
     # Episode resets are counted, not hidden: a reset rebuilds the field layout
     # and re-initialises the map, which costs far more than a step. A scenario
     # whose matches end constantly would otherwise look slow for a reason that
@@ -212,7 +245,13 @@ def measure(
         observation, _, dones, truncated, _info = wrapper.step(merged.int(), auto_reset=False)
         if record:
             _sync(device)
-            phases["env_step"] += time.perf_counter() - mark
+            env_mark = time.perf_counter()
+            phases["env_step"] += env_mark - mark
+
+        if renderer is not None:
+            renderer.draw_frame(wrapper.state, visibility=wrapper.last_visibility)
+            if record:
+                phases["render"] += time.perf_counter() - env_mark
 
         finished = dones | truncated
         if bool(finished.any()):
@@ -240,6 +279,9 @@ def measure(
         frame(True)
     breakdown_frames = max(steps // 4, 5)
 
+    if renderer is not None:
+        renderer.close()
+
     samples.sort()
     median = statistics.median(samples)
     row = {
@@ -260,6 +302,7 @@ def measure(
         "sustainable_hz": 1000.0 / median,
         "perceive_bullets": perceive_bullets,
         "policy_sides": policy_sides,
+        "window_size": window_size,
         "torch_threads": torch.get_num_threads(),
         "resets": resets["count"],
         "phase_ms": {key: 1000.0 * value / breakdown_frames for key, value in phases.items()},
@@ -292,6 +335,12 @@ def main() -> None:
     parser.add_argument("--compile", dest="compile_mode", default="none")
     parser.add_argument("--device", action="append", choices=("cuda", "cpu"))
     parser.add_argument("--scenario", action="append", choices=sorted(SCENARIOS))
+    parser.add_argument(
+        "--window-size",
+        type=int,
+        default=0,
+        help="offscreen render at this window size each frame; 0 skips rendering",
+    )
     parser.add_argument(
         "--sides",
         type=int,
@@ -350,6 +399,7 @@ def main() -> None:
                 stage=args.stage,
                 perceive_bullets=not args.no_bullet_perception,
                 policy_sides=args.sides,
+                window_size=args.window_size or None,
             )
             rows.append(row)
             verdict = "OK" if row["realtime_headroom"] >= 1.0 else "MISS"
@@ -361,9 +411,12 @@ def main() -> None:
             phases = row["phase_ms"]
             print(
                 f"{'':<15}phases: {row['policy_sides']} policy pass(es) {phases['policy']:.2f} ms  "
-                f"env step (physics + perception + obs) {phases['env_step']:.2f} ms  "
-                f"resets {row['resets']}"
+                f"env {phases['env_step']:.2f} ms  "
+                f"render {phases['render']:.2f} ms  resets {row['resets']}"
             )
+
+    if rows and rows[0]["window_size"] is None:
+        print("\nrendering excluded: these are a lower bound on a real frame")
 
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
