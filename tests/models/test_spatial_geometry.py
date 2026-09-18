@@ -28,7 +28,14 @@ from boost_and_broadside.train.rl.checkpoint_schema import (
     base2_frequencies,
     position_fourier_frequencies,
 )
-from boost_and_broadside.train.rl.features import AttitudeFourier, Fourier
+from boost_and_broadside.train.rl.features import (
+    PRESENCE_RADIUS,
+    AttitudeFourier,
+    Fourier,
+    LocalPresenceFeature,
+    build_standard_coordinator,
+    local_presence,
+)
 from boost_and_broadside.train.rl.policy_io import build_policy
 
 FRONTLINE_SHIP_CONFIG = PROFILES["rl"].ship_config
@@ -82,9 +89,11 @@ class TestReusedFourierBasis:
 
         expected = (
             list(position._frequencies(width, probe))
-            + list(Fourier(position_fourier_frequencies(height), periods=height)._frequencies(
-                height, probe
-            ))
+            + list(
+                Fourier(position_fourier_frequencies(height), periods=height)._frequencies(
+                    height, probe
+                )
+            )
             + list(attitude._frequencies(2.0 * math.pi, probe))
         )
         assert torch.allclose(rotary.frequencies, torch.tensor(expected))
@@ -395,9 +404,7 @@ class TestRotaryPolicy:
                 step_values.append(value)
         step_value = torch.stack(step_values)
 
-        stacked = {
-            key: torch.stack([o[key] for o in observations]) for key in observations[0].data
-        }
+        stacked = {key: torch.stack([o[key] for o in observations]) for key in observations[0].data}
         from boost_and_broadside.env.observation import YemongObservation
 
         sequence_obs = YemongObservation(data=stacked)
@@ -409,3 +416,168 @@ class TestRotaryPolicy:
                 sequence_obs, actions, initial, alive
             )
         assert torch.allclose(step_value, sequence_value, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Ally / enemy presence
+# ---------------------------------------------------------------------------
+
+WORLD = tuple(float(side) for side in FRONTLINE_SHIP_CONFIG.world_size)
+
+DENSITY_MODEL_CONFIG = replace(ROPE_MODEL_CONFIG, local_presence=True)
+
+
+def _fleet(num_per_team: int, spread: float = 400.0, seed: int = 0):
+    """A two-team cluster around the world centre, plus one neutral map token."""
+    generator = torch.Generator().manual_seed(seed)
+    total = 2 * num_per_team
+    position = 8192.0 + spread * torch.randn(1, total + 1, 2, generator=generator)
+    team_id = torch.cat(
+        [
+            torch.zeros(num_per_team, dtype=torch.long),
+            torch.ones(num_per_team, dtype=torch.long),
+            torch.full((1,), 2, dtype=torch.long),
+        ]
+    ).unsqueeze(0)
+    source = team_id < 2
+    return position, team_id, source
+
+
+class TestLocalPresence:
+    def test_permutation_invariance(self):
+        position, team_id, source = _fleet(5, seed=1)
+        base = local_presence(position, team_id, source, WORLD)
+
+        order = torch.randperm(position.shape[1], generator=torch.Generator().manual_seed(7))
+        shuffled = local_presence(position[:, order], team_id[:, order], source[:, order], WORLD)
+        assert torch.allclose(base[:, order], shuffled, atol=1e-6)
+
+    def test_self_is_excluded_from_ally_presence(self):
+        """A lone ship has zero allies, however close it is to itself."""
+        position = torch.tensor([[[100.0, 100.0], [9000.0, 9000.0]]])
+        team_id = torch.tensor([[0, 1]])
+        source = torch.ones(1, 2, dtype=torch.bool)
+        presence = local_presence(position, team_id, source, WORLD)
+        assert presence[0, 0, 0] == pytest.approx(0.0, abs=1e-6)
+        assert presence[0, 1, 0] == pytest.approx(0.0, abs=1e-6)
+
+    def test_enemy_presence_counts_the_other_team_only(self):
+        position = torch.tensor([[[0.0, 0.0], [10.0, 0.0], [20.0, 0.0]]])
+        team_id = torch.tensor([[0, 0, 1]])
+        source = torch.ones(1, 3, dtype=torch.bool)
+        presence = local_presence(position, team_id, source, WORLD)
+
+        # Ship 0: one ally 10 px away and one enemy 20 px away.
+        def expected(distance: float) -> float:
+            return math.log1p(math.exp(-(distance**2) / (2 * PRESENCE_RADIUS**2)))
+
+        assert presence[0, 0, 0] == pytest.approx(expected(10.0), abs=1e-5)
+        assert presence[0, 0, 1] == pytest.approx(expected(20.0), abs=1e-5)
+
+    def test_toroidal_wraparound(self):
+        """Neighbours across the seam count exactly as neighbours inside it."""
+        width, height = WORLD
+        seam = torch.tensor([[[width - 40.0, 500.0], [10.0, 500.0]]])
+        interior = torch.tensor([[[8000.0, 500.0], [8050.0, 500.0]]])
+        team_id = torch.tensor([[0, 1]])
+        source = torch.ones(1, 2, dtype=torch.bool)
+        assert torch.allclose(
+            local_presence(seam, team_id, source, WORLD),
+            local_presence(interior, team_id, source, WORLD),
+            atol=1e-6,
+        )
+        del height
+
+    def test_monotone_in_proximity_and_in_count(self):
+        team_id = torch.tensor([[0, 0]])
+        source = torch.ones(1, 2, dtype=torch.bool)
+
+        def ally_of_first(distance: float) -> float:
+            position = torch.tensor([[[0.0, 0.0], [distance, 0.0]]])
+            return local_presence(position, team_id, source, WORLD)[0, 0, 0].item()
+
+        distances = [10.0, 200.0, 500.0, 2000.0]
+        values = [ally_of_first(d) for d in distances]
+        assert values == sorted(values, reverse=True)
+
+        # And monotone in how many neighbours are present at a fixed distance.
+        previous = 0.0
+        for count in (1, 2, 4, 8):
+            position = torch.zeros(1, count + 1, 2)
+            position[0, 1:, 0] = 100.0
+            ids = torch.zeros(1, count + 1, dtype=torch.long)
+            here = local_presence(position, ids, torch.ones(1, count + 1, dtype=torch.bool), WORLD)
+            value = here[0, 0, 0].item()
+            assert value > previous
+            previous = value
+
+    def test_masked_sources_do_not_contribute(self):
+        position = torch.tensor([[[0.0, 0.0], [50.0, 0.0]]])
+        team_id = torch.tensor([[0, 1]])
+        seen = local_presence(position, team_id, torch.ones(1, 2, dtype=torch.bool), WORLD)
+        hidden = local_presence(position, team_id, torch.tensor([[True, False]]), WORLD)
+        assert seen[0, 0, 1] > 0.0
+        assert hidden[0, 0, 1] == pytest.approx(0.0, abs=1e-7)
+
+    def test_map_tokens_have_no_neighbourhood(self):
+        position, team_id, source = _fleet(3, seed=2)
+        presence = local_presence(position, team_id, source, WORLD)
+        assert torch.all(presence[:, -1] == 0.0)  # the team-2 token
+
+    @pytest.mark.parametrize("per_team", [1, 5, 25, 50, 200])
+    def test_stays_finite_and_bounded_as_the_fleet_grows(self, per_team):
+        position, team_id, source = _fleet(per_team, spread=400.0, seed=3)
+        presence = local_presence(position, team_id, source, WORLD)
+        assert torch.isfinite(presence).all()
+        # log1p of a sum bounded by the fleet size; never explosive.
+        assert presence.max() <= math.log1p(2.0 * per_team) + 1e-4
+        assert presence.min() >= 0.0
+
+    def test_scaling_from_5v5_to_50v50_is_compressed_but_not_flattened(self):
+        """The whole point: 10x the fleet must read as *more*, not as saturated."""
+        small, small_ids, small_source = _fleet(5, spread=400.0, seed=4)
+        large, large_ids, large_source = _fleet(50, spread=400.0, seed=4)
+        small_enemy = local_presence(small, small_ids, small_source, WORLD)[0, :10, 1].median()
+        large_enemy = local_presence(large, large_ids, large_source, WORLD)[0, :100, 1].median()
+
+        # Ten times the fleet in the same area: more presence, log-compressed.
+        assert large_enemy > small_enemy
+        assert 1.5 < (large_enemy / small_enemy) < 6.0
+
+    def test_a_dense_swarm_does_not_overflow_in_bfloat16(self):
+        position = torch.zeros(1, 400, 2)  # every ship on top of every other
+        team_id = torch.cat([torch.zeros(200), torch.ones(200)]).long().unsqueeze(0)
+        presence = local_presence(position, team_id, torch.ones(1, 400, dtype=torch.bool), WORLD)
+        assert torch.isfinite(presence).all()
+        assert presence.max() < 6.0  # log1p(400) = 6.0
+        assert torch.isfinite(presence.to(torch.bfloat16)).all()
+
+
+class TestPresenceFeatureWiring:
+    def test_the_feature_is_off_by_default_and_adds_two_channels(self):
+        assert MODEL_CONFIG.local_presence is False
+        plain = build_standard_coordinator(FRONTLINE_SHIP_CONFIG)
+        widened = build_standard_coordinator(FRONTLINE_SHIP_CONFIG, local_presence=True)
+        assert widened.total_input_dimension == plain.total_input_dimension + 2
+
+    def test_the_feature_is_input_only(self):
+        feature = LocalPresenceFeature(FRONTLINE_SHIP_CONFIG)
+        assert feature.predictor is None
+        coordinator = build_standard_coordinator(FRONTLINE_SHIP_CONFIG, local_presence=True)
+        plain = build_standard_coordinator(FRONTLINE_SHIP_CONFIG)
+        assert coordinator.total_prediction_dimension == plain.total_prediction_dimension
+
+    def test_it_reaches_the_encoder_input(self):
+        coordinator = build_standard_coordinator(FRONTLINE_SHIP_CONFIG, local_presence=True)
+        observation = _observation()
+        encoded = coordinator.get_input_vector(observation)
+        assert encoded.shape[-1] == coordinator.total_input_dimension
+        assert torch.isfinite(encoded).all()
+        assert encoded[..., -2:].abs().max() > 0.0
+
+    def test_the_policy_runs_with_presence_at_unseen_fleet_sizes(self):
+        policy = _policy(DENSITY_MODEL_CONFIG, num_ships=40)
+        observation = _observation(num_ships=40)
+        hidden = policy.initial_hidden(3, 40, torch.device("cpu"))
+        _, _, value, _, _ = policy.get_action_and_value(observation, hidden)
+        assert torch.isfinite(value).all()
