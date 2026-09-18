@@ -17,7 +17,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ModelConfig
-from boost_and_broadside.models.yemong.attention import GatedMLP, TransformerBlock
+from boost_and_broadside.models.yemong.attention import (
+    GatedMLP,
+    SpatialGeometry,
+    TransformerBlock,
+)
 
 CONV_KERNEL: int = 4  # causal depthwise conv kernel size
 
@@ -388,6 +392,7 @@ class YemongBlock(nn.Module):
         bullet_mask: torch.Tensor | None = None,  # (B, NB) bool
         map_memory: torch.Tensor | None = None,  # (B, M, D_map)
         map_mask: torch.Tensor | None = None,  # (B, M) bool
+        geometry: SpatialGeometry | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Single-step forward for rollout inference.
 
@@ -411,6 +416,7 @@ class YemongBlock(nn.Module):
                 bullet_mask,
                 map_memory,
                 map_mask,
+                geometry,
             )  # (B, N+M, D), or ships only in K/V mode
 
         new_hs: list[torch.Tensor] = []
@@ -441,6 +447,7 @@ class YemongBlock(nn.Module):
         bullet_mask: torch.Tensor | None = None,  # (T*B, NB) bool
         map_memory: torch.Tensor | None = None,  # (T*B, M, D_map)
         map_mask: torch.Tensor | None = None,  # (T*B, M) bool
+        geometry: SpatialGeometry | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Full-sequence forward for PPO re-evaluation.
 
@@ -463,6 +470,7 @@ class YemongBlock(nn.Module):
                 bullet_mask,
                 map_memory,
                 map_mask,
+                geometry,
             ).reshape(T, B, NM, D)
 
         done_mask_bn = (

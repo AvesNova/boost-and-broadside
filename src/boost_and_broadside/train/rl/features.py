@@ -23,7 +23,11 @@ import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import BulletObsKey, ObjectType, ObsKey, YemongObservation
-from boost_and_broadside.train.rl.checkpoint_schema import position_fourier_frequencies
+from boost_and_broadside.train.rl.checkpoint_schema import (
+    ATTITUDE_FOURIER_FREQUENCIES,
+    base2_frequencies,
+    position_fourier_frequencies,
+)
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -224,6 +228,20 @@ class Fourier(Transform):
     def __init__(self, n_freqs: int, periods: float | list[float]):
         self.n_freqs = n_freqs
         self.periods = periods
+        # Built from ``base2_frequencies`` once per (period, device, dtype) and
+        # cached: this runs on every encoder forward, and rebuilding a host-side
+        # tensor there costs a synchronizing copy per call.
+        self._freq_cache: dict[tuple[float, torch.device, torch.dtype], torch.Tensor] = {}
+
+    def _frequencies(self, period: float, like: torch.Tensor) -> torch.Tensor:
+        key = (period, like.device, like.dtype)
+        cached = self._freq_cache.get(key)
+        if cached is None:
+            cached = torch.tensor(
+                base2_frequencies(period, self.n_freqs), device=like.device, dtype=like.dtype
+            )
+            self._freq_cache[key] = cached
+        return cached
 
     def out_dim(self, in_dim: int) -> int:
         return in_dim * 2 * self.n_freqs
@@ -236,9 +254,7 @@ class Fourier(Transform):
         results = []
         for i, period in enumerate(ps):
             xi = x[..., i]
-            k = torch.arange(self.n_freqs, device=x.device, dtype=x.dtype)
-            freqs = (2.0 * math.pi / period) * (2.0**k)
-            args = xi.unsqueeze(-1) * freqs
+            args = xi.unsqueeze(-1) * self._frequencies(float(period), x)
             results.append(torch.sin(args))
             results.append(torch.cos(args))
         return torch.cat(results, dim=-1)
@@ -520,6 +536,17 @@ class Feature:
     def get_target(self, obs: YemongObservation) -> torch.Tensor:
         return self.target_encoder(self.accessor.get(obs))
 
+    def input_dimension(self, dummy: YemongObservation) -> int:
+        """Encoded width this feature contributes to the input vector.
+
+        A method rather than an expression in the coordinator so a feature whose
+        value is computed from several observation channels can state its own
+        width instead of having one inferred from a single accessor.
+        """
+        raw = self.accessor.get(dummy)
+        in_channels = raw.shape[-1] if raw.dim() > 2 else 1
+        return self.input_encoder.out_dim(in_channels)
+
 
 # ---------------------------------------------------------------------------
 # FeatureCoordinator
@@ -571,9 +598,7 @@ class FeatureCoordinator:
         t_offset = 0
         p_offset = 0
         for f in self.features:
-            raw = f.accessor.get(dummy)
-            in_c = raw.shape[-1] if raw.dim() > 2 else 1
-            self.total_input_dimension += f.input_encoder.out_dim(in_c)
+            self.total_input_dimension += f.input_dimension(dummy)
 
             if f.predictor:
                 t_dim = f.get_target(dummy).shape[-1]
@@ -660,9 +685,7 @@ class FeatureCoordinator:
         for f in self.features:
             if f.scope is not FeatureScope.SHARED and f.scope is not scope:
                 continue
-            raw = f.accessor.get(dummy)
-            in_c = raw.shape[-1] if raw.dim() > 2 else 1
-            total += f.input_encoder.out_dim(in_c)
+            total += f.input_dimension(dummy)
         return total
 
     def get_target_vector(self, obs: YemongObservation) -> torch.Tensor:
@@ -1166,7 +1189,7 @@ class AttitudeFourier(Fourier):
     """Encode heading phase, retaining Cartesian targets for phase prediction."""
 
     def __init__(self):
-        super().__init__(n_freqs=4, periods=2.0 * math.pi)
+        super().__init__(n_freqs=ATTITUDE_FOURIER_FREQUENCIES, periods=2.0 * math.pi)
 
     def out_dim(self, in_dim):
         return 2 * self.n_freqs
