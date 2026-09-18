@@ -30,6 +30,7 @@ def frontline_strategy(
     ship: ShipConfig,
     config: StochasticAgentConfig,
     visibility: torch.Tensor,
+    frontline_parameters: dict[str, torch.Tensor] | None = None,
 ) -> FrontlineStrategy:
     """Combine marginal objective demand, local strength, separation and recovery.
 
@@ -37,6 +38,22 @@ def frontline_strategy(
     Visibility is the authoritative (batch, team, ship) mask. No hidden memory,
     random identities, ship ranks, or fleet-size-dependent thresholds are used.
     """
+    def parameter(name: str) -> float | torch.Tensor:
+        return getattr(config, name) if frontline_parameters is None else frontline_parameters[name]
+
+    # A tournament search may give the two sides of an environment different
+    # Frontline settings. These are (B, N) tensors in that path, and the final
+    # singleton axis broadcasts them across enemy or zone comparisons.
+    combat_radius = parameter("frontline_combat_radius")
+    combat_radius_for_pairs = (
+        combat_radius if not torch.is_tensor(combat_radius) else combat_radius.unsqueeze(-1)
+    )
+    aggression = parameter("frontline_aggression")
+    zone_radius = parameter("frontline_zone_radius")
+    zone_margin = parameter("frontline_zone_margin")
+    separation_radius = parameter("frontline_separation_radius")
+    recovery_health = parameter("frontline_recovery_health")
+
     health = (state.ship_health / ship.max_health).clamp(0, 1)
     shield_fraction = health
     # Depleted ships still shoot and capture; zero shields is not zero strength.
@@ -50,12 +67,12 @@ def frontline_strategy(
     )
     distance = delta.abs()
     unit = delta / distance.clamp_min(1e-8)
-    kernel = torch.exp(-(distance / config.frontline_combat_radius).square())
+    kernel = torch.exp(-(distance / combat_radius_for_pairs).square())
     allied_strength = torch.where(allies, kernel * health[:, None, :], 0).sum(-1)
     enemy_weight = torch.where(enemies, kernel * health[:, None, :], 0)
     enemy_strength = enemy_weight.sum(-1)
     combat = torch.tanh(
-        torch.log((allied_strength + 1e-6) / (enemy_strength + 1e-6)) + config.frontline_aggression
+        torch.log((allied_strength + 1e-6) / (enemy_strength + 1e-6)) + aggression
     )
     enemy_direction = (enemy_weight * unit).sum(-1) / enemy_strength.clamp_min(1e-8)
     # Vanishes in empty space; bounded even when a large enemy fleet is present.
@@ -67,8 +84,8 @@ def frontline_strategy(
     zone_distance = zone_delta.abs()
     support_radius = (
         2 * state.zone_radius[:, None, :]
-        if config.frontline_zone_radius is None
-        else config.frontline_zone_radius
+        if zone_radius is None
+        else zone_radius if not torch.is_tensor(zone_radius) else zone_radius.unsqueeze(-1)
     )
     contribution = health[:, :, None] * torch.exp(-(zone_distance / support_radius).square())
     # Sum once per team, then gather for each observer and subtract self.
@@ -92,8 +109,14 @@ def frontline_strategy(
     # visible.  Aggression increases offensive demand without suppressing that
     # defensive floor.  The old symmetric exp(+a)/exp(-a) rule made offense
     # 7.4x as attractive as defense at the shipped aggression of 1.0.
-    margin = config.frontline_zone_margin * torch.where(
-        offense, math.exp(config.frontline_aggression), 1.0
+    offensive_margin = (
+        math.exp(aggression)
+        if not torch.is_tensor(aggression)
+        else torch.exp(aggression).unsqueeze(-1)
+    )
+    margin_scale = zone_margin if not torch.is_tensor(zone_margin) else zone_margin.unsqueeze(-1)
+    margin = margin_scale * torch.where(
+        offense, offensive_margin, 1.0
     )
     # Capture state is public map information.  Use it to recruit defenders even
     # when an opaque zone hides the attacker that is moving the meter.
@@ -108,13 +131,20 @@ def frontline_strategy(
     zone_unit = zone_delta / zone_distance.clamp_min(1e-8)
     objective_force = (preference * zone_unit).sum(-1)
 
-    separation_radius = config.frontline_separation_radius or 4 * ship.collision_radius
+    separation_radius = (
+        4 * ship.collision_radius if separation_radius is None else separation_radius
+    )
+    separation_radius_for_pairs = (
+        separation_radius
+        if not torch.is_tensor(separation_radius)
+        else separation_radius.unsqueeze(-1)
+    )
     # delta/R is smooth even at coincident positions; normalizing by mass bounds
     # dense fleets without diluting repulsion when unrelated distant ships exist.
     sep_weight = torch.where(
-        allies & (distance > 0), torch.exp(-(distance / separation_radius).square()), 0
+        allies & (distance > 0), torch.exp(-(distance / separation_radius_for_pairs).square()), 0
     )
-    separation = -(sep_weight * delta / separation_radius).sum(-1)
+    separation = -(sep_weight * delta / separation_radius_for_pairs).sum(-1)
     separation = separation / sep_weight.sum(-1).clamp_min(1)
 
     own_spawn = torch.where(
@@ -124,7 +154,7 @@ def frontline_strategy(
     spawn_distance = spawn_delta.abs()
     recovery = (1 - shield_fraction).square() / (
         (1 - shield_fraction).square()
-        + (shield_fraction / config.frontline_recovery_health).square()
+        + (shield_fraction / recovery_health).square()
         + 1e-8
     )
     # Recharge anywhere: do not travel all the way home when no enemy threatens us.

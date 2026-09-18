@@ -151,7 +151,7 @@ class TensorState:
             **{field.name: getattr(self, field.name).clone() for field in fields(self)}
         )
 
-    def slice_envs(self, env_slice: slice) -> "TensorState":
+    def slice_envs(self, env_slice: slice | torch.Tensor) -> "TensorState":
         """Return a view-backed state containing only the selected environments."""
         return TensorState(
             **{field.name: getattr(self, field.name)[env_slice] for field in fields(self)}

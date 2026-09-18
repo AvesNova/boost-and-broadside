@@ -79,12 +79,12 @@ omniscient. Combat mode retains its existing optional-mask contract.
 
 | Concept | Configuration | Default |
 |---|---|---|
-| Offensive/defensive bias a | `frontline_aggression` | 1.0 |
-| Tactical radius R_C | `frontline_combat_radius` | 600 px |
-| Zone support R_Z | `frontline_zone_radius` | 900 px |
-| Neutral margin m | `frontline_zone_margin` | 1 full-health ship |
-| Separation R_S | `frontline_separation_radius` | 120 px |
-| Recovery health h_R | `frontline_recovery_health` | 0.5 |
+| Offensive/defensive bias a | `frontline_aggression` | 1.05 |
+| Tactical radius R_C | `frontline_combat_radius` | 393 px |
+| Zone support R_Z | `frontline_zone_radius` | 1090 px |
+| Neutral margin m | `frontline_zone_margin` | 0.98 full-health ship |
+| Separation R_S | `frontline_separation_radius` | 141 px |
+| Recovery health h_R | `frontline_recovery_health` | 0.54 |
 
 `r0` is the lower shooting-distance ramp endpoint (200 px by default). `R_C` must
 exceed it. Strategic parameters do not enter the existing combat tuning vector.
@@ -183,7 +183,16 @@ excluding visibility, physics, and rendering:
 
 [Raw profile](internal/frontline-strategy-cpu-profile.json). Other validation processes
 were active, so these are indicative CPU timings, not isolated performance claims.
-CUDA was unavailable; GPU throughput and peak allocation remain unmeasured.
+
+The 2026-09-18 GPU parameter search used the stationary-player `Tournament` in one
+16,256-game tensor batch per round. Its controller adapter selects each side's
+Frontline parameters per ship and evaluates the whole field in one scripted pass per
+simulation step. Three broad-to-local rounds found successive improvements of +83.8,
++49.2, and +63.5 Elo. An expanded-boundary round then found a further +67.1 Elo at a
+finite 392.7 px combat radius. The preceding winner scored 59.4% over 4,096 fresh
+150-second games against the original defaults. Raw fields are recorded in
+[the main search](internal/frontline-scripted-search.json) and
+[the boundary refinement](internal/frontline-scripted-boundary-search.json).
 
 ## Remaining tuning questions
 

@@ -191,6 +191,7 @@ class StochasticScriptedAgent:
         self,
         state: TensorState,
         team_visibility: torch.Tensor | None = None,
+        frontline_parameters: dict[str, torch.Tensor] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run the existing flight controller against frontline destinations."""
 
@@ -201,7 +202,13 @@ class StochasticScriptedAgent:
             state, self.ship_config, team_visibility
         )
         old = self._combat_probs(state, closest_dist, target_idx, has_target, team_visibility)
-        strategy = frontline_strategy(state, self.ship_config, self.config, team_visibility)
+        strategy = frontline_strategy(
+            state,
+            self.ship_config,
+            self.config,
+            team_visibility,
+            frontline_parameters,
+        )
         new = self._compute_action_probs(
             state,
             strategy.distance,
@@ -213,7 +220,12 @@ class StochasticScriptedAgent:
         no_shoot[..., 0] = 1.0
         new = (new[0], new[1], no_shoot)
         r0 = self.config.shoot_distance_ramp[0]
-        alpha = ((closest_dist - r0) / (self.config.frontline_combat_radius - r0)).clamp(0, 1)
+        combat_radius = (
+            self.config.frontline_combat_radius
+            if frontline_parameters is None
+            else frontline_parameters["frontline_combat_radius"]
+        )
+        alpha = ((closest_dist - r0) / (combat_radius - r0)).clamp(0, 1)
         p_power, p_turn, p_shoot = (
             self._blend_probs(
                 old_head, new_head, torch.maximum(alpha, strategy.recovery) if i < 2 else alpha
@@ -248,6 +260,15 @@ class StochasticScriptedAgent:
                 dim=-1,
             )
         return actions, expert_probs
+
+    def get_actions(
+        self,
+        state: TensorState,
+        team_visibility: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Standard interface — returns (B, N, 3) int tensor of sampled actions."""
+        actions, _ = self.get_actions_and_probs(state, team_visibility)
+        return actions
 
     @staticmethod
     def _blend_probs(old: torch.Tensor, new: torch.Tensor, alpha: torch.Tensor) -> torch.Tensor:
@@ -359,11 +380,74 @@ class StochasticScriptedAgent:
 
         return actions, expert_probs
 
+
+class BatchedFrontlineScriptedAgent:
+    """Evaluate a field of Frontline scripted configurations in one tensor pass.
+
+    Only the Frontline strategy settings vary during the current search. Legacy
+    flight-controller ramps stay shared, so this selects six scalar settings by
+    team for each ship and lets the normal scripted controller process the full
+    batch. It is an evaluation adapter, not a new gameplay controller.
+    """
+
+    _PARAMETERS = (
+        "frontline_aggression",
+        "frontline_combat_radius",
+        "frontline_zone_radius",
+        "frontline_zone_margin",
+        "frontline_separation_radius",
+        "frontline_recovery_health",
+    )
+
+    def __init__(
+        self,
+        ship_config: ShipConfig,
+        configs: list[StochasticAgentConfig],
+        team0_index: torch.Tensor,
+        team1_index: torch.Tensor,
+    ) -> None:
+        if not configs:
+            raise ValueError("batched scripted agent requires at least one configuration")
+        if any(
+            getattr(config, name) is None
+            for config in configs
+            for name in ("frontline_zone_radius", "frontline_separation_radius")
+        ):
+            raise ValueError("batched Frontline evaluation requires explicit radius overrides")
+        self.agent = StochasticScriptedAgent(ship_config, configs[0])
+        self.team0_index = team0_index
+        self.team1_index = team1_index
+        self.values = {
+            name: torch.tensor(
+                [float(getattr(config, name)) for config in configs],
+                device=team0_index.device,
+            )
+            for name in self._PARAMETERS
+        }
+
+    def _parameters(self, state: TensorState) -> dict[str, torch.Tensor]:
+        team0 = self.team0_index[:, None]
+        team1 = self.team1_index[:, None]
+        team = state.ship_team_id.long()
+        return {
+            name: torch.where(team == 0, values[team0], values[team1])
+            for name, values in self.values.items()
+        }
+
+    def get_actions_and_probs(
+        self,
+        state: TensorState,
+        team_visibility: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if state.num_zones == 0:
+            raise ValueError("batched Frontline controller requires Frontline zones")
+        return self.agent._get_frontline_actions_and_probs(
+            state, team_visibility, self._parameters(state)
+        )
+
     def get_actions(
         self,
         state: TensorState,
         team_visibility: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Standard interface — returns (B, N, 3) int tensor of sampled actions."""
-        actions, _ = self.get_actions_and_probs(state, team_visibility)
-        return actions
+        return self.get_actions_and_probs(state, team_visibility)[0]

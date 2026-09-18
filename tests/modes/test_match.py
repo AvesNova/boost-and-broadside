@@ -10,6 +10,8 @@ by watching what actually reaches the policy.
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
+from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
+from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey
 from boost_and_broadside.evaluation.agents import ResolvedAgent
@@ -33,6 +35,16 @@ class _Recorder:
 
     def __getattr__(self, name):
         return getattr(self.__dict__["_policy"], name)
+
+
+class _ScriptedRecorder(StochasticScriptedAgent):
+    def __init__(self):
+        super().__init__(SHIP_CONFIG, StochasticAgentConfig())
+        self.batch_sizes: list[int] = []
+
+    def get_actions(self, state, team_visibility=None):
+        self.batch_sizes.append(state.num_envs)
+        return torch.zeros(state.num_envs, state.ship_pos.shape[1], 3, dtype=torch.int32)
 
 
 def _policy_agent(reads_bullets: bool = True, paradigm: str = "ego_pass", record: bool = False):
@@ -148,3 +160,12 @@ class TestSideAssignment:
         runner.step()
 
         assert [int(obs[ObsKey.TEAM_ID].shape[0]) for obs in agent.agent.seen] == [1]
+
+    def test_each_scripted_controller_only_acts_on_its_assigned_slice(self):
+        recorders = [_ScriptedRecorder() for _ in range(3)]
+        agents = [ResolvedAgent("scripted", recorder) for recorder in recorders]
+        runner = _runner(agents, team0=[0, 0, 1, 2], team1=[1, 2, 2, 1], num_envs=4)
+
+        runner.step()
+
+        assert [recorder.batch_sizes for recorder in recorders] == [[2], [3], [3]]

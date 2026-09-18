@@ -89,12 +89,12 @@ class StochasticAgentConfig:
     )  # disabled in the sole public scripted-agent configuration
 
     # State-derived Frontline strategy; excluded from the legacy tuning vector.
-    frontline_aggression: float = 1.0
-    frontline_combat_radius: float = 600.0
-    frontline_zone_radius: float | None = 900.0
-    frontline_zone_margin: float = 1.0  # full-health ship equivalents
-    frontline_separation_radius: float | None = 120.0
-    frontline_recovery_health: float = 0.5
+    frontline_aggression: float = 1.05
+    frontline_combat_radius: float = 393.0
+    frontline_zone_radius: float | None = 1090.0
+    frontline_zone_margin: float = 0.98  # full-health ship equivalents
+    frontline_separation_radius: float | None = 141.0
+    frontline_recovery_health: float = 0.54
 
     def __post_init__(self) -> None:
         values = (

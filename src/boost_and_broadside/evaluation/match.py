@@ -88,10 +88,10 @@ class MatchRunner:
         num_ships:   N in this batch's environments.
 
     The two index tensors may name the same agent, which is how a policy plays
-    itself. Policies act on a slice of the batch — the environments they appear
-    in on either side — because each carries one recurrent state sized to exactly
-    those. Scripted and random agents read the raw state and are cheapest run over
-    the whole batch, so they are.
+    itself. Each agent acts only on the environments where it appears. This is
+    essential for scripted-parameter tournaments: evaluating every controller
+    over the whole batch would turn P players across B games into P * B work even
+    though each game has only two active controllers.
     """
 
     def __init__(
@@ -162,6 +162,8 @@ class MatchRunner:
         random_draw: torch.Tensor | None = None
         for index, agent in enumerate(self.agents):
             active = self.active[index]
+            if active.numel() == 0:
+                continue
             if agent.kind == "semi_random":
                 key = id(agent.agent.scripted_agent)
                 if key not in scripted_cache:
@@ -174,19 +176,18 @@ class MatchRunner:
                 per_agent[index] = agent.agent.mix_actions(scripted, random_draw).int()
                 continue
             if agent.kind != "policy":
-                # Reads the state, not the observation: one vectorized call covers
-                # the batch, and the merge discards the envs it does not control.
-                per_agent[index] = get_actions(
+                # Scripted tournament fields may contain many distinct
+                # controllers. Run each only where it is assigned so aggregate
+                # controller work stays proportional to two sides per game.
+                per_agent[index, active] = get_actions(
                     agent,
                     None,
-                    self.env.state,
-                    self.num_envs,
+                    self.env.state.slice_envs(active),
+                    int(active.numel()),
                     self.num_ships,
                     self.device,
-                    team_visibility=self.visibility.ship,
+                    team_visibility=self.visibility.ship[active],
                 ).int()
-                continue
-            if active.numel() == 0:
                 continue
             view = agent_view(
                 agent, obs.slice_envs(active), self.num_ships, self.team1_index[active] == index

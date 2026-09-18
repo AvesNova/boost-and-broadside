@@ -21,7 +21,10 @@ from boost_and_broadside.agents.run_away import RunAwayAgent
 from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.agents.spiral_evader import SpiralEvaderAgent
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.agents.stochastic_scripted import (
+    BatchedFrontlineScriptedAgent,
+    StochasticScriptedAgent,
+)
 from boost_and_broadside.agents.team_jouster import TeamJousterAgent
 from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.constants import (
@@ -206,7 +209,7 @@ def get_actions(
         with torch.no_grad():
             action = (
                 agent.agent.get_actions(state, team_visibility)
-                if isinstance(agent.agent, StochasticScriptedAgent)
+                if isinstance(agent.agent, (StochasticScriptedAgent, BatchedFrontlineScriptedAgent))
                 else agent.agent.get_actions(state)
             )
         return (action, None) if return_pred_next else action
