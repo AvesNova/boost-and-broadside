@@ -10,7 +10,7 @@ pause capture. Simultaneous captures net to zero and reset both meters.
 
 All zones are opaque. Ships sharing a zone can see each other. Own spawn protects
 ships; shields recover anywhere after five seconds without damage. Initial ships and
-instant respawns start at 15 shields, 20 energy and 30 proper speed. Defense zones,
+instant respawns start at 15 shields, 40 energy and 30 proper speed. Defense zones,
 enemy spawn and field interfaces cause no passive damage. The outer boundary remains
 a hazard. The match ends at front ±3 or five minutes.
 

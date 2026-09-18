@@ -19,7 +19,7 @@ The branch is prepared for review; it has not been merged or pushed.
 - Damage restarts a five-second delay; undamaged ships then recharge at 15/s anywhere.
   Fractional delay expiry and the capacity cap are respected. Same-tick damage blocks
   recharge. Spawn protection masks damage before attribution and does not reset delay.
-- Respawns are instant, with 15 shield, 20 power, 30 proper speed, no firing cooldown,
+- Respawns are instant, with 15 shield, 40 power, 30 proper speed, no firing cooldown,
   and the full recharge delay. Initial placement uses the same state: a single
   supported lifecycle rule, immediate steering/shooting, and no exceptional opening
   resource advantage. Statistical playtests showed captures and repeat engagements
@@ -192,7 +192,7 @@ occupancy counters.
 
 GPU throughput/VRAM verification, long training convergence, broader seed/opponent
 sweeps and human play remain unmeasured. The five-second delay, 15/s recharge,
-ten-second capture and 15/20/30 spawn resources are coherent provisional values, not a
+ten-second capture and 15/40/30 spawn resources are coherent provisional values, not a
 completed balance search. The small teacher sweep does not establish an Elo rating. Older learned-policy
 results elsewhere in the repository describe earlier mechanics and are historical.
 

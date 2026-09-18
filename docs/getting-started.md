@@ -184,7 +184,7 @@ and projectile defaults are defined on `ShipConfig` in
 [`src/boost_and_broadside/config/core.py`](../src/boost_and_broadside/config/core.py).
 Frontline play and training now use 5v5, opaque zones and regenerating shields;
 see [the rules](environment.md) and [validation report](internal/shield-overhaul.md).
-Spawn resources are 15 shield, 20 power and 30 proper speed, with a five-second
+Spawn resources are 15 shield, 40 power and 30 proper speed, with a five-second
 recharge delay. Field interfaces cause no damage or projectile attenuation.
 
 The base `ShipConfig` field/projectile controls are below. Frontline overrides the

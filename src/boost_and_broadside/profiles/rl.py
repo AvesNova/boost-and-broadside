@@ -53,7 +53,7 @@ RL_PROFILE = ProfileSpec(
         # and compounded the shaping bias run 735 exploited. The capture tier now
         # supplies the pressure that this was standing in for.
         respawn_health=15.0,
-        respawn_power=20.0,
+        respawn_power=40.0,
         respawn_speed=30.0,
         shield_recharge_delay=5.0,
         shield_recharge_per_second=15.0,

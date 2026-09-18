@@ -7,7 +7,10 @@ import torch
 
 from boost_and_broadside.agents.frontline_strategy import frontline_strategy
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.agents.stochastic_scripted import (
+    BatchedFrontlineScriptedAgent,
+    StochasticScriptedAgent,
+)
 from boost_and_broadside.config import ShipConfig, ZoneRole
 from tests.conftest import make_state
 
@@ -254,3 +257,29 @@ def test_outer_range_is_exact_strategy_on_all_heads():
     )
     expected = torch.cat((power, turn, torch.tensor([[[1.0, 0.0], [1.0, 0.0]]])), -1)
     assert torch.equal(agent.get_actions_and_probs(state, visibility)[1], expected)
+
+
+def test_batched_frontline_controller_selects_each_side_configuration():
+    ship, state, visibility = _scenario(2)
+    team0 = StochasticAgentConfig()
+    team1 = StochasticAgentConfig(
+        frontline_aggression=0.55,
+        frontline_combat_radius=740.0,
+        frontline_zone_radius=760.0,
+        frontline_zone_margin=1.25,
+        frontline_separation_radius=180.0,
+        frontline_recovery_health=0.35,
+    )
+    batched = BatchedFrontlineScriptedAgent(
+        ship,
+        [team0, team1],
+        torch.tensor([0]),
+        torch.tensor([1]),
+    )
+
+    _, actual = batched.get_actions_and_probs(state, visibility)
+    expected0 = StochasticScriptedAgent(ship, team0).get_actions_and_probs(state, visibility)[1]
+    expected1 = StochasticScriptedAgent(ship, team1).get_actions_and_probs(state, visibility)[1]
+    expected = torch.where((state.ship_team_id == 0).unsqueeze(-1), expected0, expected1)
+
+    torch.testing.assert_close(actual, expected)

@@ -3,7 +3,7 @@
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +14,10 @@ from boost_and_broadside.agents.semi_random_scripted import (
     semi_random_label,
 )
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
-from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.agents.stochastic_scripted import (
+    BatchedFrontlineScriptedAgent,
+    StochasticScriptedAgent,
+)
 from boost_and_broadside.config import (
     EloCalibrateConfig,
     EnvConfig,
@@ -437,6 +440,38 @@ class Tournament:
             torch.tensor(team1, device=self.device, dtype=torch.long),
         )
 
+    def _batched_scripted_agent(
+        self, team0_index: torch.Tensor, team1_index: torch.Tensor
+    ) -> ResolvedAgent | None:
+        """Pack a Frontline-only scripted field into one controller invocation.
+
+        A normal stationary field may mix checkpoint, random, and specialist
+        agents, so it keeps one agent object per player. A parameter search is
+        different: every player is the same stochastic controller with only
+        its six Frontline settings changed. Selecting those settings per ship
+        avoids one Python/controller pass for every candidate on every tick.
+        """
+        agents = [player.agent for player in self.players]
+        if self.env_config.frontline is None or not all(
+            agent.kind == "scripted" and isinstance(agent.agent, StochasticScriptedAgent)
+            for agent in agents
+        ):
+            return None
+        configs = [agent.agent.config for agent in agents]
+        baseline = asdict(configs[0])
+        varied = set(BatchedFrontlineScriptedAgent._PARAMETERS)
+        if any(
+            any(asdict(config).get(name) != value for name, value in baseline.items() if name not in varied)
+            for config in configs[1:]
+        ):
+            return None
+        return ResolvedAgent(
+            "scripted",
+            BatchedFrontlineScriptedAgent(
+                self.ship_config, configs, team0_index, team1_index
+            ),
+        )
+
     def play_batch(self, allocation: np.ndarray, progress: "Progress | None" = None) -> int:
         """Play one episode in every env under the given allocation; tally results.
 
@@ -446,11 +481,12 @@ class Tournament:
         mix toward decisive games.
         """
         env_team0, env_team1 = self._assign(allocation)
+        batched_agent = self._batched_scripted_agent(env_team0, env_team1)
         runner = MatchRunner(
             self.env,
-            [player.agent for player in self.players],
-            team0_index=env_team0,
-            team1_index=env_team1,
+            [batched_agent] if batched_agent is not None else [player.agent for player in self.players],
+            team0_index=(torch.zeros_like(env_team0) if batched_agent is not None else env_team0),
+            team1_index=(torch.zeros_like(env_team1) if batched_agent is not None else env_team1),
             ship_config=self.ship_config,
             num_ships=self.num_ships,
         )

@@ -18,7 +18,7 @@ Damage resets a five-second recharge delay. After that undamaged interval, shiel
 recover at 15 units/second anywhere, capped at 100. A hit and recharge never pay out
 on the same tick. The timer is an observed, predicted ship channel.
 
-Initial placement and instant respawns use 15 shields, 20 power and 30 px/s proper
+Initial placement and instant respawns use 15 shields, 40 power and 30 px/s proper
 speed, facing the enemy defense, with the full recharge delay. This avoids a special
 full-resource opening and leaves enough power and steering speed to act immediately.
 Ships inside their current friendly spawn are invulnerable. Spawn membership is
