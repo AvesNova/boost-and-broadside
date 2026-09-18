@@ -225,7 +225,14 @@ def instrument(trainer, detail: bool) -> None:
         elo_mod.compile_perception = timed_perceive
 
 
-def dump(label: str, updates: int, env_steps_per_update: int, wall: float, out: str | None):
+def dump(
+    label: str,
+    updates: int,
+    env_steps_per_update: int,
+    wall: float,
+    out: str | None,
+    extra: dict | None = None,
+):
     total_steps = updates * env_steps_per_update
     rows = sorted(TOTALS.items())
     payload = {
@@ -234,6 +241,7 @@ def dump(label: str, updates: int, env_steps_per_update: int, wall: float, out: 
         "env_steps_per_update": env_steps_per_update,
         "wall_seconds": wall,
         "sps": total_steps / wall if wall else 0.0,
+        **(extra or {}),
         "phases": {
             key: {"seconds": value, "calls": COUNTS[key], "per_update": value / updates}
             for key, value in rows
@@ -244,6 +252,8 @@ def dump(label: str, updates: int, env_steps_per_update: int, wall: float, out: 
         f"updates={updates}  wall={wall:.2f}s  per_update={wall / updates:.2f}s  "
         f"env_steps/update={env_steps_per_update:,}  SPS={payload['sps']:,.0f}"
     )
+    for key, value in (extra or {}).items():
+        print(f"{key}: {value}")
     print(f"{'phase':<34} {'s/update':>10} {'calls/upd':>10} {'% wall':>8}")
     for key, value in rows:
         print(
@@ -287,6 +297,11 @@ def main() -> None:
     global _SYNC, _ENABLED
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--profile",
+        default="rl",
+        help="registered training profile to measure (rl or bc)",
+    )
     parser.add_argument("--updates", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--timing", choices=("wall", "sync"), default="wall")
@@ -361,7 +376,7 @@ def main() -> None:
 
     overrides = dict(o.split("=", 1) for o in args.override)
     launch = resolve_training_launch(
-        profile="rl",
+        profile=args.profile,
         vram="auto",
         device="cuda",
         seed=1234,
@@ -485,8 +500,22 @@ def main() -> None:
         prof.export_chrome_trace(args.torch_profile)
         print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=45))
 
-    label = args.label or f"rl/{args.timing}"
-    payload = dump(label, args.updates, env_steps_per_update, wall, args.out)
+    label = args.label or f"{args.profile}/{args.timing}"
+    payload = dump(
+        label,
+        args.updates,
+        env_steps_per_update,
+        wall,
+        args.out,
+        extra={
+            "profile": args.profile,
+            # Records exactly which architecture a stage's numbers belong to, so
+            # a ladder of measurements cannot be misattributed after the fact.
+            "model_config": dataclasses.asdict(resolved.model_config),
+            "compile_mode": args.compile_mode,
+            "overrides": overrides,
+        },
+    )
     payload["per_update_seconds"] = per_update
     payload["epochs_completed"] = epochs
     total_epochs = sum(epochs)
