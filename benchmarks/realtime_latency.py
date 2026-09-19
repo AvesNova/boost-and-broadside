@@ -12,12 +12,14 @@ Four configurations, which is the whole question:
     5v5   on GPU        5v5   on CPU
     50v50 on GPU        50v50 on CPU
 
-The loop replicates what `_run_resolved_interactive_mode` actually does per
-frame, minus rendering:
+The loop replicates the buffered NN timing used by PPO and interactive watch:
 
 1. perception and observation assembly for both team views;
 2. each side's ego view, belief composition, policy forward, belief advance;
-3. action merge and one physics step.
+3. physics consumes the preceding buffered NN action while the policy produces
+   the next one. ``--execution streams`` puts those two branches on separate
+   CUDA streams from one host thread; ``threads`` also dispatches them from two
+   persistent host threads. ``sequential`` preserves the same one-tick delay.
 
 Two distinct policies, one per side, because that is the general case -- watch
 mode short-circuits the second forward only when both sides are literally the
@@ -40,6 +42,7 @@ import json
 import os
 import statistics
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -47,6 +50,7 @@ import torch
 
 from boost_and_broadside.config.core import EnvConfig, entity_token_count
 from boost_and_broadside.config.defaults import REWARDS
+from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.profiles import PROFILES
@@ -155,6 +159,8 @@ def measure(
     perceive_bullets: bool,
     policy_sides: int,
     window_size: int | None,
+    execution: str,
+    enqueue_order: str,
 ) -> dict:
     """Time one interactive frame's worth of work, repeatedly."""
 
@@ -178,6 +184,7 @@ def measure(
         perceive_bullets=perceive_bullets,
     )
     observation = wrapper.reset()
+    action_buffer = torch.zeros((1, ships, 3), dtype=torch.int32, device=device)
 
     model_config = replace(PROFILE.model_config, **STAGES[stage])
     sides = []
@@ -209,18 +216,23 @@ def measure(
 
     as_team1 = torch.ones(1, dtype=torch.bool, device=device)
     phases = {"policy": 0.0, "env_step": 0.0, "render": 0.0}
+    concurrent = execution in {"streams", "threads"}
+    threaded = execution == "threads"
+    if concurrent and device.type != "cuda":
+        raise ValueError("streams execution requires CUDA")
+    env_stream = torch.cuda.Stream(device=device) if concurrent else None
+    net_stream = torch.cuda.Stream(device=device) if concurrent else None
+    executor = ThreadPoolExecutor(max_workers=2) if threaded else None
     # Episode resets are counted, not hidden: a reset rebuilds the field layout
     # and re-initialises the map, which costs far more than a step. A scenario
     # whose matches end constantly would otherwise look slow for a reason that
     # has nothing to do with the per-frame work being measured.
     resets = {"count": 0}
 
-    def frame(record: bool) -> None:
-        nonlocal observation
-        start = time.perf_counter()
+    def policy_actions(source_observation):
         actions = []
         for team, side in enumerate(sides):
-            view = observation.for_team(team)
+            view = source_observation.for_team(team)
             if team == 1:
                 # An ego_pass policy only ever learned to act as team 0, so
                 # playing team 1 means seeing mirrored team IDs -- exactly what
@@ -236,27 +248,111 @@ def measure(
         # controller, whose action costs nothing measurable next to a forward
         # pass. `bnb watch --team0 null --team1 <ckpt>` is exactly this case.
         opponent = actions[1] if len(actions) > 1 else torch.zeros_like(actions[0])
-        merged = merge_team_actions(actions[0], opponent, wrapper.state.ship_team_id)
-        if record:
-            _sync(device)
-            mark = time.perf_counter()
-            phases["policy"] += mark - start
+        return merge_team_actions(actions[0], opponent, wrapper.state.ship_team_id).int()
 
-        observation, _, dones, truncated, _info = wrapper.step(merged.int(), auto_reset=False)
-        if record:
-            _sync(device)
-            env_mark = time.perf_counter()
-            phases["env_step"] += env_mark - mark
+    def expose_pending_action() -> None:
+        observation.data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
+        if observation.team1_data is not None:
+            observation.team1_data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
+
+    def frame(record: bool) -> None:
+        nonlocal action_buffer, observation
+        policy_start = policy_end = env_start = env_end = None
+        cpu_start = time.perf_counter()
+
+        if device.type == "cuda" and record:
+            policy_start = torch.cuda.Event(enable_timing=True)
+            policy_end = torch.cuda.Event(enable_timing=True)
+            env_start = torch.cuda.Event(enable_timing=True)
+            env_end = torch.cuda.Event(enable_timing=True)
+
+        if concurrent:
+            # Every returned observation channel owns its final cat/clone
+            # storage. Reusable ObservationBuffers sit underneath that final
+            # assembly, so building the next observation cannot overwrite this
+            # one while the policy reads it.
+            policy_observation = observation
+            current = torch.cuda.current_stream(device)
+            env_stream.wait_stream(current)
+            net_stream.wait_stream(current)
+
+            def launch_environment():
+                with torch.inference_mode(), torch.cuda.device(device), torch.cuda.stream(
+                    env_stream
+                ):
+                    if env_start is not None:
+                        env_start.record(env_stream)
+                    result = wrapper.step(
+                        action_buffer, auto_reset=False
+                    )
+                    if env_end is not None:
+                        env_end.record(env_stream)
+                return result
+
+            def launch_policy():
+                with torch.inference_mode(), torch.cuda.device(device), torch.cuda.stream(
+                    net_stream
+                ):
+                    if policy_start is not None:
+                        policy_start.record(net_stream)
+                    next_action_out = policy_actions(policy_observation)
+                    if policy_end is not None:
+                        policy_end.record(net_stream)
+                return next_action_out
+
+            launchers = (
+                (launch_environment, launch_policy)
+                if enqueue_order == "env-first"
+                else (launch_policy, launch_environment)
+            )
+            if threaded:
+                futures = {launch: executor.submit(launch) for launch in launchers}
+                env_result = futures[launch_environment].result()
+                next_action = futures[launch_policy].result()
+            else:
+                outputs = {launch: launch() for launch in launchers}
+                env_result = outputs[launch_environment]
+                next_action = outputs[launch_policy]
+            current.wait_stream(env_stream)
+            current.wait_stream(net_stream)
+            observation, _, dones, truncated, _info = env_result
+        else:
+            if policy_start is not None:
+                policy_start.record()
+            next_action = policy_actions(observation)
+            if policy_end is not None:
+                policy_end.record()
+            policy_mark = time.perf_counter()
+            if env_start is not None:
+                env_start.record()
+            observation, _, dones, truncated, _info = wrapper.step(
+                action_buffer, auto_reset=False
+            )
+            if env_end is not None:
+                env_end.record()
+            if record and device.type == "cpu":
+                phases["policy"] += policy_mark - cpu_start
+                phases["env_step"] += time.perf_counter() - policy_mark
+
+        action_buffer = next_action.detach()
+        expose_pending_action()
+
+        if record and device.type == "cuda":
+            torch.cuda.synchronize(device)
+            phases["policy"] += policy_start.elapsed_time(policy_end) / 1000.0
+            phases["env_step"] += env_start.elapsed_time(env_end) / 1000.0
 
         if renderer is not None:
+            render_start = time.perf_counter()
             renderer.draw_frame(wrapper.state, visibility=wrapper.last_visibility)
             if record:
-                phases["render"] += time.perf_counter() - env_mark
+                phases["render"] += time.perf_counter() - render_start
 
         finished = dones | truncated
         if bool(finished.any()):
             resets["count"] += 1
             observation = wrapper.reset()
+            action_buffer.zero_()
             for side in sides:
                 side["belief"].reset(finished)
                 side["hidden"] = side["policy"].reset_hidden_for_envs(
@@ -281,9 +377,12 @@ def measure(
 
     if renderer is not None:
         renderer.close()
+    if executor is not None:
+        executor.shutdown()
 
     samples.sort()
     median = statistics.median(samples)
+    measured_hz = 1000.0 * len(samples) / sum(samples)
     row = {
         "scenario": name,
         "stage": stage,
@@ -292,14 +391,18 @@ def measure(
         "num_fields": fields,
         "entity_tokens": entity_token_count(ships, fields, env_config.frontline),
         "compile_mode": compile_mode,
+        "execution": execution,
+        "enqueue_order": enqueue_order if concurrent else None,
         "decision_hz": DECISION_HZ,
         "frame_budget_ms": FRAME_BUDGET_MS,
         "median_ms": median,
         "p90_ms": samples[int(0.9 * (len(samples) - 1))],
         "p99_ms": samples[int(0.99 * (len(samples) - 1))],
         "max_ms": samples[-1],
+        "over_budget_fraction": sum(sample > FRAME_BUDGET_MS for sample in samples)
+        / len(samples),
         "realtime_headroom": FRAME_BUDGET_MS / median,
-        "sustainable_hz": 1000.0 / median,
+        "measured_hz": measured_hz,
         "perceive_bullets": perceive_bullets,
         "policy_sides": policy_sides,
         "window_size": window_size,
@@ -335,6 +438,18 @@ def main() -> None:
     parser.add_argument("--compile", dest="compile_mode", default="none")
     parser.add_argument("--device", action="append", choices=("cuda", "cpu"))
     parser.add_argument("--scenario", action="append", choices=sorted(SCENARIOS))
+    parser.add_argument(
+        "--execution",
+        action="append",
+        choices=("sequential", "streams", "threads"),
+        help="CUDA defaults to sequential, one-host-thread streams, and two host threads",
+    )
+    parser.add_argument(
+        "--enqueue-order",
+        choices=("env-first", "policy-first"),
+        default="env-first",
+        help="host dispatch order for the two CUDA streams",
+    )
     parser.add_argument(
         "--window-size",
         type=int,
@@ -381,7 +496,7 @@ def main() -> None:
     )
     header = (
         f"{'scenario':<8}{'device':<7}{'tokens':>7}{'median':>9}{'p99':>8}"
-        f"{'max':>8}{'sustain':>10}{'budget':>9}"
+        f"{'max':>8}{'throughput':>11}{'budget':>9}"
     )
     print(header)
     print("-" * len(header))
@@ -389,31 +504,42 @@ def main() -> None:
     rows = []
     for name in scenarios:
         for device_name in devices:
-            row = measure(
-                name,
-                torch.device(device_name),
-                steps=args.steps,
-                warmup=args.warmup,
-                compile_mode=compile_mode,
-                seed=args.seed,
-                stage=args.stage,
-                perceive_bullets=not args.no_bullet_perception,
-                policy_sides=args.sides,
-                window_size=args.window_size or None,
+            executions = args.execution or (
+                ["sequential", "streams", "threads"]
+                if device_name == "cuda"
+                else ["sequential"]
             )
-            rows.append(row)
-            verdict = "OK" if row["realtime_headroom"] >= 1.0 else "MISS"
-            print(
-                f"{row['scenario']:<8}{row['device']:<7}{row['entity_tokens']:>7}"
-                f"{row['median_ms']:>8.2f}m{row['p99_ms']:>7.2f}{row['max_ms']:>8.2f}"
-                f"{row['sustainable_hz']:>9.0f}Hz{row['realtime_headroom']:>7.2f}x {verdict}"
-            )
-            phases = row["phase_ms"]
-            print(
-                f"{'':<15}phases: {row['policy_sides']} policy pass(es) {phases['policy']:.2f} ms  "
-                f"env {phases['env_step']:.2f} ms  "
-                f"render {phases['render']:.2f} ms  resets {row['resets']}"
-            )
+            for execution in executions:
+                if execution in {"streams", "threads"} and device_name != "cuda":
+                    continue
+                row = measure(
+                    name,
+                    torch.device(device_name),
+                    steps=args.steps,
+                    warmup=args.warmup,
+                    compile_mode=compile_mode,
+                    seed=args.seed,
+                    stage=args.stage,
+                    perceive_bullets=not args.no_bullet_perception,
+                    policy_sides=args.sides,
+                    window_size=args.window_size or None,
+                    execution=execution,
+                    enqueue_order=args.enqueue_order,
+                )
+                rows.append(row)
+                verdict = "OK" if row["realtime_headroom"] >= 1.0 else "MISS"
+                print(
+                    f"{row['scenario']:<8}{row['device']:<7}{row['entity_tokens']:>7}"
+                    f"{row['median_ms']:>8.2f}m{row['p99_ms']:>7.2f}{row['max_ms']:>8.2f}"
+                    f"{row['measured_hz']:>10.0f}Hz{row['realtime_headroom']:>7.2f}x {verdict}"
+                    f"  {row['execution']}"
+                )
+                phases = row["phase_ms"]
+                print(
+                    f"{'':<15}phases: {row['policy_sides']} policy pass(es) "
+                    f"{phases['policy']:.2f} ms  env {phases['env_step']:.2f} ms  "
+                    f"render {phases['render']:.2f} ms  resets {row['resets']}"
+                )
 
     if rows and rows[0]["window_size"] is None:
         print("\nrendering excluded: these are a lower bound on a real frame")

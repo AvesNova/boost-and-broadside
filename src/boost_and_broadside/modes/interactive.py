@@ -28,6 +28,7 @@ from boost_and_broadside.constants import (
     TurnActions,
 )
 from boost_and_broadside.env.frontline import frontline_ship_config
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import (
@@ -264,6 +265,9 @@ def _run_interactive_loop(
 
     N = wrapper.num_ships
     M = wrapper.env_config.num_fields
+    policy_teams = frozenset(
+        team for team, agent in enumerate((agent0, agent1)) if agent.kind == "policy"
+    )
 
     first_episode = True
     while True:
@@ -279,6 +283,12 @@ def _run_interactive_loop(
         init_hidden(agent0, 1, device)
         init_hidden(agent1, 1, device)
         pred_nexts = None
+        # NN policies were trained with a one-decision actuator delay. Scripted,
+        # random, and human controllers remain immediate. The buffer starts at
+        # the neutral action on every episode, matching PPO rollout collection.
+        policy_action_buffer = torch.zeros(
+            (1, N, 3), dtype=torch.int32, device=device
+        )
         terminal_label: str | None = None
         terminal_frames = 0
 
@@ -335,6 +345,12 @@ def _run_interactive_loop(
                 imag_nexts0 = imagine_trajectory(agent0, team0_view, N_IMAGINE_STEPS, N, device)
                 imag_nexts1 = imagine_trajectory(agent1, team1_view, N_IMAGINE_STEPS, N, device)
 
+                # Select each agent's actions for their respective team (ship tokens only)
+                team_id = (
+                    state.ship_team_id
+                    if obs is None
+                    else obs["team_id"][:, :N]  # (1, N) — exclude field tokens
+                )
                 action0, _ = get_actions(
                     agent0,
                     team0_view,
@@ -358,14 +374,36 @@ def _run_interactive_loop(
                         return_pred_next=True,
                         team_visibility=visibility.ship,
                     )
-
-                # Select each agent's actions for their respective team (ship tokens only)
-                team_id = (
-                    state.ship_team_id
-                    if obs is None
-                    else obs["team_id"][:, :N]  # (1, N) — exclude field tokens
+                decided_action = merge_team_actions(action0, action1, team_id).int()
+                if keyboard_teams:
+                    decided_action = _apply_keyboard_override(
+                        decided_action,
+                        team_id,
+                        _decode_keyboard().to(device),
+                        keyboard_teams,
+                        renderer.selected_ship,
+                    )
+                action, policy_action_buffer = _apply_policy_action_delay(
+                    decided_action,
+                    policy_action_buffer,
+                    team_id,
+                    policy_teams,
                 )
-                action = merge_team_actions(action0, action1, team_id)
+                if state_only:
+                    dones, truncated = wrapper.env.step(
+                        action,
+                        unlimited_resources=renderer.unlimited_resources,
+                    )
+                    result_tensor = wrapper.state.match_result
+                    visibility = team_visibility_from_state(
+                        wrapper.state, wrapper.ship_config, wrapper.env_config
+                    )
+                else:
+                    obs, _, dones, truncated, info = wrapper.step(
+                        action,
+                        unlimited_resources=renderer.unlimited_resources,
+                        auto_reset=False,
+                    )
 
                 # Merge imagined trajectories by team into a single list of per-step tensors.
                 pred_nexts = None
@@ -387,35 +425,16 @@ def _run_interactive_loop(
                         merged.append(torch.where(mask, pn0, pn1))
                     pred_nexts = merged
 
-                if keyboard_teams:
-                    keyboard = _decode_keyboard().to(device)
-                    action = _apply_keyboard_override(
-                        action,
-                        team_id,
-                        keyboard,
-                        keyboard_teams,
-                        renderer.selected_ship,
-                    )
-
-                if state_only:
-                    dones, truncated = wrapper.env.step(
-                        action,
-                        unlimited_resources=renderer.unlimited_resources,
-                    )
-                    result_tensor = wrapper.state.match_result
-                    visibility = team_visibility_from_state(
-                        wrapper.state, wrapper.ship_config, wrapper.env_config
-                    )
-                else:
-                    obs, _, dones, truncated, info = wrapper.step(
-                        action,
-                        unlimited_resources=renderer.unlimited_resources,
-                        auto_reset=False,
-                    )
+                if not state_only:
+                    # Physics records the action it just consumed. For an NN
+                    # ship, the policy state instead includes the newly queued
+                    # action that will be consumed next tick, as it does in PPO.
+                    _set_observation_previous_action(obs, decided_action, N)
                     result_tensor = info["match_result"]
                     visibility = wrapper.last_visibility
 
                 if (dones | truncated).any():
+                    policy_action_buffer.zero_()
                     reset_done_envs(agent0, dones | truncated)
                     reset_done_envs(agent1, dones | truncated)
                     pred_nexts = None
@@ -441,6 +460,48 @@ def _run_interactive_loop(
             renderer.tick()
             if terminal_label is not None and terminal_frames == 0:
                 break
+
+
+def _apply_policy_action_delay(
+    decided_action: torch.Tensor,
+    policy_action_buffer: torch.Tensor,
+    team_id: torch.Tensor,
+    policy_teams: frozenset[int],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Apply buffered NN actions and immediate non-NN actions for one tick.
+
+    Returns the action physics should consume now and the policy buffer for the
+    next tick. Non-policy entries in the returned buffer are kept at zero so a
+    later controller change cannot expose stale actions.
+    """
+
+    policy_mask = _policy_team_mask(team_id, policy_teams).unsqueeze(-1)
+    applied_action = torch.where(policy_mask, policy_action_buffer, decided_action)
+    next_buffer = torch.where(policy_mask, decided_action, torch.zeros_like(decided_action))
+    return applied_action, next_buffer
+
+
+def _policy_team_mask(
+    team_id: torch.Tensor, policy_teams: frozenset[int]
+) -> torch.Tensor:
+    """Return the ship mask controlled by delayed neural-network policies."""
+
+    policy_mask = torch.zeros_like(team_id, dtype=torch.bool)
+    for team in policy_teams:
+        policy_mask |= team_id == team
+    return policy_mask
+
+
+def _set_observation_previous_action(
+    observation: YemongObservation,
+    decided_action: torch.Tensor,
+    num_ships: int,
+) -> None:
+    """Expose the current decision, including queued NN actions, to the next view."""
+
+    observation.data[ObsKey.PREVIOUS_ACTION][:, :num_ships].copy_(decided_action)
+    if observation.team1_data is not None:
+        observation.team1_data[ObsKey.PREVIOUS_ACTION][:, :num_ships].copy_(decided_action)
 
 
 def _apply_keyboard_override(
