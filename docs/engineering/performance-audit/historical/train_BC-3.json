@@ -1,0 +1,245 @@
+{
+  "label": "train-BC-3",
+  "updates": 2,
+  "env_steps_per_update": 491520,
+  "wall_seconds": 455.75460075295996,
+  "sps": 2156.9502499281475,
+  "profile": "bc",
+  "model_config": {
+    "d_model": 128,
+    "n_heads": 4,
+    "n_yemong_blocks": 2,
+    "n_spatial_heads": 2,
+    "n_spatial_per_block": 2,
+    "n_temporal_per_block": 1,
+    "encoder_split": false,
+    "map_read_mode": "full_attention",
+    "map_memory_dim": 64,
+    "n_bullet_cross_per_block": 0,
+    "bullet_encoder_hidden": 64,
+    "spatial_rope": true,
+    "local_presence": true,
+    "relational_bias": false,
+    "grad_checkpoint": false
+  },
+  "compile_mode": "default",
+  "overrides": {
+    "model_config.n_spatial_heads": "2",
+    "model_config.spatial_rope": "true",
+    "model_config.local_presence": "true"
+  },
+  "phases": {
+    "01_rollout/total": {
+      "seconds": 256.425356709864,
+      "calls": 8,
+      "per_update": 128.212678354932
+    },
+    "01a_rollout/primary_step": {
+      "seconds": 121.61904936889187,
+      "calls": 1024,
+      "per_update": 60.80952468444593
+    },
+    "01b_rollout/aux_steps": {
+      "seconds": 0.01440706301946193,
+      "calls": 1024,
+      "per_update": 0.007203531509730965
+    },
+    "01c_rollout/scripted": {
+      "seconds": 18.192766977008432,
+      "calls": 1024,
+      "per_update": 9.096383488504216
+    },
+    "01d_rollout/env+net": {
+      "seconds": 77.05737211066298,
+      "calls": 1024,
+      "per_update": 38.52868605533149
+    },
+    "01e_rollout/select_actions": {
+      "seconds": 0.17290211142972112,
+      "calls": 1024,
+      "per_update": 0.08645105571486056
+    },
+    "01f_rollout/reset_hidden": {
+      "seconds": 0.33708750177174807,
+      "calls": 1024,
+      "per_update": 0.16854375088587403
+    },
+    "01g_rollout/net_forward": {
+      "seconds": 10.373423314886168,
+      "calls": 1024,
+      "per_update": 5.186711657443084
+    },
+    "01h_rollout/league_slots": {
+      "seconds": 0.00022578495554625988,
+      "calls": 8,
+      "per_update": 0.00011289247777312994
+    },
+    "01i_rollout/ladder_alloc": {
+      "seconds": 4.083605017513037e-05,
+      "calls": 8,
+      "per_update": 2.0418025087565184e-05
+    },
+    "01j_rollout/buffer_add": {
+      "seconds": 1.0669410731643438,
+      "calls": 1024,
+      "per_update": 0.5334705365821719
+    },
+    "01k1_elo/team_actions": {
+      "seconds": 87.62086843838915,
+      "calls": 1024,
+      "per_update": 43.810434219194576
+    },
+    "01k2_elo/rating_update": {
+      "seconds": 1.022597260423936,
+      "calls": 1024,
+      "per_update": 0.511298630211968
+    },
+    "01k3_elo/match_counts": {
+      "seconds": 0.36368222685996443,
+      "calls": 1024,
+      "per_update": 0.18184111342998222
+    },
+    "01k4_elo/resample": {
+      "seconds": 0.9126660412875935,
+      "calls": 1024,
+      "per_update": 0.45633302064379677
+    },
+    "01k5_elo/reset_hidden": {
+      "seconds": 0.7702332717599347,
+      "calls": 1024,
+      "per_update": 0.38511663587996736
+    },
+    "01k6_elo/policy_actions": {
+      "seconds": 34.25625442573801,
+      "calls": 2048,
+      "per_update": 17.128127212869003
+    },
+    "01k7_elo/anchor_actions": {
+      "seconds": 19.799288983340375,
+      "calls": 1024,
+      "per_update": 9.899644491670188
+    },
+    "01k_rollout/elo_step": {
+      "seconds": 134.26861603441648,
+      "calls": 1024,
+      "per_update": 67.13430801720824
+    },
+    "01l_rollout/elo_flush": {
+      "seconds": 0.21632607094943523,
+      "calls": 8,
+      "per_update": 0.10816303547471762
+    },
+    "01m_rollout/belief_compose": {
+      "seconds": 16.207019872730598,
+      "calls": 4096,
+      "per_update": 8.103509936365299
+    },
+    "01n_rollout/belief_advance": {
+      "seconds": 13.676441454561427,
+      "calls": 4096,
+      "per_update": 6.838220727280714
+    },
+    "01o_rollout/privileged_obs": {
+      "seconds": 7.46292611467652,
+      "calls": 1032,
+      "per_update": 3.73146305733826
+    },
+    "01p_rollout/target_vector": {
+      "seconds": 3.818685267237015,
+      "calls": 3088,
+      "per_update": 1.9093426336185075
+    },
+    "02_gae": {
+      "seconds": 0.3646701837424189,
+      "calls": 8,
+      "per_update": 0.18233509187120944
+    },
+    "02a_gae/compute": {
+      "seconds": 0.2140047550201416,
+      "calls": 8,
+      "per_update": 0.1070023775100708
+    },
+    "03_ns_labels": {
+      "seconds": 0.37271945597603917,
+      "calls": 8,
+      "per_update": 0.18635972798801959
+    },
+    "04_rollout_to_host": {
+      "seconds": 2.691607765853405,
+      "calls": 8,
+      "per_update": 1.3458038829267025
+    },
+    "05_lambda_aggregates": {
+      "seconds": 1.0239818079862744,
+      "calls": 2,
+      "per_update": 0.5119909039931372
+    },
+    "06_update/total": {
+      "seconds": 191.77228952303994,
+      "calls": 2,
+      "per_update": 95.88614476151997
+    },
+    "06a_update/denominators": {
+      "seconds": 2.4001530578825623,
+      "calls": 256,
+      "per_update": 1.2000765289412811
+    },
+    "06b_update/forward_loss": {
+      "seconds": 84.08064866461791,
+      "calls": 2048,
+      "per_update": 42.040324332308955
+    },
+    "06c_update/stage_h2d": {
+      "seconds": 7.236839749501087,
+      "calls": 1024,
+      "per_update": 3.6184198747505434
+    },
+    "06d_update/backward": {
+      "seconds": 75.38863685168326,
+      "calls": 2048,
+      "per_update": 37.69431842584163
+    },
+    "06e_update/optim_step": {
+      "seconds": 0.9500297172926366,
+      "calls": 256,
+      "per_update": 0.4750148586463183
+    },
+    "06f_update/host_gather": {
+      "seconds": 11.054236655007116,
+      "calls": 1056,
+      "per_update": 5.527118327503558
+    },
+    "06g_update/clip_grad": {
+      "seconds": 0.5142850849078968,
+      "calls": 256,
+      "per_update": 0.2571425424539484
+    },
+    "07_schedule_refresh": {
+      "seconds": 0.0024388590827584267,
+      "calls": 2,
+      "per_update": 0.0012194295413792133
+    },
+    "08_metrics_assemble": {
+      "seconds": 0.01096196798607707,
+      "calls": 2,
+      "per_update": 0.005480983993038535
+    },
+    "09_log": {
+      "seconds": 7.951492443680763e-05,
+      "calls": 2,
+      "per_update": 3.9757462218403816e-05
+    }
+  },
+  "per_update_seconds": [
+    223.82486252801027,
+    231.9296019070316
+  ],
+  "epochs_completed": [
+    4.0,
+    4.0
+  ],
+  "rollout_s_per_update": 128.212678354932,
+  "update_s_per_epoch": 23.971536190379993,
+  "peak_allocated_mb": 3476.68896484375,
+  "peak_reserved_mb": 4356.0
+}

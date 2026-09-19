@@ -1,0 +1,50 @@
+[
+  {
+    "scenario": "5v5",
+    "stage": "baseline",
+    "device": "cpu",
+    "num_ships": 10,
+    "num_fields": 10,
+    "entity_tokens": 26,
+    "compile_mode": null,
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 38.69579953607172,
+    "p90_ms": 45.50660704262555,
+    "p99_ms": 50.41559098754078,
+    "max_ms": 52.54067701753229,
+    "realtime_headroom": 0.8614199404837323,
+    "sustainable_hz": 25.842598214511966,
+    "perceive_bullets": true,
+    "policy_sides": 1,
+    "torch_threads": 1,
+    "phase_ms": {
+      "policy": 19.899670756421983,
+      "env_step": 22.255268367007375
+    }
+  },
+  {
+    "scenario": "50v50",
+    "stage": "baseline",
+    "device": "cpu",
+    "num_ships": 100,
+    "num_fields": 72,
+    "entity_tokens": 178,
+    "compile_mode": null,
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 1075.2141744596884,
+    "p90_ms": 1135.6267530936748,
+    "p99_ms": 1187.5796309905127,
+    "max_ms": 1229.1987449862063,
+    "realtime_headroom": 0.031001575430387018,
+    "sustainable_hz": 0.9300472629116104,
+    "perceive_bullets": true,
+    "policy_sides": 1,
+    "torch_threads": 1,
+    "phase_ms": {
+      "policy": 48.82193710266923,
+      "env_step": 1015.1326054978805
+    }
+  }
+]

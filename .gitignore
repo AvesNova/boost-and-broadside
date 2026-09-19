@@ -43,6 +43,9 @@ gameplay_clips/
 # Durable artifacts without an owning run, and disposable scratch output.
 /artifacts/
 /out/
+# Versioned performance evidence; unrelated runtime logs remain ignored.
+!/docs/engineering/performance-audit/logs/
+!/docs/engineering/performance-audit/logs/**
 # Recomputable machine state, not an artifact.
 .vram.json
 # An artifact payload is verified as a whole: `verify_artifact` requires every

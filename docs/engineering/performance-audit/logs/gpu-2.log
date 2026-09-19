@@ -1,0 +1,12 @@
+pygame 2.6.1 (SDL 2.28.4, Python 3.13.11)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/_inductor/compile_fx.py:321: UserWarning: TensorFloat32 tensor cores for float32 matrix multiplication available but not enabled. Consider setting `torch.set_float32_matmul_precision('high')` for better performance.
+  warnings.warn(
+W0919 11:13:25.128000 3568537 torch/_inductor/utils.py:1953] [0/0] Not enough SMs to use max_autotune_gemm mode
+reference 216.99136903043836
+compiled_real_los 220.16620950307697
+compiled_real_los 211.39905345626175
+reference 196.97063701460138
+reference 205.53923305124044
+compiled_real_los 199.88766551250592
+Wrote docs/engineering/performance-audit-gpu-realtime-50v50-compiled.json

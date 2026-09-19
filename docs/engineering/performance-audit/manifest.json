@@ -1,0 +1,582 @@
+{
+  "format_version": 1,
+  "archived_on": "2026-09-19",
+  "original_base_revision": "7f9cc421af80d59d04baa9fa27af7b14df74e920",
+  "preserved_user_baseline_revision": "cddb8afa5d0e43910650b9010e940853291eee7f",
+  "notes": [
+    "Raw files are byte-preserved. Paths inside raw metadata/commands are historical and not rewritten.",
+    "Original dirty-tree metadata is not a complete source snapshot. Source hashes below describe the handoff, not every measurement-time harness revision.",
+    "Historical results predate or are separate from the fresh audit; dates and environments are not inferred.",
+    "gpu-runs.json contains 12 completed jobs; job 12 PPO was interrupted and has only a partial log."
+  ],
+  "source_sha256_at_handoff": {
+    "benchmarks/performance_audit.py": "05fe6ff6af6ec2453f6028aa9bdfce425450ac98b4ca07a6a68484ad18acfc3f",
+    "benchmarks/performance_audit_warp.py": "2fbe6765dec0d00a8c2286c341131251063ef752415a9aab798b1e1f9b0d3368",
+    "benchmarks/realtime_latency.py": "cb782b9a7301398245fc5f7d8e9c2c0932603078e80b73b3b0f1709a1662fd94",
+    "benchmarks/rl_pipeline_profile.py": "43efe0dd5d84dba09b05f8e787fb70f3e131db7d41ba5077863793600162c052",
+    "benchmarks/rl_kernel_profile.py": "e013baafdf800231551a05056ebbb8f36a30f6b324de0bbeba0f1700503aae92",
+    "src/boost_and_broadside/modes/interactive.py": "63fe727c3edd48e6e78fb5ffdcbf52dc3dff24f3039e5bd2d9b4a575ec0e34f2"
+  },
+  "files": [
+    {
+      "path": "results/performance-audit-cpu-baseline.json",
+      "original_path": "docs/engineering/performance-audit-cpu-baseline.json",
+      "kind": "completed_audit_result",
+      "bytes": 1610,
+      "sha256": "0ed1df319a88545297c349a4249dcddadc7024e9521dae61f69fbc35cc4f1cfa"
+    },
+    {
+      "path": "results/performance-audit-cpu-profile-5.json",
+      "original_path": "docs/engineering/performance-audit-cpu-profile-5.json",
+      "kind": "completed_audit_result",
+      "bytes": 14266,
+      "sha256": "ef8e7049e471ad9f4ed0696da53e1902eb954bfacb7498197241156773035bfc"
+    },
+    {
+      "path": "results/performance-audit-cpu-profile-50.json",
+      "original_path": "docs/engineering/performance-audit-cpu-profile-50.json",
+      "kind": "completed_audit_result",
+      "bytes": 12351,
+      "sha256": "7b8f9336d0d37f2a3db7e0af9afa1a0d787dfb111c8066feedf60283621b0d42"
+    },
+    {
+      "path": "results/performance-audit-gpu-los-50.json",
+      "original_path": "docs/engineering/performance-audit-gpu-los-50.json",
+      "kind": "completed_audit_result",
+      "bytes": 51257,
+      "sha256": "bf41a749d96fee9a503e437bc283399acaed6260db3443110944e9a4943482d5"
+    },
+    {
+      "path": "results/performance-audit-gpu-realtime-50v50-compiled.json",
+      "original_path": "docs/engineering/performance-audit-gpu-realtime-50v50-compiled.json",
+      "kind": "completed_audit_result",
+      "bytes": 7502,
+      "sha256": "efb614d20a9595292b52ca1c211abf73ee0adbe28c7214be4bb80f00e87f4196"
+    },
+    {
+      "path": "results/performance-audit-gpu-realtime-50v50-warp.json",
+      "original_path": "docs/engineering/performance-audit-gpu-realtime-50v50-warp.json",
+      "kind": "completed_audit_result",
+      "bytes": 8159,
+      "sha256": "5531e7839c7bba96f4a42a7a3dd1b7ded369767ffb1291ab57daf355b7a3fa97"
+    },
+    {
+      "path": "results/performance-audit-gpu-realtime-5v5-compiled.json",
+      "original_path": "docs/engineering/performance-audit-gpu-realtime-5v5-compiled.json",
+      "kind": "completed_audit_result",
+      "bytes": 7383,
+      "sha256": "e01d988e9ad28ef6935fa3641bd8a15e01a5eff1a27fdbff7b77094025fa9a8b"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-1-compiled.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-1-compiled.json",
+      "kind": "completed_audit_result",
+      "bytes": 4746,
+      "sha256": "f1a0427b09b44a9583fc5d5c7d0330a7e1a815b64d666c17d734b1a0287aa04f"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-1-warp.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-1-warp.json",
+      "kind": "completed_audit_result",
+      "bytes": 4808,
+      "sha256": "1dc9bd93d48da99c6f7319ee797b05166941ad88657175792a5e2e6b14905ffe"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-128-compiled.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-128-compiled.json",
+      "kind": "completed_audit_result",
+      "bytes": 5030,
+      "sha256": "7230b18dd3d680213aae870ec22c116135e46ba82590c228973f91798a199493"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-128-warp.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-128-warp.json",
+      "kind": "completed_audit_result",
+      "bytes": 5105,
+      "sha256": "296f1d81e7aef62de6d9e86ad65b56eee34b5888856b9259a74cc5832f2e6fd1"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-32-compiled.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-32-compiled.json",
+      "kind": "completed_audit_result",
+      "bytes": 4884,
+      "sha256": "a9aca01c8e6213a9b8602703b65ba63001b2e503330f9f420e2a525d1229019f"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-32-warp.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-32-warp.json",
+      "kind": "completed_audit_result",
+      "bytes": 4943,
+      "sha256": "815810eea33c30d83a38ce824453aef1755585fd33cec0eb75db8a3ae910cd2f"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-960-compiled.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-960-compiled.json",
+      "kind": "completed_audit_result",
+      "bytes": 5159,
+      "sha256": "c42d348e85e9efc6d5eda922dc71fe7be69a20a31a2f1920d23b50fadad0f743"
+    },
+    {
+      "path": "results/performance-audit-gpu-throughput-960-warp.json",
+      "original_path": "docs/engineering/performance-audit-gpu-throughput-960-warp.json",
+      "kind": "completed_audit_result",
+      "bytes": 5236,
+      "sha256": "f5d23d00d61d9eedde303ebd81e1292e56500fe704aa1737a8523948f04fc7b4"
+    },
+    {
+      "path": "results/performance-audit-los-5.json",
+      "original_path": "docs/engineering/performance-audit-los-5.json",
+      "kind": "completed_audit_result",
+      "bytes": 24299,
+      "sha256": "784e89123961852365acc698fd9c6f1162577a506baf403ed8b63cf3c5d21415"
+    },
+    {
+      "path": "results/performance-audit-los-50.json",
+      "original_path": "docs/engineering/performance-audit-los-50.json",
+      "kind": "completed_audit_result",
+      "bytes": 11762,
+      "sha256": "6a8889fa47fa5d327167d7103899bdb479fd7c00e57f3bdbb3198da8c2c2a388"
+    },
+    {
+      "path": "results/performance-audit-realtime-5.json",
+      "original_path": "docs/engineering/performance-audit-realtime-5.json",
+      "kind": "completed_audit_result",
+      "bytes": 6471,
+      "sha256": "d9ab5506cae900ff09462c777ae8db162b272e98cf98f5a13ce066113f8ed346"
+    },
+    {
+      "path": "results/performance-audit-realtime-50.json",
+      "original_path": "docs/engineering/performance-audit-realtime-50.json",
+      "kind": "completed_audit_result",
+      "bytes": 6613,
+      "sha256": "95e50d236dcf61ac6a984560e81f1043352ec01b0dcc57f74b2ba5f71ddedfe9"
+    },
+    {
+      "path": "results/performance-audit-throughput-1.json",
+      "original_path": "docs/engineering/performance-audit-throughput-1.json",
+      "kind": "completed_audit_result",
+      "bytes": 2472,
+      "sha256": "65d2d4a7b5c6a838dcd35e745ec32944c066f13496f105fd5356c8042b010ba3"
+    },
+    {
+      "path": "results/performance-audit-throughput-128.json",
+      "original_path": "docs/engineering/performance-audit-throughput-128.json",
+      "kind": "completed_audit_result",
+      "bytes": 2589,
+      "sha256": "655ed7da4a98a0cc697229fb9e0c2e1912f1e8c8424019cb4cd7906dab3e6187"
+    },
+    {
+      "path": "results/performance-audit-throughput-32.json",
+      "original_path": "docs/engineering/performance-audit-throughput-32.json",
+      "kind": "completed_audit_result",
+      "bytes": 2510,
+      "sha256": "4fb06d59b107e3c5533095cf1c0cf8e93c28c60a771f0ecf0d486965fe10f603"
+    },
+    {
+      "path": "logs/performance-audit-gpu-ppo-partial.txt",
+      "original_path": "docs/engineering/performance-audit-gpu-ppo-partial.txt",
+      "kind": "interrupted_training_log",
+      "bytes": 646,
+      "sha256": "7d581f4ad0ad93400d0f95629e0c95654d9d450eb4b1df1bb518e2c63d04a6ab"
+    },
+    {
+      "path": "historical/concurrent-realtime-compiled-50v50-interleaved.json",
+      "original_path": "artifacts/benchmarks/concurrent-realtime-compiled-50v50-interleaved.json",
+      "kind": "historical_result",
+      "bytes": 3388,
+      "sha256": "75eb2d37e533db585f60d6a4d03f9e305993f1850cd1b5e1d189284ea4a3756b"
+    },
+    {
+      "path": "historical/concurrent-realtime-compiled-50v50-policy-first.json",
+      "original_path": "artifacts/benchmarks/concurrent-realtime-compiled-50v50-policy-first.json",
+      "kind": "historical_result",
+      "bytes": 854,
+      "sha256": "50e87be3f95c6e54f4d15fcc242c8f31b771c5f41e50fab2558eac8ca48be25a"
+    },
+    {
+      "path": "historical/concurrent-realtime-compiled-50v50.json",
+      "original_path": "artifacts/benchmarks/concurrent-realtime-compiled-50v50.json",
+      "kind": "historical_result",
+      "bytes": 2544,
+      "sha256": "517d51d92e78a4f7f00a27288454c806fa1f5444f1c6d547238645590b59cc48"
+    },
+    {
+      "path": "historical/concurrent-realtime-compiled-5v5-threads.json",
+      "original_path": "artifacts/benchmarks/concurrent-realtime-compiled-5v5-threads.json",
+      "kind": "historical_result",
+      "bytes": 845,
+      "sha256": "064e699d43ed8d8a7df90284c5206ecec7461bc54eef138259251336e5b36cd1"
+    },
+    {
+      "path": "historical/concurrent-realtime-compiled-5v5.json",
+      "original_path": "artifacts/benchmarks/concurrent-realtime-compiled-5v5.json",
+      "kind": "historical_result",
+      "bytes": 1684,
+      "sha256": "458fd0b8d5c7b8f95d209ea4066c1b3a6b51f1989f110fb4ebefb041ace1cbd1"
+    },
+    {
+      "path": "historical/concurrent-realtime.json",
+      "original_path": "artifacts/benchmarks/concurrent-realtime.json",
+      "kind": "historical_result",
+      "bytes": 3325,
+      "sha256": "5182a3915aca46740dbf7384f18cb8cd8c0a05cb91fbe0f3a6c64bd1898fb476"
+    },
+    {
+      "path": "historical/inference_BC-1.json",
+      "original_path": "artifacts/benchmarks/inference_BC-1.json",
+      "kind": "historical_result",
+      "bytes": 1643,
+      "sha256": "7b5b1112a4bf61446c2cd5c184f635110c778e5e4bffed63256219a2f1794cce"
+    },
+    {
+      "path": "historical/inference_BC-2.json",
+      "original_path": "artifacts/benchmarks/inference_BC-2.json",
+      "kind": "historical_result",
+      "bytes": 1645,
+      "sha256": "e8778c37a96c5c3f7663d3d80e58c5741a0c469a2c705c0022603ab652c6f4d7"
+    },
+    {
+      "path": "historical/inference_BC-3.json",
+      "original_path": "artifacts/benchmarks/inference_BC-3.json",
+      "kind": "historical_result",
+      "bytes": 1644,
+      "sha256": "bf4e2b3d68e333a5fd111be201b5e2190d64ff1e2177aef24be26b763e548489"
+    },
+    {
+      "path": "historical/inference_BC-4.json",
+      "original_path": "artifacts/benchmarks/inference_BC-4.json",
+      "kind": "historical_result",
+      "bytes": 1642,
+      "sha256": "a4038f74b313aa067f7fe0317e92d8351bde9332aca5509269551f1936f3ac90"
+    },
+    {
+      "path": "historical/inference_baseline.json",
+      "original_path": "artifacts/benchmarks/inference_baseline.json",
+      "kind": "historical_result",
+      "bytes": 1660,
+      "sha256": "f5324d8697db8fbbb580f4dc75273524c36fd8c7733dc4bf767ad49addd726fa"
+    },
+    {
+      "path": "historical/inference_stage0.json",
+      "original_path": "artifacts/benchmarks/inference_stage0.json",
+      "kind": "historical_result",
+      "bytes": 1419,
+      "sha256": "9a8423540f37f0572d88e784c0485d883148a951e5b78fcd92234d59b7c72d45"
+    },
+    {
+      "path": "historical/ppo-overlap.json",
+      "original_path": "artifacts/benchmarks/ppo-overlap.json",
+      "kind": "historical_result",
+      "bytes": 6291,
+      "sha256": "6163a8cdc2c489ee7cb1e6a42712f6ab53159fc7a9634fde52d50c2892007b3e"
+    },
+    {
+      "path": "historical/presence_density.json",
+      "original_path": "artifacts/benchmarks/presence_density.json",
+      "kind": "historical_result",
+      "bytes": 22111,
+      "sha256": "de6eac84df9188341150dfede5bed565310a7b6a404495778582e3641951644f"
+    },
+    {
+      "path": "historical/realtime/cpu_50v50_1side.json",
+      "original_path": "artifacts/benchmarks/realtime/cpu_50v50_1side.json",
+      "kind": "historical_result",
+      "bytes": 660,
+      "sha256": "2372760a4232d77b7b172b034f873b10187e156a915e308b24e552d3362e6848"
+    },
+    {
+      "path": "historical/realtime/cpu_50v50_2side.json",
+      "original_path": "artifacts/benchmarks/realtime/cpu_50v50_2side.json",
+      "kind": "historical_result",
+      "bytes": 661,
+      "sha256": "80209ac1a4b8d96ba8377b095c772802a4d387a674a1b04ed9e3ef5947789b92"
+    },
+    {
+      "path": "historical/realtime/cpu_5v5_1side.json",
+      "original_path": "artifacts/benchmarks/realtime/cpu_5v5_1side.json",
+      "kind": "historical_result",
+      "bytes": 654,
+      "sha256": "01a4120272dda1073984e24f7e65eaeddb08385f8113b37cec93daa179df8a61"
+    },
+    {
+      "path": "historical/realtime/cpu_5v5_2side.json",
+      "original_path": "artifacts/benchmarks/realtime/cpu_5v5_2side.json",
+      "kind": "historical_result",
+      "bytes": 652,
+      "sha256": "ed803f7db0d336a675fd65163788da258451f5cce3ce17e6b2f4e13e81b82a8e"
+    },
+    {
+      "path": "historical/realtime/cuda_50v50_1side.json",
+      "original_path": "artifacts/benchmarks/realtime/cuda_50v50_1side.json",
+      "kind": "historical_result",
+      "bytes": 711,
+      "sha256": "f539e2342d20139fd68cad33c7c1c4a6edbcbfbf17ec5f1382e997c0694f7243"
+    },
+    {
+      "path": "historical/realtime/cuda_50v50_2side.json",
+      "original_path": "artifacts/benchmarks/realtime/cuda_50v50_2side.json",
+      "kind": "historical_result",
+      "bytes": 713,
+      "sha256": "b0e00d2216bd1ef843b8986ef42cf643c533d79eb014d8fba9cc448b424e102d"
+    },
+    {
+      "path": "historical/realtime/cuda_5v5_1side.json",
+      "original_path": "artifacts/benchmarks/realtime/cuda_5v5_1side.json",
+      "kind": "historical_result",
+      "bytes": 707,
+      "sha256": "6a2a019adba25c03a3d44542ccfc010a0f4ebbd56aa3ca9e57eb055cbaa5a23a"
+    },
+    {
+      "path": "historical/realtime/cuda_5v5_2side.json",
+      "original_path": "artifacts/benchmarks/realtime/cuda_5v5_2side.json",
+      "kind": "historical_result",
+      "bytes": 708,
+      "sha256": "c45c3578873086951b91621415e86f2c37cb19dd749cfa800dfbc99003a43780"
+    },
+    {
+      "path": "historical/realtime_baseline.json",
+      "original_path": "artifacts/benchmarks/realtime_baseline.json",
+      "kind": "historical_result",
+      "bytes": 2449,
+      "sha256": "d530837ae8775be052bce30a3c2b49152f3e9bee81ed3fdb1afaf7359bc04acd"
+    },
+    {
+      "path": "historical/realtime_cpu_1side.json",
+      "original_path": "artifacts/benchmarks/realtime_cpu_1side.json",
+      "kind": "historical_result",
+      "bytes": 1279,
+      "sha256": "aff4e35f166787f9d99b0798421b6ecf3952dbb73d52238c68516bc2cb1aa44d"
+    },
+    {
+      "path": "historical/realtime_cpu_2side.json",
+      "original_path": "artifacts/benchmarks/realtime_cpu_2side.json",
+      "kind": "historical_result",
+      "bytes": 1275,
+      "sha256": "b4fc418b6d763223098c17dd774d0cdc7a11fbecc0761ebf4f47b700ad9e6c9b"
+    },
+    {
+      "path": "historical/realtime_cuda_1side.json",
+      "original_path": "artifacts/benchmarks/realtime_cuda_1side.json",
+      "kind": "historical_result",
+      "bytes": 1388,
+      "sha256": "c9707dc6bdae3bf83d71c4cc181680a7ae7276df476c65554db08c40e12b50be"
+    },
+    {
+      "path": "historical/realtime_cuda_2side.json",
+      "original_path": "artifacts/benchmarks/realtime_cuda_2side.json",
+      "kind": "historical_result",
+      "bytes": 1385,
+      "sha256": "a6b6d9de33167278ac38ebb4a42dcfb5ce8c92eb1c0352c8163729ab544ed9ac"
+    },
+    {
+      "path": "historical/realtime_render/cpu_50v50_1side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cpu_50v50_1side.json",
+      "kind": "historical_result",
+      "bytes": 720,
+      "sha256": "4f9fc2175a442d7a97df9ef141402c2b8717f20909403350e74dc7e1dd28a530"
+    },
+    {
+      "path": "historical/realtime_render/cpu_50v50_2side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cpu_50v50_2side.json",
+      "kind": "historical_result",
+      "bytes": 720,
+      "sha256": "54874f3633f313c271a50e964ebc021516dd303224316ce795c7a5cbc4c910e9"
+    },
+    {
+      "path": "historical/realtime_render/cpu_5v5_1side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cpu_5v5_1side.json",
+      "kind": "historical_result",
+      "bytes": 712,
+      "sha256": "b6088fda8da442141383c6f245286b6392f08b7f10cb4f3990a457ae3ab92f88"
+    },
+    {
+      "path": "historical/realtime_render/cpu_5v5_2side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cpu_5v5_2side.json",
+      "kind": "historical_result",
+      "bytes": 712,
+      "sha256": "37809176ef7f1e889fbd24c51e554c776abfe0573b7d6d10bf3b357a823dd769"
+    },
+    {
+      "path": "historical/realtime_render/cuda_50v50_1side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cuda_50v50_1side.json",
+      "kind": "historical_result",
+      "bytes": 774,
+      "sha256": "c19e9a843134a1ab500b7b689ae82406e2082758ea1dba41bbd0cc581aeeabd1"
+    },
+    {
+      "path": "historical/realtime_render/cuda_50v50_2side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cuda_50v50_2side.json",
+      "kind": "historical_result",
+      "bytes": 773,
+      "sha256": "342f8fc8c4f3ef21e1ed8c4098f81712d0cdee699b7aee388e2f981408406944"
+    },
+    {
+      "path": "historical/realtime_render/cuda_5v5_1side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cuda_5v5_1side.json",
+      "kind": "historical_result",
+      "bytes": 767,
+      "sha256": "ed6cf1b95352fc61ecb872447f2d2e4bc8fc157a28cdcb24c6b7c4a4f94861ca"
+    },
+    {
+      "path": "historical/realtime_render/cuda_5v5_2side.json",
+      "original_path": "artifacts/benchmarks/realtime_render/cuda_5v5_2side.json",
+      "kind": "historical_result",
+      "bytes": 773,
+      "sha256": "e62cf1f808dbbe0d2056d8c4332a5495ecebfd7c167e3f2bca5e38674e73075f"
+    },
+    {
+      "path": "historical/train_BC-1.json",
+      "original_path": "artifacts/benchmarks/train_BC-1.json",
+      "kind": "historical_result",
+      "bytes": 6349,
+      "sha256": "964d29e28f80c5a1e3ec8c98c89ae71a1c52006bd8c5df9e6e6e4766c1226800"
+    },
+    {
+      "path": "historical/train_BC-2.json",
+      "original_path": "artifacts/benchmarks/train_BC-2.json",
+      "kind": "historical_result",
+      "bytes": 6391,
+      "sha256": "8ed82d901080393c3bc7e313824f66d891c42b685947cbceedce03c763aeff61"
+    },
+    {
+      "path": "historical/train_BC-3.json",
+      "original_path": "artifacts/benchmarks/train_BC-3.json",
+      "kind": "historical_result",
+      "bytes": 6437,
+      "sha256": "d008e8e47f4cfce6b06402d1cee609bd5a88b3a7b4b629fbf1c061d8bf04880d"
+    },
+    {
+      "path": "historical/train_BC-4.json",
+      "original_path": "artifacts/benchmarks/train_BC-4.json",
+      "kind": "historical_result",
+      "bytes": 6481,
+      "sha256": "2555083782b9a7be851be6559bf18cd31ece5627b580c22d0e03e6bea55ab711"
+    },
+    {
+      "path": "historical/train_baseline.json",
+      "original_path": "artifacts/benchmarks/train_baseline.json",
+      "kind": "historical_result",
+      "bytes": 6310,
+      "sha256": "362de4cf4bfc2e010d437252d085a0439ccea4cd10e97ec29b8e11dc03d0bbba"
+    },
+    {
+      "path": "logs/cpu-render.log",
+      "original_path": "artifacts/performance-audit/cpu-render.log",
+      "kind": "audit_console_log",
+      "bytes": 756,
+      "sha256": "74584537275a18d65b745b2678e0970e5b870899a54946a88339184f27595e00"
+    },
+    {
+      "path": "logs/followup.log",
+      "original_path": "artifacts/performance-audit/followup.log",
+      "kind": "audit_console_log",
+      "bytes": 3093,
+      "sha256": "78bee2e86d5c9b56cdc84fcf0885b1e9bd83e2d7040712c6a3f1ee57adac6b36"
+    },
+    {
+      "path": "logs/gpu-0.log",
+      "original_path": "artifacts/performance-audit/gpu-0.log",
+      "kind": "audit_console_log",
+      "bytes": 387,
+      "sha256": "e2d4b25054c17c6bfa3cbaeab049fec7f769cdb00c71ba5678970ff3dcc810b3"
+    },
+    {
+      "path": "logs/gpu-1.log",
+      "original_path": "artifacts/performance-audit/gpu-1.log",
+      "kind": "audit_console_log",
+      "bytes": 811,
+      "sha256": "640cc33820f64025e4b6846492b996146dbb3e9568a159ad9ca63e0f2477ce0a"
+    },
+    {
+      "path": "logs/gpu-10.log",
+      "original_path": "artifacts/performance-audit/gpu-10.log",
+      "kind": "audit_console_log",
+      "bytes": 74,
+      "sha256": "a79634f174d04a8de22d51d45264fbc706b4daae6c074a54476f4c2755f14e45"
+    },
+    {
+      "path": "logs/gpu-11.log",
+      "original_path": "artifacts/performance-audit/gpu-11.log",
+      "kind": "audit_console_log",
+      "bytes": 395,
+      "sha256": "d5137e0a6a9d880e6ff77d1be432220e54f44497bffd214c4b7efa7fefbd753b"
+    },
+    {
+      "path": "logs/gpu-2.log",
+      "original_path": "artifacts/performance-audit/gpu-2.log",
+      "kind": "audit_console_log",
+      "bytes": 813,
+      "sha256": "925bc257faa7b3e31eacafa139b4ce0eb4ff6f5ea5bef76d7d947a38897f62a2"
+    },
+    {
+      "path": "logs/gpu-3.log",
+      "original_path": "artifacts/performance-audit/gpu-3.log",
+      "kind": "audit_console_log",
+      "bytes": 683,
+      "sha256": "3e1db6857206f60333b436d0cf95c1c8ce4c93e897e2093f1691e9925976302e"
+    },
+    {
+      "path": "logs/gpu-4.log",
+      "original_path": "artifacts/performance-audit/gpu-4.log",
+      "kind": "audit_console_log",
+      "bytes": 72,
+      "sha256": "bfbffc658baa888ad3c600158ae50e2678986f57b91e3535e6a25ae2ba12a3c0"
+    },
+    {
+      "path": "logs/gpu-5.log",
+      "original_path": "artifacts/performance-audit/gpu-5.log",
+      "kind": "audit_console_log",
+      "bytes": 393,
+      "sha256": "2926d782e0b66353c37bd20d6ad1bc67877b8090781b3435bb5f3dab541f5365"
+    },
+    {
+      "path": "logs/gpu-6.log",
+      "original_path": "artifacts/performance-audit/gpu-6.log",
+      "kind": "audit_console_log",
+      "bytes": 73,
+      "sha256": "8cdfc7022ca7cf25f3df98d41e99970690ddf207a6b0f6eb0dd8248f184f4871"
+    },
+    {
+      "path": "logs/gpu-7.log",
+      "original_path": "artifacts/performance-audit/gpu-7.log",
+      "kind": "audit_console_log",
+      "bytes": 394,
+      "sha256": "e8ba410158ad13d5caa29095cd88c8e3ef43a6e3124a723c01159a3c2d81c673"
+    },
+    {
+      "path": "logs/gpu-8.log",
+      "original_path": "artifacts/performance-audit/gpu-8.log",
+      "kind": "audit_console_log",
+      "bytes": 74,
+      "sha256": "61d4a7def8b87eddafca023dc9486d2873a83ce9ce20a3c2424253dd6079d441"
+    },
+    {
+      "path": "logs/gpu-9.log",
+      "original_path": "artifacts/performance-audit/gpu-9.log",
+      "kind": "audit_console_log",
+      "bytes": 395,
+      "sha256": "8677bf2f4ce2a13b4721d7b770e8cee5678f8d964f9e7df0f22ff48ae46408d9"
+    },
+    {
+      "path": "logs/gpu-driver.log",
+      "original_path": "artifacts/performance-audit/gpu-driver.log",
+      "kind": "audit_console_log",
+      "bytes": 8088,
+      "sha256": "d2f82192711ce693b858f2f26d455d27842e75f98bb1e1770085ff02ef3384af"
+    },
+    {
+      "path": "logs/los.log",
+      "original_path": "artifacts/performance-audit/los.log",
+      "kind": "audit_console_log",
+      "bytes": 343,
+      "sha256": "be996f61c1bdeb68e6a75db71b14d9eff1933089c6417e57ff57ea0603f91aa4"
+    },
+    {
+      "path": "logs/gpu-runs.json",
+      "original_path": "artifacts/performance-audit/gpu-runs.json",
+      "kind": "completed_gpu_commands",
+      "bytes": 5870,
+      "sha256": "291960b3a3ca2549414c068dfc8ee5eee9e9cb4d6b1009c6b04bf8d189591911"
+    }
+  ]
+}
