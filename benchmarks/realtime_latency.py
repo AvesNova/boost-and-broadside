@@ -58,7 +58,7 @@ from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 
 
-def _headless_renderer(ship_config, window_size: int):
+def _headless_renderer(ship_config, window_size: int, *, display_flip: bool, zone_occlusion: bool):
     """Build an offscreen ``GameRenderer``.
 
     Imported here rather than at module scope because ``ui.renderer`` selects
@@ -68,7 +68,13 @@ def _headless_renderer(ship_config, window_size: int):
     variable for the same reason.
     """
 
-    os.environ.setdefault("HEADLESS", "1")
+    if not display_flip:
+        os.environ.setdefault("HEADLESS", "1")
+    else:
+        # GPU/legacy paired runs alternate renderers in one process.  Never
+        # leave SDL's dummy driver set before opening a real OpenGL window.
+        os.environ.pop("HEADLESS", None)
+        os.environ.pop("SDL_VIDEODRIVER", None)
     from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig, VisionMode
 
     return GameRenderer(
@@ -78,6 +84,7 @@ def _headless_renderer(ship_config, window_size: int):
             fps=DECISION_HZ,
             show_ui=True,
             vision_mode=VisionMode.TEAM_0,
+            zone_occlusion=zone_occlusion,
         ),
     )
 
@@ -161,10 +168,15 @@ def measure(
     window_size: int | None,
     execution: str,
     enqueue_order: str,
+    environment_step: str = "step",
+    renderer_backend: str | None = None,
+    moderngl_path: str | None = None,
 ) -> dict:
     """Time one interactive frame's worth of work, repeatedly."""
 
     ships, fields, scale = SCENARIOS[name]
+    if environment_step not in {"step", "step_interactive"}:
+        raise ValueError("environment_step must be 'step' or 'step_interactive'")
     ship_config = PROFILE.ship_config
     env_config = scenario_config(ships, fields, scale)
     torch.manual_seed(seed)
@@ -188,6 +200,7 @@ def measure(
 
     model_config = replace(PROFILE.model_config, **STAGES[stage])
     sides = []
+    policy_start = time.perf_counter()
     for _ in range(policy_sides):
         policy = build_policy(
             model_config,
@@ -207,12 +220,54 @@ def measure(
                 "hidden": policy.initial_hidden(1, ships, device),
             }
         )
+    policy_startup_compile_ms = 1000.0 * (time.perf_counter() - policy_start)
 
     # Offscreen, via the same ``draw_frame`` capture and the smoke tests use, so
     # the drawing work is real while the display flip and the frame-rate sleep --
     # which are the parts that would *hide* an overrun rather than cause one --
     # are not counted. ``play_throughput.py`` measures the same way.
-    renderer = _headless_renderer(ship_config, window_size) if window_size else None
+    renderer = None
+    gpu_renderer = None
+    previous_snapshot = None
+    gl_info: dict[str, str] = {}
+    if renderer_backend is not None and name != "50v50":
+        raise ValueError("GPU renderer benchmark mode is defined only for 50v50")
+    if renderer_backend == "legacy":
+        renderer = _headless_renderer(
+            ship_config,
+            window_size or 900,
+            display_flip=True,
+            zone_occlusion=env_config.zones_occlude,
+        )
+    elif renderer_backend == "gpu":
+        if moderngl_path:
+            import sys
+
+            sys.path.insert(0, moderngl_path)
+        from boost_and_broadside.ui.gpu_renderer import FrontlineGPURenderer
+        from boost_and_broadside.ui.gpu_snapshot import make_render_snapshot
+
+        previous_snapshot = make_render_snapshot(
+            wrapper.state,
+            world_size=ship_config.world_size,
+            visibility=wrapper.last_visibility,
+            zones_occlude=env_config.zones_occlude,
+        )
+        gpu_renderer = FrontlineGPURenderer(
+            previous_snapshot, (window_size or 900, window_size or 900)
+        )
+        gpu_renderer.perspective = "team0"
+        info = gpu_renderer._ctx.info
+        gl_info = {
+            key: str(info.get(key, "unknown")) for key in ("GL_VENDOR", "GL_RENDERER", "GL_VERSION")
+        }
+    elif window_size:
+        renderer = _headless_renderer(
+            ship_config,
+            window_size,
+            display_flip=False,
+            zone_occlusion=env_config.zones_occlude,
+        )
 
     as_team1 = torch.ones(1, dtype=torch.bool, device=device)
     phases = {"policy": 0.0, "env_step": 0.0, "render": 0.0}
@@ -256,7 +311,7 @@ def measure(
             observation.team1_data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
 
     def frame(record: bool) -> None:
-        nonlocal action_buffer, observation
+        nonlocal action_buffer, observation, previous_snapshot
         policy_start = policy_end = env_start = env_end = None
         cpu_start = time.perf_counter()
 
@@ -277,21 +332,23 @@ def measure(
             net_stream.wait_stream(current)
 
             def launch_environment():
-                with torch.inference_mode(), torch.cuda.device(device), torch.cuda.stream(
-                    env_stream
+                with (
+                    torch.inference_mode(),
+                    torch.cuda.device(device),
+                    torch.cuda.stream(env_stream),
                 ):
                     if env_start is not None:
                         env_start.record(env_stream)
-                    result = wrapper.step(
-                        action_buffer, auto_reset=False
-                    )
+                    result = getattr(wrapper, environment_step)(action_buffer, auto_reset=False)
                     if env_end is not None:
                         env_end.record(env_stream)
                 return result
 
             def launch_policy():
-                with torch.inference_mode(), torch.cuda.device(device), torch.cuda.stream(
-                    net_stream
+                with (
+                    torch.inference_mode(),
+                    torch.cuda.device(device),
+                    torch.cuda.stream(net_stream),
                 ):
                     if policy_start is not None:
                         policy_start.record(net_stream)
@@ -315,7 +372,10 @@ def measure(
                 next_action = outputs[launch_policy]
             current.wait_stream(env_stream)
             current.wait_stream(net_stream)
-            observation, _, dones, truncated, _info = env_result
+            if environment_step == "step_interactive":
+                observation, dones, truncated, _info = env_result
+            else:
+                observation, _, dones, truncated, _info = env_result
         else:
             if policy_start is not None:
                 policy_start.record()
@@ -325,9 +385,11 @@ def measure(
             policy_mark = time.perf_counter()
             if env_start is not None:
                 env_start.record()
-            observation, _, dones, truncated, _info = wrapper.step(
-                action_buffer, auto_reset=False
-            )
+            env_result = getattr(wrapper, environment_step)(action_buffer, auto_reset=False)
+            if environment_step == "step_interactive":
+                observation, dones, truncated, _info = env_result
+            else:
+                observation, _, dones, truncated, _info = env_result
             if env_end is not None:
                 env_end.record()
             if record and device.type == "cpu":
@@ -344,7 +406,24 @@ def measure(
 
         if renderer is not None:
             render_start = time.perf_counter()
-            renderer.draw_frame(wrapper.state, visibility=wrapper.last_visibility)
+            if renderer_backend == "legacy":
+                renderer.render(wrapper.state, visibility=wrapper.last_visibility)
+            else:
+                renderer.draw_frame(wrapper.state, visibility=wrapper.last_visibility)
+            if record:
+                phases["render"] += time.perf_counter() - render_start
+        elif gpu_renderer is not None:
+            from boost_and_broadside.ui.gpu_snapshot import make_render_snapshot
+
+            render_start = time.perf_counter()
+            previous_snapshot = make_render_snapshot(
+                wrapper.state,
+                world_size=ship_config.world_size,
+                previous=previous_snapshot,
+                visibility=wrapper.last_visibility,
+                zones_occlude=env_config.zones_occlude,
+            )
+            gpu_renderer.render(previous_snapshot)
             if record:
                 phases["render"] += time.perf_counter() - render_start
 
@@ -358,18 +437,25 @@ def measure(
                 side["hidden"] = side["policy"].reset_hidden_for_envs(
                     side["hidden"], finished, ships
                 )
+        return next_action
 
     warm_device(device)
+    first_call_start = time.perf_counter()
+    frame(False)
+    _sync(device)
+    first_call_frame_ms = 1000.0 * (time.perf_counter() - first_call_start)
     for _ in range(warmup):
         frame(False)
     _sync(device)
 
     samples: list[float] = []
+    action_trace: list[list] = []
     for _ in range(steps):
         begin = time.perf_counter()
-        frame(False)
+        sampled_action = frame(False)
         _sync(device)
         samples.append(1000.0 * (time.perf_counter() - begin))
+        action_trace.append(sampled_action.cpu().tolist())
 
     for _ in range(max(steps // 4, 5)):
         frame(True)
@@ -377,9 +463,12 @@ def measure(
 
     if renderer is not None:
         renderer.close()
+    if gpu_renderer is not None:
+        gpu_renderer.close()
     if executor is not None:
         executor.shutdown()
 
+    raw_samples = samples.copy()
     samples.sort()
     median = statistics.median(samples)
     measured_hz = 1000.0 * len(samples) / sum(samples)
@@ -392,20 +481,34 @@ def measure(
         "entity_tokens": entity_token_count(ships, fields, env_config.frontline),
         "compile_mode": compile_mode,
         "execution": execution,
+        "environment_step": environment_step,
         "enqueue_order": enqueue_order if concurrent else None,
         "decision_hz": DECISION_HZ,
         "frame_budget_ms": FRAME_BUDGET_MS,
         "median_ms": median,
+        "p95_ms": samples[int(0.95 * (len(samples) - 1))],
         "p90_ms": samples[int(0.9 * (len(samples) - 1))],
         "p99_ms": samples[int(0.99 * (len(samples) - 1))],
         "max_ms": samples[-1],
-        "over_budget_fraction": sum(sample > FRAME_BUDGET_MS for sample in samples)
-        / len(samples),
+        "raw_samples_ms": raw_samples,
+        "action_trace": action_trace,
+        "first_call_frame_ms": first_call_frame_ms,
+        "policy_startup_compile_ms": policy_startup_compile_ms,
+        "policy_startup_compile_total_ms": policy_startup_compile_ms + first_call_frame_ms,
+        "over_budget_fraction": sum(sample > FRAME_BUDGET_MS for sample in samples) / len(samples),
+        "deadline_misses": sum(sample > FRAME_BUDGET_MS for sample in samples),
         "realtime_headroom": FRAME_BUDGET_MS / median,
         "measured_hz": measured_hz,
         "perceive_bullets": perceive_bullets,
         "policy_sides": policy_sides,
         "window_size": window_size,
+        "renderer_backend": renderer_backend or ("headless-legacy" if window_size else None),
+        "render_scope": {
+            "display_flip": renderer_backend in {"legacy", "gpu"},
+            "gpu_snapshot_in_render_phase": renderer_backend == "gpu",
+            "team_fog": "team0" if renderer_backend == "gpu" else None,
+            "gl": gl_info or None,
+        },
         "torch_threads": torch.get_num_threads(),
         "resets": resets["count"],
         "phase_ms": {key: 1000.0 * value / breakdown_frames for key, value in phases.items()},
@@ -436,6 +539,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=99)
     parser.add_argument("--stage", default="baseline", choices=sorted(STAGES))
     parser.add_argument("--compile", dest="compile_mode", default="none")
+    parser.add_argument("--environment-step", choices=("step", "step_interactive"), default="step")
     parser.add_argument("--device", action="append", choices=("cuda", "cpu"))
     parser.add_argument("--scenario", action="append", choices=sorted(SCENARIOS))
     parser.add_argument(
@@ -481,6 +585,10 @@ def main() -> None:
         help="ablation: skip projectile line-of-sight, which only the renderer needs",
     )
     parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--moderngl-path",
+        help="directory containing an isolated ModernGL install for --renderer-backend gpu callers",
+    )
     args = parser.parse_args()
 
     compile_mode = None if args.compile_mode in ("none", "None") else args.compile_mode
@@ -505,9 +613,7 @@ def main() -> None:
     for name in scenarios:
         for device_name in devices:
             executions = args.execution or (
-                ["sequential", "streams", "threads"]
-                if device_name == "cuda"
-                else ["sequential"]
+                ["sequential", "streams", "threads"] if device_name == "cuda" else ["sequential"]
             )
             for execution in executions:
                 if execution in {"streams", "threads"} and device_name != "cuda":
@@ -525,6 +631,8 @@ def main() -> None:
                     window_size=args.window_size or None,
                     execution=execution,
                     enqueue_order=args.enqueue_order,
+                    environment_step=args.environment_step,
+                    moderngl_path=args.moderngl_path,
                 )
                 rows.append(row)
                 verdict = "OK" if row["realtime_headroom"] >= 1.0 else "MISS"
