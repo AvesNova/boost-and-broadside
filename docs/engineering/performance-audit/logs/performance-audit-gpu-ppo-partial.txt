@@ -1,0 +1,7 @@
+num_envs=960 num_steps=128 rollouts_per_update=4 minibatches=32 microbatch_tokens=62500 num_ships=10 num_fields=10 env_steps/update=491,520
+W0919 11:24:27.180000 3575222 torch/_inductor/utils.py:1953] [0/0] Not enough SMs to use max_autotune_gemm mode
+/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/_inductor/lowering.py:2633: UserWarning: Torchinductor does not support code generation for complex operators. Performance may be worse than eager.
+  warnings.warn(
+Best checkpoint saved asynchronously: /tmp/bnb-audit-checkpoints/20260919-112613/best_training.pt
+[warmup 1] 578.93s
+[measure 2] 215.94s  epochs=2

@@ -1,0 +1,92 @@
+[
+  {
+    "scenario": "5v5",
+    "stage": "baseline",
+    "device": "cuda",
+    "num_ships": 10,
+    "num_fields": 10,
+    "entity_tokens": 26,
+    "compile_mode": null,
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 91.78396797506139,
+    "p90_ms": 105.55129905696958,
+    "p99_ms": 112.84574202727526,
+    "max_ms": 122.21871898509562,
+    "realtime_headroom": 0.36317163082762266,
+    "sustainable_hz": 10.89514892482868,
+    "perceive_bullets": true,
+    "phase_ms": {
+      "policy": 43.13802713138127,
+      "env_step": 48.184491052116094
+    },
+    "peak_allocated_mib": 23.36474609375
+  },
+  {
+    "scenario": "5v5",
+    "stage": "baseline",
+    "device": "cpu",
+    "num_ships": 10,
+    "num_fields": 10,
+    "entity_tokens": 26,
+    "compile_mode": null,
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 115.90054101543501,
+    "p90_ms": 197.82334298361093,
+    "p99_ms": 273.9731789333746,
+    "max_ms": 1070.258621009998,
+    "realtime_headroom": 0.28760291402689986,
+    "sustainable_hz": 8.628087420806995,
+    "perceive_bullets": true,
+    "phase_ms": {
+      "policy": 75.35258948966559,
+      "env_step": 59.67509135528392
+    }
+  },
+  {
+    "scenario": "50v50",
+    "stage": "baseline",
+    "device": "cuda",
+    "num_ships": 100,
+    "num_fields": 72,
+    "entity_tokens": 178,
+    "compile_mode": null,
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 90.52074706414714,
+    "p90_ms": 99.86700408626348,
+    "p99_ms": 114.11149997729808,
+    "max_ms": 121.99117708951235,
+    "realtime_headroom": 0.36823970652508875,
+    "sustainable_hz": 11.047191195752662,
+    "perceive_bullets": true,
+    "phase_ms": {
+      "policy": 43.85413194226252,
+      "env_step": 50.794553382926296
+    },
+    "peak_allocated_mib": 262.2451171875
+  },
+  {
+    "scenario": "50v50",
+    "stage": "baseline",
+    "device": "cpu",
+    "num_ships": 100,
+    "num_fields": 72,
+    "entity_tokens": 178,
+    "compile_mode": null,
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 906.6607695422135,
+    "p90_ms": 990.9569040173665,
+    "p99_ms": 1048.6785970861092,
+    "max_ms": 1152.177167008631,
+    "realtime_headroom": 0.03676494500822378,
+    "sustainable_hz": 1.1029483502467134,
+    "perceive_bullets": true,
+    "phase_ms": {
+      "policy": 66.59103053105945,
+      "env_step": 317.45883167683576
+    }
+  }
+]

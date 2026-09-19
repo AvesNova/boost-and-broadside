@@ -183,7 +183,6 @@ def main() -> None:
             runtime.action_buffer,
             _terminated,
         ) = primary
-        runtime.elo_eval.step(index, False)
 
     def eval_only(index: int) -> None:
         runtime.elo_eval.step(index, False)

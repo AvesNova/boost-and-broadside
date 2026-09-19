@@ -1,0 +1,52 @@
+[
+  {
+    "scenario": "5v5",
+    "stage": "baseline",
+    "device": "cuda",
+    "num_ships": 10,
+    "num_fields": 10,
+    "entity_tokens": 26,
+    "compile_mode": "reduce-overhead",
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 59.34709345456213,
+    "p90_ms": 68.75679292716086,
+    "p99_ms": 75.86758199613541,
+    "max_ms": 78.47255293745548,
+    "realtime_headroom": 0.5616674952894587,
+    "sustainable_hz": 16.850024858683756,
+    "perceive_bullets": true,
+    "policy_sides": 1,
+    "torch_threads": 1,
+    "phase_ms": {
+      "policy": 8.875866959958026,
+      "env_step": 51.288759584228195
+    },
+    "peak_allocated_mib": 15.7802734375
+  },
+  {
+    "scenario": "50v50",
+    "stage": "baseline",
+    "device": "cuda",
+    "num_ships": 100,
+    "num_fields": 72,
+    "entity_tokens": 178,
+    "compile_mode": "reduce-overhead",
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 18.959794950205833,
+    "p90_ms": 20.52602102048695,
+    "p99_ms": 21.192817948758602,
+    "max_ms": 21.488457918167114,
+    "realtime_headroom": 1.7581062148022577,
+    "sustainable_hz": 52.743186444067724,
+    "perceive_bullets": true,
+    "policy_sides": 1,
+    "torch_threads": 1,
+    "phase_ms": {
+      "policy": 2.8631936913977065,
+      "env_step": 16.375190776307136
+    },
+    "peak_allocated_mib": 253.71826171875
+  }
+]

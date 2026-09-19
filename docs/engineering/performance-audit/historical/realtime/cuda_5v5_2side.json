@@ -1,0 +1,28 @@
+[
+  {
+    "scenario": "5v5",
+    "stage": "baseline",
+    "device": "cuda",
+    "num_ships": 10,
+    "num_fields": 10,
+    "entity_tokens": 26,
+    "compile_mode": "reduce-overhead",
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 65.89231704128906,
+    "p90_ms": 70.82828192505985,
+    "p99_ms": 78.79706798121333,
+    "max_ms": 80.09803702589124,
+    "realtime_headroom": 0.5058758718781462,
+    "sustainable_hz": 15.176276156344386,
+    "perceive_bullets": true,
+    "policy_sides": 2,
+    "torch_threads": 1,
+    "resets": 0,
+    "phase_ms": {
+      "policy": 17.20771426334977,
+      "env_step": 50.073434272781014
+    },
+    "peak_allocated_mib": 70.84521484375
+  }
+]

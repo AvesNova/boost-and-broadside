@@ -1,0 +1,29 @@
+[
+  {
+    "scenario": "5v5",
+    "stage": "baseline",
+    "device": "cpu",
+    "num_ships": 10,
+    "num_fields": 10,
+    "entity_tokens": 26,
+    "compile_mode": null,
+    "decision_hz": 30,
+    "frame_budget_ms": 33.333333333333336,
+    "median_ms": 50.09709997102618,
+    "p90_ms": 60.325726051814854,
+    "p99_ms": 64.1723140142858,
+    "max_ms": 64.62384795304388,
+    "realtime_headroom": 0.6653745097542927,
+    "sustainable_hz": 19.96123529262878,
+    "perceive_bullets": true,
+    "policy_sides": 1,
+    "window_size": 900,
+    "torch_threads": 1,
+    "resets": 0,
+    "phase_ms": {
+      "policy": 17.528426041826606,
+      "env_step": 18.964859629049897,
+      "render": 10.951815135776997
+    }
+  }
+]

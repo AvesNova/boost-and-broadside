@@ -1,0 +1,10 @@
+Frontline decides at 30 Hz -> 33.3 ms per frame. stage=baseline compile=None threads=1 policy_sides=2
+scenariodevice  tokens   median     p99     max throughput   budget
+-------------------------------------------------------------------
+pygame 2.6.1 (SDL 2.28.4, Python 3.13.11)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+5v5     cpu         26   95.04m 109.26  123.76        10Hz   0.35x MISS  sequential
+               phases: 2 policy pass(es) 50.77 ms  env 29.56 ms  render 16.00 ms  resets 0
+50v50   cpu        178 1638.63m1727.43 1733.65         1Hz   0.02x MISS  sequential
+               phases: 2 policy pass(es) 139.21 ms  env 1413.83 ms  render 113.11 ms  resets 0
+wrote artifacts/performance-audit/cpu-render.json

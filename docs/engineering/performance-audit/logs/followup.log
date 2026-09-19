@@ -1,0 +1,48 @@
+RUN ['--mode', 'profile', '--scenario', '5v5', '--steps', '20', '--out', 'docs/engineering/performance-audit-cpu-profile-5.json']
+pygame 2.6.1 (SDL 2.28.4, Python 3.13.11)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+Wrote docs/engineering/performance-audit-cpu-profile-5.json
+EXIT 0
+RUN ['--mode', 'los', '--scenario', '5v5', '--steps', '30', '--pairs', '3', '--out', 'docs/engineering/performance-audit-los-5.json']
+/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/cuda/__init__.py:1112: UserWarning: Can't initialize NVML
+  raw_cnt = _raw_device_count_nvml()
+W0919 10:59:08.871000 31 torch/utils/cpp_extension.py:178] [0/0] No CUDA runtime is found, using CUDA_HOME='/usr'
+Wrote docs/engineering/performance-audit-los-5.json
+EXIT 0
+RUN ['--mode', 'realtime', '--scenario', '5v5', '--steps', '60', '--pairs', '3', '--policy-compile', 'default', '--out', 'docs/engineering/performance-audit-realtime-5.json']
+pygame 2.6.1 (SDL 2.28.4, Python 3.13.11)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/cuda/__init__.py:1112: UserWarning: Can't initialize NVML
+  raw_cnt = _raw_device_count_nvml()
+W0919 11:00:19.574000 80 torch/utils/cpp_extension.py:178] [0/0] No CUDA runtime is found, using CUDA_HOME='/usr'
+reference 90.00652900431305
+compiled_real_los 87.95478951651603
+compiled_real_los 80.5399315431714
+reference 81.88750548288226
+reference 84.15537449764088
+compiled_real_los 76.74375647911802
+Wrote docs/engineering/performance-audit-realtime-5.json
+EXIT 0
+RUN ['--mode', 'realtime', '--scenario', '50v50', '--steps', '20', '--pairs', '3', '--out', 'docs/engineering/performance-audit-realtime-50.json']
+pygame 2.6.1 (SDL 2.28.4, Python 3.13.11)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+reference 1624.1313749924302
+/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/cuda/__init__.py:1112: UserWarning: Can't initialize NVML
+  raw_cnt = _raw_device_count_nvml()
+W0919 11:02:41.184000 344 torch/utils/cpp_extension.py:178] [0/0] No CUDA runtime is found, using CUDA_HOME='/usr'
+compiled_real_los 677.9608099604957
+compiled_real_los 680.3009859868325
+reference 1599.355721496977
+reference 1605.1377899711952
+compiled_real_los 691.7228809907101
+Wrote docs/engineering/performance-audit-realtime-50.json
+EXIT 0
+RUN ['--mode', 'throughput', '--scenario', '5v5', '--batch', '1', '--steps', '30', '--out', 'docs/engineering/performance-audit-throughput-1.json']
+Wrote docs/engineering/performance-audit-throughput-1.json
+EXIT 0
+RUN ['--mode', 'throughput', '--scenario', '5v5', '--batch', '32', '--steps', '30', '--out', 'docs/engineering/performance-audit-throughput-32.json']
+Wrote docs/engineering/performance-audit-throughput-32.json
+EXIT 0
+RUN ['--mode', 'throughput', '--scenario', '5v5', '--batch', '128', '--steps', '30', '--out', 'docs/engineering/performance-audit-throughput-128.json']
+Wrote docs/engineering/performance-audit-throughput-128.json
+EXIT 0

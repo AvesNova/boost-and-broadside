@@ -1,0 +1,4 @@
+/home/vizia/avesnova/boost-and-broadside/.venv/lib/python3.13/site-packages/torch/cuda/__init__.py:1112: UserWarning: Can't initialize NVML
+  raw_cnt = _raw_device_count_nvml()
+W0919 10:53:21.240000 3 torch/utils/cpp_extension.py:178] [0/0] No CUDA runtime is found, using CUDA_HOME='/usr'
+Wrote docs/engineering/performance-audit-los-50.json

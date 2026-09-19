@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "torch": "2.13.0+cu130",
+    "python": "3.13.11",
+    "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+    "cuda_available": false,
+    "threads": 1,
+    "seed": 99,
+    "revision": "7f9cc421af80d59d04baa9fa27af7b14df74e920",
+    "working_tree": " M benchmarks/realtime_latency.py\n M src/boost_and_broadside/modes/interactive.py\n M tests/modes/test_interactive.py\n?? benchmarks/performance_audit.py\n?? docs/engineering/concurrent-rollout-plan.md\n",
+    "args": {
+      "mode": "profile",
+      "scenario": "50v50",
+      "batch": 1,
+      "steps": 8,
+      "pairs": 3,
+      "out": "docs/engineering/performance-audit-cpu-profile-50.json"
+    }
+  },
+  "result": {
+    "components": {
+      "physics": {
+        "median_ms": 46.52649350464344,
+        "mean_ms": 48.901086251134984,
+        "p99_ms": 54.348583915270865,
+        "samples_ms": [
+          62.62717500794679,
+          47.46827110648155,
+          46.932279015891254,
+          46.12070799339563,
+          46.03245004545897,
+          45.9052799269557,
+          41.773942997679114,
+          54.348583915270865
+        ]
+      },
+      "observation_bullets": {
+        "median_ms": 1323.698878986761,
+        "mean_ms": 1316.6031303699128,
+        "p99_ms": 1339.8465239442885,
+        "samples_ms": [
+          1300.554265966639,
+          1308.703245013021,
+          1322.5298749748617,
+          1339.8465239442885,
+          1341.5390100562945,
+          1324.8678829986602,
+          1267.7195359719917,
+          1327.0647040335461
+        ]
+      },
+      "wrapper_step": {
+        "median_ms": 1387.060119479429,
+        "mean_ms": 1384.1621076135198,
+        "p99_ms": 1398.3160119969398,
+        "samples_ms": [
+          1386.2962189596146,
+          1387.8240199992433,
+          1357.0016310550272,
+          1397.792723029852,
+          1364.0909879468381,
+          1365.8291249303147,
+          1398.3160119969398,
+          1416.1461429903284
+        ]
+      },
+      "render": {
+        "median_ms": 106.23083548853174,
+        "mean_ms": 112.94411287235562,
+        "p99_ms": 108.74039598274976,
+        "samples_ms": [
+          161.24065197072923,
+          106.35807598009706,
+          104.2789799394086,
+          106.10359499696642,
+          106.39824101235718,
+          108.74039598274976,
+          105.52779107820243,
+          104.90517201833427
+        ]
+      },
+      "observation_no_bullets": {
+        "median_ms": 70.7096554688178,
+        "mean_ms": 73.61175412370358,
+        "p99_ms": 73.23342398740351,
+        "samples_ms": [
+          93.7422300921753,
+          68.78170999698341,
+          73.14101001247764,
+          69.38251806423068,
+          69.64711495675147,
+          69.19382989872247,
+          71.77219598088413,
+          73.23342398740351
+        ]
+      }
+    },
+    "physics_profile": "         3683 function calls in 0.286 seconds\n\n   Ordered by: cumulative time\n   List reduced from 104 to 25 due to restriction <25>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.286    0.286 performance_audit.py:100(<lambda>)\n        5    0.000    0.000    0.286    0.057 performance_audit.py:91(<lambda>)\n        5    0.001    0.000    0.286    0.057 env.py:381(tick)\n       20    0.001    0.000    0.137    0.007 field_physics.py:163(evaluate_fields)\n       10    0.001    0.000    0.135    0.014 physics.py:342(_transport_field_points)\n       15    0.001    0.000    0.132    0.009 physics.py:285(_two_step_field_substep)\n       15    0.000    0.000    0.125    0.008 physics.py:270(_evaluate_state_fields)\n        5    0.001    0.000    0.123    0.025 physics.py:709(advance_bullets)\n        5    0.000    0.000    0.121    0.024 physics.py:680(_transport_bullets_through_fields)\n        5    0.000    0.000    0.095    0.019 physics.py:757(resolve_collisions)\n        5    0.002    0.000    0.093    0.019 physics.py:862(_apply_combat_damage)\n       20    0.032    0.002    0.093    0.005 field_physics.py:43(evaluate_field_profiles)\n        5    0.012    0.002    0.088    0.018 physics.py:784(_combat_damage_tensors)\n       10    0.044    0.004    0.049    0.005 physics.py:812(segment_dist_sq)\n       20    0.015    0.001    0.043    0.002 field_physics.py:97(compose_refractive_index)\n        5    0.000    0.000    0.035    0.007 physics.py:659(update_ships)\n        5    0.002    0.000    0.032    0.006 frontline.py:451(apply_frontline_tick)\n        5    0.002    0.000    0.031    0.006 physics.py:539(_update_kinematics_in_fields)\n       20    0.022    0.001    0.025    0.001 field_physics.py:30(wrap_displacement)\n      135    0.022    0.000    0.022    0.000 {method 'abs' of 'torch._C.TensorBase' objects}\n        5    0.002    0.000    0.018    0.004 frontline.py:253(place_ships_at_spawns)\n        5    0.016    0.003    0.016    0.003 {built-in method torch.angle}\n        5    0.000    0.000    0.015    0.003 physics.py:517(_transport_through_fields)\n       10    0.001    0.000    0.013    0.001 physics.py:465(_apply_field_flight_half_step)\n      355    0.012    0.000    0.012    0.000 {built-in method torch.where}\n\n\n",
+    "observation_bullets_profile": "         4188 function calls in 6.470 seconds\n\n   Ordered by: cumulative time\n   List reduced from 59 to 25 due to restriction <25>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    6.470    6.470 performance_audit.py:100(<lambda>)\n        5    0.000    0.000    6.470    1.294 wrapper.py:532(_get_obs)\n        5    0.001    0.000    6.462    1.292 observation.py:905(perceived_observation_from_state)\n        5    0.134    0.027    6.425    1.285 perception.py:131(team_visibility_from_state)\n       10    3.095    0.310    6.243    0.624 perception.py:62(_line_of_sight_clear)\n       50    2.672    0.053    2.672    0.053 {method 'abs' of 'torch._C.TensorBase' objects}\n       50    0.276    0.006    0.276    0.006 {method 'any' of 'torch._C.TensorBase' objects}\n       45    0.199    0.004    0.199    0.004 {method 'clamp' of 'torch._C.TensorBase' objects}\n       10    0.006    0.001    0.037    0.004 observation.py:591(observation_from_state)\n       30    0.030    0.001    0.034    0.001 frontline.py:38(toroidal_displacement)\n       20    0.012    0.001    0.019    0.001 perception.py:117(_team_share)\n       10    0.008    0.001    0.016    0.002 observation.py:845(_mask_hidden_ships)\n        5    0.004    0.001    0.007    0.001 wrapper.py:569(_accumulate_perception)\n      345    0.004    0.000    0.004    0.000 {built-in method torch.where}\n      450    0.004    0.000    0.004    0.000 {built-in method torch.cat}\n       30    0.003    0.000    0.003    0.000 {built-in method torch.complex}\n       10    0.002    0.000    0.002    0.000 frontline.py:103(zone_terminal_distances)\n      100    0.001    0.000    0.002    0.000 observation.py:732(object_scalar)\n       95    0.002    0.000    0.002    0.000 {built-in method torch.stack}\n      320    0.002    0.000    0.002    0.000 {built-in method torch.zeros_like}\n      280    0.002    0.000    0.002    0.000 {method 'clone' of 'torch._C.TensorBase' objects}\n      490    0.002    0.000    0.002    0.000 {method 'unsqueeze' of 'torch._C.TensorBase' objects}\n       90    0.002    0.000    0.002    0.000 {method 'sum' of 'torch._C.TensorBase' objects}\n     1025    0.001    0.000    0.001    0.000 {method 'dim' of 'torch._C.TensorBase' objects}\n       10    0.001    0.000    0.001    0.000 {method 'square' of 'torch._C.TensorBase' objects}\n\n\n",
+    "wrapper_step_profile": "         9398 function calls in 7.067 seconds\n\n   Ordered by: cumulative time\n   List reduced from 168 to 25 due to restriction <25>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    7.068    7.068 performance_audit.py:100(<lambda>)\n        5    0.000    0.000    7.068    1.414 performance_audit.py:93(<lambda>)\n        5    0.001    0.000    7.067    1.413 wrapper.py:290(step)\n        5    0.000    0.000    6.763    1.353 wrapper.py:532(_get_obs)\n        5    0.001    0.000    6.756    1.351 observation.py:905(perceived_observation_from_state)\n        5    0.146    0.029    6.715    1.343 perception.py:131(team_visibility_from_state)\n       10    3.211    0.321    6.523    0.652 perception.py:62(_line_of_sight_clear)\n      220    2.820    0.013    2.820    0.013 {method 'abs' of 'torch._C.TensorBase' objects}\n        5    0.006    0.001    0.303    0.061 wrapper.py:389(_physics_tick)\n       95    0.303    0.003    0.303    0.003 {method 'any' of 'torch._C.TensorBase' objects}\n        5    0.001    0.000    0.268    0.054 env.py:381(tick)\n      305    0.217    0.001    0.217    0.001 {method 'clamp' of 'torch._C.TensorBase' objects}\n       20    0.001    0.000    0.137    0.007 field_physics.py:163(evaluate_fields)\n       10    0.001    0.000    0.136    0.014 physics.py:342(_transport_field_points)\n       15    0.001    0.000    0.133    0.009 physics.py:285(_two_step_field_substep)\n       15    0.000    0.000    0.127    0.008 physics.py:270(_evaluate_state_fields)\n        5    0.001    0.000    0.125    0.025 physics.py:709(advance_bullets)\n        5    0.000    0.000    0.123    0.025 physics.py:680(_transport_bullets_through_fields)\n       20    0.032    0.002    0.098    0.005 field_physics.py:43(evaluate_field_profiles)\n        5    0.000    0.000    0.082    0.016 physics.py:757(resolve_collisions)\n        5    0.002    0.000    0.081    0.016 physics.py:862(_apply_combat_damage)\n        5    0.010    0.002    0.077    0.015 physics.py:784(_combat_damage_tensors)\n       10    0.040    0.004    0.044    0.004 physics.py:812(segment_dist_sq)\n       10    0.007    0.001    0.039    0.004 observation.py:591(observation_from_state)\n       20    0.014    0.001    0.039    0.002 field_physics.py:97(compose_refractive_index)\n\n\n",
+    "render_profile": "         579428 function calls in 1.169 seconds\n\n   Ordered by: cumulative time\n   List reduced from 70 to 25 due to restriction <25>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    1.169    1.169 performance_audit.py:100(<lambda>)\n        5    0.000    0.000    1.169    0.234 performance_audit.py:94(<lambda>)\n        5    0.000    0.000    1.169    0.234 renderer.py:517(draw_frame)\n        5    0.001    0.000    1.169    0.234 renderer.py:484(_draw_frame)\n        5    0.253    0.051    0.982    0.196 renderer.py:945(_draw_fog_overlay)\n    35140    0.084    0.000    0.316    0.000 renderer.py:677(_unwrapped_world_to_screen)\n    35140    0.081    0.000    0.191    0.000 renderer.py:141(unwrapped_world_to_screen)\n    93265    0.110    0.000    0.148    0.000 renderer.py:107(scale)\n     4375    0.123    0.000    0.123    0.000 {built-in method pygame.draw.polygon}\n    34750    0.060    0.000    0.100    0.000 renderer.py:984(mask_point)\n   165130    0.097    0.000    0.097    0.000 {built-in method builtins.round}\n        5    0.044    0.009    0.071    0.014 renderer.py:1221(_draw_bullets)\n        5    0.013    0.003    0.060    0.012 renderer.py:914(_draw_fields)\n      770    0.045    0.000    0.045    0.000 {method 'blit' of 'pygame.surface.Surface' objects}\n    97396    0.041    0.000    0.041    0.000 {built-in method builtins.min}\n      365    0.033    0.000    0.033    0.000 {method 'fill' of 'pygame.surface.Surface' objects}\n      640    0.016    0.000    0.025    0.000 renderer.py:158(visible_images)\n     6230    0.025    0.000    0.025    0.000 {built-in method pygame.draw.circle}\n    15240    0.024    0.000    0.024    0.000 {method 'item' of 'torch._C.TensorBase' objects}\n        5    0.012    0.002    0.023    0.005 renderer.py:790(_draw_ships)\n        5    0.009    0.002    0.021    0.004 renderer.py:1155(_draw_minimap)\n      360    0.003    0.000    0.019    0.000 renderer.py:1094(_draw_field_band)\n     1470    0.004    0.000    0.018    0.000 renderer.py:672(_world_to_screen)\n    25680    0.014    0.000    0.014    0.000 {built-in method builtins.abs}\n    24350    0.014    0.000    0.014    0.000 {built-in method builtins.max}\n\n\n",
+    "active_bullets": 501
+  }
+}
