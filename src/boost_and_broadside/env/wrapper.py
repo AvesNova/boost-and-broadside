@@ -386,6 +386,59 @@ class YemongEnvWrapper:
             },
         )
 
+    def step_interactive(
+        self,
+        actions: torch.Tensor,
+        *,
+        unlimited_resources: bool = False,
+        auto_reset: bool = True,
+    ) -> tuple[YemongObservation, torch.Tensor, torch.Tensor, dict]:
+        """Advance an interactive decision without reward or metric bookkeeping.
+
+        This is intentionally separate from :meth:`step`: play/watch still use
+        the identical authoritative physics, terminal handling, resets and
+        perceived observations, but do not pay for reward components or
+        training-only episode/source/perception diagnostics.
+        """
+        B, N = self.env.state.ship_health.shape
+        dones = torch.zeros(B, dtype=torch.bool, device=self.device)
+        truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
+        transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        terminal_result = torch.full(
+            (B,), int(MatchResult.ONGOING), dtype=torch.int8, device=self.device
+        )
+
+        for _ in range(self.env_config.action_repeat):
+            # Preserve standard-step's frozen terminal outputs during a held
+            # action, while allowing the physics engine to finish its ticks.
+            running = ~(dones | truncated)
+            tick_dones, tick_truncated = self.env.tick(
+                actions, unlimited_resources=unlimited_resources
+            )
+            transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            ended_this_tick = (tick_dones | tick_truncated) & running
+            terminal_result = torch.where(
+                ended_this_tick, self.env.state.match_result, terminal_result
+            )
+            dones |= tick_dones & running
+            truncated |= tick_truncated & running
+
+        done_mask = dones | truncated
+        if auto_reset:
+            self.env.reset_envs(done_mask)
+            self._reset_perception(done_mask)
+            self._refresh_field_obs(done_mask)
+
+        return (
+            self._get_obs_interactive(),
+            dones,
+            truncated,
+            {
+                "transition_contiguous": transition_contiguous,
+                "match_result": terminal_result,
+            },
+        )
+
     def _physics_tick(
         self,
         actions: torch.Tensor,
@@ -544,6 +597,18 @@ class YemongEnvWrapper:
             perceive_bullets=self.perceive_bullets,
         )
         self._accumulate_perception()
+        return observation
+
+    def _get_obs_interactive(self) -> YemongObservation:
+        """Build play/watch observations without training diagnostic updates."""
+        observation, self.last_visibility = perceived_observation_from_state(
+            self.env.state,
+            self.ship_config,
+            self.env_config,
+            self._obs_buffers,
+            include_bullets=self.include_bullets,
+            perceive_bullets=self.perceive_bullets,
+        )
         return observation
 
     def privileged_observation(self) -> YemongObservation:

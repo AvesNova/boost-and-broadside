@@ -1,11 +1,12 @@
 """Integration tests for TensorEnv and YemongEnvWrapper."""
 
+import dataclasses
 from dataclasses import replace
 
 import pytest
 import torch
 
-from boost_and_broadside.config import EnvConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config import EnvConfig, MatchResult, RewardConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.env.wrapper import SOURCE_STAT_NAMES, YemongEnvWrapper
@@ -433,6 +434,121 @@ class TestSpawnResourceSpread:
 
 
 class TestYemongEnvWrapper:
+    @staticmethod
+    def _assert_interactive_equivalent(
+        standard: YemongEnvWrapper,
+        interactive: YemongEnvWrapper,
+        standard_obs,
+        interactive_obs,
+        standard_done: torch.Tensor,
+        interactive_done: torch.Tensor,
+        standard_truncated: torch.Tensor,
+        interactive_truncated: torch.Tensor,
+        standard_info: dict,
+        interactive_info: dict,
+    ) -> None:
+        """Check the lean path changes bookkeeping only, never game outputs."""
+        for field in dataclasses.fields(standard.state):
+            left = getattr(standard.state, field.name)
+            right = getattr(interactive.state, field.name)
+            if left.is_floating_point() or left.is_complex():
+                torch.testing.assert_close(left, right, atol=2e-6, rtol=2e-6)
+            else:
+                assert torch.equal(left, right), field.name
+        assert torch.equal(standard_done, interactive_done)
+        assert torch.equal(standard_truncated, interactive_truncated)
+        for key in standard_info:
+            assert torch.equal(standard_info[key], interactive_info[key])
+        for left, right in (
+            (standard_obs.data, interactive_obs.data),
+            (standard_obs.team1_data, interactive_obs.team1_data),
+            (standard_obs.bullets, interactive_obs.bullets),
+            (standard_obs.team1_bullets, interactive_obs.team1_bullets),
+        ):
+            assert (left is None) == (right is None)
+            if left is not None and right is not None:
+                assert left.keys() == right.keys()
+                for key in left:
+                    if left[key].is_floating_point() or left[key].is_complex():
+                        torch.testing.assert_close(left[key], right[key], atol=2e-6, rtol=2e-6)
+                    else:
+                        assert torch.equal(left[key], right[key]), key
+
+    def test_interactive_step_matches_standard_without_auto_reset(
+        self, ship_cfg, reward_cfg
+    ):
+        """The lean play/watch path preserves terminal state and both views."""
+        env_cfg = EnvConfig(
+            num_ships=2,
+            max_bullets=2,
+            max_episode_steps=1,
+            action_repeat=2,
+            vision_range=1000.0,
+        )
+        standard = YemongEnvWrapper(1, ship_cfg, env_cfg, reward_cfg, "cpu", include_bullets=True)
+        interactive = YemongEnvWrapper(
+            1, ship_cfg, env_cfg, reward_cfg, "cpu", include_bullets=True
+        )
+        standard.reset(options={"team_sizes": (1, 1)}, seed=41)
+        interactive.reset(options={"team_sizes": (1, 1)}, seed=41)
+        actions = torch.tensor([[[1, 2, 1], [2, 1, 0]]], dtype=torch.long)
+
+        torch.manual_seed(73)
+        standard_obs, _, standard_done, standard_truncated, standard_info = standard.step(
+            actions, auto_reset=False
+        )
+        torch.manual_seed(73)
+        interactive_obs, interactive_done, interactive_truncated, interactive_info = (
+            interactive.step_interactive(actions, auto_reset=False)
+        )
+
+        self._assert_interactive_equivalent(
+            standard,
+            interactive,
+            standard_obs,
+            interactive_obs,
+            standard_done,
+            interactive_done,
+            standard_truncated,
+            interactive_truncated,
+            standard_info,
+            interactive_info,
+        )
+        assert standard_truncated.item()
+        assert standard_info["match_result"].item() != int(MatchResult.ONGOING)
+        # Observation tensors stay owned by the wrapper that produced them.
+        assert standard_obs.data["pos"].data_ptr() != interactive_obs.data["pos"].data_ptr()
+
+    def test_interactive_step_matches_standard_auto_reset_without_stats(self, ship_cfg, reward_cfg):
+        env_cfg = EnvConfig(num_ships=2, max_bullets=0, max_episode_steps=1, action_repeat=2)
+        standard = YemongEnvWrapper(1, ship_cfg, env_cfg, reward_cfg, "cpu")
+        interactive = YemongEnvWrapper(1, ship_cfg, env_cfg, reward_cfg, "cpu")
+        standard.reset(options={"team_sizes": (1, 1)}, seed=19)
+        interactive.reset(options={"team_sizes": (1, 1)}, seed=19)
+        actions = torch.zeros((1, 2, 3), dtype=torch.long)
+
+        torch.manual_seed(29)
+        standard_obs, _, standard_done, standard_truncated, standard_info = standard.step(actions)
+        torch.manual_seed(29)
+        interactive_obs, interactive_done, interactive_truncated, interactive_info = (
+            interactive.step_interactive(actions)
+        )
+
+        self._assert_interactive_equivalent(
+            standard,
+            interactive,
+            standard_obs,
+            interactive_obs,
+            standard_done,
+            interactive_done,
+            standard_truncated,
+            interactive_truncated,
+            standard_info,
+            interactive_info,
+        )
+        assert interactive.state.step_count.item() == 0
+        assert not interactive._acc_source_stats.any()
+        assert not interactive._ep_length.any()
     def test_reset_returns_obs_dict(self, ship_cfg, env_cfg, reward_cfg):
         wrapper = YemongEnvWrapper(
             num_envs=2,

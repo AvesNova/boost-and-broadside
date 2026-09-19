@@ -399,7 +399,7 @@ def _run_interactive_loop(
                         wrapper.state, wrapper.ship_config, wrapper.env_config
                     )
                 else:
-                    obs, _, dones, truncated, info = wrapper.step(
+                    obs, dones, truncated, info = wrapper.step_interactive(
                         action,
                         unlimited_resources=renderer.unlimited_resources,
                         auto_reset=False,
