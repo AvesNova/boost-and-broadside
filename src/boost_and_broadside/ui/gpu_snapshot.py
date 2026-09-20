@@ -80,6 +80,150 @@ class RenderSnapshot:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class PackedRenderSnapshot:
+    """Renderer-fast CPU tensor packet, owned independently of live state."""
+
+    packed: torch.Tensor
+    world_size: tuple[float, float]
+    vision_range: float | None
+    num_ships: int
+    max_bullets: int
+    num_zones: int
+    num_fields: int
+    zones_occlude: bool
+
+    @property
+    def step(self) -> int:
+        return int(self.packed[0])
+
+    def ship_rows(self) -> torch.Tensor:
+        return self.packed[1 : 1 + self.num_ships * 9].view(self.num_ships, 9)
+
+    def bullet_rows(self) -> torch.Tensor:
+        start = 1 + self.num_ships * 9
+        return self.packed[start : start + self.num_ships * self.max_bullets * 6].view(
+            self.num_ships * self.max_bullets, 6
+        )
+
+    def map_header(self) -> torch.Tensor:
+        start = 1 + self.num_ships * 9 + self.num_ships * self.max_bullets * 6
+        return self.packed[start : start + 3]
+
+    def zone_rows(self) -> torch.Tensor:
+        start = 1 + self.num_ships * 9 + self.num_ships * self.max_bullets * 6 + 3
+        return self.packed[start : start + self.num_zones * 5].view(self.num_zones, 5)
+
+    def field_rows(self) -> torch.Tensor:
+        start = 1 + self.num_ships * 9 + self.num_ships * self.max_bullets * 6 + 3
+        start += self.num_zones * 5
+        return self.packed[start : start + self.num_fields * 3].view(self.num_fields, 3)
+
+    def map_instances(self) -> torch.Tensor:
+        """Return contiguous GPU map rows: ``x, y, radius, kind, role``.
+
+        This is intentionally a tensor operation: the packed renderer writes
+        its buffer directly from the returned CPU ndarray, rather than making
+        one Python object for every map primitive.
+        """
+
+        fields = self.field_rows()
+        zones = self.zone_rows()
+        field_rows = torch.cat(
+            (fields, torch.zeros((self.num_fields, 2), dtype=fields.dtype)), dim=1
+        )
+        zone_rows = torch.cat(
+            (
+                zones[:, :3],
+                torch.ones((self.num_zones, 1), dtype=zones.dtype),
+                zones[:, 3:4],
+            ),
+            dim=1,
+        )
+        header = self.map_header()
+        boundary = torch.stack(
+            (header[0], header[1], header[2], header.new_tensor(2.0), header.new_tensor(0.0))
+        ).view(1, 5)
+        return torch.cat((field_rows, zone_rows, boundary), dim=0).contiguous()
+
+    def fog_rows(self, perspective: VisionPerspective) -> tuple[torch.Tensor, torch.Tensor] | None:
+        """Return active observer positions and opaque cores for a team view."""
+
+        if perspective == "full":
+            return None
+        team = 0 if perspective == "team0" else 1
+        ships = self.ship_rows()
+        observers = ships[(ships[:, 6].bool()) & (ships[:, 5] == team), :2][:50]
+        cores = self.field_rows()
+        if self.zones_occlude:
+            cores = torch.cat((cores, self.zone_rows()[:, :3]), dim=0)
+        return observers.contiguous(), cores[:128].contiguous()
+
+    def ship_instances(self, previous: PackedRenderSnapshot | None) -> torch.Tensor:
+        current = self.ship_rows()
+        old = current if previous is None else previous.ship_rows()
+        result = torch.stack(
+            (
+                old[:, 0],
+                old[:, 1],
+                current[:, 0],
+                current[:, 1],
+                current[:, 5],
+                current[:, 7] + 2 * current[:, 8],
+            ),
+            dim=1,
+        )
+        return result[current[:, 6].bool()].contiguous()
+
+    def projectile_instances(self, previous: PackedRenderSnapshot | None) -> torch.Tensor:
+        current = self.bullet_rows()
+        old = current if previous is None else previous.bullet_rows()
+        reused = ~old[:, 2].bool() | (current[:, 3] > old[:, 3])
+        previous_xy = torch.where(reused[:, None], current[:, :2], old[:, :2])
+        owner_team = self.ship_rows()[:, 5].repeat_interleave(self.max_bullets)
+        result = torch.cat(
+            (
+                previous_xy,
+                current[:, :2],
+                owner_team[:, None],
+                (current[:, 4] + 2 * current[:, 5])[:, None],
+            ),
+            dim=1,
+        )
+        return result[current[:, 2].bool()].contiguous()
+
+
+def make_packed_render_snapshot(
+    current: TensorState,
+    *,
+    world_size: tuple[float, float],
+    visibility: TeamVisibility | None = None,
+    env_index: int = 0,
+    zones_occlude: bool = False,
+) -> PackedRenderSnapshot:
+    """One D2H transfer without ``tolist`` or per-entity Python objects."""
+
+    if not 0 <= env_index < current.num_envs:
+        raise IndexError(f"environment index {env_index} is outside 0..{current.num_envs - 1}")
+    packed = (
+        _packed_current(current, visibility, env_index)
+        .to(dtype=torch.float32)
+        .detach()
+        .cpu()
+        .contiguous()
+    )
+    return PackedRenderSnapshot(
+        packed,
+        tuple(map(float, world_size)),
+        None if visibility is None else visibility.vision_range,
+        current.ship_pos.shape[1],
+        current.bullet_pos.shape[2],
+        current.zone_pos.shape[1],
+        current.field_pos.shape[1],
+        zones_occlude,
+    )
+
+
 def _visibility_columns(
     current: TensorState, visibility: TeamVisibility | None, env_index: int
 ) -> tuple[torch.Tensor, torch.Tensor]:

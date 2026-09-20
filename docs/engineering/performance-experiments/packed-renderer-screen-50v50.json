@@ -1,0 +1,347 @@
+{
+  "action_trace": [
+    {
+      "action_code": 0,
+      "frame": 0
+    },
+    {
+      "action_code": 0,
+      "frame": 1
+    },
+    {
+      "action_code": 0,
+      "frame": 2
+    },
+    {
+      "action_code": 0,
+      "frame": 3
+    },
+    {
+      "action_code": 0,
+      "frame": 4
+    },
+    {
+      "action_code": 0,
+      "frame": 5
+    },
+    {
+      "action_code": 0,
+      "frame": 6
+    },
+    {
+      "action_code": 0,
+      "frame": 7
+    },
+    {
+      "action_code": 0,
+      "frame": 8
+    },
+    {
+      "action_code": 0,
+      "frame": 9
+    },
+    {
+      "action_code": 0,
+      "frame": 10
+    },
+    {
+      "action_code": 0,
+      "frame": 11
+    },
+    {
+      "action_code": 0,
+      "frame": 12
+    },
+    {
+      "action_code": 0,
+      "frame": 13
+    },
+    {
+      "action_code": 0,
+      "frame": 14
+    },
+    {
+      "action_code": 0,
+      "frame": 15
+    },
+    {
+      "action_code": 0,
+      "frame": 16
+    },
+    {
+      "action_code": 0,
+      "frame": 17
+    },
+    {
+      "action_code": 0,
+      "frame": 18
+    },
+    {
+      "action_code": 0,
+      "frame": 19
+    },
+    {
+      "action_code": 0,
+      "frame": 20
+    },
+    {
+      "action_code": 0,
+      "frame": 21
+    },
+    {
+      "action_code": 0,
+      "frame": 22
+    },
+    {
+      "action_code": 0,
+      "frame": 23
+    },
+    {
+      "action_code": 0,
+      "frame": 24
+    }
+  ],
+  "arm": "gpu-packed",
+  "command": [
+    "/home/vizia/avesnova/boost-and-broadside/.venv/bin/python",
+    "benchmarks/gpu_renderer_benchmark.py",
+    "--arm",
+    "gpu-packed",
+    "--device",
+    "cuda",
+    "--moderngl-path",
+    "/tmp/bnb-deadline-moderngl",
+    "--warmup",
+    "5",
+    "--samples",
+    "20",
+    "--out",
+    "artifacts/deadline-experiment/analysis/gpu-packed-renderer-smoke.json"
+  ],
+  "completed_frames": 25,
+  "completed_utc": "2026-09-19T22:53:46.179239+00:00",
+  "configuration": {
+    "device": "cuda",
+    "env_config": {
+      "action_repeat": 1,
+      "frontline": {
+        "boundary_damage_per_pixel_second": 0.05,
+        "boundary_damage_per_second": 5.0,
+        "capture_seconds": 10.0,
+        "front_win_threshold": 3,
+        "playable_radius": 7000.000000000001,
+        "respawn_health": 15.0,
+        "respawn_power": 40.0,
+        "respawn_speed": 30.0,
+        "shield_recharge_delay": 5.0,
+        "shield_recharge_per_second": 15.0,
+        "zone_radius": 888.4615384615386,
+        "zone_ring_radius": 3230.769230769231
+      },
+      "max_bullets": 10,
+      "max_episode_steps": 9000,
+      "num_fields": 72,
+      "num_ships": 100,
+      "single_team": false,
+      "spawn_resource_spread": 0.0,
+      "vision_range": 2756.923076923077,
+      "zones_occlude": true
+    },
+    "fields": 72,
+    "perspective": "team0",
+    "projectile_perception": true,
+    "seed": 20260920,
+    "ship_config": {
+      "base_thrust": 8.0,
+      "boost_thrust": 80.0,
+      "bullet_damage": 10.0,
+      "bullet_drag_coeff": 0.0008,
+      "bullet_energy_cost": 2,
+      "bullet_field_integration_substeps": 2,
+      "bullet_field_integrator": "two_step",
+      "bullet_lifetime": 1.0,
+      "bullet_min_damage_frac": 0.3,
+      "bullet_speed": 500.0,
+      "bullet_spread": 12.0,
+      "collision_radius": 10.0,
+      "default_speed": 100.0,
+      "dt": 0.03333333333333333,
+      "field_index_step": 1.4142135623730951,
+      "field_integration_substeps": 1,
+      "field_integrator": "two_step",
+      "field_radius_max": 750.0,
+      "field_radius_min": 30.0,
+      "field_transition_width_max": 40.0,
+      "field_transition_width_min": 40.0,
+      "firing_cooldown": 0.1,
+      "gravity_eps": 10000.0,
+      "gravity_factor": 0.0,
+      "max_health": 100.0,
+      "max_power": 100.0,
+      "max_speed": 180.0,
+      "min_speed": 1.0,
+      "no_turn_drag_coeff": 0.0008,
+      "normal_turn_angle": 0.08726646259971647,
+      "normal_turn_drag_coeff": 0.0012,
+      "normal_turn_lift_coeff": 0.015,
+      "passive_power_gain": 10.0,
+      "power_speed_constant": 200.0,
+      "random_speed": false,
+      "reverse_thrust": -80.0,
+      "sharp_turn_angle": 0.2617993877991494,
+      "sharp_turn_drag_coeff": 0.005,
+      "sharp_turn_lift_coeff": 0.027,
+      "world_size": [
+        16384.0,
+        16384.0
+      ]
+    },
+    "ships": 100,
+    "team_fog": true,
+    "window": [
+      900,
+      900
+    ]
+  },
+  "dirty": true,
+  "flip_note": "Included: FrontlineGPURenderer.render calls pygame.display.flip().",
+  "memory": {
+    "cuda_allocated_bytes": 199680,
+    "cuda_reserved_bytes": 331350016,
+    "process_max_rss_bytes": 1271619584
+  },
+  "memory_after_startup": {
+    "cuda_allocated_bytes": 197632,
+    "cuda_reserved_bytes": 331350016,
+    "process_max_rss_bytes": 1182232576
+  },
+  "policies_loaded_or_evaluated": false,
+  "renderer_only": true,
+  "revision": "8c0aac81454ebd8308132eef45b111994ee51126",
+  "sample_frames": 20,
+  "schema_version": 1,
+  "software": {
+    "cuda_device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+    "cuda_runtime": "13.0",
+    "device": "cuda",
+    "gl": {
+      "renderer": "NVIDIA GeForce RTX 4070 Laptop GPU/PCIe/SSE2",
+      "vendor": "NVIDIA Corporation",
+      "version": "4.6.0 NVIDIA 595.84"
+    },
+    "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+    "python": "3.13.11 (main, Jan 28 2026, 00:01:45) [Clang 21.1.4 ]",
+    "torch": "2.13.0+cu130"
+  },
+  "started_utc": "2026-09-19T22:53:42.359185+00:00",
+  "startup_and_shader_compile_seconds": 0.6201424940009019,
+  "status": "complete",
+  "timing_summaries": {
+    "gpu_render_including_flip_ms": {
+      "count": 20,
+      "max_ms": 7.984151001437567,
+      "miss_16_7ms": 0,
+      "miss_33_3ms": 0,
+      "p50_ms": 2.969545999803813,
+      "p95_ms": 6.331976001092698,
+      "p99_ms": 6.331976001092698
+    },
+    "reference_draw_frame_ms": {
+      "count": 0,
+      "max_ms": 0.0,
+      "miss_16_7ms": 0,
+      "miss_33_3ms": 0,
+      "p50_ms": 0.0,
+      "p95_ms": 0.0,
+      "p99_ms": 0.0
+    },
+    "snapshot_extraction_ms": {
+      "count": 20,
+      "max_ms": 1.5408859981107526,
+      "miss_16_7ms": 0,
+      "miss_33_3ms": 0,
+      "p50_ms": 1.1958389986830298,
+      "p95_ms": 1.5337090007960796,
+      "p99_ms": 1.5337090007960796
+    },
+    "snapshot_plus_gpu_render_ms": {
+      "count": 20,
+      "max_ms": 9.14977000138606,
+      "miss_16_7ms": 0,
+      "miss_33_3ms": 0,
+      "p50_ms": 4.185865003819345,
+      "p95_ms": 7.872861999203451,
+      "p99_ms": 7.872861999203451
+    }
+  },
+  "timings": {
+    "gpu_render_including_flip_ms": [
+      3.3395840000594035,
+      3.768293998291483,
+      5.072111001936719,
+      2.8444640011002775,
+      2.5861360009002965,
+      2.7202839992241934,
+      3.2840749991009943,
+      2.49278199771652,
+      6.331976001092698,
+      3.0860650003887713,
+      2.969545999803813,
+      2.8076230009901337,
+      2.876783000829164,
+      2.504379997844808,
+      2.447354003379587,
+      7.984151001437567,
+      5.8552740010782145,
+      3.879629999573808,
+      3.1207930005621165,
+      2.1664039995812345
+    ],
+    "reference_draw_frame_ms": [],
+    "snapshot_extraction_ms": [
+      1.3907880020269658,
+      1.1799779967986979,
+      1.2195500021334738,
+      1.1730580008588731,
+      1.002516997687053,
+      1.1194830003660172,
+      1.4186469998094253,
+      0.9983820018533152,
+      1.5408859981107526,
+      1.4042200018593576,
+      1.4118770013737958,
+      1.1958389986830298,
+      1.2668999988818541,
+      1.1408290010876954,
+      1.320430001214845,
+      1.1656189999484923,
+      1.514256997324992,
+      1.5337090007960796,
+      1.065072003257228,
+      1.0164239974983502
+    ],
+    "snapshot_plus_gpu_render_ms": [
+      4.730372002086369,
+      4.948271995090181,
+      6.291661004070193,
+      4.017522001959151,
+      3.5886529985873494,
+      3.8397669995902106,
+      4.70272199891042,
+      3.491163999569835,
+      7.872861999203451,
+      4.490285002248129,
+      4.381423001177609,
+      4.0034619996731635,
+      4.143682999711018,
+      3.645208998932503,
+      3.767784004594432,
+      9.14977000138606,
+      7.3695309984032065,
+      5.413339000369888,
+      4.185865003819345,
+      3.1828279970795847
+    ]
+  },
+  "warmup_frames": 5
+}

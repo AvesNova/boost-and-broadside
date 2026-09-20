@@ -9,8 +9,14 @@ from array import array
 from dataclasses import dataclass
 
 import pygame
+import torch
 
-from boost_and_broadside.ui.gpu_snapshot import RenderSnapshot, SnapshotCore, VisionPerspective
+from boost_and_broadside.ui.gpu_snapshot import (
+    PackedRenderSnapshot,
+    RenderSnapshot,
+    SnapshotCore,
+    VisionPerspective,
+)
 
 MAX_OBSERVERS = 50
 MAX_FOG_CORES = 128  # Frontline 50v50 has room for 77+ opaque primitives.
@@ -103,6 +109,39 @@ def fog_uniform_payload(
     }
 
 
+@dataclass(frozen=True, slots=True)
+class PackedFogUniformPayload:
+    """Fixed-size float32 buffers required by the GLSL fog uniform arrays."""
+
+    observer_count: int
+    core_count: int
+    vision_range: float
+    observer_data: torch.Tensor
+    core_data: torch.Tensor
+
+
+def packed_fog_uniform_payload(
+    snapshot: PackedRenderSnapshot, perspective: VisionPerspective
+) -> PackedFogUniformPayload | None:
+    """Pad packed fog rows once, without rebuilding snapshot dataclasses."""
+
+    fog_rows = snapshot.fog_rows(perspective)
+    if fog_rows is None or snapshot.vision_range is None:
+        return None
+    observers, cores = fog_rows
+    observer_data = torch.zeros((MAX_OBSERVERS, 2), dtype=torch.float32)
+    core_data = torch.zeros((MAX_FOG_CORES, 3), dtype=torch.float32)
+    observer_data[: len(observers)] = observers
+    core_data[: len(cores)] = cores
+    return PackedFogUniformPayload(
+        len(observers),
+        len(cores),
+        float(snapshot.vision_range),
+        observer_data.flatten(),
+        core_data.flatten(),
+    )
+
+
 def map_instance_payload(snapshot: RenderSnapshot) -> tuple[tuple[float, ...], ...]:
     """One batched instance row per field core, zone, and playable boundary.
 
@@ -190,7 +229,9 @@ class FrontlineGPURenderer:
     """Batched GPU scene plus quarter-resolution, exact-LOS team fog pass."""
 
     def __init__(
-        self, snapshot: RenderSnapshot, viewport_size: tuple[int, int] = (900, 900)
+        self,
+        snapshot: RenderSnapshot | PackedRenderSnapshot,
+        viewport_size: tuple[int, int] = (900, 900),
     ) -> None:
         try:
             import moderngl
@@ -288,7 +329,39 @@ class FrontlineGPURenderer:
             self._draw_fog(snapshot, payload)
         pygame.display.flip()
 
-    def _set_scene_uniforms(self, program: object, snapshot: RenderSnapshot, alpha: float) -> None:
+    def render_packed(
+        self,
+        snapshot: PackedRenderSnapshot,
+        previous: PackedRenderSnapshot | None = None,
+        interpolation: float = 1.0,
+    ) -> None:
+        """Render the opt-in tensor packet path without entity reconstruction.
+
+        Callers retain the prior immutable packet and pass it as ``previous``;
+        the first packet deliberately snaps all transforms to current state.
+        """
+
+        if snapshot.world_size != self.camera.world_size:
+            raise ValueError("snapshot world size changed")
+        if previous is not None and (
+            previous.num_ships != snapshot.num_ships or previous.max_bullets != snapshot.max_bullets
+        ):
+            raise ValueError("packed snapshot layout changed")
+        self._ctx.screen.use()
+        self._ctx.clear(0.015, 0.02, 0.04)
+        self._set_scene_uniforms(self._map_program, snapshot, 1.0)
+        self._draw_packed_map(snapshot.map_instances())
+        self._set_scene_uniforms(self._program, snapshot, interpolation)
+        self._program["perspective"].value = {"full": -1, "team0": 0, "team1": 1}[self.perspective]
+        self._draw_packed_entities(snapshot.ship_instances(previous), projectile=False)
+        self._draw_packed_entities(snapshot.projectile_instances(previous), projectile=True)
+        if (payload := packed_fog_uniform_payload(snapshot, self.perspective)) is not None:
+            self._draw_packed_fog(snapshot, payload)
+        pygame.display.flip()
+
+    def _set_scene_uniforms(
+        self, program: object, snapshot: RenderSnapshot | PackedRenderSnapshot, alpha: float
+    ) -> None:
         for name, value in (
             ("world_size", snapshot.world_size),
             ("camera_center", self.camera.center),
@@ -304,6 +377,13 @@ class FrontlineGPURenderer:
         self._map_buffer.orphan(len(data) * 4)
         self._map_buffer.write(data)
         self._map_vao.render(self._moderngl.POINTS, vertices=len(data) // 5)
+
+    def _draw_packed_map(self, rows: torch.Tensor) -> None:
+        """Upload a contiguous float32 map packet via the ndarray buffer protocol."""
+
+        self._map_buffer.orphan(rows.numel() * rows.element_size())
+        self._map_buffer.write(rows.numpy())
+        self._map_vao.render(self._moderngl.POINTS, vertices=rows.shape[0])
 
     def _draw_entities(self, entities: object, projectile: bool) -> None:
         data = array("f")
@@ -328,20 +408,58 @@ class FrontlineGPURenderer:
             )
             self._vao.render(self._moderngl.POINTS, vertices=len(data) // 6)
 
+    def _draw_packed_entities(self, rows: torch.Tensor, projectile: bool) -> None:
+        """Upload packed entity rows directly; no per-ship Python loop."""
+
+        if not len(rows):
+            return
+        self._buffer.orphan(rows.numel() * rows.element_size())
+        self._buffer.write(rows.numpy())
+        self._program["projectile_color"].value = (1.0, 0.8, 0.2) if projectile else (0.0, 0.0, 0.0)
+        self._vao.render(self._moderngl.POINTS, vertices=rows.shape[0])
+
     def _draw_fog(self, snapshot: RenderSnapshot, payload: dict[str, object]) -> None:
+        self._draw_fog_buffers(
+            snapshot,
+            len(payload["observer_positions"]),
+            len(payload["opaque_cores"]),
+            float(payload["vision_range"]),
+            array("f", payload["observer_data"]),
+            array("f", payload["core_data"]),
+        )
+
+    def _draw_packed_fog(
+        self, snapshot: PackedRenderSnapshot, payload: PackedFogUniformPayload
+    ) -> None:
+        self._draw_fog_buffers(
+            snapshot,
+            payload.observer_count,
+            payload.core_count,
+            payload.vision_range,
+            payload.observer_data.numpy(),
+            payload.core_data.numpy(),
+        )
+
+    def _draw_fog_buffers(
+        self,
+        snapshot: RenderSnapshot | PackedRenderSnapshot,
+        observer_count: int,
+        core_count: int,
+        vision_range: float,
+        observer_data: object,
+        core_data: object,
+    ) -> None:
         self._fog_fbo.use()
         # The fog shader writes its final alpha; blending into the transparent
         # FBO would square it under source-alpha blending.
         self._ctx.disable(self._moderngl.BLEND)
         self._ctx.clear(0.0, 0.0, 0.0, 0.0)
         self._set_scene_uniforms(self._fog_program, snapshot, 1.0)
-        observers = payload["observer_positions"]
-        cores = payload["opaque_cores"]
-        self._fog_program["observer_count"].value = len(observers)
-        self._fog_program["core_count"].value = len(cores)
-        self._fog_program["vision_range"].value = payload["vision_range"]
-        self._fog_program["observers"].write(array("f", payload["observer_data"]))
-        self._fog_program["cores"].write(array("f", payload["core_data"]))
+        self._fog_program["observer_count"].value = observer_count
+        self._fog_program["core_count"].value = core_count
+        self._fog_program["vision_range"].value = vision_range
+        self._fog_program["observers"].write(observer_data)
+        self._fog_program["cores"].write(core_data)
         self._fog_vao.render(self._moderngl.TRIANGLE_STRIP)
         self._ctx.screen.use()
         self._ctx.enable(self._moderngl.BLEND)

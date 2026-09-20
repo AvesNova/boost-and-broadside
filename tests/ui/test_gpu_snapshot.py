@@ -12,10 +12,15 @@ from boost_and_broadside.ui.gpu_renderer import (
     interpolate_toroidal_position,
     is_in_vision_range,
     map_instance_payload,
+    packed_fog_uniform_payload,
     segment_clear_of_core,
     toroidal_delta,
 )
-from boost_and_broadside.ui.gpu_snapshot import SnapshotCore, make_render_snapshot
+from boost_and_broadside.ui.gpu_snapshot import (
+    SnapshotCore,
+    make_packed_render_snapshot,
+    make_render_snapshot,
+)
 
 
 def _state(position: complex = 2 + 3j):
@@ -129,6 +134,76 @@ def test_snapshot_performs_one_host_transfer(monkeypatch):
     monkeypatch.setattr(torch.Tensor, "cpu", counted_cpu)
     make_render_snapshot(_state(), world_size=(100, 100))
     assert calls == 1
+
+
+def test_packed_snapshot_matches_reference_entity_values_and_owns_transfer():
+    previous_state, current = _state(1 + 1j), _state(3 + 4j)
+    previous = make_packed_render_snapshot(previous_state, world_size=(100, 100))
+    packed = make_packed_render_snapshot(current, world_size=(100, 100))
+    reference = make_render_snapshot(
+        current,
+        previous=make_render_snapshot(previous_state, world_size=(100, 100)),
+        world_size=(100, 100),
+    )
+    current.ship_pos[0, 0] = 90 + 90j
+    assert packed.ship_instances(previous)[0, :4].tolist() == [1.0, 1.0, 3.0, 4.0]
+    assert packed.step == 7
+    assert packed.projectile_instances(previous)[1, :4].tolist() == list(
+        reference.projectiles[3].previous_position + reference.projectiles[3].current_position
+    )
+
+
+def test_packed_snapshot_performs_one_host_transfer(monkeypatch):
+    calls = 0
+    original_cpu = torch.Tensor.cpu
+
+    def counted_cpu(tensor, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_cpu(tensor, *args, **kwargs)
+
+    monkeypatch.setattr(torch.Tensor, "cpu", counted_cpu)
+    make_packed_render_snapshot(_state(), world_size=(100, 100))
+    assert calls == 1
+
+
+def test_packed_projectile_instances_filter_inactive_slots_and_snap_reuse():
+    previous_state, current_state = _state(), _state()
+    previous_state.bullet_active[0, 0, 0] = False
+    current_state.bullet_pos[0, 0, 0] = 80 + 80j
+    previous = make_packed_render_snapshot(previous_state, world_size=(100, 100))
+    current = make_packed_render_snapshot(current_state, world_size=(100, 100))
+    rows = current.projectile_instances(previous)
+    assert rows.shape == (2, 6)
+    assert rows[0, :4].tolist() == [80.0, 80.0, 80.0, 80.0]
+    assert rows.is_contiguous() and rows.dtype == torch.float32
+    assert rows.numpy().nbytes == rows.numel() * 4
+
+
+def test_packed_map_and_fog_payloads_are_renderer_buffer_compatible():
+    visibility = SimpleNamespace(
+        ship=torch.tensor([[[True, False], [False, True]]]),
+        bullet=torch.tensor([[[[True, False], [False, False]], [[False, False], [False, True]]]]),
+        vision_range=25.0,
+    )
+    packed = make_packed_render_snapshot(
+        _state(), world_size=(100, 100), visibility=visibility, zones_occlude=True
+    )
+    rows = packed.map_instances()
+    fog = packed_fog_uniform_payload(packed, "team0")
+    assert rows.tolist() == [
+        [70.0, 70.0, 7.0, 0.0, 0.0],
+        [30.0, 30.0, 10.0, 1.0, 2.0],
+        [50.0, 50.0, 40.0, 2.0, 0.0],
+    ]
+    assert rows.is_contiguous() and rows.dtype == torch.float32
+    assert fog is not None
+    assert (fog.observer_count, fog.core_count) == (1, 2)
+    assert fog.observer_data.shape == (2 * MAX_OBSERVERS,)
+    assert fog.core_data.shape == (3 * MAX_FOG_CORES,)
+    assert fog.observer_data.numpy().nbytes == 2 * MAX_OBSERVERS * 4
+    assert fog.observer_data[:2].tolist() == [2.0, 3.0]
+    assert packed_fog_uniform_payload(packed, "full") is None
 
 
 def test_exact_toroidal_segment_core_semantics_preserve_touch_and_shared_inside():

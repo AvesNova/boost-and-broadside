@@ -1,0 +1,450 @@
+{
+  "status": "complete",
+  "started_utc": "2026-09-19T22:58:49.615783+00:00",
+  "completed_utc": "2026-09-19T23:00:41.328187+00:00",
+  "command": [
+    "/home/vizia/avesnova/boost-and-broadside/.venv/bin/python",
+    "benchmarks/final_realtime_ab.py",
+    "--pairs",
+    "3",
+    "--warmup",
+    "20",
+    "--samples",
+    "100",
+    "--renderer",
+    "packed",
+    "--out",
+    "artifacts/deadline-experiment/analysis/final-packed-rendered-ab.json"
+  ],
+  "scope": "50v50 Frontline simulation, two distinct random policies, and optional render",
+  "configuration": {
+    "pairs": 3,
+    "warmup": 20,
+    "samples_per_arm": 100,
+    "seed": 5150,
+    "renderer": "packed",
+    "resolution": [
+      900,
+      900
+    ],
+    "policy_compile": "default",
+    "projectile_perception": true,
+    "fog": true
+  },
+  "pair_checks": [
+    {
+      "pair": 0,
+      "action_trace_equal": true
+    },
+    {
+      "pair": 1,
+      "action_trace_equal": true
+    },
+    {
+      "pair": 2,
+      "action_trace_equal": true
+    }
+  ],
+  "aggregate": {
+    "reference": {
+      "count": 300,
+      "p50_ms": 71.15327649989922,
+      "p95_ms": 130.05973400140647,
+      "p99_ms": 173.1396940012928,
+      "max_ms": 183.90743299823953,
+      "deadline_misses": 300,
+      "pair_p50_ms": [
+        75.22481799969682,
+        71.22372099911445,
+        68.40140399981465
+      ],
+      "phase_ms": {
+        "policy": 29.00020182291666,
+        "env_step": 40.85693827311198,
+        "render": 4.381485666623727
+      },
+      "first_call_frame_ms": [
+        7661.128231000475,
+        85.19702600096934,
+        71.88665200010291
+      ],
+      "peak_allocated_mib": 290.69384765625
+    },
+    "candidate": {
+      "count": 300,
+      "p50_ms": 31.79908749916649,
+      "p95_ms": 58.653647000028286,
+      "p99_ms": 75.74734000081662,
+      "max_ms": 110.36573999808752,
+      "deadline_misses": 127,
+      "pair_p50_ms": [
+        35.74722449957335,
+        30.231394499423914,
+        28.74165049979638
+      ],
+      "phase_ms": {
+        "policy": 20.12901547749837,
+        "env_step": 6.811503359476725,
+        "render": 4.777111160025622
+      },
+      "first_call_frame_ms": [
+        6909.670649001782,
+        104.25555300025735,
+        107.55034300018451
+      ],
+      "peak_allocated_mib": 290.69384765625
+    }
+  },
+  "runs": [
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 75.22481799969682,
+      "p95_ms": 165.1569269997708,
+      "p90_ms": 157.84120200260077,
+      "p99_ms": 183.5309639973275,
+      "max_ms": 183.90743299823953,
+      "first_call_frame_ms": 7661.128231000475,
+      "policy_startup_compile_ms": 4148.608188999788,
+      "policy_startup_compile_total_ms": 11809.736420000263,
+      "over_budget_fraction": 1.0,
+      "deadline_misses": 100,
+      "realtime_headroom": 0.4431161712277945,
+      "measured_hz": 11.311360501050205,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": null,
+      "perception_compile_mode": null,
+      "collision_compile_mode": null,
+      "cuda_graph_tick": false,
+      "window_size": 900,
+      "renderer_backend": "gpu-packed",
+      "render_scope": {
+        "display_flip": true,
+        "gpu_snapshot_in_render_phase": true,
+        "team_fog": "team0",
+        "gl": {
+          "GL_VENDOR": "NVIDIA Corporation",
+          "GL_RENDERER": "NVIDIA GeForce RTX 4070 Laptop GPU/PCIe/SSE2",
+          "GL_VERSION": "4.6.0 NVIDIA 595.84"
+        }
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 30.213364562988268,
+        "env_step": 42.22708724975586,
+        "render": 4.398775639565429
+      },
+      "peak_allocated_mib": 262.18798828125,
+      "pair": 0,
+      "arm": "reference",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 35.74722449957335,
+      "p95_ms": 69.8006130005524,
+      "p90_ms": 67.07516599999508,
+      "p99_ms": 87.63742899827776,
+      "max_ms": 110.36573999808752,
+      "first_call_frame_ms": 6909.670649001782,
+      "policy_startup_compile_ms": 239.0267259979737,
+      "policy_startup_compile_total_ms": 7148.697374999756,
+      "over_budget_fraction": 0.89,
+      "deadline_misses": 89,
+      "realtime_headroom": 0.9324733262502989,
+      "measured_hz": 23.989809207636576,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": "default",
+      "perception_compile_mode": "default",
+      "collision_compile_mode": null,
+      "cuda_graph_tick": true,
+      "window_size": 900,
+      "renderer_backend": "gpu-packed",
+      "render_scope": {
+        "display_flip": true,
+        "gpu_snapshot_in_render_phase": true,
+        "team_fog": "team0",
+        "gl": {
+          "GL_VENDOR": "NVIDIA Corporation",
+          "GL_RENDERER": "NVIDIA GeForce RTX 4070 Laptop GPU/PCIe/SSE2",
+          "GL_VERSION": "4.6.0 NVIDIA 595.84"
+        }
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 22.31382667541504,
+        "env_step": 7.299627532958985,
+        "render": 5.002214719861513
+      },
+      "peak_allocated_mib": 262.18798828125,
+      "pair": 0,
+      "arm": "candidate",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 30.231394499423914,
+      "p95_ms": 36.79474200180266,
+      "p90_ms": 36.12839599736617,
+      "p99_ms": 41.29987099804566,
+      "max_ms": 41.99691800022265,
+      "first_call_frame_ms": 104.25555300025735,
+      "policy_startup_compile_ms": 182.40910599706694,
+      "policy_startup_compile_total_ms": 286.6646589973243,
+      "over_budget_fraction": 0.24,
+      "deadline_misses": 24,
+      "realtime_headroom": 1.1026065414868154,
+      "measured_hz": 32.18717812255542,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": "default",
+      "perception_compile_mode": "default",
+      "collision_compile_mode": null,
+      "cuda_graph_tick": true,
+      "window_size": 900,
+      "renderer_backend": "gpu-packed",
+      "render_scope": {
+        "display_flip": true,
+        "gpu_snapshot_in_render_phase": true,
+        "team_fog": "team0",
+        "gl": {
+          "GL_VENDOR": "NVIDIA Corporation",
+          "GL_RENDERER": "NVIDIA GeForce RTX 4070 Laptop GPU/PCIe/SSE2",
+          "GL_VERSION": "4.6.0 NVIDIA 595.84"
+        }
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 17.261091842651368,
+        "env_step": 6.270942726135254,
+        "render": 4.468089639849495
+      },
+      "peak_allocated_mib": 262.18798828125,
+      "pair": 1,
+      "arm": "candidate",
+      "order": [
+        "candidate",
+        "reference"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 71.22372099911445,
+      "p95_ms": 82.54243800183758,
+      "p90_ms": 77.51816800009692,
+      "p99_ms": 90.59519400034333,
+      "max_ms": 91.99050399911357,
+      "first_call_frame_ms": 85.19702600096934,
+      "policy_startup_compile_ms": 275.64778799933265,
+      "policy_startup_compile_total_ms": 360.844814000302,
+      "over_budget_fraction": 1.0,
+      "deadline_misses": 100,
+      "realtime_headroom": 0.4680088721248892,
+      "measured_hz": 13.875360764821856,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": null,
+      "perception_compile_mode": null,
+      "collision_compile_mode": null,
+      "cuda_graph_tick": false,
+      "window_size": 900,
+      "renderer_backend": "gpu-packed",
+      "render_scope": {
+        "display_flip": true,
+        "gpu_snapshot_in_render_phase": true,
+        "team_fog": "team0",
+        "gl": {
+          "GL_VENDOR": "NVIDIA Corporation",
+          "GL_RENDERER": "NVIDIA GeForce RTX 4070 Laptop GPU/PCIe/SSE2",
+          "GL_VERSION": "4.6.0 NVIDIA 595.84"
+        }
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 28.83649024963379,
+        "env_step": 40.96500595092773,
+        "render": 4.408686079987092
+      },
+      "peak_allocated_mib": 290.69384765625,
+      "pair": 1,
+      "arm": "reference",
+      "order": [
+        "candidate",
+        "reference"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 68.40140399981465,
+      "p95_ms": 75.00917500146898,
+      "p90_ms": 73.73498399829259,
+      "p99_ms": 79.5602409998537,
+      "max_ms": 90.28686600140645,
+      "first_call_frame_ms": 71.88665200010291,
+      "policy_startup_compile_ms": 271.05584400123917,
+      "policy_startup_compile_total_ms": 342.9424960013421,
+      "over_budget_fraction": 1.0,
+      "deadline_misses": 100,
+      "realtime_headroom": 0.48731943182662835,
+      "measured_hz": 14.631714902326587,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": null,
+      "perception_compile_mode": null,
+      "collision_compile_mode": null,
+      "cuda_graph_tick": false,
+      "window_size": 900,
+      "renderer_backend": "gpu-packed",
+      "render_scope": {
+        "display_flip": true,
+        "gpu_snapshot_in_render_phase": true,
+        "team_fog": "team0",
+        "gl": {
+          "GL_VENDOR": "NVIDIA Corporation",
+          "GL_RENDERER": "NVIDIA GeForce RTX 4070 Laptop GPU/PCIe/SSE2",
+          "GL_VERSION": "4.6.0 NVIDIA 595.84"
+        }
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 27.95075065612793,
+        "env_step": 39.37872161865234,
+        "render": 4.336995280318661
+      },
+      "peak_allocated_mib": 290.69384765625,
+      "pair": 2,
+      "arm": "reference",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 28.74165049979638,
+      "p95_ms": 35.68515699953423,
+      "p90_ms": 33.98361899962765,
+      "p99_ms": 38.153695000801235,
+      "max_ms": 38.240044999838574,
+      "first_call_frame_ms": 107.55034300018451,
+      "policy_startup_compile_ms": 240.7274149991281,
+      "policy_startup_compile_total_ms": 348.2777579993126,
+      "over_budget_fraction": 0.14,
+      "deadline_misses": 14,
+      "realtime_headroom": 1.1597571034958305,
+      "measured_hz": 33.99564761139038,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": "default",
+      "perception_compile_mode": "default",
+      "collision_compile_mode": null,
+      "cuda_graph_tick": true,
+      "window_size": 900,
+      "renderer_backend": "gpu-packed",
+      "render_scope": {
+        "display_flip": true,
+        "gpu_snapshot_in_render_phase": true,
+        "team_fog": "team0",
+        "gl": {
+          "GL_VENDOR": "NVIDIA Corporation",
+          "GL_RENDERER": "NVIDIA GeForce RTX 4070 Laptop GPU/PCIe/SSE2",
+          "GL_VERSION": "4.6.0 NVIDIA 595.84"
+        }
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 20.812127914428707,
+        "env_step": 6.863939819335935,
+        "render": 4.861029120365856
+      },
+      "peak_allocated_mib": 290.69384765625,
+      "pair": 2,
+      "arm": "candidate",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    }
+  ],
+  "raw_action_trace_archive": "final-realtime-packed-rendered-ab-50v50.json.gz",
+  "raw_archive_sha256": "51e7d39922ae83a4a46cb09a74bd45d873b951782758778ba7d4415c6ea12529"
+}

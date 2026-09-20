@@ -171,6 +171,10 @@ def measure(
     environment_step: str = "step",
     renderer_backend: str | None = None,
     moderngl_path: str | None = None,
+    belief_compile_mode: str | None = None,
+    perception_compile_mode: str | None = None,
+    collision_compile_mode: str | None = None,
+    cuda_graph_tick: bool = False,
 ) -> dict:
     """Time one interactive frame's worth of work, repeatedly."""
 
@@ -192,11 +196,16 @@ def measure(
         env_config=env_config,
         rewards=REWARDS,
         device=device,
+        collision_compile_mode=collision_compile_mode,
         include_bullets=False,
         perceive_bullets=perceive_bullets,
+        interactive_cuda_graph=cuda_graph_tick,
+        interactive_perception_compile_mode=perception_compile_mode,
     )
     observation = wrapper.reset()
     action_buffer = torch.zeros((1, ships, 3), dtype=torch.int32, device=device)
+    if cuda_graph_tick and environment_step != "step_interactive":
+        raise ValueError("CUDA graph tick requires step_interactive")
 
     model_config = replace(PROFILE.model_config, **STAGES[stage])
     sides = []
@@ -211,11 +220,22 @@ def measure(
         ).to(device)
         policy.eval()
         policy.requires_grad_(False)
+        belief = BeliefTracker(
+            1, ships, ship_config.dt * env_config.action_repeat, policy.coordinator, device
+        )
         sides.append(
             {
                 "policy": compile_policy(policy, compile_mode),
-                "belief": BeliefTracker(
-                    1, ships, ship_config.dt * env_config.action_repeat, policy.coordinator, device
+                "belief": belief,
+                "belief_compose": (
+                    torch.compile(belief.compose, mode=belief_compile_mode, dynamic=False)
+                    if belief_compile_mode is not None
+                    else belief.compose
+                ),
+                "belief_advance": (
+                    torch.compile(belief.advance, mode=belief_compile_mode, dynamic=False)
+                    if belief_compile_mode is not None
+                    else belief.advance
                 ),
                 "hidden": policy.initial_hidden(1, ships, device),
             }
@@ -239,15 +259,23 @@ def measure(
             display_flip=True,
             zone_occlusion=env_config.zones_occlude,
         )
-    elif renderer_backend == "gpu":
+    elif renderer_backend in {"gpu", "gpu-packed"}:
         if moderngl_path:
             import sys
 
             sys.path.insert(0, moderngl_path)
         from boost_and_broadside.ui.gpu_renderer import FrontlineGPURenderer
-        from boost_and_broadside.ui.gpu_snapshot import make_render_snapshot
+        from boost_and_broadside.ui.gpu_snapshot import (
+            make_packed_render_snapshot,
+            make_render_snapshot,
+        )
 
-        previous_snapshot = make_render_snapshot(
+        snapshot_builder = (
+            make_packed_render_snapshot
+            if renderer_backend == "gpu-packed"
+            else make_render_snapshot
+        )
+        previous_snapshot = snapshot_builder(
             wrapper.state,
             world_size=ship_config.world_size,
             visibility=wrapper.last_visibility,
@@ -293,11 +321,11 @@ def measure(
                 # playing team 1 means seeing mirrored team IDs -- exactly what
                 # `agent_view` does in the interactive loop.
                 view = view.flip_team(ships, mask=as_team1)
-            view = side["belief"].compose(view)
+            view = side["belief_compose"](view)
             action, _, _, prediction, side["hidden"] = side["policy"].get_action_and_value(
                 view, side["hidden"]
             )
-            side["belief"].advance(view, prediction)
+            side["belief_advance"](view, prediction)
             actions.append(action)
         # One policy side means the other team is a keyboard or scripted
         # controller, whose action costs nothing measurable next to a forward
@@ -413,17 +441,30 @@ def measure(
             if record:
                 phases["render"] += time.perf_counter() - render_start
         elif gpu_renderer is not None:
-            from boost_and_broadside.ui.gpu_snapshot import make_render_snapshot
+            from boost_and_broadside.ui.gpu_snapshot import (
+                make_packed_render_snapshot,
+                make_render_snapshot,
+            )
 
             render_start = time.perf_counter()
-            previous_snapshot = make_render_snapshot(
-                wrapper.state,
-                world_size=ship_config.world_size,
-                previous=previous_snapshot,
-                visibility=wrapper.last_visibility,
-                zones_occlude=env_config.zones_occlude,
-            )
-            gpu_renderer.render(previous_snapshot)
+            if renderer_backend == "gpu-packed":
+                current_snapshot = make_packed_render_snapshot(
+                    wrapper.state,
+                    world_size=ship_config.world_size,
+                    visibility=wrapper.last_visibility,
+                    zones_occlude=env_config.zones_occlude,
+                )
+                gpu_renderer.render_packed(current_snapshot, previous_snapshot)
+                previous_snapshot = current_snapshot
+            else:
+                previous_snapshot = make_render_snapshot(
+                    wrapper.state,
+                    world_size=ship_config.world_size,
+                    previous=previous_snapshot,
+                    visibility=wrapper.last_visibility,
+                    zones_occlude=env_config.zones_occlude,
+                )
+                gpu_renderer.render(previous_snapshot)
             if record:
                 phases["render"] += time.perf_counter() - render_start
 
@@ -501,12 +542,16 @@ def measure(
         "measured_hz": measured_hz,
         "perceive_bullets": perceive_bullets,
         "policy_sides": policy_sides,
+        "belief_compile_mode": belief_compile_mode,
+        "perception_compile_mode": perception_compile_mode,
+        "collision_compile_mode": collision_compile_mode,
+        "cuda_graph_tick": cuda_graph_tick,
         "window_size": window_size,
         "renderer_backend": renderer_backend or ("headless-legacy" if window_size else None),
         "render_scope": {
-            "display_flip": renderer_backend in {"legacy", "gpu"},
-            "gpu_snapshot_in_render_phase": renderer_backend == "gpu",
-            "team_fog": "team0" if renderer_backend == "gpu" else None,
+            "display_flip": renderer_backend in {"legacy", "gpu", "gpu-packed"},
+            "gpu_snapshot_in_render_phase": renderer_backend in {"gpu", "gpu-packed"},
+            "team_fog": "team0" if renderer_backend in {"gpu", "gpu-packed"} else None,
             "gl": gl_info or None,
         },
         "torch_threads": torch.get_num_threads(),
@@ -585,6 +630,10 @@ def main() -> None:
         help="ablation: skip projectile line-of-sight, which only the renderer needs",
     )
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--belief-compile", choices=("default", "reduce-overhead"))
+    parser.add_argument("--perception-compile", choices=("default", "reduce-overhead"))
+    parser.add_argument("--collision-compile", choices=("default", "reduce-overhead"))
+    parser.add_argument("--cuda-graph-tick", action="store_true")
     parser.add_argument(
         "--moderngl-path",
         help="directory containing an isolated ModernGL install for --renderer-backend gpu callers",
@@ -633,6 +682,10 @@ def main() -> None:
                     enqueue_order=args.enqueue_order,
                     environment_step=args.environment_step,
                     moderngl_path=args.moderngl_path,
+                    belief_compile_mode=args.belief_compile,
+                    perception_compile_mode=args.perception_compile,
+                    collision_compile_mode=args.collision_compile,
+                    cuda_graph_tick=args.cuda_graph_tick,
                 )
                 rows.append(row)
                 verdict = "OK" if row["realtime_headroom"] >= 1.0 else "MISS"

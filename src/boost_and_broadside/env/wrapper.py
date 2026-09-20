@@ -17,10 +17,12 @@ from typing import Any
 import torch
 
 from boost_and_broadside.config import EnvConfig, MatchResult, RewardConfig, ShipConfig
+from boost_and_broadside.env.cuda_graph import CapturedTick
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import (
     ObservationBuffers,
     YemongObservation,
+    compile_perception,
     observation_from_state,
     perceived_observation_from_state,
 )
@@ -97,6 +99,8 @@ class YemongEnvWrapper:
         collision_compile_mode: str | None = None,
         include_bullets: bool = False,
         perceive_bullets: bool | None = None,
+        interactive_cuda_graph: bool = False,
+        interactive_perception_compile_mode: str | None = None,
     ) -> None:
         self.env = TensorEnv(
             num_envs,
@@ -117,6 +121,12 @@ class YemongEnvWrapper:
         # directly — the play renderer — asks for it regardless.
         self.perceive_bullets = include_bullets if perceive_bullets is None else perceive_bullets
         self.last_visibility = None
+        if interactive_cuda_graph and self.device.type != "cuda":
+            raise ValueError("interactive CUDA graph execution requires a CUDA device")
+        self._interactive_cuda_graph = interactive_cuda_graph
+        self._captured_tick: CapturedTick | None = None
+        self._interactive_perceive = compile_perception(interactive_perception_compile_mode)
+        self._interactive_perception_compiled = interactive_perception_compile_mode is not None
 
         # All components (group-scale multipliers update individual weights each training step).
         self._all_components: list[RewardComponent] = build_reward_components(rewards, ship_config)
@@ -185,6 +195,8 @@ class YemongEnvWrapper:
     ) -> YemongObservation:
         """Reset all environments and return initial observations."""
         self.env.reset(options=options, seed=seed)
+        if self._captured_tick is not None:
+            self._captured_tick.load_state(self.env.state)
         self._refresh_field_obs_all()
         self._ep_reward.zero_()
         self._ep_length.zero_()
@@ -412,9 +424,7 @@ class YemongEnvWrapper:
             # Preserve standard-step's frozen terminal outputs during a held
             # action, while allowing the physics engine to finish its ticks.
             running = ~(dones | truncated)
-            tick_dones, tick_truncated = self.env.tick(
-                actions, unlimited_resources=unlimited_resources
-            )
+            tick_dones, tick_truncated = self._interactive_tick(actions, unlimited_resources)
             transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
             ended_this_tick = (tick_dones | tick_truncated) & running
             terminal_result = torch.where(
@@ -426,6 +436,8 @@ class YemongEnvWrapper:
         done_mask = dones | truncated
         if auto_reset:
             self.env.reset_envs(done_mask)
+            if self._captured_tick is not None:
+                self._captured_tick.load_state(self.env.state)
             self._reset_perception(done_mask)
             self._refresh_field_obs(done_mask)
 
@@ -438,6 +450,27 @@ class YemongEnvWrapper:
                 "match_result": terminal_result,
             },
         )
+
+    def _interactive_tick(
+        self,
+        actions: torch.Tensor,
+        unlimited_resources: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Advance authoritative physics through the selected interactive executor."""
+
+        if not self._interactive_cuda_graph or unlimited_resources:
+            result = self.env.tick(
+                actions,
+                unlimited_resources=unlimited_resources,
+            )
+            # Eager tick rebinds TensorState fields. Copy its result into the
+            # stable captured storages before a later graph replay.
+            if self._captured_tick is not None:
+                self._captured_tick.load_state(self.env.state)
+            return result
+        if self._captured_tick is None:
+            self._captured_tick = CapturedTick(self.env, actions)
+        return self._captured_tick.replay(actions)
 
     def _physics_tick(
         self,
@@ -601,13 +634,13 @@ class YemongEnvWrapper:
 
     def _get_obs_interactive(self) -> YemongObservation:
         """Build play/watch observations without training diagnostic updates."""
-        observation, self.last_visibility = perceived_observation_from_state(
+        observation, self.last_visibility = self._interactive_perceive(
             self.env.state,
             self.ship_config,
             self.env_config,
-            self._obs_buffers,
-            include_bullets=self.include_bullets,
-            perceive_bullets=self.perceive_bullets,
+            None if self._interactive_perception_compiled else self._obs_buffers,
+            self.include_bullets,
+            self.perceive_bullets,
         )
         return observation
 
