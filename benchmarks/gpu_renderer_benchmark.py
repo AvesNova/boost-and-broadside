@@ -160,9 +160,15 @@ def run(args: argparse.Namespace) -> dict:
         if args.moderngl_path:
             sys.path.insert(0, str(Path(args.moderngl_path).expanduser().resolve()))
         from boost_and_broadside.ui.gpu_renderer import FrontlineGPURenderer
-        from boost_and_broadside.ui.gpu_snapshot import make_render_snapshot
+        from boost_and_broadside.ui.gpu_snapshot import (
+            make_packed_render_snapshot,
+            make_render_snapshot,
+        )
 
-        snapshot = make_render_snapshot(
+        snapshot_builder = (
+            make_packed_render_snapshot if args.arm == "gpu-packed" else make_render_snapshot
+        )
+        snapshot = snapshot_builder(
             state,
             world_size=ship_config.world_size,
             visibility=wrapper.last_visibility,
@@ -244,16 +250,28 @@ def run(args: argparse.Namespace) -> dict:
                     timings["reference_draw_frame_ms"].append(elapsed)
             else:
                 extraction_start = time.perf_counter()
-                snapshot = make_render_snapshot(
-                    state,
-                    world_size=ship_config.world_size,
-                    previous=snapshot,
-                    visibility=wrapper.last_visibility,
-                    zones_occlude=env_config.zones_occlude,
-                )
+                if args.arm == "gpu-packed":
+                    previous = snapshot
+                    snapshot = make_packed_render_snapshot(
+                        state,
+                        world_size=ship_config.world_size,
+                        visibility=wrapper.last_visibility,
+                        zones_occlude=env_config.zones_occlude,
+                    )
+                else:
+                    snapshot = make_render_snapshot(
+                        state,
+                        world_size=ship_config.world_size,
+                        previous=snapshot,
+                        visibility=wrapper.last_visibility,
+                        zones_occlude=env_config.zones_occlude,
+                    )
                 extraction_ms = (time.perf_counter() - extraction_start) * 1000
                 render_start = time.perf_counter()
-                gpu_renderer.render(snapshot)
+                if args.arm == "gpu-packed":
+                    gpu_renderer.render_packed(snapshot, previous)
+                else:
+                    gpu_renderer.render(snapshot)
                 render_ms = (time.perf_counter() - render_start) * 1000
                 if frame >= args.warmup:
                     timings["snapshot_extraction_ms"].append(extraction_ms)
@@ -281,7 +299,7 @@ def run(args: argparse.Namespace) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--arm", choices=("reference", "gpu"), required=True)
+    parser.add_argument("--arm", choices=("reference", "gpu", "gpu-packed"), required=True)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--moderngl-path", help="Optional directory containing ModernGL modules")
     parser.add_argument("--warmup", type=int, default=30)

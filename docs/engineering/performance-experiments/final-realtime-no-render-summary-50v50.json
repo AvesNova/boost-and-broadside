@@ -1,0 +1,423 @@
+{
+  "status": "complete",
+  "started_utc": "2026-09-19T22:57:05.991476+00:00",
+  "completed_utc": "2026-09-19T22:58:24.660952+00:00",
+  "command": [
+    "/home/vizia/avesnova/boost-and-broadside/.venv/bin/python",
+    "benchmarks/final_realtime_ab.py",
+    "--pairs",
+    "3",
+    "--warmup",
+    "20",
+    "--samples",
+    "100",
+    "--renderer",
+    "none",
+    "--out",
+    "artifacts/deadline-experiment/analysis/final-no-render-ab.json"
+  ],
+  "scope": "50v50 Frontline simulation, two distinct random policies, and optional render",
+  "configuration": {
+    "pairs": 3,
+    "warmup": 20,
+    "samples_per_arm": 100,
+    "seed": 5150,
+    "renderer": "none",
+    "resolution": null,
+    "policy_compile": "default",
+    "projectile_perception": true,
+    "fog": false
+  },
+  "pair_checks": [
+    {
+      "pair": 0,
+      "action_trace_equal": true
+    },
+    {
+      "pair": 1,
+      "action_trace_equal": true
+    },
+    {
+      "pair": 2,
+      "action_trace_equal": true
+    }
+  ],
+  "aggregate": {
+    "reference": {
+      "count": 300,
+      "p50_ms": 60.559532499610214,
+      "p95_ms": 64.81876600082614,
+      "p99_ms": 65.99648100018385,
+      "max_ms": 73.36088500233018,
+      "deadline_misses": 200,
+      "pair_p50_ms": [
+        20.826675499847624,
+        61.81760649997159,
+        63.213222500053234
+      ],
+      "phase_ms": {
+        "policy": 20.96975445429484,
+        "env_step": 28.445934041341147,
+        "render": 0.0
+      },
+      "first_call_frame_ms": [
+        3443.499351000355,
+        69.97798299926217,
+        65.63229800303816
+      ],
+      "peak_allocated_mib": 290.69384765625
+    },
+    "candidate": {
+      "count": 300,
+      "p50_ms": 24.337082999409176,
+      "p95_ms": 29.758349002804607,
+      "p99_ms": 30.545649999112356,
+      "max_ms": 36.08944400184555,
+      "deadline_misses": 1,
+      "pair_p50_ms": [
+        24.663195999892196,
+        24.600576998636825,
+        24.048142999163247
+      ],
+      "phase_ms": {
+        "policy": 18.907755114237467,
+        "env_step": 6.700889581044515,
+        "render": 0.0
+      },
+      "first_call_frame_ms": [
+        6909.769820998918,
+        108.54424200078938,
+        109.85924100168631
+      ],
+      "peak_allocated_mib": 290.69384765625
+    }
+  },
+  "runs": [
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 20.826675499847624,
+      "p95_ms": 21.585893002338707,
+      "p90_ms": 21.421788002044195,
+      "p99_ms": 22.005725997587433,
+      "max_ms": 22.1586829975422,
+      "first_call_frame_ms": 3443.499351000355,
+      "policy_startup_compile_ms": 4691.536706999614,
+      "policy_startup_compile_total_ms": 8135.036057999969,
+      "over_budget_fraction": 0.0,
+      "deadline_misses": 0,
+      "realtime_headroom": 1.600511485070059,
+      "measured_hz": 47.987429474006916,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": null,
+      "perception_compile_mode": null,
+      "collision_compile_mode": null,
+      "cuda_graph_tick": false,
+      "window_size": null,
+      "renderer_backend": null,
+      "render_scope": {
+        "display_flip": false,
+        "gpu_snapshot_in_render_phase": false,
+        "team_fog": null,
+        "gl": null
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 8.21137784957886,
+        "env_step": 12.600253448486331,
+        "render": 0.0
+      },
+      "peak_allocated_mib": 262.18798828125,
+      "pair": 0,
+      "arm": "reference",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 24.663195999892196,
+      "p95_ms": 29.640756001754198,
+      "p90_ms": 29.132935000234284,
+      "p99_ms": 29.982044001371833,
+      "max_ms": 30.00805100236903,
+      "first_call_frame_ms": 6909.769820998918,
+      "policy_startup_compile_ms": 35.52456100078416,
+      "policy_startup_compile_total_ms": 6945.294381999702,
+      "over_budget_fraction": 0.0,
+      "deadline_misses": 0,
+      "realtime_headroom": 1.3515415169015013,
+      "measured_hz": 39.75010759348737,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": "default",
+      "perception_compile_mode": "default",
+      "collision_compile_mode": null,
+      "cuda_graph_tick": true,
+      "window_size": null,
+      "renderer_backend": null,
+      "render_scope": {
+        "display_flip": false,
+        "gpu_snapshot_in_render_phase": false,
+        "team_fog": null,
+        "gl": null
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 18.45378952026367,
+        "env_step": 6.46706813812256,
+        "render": 0.0
+      },
+      "peak_allocated_mib": 262.18798828125,
+      "pair": 0,
+      "arm": "candidate",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 24.600576998636825,
+      "p95_ms": 30.04155899907346,
+      "p90_ms": 29.5362130018475,
+      "p99_ms": 30.726547996891895,
+      "max_ms": 36.08944400184555,
+      "first_call_frame_ms": 108.54424200078938,
+      "policy_startup_compile_ms": 184.52716799947666,
+      "policy_startup_compile_total_ms": 293.07141000026604,
+      "over_budget_fraction": 0.01,
+      "deadline_misses": 1,
+      "realtime_headroom": 1.3549817687276364,
+      "measured_hz": 38.88956483480378,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": "default",
+      "perception_compile_mode": "default",
+      "collision_compile_mode": null,
+      "cuda_graph_tick": true,
+      "window_size": null,
+      "renderer_backend": null,
+      "render_scope": {
+        "display_flip": false,
+        "gpu_snapshot_in_render_phase": false,
+        "team_fog": null,
+        "gl": null
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 19.899527740478515,
+        "env_step": 7.126681575775145,
+        "render": 0.0
+      },
+      "peak_allocated_mib": 262.18798828125,
+      "pair": 1,
+      "arm": "candidate",
+      "order": [
+        "candidate",
+        "reference"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 61.81760649997159,
+      "p95_ms": 64.70794300184934,
+      "p90_ms": 64.30134200127213,
+      "p99_ms": 65.52850500156637,
+      "max_ms": 65.65305000185617,
+      "first_call_frame_ms": 69.97798299926217,
+      "policy_startup_compile_ms": 177.6769019998028,
+      "policy_startup_compile_total_ms": 247.65488499906496,
+      "over_budget_fraction": 1.0,
+      "deadline_misses": 100,
+      "realtime_headroom": 0.5392207045956827,
+      "measured_hz": 16.40437777311784,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": null,
+      "perception_compile_mode": null,
+      "collision_compile_mode": null,
+      "cuda_graph_tick": false,
+      "window_size": null,
+      "renderer_backend": null,
+      "render_scope": {
+        "display_flip": false,
+        "gpu_snapshot_in_render_phase": false,
+        "team_fog": null,
+        "gl": null
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 27.826360473632814,
+        "env_step": 37.17213165283203,
+        "render": 0.0
+      },
+      "peak_allocated_mib": 290.69384765625,
+      "pair": 1,
+      "arm": "reference",
+      "order": [
+        "candidate",
+        "reference"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 63.213222500053234,
+      "p95_ms": 65.30715300323209,
+      "p90_ms": 64.88585199986119,
+      "p99_ms": 69.07610000052955,
+      "max_ms": 73.36088500233018,
+      "first_call_frame_ms": 65.63229800303816,
+      "policy_startup_compile_ms": 179.63716099984595,
+      "policy_startup_compile_total_ms": 245.2694590028841,
+      "over_budget_fraction": 1.0,
+      "deadline_misses": 100,
+      "realtime_headroom": 0.5273158370197828,
+      "measured_hz": 15.853929028398603,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": null,
+      "perception_compile_mode": null,
+      "collision_compile_mode": null,
+      "cuda_graph_tick": false,
+      "window_size": null,
+      "renderer_backend": null,
+      "render_scope": {
+        "display_flip": false,
+        "gpu_snapshot_in_render_phase": false,
+        "team_fog": null,
+        "gl": null
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 26.87152503967285,
+        "env_step": 35.56541702270508,
+        "render": 0.0
+      },
+      "peak_allocated_mib": 290.69384765625,
+      "pair": 2,
+      "arm": "reference",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    },
+    {
+      "scenario": "50v50",
+      "stage": "baseline",
+      "device": "cuda",
+      "num_ships": 100,
+      "num_fields": 72,
+      "entity_tokens": 178,
+      "compile_mode": "default",
+      "execution": "sequential",
+      "environment_step": "step_interactive",
+      "enqueue_order": null,
+      "decision_hz": 30,
+      "frame_budget_ms": 33.333333333333336,
+      "median_ms": 24.048142999163247,
+      "p95_ms": 29.533778000768507,
+      "p90_ms": 28.35939699798473,
+      "p99_ms": 30.545649999112356,
+      "max_ms": 30.943013000069186,
+      "first_call_frame_ms": 109.85924100168631,
+      "policy_startup_compile_ms": 186.72352700014017,
+      "policy_startup_compile_total_ms": 296.5827680018265,
+      "over_budget_fraction": 0.0,
+      "deadline_misses": 0,
+      "realtime_headroom": 1.3861084132148236,
+      "measured_hz": 40.513886482039105,
+      "perceive_bullets": true,
+      "policy_sides": 2,
+      "belief_compile_mode": "default",
+      "perception_compile_mode": "default",
+      "collision_compile_mode": null,
+      "cuda_graph_tick": true,
+      "window_size": null,
+      "renderer_backend": null,
+      "render_scope": {
+        "display_flip": false,
+        "gpu_snapshot_in_render_phase": false,
+        "team_fog": null,
+        "gl": null
+      },
+      "torch_threads": 10,
+      "resets": 0,
+      "phase_ms": {
+        "policy": 18.369948081970218,
+        "env_step": 6.508919029235838,
+        "render": 0.0
+      },
+      "peak_allocated_mib": 290.69384765625,
+      "pair": 2,
+      "arm": "candidate",
+      "order": [
+        "reference",
+        "candidate"
+      ]
+    }
+  ],
+  "raw_action_trace_archive": "final-realtime-no-render-ab-50v50.json.gz",
+  "raw_archive_sha256": "cd1585bc6f62364667bf2fcf6333f8b0a05e1b1c74f88af03ec9c93cbbe223fa"
+}

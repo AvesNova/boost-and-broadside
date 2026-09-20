@@ -6,8 +6,31 @@ Intake revision: `b12bb5c8bd59a981dee613cf0dd523f5f6bacd5e`
 
 ## Decision
 
-The experiment produced one production change worth keeping and two useful but
-not yet production-ready boundaries:
+The final evidence changes the candidate disposition from the initial intake
+report below:
+
+1. **Keep the opt-in 30 Hz simulation/decision candidate**: CUDA-graph tick,
+   compiled pure perception (including projectiles), and compiled belief compose/advance.
+   The three-pair no-render A/B completed 299/300 candidate frames within
+   33.3 ms (p50/p95/p99/max **24.337/29.758/30.546/36.089 ms**); paired action
+   traces were exact. This supports a near-30 Hz sim+decisions path, not a
+   zero-miss guarantee.
+2. **Keep the packed renderer boundary, but do not claim sustained rendered
+   30 FPS.** In the same two-policy A/B with 900×900 team fog and projectile
+   perception, candidate p50 was 31.799 ms but p95 was 58.654 ms and
+   **127/300** frames missed 33.3 ms. A renderer-only smoke did validate
+   snapshot extraction, actual NVIDIA OpenGL rendering, and display flip, but
+   it was only 20 samples and excluded policy/environment work.
+3. **Reject/defer the remaining candidates.** The two-policy vmap screen is
+   policy-call-only and inconsistent across pairs; field transport failed
+   strict parity; no collision/precision change has a correctness-backed
+   end-to-end win. Whole-tick compilation and earlier LOS alternatives remain
+   rejected as described in the history below.
+
+The original intake findings are retained below as experiment history; the
+final candidate evidence and its narrower claims are recorded after that table.
+
+Initial intake decision:
 
 1. **Keep the lean interactive environment step** (`7082876`). Play/watch now
    bypass reward, episode-statistic, and perception-diagnostic bookkeeping while
@@ -27,13 +50,11 @@ not yet production-ready boundaries:
    77.391→75.704 ms, the candidate had a 535.193 ms maximum, and it missed all
    150 decision deadlines. Cold perception compilation cost 4.53–12.83 seconds.
 
-No configuration demonstrated sustained 30 Hz simulation and two-policy
-decisions. One reference arm transiently completed 48/50 frames within 33.3 ms,
-then its next two arms returned to about 80 ms p50; that is not a repeatable
-result. The renderer-only prototype stayed below 16.7 ms for all 300 samples,
-so a decoupled 60 FPS presentation loop interpolating immutable snapshots is
-credible, but the current simulation/decision loop is still roughly a 12–14 Hz
-path under the measured steady configurations.
+The final no-render candidate is a demonstrated near-30 Hz sim+decisions path
+under this bounded test (1/300 misses); it is not an unconditional deadline
+guarantee. The rendered complete path does not sustain 30 FPS. Renderer-only
+measurements are useful boundary timings, not evidence that the full loop
+meets either 30 or 60 FPS.
 
 ## Measurement contract
 
@@ -58,7 +79,23 @@ setting was changed.
   Phase values are diagnostic windows from the same arm but are not added to
   reconstruct frame medians.
 
-## Candidate comparison
+## Final candidate comparison
+
+| Candidate | Exact scope | Correctness/parity | Complete latency, p50 / p95 / p99 / max | Rendering | Environment throughput | End-to-end training | Startup / memory | Limitations | Decision |
+|---|---|---|---|---|---|---|---|---|---|
+| Final no-render candidate | B=1 50v50 Frontline; two distinct random policies compiled `default`; compiled perception and belief; fixed-storage CUDA-graph authoritative tick; projectile perception and both team views | Exact paired action traces in all three A/B pairs; exact 200-tick variable-action graph parity including reset and CUDA RNG; perception parity at 2e-6; belief parity at atol 2e-4/rtol 2e-6 with exact discrete state and retained ownership | **24.337 / 29.758 / 30.546 / 36.089 ms**, n=300, 1 miss; pair medians 24.663/24.601/24.048 ms. Reference 60.560/64.819/65.996/73.361 ms, 200 misses, with one transient 20.827 ms pair | Excluded | Not a training path; environment/observation diagnostic mean 6.701 ms | Not measured; benefit unproven | Cold combined first frame observed up to 28.379 s; isolated graph capture 20.95 ms; peak allocated 290.69 MiB in both final arms | Random policies; bounded tail sample; opt-in fixed-shape interactive execution | **Keep** |
+| Final packed-rendered candidate | Same candidate plus one-transfer packed snapshot, ModernGL team fog, 900x900 framebuffer and display flip | Same exact paired actions; 14 packed snapshot/render contract tests; actual RTX OpenGL execution | **31.799 / 58.654 / 75.747 / 110.366 ms**, n=300, 127 misses. Reference 71.153/130.060/173.140/183.907 ms, 300 misses | Renderer-only smoke: snapshot 1.196 ms p50; snapshot+render+flip 4.186 ms p50, n=20 | Not a training path | Not measured | Renderer startup 0.620 s in smoke; final peak CUDA allocation 290.69 MiB | Presentation parity incomplete; GL/flip tails prevent sustained 30 FPS | **Keep boundary; decouple/interpolate presentation** |
+| Two-policy vmap | Two distinct weights and team views, policy calls only | CPU output/sampling checks passed | Not a complete-frame measurement | Excluded | Excluded | Excluded | Separate first compile 62.889 s; vmap 35.085 s | Pair medians were inconsistent: separate 11.569/11.631 ms, vmap 12.382/11.116 ms | **Reject unchanged** |
+
+Final evidence: [no-render summary](performance-experiments/final-realtime-no-render-summary-50v50.json),
+[compressed raw no-render samples/actions](performance-experiments/final-realtime-no-render-ab-50v50.json.gz),
+[packed-rendered summary](performance-experiments/final-realtime-packed-rendered-summary-50v50.json),
+[compressed raw rendered samples/actions](performance-experiments/final-realtime-packed-rendered-ab-50v50.json.gz),
+[CUDA-graph parity](performance-experiments/cuda-graph-tick-parity-50v50.json),
+[compiled-belief parity](performance-experiments/compiled-belief-parity-50v50.json), and
+[packed-renderer smoke](performance-experiments/packed-renderer-screen-50v50.json).
+
+## Candidate comparison (intake history)
 
 | Candidate | Exact scope | Correctness/parity | Complete rendered frame, p50 / p95 / p99 / max | Rendering result | Environment throughput | End-to-end training | Startup / memory | Limitations | Decision |
 |---|---|---|---|---|---|---|---|---|---|
@@ -88,11 +125,16 @@ Raw artifacts: [intake reference](performance-experiments/current-reference-base
 
 ## Correctness result
 
-The final CPU suite ran:
+The full repository suite ran:
 
 ```text
-318 passed, 4 skipped in 32.89s
+1580 passed, 12 skipped, 1 documentation-policy failure in 672.92s
 ```
+
+The sole failure found legacy `--mode` command text in this report and two
+pre-existing archived audit documents; no runtime or numerical assertion
+failed. Earlier focused integrated verification passed 318 tests with four
+CUDA-sandbox skips, and the authorized CUDA parity runs below passed separately.
 
 It covered environment physics, projectile lifecycle and fields, collisions,
 shields and hull destruction, Frontline capture/transitions, boundary damage,
@@ -210,6 +252,8 @@ complete training throughput.
 - ModernGL remains an isolated prototype dependency, not a project dependency.
 - Failed production observation edits were reverted; failed candidates live
   only in benchmark code and raw evidence.
+- The final implementation and evidence are checkpointed on the experiment
+  branch; publishing status is recorded in the Git history/handoff message.
 - No benchmark process remains. Durable continuation state is in the ignored
   `artifacts/deadline-experiment/WORKLOG.md` and `state.json`.
 - Exact-session resume was available, but reset-time telemetry and a safe

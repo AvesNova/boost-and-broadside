@@ -1,0 +1,102 @@
+{
+  "args": {
+    "atol": 0.0002,
+    "device": "cuda",
+    "out": "artifacts/deadline-experiment/analysis/belief-parity-200-relaxed.json",
+    "rtol": 2e-06,
+    "seed": 271828,
+    "steps": 200
+  },
+  "clamp_events": {
+    "team0": {
+      "compiled": 0,
+      "eager": 0
+    },
+    "team1": {
+      "compiled": 0,
+      "eager": 0
+    }
+  },
+  "compiled_first_call_seconds": {
+    "team0.compiled_advance_including_compile": 1.450110838002729,
+    "team0.compiled_compose_including_compile": 3.335565082001267,
+    "team0.eager_advance": 0.013783001999399858,
+    "team0.eager_compose": 0.11133779299780144,
+    "team1.compiled_advance_including_compile": 0.0010118960017280187,
+    "team1.compiled_compose_including_compile": 0.0012657009974645916,
+    "team1.eager_advance": 0.00316432299950975,
+    "team1.eager_compose": 0.0038098360018921085
+  },
+  "completed_utc": "2026-09-19T22:37:03.626696+00:00",
+  "configuration": {
+    "action_trace": "seeded legal power/turn/shoot randint actions on CPU, shared",
+    "compiler": "torch.compile(mode='default', dynamic=False)",
+    "fields": 72,
+    "float_tolerance": {
+      "atol": 0.0002,
+      "rtol": 2e-06
+    },
+    "integer_boolean_discrete_comparison": "exact torch.equal",
+    "prediction_trace": "seeded CPU torch.randn * 0.05, shared by eager/compiled",
+    "projectile_perception": true,
+    "scenario": "50v50",
+    "seed": 271828,
+    "ships": 100,
+    "steps": 200,
+    "team_fog": true,
+    "team_views": [
+      "team0",
+      "team1 flipped to ego-team0"
+    ]
+  },
+  "dirty": true,
+  "error_count": 0,
+  "errors": [],
+  "parity_passed": true,
+  "retained_observation_ownership": {
+    "checked": true,
+    "passed": true,
+    "retained_outputs_per_team_and_arm": 200
+  },
+  "revision": "8c0aac81454ebd8308132eef45b111994ee51126",
+  "schema_version": 1,
+  "software": {
+    "cuda_runtime": "13.0",
+    "device": "cuda",
+    "device_name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+    "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+    "python": "3.13.11 (main, Jan 28 2026, 00:01:45) [Clang 21.1.4 ]",
+    "torch": "2.13.0+cu130"
+  },
+  "started_utc": "2026-09-19T22:36:32.646738+00:00",
+  "startup_and_trace_build_seconds": 13.037154525001824,
+  "status": "complete",
+  "steps_compared": 200,
+  "trace_digest_sha256": "7608551dfda046e4af1b65babaff00d887cf185819f96e6652b856e6fb01417c",
+  "tracker_state_final": {
+    "team0": {
+      "compiled": {
+        "max_age_steps": 9,
+        "predicted_targets_sha256": "1bbc8b84524daabc619b5726f994f42b221c0ae51946cd2870fc70cd747a581b",
+        "valid_count": 100
+      },
+      "eager": {
+        "max_age_steps": 9,
+        "predicted_targets_sha256": "11ace85f88dc9ffa7e21c10dd22897b9bad4890c46d6c9336cb88781334b3f00",
+        "valid_count": 100
+      }
+    },
+    "team1": {
+      "compiled": {
+        "max_age_steps": 12,
+        "predicted_targets_sha256": "a7691ffc45fab885495db16120b0cea0f8157426a8c815850fab02694cfd1ef5",
+        "valid_count": 100
+      },
+      "eager": {
+        "max_age_steps": 12,
+        "predicted_targets_sha256": "8ab61ef8feed2d2dc79616fa01173afa5466e214d91457d3df99b57c1157bcdc",
+        "valid_count": 100
+      }
+    }
+  }
+}
