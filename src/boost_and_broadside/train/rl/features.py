@@ -22,7 +22,13 @@ import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import BulletObsKey, ObjectType, ObsKey, YemongObservation
+from boost_and_broadside.env.observation import (
+    BELIEF_UNCERTAINTY_DIM,
+    BulletObsKey,
+    ObjectType,
+    ObsKey,
+    YemongObservation,
+)
 from boost_and_broadside.train.rl.checkpoint_schema import (
     ATTITUDE_FOURIER_FREQUENCIES,
     position_fourier_frequencies,
@@ -95,6 +101,14 @@ class Accessor:
                 val = obs[ObsKey.ALIVE]
             elif self.key in {ObsKey.TIME_SINCE_OBSERVATION, ObsKey.SHIELD_DELAY}:
                 val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
+            elif self.key == ObsKey.BELIEF_UNCERTAINTY:
+                # Only a BeliefTracker fills this; a caller without one has
+                # forecast nothing, so nothing is in doubt.
+                val = torch.zeros(
+                    (*team_id.shape, BELIEF_UNCERTAINTY_DIM),
+                    dtype=torch.float32,
+                    device=team_id.device,
+                )
             elif self.key in {
                 ObsKey.CAPTURE_PROGRESS,
                 ObsKey.CAPTURE_DIRECTION,
@@ -802,6 +816,7 @@ class FeatureCoordinator:
                 ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
                 ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
+                ObsKey.BELIEF_UNCERTAINTY: torch.zeros((1, 1, BELIEF_UNCERTAINTY_DIM)),
                 ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),
                 ObsKey.FIELD_TARGET_LOG_INDEX: torch.zeros((1, 1, 1)),
             }
@@ -951,6 +966,12 @@ class FeatureCoordinator:
           ``kappa * (1 - cos(d)) + log I0e(kappa) + log 2*pi``, where ``d`` is
           the angular residual in radians. Written through ``i0e`` because
           ``log I0`` overflows for a confident belief.
+
+          The head reports log variance here too, and this inverts it into a
+          concentration. Concentration is the natural von Mises parameter but
+          the opposite of a spread, and one block that meant "more uncertain" in
+          some channels and "less" in others would be a trap for every reader of
+          it -- including ``prediction_variance``.
         * plain squared error, for anything not yet converted.
 
         Both likelihoods carry their normalising constant, which cancels out of
@@ -988,7 +1009,7 @@ class FeatureCoordinator:
             # Undo label_scale first: it conditions the mean, and a cosine of a
             # residual multiplied by 177 would be measuring nothing.
             residual = (mean - labels) / self.label_scale_vector(predictions.device)
-            kappa = torch.exp(log_uncertainty)
+            kappa = torch.exp(-log_uncertainty)
             nll = (
                 kappa * (1.0 - torch.cos(residual))
                 + torch.log(torch.special.i0e(kappa))
@@ -996,6 +1017,38 @@ class FeatureCoordinator:
             )
             out = torch.where(von_mises_mask, nll, out)
         return out
+
+    def prediction_variance(self, predictions: torch.Tensor) -> torch.Tensor:
+        """Per-prediction-dim variance implied by the head's uncertainty block.
+
+Every channel reports ``log sigma^2``, circular ones included -- the
+        von Mises loss inverts it into a concentration itself -- so this is one
+        exponential and no per-kind branching. For a circular channel the
+        variance is the ``1/kappa`` equivalent, exact in the limit where von
+        Mises becomes Gaussian, which is the regime a belief worth propagating
+        is in.
+
+        A channel with no uncertainty contributes zero rather than a guess: it
+        has not claimed to know how wrong it is.
+
+        Returns:
+            (..., total_prediction_dimension) non-negative variance.
+        """
+
+        if predictions.shape[-1] <= self.total_prediction_dimension:
+            # A mean-only prediction: no spread was reported, so none is
+            # accumulated. Same rule as a channel whose predictor declines to
+            # report one -- silence is not a claim of certainty.
+            return torch.zeros_like(predictions[..., : self.total_prediction_dimension])
+
+        gaussian_mask, von_mises_mask, gather = self._uncertainty_layout(predictions.device)
+        log_uncertainty = predictions[..., self.total_prediction_dimension :].index_select(
+            -1, gather
+        )
+        reported = gaussian_mask | von_mises_mask
+        return torch.where(
+            reported, torch.exp(log_uncertainty), torch.zeros_like(log_uncertainty)
+        )
 
     def apply_all_predictions(
         self, curr_targets: torch.Tensor, predictions: torch.Tensor
@@ -1271,6 +1324,21 @@ def build_standard_coordinator(
             Symlog(),
             Identity(),
             scope=FeatureScope.BOUNDARY,
+        ),
+        # How far the belief has drifted, as the head's own accumulated variance
+        # per predicted channel. Symlog because it spans orders of magnitude
+        # between a ship in sight and one unseen for a minute.
+        #
+        # ``time_since_observation`` says only how long it has been; this says
+        # what that cost, which is the quantity a policy needs to decide whether
+        # to act on a remembered position or go and look. Input only -- it is a
+        # property of the estimate, not a thing to forecast.
+        Feature(
+            "belief_uncertainty",
+            Accessor(ObsKey.BELIEF_UNCERTAINTY),
+            Symlog(),
+            Identity(),
+            scope=FeatureScope.SHIP,
         ),
         Feature(
             "time_remaining",

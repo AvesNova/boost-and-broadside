@@ -52,6 +52,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         # so this is constant-true rather than a mask the trunk has to read.
         "belief_existence_mask": "always_valid_after_spawn",
         "auxiliary_prediction": "mean_plus_clamped_log_variance",
+        "belief_uncertainty": "accumulated_forecast_variance_per_channel",
         "auxiliary_label_origin": "believed_current_to_true_next",
         "resource_targets": "normalised_scalar",
         "privileged_auxiliary_targets": "storage_only_never_policy_input",

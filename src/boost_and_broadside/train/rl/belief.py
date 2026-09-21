@@ -54,6 +54,15 @@ class BeliefTracker:
         self.predicted_targets = torch.zeros(
             (num_envs, num_ships, target_dim), dtype=torch.float32, device=self.device
         )
+        # Accumulated variance of the belief, one channel per auxiliary
+        # prediction dimension. Zero while a ship is in sight and summed over
+        # every forecast since it went out of it, so it grows with the hidden
+        # duration rather than reporting a single step's spread.
+        self.uncertainty = torch.zeros(
+            (num_envs, num_ships, coordinator.total_prediction_dimension),
+            dtype=torch.float32,
+            device=self.device,
+        )
         self.team_id = torch.zeros((num_envs, num_ships), dtype=torch.int32, device=self.device)
         self.radius = torch.zeros((num_envs, num_ships, 1), dtype=torch.float32, device=self.device)
         self.clamp_events = torch.zeros((), dtype=torch.long, device=self.device)
@@ -65,6 +74,7 @@ class BeliefTracker:
             self.valid.zero_()
             self.age_steps.zero_()
             self.predicted_targets.zero_()
+            self.uncertainty.zero_()
             self.team_id.zero_()
             self.radius.zero_()
             return
@@ -72,6 +82,7 @@ class BeliefTracker:
         self.valid[mask] = False
         self.age_steps[mask] = 0
         self.predicted_targets[mask] = 0.0
+        self.uncertainty[mask] = 0.0
         self.team_id[mask] = 0
         self.radius[mask] = 0.0
 
@@ -88,6 +99,7 @@ class BeliefTracker:
         selected.valid.copy_(self.valid[idx])
         selected.age_steps.copy_(self.age_steps[idx])
         selected.predicted_targets.copy_(self.predicted_targets[idx])
+        selected.uncertainty.copy_(self.uncertainty[idx])
         selected.team_id.copy_(self.team_id[idx])
         selected.radius.copy_(self.radius[idx])
         return selected
@@ -122,6 +134,11 @@ class BeliefTracker:
             torch.where(hidden_belief, self.age_steps + 1, torch.zeros_like(self.age_steps)),
         )
         self.valid |= visible
+        # Seeing a ship settles it: the estimate is the observation, so whatever
+        # the forecast had accumulated is discarded rather than decayed.
+        self.uncertainty = torch.where(
+            visible.unsqueeze(-1), torch.zeros_like(self.uncertainty), self.uncertainty
+        )
 
         data = {key: value.clone() for key, value in perceived.items()}
         # Run the fixed-shape decode even when this batch currently has no
@@ -180,6 +197,15 @@ class BeliefTracker:
         )
 
         data[ObsKey.BELIEF_VALID][:, :n] = self.valid
+        # Map objects are static and carry no belief, so their uncertainty stays
+        # zero; only the ship slots are written.
+        belief_uncertainty = torch.zeros(
+            (*data[ObsKey.BELIEF_VALID].shape, self.uncertainty.shape[-1]),
+            dtype=torch.float32,
+            device=self.uncertainty.device,
+        )
+        belief_uncertainty[:, :n] = self.uncertainty
+        data[ObsKey.BELIEF_UNCERTAINTY] = belief_uncertainty
         data[ObsKey.TIME_SINCE_OBSERVATION][:, :n] = (
             self.age_steps.float() * self.decision_dt
         ).unsqueeze(-1)
@@ -200,6 +226,14 @@ class BeliefTracker:
         # long as the ship stays unseen. Run 734 died that way: velocity error in
         # the 30s+ hidden bucket went 99 -> 1178 px/s over ten updates and then
         # overflowed, and the non-finite logits asserted inside multinomial.
+        # Variance accumulates while a ship stays unseen: one forecast's spread
+        # added per step, cleared by the next sighting in ``compose``. The head
+        # reports a per-step spread, so the belief's own uncertainty is the sum
+        # of them and not the latest one.
+        self.uncertainty = self.uncertainty + self.coordinator.prediction_variance(
+            scaled_prediction
+        )
+
         raw = forecast.float()
         # Counted against the *raw* forecast, before the replacement: nan_to_num
         # maps an infinity onto the limit exactly, so a count taken afterwards
