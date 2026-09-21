@@ -360,6 +360,9 @@ class SymlogVelocity(Transform):
 # ---------------------------------------------------------------------------
 
 
+_LOG_TWO_PI = math.log(2.0 * math.pi)
+
+
 class Predictor(ABC):
     @abstractmethod
     def target_dim(self, in_channels: int) -> int: ...
@@ -367,8 +370,12 @@ class Predictor(ABC):
     @abstractmethod
     def prediction_dim(self, in_channels: int) -> int: ...
 
+    #: What the head's uncertainty output means for this predictor, or None for
+    #: a predictor that reports none and keeps a plain squared error.
+    uncertainty_kind: str | None = None
+
     def uncertainty_dim(self, in_channels: int) -> int:
-        """Log-variance outputs this predictor wants, or 0 for a plain squared error.
+        """Uncertainty outputs this predictor wants, or 0 for a plain squared error.
 
         A predictor that reports one makes its loss a Gaussian negative log
         likelihood instead, which is what removes ``label_scale`` from the
@@ -394,6 +401,8 @@ class Predictor(ABC):
 class AbsolutePredictor(Predictor):
     """Predict next state directly (absolute, no delta)."""
 
+    uncertainty_kind = "gaussian"
+
     def target_dim(self, in_channels: int) -> int:
         return in_channels
 
@@ -412,6 +421,8 @@ class AbsolutePredictor(Predictor):
 
 class AdditivePredictor(Predictor):
     """Predict delta: next − curr in target space."""
+
+    uncertainty_kind = "gaussian"
 
     def target_dim(self, in_channels: int) -> int:
         return in_channels
@@ -434,10 +445,26 @@ class UnitCirclePredictor(Predictor):
 
     Label: scalar phase delta wrapped to [-π, π].
     Application: rotation — preserves unit norm exactly.
+
+    Its uncertainty is a von Mises concentration, not a variance: the quantity
+    lives on a circle, and a Gaussian over an angle has no idea that -pi and pi
+    are the same place. Concentration plays sigma's role inversely -- large kappa
+    is a tight belief -- and the likelihood becomes the Gaussian one in the limit,
+    with kappa standing in for 1/sigma^2.
+
+    Unlike the unbounded channels, a circular one has no scale ambiguity to
+    remove: an angle is already measured in radians against a fixed 2*pi period.
+    So the point here is the geometry, not scale invariance -- which is why the
+    loss has to undo ``label_scale`` before taking a cosine of anything.
     """
+
+    uncertainty_kind = "von_mises"
 
     def __init__(self, cosine_first: bool = False):
         self.cosine_first = cosine_first
+
+    def uncertainty_dim(self, in_channels: int) -> int:
+        return 1
 
     def target_dim(self, in_channels: int) -> int:
         return 2
@@ -879,52 +906,63 @@ class FeatureCoordinator:
         labels = torch.cat(results, dim=-1)
         return labels * self.label_scale_vector(labels.device)
 
-    def _uncertainty_layout(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-        """(mask, gather) mapping each prediction dim to its log-variance channel.
+    def _uncertainty_layout(self, device: torch.device) -> tuple[torch.Tensor, ...]:
+        """Per-prediction-dim masks and the gather into the uncertainty block.
 
-        ``mask[i]`` says whether prediction dim i has one; ``gather[i]`` is its
-        index in the log-variance block (0 where absent, and unused there).
-        Cached per device the way ``label_scale_vector`` is -- this sits in the
-        per-micro-batch loss path.
+        ``gaussian`` and ``von_mises`` are disjoint masks over prediction dims;
+        ``gather[i]`` is dim i's index in the uncertainty block (0 and unused
+        where it has none). Cached per device the way ``label_scale_vector`` is
+        -- this sits in the per-micro-batch loss path.
         """
 
         cached = self._uncertainty_cache
         if cached is not None and cached[0].device == device:
             return cached
-        mask = torch.zeros(self.total_prediction_dimension, dtype=torch.bool)
-        gather = torch.zeros(self.total_prediction_dimension, dtype=torch.long)
+        P = self.total_prediction_dimension
+        gaussian = torch.zeros(P, dtype=torch.bool)
+        von_mises = torch.zeros(P, dtype=torch.bool)
+        gather = torch.zeros(P, dtype=torch.long)
         for spec in self._predictor_specs:
             if not spec.u_dim:
                 continue
-            # One log variance per mean, so the two slices line up elementwise.
+            mask = gaussian if spec.predictor.uncertainty_kind == "gaussian" else von_mises
             for offset in range(spec.p_dim):
                 mask[spec.p_offset + offset] = True
-                gather[spec.p_offset + offset] = spec.u_offset + offset
-        cached = (mask.to(device), gather.to(device))
+                # A von Mises predictor reports one concentration for its single
+                # phase output, so the two blocks line up elementwise either way.
+                gather[spec.p_offset + offset] = spec.u_offset + min(offset, spec.u_dim - 1)
+        cached = tuple(t.to(device) for t in (gaussian, von_mises, gather))
         self._uncertainty_cache = cached
         return cached
 
     def prediction_loss(self, predictions: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         """Per-prediction-dimension loss, given the head's full output.
 
-        ``predictions`` is ``[means | log variances]``: the first
-        ``total_prediction_dimension`` channels are the means, the rest the
-        log-variance block. A feature whose predictor reports an uncertainty
-        gets a Gaussian negative log likelihood,
+        ``predictions`` is ``[means | uncertainties]``: the first
+        ``total_prediction_dimension`` channels are means, the rest the
+        uncertainty block, in log space and clamped by the head.
 
-            0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)
+        Three forms, chosen per predictor, so channels convert one at a time:
 
-        and every other feature keeps the plain squared error it had before, so
-        predictors can be converted one at a time.
+        * Gaussian, for unbounded channels --
+          ``0.5 * ((y - mu)^2 / sigma^2 + log sigma^2 + log 2*pi)``. Scale-free
+          in the label, which is what takes ``label_scale`` out of the objective.
+        * von Mises, for circular channels --
+          ``kappa * (1 - cos(d)) + log I0e(kappa) + log 2*pi``, where ``d`` is
+          the angular residual in radians. Written through ``i0e`` because
+          ``log I0`` overflows for a confident belief.
+        * plain squared error, for anything not yet converted.
 
-        The NLL is scale-free in the label, which is the point: it takes
-        ``label_scale`` out of the objective and leaves it a numerical
-        convenience for conditioning ``mu``. It also weights the gradient on the
-        mean by ``1 / sigma^2``, so a token whose label is mostly unpredictable
-        belief error earns a wide sigma and stops dominating the sum.
+        Both likelihoods carry their normalising constant, which cancels out of
+        every gradient but makes the per-channel series comparable: they are
+        then nats, and a channel costing more of them is genuinely harder to
+        predict than one costing fewer.
 
-        It is unbounded below as sigma falls, so the head clamps its log
-        variance (see ``NextStateHead``); nothing here can recover from zero.
+        Both likelihoods weight the gradient on the mean by their precision, so
+        a token whose label is mostly unpredictable belief error earns a wide
+        spread and stops dominating the sum. Both are unbounded below as that
+        spread shrinks, which is why the head clamps -- nothing here can recover
+        from a sigma of zero.
 
         Returns:
             (..., total_prediction_dimension) elementwise loss.
@@ -935,10 +973,29 @@ class FeatureCoordinator:
         if not self.total_uncertainty_dimension:
             return sq_err
 
-        mask, gather = self._uncertainty_layout(predictions.device)
-        log_var = predictions[..., self.total_prediction_dimension :].index_select(-1, gather)
-        nll = 0.5 * (sq_err * torch.exp(-log_var) + log_var)
-        return torch.where(mask, nll, sq_err)
+        gaussian_mask, von_mises_mask, gather = self._uncertainty_layout(predictions.device)
+        log_uncertainty = predictions[..., self.total_prediction_dimension :].index_select(
+            -1, gather
+        )
+
+        out = sq_err
+        if gaussian_mask.any():
+            nll = 0.5 * (
+                sq_err * torch.exp(-log_uncertainty) + log_uncertainty + _LOG_TWO_PI
+            )
+            out = torch.where(gaussian_mask, nll, out)
+        if von_mises_mask.any():
+            # Undo label_scale first: it conditions the mean, and a cosine of a
+            # residual multiplied by 177 would be measuring nothing.
+            residual = (mean - labels) / self.label_scale_vector(predictions.device)
+            kappa = torch.exp(log_uncertainty)
+            nll = (
+                kappa * (1.0 - torch.cos(residual))
+                + torch.log(torch.special.i0e(kappa))
+                + _LOG_TWO_PI
+            )
+            out = torch.where(von_mises_mask, nll, out)
+        return out
 
     def apply_all_predictions(
         self, curr_targets: torch.Tensor, predictions: torch.Tensor
