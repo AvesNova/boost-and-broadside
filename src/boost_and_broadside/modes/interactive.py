@@ -86,39 +86,32 @@ def run_play_mode(
     render_config: RenderConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
+    ships_per_team: int = PLAY_ENV_CONFIG.num_ships // 2,
+    num_fields: int = PLAY_ENV_CONFIG.num_fields,
 ) -> None:
     """Run the provisional playable Frontline preset.
 
-    One selected blue ship is keyboard-controlled; the remaining blue ships and
-    all red ships use the crude frontline scripted controller. Tab cycles the
-    human ship, C toggles camera follow, V cycles whose vision is drawn, and Z
-    toggles whether capture zones block sight as well as fields. U (or the Frame
-    cap button) unlocks presentation while retaining the fixed decision rate.
+    The first team-0 ship starts keyboard-controlled. T changes selected team,
+    Tab cycles its living ships, H toggles control/watch, C toggles camera follow,
+    V cycles vision, and Z toggles zone occlusion. U (or the Frame cap button)
+    unlocks presentation while retaining the fixed decision rate.
     Tuning values are intentionally provisional pending the current human
     playtest gate.
     """
+    env_config = _frontline_interactive_config(ships_per_team, num_fields)
     # A single tiny environment is dominated by CUDA launch/synchronization
-    # overhead. Play is scripted/human-only, so keep its simulation and agents
-    # on CPU even when training defaults to CUDA.
-    play_device = "cpu"
+    # overhead.  Larger interactive fleets keep the requested CUDA device so
+    # their compiled/graph path is available.
+    play_device = _interactive_device(device, env_config)
     ship_config = frontline_ship_config(ship_config)
-    # A policy decision holds for action_repeat physics ticks. The Frontline
-    # contract is 30 Hz with repeat one, hence 30 rendered decisions per second.
-    decision_fps = round(1.0 / (ship_config.dt * PLAY_ENV_CONFIG.action_repeat))
-    render_config = replace(
-        render_config,
-        fps=decision_fps,
-        show_unlimited_button=True,
-        show_frame_pacing_toggle=True,
-        vision_mode=VisionMode.TEAM_0,
-    )
+    render_config = _interactive_render_config(render_config, ship_config, env_config)
     agent0 = resolve_agent_spec(
         "scripted",
         ship_config,
         model_config,
         play_device,
         checkpoint_dir,
-        num_ships=PLAY_ENV_CONFIG.num_ships,
+        num_ships=env_config.num_ships,
     )
     # One controller draws independent per-ship tendencies for both teams. It
     # can therefore supply both sides without doing the same state analysis twice.
@@ -130,11 +123,11 @@ def run_play_mode(
             agent0,
             agent1,
             ship_config,
-            PLAY_ENV_CONFIG,
+            env_config,
             rewards,
             render_config,
             play_device,
-            keyboard_teams=frozenset({0}),
+            start_human_control=True,
             state_only=True,
         )
     finally:
@@ -145,26 +138,31 @@ def run_watch_mode(
     team0_spec: str,
     team1_spec: str,
     ship_config: ShipConfig,
-    env_config: EnvConfig,
     rewards: RewardConfig,
     model_config: ModelConfig,
     render_config: RenderConfig,
     device: str,
     checkpoint_dir: str = "checkpoints",
+    ships_per_team: int = PLAY_ENV_CONFIG.num_ships // 2,
+    num_fields: int = PLAY_ENV_CONFIG.num_fields,
 ) -> None:
-    """Render live gameplay between two agents at 60fps.
+    """Run the shared Frontline developer mode, initially watching two agents.
 
     Args:
         team0_spec:     Exact agent name or checkpoint path for team 0.
         team1_spec:     Agent spec for team 1.
         ship_config:    Physics constants.
-        env_config:     Environment sizing.
+        ships_per_team: Ships assigned to each team in the shared Frontline map.
+        num_fields:     Number of fields in the shared Frontline map.
         rewards:        Reward weights (used to build the env wrapper).
         model_config:   Policy architecture (needed if either spec is a checkpoint).
         render_config:  Display settings.
         device:         Torch device string.
         checkpoint_dir: Checkpoint root supplied by the CLI adapter.
     """
+    ship_config = frontline_ship_config(ship_config)
+    env_config = _frontline_interactive_config(ships_per_team, num_fields)
+    render_config = _interactive_render_config(render_config, ship_config, env_config)
     agent0 = resolve_agent_spec(
         team0_spec,
         ship_config,
@@ -187,9 +185,6 @@ def run_watch_mode(
         ship_config=ship_config,
     )
 
-    keyboard_teams = frozenset(
-        team for team, agent in enumerate((agent0, agent1)) if agent.kind == "null"
-    )
     _run_resolved_interactive_mode(
         agent0,
         agent1,
@@ -198,7 +193,6 @@ def run_watch_mode(
         rewards,
         render_config,
         device,
-        keyboard_teams=keyboard_teams,
     )
 
 
@@ -210,7 +204,7 @@ def _run_resolved_interactive_mode(
     rewards: RewardConfig,
     render_config: RenderConfig,
     device: str,
-    keyboard_teams: frozenset[int],
+    start_human_control: bool = False,
     state_only: bool = False,
 ) -> None:
     """Build the single environment and render two already-resolved agents."""
@@ -218,6 +212,7 @@ def _run_resolved_interactive_mode(
     renderer = GameRenderer(
         ship_config, replace(render_config, zone_occlusion=env_config.zones_occlude)
     )
+    renderer.configure_interaction(human_control=start_human_control)
     cuda_interactive = torch.device(device).type == "cuda"
 
     wrapper = YemongEnvWrapper(
@@ -244,7 +239,6 @@ def _run_resolved_interactive_mode(
             agent1,
             renderer,
             torch.device(device),
-            keyboard_teams,
             state_only=state_only,
         )
     finally:
@@ -257,7 +251,6 @@ def _run_interactive_loop(
     agent1: ResolvedAgent,
     renderer: GameRenderer,
     device: torch.device,
-    keyboard_teams: frozenset[int],
     *,
     state_only: bool = False,
 ) -> None:
@@ -269,7 +262,6 @@ def _run_interactive_loop(
         agent1:   Agent controlling team-1 ships.
         renderer: Pygame renderer.
         device:   Torch device.
-        keyboard_teams: Team IDs whose selected actions are replaced by keyboard input.
     """
     N_IMAGINE_STEPS = 0
 
@@ -335,12 +327,15 @@ def _run_interactive_loop(
                     else wrapper.last_visibility
                 )
 
-                controllable = tuple(
-                    index
-                    for index, team in enumerate(state.ship_team_id[0].tolist())
-                    if team in keyboard_teams and bool(state.ship_alive[0, index].item())
+                living_by_team = tuple(
+                    tuple(
+                        index
+                        for index, team in enumerate(state.ship_team_id[0].tolist())
+                        if team == selected_team and bool(state.ship_alive[0, index].item())
+                    )
+                    for selected_team in range(2)
                 )
-                renderer.set_selectable_ships(controllable)
+                renderer.set_living_ships(living_by_team)
 
                 team0_view = agent_view(
                     agent0,
@@ -389,12 +384,13 @@ def _run_interactive_loop(
                         team_visibility=visibility.ship,
                     )
                 decided_action = merge_team_actions(action0, action1, team_id).int()
-                if keyboard_teams:
+                human_control_mask = _selected_human_mask(
+                    team_id, renderer.human_control_enabled, renderer.selected_ship
+                )
+                if bool(human_control_mask.any().item()):
                     decided_action = _apply_keyboard_override(
                         decided_action,
-                        team_id,
                         _decode_keyboard().to(device),
-                        keyboard_teams,
                         renderer.selected_ship,
                     )
                 action, policy_action_buffer = _apply_policy_action_delay(
@@ -402,6 +398,7 @@ def _run_interactive_loop(
                     policy_action_buffer,
                     team_id,
                     policy_teams,
+                    immediate_mask=human_control_mask,
                 )
                 if state_only:
                     dones, truncated = wrapper.env.step(
@@ -487,6 +484,8 @@ def _apply_policy_action_delay(
     policy_action_buffer: torch.Tensor,
     team_id: torch.Tensor,
     policy_teams: frozenset[int],
+    *,
+    immediate_mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Apply buffered NN actions and immediate non-NN actions for one tick.
 
@@ -495,7 +494,10 @@ def _apply_policy_action_delay(
     later controller change cannot expose stale actions.
     """
 
-    policy_mask = _policy_team_mask(team_id, policy_teams).unsqueeze(-1)
+    policy_mask = _policy_team_mask(team_id, policy_teams)
+    if immediate_mask is not None:
+        policy_mask &= ~immediate_mask
+    policy_mask = policy_mask.unsqueeze(-1)
     applied_action = torch.where(policy_mask, policy_action_buffer, decided_action)
     next_buffer = torch.where(policy_mask, decided_action, torch.zeros_like(decided_action))
     return applied_action, next_buffer
@@ -526,20 +528,56 @@ def _set_observation_previous_action(
 
 def _apply_keyboard_override(
     action: torch.Tensor,
-    team_id: torch.Tensor,
     keyboard: torch.Tensor,
-    keyboard_teams: frozenset[int],
     selected_ship: int | None,
 ) -> torch.Tensor:
-    """Replace only the selected eligible ship action with keyboard input."""
-    keyboard_mask = torch.zeros_like(team_id, dtype=torch.bool)
-    if selected_ship is not None and 0 <= selected_ship < team_id.shape[1]:
-        eligible = any(
-            bool((team_id[:, selected_ship] == team).all().item()) for team in keyboard_teams
-        )
-        if eligible:
-            keyboard_mask[:, selected_ship] = True
+    """Replace one selected ship action with immediate keyboard input."""
+    keyboard_mask = torch.zeros(action.shape[:2], dtype=torch.bool, device=action.device)
+    if selected_ship is not None and 0 <= selected_ship < action.shape[1]:
+        keyboard_mask[:, selected_ship] = True
     return torch.where(keyboard_mask.unsqueeze(-1), keyboard.view(1, 1, 3), action)
+
+
+def _selected_human_mask(
+    team_id: torch.Tensor, human_control: bool, selected_ship: int | None
+) -> torch.Tensor:
+    """Return the one slot temporarily driven by the human, if any."""
+
+    mask = torch.zeros_like(team_id, dtype=torch.bool)
+    if human_control and selected_ship is not None and 0 <= selected_ship < team_id.shape[1]:
+        mask[:, selected_ship] = True
+    return mask
+
+
+def _frontline_interactive_config(ships_per_team: int, num_fields: int) -> EnvConfig:
+    """Keep play and watch on Frontline rules while allowing fleet sizing."""
+
+    return replace(
+        PLAY_ENV_CONFIG,
+        num_ships=2 * ships_per_team,
+        num_fields=num_fields,
+    )
+
+
+def _interactive_device(requested_device: str, env_config: EnvConfig) -> str:
+    """Avoid CUDA launch overhead for the small default, retain it for large fleets."""
+
+    return requested_device if env_config.num_ships > PLAY_ENV_CONFIG.num_ships else "cpu"
+
+
+def _interactive_render_config(
+    render_config: RenderConfig, ship_config: ShipConfig, env_config: EnvConfig
+) -> RenderConfig:
+    """Apply the shared Frontline dev UI and fixed decision cadence."""
+
+    decision_fps = round(1.0 / (ship_config.dt * env_config.action_repeat))
+    return replace(
+        render_config,
+        fps=decision_fps,
+        show_unlimited_button=True,
+        show_frame_pacing_toggle=True,
+        vision_mode=VisionMode.FULL,
+    )
 
 
 def _decode_keyboard() -> torch.Tensor:

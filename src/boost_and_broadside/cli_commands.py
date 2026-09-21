@@ -280,6 +280,8 @@ def _play(args: argparse.Namespace, prepare: ContextFactory) -> None:
         render_config=RenderConfig(),
         device=device,
         checkpoint_dir="checkpoints",
+        ships_per_team=args.ships_per_team,
+        num_fields=args.fields,
     )
 
 
@@ -290,17 +292,13 @@ def _watch(args: argparse.Namespace, prepare: ContextFactory) -> None:
         team0_spec=args.team0,
         team1_spec=args.team1,
         ship_config=SHIP_CONFIG,
-        env_config=EnvConfig(
-            num_ships=8,
-            max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
-            max_episode_steps=1024,
-            num_fields=4,
-        ),
         rewards=REWARDS,
         model_config=MODEL_CONFIG,
         render_config=RenderConfig(),
         device=device,
         checkpoint_dir="checkpoints",
+        ships_per_team=args.ships_per_team,
+        num_fields=args.fields,
     )
 
 

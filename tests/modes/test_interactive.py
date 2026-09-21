@@ -1,5 +1,7 @@
 """Tests for the frontline play preset and single-ship keyboard routing."""
 
+from dataclasses import replace
+
 import torch
 
 from boost_and_broadside.config import ShipConfig
@@ -12,8 +14,13 @@ from boost_and_broadside.modes.interactive import (
     PLAY_ENV_CONFIG,
     _apply_keyboard_override,
     _apply_policy_action_delay,
+    _frontline_interactive_config,
+    _interactive_device,
+    _interactive_render_config,
+    _selected_human_mask,
     _set_observation_previous_action,
 )
+from boost_and_broadside.ui.renderer import RenderConfig
 
 
 def test_play_preset_is_timed_frontline_with_scriptable_fleets() -> None:
@@ -34,12 +41,11 @@ def test_play_preset_is_timed_frontline_with_scriptable_fleets() -> None:
     assert ship_config.field_integration_substeps == 1
 
 
-def test_play_keyboard_controls_team_zero_but_not_null_team_one() -> None:
+def test_keyboard_controls_the_selected_ship_on_either_team() -> None:
     action = torch.zeros((1, 2, 3), dtype=torch.int32)
-    team_id = torch.tensor([[1, 0]], dtype=torch.int32)
     keyboard = torch.tensor([1, 3, 1], dtype=torch.int32)
 
-    result = _apply_keyboard_override(action, team_id, keyboard, frozenset({0}), 1)
+    result = _apply_keyboard_override(action, keyboard, 1)
 
     assert torch.equal(result[0, 0], torch.zeros(3, dtype=torch.int32))
     assert torch.equal(result[0, 1], keyboard)
@@ -47,10 +53,9 @@ def test_play_keyboard_controls_team_zero_but_not_null_team_one() -> None:
 
 def test_keyboard_controls_only_one_selected_ally() -> None:
     action = torch.zeros((1, 4, 3), dtype=torch.int32)
-    team_id = torch.tensor([[0, 1, 0, 1]], dtype=torch.int32)
     keyboard = torch.tensor([1, 3, 1], dtype=torch.int32)
 
-    result = _apply_keyboard_override(action, team_id, keyboard, frozenset({0}), 2)
+    result = _apply_keyboard_override(action, keyboard, 2)
 
     assert torch.equal(result[0, 0], torch.zeros(3, dtype=torch.int32))
     assert torch.equal(result[0, 2], keyboard)
@@ -58,10 +63,9 @@ def test_keyboard_controls_only_one_selected_ally() -> None:
 
 def test_spectator_selection_leaves_every_ship_scripted() -> None:
     action = torch.tensor([[[1, 2, 1], [2, 4, 0], [0, 1, 1], [1, 0, 0]]], dtype=torch.int32)
-    team_id = torch.tensor([[0, 1, 0, 1]], dtype=torch.int32)
     keyboard = torch.tensor([2, 6, 1], dtype=torch.int32)
 
-    result = _apply_keyboard_override(action, team_id, keyboard, frozenset({0}), None)
+    result = _apply_keyboard_override(action, keyboard, None)
 
     assert torch.equal(result, action)
 
@@ -83,6 +87,46 @@ def test_policy_actions_are_delayed_while_scripted_actions_are_immediate() -> No
     assert torch.equal(applied[:, (1, 3)], decided[:, (1, 3)])
     assert torch.equal(next_buffer[:, (0, 2)], decided[:, (0, 2)])
     assert torch.equal(next_buffer[:, (1, 3)], torch.zeros((1, 2, 3), dtype=torch.int32))
+
+
+def test_human_policy_override_is_immediate_and_clears_its_policy_buffer_slot() -> None:
+    team_id = torch.tensor([[0, 1]], dtype=torch.int32)
+    decided = torch.tensor([[[1, 3, 1], [2, 4, 0]]], dtype=torch.int32)
+    buffered = torch.tensor([[[2, 6, 0], [1, 5, 1]]], dtype=torch.int32)
+    human = _selected_human_mask(team_id, True, 0)
+
+    applied, next_buffer = _apply_policy_action_delay(
+        decided, buffered, team_id, frozenset({0}), immediate_mask=human
+    )
+
+    assert torch.equal(applied[0, 0], decided[0, 0])
+    assert torch.equal(next_buffer[0, 0], torch.zeros(3, dtype=torch.int32))
+    # Releasing control returns the policy ship to its neutral queued first tick,
+    # never to a stale keyboard action.
+    released, _ = _apply_policy_action_delay(
+        decided, next_buffer, team_id, frozenset({0})
+    )
+    assert torch.equal(released[0, 0], torch.zeros(3, dtype=torch.int32))
+
+
+def test_large_interactive_fleet_keeps_the_requested_cuda_device() -> None:
+    assert _interactive_device("cuda", PLAY_ENV_CONFIG) == "cpu"
+    assert _interactive_device("cuda", replace(PLAY_ENV_CONFIG, num_ships=100)) == "cuda"
+
+
+def test_play_and_watch_share_frontline_sizing_and_dev_render_configuration() -> None:
+    env_config = _frontline_interactive_config(ships_per_team=50, num_fields=72)
+    render_config = _interactive_render_config(
+        RenderConfig(), frontline_ship_config(ShipConfig()), env_config
+    )
+
+    assert env_config.num_ships == 100
+    assert env_config.num_fields == 72
+    assert env_config.frontline == PLAY_ENV_CONFIG.frontline
+    assert render_config.fps == 30
+    assert render_config.show_unlimited_button
+    assert render_config.show_frame_pacing_toggle
+    assert render_config.vision_mode.value == "FULL"
 
 
 def test_policy_action_buffer_starts_with_neutral_first_tick() -> None:

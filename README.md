@@ -110,11 +110,14 @@ uv sync
 # Resolve and inspect the RL launch without allocating the trainer
 uv run bnb train --profile rl --print-config
 
-# Play the provisional five-zone Frontline prototype; Tab includes spectator mode
+# Frontline dev mode: T team, Tab ship, H control/watch, V viewpoint
 uv run bnb play
 
-# Human vs a newly trained current-schema checkpoint (WASD, Shift, Space)
-uv run bnb watch --team0 null --team1 checkpoints/<run>/<checkpoint>.pt
+# 50v50 with the large-map field count
+uv run bnb play --ships-per-team 50 --fields 72 --device cuda
+
+# Spectate two agents, then press H to override the selected ship
+uv run bnb watch --team0 scripted --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
 Training is designed for CUDA hardware; the simulator and test suite also run on CPU.
