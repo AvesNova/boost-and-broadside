@@ -44,6 +44,16 @@ from boost_and_broadside.train.rl.features import (
 from boost_and_broadside.train.rl.policy_io import build_policy
 
 FRONTLINE_SHIP_CONFIG = PROFILES["rl"].ship_config
+# ``MODEL_CONFIG`` ships every spatial feature enabled, so a test that needs the
+# unrotated, unwidened, unbiased model has to say so rather than lean on the
+# default. Contrasts are taken against this, not against the shipped config.
+BASE_MODEL_CONFIG = replace(
+    MODEL_CONFIG,
+    n_spatial_heads=None,
+    spatial_rope=False,
+    local_presence=False,
+    relational_bias=False,
+)
 ROPE_MODEL_CONFIG = replace(MODEL_CONFIG, n_spatial_heads=2, spatial_rope=True)
 
 
@@ -158,8 +168,14 @@ class TestRotaryPeriodicity:
 
         base = rotary.tables(position, None)
         wrapped = rotary.tables(shifted, None)
-        assert torch.allclose(base[0], wrapped[0], atol=1e-4)
-        assert torch.allclose(base[1], wrapped[1], atol=1e-4)
+        # 1e-3, not the 1e-4 the 16384 px world needed. Periodicity is exact in
+        # exact arithmetic but limited in practice by the float32 frequency
+        # buffer times the period: the finest harmonic's phase argument reaches
+        # 2*pi*512 on the 65536 px world, four times what it reached before, and
+        # the residual scales with it. Measured 1.265e-04, which is 0.0026 px of
+        # implied position against a 10 px collision radius.
+        assert torch.allclose(base[0], wrapped[0], atol=1e-3)
+        assert torch.allclose(base[1], wrapped[1], atol=1e-3)
 
     def test_a_full_turn_leaves_the_attitude_rotation_unchanged(self, rotary):
         position = torch.zeros(1, 3, 2)
@@ -251,7 +267,7 @@ class TestRelativeGeometry:
 
 class TestRotaryBudget:
     def test_the_frontline_world_fits_a_64_wide_head_and_not_a_32_wide_one(self):
-        assert rotary_pair_count(FRONTLINE_SHIP_CONFIG) == 20  # 8 + 8 + 4
+        assert rotary_pair_count(FRONTLINE_SHIP_CONFIG) == 24  # 10 + 10 + 4
         check_rotary_budget(ROPE_MODEL_CONFIG, FRONTLINE_SHIP_CONFIG)
         with pytest.raises(RotaryBudgetError):
             check_rotary_budget(
@@ -268,7 +284,7 @@ class TestRotaryBudget:
     def test_a_policy_cannot_be_built_past_the_budget(self):
         with pytest.raises(RotaryBudgetError):
             build_policy(
-                replace(MODEL_CONFIG, spatial_rope=True),  # four 32-wide heads
+                replace(BASE_MODEL_CONFIG, spatial_rope=True),  # four 32-wide heads
                 FRONTLINE_SHIP_CONFIG,
                 num_value_components=4,
                 num_ships=10,
@@ -296,9 +312,22 @@ class TestRotaryBudget:
 
 class TestSpatialHeadLayout:
     def test_spatial_heads_default_to_the_shared_head_count(self):
-        assert MODEL_CONFIG.n_spatial_heads is None
-        assert MODEL_CONFIG.spatial_heads == MODEL_CONFIG.n_heads
-        assert MODEL_CONFIG.spatial_head_dim == MODEL_CONFIG.d_model // MODEL_CONFIG.n_heads
+        """``n_spatial_heads=None`` falls back to ``n_heads``.
+
+        Asserted against an explicitly unset config: the shipped ``MODEL_CONFIG``
+        sets the knob, so it can no longer demonstrate the fallback.
+        """
+        assert BASE_MODEL_CONFIG.n_spatial_heads is None
+        assert BASE_MODEL_CONFIG.spatial_heads == BASE_MODEL_CONFIG.n_heads
+        assert (
+            BASE_MODEL_CONFIG.spatial_head_dim
+            == BASE_MODEL_CONFIG.d_model // BASE_MODEL_CONFIG.n_heads
+        )
+
+    def test_the_shipped_config_widens_the_spatial_heads_for_rope(self):
+        assert MODEL_CONFIG.n_spatial_heads == 2
+        assert MODEL_CONFIG.spatial_head_dim == 64
+        check_rotary_budget(MODEL_CONFIG, FRONTLINE_SHIP_CONFIG)
 
     def test_two_wide_heads_leave_the_pooling_attention_alone(self):
         config = replace(MODEL_CONFIG, n_spatial_heads=2)
@@ -326,7 +355,9 @@ class TestSpatialHeadLayout:
             )
             return sum(p.numel() for p in policy.parameters())
 
-        assert parameters(replace(MODEL_CONFIG, n_spatial_heads=2)) == parameters(MODEL_CONFIG)
+        assert parameters(replace(BASE_MODEL_CONFIG, n_spatial_heads=2)) == parameters(
+            BASE_MODEL_CONFIG
+        )
 
     def test_a_spatial_head_count_must_divide_d_model(self):
         with pytest.raises(ValueError, match="n_spatial_heads"):
@@ -366,8 +397,8 @@ def _observation(num_ships: int = 10, num_fields: int = 10, seed: int = 5):
 class TestRotaryPolicy:
     def test_rotation_changes_the_policy_output(self):
         """A guard against the tables being built and then ignored."""
-        plain = _policy(replace(MODEL_CONFIG, n_spatial_heads=2))
-        rotated = _policy(ROPE_MODEL_CONFIG)
+        plain = _policy(replace(BASE_MODEL_CONFIG, n_spatial_heads=2))
+        rotated = _policy(replace(BASE_MODEL_CONFIG, n_spatial_heads=2, spatial_rope=True))
         rotated.load_state_dict(plain.state_dict())  # identical weights
 
         observation = _observation()
@@ -378,8 +409,8 @@ class TestRotaryPolicy:
 
     def test_rotation_adds_no_parameters_or_state_dict_keys(self):
         """So a rotated run's checkpoint stays loadable by shape alone."""
-        plain = _policy(replace(MODEL_CONFIG, n_spatial_heads=2))
-        rotated = _policy(ROPE_MODEL_CONFIG)
+        plain = _policy(replace(BASE_MODEL_CONFIG, n_spatial_heads=2))
+        rotated = _policy(replace(BASE_MODEL_CONFIG, n_spatial_heads=2, spatial_rope=True))
         assert set(plain.state_dict()) == set(rotated.state_dict())
 
     @pytest.mark.parametrize("num_ships", [2, 10, 40])
@@ -580,8 +611,8 @@ class TestLocalPresence:
 
 
 class TestPresenceFeatureWiring:
-    def test_the_feature_is_off_by_default_and_adds_two_channels(self):
-        assert MODEL_CONFIG.local_presence is False
+    def test_the_feature_is_shipped_on_and_adds_two_channels(self):
+        assert MODEL_CONFIG.local_presence is True
         plain = build_standard_coordinator(FRONTLINE_SHIP_CONFIG)
         widened = build_standard_coordinator(FRONTLINE_SHIP_CONFIG, local_presence=True)
         assert widened.total_input_dimension == plain.total_input_dimension + 2

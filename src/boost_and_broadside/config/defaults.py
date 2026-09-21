@@ -30,6 +30,28 @@ MODEL_CONFIG = ModelConfig(
     # does not spend policy memory/compute on per-bullet K/V observations.
     n_bullet_cross_per_block=0,
     grad_checkpoint=False,
+    # Two 64-wide spatial heads rather than four 32-wide ones. This is not a
+    # preference, it is what ``spatial_rope`` costs: the Frontline basis rotates
+    # 8 x + 8 y + 4 attitude frequency pairs = 40 head dimensions, which does not
+    # fit a 32-wide head at all. The temporal sublayers and the value head's
+    # TeamPMA keep ``n_heads=4``, so this buys the rotation without changing
+    # anything else about the trunk's shape.
+    n_spatial_heads=2,
+    # Rotate spatial Q/K by world geometry, so displacement enters the attention
+    # score directly instead of being reconstructed by the trunk from absolute
+    # position features. The rotation reuses the encoder's own position basis
+    # verbatim -- ``tests/models/test_spatial_geometry.py`` pins the two
+    # frequency vectors to bitwise equality -- so the features and the rotations
+    # cannot describe different geometry.
+    spatial_rope=True,
+    # Smooth ally and enemy presence within a fixed physical radius. Attention
+    # returns proportions and cannot report cardinality, so without these two
+    # scalars nothing in the observation says how crowded a neighbourhood is.
+    local_presence=True,
+    # Shared pairwise bias on spatial attention scores from proximity, ego-frame
+    # bearing and range rate. Zero-initialised, so it starts as the identity and
+    # earns its contribution.
+    relational_bias=True,
 )
 
 ELO_EVAL = EloEvalConfig(
