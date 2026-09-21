@@ -62,25 +62,46 @@ from boost_and_broadside.models.yemong.rope import SpatialRotary, check_rotary_b
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 
 
-class NextStateHead(nn.Module):
-    """Predicts next-state deltas and absolutes for each ship.
+# Log-variance bounds for the heteroscedastic predictions. The upper bound only
+# has to clear the widest label the objective actually sees; the lower bound is
+# the one that matters, because the Gaussian NLL is unbounded below as sigma
+# falls and would otherwise pay the head to claim certainty it does not have.
+# Clamping is deliberate rather than a smooth squash: its zero gradient at the
+# floor is what stops a collapse continuing.
+LOG_VAR_MIN = -10.0
+LOG_VAR_MAX = 10.0
 
-    Output dimension is determined by the FeatureCoordinator's total_prediction_dimension.
+
+class NextStateHead(nn.Module):
+    """Predicts next-state deltas and absolutes for each ship, with uncertainty.
+
+    Output is ``[means | log variances]``: ``pred_dim`` means followed by
+    ``uncertainty_dim`` log variances, for the predictors that report one. The
+    means stay contiguous and first so every rollout consumer -- the belief
+    tracker above all -- goes on slicing by ``p_offset`` without knowing the
+    block behind them exists.
+
+    Both widths come from the FeatureCoordinator.
     """
 
-    def __init__(self, d_model: int, pred_dim: int) -> None:
+    def __init__(self, d_model: int, pred_dim: int, uncertainty_dim: int = 0) -> None:
         super().__init__()
         self.pred_dim = pred_dim
+        self.uncertainty_dim = uncertainty_dim
         self.net = nn.Sequential(
             nn.Linear(d_model, d_model * 2),
             nn.RMSNorm(d_model * 2),
             nn.GELU(),
-            nn.Linear(d_model * 2, pred_dim),
+            nn.Linear(d_model * 2, pred_dim + uncertainty_dim),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Args: x (..., D). Returns: (..., pred_dim)."""
-        return self.net(x)
+        """Args: x (..., D). Returns: (..., pred_dim + uncertainty_dim)."""
+        out = self.net(x)
+        if not self.uncertainty_dim:
+            return out
+        mean, log_var = out[..., : self.pred_dim], out[..., self.pred_dim :]
+        return torch.cat([mean, log_var.clamp(LOG_VAR_MIN, LOG_VAR_MAX)], dim=-1)
 
 
 class TeamPMA(nn.Module):
@@ -267,7 +288,11 @@ class YemongPolicy(nn.Module):
             if predict_outcome
             else None
         )
-        self.next_state_head = NextStateHead(D, pred_dim=coordinator.total_prediction_dimension)
+        self.next_state_head = NextStateHead(
+            D,
+            pred_dim=coordinator.total_prediction_dimension,
+            uncertainty_dim=coordinator.total_uncertainty_dimension,
+        )
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
         # rather than fixed Sequential index, so inserting a non-Linear layer (e.g.

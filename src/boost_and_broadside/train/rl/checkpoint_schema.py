@@ -42,12 +42,18 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 9,
+        "version": 10,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
+        "spawn_reveal": "visible_to_both_teams_for_the_spawn_decision",
         "hidden_tokens": "recursive_point_estimate_plus_age",
-        "belief_existence_mask": "visible_or_previously_observed",
+        # Every ship is seen on the decision it spawns, and validity is sticky,
+        # so this is constant-true rather than a mask the trunk has to read.
+        "belief_existence_mask": "always_valid_after_spawn",
+        "auxiliary_prediction": "mean_plus_clamped_log_variance",
+        "auxiliary_label_origin": "believed_current_to_true_next",
+        "resource_targets": "normalised_scalar",
         "privileged_auxiliary_targets": "storage_only_never_policy_input",
         "enemy_actions": "always_private",
         "position_fourier_basis": "base2",

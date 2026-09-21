@@ -204,6 +204,17 @@ class Normalize(Transform):
             return x.float() / self._s_tensor
         return x.float() / self.scales
 
+    def invert(self, x: torch.Tensor) -> torch.Tensor:
+        if isinstance(self.scales, list):
+            if (
+                self._s_tensor is None
+                or self._s_tensor.device != x.device
+                or self._s_tensor.dtype != x.dtype
+            ):
+                self._s_tensor = torch.tensor(self.scales, device=x.device, dtype=x.dtype)
+            return x.float() * self._s_tensor
+        return x.float() * self.scales
+
 
 class Symlog(Transform):
     def out_dim(self, in_dim: int) -> int:
@@ -356,6 +367,23 @@ class Predictor(ABC):
     @abstractmethod
     def prediction_dim(self, in_channels: int) -> int: ...
 
+    def uncertainty_dim(self, in_channels: int) -> int:
+        """Log-variance outputs this predictor wants, or 0 for a plain squared error.
+
+        A predictor that reports one makes its loss a Gaussian negative log
+        likelihood instead, which is what removes ``label_scale`` from the
+        objective: ``(y - mu)^2 / sigma^2`` is invariant to how the label is
+        scaled, so a feature whose labels are a thousand times too large learns
+        a correspondingly larger sigma rather than dominating the sum.
+
+        It also weights the gradient on the mean by ``1 / sigma^2``, which is
+        what this model needs: a long-hidden token's label is mostly belief
+        error nobody could predict, so the head learns a wide sigma there and
+        the signal concentrates on the tokens whose labels are real dynamics.
+        """
+
+        return 0
+
     @abstractmethod
     def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor: ...
 
@@ -372,6 +400,9 @@ class AbsolutePredictor(Predictor):
     def prediction_dim(self, in_channels: int) -> int:
         return in_channels
 
+    def uncertainty_dim(self, in_channels: int) -> int:
+        return in_channels
+
     def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor:
         return next_
 
@@ -386,6 +417,9 @@ class AdditivePredictor(Predictor):
         return in_channels
 
     def prediction_dim(self, in_channels: int) -> int:
+        return in_channels
+
+    def uncertainty_dim(self, in_channels: int) -> int:
         return in_channels
 
     def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor:
@@ -650,6 +684,12 @@ class _PredictorSpec:
     t_offset: int  # start of this feature's slice in the target vector
     p_offset: int  # start of this feature's slice in the prediction vector
     label_scale: tuple[float, ...]  # per-prediction-dim scale, length == p_dim
+    # Log-variance outputs, laid out in a block *after* every mean. Keeping the
+    # means contiguous and first is what lets ``apply_prediction`` and every
+    # rollout consumer go on slicing by ``p_offset`` against a widened head
+    # without knowing uncertainty exists.
+    u_dim: int  # 0 for a predictor that does not report uncertainty
+    u_offset: int  # start of this feature's slice in the uncertainty block
 
 
 class FeatureCoordinator:
@@ -667,20 +707,24 @@ class FeatureCoordinator:
         self.total_input_dimension = 0
         self.total_target_dimension = 0
         self.total_prediction_dimension = 0
+        self.total_uncertainty_dimension = 0
         # One cached spec per predictor feature — the single source of truth for
         # every per-feature offset/dimension lookup below.
         self._predictor_specs: list[_PredictorSpec] = []
         # Lazily-built label-scale tensor, cached per device (see label_scale_vector).
         self._label_scale_cache: torch.Tensor | None = None
+        self._uncertainty_cache: tuple[torch.Tensor, torch.Tensor] | None = None
 
         t_offset = 0
         p_offset = 0
+        u_offset = 0
         for f in self.features:
             self.total_input_dimension += f.input_dimension(dummy)
 
             if f.predictor:
                 t_dim = f.get_target(dummy).shape[-1]
                 p_dim = f.predictor.prediction_dim(t_dim)
+                u_dim = f.predictor.uncertainty_dim(t_dim)
                 if isinstance(f.label_scale, (list, tuple)):
                     label_scale = tuple(float(s) for s in f.label_scale)
                 else:
@@ -695,12 +739,16 @@ class FeatureCoordinator:
                         t_offset=t_offset,
                         p_offset=p_offset,
                         label_scale=label_scale,
+                        u_dim=u_dim,
+                        u_offset=u_offset,
                     )
                 )
                 self.total_target_dimension += t_dim
                 self.total_prediction_dimension += p_dim
+                self.total_uncertainty_dimension += u_dim
                 t_offset += t_dim
                 p_offset += p_dim
+                u_offset += u_dim
 
     def _dummy_obs(self) -> YemongObservation:
         from boost_and_broadside.env.observation import ObsKey, YemongObservation
@@ -831,6 +879,67 @@ class FeatureCoordinator:
         labels = torch.cat(results, dim=-1)
         return labels * self.label_scale_vector(labels.device)
 
+    def _uncertainty_layout(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+        """(mask, gather) mapping each prediction dim to its log-variance channel.
+
+        ``mask[i]`` says whether prediction dim i has one; ``gather[i]`` is its
+        index in the log-variance block (0 where absent, and unused there).
+        Cached per device the way ``label_scale_vector`` is -- this sits in the
+        per-micro-batch loss path.
+        """
+
+        cached = self._uncertainty_cache
+        if cached is not None and cached[0].device == device:
+            return cached
+        mask = torch.zeros(self.total_prediction_dimension, dtype=torch.bool)
+        gather = torch.zeros(self.total_prediction_dimension, dtype=torch.long)
+        for spec in self._predictor_specs:
+            if not spec.u_dim:
+                continue
+            # One log variance per mean, so the two slices line up elementwise.
+            for offset in range(spec.p_dim):
+                mask[spec.p_offset + offset] = True
+                gather[spec.p_offset + offset] = spec.u_offset + offset
+        cached = (mask.to(device), gather.to(device))
+        self._uncertainty_cache = cached
+        return cached
+
+    def prediction_loss(self, predictions: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """Per-prediction-dimension loss, given the head's full output.
+
+        ``predictions`` is ``[means | log variances]``: the first
+        ``total_prediction_dimension`` channels are the means, the rest the
+        log-variance block. A feature whose predictor reports an uncertainty
+        gets a Gaussian negative log likelihood,
+
+            0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)
+
+        and every other feature keeps the plain squared error it had before, so
+        predictors can be converted one at a time.
+
+        The NLL is scale-free in the label, which is the point: it takes
+        ``label_scale`` out of the objective and leaves it a numerical
+        convenience for conditioning ``mu``. It also weights the gradient on the
+        mean by ``1 / sigma^2``, so a token whose label is mostly unpredictable
+        belief error earns a wide sigma and stops dominating the sum.
+
+        It is unbounded below as sigma falls, so the head clamps its log
+        variance (see ``NextStateHead``); nothing here can recover from zero.
+
+        Returns:
+            (..., total_prediction_dimension) elementwise loss.
+        """
+
+        mean = predictions[..., : self.total_prediction_dimension]
+        sq_err = (mean - labels).pow(2)
+        if not self.total_uncertainty_dimension:
+            return sq_err
+
+        mask, gather = self._uncertainty_layout(predictions.device)
+        log_var = predictions[..., self.total_prediction_dimension :].index_select(-1, gather)
+        nll = 0.5 * (sq_err * torch.exp(-log_var) + log_var)
+        return torch.where(mask, nll, sq_err)
+
     def apply_all_predictions(
         self, curr_targets: torch.Tensor, predictions: torch.Tensor
     ) -> torch.Tensor:
@@ -849,7 +958,11 @@ class FeatureCoordinator:
 
         The network predicts in scaled space (labels * label_scale). Dividing by
         label_scale recovers the raw delta/absolute before calling apply_all_predictions.
+
+        Takes the mean block only, so a head that also emits log variances can be
+        handed straight to every rollout consumer without any of them knowing.
         """
+        scaled_predictions = scaled_predictions[..., : self.total_prediction_dimension]
         scale = self.label_scale_vector(scaled_predictions.device)
         predictions = scaled_predictions / scale
         return self.apply_all_predictions(curr_targets, predictions)
@@ -955,33 +1068,44 @@ def build_standard_coordinator(
             label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
-        # Resources: quarter-wave (sin,cos) target + phase-delta prediction.
-        # UnitCirclePredictor is geometrically correct for circular quantities
-        # (1D phase delta vs 2D Cartesian delta for a 1 DoF variable).
+        # Resources predict as plain bounded scalars, normalised to [0, 1].
+        # They are not circular quantities: ``UnitCircle`` maps them onto a
+        # *quarter* wave, so nothing ever wraps and the phase-delta predictor was
+        # modelling a discontinuity that does not exist. A scalar target also
+        # makes them real-valued, which is what lets them carry a Gaussian
+        # uncertainty; the phase predictor cannot, and would need von Mises.
+        #
+        # The input encoder keeps its quarter-wave, which is a smooth and
+        # perfectly good representation to read -- the mis-modelling was only
+        # ever on the prediction side.
+        #
+        # label_scale is 1.0 rather than a fitted constant because these now
+        # train under a scale-free likelihood; it survives only to condition the
+        # mean, and ``next_state_label_scale/*`` reports what would centre it.
         Feature(
             name="health",
             accessor=Accessor(ObsKey.HEALTH),
             input_encoder=UnitCircle(scales=ship_config.max_health),
-            target_encoder=UnitCircle(scales=ship_config.max_health),
-            predictor=UnitCirclePredictor(cosine_first=False),
-            label_scale=36.0,
+            target_encoder=Normalize(scales=ship_config.max_health),
+            predictor=AbsolutePredictor(),
+            label_scale=1.0,
         ),
         Feature(
             name="power",
             accessor=Accessor(ObsKey.POWER),
             input_encoder=UnitCircle(scales=ship_config.max_power),
-            target_encoder=UnitCircle(scales=ship_config.max_power),
-            predictor=UnitCirclePredictor(cosine_first=False),
-            label_scale=93.0,
+            target_encoder=Normalize(scales=ship_config.max_power),
+            predictor=AbsolutePredictor(),
+            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         Feature(
             name="cooldown",
             accessor=Accessor(ObsKey.COOLDOWN),
             input_encoder=UnitCircle(scales=ship_config.firing_cooldown),
-            target_encoder=UnitCircle(scales=ship_config.firing_cooldown),
-            predictor=UnitCirclePredictor(cosine_first=False),
-            label_scale=2.1,
+            target_encoder=Normalize(scales=ship_config.firing_cooldown),
+            predictor=AbsolutePredictor(),
+            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         # Categoricals and static (no predictor)

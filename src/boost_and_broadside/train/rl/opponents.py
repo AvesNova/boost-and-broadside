@@ -478,7 +478,11 @@ class OpponentMixin:
             terminated=done_any,
             transition_contiguous=step.transition_contiguous,
             privileged_targets=privileged_targets,
-            scaled_predictions=step.network.pred_next_t0,
+            # Means only: the buffer feeds belief diagnostics, which compare
+            # forecasts against truth and have no use for the spread.
+            scaled_predictions=step.network.pred_next_t0[
+                ..., : self.coordinator.total_prediction_dimension
+            ],
         )
 
         hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)
