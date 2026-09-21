@@ -17,6 +17,7 @@ fallback path; logging stays off the GPU hot path.
 """
 
 import dataclasses
+import math
 import threading
 import time
 from collections import deque
@@ -1798,6 +1799,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         next_state_loss = self._zero_tensor
         next_state_cont_loss = self._zero_tensor
         next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
+        label_sq_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
         _need_aux = is_primary and self.cfg.next_state_coef > 0.0
         if _need_aux:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
@@ -1825,6 +1827,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / ns_sum  # (pred_dim,) gpu, additive across chunks
+                # Mean square of the *label* itself, which is what calibrates
+                # label_scale: the scale is defined as 1/std(raw label), so a
+                # well-scaled label has mean square 1 and the null model scores
+                # 1. Unweighted by aux_weights on purpose -- this measures the
+                # label, not the objective's opinion of it.
+                #
+                # Worth logging rather than measuring offline because the label
+                # now steps from the *believed* state, so its spread depends on
+                # how good this policy's own next-state head currently is. That
+                # makes the right scale a moving quantity rather than a property
+                # of the environment, and the series shows whether it moves
+                # enough to matter.
+                label_sq_per_feat = (
+                    labels.detach().float().pow(2) * ns_mask_f.unsqueeze(-1)
+                ).sum((0, 1, 2)) / ns_sum
 
         outcome_ce_loss = policy_logits.new_zeros(())
         # Always present, zeroed when the head is off: the ``_additive`` table is
@@ -1938,6 +1955,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["next_state_loss"] = next_state_loss.detach()
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
             diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
+            diag["label_sq_per_feat"] = label_sq_per_feat  # (pred_dim,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
             diag["approx_kl"] = (((ratio - 1) - log_ratio) * actor_f).sum() / actor_sum
@@ -2671,6 +2689,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # modelled — off the end of a 9-name list against 10 dimensions.
         ns_feat_names = self.coordinator.get_feature_names()
         ns_per_feat_accum: list[torch.Tensor] = []
+        label_sq_accum: list[torch.Tensor] = []
         hist_returns: torch.Tensor | None = None
         hist_logprob: torch.Tensor | None = None
         hist_alive: torch.Tensor | None = None
@@ -2797,6 +2816,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
                 k_stats: dict[str, torch.Tensor] = {}  # primary per-K moments
                 ns_feat_step: torch.Tensor | None = None
+                label_sq_step: torch.Tensor | None = None
                 hist_diag: dict = {}
 
                 for scale_idx, (buf, chunks) in enumerate(zip(all_buffers, batches)):
@@ -2846,6 +2866,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                                     diag["next_state_per_feat"]
                                     if ns_feat_step is None
                                     else ns_feat_step + diag["next_state_per_feat"]
+                                )
+                            if diag.get("label_sq_per_feat") is not None:
+                                label_sq_step = (
+                                    diag["label_sq_per_feat"]
+                                    if label_sq_step is None
+                                    else label_sq_step + diag["label_sq_per_feat"]
                                 )
                             hist_diag = diag
 
@@ -2932,6 +2958,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
                 if ns_feat_step is not None:
                     ns_per_feat_accum.append(ns_feat_step)
+                if label_sq_step is not None:
+                    label_sq_accum.append(label_sq_step)
 
                 if record_histograms and "alive_flat" in hist_diag:
                     # Sampled from the last micro-batch of the last primary
@@ -2972,6 +3000,26 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (pred_dim,)
             for i, name in enumerate(ns_feat_names):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
+
+        if label_sq_accum:
+            # A calibrated label reads 1.0 here. The suggested scale is the
+            # correction that would restore that, so it can be read off the
+            # chart and written straight into the feature's label_scale.
+            #
+            # A feature whose label never moved in this update has no scale to
+            # suggest -- health and shield delay do that in any sample without
+            # combat. It gets no suggestion rather than one divided by roughly
+            # zero, because this series exists to be copied into a config and a
+            # plausible-looking wrong number is worse there than a gap.
+            avg_label_sq = torch.stack(label_sq_accum).mean(0).cpu()  # (pred_dim,)
+            current = self.coordinator.label_scale_vector(torch.device("cpu"))
+            for i, name in enumerate(ns_feat_names):
+                mean_sq = avg_label_sq[i].item()
+                metrics[f"next_state_label_sq/{name}"] = mean_sq
+                if mean_sq > 0.0 and math.isfinite(mean_sq):
+                    metrics[f"next_state_label_scale/{name}"] = current[i].item() / math.sqrt(
+                        mean_sq
+                    )
 
         for name, (total, count) in all_buffers[0].belief_diagnostics.items():
             metrics[name] = (total / count.clamp(min=1.0)).item()
