@@ -1816,14 +1816,25 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             labels = mb_ns_labels  # (T, B_mb, N, pred_dim)
 
             P = self.coordinator.total_prediction_dimension
-            sq_err = (pred_next.float() - labels.detach()).pow(2)  # (T, B, N, pred_dim)
-            sq_err = sq_err * self.aux_weights  # per-prediction weight
+            # Gaussian NLL where a predictor reports uncertainty, squared error
+            # elsewhere. The NLL is scale-free in the label, so the features it
+            # covers no longer depend on ``label_scale`` being right, and a token
+            # whose label is mostly unpredictable belief error earns a wide sigma
+            # instead of dominating the sum.
+            per_dim = self.coordinator.prediction_loss(pred_next.float(), labels.detach())
+            per_dim = per_dim * self.aux_weights  # per-prediction weight
 
             if self.cfg.next_state_coef > 0.0:
-                next_state_cont_loss = (sq_err * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
+                next_state_cont_loss = (per_dim * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
                 next_state_loss = next_state_cont_loss
 
             with torch.no_grad():
+                # Squared error, not the objective: this series predates the NLL
+                # and has to keep meaning the same thing across the change, and a
+                # likelihood is not an error anyone can read in physical units.
+                sq_err = (
+                    pred_next.float()[..., :P] - labels.detach()
+                ).pow(2) * self.aux_weights
                 next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / ns_sum  # (pred_dim,) gpu, additive across chunks

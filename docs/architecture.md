@@ -331,7 +331,27 @@ angular velocity, and ship-local log-index delta. Static field material channels
 inputs, not prediction targets; the local index target makes entering and leaving a
 medium visible to the learned dynamics model.
 
-Training applies normalized per-step mean-squared error across prediction channels.
+The head predicts a mean and, for every non-circular channel, a log variance; training
+applies a Gaussian negative log likelihood, `0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)`.
+Position and attitude wrap, so they keep plain squared error until a von Mises form
+replaces it.
+
+The likelihood is there because no fixed label scale exists to normalize against. The label
+steps from the believed state to the true next one, so its width is set by how wrong the
+belief currently is -- which depends on the head being trained, on how long ships stay
+unseen, and so on how well the policy plays. Measured over one run, velocity labels sat
+about 33x their calibrated width, and position's implied scale fell by a third *within* that
+run while velocity's held flat: position error is the integral of a stationary velocity
+error over a hidden duration that keeps growing as the policy learns to avoid contact. A
+constant cannot track that. `(y - mu)^2 / sigma^2` does not need to, being invariant to it.
+
+Weighting the mean's gradient by `1/sigma^2` is the second reason. A long-unseen token's
+label is mostly belief error nobody could have predicted; the head widens sigma there and
+the signal concentrates on tokens whose labels are real dynamics. The likelihood is
+unbounded below as sigma falls, so the log variance is clamped -- nothing else stops a head
+from buying loss with certainty it has not earned.
+
+`label_scale` survives only to condition the mean, not to balance the objective.
 
 A triangle-window cumulative loss on position and velocity ran alongside it until the
 label below was corrected. Its purpose was to catch systematic multi-step drift, which it

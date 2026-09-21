@@ -170,7 +170,8 @@ The total update combines:
 - normalized per-component critic mean-squared error;
 - entropy bonuses for power, turn, and shoot distributions;
 - behavior cloning from the scripted controller, gated down as scripted win rate rises;
-- one-step next-state prediction error;
+- one-step next-state prediction, as a Gaussian likelihood over a predicted mean and
+  variance for every non-circular channel, and squared error for the rest;
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.

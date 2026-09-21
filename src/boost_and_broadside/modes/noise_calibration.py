@@ -66,13 +66,12 @@ _REPORT_FEATURES = {
     "attitude": ("att", "attitude (cos, sin)", ("att_cos", "att_sin")),
     "angular_velocity": ("ang_vel", "angular velocity (symlog)", ("ang_vel_symlog",)),
     "shield_delay": ("shield_delay", "shield recharge delay (symlog)", ("shield_delay_symlog",)),
-    "health": ("health", "health (sin, cos)", ("health_sin", "health_cos")),
-    "power": ("power", "power (sin, cos)", ("power_sin", "power_cos")),
-    "cooldown": (
-        "cooldown",
-        "cooldown (sin, cos)",
-        ("cooldown_sin", "cooldown_cos"),
-    ),
+    # Bounded scalars normalised to [0, 1], not the quarter-wave pairs these
+    # were before: they never wrapped, so a phase target was modelling a
+    # discontinuity that does not exist.
+    "health": ("health", "health (fraction of max)", ("health_frac",)),
+    "power": ("power", "power (fraction of max)", ("power_frac",)),
+    "cooldown": ("cooldown", "cooldown (fraction of max)", ("cooldown_frac",)),
     "local_log_index": (
         "local_log_index",
         "local encoded log-index delta",
