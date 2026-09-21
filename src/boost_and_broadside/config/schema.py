@@ -97,7 +97,6 @@ class ProfileSpec:
     rewards: RewardConfig
     next_state_coef: float
     outcome_categorical_coef: float
-    windowed_loss_coef: float
 
     # --- Discounts, per physics tick ---
     gamma_per_tick: float

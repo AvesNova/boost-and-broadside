@@ -74,7 +74,7 @@ def _run() -> tuple:
         ns_labels=None,
     )
     trainer = types.SimpleNamespace(
-        cfg=types.SimpleNamespace(next_state_coef=1.0, windowed_loss_coef=0.0),
+        cfg=types.SimpleNamespace(next_state_coef=1.0),
         coordinator=coordinator,
         _precompute_belief_diagnostics=lambda *args: None,
     )

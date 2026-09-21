@@ -248,7 +248,6 @@ class TrainConfig:
     # reaches the advantage path, so this only buys representation in the trunk
     # and a calibrated probability to read. 0 disables the term outright.
     outcome_categorical_coef: float = 0.0
-    windowed_loss_coef: float = 0.1  # weight for windowed cumulative bias loss; 0 to disable
 
     # --- Logging ---
     log_interval: int = 10  # print to terminal every N updates

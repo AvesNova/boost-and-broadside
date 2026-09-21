@@ -6,7 +6,7 @@ log async → repeat. On top of that, PPOTrainer coordinates:
   - the decomposed critic (per-component returns, lambda aggregation,
     schedule-driven group scales),
   - auxiliary losses (behavior cloning from the scripted agent with
-    win-rate-gated decay, next-state prediction, windowed cumulative loss,
+    win-rate-gated decay, next-state prediction,
     optional SIGReg),
   - opponent management (scripted / avg-model / league fractions, OpponentMixin),
   - continuous in-training Elo ladder evaluation (EloEvaluator) and the roster,
@@ -1601,9 +1601,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ns_sum = _z.clone()
         numel = 0
         need_bc = is_primary and self._behavior_cloning_coef > 0.0
-        need_ns = is_primary and (
-            self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
-        )
+        need_ns = is_primary and self.cfg.next_state_coef > 0.0
         for chunk in chunks:
             mb_alive = chunk.alive
             mb_actor_mask = chunk.actor_mask
@@ -1657,9 +1655,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ``denoms`` rather than micro-batch-local counts, so losses and additive
         diagnostics from a minibatch's micro-batches sum exactly to the unsplit
         minibatch values — gradient accumulation over micro-batches is then
-        equivalent to one large minibatch. Batch-statistic terms (sigreg,
-        windowed next-state) can't decompose that way and are weighted by
-        ``frac`` instead (exact when the minibatch is unsplit, i.e. frac=1).
+        equivalent to one large minibatch. SIGReg is a batch statistic and
+        cannot decompose that way, so it is weighted by ``frac`` instead
+        (exact when the minibatch is unsplit, i.e. frac=1); it is the only
+        such term, and with it disabled the accumulation is exact.
 
         Args:
             batch:        One micro-batch tuple from RolloutBuffer.get_minibatch_iterator.
@@ -1798,11 +1797,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # ---- Next-state prediction loss (primary scale only) ----------------
         next_state_loss = self._zero_tensor
         next_state_cont_loss = self._zero_tensor
-        windowed_ns_loss = self._zero_tensor
         next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
-        _need_aux = is_primary and (
-            self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
-        )
+        _need_aux = is_primary and self.cfg.next_state_coef > 0.0
         if _need_aux:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
             # Privileged dynamics supervision covers visible and previously-seen
@@ -1824,19 +1820,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if self.cfg.next_state_coef > 0.0:
                 next_state_cont_loss = (sq_err * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
                 next_state_loss = next_state_cont_loss
-
-            if self.cfg.windowed_loss_coef > 0.0:
-                # Internally a masked mean over its own validity mask — weight
-                # by env fraction like sigreg (exact when the minibatch is unsplit).
-                windowed_ns_loss = (
-                    self.coordinator.compute_windowed_loss(
-                        pred_next.float(),
-                        labels.detach(),
-                        ns_mask,
-                        mb_terminated,
-                    )
-                    * frac
-                )
 
             with torch.no_grad():
                 next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
@@ -1884,7 +1867,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             + self._behavior_cloning_coef * bc_loss
             + self._schedule_state.sigreg_coef * sigreg_loss
             + self.cfg.next_state_coef * next_state_loss
-            + self.cfg.windowed_loss_coef * windowed_ns_loss
         )
 
         diag: dict = dict(diag_outcome)
@@ -1902,7 +1884,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 "bc": self._behavior_cloning_coef * bc_loss,
                 "sigreg": self._schedule_state.sigreg_coef * sigreg_loss,
                 "next_state": self.cfg.next_state_coef * next_state_loss,
-                "windowed_next_state": self.cfg.windowed_loss_coef * windowed_ns_loss,
             }
             if self._grad_diag.decomposes_policy_by_reward:
                 terms.update(
@@ -1956,7 +1937,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["sigreg_loss"] = sigreg_loss.detach()
             diag["next_state_loss"] = next_state_loss.detach()
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
-            diag["windowed_ns_loss"] = windowed_ns_loss.detach()
             diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
@@ -2339,7 +2319,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         accordingly, so the loss magnitude is not comparable across this change
         and ``next_state_coef`` weighs a bigger number than it used to.
         """
-        need_labels = self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
+        need_labels = self.cfg.next_state_coef > 0.0
         T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
         believed = None
         if need_labels or buf.privileged_targets is None:
@@ -2645,7 +2625,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "loss/sigreg": [],
             "loss/next_state": [],
             "loss/next_state_cont": [],
-            "loss/windowed_ns": [],
             "loss_proxy/policy_gradient": [],
             "loss_proxy/value": [],
             "loss_proxy/entropy": [],
@@ -2758,7 +2737,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("sigreg", "sigreg_loss"),
                     ("ns_loss", "next_state_loss"),
                     ("ns_cont", "next_state_cont_loss"),
-                    ("windowed_ns", "windowed_ns_loss"),
                     ("bc_kl", "bc_kl"),
                     ("scripted_entropy", "scripted_entropy"),
                     ("kl", "approx_kl"),
@@ -2797,7 +2775,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("loss/sigreg", "sigreg"),
                     ("loss/next_state", "ns_loss"),
                     ("loss/next_state_cont", "ns_cont"),
-                    ("loss/windowed_ns", "windowed_ns"),
                     ("policy/kl", "kl"),
                     ("policy/clip_fraction", "clip"),
                     ("policy/ratio_mean", "ratio_mean"),
