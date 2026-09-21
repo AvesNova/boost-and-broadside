@@ -43,6 +43,15 @@ RL_PROFILE = ProfileSpec(
     spawn_resource_spread=0.0,
     vision_range=1024.0,
     zones_occlude=True,
+    # Every ship is seen by both teams on the decision it spawns -- at
+    # deployment and on every respawn. Deployment makes ``belief_valid`` a
+    # constant, so the attention key mask goes away and privileged next-state
+    # supervision covers every enemy. Respawn keeps the belief honest across a
+    # lifecycle discontinuity the tracker is otherwise never told about.
+    #
+    # This changes what the environment tells a policy, so ratings do not carry
+    # across it: compare against earlier runs with `bnb crossover`, not Elo.
+    spawn_reveal=True,
     frontline=FrontlineConfig(
         zone_radius=330.0,
         zone_ring_radius=1200.0,

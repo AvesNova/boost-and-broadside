@@ -17,13 +17,16 @@ from boost_and_broadside.env.wrapper import SOURCE_STAT_NAMES, YemongEnvWrapper
 from tests.conftest import make_state
 
 
-def _config(*, vision_range: float | None = 300.0, num_fields: int = 0) -> EnvConfig:
+def _config(
+    *, vision_range: float | None = 300.0, num_fields: int = 0, spawn_reveal: bool = False
+) -> EnvConfig:
     return EnvConfig(
         num_ships=4,
         max_bullets=2,
         max_episode_steps=60,
         num_fields=num_fields,
         vision_range=vision_range,
+        spawn_reveal=spawn_reveal,
     )
 
 
@@ -677,3 +680,50 @@ def test_an_occluded_enemy_is_masked_out_of_policy_attention() -> None:
     assert not blocked[ObsKey.VISIBLE][0, 2:4].any()
     # Field tokens stay attendable: terrain is not what fog hides.
     assert blocked[ObsKey.BELIEF_VALID][0, 4:].all()
+
+
+def test_spawn_reveal_exposes_every_ship_on_the_opening_tick() -> None:
+    """Ships beyond sight range are still visible to both teams while deploying."""
+
+    ship, state = _state()
+    # Antipodal on the 1024px toroid: ~724px apart against a 100px sight radius,
+    # so nothing is visible on geometry alone.
+    state.ship_pos[0] = torch.tensor([0 + 0j, 20 + 0j, 512 + 512j, 492 + 512j])
+    enemy_of_team0 = state.ship_team_id[0] == 1
+
+    blind = team_visibility_from_state(state, ship, _config(vision_range=100.0))
+    assert not blind.ship[0, 0][enemy_of_team0].any()
+
+    state.ship_spawned.fill_(True)  # every ship entered the world this decision
+    revealed = team_visibility_from_state(
+        state, ship, _config(vision_range=100.0, spawn_reveal=True)
+    )
+    assert revealed.ship.all()
+    # Only the operative mask moves: the range and LOS decompositions stay pure
+    # geometry so the fog diagnostics keep measuring occlusion, not the reveal.
+    assert not revealed.range_only_ship[0, 0][enemy_of_team0].any()
+    assert not revealed.los_ship[0, 0][enemy_of_team0].any()
+
+
+def test_spawn_reveal_lapses_once_the_spawn_decision_is_over() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([0 + 0j, 20 + 0j, 512 + 512j, 492 + 512j])
+    config = _config(vision_range=100.0, spawn_reveal=True)
+    state.ship_spawned.zero_()
+    lapsed = team_visibility_from_state(state, ship, config)
+    assert not lapsed.ship[0, 0][state.ship_team_id[0] == 1].any()
+
+
+def test_spawn_reveal_exposes_only_the_ship_that_respawned() -> None:
+    """A respawn reveals that ship, not the rest of its team."""
+
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([0 + 0j, 20 + 0j, 512 + 512j, 492 + 512j])
+    state.ship_spawned.zero_()
+    state.ship_spawned[0, 2] = True  # one enemy respawned; ship 3 did not
+
+    revealed = team_visibility_from_state(
+        state, ship, _config(vision_range=100.0, spawn_reveal=True)
+    )
+    assert revealed.ship[0, 0, 2], "the respawned ship must be visible"
+    assert not revealed.ship[0, 0, 3], "its team-mate stays hidden"

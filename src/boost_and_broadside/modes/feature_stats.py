@@ -12,6 +12,14 @@ The measurement depends on both acting agents, the environment, and the sample
 budget, so it is not a property of the profile alone: it writes a
 ``feature-stats`` artifact owned by the single run behind its checkpoints, or by
 nothing at all.
+
+Caveat: this reads ``observation_from_state`` -- unoccluded truth -- and so
+measures the truth-to-truth label, while training re-bases the label on the
+*believed* current state (see ``PPOTrainer._precompute_ns_labels``). The two
+agree exactly for a visible ship and diverge for a hidden one, where the label
+carries the belief correction and has a much wider distribution. So the scales
+suggested here are a lower bound on what training sees, and the gap grows with
+how much of an episode is spent out of contact.
 """
 
 import time

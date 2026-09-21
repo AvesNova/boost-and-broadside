@@ -1,5 +1,6 @@
 """Contracts for recursive hidden-enemy point estimates."""
 
+import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
@@ -179,3 +180,102 @@ def test_imagined_frontline_ship_with_zero_shields_remains_alive():
     )
     assert imagined[ObsKey.ALIVE].all()
     assert imagined[ObsKey.HEALTH].eq(0).all()
+
+
+def test_deploy_reveal_makes_belief_valid_constant() -> None:
+    """One revealed tick marks every ship valid for the rest of the episode.
+
+    This is the property the attention key mask removal rests on: ``valid`` is
+    sticky, so a single opening reveal makes ``BELIEF_VALID`` a constant rather
+    than something the trunk has to be told about.
+    """
+
+    from boost_and_broadside.config import EnvConfig
+    from boost_and_broadside.config.defaults import REWARDS
+    from boost_and_broadside.env.wrapper import YemongEnvWrapper
+
+    ship = ShipConfig()
+    coordinator = build_standard_coordinator(ship)
+    config = EnvConfig(
+        num_ships=4,
+        max_bullets=2,
+        max_episode_steps=64,
+        vision_range=100.0,
+        spawn_reveal=True,
+    )
+    wrapper = YemongEnvWrapper(2, ship, config, REWARDS, "cpu")
+    obs = wrapper.reset(seed=11)
+    tracker = BeliefTracker(2, 4, 0.1, coordinator, "cpu")
+
+    composed = tracker.compose(obs.for_team(0))
+    assert composed[ObsKey.BELIEF_VALID][:, :4].all(), "opening tick must reveal every ship"
+
+    prediction = torch.zeros((2, 4, coordinator.total_prediction_dimension))
+    for _ in range(8):
+        tracker.advance(composed.for_team(0), prediction)
+        obs, *_ = wrapper.step(torch.zeros((2, 4, 3), dtype=torch.long))
+        composed = tracker.compose(obs.for_team(0))
+        # Ships drift apart and out of sight, but validity never lapses.
+        assert composed[ObsKey.BELIEF_VALID][:, :4].all()
+
+
+def test_a_revealed_respawn_corrects_a_stale_belief() -> None:
+    """The reveal exists to end a lifecycle discontinuity the tracker cannot see.
+
+    ``BeliefTracker`` advances a hidden ship by the policy's own forecast and is
+    never told it died, so without the spawn reveal an unobserved respawn leaves
+    the belief tracking a corpse's trajectory: the policy acts on a phantom at
+    the old position, and the auxiliary label carries a teleport no head could
+    have predicted, on every step until the ship is next seen.
+    ``transition_contiguous`` masks only the step the teleport happened on.
+    """
+
+    coordinator = build_standard_coordinator(ShipConfig())
+    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
+    still = torch.zeros((1, 2, coordinator.total_prediction_dimension))
+
+    seen = tracker.compose(_view(visible=True, x=300.0))
+    assert seen[ObsKey.POS][0, 1, 0] == pytest.approx(300.0)
+
+    # Out of contact, and meanwhile it dies and respawns far away at x=900.
+    for _ in range(3):
+        tracker.advance(seen, still)
+        seen = tracker.compose(_view(visible=False, x=900.0))
+    stale = seen[ObsKey.POS][0, 1, 0].item()
+    assert stale == pytest.approx(300.0), "belief should still be on the old trajectory"
+    assert abs(900.0 - stale) > 500.0, "and so the label would carry the whole teleport"
+
+    # The spawn reveal shows it for one decision: the belief snaps to truth.
+    tracker.advance(seen, still)
+    revealed = tracker.compose(_view(visible=True, x=900.0))
+    assert revealed[ObsKey.POS][0, 1, 0] == pytest.approx(900.0)
+    assert revealed[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0
+
+    # And it stays corrected once contact is lost again.
+    tracker.advance(revealed, still)
+    after = tracker.compose(_view(visible=False, x=900.0))
+    assert after[ObsKey.POS][0, 1, 0] == pytest.approx(900.0)
+
+
+def test_the_environment_latches_a_spawn_for_the_whole_decision() -> None:
+    """Visibility reads a latch, not the one-tick physics flag.
+
+    ``ship_respawned`` is cleared at the start of the next physics tick, so with
+    ``action_repeat`` above 1 it would be gone by the time the observation is
+    built. The latch is what survives to be observed.
+    """
+
+    from boost_and_broadside.config import EnvConfig
+    from boost_and_broadside.config.defaults import REWARDS
+    from boost_and_broadside.env.wrapper import YemongEnvWrapper
+
+    ship = ShipConfig()
+    config = EnvConfig(
+        num_ships=4, max_bullets=2, max_episode_steps=64, vision_range=100.0, spawn_reveal=True
+    )
+    wrapper = YemongEnvWrapper(2, ship, config, REWARDS, "cpu")
+    wrapper.reset(seed=5)
+    assert wrapper.state.ship_spawned.all(), "a reset is a spawn for every ship"
+
+    wrapper.step(torch.zeros((2, 4, 3), dtype=torch.long))
+    assert not wrapper.state.ship_spawned.any(), "and the latch clears once observed"

@@ -286,6 +286,23 @@ class EnvConfig:
     vision_range: float | None = None
     # Zones use the same convex-core line-of-sight rule as refractive fields.
     zones_occlude: bool = True
+    # Every ship is visible to both teams for the one decision on which it
+    # enters the world -- deploying at the start of a match, or respawning after
+    # death. False preserves the original "spawn unseen" semantics.
+    #
+    # Two things rest on this. Deployment: ``BeliefTracker.valid`` is sticky, so
+    # one revealed tick marks every ship valid for the rest of the episode,
+    # which makes ``belief_valid`` a constant -- removing the attention key mask
+    # and extending privileged next-state supervision to every enemy rather than
+    # only sighted ones. Respawn: the tracker advances a hidden ship by the
+    # policy's own forecast and is never told it died, so without a reveal an
+    # unobserved respawn leaves the belief tracking a corpse until the ship is
+    # next seen.
+    #
+    # The cost is that an enemy which is never re-sighted is a belief rollout
+    # rather than an inert token, so watch the clamp counter and the
+    # age-bucketed hidden-enemy error.
+    spawn_reveal: bool = False
 
     def __post_init__(self) -> None:
         if isinstance(self.frontline, Mapping):

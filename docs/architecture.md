@@ -338,10 +338,30 @@ Training applies:
   multi-step drift more strongly than zero-mean step noise.
 
 With finite vision, visible ships refresh a policy-local point-estimate cache and the head's
-forecast becomes the next hidden input recursively. Previously seen hidden tokens receive
-privileged next-state supervision without exposing that truth to the actor or critic;
-never-seen tokens and death-to-respawn teleport labels are masked. Each policy/perspective
-owns its cache, including frozen league and evaluation policies.
+forecast becomes the next hidden input recursively. Hidden tokens receive privileged
+next-state supervision without exposing that truth to the actor or critic; death-to-respawn
+teleport labels are masked. Each policy/perspective owns its cache, including frozen league
+and evaluation policies.
+
+Every ship is visible to both teams for the one decision on which it enters the world, at
+deployment and on every respawn. Deployment is what makes the supervision above cover every
+enemy rather than only sighted ones, and why the trunk needs no key mask: token validity is
+a constant, not something attention has to be told.
+
+Respawn matters for a different reason. The cache is advanced by the head's own forecast and
+is never told a ship died, so an unobserved respawn would leave it tracking a corpse's
+trajectory -- handing the policy a phantom at the old position, and the label a teleport
+nothing could have predicted, on every step until that ship was next seen. Marking the single
+step the teleport happened on does not cover that, because the stale estimate outlives it.
+
+The label is the step from the *believed* current state to the true next one, not truth to
+truth. The head's output is applied to the cache, so a truth-to-truth label would ask it to
+reproduce a transition it is never in a position to apply -- the belief error would be
+carried forward unchanged at every step, with nothing in the objective able to remove it.
+Re-basing on the belief makes the target the correction back onto truth, which for a visible
+ship is the same quantity as before and for a stale one is the shrinkage the point estimate
+needs. The residual is only partly predictable, so the head learns the conditional mean of
+that correction and the label distribution is correspondingly wider than a one-step delta.
 
 The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
 with deeper autoregressive diagnostics in the reference run's

@@ -354,6 +354,9 @@ class YemongEnvWrapper:
         dones = torch.zeros(B, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
         transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        # A new decision: whatever spawned during the last one has been
+        # observed, so the latch starts empty and re-fills below.
+        self.env.state.ship_spawned.zero_()
         terminal_result = torch.full(
             (B,), int(MatchResult.ONGOING), dtype=torch.int8, device=self.device
         )
@@ -365,6 +368,7 @@ class YemongEnvWrapper:
                 actions, comp_rewards, running, unlimited_resources
             )
             transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            self.env.state.ship_spawned |= self.env.state.ship_respawned & running.unsqueeze(1)
             ended_this_tick = (tick_dones | tick_truncated) & running
             terminal_result = torch.where(
                 ended_this_tick,
@@ -418,6 +422,9 @@ class YemongEnvWrapper:
         dones = torch.zeros(B, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
         transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        # A new decision: whatever spawned during the last one has been
+        # observed, so the latch starts empty and re-fills below.
+        self.env.state.ship_spawned.zero_()
         terminal_result = torch.full(
             (B,), int(MatchResult.ONGOING), dtype=torch.int8, device=self.device
         )
@@ -428,6 +435,7 @@ class YemongEnvWrapper:
             running = ~(dones | truncated)
             tick_dones, tick_truncated = self._interactive_tick(actions, unlimited_resources)
             transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            self.env.state.ship_spawned |= self.env.state.ship_respawned & running.unsqueeze(1)
             ended_this_tick = (tick_dones | tick_truncated) & running
             terminal_result = torch.where(
                 ended_this_tick, self.env.state.match_result, terminal_result

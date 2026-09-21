@@ -143,9 +143,12 @@ masked observation and canonicalizes its team labels. The same weights therefore
 candidate actions for both perspectives without deriving one team's sight from the other's.
 
 Each policy instance owns a GPU-resident belief cache. Visible ships refresh that cache from
-perceived truth; never-seen enemies remain absent; and previously seen enemies retain a token
-whose physical channels are advanced recursively by the policy's next-state head. The token
-also carries explicit visibility, validity, and time-since-observation features. Team 0, Team
+perceived truth, and enemies out of contact retain a token whose physical channels are
+advanced recursively by the policy's next-state head. Every ship is revealed to both teams
+for the decision it spawns on, at match start and on every respawn, which seeds each cache
+from observation rather than from nothing and stops a remembered estimate outliving the ship
+it describes. The token also carries explicit visibility, validity,
+and time-since-observation features. Team 0, Team
 1, every league checkpoint, and every evaluation policy keep independent caches, so one
 policy's estimate cannot leak into another's input.
 
@@ -636,8 +639,16 @@ once-per-update metric synchronization; no per-step host read was added.
 They also log `belief/visible/*`, `belief/hidden/*`, and hidden-age buckets for position,
 velocity, attitude, angular velocity, health, power, cooldown, and local refractive index.
 Authoritative next-state targets are stored in a separate rollout tensor used only by the
-auxiliary loss and diagnostics. Never-seen tokens are excluded from that loss; previously
-seen hidden tokens remain supervised, and respawn/terminal discontinuities remain masked.
+auxiliary loss and diagnostics. Every enemy is supervised, because the spawn reveal leaves
+none in the never-observed state; terminal discontinuities remain masked, and the reveal is
+what keeps a respawn from contaminating the label after the masked step.
+
+The label pairs that authoritative next state with the *believed* current one, which is what
+the head's output is actually applied to at rollout. Taking both ends from truth instead
+would train the head on a transition it never gets to apply, and the belief error would then
+be carried forward intact at every step rather than corrected. The two definitions coincide
+for a visible ship; for a hidden one the label is the correction back onto truth, and its
+distribution is wider than a one-step delta by however far the estimate has drifted.
 
 ### What `--vram` may and may not change
 
