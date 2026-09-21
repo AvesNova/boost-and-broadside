@@ -333,8 +333,16 @@ medium visible to the learned dynamics model.
 
 The head predicts a mean and, for every non-circular channel, a log variance; training
 applies a Gaussian negative log likelihood, `0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)`.
-Position and attitude wrap, so they keep plain squared error until a von Mises form
-replaces it.
+Position and attitude wrap, so they take a von Mises likelihood instead, where a
+concentration kappa plays sigma's role inversely: `kappa * (1 - cos(d)) + log I0e(kappa)`
+over the angular residual `d`. A Gaussian over an angle does not know that -pi and pi are
+the same place, and would charge the head for being right the long way round. The form
+becomes the Gaussian one as the belief tightens, with kappa standing in for `1/sigma^2`, so
+the two are one objective in different geometry rather than two unrelated losses -- both
+carry their normalising constant, which makes the per-channel series comparable in nats.
+
+A circular channel has no scale ambiguity to remove, an angle already being measured
+against a fixed 2*pi period, so the loss undoes `label_scale` before taking any cosine.
 
 The likelihood is there because no fixed label scale exists to normalize against. The label
 steps from the believed state to the true next one, so its width is set by how wrong the
