@@ -179,3 +179,40 @@ def test_imagined_frontline_ship_with_zero_shields_remains_alive():
     )
     assert imagined[ObsKey.ALIVE].all()
     assert imagined[ObsKey.HEALTH].eq(0).all()
+
+
+def test_deploy_reveal_makes_belief_valid_constant() -> None:
+    """One revealed tick marks every ship valid for the rest of the episode.
+
+    This is the property the attention key mask removal rests on: ``valid`` is
+    sticky, so a single opening reveal makes ``BELIEF_VALID`` a constant rather
+    than something the trunk has to be told about.
+    """
+
+    from boost_and_broadside.config import EnvConfig
+    from boost_and_broadside.config.defaults import REWARDS
+    from boost_and_broadside.env.wrapper import YemongEnvWrapper
+
+    ship = ShipConfig()
+    coordinator = build_standard_coordinator(ship)
+    config = EnvConfig(
+        num_ships=4,
+        max_bullets=2,
+        max_episode_steps=64,
+        vision_range=100.0,
+        deploy_reveal_steps=1,
+    )
+    wrapper = YemongEnvWrapper(2, ship, config, REWARDS, "cpu")
+    obs = wrapper.reset(seed=11)
+    tracker = BeliefTracker(2, 4, 0.1, coordinator, "cpu")
+
+    composed = tracker.compose(obs.for_team(0))
+    assert composed[ObsKey.BELIEF_VALID][:, :4].all(), "opening tick must reveal every ship"
+
+    prediction = torch.zeros((2, 4, coordinator.total_prediction_dimension))
+    for _ in range(8):
+        tracker.advance(composed.for_team(0), prediction)
+        obs, *_ = wrapper.step(torch.zeros((2, 4, 3), dtype=torch.long))
+        composed = tracker.compose(obs.for_team(0))
+        # Ships drift apart and out of sight, but validity never lapses.
+        assert composed[ObsKey.BELIEF_VALID][:, :4].all()

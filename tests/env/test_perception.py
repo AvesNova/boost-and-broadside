@@ -17,13 +17,16 @@ from boost_and_broadside.env.wrapper import SOURCE_STAT_NAMES, YemongEnvWrapper
 from tests.conftest import make_state
 
 
-def _config(*, vision_range: float | None = 300.0, num_fields: int = 0) -> EnvConfig:
+def _config(
+    *, vision_range: float | None = 300.0, num_fields: int = 0, deploy_reveal_steps: int = 0
+) -> EnvConfig:
     return EnvConfig(
         num_ships=4,
         max_bullets=2,
         max_episode_steps=60,
         num_fields=num_fields,
         vision_range=vision_range,
+        deploy_reveal_steps=deploy_reveal_steps,
     )
 
 
@@ -677,3 +680,35 @@ def test_an_occluded_enemy_is_masked_out_of_policy_attention() -> None:
     assert not blocked[ObsKey.VISIBLE][0, 2:4].any()
     # Field tokens stay attendable: terrain is not what fog hides.
     assert blocked[ObsKey.BELIEF_VALID][0, 4:].all()
+
+
+def test_deploy_reveal_exposes_every_ship_on_the_opening_tick() -> None:
+    """Ships beyond sight range are still visible to both teams while deploying."""
+
+    ship, state = _state()
+    # Antipodal on the 1024px toroid: ~724px apart against a 100px sight radius,
+    # so nothing is visible on geometry alone.
+    state.ship_pos[0] = torch.tensor([0 + 0j, 20 + 0j, 512 + 512j, 492 + 512j])
+    config = _config(vision_range=100.0)
+    enemy_of_team0 = state.ship_team_id[0] == 1
+
+    blind = team_visibility_from_state(state, ship, config)
+    assert not blind.ship[0, 0][enemy_of_team0].any()
+
+    revealed = team_visibility_from_state(
+        state, ship, _config(vision_range=100.0, deploy_reveal_steps=1)
+    )
+    assert revealed.ship.all()
+    # Only the operative mask moves: the range and LOS decompositions stay pure
+    # geometry so the fog diagnostics keep measuring occlusion, not the reveal.
+    assert not revealed.range_only_ship[0, 0][enemy_of_team0].any()
+    assert not revealed.los_ship[0, 0][enemy_of_team0].any()
+
+
+def test_deploy_reveal_lapses_after_its_window() -> None:
+    ship, state = _state()
+    state.ship_pos[0] = torch.tensor([0 + 0j, 20 + 0j, 512 + 512j, 492 + 512j])
+    config = _config(vision_range=100.0, deploy_reveal_steps=1)
+    state.step_count[0] = 1
+    lapsed = team_visibility_from_state(state, ship, config)
+    assert not lapsed.ship[0, 0][state.ship_team_id[0] == 1].any()

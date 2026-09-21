@@ -197,6 +197,15 @@ def team_visibility_from_state(
         range_team_ship[:, team] |= allies
         los_team_ship[:, team] |= allies
 
+    if env_config.deploy_reveal_steps > 0:
+        # Deployment reveal: both fleets see the whole board for the opening
+        # ticks. Applied to the operative mask only -- ``range_only_ship`` and
+        # ``los_ship`` stay pure geometry, so the fog diagnostics keep measuring
+        # what range and line of sight actually occlude rather than reporting
+        # the reveal back to us as a perception result.
+        deployed = (state.step_count < env_config.deploy_reveal_steps).view(batch, 1, 1)
+        team_ship = team_ship | deployed
+
     if not perceive_bullets:
         bullet = None
     elif state.max_bullets == 0:

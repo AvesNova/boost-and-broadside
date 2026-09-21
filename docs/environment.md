@@ -86,7 +86,9 @@ ship has an explicit false visibility mask and every state channel is replaced w
 defense in depth. This includes position, velocity, health, power, cooldown, alive state,
 local refractive state, and bullets. Policy-side belief tracking may retain a previously seen
 enemy as a valid token, recursively replacing only its predictable physical channels and
-adding time since observation. A never-seen enemy remains absent. Enemy pending actions and
+adding time since observation. Both fleets see the whole board for the opening tick, so
+after deployment no enemy is in the never-observed state; losing contact thereafter leaves
+a remembered token rather than an absent one. Enemy pending actions and
 hidden local field gradients remain zero rather than being predicted. Enemy pending actions
 are private even while the enemy itself is visible. Allies and static map geometry remain
 known. `vision_range=None` is the explicit omniscient compatibility mode.

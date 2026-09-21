@@ -2310,13 +2310,41 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         Labels come from the stored T+1 observations only — not the policy — so
         computing them here saves num_epochs × num_minibatches redundant passes
         through the coordinator. Targets are computed once over all T+1 steps
-        and diffed (labels[t] = f(target[t], target[t+1])).
+        and diffed.
+
+        The label is the step from the *believed* current state to the *true*
+        next state, not truth to truth. That is what the head's output is
+        actually used for: ``BeliefTracker.advance`` applies the forecast to the
+        composed observation, so ``belief[t+1] = belief[t] + pred[t]``. Training
+        it on ``true[t+1] - true[t]`` instead makes the substitution
+
+            error[t+1] = belief[t] + (true[t+1] - true[t]) - true[t+1] = error[t]
+
+        — the belief error is conserved exactly, every step's noise is retained
+        forever, and the head is never once shown what "too far" looks like. The
+        drift that killed run 734 (velocity error 99 -> 1178 px/s in the 30s+
+        hidden bucket, then a non-finite logit) is that identity, not an
+        incidental instability; ``BELIEF_TARGET_LIMIT`` bounds the symptom.
+
+        Re-basing on the belief makes the target the correction that carries the
+        believed state onto the true next one, so error is nulled each step to
+        whatever extent it is inferable. For a visible ship the belief *is* the
+        observation, so its label is unchanged: this adds signal exactly where
+        the drift happens and leaves the rest of the supervision alone.
+
+        The residual is not fully predictable, so the head regresses toward the
+        conditional mean of the correction — shrinkage of a stale belief toward
+        the prior, which is the right behaviour for a point estimate and is not
+        reachable under truth-to-truth labels at all. Label *variance* rises
+        accordingly, so the loss magnitude is not comparable across this change
+        and ``next_state_coef`` weighs a bigger number than it used to.
         """
         need_labels = self.cfg.next_state_coef > 0.0 or self.cfg.windowed_loss_coef > 0.0
         T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        if buf.privileged_targets is not None:
-            targets = buf.privileged_targets
-        else:
+        believed = None
+        if need_labels or buf.privileged_targets is None:
+            # What the policy actually saw: buf.obs holds the composed
+            # observation, belief-filled for every ship hidden on that step.
             ship_obs = YemongObservation(
                 data={
                     k: (
@@ -2327,10 +2355,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     for k, v in buf.obs.items()
                 }
             )
-            targets = self.coordinator.get_target_vector(ship_obs)
-            targets = targets.reshape(T + 1, B, N, -1)
-        labels = self.coordinator.compute_labels(targets[:T], targets[1:])
-        buf.ns_labels = labels if need_labels else None  # (T, B, N, pred_dim)
+            believed = self.coordinator.get_target_vector(ship_obs).reshape(T + 1, B, N, -1)
+        # Ground truth where the rollout captured it. Without it there is no
+        # privileged signal to correct towards and belief is the only account of
+        # the world, which recovers the original truth-to-truth labels.
+        targets = buf.privileged_targets if buf.privileged_targets is not None else believed
+        buf.ns_labels = (  # (T, B, N, pred_dim)
+            self.coordinator.compute_labels(believed[:T], targets[1:]) if need_labels else None
+        )
+        # Diagnostics compare forecasts against hidden *truth*, so they keep
+        # reading the privileged targets rather than the re-based labels.
         self._precompute_belief_diagnostics(buf, targets)
 
     @torch.no_grad()
