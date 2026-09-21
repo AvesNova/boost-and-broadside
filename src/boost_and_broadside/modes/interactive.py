@@ -28,7 +28,10 @@ from boost_and_broadside.constants import (
     ShootActions,
     TurnActions,
 )
-from boost_and_broadside.env.frontline import frontline_ship_config
+from boost_and_broadside.env.frontline import (
+    frontline_ship_config,
+    scaled_frontline_geometry,
+)
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
@@ -98,12 +101,13 @@ def run_play_mode(
     Tuning values are intentionally provisional pending the current human
     playtest gate.
     """
-    env_config = _frontline_interactive_config(ships_per_team, num_fields)
+    env_config, ship_config = _frontline_interactive_config(
+        ships_per_team, num_fields, frontline_ship_config(ship_config)
+    )
     # A single tiny environment is dominated by CUDA launch/synchronization
     # overhead.  Larger interactive fleets keep the requested CUDA device so
     # their compiled/graph path is available.
     play_device = _interactive_device(device, env_config)
-    ship_config = frontline_ship_config(ship_config)
     render_config = _interactive_render_config(render_config, ship_config, env_config)
     agent0 = resolve_agent_spec(
         "scripted",
@@ -161,7 +165,9 @@ def run_watch_mode(
         checkpoint_dir: Checkpoint root supplied by the CLI adapter.
     """
     ship_config = frontline_ship_config(ship_config)
-    env_config = _frontline_interactive_config(ships_per_team, num_fields)
+    env_config, ship_config = _frontline_interactive_config(
+        ships_per_team, num_fields, ship_config
+    )
     render_config = _interactive_render_config(render_config, ship_config, env_config)
     agent0 = resolve_agent_spec(
         team0_spec,
@@ -549,13 +555,28 @@ def _selected_human_mask(
     return mask
 
 
-def _frontline_interactive_config(ships_per_team: int, num_fields: int) -> EnvConfig:
-    """Keep play and watch on Frontline rules while allowing fleet sizing."""
+def _frontline_interactive_config(
+    ships_per_team: int, num_fields: int, ship_config: ShipConfig
+) -> tuple[EnvConfig, ShipConfig]:
+    """Keep play and watch on Frontline rules, on a density-matched map.
 
-    return replace(
-        PLAY_ENV_CONFIG,
-        num_ships=2 * ships_per_team,
-        num_fields=num_fields,
+    ``PLAY_ENV_CONFIG`` states the 5v5 reference geometry; the requested fleet
+    resizes it so a 50v50 match has the same ships per unit area, zone area per
+    ship and field area per ship that 5v5 was tuned for.
+    """
+
+    num_ships = 2 * ships_per_team
+    scaled_ship_config, scaled_frontline = scaled_frontline_geometry(
+        ship_config, PLAY_ENV_CONFIG.frontline, num_ships
+    )
+    return (
+        replace(
+            PLAY_ENV_CONFIG,
+            num_ships=num_ships,
+            num_fields=num_fields,
+            frontline=scaled_frontline,
+        ),
+        scaled_ship_config,
     )
 
 

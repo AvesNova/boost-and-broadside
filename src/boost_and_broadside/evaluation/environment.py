@@ -5,6 +5,7 @@ import torch
 
 from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.frontline import frontline_rules_match
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 
 
@@ -39,13 +40,18 @@ def resolve_evaluation_environment(
         selected_env = declarations[0][0]
         for candidate_env, _ in declarations[1:]:
             if (
-                candidate_env.frontline != selected_env.frontline
+                not frontline_rules_match(candidate_env.frontline, selected_env.frontline)
                 or candidate_env.action_repeat != selected_env.action_repeat
                 or candidate_env.max_episode_steps != selected_env.max_episode_steps
                 or candidate_env.spawn_resource_spread != selected_env.spawn_resource_spread
             ):
                 raise ValueError("policy checkpoints declare incompatible game-mode environments")
-        if env_config.frontline != selected_env.frontline:
+        # Rules must agree; map geometry need not. Geometry is derived from the
+        # fleet size, so a policy trained at 5v5 and evaluated at 50v50 disagrees
+        # about radii while playing an identical game. Comparing the whole
+        # dataclass would reject exactly the zero-shot transfer that scaling
+        # exists to enable.
+        if not frontline_rules_match(env_config.frontline, selected_env.frontline):
             raise ValueError(
                 "requested evaluation game mode is incompatible with policy checkpoint provenance"
             )

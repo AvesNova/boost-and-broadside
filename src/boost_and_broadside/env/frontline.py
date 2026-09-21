@@ -10,13 +10,120 @@ from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES
 from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.state import TensorState
 
-FRONTLINE_WORLD_SIZE = (16384.0, 16384.0)
+# Four times the historical 16384 px contract. The density-preserving map for a
+# fleet of N ships wants a playable radius of 2600*sqrt(N/10); at 50v50 that is
+# 8222 px, which exceeds the old toroid's 8192 px half-period, where minimum-image
+# displacement stops being defined. Exact density preservation at 50v50 was
+# therefore unreachable on the old world. At 65536 the half-period is 32768 px and
+# the constraint does not bind until ~1433 ships.
+#
+# A power of two on purpose: ``position_fourier_frequencies`` is
+# ``ceil(log2(period/128)) + 1``, so this grows the basis 8 -> 10 by adding two
+# *coarse* harmonics (65536 and 32768 px) while the finest period stays exactly
+# 128 px. The basis extends downward in frequency; fine resolution is untouched,
+# and measured float32 precision degrades by the same 4x to 0.006 px, which is
+# 1/1600 of a collision radius.
+FRONTLINE_WORLD_SIZE = (65536.0, 65536.0)
 FRONTLINE_FIELD_RADIUS_MAX = 750.0
+
+#: Fleet the shipped Frontline geometry was tuned for; the density reference.
+FRONTLINE_BASELINE_SHIPS = 10
 # H_n = psi(n+1) + gamma, which is exact at every integer n. See _harmonic.
 _EULER_MASCHERONI = 0.5772156649015329
 # Re-exported from config, which owns it so the launch arithmetic can size a
 # batch without importing the environment. Importers here keep working.
 __all__ = ["NUM_FRONTLINE_ZONES"]
+
+
+def frontline_scale(num_ships: int) -> float:
+    """Linear factor that holds ship areal density at its 5v5 value.
+
+    Areas go as ``s**2 = num_ships / 10``, so applying this to every Frontline
+    length holds ships per unit area, zone area per ship and field area per ship
+    at the values 5v5 was tuned for. Zone and field *counts* never change, and
+    the zone ring keeps a constant fraction of the playable radius, so a larger
+    map is a literal zoom of the 5v5 layout rather than a differently shaped one.
+
+    Ship physics is deliberately not scaled. Hull size, speed and weapon range
+    are what make an engagement feel the way it does; holding areal density fixed
+    while they stay fixed is the point. Measured consequence: pacing is set by the
+    contest rather than by distance, so inter-capture time grows only 1.44x for a
+    3.16x map. See docs/engineering/frontline-density-and-front-dynamics.md.
+    """
+
+    if num_ships < 2:
+        raise ValueError(f"frontline num_ships must be at least 2, got {num_ships}")
+    return math.sqrt(num_ships / FRONTLINE_BASELINE_SHIPS)
+
+
+def scaled_frontline_geometry(
+    ship_config: ShipConfig, frontline: FrontlineConfig, num_ships: int
+) -> tuple[ShipConfig, FrontlineConfig]:
+    """Resize the 5v5 reference map for ``num_ships`` at constant ship density.
+
+    ``ship_config`` and ``frontline`` carry the 5v5 *baseline* lengths; this is
+    the single place that turns them into the geometry a given fleet plays on, so
+    it must be applied exactly once, where the fleet size is known. At ten ships
+    it is the identity.
+    """
+
+    scale = frontline_scale(num_ships)
+    if scale == 1.0:
+        return ship_config, frontline
+
+    playable = frontline.playable_radius * scale
+    half_period = 0.5 * min(ship_config.world_size)
+    if playable >= half_period:
+        raise ValueError(
+            f"{num_ships} ships need a {playable:.0f} px playable radius, which does not fit "
+            f"the {ship_config.world_size[0]:.0f} px toroid (half-period {half_period:.0f} px). "
+            "Minimum-image displacement is undefined at or beyond it."
+        )
+    return (
+        replace(
+            ship_config,
+            field_radius_min=ship_config.field_radius_min * scale,
+            field_radius_max=ship_config.field_radius_max * scale,
+            field_transition_width_min=ship_config.field_transition_width_min * scale,
+            field_transition_width_max=ship_config.field_transition_width_max * scale,
+        ),
+        replace(
+            frontline,
+            zone_radius=frontline.zone_radius * scale,
+            zone_ring_radius=frontline.zone_ring_radius * scale,
+            playable_radius=playable,
+        ),
+    )
+
+
+#: Frontline fields that state the *rules*, as opposed to the map geometry that
+#: ``scaled_frontline_geometry`` derives from the fleet size. Two configurations
+#: agreeing on these describe the same game played on differently sized maps.
+FRONTLINE_RULE_FIELDS = (
+    "capture_seconds",
+    "respawn_health",
+    "respawn_power",
+    "respawn_speed",
+    "shield_recharge_delay",
+    "shield_recharge_per_second",
+    "boundary_damage_per_second",
+    "boundary_damage_per_pixel_second",
+    "front_win_threshold",
+)
+
+
+def frontline_rules_match(left: FrontlineConfig | None, right: FrontlineConfig | None) -> bool:
+    """Whether two Frontline configs describe the same game mode.
+
+    Geometry is excluded on purpose: it is derived from the fleet size, so a
+    policy trained at 5v5 and evaluated at 50v50 necessarily disagrees about
+    radii while playing identical rules. Comparing the whole dataclass would
+    reject exactly the zero-shot transfer the scaling exists to enable.
+    """
+
+    if left is None or right is None:
+        return left is right
+    return all(getattr(left, name) == getattr(right, name) for name in FRONTLINE_RULE_FIELDS)
 
 
 def frontline_ship_config(config: ShipConfig) -> ShipConfig:

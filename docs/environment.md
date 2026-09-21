@@ -1,7 +1,10 @@
 # Environment and physics
 
-Frontline is a 5v5 objective game at 30 Hz on a translated 16384×16384 torus,
-with five rotating-role zones and a 2600 px playable radius. A match ends at a net
+Frontline is an objective game at 30 Hz on a translated 65536×65536 torus, with
+five rotating-role zones. The 5v5 reference map has a 2600 px playable radius;
+every other fleet size rescales it by `sqrt(num_ships/10)` so ship areal density,
+zone area per ship and field area per ship stay at their 5v5 values — see
+[engineering/frontline-density-and-front-dynamics.md](engineering/frontline-density-and-front-dynamics.md). A match ends at a net
 front lead of three or after 300 seconds; timeout uses the front's sign.
 Legacy elimination combat remains available on its smaller 60 Hz map.
 
@@ -115,7 +118,9 @@ Finite-vision training therefore requires `ego_pass`; the legacy `shared_pass` c
 serve one masked team view to both sides and is rejected.
 
 `EnvConfig.num_ships` is the total across both teams, and `EnvConfig.num_fields` the count
-of static-for-one-episode fields. `profiles/rl.py` trains at ten ships (5-vs-5) and ten fields.
+of static-for-one-episode fields. `profiles/rl.py` trains at ten ships (5-vs-5) and ten fields, and its Frontline
+lengths are the 5v5 reference the scaling resizes; zone and field *counts* never
+change with fleet size.
 There is no separate field-free profile: `num_fields` sets the token count and no weight
 shape depends on it, so zero fields is a configuration -- the one run 682 trained under, and
 the ambient-only hot path it still exercises -- rather than a different model.

@@ -195,7 +195,7 @@ class TestPPOSmokeTest:
         trainer.train()
 
     def test_frontline_training_loop_runs_with_wide_world_contract(self, tmp_path):
-        """Frontline collection, auxiliary labels, and PPO update compose at 16K."""
+        """Frontline collection, auxiliary labels, and PPO update compose at 64K."""
         frontline = FrontlineConfig(
             zone_radius=220.0,
             zone_ring_radius=1200.0,
@@ -212,7 +212,7 @@ class TestPPOSmokeTest:
         )
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path),
-            ship_config=ShipConfig(world_size=(16384.0, 16384.0)),
+            ship_config=ShipConfig(world_size=(65536.0, 65536.0)),
             env_config=EnvConfig(
                 num_ships=4,
                 max_bullets=8,
