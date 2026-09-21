@@ -5,8 +5,10 @@ observation, so training that head on a truth-to-truth delta conserves the
 belief error exactly instead of correcting it. These pin the re-based label.
 """
 
+import math
 import types
 
+import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
@@ -108,3 +110,47 @@ def test_applying_the_label_to_the_belief_lands_on_the_truth() -> None:
         believed[0].reshape(B * N, -1), (buf.ns_labels[0] / scale).reshape(B * N, -1)
     )
     assert torch.allclose(landed, truth[1].reshape(B * N, -1), atol=1e-4)
+
+
+def test_label_scale_diagnostic_reports_the_correction_that_recalibrates_it() -> None:
+    """A calibrated label has mean square 1; the suggestion is what restores that.
+
+    ``label_scale`` is defined as 1/std(raw label), so the metric exists to be
+    read off a chart and written back into the feature. The relation below is
+    that definition, and it must hold per prediction dimension or the number is
+    not usable as a scale.
+    """
+
+    import tempfile
+
+    from tests.train.test_ppo import _make_trainer
+
+    torch.manual_seed(3)
+    with tempfile.TemporaryDirectory() as tmp:
+        trainer = _make_trainer(checkpoint_dir=tmp)
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer, *trainer.aux_buffers], record_histograms=False
+        )
+
+    current = trainer.coordinator.label_scale_vector(torch.device("cpu"))
+    names = trainer.coordinator.get_feature_names()
+    assert names, "no predicted features to calibrate"
+
+    calibrated = 0
+    for index, name in enumerate(names):
+        mean_sq = metrics[f"next_state_label_sq/{name}"]
+        assert math.isfinite(mean_sq) and mean_sq >= 0.0
+        if mean_sq == 0.0:
+            # No variation in this sample, so no scale to suggest.
+            assert f"next_state_label_scale/{name}" not in metrics
+            continue
+        calibrated += 1
+        # suggested = current / sqrt(mean_sq): applying it would drive the
+        # label's mean square to 1.
+        suggested = metrics[f"next_state_label_scale/{name}"]
+        assert suggested * math.sqrt(mean_sq) == pytest.approx(current[index].item(), rel=1e-5)
+
+    assert calibrated, "no feature produced a usable scale suggestion"
