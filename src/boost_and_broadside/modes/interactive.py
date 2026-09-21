@@ -9,6 +9,7 @@ Agent specs (--team0 / --team1) are resolved by evaluation/agents.py —
 Space to shoot); see that module for the full spec list.
 """
 
+import time
 from dataclasses import replace
 
 import torch
@@ -91,8 +92,10 @@ def run_play_mode(
     One selected blue ship is keyboard-controlled; the remaining blue ships and
     all red ships use the crude frontline scripted controller. Tab cycles the
     human ship, C toggles camera follow, V cycles whose vision is drawn, and Z
-    toggles whether capture zones block sight as well as fields. Tuning values
-    are intentionally provisional pending the current human playtest gate.
+    toggles whether capture zones block sight as well as fields. U (or the Frame
+    cap button) unlocks presentation while retaining the fixed decision rate.
+    Tuning values are intentionally provisional pending the current human
+    playtest gate.
     """
     # A single tiny environment is dominated by CUDA launch/synchronization
     # overhead. Play is scripted/human-only, so keep its simulation and agents
@@ -106,6 +109,7 @@ def run_play_mode(
         render_config,
         fps=decision_fps,
         show_unlimited_button=True,
+        show_frame_pacing_toggle=True,
         vision_mode=VisionMode.TEAM_0,
     )
     agent0 = resolve_agent_spec(
@@ -214,6 +218,7 @@ def _run_resolved_interactive_mode(
     renderer = GameRenderer(
         ship_config, replace(render_config, zone_occlusion=env_config.zones_occlude)
     )
+    cuda_interactive = torch.device(device).type == "cuda"
 
     wrapper = YemongEnvWrapper(
         num_envs=1,
@@ -225,6 +230,11 @@ def _run_resolved_interactive_mode(
         # The renderer draws projectiles from the perception masks whether or
         # not the policies read bullet tokens, so ask for them explicitly.
         perceive_bullets=True,
+        # CUDA play/watch uses the parity-checked fast path by default: graph
+        # replay for fixed-shape physics and pure compiled perception.  CPU
+        # play remains eager because CUDA graph capture is unavailable there.
+        interactive_cuda_graph=cuda_interactive,
+        interactive_perception_compile_mode="default" if cuda_interactive else None,
     )
 
     try:
@@ -290,7 +300,7 @@ def _run_interactive_loop(
             (1, N, 3), dtype=torch.int32, device=device
         )
         terminal_label: str | None = None
-        terminal_frames = 0
+        terminal_until: float | None = None
 
         # Show "Match starting!" for half a second on the first episode so the
         # user can see the reloaded snapshot before agents begin moving.
@@ -313,7 +323,11 @@ def _run_interactive_loop(
                 wrapper.env_config = replace(
                     wrapper.env_config, zones_occlude=renderer.zone_occlusion
                 )
-            if not renderer.paused and terminal_frames == 0:
+            if (
+                not renderer.paused
+                and terminal_until is None
+                and renderer.simulation_due()
+            ):
                 state = wrapper.state
                 visibility = (
                     team_visibility_from_state(state, wrapper.ship_config, wrapper.env_config)
@@ -444,13 +458,19 @@ def _run_interactive_loop(
                         int(MatchResult.TEAM1_WIN): "TEAM 1 WINS",
                         int(MatchResult.DRAW): "DRAW",
                     }[result]
-                    terminal_frames = renderer.target_fps
+                    # Keep the result readable for one wall-clock second even
+                    # with presentation unlocked.
+                    terminal_until = time.perf_counter() + 1.0
+                else:
+                    # Exactly one decision/physics tick has occurred.  The
+                    # renderer can now present this immutable snapshot at any
+                    # rate without changing action-delay semantics.
+                    renderer.mark_simulation_advanced()
 
-            if terminal_frames > 0:
+            if terminal_until is not None:
                 running = renderer.render_with_label(
                     wrapper.state, terminal_label or "", visibility=visibility
                 )
-                terminal_frames -= 1
             else:
                 running = renderer.render(
                     wrapper.state, pred_nexts=pred_nexts, visibility=visibility
@@ -458,7 +478,7 @@ def _run_interactive_loop(
             if not running:
                 return
             renderer.tick()
-            if terminal_label is not None and terminal_frames == 0:
+            if terminal_until is not None and time.perf_counter() >= terminal_until:
                 break
 
 

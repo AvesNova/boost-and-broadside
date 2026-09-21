@@ -308,6 +308,15 @@ def main() -> None:
     parser.add_argument("--detail", action="store_true", help="split env/net (disables overlap)")
     parser.add_argument("--no-overlap", action="store_true", help="serialize env and net streams")
     parser.add_argument("--compile", dest="compile_mode", default="default")
+    parser.add_argument(
+        "--perception",
+        choices=("default", "compiled", "eager"),
+        default="default",
+        help=(
+            "A/B control for PPO perception: default follows --compile, compiled "
+            "forces only perception compilation, and eager disables it."
+        ),
+    )
     parser.add_argument("--out", default=None)
     parser.add_argument("--label", default=None)
     parser.add_argument("--override", action="append", default=[])
@@ -353,6 +362,26 @@ def main() -> None:
     from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
     from boost_and_broadside.launch import resolve_training_launch
     from boost_and_broadside.train.rl.ppo import PPOTrainer
+
+    if args.perception in {"compiled", "eager"}:
+        # Benchmark-only A/B controls: hold policy/collision compilation fixed
+        # while selecting just the newly promoted perception boundary.
+        from boost_and_broadside.env import wrapper as wrapper_mod
+        from boost_and_broadside.env.observation import (
+            compile_perception,
+            perceived_observation_from_state,
+        )
+
+        selected_perception = (
+            compile_perception("default")
+            if args.perception == "compiled"
+            else perceived_observation_from_state
+        )
+
+        def selected_perception_factory(_mode):
+            return selected_perception
+
+        wrapper_mod.compile_perception = selected_perception_factory
 
     for ablation in args.ablate:
         apply_ablation(ablation)
@@ -513,6 +542,7 @@ def main() -> None:
             # a ladder of measurements cannot be misattributed after the fact.
             "model_config": dataclasses.asdict(resolved.model_config),
             "compile_mode": args.compile_mode,
+            "perception": args.perception,
             "overrides": overrides,
         },
     )

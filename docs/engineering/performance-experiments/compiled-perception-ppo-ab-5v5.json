@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "date_kst": "2026-09-21",
+  "scope": "Bounded complete 5v5 PPO updates with rollout, Elo evaluation, GAE, four PPO epochs, optimizer, and logging",
+  "configuration": {
+    "device": "cuda",
+    "num_envs": 32,
+    "num_steps": 8,
+    "num_ships": 10,
+    "num_fields": 10,
+    "rollouts_per_update": 1,
+    "environment_steps_per_update": 256,
+    "num_minibatches": 4,
+    "ppo_epochs_per_update": 4,
+    "compile_mode": "default",
+    "warmup_updates": 1,
+    "measured_updates_per_arm": 3,
+    "checkpoint_schema": null,
+    "policies": "randomly initialized live/average policy stack; no trained checkpoint loaded"
+  },
+  "command_template": "flock -x artifacts/deadline-experiment/benchmark.lock timeout 15m .venv/bin/python -u benchmarks/rl_pipeline_profile.py --profile rl --override num_steps=8 --override num_minibatches=4 --override logical_batch_tokens=6656 --override launch.rollout_tokens=6656 --updates 3 --warmup 1 --timing wall --compile default --perception {eager|default} --no-checkpoint --checkpoint-dir /tmp/bnb-extension-checkpoints --out <arm.json> --label <arm>",
+  "pair_order": [
+    ["eager", "compiled"],
+    ["compiled", "eager"],
+    ["eager", "compiled"]
+  ],
+  "pairs": [
+    {
+      "pair": 0,
+      "eager": {"seconds_per_update": 3.46, "rollout_seconds": 2.312, "primary_env_net_seconds": 0.692, "peak_allocated_mib": 790, "peak_reserved_mib": 1186, "warmup_seconds": 128.80},
+      "compiled": {"seconds_per_update": 3.40, "rollout_seconds": 2.225, "primary_env_net_seconds": 0.618, "peak_allocated_mib": 790, "peak_reserved_mib": 1186, "warmup_seconds": 39.82}
+    },
+    {
+      "pair": 1,
+      "compiled": {"seconds_per_update": 3.50, "rollout_seconds": 2.316, "primary_env_net_seconds": 0.614, "peak_allocated_mib": 790, "peak_reserved_mib": 1186, "warmup_seconds": 38.10},
+      "eager": {"seconds_per_update": 3.45, "rollout_seconds": 2.321, "primary_env_net_seconds": 0.717, "peak_allocated_mib": 790, "peak_reserved_mib": 1186, "warmup_seconds": 38.07}
+    },
+    {
+      "pair": 2,
+      "eager": {"seconds_per_update": 3.43, "rollout_seconds": 2.265, "primary_env_net_seconds": 0.698, "peak_allocated_mib": 790, "peak_reserved_mib": 1186, "warmup_seconds": 38.19},
+      "compiled": {"seconds_per_update": 3.41, "rollout_seconds": 2.242, "primary_env_net_seconds": 0.622, "peak_allocated_mib": 790, "peak_reserved_mib": 1186, "warmup_seconds": 32.64}
+    }
+  ],
+  "aggregate": {
+    "eager_seconds_per_update_mean": 3.4467,
+    "compiled_seconds_per_update_mean": 3.4367,
+    "complete_update_change_percent": -0.29,
+    "eager_rollout_seconds_mean": 2.2993,
+    "compiled_rollout_seconds_mean": 2.2610,
+    "rollout_change_percent": -1.67,
+    "eager_primary_env_net_seconds_mean": 0.7023,
+    "compiled_primary_env_net_seconds_mean": 0.6180,
+    "primary_env_net_change_percent": -12.00
+  },
+  "decision": "keep as the default PPO perception path: the targeted primary env+net phase improved in every pair, environment-only throughput improved strongly, and parity passed; complete update throughput was effectively neutral in this short run because Elo and PPO optimization dominate",
+  "limitations": [
+    "Only 32 environments and eight rollout steps were used so the bounded experiment could finish.",
+    "Three updates per arm do not establish long-run tail behavior.",
+    "Warmup values are cache/order dependent and are reported, not compared as steady-state throughput.",
+    "This does not predict the exact gain at the production 960-environment, 128-step logical batch."
+  ]
+}

@@ -68,7 +68,11 @@ def _env(compile_mode: str | None) -> TensorEnv:
     return env
 
 
-def _wrapper(compile_mode: str | None) -> YemongEnvWrapper:
+def _wrapper(
+    compile_mode: str | None,
+    *,
+    perception_compile_mode: str | None = None,
+) -> YemongEnvWrapper:
     torch.manual_seed(SEED)
     return YemongEnvWrapper(
         num_envs=NUM_ENVS,
@@ -77,6 +81,7 @@ def _wrapper(compile_mode: str | None) -> YemongEnvWrapper:
         rewards=REWARDS,
         device="cuda",
         collision_compile_mode=compile_mode,
+        perception_compile_mode=perception_compile_mode,
     )
 
 
@@ -216,3 +221,53 @@ def test_the_compiled_observation_builder_matches_the_plain_one() -> None:
     assert torch.equal(plain_visibility.ship, fused_visibility.ship)
     assert compile_perception("default") is compile_perception("default")
     assert compile_perception(None) is perceived_observation_from_state
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_wrapper_can_use_pure_compiled_perception_without_stale_aliases() -> None:
+    """The training wrapper may opt into the pure compiled observation path."""
+    eager = _wrapper(None)
+    compiled = _wrapper(None, perception_compile_mode="default")
+
+    torch.manual_seed(SEED)
+    eager_obs = eager.reset()
+    torch.manual_seed(SEED)
+    compiled_obs = compiled.reset()
+
+    retained = compiled_obs
+    retained_values = {key: value.clone() for key, value in retained.data.items()}
+    actions = _shoot_everything()
+    for step in range(5):
+        if step == 4:
+            # Exercise the normal auto-reset path and its randomized map refresh,
+            # not merely steady-state observation assembly.
+            eager.env.state.step_count.fill_(eager.env_config.max_episode_steps - 1)
+            compiled.env.state.step_count.fill_(compiled.env_config.max_episode_steps - 1)
+        rng = torch.cuda.get_rng_state()
+        eager_obs, eager_reward, eager_done, eager_truncated, _ = eager.step(actions)
+        torch.cuda.set_rng_state(rng)
+        compiled_obs, compiled_reward, compiled_done, compiled_truncated, _ = compiled.step(actions)
+
+    assert torch.equal(eager_done, compiled_done)
+    assert torch.equal(eager_truncated, compiled_truncated)
+    assert eager_truncated.all(), "the final probe did not exercise auto-reset"
+    torch.testing.assert_close(eager_reward, compiled_reward, rtol=0, atol=1e-4)
+    for team in (0, 1):
+        eager_view = eager_obs.for_team(team)
+        compiled_view = compiled_obs.for_team(team)
+        for key in eager_view.data:
+            left, right = eager_view[key], compiled_view[key]
+            if left.is_complex():
+                left, right = torch.view_as_real(left), torch.view_as_real(right)
+            torch.testing.assert_close(
+                left.float(),
+                right.float(),
+                rtol=0,
+                atol=1e-4,
+                msg=f"team {team} {key} differs",
+            )
+    assert torch.equal(eager.last_visibility.ship, compiled.last_visibility.ship)
+    assert eager.last_visibility.bullet is None
+    assert compiled.last_visibility.bullet is None
+    for key in retained.data:
+        assert torch.equal(retained[key], retained_values[key]), f"retained {key} mutated"
