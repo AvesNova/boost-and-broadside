@@ -256,6 +256,35 @@ def test_play_frame_pacing_toggle_unlocks_only_presentation(monkeypatch):
         renderer.close()
 
 
+def test_play_controls_do_not_overlap_frontline_header_or_minimap(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    renderer = GameRenderer(
+        ShipConfig(),
+        RenderConfig(
+            window_size=900,
+            show_unlimited_button=True,
+            show_frame_pacing_toggle=True,
+        ),
+    )
+    try:
+        minimap = pygame.Rect(900 - 180 - 12, 96, 180, 180)
+        header = pygame.Rect(0, 0, 900, 90)
+        controls = (
+            renderer._frame_pacing_rect,
+            renderer._unlimited_rect,
+            renderer._pause_rect,
+            renderer._slider_track_rect.inflate(10, 20),
+        )
+
+        assert not minimap.colliderect(header)
+        for rect in controls:
+            assert not rect.colliderect(header)
+            assert not rect.colliderect(minimap)
+            assert pygame.Rect(0, 0, 900, 900).contains(rect)
+    finally:
+        renderer.close()
+
+
 def test_renderer_measures_presentation_fps_and_schedules_fixed_simulation(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     renderer = GameRenderer(ShipConfig(), RenderConfig(fps=30))
