@@ -331,11 +331,16 @@ angular velocity, and ship-local log-index delta. Static field material channels
 inputs, not prediction targets; the local index target makes entering and leaving a
 medium visible to the learned dynamics model.
 
-Training applies:
+Training applies normalized per-step mean-squared error across prediction channels.
 
-- normalized per-step mean-squared error across prediction channels; and
-- a triangle-window cumulative loss for position and velocity, which penalizes systematic
-  multi-step drift more strongly than zero-mean step noise.
+A triangle-window cumulative loss on position and velocity ran alongside it until the
+label below was corrected. Its purpose was to catch systematic multi-step drift, which it
+amplified as window squared against a window-scaling noise floor -- but that drift was the
+old label conserving belief error step after step, and re-basing the label addresses it in
+the objective itself rather than by penalizing its signature. It was also the only term
+that could not decompose over micro-batches, so it perturbed the applied gradient by 0.1
+to 0.3 percent whenever a minibatch was split; without it, accumulation is exact to
+floating-point roundoff.
 
 With finite vision, visible ships refresh a policy-local point-estimate cache and the head's
 forecast becomes the next hidden input recursively. Hidden tokens receive privileged

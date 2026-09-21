@@ -117,7 +117,6 @@ RL_PROFILE = ProfileSpec(
     # else -- no advantage, no reward weight -- so a wrong answer costs a little
     # gradient rather than a run.
     outcome_categorical_coef=0.05,
-    windowed_loss_coef=0.1,
     # --- Discounts, per physics tick ---
     gamma_per_tick=0.99,
     gae_lambda_per_tick=0.95,

@@ -1563,7 +1563,6 @@ class TestUpdateEpochsMetricKeys:
             "loss/sigreg",
             "loss/next_state",
             "loss/next_state_cont",
-            "loss/windowed_ns",
             "loss_proxy/policy_gradient",
             "loss_proxy/value",
             "loss_proxy/entropy",

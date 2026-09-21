@@ -170,7 +170,6 @@ The total update combines:
 - entropy bonuses for power, turn, and shoot distributions;
 - behavior cloning from the scripted controller, gated down as scripted win rate rises;
 - one-step next-state prediction error;
-- a cumulative triangle-window position/velocity drift loss;
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
