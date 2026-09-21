@@ -348,10 +348,16 @@ next-state supervision without exposing that truth to the actor or critic; death
 teleport labels are masked. Each policy/perspective owns its cache, including frozen league
 and evaluation policies.
 
-Both fleets see the whole board for the opening tick of an episode, so no token is ever in
-the never-observed state after deployment. That is what makes the supervision above cover
-every enemy rather than only sighted ones, and it is why the trunk needs no key mask: token
-validity is a constant, not something attention has to be told.
+Every ship is visible to both teams for the one decision on which it enters the world, at
+deployment and on every respawn. Deployment is what makes the supervision above cover every
+enemy rather than only sighted ones, and why the trunk needs no key mask: token validity is
+a constant, not something attention has to be told.
+
+Respawn matters for a different reason. The cache is advanced by the head's own forecast and
+is never told a ship died, so an unobserved respawn would leave it tracking a corpse's
+trajectory -- handing the policy a phantom at the old position, and the label a teleport
+nothing could have predicted, on every step until that ship was next seen. Marking the single
+step the teleport happened on does not cover that, because the stale estimate outlives it.
 
 The label is the step from the *believed* current state to the true next one, not truth to
 truth. The head's output is applied to the cache, so a truth-to-truth label would ask it to

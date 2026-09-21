@@ -43,16 +43,15 @@ RL_PROFILE = ProfileSpec(
     spawn_resource_spread=0.0,
     vision_range=1024.0,
     zones_occlude=True,
-    # One revealed tick at deployment. ``BeliefTracker.valid`` is sticky, so a
-    # single tick is all it takes to mark every ship valid for the episode --
-    # which makes the attention key mask a constant and lets privileged
-    # next-state supervision cover every enemy instead of only sighted ones.
-    # Fleets sighting each other as they deploy and then losing contact is also
-    # the more natural premise for a frontline engagement than deploying blind.
+    # Every ship is seen by both teams on the decision it spawns -- at
+    # deployment and on every respawn. Deployment makes ``belief_valid`` a
+    # constant, so the attention key mask goes away and privileged next-state
+    # supervision covers every enemy. Respawn keeps the belief honest across a
+    # lifecycle discontinuity the tracker is otherwise never told about.
     #
     # This changes what the environment tells a policy, so ratings do not carry
     # across it: compare against earlier runs with `bnb crossover`, not Elo.
-    deploy_reveal_steps=1,
+    spawn_reveal=True,
     frontline=FrontlineConfig(
         zone_radius=330.0,
         zone_ring_radius=1200.0,

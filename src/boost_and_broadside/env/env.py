@@ -167,6 +167,7 @@ class TensorEnv:
             ship_boundary_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_boundary_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_respawned=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_spawned=torch.zeros((B, N), dtype=torch.bool, device=dev),
         )
 
     def reset_envs(
@@ -337,6 +338,7 @@ class TensorEnv:
         s.ship_boundary_damage = torch.where(m, 0.0, s.ship_boundary_damage)
         s.ship_boundary_death &= ~m
         s.ship_respawned &= ~m
+        s.ship_spawned |= m
 
     # ------------------------------------------------------------------
     # Step

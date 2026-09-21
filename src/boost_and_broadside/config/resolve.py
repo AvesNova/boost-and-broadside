@@ -454,7 +454,7 @@ def resolve_profile(
         spawn_resource_spread=profile.spawn_resource_spread,
         vision_range=profile.vision_range,
         zones_occlude=profile.zones_occlude,
-        deploy_reveal_steps=profile.deploy_reveal_steps,
+        spawn_reveal=profile.spawn_reveal,
         frontline=scaled_frontline,
     )
     action_repeat = profile.action_repeat

@@ -144,9 +144,10 @@ candidate actions for both perspectives without deriving one team's sight from t
 
 Each policy instance owns a GPU-resident belief cache. Visible ships refresh that cache from
 perceived truth, and enemies out of contact retain a token whose physical channels are
-advanced recursively by the policy's next-state head. The opening tick of an episode reveals
-every ship to both teams, which seeds each cache from observation rather than from nothing
-and leaves no enemy permanently absent. The token also carries explicit visibility, validity,
+advanced recursively by the policy's next-state head. Every ship is revealed to both teams
+for the decision it spawns on, at match start and on every respawn, which seeds each cache
+from observation rather than from nothing and stops a remembered estimate outliving the ship
+it describes. The token also carries explicit visibility, validity,
 and time-since-observation features. Team 0, Team
 1, every league checkpoint, and every evaluation policy keep independent caches, so one
 policy's estimate cannot leak into another's input.
@@ -637,8 +638,9 @@ once-per-update metric synchronization; no per-step host read was added.
 They also log `belief/visible/*`, `belief/hidden/*`, and hidden-age buckets for position,
 velocity, attitude, angular velocity, health, power, cooldown, and local refractive index.
 Authoritative next-state targets are stored in a separate rollout tensor used only by the
-auxiliary loss and diagnostics. Every enemy is supervised, because the opening-tick reveal
-leaves none in the never-observed state; respawn and terminal discontinuities remain masked.
+auxiliary loss and diagnostics. Every enemy is supervised, because the spawn reveal leaves
+none in the never-observed state; terminal discontinuities remain masked, and the reveal is
+what keeps a respawn from contaminating the label after the masked step.
 
 The label pairs that authoritative next state with the *believed* current one, which is what
 the head's output is actually applied to at rollout. Taking both ends from truth instead

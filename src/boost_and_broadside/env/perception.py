@@ -197,14 +197,26 @@ def team_visibility_from_state(
         range_team_ship[:, team] |= allies
         los_team_ship[:, team] |= allies
 
-    if env_config.deploy_reveal_steps > 0:
-        # Deployment reveal: both fleets see the whole board for the opening
-        # ticks. Applied to the operative mask only -- ``range_only_ship`` and
+    if env_config.spawn_reveal:
+        # A ship entering the world is visible to both teams for that one
+        # decision, whether it is deploying at the start of a match or
+        # respawning after death.
+        #
+        # This is what keeps a belief honest across a lifecycle discontinuity.
+        # Nothing else can: the tracker advances a hidden ship by the policy's
+        # own forecast and is never told the ship died, so an unobserved respawn
+        # leaves it confidently tracking a corpse's trajectory until the ship is
+        # next seen -- feeding the policy a phantom, and feeding the auxiliary
+        # objective a teleport it could not have predicted.
+        # ``transition_contiguous`` masks only the single step the teleport
+        # happened on, which was sufficient when the label ran truth-to-truth
+        # and is not now that its near end is the belief.
+        #
+        # Applied to the operative mask only -- ``range_only_ship`` and
         # ``los_ship`` stay pure geometry, so the fog diagnostics keep measuring
         # what range and line of sight actually occlude rather than reporting
         # the reveal back to us as a perception result.
-        deployed = (state.step_count < env_config.deploy_reveal_steps).view(batch, 1, 1)
-        team_ship = team_ship | deployed
+        team_ship = team_ship | state.ship_spawned.unsqueeze(1)
 
     if not perceive_bullets:
         bullet = None

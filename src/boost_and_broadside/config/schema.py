@@ -84,7 +84,7 @@ class ProfileSpec:
     spawn_resource_spread: float
     vision_range: float | None
     zones_occlude: bool
-    deploy_reveal_steps: int
+    spawn_reveal: bool
     frontline: FrontlineConfig | None
     # --- Rollout shape ---
     logical_batch_tokens: int

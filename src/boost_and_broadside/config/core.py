@@ -286,25 +286,23 @@ class EnvConfig:
     vision_range: float | None = None
     # Zones use the same convex-core line-of-sight rule as refractive fields.
     zones_occlude: bool = True
-    # Initial physics ticks of an episode during which every ship is visible to
-    # both teams, regardless of range or line of sight. 0 preserves the original
-    # "deploy blind" semantics.
+    # Every ship is visible to both teams for the one decision on which it
+    # enters the world -- deploying at the start of a match, or respawning after
+    # death. False preserves the original "spawn unseen" semantics.
     #
-    # Both fleets sighting each other at deployment and then losing contact is
-    # the more natural premise for a frontline engagement, but the operative
-    # reason is that ``BeliefTracker.valid`` is sticky: one revealed tick marks
-    # every ship valid for the rest of the episode. That makes ``belief_valid``
-    # a constant, which removes the attention key mask entirely and extends
-    # privileged next-state supervision to every enemy rather than only sighted
-    # ones.
+    # Two things rest on this. Deployment: ``BeliefTracker.valid`` is sticky, so
+    # one revealed tick marks every ship valid for the rest of the episode,
+    # which makes ``belief_valid`` a constant -- removing the attention key mask
+    # and extending privileged next-state supervision to every enemy rather than
+    # only sighted ones. Respawn: the tracker advances a hidden ship by the
+    # policy's own forecast and is never told it died, so without a reveal an
+    # unobserved respawn leaves the belief tracking a corpse until the ship is
+    # next seen.
     #
     # The cost is that an enemy which is never re-sighted is a belief rollout
-    # for the whole episode instead of an inert token, so watch the clamp
-    # counter and the age-bucketed hidden-enemy error.
-    #
-    # Ticks, not decisions: with ``action_repeat`` above 1 a value of 1 reveals
-    # less than one full decision.
-    deploy_reveal_steps: int = 0
+    # rather than an inert token, so watch the clamp counter and the
+    # age-bucketed hidden-enemy error.
+    spawn_reveal: bool = False
 
     def __post_init__(self) -> None:
         if isinstance(self.frontline, Mapping):
@@ -315,10 +313,6 @@ class EnvConfig:
             )
         if self.num_fields < 0:
             raise ValueError(f"num_fields must be non-negative, got {self.num_fields}")
-        if self.deploy_reveal_steps < 0:
-            raise ValueError(
-                f"deploy_reveal_steps must be non-negative, got {self.deploy_reveal_steps}"
-            )
         if self.vision_range is not None and (
             not np.isfinite(self.vision_range) or self.vision_range <= 0.0
         ):
