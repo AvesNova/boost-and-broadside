@@ -439,6 +439,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if compile_mode is not None
             else None
         )
+        # The pure, unbuffered perception builder is part of the demonstrated
+        # compiled training path.  Keep one launch-level switch: compile_mode
+        # enables both collision and perception fusion, while None remains the
+        # explicit eager/debug escape hatch.
         self._env_compile_mode = collision_compile_mode
         self.wrapper = YemongEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
@@ -448,6 +452,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             device=device,
             collision_compile_mode=collision_compile_mode,
             include_bullets=model_config.reads_bullets,
+            perception_compile_mode=collision_compile_mode,
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
@@ -765,6 +770,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 device=device,
                 collision_compile_mode=collision_compile_mode,
                 include_bullets=model_config.reads_bullets,
+                perception_compile_mode=collision_compile_mode,
             )
             aux_sample_obs = aux_w.reset()
             aux_buf = RolloutBuffer(

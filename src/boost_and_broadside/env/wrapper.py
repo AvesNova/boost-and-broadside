@@ -24,7 +24,6 @@ from boost_and_broadside.env.observation import (
     YemongObservation,
     compile_perception,
     observation_from_state,
-    perceived_observation_from_state,
 )
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.rewards import (
@@ -99,6 +98,7 @@ class YemongEnvWrapper:
         collision_compile_mode: str | None = None,
         include_bullets: bool = False,
         perceive_bullets: bool | None = None,
+        perception_compile_mode: str | None = None,
         interactive_cuda_graph: bool = False,
         interactive_perception_compile_mode: str | None = None,
     ) -> None:
@@ -125,6 +125,8 @@ class YemongEnvWrapper:
             raise ValueError("interactive CUDA graph execution requires a CUDA device")
         self._interactive_cuda_graph = interactive_cuda_graph
         self._captured_tick: CapturedTick | None = None
+        self._perceive = compile_perception(perception_compile_mode)
+        self._perception_compiled = perception_compile_mode is not None
         self._interactive_perceive = compile_perception(interactive_perception_compile_mode)
         self._interactive_perception_compiled = interactive_perception_compile_mode is not None
 
@@ -621,13 +623,13 @@ class YemongEnvWrapper:
         All values are in native units — no normalization. Feature chains in
         FeatureCoordinator handle all encoding (Fourier, symlog, one-hot, etc.).
         """
-        observation, self.last_visibility = perceived_observation_from_state(
+        observation, self.last_visibility = self._perceive(
             self.env.state,
             self.ship_config,
             self.env_config,
-            self._obs_buffers,
-            include_bullets=self.include_bullets,
-            perceive_bullets=self.perceive_bullets,
+            None if self._perception_compiled else self._obs_buffers,
+            self.include_bullets,
+            self.perceive_bullets,
         )
         self._accumulate_perception()
         return observation

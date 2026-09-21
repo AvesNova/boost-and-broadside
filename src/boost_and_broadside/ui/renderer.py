@@ -1,13 +1,15 @@
 """Pygame renderer for a single-environment game state.
 
 Reads env index 0 from TensorState and draws ships, bullets, and health
-bars through a toroidal camera at a fixed frame rate. All tensor reads call
+bars through a toroidal camera at a configurable frame rate. All tensor reads call
 .cpu() after slicing — acceptable overhead at 60fps on a single interactive
 environment.
 """
 
 import math
 import os
+import time
+from collections import deque
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -259,6 +261,7 @@ class RenderConfig:
     fps: int = 60
     show_ui: bool = True  # pause button + FPS slider; off for clean video capture
     show_unlimited_button: bool = False  # play-only health/power toggle
+    show_frame_pacing_toggle: bool = False  # play-only capped/unlocked presentation toggle
     vision_mode: VisionMode = VisionMode.FULL
     team_colors: tuple[tuple[int, int, int], tuple[int, int, int]] = (
         (100, 180, 255),  # team 0: blue
@@ -303,6 +306,13 @@ class GameRenderer:
         self.paused = False
         self.unlimited_resources = False
         self.target_fps = render_config.fps
+        # target_fps is the interactive simulation/decision rate.  Presentation
+        # pacing is separate so an uncapped display cannot make physics run faster.
+        self.frame_pacing_unlocked = False
+        self.presentation_fps = 0.0
+        self._presentation_times: deque[float] = deque()
+        self._next_simulation_time: float | None = None
+        self._simulation_started_at: float | None = None
         self.vision_mode = VisionMode(render_config.vision_mode)
         self.zone_occlusion = render_config.zone_occlusion
         self.slider_dragging = False
@@ -319,7 +329,8 @@ class GameRenderer:
         H = s
         self._pause_rect = pygame.Rect(W - 200, H - 40, 60, 30)
         self._slider_track_rect = pygame.Rect(W - 120, H - 30, 100, 10)
-        self._unlimited_rect = pygame.Rect(W - 220, 10, 200, 30)
+        self._frame_pacing_rect = pygame.Rect(W - 220, 10, 200, 30)
+        self._unlimited_rect = pygame.Rect(W - 220, 45, 200, 30)
         fog_size = max(1, round(s * render_config.fog_mask_scale))
         self._fog_team_mask = pygame.Surface((fog_size, fog_size))
         self._fog_observer_mask = pygame.Surface((fog_size, fog_size))
@@ -352,6 +363,7 @@ class GameRenderer:
             pred_nexts = [pred_nexts]
         self._draw_frame(state, pred_nexts, visibility)
         pygame.display.flip()
+        self._record_presentation()
         return True
 
     def render_with_label(
@@ -378,17 +390,61 @@ class GameRenderer:
             self._screen.fill(self._render_config.background_color)
         self._blit_label(text, color)
         pygame.display.flip()
+        self._record_presentation()
         return True
 
     def tick(self) -> None:
-        """Cap frame rate to target_fps."""
-        self._clock.tick(self.target_fps)
+        """Apply the requested presentation cap without affecting simulation timing."""
+        self._clock.tick(0 if self.frame_pacing_unlocked else self.target_fps)
+
+    def simulation_due(self) -> bool:
+        """Whether one fixed-rate simulation decision is due.
+
+        The interactive loop may draw repeated snapshots between decisions.  This
+        keeps the policy's one-tick action delay and physics cadence identical
+        whether presentation is capped or unlocked.
+        """
+        # In capped mode the existing Clock pacing owns the cadence.  Applying
+        # a second wall-clock gate would skip every other simulation tick when
+        # policy inference consumes part of the frame budget.
+        if not self.frame_pacing_unlocked:
+            return True
+        now = time.perf_counter()
+        due = self._next_simulation_time is None or now >= self._next_simulation_time
+        if due:
+            self._simulation_started_at = now
+        return due
+
+    def mark_simulation_advanced(self) -> None:
+        """Schedule the next fixed-rate simulation decision from this tick."""
+        if not self.frame_pacing_unlocked:
+            self._next_simulation_time = None
+            self._simulation_started_at = None
+            return
+        started_at = self._simulation_started_at
+        if started_at is None:
+            started_at = time.perf_counter()
+        self._next_simulation_time = started_at + 1.0 / max(1, self.target_fps)
+        self._simulation_started_at = None
+
+    def _record_presentation(self) -> None:
+        """Maintain a one-second rolling presentation-rate measurement."""
+        now = time.perf_counter()
+        self._presentation_times.append(now)
+        cutoff = now - 1.0
+        while self._presentation_times and self._presentation_times[0] < cutoff:
+            self._presentation_times.popleft()
+        if len(self._presentation_times) > 1:
+            elapsed = now - self._presentation_times[0]
+            if elapsed > 0.0:
+                self.presentation_fps = (len(self._presentation_times) - 1) / elapsed
 
     def _update_slider(self, mouse_x: int) -> None:
         rel_x = mouse_x - self._slider_track_rect.x
         frac = max(0.0, min(1.0, rel_x / self._slider_track_rect.width))
         # Map frac to FPS (e.g. 1 to 120)
         self.target_fps = int(1 + frac * 119)
+        self._next_simulation_time = None
 
     @property
     def game_speed(self) -> float:
@@ -409,6 +465,7 @@ class GameRenderer:
                 levels[0],
             )
         self.target_fps = round(self._render_config.fps * selected)
+        self._next_simulation_time = None
 
     def _handle_event(self, event: pygame.event.Event) -> bool:
         """Apply one renderer event; return false only for window close."""
@@ -452,6 +509,8 @@ class GameRenderer:
                 self.vision_mode = modes[(modes.index(self.vision_mode) + 1) % len(modes)]
             elif event.key == pygame.K_z:
                 self.zone_occlusion = not self.zone_occlusion
+            elif event.key == pygame.K_u and self._render_config.show_frame_pacing_toggle:
+                self.frame_pacing_unlocked = not self.frame_pacing_unlocked
             elif event.key in (pygame.K_EQUALS, pygame.K_RIGHTBRACKET):
                 self._adjust_game_speed(1)
             elif event.key in (pygame.K_MINUS, pygame.K_LEFTBRACKET):
@@ -466,6 +525,12 @@ class GameRenderer:
     def _handle_left_click(self, position: tuple[int, int]) -> None:
         """Apply one UI click, including the play-only unlimited toggle."""
         if (
+            self._render_config.show_ui
+            and self._render_config.show_frame_pacing_toggle
+            and self._frame_pacing_rect.collidepoint(position)
+        ):
+            self.frame_pacing_unlocked = not self.frame_pacing_unlocked
+        elif (
             self._render_config.show_ui
             and self._render_config.show_unlimited_button
             and self._unlimited_rect.collidepoint(position)
@@ -575,9 +640,29 @@ class GameRenderer:
         handle_rect = pygame.Rect(handle_x - 5, self._slider_track_rect.y - 5, 10, 20)
         pygame.draw.rect(surf, (200, 200, 200), handle_rect)
 
-        # Draw FPS text
-        fps_label = self._font.render(f"GAME {self.game_speed:g}x", True, (200, 200, 200))
+        # GAME is the fixed decision/physics rate; FPS is measured display rate.
+        fps_label = self._font.render(
+            f"GAME {self.game_speed:g}x  FPS {self.presentation_fps:4.0f}",
+            True,
+            (200, 200, 200),
+        )
         surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
+
+        if self._render_config.show_frame_pacing_toggle:
+            pacing_color = (255, 180, 70) if self.frame_pacing_unlocked else (110, 110, 125)
+            pygame.draw.rect(surf, pacing_color, self._frame_pacing_rect)
+            pacing_label = self._font.render(
+                "Frame cap: UNLOCKED" if self.frame_pacing_unlocked else "Frame cap: CAPPED",
+                True,
+                (0, 0, 0),
+            )
+            surf.blit(
+                pacing_label,
+                (
+                    self._frame_pacing_rect.centerx - pacing_label.get_width() // 2,
+                    self._frame_pacing_rect.centery - pacing_label.get_height() // 2,
+                ),
+            )
 
         if self._render_config.show_unlimited_button:
             resource_color = (80, 220, 120) if self.unlimited_resources else (110, 110, 125)
@@ -616,7 +701,8 @@ class GameRenderer:
                     f"TIME {remaining:05.1f}s   VIEW {self.vision_mode.value}   "
                     f"SPEED {self.game_speed:g}x"
                 ),
-                "V view  F fit  R world  wheel zoom  drag pan  C follow  TAB select  -/+ speed",
+                "V view  F fit  R world  wheel zoom  drag pan  C follow  TAB select"
+                "  -/+ speed  U uncapped",
             )
             for row, text in enumerate(lines):
                 label = self._font.render(text, True, (225, 225, 235))

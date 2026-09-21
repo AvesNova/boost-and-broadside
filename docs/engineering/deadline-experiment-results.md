@@ -1,10 +1,41 @@
 # 50v50 realtime deadline experiment
 
-Date: 2026-09-20 KST  
-Branch: `perf/realtime-experiment-handoff`  
+Date: 2026-09-20–21 KST
+
+Branch: `perf/realtime-experiment-handoff`
+
 Intake revision: `b12bb5c8bd59a981dee613cf0dd523f5f6bacd5e`
 
 ## Decision
+
+### Five-hour extension decision
+
+The extension produced two reviewed changes worth keeping:
+
+1. **Make compiled pure perception the CUDA default for PPO and interactive
+   play.** Three alternating 5v5 environment-only A/B pairs improved mean
+   environment decisions/s from **15.08→18.46 (B=1), 471.58→605.41 (B=32),
+   1768.01→2555.67 (B=128), and 4083.76→5375.22 (B=256)**. CUDA differential
+   coverage passed both team views, fixed actions, retained observation
+   ownership, and auto-reset/map refresh. In a bounded complete PPO A/B, the
+   primary environment+network phase improved in every pair and averaged
+   **0.7023→0.6180 s (-12.0%)**, while complete update time was effectively
+   neutral at **3.4467→3.4367 s (-0.29%)** because evaluation and optimization
+   dominate. This is evidence of a faster shared boundary, not a claim of a
+   12% complete-training speedup.
+2. **Keep measured presentation FPS and the capped/unlocked play control.** The
+   HUD reports rolling presentation FPS; `U` or the HUD button removes the
+   presentation cap. Unlocked rendering repeats the current snapshot between
+   fixed-rate simulation decisions, so presentation frequency does not change
+   policy/physics cadence. CUDA play now selects the parity-checked graph tick
+   and compiled perception automatically; CPU/debug execution remains eager.
+
+The ModernGL renderer remains a measured prototype rather than the shipped
+default: it does not yet implement the full HUD/input/selection/follow/capture
+presentation contract and is not a packaged dependency. A training-side
+compiled dual-belief boundary passed a short numerical parity check, but its
+alternating performance A/B did not finish before the deadline; that production
+edit was reverted and the candidate is **deferred**, with no speed claim.
 
 The final evidence changes the candidate disposition from the initial intake
 report below:
@@ -86,6 +117,9 @@ setting was changed.
 | Final no-render candidate | B=1 50v50 Frontline; two distinct random policies compiled `default`; compiled perception and belief; fixed-storage CUDA-graph authoritative tick; projectile perception and both team views | Exact paired action traces in all three A/B pairs; exact 200-tick variable-action graph parity including reset and CUDA RNG; perception parity at 2e-6; belief parity at atol 2e-4/rtol 2e-6 with exact discrete state and retained ownership | **24.337 / 29.758 / 30.546 / 36.089 ms**, n=300, 1 miss; pair medians 24.663/24.601/24.048 ms. Reference 60.560/64.819/65.996/73.361 ms, 200 misses, with one transient 20.827 ms pair | Excluded | Not a training path; environment/observation diagnostic mean 6.701 ms | Not measured; benefit unproven | Cold combined first frame observed up to 28.379 s; isolated graph capture 20.95 ms; peak allocated 290.69 MiB in both final arms | Random policies; bounded tail sample; opt-in fixed-shape interactive execution | **Keep** |
 | Final packed-rendered candidate | Same candidate plus one-transfer packed snapshot, ModernGL team fog, 900x900 framebuffer and display flip | Same exact paired actions; 14 packed snapshot/render contract tests; actual RTX OpenGL execution | **31.799 / 58.654 / 75.747 / 110.366 ms**, n=300, 127 misses. Reference 71.153/130.060/173.140/183.907 ms, 300 misses | Renderer-only smoke: snapshot 1.196 ms p50; snapshot+render+flip 4.186 ms p50, n=20 | Not a training path | Not measured | Renderer startup 0.620 s in smoke; final peak CUDA allocation 290.69 MiB | Presentation parity incomplete; GL/flip tails prevent sustained 30 FPS | **Keep boundary; decouple/interpolate presentation** |
 | Two-policy vmap | Two distinct weights and team views, policy calls only | CPU output/sampling checks passed | Not a complete-frame measurement | Excluded | Excluded | Excluded | Separate first compile 62.889 s; vmap 35.085 s | Pair medians were inconsistent: separate 11.569/11.631 ms, vmap 12.382/11.116 ms | **Reject unchanged** |
+| 5v5 compiled perception default | Reward-bearing 5v5 vector wrapper and bounded PPO; B=1/32/128/256 environment screen; 32 env × 8 steps complete PPO updates | CUDA parity passed for both views, fixed actions, ownership and auto-reset/map refresh | Not a rendered-frame path | N/A | Mean decisions/s **15.08→18.46, 471.58→605.41, 1768.01→2555.67, 4083.76→5375.22** | Primary env+net **0.7023→0.6180 s (-12.0%)**; complete update **3.4467→3.4367 s (-0.29%)** | First new-shape compile was about 24–32 s in the cold screen; promoted cache-warm first shapes 4.06–6.52 s. PPO peak 790 MiB allocated / 1186 MiB reserved in both arms | Random policies; bounded 32×8 PPO geometry; three updates/arm; no production-960 extrapolation | **Keep; CUDA fast default** |
+| FPS/unlocked presentation | Pygame play HUD and pacing; rolling presentation FPS, `U`/button cap toggle, fixed simulation schedule while unlocked | 33 focused renderer/interactive tests passed, including capped cadence and unlocked repeated renders | No new latency benchmark; control exposes available presentation rate | Current renderer remains default; ModernGL UI integration deferred | No training effect | No training effect | Negligible state: FPS sample deque and pacing timestamps | Unlocking presentation cannot make simulation/policies faster | **Keep** |
+| Training compiled dual belief | Compile dual belief compose/advance in PPO rollout | Short CUDA parity passed at atol 2e-4/rtol 2e-6 with exact discrete state | Not measured | N/A | Not measured | Alternating A/B incomplete at deadline; no claim | Compile/startup not characterized fairly | Candidate production edit reverted; prior 50v50 belief evidence remains separate | **Defer** |
 
 Final evidence: [no-render summary](performance-experiments/final-realtime-no-render-summary-50v50.json),
 [compressed raw no-render samples/actions](performance-experiments/final-realtime-no-render-ab-50v50.json.gz),
@@ -94,6 +128,8 @@ Final evidence: [no-render summary](performance-experiments/final-realtime-no-re
 [CUDA-graph parity](performance-experiments/cuda-graph-tick-parity-50v50.json),
 [compiled-belief parity](performance-experiments/compiled-belief-parity-50v50.json), and
 [packed-renderer smoke](performance-experiments/packed-renderer-screen-50v50.json).
+Extension evidence: [5v5 environment raw A/B](performance-experiments/compiled-perception-env-ab-5v5.jsonl)
+and [bounded complete PPO A/B](performance-experiments/compiled-perception-ppo-ab-5v5.json).
 
 ## Candidate comparison (intake history)
 
@@ -135,6 +171,10 @@ The sole failure found legacy `--mode` command text in this report and two
 pre-existing archived audit documents; no runtime or numerical assertion
 failed. Earlier focused integrated verification passed 318 tests with four
 CUDA-sandbox skips, and the authorized CUDA parity runs below passed separately.
+The extension closeout suite passed **146 tests with 9 expected sandbox/CUDA
+skips** across the batch harness, renderer, interactive loop, belief, PPO, and
+compiled-tick modules. Focused Ruff checks, `git diff --check`, and structured
+result JSON validation also passed.
 
 It covered environment physics, projectile lifecycle and fields, collisions,
 shields and hull destruction, Frontline capture/transitions, boundary damage,
@@ -227,31 +267,51 @@ timeout 1200s flock -x artifacts/deadline-experiment/benchmark.lock \
   --pairs 3 --policy-compile default --seed 141421 \
   --moderngl-path /tmp/bnb-deadline-moderngl \
   --out docs/engineering/performance-experiments/final-combination-ab-50v50.json
+
+# Extension: 5v5 environment-only alternating A/B. This excludes policies,
+# rollout storage, evaluation, and PPO.
+timeout 1800s flock -x artifacts/deadline-experiment/benchmark.lock \
+  .venv/bin/python benchmarks/rl_batch_screen.py --device cuda \
+  --batches 1,32,128,256 --steps 30 --warmup 5 --pairs 3 --seed 1729 \
+  --perception-compile-mode default \
+  --out docs/engineering/performance-experiments/compiled-perception-env-ab-5v5.jsonl
+
+# Extension: bounded complete PPO arms, run eager/compiled in alternating order.
+timeout 15m flock -x artifacts/deadline-experiment/benchmark.lock \
+  .venv/bin/python -u benchmarks/rl_pipeline_profile.py --profile rl \
+  --override num_steps=8 --override num_minibatches=4 \
+  --override logical_batch_tokens=6656 \
+  --override launch.rollout_tokens=6656 --updates 3 --warmup 1 \
+  --timing wall --compile default --perception eager \
+  --no-checkpoint --checkpoint-dir /tmp/bnb-extension-checkpoints --out ARM.json
+# Replace --perception eager with --perception default for the candidate arm.
 ```
 
 ## Training and throughput boundary
 
-No deadline candidate changes the reward-bearing training path. The lean step
-deliberately omits rewards/statistics and the GPU renderer is presentation-only;
-therefore an environment-only B=1/32/128/large sweep or PPO A/B would not test
-their claimed benefit. Compiled perception was not integrated after its final
-combination failed the repeatability gate. End-to-end training benefit is
-**unproven**, and no new training-throughput claim is made.
+The extension integrated compiled pure perception into the reward-bearing CUDA
+training wrapper. Its environment-only B=1/32/128/256 results exclude policies,
+rollout storage, evaluation, and PPO and are reported only as environment
+throughput. The separate bounded 32-environment × 8-step measurement includes
+rollout, Elo evaluation, GAE, four PPO epochs, optimizer, and logging. That
+complete result was nearly neutral (-0.29%) even though the primary env+network
+phase improved by 12.0%; therefore the report does **not** claim a material
+complete-training throughput improvement. It also does not extrapolate the
+bounded result to the production 960-environment, 128-step logical batch.
 
-For context only, the archived environment-only CUDA runs (no policies,
-rollout storage, evaluator, or PPO) measured 66.77, 69.21, 68.13, and 73.00 ms
-per batch step at B=1, 32, 128, and 960, respectively. The interrupted PPO run
-recorded a 578.93-second warmup and one 215.94-second update with two PPO epochs;
-it has no completed aggregate. Neither set of numbers is rendered-frame or
-complete training throughput.
+For historical context, the archived environment-only CUDA runs measured
+66.77, 69.21, 68.13, and 73.00 ms at B=1, 32, 128, and 960. The archived PPO
+profile recorded a 578.93-second warmup and only one 215.94-second update with
+two PPO epochs. Those workloads are retained as separate evidence and are not
+combined with the extension measurements.
 
 ## Handoff
 
 - The runnable reference remains in the repository; no archived audit file was
   modified.
 - ModernGL remains an isolated prototype dependency, not a project dependency.
-- Failed production observation edits were reverted; failed candidates live
-  only in benchmark code and raw evidence.
+- Failed production observation edits and the unmeasured training-belief edit
+  were reverted; incomplete candidates are documented rather than enabled.
 - The final implementation and evidence are checkpointed on the experiment
   branch; publishing status is recorded in the Git history/handoff message.
 - No benchmark process remains. Durable continuation state is in the ignored

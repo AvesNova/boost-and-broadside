@@ -7,6 +7,7 @@ import pygame
 import pytest
 import torch
 
+import boost_and_broadside.ui.renderer as renderer_module
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE, toroidal_displacement
@@ -227,6 +228,53 @@ def test_play_resource_button_toggles_unlimited_health_and_power(monkeypatch):
         assert renderer.unlimited_resources
         renderer._handle_left_click(renderer._unlimited_rect.center)
         assert not renderer.unlimited_resources
+    finally:
+        renderer.close()
+
+
+def test_play_frame_pacing_toggle_unlocks_only_presentation(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    renderer = GameRenderer(
+        ShipConfig(),
+        RenderConfig(fps=30, show_frame_pacing_toggle=True),
+    )
+    tick_limits = []
+    renderer._clock = SimpleNamespace(tick=tick_limits.append)
+    try:
+        assert not renderer.frame_pacing_unlocked
+        renderer._handle_left_click(renderer._frame_pacing_rect.center)
+        assert renderer.frame_pacing_unlocked
+        assert renderer.target_fps == 30
+        renderer.tick()
+        assert tick_limits == [0]
+
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_u))
+        assert not renderer.frame_pacing_unlocked
+        renderer.tick()
+        assert tick_limits == [0, 30]
+    finally:
+        renderer.close()
+
+
+def test_renderer_measures_presentation_fps_and_schedules_fixed_simulation(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    renderer = GameRenderer(ShipConfig(), RenderConfig(fps=30))
+    now = [10.0]
+    monkeypatch.setattr(renderer_module.time, "perf_counter", lambda: now[0])
+    try:
+        renderer._record_presentation()
+        now[0] = 10.5
+        renderer._record_presentation()
+        assert renderer.presentation_fps == pytest.approx(2.0)
+
+        assert renderer.simulation_due()
+        renderer.frame_pacing_unlocked = True
+        assert renderer.simulation_due()
+        renderer.mark_simulation_advanced()
+        now[0] = 10.52
+        assert not renderer.simulation_due()
+        now[0] = 10.54
+        assert renderer.simulation_due()
     finally:
         renderer.close()
 
