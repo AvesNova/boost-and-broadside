@@ -210,13 +210,13 @@ def test_a_confident_circular_belief_matches_the_gaussian_limit(coordinator) -> 
     scale = coordinator.label_scale_vector(torch.device("cpu"))
     dim = _circular_dims(coordinator)[0]
 
-    log_kappa, residual = 6.0, 0.01
+    log_var, residual = -6.0, 0.01
     mean = torch.zeros(1, P)
     mean[0, dim] = residual * scale[dim]
-    full = torch.cat([mean, torch.full((1, U), log_kappa)], dim=-1)
+    full = torch.cat([mean, torch.full((1, U), log_var)], dim=-1)
     measured = coordinator.prediction_loss(full, torch.zeros(1, P))[0, dim].item()
 
-    kappa = math.exp(log_kappa)
+    kappa = math.exp(-log_var)
     gaussian = 0.5 * (kappa * residual**2 - math.log(kappa) + math.log(2 * math.pi))
     assert measured == pytest.approx(gaussian, rel=1e-3)
 
@@ -241,3 +241,48 @@ def test_the_circular_loss_undoes_label_scale_before_taking_a_cosine(coordinator
 
     # A full turn in *radians* must be indistinguishable from no error at all.
     assert loss_at(2 * math.pi) == pytest.approx(loss_at(0.0), rel=1e-5)
+
+
+def test_both_kinds_read_their_uncertainty_the_same_way_round(coordinator) -> None:
+    """One block, one meaning: larger is always less certain.
+
+    Concentration is the natural von Mises parameter and the inverse of a
+    spread, so the circular loss inverts it internally rather than letting the
+    head's output mean opposite things in neighbouring channels.
+
+    The residual is set per kind in the units each loss actually sees -- radians
+    for circular, scaled label units for Gaussian -- and chosen well outside the
+    confident spread. A residual *inside* it makes confidence cheaper, correctly
+    so, which is a different property from the one under test here.
+    """
+
+    P, U = coordinator.total_prediction_dimension, coordinator.total_uncertainty_dimension
+    scale = coordinator.label_scale_vector(torch.device("cpu"))
+    circular = set(_circular_dims(coordinator))
+    reported = sorted(set(_gaussian_dims(coordinator)) | circular)
+    assert reported
+
+    mean = torch.zeros(1, P)
+    for dim in reported:
+        # 2 radians for a circular channel; 2 scaled units otherwise. Against a
+        # confident sigma^2 of e^-2 that is several sigma out either way.
+        mean[0, dim] = 2.0 * scale[dim] if dim in circular else 2.0
+
+    def loss_at(log_var: float) -> torch.Tensor:
+        full = torch.cat([mean, torch.full((1, U), log_var)], dim=-1)
+        return coordinator.prediction_loss(full, torch.zeros(1, P))[0]
+
+    confident, vague = loss_at(-2.0), loss_at(2.0)
+    for dim in reported:
+        assert confident[dim] > vague[dim], (
+            f"dim {dim}: claiming certainty while badly wrong must cost more than doubt"
+        )
+
+    # And the same direction once turned into a variance for the tracker.
+    def variance_at(log_var: float) -> torch.Tensor:
+        full = torch.cat([torch.zeros(1, P), torch.full((1, U), log_var)], dim=-1)
+        return coordinator.prediction_variance(full)[0]
+
+    high, low = variance_at(2.0), variance_at(-2.0)
+    for dim in reported:
+        assert high[dim] > low[dim], f"dim {dim}: variance must rise with reported log variance"

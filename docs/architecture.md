@@ -370,6 +370,14 @@ that could not decompose over micro-batches, so it perturbed the applied gradien
 to 0.3 percent whenever a minibatch was split; without it, accumulation is exact to
 floating-point roundoff.
 
+The cache also carries how far it has drifted. Each forecast's spread is accumulated into a
+per-channel variance while a ship is out of sight and discarded the moment it is seen again,
+and the result is an observation channel the policy reads. `time_since_observation` says only
+how stale an estimate is; this says what the staleness cost, which is the quantity that
+decides whether to act on a remembered position or go and look. The belief mean itself is
+still propagated unshrunk -- using the spread to pull a stale estimate toward a prior is a
+further step, and needs a decision about what that prior is.
+
 With finite vision, visible ships refresh a policy-local point-estimate cache and the head's
 forecast becomes the next hidden input recursively. Hidden tokens receive privileged
 next-state supervision without exposing that truth to the actor or critic; death-to-respawn

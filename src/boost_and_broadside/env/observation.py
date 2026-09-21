@@ -12,6 +12,15 @@ from boost_and_broadside.env.perception import TeamVisibility, team_visibility_f
 from boost_and_broadside.env.state import TensorState
 
 
+# Width of ``ObsKey.BELIEF_UNCERTAINTY``: one accumulated variance per auxiliary
+# prediction dimension. Stated here rather than imported, because the
+# observation contract must not depend on the policy's feature registry -- and
+# pinned equal to ``FeatureCoordinator.total_prediction_dimension`` by
+# ``tests/train/test_belief_uncertainty.py``, so the two cannot drift apart
+# silently.
+BELIEF_UNCERTAINTY_DIM = 11
+
+
 class ObsKey(StrEnum):
     POS = "pos"
     VEL = "vel"
@@ -25,6 +34,7 @@ class ObsKey(StrEnum):
     ALIVE = "alive"
     VISIBLE = "visible"
     BELIEF_VALID = "belief_valid"
+    BELIEF_UNCERTAINTY = "belief_uncertainty"
     TIME_SINCE_OBSERVATION = "time_since_observation"
     OBJECT_TYPE = "object_type"
     RADIUS = "radius"
@@ -126,6 +136,15 @@ class YemongObservation:
             return self.data[ObsKey.ALIVE]
         if resolved == ObsKey.TIME_SINCE_OBSERVATION:
             return torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
+        if resolved == ObsKey.BELIEF_UNCERTAINTY:
+            # Only a BeliefTracker fills this. Everywhere else -- the raw
+            # environment view, an omniscient configuration, a test fixture --
+            # nothing has been forecast, so nothing is uncertain.
+            return torch.zeros(
+                (*team_id.shape, BELIEF_UNCERTAINTY_DIM),
+                dtype=torch.float32,
+                device=team_id.device,
+            )
         if resolved == ObsKey.OBJECT_TYPE:
             return torch.where(
                 team_id == 2,

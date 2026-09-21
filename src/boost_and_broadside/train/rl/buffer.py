@@ -22,7 +22,12 @@ from boost_and_broadside.constants import (
     OUTCOME_TIE_INDEX,
     OUTCOME_WIN_INDEX,
 )
-from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
+from boost_and_broadside.env.observation import (
+    BELIEF_UNCERTAINTY_DIM,
+    BulletObsKey,
+    ObsKey,
+    YemongObservation,
+)
 
 
 class MicroBatch(NamedTuple):
@@ -594,11 +599,27 @@ class RolloutBuffer:
         # Stored at reduced precision (bf16 floats / uint8 indices) except positions;
         # the feature transforms upcast every channel to fp32 on read. See
         # _obs_storage_dtype for the per-channel policy.
+        # The belief tracker adds BELIEF_UNCERTAINTY to every composed
+        # observation, while the raw environment view this sample comes from has
+        # none. The update replays stored observations through the same encoder
+        # that read them during the rollout, so storage has to cover the channel
+        # either way or the two would see different inputs.
+        sampled_obs = dict(obs_sample.items())
+        if ObsKey.BELIEF_UNCERTAINTY not in sampled_obs:
+            # Shaped from ``pos`` rather than read through the observation's
+            # zero-default, which derives its shape from ``team_id`` -- a channel
+            # the compact test fixtures omit.
+            tokens = obs_sample.pos
+            sampled_obs[ObsKey.BELIEF_UNCERTAINTY] = torch.zeros(
+                (*tokens.shape[:2], BELIEF_UNCERTAINTY_DIM),
+                device=tokens.device,
+                dtype=torch.float32,
+            )
         self.obs: dict = {
             key: torch.zeros(
                 (T + 1, B, *val.shape[1:]), device=device, dtype=_obs_storage_dtype(key, val.dtype)
             )
-            for key, val in obs_sample.items()
+            for key, val in sampled_obs.items()
         }
         # Bullet channels live on their own (B, N*K, ...) axis. Allocated only when
         # the policy reads them — this is the largest single tensor the change adds.
