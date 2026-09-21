@@ -30,6 +30,13 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError(f"expected a non-negative integer, got {value!r}")
+    return parsed
+
+
 def _exact_run(value: str) -> str:
     if not value or Path(value).name != value or value in {".", "..", "latest", "none"}:
         raise argparse.ArgumentTypeError(
@@ -316,11 +323,52 @@ COMMANDS: tuple[CommandSpec, ...] = (
             _ALLOW_DRIFT,
         ),
     ),
-    CommandSpec("play", "Play the fixed human 1v1 duel.", (_DEVICE, _SEED)),
+    CommandSpec(
+        "play",
+        "Play the Frontline arena with one human-controlled ship and scripted fleets.",
+        (
+            _option(
+                "--ships-per-team",
+                type=_positive_int,
+                default=5,
+                metavar="COUNT",
+                help="Ships on each team (total ships: twice this value; default: 5).",
+            ),
+            _option(
+                "--fields",
+                type=_nonnegative_int,
+                default=10,
+                metavar="COUNT",
+                help="Number of map fields (default: 10; zero disables fields).",
+            ),
+            _DEVICE,
+            _SEED,
+        ),
+    ),
     CommandSpec(
         "watch",
-        "Watch two exact agents in the fixed interactive arena.",
-        (_TEAM0, _TEAM1, _DEVICE, _SEED, _ALLOW_DRIFT),
+        "Watch two exact agents in the Frontline arena.",
+        (
+            _TEAM0,
+            _TEAM1,
+            _option(
+                "--ships-per-team",
+                type=_positive_int,
+                default=5,
+                metavar="COUNT",
+                help="Ships on each team (total ships: twice this value; default: 5).",
+            ),
+            _option(
+                "--fields",
+                type=_nonnegative_int,
+                default=10,
+                metavar="COUNT",
+                help="Number of map fields (default: 10; zero disables fields).",
+            ),
+            _DEVICE,
+            _SEED,
+            _ALLOW_DRIFT,
+        ),
     ),
     CommandSpec(
         "capture",

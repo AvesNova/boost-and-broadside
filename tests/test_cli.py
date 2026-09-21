@@ -234,6 +234,57 @@ def test_runtime_argument_errors_are_translated_to_cli_errors(capsys) -> None:
     assert "invalid --device value" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("command", ("play", "watch"))
+def test_interactive_match_size_defaults_and_overrides(command: str) -> None:
+    default_argv = [command]
+    if command == "watch":
+        default_argv.extend(["--team0", "scripted", "--team1", "random"])
+    defaults = _parse(default_argv)
+    assert defaults.ships_per_team == 5
+    assert defaults.fields == 10
+
+    argv = [command, "--ships-per-team", "7", "--fields", "0"]
+    if command == "watch":
+        argv.extend(["--team0", "scripted", "--team1", "random"])
+    parsed = _parse(argv)
+    assert parsed.ships_per_team == 7
+    assert parsed.fields == 0
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    (("--ships-per-team", "0"), ("--fields", "-1")),
+)
+@pytest.mark.parametrize("command", ("play", "watch"))
+def test_interactive_match_size_rejects_out_of_range_values(
+    command: str, flag: str, value: str
+) -> None:
+    argv = [command, flag, value]
+    if command == "watch":
+        argv.extend(["--team0", "scripted", "--team1", "random"])
+    with pytest.raises(SystemExit) as exit_info:
+        _parse(argv)
+    assert exit_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("command", "runtime_name"),
+    (("play", "run_play_mode"), ("watch", "run_watch_mode")),
+)
+def test_interactive_adapters_forward_match_size(
+    command: str, runtime_name: str, monkeypatch
+) -> None:
+    captured = {}
+    _stub_execution(monkeypatch)
+    monkeypatch.setattr(cli_commands, runtime_name, lambda **kwargs: captured.update(kwargs))
+    argv = [command, "--ships-per-team", "7", "--fields", "0"]
+    if command == "watch":
+        argv.extend(["--team0", "scripted", "--team1", "random"])
+    cli_commands.execute(command, _parse(argv))
+    assert captured["ships_per_team"] == 7
+    assert captured["num_fields"] == 0
+
+
 def test_invalid_print_config_is_a_concise_cli_error(capsys) -> None:
     with pytest.raises(SystemExit) as exit_info:
         cli.main(["train", "--profile", "rl", "--num-envs", "3872", "--print-config"])

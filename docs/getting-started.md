@@ -69,8 +69,11 @@ single case for focused diagnosis.
 # Gate-1 Frontline: one selected human ship plus scripted allies vs scripted enemies
 uv run bnb play
 
-# Human team 0 vs a newly trained current-schema checkpoint
-uv run bnb watch --team0 null --team1 checkpoints/<run>/<checkpoint>.pt
+# The same dev mode at 50v50 with the measured large-map field count
+uv run bnb play --ships-per-team 50 --fields 72 --device cuda
+
+# Start as a spectator; press H to take over the selected ship at any time
+uv run bnb watch --team0 scripted --team1 scripted
 
 # Learned policy vs scripted controller
 uv run bnb watch --team0 checkpoints/<run>/<checkpoint>.pt --team1 scripted
@@ -81,21 +84,21 @@ uv run bnb watch \
   --team1 checkpoints/<run>/<checkpoint>.pt
 ```
 
-Play mode runs the provisional five-zone Frontline configuration in a 16384 × 16384
-toroidal world. Human controls are WASD for flight, Shift for sharp turns, and Space to
-shoot. Tab cycles allied ships and then spectator mode; C follows/releases; F fits the
-playable area; R resets to the full world; `+`/`-` adjust game speed; V cycles whose vision
-is drawn; Z toggles whether capture zones block sight as well as fields; the mouse wheel
-zooms and middle/right drag pans. Z changes the environment rule, not just the drawing, so
-the agents lose and gain sight with you. The
-`Unlimited HP/PW` button remains available for inspection. Agent specs
-accepted by `--team0` and `--team1` include `null` (human in watch mode), `random`,
-`scripted`, an explicit checkpoint path, and the named scripted controllers listed by
-`bnb watch --help`. A checkpoint is always named explicitly.
+Play and watch are presets of the same Frontline developer mode in a 16384 × 16384
+toroidal world. Play starts by controlling team 0's first ship; watch starts by observing
+it. `H` toggles control/watch for the selected ship, `Tab` cycles the selected team's
+living ships plus no selection, and `T` changes teams. Human controls are WASD for flight,
+Shift for sharp turns, and Space to shoot. `V` independently cycles full, team-0, and
+team-1 vision; `C` follows/releases the selected ship; F fits the playable area; R resets
+to the full world; `+`/`-` adjust game speed; and Z toggles whether zones block sight. The
+mouse wheel zooms and middle/right drag pans. Both commands accept `--ships-per-team` and
+`--fields`; the former is per side, not the total fleet size. The unlimited-resource and
+frame-cap controls remain available for inspection. Agent specs accepted by `--team0` and
+`--team1` include `null`, `random`, `scripted`, an explicit checkpoint path, and the named
+scripted controllers listed by `bnb watch --help`. A checkpoint is always named explicitly.
 
-The Frontline prototype intentionally has no refractive fields until the common-map
-translation and overlapping-field work at Gate 2. See
-[the Gate-1 playtest guide](frontline-gate1.md) for provisional rules and review prompts.
+See [the Gate-1 playtest guide](frontline-gate1.md) for provisional rules and review
+prompts.
 
 ## Train
 

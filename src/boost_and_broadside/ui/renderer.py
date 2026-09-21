@@ -318,8 +318,14 @@ class GameRenderer:
         self.slider_dragging = False
         self.camera_dragging = False
         self._camera_drag_button: int | None = None
+        # Selection and human control are viewer state, intentionally separate
+        # from perspective and camera follow.  Watch mode starts observing;
+        # play starts with team 0's first living ship under keyboard control.
+        self.selected_team = 0
+        self.human_control_enabled = False
         self.selected_ship: int | None = None
         self._selectable_ships: tuple[int, ...] = ()
+        self._living_ships_by_team: tuple[tuple[int, ...], tuple[int, ...]] = ((), ())
         self._selection_initialized = False
         self._selected_position: complex | None = None
         self._frontline_fit: tuple[complex, float] | None = None
@@ -327,10 +333,13 @@ class GameRenderer:
 
         W = s
         H = s
-        self._pause_rect = pygame.Rect(W - 200, H - 40, 60, 30)
-        self._slider_track_rect = pygame.Rect(W - 120, H - 30, 100, 10)
-        self._frame_pacing_rect = pygame.Rect(W - 220, 10, 200, 30)
-        self._unlimited_rect = pygame.Rect(W - 220, 45, 200, 30)
+        # Keep interactive controls in one bottom-right stack.  The minimap and
+        # Frontline status/help occupy the top edge, so placing play-only
+        # buttons there makes all three layers unreadable.
+        self._frame_pacing_rect = pygame.Rect(W - 220, H - 150, 200, 30)
+        self._unlimited_rect = pygame.Rect(W - 220, H - 115, 200, 30)
+        self._pause_rect = pygame.Rect(W - 220, H - 40, 60, 30)
+        self._slider_track_rect = pygame.Rect(W - 140, H - 25, 120, 10)
         fog_size = max(1, round(s * render_config.fog_mask_scale))
         self._fog_team_mask = pygame.Surface((fog_size, fog_size))
         self._fog_observer_mask = pygame.Surface((fog_size, fog_size))
@@ -504,6 +513,11 @@ class GameRenderer:
                     self.camera.fit_region(*self._frontline_fit)
             elif event.key == pygame.K_TAB:
                 self._cycle_selected_ship()
+            elif event.key == pygame.K_t:
+                self.selected_team = 1 - self.selected_team
+                self._sync_selected_team_ships()
+            elif event.key == pygame.K_h and self.selected_ship is not None:
+                self.human_control_enabled = not self.human_control_enabled
             elif event.key == pygame.K_v:
                 modes = tuple(VisionMode)
                 self.vision_mode = modes[(modes.index(self.vision_mode) + 1) % len(modes)]
@@ -646,7 +660,12 @@ class GameRenderer:
             True,
             (200, 200, 200),
         )
-        surf.blit(fps_label, (self._slider_track_rect.x, self._slider_track_rect.y - 20))
+        # Right-align this wider label above the controls.  Anchoring it to the
+        # narrow slider used to clip "FPS" beyond the window's right edge.
+        surf.blit(
+            fps_label,
+            (surf.get_width() - 20 - fps_label.get_width(), surf.get_height() - 62),
+        )
 
         if self._render_config.show_frame_pacing_toggle:
             pacing_color = (255, 180, 70) if self.frame_pacing_unlocked else (110, 110, 125)
@@ -701,8 +720,13 @@ class GameRenderer:
                     f"TIME {remaining:05.1f}s   VIEW {self.vision_mode.value}   "
                     f"SPEED {self.game_speed:g}x"
                 ),
-                "V view  F fit  R world  wheel zoom  drag pan  C follow  TAB select"
-                "  -/+ speed  U uncapped",
+                "V view  F fit  R world  wheel zoom  drag pan",
+                (
+                    f"SELECT T{self.selected_team} SHIP "
+                    f"{self.selected_ship if self.selected_ship is not None else '-'}  "
+                    f"{'CONTROL' if self.human_control_enabled else 'WATCH'}"
+                ),
+                "T team  TAB ship  H control  C follow  -/+ speed  U frame cap",
             )
             for row, text in enumerate(lines):
                 label = self._font.render(text, True, (225, 225, 235))
@@ -725,13 +749,36 @@ class GameRenderer:
         self.camera.release_follow()
 
     def set_selectable_ships(self, ship_indices: tuple[int, ...]) -> None:
-        """Set controllable slots while preserving an explicit spectator state."""
+        """Set selected-team slots while preserving an explicit spectator state."""
 
+        teams = list(self._living_ships_by_team)
+        teams[self.selected_team] = ship_indices
+        self._living_ships_by_team = (teams[0], teams[1])
+        self._sync_selected_team_ships()
+
+    def set_living_ships(self, ship_indices: tuple[tuple[int, ...], tuple[int, ...]]) -> None:
+        """Set living slots for both teams and retain the current team selection."""
+
+        self._living_ships_by_team = ship_indices
+        self._sync_selected_team_ships()
+
+    def configure_interaction(self, *, human_control: bool) -> None:
+        """Set the mode's initial human-control state without changing selection."""
+
+        self.human_control_enabled = human_control
+
+    def _sync_selected_team_ships(self) -> None:
+        """Keep selection valid after a team toggle, death, or reset."""
+
+        ship_indices = self._living_ships_by_team[self.selected_team]
         self._selectable_ships = ship_indices
         if not ship_indices:
             self.selected_ship = None
+            self.human_control_enabled = False
+            self._selected_position = None
+            self.camera.release_follow()
         elif not self._selection_initialized:
-            self.selected_ship = ship_indices[0] if ship_indices else None
+            self.selected_ship = ship_indices[0]
             self._selection_initialized = True
         elif self.selected_ship is not None and self.selected_ship not in ship_indices:
             self.selected_ship = ship_indices[0]
@@ -746,6 +793,7 @@ class GameRenderer:
         index = self._selectable_ships.index(self.selected_ship)
         if index == len(self._selectable_ships) - 1:
             self.selected_ship = None
+            self.human_control_enabled = False
             self._selected_position = None
             self.camera.release_follow()
         else:
@@ -1249,7 +1297,9 @@ class GameRenderer:
         size = 180
         margin = 12
         left = surf.get_width() - size - margin
-        top = 52
+        # Five compact status/help rows end around y=110.  Starting below them
+        # avoids drawing UI text through the minimap.
+        top = 116
         panel = pygame.Rect(left, top, size, size)
         pygame.draw.rect(surf, (16, 18, 30), panel)
         pygame.draw.rect(surf, (105, 110, 130), panel, width=1)

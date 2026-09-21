@@ -331,8 +331,10 @@ of otherwise in-range
 exposure. A 256-environment visibility pass measured 4.12 ms, while visibility plus both
 masked team observations measured 15.80 ms on an RTX 4070 Laptop GPU.
 
-Frontline play uses one CPU thread, a 30 Hz tick/decision rate, and a state-only scripted
-loop that skips unused reward and policy-observation work. The end-to-end headless benchmark,
+The default 5v5 Frontline play preset uses one CPU thread, a 30 Hz tick/decision rate, and
+a state-only scripted loop that skips unused reward and policy-observation work. Larger
+fleets retain the requested CUDA device and use the compiled interactive path. The
+end-to-end headless benchmark,
 including perception and fog-aware Team 0 rendering, measured 32.74 ms per decision
 (1.02× realtime) at 900 px. The terrain stencil is quarter resolution and cached for eight
 ticks; dynamic unit visibility remains 30 Hz, and camera/view changes invalidate the cache.

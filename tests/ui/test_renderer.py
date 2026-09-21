@@ -128,6 +128,33 @@ def test_renderer_events_zoom_pan_release_follow_and_reset(monkeypatch):
         renderer.close()
 
 
+def test_selection_team_and_human_control_are_independent_renderer_state(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    renderer = GameRenderer(ShipConfig(), RenderConfig(window_size=200, show_ui=False))
+    try:
+        renderer.set_living_ships(((0, 2), (1, 3)))
+        assert renderer.selected_team == 0
+        assert renderer.selected_ship == 0
+        assert not renderer.human_control_enabled
+
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_h))
+        assert renderer.human_control_enabled
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_t))
+        assert renderer.selected_team == 1
+        assert renderer.selected_ship == 1
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
+        assert renderer.selected_ship == 3
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_TAB))
+        assert renderer.selected_ship is None
+        assert not renderer.human_control_enabled
+
+        renderer._handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_v))
+        assert renderer.vision_mode is VisionMode.TEAM_0
+        assert renderer.selected_ship is None
+    finally:
+        renderer.close()
+
+
 def test_ship_geometry_and_bars_stay_screen_pixels_at_large_world_scale(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     renderer = GameRenderer(
@@ -252,6 +279,35 @@ def test_play_frame_pacing_toggle_unlocks_only_presentation(monkeypatch):
         assert not renderer.frame_pacing_unlocked
         renderer.tick()
         assert tick_limits == [0, 30]
+    finally:
+        renderer.close()
+
+
+def test_play_controls_do_not_overlap_frontline_header_or_minimap(monkeypatch):
+    monkeypatch.setenv("HEADLESS", "1")
+    renderer = GameRenderer(
+        ShipConfig(),
+        RenderConfig(
+            window_size=900,
+            show_unlimited_button=True,
+            show_frame_pacing_toggle=True,
+        ),
+    )
+    try:
+        minimap = pygame.Rect(900 - 180 - 12, 116, 180, 180)
+        header = pygame.Rect(0, 0, 900, 110)
+        controls = (
+            renderer._frame_pacing_rect,
+            renderer._unlimited_rect,
+            renderer._pause_rect,
+            renderer._slider_track_rect.inflate(10, 20),
+        )
+
+        assert not minimap.colliderect(header)
+        for rect in controls:
+            assert not rect.colliderect(header)
+            assert not rect.colliderect(minimap)
+            assert pygame.Rect(0, 0, 900, 900).contains(rect)
     finally:
         renderer.close()
 
