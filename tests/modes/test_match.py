@@ -9,9 +9,9 @@ by watching what actually reaches the policy.
 
 import torch
 
-from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
+from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey
 from boost_and_broadside.evaluation.agents import ResolvedAgent

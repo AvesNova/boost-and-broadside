@@ -2,11 +2,14 @@
 
 from dataclasses import replace
 
+import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.frontline import (
     FRONTLINE_FIELD_RADIUS_MAX,
+    frontline_rules_match,
+    frontline_scale,
     frontline_ship_config,
 )
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
@@ -72,16 +75,10 @@ def test_spectator_selection_leaves_every_ship_scripted() -> None:
 
 def test_policy_actions_are_delayed_while_scripted_actions_are_immediate() -> None:
     team_id = torch.tensor([[0, 1, 0, 1]], dtype=torch.int32)
-    decided = torch.tensor(
-        [[[1, 1, 1], [2, 2, 0], [1, 3, 0], [0, 4, 1]]], dtype=torch.int32
-    )
-    buffered = torch.tensor(
-        [[[2, 6, 0], [1, 5, 1], [0, 2, 1], [2, 1, 0]]], dtype=torch.int32
-    )
+    decided = torch.tensor([[[1, 1, 1], [2, 2, 0], [1, 3, 0], [0, 4, 1]]], dtype=torch.int32)
+    buffered = torch.tensor([[[2, 6, 0], [1, 5, 1], [0, 2, 1], [2, 1, 0]]], dtype=torch.int32)
 
-    applied, next_buffer = _apply_policy_action_delay(
-        decided, buffered, team_id, frozenset({0})
-    )
+    applied, next_buffer = _apply_policy_action_delay(decided, buffered, team_id, frozenset({0}))
 
     assert torch.equal(applied[:, (0, 2)], buffered[:, (0, 2)])
     assert torch.equal(applied[:, (1, 3)], decided[:, (1, 3)])
@@ -103,9 +100,7 @@ def test_human_policy_override_is_immediate_and_clears_its_policy_buffer_slot() 
     assert torch.equal(next_buffer[0, 0], torch.zeros(3, dtype=torch.int32))
     # Releasing control returns the policy ship to its neutral queued first tick,
     # never to a stale keyboard action.
-    released, _ = _apply_policy_action_delay(
-        decided, next_buffer, team_id, frozenset({0})
-    )
+    released, _ = _apply_policy_action_delay(decided, next_buffer, team_id, frozenset({0}))
     assert torch.equal(released[0, 0], torch.zeros(3, dtype=torch.int32))
 
 
@@ -115,14 +110,22 @@ def test_large_interactive_fleet_keeps_the_requested_cuda_device() -> None:
 
 
 def test_play_and_watch_share_frontline_sizing_and_dev_render_configuration() -> None:
-    env_config = _frontline_interactive_config(ships_per_team=50, num_fields=72)
-    render_config = _interactive_render_config(
-        RenderConfig(), frontline_ship_config(ShipConfig()), env_config
+    env_config, ship_config = _frontline_interactive_config(
+        ships_per_team=50, num_fields=72, ship_config=frontline_ship_config(ShipConfig())
     )
+    render_config = _interactive_render_config(RenderConfig(), ship_config, env_config)
 
     assert env_config.num_ships == 100
     assert env_config.num_fields == 72
-    assert env_config.frontline == PLAY_ENV_CONFIG.frontline
+    # Rules are the play preset's; geometry is the density-matched 50v50 map.
+    assert frontline_rules_match(env_config.frontline, PLAY_ENV_CONFIG.frontline)
+    scale = frontline_scale(100)
+    baseline = PLAY_ENV_CONFIG.frontline
+    assert env_config.frontline.playable_radius == pytest.approx(baseline.playable_radius * scale)
+    assert env_config.frontline.zone_radius == pytest.approx(baseline.zone_radius * scale)
+    assert env_config.frontline.zone_ring_radius / env_config.frontline.playable_radius == (
+        pytest.approx(baseline.zone_ring_radius / baseline.playable_radius)
+    )
     assert render_config.fps == 30
     assert render_config.show_unlimited_button
     assert render_config.show_frame_pacing_toggle

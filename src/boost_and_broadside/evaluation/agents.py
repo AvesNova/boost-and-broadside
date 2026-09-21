@@ -10,6 +10,8 @@ Supported specs:
                    — deterministic scripted agents (see agents/)
 """
 
+from dataclasses import replace
+
 import torch
 
 from boost_and_broadside.agents.abreast import AbreastAgent
@@ -32,6 +34,7 @@ from boost_and_broadside.constants import (
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
 )
+from boost_and_broadside.env.frontline import frontline_scale
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.evaluation.run_catalog import resolve_explicit_checkpoint
@@ -70,6 +73,23 @@ def agents_read_bullets(*agents: "ResolvedAgent | None") -> bool:
     )
 
 
+def _scaled_agent_config(num_ships: int) -> StochasticAgentConfig:
+    """Scripted tunables for a fleet, with map-scale lengths tracking the map.
+
+    ``frontline_zone_radius`` stands in for objective geometry and has to follow
+    the zone it describes. ``frontline_combat_radius`` and
+    ``frontline_separation_radius`` are weapon- and hull-scale and must not move,
+    for the same reason ship physics does not scale with the fleet.
+    """
+
+    base = StochasticAgentConfig()
+    if base.frontline_zone_radius is None:
+        return base
+    return replace(
+        base, frontline_zone_radius=base.frontline_zone_radius * frontline_scale(num_ships)
+    )
+
+
 def resolve_agent_spec(
     spec: str,
     ship_config: ShipConfig,
@@ -101,7 +121,7 @@ def resolve_agent_spec(
         return ResolvedAgent("random", None)
 
     if spec == "scripted":
-        agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
+        agent = StochasticScriptedAgent(ship_config, _scaled_agent_config(num_ships))
         return ResolvedAgent("scripted", agent)
 
     if spec.startswith("semi_scripted:"):

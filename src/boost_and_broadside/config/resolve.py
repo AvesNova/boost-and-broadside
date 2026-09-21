@@ -18,6 +18,7 @@ from boost_and_broadside.config.schema import (
     ResolvedTrainConfig,
 )
 from boost_and_broadside.config.training import ScaleConfig, TrainConfig
+from boost_and_broadside.env.frontline import scaled_frontline_geometry
 
 
 @dataclass(frozen=True)
@@ -436,6 +437,13 @@ def resolve_profile(
         model_config = replace(profile.model_config, grad_checkpoint=overrides.grad_checkpoint)
         grad_checkpoint_source = overrides.grad_checkpoint_source
 
+    # The profile carries the 5v5 reference map; the fleet it is being resolved
+    # for decides the geometry actually played on. Applied here, once, so every
+    # training scale gets a density-matched map without the profile restating it.
+    scaled_ship_config, scaled_frontline = scaled_frontline_geometry(
+        profile.ship_config, profile.frontline, profile.num_ships
+    ) if profile.frontline is not None else (profile.ship_config, profile.frontline)
+
     env_config = EnvConfig(
         num_ships=profile.num_ships,
         num_fields=profile.num_fields,
@@ -446,7 +454,7 @@ def resolve_profile(
         spawn_resource_spread=profile.spawn_resource_spread,
         vision_range=profile.vision_range,
         zones_occlude=profile.zones_occlude,
-        frontline=profile.frontline,
+        frontline=scaled_frontline,
     )
     action_repeat = profile.action_repeat
     component_gammas = {
@@ -477,7 +485,7 @@ def resolve_profile(
     canonical_train_config = canonical_data(train_config)
     canonical_train_config["schedule"] = canonical_data(profile.schedule_spec)
     config_payload = {
-        "ship_config": canonical_data(profile.ship_config),
+        "ship_config": canonical_data(scaled_ship_config),
         "model_config": canonical_data(model_config),
         "train_config": canonical_train_config,
     }
@@ -489,7 +497,7 @@ def resolve_profile(
     )
     return ResolvedTrainConfig(
         profile_name=profile.name,
-        ship_config=profile.ship_config,
+        ship_config=scaled_ship_config,
         model_config=model_config,
         train_config=train_config,
         schedule_spec=profile.schedule_spec,

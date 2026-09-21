@@ -92,7 +92,7 @@ def test_roles_are_derived_from_unwrapped_front(front: int, expected: list[int])
 
 
 def test_frontline_requires_design_world_size() -> None:
-    with pytest.raises(ValueError, match="16384"):
+    with pytest.raises(ValueError, match="65536"):
         TensorEnv(
             1,
             ShipConfig(),

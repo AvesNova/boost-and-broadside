@@ -144,7 +144,7 @@ def test_training_profiles_use_the_frontline_perception_contract(name: str) -> N
     resolved = resolve_profile(PROFILES[name])
     scale = resolved.train_config.scales[0]
 
-    assert resolved.ship_config.world_size == (16_384.0, 16_384.0)
+    assert resolved.ship_config.world_size == (65_536.0, 65_536.0)
     assert resolved.ship_config.dt == pytest.approx(1 / 30)
     assert scale.env_config.frontline is not None
     assert scale.env_config.frontline.capture_seconds == 10.0
