@@ -14,13 +14,51 @@ import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.models.yemong.policy import LOG_VAR_MAX, LOG_VAR_MIN, NextStateHead
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+from boost_and_broadside.train.rl.features import (
+    Accessor,
+    Feature,
+    FeatureCoordinator,
+    Fourier,
+    UnitCirclePredictor,
+    build_standard_coordinator,
+)
 
 
 @pytest.fixture
 def coordinator():
     return build_standard_coordinator(ShipConfig())
+
+
+@pytest.fixture
+def circular_coordinator():
+    """A coordinator whose one predictor is circular.
+
+    Nothing in the shipped table reports a von Mises uncertainty any more:
+    position and attitude are predicted as Fourier moments, which shrink toward
+    the origin under squared error and so represent an unknown angle without
+    needing a concentration. The circular likelihood stays in the library for
+    channels that do want a phase, and these pin its geometry -- which is what
+    would otherwise rot unnoticed the moment nothing exercised it.
+
+    ``label_scale`` is deliberately large, because one of the properties under
+    test is that the loss divides it out before taking a cosine.
+    """
+
+    world = 1024.0
+    return FeatureCoordinator(
+        [
+            Feature(
+                name="phase_x",
+                accessor=Accessor(ObsKey.POS, channels=[0]),
+                input_encoder=Fourier(n_freqs=1, periods=world),
+                target_encoder=Fourier(n_freqs=1, periods=world),
+                predictor=UnitCirclePredictor(cosine_first=False),
+                label_scale=177.4,
+            )
+        ]
+    )
 
 
 def _split(coordinator, mean: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
@@ -102,8 +140,8 @@ def test_a_predictor_without_uncertainty_keeps_plain_squared_error() -> None:
 
     from boost_and_broadside.env.observation import ObsKey
     from boost_and_broadside.train.rl.features import (
-        Accessor,
         AbsolutePredictor,
+        Accessor,
         Feature,
         FeatureCoordinator,
         Identity,
@@ -170,7 +208,7 @@ def _circular_dims(coordinator) -> list[int]:
     ]
 
 
-def test_the_circular_loss_is_periodic_in_two_pi(coordinator) -> None:
+def test_the_circular_loss_is_periodic_in_two_pi(circular_coordinator) -> None:
     """The reason a Gaussian cannot be used on these channels.
 
     A phase residual of d and one of d + 2*pi describe the same place on the
@@ -178,16 +216,17 @@ def test_the_circular_loss_is_periodic_in_two_pi(coordinator) -> None:
     them equal, or the head is penalised for being right the long way round.
     """
 
-    P, U = coordinator.total_prediction_dimension, coordinator.total_uncertainty_dimension
-    scale = coordinator.label_scale_vector(torch.device("cpu"))
-    circular = _circular_dims(coordinator)
+    P = circular_coordinator.total_prediction_dimension
+    U = circular_coordinator.total_uncertainty_dimension
+    scale = circular_coordinator.label_scale_vector(torch.device("cpu"))
+    circular = _circular_dims(circular_coordinator)
     assert circular, "no predictor reports a von Mises uncertainty"
 
     def loss_at(dim: int, residual_radians: float) -> float:
         mean = torch.zeros(1, P)
         mean[0, dim] = residual_radians * scale[dim]
         full = torch.cat([mean, torch.full((1, U), 2.0)], dim=-1)
-        return coordinator.prediction_loss(full, torch.zeros(1, P))[0, dim].item()
+        return circular_coordinator.prediction_loss(full, torch.zeros(1, P))[0, dim].item()
 
     for dim in circular:
         assert loss_at(dim, 0.3) == pytest.approx(loss_at(dim, 0.3 + 2 * math.pi), rel=1e-5)
@@ -199,45 +238,47 @@ def test_the_circular_loss_is_periodic_in_two_pi(coordinator) -> None:
         assert loss_at(dim, 0.0) < loss_at(dim, 0.3) < loss_at(dim, 1.2)
 
 
-def test_a_confident_circular_belief_matches_the_gaussian_limit(coordinator) -> None:
+def test_a_confident_circular_belief_matches_the_gaussian_limit(circular_coordinator) -> None:
     """von Mises becomes Gaussian as the belief tightens, with kappa as 1/sigma^2.
 
     This is what says the two branches are one objective in different geometry
     rather than two unrelated losses whose magnitudes cannot be compared.
     """
 
-    P, U = coordinator.total_prediction_dimension, coordinator.total_uncertainty_dimension
-    scale = coordinator.label_scale_vector(torch.device("cpu"))
-    dim = _circular_dims(coordinator)[0]
+    P = circular_coordinator.total_prediction_dimension
+    U = circular_coordinator.total_uncertainty_dimension
+    scale = circular_coordinator.label_scale_vector(torch.device("cpu"))
+    dim = _circular_dims(circular_coordinator)[0]
 
     log_var, residual = -6.0, 0.01
     mean = torch.zeros(1, P)
     mean[0, dim] = residual * scale[dim]
     full = torch.cat([mean, torch.full((1, U), log_var)], dim=-1)
-    measured = coordinator.prediction_loss(full, torch.zeros(1, P))[0, dim].item()
+    measured = circular_coordinator.prediction_loss(full, torch.zeros(1, P))[0, dim].item()
 
     kappa = math.exp(-log_var)
     gaussian = 0.5 * (kappa * residual**2 - math.log(kappa) + math.log(2 * math.pi))
     assert measured == pytest.approx(gaussian, rel=1e-3)
 
 
-def test_the_circular_loss_undoes_label_scale_before_taking_a_cosine(coordinator) -> None:
+def test_the_circular_loss_undoes_label_scale_before_taking_a_cosine(circular_coordinator) -> None:
     """label_scale conditions the mean; it is not part of the geometry.
 
     Position's scale is ~177, so a residual left in scaled space would be tens of
     radians and the cosine would be measuring noise.
     """
 
-    P, U = coordinator.total_prediction_dimension, coordinator.total_uncertainty_dimension
-    scale = coordinator.label_scale_vector(torch.device("cpu"))
-    dim = _circular_dims(coordinator)[0]
+    P = circular_coordinator.total_prediction_dimension
+    U = circular_coordinator.total_uncertainty_dimension
+    scale = circular_coordinator.label_scale_vector(torch.device("cpu"))
+    dim = _circular_dims(circular_coordinator)[0]
     assert scale[dim].item() > 10.0, "this test is only meaningful for a scaled channel"
 
     def loss_at(residual_radians: float) -> float:
         mean = torch.zeros(1, P)
         mean[0, dim] = residual_radians * scale[dim]
         full = torch.cat([mean, torch.full((1, U), 1.0)], dim=-1)
-        return coordinator.prediction_loss(full, torch.zeros(1, P))[0, dim].item()
+        return circular_coordinator.prediction_loss(full, torch.zeros(1, P))[0, dim].item()
 
     # A full turn in *radians* must be indistinguishable from no error at all.
     assert loss_at(2 * math.pi) == pytest.approx(loss_at(0.0), rel=1e-5)

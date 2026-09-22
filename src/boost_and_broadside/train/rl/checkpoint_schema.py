@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "frontline_shields_v9"
+OBSERVATION_SCHEMA = "frontline_shields_v10"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 10,
+        "version": 11,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -52,9 +52,20 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         # so this is constant-true rather than a mask the trunk has to read.
         "belief_existence_mask": "always_valid_after_spawn",
         "auxiliary_prediction": "mean_plus_clamped_log_variance",
-        "belief_uncertainty": "accumulated_forecast_variance_per_channel",
-        "auxiliary_label_origin": "believed_current_to_true_next",
-        "resource_targets": "normalised_scalar",
+        # Position and attitude are predicted as absolute Fourier moments over
+        # the same harmonic basis their inputs use, with one isotropic spread per
+        # (sin, cos) pair. Squared error drives an unpredictable harmonic's mean
+        # to the origin, which *is* a uniform belief about that scale -- a phase
+        # predictor preserves unit norm and so cannot express one.
+        "circular_targets": "absolute_harmonic_moments_paired_spread",
+        # Per uncertainty column, so one per scalar channel and one per harmonic
+        # pair. Width therefore follows the world size.
+        "belief_uncertainty": "accumulated_forecast_variance_per_uncertainty_column",
+        # Delta channels only. An absolutely-predicted channel asks for the state
+        # rather than a step away from a base, so a stale belief cannot enter its
+        # label and the error cannot be conserved across a step.
+        "auxiliary_label_origin": "believed_current_to_true_next_for_delta_channels",
+        "resource_targets": "normalised_scalar_input_and_target",
         "privileged_auxiliary_targets": "storage_only_never_policy_input",
         "enemy_actions": "always_private",
         "position_fourier_basis": "base2",
@@ -89,6 +100,13 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
+    v10 predicts position and attitude as absolute Fourier moments on the same
+    harmonic basis their inputs use, with one isotropic spread per (sin, cos)
+    pair, and makes health, power and cooldown normalised scalars on both the
+    input and the target side. Both the encoder input width and the auxiliary
+    head width change, and ``belief_uncertainty`` becomes one channel per
+    uncertainty column -- which now scales with the world, because position
+    reports a spread per harmonic. No tensor-only migration exists.
     v8 retains previously observed hidden enemies as recursively predicted point
     estimates, adds observation age and a non-privileged token-validity mask,
     and separates authoritative auxiliary targets from policy observations.

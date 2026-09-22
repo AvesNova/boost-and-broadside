@@ -290,7 +290,7 @@ def _run_interactive_loop(
             visibility = wrapper.last_visibility
         init_hidden(agent0, 1, device)
         init_hidden(agent1, 1, device)
-        pred_nexts = None
+        ghost_poses = None
         # NN policies were trained with a one-decision actuator delay. Scripted,
         # random, and human controllers remain immediate. The buffer starts at
         # the neutral action on every episode, matching PPO rollout collection.
@@ -423,7 +423,7 @@ def _run_interactive_loop(
                     )
 
                 # Merge imagined trajectories by team into a single list of per-step tensors.
-                pred_nexts = None
+                ghost_poses = None
                 if imag_nexts0 or imag_nexts1:
                     n_steps = max(len(imag_nexts0), len(imag_nexts1))
                     mask = (team_id == 0).unsqueeze(-1)  # (1, N, 1)
@@ -440,7 +440,7 @@ def _run_interactive_loop(
                             else torch.zeros_like(imag_nexts0[k])
                         )
                         merged.append(torch.where(mask, pn0, pn1))
-                    pred_nexts = merged
+                    ghost_poses = merged
 
                 if not state_only:
                     # Physics records the action it just consumed. For an NN
@@ -454,7 +454,7 @@ def _run_interactive_loop(
                     policy_action_buffer.zero_()
                     reset_done_envs(agent0, dones | truncated)
                     reset_done_envs(agent1, dones | truncated)
-                    pred_nexts = None
+                    ghost_poses = None
                     result = int(result_tensor[0].item())
                     terminal_label = {
                         int(MatchResult.TEAM0_WIN): "TEAM 0 WINS",
@@ -476,7 +476,7 @@ def _run_interactive_loop(
                 )
             else:
                 running = renderer.render(
-                    wrapper.state, pred_nexts=pred_nexts, visibility=visibility
+                    wrapper.state, ghost_poses=ghost_poses, visibility=visibility
                 )
             if not running:
                 return
