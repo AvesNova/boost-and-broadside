@@ -702,8 +702,28 @@ class RolloutBuffer:
         # Authoritative physical targets are auxiliary supervision only. They
         # are deliberately stored outside ``obs`` so no actor/critic path can
         # consume hidden enemy truth by key lookup.
+        #
+        # bf16, for the reason the encoded belief is: these are target-space
+        # values, bounded per harmonic rather than spanning a world, so the bits
+        # buy phase instead of magnitude. Measured against fp32 labels over real
+        # transitions, as a fraction of each channel's label RMS:
+        #
+        #   absolute channels        0.02% - 0.13%
+        #   velocity (delta)         2.95% -> 6.22%
+        #   local_log_index (delta)  2.91% -> 3.71%
+        #
+        # The delta channels roughly double, because a label computed as
+        # ``next - curr`` cancels most of two quantised values -- but the "today"
+        # figures are what the buffer already carries, ``VEL`` having been bf16
+        # in ``obs`` all along, so this adds a second comparable term rather than
+        # a new failure mode. In the terms the likelihood actually sees it is
+        # smaller still: the worst case moves label *variance* by 0.3%, against a
+        # velocity ``label_scale`` that is separately about 33x miscalibrated.
+        #
+        # Labels come back out in fp32 regardless: ``compute_labels`` multiplies
+        # by the fp32 ``label_scale_vector``, which promotes.
         self.privileged_targets: torch.Tensor | None = (
-            torch.zeros((T + 1, B, N, prediction_target_dim), device=device)
+            torch.zeros((T + 1, B, N, prediction_target_dim), device=device, dtype=_STORAGE_FLOAT)
             if prediction_target_dim > 0
             else None
         )
