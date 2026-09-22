@@ -143,8 +143,34 @@ class BeliefTracker:
         )
 
         data = {key: value.clone() for key, value in perceived.items()}
-        # Run the fixed-shape decode even when this batch currently has no
-        # hidden beliefs. Avoiding a tensor-dependent Python branch keeps this
+        # The belief the *encoder* reads, in target space and uncopied: for a
+        # predicted feature, target space is its input space, so these columns
+        # are substituted straight into the encoded input and the head's own
+        # output becomes the next step's input. A hidden ship's position is a
+        # Fourier moment whose magnitude states how sure the belief is, and that
+        # magnitude only survives if it never passes through a coordinate.
+        believed = torch.zeros(
+            (*data[ObsKey.BELIEF_VALID].shape, self.predicted_targets.shape[-1]),
+            dtype=torch.float32,
+            device=self.predicted_targets.device,
+        )
+        believed[:, :n] = self.predicted_targets
+        substitute = torch.zeros(
+            (*data[ObsKey.BELIEF_VALID].shape, 1),
+            dtype=torch.bool,
+            device=self.predicted_targets.device,
+        )
+        substitute[:, :n] = hidden_belief.unsqueeze(-1)
+        data[ObsKey.BELIEF_TARGETS] = believed
+        data[ObsKey.BELIEF_SUBSTITUTE] = substitute
+
+        # The decoded *point* below is kept for everything that is not the
+        # encoder: the renderer, the relational-bias geometry, evaluation. Those
+        # need a coordinate and can only have a point one. It is deliberately no
+        # longer what the trunk reads -- a decode puts every harmonic back on the
+        # unit circle, which reports maximum confidence whatever the belief
+        # actually said. Run the fixed-shape decode even when this batch has no
+        # hidden beliefs: avoiding a tensor-dependent Python branch keeps this
         # path free of GPU synchronization and friendly to torch.compile.
         raw = self.coordinator.decode_targets(self.predicted_targets)
         decoded = {
@@ -243,6 +269,12 @@ class BeliefTracker:
         # and read once per update -- the guard must never bind on a working
         # model, so a nonzero count is a signal rather than a repair, and
         # counting it must not cost a host sync on the hot path.
+        #
+        # Deliberately not counting the unit-disk projection below. A moment
+        # slightly outside the disk is an ordinary thing for an imperfect head
+        # to emit, so counting it would make this guard bind constantly and stop
+        # meaning anything. The disk is what the representation admits; the
+        # limit is a guard against a runaway.
         self.clamp_events += ((~torch.isfinite(raw)) | (raw.abs() > BELIEF_TARGET_LIMIT)).sum()
         forecast = torch.nan_to_num(
             raw,
@@ -250,7 +282,7 @@ class BeliefTracker:
             posinf=BELIEF_TARGET_LIMIT,
             neginf=-BELIEF_TARGET_LIMIT,
         )
-        self.predicted_targets.copy_(forecast.clamp(-BELIEF_TARGET_LIMIT, BELIEF_TARGET_LIMIT))
+        self.predicted_targets.copy_(self.coordinator.project_targets(forecast))
 
 
 class DualBeliefTracker:

@@ -47,7 +47,12 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
         "spawn_reveal": "visible_to_both_teams_for_the_spawn_decision",
-        "hidden_tokens": "recursive_point_estimate_plus_age",
+        "hidden_tokens": "recursive_encoded_belief_plus_age",
+        # The belief is substituted into the *encoded* input, not into the raw
+        # channels: a coordinate cannot carry a shrunken moment, so a decode
+        # would restore unit magnitude and report certainty the belief does not
+        # have. The spatial rotation reads the same moments, unnormalised.
+        "belief_substitution": "encoded_columns_moments_unnormalised_in_rope",
         # Every ship is seen on the decision it spawns, and validity is sticky,
         # so this is constant-true rather than a mask the trunk has to read.
         "belief_existence_mask": "always_valid_after_spawn",

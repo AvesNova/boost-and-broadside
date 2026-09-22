@@ -225,6 +225,15 @@ _OBS_STORAGE_OVERRIDES: dict[ObsKey | BulletObsKey, torch.dtype] = {
     ObsKey.POS: torch.float32,  # keep full precision — needed now and for large maps
     BulletObsKey.POS: torch.float32,  # same Fourier basis as ship position
 }
+# ``BELIEF_TARGETS`` is deliberately *not* in that list, even though it holds the
+# same Fourier encoding the position override exists to protect. bf16 resolves a
+# (sin, cos) value to about 0.004, which is 42 px of phase error at the 65536 px
+# harmonic -- but this channel is read only where a token is hidden, and a hidden
+# belief is uncertain by hundreds to thousands of px, so the quantisation is two
+# orders below the thing it perturbs. Visible tokens keep the fp32 ``POS`` path
+# untouched. It is 56 channels wide on the Frontline world, so fp32 would cost
+# about 190 MB of rollout storage at T=128, B=256 against 95 MB here, and the
+# 8 GB development GPU does not have it to spare.
 
 
 def _obs_storage_dtype(key: ObsKey | BulletObsKey, dt: torch.dtype) -> torch.dtype:
@@ -611,6 +620,22 @@ class RolloutBuffer:
         # and gets no storage, which is correct for a configuration that will
         # never compose a belief into an observation.
         sampled_obs = dict(obs_sample.items())
+        # The belief the encoder substitutes, and where. Stored for the same
+        # reason as everything else here: the update replays these observations
+        # through the same encoder that read them during the rollout, and the
+        # substitution happens inside that encoder. Without storage the update
+        # would encode a hidden ship from its masked raw channels and train on
+        # an input the rollout never saw.
+        if ObsKey.BELIEF_TARGETS not in sampled_obs and prediction_target_dim:
+            tokens = obs_sample.pos
+            sampled_obs[ObsKey.BELIEF_TARGETS] = torch.zeros(
+                (*tokens.shape[:2], prediction_target_dim),
+                device=tokens.device,
+                dtype=torch.float32,
+            )
+            sampled_obs[ObsKey.BELIEF_SUBSTITUTE] = torch.zeros(
+                (*tokens.shape[:2], 1), device=tokens.device, dtype=torch.bool
+            )
         if ObsKey.BELIEF_UNCERTAINTY not in sampled_obs and uncertainty_dim:
             # Shaped from ``pos`` rather than from ``team_id`` -- a channel the
             # compact test fixtures omit.

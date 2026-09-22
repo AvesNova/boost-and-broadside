@@ -203,6 +203,16 @@ class YemongPolicy(nn.Module):
                 raise ValueError("spatial_rope requires ship_config to derive its frequencies")
             check_rotary_budget(model_config, ship_config)
             self.rotary = SpatialRotary(ship_config, model_config.spatial_head_dim)
+            # Where the three rotated coordinates live in the target vector, so a
+            # believed token's rotation can be read straight out of it. Resolved
+            # once: the rotary axes and these features share one frequency basis
+            # by construction, so the slices cannot drift from the axes.
+            target_slices = coordinator.target_slices()
+            self._rotary_target_slices = (
+                target_slices["position_x"],
+                target_slices["position_y"],
+                target_slices["attitude"],
+            )
         else:
             self.rotary = None
         # The relation function wraps on the same toroid the rotation does.
@@ -363,6 +373,7 @@ class YemongPolicy(nn.Module):
         position = obs[ObsKey.POS]
         attitude = obs[ObsKey.ATT]
         cos, sin = self.rotary.tables(position, attitude)
+        cos, sin = self._believed_rotary_tables(obs, cos, sin)
         map_tables = None
         if map_is_memory:
             map_tables = (cos[:, num_entity_tokens:], sin[:, num_entity_tokens:])
@@ -377,6 +388,30 @@ class YemongPolicy(nn.Module):
             bullet=bullet_tables,
             map_memory=map_tables,
             relation=relation,
+        )
+
+    def _believed_rotary_tables(
+        self, obs: YemongObservation, cos: torch.Tensor, sin: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Rotate believed tokens by their moments rather than a decoded point.
+
+        Visible tokens and map objects keep the coordinate-derived tables
+        untouched -- truth encodes to unit magnitude, so substituting there would
+        change nothing anyway. A no-op without a belief tracker.
+        """
+
+        data = obs.data if hasattr(obs, "data") else obs
+        if ObsKey.BELIEF_TARGETS not in data or ObsKey.BELIEF_SUBSTITUTE not in data:
+            return cos, sin
+        targets = data[ObsKey.BELIEF_TARGETS].float()
+        x_slice, y_slice, att_slice = self._rotary_target_slices
+        believed_cos, believed_sin = self.rotary.tables_from_moments(
+            targets[..., x_slice], targets[..., y_slice], targets[..., att_slice]
+        )
+        substitute = data[ObsKey.BELIEF_SUBSTITUTE].bool().unsqueeze(-1)
+        return (
+            torch.where(substitute, believed_cos, cos),
+            torch.where(substitute, believed_sin, sin),
         )
 
     def _encode_bullets(

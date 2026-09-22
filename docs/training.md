@@ -571,7 +571,8 @@ Three compatibility rules follow from that:
 
 - **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
   perception, visibility masks, private enemy actions, field-core LOS, recursively predicted
-  hidden-enemy point estimates, belief validity, and observation age are part of the learned
+  hidden-enemy beliefs copied into the encoded input, belief validity, and observation age
+  are part of the learned
   input contract. Radius is shared across object types and normalized by half the shorter
   world dimension; ship-local `grad(n)` remains explicit. Payloads carry
   `observation_schema=frontline_shields_v10`. Successful firing globally reveals the shooter
