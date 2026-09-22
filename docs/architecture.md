@@ -84,7 +84,7 @@ channel to:
 | Feature | Network encoding | Auxiliary target |
 |---|---|---|
 | position x/y | base-2 Fourier features over the toroidal period | the same features, absolutely |
-| velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed | additive velocity delta |
+| velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed | the same encoding, absolutely |
 | attitude | four-frequency Fourier features of the angle itself | the same features, absolutely |
 | angular velocity | symlog scalar | next absolute value |
 | health, power, cooldown | normalised scalar | next absolute value |
@@ -326,12 +326,20 @@ semantics, aggregation, and horizons are documented in [training](training.md#re
 ## Auxiliary next-state head
 
 The next-state head predicts the coordinator's registered target channels for every ship.
-Each channel's target lives in **the same space as its own input**, so the head's output and
-the encoder's input are the same numbers: position and attitude as absolute Fourier moments
-over their harmonic basis, resources and angular velocity as absolute scalars, velocity and
-ship-local log-index as deltas. Static field material channels are inputs, not prediction
-targets; the local index target makes entering and leaving a medium visible to the learned
-dynamics model.
+Each channel's target lives in **the same space as its own input**, and every channel is
+predicted **absolutely**, so the head's output and the encoder's input are the same numbers:
+position and attitude as Fourier moments over their harmonic basis, velocity as a
+symlog-scaled direction, and the resources, angular velocity and ship-local log index as
+scalars. Static field material channels are inputs, not prediction targets; the local index
+target makes entering and leaving a medium visible to the learned dynamics model.
+
+Velocity is absolute for the reason position is. The origin of its encoding is zero speed,
+which is the conditional mean of an unseen ship's velocity, so an unpredictable target
+shrinks toward "could be going anywhere" rather than random-walking away from the last
+sighting. The objection to absolute prediction -- that reproducing the current value
+dominates the loss and drowns the dynamics signal -- is answered by the likelihood rather
+than the parameterisation: sigma falls to the dynamics residual, and the `1/sigma^2`
+weighting on the mean amplifies precisely the part that carries information.
 
 ### Why position is a stack of moments
 
@@ -387,8 +395,12 @@ one run, velocity labels sat about 33x their calibrated width, and position's im
 fell by a third *within* that run while velocity's held flat: position error is the integral
 of a stationary velocity error over a hidden duration that keeps growing as the policy
 learns to avoid contact. A constant cannot track that. `(y - mu)^2 / sigma^2` does not need
-to, being invariant to it. Velocity's scale remains a fitted number and is still roughly
-33x too large; the representation change above does not reach it.
+to, being invariant to it.
+
+`label_scale` is now 1.0 on every channel. It survived on the delta channels because their
+labels had no bounded range to sit in; with those gone, nothing needs conditioning and
+nothing is fitted. The diagnostic that reported what would recalibrate it stays, because it
+is what would catch a future channel drifting out of range.
 
 Weighting the mean's gradient by `1/sigma^2` is the second reason. A long-unseen token's
 label is mostly belief error nobody could have predicted; the head widens sigma there and
@@ -396,8 +408,8 @@ the signal concentrates on tokens whose labels are real dynamics. The likelihood
 unbounded below as sigma falls, so the log variance is clamped -- nothing else stops a head
 from buying loss with certainty it has not earned.
 
-`label_scale` survives only to condition the mean, not to balance the objective -- and only
-on the channels that still carry one.
+`label_scale` survives as a conditioning knob, not as a way to balance the objective, and no
+shipped channel currently needs it.
 
 A triangle-window cumulative loss on position and velocity ran alongside it until the
 label below was corrected. Its purpose was to catch systematic multi-step drift, which it

@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "frontline_shields_v10"
+OBSERVATION_SCHEMA = "frontline_shields_v11"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 11,
+        "version": 12,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -66,10 +66,11 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         # Per uncertainty column, so one per scalar channel and one per harmonic
         # pair. Width therefore follows the world size.
         "belief_uncertainty": "accumulated_forecast_variance_per_uncertainty_column",
-        # Delta channels only. An absolutely-predicted channel asks for the state
-        # rather than a step away from a base, so a stale belief cannot enter its
-        # label and the error cannot be conserved across a step.
-        "auxiliary_label_origin": "believed_current_to_true_next_for_delta_channels",
+        # Every channel is absolute now, so a label is the true next state and
+        # nothing is measured from a base. Re-basing survives as machinery for a
+        # future delta channel, not as something the shipped table relies on.
+        "auxiliary_label_origin": "true_next_state",
+        "auxiliary_label_scale": "identity_everywhere",
         "resource_targets": "normalised_scalar_input_and_target",
         "privileged_auxiliary_targets": "storage_only_never_policy_input",
         "enemy_actions": "always_private",
@@ -105,6 +106,11 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
+    v11 predicts every channel absolutely: velocity and the ship-local log index
+    were the last two deltas. The tensor shapes are unchanged, which is exactly
+    why this has to be gated -- a v10 head's velocity output means a *step* and a
+    v11 head's means the state, so the weights would load cleanly and the belief
+    recursion would then integrate a value that was never a step.
     v10 predicts position and attitude as absolute Fourier moments on the same
     harmonic basis their inputs use, with one isotropic spread per (sin, cos)
     pair, and makes health, power and cooldown normalised scalars on both the

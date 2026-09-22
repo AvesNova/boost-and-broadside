@@ -69,12 +69,23 @@ def test_team_flip_changes_only_ship_team_ids_and_preserves_field_properties():
 
 
 def test_local_index_is_registered_as_auxiliary_prediction_target():
+    """A label from a state to itself must leave that state alone.
+
+    Stated as a round trip rather than as "the label is zero", which was only
+    true while this channel predicted a delta. It predicts absolutely now, so a
+    self-label is the value itself -- and applying either one has to be the
+    identity, which is the property that actually says the channel is wired into
+    the auxiliary head correctly.
+    """
+
     config, obs = _overlapping_observation()
     coordinator = build_standard_coordinator(config)
     assert "local_log_index" in coordinator.target_slices()
+
     targets = coordinator.get_target_vector(obs)
+    scale = coordinator.label_scale_vector(targets.device)
     labels = coordinator.compute_labels(targets, targets)
-    local_prediction = coordinator.get_feature_names().index("local_log_index_0")
-    assert torch.equal(
-        labels[..., local_prediction], torch.zeros_like(labels[..., local_prediction])
-    )
+    landed = coordinator.apply_all_predictions(targets, labels / scale)
+
+    channels = coordinator.target_slices()["local_log_index"]
+    assert torch.allclose(landed[..., channels], targets[..., channels], atol=1e-6)

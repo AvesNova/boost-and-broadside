@@ -1,15 +1,19 @@
-"""The next-state label is the step from the believed state to the true one.
+"""Every shipped channel is predicted absolutely, so its label is the truth.
 
 ``BeliefTracker.advance`` applies the head's forecast to the *composed*
-observation, so training that head on a truth-to-truth delta conserves the
-belief error exactly instead of correcting it. These pin the re-based label.
+observation. While a channel was predicted as a delta that made the label's base
+load-bearing: training on a truth-to-truth delta conserved the belief error
+exactly instead of correcting it, which is how run 734 died, and re-basing onto
+the believed state was the fix.
 
-It matters for the *delta* channels only. A channel predicted absolutely asks
-the head for the state rather than for a step away from a base, so there is no
-base to be stale and nothing to re-base -- the label is the truth either way,
-and the error cannot be conserved because it is never carried forward. Position
-and attitude moved into that category when they became Fourier moments; velocity
-and the local index are what is left needing the correction.
+Nothing in the shipped feature table is a delta any more. An absolute channel
+asks the head for the state rather than a step away from a base, so there is no
+base to be stale, the label is simply the true next state, and the error cannot
+be conserved because it is never carried forward at all.
+
+These therefore pin two different things: that the shipped labels really are the
+truth, and -- against a coordinator built for the purpose -- that the re-basing
+machinery still works, since it is what any future delta channel would need.
 """
 
 import math
@@ -21,7 +25,11 @@ import torch
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
 from boost_and_broadside.train.rl.features import (
+    Accessor,
     AdditivePredictor,
+    Feature,
+    FeatureCoordinator,
+    Identity,
     build_standard_coordinator,
 )
 from boost_and_broadside.train.rl.ppo import PPOTrainer
@@ -115,30 +123,58 @@ def test_label_steps_from_the_believed_state_to_the_true_next_state() -> None:
     assert torch.allclose(buf.ns_labels, expected)
 
 
-def test_delta_channels_re_base_and_absolute_ones_have_no_base_to_re_base() -> None:
-    """The distinction is the whole point, and it now applies per predictor."""
+def test_every_shipped_channel_is_absolute_so_its_label_is_the_truth() -> None:
+    """The invariant that made the belief base stop mattering.
+
+    Not a restatement of the line above: this says the *shipped table* has no
+    delta channel left, so a stale belief cannot reach any label. Add one back
+    and this fails, which is the point -- it would also reintroduce the
+    error-conservation mode that re-basing exists to prevent.
+    """
 
     coordinator, buf, _, truth = _run()
-    conserving = coordinator.compute_labels(truth[:T], truth[1:])
+    assert not [
+        spec.name
+        for spec in coordinator._predictor_specs
+        if isinstance(spec.predictor, AdditivePredictor)
+    ]
+    # Ship 1's belief is stale by 40 px, 5 px/s and 0.3 of log index; none of it
+    # appears, because no label is measured from a base.
+    assert torch.equal(buf.ns_labels, truth[1:])
 
-    additive, absolute = [], []
-    for spec in coordinator._predictor_specs:
-        channels = slice(spec.p_offset, spec.p_offset + spec.p_dim)
-        target = additive if isinstance(spec.predictor, AdditivePredictor) else absolute
-        target.append((spec.name, channels))
-    assert additive and absolute, "the fixture must cover both predictor kinds"
 
-    for name, channels in additive:
-        # Ship 0's belief is exact, so its label is untouched by the re-basing.
-        assert torch.allclose(buf.ns_labels[:, :, 0, channels], conserving[:, :, 0, channels]), name
-        # Ship 1's is stale, so its label carries the correction back to truth.
-        assert not torch.allclose(
-            buf.ns_labels[:, :, 1, channels], conserving[:, :, 1, channels]
-        ), name
+def test_a_delta_channel_would_still_re_base() -> None:
+    """The mechanism, kept under test against the table that no longer uses it.
 
-    for name, channels in absolute:
-        # No base appears in the label at all, so a stale belief cannot change it.
-        assert torch.allclose(buf.ns_labels[..., channels], conserving[..., channels]), name
+    Re-basing is what any future delta channel would depend on, and run 734 is
+    what happens without it. Exercised against a coordinator built for the
+    purpose rather than deleted along with its last caller.
+    """
+
+    coordinator = FeatureCoordinator(
+        [
+            Feature(
+                name="angular_velocity",
+                accessor=Accessor(ObsKey.ANG_VEL),
+                input_encoder=Identity(),
+                target_encoder=Identity(),
+                predictor=AdditivePredictor(),
+            )
+        ]
+    )
+    believed = torch.tensor([[[0.5]], [[0.5]]])
+    truth = torch.tensor([[[0.2]], [[0.9]]])
+
+    re_based = coordinator.compute_labels(believed[:1], truth[1:])
+    conserving = coordinator.compute_labels(truth[:1], truth[1:])
+    # The belief is stale by 0.3, so the correction back onto truth differs from
+    # the truth-to-truth step by exactly that much.
+    assert re_based.item() == pytest.approx(0.4)
+    assert conserving.item() == pytest.approx(0.7)
+    # And applying the re-based label to the belief lands on the truth, which is
+    # the identity the conserving form fails.
+    landed = coordinator.apply_all_predictions(believed[0], re_based[0])
+    assert landed.item() == pytest.approx(truth[1].item())
 
 
 def test_applying_the_label_to_the_belief_lands_on_the_truth() -> None:
