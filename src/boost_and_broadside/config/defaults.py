@@ -51,7 +51,13 @@ MODEL_CONFIG = ModelConfig(
     # Shared pairwise bias on spatial attention scores from proximity, ego-frame
     # bearing and range rate. Zero-initialised, so it starts as the identity and
     # earns its contribution.
-    relational_bias=True,
+    #
+    # Off while the spatial block is being reworked. It materialises an explicit
+    # (N+M, N+M) bias, which is what stops attention reaching the maskless SDPA
+    # flash kernel, and the rotation now carries displacement into the score
+    # directly -- so the two overlap in what they encode. Measure it again
+    # against the fused block rather than carrying it through the change.
+    relational_bias=False,
 )
 
 ELO_EVAL = EloEvalConfig(

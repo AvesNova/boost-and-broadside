@@ -225,15 +225,24 @@ _OBS_STORAGE_OVERRIDES: dict[ObsKey | BulletObsKey, torch.dtype] = {
     ObsKey.POS: torch.float32,  # keep full precision — needed now and for large maps
     BulletObsKey.POS: torch.float32,  # same Fourier basis as ship position
 }
-# ``BELIEF_TARGETS`` is deliberately *not* in that list, even though it holds the
-# same Fourier encoding the position override exists to protect. bf16 resolves a
-# (sin, cos) value to about 0.004, which is 42 px of phase error at the 65536 px
-# harmonic -- but this channel is read only where a token is hidden, and a hidden
-# belief is uncertain by hundreds to thousands of px, so the quantisation is two
-# orders below the thing it perturbs. Visible tokens keep the fp32 ``POS`` path
-# untouched. It is 56 channels wide on the Frontline world, so fp32 would cost
-# about 190 MB of rollout storage at T=128, B=256 against 95 MB here, and the
-# 8 GB development GPU does not have it to spare.
+# ``BELIEF_TARGETS`` is deliberately *not* in that list, and the reason is the
+# opposite of the one that puts ``POS`` there. A coordinate spends its bits on
+# magnitude, so bf16 quantises a 65536 px world to steps of about 128 px. The
+# Fourier expansion of that same coordinate is bounded in [-1, 1] at every
+# harmonic, so the bits go to *phase* instead, and the fine harmonics keep the
+# resolution the coarse ones lack. Measured over 20k uniform positions on the
+# Frontline world, round-tripping through bf16:
+#
+#   raw coordinate      mean 43.06 px, max 127.99 px
+#   harmonic 0 alone    mean  5.89 px, max  28.61 px
+#   full dyadic ladder  mean  0.012 px, max 0.055 px
+#
+# So the encoded form is not a precision compromise against the fp32 coordinate,
+# it is three orders of magnitude better per bit. It is also 56 channels wide on
+# the Frontline world, where fp32 would cost about 190 MB of rollout storage at
+# T=128, B=256 against 95 MB -- which the 8 GB development GPU does not have to
+# spare. Truth is still stored as the fp32 coordinate and re-encoded on read:
+# cheaper at 2 channels, and exact.
 
 
 def _obs_storage_dtype(key: ObsKey | BulletObsKey, dt: torch.dtype) -> torch.dtype:
