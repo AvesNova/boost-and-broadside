@@ -26,6 +26,15 @@ class ObsKey(StrEnum):
     VISIBLE = "visible"
     BELIEF_VALID = "belief_valid"
     BELIEF_UNCERTAINTY = "belief_uncertainty"
+    # The belief in *target space*, and which tokens it should replace. Written
+    # only by a BeliefTracker. The encoder substitutes these columns after
+    # encoding rather than before, because a hidden ship's belief is not the
+    # encoding of any single position: a Fourier moment whose magnitude has
+    # shrunk says "somewhere around here", and routing it through a raw
+    # coordinate and back would put it straight back on the unit circle -- which
+    # is a claim of certainty, not an absence of one.
+    BELIEF_TARGETS = "belief_targets"
+    BELIEF_SUBSTITUTE = "belief_substitute"
     TIME_SINCE_OBSERVATION = "time_since_observation"
     OBJECT_TYPE = "object_type"
     RADIUS = "radius"

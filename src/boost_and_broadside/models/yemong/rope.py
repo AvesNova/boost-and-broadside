@@ -186,6 +186,68 @@ class SpatialRotary(nn.Module):
         axes = ", ".join(f"{a.name}:{a.n_freqs}" for a in self.axes)
         return f"pairs={self.pairs}, rotary_dim={self.rotary_dim}/{self.head_dim}, axes=({axes})"
 
+    def tables_from_moments(
+        self,
+        position_x: torch.Tensor,
+        position_y: torch.Tensor,
+        attitude: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Tables built from believed Fourier moments instead of a coordinate.
+
+        The encoder's harmonic basis and this rotation's frequencies are the same
+        ``base2_frequencies``, so a token's moment vector already *is* its table:
+        each ``(sin_k, cos_k)`` pair is what ``tables`` would have computed from a
+        known coordinate. No decode, and nothing to build.
+
+        The moments are used **unnormalised**, which is the point rather than an
+        oversight. ``apply_rotary`` is linear in the table, so an attention logit
+        is bilinear in the two tokens' tables; for independent beliefs the
+        expectation of a bilinear form is the form of the expectations, and
+        feeding ``(E cos, E sin)`` therefore makes the logit's positional term
+        exactly ``E[cos(theta_q - theta_k)]`` -- the expected cosine of the
+        displacement under the posterior. Normalising first would compute the
+        rotation of the *means* instead, which is not that expectation and
+        overstates how well the geometry is known.
+
+        Two consequences follow. A belief that has gone vague contributes a
+        proportionally weaker positional term, with the attenuation ``r_q * r_k``
+        being the correct Bayesian factor rather than a heuristic; and a fully
+        uncertain token contributes exactly nothing through the rotated
+        dimensions, so attention to it is decided by its remaining features --
+        which is what "no idea where it is" should mean.
+
+        The approximation is independence. Ego knows its own position, so a
+        query against a hidden key is exact; two hidden tokens advanced by the
+        same recursion may be correlated, and there the product understates
+        their shared error. It is still far closer than treating both as known.
+
+        Args:
+            position_x: (..., N, 2*n_x) blocked ``[sin_0..sin_n-1, cos_0..cos_n-1]``.
+            position_y: (..., N, 2*n_y) in the same layout.
+            attitude: (..., N, 2*n_att) in the same layout.
+
+        Returns:
+            ``(cos, sin)``, each (..., N, 1, R), matching ``tables``.
+        """
+
+        cosines = torch.cat(
+            (
+                position_x[..., self._n_x :],
+                position_y[..., self._n_y :],
+                attitude[..., self._n_att :],
+            ),
+            dim=-1,
+        )
+        sines = torch.cat(
+            (
+                position_x[..., : self._n_x],
+                position_y[..., : self._n_y],
+                attitude[..., : self._n_att],
+            ),
+            dim=-1,
+        )
+        return cosines.unsqueeze(-2), sines.unsqueeze(-2)
+
     def tables(
         self, position: torch.Tensor, attitude: torch.Tensor | None
     ) -> tuple[torch.Tensor, torch.Tensor]:

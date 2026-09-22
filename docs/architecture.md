@@ -434,13 +434,47 @@ nothing could have predicted, on every step until that ship was next seen. Marki
 step the teleport happened on does not cover that, because the stale estimate outlives it.
 
 The label is the step from the *believed* current state to the true next one, not truth to
-truth. The head's output is applied to the cache, so a truth-to-truth label would ask it to
-reproduce a transition it is never in a position to apply -- the belief error would be
-carried forward unchanged at every step, with nothing in the objective able to remove it.
-Re-basing on the belief makes the target the correction back onto truth, which for a visible
-ship is the same quantity as before and for a stale one is the shrinkage the point estimate
-needs. The residual is only partly predictable, so the head learns the conditional mean of
-that correction and the label distribution is correspondingly wider than a one-step delta.
+truth -- for the channels that are still predicted as deltas. The head's output is applied to
+the cache, so a truth-to-truth label would ask it to reproduce a transition it is never in a
+position to apply, and the belief error would be carried forward unchanged at every step with
+nothing in the objective able to remove it. Re-basing makes the target the correction back
+onto truth. Position and attitude no longer need it: an absolute channel asks for the state
+rather than a step away from a base, so there is no base to be stale and the error cannot be
+conserved. Velocity and the local index are what is left.
+
+### The belief is copied, not decoded
+
+A hidden ship's cached state is substituted into the **encoded** input, column for column,
+rather than into the raw observation channels. That is the reason every predicted feature
+encodes its target the same way it encodes its input: target space is input space, so the
+head's own output is the next step's input with nothing in between.
+
+It has to work that way, because the raw channels cannot carry the answer. A belief whose
+position moment has shrunk to 0.3 says "roughly here"; writing it into a coordinate and
+letting the encoder re-expand it puts every harmonic back on the unit circle, which says
+"here". The round trip does not lose the confidence -- it overwrites it with certainty. The
+decoded point is still published on `ObsKey.POS` for the renderer, the relational-bias
+geometry and evaluation, all of which need a coordinate and can only have a point one; it is
+simply no longer what the trunk reads.
+
+The spatial rotation reads the same moments, and reads them **unnormalised**. `apply_rotary`
+is linear in its table, so an attention logit is bilinear in the two tokens' tables, and for
+independent beliefs the expectation of a bilinear form is the form of the expectations.
+Feeding `(E cos, E sin)` therefore makes the logit's positional term exactly
+`E[cos(theta_q - theta_k)]` -- the expected cosine of the displacement under the posterior.
+Normalising first would rotate by the *mean*, which is not that expectation and overstates
+how well the geometry is known. Two things follow: a vague belief contributes a weaker
+positional term, attenuated by `r_q * r_k`, which is the Bayesian factor rather than a
+heuristic; and a fully uncertain token contributes nothing at all through the rotated
+dimensions, so attention to it rests on its remaining features. The approximation is
+independence -- exact for a query against a hidden key, since ego knows its own position, and
+optimistic for two hidden tokens advanced by the same recursion.
+
+A stored moment is projected onto the unit disk rather than clamped to a numerical ceiling. A
+moment is an expectation of a unit vector, so a magnitude above one is not a wide belief but
+an impossible one, and the recursion cannot leave a bounded set. The unbounded symlog channels
+keep the old ceiling, which is a guard against a runaway forecast rather than a property of
+the quantity.
 
 The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
 with deeper autoregressive diagnostics in the reference run's

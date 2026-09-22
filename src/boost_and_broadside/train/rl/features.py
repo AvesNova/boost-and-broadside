@@ -844,6 +844,8 @@ class FeatureCoordinator:
         # Lazily-built label-scale tensor, cached per device (see label_scale_vector).
         self._label_scale_cache: torch.Tensor | None = None
         self._uncertainty_cache: tuple[torch.Tensor, torch.Tensor] | None = None
+        # (scope, device) -> (input columns, target columns) for the belief copy.
+        self._override_cache: dict[tuple[object, torch.device], tuple[torch.Tensor, ...]] = {}
 
         t_offset = 0
         p_offset = 0
@@ -853,6 +855,18 @@ class FeatureCoordinator:
 
             if f.predictor:
                 t_dim = f.get_target(dummy).shape[-1]
+                in_dim = f.input_dimension(dummy)
+                if in_dim != t_dim:
+                    # The belief is copied from target space straight into the
+                    # encoded input, column for column, so a predicted feature's
+                    # two encodings have to be the same encoding. Caught here
+                    # because the alternative is a silent shape mismatch much
+                    # later, in a scatter that would look correct.
+                    raise ValueError(
+                        f"predicted feature {f.name!r} encodes to {in_dim} input channels "
+                        f"but {t_dim} target channels; a predicted feature's input and "
+                        "target encoders must match so the belief can be copied"
+                    )
                 p_dim = f.predictor.prediction_dim(t_dim)
                 u_dim = f.predictor.uncertainty_dim(t_dim)
                 if isinstance(f.label_scale, (list, tuple)):
@@ -915,7 +929,8 @@ class FeatureCoordinator:
     # ------------------------------------------------------------------
 
     def get_input_vector(self, obs: YemongObservation) -> torch.Tensor:
-        return torch.cat([f.get_input(obs) for f in self.features], dim=-1)
+        encoded = torch.cat([f.get_input(obs) for f in self.features], dim=-1)
+        return self._apply_belief_override(encoded, obs, None)
 
     def get_scoped_input_vector(
         self, obs: YemongObservation, scope: "FeatureScope"
@@ -930,7 +945,7 @@ class FeatureCoordinator:
             for f in self.features
             if f.scope is FeatureScope.SHARED or f.scope is scope
         ]
-        return torch.cat(parts, dim=-1)
+        return self._apply_belief_override(torch.cat(parts, dim=-1), obs, scope)
 
     def scoped_input_dimension(self, scope: "FeatureScope") -> int:
         """Width of ``get_scoped_input_vector`` for the given entity type."""
@@ -941,6 +956,102 @@ class FeatureCoordinator:
                 continue
             total += f.input_dimension(dummy)
         return total
+
+    def _override_columns(
+        self, scope: "FeatureScope | None", device: torch.device
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Aligned (input column, target column) indices for the belief copy.
+
+        Per scope, because a scoped input vector omits features and so shifts
+        every offset after the first omission; target offsets are global, since
+        ``get_target_vector`` does not filter by scope.
+        """
+
+        key = (scope, device)
+        cached = self._override_cache.get(key)
+        if cached is not None:
+            return cached
+        dummy = self._dummy_obs()
+        specs = {spec.name: spec for spec in self._predictor_specs}
+        input_columns: list[int] = []
+        target_columns: list[int] = []
+        offset = 0
+        for f in self.features:
+            if scope is not None and f.scope is not FeatureScope.SHARED and f.scope is not scope:
+                continue
+            width = f.input_dimension(dummy)
+            spec = specs.get(f.name) if f.predictor else None
+            if spec is not None:
+                input_columns.extend(range(offset, offset + width))
+                target_columns.extend(range(spec.t_offset, spec.t_offset + spec.t_dim))
+            offset += width
+        cached = (
+            torch.tensor(input_columns, dtype=torch.long, device=device),
+            torch.tensor(target_columns, dtype=torch.long, device=device),
+        )
+        self._override_cache[key] = cached
+        return cached
+
+    def _apply_belief_override(
+        self, encoded: torch.Tensor, obs: YemongObservation, scope: "FeatureScope | None"
+    ) -> torch.Tensor:
+        """Replace the predicted features' encoded columns with the belief.
+
+        This is the point of predicting every feature in its own input space: a
+        hidden ship's encoded input becomes the head's own output, copied in
+        without a decode. The magnitude survives, so a belief that has gone
+        vague reaches the trunk as a short vector -- and a fully uncertain one as
+        zeros, which is a uniform belief rather than a confident guess.
+
+        A no-op when the observation carries no belief, which is every caller
+        without a tracker: the raw environment view, an omniscient
+        configuration, a test fixture.
+        """
+
+        data = obs.data if hasattr(obs, "data") else obs
+        if ObsKey.BELIEF_TARGETS not in data or ObsKey.BELIEF_SUBSTITUTE not in data:
+            return encoded
+        targets = data[ObsKey.BELIEF_TARGETS].float()
+        substitute = data[ObsKey.BELIEF_SUBSTITUTE].bool()
+        input_columns, target_columns = self._override_columns(scope, encoded.device)
+        if not input_columns.numel():
+            return encoded
+        believed = targets.index_select(-1, target_columns)
+        current = encoded.index_select(-1, input_columns)
+        return encoded.index_copy(-1, input_columns, torch.where(substitute, believed, current))
+
+    def project_targets(self, targets: torch.Tensor) -> torch.Tensor:
+        """Constrain stored belief targets to the values a target can take.
+
+        A Fourier moment is an expectation of a unit vector, so its magnitude
+        cannot exceed one; anything outside the unit disk is not a wide belief
+        but an impossible one. Projecting onto the disk is therefore a statement
+        about the representation rather than an arbitrary ceiling, and it makes
+        autoregressive divergence impossible on these channels instead of merely
+        counted -- the recursion cannot leave a bounded set.
+
+        Every other channel keeps the numerical ceiling, which is what it was:
+        symlog space has no natural bound, so ``BELIEF_TARGET_LIMIT`` is a guard
+        against a runaway forecast and not a property of the quantity.
+        """
+
+        from boost_and_broadside.train.rl.belief import BELIEF_TARGET_LIMIT
+
+        # ``clamp`` already returns a new tensor, so the per-feature projection
+        # below writes through views of it rather than rebuilding it each time.
+        out = targets.clamp(-BELIEF_TARGET_LIMIT, BELIEF_TARGET_LIMIT)
+        for spec in self._predictor_specs:
+            if not isinstance(spec.predictor, FourierMomentPredictor):
+                continue
+            harmonics = spec.t_dim // 2
+            block = out.narrow(-1, spec.t_offset, spec.t_dim)
+            sines = block.narrow(-1, 0, harmonics)
+            cosines = block.narrow(-1, harmonics, harmonics)
+            norm = torch.sqrt(sines * sines + cosines * cosines).clamp_min(1e-12)
+            scale = torch.reciprocal(norm).clamp(max=1.0)
+            sines.mul_(scale)
+            cosines.mul_(scale)
+        return out
 
     def get_target_vector(self, obs: YemongObservation) -> torch.Tensor:
         parts = [f.get_target(obs) for f in self.features if f.predictor]
@@ -1108,7 +1219,7 @@ class FeatureCoordinator:
     def prediction_variance(self, predictions: torch.Tensor) -> torch.Tensor:
         """Per-prediction-dim variance implied by the head's uncertainty block.
 
-Every channel reports ``log sigma^2``, circular ones included -- the
+        Every channel reports ``log sigma^2``, circular ones included -- the
         von Mises loss inverts it into a concentration itself -- so this is one
         exponential and no per-kind branching. For a circular channel the
         variance is the ``1/kappa`` equivalent, exact in the limit where von
