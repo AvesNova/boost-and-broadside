@@ -1199,9 +1199,7 @@ class FeatureCoordinator:
 
         out = sq_err
         if gaussian_mask.any():
-            nll = 0.5 * (
-                sq_err * torch.exp(-log_uncertainty) + log_uncertainty + _LOG_TWO_PI
-            )
+            nll = 0.5 * (sq_err * torch.exp(-log_uncertainty) + log_uncertainty + _LOG_TWO_PI)
             out = torch.where(gaussian_mask, nll, out)
         if von_mises_mask.any():
             # Undo label_scale first: it conditions the mean, and a cosine of a
@@ -1244,9 +1242,7 @@ class FeatureCoordinator:
             -1, gather
         )
         reported = gaussian_mask | von_mises_mask
-        return torch.where(
-            reported, torch.exp(log_uncertainty), torch.zeros_like(log_uncertainty)
-        )
+        return torch.where(reported, torch.exp(log_uncertainty), torch.zeros_like(log_uncertainty))
 
     def uncertainty_variance(self, predictions: torch.Tensor) -> torch.Tensor:
         """The head's reported variances, one per *uncertainty* column.
@@ -1375,16 +1371,29 @@ def build_standard_coordinator(
             predictor=FourierMomentPredictor(),
             label_scale=1.0,
         ),
-        # Velocity: SymlogVelocity encodes (vx, vy) → direction * symlog(speed).
-        # AdditivePredictor on this 2D space avoids the angle discontinuity near
-        # zero speed that plagued the old (Δphase, Δsymlog_speed) decomposition.
+        # Velocity: SymlogVelocity encodes (vx, vy) → direction * symlog(speed),
+        # predicted absolutely like everything else. The 2D encoding is what
+        # makes that safe -- it has no angle discontinuity near zero speed, which
+        # is what plagued the old (Δphase, Δsymlog_speed) decomposition.
+        #
+        # Absolute rather than a delta for the same reason position is: the
+        # origin of this space is zero speed, which is exactly the conditional
+        # mean of an unseen ship's velocity, so an unpredictable target shrinks
+        # toward "could be going anywhere" instead of random-walking away from
+        # the last sighting. A delta cannot represent that.
+        #
+        # The objection to absolute prediction -- that reproducing the current
+        # value dominates the loss and drowns the dynamics signal -- is answered
+        # by the likelihood rather than by the parameterisation. Sigma falls to
+        # the dynamics residual and the 1/sigma^2 weighting on the mean amplifies
+        # precisely the part that carries information.
         Feature(
             name="velocity",
             accessor=Accessor(ObsKey.VEL),
             input_encoder=SymlogVelocity(),
             target_encoder=SymlogVelocity(),
-            predictor=AdditivePredictor(),
-            label_scale=(20.0, 20.0),
+            predictor=AbsolutePredictor(),
+            label_scale=(1.0, 1.0),
             scope=FeatureScope.SHIP,
         ),
         # Attitude: position's treatment on the heading circle. Four harmonics
@@ -1407,7 +1416,7 @@ def build_standard_coordinator(
             input_encoder=Symlog(),
             target_encoder=Symlog(),
             predictor=AbsolutePredictor(),
-            label_scale=0.447,
+            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         Feature(
@@ -1600,8 +1609,8 @@ def build_standard_coordinator(
             accessor=Accessor(ObsKey.LOCAL_LOG_INDEX),
             input_encoder=Identity(),
             target_encoder=Identity(),
-            predictor=AdditivePredictor(),
-            label_scale=10.0,
+            predictor=AbsolutePredictor(),
+            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         # grad(n) at the ship, already normalised in observation_from_state. Input
