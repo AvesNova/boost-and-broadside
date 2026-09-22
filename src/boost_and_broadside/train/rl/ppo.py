@@ -549,6 +549,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_tokens=sample_obs.pos.shape[1],
             prediction_target_dim=self.coordinator.total_target_dimension,
             prediction_dim=self.coordinator.total_prediction_dimension,
+            uncertainty_dim=self.coordinator.total_uncertainty_dimension,
         )
 
         # Pre-compute lambda masks for active components only.

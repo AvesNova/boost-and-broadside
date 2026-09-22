@@ -13,11 +13,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE, toroidal_displacement
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
-from boost_and_broadside.train.rl.features import build_standard_coordinator
 from boost_and_broadside.ui.renderer import (
-    _GHOST_DPHI_ATT,
-    _GHOST_DPHI_X,
-    _GHOST_DPHI_Y,
     Camera,
     GameRenderer,
     RenderConfig,
@@ -190,18 +186,47 @@ def test_ship_geometry_and_bars_stay_screen_pixels_at_large_world_scale(monkeypa
         renderer.close()
 
 
-def test_ghost_prediction_indices_match_coordinator_layout():
-    """The ghost-decode channel constants must track the coordinator prediction layout.
+def test_a_ghost_is_drawn_at_the_pose_it_is_given(monkeypatch):
+    """The ghost contract is a decoded pose, not a prediction vector.
 
-    _draw_ghost_ships indexes the raw prediction tensor by fixed channel numbers;
-    if the coordinator's prediction ordering ever changes, these must move with it.
-    Pinning them against get_feature_names() turns a silent desync — exactly the
-    stale-AUX_PRED_DIM drift AUDIT-022's addendum flagged — into a failing test.
+    It used to be channel indices into the coordinator's prediction layout,
+    pinned by a test against ``get_feature_names()``. That layout is no longer
+    fixed -- position is a stack of Fourier harmonics whose count follows the
+    world size -- so ``imagine_trajectory`` decodes the pose itself and the
+    renderer reads ``(x, y, cos, sin)``. This pins the contract that replaced
+    those constants: a ghost lands where its pose says, not somewhere derived
+    from the ship's current position.
     """
-    names = build_standard_coordinator(ShipConfig()).get_feature_names()
-    assert names[_GHOST_DPHI_X] == "position_x_0"
-    assert names[_GHOST_DPHI_Y] == "position_y_0"
-    assert names[_GHOST_DPHI_ATT] == "attitude_0"
+
+    monkeypatch.setenv("HEADLESS", "1")
+    renderer = GameRenderer(
+        ShipConfig(world_size=(1024.0, 1024.0)),
+        RenderConfig(window_size=256, show_ui=False, ship_size=10),
+    )
+    polygons = []
+    monkeypatch.setattr(
+        pygame.draw, "polygon", lambda surface, color, points, width=0: polygons.append(points)
+    )
+    monkeypatch.setattr(pygame.draw, "line", lambda *args, **kwargs: None)
+
+    state = SimpleNamespace(
+        ship_pos=torch.tensor([[0.0 + 0.0j]], dtype=torch.complex64),
+        ship_attitude=torch.tensor([[1.0 + 0.0j]], dtype=torch.complex64),
+        ship_alive=torch.tensor([[True]]),
+        ship_team_id=torch.tensor([[0]], dtype=torch.int32),
+    )
+    # A pose far from the ship's own position, so a ghost drawn relative to the
+    # ship rather than at the pose would land somewhere else entirely.
+    pose = torch.tensor([[[700.0, 300.0, 0.0, 1.0]]])
+    try:
+        renderer._draw_ghost_ships(state, [pose], renderer._screen)
+        assert polygons, "a ghost should have been drawn"
+        expected = renderer._world_to_screen(complex(700.0, 300.0))
+        tip = polygons[0][0]
+        # Heading (0, 1) points +y, so the tip sits one ship-size along it.
+        assert tip == (round(expected[0]), round(expected[1] + 10))
+    finally:
+        renderer.close()
 
 
 def test_field_colors_separate_fast_and_slow_and_strengthen_with_magnitude():

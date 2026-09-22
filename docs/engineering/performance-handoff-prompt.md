@@ -38,7 +38,7 @@ visibility dominated CPU observation assembly; a compiled real
 visibility kernel was roughly 20x faster in isolation on CUDA but did not make
 complete frames faster. Treat those as hypotheses and baselines, not proof that
 any proposed change works. The current compatible runtime observation schema is
-`frontline_shields_v9`; do not silently load incompatible checkpoints.
+`frontline_shields_v10`; do not silently load incompatible checkpoints.
 CUDA was available outside the sandbox even when sandbox checks returned false.
 Use a permitted GPU execution path; do not disable security controls globally.
 

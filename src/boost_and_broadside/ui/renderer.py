@@ -20,16 +20,6 @@ from boost_and_broadside.config import ShipConfig, ZoneRole
 from boost_and_broadside.env.perception import TeamVisibility
 from boost_and_broadside.env.state import TensorState
 
-# Prediction-vector channel indices used to decode ghost trajectories: the
-# position-x, position-y, and attitude phase-delta channels of the standard
-# FeatureCoordinator prediction layout (the order of get_feature_names()). Named
-# rather than inlined so the dependency on that layout is explicit; a regression
-# test (tests/ui/test_renderer.py) pins them against the live coordinator so a
-# reordering of the prediction vector can't silently desync these ghosts.
-_GHOST_DPHI_X = 0
-_GHOST_DPHI_Y = 1
-_GHOST_DPHI_ATT = 4
-
 
 class VisionMode(StrEnum):
     FULL = "FULL"
@@ -350,14 +340,14 @@ class GameRenderer:
     def render(
         self,
         state: TensorState,
-        pred_nexts: list[torch.Tensor] | torch.Tensor | None = None,
+        ghost_poses: list[torch.Tensor] | torch.Tensor | None = None,
         visibility: TeamVisibility | None = None,
     ) -> bool:
         """Draw one frame from env 0 of state.
 
         Args:
             state: Live TensorState — only env index 0 is read.
-            pred_nexts: Optional list of (B, N, pred_dim) tensors, one per imagined
+            ghost_poses: Optional list of (B, N, pred_dim) tensors, one per imagined
                 step, where pred_dim is the coordinator's total prediction width.
                 A single tensor is also accepted for backward compatibility.
 
@@ -368,9 +358,9 @@ class GameRenderer:
             if not self._handle_event(event):
                 return False
 
-        if isinstance(pred_nexts, torch.Tensor):
-            pred_nexts = [pred_nexts]
-        self._draw_frame(state, pred_nexts, visibility)
+        if isinstance(ghost_poses, torch.Tensor):
+            ghost_poses = [ghost_poses]
+        self._draw_frame(state, ghost_poses, visibility)
         pygame.display.flip()
         self._record_presentation()
         return True
@@ -563,7 +553,7 @@ class GameRenderer:
     def _draw_frame(
         self,
         state: TensorState,
-        pred_nexts: list[torch.Tensor] | None = None,
+        ghost_poses: list[torch.Tensor] | None = None,
         visibility: TeamVisibility | None = None,
     ) -> None:
         surf = self._screen
@@ -585,8 +575,8 @@ class GameRenderer:
         self._draw_fields(state, surf)
         self._draw_fog_overlay(state, surf, visibility)
         self._draw_bullets(state, surf, bullet_visible)
-        if pred_nexts is not None:
-            self._draw_ghost_ships(state, pred_nexts, surf, ship_visible)
+        if ghost_poses is not None:
+            self._draw_ghost_ships(state, ghost_poses, surf, ship_visible)
         self._draw_ships(state, surf, ship_visible)
         if state.num_zones > 0:
             self._draw_minimap(state, surf, ship_visible)
@@ -596,12 +586,12 @@ class GameRenderer:
     def draw_frame(
         self,
         state: TensorState,
-        pred_nexts: list[torch.Tensor] | None = None,
+        ghost_poses: list[torch.Tensor] | None = None,
         visibility: TeamVisibility | None = None,
     ) -> pygame.Surface:
         """Supported offscreen frame API used by capture and smoke tests."""
 
-        self._draw_frame(state, pred_nexts, visibility)
+        self._draw_frame(state, ghost_poses, visibility)
         return self._screen
 
     def _perspective_masks(
@@ -851,17 +841,24 @@ class GameRenderer:
     def _draw_ghost_ships(
         self,
         state: TensorState,
-        pred_nexts: list[torch.Tensor],
+        ghost_poses: list[torch.Tensor],
         surf: pygame.Surface,
         visible: torch.Tensor | None = None,
     ) -> None:
         """Draw autoregressive predicted positions as fading hollow triangles.
 
-        pred_nexts: list of (B, N, pred_dim) tensors, one per imagined step, in the
-          coordinator's prediction layout. Channels _GHOST_DPHI_X and _GHOST_DPHI_Y
-          are position phase shifts relative to the previous ghost position;
-          _GHOST_DPHI_ATT is the attitude phase shift relative to the previous
-          attitude. Ghost brightness fades linearly from 1.0 (step 0) to 0.5 (last).
+        ghost_poses: list of (B, N, 4) tensors, one per imagined step -- world x,
+          world y, and the Cartesian heading (cos, sin), already decoded by
+          ``imagine_trajectory``. An all-zero row means the agent produced no
+          prediction for that ship (null or scripted), which a real pose cannot
+          be: a decoded heading always has unit norm. Ghost brightness fades
+          linearly from 1.0 (step 0) to 0.5 (last).
+
+          Poses and not prediction vectors on purpose. Reading a prediction
+          vector needs the feature layout, and position is a stack of Fourier
+          harmonics whose count follows the world size -- so a fixed channel
+          index into it is wrong on every map but one. The renderer now has no
+          dependency on that layout.
         """
         import math
 
@@ -871,14 +868,12 @@ class GameRenderer:
         alive = (state.ship_alive[0] & visible).cpu()  # (N,) bool
         team_id = state.ship_team_id[0].cpu()  # (N,) int32
         real_pos = state.ship_pos[0].cpu()  # (N,) complex64
-        real_att = state.ship_attitude[0].cpu()  # (N,) complex64
 
         sz = cfg.ship_size
         world_w, world_h = self._world_w, self._world_h
-        _2pi = 2.0 * math.pi
-        n_steps = len(pred_nexts)
+        n_steps = len(ghost_poses)
 
-        pn_cpu = [pn[0].cpu() for pn in pred_nexts]  # list of (N, pred_dim)
+        pn_cpu = [pn[0].cpu() for pn in ghost_poses]  # list of (N, pred_dim)
 
         for n in range(pn_cpu[0].shape[0]):
             if not alive[n].item():
@@ -888,7 +883,6 @@ class GameRenderer:
             dim_color = (max(0, color[0] - 50), max(0, color[1] - 50), max(0, color[2] - 50))
 
             prev_p = complex(real_pos[n].item())
-            prev_att_angle = math.atan2(real_att[n].imag.item(), real_att[n].real.item())
 
             for k, pn in enumerate(pn_cpu):
                 # Skip ships where this agent produced no prediction (zeros = null/scripted).
@@ -898,15 +892,11 @@ class GameRenderer:
                 alpha = 1.0 - 0.5 * k / max(n_steps - 1, 1)
                 fade = tuple(int(c * alpha) for c in dim_color)
 
-                # Decode ghost position: phase shift applied to prev ghost position.
-                phi_x = _2pi * prev_p.real / world_w
-                phi_y = _2pi * prev_p.imag / world_h
-                ghost_x = ((phi_x + pn[n, _GHOST_DPHI_X].item()) % _2pi) / _2pi * world_w
-                ghost_y = ((phi_y + pn[n, _GHOST_DPHI_Y].item()) % _2pi) / _2pi * world_h
-                ghost_p = complex(ghost_x, ghost_y)
-
-                # Decode ghost attitude: phase shift applied to prev attitude.
-                att_angle = prev_att_angle + pn[n, _GHOST_DPHI_ATT].item()
+                ghost_p = complex(
+                    pn[n, 0].item() % world_w,
+                    pn[n, 1].item() % world_h,
+                )
+                att_angle = math.atan2(pn[n, 3].item(), pn[n, 2].item())
                 ghost_a = complex(math.cos(att_angle), math.sin(att_angle))
 
                 center = complex(*self._world_to_screen(ghost_p))
@@ -919,7 +909,6 @@ class GameRenderer:
                 self._draw_toroidal_line(surf, prev_p, ghost_p, fade)
 
                 prev_p = ghost_p
-                prev_att_angle = att_angle
 
     def _draw_ships(
         self,

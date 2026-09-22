@@ -23,7 +23,6 @@ from boost_and_broadside.constants import (
     OUTCOME_WIN_INDEX,
 )
 from boost_and_broadside.env.observation import (
-    BELIEF_UNCERTAINTY_DIM,
     BulletObsKey,
     ObsKey,
     YemongObservation,
@@ -583,6 +582,7 @@ class RolloutBuffer:
         num_tokens: int | None = None,
         prediction_target_dim: int = 0,
         prediction_dim: int = 0,
+        uncertainty_dim: int = 0,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
@@ -604,14 +604,19 @@ class RolloutBuffer:
         # none. The update replays stored observations through the same encoder
         # that read them during the rollout, so storage has to cover the channel
         # either way or the two would see different inputs.
+        #
+        # The width comes from the caller's coordinator rather than a constant:
+        # it follows the world size, because position reports one uncertainty
+        # column per Fourier harmonic. A caller with no coordinator passes zero
+        # and gets no storage, which is correct for a configuration that will
+        # never compose a belief into an observation.
         sampled_obs = dict(obs_sample.items())
-        if ObsKey.BELIEF_UNCERTAINTY not in sampled_obs:
-            # Shaped from ``pos`` rather than read through the observation's
-            # zero-default, which derives its shape from ``team_id`` -- a channel
-            # the compact test fixtures omit.
+        if ObsKey.BELIEF_UNCERTAINTY not in sampled_obs and uncertainty_dim:
+            # Shaped from ``pos`` rather than from ``team_id`` -- a channel the
+            # compact test fixtures omit.
             tokens = obs_sample.pos
             sampled_obs[ObsKey.BELIEF_UNCERTAINTY] = torch.zeros(
-                (*tokens.shape[:2], BELIEF_UNCERTAINTY_DIM),
+                (*tokens.shape[:2], uncertainty_dim),
                 device=tokens.device,
                 dtype=torch.float32,
             )

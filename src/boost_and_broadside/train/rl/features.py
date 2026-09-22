@@ -23,7 +23,6 @@ import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import (
-    BELIEF_UNCERTAINTY_DIM,
     BulletObsKey,
     ObjectType,
     ObsKey,
@@ -71,9 +70,19 @@ def phase_shift_circle(
 class Accessor:
     """Reads specific channels from an YemongObservation tensor."""
 
-    def __init__(self, key: ObsKey, channels: list[int] | None = None):
+    def __init__(
+        self,
+        key: ObsKey,
+        channels: list[int] | None = None,
+        absent_width: int | None = None,
+    ):
         self.key = key
         self.channels = channels
+        # Width to synthesise when the channel is absent entirely, for the one
+        # channel whose width only the feature layout knows. Resolved by
+        # ``build_standard_coordinator`` after the predictors are known, because
+        # nothing outside this module can derive it -- see the note there.
+        self.absent_width = absent_width
         # A Python list index makes advanced indexing build the index tensor on
         # the host and copy it over, which drains the CUDA queue on every read.
         # Every channel list this pipeline uses is a contiguous run, so it is
@@ -104,8 +113,13 @@ class Accessor:
             elif self.key == ObsKey.BELIEF_UNCERTAINTY:
                 # Only a BeliefTracker fills this; a caller without one has
                 # forecast nothing, so nothing is in doubt.
+                if self.absent_width is None:
+                    raise ValueError(
+                        "belief_uncertainty accessor has no absent_width; it must be "
+                        "resolved from the coordinator's total_uncertainty_dimension"
+                    )
                 val = torch.zeros(
-                    (*team_id.shape, BELIEF_UNCERTAINTY_DIM),
+                    (*team_id.shape, self.absent_width),
                     dtype=torch.float32,
                     device=team_id.device,
                 )
@@ -294,16 +308,36 @@ class Fourier(Transform):
         return torch.cat(results, dim=-1)
 
     def invert(self, x: torch.Tensor) -> torch.Tensor:
-        """Recover the raw channels from a single-frequency (sin, cos) encoding.
+        """Recover the raw channels from the *coarsest* harmonic's phase.
 
-        Only the ``n_freqs == 1`` case is invertible in closed form (one phase
-        per channel); higher-frequency inputs are the encoder-only path and never
-        decoded, so requesting their inverse fails fast.
+        Harmonic 0 has period equal to the whole coordinate period, so its phase
+        alone localises the value uniquely -- there is nothing to unwrap and no
+        ambiguity to resolve. The finer harmonics buy *precision*, not
+        disambiguation: a phase error of e radians at harmonic 0 reads out as
+        ``period * e / (2*pi)``, and climbing the dyadic ladder to refine it is
+        only worth doing where that resolution matters.
+
+        It is not worth doing here, because nothing on the hot path needs a
+        scalar any more. The spatial rotation consumes ``base2_frequencies``
+        directly -- the same basis these encodings are built on, so a token's
+        rotary table *is* its harmonic pair vector -- and the belief is copied in
+        encoded space. This decode exists for rendering, evaluation and
+        diagnostics, where a single unambiguous phase is the right trade and a
+        wrap-around failure could not occur in the first place.
+
+        One caveat for callers: a prediction whose harmonic-0 pair has collapsed
+        toward the origin carries no phase worth reading. ``atan2`` will still
+        return an angle, and it will be arbitrary. Read the pair's magnitude
+        alongside it -- that is the belief's own statement of how much the
+        decoded point is worth.
+
+        Layout is blocked, not interleaved: channel ``c`` of ``n`` frequencies
+        occupies ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so harmonic 0's pair
+        is ``(c*2n, c*2n + n)``. At ``n == 1`` that is the old ``(2c, 2c+1)``.
         """
-        if self.n_freqs != 1:
-            raise NotImplementedError("Fourier.invert supports only n_freqs=1 encodings")
         x = x.float()
-        num_channels = x.shape[-1] // 2  # (..., 2C) laid out [sin_c, cos_c] per channel
+        n = self.n_freqs
+        num_channels = x.shape[-1] // (2 * n)
         ps = (
             [self.periods] * num_channels
             if isinstance(self.periods, (float, int))
@@ -311,7 +345,8 @@ class Fourier(Transform):
         )
         outs = []
         for c in range(num_channels):
-            angle = torch.atan2(x[..., 2 * c], x[..., 2 * c + 1]) % (2.0 * math.pi)
+            base = c * 2 * n
+            angle = torch.atan2(x[..., base], x[..., base + n]) % (2.0 * math.pi)
             outs.append(angle * ps[c] / (2.0 * math.pi))
         return torch.stack(outs, dim=-1)
 
@@ -405,6 +440,16 @@ class Predictor(ABC):
 
         return 0
 
+    def uncertainty_gather(self, p_dim: int, u_dim: int) -> list[int]:
+        """Which uncertainty column each prediction dim reads.
+
+        The default lines the two blocks up elementwise and lets a predictor
+        reporting fewer spreads than means share its last one, which is what a
+        single-phase circular predictor wants. Override to group differently.
+        """
+
+        return [min(i, u_dim - 1) for i in range(p_dim)]
+
     @abstractmethod
     def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor: ...
 
@@ -431,6 +476,50 @@ class AbsolutePredictor(Predictor):
 
     def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
         return pred
+
+
+class FourierMomentPredictor(AbsolutePredictor):
+    """Absolute prediction over one channel's ``(sin, cos)`` harmonic pairs.
+
+    For a quantity encoded as harmonic ``(sin, cos)`` pairs, the two members of
+    a pair are one 2D vector and not two independent scalars. Predicting them
+    absolutely -- rather than as a phase rotation -- is what lets the mean land
+    *inside* the unit circle: the squared-error optimum is the conditional
+    Fourier moment ``(E[sin], E[cos])``, whose magnitude is the resultant length
+    at that frequency. So the estimate shrinks toward the origin exactly as the
+    quantity becomes unpredictable, and the origin is a uniform belief rather
+    than a confident claim about a particular angle. A rotation predictor cannot
+    express that, because it preserves unit norm by construction.
+
+    One spread per pair rather than two, because the sin and cos axes are
+    arbitrary: two independent variances would fit an axis-aligned ellipse to a
+    distribution that has no preferred axis. Sharing one needs no separate loss
+    branch -- two scalar Gaussian terms over a shared sigma sum to
+    ``0.5 * (||r||^2 / sigma^2 + 2 log sigma^2 + 2 log 2*pi)``, which is the
+    isotropic bivariate normal likelihood written out.
+
+    Pairing follows ``Fourier``'s layout, which is *blocked* and not
+    interleaved: one channel of ``n`` frequencies encodes as
+    ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so harmonic ``k``'s pair is
+    ``(k, k + n)`` and never ``(2k, 2k + 1)``. Pairing adjacent columns would
+    share a spread between two *different* frequencies' sines -- the same
+    axis-aligned error this class exists to avoid, and silent.
+
+    Assumes a single encoded channel, which is what every feature using it has:
+    position takes one coordinate per feature and ``AttitudeFourier`` reduces
+    its heading to one angle before expanding.
+    """
+
+    def uncertainty_dim(self, in_channels: int) -> int:
+        return in_channels // 2
+
+    def uncertainty_gather(self, p_dim: int, u_dim: int) -> list[int]:
+        if p_dim != 2 * u_dim:
+            raise ValueError(
+                f"{type(self).__name__} expects one (sin, cos) block pair per harmonic, "
+                f"got p_dim={p_dim} against u_dim={u_dim}"
+            )
+        return [i % u_dim for i in range(p_dim)]
 
 
 class AdditivePredictor(Predictor):
@@ -816,7 +905,6 @@ class FeatureCoordinator:
                 ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
                 ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
-                ObsKey.BELIEF_UNCERTAINTY: torch.zeros((1, 1, BELIEF_UNCERTAINTY_DIM)),
                 ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),
                 ObsKey.FIELD_TARGET_LOG_INDEX: torch.zeros((1, 1, 1)),
             }
@@ -941,11 +1029,10 @@ class FeatureCoordinator:
             if not spec.u_dim:
                 continue
             mask = gaussian if spec.predictor.uncertainty_kind == "gaussian" else von_mises
-            for offset in range(spec.p_dim):
+            columns = spec.predictor.uncertainty_gather(spec.p_dim, spec.u_dim)
+            for offset, column in enumerate(columns):
                 mask[spec.p_offset + offset] = True
-                # A von Mises predictor reports one concentration for its single
-                # phase output, so the two blocks line up elementwise either way.
-                gather[spec.p_offset + offset] = spec.u_offset + min(offset, spec.u_dim - 1)
+                gather[spec.p_offset + offset] = spec.u_offset + column
         cached = tuple(t.to(device) for t in (gaussian, von_mises, gather))
         self._uncertainty_cache = cached
         return cached
@@ -1050,6 +1137,27 @@ Every channel reports ``log sigma^2``, circular ones included -- the
             reported, torch.exp(log_uncertainty), torch.zeros_like(log_uncertainty)
         )
 
+    def uncertainty_variance(self, predictions: torch.Tensor) -> torch.Tensor:
+        """The head's reported variances, one per *uncertainty* column.
+
+        The minimal sufficient form of what the head said about its own spread.
+        ``prediction_variance`` broadcasts the same numbers out to one per
+        predicted dimension, which is what an elementwise loss wants; this is
+        what a *store* wants, because a paired predictor reports one spread for
+        a ``(sin, cos)`` pair and expanding it would put two identical columns
+        into the belief and then into the encoder's input.
+
+        Returns:
+            (..., total_uncertainty_dimension) non-negative variance; zeros when
+            the prediction carries no uncertainty block at all.
+        """
+
+        if predictions.shape[-1] <= self.total_prediction_dimension:
+            return predictions.new_zeros(
+                (*predictions.shape[:-1], self.total_uncertainty_dimension)
+            )
+        return torch.exp(predictions[..., self.total_prediction_dimension :])
+
     def apply_all_predictions(
         self, curr_targets: torch.Tensor, predictions: torch.Tensor
     ) -> torch.Tensor:
@@ -1119,22 +1227,42 @@ def build_standard_coordinator(
     world_w, world_h = ship_config.world_size
 
     features = [
-        # Position: Fourier input (rich freq) + unit-circle target (phase prediction)
+        # Position: the target space *is* the input space -- every harmonic of
+        # the same base-2 Fourier basis, predicted absolutely. Three things fall
+        # out of that identity and none of them is available to a phase
+        # predictor over a single coarse harmonic:
+        #
+        # * No ``label_scale``. A (sin, cos) target has variance at most 0.5 by
+        #   construction, so there is no fitted constant to get wrong. Run 743
+        #   established that no static scale can serve a channel whose error
+        #   grows as the integral of velocity over a lengthening hidden
+        #   interval; this representation removes the question instead of
+        #   answering it.
+        # * No label base, so the error-conservation failure mode that killed
+        #   run 734 -- ``error[t+1] == error[t]`` -- cannot be written down.
+        # * The belief becomes a copy. ``predicted_targets`` is already in this
+        #   space, so a hidden ship's encoded input is the head's own output
+        #   scattered into place, with no decode and no re-encode.
+        #
+        # Ten harmonics at the Frontline world (65536 px down to 128 px) are
+        # deliberately unequal as targets: four of those periods exceed the 5v5
+        # playable diameter, so their targets barely vary, while the finest wraps
+        # 41 times across it. See docs/training.md.
         Feature(
             name="position_x",
             accessor=Accessor(ObsKey.POS, channels=[0]),
             input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
-            target_encoder=Fourier(n_freqs=1, periods=world_w),
-            predictor=UnitCirclePredictor(cosine_first=False),  # Fourier gives (sin, cos)
-            label_scale=177.4,
+            target_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
+            predictor=FourierMomentPredictor(),
+            label_scale=1.0,
         ),
         Feature(
             name="position_y",
             accessor=Accessor(ObsKey.POS, channels=[1]),
             input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
-            target_encoder=Fourier(n_freqs=1, periods=world_h),
-            predictor=UnitCirclePredictor(cosine_first=False),
-            label_scale=177.4,
+            target_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
+            predictor=FourierMomentPredictor(),
+            label_scale=1.0,
         ),
         # Velocity: SymlogVelocity encodes (vx, vy) → direction * symlog(speed).
         # AdditivePredictor on this 2D space avoids the angle discontinuity near
@@ -1148,15 +1276,17 @@ def build_standard_coordinator(
             label_scale=(20.0, 20.0),
             scope=FeatureScope.SHIP,
         ),
-        # Attitude: Fourier input, raw (cos,sin) target — phase prediction
-        # wrapper produces (cos θ, sin θ) — cosine_first=True
+        # Attitude: position's treatment on the heading circle. Four harmonics
+        # over 2*pi, target space identical to input space, predicted as moments
+        # so an unknown heading shrinks to the origin instead of having to commit
+        # to an angle.
         Feature(
             name="attitude",
             accessor=Accessor(ObsKey.ATT),
             input_encoder=AttitudeFourier(),
-            target_encoder=Identity(),
-            predictor=UnitCirclePredictor(cosine_first=True),
-            label_scale=1.5,
+            target_encoder=AttitudeFourier(),
+            predictor=FourierMomentPredictor(),
+            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         # Angular velocity: symlog scalar, absolute prediction
@@ -1185,9 +1315,9 @@ def build_standard_coordinator(
         # makes them real-valued, which is what lets them carry a Gaussian
         # uncertainty; the phase predictor cannot, and would need von Mises.
         #
-        # The input encoder keeps its quarter-wave, which is a smooth and
-        # perfectly good representation to read -- the mis-modelling was only
-        # ever on the prediction side.
+        # The input encoder is the same normalised scalar, so target space and
+        # input space agree here as they do everywhere else and the belief can be
+        # copied rather than decoded.
         #
         # label_scale is 1.0 rather than a fitted constant because these now
         # train under a scale-free likelihood; it survives only to condition the
@@ -1195,7 +1325,7 @@ def build_standard_coordinator(
         Feature(
             name="health",
             accessor=Accessor(ObsKey.HEALTH),
-            input_encoder=UnitCircle(scales=ship_config.max_health),
+            input_encoder=Normalize(scales=ship_config.max_health),
             target_encoder=Normalize(scales=ship_config.max_health),
             predictor=AbsolutePredictor(),
             label_scale=1.0,
@@ -1203,7 +1333,7 @@ def build_standard_coordinator(
         Feature(
             name="power",
             accessor=Accessor(ObsKey.POWER),
-            input_encoder=UnitCircle(scales=ship_config.max_power),
+            input_encoder=Normalize(scales=ship_config.max_power),
             target_encoder=Normalize(scales=ship_config.max_power),
             predictor=AbsolutePredictor(),
             label_scale=1.0,
@@ -1212,7 +1342,7 @@ def build_standard_coordinator(
         Feature(
             name="cooldown",
             accessor=Accessor(ObsKey.COOLDOWN),
-            input_encoder=UnitCircle(scales=ship_config.firing_cooldown),
+            input_encoder=Normalize(scales=ship_config.firing_cooldown),
             target_encoder=Normalize(scales=ship_config.firing_cooldown),
             predictor=AbsolutePredictor(),
             label_scale=1.0,
@@ -1378,6 +1508,22 @@ def build_standard_coordinator(
     if local_presence:
         features.append(LocalPresenceFeature(ship_config))
 
+    # ``belief_uncertainty`` reads one channel per uncertainty column the
+    # predictors above declare, and that count now follows the world size --
+    # position contributes one per harmonic, and the harmonic count comes from
+    # ``position_fourier_frequencies``. So the width cannot be a module constant
+    # the way it was when a phase predictor reported one number per feature
+    # regardless of basis.
+    #
+    # Rather than restate the arithmetic somewhere a second time and let the two
+    # drift, probe a coordinator over just the predicted features -- none of
+    # which depends on this one -- and ask it. One authority, resolved at
+    # construction.
+    probe = FeatureCoordinator([f for f in features if f.predictor])
+    for feature in features:
+        if feature.name == "belief_uncertainty":
+            feature.accessor.absent_width = probe.total_uncertainty_dimension
+
     return FeatureCoordinator(features)
 
 
@@ -1494,3 +1640,18 @@ class AttitudeFourier(Fourier):
 
     def __call__(self, x):
         return super().__call__(torch.atan2(x[..., 1:2], x[..., 0:1]))
+
+    def invert(self, x):
+        """Back to a Cartesian ``(cos, sin)`` heading, via harmonic 0's phase.
+
+        ``Fourier.invert`` hands back the angle as a scalar in ``[0, 2*pi)``;
+        this feature's raw form is the Cartesian pair that ``__call__`` consumed,
+        so it has to go back through cos/sin rather than being returned as a
+        bare angle. Unit norm by construction, which is what makes the result a
+        heading again even when the harmonic pair it came from had collapsed
+        toward the origin -- a caller that cares how much that heading is worth
+        should read the belief's uncertainty, not the decoded vector's length.
+        """
+
+        angle = super().invert(x)
+        return torch.cat([torch.cos(angle), torch.sin(angle)], dim=-1)

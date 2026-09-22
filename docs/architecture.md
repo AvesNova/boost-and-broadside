@@ -83,11 +83,11 @@ channel to:
 
 | Feature | Network encoding | Auxiliary target |
 |---|---|---|
-| position x/y | four-frequency Fourier features over the toroidal period | phase delta |
+| position x/y | base-2 Fourier features over the toroidal period | the same features, absolutely |
 | velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed | additive velocity delta |
-| attitude | four-frequency Fourier features of the angle itself | phase delta |
+| attitude | four-frequency Fourier features of the angle itself | the same features, absolutely |
 | angular velocity | symlog scalar | next absolute value |
-| health, power, cooldown | circular bounded encoding | phase delta |
+| health, power, cooldown | normalised scalar | next absolute value |
 | team identity | three-way one-hot | none |
 | alive state | scalar | none |
 | currently visible | scalar | none |
@@ -325,33 +325,70 @@ semantics, aggregation, and horizons are documented in [training](training.md#re
 
 ## Auxiliary next-state head
 
-The next-state head predicts the coordinator's registered target channels for every ship:
-position and attitude phase deltas, velocity deltas, resource phase deltas, absolute
-angular velocity, and ship-local log-index delta. Static field material channels are
-inputs, not prediction targets; the local index target makes entering and leaving a
-medium visible to the learned dynamics model.
+The next-state head predicts the coordinator's registered target channels for every ship.
+Each channel's target lives in **the same space as its own input**, so the head's output and
+the encoder's input are the same numbers: position and attitude as absolute Fourier moments
+over their harmonic basis, resources and angular velocity as absolute scalars, velocity and
+ship-local log-index as deltas. Static field material channels are inputs, not prediction
+targets; the local index target makes entering and leaving a medium visible to the learned
+dynamics model.
 
-The head predicts a mean and, for every non-circular channel, a log variance; training
-applies a Gaussian negative log likelihood, `0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)`.
-Position and attitude wrap, so they take a von Mises likelihood instead, where a
-concentration kappa plays sigma's role inversely: `kappa * (1 - cos(d)) + log I0e(kappa)`
-over the angular residual `d`. A Gaussian over an angle does not know that -pi and pi are
-the same place, and would charge the head for being right the long way round. The form
-becomes the Gaussian one as the belief tightens, with kappa standing in for `1/sigma^2`, so
-the two are one objective in different geometry rather than two unrelated losses -- both
-carry their normalising constant, which makes the per-channel series comparable in nats.
+### Why position is a stack of moments
 
-A circular channel has no scale ambiguity to remove, an angle already being measured
-against a fixed 2*pi period, so the loss undoes `label_scale` before taking any cosine.
+A position on a torus has no Cartesian mean. Averaging positions on a circle collapses
+toward its centre, which is not a point on the circle at all -- so a Gaussian over position
+cannot represent *ignorance* about one, only a confident claim about the wrong place.
 
-The likelihood is there because no fixed label scale exists to normalize against. The label
-steps from the believed state to the true next one, so its width is set by how wrong the
-belief currently is -- which depends on the head being trained, on how long ships stay
-unseen, and so on how well the policy plays. Measured over one run, velocity labels sat
-about 33x their calibrated width, and position's implied scale fell by a third *within* that
-run while velocity's held flat: position error is the integral of a stationary velocity
-error over a hidden duration that keeps growing as the policy learns to avoid contact. A
-constant cannot track that. `(y - mu)^2 / sigma^2` does not need to, being invariant to it.
+Predicting each harmonic's `(sin, cos)` pair absolutely fixes that, and the mechanism is
+squared error's own optimum: `argmin E[(a - sin w x)^2]` is `E[sin w x]`, the conditional
+Fourier moment. So the estimate shrinks toward the origin exactly as far as the quantity is
+unpredictable, and the origin is a uniform belief. The pair's magnitude is the resultant
+length at that frequency, which makes per-scale confidence a free by-product: coarse
+harmonics confident and fine ones at zero reads as "the right region, not the right block".
+A phase predictor cannot say any of this, because rotation preserves unit norm by
+construction.
+
+Three further consequences, none of them incidental:
+
+- **No `label_scale`.** A `(sin, cos)` target has variance at most 0.5 whatever the world
+  size, so there is no fitted constant to get wrong. This is what retired the calibration
+  problem below rather than answering it.
+- **No label base.** An absolute channel asks for the state, not a step away from a base,
+  so a stale belief cannot enter its label and error cannot be conserved across a step.
+- **The spatial rotation needs no decode.** `rotary.tables` builds its angles from
+  `base2_frequencies` -- the same basis these encodings use -- so a token's rotary table
+  *is* its moment vector.
+
+The remaining dyadic-ladder reconstruction back to a scalar is for rendering and
+diagnostics only. It reads harmonic 0 alone, whose period is the whole coordinate period,
+so it is unambiguous and has nothing to unwrap; the finer harmonics buy precision, not
+disambiguation.
+
+### The likelihood
+
+The head predicts a mean and a log variance -- one per scalar channel, and one *isotropic*
+spread per harmonic `(sin, cos)` pair, the sin and cos axes having no meaning that would
+justify an axis-aligned ellipse. Training applies a Gaussian negative log likelihood,
+`0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)`. Sharing one sigma across a pair needs no
+separate loss branch: two scalar terms over a shared sigma sum to
+`0.5 * (||r||^2 / sigma^2 + 2 log sigma^2)`, which is the isotropic bivariate normal
+likelihood written out. Each term carries its normalising constant, which makes the
+per-channel series comparable in nats.
+
+A von Mises likelihood, `kappa * (1 - cos(d)) + log I0e(kappa)`, remains available for a
+channel predicted as a phase; nothing in the shipped table uses one, because moments
+represent an unknown angle without needing a concentration.
+
+The likelihood is there because no fixed label scale exists for the *delta* channels to
+normalize against. Their labels step from the believed state to the true next one, so their
+width is set by how wrong the belief currently is -- which depends on the head being
+trained, on how long ships stay unseen, and so on how well the policy plays. Measured over
+one run, velocity labels sat about 33x their calibrated width, and position's implied scale
+fell by a third *within* that run while velocity's held flat: position error is the integral
+of a stationary velocity error over a hidden duration that keeps growing as the policy
+learns to avoid contact. A constant cannot track that. `(y - mu)^2 / sigma^2` does not need
+to, being invariant to it. Velocity's scale remains a fitted number and is still roughly
+33x too large; the representation change above does not reach it.
 
 Weighting the mean's gradient by `1/sigma^2` is the second reason. A long-unseen token's
 label is mostly belief error nobody could have predicted; the head widens sigma there and
@@ -359,7 +396,8 @@ the signal concentrates on tokens whose labels are real dynamics. The likelihood
 unbounded below as sigma falls, so the log variance is clamped -- nothing else stops a head
 from buying loss with certainty it has not earned.
 
-`label_scale` survives only to condition the mean, not to balance the objective.
+`label_scale` survives only to condition the mean, not to balance the objective -- and only
+on the channels that still carry one.
 
 A triangle-window cumulative loss on position and velocity ran alongside it until the
 label below was corrected. Its purpose was to catch systematic multi-step drift, which it

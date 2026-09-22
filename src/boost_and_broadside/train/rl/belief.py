@@ -55,11 +55,13 @@ class BeliefTracker:
             (num_envs, num_ships, target_dim), dtype=torch.float32, device=self.device
         )
         # Accumulated variance of the belief, one channel per auxiliary
-        # prediction dimension. Zero while a ship is in sight and summed over
-        # every forecast since it went out of it, so it grows with the hidden
-        # duration rather than reporting a single step's spread.
+        # *uncertainty* column -- one per scalar channel and one per harmonic
+        # pair, which is the head's own reporting granularity. Zero while a ship
+        # is in sight and summed over every forecast since it went out of it, so
+        # it grows with the hidden duration rather than reporting a single
+        # step's spread.
         self.uncertainty = torch.zeros(
-            (num_envs, num_ships, coordinator.total_prediction_dimension),
+            (num_envs, num_ships, coordinator.total_uncertainty_dimension),
             dtype=torch.float32,
             device=self.device,
         )
@@ -230,7 +232,7 @@ class BeliefTracker:
         # added per step, cleared by the next sighting in ``compose``. The head
         # reports a per-step spread, so the belief's own uncertainty is the sum
         # of them and not the latest one.
-        self.uncertainty = self.uncertainty + self.coordinator.prediction_variance(
+        self.uncertainty = self.uncertainty + self.coordinator.uncertainty_variance(
             scaled_prediction
         )
 

@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import BELIEF_UNCERTAINTY_DIM, ObsKey
+from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 from tests.train.test_belief import _view
@@ -21,15 +21,40 @@ def coordinator():
     return build_standard_coordinator(ShipConfig())
 
 
-def test_the_observation_width_matches_the_prediction_layout(coordinator) -> None:
-    """Pinned, because the observation contract states the width independently.
+def _uncertainty_accessor(coordinator):
+    (feature,) = [f for f in coordinator.features if f.name == "belief_uncertainty"]
+    return feature.accessor
 
-    ``observation.py`` cannot import the feature registry without the
-    environment depending on the policy, so the constant is written out. This is
-    what stops the two drifting apart in silence.
+
+def test_the_channel_width_is_resolved_from_the_predictors(coordinator) -> None:
+    """One authority for the width, and it is the predictor layout.
+
+    There is no module constant to state it any more: position reports one
+    uncertainty column per Fourier harmonic, so the width follows the world size
+    and only the feature layout knows it.
     """
 
-    assert BELIEF_UNCERTAINTY_DIM == coordinator.total_prediction_dimension
+    assert (
+        _uncertainty_accessor(coordinator).absent_width
+        == coordinator.total_uncertainty_dimension
+    )
+
+
+def test_the_channel_width_follows_the_world_size() -> None:
+    """A bigger world means more position harmonics, so more spreads to report.
+
+    The regression this pins is a width that was a constant: it happened to be
+    right for one world and silently wrong for every other.
+    """
+
+    from dataclasses import replace
+
+    widths = {}
+    for side in (1024.0, 65536.0):
+        c = build_standard_coordinator(replace(ShipConfig(), world_size=(side, side)))
+        widths[side] = c.total_uncertainty_dimension
+        assert _uncertainty_accessor(c).absent_width == widths[side]
+    assert widths[65536.0] > widths[1024.0]
 
 
 def _prediction(coordinator, log_uncertainty: float) -> torch.Tensor:
@@ -96,14 +121,20 @@ def test_map_objects_carry_no_uncertainty(coordinator) -> None:
     tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
     composed = tracker.compose(_view(visible=False, x=300.0))
     uncertainty = composed[ObsKey.BELIEF_UNCERTAINTY]
-    assert uncertainty.shape[-1] == BELIEF_UNCERTAINTY_DIM
+    assert uncertainty.shape[-1] == coordinator.total_uncertainty_dimension
     assert uncertainty.shape[1] >= 2
 
 
-def test_an_observation_without_a_tracker_reports_no_uncertainty() -> None:
-    """Raw environment views and test fixtures have forecast nothing."""
+def test_an_observation_without_a_tracker_reports_no_uncertainty(coordinator) -> None:
+    """Raw environment views and test fixtures have forecast nothing.
+
+    Read through the accessor rather than the observation: the observation no
+    longer carries a default for this channel, because its width is a property
+    of the feature layout and the environment cannot know it.
+    """
 
     view = _view(visible=True, x=300.0)
     assert ObsKey.BELIEF_UNCERTAINTY not in view.data
-    assert view[ObsKey.BELIEF_UNCERTAINTY].shape[-1] == BELIEF_UNCERTAINTY_DIM
-    assert view[ObsKey.BELIEF_UNCERTAINTY].abs().max() == 0.0
+    supplied = _uncertainty_accessor(coordinator).get(view)
+    assert supplied.shape[-1] == coordinator.total_uncertainty_dimension
+    assert supplied.abs().max() == 0.0

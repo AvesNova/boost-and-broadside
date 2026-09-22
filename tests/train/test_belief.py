@@ -43,6 +43,20 @@ def _view(*, visible: bool, x: float = 300.0) -> YemongObservation:
     return YemongObservation(data=data)
 
 
+def _hold(coordinator, composed, num_ships: int = 2) -> torch.Tensor:
+    """The scaled prediction that means "no change".
+
+    Not zeros. Position and attitude are predicted *absolutely* now, so a zero
+    output claims the origin rather than declining to move; only the remaining
+    delta channels read zero as "stand still". ``compute_labels`` of a state
+    against itself is exactly that distinction, per predictor, already scaled the
+    way ``advance`` expects its argument to be.
+    """
+
+    targets = coordinator.get_target_vector(composed)[:, :num_ships]
+    return coordinator.compute_labels(targets, targets)
+
+
 def test_never_seen_enemy_stays_absent() -> None:
     coordinator = build_standard_coordinator(ShipConfig())
     tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
@@ -59,10 +73,7 @@ def test_seen_then_hidden_uses_recursive_prediction_and_age() -> None:
     coordinator = build_standard_coordinator(ShipConfig())
     tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
     visible = tracker.compose(_view(visible=True, x=300.0))
-    tracker.advance(
-        visible,
-        torch.zeros((1, 2, coordinator.total_prediction_dimension)),
-    )
+    tracker.advance(visible, _hold(coordinator, visible))
 
     hidden = tracker.compose(_view(visible=False, x=9999.0))
 
@@ -74,10 +85,7 @@ def test_seen_then_hidden_uses_recursive_prediction_and_age() -> None:
     assert hidden[ObsKey.PREVIOUS_ACTION][0, 1].equal(torch.zeros(3, dtype=torch.long))
     assert hidden[ObsKey.LOCAL_INDEX_GRADIENT][0, 1].equal(torch.zeros(2))
 
-    tracker.advance(
-        hidden,
-        torch.zeros((1, 2, coordinator.total_prediction_dimension)),
-    )
+    tracker.advance(hidden, _hold(coordinator, hidden))
     hidden_again = tracker.compose(_view(visible=False))
     assert hidden_again[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0.2
 
@@ -232,27 +240,26 @@ def test_a_revealed_respawn_corrects_a_stale_belief() -> None:
 
     coordinator = build_standard_coordinator(ShipConfig())
     tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    still = torch.zeros((1, 2, coordinator.total_prediction_dimension))
 
     seen = tracker.compose(_view(visible=True, x=300.0))
     assert seen[ObsKey.POS][0, 1, 0] == pytest.approx(300.0)
 
     # Out of contact, and meanwhile it dies and respawns far away at x=900.
     for _ in range(3):
-        tracker.advance(seen, still)
+        tracker.advance(seen, _hold(coordinator, seen))
         seen = tracker.compose(_view(visible=False, x=900.0))
     stale = seen[ObsKey.POS][0, 1, 0].item()
     assert stale == pytest.approx(300.0), "belief should still be on the old trajectory"
     assert abs(900.0 - stale) > 500.0, "and so the label would carry the whole teleport"
 
     # The spawn reveal shows it for one decision: the belief snaps to truth.
-    tracker.advance(seen, still)
+    tracker.advance(seen, _hold(coordinator, seen))
     revealed = tracker.compose(_view(visible=True, x=900.0))
     assert revealed[ObsKey.POS][0, 1, 0] == pytest.approx(900.0)
     assert revealed[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0
 
     # And it stays corrected once contact is lost again.
-    tracker.advance(revealed, still)
+    tracker.advance(revealed, _hold(coordinator, revealed))
     after = tracker.compose(_view(visible=False, x=900.0))
     assert after[ObsKey.POS][0, 1, 0] == pytest.approx(900.0)
 

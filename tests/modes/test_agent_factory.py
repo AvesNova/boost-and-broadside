@@ -1,7 +1,5 @@
 """Tests for shared agent and next-state evaluation helpers."""
 
-import math
-
 import pytest
 import torch
 
@@ -41,8 +39,10 @@ class TestDecodeTargetsToObs:
         """Regression (audit §1.4): pos_y must decode with world height, not width.
 
         Uses a rectangular world (W != H) so decoding y with W produces the
-        wrong coordinate; encode (x, y) exactly as the feature pipeline does
-        (Fourier(1, period) → (sin, cos)) and expect the round-trip identity.
+        wrong coordinate. The targets are built with each feature's *own* target
+        encoder rather than a hand-written (sin, cos) pair: position is a stack
+        of harmonics now, and its width follows the world size, so a literal
+        pair would be the wrong shape on every map.
         """
         ship_config = ShipConfig(
             world_size=(1024.0, 512.0),
@@ -53,14 +53,11 @@ class TestDecodeTargetsToObs:
         W, H = ship_config.world_size
         x, y = 700.0, 300.0
 
+        encoders = {spec.name: spec.target_encoder for spec in coordinator._predictor_specs}
         targets = torch.zeros(1, 1, coordinator.total_target_dimension)
-        targets[0, 0, target_slices["position_x"]] = torch.tensor(
-            [math.sin(2 * math.pi * x / W), math.cos(2 * math.pi * x / W)]
-        )
-        targets[0, 0, target_slices["position_y"]] = torch.tensor(
-            [math.sin(2 * math.pi * y / H), math.cos(2 * math.pi * y / H)]
-        )
-        targets[0, 0, target_slices["attitude"]] = torch.tensor([0.0, 1.0])
+        targets[0, 0, target_slices["position_x"]] = encoders["position_x"](torch.tensor([x]))
+        targets[0, 0, target_slices["position_y"]] = encoders["position_y"](torch.tensor([y]))
+        targets[0, 0, target_slices["attitude"]] = encoders["attitude"](torch.tensor([0.0, 1.0]))
 
         obs = decode_targets_to_observation(
             targets,

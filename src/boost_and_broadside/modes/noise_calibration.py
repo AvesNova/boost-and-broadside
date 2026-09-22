@@ -54,16 +54,34 @@ _SCHEMA_VERSION = 1
 # aggregates in ``result.json`` already answer everything the report asks.
 _MAX_RAW_SAMPLE_ROWS = 262_144
 
+
 # Coordinator feature name → stable report name, description, and channel labels.
+def _harmonic_channels(prefix: str):
+    """Name a blocked ``[sin_0..sin_n-1, cos_0..cos_n-1]`` Fourier target.
+
+    A callable rather than a tuple because the width is not fixed: the harmonic
+    count comes from ``position_fourier_frequencies``, so it follows the world
+    size and a literal list would be right for one map and wrong for the rest.
+    """
+
+    def name(width: int) -> tuple[str, ...]:
+        harmonics = width // 2
+        return tuple(f"{prefix}_sin{k}" for k in range(harmonics)) + tuple(
+            f"{prefix}_cos{k}" for k in range(harmonics)
+        )
+
+    return name
+
+
 _REPORT_FEATURES = {
-    "position_x": ("pos_x", "pos_x (sin, cos)", ("pos_sin_x", "pos_cos_x")),
-    "position_y": ("pos_y", "pos_y (sin, cos)", ("pos_sin_y", "pos_cos_y")),
+    "position_x": ("pos_x", "pos_x (harmonic sin/cos)", _harmonic_channels("pos_x")),
+    "position_y": ("pos_y", "pos_y (harmonic sin/cos)", _harmonic_channels("pos_y")),
     "velocity": (
         "velocity",
         "velocity (vx_norm, vy_norm)",
         ("vel_vx_norm", "vel_vy_norm"),
     ),
-    "attitude": ("att", "attitude (cos, sin)", ("att_cos", "att_sin")),
+    "attitude": ("att", "attitude (harmonic sin/cos)", _harmonic_channels("att")),
     "angular_velocity": ("ang_vel", "angular velocity (symlog)", ("ang_vel_symlog",)),
     "shield_delay": ("shield_delay", "shield recharge delay (symlog)", ("shield_delay_symlog",)),
     # Bounded scalars normalised to [0, 1], not the quarter-wave pairs these
@@ -123,6 +141,8 @@ def _report_layout(
     for feature_name, (report_name, description, channel_names) in _REPORT_FEATURES.items():
         target_slice = target_slices[feature_name]
         dims = list(range(target_slice.start, target_slice.stop))
+        if callable(channel_names):
+            channel_names = channel_names(len(dims))
         if len(dims) != len(channel_names):
             raise ValueError(f"Unexpected target width for feature {feature_name!r}")
         groups[report_name] = (dims, description)
