@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "frontline_shields_v14"
+OBSERVATION_SCHEMA = "frontline_shields_v15"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 15,
+        "version": 16,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -116,6 +116,10 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
+    v15 makes map objects key/value-only inputs to a single non-square
+    attention: ship queries read N+M keys in one softmax instead of two summed
+    ones. The trunk carries ship tokens only, so the block's parameter set and
+    the map projection change; a v14 checkpoint cannot load.
     v14 turns on the per-entity-type first projection. The encoder's parameters
     change shape -- four typed projections plus a shared second layer, instead of
     one wide extractor -- so a v13 checkpoint cannot load.
