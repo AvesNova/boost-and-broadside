@@ -37,6 +37,13 @@ MODEL_CONFIG = ModelConfig(
     # TeamPMA keep ``n_heads=4``, so this buys the rotation without changing
     # anything else about the trunk's shape.
     n_spatial_heads=2,
+    # Map objects are key/value-only inputs to a single non-square attention:
+    # ship queries read N+M keys in one softmax, and a map token never queries,
+    # never updates, and never touches the FFN or the temporal path. Measured
+    # against full attention at M=16: throughput within noise, backward peak
+    # memory 1435 -> 840 MiB. The fused softmax replaces the earlier pair of
+    # independent ones, so ships and map now compete for the same attention mass.
+    map_read_mode="kv_memory",
     # Per-entity-type first projection, with a shared second layer. A field token
     # otherwise spends most of its input width on ship-only channels that are hard
     # zeros for it. Each projection runs over its own contiguous span of the token

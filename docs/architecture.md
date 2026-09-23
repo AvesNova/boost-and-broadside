@@ -91,7 +91,7 @@ channel to:
 | team identity | three-way one-hot | none |
 | alive state | scalar | none |
 | currently visible | scalar | none |
-| belief token valid | scalar; also the attention/existence mask | none |
+| belief token valid | scalar, value-head team pooling only | none |
 | time since observation | symlog scalar | none |
 | previous power/turn/shoot | categorical one-hot | none |
 | radius | shared ship/field scalar divided by half the shorter world dimension | none |

@@ -177,11 +177,10 @@ class TransformerBlock(nn.Module):
     ) -> torch.Tensor:
         """Self-attention plus optional cross-attention to read-only memories.
 
-        The two attention outputs are summed into one residual and share this
-        block's out_proj and FFN. Keeping them as separate softmaxes rather than
-        one fused key set avoids letting a large auxiliary memory swamp the
-        attention mass of ship keys and gives each memory its own learned K/V
-        projection.
+        Map objects are folded into the *same* softmax as ships -- one
+        non-square attention, N queries over N+M keys. Bullets keep a separate
+        one: their ring buffer needs a key mask, and a masked key set would
+        disqualify the fused SDPA kernel for the ship/map read it was merged into.
 
         Returns:
             (B, N, D) attention output.
@@ -202,15 +201,44 @@ class TransformerBlock(nn.Module):
         k = k.permute(0, 2, 1, 3)
         v = v.view(B, N, H, dh).permute(0, 2, 1, 3)
 
-        # No key-padding bias: token validity is constant-true (see the class
-        # docstring), so attn_mask stays None and SDPA can pick the flash kernel.
+        # Map objects join the ship key set rather than getting their own
+        # softmax: one non-square attention of N queries over N+M keys. They are
+        # keys and values only -- never queries, never updated, never through the
+        # FFN or the temporal path -- so the map contributes geometry to a ship's
+        # read without ever being carried by the trunk.
+        #
+        # Deliberately reversing the earlier two-softmax design, which summed an
+        # independent map read into the same residual to stop a large auxiliary
+        # memory swamping the attention mass of ship keys. Under one softmax they
+        # do compete. That competition is the point: a ship near a field boundary
+        # *should* be able to spend its attention there instead of on a distant
+        # ally, and two separate softmaxes cannot express that trade at all.
+        if self.reads_map_memory and map_memory is not None and map_memory.shape[1]:
+            M = map_memory.shape[1]
+            km, vm = self.kv_map(self.norm_map(map_memory)).chunk(2, dim=-1)
+            km = km.view(B, M, H, dh)
+            if geometry is not None and geometry.map_memory is not None:
+                km = apply_rotary(km, *geometry.map_memory)
+            k = torch.cat([k, km.permute(0, 2, 1, 3)], dim=2)  # (B, H, N+M, dh)
+            v = torch.cat([v, vm.view(B, M, H, dh).permute(0, 2, 1, 3)], dim=2)
+
+        # No key-padding bias: token validity is constant-true and map objects are
+        # static geometry (see the class docstring), so attn_mask stays None over
+        # the whole fused key set and SDPA can pick the flash kernel.
         attn_bias = None
         if self.relational is not None and geometry is not None and geometry.relation is not None:
-            # Added into the *same* additive mask the key padding already uses:
-            # SDPA takes one bias tensor, and a masked key stays masked because
-            # the relational term is finite while the padding term is not.
-            relational_bias = self.relational(geometry.relation).to(q.dtype)
-            attn_bias = relational_bias if attn_bias is None else attn_bias + relational_bias
+            # The bias is built over every token pair, so its columns already
+            # line up with the fused key set -- the map keys sit in the same
+            # order behind the ships. Only the query rows need narrowing: ships
+            # alone are queries here, where full-attention mode queries with all
+            # of them. Ship/map pairs therefore get a learned relational term,
+            # the same as they did in full-attention mode.
+            #
+            # Note this reintroduces a non-None attn_mask and so gives up the
+            # flash kernel. That is the standing cost of relational bias, which
+            # is off by default for exactly this reason.
+            attn_bias = self.relational(geometry.relation).to(q.dtype)
+            attn_bias = attn_bias[..., : q.shape[2], : k.shape[2]]
 
         out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_bias, dropout_p=0.0)
 
@@ -239,19 +267,6 @@ class TransformerBlock(nn.Module):
                 any_active = bullet_mask.any(dim=-1).view(B, 1, 1, 1).to(bullet_out.dtype)
                 bullet_out = bullet_out * any_active
             out = out + bullet_out
-
-        if self.reads_map_memory and map_memory is not None and map_memory.shape[1]:
-            NM = map_memory.shape[1]
-            km, vm = self.kv_map(self.norm_map(map_memory)).chunk(2, dim=-1)
-            km = km.view(B, NM, H, dh)
-            if geometry is not None and geometry.map_memory is not None:
-                km = apply_rotary(km, *geometry.map_memory)
-            km = km.permute(0, 2, 1, 3)
-            vm = vm.view(B, NM, H, dh).permute(0, 2, 1, 3)
-            # Map objects are static geometry: every slot is always occupied,
-            # so this read needs no mask either.
-            map_out = F.scaled_dot_product_attention(q, km, vm, dropout_p=0.0)
-            out = out + map_out
 
         out = out.permute(0, 2, 1, 3).reshape(B, N, D)  # (B, N, D)
         return self.out_proj(out)
