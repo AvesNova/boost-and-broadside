@@ -308,32 +308,39 @@ class Fourier(Transform):
         return torch.cat(results, dim=-1)
 
     def invert(self, x: torch.Tensor) -> torch.Tensor:
-        """Recover the raw channels from the *coarsest* harmonic's phase.
+        """Recover the raw channels by climbing the dyadic harmonic ladder.
 
         Harmonic 0 has period equal to the whole coordinate period, so its phase
-        alone localises the value uniquely -- there is nothing to unwrap and no
-        ambiguity to resolve. The finer harmonics buy *precision*, not
-        disambiguation: a phase error of e radians at harmonic 0 reads out as
-        ``period * e / (2*pi)``, and climbing the dyadic ladder to refine it is
-        only worth doing where that resolution matters.
+        localises the value uniquely -- there is nothing to unwrap and no
+        ambiguity to resolve. Each finer harmonic then refines that estimate: its
+        phase gives the value modulo its own period, and the candidate nearest
+        the running estimate is the one meant. Unwrapping is safe because the
+        incoming error is always far below a quarter of the next period.
 
-        It is not worth doing here, because nothing on the hot path needs a
-        scalar any more. The spatial rotation consumes ``base2_frequencies``
-        directly -- the same basis these encodings are built on, so a token's
-        rotary table *is* its harmonic pair vector -- and the belief is copied in
-        encoded space. This decode exists for rendering, evaluation and
-        diagnostics, where a single unambiguous phase is the right trade and a
-        wrap-around failure could not occur in the first place.
+        Reading harmonic 0 alone is what this used to do, and it was wrong once
+        position carried ten harmonics instead of one. That harmonic spans the
+        entire world, so any error in its ``(sin, cos)`` is multiplied by
+        ``period / 2*pi``: a 1% error reads back as 83 px, 5% as 414 px. Applied
+        to a *predicted* moment rather than an exact one, that is what made
+        ``belief/*/position_px`` report 1434 px for ships in plain sight, and
+        what corrupted ``local_presence`` -- a 500 px radius judged from hidden
+        positions wrong by several times that.
 
-        One caveat for callers: a prediction whose harmonic-0 pair has collapsed
-        toward the origin carries no phase worth reading. ``atan2`` will still
-        return an angle, and it will be arbitrary. Read the pair's magnitude
-        alongside it -- that is the belief's own statement of how much the
-        decoded point is worth.
+        Quantisation alone is milder but points the same way. Over 20k uniform
+        positions on the Frontline world stored in bf16, harmonic 0 alone gives
+        5.89 px mean error and the full ladder 0.012 px.
+
+        Each refinement is scaled by that harmonic's resultant length. A belief
+        the model cannot resolve at some scale has a moment shrunk toward the
+        origin, and its phase there is noise -- including it at full weight would
+        add error rather than precision. At unit magnitude the refinement is
+        exact, and it fades smoothly to nothing as the harmonic decoheres, so
+        the estimate degrades to the coarsest scale the belief still resolves
+        instead of being dragged around by the ones it does not.
 
         Layout is blocked, not interleaved: channel ``c`` of ``n`` frequencies
-        occupies ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so harmonic 0's pair
-        is ``(c*2n, c*2n + n)``. At ``n == 1`` that is the old ``(2c, 2c+1)``.
+        occupies ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so harmonic ``k``'s
+        pair is ``(c*2n + k, c*2n + n + k)``.
         """
         x = x.float()
         n = self.n_freqs
@@ -346,8 +353,24 @@ class Fourier(Transform):
         outs = []
         for c in range(num_channels):
             base = c * 2 * n
-            angle = torch.atan2(x[..., base], x[..., base + n]) % (2.0 * math.pi)
-            outs.append(angle * ps[c] / (2.0 * math.pi))
+            period = float(ps[c])
+            sines = x[..., base : base + n]
+            cosines = x[..., base + n : base + 2 * n]
+            phase = torch.atan2(sines, cosines) % (2.0 * math.pi)
+            # Confidence per harmonic: the resultant length of its moment.
+            weight = torch.sqrt(sines * sines + cosines * cosines).clamp(0.0, 1.0)
+
+            estimate = phase[..., 0] * period / (2.0 * math.pi)
+            for k in range(1, n):
+                wavelength = period / (2.0**k)
+                candidate = phase[..., k] * wavelength / (2.0 * math.pi)
+                # Nearest candidate to the running estimate, i.e. the residual
+                # wrapped into (-lambda/2, +lambda/2].
+                delta = (
+                    (candidate - estimate + wavelength / 2.0) % wavelength
+                ) - wavelength / 2.0
+                estimate = estimate + weight[..., k] * delta
+            outs.append(estimate % period)
         return torch.stack(outs, dim=-1)
 
 
