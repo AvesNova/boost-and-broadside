@@ -111,30 +111,35 @@ class TestTransformerBlock:
 
         assert out.shape == (B, N, model_cfg.d_model)
 
-    def test_alive_mask_does_not_crash(self, model_cfg):
-        """Transformer block with a partial alive mask must not raise errors."""
+    def test_entity_attention_passes_no_mask(self, model_cfg, monkeypatch):
+        """The property the flash kernel needs: ``attn_mask is None``.
+
+        Entity keys carry no padding any more. Every ship is revealed to both
+        teams on the decision it spawns and ``BeliefTracker.valid`` is sticky, so
+        token validity is constant-true and a mask encoding it would be a pure
+        cost -- any ``attn_mask`` disqualifies the fused SDPA kernels and falls
+        back to the math path, which materialises the full score matrix.
+        """
+        from boost_and_broadside.models.yemong import attention as attention_mod
+
         B, N = 2, 4
         block = TransformerBlock(model_cfg)
         x = torch.randn(B, N, model_cfg.d_model)
-        alive = torch.ones(B, N, dtype=torch.bool)
-        alive[0, 2] = False  # one dead ship
 
-        out = block(x, alive_mask=alive)
+        seen = []
+        real = attention_mod.F.scaled_dot_product_attention
 
+        def spy(q, k, v, attn_mask=None, **kwargs):
+            seen.append(attn_mask)
+            return real(q, k, v, attn_mask=attn_mask, **kwargs)
+
+        monkeypatch.setattr(attention_mod.F, "scaled_dot_product_attention", spy)
+        out = block(x)
+
+        assert seen, "attention did not run"
+        assert all(m is None for m in seen), "entity attention must pass no mask"
         assert out.shape == (B, N, model_cfg.d_model)
         assert torch.isfinite(out).all()
-
-    def test_all_dead_mask_does_not_produce_nan(self, model_cfg):
-        """All-dead alive mask should not produce NaN (edge case)."""
-        B, N = 1, 4
-        block = TransformerBlock(model_cfg)
-        x = torch.randn(B, N, model_cfg.d_model)
-        alive = torch.zeros(B, N, dtype=torch.bool)  # everyone dead
-
-        out = block(x, alive_mask=alive)
-
-        # May be all-zero or garbage but must not be NaN
-        assert not torch.isnan(out).any()
 
     def test_attn_mask_dtype_matches_query_under_autocast(self, model_cfg, monkeypatch):
         """The SDPA attn_mask must match the query dtype so the fused kernels apply.
@@ -143,30 +148,35 @@ class TestTransformerBlock:
         x fp32. Building the mask from x's dtype yields an fp32 mask on bf16 q/k/v,
         which disqualifies the flash/mem-efficient SDPA kernels and silently falls
         back to the math kernel. The mask must follow q's dtype instead.
+
+        Exercised through the *bullet* read, which is the only mask left: a ring
+        buffer slot genuinely can be empty, unlike an entity or a map object.
         """
         from boost_and_broadside.models.yemong import attention as attention_mod
 
-        B, N = 2, 4
-        block = TransformerBlock(model_cfg)
+        B, N, NB = 2, 4, 6
+        block = TransformerBlock(model_cfg, reads_bullets=True)
         x = torch.randn(B, N, model_cfg.d_model)
-        alive = torch.ones(B, N, dtype=torch.bool)
-        alive[0, 2] = False  # partial mask so attn_bias is actually built
+        bullets = torch.randn(B, NB, model_cfg.d_model)
+        bullet_mask = torch.ones(B, NB, dtype=torch.bool)
+        bullet_mask[0, 3] = False  # partial mask so a bias is actually built
 
         captured = {}
         real_sdpa = attention_mod.F.scaled_dot_product_attention
 
         def spy(q, k, v, attn_mask=None, **kwargs):
-            captured["q_dtype"] = q.dtype
-            captured["mask_dtype"] = None if attn_mask is None else attn_mask.dtype
+            if attn_mask is not None:
+                captured["q_dtype"] = q.dtype
+                captured["mask_dtype"] = attn_mask.dtype
             return real_sdpa(q, k, v, attn_mask=attn_mask, **kwargs)
 
         monkeypatch.setattr(attention_mod.F, "scaled_dot_product_attention", spy)
 
         # CPU autocast supports bf16 and reproduces the fp32-norm / bf16-Linear split.
         with torch.autocast("cpu", dtype=torch.bfloat16):
-            block(x, alive_mask=alive)
+            block(x, bullets=bullets, bullet_mask=bullet_mask)
 
-        assert captured["mask_dtype"] is not None, "attn_bias was not built"
+        assert captured.get("mask_dtype") is not None, "bullet attn_bias was not built"
         assert captured["mask_dtype"] == captured["q_dtype"], (
             f"attn_mask dtype {captured['mask_dtype']} != query dtype "
             f"{captured['q_dtype']} — fused SDPA kernel would be disqualified"
@@ -430,8 +440,10 @@ class TestMapKVMemory:
         seen: dict[str, tuple[int, ...]] = {}
 
         def record_shapes(_module, args):
+            # (x, bullets, bullet_mask, map_memory, geometry) -- the alive and
+            # map masks are gone, so map_memory is now the fourth positional.
             seen["queries"] = tuple(args[0].shape)
-            seen["memory"] = tuple(args[4].shape)
+            seen["memory"] = tuple(args[3].shape)
 
         handle = policy.yemong_layers[0].spatial[0].register_forward_pre_hook(record_shapes)
         try:
@@ -1193,7 +1205,7 @@ class TestNonRecurrentFieldPath:
         x = policy.encoder(obs)
         for i, layer in enumerate(policy.yemong_layers):
             sl = slice(i * policy._n_temporal, (i + 1) * policy._n_temporal)
-            x, _, _ = layer.step(x, obs.data[ObsKey.ALIVE], rg[sl], cb[sl], N)
+            x, _, _ = layer.step(x, rg[sl], cb[sl], N)
         return x
 
     def test_single_block_field_tokens_ignore_recurrent_state(self, coordinator):

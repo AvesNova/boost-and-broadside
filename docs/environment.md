@@ -32,7 +32,7 @@ Respawns preserve slot identity, clear previous-life damage attribution on the n
 tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
 zero shields no longer implies death. Existing checkpoints are incompatible with the
-new `frontline_shields_v12` observation/feature contract.
+new `frontline_shields_v13` observation/feature contract.
 
 ## Tensorized simulation
 
