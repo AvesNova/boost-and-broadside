@@ -300,3 +300,77 @@ class TestRotaryFromMoments:
         # the logit is whatever the unrotated dimensions say on their own.
         cos_zero, sin_zero = rotary.tables_from_moments(*(m * 0.0 for m in moments))
         assert cos_zero.abs().max().item() == 0.0
+
+
+class TestLadderDecode:
+    """Decoding a position back out of its harmonics, for the consumers that need one."""
+
+    def test_the_ladder_beats_reading_the_coarsest_harmonic_alone(self) -> None:
+        """The bug this fixes: harmonic 0 spans the world, so its error is huge.
+
+        Reading it alone was correct while position had a single harmonic. With
+        ten it discards the nine that carry the precision -- and the decoded
+        point is not merely a chart: ``compose`` writes it to ``ObsKey.POS``,
+        where ``local_presence`` judges a 500 px radius by it.
+        """
+        world = 65536.0
+        transform = Fourier(n_freqs=10, periods=world)
+        torch.manual_seed(0)
+        positions = torch.rand(4000, 1) * world
+        encoded = transform(positions).to(torch.bfloat16).float()  # as the buffer stores it
+
+        recovered = transform.invert(encoded).squeeze(-1)
+        error = (recovered - positions.squeeze(-1)).abs()
+        error = torch.minimum(error, world - error)
+
+        # Harmonic 0 alone, which is what this used to do.
+        coarse = torch.atan2(encoded[:, 0], encoded[:, 10]) % (2 * math.pi)
+        coarse_error = (coarse * world / (2 * math.pi) - positions.squeeze(-1)).abs()
+        coarse_error = torch.minimum(coarse_error, world - coarse_error)
+
+        assert error.max() < 0.5, f"ladder decode drifted: {error.max()} px"
+        # Quantisation alone makes the coarse-only read ~500x worse. Against a
+        # *predicted* moment the gap is far larger -- a 1% error there is 83 px
+        # through harmonic 0 -- but this fixture only has bf16 rounding in it.
+        assert coarse_error.mean() > 1.0, "the coarse-only baseline should be bad"
+        assert error.mean() < coarse_error.mean() / 100.0
+
+    def test_a_decohered_harmonic_cannot_drag_the_estimate(self) -> None:
+        """Each refinement is weighted by that harmonic's resultant length.
+
+        A belief the model cannot resolve at some scale has a moment shrunk
+        toward the origin with a direction that means nothing. Unwrapping
+        against it at full weight would replace a coarse-but-right estimate with
+        a fine-and-wrong one, which is worse than not refining at all.
+        """
+        world = 65536.0
+        n = 10
+        transform = Fourier(n_freqs=n, periods=world)
+        torch.manual_seed(0)
+        positions = torch.rand(4000, 1) * world
+        truth = transform(positions)
+
+        # Resolves to about 2000 px: the coarse harmonics are honest, the fine
+        # ones are near-zero with an arbitrary phase.
+        delta = 2000.0
+        resultant = torch.tensor(
+            [math.exp(-(((2 * math.pi / world) * 2**k * delta) ** 2) / 2) for k in range(n)]
+        )
+        live = (resultant > 0.05).float()
+        noise = torch.rand(positions.shape[0], n) * 2 * math.pi
+        sines = (live * truth[:, :n] + (1 - live) * noise.sin()) * resultant
+        cosines = (live * truth[:, n:] + (1 - live) * noise.cos()) * resultant
+
+        recovered = transform.invert(torch.cat([sines, cosines], dim=-1)).squeeze(-1)
+        error = (recovered - positions.squeeze(-1)).abs()
+        error = torch.minimum(error, world - error)
+
+        # Well inside the scale the belief actually resolves.
+        assert error.mean() < delta / 10.0, f"noise leaked into the estimate: {error.mean()} px"
+
+    def test_a_single_harmonic_still_inverts(self) -> None:
+        """The legacy path: one harmonic has nothing to refine against."""
+        transform = Fourier(n_freqs=1, periods=8.0)
+        value = torch.tensor([[3.0]])
+        assert transform.invert(transform(value)).item() == pytest.approx(3.0, abs=1e-4)
+
