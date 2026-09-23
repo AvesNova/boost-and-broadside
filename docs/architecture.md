@@ -374,14 +374,32 @@ disambiguation.
 
 ### The likelihood
 
-The head predicts a mean and a log variance -- one per scalar channel, and one *isotropic*
-spread per harmonic `(sin, cos)` pair, the sin and cos axes having no meaning that would
-justify an axis-aligned ellipse. Training applies a Gaussian negative log likelihood,
-`0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)`. Sharing one sigma across a pair needs no
-separate loss branch: two scalar terms over a shared sigma sum to
-`0.5 * (||r||^2 / sigma^2 + 2 log sigma^2)`, which is the isotropic bivariate normal
-likelihood written out. Each term carries its normalising constant, which makes the
-per-channel series comparable in nats.
+The objective is a hybrid, and which half a channel lands in depends on whether its
+encoding has a spare dimension to carry confidence.
+
+**Circular channels train under plain squared error.** A harmonic pair's magnitude already
+*is* its confidence, so nine of position's ten harmonics report no spread at all. The tenth
+-- the finest -- carries one isotropic sigma, and the reason is gradient share rather than
+precision. Squared error's gradient is `2*eps`, which shrinks as a channel becomes accurate;
+a likelihood's is `eps/sigma^2`, which grows. Mixing the two hands the objective to whichever
+channels are both accurate and on the likelihood, and position is highly predictable for a
+ship in sight. Estimated over plausible residuals, position and attitude take 0.04% of the
+auxiliary gradient without that sigma and 48% with it. Without it the head would learn
+position almost entirely from *hidden* ships, whose labels are mostly unpredictable belief
+error, and ignore the visible ones where the learnable dynamics are.
+
+**Everything else carries a sigma and trains under a Gaussian negative log likelihood**,
+`0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)`. Velocity, angular velocity, shield delay and
+the three resources have no spare dimension -- in `SymlogVelocity` the magnitude *is* the
+speed, and a scalar's magnitude is its value -- so a shrunken prediction there is ambiguous
+between "small" and "unsure", and sigma is the only confidence signal available. Velocity
+keeps one sigma per axis: a ship last seen on a heading has different along-track and
+cross-track uncertainty, and isotropy would discard that.
+
+One consequence worth knowing when reading curves: the two halves are not commensurable.
+Squared-error terms are bounded and non-negative; likelihood terms carry `log sigma^2` and
+go unboundedly negative, so `loss/next_state` is a mixed-unit quantity. The per-channel
+`next_state/*` series stay comparable, being squared error computed under `no_grad`.
 
 A von Mises likelihood, `kappa * (1 - cos(d)) + log I0e(kappa)`, remains available for a
 channel predicted as a phase; nothing in the shipped table uses one, because moments

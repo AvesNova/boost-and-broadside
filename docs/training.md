@@ -170,9 +170,10 @@ The total update combines:
 - normalized per-component critic mean-squared error;
 - entropy bonuses for power, turn, and shoot distributions;
 - behavior cloning from the scripted controller, gated down as scripted win rate rises;
-- one-step next-state prediction, as a Gaussian likelihood over a predicted mean and
-  variance -- one spread per scalar channel, and one isotropic spread per harmonic
-  `(sin, cos)` pair for the channels predicted as Fourier moments;
+- one-step next-state prediction, as a hybrid: plain squared error on the Fourier-moment
+  channels, whose magnitude already carries confidence, and a Gaussian likelihood over a
+  predicted mean and variance everywhere else. The finest harmonic of each circular feature
+  carries a sigma too, for gradient share rather than precision;
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
@@ -219,7 +220,7 @@ is the retained resource channel name; it carries shield level in Frontline.
 `shield_delay` is observed and predicted. Attitude Fourier features consume the
 angle `atan2(sin(att), cos(att))`, and its prediction target is those same features --
 position and attitude are predicted as absolute Fourier moments rather than phase shifts.
-Checkpoints use `frontline_shields_v11`; older weights require retraining.
+Checkpoints use `frontline_shields_v12`; older weights require retraining.
 
 Projectile damage rewards use actual shield removed, proportionally divided among
 simultaneous attackers. Raw impact attribution remains separate so a finishing hit
@@ -575,7 +576,7 @@ Three compatibility rules follow from that:
   are part of the learned
   input contract. Radius is shared across object types and normalized by half the shorter
   world dimension; ship-local `grad(n)` remains explicit. Payloads carry
-  `observation_schema=frontline_shields_v11`. Successful firing globally reveals the shooter
+  `observation_schema=frontline_shields_v12`. Successful firing globally reveals the shooter
   for the current sample, which is also a learned-input semantic. Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.
 - **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so

@@ -106,13 +106,14 @@ class TestBuildPolicy:
         assert set(narrow.state_dict()) == set(wide.state_dict())
         narrow_input = narrow.state_dict()["encoder.feature_extractor.0.weight"].shape[1]
         wide_input = wide.state_dict()["encoder.feature_extractor.0.weight"].shape[1]
-        # Two channels scale with the world, not one. Position's Fourier input
-        # gains 2 axes x 2 (sin, cos) x 4 extra harmonics = 16, and
-        # belief_uncertainty gains one column per extra harmonic per axis = 8,
-        # because the head now reports a spread per harmonic rather than one per
-        # feature. 4 -> 8 harmonics between these two worlds.
+        # Position's Fourier input is the only channel that scales with the
+        # world: 2 axes x 2 (sin, cos) x 4 extra harmonics = 16. It was briefly
+        # 16 + 8, while the head reported a spread per harmonic and
+        # belief_uncertainty widened with them; the circular features now report
+        # one spread for their finest harmonic only, so that channel is a
+        # constant width again.
         assert position_fourier_frequencies(16384.0) - position_fourier_frequencies(1024.0) == 4
-        assert wide_input - narrow_input == 16 + 8
+        assert wide_input - narrow_input == 16
 
     def test_position_frequency_contract_is_explicit_and_scale_preserving(self):
         assert position_fourier_frequencies(1024.0) == 4

@@ -40,11 +40,14 @@ def test_the_channel_width_is_resolved_from_the_predictors(coordinator) -> None:
     )
 
 
-def test_the_channel_width_follows_the_world_size() -> None:
-    """A bigger world means more position harmonics, so more spreads to report.
+def test_the_channel_width_is_resolved_not_assumed() -> None:
+    """Whatever the width is, it comes from the predictors and nowhere else.
 
-    The regression this pins is a width that was a constant: it happened to be
-    right for one world and silently wrong for every other.
+    It happens to be world-independent again: the circular features report one
+    spread for their finest harmonic rather than one per harmonic, so a bigger
+    world adds harmonics without adding spreads. That was not true of the
+    previous layout and need not be true of the next one, which is the point --
+    the accessor reads the number off the coordinator instead of stating it.
     """
 
     from dataclasses import replace
@@ -54,7 +57,7 @@ def test_the_channel_width_follows_the_world_size() -> None:
         c = build_standard_coordinator(replace(ShipConfig(), world_size=(side, side)))
         widths[side] = c.total_uncertainty_dimension
         assert _uncertainty_accessor(c).absent_width == widths[side]
-    assert widths[65536.0] > widths[1024.0]
+    assert all(w > 0 for w in widths.values())
 
 
 def _prediction(coordinator, log_uncertainty: float) -> torch.Tensor:
