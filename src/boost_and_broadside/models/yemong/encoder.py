@@ -112,6 +112,46 @@ class ShipEncoder(nn.Module):
         )
         # Shared output projection: one latent space for both types.
         self.shared_proj = nn.Sequential(nn.Linear(2 * D, D), nn.RMSNorm(D))
+        # Token-axis spans per object type, derived on first use and cached under
+        # the token count. Not a parameter and not in the state dict: no weight
+        # is sized by any token count, so a checkpoint stays portable between
+        # fleet and map sizes and simply re-derives on its first forward.
+        self._span_key: int | None = None
+        self._spans: tuple[tuple[int, int, int], ...] = ()
+
+    def _token_spans(self, obs: YemongObservation) -> tuple[tuple[int, int, int], ...]:
+        """``(object_type, start, end)`` per contiguous run of the token axis.
+
+        The environment lays the axis out grouped by kind -- ships, then fields,
+        then zones, then the boundary token -- identically for every env in the
+        batch, so one run per kind describes it. Derived from the observation
+        rather than from a configured count, which is what keeps the encoder
+        agnostic to how many of each kind exist.
+
+        Cached under the token count. Reading the types is a device sync, so it
+        must not happen per forward; the counts are fixed for a run, and a policy
+        moved to a differently-shaped environment re-derives on its next call.
+        """
+
+        object_types = obs[ObsKey.OBJECT_TYPE]
+        tokens = int(object_types.shape[-1])
+        if self._span_key == tokens:
+            return self._spans
+
+        row = object_types.reshape(-1, tokens)[0].tolist()
+        spans: list[tuple[int, int, int]] = []
+        for index, kind in enumerate(row):
+            if spans and spans[-1][0] == kind:
+                spans[-1] = (kind, spans[-1][1], index + 1)
+            else:
+                spans.append((int(kind), index, index + 1))
+        seen = [kind for kind, _, _ in spans]
+        if len(seen) != len(set(seen)):
+            raise ValueError(
+                f"encoder_split needs the token axis grouped by object type, got runs {seen}"
+            )
+        self._span_key, self._spans = tokens, tuple(spans)
+        return self._spans
 
     def forward(self, obs: YemongObservation) -> torch.Tensor:
         """Encode entity observations into tokens.
@@ -126,13 +166,16 @@ class ShipEncoder(nn.Module):
             raw = self.coordinator.get_input_vector(obs)
             return self.feature_extractor(raw)
 
-        object_types = obs[ObsKey.OBJECT_TYPE]
-        hidden = obs.pos.new_zeros((*object_types.shape, self.shared_proj[0].in_features))
-        for object_type, scope in self._type_scopes.items():
-            raw = self.coordinator.get_scoped_input_vector(obs, scope)
-            candidate = self.type_proj[str(int(object_type))](raw)
-            type_mask = (object_types == int(object_type)).unsqueeze(-1)
-            hidden = torch.where(type_mask, candidate, hidden)
+        # One projection per kind, over that kind's tokens only. The previous
+        # form ran all four over all N+M tokens and discarded three quarters of
+        # the result with ``torch.where`` -- and encoded four times as much as it
+        # used, since the scoped input vector was built for the whole axis too.
+        parts = []
+        for object_type, start, end in self._token_spans(obs):
+            scope = self._type_scopes[ObjectType(object_type)]
+            raw = self.coordinator.get_scoped_input_vector(obs.slice_tokens(start, end), scope)
+            parts.append(self.type_proj[str(int(object_type))](raw))
+        hidden = torch.cat(parts, dim=-2)
         return self.shared_proj(hidden)
 
     @property

@@ -37,6 +37,15 @@ MODEL_CONFIG = ModelConfig(
     # TeamPMA keep ``n_heads=4``, so this buys the rotation without changing
     # anything else about the trunk's shape.
     n_spatial_heads=2,
+    # Per-entity-type first projection, with a shared second layer. A field token
+    # otherwise spends most of its input width on ship-only channels that are hard
+    # zeros for it. Each projection runs over its own contiguous span of the token
+    # axis rather than over all N+M tokens with a ``torch.where``: measured on the
+    # 26-token Frontline layout, 1.48x faster at the 960-env training batch and
+    # 1.22x at 256, crossing over near 150. Below that the slicing overhead wins
+    # and it is slower -- 0.78x at 64 -- which is the interactive case, where
+    # throughput does not matter.
+    encoder_split=True,
     # Rotate spatial Q/K by world geometry, so displacement enters the attention
     # score directly instead of being reconstructed by the trunk from absolute
     # position features. The rotation reuses the encoder's own position basis
