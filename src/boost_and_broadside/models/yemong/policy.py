@@ -504,18 +504,17 @@ class YemongPolicy(nn.Module):
             new_hidden: (n_layers, B*N, CONV_KERNEL*D) updated packed state.
         """
         # Hidden-but-remembered enemies remain attention/recurrent tokens. Their
-        # predicted ALIVE value is an input feature, never the existence mask.
-        alive = obs[ObsKey.BELIEF_VALID]  # (B, N+M) bool — ships then map objects
+        # predicted ALIVE value is an input feature, never the existence mask --
+        # and there is no existence mask any more: every ship is revealed on the
+        # decision it spawns and validity is sticky, so attention carries no key
+        # padding at all and SDPA can reach the flash kernel.
         encoded = self.encoder(obs)  # (B, N+M, D)
         N = self._num_ships
         if self.map_memory_proj is not None:
             map_memory = self.map_memory_proj(encoded[:, N:, :])
-            map_mask = alive[:, N:]
             x = encoded[:, :N, :]
-            alive = alive[:, :N]
         else:
             map_memory = None
-            map_mask = None
             x = encoded
         bullets, bullet_mask = self._encode_bullets(obs)  # (B, N*K, D), (B, N*K)
         geometry = self._spatial_geometry(
@@ -539,14 +538,12 @@ class YemongPolicy(nn.Module):
             block_slice = slice(i * n_temporal, (i + 1) * n_temporal)
             x, new_h, new_cb = layer.step(
                 x,
-                alive,
                 rglru_states[block_slice],
                 conv_bufs[block_slice],
                 n_rec,
                 bullets,
                 bullet_mask,
                 map_memory,
-                map_mask,
                 geometry,
             )
             new_rglru.append(new_h)
@@ -566,7 +563,10 @@ class YemongPolicy(nn.Module):
 
         # Slice ship tokens only for action and value heads
         x_ships = x[:, :N, :]  # (B, N, D)
-        alive_ships = alive[:, :N]  # (B, N)
+        # Team pooling still weights by validity even though attention no longer
+        # masks by it: a pooled team summary should not average in a token that
+        # does not exist yet. Read here rather than threaded through the trunk.
+        alive_ships = obs[ObsKey.BELIEF_VALID][:, :N]  # (B, N)
         team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 12)
@@ -613,7 +613,8 @@ class YemongPolicy(nn.Module):
             obs:                  YemongObservation with (T, B, N+M, ...) tensors.
             actions:              (T, B, N, 3) int actions taken during rollout.
             initial_hidden:       (n_layers, B*N, CONV_KERNEL*D) rollout-start state.
-            alive_mask:           (T, B, N+M) bool — alive entities per timestep.
+            alive_mask:           (T, B, N+M) bool — used only for team pooling in
+                                  the value head; attention carries no key padding.
             done_mask:            (T, B) bool — True at step t means the episode ended
                                   at t; the RG-LRU resets hidden state for step t+1.
             return_encoder_output: If True, return raw encoder embeddings as 5th value.
@@ -654,14 +655,10 @@ class YemongPolicy(nn.Module):
         encoded_sequence = encoded.reshape(T, B, NM, D)
         if self.map_memory_proj is not None:
             map_memory = self.map_memory_proj(encoded[:, N:, :])
-            map_mask = alive_mask[:, :, N:].reshape(T * B, NM - N)
             x = encoded_sequence[:, :, :N, :]
-            trunk_alive = alive_mask[:, :, :N]
         else:
             map_memory = None
-            map_mask = None
             x = encoded_sequence
-            trunk_alive = alive_mask
         bullets, bullet_mask = self._encode_bullets(flat_obs)  # (T*B, N*K, D)
         geometry = self._spatial_geometry(
             flat_obs, N, bullets is not None, self.map_memory_proj is not None
@@ -679,7 +676,6 @@ class YemongPolicy(nn.Module):
                     _yemong_forward,
                     layer,
                     x,
-                    trunk_alive,
                     rglru_states[block_slice],
                     conv_bufs[block_slice],
                     done_mask,
@@ -687,14 +683,12 @@ class YemongPolicy(nn.Module):
                     bullets,
                     bullet_mask,
                     map_memory,
-                    map_mask,
                     geometry,
                     use_reentrant=False,
                 )
             else:
                 x, _, _ = layer.sequence(
                     x,
-                    trunk_alive,
                     rglru_states[block_slice],
                     conv_bufs[block_slice],
                     done_mask,
@@ -702,7 +696,6 @@ class YemongPolicy(nn.Module):
                     bullets,
                     bullet_mask,
                     map_memory,
-                    map_mask,
                     geometry,
                 )
 
@@ -754,7 +747,6 @@ class YemongPolicy(nn.Module):
 def _yemong_forward(
     layer: YemongBlock,
     x: torch.Tensor,
-    alive_mask: torch.Tensor,
     h0: torch.Tensor,
     conv_buf0: torch.Tensor,
     done_mask: torch.Tensor | None,
@@ -762,7 +754,6 @@ def _yemong_forward(
     bullets: torch.Tensor | None,
     bullet_mask: torch.Tensor | None,
     map_memory: torch.Tensor | None,
-    map_mask: torch.Tensor | None,
     geometry: SpatialGeometry | None,
 ) -> torch.Tensor:
     """Run one Yemong block's full-sequence forward, returning only the output.
@@ -772,7 +763,6 @@ def _yemong_forward(
     """
     out, _, _ = layer.sequence(
         x,
-        alive_mask,
         h0,
         conv_buf0,
         done_mask,
@@ -780,7 +770,6 @@ def _yemong_forward(
         bullets,
         bullet_mask,
         map_memory,
-        map_mask,
         geometry,
     )
     return out

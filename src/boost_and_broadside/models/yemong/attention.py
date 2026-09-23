@@ -72,8 +72,14 @@ class TransformerBlock(nn.Module):
     """Pre-norm transformer block with self-attention and optional read-only memories.
 
     Ordering: RMSNorm → MHSA → Residual → RMSNorm → FFN → Residual.
-    Dead ships are masked out of key/value positions in attention so they
-    cannot influence living ships.
+
+    Entity and map keys carry no padding mask. Every ship is revealed to both
+    teams on the decision it spawns and ``BeliefTracker.valid`` is sticky, so
+    token validity is constant-true after spawn -- measured at 0 of 33,280 false
+    over a Frontline rollout -- and map objects are static. Passing any
+    ``attn_mask`` to ``scaled_dot_product_attention`` disqualifies the fused
+    flash kernel, so a mask that encodes nothing is expensive rather than free.
+    Bullets keep theirs: a ring-buffer slot genuinely can be empty.
 
     Args:
         model_config: Must supply d_model and n_heads.
@@ -125,34 +131,26 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        alive_mask: torch.Tensor | None = None,
         bullets: torch.Tensor | None = None,
         bullet_mask: torch.Tensor | None = None,
         map_memory: torch.Tensor | None = None,
-        map_mask: torch.Tensor | None = None,
         geometry: SpatialGeometry | None = None,
     ) -> torch.Tensor:
         """Apply one transformer block.
 
         Args:
             x:          (B, N, D) entity token embeddings.
-            alive_mask: (B, N) bool — True for entities that exist. Dead entities
-                        are masked out of key/value positions so they cannot
-                        influence living ones.
             bullets:    (B, NB, D) encoded bullet tokens, or None. Read as
                         key/value only; never updated and never queried.
             bullet_mask:(B, NB) bool — True for active ring-buffer slots.
             map_memory: (B, M, D_map) encoded map objects, read as K/V only.
-            map_mask:   (B, M) bool — True for valid map-object slots.
             geometry:   Shared per-token rotary tables, or None to leave Q/K
                         unrotated.
 
         Returns:
             (B, N, D) updated entity tokens.
         """
-        x = x + self._attn(
-            self.norm1(x), alive_mask, bullets, bullet_mask, map_memory, map_mask, geometry
-        )
+        x = x + self._attn(self.norm1(x), bullets, bullet_mask, map_memory, geometry)
         x = x + self.ffn(self.norm2(x))  # pre-norm FFN + residual
         return x
 
@@ -172,11 +170,9 @@ class TransformerBlock(nn.Module):
     def _attn(
         self,
         x: torch.Tensor,
-        alive_mask: torch.Tensor | None,
         bullets: torch.Tensor | None = None,
         bullet_mask: torch.Tensor | None = None,
         map_memory: torch.Tensor | None = None,
-        map_mask: torch.Tensor | None = None,
         geometry: SpatialGeometry | None = None,
     ) -> torch.Tensor:
         """Self-attention plus optional cross-attention to read-only memories.
@@ -206,11 +202,9 @@ class TransformerBlock(nn.Module):
         k = k.permute(0, 2, 1, 3)
         v = v.view(B, N, H, dh).permute(0, 2, 1, 3)
 
+        # No key-padding bias: token validity is constant-true (see the class
+        # docstring), so attn_mask stays None and SDPA can pick the flash kernel.
         attn_bias = None
-        if alive_mask is not None:
-            # Mask out dead entities as keys — they cannot emit information.
-            attn_bias = self._key_bias(alive_mask, q, B)
-
         if self.relational is not None and geometry is not None and geometry.relation is not None:
             # Added into the *same* additive mask the key padding already uses:
             # SDPA takes one bias tensor, and a masked key stays masked because
@@ -254,11 +248,9 @@ class TransformerBlock(nn.Module):
                 km = apply_rotary(km, *geometry.map_memory)
             km = km.permute(0, 2, 1, 3)
             vm = vm.view(B, NM, H, dh).permute(0, 2, 1, 3)
-            map_bias = self._key_bias(map_mask, q, B) if map_mask is not None else None
-            map_out = F.scaled_dot_product_attention(q, km, vm, attn_mask=map_bias, dropout_p=0.0)
-            if map_mask is not None:
-                any_map = map_mask.any(dim=-1).view(B, 1, 1, 1).to(map_out.dtype)
-                map_out = map_out * any_map
+            # Map objects are static geometry: every slot is always occupied,
+            # so this read needs no mask either.
+            map_out = F.scaled_dot_product_attention(q, km, vm, dropout_p=0.0)
             out = out + map_out
 
         out = out.permute(0, 2, 1, 3).reshape(B, N, D)  # (B, N, D)

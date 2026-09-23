@@ -1508,13 +1508,6 @@ def build_standard_coordinator(
             "visible", Accessor(ObsKey.VISIBLE), Identity(), Identity(), scope=FeatureScope.SHIP
         ),
         Feature(
-            "belief_valid",
-            Accessor(ObsKey.BELIEF_VALID),
-            Identity(),
-            Identity(),
-            scope=FeatureScope.SHIP,
-        ),
-        Feature(
             "time_since_observation",
             Accessor(ObsKey.TIME_SINCE_OBSERVATION),
             Symlog(),

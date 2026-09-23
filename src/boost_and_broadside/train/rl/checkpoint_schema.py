@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "frontline_shields_v12"
+OBSERVATION_SCHEMA = "frontline_shields_v13"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 13,
+        "version": 14,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -55,7 +55,11 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         "belief_substitution": "encoded_columns_moments_unnormalised_in_rope",
         # Every ship is seen on the decision it spawns, and validity is sticky,
         # so this is constant-true rather than a mask the trunk has to read.
-        "belief_existence_mask": "always_valid_after_spawn",
+        # Not a mask any more: constant-true after spawn, so attention carries no
+        # key padding and SDPA can reach the fused flash kernel. The channel
+        # survives only to weight team pooling in the value head, and its
+        # constant encoder feature is gone.
+        "belief_existence_mask": "removed_constant_true_after_spawn",
         "auxiliary_prediction": "mean_plus_clamped_log_variance",
         # Position and attitude are predicted as absolute Fourier moments over
         # the same harmonic basis their inputs use, with one isotropic spread per
@@ -112,6 +116,10 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
+    v13 removes the attention key-padding mask and the constant ``belief_valid``
+    encoder feature. Measured at 0 of 33,280 false over a Frontline rollout, that
+    mask encoded nothing while disqualifying the fused SDPA kernel. Encoder input
+    narrows 109 -> 108.
     v12 drops the per-harmonic spread from the circular channels, keeping one on
     the finest harmonic of each. The auxiliary head narrows from 88 outputs to
     67 and the encoder input from 130 to 109, so a v11 checkpoint cannot load.

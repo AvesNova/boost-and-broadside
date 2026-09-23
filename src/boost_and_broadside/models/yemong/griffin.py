@@ -384,14 +384,12 @@ class YemongBlock(nn.Module):
     def step(
         self,
         x: torch.Tensor,  # (B, N+M, D)
-        alive: torch.Tensor,  # (B, N+M) bool
         h: torch.Tensor,  # (n_temporal, B*N, D)
         conv_buf: torch.Tensor,  # (n_temporal, B*N, CONV_KERNEL-1, D)
         num_recurrent: int | None = None,
         bullets: torch.Tensor | None = None,  # (B, NB, D)
         bullet_mask: torch.Tensor | None = None,  # (B, NB) bool
         map_memory: torch.Tensor | None = None,  # (B, M, D_map)
-        map_mask: torch.Tensor | None = None,  # (B, M) bool
         geometry: SpatialGeometry | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Single-step forward for rollout inference.
@@ -411,11 +409,9 @@ class YemongBlock(nn.Module):
         for spatial in self.spatial:
             x = spatial(
                 x,
-                alive,
                 bullets,
                 bullet_mask,
                 map_memory,
-                map_mask,
                 geometry,
             )  # (B, N+M, D), or ships only in K/V mode
 
@@ -438,7 +434,6 @@ class YemongBlock(nn.Module):
     def sequence(
         self,
         x: torch.Tensor,  # (T, B, N+M, D)
-        alive_mask: torch.Tensor,  # (T, B, N+M) bool
         h0: torch.Tensor,  # (n_temporal, B*N, D)
         conv_buf0: torch.Tensor,  # (n_temporal, B*N, CONV_KERNEL-1, D)
         done_mask: torch.Tensor | None = None,  # (T, B) bool
@@ -446,7 +441,6 @@ class YemongBlock(nn.Module):
         bullets: torch.Tensor | None = None,  # (T*B, NB, D)
         bullet_mask: torch.Tensor | None = None,  # (T*B, NB) bool
         map_memory: torch.Tensor | None = None,  # (T*B, M, D_map)
-        map_mask: torch.Tensor | None = None,  # (T*B, M) bool
         geometry: SpatialGeometry | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Full-sequence forward for PPO re-evaluation.
@@ -465,11 +459,9 @@ class YemongBlock(nn.Module):
         for spatial in self.spatial:
             x = spatial(
                 x.reshape(T * B, NM, D),
-                alive_mask.reshape(T * B, NM),
                 bullets,
                 bullet_mask,
                 map_memory,
-                map_mask,
                 geometry,
             ).reshape(T, B, NM, D)
 

@@ -422,7 +422,18 @@ class TestRotaryPolicy:
         assert action.shape == (3, num_ships, 3)
         assert torch.isfinite(value).all()
 
-    def test_dead_entities_still_cannot_influence_the_living(self):
+    def test_belief_valid_no_longer_excludes_a_token_as_a_key(self):
+        """Every token is a key now, and ``belief_valid`` is only an input feature.
+
+        This used to assert the opposite: that clearing ``belief_valid`` removed a
+        token from the key set. It does not any more. Every ship is revealed to
+        both teams on the decision it spawns and ``BeliefTracker.valid`` is
+        sticky, so validity is constant-true and a key-padding mask encoding it
+        bought nothing -- while costing the fused SDPA kernel, which any
+        ``attn_mask`` disqualifies.
+
+        ``tests/train/test_belief.py`` pins the constancy that makes this safe.
+        """
         policy = _policy(ROPE_MODEL_CONFIG)
         observation = _observation()
         hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
@@ -432,18 +443,14 @@ class TestRotaryPolicy:
         masked = observation.update("belief_valid", valid)
         _, _, base_value, _, _ = policy.get_action_and_value(masked, hidden)
 
-        # Move the masked-out tokens far away; the rotation of a dead key must
-        # not reach a living query. Their own outputs are expected to move --
-        # a masked token is excluded as a *key*, not deleted -- so the assertion
-        # is over the tokens that stayed alive.
         position = masked["pos"].clone()
         position[:, 5:8] += 3333.0
         moved = masked.update("pos", position)
         _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
 
-        living = torch.tensor([0, 1, 2, 3, 4, 8, 9])
-        assert torch.allclose(base_value[:, living], moved_value[:, living], atol=1e-5)
-        assert not torch.allclose(base_value[:, 5:8], moved_value[:, 5:8])
+        # Moving those tokens now reaches every other token, not just themselves.
+        others = torch.tensor([0, 1, 2, 3, 4, 8, 9])
+        assert not torch.allclose(base_value[:, others], moved_value[:, others], atol=1e-5)
 
     def test_step_and_sequence_paths_agree(self):
         """Rollout and PPO re-evaluation must rotate identically."""
@@ -742,27 +749,6 @@ class TestRelationalBias:
         assert sum(p.numel() for p in small.parameters()) == sum(
             p.numel() for p in large.parameters()
         )
-
-    def test_masked_keys_stay_masked_under_a_trained_bias(self):
-        """A finite relational term must not resurrect an infinitely-masked key."""
-        policy = _policy(RELATION_MODEL_CONFIG)
-        with torch.no_grad():
-            for block in policy.yemong_layers:
-                for sublayer in block.spatial:
-                    sublayer.relational.project.weight.normal_(0.0, 5.0)
-
-        observation = _observation()
-        valid = observation["belief_valid"].clone()
-        valid[:, 6:] = False
-        masked = observation.update("belief_valid", valid)
-        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
-        _, _, base_value, _, _ = policy.get_action_and_value(masked, hidden)
-
-        position = masked["pos"].clone()
-        position[:, 6:] += 1234.0
-        moved = masked.update("pos", position)
-        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
-        assert torch.allclose(base_value[:, :6], moved_value[:, :6], atol=1e-5)
 
     def test_the_bias_changes_the_output_once_trained(self):
         policy = _policy(RELATION_MODEL_CONFIG)
