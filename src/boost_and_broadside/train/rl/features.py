@@ -446,6 +446,10 @@ class Predictor(ABC):
         The default lines the two blocks up elementwise and lets a predictor
         reporting fewer spreads than means share its last one, which is what a
         single-phase circular predictor wants. Override to group differently.
+
+        Return ``-1`` for a dimension that reports no spread at all. Those fall
+        through to plain squared error, which is how a predictor mixes the two
+        losses across its own channels.
         """
 
         return [min(i, u_dim - 1) for i in range(p_dim)]
@@ -491,7 +495,25 @@ class FourierMomentPredictor(AbsolutePredictor):
     than a confident claim about a particular angle. A rotation predictor cannot
     express that, because it preserves unit norm by construction.
 
-    One spread per pair rather than two, because the sin and cos axes are
+    Confidence rides on the *magnitude*, not on a reported spread. Squared error
+    drives the mean to the conditional moment, whose length is the resultant at
+    that frequency -- so a harmonic the model cannot resolve shrinks toward the
+    origin, which is a uniform belief, and its phase gradient ``2r*sin(d)`` goes
+    with it. Nine of the ten harmonics therefore need no sigma at all and train
+    under plain squared error.
+
+    The finest harmonic is the exception, and the reason is gradient share
+    rather than precision. Squared error's gradient is ``2*eps``, which *shrinks*
+    as a channel becomes accurate, while a Gaussian likelihood's is ``eps/sigma^2``,
+    which *grows*. Mixing the two hands the objective to whichever channels are
+    both accurate and on the likelihood -- and position is highly predictable for
+    a ship in sight. Estimated over plausible residuals, position and attitude
+    take 0.04% of the auxiliary gradient without a sigma here and 48% with one.
+    Without it the head would learn position almost entirely from *hidden* ships,
+    whose labels are mostly unpredictable belief error, and ignore the visible
+    ones where the learnable dynamics are.
+
+    One spread for that pair rather than two, because the sin and cos axes are
     arbitrary: two independent variances would fit an axis-aligned ellipse to a
     distribution that has no preferred axis. Sharing one needs no separate loss
     branch -- two scalar Gaussian terms over a shared sigma sum to
@@ -511,15 +533,21 @@ class FourierMomentPredictor(AbsolutePredictor):
     """
 
     def uncertainty_dim(self, in_channels: int) -> int:
-        return in_channels // 2
+        return 1
 
     def uncertainty_gather(self, p_dim: int, u_dim: int) -> list[int]:
-        if p_dim != 2 * u_dim:
+        if u_dim != 1 or p_dim % 2:
             raise ValueError(
-                f"{type(self).__name__} expects one (sin, cos) block pair per harmonic, "
+                f"{type(self).__name__} reports one spread for its finest harmonic, "
                 f"got p_dim={p_dim} against u_dim={u_dim}"
             )
-        return [i % u_dim for i in range(p_dim)]
+        # Blocked layout ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so the finest
+        # harmonic is index n-1 of each block -- *not* the last two columns.
+        harmonics = p_dim // 2
+        columns = [-1] * p_dim
+        columns[harmonics - 1] = 0
+        columns[p_dim - 1] = 0
+        return columns
 
 
 class AdditivePredictor(Predictor):
@@ -1142,6 +1170,11 @@ class FeatureCoordinator:
             mask = gaussian if spec.predictor.uncertainty_kind == "gaussian" else von_mises
             columns = spec.predictor.uncertainty_gather(spec.p_dim, spec.u_dim)
             for offset, column in enumerate(columns):
+                if column < 0:
+                    # No spread reported for this dimension: it keeps plain
+                    # squared error, which is how a predictor mixes losses
+                    # across its own channels.
+                    continue
                 mask[spec.p_offset + offset] = True
                 gather[spec.p_offset + offset] = spec.u_offset + column
         cached = tuple(t.to(device) for t in (gaussian, von_mises, gather))

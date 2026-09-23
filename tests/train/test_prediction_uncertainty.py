@@ -66,12 +66,52 @@ def _split(coordinator, mean: torch.Tensor, log_var: torch.Tensor) -> torch.Tens
 
 
 def _gaussian_dims(coordinator) -> list[int]:
+    """Dimensions that actually carry a Gaussian spread.
+
+    Read from the live mask rather than from ``uncertainty_kind``: a predictor
+    can report a spread for *some* of its dimensions and leave the rest on plain
+    squared error, which is exactly what the circular features do -- one sigma on
+    the finest harmonic, nothing on the other nine.
+    """
+
+    gaussian, _von_mises, _gather = coordinator._uncertainty_layout(torch.device("cpu"))
+    return [i for i, on in enumerate(gaussian.tolist()) if on]
+
+
+def _plain_mse_dims(coordinator) -> list[int]:
+    """Dimensions with no spread at all, which fall through to squared error."""
+
+    gaussian, von_mises, _gather = coordinator._uncertainty_layout(torch.device("cpu"))
     return [
-        spec.p_offset + offset
-        for spec in coordinator._predictor_specs
-        if spec.predictor.uncertainty_kind == "gaussian"
-        for offset in range(spec.p_dim)
+        i for i, (g, v) in enumerate(zip(gaussian.tolist(), von_mises.tolist())) if not g and not v
     ]
+
+
+def test_the_circular_features_are_a_hybrid(coordinator) -> None:
+    """Nine harmonics on squared error, the finest on a likelihood.
+
+    Confidence for a harmonic pair rides on its magnitude, so no spread is
+    needed. The finest one carries a sigma anyway, for gradient share: squared
+    error's gradient shrinks as a channel becomes accurate while a likelihood's
+    grows, so a purely-MSE position would be starved against the scalar channels
+    on exactly the visible ships whose labels are learnable dynamics.
+    """
+
+    specs = {s.name: s for s in coordinator._predictor_specs}
+    with_sigma = set(_gaussian_dims(coordinator))
+    for name in ("position_x", "position_y", "attitude"):
+        spec = specs[name]
+        harmonics = spec.p_dim // 2
+        # Blocked layout: the finest harmonic is index n-1 of each half, so the
+        # sigma-bearing columns are n-1 and 2n-1 -- not the final two.
+        expected = {spec.p_offset + harmonics - 1, spec.p_offset + spec.p_dim - 1}
+        got = {d for d in with_sigma if spec.p_offset <= d < spec.p_offset + spec.p_dim}
+        assert got == expected, name
+        assert spec.u_dim == 1, name
+
+    # Velocity keeps one spread per axis: its magnitude is speed, not confidence,
+    # so it has no spare dimension to carry one.
+    assert specs["velocity"].u_dim == 2
 
 
 def test_rescaling_a_label_shifts_the_loss_by_a_constant(coordinator) -> None:

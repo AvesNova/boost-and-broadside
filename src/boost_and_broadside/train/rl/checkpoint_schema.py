@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "frontline_shields_v11"
+OBSERVATION_SCHEMA = "frontline_shields_v12"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 12,
+        "version": 13,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -62,7 +62,13 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         # (sin, cos) pair. Squared error drives an unpredictable harmonic's mean
         # to the origin, which *is* a uniform belief about that scale -- a phase
         # predictor preserves unit norm and so cannot express one.
-        "circular_targets": "absolute_harmonic_moments_paired_spread",
+        # Confidence rides on the moment magnitude, so nine of ten harmonics
+        # need no spread and train under plain squared error. The finest one
+        # carries a single isotropic sigma -- not for precision but for gradient
+        # share: squared error's gradient shrinks as a channel becomes accurate
+        # while a likelihood's grows, so without it position would be starved on
+        # exactly the visible ships whose labels are learnable dynamics.
+        "circular_targets": "absolute_harmonic_moments_finest_spread_only",
         # Per uncertainty column, so one per scalar channel and one per harmonic
         # pair. Width therefore follows the world size.
         "belief_uncertainty": "accumulated_forecast_variance_per_uncertainty_column",
@@ -106,6 +112,9 @@ def load_checkpoint_payload(
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
 
+    v12 drops the per-harmonic spread from the circular channels, keeping one on
+    the finest harmonic of each. The auxiliary head narrows from 88 outputs to
+    67 and the encoder input from 130 to 109, so a v11 checkpoint cannot load.
     v11 predicts every channel absolutely: velocity and the ship-local log index
     were the last two deltas. The tensor shapes are unchanged, which is exactly
     why this has to be gated -- a v10 head's velocity output means a *step* and a
