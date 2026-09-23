@@ -178,8 +178,8 @@ The total update combines:
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
 
-Two gates key off the same signal: the raw win rate against the scripted controller,
-taken from the evaluation battery rather than from training envs. It decays the
+Two gates key off the same signal: the score against the scripted controller — a draw
+counting half a win — taken from the evaluation battery rather than from training envs. It decays the
 behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_kl` at
 `high_winrate_threshold`. Using one measure of "is the policy strong yet" rather than two
 also keeps the trust region independent of the Elo gauge, which would otherwise need
@@ -260,7 +260,7 @@ prediction, and its own budget. That list is enforced by a test rather than by
 convention, because the profile is written independently and does not inherit from
 `rl`.
 
-Evaluation still runs during BC: the raw win rate against the scripted controller is
+Evaluation still runs during BC: the score against the scripted controller is
 what decays the cloning weight to zero at `bc_winrate_target`, and the run rates on the
 same live gauge RL continues on.
 

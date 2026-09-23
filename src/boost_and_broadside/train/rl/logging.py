@@ -11,6 +11,33 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig, Train
 from boost_and_broadside.env.wrapper import SOURCE_STAT_NAMES
 
 
+def match_metrics(match_counts: Mapping[str, tuple[int, int, int]]) -> dict[str, float]:
+    """Per-opponent outcome mix, one block per label plus the game total.
+
+    `score` counts a draw as half a win, which is what the Elo update already
+    does; `win_rate` counts it as a loss. tie_rate is the diagnostic that
+    decides how the post-hoc suite should handle draws: this game's draw
+    frequency is level-dependent rather than gap-dependent, which is exactly
+    what the standard tie models (Davidson, Rao-Kupper) cannot represent.
+    """
+    metrics: dict[str, float] = {}
+    total_games = 0
+    for label, (win, loss, tie) in match_counts.items():
+        games = win + loss + tie
+        total_games += games
+        if games == 0:
+            continue
+        metrics[f"matches/{label}/games"] = games
+        metrics[f"matches/{label}/win_rate"] = win / games
+        metrics[f"matches/{label}/score"] = (win + 0.5 * tie) / games
+        metrics[f"matches/{label}/tie_rate"] = tie / games
+        decisive = win + loss
+        if decisive > 0:
+            metrics[f"matches/{label}/decisive_win_rate"] = win / decisive
+    metrics["matches/games_total"] = total_games
+    return metrics
+
+
 class LoggingMixin:
     """Metric and logging behavior mixed into PPOTrainer."""
 
@@ -197,23 +224,7 @@ class LoggingMixin:
                     self._eval_window_live_vs_avg
                 )
         self._append_elo_history(update)
-        # Per-opponent outcome mix. tie_rate is the diagnostic that decides how
-        # the post-hoc suite should handle draws: this game's draw frequency is
-        # level-dependent rather than gap-dependent, which is exactly what the
-        # standard tie models (Davidson, Rao-Kupper) cannot represent.
-        total_games = 0
-        for label, (win, loss, tie) in self._match_counts.items():
-            games = win + loss + tie
-            total_games += games
-            if games == 0:
-                continue
-            metrics[f"matches/{label}/games"] = games
-            metrics[f"matches/{label}/win_rate"] = win / games
-            metrics[f"matches/{label}/tie_rate"] = tie / games
-            decisive = win + loss
-            if decisive > 0:
-                metrics[f"matches/{label}/decisive_win_rate"] = win / decisive
-        metrics["matches/games_total"] = total_games
+        metrics.update(match_metrics(self._match_counts))
         # One scalar per ladder entry, keyed under a shared prefix so a single
         # line-plot panel with y = `live_elo/ladder/*` overlays them all
         # natively. Frozen entries log a constant (flat line); the live policy
@@ -256,11 +267,10 @@ class LoggingMixin:
         for src, dst in [
             ("live_elo/policy", "overview/live_elo"),
             ("eval/score_vs_scripted", "overview/score_vs_scripted"),
-            # The published figure is titled "win rate vs scripted", so it is now
-            # fed the raw win rate rather than the window, which counts a draw as
-            # half and is therefore a score. The key is unchanged so the chart
-            # still renders for runs recorded before the windows moved to score.
-            ("matches/scripted/win_rate", "overview/win_rate_vs_scripted"),
+            # Draws count half, so this is the per-update score against the
+            # scripted controller rather than the raw win rate. The key is
+            # unchanged so the published chart still renders for older runs.
+            ("matches/scripted/score", "overview/win_rate_vs_scripted"),
             ("eval/score_vs_random", "overview/score_vs_random"),
             ("eval/score_vs_ladder", "overview/score_vs_ladder"),
             ("eval/score_vs_avg", "overview/score_vs_avg"),

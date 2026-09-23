@@ -28,6 +28,7 @@ from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
+from boost_and_broadside.train.rl.logging import match_metrics
 from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, PPOTrainer, _huber
 
 
@@ -507,6 +508,31 @@ class TestMatchCounts:
         elo_eval._accumulate_match_counts(won, won, tied, torch.ones_like(won), avg_active=False)
         counts = elo_eval.flush(avg_active=False).match_counts
         assert counts["random"] == (0, 0, size)
+
+
+class TestMatchMetrics:
+    """The per-opponent block published from each update's three-way record."""
+
+    def test_score_counts_a_draw_as_half_a_win(self):
+        metrics = match_metrics({"scripted": (6, 2, 2)})
+        assert metrics["matches/scripted/score"] == pytest.approx(0.7)
+        assert metrics["matches/scripted/win_rate"] == pytest.approx(0.6)
+        assert metrics["matches/scripted/decisive_win_rate"] == pytest.approx(0.75)
+        assert metrics["matches/scripted/tie_rate"] == pytest.approx(0.2)
+        assert metrics["matches/scripted/games"] == 10
+        assert metrics["matches/games_total"] == 10
+
+    def test_an_all_draw_record_scores_a_half(self):
+        """Timing out every game is neither a win nor a loss."""
+        metrics = match_metrics({"scripted": (0, 0, 8)})
+        assert metrics["matches/scripted/score"] == pytest.approx(0.5)
+        assert metrics["matches/scripted/win_rate"] == pytest.approx(0.0)
+        assert "matches/scripted/decisive_win_rate" not in metrics
+
+    def test_label_without_games_is_omitted(self):
+        metrics = match_metrics({"scripted": (0, 0, 0), "random": (1, 0, 0)})
+        assert not any(key.startswith("matches/scripted/") for key in metrics)
+        assert metrics["matches/games_total"] == 1
 
 
 class TestAvgModelTrigger:
