@@ -1601,6 +1601,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         actor_sum = _z.clone()
         bc_sum = _z.clone()
         ns_sum = _z.clone()
+        ns_visible_sum = _z.clone()
         numel = 0
         need_bc = is_primary and self._behavior_cloning_coef > 0.0
         need_ns = is_primary and self.cfg.next_state_coef > 0.0
@@ -1619,14 +1620,27 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 belief_valid = chunk.obs[ObsKey.BELIEF_VALID][
                     : mb_alive.shape[0], :, : self.buffer.num_ships
                 ].bool()
-                ns_sum += (
+                supervised = (
                     belief_valid & ~mb_terminated.unsqueeze(-1) & chunk.transition_contiguous
+                )
+                ns_sum += supervised.sum()
+                # Split the same supervised set by whether the ship was in sight.
+                # A visible token's label is one step of real dynamics; a hidden
+                # one's is mostly belief error nobody could have predicted, and
+                # the aggregate series cannot tell those apart.
+                ns_visible_sum += (
+                    supervised
+                    & chunk.obs[ObsKey.VISIBLE][
+                        : mb_alive.shape[0], :, : self.buffer.num_ships
+                    ].bool()
                 ).sum()
         return {
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
             "bc_sum": bc_sum.clamp(min=1.0).to(self.device),
             "ns_sum": ns_sum.clamp(min=1.0).to(self.device),
+            "ns_visible_sum": ns_visible_sum.clamp(min=1.0).to(self.device),
+            "ns_hidden_sum": (ns_sum - ns_visible_sum).clamp(min=1.0).to(self.device),
             "numel": float(numel),
             "adv_rms": buf.adv_rms,
         }
@@ -1800,6 +1814,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         next_state_loss = self._zero_tensor
         next_state_cont_loss = self._zero_tensor
         next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
+        next_state_visible_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu
+        next_state_hidden_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu
         label_sq_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
         _need_aux = is_primary and self.cfg.next_state_coef > 0.0
         if _need_aux:
@@ -1833,12 +1849,29 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 # Squared error, not the objective: this series predates the NLL
                 # and has to keep meaning the same thing across the change, and a
                 # likelihood is not an error anyone can read in physical units.
-                sq_err = (
-                    pred_next.float()[..., :P] - labels.detach()
-                ).pow(2) * self.aux_weights
+                sq_err = (pred_next.float()[..., :P] - labels.detach()).pow(2) * self.aux_weights
                 next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / ns_sum  # (pred_dim,) gpu, additive across chunks
+                # The same error split by whether the ship was in sight. The two
+                # halves answer different questions: a visible token's label is
+                # one step of real dynamics and measures the learned model, while
+                # a hidden one's is dominated by belief error and measures how far
+                # the recursion has drifted. Aggregated they are a mixture whose
+                # proportions move with the fog, so neither is readable alone.
+                #
+                # Masked reductions over a tensor already materialised for the
+                # aggregate, so the cost is two more passes over ``sq_err`` and
+                # no additional forward or backward work.
+                visible_f = (
+                    curr_mb_obs[ObsKey.VISIBLE][:, :, : self.buffer.num_ships].bool() & ns_mask
+                ).float()
+                next_state_visible_per_feat = (sq_err * visible_f.unsqueeze(-1)).sum(
+                    (0, 1, 2)
+                ) / denoms["ns_visible_sum"]
+                next_state_hidden_per_feat = (sq_err * (ns_mask_f - visible_f).unsqueeze(-1)).sum(
+                    (0, 1, 2)
+                ) / denoms["ns_hidden_sum"]
                 # Mean square of the *label* itself, which is what calibrates
                 # label_scale: the scale is defined as 1/std(raw label), so a
                 # well-scaled label has mean square 1 and the null model scores
@@ -1851,9 +1884,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 # makes the right scale a moving quantity rather than a property
                 # of the environment, and the series shows whether it moves
                 # enough to matter.
-                label_sq_per_feat = (
-                    labels.detach().float().pow(2) * ns_mask_f.unsqueeze(-1)
-                ).sum((0, 1, 2)) / ns_sum
+                label_sq_per_feat = (labels.detach().float().pow(2) * ns_mask_f.unsqueeze(-1)).sum(
+                    (0, 1, 2)
+                ) / ns_sum
 
         outcome_ce_loss = policy_logits.new_zeros(())
         # Always present, zeroed when the head is off: the ``_additive`` table is
@@ -1967,6 +2000,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["next_state_loss"] = next_state_loss.detach()
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
             diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
+            diag["next_state_visible_per_feat"] = next_state_visible_per_feat
+            diag["next_state_hidden_per_feat"] = next_state_hidden_per_feat
             diag["label_sq_per_feat"] = label_sq_per_feat  # (pred_dim,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
@@ -2701,6 +2736,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # modelled — off the end of a 9-name list against 10 dimensions.
         ns_feat_names = self.coordinator.get_feature_names()
         ns_per_feat_accum: list[torch.Tensor] = []
+        ns_visible_accum: list[torch.Tensor] = []
+        ns_hidden_accum: list[torch.Tensor] = []
         label_sq_accum: list[torch.Tensor] = []
         hist_returns: torch.Tensor | None = None
         hist_logprob: torch.Tensor | None = None
@@ -2828,6 +2865,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
                 k_stats: dict[str, torch.Tensor] = {}  # primary per-K moments
                 ns_feat_step: torch.Tensor | None = None
+                ns_vis_step: torch.Tensor | None = None
+                ns_hid_step: torch.Tensor | None = None
                 label_sq_step: torch.Tensor | None = None
                 hist_diag: dict = {}
 
@@ -2879,6 +2918,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                                     if ns_feat_step is None
                                     else ns_feat_step + diag["next_state_per_feat"]
                                 )
+                            for _key, _name in (
+                                ("next_state_visible_per_feat", "vis"),
+                                ("next_state_hidden_per_feat", "hid"),
+                            ):
+                                if diag.get(_key) is None:
+                                    continue
+                                if _name == "vis":
+                                    ns_vis_step = (
+                                        diag[_key]
+                                        if ns_vis_step is None
+                                        else ns_vis_step + diag[_key]
+                                    )
+                                else:
+                                    ns_hid_step = (
+                                        diag[_key]
+                                        if ns_hid_step is None
+                                        else ns_hid_step + diag[_key]
+                                    )
                             if diag.get("label_sq_per_feat") is not None:
                                 label_sq_step = (
                                     diag["label_sq_per_feat"]
@@ -2970,6 +3027,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
                 if ns_feat_step is not None:
                     ns_per_feat_accum.append(ns_feat_step)
+                if ns_vis_step is not None:
+                    ns_visible_accum.append(ns_vis_step)
+                if ns_hid_step is not None:
+                    ns_hidden_accum.append(ns_hid_step)
                 if label_sq_step is not None:
                     label_sq_accum.append(label_sq_step)
 
@@ -3012,6 +3073,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (pred_dim,)
             for i, name in enumerate(ns_feat_names):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
+
+        # The same error split by sight. A visible token's label is one step of
+        # real dynamics and measures the learned model; a hidden one's is mostly
+        # belief error and measures how far the recursion has drifted. The
+        # aggregate above is a mixture of the two whose proportions move with the
+        # fog, so a change in it cannot be attributed without these.
+        for accum, prefix in (
+            (ns_visible_accum, "next_state_visible"),
+            (ns_hidden_accum, "next_state_hidden"),
+        ):
+            if not accum:
+                continue
+            avg = torch.stack(accum).mean(0).cpu()  # (pred_dim,)
+            for i, name in enumerate(ns_feat_names):
+                metrics[f"{prefix}/{name}"] = avg[i].item()
 
         if label_sq_accum:
             # A calibrated label reads 1.0 here. The suggested scale is the

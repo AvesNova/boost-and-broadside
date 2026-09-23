@@ -1599,6 +1599,37 @@ class TestUpdateEpochsMetricKeys:
         for key in self._EXPECTED_KEYS:
             assert math.isfinite(metrics[key]), f"{key} is not finite: {metrics[key]}"
 
+    def test_next_state_error_is_split_by_sight(self, tmp_path):
+        """Visible and hidden halves must partition the aggregate exactly.
+
+        The aggregate is a mixture of two different quantities -- a visible
+        token's label is one step of real dynamics, a hidden one's is mostly
+        belief error -- and the mixing proportion moves with the fog. So a change
+        in the aggregate cannot be attributed without these, and the halves are
+        only trustworthy if they really are halves: a per-chunk denominator or a
+        mask that does not partition would both show up here as a broken
+        weighted average, which is the failure that logged accuracies above 1.0
+        in run 740.
+        """
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        runtime = trainer._initialize_rollout_runtime()
+        dones = trainer._collect_rollout(runtime, False)
+        trainer._compute_rollout_gae(runtime, dones)
+
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
+        )
+
+        names = trainer.coordinator.get_feature_names()
+        assert any(f"next_state_visible/{n}" in metrics for n in names)
+        assert any(f"next_state_hidden/{n}" in metrics for n in names)
+        for name in names:
+            for prefix in ("next_state", "next_state_visible", "next_state_hidden"):
+                key = f"{prefix}/{name}"
+                assert key in metrics, f"missing {key}"
+                assert math.isfinite(metrics[key]), f"{key} is not finite"
+                assert metrics[key] >= 0.0, f"{key} is a squared error, got {metrics[key]}"
+
     def test_gradient_split_is_measured_at_the_histogram_cadence(self, tmp_path):
         """The actor/critic split of the pre-clip gradient must be observable.
 
