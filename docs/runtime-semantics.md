@@ -323,11 +323,12 @@ generation:
 4. Release the old generation after its final episode drains.
 5. Do not begin another replacement until the previous generation has drained.
 
-This bounds normally resident/forwarded policy generations to approximately `K + 1`
-while preserving episode identity. Batched gather/scatter by generation must be measured;
-very small draining groups can be disproportionately expensive. Any drain timeout must
-be an explicit truncation policy with reported metrics, never an invisible controller
-swap.
+This bounds actively forwarded policy generations to approximately `K + 1` while
+preserving episode identity. Checkpoint weight residency is a separate concern: the
+roster's LRU cache may retain more inactive policies than the active slot generations.
+Batched gather/scatter by generation must be measured; very small draining groups can
+be disproportionately expensive. Any drain timeout must be an explicit truncation
+policy with reported metrics, never an invisible controller swap.
 
 ## Mode requirements
 

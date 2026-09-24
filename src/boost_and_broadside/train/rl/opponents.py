@@ -270,7 +270,8 @@ class OpponentMixin:
 
         Called once per rollout shard. The only device-to-host checks are here,
         never in the per-step path. At most one replacement drains at a time,
-        bounding fixed-shape policy forwards and loaded generations to ``K + 1``.
+        bounding fixed-shape policy forwards to ``K + 1`` generations. Checkpoint
+        weight residency is governed separately by the roster's LRU cache.
         """
         desired_start = self.cfg.scales[0].num_envs - self._active_league_width()
         layout_changed = False
