@@ -21,6 +21,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import frontline_ship_config
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig, VisionMode
 
 
@@ -48,11 +49,16 @@ def main() -> None:
         ),
     )
     visibility = team_visibility_from_state(env.state, ship_config, PLAY_ENV_CONFIG)
+    action_state = PendingActionState.allocate(1, PLAY_ENV_CONFIG.num_ships, "cpu")
 
     def decision() -> None:
         nonlocal visibility
-        action = agent.get_actions(env.state, visibility.ship)
-        env.step(action)
+        selected_action = agent.get_actions(env.state, visibility.ship)
+        dones, truncated, _ = advance_autonomous_decision(env, action_state, selected_action)
+        finished = dones | truncated
+        if bool(finished.any()):
+            env.reset_envs(finished)
+            action_state.reset(finished)
         visibility = team_visibility_from_state(env.state, ship_config, PLAY_ENV_CONFIG)
         renderer.draw_frame(env.state, visibility=visibility)
 

@@ -49,6 +49,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import frontline_ship_config
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 
 # --- The scaling contract -------------------------------------------------
 
@@ -179,6 +180,7 @@ def run_scenario(
     env = TensorEnv(num_envs, ship_config, env_config, device)
     env.reset(seed=seed)
     agent = StochasticScriptedAgent(ship_config, scaled_agent_config(num_ships))
+    action_state = PendingActionState.allocate(num_envs, num_ships, device)
 
     first_done = torch.full((num_envs,), -1, dtype=torch.long, device=device)
     results = torch.full((num_envs,), -1, dtype=torch.long, device=device)
@@ -190,8 +192,10 @@ def run_scenario(
             visibility = team_visibility_from_state(
                 env.state, ship_config, env_config, perceive_bullets=False
             )
-            action = agent.get_actions(env.state, visibility.ship)
-            dones, _ = env.step(action.int())
+            selected_action = agent.get_actions(env.state, visibility.ship)
+            dones, _truncated, _ = advance_autonomous_decision(
+                env, action_state, selected_action.int()
+            )
 
             live = first_done < 0
             captured = (env.state.front_delta != 0) & live
@@ -306,17 +310,32 @@ def report(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", action="append", default=None,
-                        help="ships per team, e.g. 5 or 50 (repeatable)")
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        default=None,
+        help="ships per team, e.g. 5 or 50 (repeatable)",
+    )
     parser.add_argument("--envs", type=int, default=64)
-    parser.add_argument("--max-steps", type=int, default=54_000,
-                        help="decision cap per match (54000 = 30 min at 30 Hz)")
-    parser.add_argument("--scale-vision", action="store_true",
-                        help="scale vision_range with the map instead of holding it fixed")
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=54_000,
+        help="decision cap per match (54000 = 30 min at 30 Hz)",
+    )
+    parser.add_argument(
+        "--scale-vision",
+        action="store_true",
+        help="scale vision_range with the map instead of holding it fixed",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--progress-every", type=int, default=500,
-                        help="log progress every N decisions (0 disables)")
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=500,
+        help="log progress every N decisions (0 disables)",
+    )
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -327,8 +346,12 @@ def main() -> None:
         ships = 2 * team
         name = f"{team}v{team}"
         stats, env_config, ship_config, elapsed = run_scenario(
-            ships, args.envs, args.max_steps, device,
-            scale_vision=args.scale_vision, seed=args.seed,
+            ships,
+            args.envs,
+            args.max_steps,
+            device,
+            scale_vision=args.scale_vision,
+            seed=args.seed,
             progress_every=args.progress_every,
         )
         entry = report(name, stats, env_config, ship_config, elapsed, args.max_steps)

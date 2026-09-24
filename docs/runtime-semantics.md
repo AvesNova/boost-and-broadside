@@ -5,6 +5,9 @@ reference and production conformance suites in `tests/runtime_semantics/`. Recur
 identity across respawn and causal `decision_committed` PPO masking are approved runtime
 semantics, not provisional proposals.
 
+Phase 5 validation is complete. The full migration audit and test record are in
+[`engineering/runtime-phase5-validation.md`](engineering/runtime-phase5-validation.md).
+
 The purpose of the decision runtime is to make a game transition mean the same thing in
 training, behavior cloning (BC), evaluation, Elo, interactive play, watch mode, and
 diagnostics. High-throughput and low-latency executors may schedule work differently,
@@ -413,6 +416,7 @@ Known current divergences should first be captured as strict expected failures o
 adapter-level failing tests. As each path migrates, remove the expected-failure marker;
 an unexpected pass must fail CI so temporary markers cannot become permanent.
 
-The migration is complete only after a final repository search finds no mode-specific
-observation patching or independent observe-act-step loop outside the runtime adapters,
-and after semantic conformance plus performance gates pass.
+The completed migration's architectural guards require controller-bearing advance loops
+to declare a canonical runtime mechanism and restrict raw pending-action observation
+access to its explicit owners. Fixed-action physics/render microbenchmarks remain direct
+by design because they do not represent controller decision semantics.

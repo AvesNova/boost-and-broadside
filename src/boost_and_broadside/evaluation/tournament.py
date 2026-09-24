@@ -461,15 +461,17 @@ class Tournament:
         baseline = asdict(configs[0])
         varied = set(BatchedFrontlineScriptedAgent._PARAMETERS)
         if any(
-            any(asdict(config).get(name) != value for name, value in baseline.items() if name not in varied)
+            any(
+                asdict(config).get(name) != value
+                for name, value in baseline.items()
+                if name not in varied
+            )
             for config in configs[1:]
         ):
             return None
         return ResolvedAgent(
             "scripted",
-            BatchedFrontlineScriptedAgent(
-                self.ship_config, configs, team0_index, team1_index
-            ),
+            BatchedFrontlineScriptedAgent(self.ship_config, configs, team0_index, team1_index),
         )
 
     def play_batch(self, allocation: np.ndarray, progress: "Progress | None" = None) -> int:
@@ -484,7 +486,9 @@ class Tournament:
         batched_agent = self._batched_scripted_agent(env_team0, env_team1)
         runner = MatchRunner(
             self.env,
-            [batched_agent] if batched_agent is not None else [player.agent for player in self.players],
+            [batched_agent]
+            if batched_agent is not None
+            else [player.agent for player in self.players],
             team0_index=(torch.zeros_like(env_team0) if batched_agent is not None else env_team0),
             team1_index=(torch.zeros_like(env_team1) if batched_agent is not None else env_team1),
             ship_config=self.ship_config,

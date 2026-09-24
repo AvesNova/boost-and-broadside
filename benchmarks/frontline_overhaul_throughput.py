@@ -23,6 +23,7 @@ from boost_and_broadside.env.frontline import frontline_ship_config
 from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 
 
 @torch.inference_mode()
@@ -35,6 +36,7 @@ def measure(batch: int, decisions: int) -> list[dict]:
             env = TensorEnv(batch, ship, config, "cpu")
             env.reset(seed=123)
             agent = StochasticScriptedAgent(ship, StochasticAgentConfig())
+            action_state = PendingActionState.allocate(batch, ships, "cpu")
             action = torch.zeros((batch, ships, 3), dtype=torch.long)
             action[:, :, 2] = 1
             samples = []
@@ -44,7 +46,15 @@ def measure(batch: int, decisions: int) -> list[dict]:
                     if mode == "scripted_observed":
                         sight = team_visibility_from_state(env.state, ship, config)
                         action = agent.get_actions(env.state, sight.ship)
-                    env.step(action)
+                        dones, truncated, _ = advance_autonomous_decision(env, action_state, action)
+                        finished = dones | truncated
+                        if bool(finished.any()):
+                            env.reset_envs(finished)
+                            action_state.reset(finished)
+                    else:
+                        # Fixed-action simulation microbenchmark: no controller
+                        # decision semantics are represented in this arm.
+                        env.step(action)
                     if mode == "scripted_observed":
                         observation_from_state(env.state, ship)
                 if repeat:

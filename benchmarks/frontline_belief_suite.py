@@ -25,6 +25,7 @@ from boost_and_broadside.env.frontline import frontline_ship_config
 from boost_and_broadside.env.observation import perceived_observation_from_state
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 from boost_and_broadside.train.rl.belief import DualBeliefTracker
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
@@ -105,6 +106,7 @@ def _run_learned_accuracy(
     )
     policy = bundle.policy
     hidden = policy.initial_hidden(games, env_config.num_ships, device)
+    action_state = PendingActionState.allocate(games, env_config.num_ships, device)
     tracker = DualBeliefTracker(
         games,
         env_config.num_ships,
@@ -134,6 +136,7 @@ def _run_learned_accuracy(
             env_config,
             include_bullets=bundle.reads_bullets,
         )
+        action_state.write_observation(perceived, state.ship_team_id, env_config.num_ships)
         view = tracker.compose(perceived.for_team(0))
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
             policy_action, _, _, prediction, hidden = policy.get_action_and_value(view, hidden)
@@ -170,11 +173,10 @@ def _run_learned_accuracy(
         )
 
         scripted_action = scripted.get_actions(state, sight.ship)
-        action = torch.where(
+        selected_action = torch.where(
             (state.ship_team_id == 0).unsqueeze(-1), policy_action, scripted_action
         )
-        for _ in range(env_config.action_repeat):
-            env.tick(action)
+        advance_autonomous_decision(env, action_state, selected_action)
 
         forecast = policy.coordinator.decode_targets(tracker.predicted_targets)
         forecast_pos = torch.complex(
@@ -279,6 +281,7 @@ def run_suite(
     env = TensorEnv(games, ship_config, env_config, device)
     env.reset(options={"team_sizes": (4, 4)}, seed=seed)
     agent = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
+    action_state = PendingActionState.allocate(games, env_config.num_ships, device)
 
     b, n = games, env_config.num_ships
     shape = (b, 2, n)
@@ -320,9 +323,8 @@ def run_suite(
             forecast_pos.real.remainder(world_w), forecast_pos.imag.remainder(world_h)
         )
 
-        action = agent.get_actions(state, sight.ship)
-        for _ in range(env_config.action_repeat):
-            env.tick(action)
+        selected_action = agent.get_actions(state, sight.ship)
+        advance_autonomous_decision(env, action_state, selected_action)
 
         next_state = env.state
         transition_contiguous = ~next_state.ship_respawned[:, None, :]

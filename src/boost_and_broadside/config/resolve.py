@@ -440,9 +440,11 @@ def resolve_profile(
     # The profile carries the 5v5 reference map; the fleet it is being resolved
     # for decides the geometry actually played on. Applied here, once, so every
     # training scale gets a density-matched map without the profile restating it.
-    scaled_ship_config, scaled_frontline = scaled_frontline_geometry(
-        profile.ship_config, profile.frontline, profile.num_ships
-    ) if profile.frontline is not None else (profile.ship_config, profile.frontline)
+    scaled_ship_config, scaled_frontline = (
+        scaled_frontline_geometry(profile.ship_config, profile.frontline, profile.num_ships)
+        if profile.frontline is not None
+        else (profile.ship_config, profile.frontline)
+    )
 
     env_config = EnvConfig(
         num_ships=profile.num_ships,

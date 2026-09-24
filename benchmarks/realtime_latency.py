@@ -42,6 +42,7 @@ import json
 import os
 import statistics
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -175,6 +176,7 @@ def measure(
     perception_compile_mode: str | None = None,
     collision_compile_mode: str | None = None,
     cuda_graph_tick: bool = False,
+    perception_override: Callable[..., tuple] | None = None,
 ) -> dict:
     """Time one interactive frame's worth of work, repeatedly."""
 
@@ -202,6 +204,11 @@ def measure(
         interactive_cuda_graph=cuda_graph_tick,
         interactive_perception_compile_mode=perception_compile_mode,
     )
+    if perception_override is not None:
+        # Benchmark-only injection for observation-builder A/B experiments.
+        # Both reset and the selected step path must use the same arm.
+        wrapper._perceive = perception_override
+        wrapper._interactive_perceive = perception_override
     observation = wrapper.reset()
     action_state = PendingActionState.allocate(1, ships, device)
     if cuda_graph_tick and environment_step != "step_interactive":

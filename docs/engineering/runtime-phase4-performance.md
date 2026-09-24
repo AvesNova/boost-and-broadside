@@ -20,9 +20,11 @@ The separate CUDA streams remain useful. Serializing environment and network wor
 the rollout phase 2.5% slower and the complete update 1.3% slower in the measured host
 state.
 
-The 30/60 FPS targets were not demonstrated. Absolute single-game timing varied sharply
-with the laptop's operating state, while the paired comparisons remained directionally
-stable. Further real-time optimization is still required.
+The measured low-power configuration did not meet the 30/60 FPS targets. Absolute
+single-game timing varied sharply during the session, while the paired comparisons
+remained directionally stable. This variability calls for interleaved repetitions, not
+for a different power mode: low-power operation is the project's established benchmark
+condition and its results are valid. Further real-time optimization is still required.
 
 ## Method and machine state
 
@@ -116,11 +118,12 @@ the observed machine-state noise rather than a repeatable regression. A stream-s
 low-N run was slower than sequential execution in this CPU-dispatch-limited state, so
 sequential remains the relevant low-latency result for now.
 
-Absolute results are not stable enough to certify an FPS ceiling. Earlier in the same
-Phase 4 session, the old revision measured 35.13 ms at 50v50 (28.5 Hz), versus about
-120 ms during the paired series. This fourfold movement without a code change tracks the
-power/governor observations. The paired result answers the refactor-regression question;
-it does not answer whether a normally powered machine can sustain 30 or 60 FPS.
+Absolute results varied too much to infer a precise hardware ceiling. Earlier in the
+same Phase 4 session, the old revision measured 35.13 ms at 50v50 (28.5 Hz), versus
+about 120 ms during the paired series. This fourfold movement without a code change is
+why comparisons must remain repeated and interleaved. It does not invalidate the tested
+condition: neither the paired 5v5 nor 50v50 workload met 30 FPS, so the current low-power
+performance result is a failed real-time target, not an unresolved benchmark gate.
 
 ## Episode-stable neural league identity
 
@@ -174,7 +177,9 @@ Phase 4's relative performance gate passes: the shared semantic primitives did n
 a meaningful regression in either tested regime, and CUDA-stream overlap remains intact.
 The small model/runtime memory increase is acceptable.
 
-The absolute real-time gate remains open. Re-test 5v5 and 50v50 under a stable,
-normally powered operating state before claiming 30 or 60 FPS. Separately, add long-run
-telemetry for league generation count, drain duration, checkpoint loads/evictions, and
-resident policy memory before changing the stable-identity design or roster cache.
+The absolute real-time gate fails in the established low-power benchmark condition;
+meeting it requires future optimization, not different hardware or a different power
+mode. Continue to use repeated, interleaved measurements because the condition still
+showed substantial clock/load variation. Separately, add long-run telemetry for league
+generation count, drain duration, checkpoint loads/evictions, and resident policy memory
+before changing the stable-identity design or roster cache.

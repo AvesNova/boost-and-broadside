@@ -48,6 +48,7 @@ from boost_and_broadside.config.core import EnvConfig, ModelConfig, entity_token
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import perceived_observation_from_state
 from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 
@@ -161,9 +162,7 @@ def _attention_backends(model_config: ModelConfig, tokens: int, num_envs: int) -
     query = torch.zeros(shape, device="cuda", dtype=torch.bfloat16)
     masks = {
         "unmasked": None,
-        "key_padding": torch.zeros(
-            (num_envs, 1, 1, tokens), device="cuda", dtype=torch.bfloat16
-        ),
+        "key_padding": torch.zeros((num_envs, 1, 1, tokens), device="cuda", dtype=torch.bfloat16),
         "relational": torch.zeros(
             (num_envs, heads, tokens, tokens), device="cuda", dtype=torch.bfloat16
         ),
@@ -239,20 +238,28 @@ def run_scenario(
         device,
     )
     hidden = policy.initial_hidden(scenario.num_envs, scenario.num_ships, device)
+    action_state = PendingActionState.allocate(scenario.num_envs, scenario.num_ships, device)
 
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
 
     def one_step(state_hidden: torch.Tensor) -> torch.Tensor:
         observation, _ = perceived_observation_from_state(env.state, ship_config, env_config)
+        action_state.write_observation(
+            observation,
+            env.state.ship_team_id,
+            scenario.num_ships,
+        )
         view = belief.compose(observation.for_team(0))
         action, _, _, prediction, new_hidden = policy.get_action_and_value(view, state_hidden)
         belief.advance(view, prediction)
-        dones, _ = env.step(action.int())
-        if bool(dones.any()):
-            env.reset_envs(dones)
-            belief.reset(dones)
-            new_hidden = policy.reset_hidden_for_envs(new_hidden, dones, scenario.num_ships)
+        dones, truncated, _ = advance_autonomous_decision(env, action_state, action.int())
+        finished = dones | truncated
+        if bool(finished.any()):
+            env.reset_envs(finished)
+            action_state.reset(finished)
+            belief.reset(finished)
+            new_hidden = policy.reset_hidden_for_envs(new_hidden, finished, scenario.num_ships)
         return new_hidden
 
     for _ in range(warmup):
@@ -267,6 +274,7 @@ def run_scenario(
 
     # Policy forward alone, on a fixed observation so no simulator work is timed.
     observation, _ = perceived_observation_from_state(env.state, ship_config, env_config)
+    action_state.write_observation(observation, env.state.ship_team_id, scenario.num_ships)
     view = belief.compose(observation.for_team(0))
     for _ in range(5):
         policy.get_action_and_value(view, hidden)
