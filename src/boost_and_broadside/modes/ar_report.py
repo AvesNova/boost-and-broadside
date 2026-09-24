@@ -18,17 +18,17 @@ import torch
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import EnvConfig, ModelConfig, RewardConfig, ShipConfig
 from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
-from boost_and_broadside.env.observation import YemongObservation
-from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.env.observation import YemongObservation, observation_from_state
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
-    agents_read_bullets,
     get_actions,
-    init_hidden,
     resolve_agent_spec,
 )
-from boost_and_broadside.evaluation.environment import resolve_evaluation_environment
-from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.environment import (
+    create_evaluation_env,
+    resolve_evaluation_environment,
+)
+from boost_and_broadside.evaluation.match import MatchRunner
 from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
 
@@ -120,60 +120,69 @@ def run_ar_report_mode(
         env_config, (agent0, agent1), ship_config=ship_config
     )
 
-    wrapper = YemongEnvWrapper(
-        num_envs=1,
-        ship_config=ship_config,
-        env_config=env_config,
-        rewards=rewards,
-        device=device,
-        include_bullets=agents_read_bullets(agent0, agent1),
-    )
-
-    N = wrapper.num_ships
+    del rewards  # The shared evaluation runtime does not compute training rewards.
+    env = create_evaluation_env(1, ship_config, env_config, device)
+    N = env_config.num_ships
 
     print("Running ground truth simulation...")
-    obs = wrapper.reset()
-    init_hidden(agent0, 1, device)
-    init_hidden(agent1, 1, device)
-
-    # Save initial state for AR
-    init_obs = YemongObservation(data={k: v.clone() for k, v in obs.items()})
-    init_hidden0 = agent0.hidden.clone() if agent0.hidden is not None else None
-    init_hidden1 = agent1.hidden.clone() if agent1.hidden is not None else None
+    env.reset()
+    runner = MatchRunner(
+        env,
+        [agent0, agent1],
+        torch.zeros(1, dtype=torch.long, device=device),
+        torch.ones(1, dtype=torch.long, device=device),
+        ship_config,
+        N,
+    )
+    runner.init_hidden()
 
     history_sim: History = []
     actions_sim = []
+    init_obs = None
+    init_hidden0 = None
+    init_hidden1 = None
 
     for step in range(num_steps):
-        state = wrapper.state
-        action0 = get_actions(agent0, obs, state, 1, N, device, return_pred_next=False)
-        action1 = get_actions(agent1, obs, state, 1, N, device, return_pred_next=False)
+        truth_obs = observation_from_state(
+            env.state, ship_config, include_bullets=runner.include_bullets
+        )
+        hidden0_before = agent0.hidden.clone() if agent0.hidden is not None else None
+        hidden1_before = agent1.hidden.clone() if agent1.hidden is not None else None
+        policy_obs = runner.observe()
+        selection = runner.select_actions(policy_obs, trace_agents=frozenset({0, 1}))
+        actions_sim.append(selection.action.clone())
 
-        team_id = obs["team_id"][:, :N]
-        action = merge_team_actions(action0, action1, team_id)
-        actions_sim.append(action.clone())
+        if init_obs is None:
+            # AR replay is anchored to the exact model input used for the first
+            # real decision, including belief and the neutral pending queue.
+            first_view = selection.observations.get(0, policy_obs.for_team(0))
+            init_obs = _clone_observation(first_view)
+            init_hidden0 = hidden0_before
+            init_hidden1 = hidden1_before
 
         history_sim.append(
             {
-                "pos": obs["pos"][:, :N].clone(),
-                "vel": obs["vel"][:, :N].clone(),
-                "att": obs["att"][:, :N].clone(),
-                "ang_vel": obs["ang_vel"][:, :N].clone(),
-                "health": obs["health"][:, :N].clone(),
-                "power": obs["power"][:, :N].clone(),
-                "cooldown": obs["cooldown"][:, :N].clone(),
-                "alive": obs["alive"][:, :N].clone(),
-                "alive_prob": torch.ones_like(obs["alive"][:, :N], dtype=torch.float32),
+                "pos": truth_obs["pos"][:, :N].clone(),
+                "vel": truth_obs["vel"][:, :N].clone(),
+                "att": truth_obs["att"][:, :N].clone(),
+                "ang_vel": truth_obs["ang_vel"][:, :N].clone(),
+                "health": truth_obs["health"][:, :N].clone(),
+                "power": truth_obs["power"][:, :N].clone(),
+                "cooldown": truth_obs["cooldown"][:, :N].clone(),
+                "alive": truth_obs["alive"][:, :N].clone(),
+                "alive_prob": torch.ones_like(truth_obs["alive"][:, :N], dtype=torch.float32),
             }
         )
 
-        obs, _, terminated, truncated, _ = wrapper.step(action)
+        terminated, truncated = runner.advance(selection.action)
 
-        if terminated or truncated:
+        if bool((terminated | truncated).any()):
             print(f"Episode finished early at step {step}. Truncating rollout.")
             break
 
     actual_steps = len(history_sim)
+    if init_obs is None:
+        raise ValueError("ar-report requires at least one decision step")
 
     print("Running AR Rollout (Closed Loop)...")
     history_closed = _run_ar(
@@ -197,7 +206,7 @@ def run_ar_report_mode(
         init_hidden1,
         actual_steps,
         N,
-        None,
+        actions_sim,
         False,
     )
 
@@ -272,6 +281,18 @@ def _rollout_arrays(prefix: str, history: History) -> dict[str, np.ndarray]:
     }
 
 
+def _clone_observation(observation: YemongObservation) -> YemongObservation:
+    """Detach a diagnostic snapshot from the runtime's mutable buffers."""
+    return YemongObservation(
+        data={key: value.clone() for key, value in observation.items()},
+        bullets=(
+            None
+            if observation.bullets is None
+            else {key: value.clone() for key, value in observation.bullets.items()}
+        ),
+    )
+
+
 def _run_ar(
     agent0: ResolvedAgent,
     agent1: ResolvedAgent,
@@ -283,7 +304,7 @@ def _run_ar(
     forced_actions: list[torch.Tensor] | None,
     is_closed_loop: bool,
 ) -> History:
-    obs = YemongObservation(data={k: v.clone() for k, v in init_obs.items()})
+    obs = _clone_observation(init_obs)
     if agent0.hidden is not None:
         agent0.hidden = init_hidden0.clone()
     if agent1.hidden is not None:
@@ -300,12 +321,26 @@ def _run_ar(
     curr_ship_targets = coordinator.get_target_vector(obs)[:, :N] if coordinator else None
 
     for step in range(num_steps):
-        action0, pred_next0 = get_actions(
-            agent0, obs, None, 1, N, obs["pos"].device, return_pred_next=True
+        recorded = (
+            forced_actions[step]
+            if forced_actions is not None
+            else torch.zeros((1, N, 3), dtype=torch.int32, device=obs["pos"].device)
         )
-        action1, pred_next1 = get_actions(
-            agent1, obs, None, 1, N, obs["pos"].device, return_pred_next=True
-        )
+        if agent0.kind == "policy":
+            action0, pred_next0 = get_actions(
+                agent0, obs, None, 1, N, obs["pos"].device, return_pred_next=True
+            )
+        else:
+            # Scripted/random controllers require authoritative physics state,
+            # which an imagined observation cannot reconstruct. Reuse the real
+            # episode's decision for their side while neural policies remain AR.
+            action0, pred_next0 = recorded, None
+        if agent1.kind == "policy":
+            action1, pred_next1 = get_actions(
+                agent1, obs, None, 1, N, obs["pos"].device, return_pred_next=True
+            )
+        else:
+            action1, pred_next1 = recorded, None
 
         team_id = obs["team_id"][:, :N]
         mask = (team_id == 0).unsqueeze(-1)

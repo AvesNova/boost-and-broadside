@@ -83,12 +83,15 @@ emits one output per ship, however many there are.
   simulator lives in
   [`env.py`](src/boost_and_broadside/env/env.py).
 - The [policy architecture](docs/architecture.md) combines spatial attention, Griffin
-  recurrence, factored action heads, decomposed value estimates, and auxiliary dynamics
+  recurrence, a joint 42-command action head, decomposed value estimates, and auxiliary dynamics
   prediction. See
   [`YemongPolicy`](src/boost_and_broadside/models/yemong/policy.py).
 - The [training system](docs/training.md) uses recurrent PPO with scripted, self-play,
   running-average, and historical opponents. The update logic is in
   [`ppo.py`](src/boost_and_broadside/train/rl/ppo.py).
+- The [decision-runtime contract](docs/runtime-semantics.md) specifies action timing,
+  reset/respawn behavior, perspective privacy, controller lifecycle, and the conformance
+  requirements shared by training, evaluation, Elo, diagnostics, and real-time execution.
 - [Evaluation](docs/evaluation.md) and [seeded replays](docs/replays.md) connect aggregate
   measurements with qualitative behavior. The crossover evaluator is
   [`crossover.py`](src/boost_and_broadside/modes/crossover.py).

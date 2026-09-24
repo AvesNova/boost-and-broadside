@@ -16,13 +16,12 @@ from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.modes.interactive import (
     PLAY_ENV_CONFIG,
     _apply_keyboard_override,
-    _apply_policy_action_delay,
     _frontline_interactive_config,
     _interactive_device,
     _interactive_render_config,
     _selected_human_mask,
-    _set_observation_previous_action,
 )
+from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.ui.renderer import RenderConfig
 
 
@@ -73,17 +72,20 @@ def test_spectator_selection_leaves_every_ship_scripted() -> None:
     assert torch.equal(result, action)
 
 
-def test_policy_actions_are_delayed_while_scripted_actions_are_immediate() -> None:
-    team_id = torch.tensor([[0, 1, 0, 1]], dtype=torch.int32)
+def test_all_autonomous_actions_use_the_delayed_queue() -> None:
     decided = torch.tensor([[[1, 1, 1], [2, 2, 0], [1, 3, 0], [0, 4, 1]]], dtype=torch.int32)
     buffered = torch.tensor([[[2, 6, 0], [1, 5, 1], [0, 2, 1], [2, 1, 0]]], dtype=torch.int32)
+    action_state = PendingActionState(buffered.clone())
 
-    applied, next_buffer = _apply_policy_action_delay(decided, buffered, team_id, frozenset({0}))
+    applied = action_state.applied_action().clone()
+    action_state.commit(
+        decided,
+        torch.ones((1, 4), dtype=torch.bool),
+        torch.zeros(1, dtype=torch.bool),
+    )
 
-    assert torch.equal(applied[:, (0, 2)], buffered[:, (0, 2)])
-    assert torch.equal(applied[:, (1, 3)], decided[:, (1, 3)])
-    assert torch.equal(next_buffer[:, (0, 2)], decided[:, (0, 2)])
-    assert torch.equal(next_buffer[:, (1, 3)], torch.zeros((1, 2, 3), dtype=torch.int32))
+    assert torch.equal(applied, buffered)
+    assert torch.equal(action_state.pending, decided)
 
 
 def test_human_policy_override_is_immediate_and_clears_its_policy_buffer_slot() -> None:
@@ -91,16 +93,21 @@ def test_human_policy_override_is_immediate_and_clears_its_policy_buffer_slot() 
     decided = torch.tensor([[[1, 3, 1], [2, 4, 0]]], dtype=torch.int32)
     buffered = torch.tensor([[[2, 6, 0], [1, 5, 1]]], dtype=torch.int32)
     human = _selected_human_mask(team_id, True, 0)
+    action_state = PendingActionState(buffered.clone())
 
-    applied, next_buffer = _apply_policy_action_delay(
-        decided, buffered, team_id, frozenset({0}), immediate_mask=human
+    applied = action_state.applied_action(decided, human)
+    action_state.commit(
+        decided,
+        torch.ones((1, 2), dtype=torch.bool),
+        torch.zeros(1, dtype=torch.bool),
+        immediate_mask=human,
     )
 
     assert torch.equal(applied[0, 0], decided[0, 0])
-    assert torch.equal(next_buffer[0, 0], torch.zeros(3, dtype=torch.int32))
+    assert torch.equal(action_state.pending[0, 0], torch.zeros(3, dtype=torch.int32))
     # Releasing control returns the policy ship to its neutral queued first tick,
     # never to a stale keyboard action.
-    released, _ = _apply_policy_action_delay(decided, next_buffer, team_id, frozenset({0}))
+    released = action_state.applied_action()
     assert torch.equal(released[0, 0], torch.zeros(3, dtype=torch.int32))
 
 
@@ -133,18 +140,22 @@ def test_play_and_watch_share_frontline_sizing_and_dev_render_configuration() ->
 
 
 def test_policy_action_buffer_starts_with_neutral_first_tick() -> None:
-    team_id = torch.tensor([[0, 1]], dtype=torch.int32)
     decided = torch.tensor([[[1, 3, 1], [2, 4, 1]]], dtype=torch.int32)
+    action_state = PendingActionState.allocate(1, 2, "cpu")
 
-    applied, _ = _apply_policy_action_delay(
-        decided, torch.zeros_like(decided), team_id, frozenset({0})
+    applied = action_state.applied_action().clone()
+    action_state.commit(
+        decided,
+        torch.ones((1, 2), dtype=torch.bool),
+        torch.zeros(1, dtype=torch.bool),
     )
 
     assert torch.equal(applied[0, 0], torch.zeros(3, dtype=torch.int32))
-    assert torch.equal(applied[0, 1], decided[0, 1])
+    assert torch.equal(applied[0, 1], torch.zeros(3, dtype=torch.int32))
+    assert torch.equal(action_state.pending, decided)
 
 
-def test_next_observation_exposes_queued_action_to_both_team_views() -> None:
+def test_next_observation_exposes_own_queue_and_masks_opponent_queue() -> None:
     previous = torch.zeros((1, 3, 3), dtype=torch.float32)
     team1_previous = torch.zeros_like(previous)
     observation = YemongObservation(
@@ -152,9 +163,14 @@ def test_next_observation_exposes_queued_action_to_both_team_views() -> None:
         team1_data={ObsKey.PREVIOUS_ACTION: team1_previous},
     )
     decided = torch.tensor([[[1, 3, 1], [2, 4, 0]]], dtype=torch.int32)
+    team_id = torch.tensor([[0, 1]], dtype=torch.int32)
+    action_state = PendingActionState(decided)
 
-    _set_observation_previous_action(observation, decided, num_ships=2)
+    action_state.write_observation(observation, team_id, num_ships=2)
 
-    assert torch.equal(previous[:, :2], decided.float())
-    assert torch.equal(team1_previous[:, :2], decided.float())
+    private = torch.tensor([3, 7, 2], dtype=torch.float32)
+    assert torch.equal(previous[0, 0], decided[0, 0].float())
+    assert torch.equal(previous[0, 1], private)
+    assert torch.equal(team1_previous[0, 0], private)
+    assert torch.equal(team1_previous[0, 1], decided[0, 1].float())
     assert torch.equal(previous[:, 2], torch.zeros((1, 3)))

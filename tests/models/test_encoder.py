@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from boost_and_broadside.config import ModelConfig, ShipConfig
+from boost_and_broadside.constants import TOTAL_ACTION_LOGITS
 from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
 from boost_and_broadside.models.yemong.attention import TransformerBlock
 from boost_and_broadside.models.yemong.encoder import ShipEncoder
@@ -394,7 +395,7 @@ class TestYemongPolicy:
         assert logprob.shape == (T, B, N)
         assert entropy.shape == (T, B, N)
         assert new_value.shape == (T, B, N, K)
-        assert logits.shape == (T, B, N, 12)
+        assert logits.shape == (T, B, N, TOTAL_ACTION_LOGITS)
 
     def test_hidden_reset_zeros_done_envs(self, model_cfg, coordinator):
         """reset_hidden_for_envs must zero hidden states for done environments."""

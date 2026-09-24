@@ -101,7 +101,8 @@ decision of action latency: the step that advances the environment applies the a
 chosen on the *previous* decision, while the policy computes the next one from the
 current observation.
 
-The observation is what makes that Markov. `previous_action` does not hold the action
+The observation is what makes that Markov. The serialized `previous_action` channel is
+the policy-facing pending action; it does not hold the action
 that already ran. It holds the action **about to be applied**, written into the
 observation as it is handed forward. So the stored transition is
 `(state, pending action) → action`, and a chosen action shows up in the reward one step
@@ -110,8 +111,9 @@ later, which GAE handles through the value function.
 Two consequences worth knowing before touching the auxiliary losses:
 
 - The channel is `(B, tokens, 3)`, so spatial attention lets each team read its allies'
-  pending actions. Enemy pending actions are always replaced with zero, including when the
-  enemy ship is visible; the team label makes that absence unambiguous.
+  pending actions. Enemy pending actions use the explicit private triple `(3, 7, 2)`,
+  including when the enemy ship is visible. Private is therefore never confused with the
+  valid neutral command `(0, 0, 0)`.
 - One-step next-state prediction is therefore a *deterministic* function of the
   observation (up to `bullet_spread`), not merely a short-horizon one. That is why it is
   a weak representation signal and why longer-horizon prediction is the useful version.
@@ -120,7 +122,7 @@ A logical update proceeds as follows:
 
 1. collect `T` actions while preserving `T+1` observations for bootstrap and next-state
    labels;
-2. record actions, factored log probabilities, per-component values/rewards, masks, and
+2. record actions, joint-command log probabilities, per-component values/rewards, masks, and
    recurrent boundary state in the [`RolloutBuffer`](../src/boost_and_broadside/train/rl/buffer.py);
 3. compute per-component GAE and return-normalization statistics;
 4. re-evaluate complete recurrent sequences with the stored initial hidden state;
@@ -220,7 +222,7 @@ is the retained resource channel name; it carries shield level in Frontline.
 `shield_delay` is observed and predicted. Attitude Fourier features consume the
 angle `atan2(sin(att), cos(att))`, and its prediction target is those same features --
 position and attitude are predicted as absolute Fourier moments rather than phase shifts.
-Checkpoints use `frontline_shields_v15`; older weights require retraining.
+Checkpoints use `joint_actions_private_pending_v17`; older weights require retraining.
 
 Projectile damage rewards use actual shield removed, proportionally divided among
 simultaneous attackers. Raw impact attribution remains separate so a finishing hit
@@ -576,8 +578,9 @@ Three compatibility rules follow from that:
   are part of the learned
   input contract. Radius is shared across object types and normalized by half the shorter
   world dimension; ship-local `grad(n)` remains explicit. Payloads carry
-  `observation_schema=frontline_shields_v15`. Successful firing globally reveals the shooter
-  for the current sample, which is also a learned-input semantic. Earlier schemas have no
+  `observation_schema=joint_actions_private_pending_v17`. Successful firing globally
+  reveals the shooter for the current sample, which is also a learned-input semantic.
+  Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.
 - **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so
   weights trained under different ones were fitted to differently-scaled inputs. A

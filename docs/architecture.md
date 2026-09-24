@@ -2,7 +2,7 @@
 
 `YemongPolicy` is a centralized recurrent controller. It reads the full scene, exchanges
 information across entities with spatial attention, carries per-entity memory through
-time, and emits a factored action for every ship in the learned fleet. Its name (*Yemong*,
+time, and emits a joint physical command for every ship in the learned fleet. Its name (*Yemong*,
 from the Korean 예몽, a dream that foretells the future) comes from the auxiliary head that
 learns to predict the next state of the world. Zero-shot transfer across team sizes comes
 from its variable-cardinality design, described [below](#why-team-size-can-change).
@@ -26,7 +26,7 @@ FeatureCoordinator → encoder MLP            bullet encoder
  → temporal Griffin/RG-LRU ×T] × blocks
     ↓
 ship tokens only
-    ├── factored action distributions (per ship)
+    ├── joint 42-command action distribution (per ship)
     ├── decomposed value estimates (per ship/component)
     └── next-state predictions (per ship)
 ```
@@ -61,7 +61,7 @@ reason about fire aimed at an ally it might support.
 
 [`observation_from_state`](../src/boost_and_broadside/env/observation.py) exposes global
 position, velocity, attitude, angular velocity, shield/health, power, cooldown, shield
-recharge delay, team identity, alive state, radius, previous action, ship-local encoded
+recharge delay, team identity, alive state, radius, pending action, ship-local encoded
 log index, and the local
 refractive-index gradient. Fields are appended as always-alive entity tokens with team ID
 2, zero motion/action channels, and numeric physical features: transition width, absolute
@@ -305,9 +305,15 @@ equivalence, attention masking, dtype behavior, and gradient checkpointing.
 
 ## Per-ship action head
 
-The action head emits 12 logits for each ship and splits them into categorical power,
-turn, and shoot distributions with sizes 3, 7, and 2. Actions and entropy remain factored;
-the joint log probability is the sum of the three selected sub-action log probabilities.
+The action head emits one categorical distribution over the Cartesian product of power,
+turn, and shoot: `3 * 7 * 2 = 42` logits per ship. A sampled joint ID is decoded to the
+compact `(power, turn, shoot)` triple consumed by physics. PPO log probability and entropy
+belong to this joint distribution, so the policy may model correlations between factors.
+
+Pending actions remain factorized in the observation because the three indices are compact
+and interpretable. Each factor has an observation-only private category (`3`, `7`, and `2`
+respectively); these values are distinct from neutral and are rejected by the physical
+action codec.
 
 The output shape is `(B, N, 3)` action indices.
 

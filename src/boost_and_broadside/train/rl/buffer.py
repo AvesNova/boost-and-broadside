@@ -40,6 +40,7 @@ class MicroBatch(NamedTuple):
     alive: torch.Tensor
     hidden: torch.Tensor
     actor_mask: torch.Tensor
+    decision_committed: torch.Tensor
     expert_probs: torch.Tensor
     terminated: torch.Tensor
     transition_contiguous: torch.Tensor
@@ -73,6 +74,7 @@ class MicroBatch(NamedTuple):
             alive=self.alive.pin_memory(),
             hidden=self.hidden.pin_memory(),
             actor_mask=self.actor_mask.pin_memory(),
+            decision_committed=self.decision_committed.pin_memory(),
             expert_probs=self.expert_probs.pin_memory(),
             terminated=self.terminated.pin_memory(),
             outcome_class=self.outcome_class.pin_memory(),
@@ -103,6 +105,7 @@ class MicroBatch(NamedTuple):
             alive=self.alive.to(device=device, non_blocking=non_blocking),
             hidden=self.hidden.to(device=device, non_blocking=non_blocking),
             actor_mask=self.actor_mask.to(device=device, non_blocking=non_blocking),
+            decision_committed=self.decision_committed.to(device=device, non_blocking=non_blocking),
             expert_probs=self.expert_probs.to(device=device, non_blocking=non_blocking),
             terminated=self.terminated.to(device=device, non_blocking=non_blocking),
             outcome_class=self.outcome_class.to(device=device, non_blocking=non_blocking),
@@ -159,6 +162,7 @@ class MicroBatch(NamedTuple):
             alive=self.alive[:, start:end],
             hidden=hidden.reshape(n_layers, (end - start) * num_recurrent, hidden_width),
             actor_mask=self.actor_mask[:, start:end],
+            decision_committed=self.decision_committed[:, start:end],
             expert_probs=self.expert_probs[:, start:end],
             terminated=self.terminated[:, start:end],
             outcome_class=self.outcome_class[:, start:end],
@@ -601,6 +605,7 @@ class RolloutBuffer:
         prediction_target_dim: int = 0,
         prediction_dim: int = 0,
         uncertainty_dim: int = 0,
+        store_expert_probs: bool = True,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
@@ -733,7 +738,13 @@ class RolloutBuffer:
         self.belief_diagnostics: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
 
         self.actor_masks = torch.ones((T, B, N), device=device, dtype=torch.bool)
-        self.expert_probs = torch.zeros((T, B, N, 12), device=device, dtype=_STORAGE_FLOAT)
+        self.decision_committed = torch.ones((T, B, N), device=device, dtype=torch.bool)
+        # A zero-width tensor keeps MicroBatch structurally uniform without
+        # reserving rollout memory in schedules that never enable BC.
+        expert_width = 12 if store_expert_probs else 0
+        self.expert_probs = torch.zeros(
+            (T, B, N, expert_width), device=device, dtype=_STORAGE_FLOAT
+        )
 
         # Episode termination mask: done | truncated — used to exclude terminal transitions
         # from the aux next-state prediction loss.
@@ -806,6 +817,7 @@ class RolloutBuffer:
         value: torch.Tensor,
         alive: torch.Tensor,
         actor_mask: torch.Tensor | None = None,
+        decision_committed: torch.Tensor | None = None,
         expert_probs: torch.Tensor | None = None,
         terminated: torch.Tensor | None = None,
         transition_contiguous: torch.Tensor | None = None,
@@ -823,6 +835,9 @@ class RolloutBuffer:
             alive:        (B, N) bool.
             actor_mask:   (B, N) bool — True for ships that should contribute to actor loss.
                           Defaults to all-True (pure self-play).
+            decision_committed: (B, N) bool — True where the selected action entered
+                          the continuing actuator queue. Used for causal PPO credit,
+                          not BC supervision or entropy regularization.
             expert_probs: (B, N, 12) float — scripted-agent marginal probs for BC loss.
                           Zero for envs without a scripted opponent.
             terminated:   (B,) bool — True when the episode ended (done | truncated).
@@ -846,7 +861,12 @@ class RolloutBuffer:
         self.values[t] = value
         self.alive_mask[t] = alive
         self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
+        self.decision_committed[t] = (
+            decision_committed if decision_committed is not None else torch.ones_like(alive)
+        )
         if expert_probs is not None:
+            if self.expert_probs.shape[-1] == 0:
+                raise ValueError("expert probabilities supplied to a buffer with BC storage off")
             self.expert_probs[t] = expert_probs
         if terminated is not None:
             self.terminated[t] = terminated
@@ -1019,6 +1039,7 @@ class RolloutBuffer:
                         alive=self.alive_mask[:, idx],
                         hidden=mb_hidden.contiguous(),
                         actor_mask=self.actor_masks[:, idx],
+                        decision_committed=self.decision_committed[:, idx],
                         expert_probs=self.expert_probs[:, idx],
                         terminated=self.terminated[:, idx],
                         outcome_class=self.outcome_class[:, idx],
@@ -1065,6 +1086,7 @@ class StoredRollout:
         self.returns = source.returns.detach().to(device="cpu", copy=True)
         self.alive_mask = source.alive_mask.detach().to(device="cpu", copy=True)
         self.actor_masks = source.actor_masks.detach().to(device="cpu", copy=True)
+        self.decision_committed = source.decision_committed.detach().to(device="cpu", copy=True)
         self.expert_probs = source.expert_probs.detach().to(device="cpu", copy=True)
         self.terminated = source.terminated.detach().to(device="cpu", copy=True)
         self.outcome_class = source.outcome_class.detach().to(device="cpu", copy=True)
@@ -1097,6 +1119,7 @@ class StoredRollout:
         destination.returns.copy_(self.returns)
         destination.alive_mask.copy_(self.alive_mask)
         destination.actor_masks.copy_(self.actor_masks)
+        destination.decision_committed.copy_(self.decision_committed)
 
     def capture_aggregates(self, source: RolloutBuffer) -> None:
         """Copy device-computed lambda aggregates into host storage.
@@ -1163,6 +1186,7 @@ class StoredRollout:
                     alive=self.alive_mask[:, indices],
                     hidden=hidden.contiguous(),
                     actor_mask=self.actor_masks[:, indices],
+                    decision_committed=self.decision_committed[:, indices],
                     expert_probs=self.expert_probs[:, indices],
                     terminated=self.terminated[:, indices],
                     outcome_class=self.outcome_class[:, indices],

@@ -474,9 +474,7 @@ class TestYemongEnvWrapper:
                     else:
                         assert torch.equal(left[key], right[key]), key
 
-    def test_interactive_step_matches_standard_without_auto_reset(
-        self, ship_cfg, reward_cfg
-    ):
+    def test_interactive_step_matches_standard_without_auto_reset(self, ship_cfg, reward_cfg):
         """The lean play/watch path preserves terminal state and both views."""
         env_cfg = EnvConfig(
             num_ships=2,
@@ -549,6 +547,7 @@ class TestYemongEnvWrapper:
         assert interactive.state.step_count.item() == 0
         assert not interactive._acc_source_stats.any()
         assert not interactive._ep_length.any()
+
     def test_reset_returns_obs_dict(self, ship_cfg, env_cfg, reward_cfg):
         wrapper = YemongEnvWrapper(
             num_envs=2,
@@ -602,10 +601,15 @@ class TestYemongEnvWrapper:
             device="cpu",
         )
         wrapper_obs = wrapper.reset(options={"team_sizes": (4, 4)})
-        standalone_obs = observation_from_state(wrapper.state, ship_cfg)
+        standalone_obs = observation_from_state(wrapper.state, ship_cfg, perspective_team=0)
+        standalone_team1 = observation_from_state(wrapper.state, ship_cfg, perspective_team=1)
 
         assert all(
             torch.equal(wrapper_obs[key], standalone_obs[key]) for key in standalone_obs.data
+        )
+        assert all(
+            torch.equal(wrapper_obs.team1_data[key], standalone_team1[key])
+            for key in standalone_team1.data
         )
 
     def test_observation_from_state_copies_field_geometry(self, ship_cfg):

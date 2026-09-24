@@ -23,6 +23,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import frontline_ship_config, zone_membership
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 
 
 def _summary(values: torch.Tensor) -> dict[str, float]:
@@ -93,7 +94,7 @@ def run_suite(
     quiet_defense_occupied_ticks = torch.zeros(games, dtype=torch.long, device=device)
     threatened_defense_team_ticks = torch.zeros(games, dtype=torch.long, device=device)
     threatened_defense_occupied_ticks = torch.zeros(games, dtype=torch.long, device=device)
-    action = torch.zeros((games, 2 * team_size, 3), dtype=torch.long, device=device)
+    action_state = PendingActionState.allocate(games, 2 * team_size, device)
 
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
@@ -102,10 +103,9 @@ def run_suite(
 
     ticks_run = 0
     for tick in range(max_ticks):
-        if tick % env_config.action_repeat == 0:
-            visibility = team_visibility_from_state(env.state, ship_config, env_config, False)
-            action = agent.get_actions(env.state, visibility.ship)
-        dones, truncated = env.tick(action)
+        visibility = team_visibility_from_state(env.state, ship_config, env_config, False)
+        selected_action = agent.get_actions(env.state, visibility.ship)
+        dones, truncated, _ = advance_autonomous_decision(env, action_state, selected_action)
         ticks_run = tick + 1
 
         active = running

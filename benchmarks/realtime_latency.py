@@ -42,6 +42,7 @@ import json
 import os
 import statistics
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -50,10 +51,10 @@ import torch
 
 from boost_and_broadside.config.core import EnvConfig, entity_token_count
 from boost_and_broadside.config.defaults import REWARDS
-from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 
@@ -175,6 +176,7 @@ def measure(
     perception_compile_mode: str | None = None,
     collision_compile_mode: str | None = None,
     cuda_graph_tick: bool = False,
+    perception_override: Callable[..., tuple] | None = None,
 ) -> dict:
     """Time one interactive frame's worth of work, repeatedly."""
 
@@ -202,8 +204,13 @@ def measure(
         interactive_cuda_graph=cuda_graph_tick,
         interactive_perception_compile_mode=perception_compile_mode,
     )
+    if perception_override is not None:
+        # Benchmark-only injection for observation-builder A/B experiments.
+        # Both reset and the selected step path must use the same arm.
+        wrapper._perceive = perception_override
+        wrapper._interactive_perceive = perception_override
     observation = wrapper.reset()
-    action_buffer = torch.zeros((1, ships, 3), dtype=torch.int32, device=device)
+    action_state = PendingActionState.allocate(1, ships, device)
     if cuda_graph_tick and environment_step != "step_interactive":
         raise ValueError("CUDA graph tick requires step_interactive")
 
@@ -333,13 +340,8 @@ def measure(
         opponent = actions[1] if len(actions) > 1 else torch.zeros_like(actions[0])
         return merge_team_actions(actions[0], opponent, wrapper.state.ship_team_id).int()
 
-    def expose_pending_action() -> None:
-        observation.data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
-        if observation.team1_data is not None:
-            observation.team1_data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
-
     def frame(record: bool) -> None:
-        nonlocal action_buffer, observation, previous_snapshot
+        nonlocal observation, previous_snapshot
         policy_start = policy_end = env_start = env_end = None
         cpu_start = time.perf_counter()
 
@@ -367,7 +369,9 @@ def measure(
                 ):
                     if env_start is not None:
                         env_start.record(env_stream)
-                    result = getattr(wrapper, environment_step)(action_buffer, auto_reset=False)
+                    result = getattr(wrapper, environment_step)(
+                        action_state.applied_action(), auto_reset=False
+                    )
                     if env_end is not None:
                         env_end.record(env_stream)
                 return result
@@ -401,9 +405,9 @@ def measure(
             current.wait_stream(env_stream)
             current.wait_stream(net_stream)
             if environment_step == "step_interactive":
-                observation, dones, truncated, _info = env_result
+                observation, dones, truncated, info = env_result
             else:
-                observation, _, dones, truncated, _info = env_result
+                observation, _, dones, truncated, info = env_result
         else:
             if policy_start is not None:
                 policy_start.record()
@@ -413,19 +417,30 @@ def measure(
             policy_mark = time.perf_counter()
             if env_start is not None:
                 env_start.record()
-            env_result = getattr(wrapper, environment_step)(action_buffer, auto_reset=False)
+            env_result = getattr(wrapper, environment_step)(
+                action_state.applied_action(), auto_reset=False
+            )
             if environment_step == "step_interactive":
-                observation, dones, truncated, _info = env_result
+                observation, dones, truncated, info = env_result
             else:
-                observation, _, dones, truncated, _info = env_result
+                observation, _, dones, truncated, info = env_result
             if env_end is not None:
                 env_end.record()
             if record and device.type == "cpu":
                 phases["policy"] += policy_mark - cpu_start
                 phases["env_step"] += time.perf_counter() - policy_mark
 
-        action_buffer = next_action.detach()
-        expose_pending_action()
+        finished = dones | truncated
+        action_state.commit(
+            next_action,
+            info["actuator_contiguous"],
+            finished,
+        )
+        action_state.write_observation(
+            observation,
+            wrapper.state.ship_team_id,
+            ships,
+        )
 
         if record and device.type == "cuda":
             torch.cuda.synchronize(device)
@@ -468,11 +483,10 @@ def measure(
             if record:
                 phases["render"] += time.perf_counter() - render_start
 
-        finished = dones | truncated
         if bool(finished.any()):
             resets["count"] += 1
             observation = wrapper.reset()
-            action_buffer.zero_()
+            action_state.reset(finished)
             for side in sides:
                 side["belief"].reset(finished)
                 side["hidden"] = side["policy"].reset_hidden_for_envs(

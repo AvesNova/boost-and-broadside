@@ -39,6 +39,7 @@ from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import perceived_observation_from_state
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 from boost_and_broadside.train.rl.features import PRESENCE_RADIUS, local_presence
 
 PROFILE = PROFILES["rl"]
@@ -97,6 +98,7 @@ def sample_scene(
 
     env, env_config = scenario_env(num_ships, num_fields, scale, num_envs, device)
     agent = StochasticScriptedAgent(PROFILE.ship_config, StochasticAgentConfig())
+    action_state = PendingActionState.allocate(num_envs, num_ships, device)
     for _ in range(steps):
         # Bullet perception off, matching the shipped profile
         # (``n_bullet_cross_per_block=0``): computing ship-to-bullet line of
@@ -105,7 +107,12 @@ def sample_scene(
         sight = team_visibility_from_state(
             env.state, PROFILE.ship_config, env_config, perceive_bullets=False
         )
-        env.step(agent.get_actions(env.state, sight.ship))
+        selected_action = agent.get_actions(env.state, sight.ship)
+        dones, truncated, _ = advance_autonomous_decision(env, action_state, selected_action)
+        finished = dones | truncated
+        if bool(finished.any()):
+            env.reset_envs(finished)
+            action_state.reset(finished)
     observation, _ = perceived_observation_from_state(env.state, PROFILE.ship_config, env_config)
     view = observation.for_team(0)
     team_id = view["team_id"]

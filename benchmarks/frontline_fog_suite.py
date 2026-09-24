@@ -29,6 +29,7 @@ from boost_and_broadside.env.observation import (
 )
 from boost_and_broadside.env.perception import TeamVisibility, team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
+from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 
 
 def _summary(values: torch.Tensor) -> dict[str, float]:
@@ -278,14 +279,14 @@ def run_suite(
         vision_range: replace(env_config, vision_range=vision_range)
         for vision_range in probe_ranges
     }
-    action = torch.zeros((games, env_config.num_ships, 3), dtype=torch.long, device=device)
+    action_state = PendingActionState.allocate(games, env_config.num_ships, device)
 
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
         torch.cuda.synchronize(device)
     started = time.perf_counter()
 
-    for tick in range(ticks):
+    for _tick in range(ticks):
         sights = {
             vision_range: team_visibility_from_state(
                 env.state, ship_config, probe_configs[vision_range]
@@ -294,9 +295,8 @@ def run_suite(
         }
         for vision_range, sight in sights.items():
             probes[vision_range].update(sight, env.state)
-        if tick % env_config.action_repeat == 0:
-            action = agent.get_actions(env.state, sights[env_config.vision_range].ship)
-        env.tick(action)
+        selected_action = agent.get_actions(env.state, sights[env_config.vision_range].ship)
+        advance_autonomous_decision(env, action_state, selected_action)
 
     if device.type == "cuda":
         torch.cuda.synchronize(device)

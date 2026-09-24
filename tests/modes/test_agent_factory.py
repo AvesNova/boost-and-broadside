@@ -29,12 +29,39 @@ def _make_prev_obs(B: int, N: int) -> YemongObservation:
             ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
             ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),
             ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
+            ObsKey.TEAM_ID: (torch.arange(N) % 2).expand(B, N).clone(),
             ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
         }
     )
 
 
 class TestDecodeTargetsToObs:
+    def test_pending_action_is_private_for_the_other_team(self):
+        coordinator = build_standard_coordinator(ShipConfig())
+        previous = _make_prev_obs(B=1, N=2)
+        targets = coordinator.get_target_vector(previous)
+        action = torch.tensor([[[1, 2, 1], [2, 5, 0]]])
+
+        team0 = decode_targets_to_observation(
+            targets,
+            previous,
+            action,
+            2,
+            coordinator,
+            observer_team=0,
+        )
+        team1 = decode_targets_to_observation(
+            targets,
+            previous,
+            action,
+            2,
+            coordinator,
+            observer_team=1,
+        )
+
+        assert team0[ObsKey.PREVIOUS_ACTION].tolist() == [[[1, 2, 1], [3, 7, 2]]]
+        assert team1[ObsKey.PREVIOUS_ACTION].tolist() == [[[3, 7, 2], [2, 5, 0]]]
+
     def test_position_decodes_each_axis_with_its_own_world_extent(self):
         """Regression (audit §1.4): pos_y must decode with world height, not width.
 

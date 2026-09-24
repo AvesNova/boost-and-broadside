@@ -373,4 +373,3 @@ class TestLadderDecode:
         transform = Fourier(n_freqs=1, periods=8.0)
         value = torch.tensor([[3.0]])
         assert transform.invert(transform(value)).item() == pytest.approx(3.0, abs=1e-4)
-

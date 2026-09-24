@@ -38,6 +38,7 @@ def frontline_strategy(
     Visibility is the authoritative (batch, team, ship) mask. No hidden memory,
     random identities, ship ranks, or fleet-size-dependent thresholds are used.
     """
+
     def parameter(name: str) -> float | torch.Tensor:
         return getattr(config, name) if frontline_parameters is None else frontline_parameters[name]
 
@@ -71,9 +72,7 @@ def frontline_strategy(
     allied_strength = torch.where(allies, kernel * health[:, None, :], 0).sum(-1)
     enemy_weight = torch.where(enemies, kernel * health[:, None, :], 0)
     enemy_strength = enemy_weight.sum(-1)
-    combat = torch.tanh(
-        torch.log((allied_strength + 1e-6) / (enemy_strength + 1e-6)) + aggression
-    )
+    combat = torch.tanh(torch.log((allied_strength + 1e-6) / (enemy_strength + 1e-6)) + aggression)
     enemy_direction = (enemy_weight * unit).sum(-1) / enemy_strength.clamp_min(1e-8)
     # Vanishes in empty space; bounded even when a large enemy fleet is present.
     combat_force = combat * enemy_direction * (1 - torch.exp(-enemy_strength))
@@ -85,7 +84,9 @@ def frontline_strategy(
     support_radius = (
         2 * state.zone_radius[:, None, :]
         if zone_radius is None
-        else zone_radius if not torch.is_tensor(zone_radius) else zone_radius.unsqueeze(-1)
+        else zone_radius
+        if not torch.is_tensor(zone_radius)
+        else zone_radius.unsqueeze(-1)
     )
     contribution = health[:, :, None] * torch.exp(-(zone_distance / support_radius).square())
     # Sum once per team, then gather for each observer and subtract self.
@@ -115,9 +116,7 @@ def frontline_strategy(
         else torch.exp(aggression).unsqueeze(-1)
     )
     margin_scale = zone_margin if not torch.is_tensor(zone_margin) else zone_margin.unsqueeze(-1)
-    margin = margin_scale * torch.where(
-        offense, offensive_margin, 1.0
-    )
+    margin = margin_scale * torch.where(offense, offensive_margin, 1.0)
     # Capture state is public map information.  Use it to recruit defenders even
     # when an opaque zone hides the attacker that is moving the meter.
     defense_attacked = own_defense & (state.zone_capture_progress[:, None, :] > 0)
@@ -153,9 +152,7 @@ def frontline_strategy(
     spawn_delta = torch.where(own_spawn, zone_delta, 0).sum(-1)
     spawn_distance = spawn_delta.abs()
     recovery = (1 - shield_fraction).square() / (
-        (1 - shield_fraction).square()
-        + (shield_fraction / recovery_health).square()
-        + 1e-8
+        (1 - shield_fraction).square() + (shield_fraction / recovery_health).square() + 1e-8
     )
     # Recharge anywhere: do not travel all the way home when no enemy threatens us.
     threat = 1 - torch.exp(-enemy_strength)

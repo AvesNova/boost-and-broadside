@@ -37,7 +37,6 @@ from realtime_latency import measure as realtime_measure
 
 from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_SHOOT_ACTIONS, NUM_TURN_ACTIONS
-from boost_and_broadside.env import wrapper as wrapper_module
 from boost_and_broadside.env.observation import (
     BulletObsKey,
     ObsKey,
@@ -46,6 +45,8 @@ from boost_and_broadside.env.observation import (
     bullet_observation_from_state,
     compile_perception,
     observation_from_state,
+    perceived_observation_from_state,
+    write_pending_action_view,
 )
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.env.state import TensorState
@@ -179,15 +180,17 @@ def _candidate_view_from_common(
     num_ships = state.max_ships
     object_alive = data[ObsKey.ALIVE][:, num_ships:]
     data[ObsKey.VISIBLE] = torch.cat([ship_visibility, object_alive], dim=1)
-    own_ship = (state.ship_team_id == team).unsqueeze(-1)
     previous_action = data[ObsKey.PREVIOUS_ACTION]
+    ship_previous_action = previous_action[:, :num_ships].clone()
+    write_pending_action_view(
+        ship_previous_action,
+        previous_action[:, :num_ships],
+        state.ship_team_id,
+        observer_team=team,
+    )
     data[ObsKey.PREVIOUS_ACTION] = torch.cat(
         [
-            torch.where(
-                own_ship,
-                previous_action[:, :num_ships],
-                torch.zeros_like(previous_action[:, :num_ships]),
-            ),
+            ship_previous_action,
             previous_action[:, num_ships:],
         ],
         dim=1,
@@ -283,6 +286,8 @@ def _action_trace(seed, steps, device):
 
 def run_parity(device, seed, steps):
     left, right = _wrapper(device, seed), _wrapper(device, seed)
+    left._perceive = _builder("reference")
+    right._perceive = _builder("candidate")
     # Establish independently cloned but identical complete state snapshots.
     right.env.state = left.env.state.clone()
     actions = _action_trace(seed, steps, device)
@@ -291,29 +296,24 @@ def run_parity(device, seed, steps):
     retained = None
     for index in range(steps):
         outputs = []
-        old_builder = wrapper_module.perceived_observation_from_state
         cpu_rng_state = torch.get_rng_state()
         cuda_rng_state = torch.cuda.get_rng_state(device) if device.type == "cuda" else None
         post_rng_states = None
-        try:
-            for arm, wrapper in (("reference", left), ("candidate", right)):
-                torch.set_rng_state(cpu_rng_state)
-                if cuda_rng_state is not None:
-                    torch.cuda.set_rng_state(cuda_rng_state, device)
-                wrapper_module.perceived_observation_from_state = _builder(arm)
-                result = wrapper.step(actions[index : index + 1], auto_reset=False)
-                outputs.append((result, wrapper.last_visibility))
-                if arm == "reference":
-                    post_rng_states = (
-                        torch.get_rng_state(),
-                        torch.cuda.get_rng_state(device) if device.type == "cuda" else None,
-                    )
-        finally:
-            wrapper_module.perceived_observation_from_state = old_builder
-            if post_rng_states is not None:
-                torch.set_rng_state(post_rng_states[0])
-                if post_rng_states[1] is not None:
-                    torch.cuda.set_rng_state(post_rng_states[1], device)
+        for arm, wrapper in (("reference", left), ("candidate", right)):
+            torch.set_rng_state(cpu_rng_state)
+            if cuda_rng_state is not None:
+                torch.cuda.set_rng_state(cuda_rng_state, device)
+            result = wrapper.step(actions[index : index + 1], auto_reset=False)
+            outputs.append((result, wrapper.last_visibility))
+            if arm == "reference":
+                post_rng_states = (
+                    torch.get_rng_state(),
+                    torch.cuda.get_rng_state(device) if device.type == "cuda" else None,
+                )
+        if post_rng_states is not None:
+            torch.set_rng_state(post_rng_states[0])
+            if post_rng_states[1] is not None:
+                torch.cuda.set_rng_state(post_rng_states[1], device)
         _compare_obs(outputs[0][0][0], outputs[1][0][0], errors, f"obs[{index}]")
         _tensor_equal(
             outputs[0][1].__dict__, outputs[1][1].__dict__, f"visibility[{index}]", errors
@@ -503,9 +503,7 @@ def run_compiled_perception_parity(device, seed, steps):
     )
     for index in range(steps):
         state = wrapper.env.state
-        eager_obs, eager_visibility = wrapper_module.perceived_observation_from_state(
-            state, *eager_args
-        )
+        eager_obs, eager_visibility = perceived_observation_from_state(state, *eager_args)
         compiled_obs, compiled_visibility = compiled_builder(state, *eager_args)
         _compare_obs(eager_obs, compiled_obs, errors, f"obs[{index}]")
         _tensor_equal(
@@ -657,31 +655,26 @@ def measure_rendered(
     gpu_rendered=False,
     moderngl_path=None,
 ):
-    original = wrapper_module.perceived_observation_from_state
     lean = arm == "lean" or gpu_rendered
-    if observation_comparison:
-        wrapper_module.perceived_observation_from_state = _builder(arm)
     startup_begin = time.perf_counter()
-    try:
-        row = realtime_measure(
-            "50v50",
-            device,
-            steps=samples,
-            warmup=warmup,
-            compile_mode=None if policy_compile == "none" else policy_compile,
-            seed=seed,
-            stage="baseline",
-            perceive_bullets=True,
-            policy_sides=2,
-            window_size=900,
-            execution="sequential",
-            enqueue_order="env-first",
-            environment_step="step_interactive" if lean else "step",
-            renderer_backend=("legacy" if arm == "legacy" else "gpu") if gpu_rendered else None,
-            moderngl_path=moderngl_path,
-        )
-    finally:
-        wrapper_module.perceived_observation_from_state = original
+    row = realtime_measure(
+        "50v50",
+        device,
+        steps=samples,
+        warmup=warmup,
+        compile_mode=None if policy_compile == "none" else policy_compile,
+        seed=seed,
+        stage="baseline",
+        perceive_bullets=True,
+        policy_sides=2,
+        window_size=900,
+        execution="sequential",
+        enqueue_order="env-first",
+        environment_step="step_interactive" if lean else "step",
+        renderer_backend=("legacy" if arm == "legacy" else "gpu") if gpu_rendered else None,
+        moderngl_path=moderngl_path,
+        perception_override=_builder(arm) if observation_comparison else None,
+    )
     row["arm_total_wall_ms"] = (time.perf_counter() - startup_begin) * 1000
     row["compile_mode"] = None if policy_compile == "none" else policy_compile
     row["environment_step"] = "step_interactive" if lean else "step"
@@ -709,35 +702,33 @@ def measure_compiled_perception(
     gpu_rendered=False,
     moderngl_path=None,
 ):
-    original = wrapper_module.perceived_observation_from_state
     first_builder_call_ms = [None]
     setup_start = time.perf_counter()
+    perception_override = None
     if arm == "candidate":
-        wrapper_module.perceived_observation_from_state = _compiled_perception_adapter(
+        perception_override = _compiled_perception_adapter(
             compile_perception("default"), first_builder_call_ms, device
         )
     perception_setup_ms = 1000.0 * (time.perf_counter() - setup_start)
     wall_start = time.perf_counter()
-    try:
-        row = realtime_measure(
-            "50v50",
-            device,
-            steps=samples,
-            warmup=warmup,
-            compile_mode=None if policy_compile == "none" else policy_compile,
-            seed=seed,
-            stage="baseline",
-            perceive_bullets=True,
-            policy_sides=2,
-            window_size=900,
-            execution="sequential",
-            enqueue_order="env-first",
-            environment_step="step_interactive",
-            renderer_backend="gpu" if gpu_rendered else None,
-            moderngl_path=moderngl_path,
-        )
-    finally:
-        wrapper_module.perceived_observation_from_state = original
+    row = realtime_measure(
+        "50v50",
+        device,
+        steps=samples,
+        warmup=warmup,
+        compile_mode=None if policy_compile == "none" else policy_compile,
+        seed=seed,
+        stage="baseline",
+        perceive_bullets=True,
+        policy_sides=2,
+        window_size=900,
+        execution="sequential",
+        enqueue_order="env-first",
+        environment_step="step_interactive",
+        renderer_backend="gpu" if gpu_rendered else None,
+        moderngl_path=moderngl_path,
+        perception_override=perception_override,
+    )
     row["arm_total_wall_ms"] = 1000.0 * (time.perf_counter() - wall_start)
     row["perception_compile_mode"] = "default" if arm == "candidate" else None
     row["perception_adapter"] = (

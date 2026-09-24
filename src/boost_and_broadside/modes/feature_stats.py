@@ -13,13 +13,14 @@ budget, so it is not a property of the profile alone: it writes a
 ``feature-stats`` artifact owned by the single run behind its checkpoints, or by
 nothing at all.
 
-Caveat: this reads ``observation_from_state`` -- unoccluded truth -- and so
-measures the truth-to-truth label, while training re-bases the label on the
-*believed* current state (see ``PPOTrainer._precompute_ns_labels``). The two
-agree exactly for a visible ship and diverge for a hidden one, where the label
-carries the belief correction and has a much wider distribution. So the scales
-suggested here are a lower bound on what training sees, and the gap grows with
-how much of an episode is spent out of contact.
+Caveat: targets are read from ``observation_from_state`` -- unoccluded truth --
+while controller decisions use the ordinary perceived/belief observation through
+``MatchRunner``. The statistic therefore measures truth-to-truth labels, while
+training re-bases the label on the *believed* current state (see
+``PPOTrainer._precompute_ns_labels``). The two agree exactly for a visible ship
+and diverge for a hidden one, where the label carries the belief correction and
+has a much wider distribution. So the scales suggested here are a lower bound on
+what training sees, and the gap grows with time spent out of contact.
 """
 
 import time
@@ -29,18 +30,12 @@ import torch
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.observation import observation_from_state
-from boost_and_broadside.evaluation.agents import (
-    agents_read_bullets,
-    get_actions,
-    init_hidden,
-    reset_done_envs,
-    resolve_agent_spec,
-)
+from boost_and_broadside.evaluation.agents import resolve_agent_spec
 from boost_and_broadside.evaluation.environment import (
     create_evaluation_env,
     resolve_evaluation_environment,
 )
-from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.match import MatchRunner
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
@@ -78,22 +73,27 @@ def run_feature_stats_mode(
         env_config, (agent0, agent1), ship_config=ship_config
     )
 
-    include_bullets = agents_read_bullets(agent0, agent1)
-
     env = create_evaluation_env(
         B,
         ship_config,
         env_config,
         device,
     )
-    init_hidden(agent0, B, dev)
-    init_hidden(agent1, B, dev)
     env.reset()
+    runner = MatchRunner(
+        env,
+        [agent0, agent1],
+        torch.zeros(B, dtype=torch.long, device=dev),
+        torch.ones(B, dtype=torch.long, device=dev),
+        ship_config,
+        N,
+    )
+    runner.init_hidden()
 
     sq_err_sum = torch.zeros(P, device=dev)
     count = torch.zeros(1, device=dev)
 
-    obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
+    obs = observation_from_state(env.state, ship_config, include_bullets=runner.include_bullets)
     prev_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
     prev_alive = env.state.ship_alive.clone()
 
@@ -101,15 +101,13 @@ def run_feature_stats_mode(
     print(f"Collecting label null-model MSE for {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
-        obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
-        action0 = get_actions(agent0, obs, env.state, B, N, dev)
-        action1 = get_actions(agent1, obs, env.state, B, N, dev)
-        team_id = env.state.ship_team_id
-        action = merge_team_actions(action0, action1, team_id)
+        policy_obs = runner.observe()
+        selected_action = runner.actions(policy_obs)
+        dones, truncated = runner.advance(selected_action)
 
-        dones, truncated = env.step(action)
-
-        next_obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
+        next_obs = observation_from_state(
+            env.state, ship_config, include_bullets=runner.include_bullets
+        )
         next_targets = coordinator.get_target_vector(next_obs)[:, :N]
         next_alive = env.state.ship_alive.clone()
 
@@ -125,13 +123,10 @@ def run_feature_stats_mode(
             count += valid.sum().float()
 
         done_any = dones | truncated
-        if done_any.any():
-            env.reset_envs(done_any)
-            reset_done_envs(agent0, done_any)
-            reset_done_envs(agent1, done_any)
+        runner.reset_finished(done_any)
 
         next_obs_after_reset = observation_from_state(
-            env.state, ship_config, include_bullets=include_bullets
+            env.state, ship_config, include_bullets=runner.include_bullets
         )
         prev_targets = coordinator.get_target_vector(next_obs_after_reset)[:, :N]
         prev_alive = env.state.ship_alive.clone()

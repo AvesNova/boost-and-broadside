@@ -30,10 +30,10 @@ import torch
 from realtime_latency import SCENARIOS, STAGES, scenario_config
 
 from boost_and_broadside.config.defaults import REWARDS
-from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 
@@ -155,6 +155,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     wrapper, observation, profile, env_config, ships = _make_wrapper(device, args.seed)
     ship_config = profile.ship_config
     model_config = replace(profile.model_config, **STAGES["baseline"])
+    compile_mode = None if args.compile == "none" else args.compile
     sides: list[dict[str, Any]] = []
     for _team in range(2):
         policy = build_policy(
@@ -168,7 +169,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         policy.requires_grad_(False)
         sides.append(
             {
-                "policy": compile_policy(policy, args.compile),
+                "policy": compile_policy(policy, compile_mode),
                 "belief": BeliefTracker(
                     1,
                     ships,
@@ -179,7 +180,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "hidden": policy.initial_hidden(1, ships, device),
             }
         )
-    action_buffer = torch.zeros((1, ships, 3), dtype=torch.int32, device=device)
+    action_state = PendingActionState.allocate(1, ships, device)
     team1_mask = torch.ones(1, dtype=torch.bool, device=device)
     result["startup_seconds"] = time.perf_counter() - startup
     result["configuration"]["ship_config"] = asdict(ship_config)
@@ -209,7 +210,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     wrapper._get_obs_interactive = profiled_observation
 
     def frame(profile_frame: bool) -> None:
-        nonlocal observation, action_buffer, phase_collector
+        nonlocal observation, phase_collector
         phase_collector = {} if profile_frame else None
         actions_by_team = []
         predictions = []
@@ -287,29 +288,36 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 actions_by_team[0], actions_by_team[1], wrapper.env.state.ship_team_id
             ).int()
 
-        observation, dones, truncated, _info = wrapper.step_interactive(
-            action_buffer, auto_reset=False
+        observation, dones, truncated, info = wrapper.step_interactive(
+            action_state.applied_action(), auto_reset=False
         )
-        action_buffer = decided.detach()
+        finished = dones | truncated
+        action_state.commit(
+            decided,
+            info["actuator_contiguous"],
+            finished,
+        )
         if profile_frame:
-
-            def expose_action() -> None:
-                observation.data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
-                if observation.team1_data is not None:
-                    observation.team1_data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
-
-            _result, cuda_ms, wall_ms = _profile_call(expose_action, device)
+            _result, cuda_ms, wall_ms = _profile_call(
+                lambda: action_state.write_observation(
+                    observation,
+                    wrapper.state.ship_team_id,
+                    ships,
+                ),
+                device,
+            )
             phase_collector.setdefault("action.expose_pending.cuda_ms", []).append(cuda_ms)
             phase_collector.setdefault("action.expose_pending.wall_ms", []).append(wall_ms)
         else:
-            observation.data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
-            if observation.team1_data is not None:
-                observation.team1_data[ObsKey.PREVIOUS_ACTION][:, :ships].copy_(action_buffer)
+            action_state.write_observation(
+                observation,
+                wrapper.state.ship_team_id,
+                ships,
+            )
 
-        finished = dones | truncated
         if bool(finished.any()):
             observation = wrapper.reset()
-            action_buffer.zero_()
+            action_state.reset(finished)
             for side in sides:
                 side["belief"].reset(finished)
                 side["hidden"] = side["policy"].reset_hidden_for_envs(

@@ -107,7 +107,12 @@ def test_legacy_entrypoint_and_reader_facing_commands_are_gone() -> None:
     root = Path(__file__).resolve().parents[1]
     assert not (root / "main.py").exists()
     documents = [root / "README.md", root / "STYLE_GUIDE.md"]
-    documents.extend((root / "docs").rglob("*.md"))
+    # Engineering records intentionally preserve exact historical benchmark
+    # invocations such as ``performance_audit.py --mode throughput``. Those are
+    # valid script flags, not the removed reader-facing application CLI.
+    documents.extend(
+        path for path in (root / "docs").rglob("*.md") if "engineering" not in path.parts
+    )
     offenders = {
         str(path.relative_to(root)): token
         for path in documents

@@ -35,8 +35,7 @@ def test_the_channel_width_is_resolved_from_the_predictors(coordinator) -> None:
     """
 
     assert (
-        _uncertainty_accessor(coordinator).absent_width
-        == coordinator.total_uncertainty_dimension
+        _uncertainty_accessor(coordinator).absent_width == coordinator.total_uncertainty_dimension
     )
 
 
@@ -63,9 +62,7 @@ def test_the_channel_width_is_resolved_not_assumed() -> None:
 def _prediction(coordinator, log_uncertainty: float) -> torch.Tensor:
     P = coordinator.total_prediction_dimension
     U = coordinator.total_uncertainty_dimension
-    return torch.cat(
-        [torch.zeros(1, 2, P), torch.full((1, 2, U), log_uncertainty)], dim=-1
-    )
+    return torch.cat([torch.zeros(1, 2, P), torch.full((1, 2, U), log_uncertainty)], dim=-1)
 
 
 def test_uncertainty_accumulates_while_a_ship_is_unseen(coordinator) -> None:

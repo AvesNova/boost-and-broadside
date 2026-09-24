@@ -168,7 +168,7 @@ def main() -> None:
             beliefs=runtime.beliefs,
             hidden=runtime.hidden,
             hidden_t1=runtime.hidden_t1,
-            action_buffer=runtime.action_buffer,
+            action_state=runtime.action_state,
             num_envs=runtime.num_envs,
             num_ships=runtime.num_ships,
             num_recurrent=runtime.num_recurrent,
@@ -180,7 +180,7 @@ def main() -> None:
             runtime.obs,
             runtime.hidden,
             runtime.hidden_t1,
-            runtime.action_buffer,
+            runtime.action_state,
             _terminated,
         ) = primary
 

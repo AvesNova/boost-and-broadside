@@ -1,56 +1,48 @@
-"""Tests for the AR measurement's scenario and stored rollout contract.
+"""Autoregressive diagnostics preserve controller/runtime boundaries."""
 
-The report's numeric display helpers — toroidal unwrapping, center of mass,
-error masking — moved to the publication renderer with the plots they serve and
-are covered there. What remains here is the measurement itself: the one
-canonical scenario, and the array layout every renderer reads.
-"""
-
-import numpy as np
 import torch
 
-from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.config.defaults import MODEL_CONFIG, REWARDS
-from boost_and_broadside.modes import ar_report
-from boost_and_broadside.modes.ar_report import _ROLLOUT_FIELDS, _rollout_arrays
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.modes.ar_report import _run_ar
 
 
-def test_canonical_ar_mode_owns_one_4v4_scenario(monkeypatch) -> None:
-    captured = {}
-    monkeypatch.setattr(ar_report, "run_ar_report_mode", lambda **kwargs: captured.update(kwargs))
+class _RequiresPhysicalState:
+    def get_actions(self, state):
+        raise AssertionError(f"imagined rollout supplied physical state {state!r}")
 
-    ar_report.run_canonical_ar_report_mode(
-        "scripted",
-        "random",
-        12,
-        ShipConfig(),
-        REWARDS,
-        MODEL_CONFIG,
-        "cpu",
+
+def _observation() -> YemongObservation:
+    data = {
+        ObsKey.POS: torch.zeros(1, 2, 2),
+        ObsKey.VEL: torch.zeros(1, 2, 2),
+        ObsKey.ATT: torch.tensor([[[1.0, 0.0], [1.0, 0.0]]]),
+        ObsKey.ANG_VEL: torch.zeros(1, 2, 1),
+        ObsKey.HEALTH: torch.ones(1, 2, 1),
+        ObsKey.POWER: torch.ones(1, 2, 1),
+        ObsKey.COOLDOWN: torch.zeros(1, 2, 1),
+        ObsKey.ALIVE: torch.ones(1, 2, dtype=torch.bool),
+        ObsKey.TEAM_ID: torch.tensor([[0, 1]], dtype=torch.int32),
+    }
+    return YemongObservation(data=data)
+
+
+def test_imagined_rollout_replays_nonpolicy_decisions_without_fake_state() -> None:
+    scripted = ResolvedAgent("scripted", _RequiresPhysicalState())
+    random = ResolvedAgent("random", None)
+    recorded = [torch.tensor([[[1, 2, 1], [2, 3, 0]]], dtype=torch.int32)]
+
+    history = _run_ar(
+        scripted,
+        random,
+        _observation(),
+        None,
+        None,
+        1,
+        2,
+        recorded,
+        False,
     )
-    assert captured["env_config"].num_ships == 8
-    assert captured["env_config"].max_episode_steps == 12
 
-
-def test_rollout_arrays_drop_the_batch_axis_and_keep_every_field() -> None:
-    history = [
-        {
-            "pos": torch.zeros(1, 4, 2),
-            "vel": torch.zeros(1, 4, 2),
-            "att": torch.zeros(1, 4, 2),
-            "ang_vel": torch.zeros(1, 4, 1),
-            "health": torch.zeros(1, 4, 1),
-            "power": torch.zeros(1, 4, 1),
-            "cooldown": torch.zeros(1, 4, 1),
-            "alive": torch.ones(1, 4, dtype=torch.bool),
-            "alive_prob": torch.ones(1, 4),
-        }
-        for _ in range(3)
-    ]
-
-    arrays = _rollout_arrays("gt", history)
-
-    assert set(arrays) == {f"gt_{field}" for field in _ROLLOUT_FIELDS}
-    assert arrays["gt_pos"].shape == (3, 4, 2)
-    assert arrays["gt_alive"].shape == (3, 4)
-    assert all(array.dtype == np.float32 for array in arrays.values())
+    assert len(history) == 1
+    assert torch.equal(history[0]["pos"], torch.zeros(1, 2, 2))

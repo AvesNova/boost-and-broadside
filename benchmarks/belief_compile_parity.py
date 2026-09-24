@@ -30,6 +30,7 @@ from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_SHOOT_ACTIONS, 
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
@@ -181,16 +182,21 @@ def _build_trace(device: torch.device, seed: int, steps: int):
         .to(device)
     )
     views: list[tuple[YemongObservation, YemongObservation]] = []
+    action_state = PendingActionState.allocate(1, ships, device)
     team1_mask = torch.ones(1, dtype=torch.bool, device=device)
     for step in range(steps):
+        action_state.write_observation(observation, wrapper.state.ship_team_id, ships)
         team0 = observation.for_team(0)
         team1 = observation.for_team(1).flip_team(ships, mask=team1_mask)
         views.append((_clone_observation(team0), _clone_observation(team1)))
-        observation, dones, truncated, _info = wrapper.step_interactive(
-            action_trace[step], auto_reset=False
+        observation, dones, truncated, info = wrapper.step_interactive(
+            action_state.applied_action(), auto_reset=False
         )
-        if bool((dones | truncated).any()):
+        finished = dones | truncated
+        action_state.commit(action_trace[step], info["actuator_contiguous"], finished)
+        if bool(finished.any()):
             observation = wrapper.reset()
+            action_state.reset(finished)
     trace_tensors = [action_trace, prediction_trace]
     for team_views in views:
         for view in team_views:
