@@ -460,6 +460,9 @@ def main() -> None:
         runtime.env_stream = None
         runtime.net_stream = None
     trainer._train_start_time = time.time()
+    trainer._perf_mark_time = trainer._train_start_time
+    trainer._perf_mark_step = trainer._global_step
+    trainer._perf_mark_ship_steps = trainer._ship_steps
 
     def one_update(update: int):
         avg_eval_active = trainer._avg_update_count > 0

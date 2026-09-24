@@ -11,8 +11,8 @@ Methodology: decompose peak VRAM into
                    independent of num_envs -> representative at reduced num_envs)
   - buffer_mb    = summed analytically from the buffer tensors (linear in num_envs)
 
-The trainer's own logged `sps` is a cumulative average that folds in compile
-warmup, so this times steady-state windows itself after skipping W warmups.
+The trainer's own logged `sps` covers whole updates including their logging and
+eval overhead, so this times steady-state windows itself after skipping W warmups.
 Rollout is measured separately from the update phase (gradient checkpointing only
 affects the update-time backward).
 

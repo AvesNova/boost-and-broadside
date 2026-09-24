@@ -169,14 +169,17 @@ class LoggingMixin:
 
         self._ship_steps += ship_tokens_per_update
         self._grad_tokens += int(metrics["train/epochs_completed"] * self._entity_tokens_per_epoch)
-        # Cumulative work / cumulative training time — spans checkpoint
-        # resumes, as if the run never stopped.
-        elapsed = self._elapsed_train_time + (time.time() - self._train_start_time)
-        sps = int(self._global_step / elapsed)
-        ship_tps = int(self._ship_steps / elapsed)
+        # Throughput over the interval since the previous logging point, not a
+        # cumulative average: a run-average hides the moment a slowdown starts
+        # and never recovers from a slow warmup. Cumulative counters are logged
+        # separately below.
+        now = time.time()
+        sps, ship_tps, period = self._throughput_since_last_log(now)
+        elapsed = self._elapsed_train_time + (now - self._train_start_time)
         metrics["train/global_step"] = self._global_step
         metrics["train/sps"] = sps
         metrics["train/ship_tokens_per_sec"] = ship_tps
+        metrics["train/log_period_seconds"] = period
         # Alternative x-axes — log as metrics so any chart can be re-plotted
         # against data volume, optimizer progress, compute, or wall clock.
         metrics["counters/env_steps"] = self._global_step
@@ -291,6 +294,29 @@ class LoggingMixin:
             metrics["overview/explained_variance"] = sum(ev_vals) / len(ev_vals)
 
         return sps, ship_tps
+
+    def _throughput_since_last_log(self, now: float) -> tuple[int, int, float]:
+        """Env steps/s and ship tokens/s over the interval since the last call.
+
+        The rates are raw per-interval measurements, not run averages: an
+        average folds in compile warmup forever and smears any slowdown over
+        the whole run. The period is whatever wall-clock time elapsed between
+        logging points, which includes every per-update cost (rollout, update,
+        eval, checkpointing), so this is throughput as the run actually
+        achieves it. The marks are advanced here, so each call consumes its
+        interval.
+        """
+        period = now - self._perf_mark_time
+        if period > 0:
+            sps = int((self._global_step - self._perf_mark_step) / period)
+            ship_tps = int((self._ship_steps - self._perf_mark_ship_steps) / period)
+        else:
+            sps = 0
+            ship_tps = 0
+        self._perf_mark_time = now
+        self._perf_mark_step = self._global_step
+        self._perf_mark_ship_steps = self._ship_steps
+        return sps, ship_tps, period
 
     def _append_elo_history(self, update: int) -> None:
         """Append one line of rating state to the run's elo_history.jsonl.
