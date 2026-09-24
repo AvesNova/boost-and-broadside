@@ -12,7 +12,7 @@ Architecture (per timestep):
                n_bullet_cross_per_block of which cross-attend to bullets,
                then n_temporal_per_block temporal sublayers]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
-         → ActionHead                   → (B, N, 12)   [logits: power|turn|shoot]
+         → ActionHead                   → (B, N, 42)   [joint command logits]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
@@ -48,10 +48,7 @@ from torch.utils.checkpoint import checkpoint
 from boost_and_broadside.config import ModelConfig, ShipConfig
 from boost_and_broadside.constants import (
     NUM_OUTCOME_CLASSES,
-    POWER_SLICE,
-    SHOOT_SLICE,
     TOTAL_ACTION_LOGITS,
-    TURN_SLICE,
 )
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey, YemongObservation
 from boost_and_broadside.models.yemong.attention import SpatialGeometry
@@ -59,8 +56,11 @@ from boost_and_broadside.models.yemong.encoder import BulletEncoder, ShipEncoder
 from boost_and_broadside.models.yemong.griffin import CONV_KERNEL, YemongBlock
 from boost_and_broadside.models.yemong.relation import relation_inputs_from_observation
 from boost_and_broadside.models.yemong.rope import SpatialRotary, check_rotary_budget
+from boost_and_broadside.runtime.actions import (
+    decode_joint_action_unchecked,
+    encode_joint_action_unchecked,
+)
 from boost_and_broadside.train.rl.features import FeatureCoordinator
-
 
 # Log-variance bounds for the heteroscedastic predictions. The upper bound only
 # has to clear the widest label the objective actually sees; the lower bound is
@@ -497,7 +497,7 @@ class YemongPolicy(nn.Module):
 
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
-            logprob:    (B, N) float — sum of log probs for each sub-action.
+            logprob:    (B, N) float — log probability of the joint command.
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
@@ -569,7 +569,7 @@ class YemongPolicy(nn.Module):
         alive_ships = obs[ObsKey.BELIEF_VALID][:, :N]  # (B, N)
         team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
-        logits = self.action_head(x_ships)  # (B, N, 12)
+        logits = self.action_head(x_ships)  # (B, N, 42)
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
         value = self.value_head_local(x_ships)  # (B, N, K)
         if self._team_pma_k:
@@ -704,7 +704,7 @@ class YemongPolicy(nn.Module):
         alive_ships = alive_mask[:, :, :N]  # (T, B, N)
         team_id_ships = obs["team_id"][:, :, :N]  # (T, B, N)
 
-        logits = self.action_head(x_ships)  # (T, B, N, 12)
+        logits = self.action_head(x_ships)  # (T, B, N, 42)
         pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
 
         # Local value path: per-ship embedding, no team pooling.
@@ -783,28 +783,18 @@ def _yemong_forward(
 def _sample_action(
     logits: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Sample one action per ship from factored categorical distributions.
+    """Sample one physical command per ship from the joint categorical.
 
     Args:
-        logits: (..., TOTAL_ACTION_LOGITS) — [power | turn | shoot] logit slices.
+        logits: (..., 42) joint physical-command logits.
 
     Returns:
-        action:  (..., 3) int — sampled indices.
-        logprob: (...) float — sum of log-probs across sub-actions.
+        action:  (..., 3) int — [power, turn, shoot].
+        logprob: (...) float — joint-command log probability.
     """
-    power_dist = Categorical(logits=logits[..., POWER_SLICE])
-    turn_dist = Categorical(logits=logits[..., TURN_SLICE])
-    shoot_dist = Categorical(logits=logits[..., SHOOT_SLICE])
-
-    power_a = power_dist.sample()  # (...,)
-    turn_a = turn_dist.sample()
-    shoot_a = shoot_dist.sample()
-
-    action = torch.stack([power_a, turn_a, shoot_a], dim=-1)  # (..., 3)
-    logprob = (
-        power_dist.log_prob(power_a) + turn_dist.log_prob(turn_a) + shoot_dist.log_prob(shoot_a)
-    )  # (...)
-    return action, logprob
+    distribution = Categorical(logits=logits)
+    action_id = distribution.sample()
+    return decode_joint_action_unchecked(action_id), distribution.log_prob(action_id)
 
 
 def _evaluate_action(
@@ -814,21 +804,13 @@ def _evaluate_action(
     """Compute log-probs and entropy for given actions under the policy.
 
     Args:
-        logits:  (..., TOTAL_ACTION_LOGITS).
+        logits:  (..., 42) joint physical-command logits.
         actions: (..., 3) int.
 
     Returns:
         logprob: (...) float.
         entropy: (...) float.
     """
-    power_dist = Categorical(logits=logits[..., POWER_SLICE])
-    turn_dist = Categorical(logits=logits[..., TURN_SLICE])
-    shoot_dist = Categorical(logits=logits[..., SHOOT_SLICE])
-
-    logprob = (
-        power_dist.log_prob(actions[..., 0])
-        + turn_dist.log_prob(actions[..., 1])
-        + shoot_dist.log_prob(actions[..., 2])
-    )
-    entropy = power_dist.entropy() + turn_dist.entropy() + shoot_dist.entropy()
-    return logprob, entropy
+    distribution = Categorical(logits=logits)
+    action_id = encode_joint_action_unchecked(actions)
+    return distribution.log_prob(action_id), distribution.entropy()

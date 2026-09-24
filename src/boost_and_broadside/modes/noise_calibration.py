@@ -28,17 +28,13 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.observation import YemongObservation, observation_from_state
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
-    agents_read_bullets,
-    get_actions,
-    init_hidden,
-    reset_done_envs,
     resolve_agent_spec,
 )
 from boost_and_broadside.evaluation.environment import (
     create_evaluation_env,
     resolve_evaluation_environment,
 )
-from boost_and_broadside.evaluation.match import merge_team_actions
+from boost_and_broadside.evaluation.match import MatchRunner
 from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
 from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
@@ -310,11 +306,17 @@ def _run_phase1(
     dev: torch.device,
     coordinator,
 ) -> dict:
-    include_bullets = agents_read_bullets(agent0, agent1)
     env = create_evaluation_env(B, ship_config, env_config, dev)
-    init_hidden(agent0, B, dev)
-    init_hidden(agent1, B, dev)
     env.reset()
+    runner = MatchRunner(
+        env,
+        [agent0, agent1],
+        torch.zeros(B, dtype=torch.long, device=dev),
+        torch.ones(B, dtype=torch.long, device=dev),
+        ship_config,
+        N,
+    )
+    runner.init_hidden()
 
     num_targets = coordinator.total_target_dimension
     err_sum = torch.zeros(num_targets, device=dev)
@@ -337,26 +339,25 @@ def _run_phase1(
     print(f"Collecting {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
-        obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
+        truth_obs = observation_from_state(
+            env.state, ship_config, include_bullets=runner.include_bullets
+        )
+        policy_obs = runner.observe()
+        selection = runner.select_actions(policy_obs, trace_agents=frozenset({0}))
 
         # Capture combat flag before step
-        combat = (env.state.prev_action[:, :N, 2] > 0.5).any(dim=1)  # (B,)
+        combat = (runner.action_state.pending[:, :N, 2] > 0).any(dim=1)  # (B,)
+        pred_next_scaled = selection.predictions.get(0)
+        model_obs = selection.observations.get(0, policy_obs.for_team(0))
+        curr_alive = truth_obs["alive"][:, :N].clone()  # (B, N) bool, before step
+        curr_targets = coordinator.get_target_vector(model_obs)[:, :N]
 
-        action0, pred_next_scaled = get_actions(
-            agent0, obs, env.state, B, N, dev, return_pred_next=True
-        )
-        action1 = get_actions(agent1, obs, env.state, B, N, dev)
-
-        team_id = env.state.ship_team_id  # (B, N) int32
-        action = merge_team_actions(action0, action1, team_id)
-
-        curr_alive = obs["alive"][:, :N].clone()  # (B, N) bool, before step
-        curr_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
-
-        dones, truncated = env.step(action)
+        dones, truncated = runner.advance(selection.action)
         done_any = dones | truncated  # (B,)
 
-        next_obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
+        next_obs = observation_from_state(
+            env.state, ship_config, include_bullets=runner.include_bullets
+        )
         next_alive = env.state.ship_alive  # (B, N) bool, after step
 
         if pred_next_scaled is not None:
@@ -403,10 +404,7 @@ def _run_phase1(
             prev_valid = valid.clone()
             prev_err = err.detach().clone()
 
-        if done_any.any():
-            env.reset_envs(done_any)
-            reset_done_envs(agent0, done_any)
-            reset_done_envs(agent1, done_any)
+        runner.reset_finished(done_any)
 
         if (step + 1) % 100 == 0:
             elapsed = time.perf_counter() - t0
@@ -451,11 +449,17 @@ def _run_phase2(
     dev: torch.device,
     coordinator,
 ) -> dict:
-    include_bullets = agents_read_bullets(agent0, warmup_agent1)
     env = create_evaluation_env(B, ship_config, env_config, dev)
-    init_hidden(agent0, B, dev)
-    init_hidden(warmup_agent1, B, dev)
     env.reset()
+    runner = MatchRunner(
+        env,
+        [agent0, warmup_agent1],
+        torch.zeros(B, dtype=torch.long, device=dev),
+        torch.ones(B, dtype=torch.long, device=dev),
+        ship_config,
+        N,
+    )
+    runner.init_hidden()
 
     ar_sq_sum = torch.zeros(_AR_WINDOW, coordinator.total_target_dimension, device=dev)
     ar_count = torch.zeros(_AR_WINDOW, device=dev)
@@ -465,24 +469,9 @@ def _run_phase2(
     for window in range(num_windows):
         # --- Warmup ---
         for _ in range(_WARMUP_STEPS):
-            obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
-            action0 = get_actions(agent0, obs, env.state, B, N, dev)
-            action1 = get_actions(warmup_agent1, obs, env.state, B, N, dev)
-            team_id = env.state.ship_team_id
-            action = merge_team_actions(action0, action1, team_id)
-            dones, truncated = env.step(action)
+            dones, truncated = runner.step()
             done_any = dones | truncated
-            if done_any.any():
-                env.reset_envs(done_any)
-                reset_done_envs(agent0, done_any)
-                reset_done_envs(warmup_agent1, done_any)
-
-        # --- Snapshot after warmup ---
-        ar_start_obs = observation_from_state(
-            env.state, ship_config, include_bullets=include_bullets
-        )
-        ar_start_hidden = agent0.hidden.clone()
-        ar_start_targets = coordinator.get_target_vector(ar_start_obs)[:, :N]
+            runner.reset_finished(done_any)
 
         # --- Real-sim recording ---
         stored_actions = []  # list of (B, N, 3) int tensors
@@ -491,27 +480,26 @@ def _run_phase2(
         window_valid = torch.ones(B, dtype=torch.bool, device=dev)
 
         for k in range(_AR_WINDOW):
-            obs = observation_from_state(env.state, ship_config, include_bullets=include_bullets)
-            action0 = get_actions(agent0, obs, env.state, B, N, dev)
-            action1 = get_actions(warmup_agent1, obs, env.state, B, N, dev)
-            team_id = env.state.ship_team_id
-            action = merge_team_actions(action0, action1, team_id)
-            stored_actions.append(action.clone())
+            hidden_before = agent0.hidden.clone() if k == 0 else None
+            policy_obs = runner.observe()
+            selection = runner.select_actions(policy_obs, trace_agents=frozenset({0}))
+            if k == 0:
+                ar_start_obs = selection.observations[0]
+                ar_start_hidden = hidden_before
+                ar_start_targets = coordinator.get_target_vector(ar_start_obs)[:, :N]
+            stored_actions.append(selection.action.clone())
 
-            dones, truncated = env.step(action)
+            dones, truncated = runner.advance(selection.action)
             done_any = dones | truncated
             window_valid &= ~done_any
 
             next_obs = observation_from_state(
-                env.state, ship_config, include_bullets=include_bullets
+                env.state, ship_config, include_bullets=runner.include_bullets
             )
             stored_true_targets.append(coordinator.get_target_vector(next_obs)[:, :N].clone())
             stored_alive.append(env.state.ship_alive.clone())
 
-            if done_any.any():
-                env.reset_envs(done_any)
-                reset_done_envs(agent0, done_any)
-                reset_done_envs(warmup_agent1, done_any)
+            runner.reset_finished(done_any)
 
         # --- AR replay from snapshot ---
         curr_obs = YemongObservation(data={k: v.clone() for k, v in ar_start_obs.items()})

@@ -32,6 +32,7 @@ from boost_and_broadside.env.rewards import (
     build_reward_components,
 )
 from boost_and_broadside.env.state import TensorState
+from boost_and_broadside.runtime.actions import neutralize_invalidated_actions_
 
 # Fixed GPU accumulator schema. Existing entries retain their indices so older
 # metric code and focused regression tests remain comparable; frontline sources
@@ -80,7 +81,7 @@ class YemongEnvWrapper:
         "cooldown"        (B, N+M, 1)  — raw seconds; fields = 0
         "team_id"         (B, N+M)     — int32; 0/1 for ships, 2 for fields
         "alive"           (B, N+M)     — bool; fields are always True
-        "previous_action" (B, N+M, 3)  — int actions; zero for fields
+        "previous_action" (B, N+M, 3)  — pending action; private categories for enemies
         "radius"          (B, N+M, 1)  — raw px; ship collision or nominal field radius
         "local_index_gradient" (B, N+M, 2) — normalized grad(n); zero for fields
         field material     (B, N+M, 1)  — numeric width/index-ratio/damage channels
@@ -354,6 +355,7 @@ class YemongEnvWrapper:
         dones = torch.zeros(B, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
         transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        actuator_contiguous = self.env.state.ship_alive.clone()
         # A new decision: whatever spawned during the last one has been
         # observed, so the latch starts empty and re-fills below.
         self.env.state.ship_spawned.zero_()
@@ -361,13 +363,15 @@ class YemongEnvWrapper:
             (B,), int(MatchResult.ONGOING), dtype=torch.int8, device=self.device
         )
 
-        for _ in range(self.env_config.action_repeat):
+        held_actions = actions if self.env_config.action_repeat == 1 else actions.clone()
+        for repeat_index in range(self.env_config.action_repeat):
             # Envs that already finished earlier in this hold contribute nothing.
             running = ~(dones | truncated)
             tick_dones, tick_truncated = self._physics_tick(
-                actions, comp_rewards, running, unlimited_resources
+                held_actions, comp_rewards, running, unlimited_resources
             )
             transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            actuator_contiguous &= self.env.state.ship_alive & ~self.env.state.ship_respawned
             self.env.state.ship_spawned |= self.env.state.ship_respawned & running.unsqueeze(1)
             ended_this_tick = (tick_dones | tick_truncated) & running
             terminal_result = torch.where(
@@ -377,6 +381,12 @@ class YemongEnvWrapper:
             )
             dones = dones | (tick_dones & running)
             truncated = truncated | (tick_truncated & running)
+            if repeat_index + 1 < self.env_config.action_repeat:
+                neutralize_invalidated_actions_(
+                    held_actions,
+                    self.env.state.ship_alive,
+                    self.env.state.ship_respawned,
+                )
 
         done_mask = dones | truncated
         done_n = done_mask.unsqueeze(1)
@@ -400,6 +410,7 @@ class YemongEnvWrapper:
             truncated,
             {
                 "transition_contiguous": transition_contiguous,
+                "actuator_contiguous": actuator_contiguous,
                 "match_result": terminal_result,
             },
         )
@@ -422,6 +433,7 @@ class YemongEnvWrapper:
         dones = torch.zeros(B, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
         transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        actuator_contiguous = self.env.state.ship_alive.clone()
         # A new decision: whatever spawned during the last one has been
         # observed, so the latch starts empty and re-fills below.
         self.env.state.ship_spawned.zero_()
@@ -429,12 +441,14 @@ class YemongEnvWrapper:
             (B,), int(MatchResult.ONGOING), dtype=torch.int8, device=self.device
         )
 
-        for _ in range(self.env_config.action_repeat):
+        held_actions = actions if self.env_config.action_repeat == 1 else actions.clone()
+        for repeat_index in range(self.env_config.action_repeat):
             # Preserve standard-step's frozen terminal outputs during a held
             # action, while allowing the physics engine to finish its ticks.
             running = ~(dones | truncated)
-            tick_dones, tick_truncated = self._interactive_tick(actions, unlimited_resources)
+            tick_dones, tick_truncated = self._interactive_tick(held_actions, unlimited_resources)
             transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            actuator_contiguous &= self.env.state.ship_alive & ~self.env.state.ship_respawned
             self.env.state.ship_spawned |= self.env.state.ship_respawned & running.unsqueeze(1)
             ended_this_tick = (tick_dones | tick_truncated) & running
             terminal_result = torch.where(
@@ -442,6 +456,12 @@ class YemongEnvWrapper:
             )
             dones |= tick_dones & running
             truncated |= tick_truncated & running
+            if repeat_index + 1 < self.env_config.action_repeat:
+                neutralize_invalidated_actions_(
+                    held_actions,
+                    self.env.state.ship_alive,
+                    self.env.state.ship_respawned,
+                )
 
         done_mask = dones | truncated
         if auto_reset:
@@ -457,6 +477,7 @@ class YemongEnvWrapper:
             truncated,
             {
                 "transition_contiguous": transition_contiguous,
+                "actuator_contiguous": actuator_contiguous,
                 "match_result": terminal_result,
             },
         )

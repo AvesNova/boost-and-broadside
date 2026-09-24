@@ -6,7 +6,12 @@ from enum import IntEnum, StrEnum
 import torch
 
 from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES, EnvConfig, ShipConfig
-from boost_and_broadside.constants import EPS
+from boost_and_broadside.constants import (
+    EPS,
+    PRIVATE_POWER_ACTION,
+    PRIVATE_SHOOT_ACTION,
+    PRIVATE_TURN_ACTION,
+)
 from boost_and_broadside.env.frontline import zone_terminal_distances
 from boost_and_broadside.env.perception import TeamVisibility, team_visibility_from_state
 from boost_and_broadside.env.state import TensorState
@@ -502,6 +507,22 @@ class ObservationBuffers:
         """Compatibility no-op: field geometry is read directly from state."""
 
 
+def write_pending_action_view(
+    destination: torch.Tensor,
+    pending_action: torch.Tensor,
+    team_id: torch.Tensor,
+    observer_team: int,
+) -> None:
+    """Write one policy view of pending actions with opponent privacy."""
+    if observer_team not in (0, 1):
+        raise ValueError(f"observer_team must be 0 or 1, got {observer_team}")
+    destination.copy_(pending_action)
+    opponent = team_id != observer_team
+    destination[..., 0].masked_fill_(opponent, PRIVATE_POWER_ACTION)
+    destination[..., 1].masked_fill_(opponent, PRIVATE_TURN_ACTION)
+    destination[..., 2].masked_fill_(opponent, PRIVATE_SHOOT_ACTION)
+
+
 def bullet_observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
@@ -616,7 +637,8 @@ def observation_from_state(
     ``include_bullets`` attaches the bullet cross-attention channels. It is off by
     default so profiles that do not read bullets pay neither the reduction nor the
     rollout storage. ``perspective_team`` keeps allied pending actions while
-    replacing enemy actions with zero, even when the enemy ship is visible.
+    replacing enemy actions with explicit private categories, even when the enemy
+    ship is visible.
     """
     if buffers is None:
         buffers = ObservationBuffers.allocate(
@@ -638,11 +660,12 @@ def observation_from_state(
     ship_cooldown = state.ship_cooldown.unsqueeze(-1)
     ship_prev_action = state.prev_action.long()
     if perspective_team is not None:
-        if perspective_team not in (0, 1):
-            raise ValueError(f"perspective_team must be 0 or 1, got {perspective_team}")
-        own_ship = (state.ship_team_id == perspective_team).unsqueeze(-1)
-        ship_prev_action = torch.where(
-            own_ship, ship_prev_action, torch.zeros_like(ship_prev_action)
+        ship_prev_action = ship_prev_action.clone()
+        write_pending_action_view(
+            ship_prev_action,
+            state.prev_action,
+            state.ship_team_id,
+            perspective_team,
         )
 
     log_scale = _index_log_scale(ship_config)

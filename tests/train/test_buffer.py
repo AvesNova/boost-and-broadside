@@ -17,7 +17,14 @@ from boost_and_broadside.train.rl.buffer import (
 K = 4  # num_components used across tests (smaller than prod K=12 for speed)
 
 
-def _make_buffer(T=4, B=2, N=4, D=16, num_components=K) -> tuple[RolloutBuffer, int, int, int, int]:
+def _make_buffer(
+    T=4,
+    B=2,
+    N=4,
+    D=16,
+    num_components=K,
+    store_expert_probs=True,
+) -> tuple[RolloutBuffer, int, int, int, int]:
     from boost_and_broadside.env.observation import YemongObservation
 
     obs_sample = YemongObservation(
@@ -36,6 +43,7 @@ def _make_buffer(T=4, B=2, N=4, D=16, num_components=K) -> tuple[RolloutBuffer, 
         gamma=torch.full((num_components,), 0.99),
         gae_lambda=torch.full((num_components,), 0.95),
         device=torch.device("cpu"),
+        store_expert_probs=store_expert_probs,
     )
     return buf, T, B, N, D
 
@@ -343,6 +351,26 @@ class TestBufferAdd:
         expected = symlog(torch.full((T, B, N, Kc), 0.1))
         # rewards are bf16-stored (see _STORAGE_FLOAT), so compare at bf16 precision.
         assert torch.allclose(buf.rewards.float(), expected, atol=5e-3)
+
+    def test_ppo_only_buffer_reserves_no_bc_payload(self):
+        buf, T, B, N, _ = _make_buffer(store_expert_probs=False)
+
+        assert buf.expert_probs.shape == (T, B, N, 0)
+        assert buf.expert_probs.numel() == 0
+        with pytest.raises(ValueError, match="BC storage off"):
+            buf.add(
+                obs={
+                    "pos": torch.zeros(B, N, 2),
+                    "vel": torch.zeros(B, N, 2),
+                    "alive": torch.ones(B, N),
+                },
+                action=torch.zeros(B, N, 3),
+                logprob=torch.zeros(B, N),
+                reward=torch.zeros(B, N, K),
+                value=torch.zeros(B, N, K),
+                alive=torch.ones(B, N, dtype=torch.bool),
+                expert_probs=torch.zeros(B, N, 12),
+            )
 
 
 class TestStoragePrecision:

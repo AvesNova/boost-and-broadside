@@ -13,6 +13,7 @@ loop, and the tally, to the caller.
 """
 
 from dataclasses import replace
+from typing import NamedTuple
 
 import torch
 
@@ -30,7 +31,19 @@ from boost_and_broadside.evaluation.agents import (
     reset_done_envs,
 )
 from boost_and_broadside.evaluation.environment import create_evaluation_env
+from boost_and_broadside.runtime.actions import (
+    PendingActionState,
+    advance_autonomous_decision,
+)
 from boost_and_broadside.train.rl.belief import BeliefTracker
+
+
+class DecisionTrace(NamedTuple):
+    """Optional controller details for diagnostics, keyed by agent index."""
+
+    action: torch.Tensor
+    observations: dict[int, YemongObservation]
+    predictions: dict[int, torch.Tensor | None]
 
 
 def merge_team_actions(
@@ -121,6 +134,7 @@ class MatchRunner:
         # observation without them plays blind with nothing to show for it.
         self.include_bullets = agents_read_bullets(*agents)
         self._arange = torch.arange(self.num_envs, device=self.device)
+        self.action_state = PendingActionState.allocate(self.num_envs, self.num_ships, self.device)
 
     def init_hidden(self) -> None:
         """Allocate each policy's recurrent state over the envs it plays in."""
@@ -143,10 +157,29 @@ class MatchRunner:
             self.env.env_config,
             include_bullets=self.include_bullets,
         )
+        self.action_state.write_observation(
+            observation,
+            self.env.state.ship_team_id,
+            self.num_ships,
+        )
         return observation
 
     def actions(self, obs: YemongObservation) -> torch.Tensor:
         """Every ship's action, taken from the agent that controls its team."""
+        return self.select_actions(obs).action
+
+    def select_actions(
+        self,
+        obs: YemongObservation,
+        *,
+        trace_agents: frozenset[int] = frozenset(),
+    ) -> DecisionTrace:
+        """Select actions and optionally expose already-computed policy details.
+
+        Diagnostics can request the exact policy view and next-state prediction
+        without a second forward pass. Ordinary evaluation passes no indices and
+        retains the action-only behavior of :meth:`actions`.
+        """
         per_agent = torch.zeros(
             len(self.agents),
             self.num_envs,
@@ -160,6 +193,8 @@ class MatchRunner:
         # once per rung is the difference between one scripted pass and a dozen.
         scripted_cache: dict[int, torch.Tensor] = {}
         random_draw: torch.Tensor | None = None
+        traced_observations: dict[int, YemongObservation] = {}
+        traced_predictions: dict[int, torch.Tensor | None] = {}
         for index, agent in enumerate(self.agents):
             active = self.active[index]
             if active.numel() == 0:
@@ -174,6 +209,8 @@ class MatchRunner:
                 if random_draw is None:
                     random_draw = agent.agent.random_actions_like(scripted)
                 per_agent[index] = agent.agent.mix_actions(scripted, random_draw).int()
+                if index in trace_agents:
+                    traced_predictions[index] = None
                 continue
             if agent.kind != "policy":
                 # Scripted tournament fields may contain many distinct
@@ -188,6 +225,8 @@ class MatchRunner:
                     self.device,
                     team_visibility=self.visibility.ship[active],
                 ).int()
+                if index in trace_agents:
+                    traced_predictions[index] = None
                 continue
             view = agent_view(
                 agent, obs.slice_envs(active), self.num_ships, self.team1_index[active] == index
@@ -204,21 +243,42 @@ class MatchRunner:
             )
             agent.belief.advance(view, prediction)
             per_agent[index, active] = action.int()
-        return merge_team_actions(
-            per_agent[self.team0_index, self._arange],
-            per_agent[self.team1_index, self._arange],
-            self.env.state.ship_team_id,
+            if index in trace_agents:
+                traced_observations[index] = view
+                traced_predictions[index] = prediction
+        return DecisionTrace(
+            merge_team_actions(
+                per_agent[self.team0_index, self._arange],
+                per_agent[self.team1_index, self._arange],
+                self.env.state.ship_team_id,
+            ),
+            traced_observations,
+            traced_predictions,
         )
 
     def step(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """Observe, act, and advance one tick. Returns (dones, truncated)."""
-        return self.env.step(self.actions(self.observe()))
+        """Run one delayed autonomous decision. Returns (dones, truncated)."""
+        return self.advance(self.actions(self.observe()))
+
+    def advance(self, selected_action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Advance physics under pending commands, then commit ``selected_action``.
+
+        Diagnostics that need controller predictions or privileged targets may
+        split observe/act/advance while retaining this authoritative transition.
+        """
+        dones, truncated, _ = advance_autonomous_decision(
+            self.env,
+            self.action_state,
+            selected_action,
+        )
+        return dones, truncated
 
     def reset_finished(self, done_any: torch.Tensor, options: dict | None = None) -> None:
         """Reset finished environments and the recurrent state riding on them."""
         if not bool(done_any.any()):
             return
         self.env.reset_envs(done_any, options=options)
+        self.action_state.reset(done_any)
         for agent, active in zip(self.agents, self.active):
             if agent.kind == "policy" and active.numel():
                 reset_done_envs(agent, done_any[active])

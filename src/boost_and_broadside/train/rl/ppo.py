@@ -47,6 +47,9 @@ from boost_and_broadside.config.diagnostics import (
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
 from boost_and_broadside.constants import (
     NUM_OUTCOME_CLASSES,
+    NUM_POWER_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+    NUM_TURN_ACTIONS,
     POWER_SLICE,
     SHOOT_SLICE,
     TURN_SLICE,
@@ -56,6 +59,7 @@ from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
+from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.allocation import allocation_weights
 from boost_and_broadside.train.rl.belief import DualBeliefTracker
 from boost_and_broadside.train.rl.buffer import (
@@ -83,6 +87,7 @@ from boost_and_broadside.train.rl.live_rating import TwoStageRating
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 from boost_and_broadside.train.rl.opponents import (
+    LeagueSlot,
     OpponentMixin,
     flip_team_obs,
 )
@@ -237,12 +242,13 @@ class _RolloutRuntime:
     beliefs: DualBeliefTracker | None
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
-    action_buffer: torch.Tensor
+    action_state: PendingActionState
+    league_slots: list[LeagueSlot]
     aux_obs: list[YemongObservation]
     aux_beliefs: list[DualBeliefTracker | None]
     aux_hiddens: list[torch.Tensor]
     aux_hidden_t1s: list[torch.Tensor | None]
-    aux_action_buffers: list[torch.Tensor]
+    aux_action_states: list[PendingActionState]
     aux_last_dones: list[torch.Tensor]
     env_stream: torch.cuda.Stream | None
     net_stream: torch.cuda.Stream | None
@@ -416,6 +422,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self.scripted_agent = scripted_agent
 
         base_state = _resolve_schedule(train_config.schedule, 0)
+        self._stores_bc_targets = (
+            _max_schedule_value(
+                train_config.schedule.behavior_cloning_coef,
+                train_config.total_timesteps,
+            )
+            > 0.0
+        )
 
         # Primary scale — two contiguous env groups:
         #   [0, B_self)        → self-play
@@ -550,6 +563,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             prediction_target_dim=self.coordinator.total_target_dimension,
             prediction_dim=self.coordinator.total_prediction_dimension,
             uncertainty_dim=self.coordinator.total_uncertainty_dimension,
+            store_expert_probs=self._stores_bc_targets,
         )
 
         # Pre-compute lambda masks for active components only.
@@ -785,6 +799,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 gae_lambda=self._lambda_t,
                 device=self.device,
                 num_tokens=aux_sample_obs.pos.shape[1],
+                store_expert_probs=False,
             )
             self.aux_wrappers.append(aux_w)
             self.aux_buffers.append(aux_buf)
@@ -900,7 +915,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         aux_beliefs: list[DualBeliefTracker | None],
         aux_hiddens: list[torch.Tensor],
         aux_hidden_t1s: list[torch.Tensor | None],
-        aux_action_buffers: list[torch.Tensor],
+        aux_action_states: list[PendingActionState],
         aux_last_dones: list[torch.Tensor],
     ) -> None:
         """Collect one pure-self-play transition for every auxiliary scale."""
@@ -926,12 +941,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_action, aux_actor_mask = self._combine_actions(
                 aux_action_t0, aux_action_t1, aux_team_id
             )
+            action_state = aux_action_states[i]
             next_aux_obs, aux_reward, aux_dones, aux_truncated, aux_info = aux_w.step(
-                aux_action_buffers[i]
+                action_state.applied_action()
             )
-            # Inject aux decided action into next obs previous_action
-            next_aux_obs[ObsKey.PREVIOUS_ACTION][:, :aux_N] = aux_action
             aux_done_any = aux_dones | aux_truncated
+            decision_committed = action_state.commit(
+                aux_action,
+                aux_info["actuator_contiguous"],
+                aux_done_any,
+            )
+            action_state.write_observation(
+                next_aux_obs,
+                next_aux_obs[ObsKey.TEAM_ID][:, :aux_N],
+                aux_N,
+            )
             aux_buf.add(
                 obs=aux_obs[i],
                 action=aux_action,
@@ -940,6 +964,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 value=self.scaler.denormalize(aux_value_norm),
                 alive=aux_obs[i]["alive"][:, :aux_N].bool(),
                 actor_mask=aux_actor_mask,
+                decision_committed=decision_committed,
                 expert_probs=None,
                 terminated=aux_done_any,
                 transition_contiguous=aux_info["transition_contiguous"],
@@ -949,8 +974,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
                     aux_hidden_t1s[i], aux_done_any, aux_N
                 )
-            aux_action_buffers[i] = aux_action.detach().clone()
-            aux_action_buffers[i][aux_done_any] = 0
             aux_last_dones[i] = aux_done_any
             if aux_beliefs[i] is not None:
                 aux_beliefs[i].advance(aux_obs[i], aux_pred_t0, aux_pred_t1)
@@ -1025,13 +1048,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if self._ego_pass
             else None
         )
-        action_buffer = torch.zeros(num_envs, num_ships, 3, dtype=torch.int32, device=self.device)
+        action_state = PendingActionState.allocate(num_envs, num_ships, self.device)
 
         aux_obs: list[YemongObservation] = []
         aux_beliefs: list[DualBeliefTracker | None] = []
         aux_hiddens: list[torch.Tensor] = []
         aux_hidden_t1s: list[torch.Tensor | None] = []
-        aux_action_buffers: list[torch.Tensor] = []
+        aux_action_states: list[PendingActionState] = []
         aux_last_dones: list[torch.Tensor] = []
         for scale, wrapper in zip(self.cfg.scales[1:], self.aux_wrappers):
             raw_aux_obs = wrapper.reset()
@@ -1059,13 +1082,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 if self._ego_pass
                 else None
             )
-            aux_action_buffers.append(
-                torch.zeros(
+            aux_action_states.append(
+                PendingActionState.allocate(
                     scale.num_envs,
                     scale.env_config.num_ships,
-                    3,
-                    dtype=torch.int32,
-                    device=self.device,
+                    self.device,
                 )
             )
             aux_last_dones.append(torch.zeros(scale.num_envs, dtype=torch.bool, device=self.device))
@@ -1109,12 +1130,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             beliefs=beliefs,
             hidden=hidden,
             hidden_t1=hidden_t1,
-            action_buffer=action_buffer,
+            action_state=action_state,
+            league_slots=[],
             aux_obs=aux_obs,
             aux_beliefs=aux_beliefs,
             aux_hiddens=aux_hiddens,
             aux_hidden_t1s=aux_hidden_t1s,
-            aux_action_buffers=aux_action_buffers,
+            aux_action_states=aux_action_states,
             aux_last_dones=aux_last_dones,
             env_stream=torch.cuda.Stream() if self.device.type == "cuda" else None,
             net_stream=torch.cuda.Stream() if self.device.type == "cuda" else None,
@@ -1131,14 +1153,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.reset()
             aux_buffer.store_initial_hidden(aux_hidden)
 
-        slots = self._prepare_league_slots(runtime.num_recurrent)
+        if not runtime.league_slots:
+            runtime.league_slots = self._prepare_league_slots(runtime.num_recurrent)
+            if self._global_step > 0:
+                for slot in runtime.league_slots:
+                    slot.active.zero_()
+        else:
+            self._begin_league_replacement(runtime.league_slots, runtime.num_recurrent)
+        slots = runtime.league_slots
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
                 obs=runtime.obs,
                 beliefs=runtime.beliefs,
                 hidden=runtime.hidden,
                 hidden_t1=runtime.hidden_t1,
-                action_buffer=runtime.action_buffer,
+                action_state=runtime.action_state,
                 num_envs=runtime.num_envs,
                 num_ships=runtime.num_ships,
                 num_recurrent=runtime.num_recurrent,
@@ -1150,7 +1179,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.obs,
                 runtime.hidden,
                 runtime.hidden_t1,
-                runtime.action_buffer,
+                runtime.action_state,
                 terminated,
             ) = primary
             self._collect_aux_steps(
@@ -1158,7 +1187,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 runtime.aux_beliefs,
                 runtime.aux_hiddens,
                 runtime.aux_hidden_t1s,
-                runtime.aux_action_buffers,
+                runtime.aux_action_states,
                 runtime.aux_last_dones,
             )
             runtime.elo_eval.step(rollout_step, avg_eval_active)
@@ -1599,6 +1628,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         _z = torch.zeros((), device=source_device)
         alive_sum = _z.clone()
         actor_sum = _z.clone()
+        pg_sum = _z.clone()
         bc_sum = _z.clone()
         ns_sum = _z.clone()
         ns_visible_sum = _z.clone()
@@ -1608,10 +1638,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for chunk in chunks:
             mb_alive = chunk.alive
             mb_actor_mask = chunk.actor_mask
+            mb_decision_committed = chunk.decision_committed
             mb_expert_probs = chunk.expert_probs
             mb_terminated = chunk.terminated
             alive_sum += mb_alive.sum()
             actor_sum += (mb_actor_mask & mb_alive).sum()
+            pg_sum += (mb_actor_mask & mb_alive & mb_decision_committed).sum()
             numel += mb_alive.numel()
             if need_bc:
                 bc_valid = mb_expert_probs.sum(-1) > 0
@@ -1637,6 +1669,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         return {
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
+            "pg_sum": pg_sum.clamp(min=1.0).to(self.device),
             "bc_sum": bc_sum.clamp(min=1.0).to(self.device),
             "ns_sum": ns_sum.clamp(min=1.0).to(self.device),
             "ns_visible_sum": ns_visible_sum.clamp(min=1.0).to(self.device),
@@ -1711,6 +1744,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         mb_alive = batch.alive
         mb_hidden = batch.hidden
         mb_actor_mask = batch.actor_mask
+        mb_decision_committed = batch.decision_committed
         mb_expert_probs = batch.expert_probs
         mb_terminated = batch.terminated
         mb_transition_contiguous = batch.transition_contiguous
@@ -1743,6 +1777,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         actor_f = (mb_actor_mask & mb_alive).float()  # (T, B_mb, N)
         actor_sum = denoms["actor_sum"]
+        pg_f = (mb_actor_mask & mb_alive & mb_decision_committed).float()
+        pg_sum = denoms["pg_sum"]
 
         # ---- Lambda aggregation (precomputed once per update) --------------
         # See _precompute_lambda_aggregates: the (T, B, N_i, N_j, K) lambda
@@ -1758,7 +1794,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ratio = log_ratio.exp()
         pg_loss1 = -adv_norm * ratio
         pg_loss2 = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
-        pg_loss = (torch.max(pg_loss1, pg_loss2) * actor_f).sum() / actor_sum
+        pg_loss = (torch.max(pg_loss1, pg_loss2) * pg_f).sum() / pg_sum
 
         # ---- Value loss --------------------------------------------------
         target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
@@ -1775,20 +1811,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             bc_valid = mb_expert_probs.sum(-1) > 0  # (T, B_mb, N)
             bc_f = (bc_valid & mb_actor_mask & mb_alive).float()
             bc_sum = denoms["bc_sum"]
-            ce = (
-                -(
-                    mb_expert_probs[..., POWER_SLICE]
-                    * F.log_softmax(policy_logits[..., POWER_SLICE], dim=-1)
-                ).sum(-1)
-                - (
-                    mb_expert_probs[..., TURN_SLICE]
-                    * F.log_softmax(policy_logits[..., TURN_SLICE], dim=-1)
-                ).sum(-1)
-                - (
-                    mb_expert_probs[..., SHOOT_SLICE]
-                    * F.log_softmax(policy_logits[..., SHOOT_SLICE], dim=-1)
-                ).sum(-1)
-            )  # (T, B_mb, N)
+            p_power = mb_expert_probs[..., POWER_SLICE]
+            p_turn = mb_expert_probs[..., TURN_SLICE]
+            p_shoot = mb_expert_probs[..., SHOOT_SLICE]
+            teacher_joint = (
+                p_power.unsqueeze(-1).unsqueeze(-1)
+                * p_turn.unsqueeze(-2).unsqueeze(-1)
+                * p_shoot.unsqueeze(-2).unsqueeze(-2)
+            ).flatten(-3)
+            ce = -(teacher_joint * F.log_softmax(policy_logits, dim=-1)).sum(-1)
             bc_loss = (ce * bc_f).sum() / bc_sum
             # Entropy of the scripted agent's distribution (the BC loss floor).
             # KL(scripted || policy) = CE - H(scripted); 0 = perfect imitation.
@@ -1953,8 +1984,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                         batch=batch,
                         ratio=ratio,
                         adv_norm=adv_norm,
-                        actor_f=actor_f,
-                        actor_sum=actor_sum,
+                        pg_f=pg_f,
+                        pg_sum=pg_sum,
                         adv_rms=denoms["adv_rms"],
                     )
                 )
@@ -2005,18 +2036,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["label_sq_per_feat"] = label_sq_per_feat  # (pred_dim,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
-            diag["approx_kl"] = (((ratio - 1) - log_ratio) * actor_f).sum() / actor_sum
-            diag["clip_frac"] = (
-                ((ratio - 1).abs() > cfg.clip_coef).float() * actor_f
-            ).sum() / actor_sum
+            diag["approx_kl"] = (((ratio - 1) - log_ratio) * pg_f).sum() / pg_sum
+            diag["clip_frac"] = (((ratio - 1).abs() > cfg.clip_coef).float() * pg_f).sum() / pg_sum
             diag["alive_frac"] = alive_f.sum() / denoms["numel"]
-            diag["ratio_mean"] = (ratio * actor_f).sum() / actor_sum
+            diag["ratio_mean"] = (ratio * pg_f).sum() / pg_sum
             diag["ratio_max"] = ratio.max()  # combine across chunks with max, not sum
 
-            # Per-head entropy from the logits already returned by evaluate_actions.
-            power_ent = Categorical(logits=policy_logits[..., POWER_SLICE]).entropy()
-            turn_ent = Categorical(logits=policy_logits[..., TURN_SLICE]).entropy()
-            shoot_ent = Categorical(logits=policy_logits[..., SHOOT_SLICE]).entropy()
+            # Marginals are diagnostics only. The objective entropy above is the
+            # joint categorical entropy; summing these would be wrong once the
+            # actor learns correlations among action factors.
+            joint_prob = F.softmax(policy_logits, dim=-1).reshape(
+                *policy_logits.shape[:-1],
+                NUM_POWER_ACTIONS,
+                NUM_TURN_ACTIONS,
+                NUM_SHOOT_ACTIONS,
+            )
+            power_ent = Categorical(probs=joint_prob.sum(dim=(-1, -2))).entropy()
+            turn_ent = Categorical(probs=joint_prob.sum(dim=(-3, -1))).entropy()
+            shoot_ent = Categorical(probs=joint_prob.sum(dim=(-3, -2))).entropy()
             diag["entropy_power"] = (power_ent * actor_f).sum() / actor_sum
             diag["entropy_turn"] = (turn_ent * actor_f).sum() / actor_sum
             diag["entropy_shoot"] = (shoot_ent * actor_f).sum() / actor_sum
@@ -2133,8 +2170,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         batch: MicroBatch,
         ratio: torch.Tensor,
         adv_norm: torch.Tensor,
-        actor_f: torch.Tensor,
-        actor_sum: torch.Tensor,
+        pg_f: torch.Tensor,
+        pg_sum: torch.Tensor,
         adv_rms: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         """Split this micro-batch's policy loss across reward components.
@@ -2156,8 +2193,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ratio:     (T, b, N) new/old probability ratio.
             adv_norm:  (T, b, N) normalized aggregate advantage — the quantity
                        the live objective uses.
-            actor_f:   (T, b, N) float mask of tokens the actor loss covers.
-            actor_sum: Minibatch-total actor token count.
+            pg_f:      (T, b, N) causal policy-gradient mask.
+            pg_sum:    Minibatch-total committed policy-decision count.
             adv_rms:   Whole-buffer aggregated-advantage mean square.
 
         Returns:
@@ -2182,8 +2219,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         use_clipped = (-adv_norm * clipped) > (-adv_norm * ratio)  # (T, b, N)
         ratio_selected = torch.where(use_clipped, clipped, ratio)  # (T, b, N)
 
-        weighted = (ratio_selected * actor_f).unsqueeze(-1)  # (T, b, N, 1)
-        per_component = -(adv_norm_k * weighted).sum((0, 1, 2)) / actor_sum  # (K,)
+        weighted = (ratio_selected * pg_f).unsqueeze(-1)  # (T, b, N, 1)
+        per_component = -(adv_norm_k * weighted).sum((0, 1, 2)) / pg_sum  # (K,)
         coefficient = self._policy_gradient_coef
         return {
             f"policy/{name}": coefficient * per_component[index]
@@ -2333,7 +2370,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             buf.adv_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, adv_normed)
             buf.ret_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, returns_sl)
 
-            actor_f = (buf.actor_masks[:, sl] & alive).float()
+            actor_f = (buf.actor_masks[:, sl] & buf.decision_committed[:, sl] & alive).float()
             adv_sq_sum += (buf.adv_agg[:, sl].pow(2) * actor_f).sum()
             adv_cnt += actor_f.sum()
 

@@ -230,7 +230,7 @@ def test_team_views_are_independent_not_label_swaps_of_hidden_truth() -> None:
     assert not team1.visible[0, :2].any()
 
 
-def test_enemy_pending_actions_stay_private_while_ship_is_visible() -> None:
+def test_enemy_pending_actions_use_private_category_while_ship_is_visible() -> None:
     ship, state = _state()
     state.ship_pos[0] = torch.tensor([100 + 100j, 120 + 100j, 140 + 100j, 160 + 100j])
     state.prev_action[0] = torch.tensor(
@@ -239,12 +239,13 @@ def test_enemy_pending_actions_stay_private_while_ship_is_visible() -> None:
 
     obs, _ = perceived_observation_from_state(state, ship, _config(vision_range=300.0))
     team1 = obs.for_team(1)
+    private = torch.tensor([3, 7, 2], dtype=state.prev_action.dtype).expand(2, -1)
 
     assert obs.visible[0, :4].all()
     assert torch.equal(obs.previous_action[0, :2], state.prev_action[0, :2])
-    assert not obs.previous_action[0, 2:4].any()
+    assert torch.equal(obs.previous_action[0, 2:4], private)
     assert team1.visible[0, :4].all()
-    assert not team1.previous_action[0, :2].any()
+    assert torch.equal(team1.previous_action[0, :2], private)
     assert torch.equal(team1.previous_action[0, 2:4], state.prev_action[0, 2:4])
 
 

@@ -22,6 +22,11 @@ import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.constants import (
+    NUM_OBS_POWER_ACTIONS,
+    NUM_OBS_SHOOT_ACTIONS,
+    NUM_OBS_TURN_ACTIONS,
+)
 from boost_and_broadside.env.observation import (
     BulletObsKey,
     ObjectType,
@@ -366,9 +371,7 @@ class Fourier(Transform):
                 candidate = phase[..., k] * wavelength / (2.0 * math.pi)
                 # Nearest candidate to the running estimate, i.e. the residual
                 # wrapped into (-lambda/2, +lambda/2].
-                delta = (
-                    (candidate - estimate + wavelength / 2.0) % wavelength
-                ) - wavelength / 2.0
+                delta = ((candidate - estimate + wavelength / 2.0) % wavelength) - wavelength / 2.0
                 estimate = estimate + weight[..., k] * delta
             outs.append(estimate % period)
         return torch.stack(outs, dim=-1)
@@ -1540,23 +1543,23 @@ def build_standard_coordinator(
         Feature("object_type", Accessor(ObsKey.OBJECT_TYPE), OneHot(4), Identity()),
         Feature("zone_role", Accessor(ObsKey.ZONE_ROLE), OneHot(6), Identity()),
         Feature(
-            "prev_power",
+            "pending_power",
             Accessor(ObsKey.PREVIOUS_ACTION, [0]),
-            OneHot(3),
+            OneHot(NUM_OBS_POWER_ACTIONS),
             Identity(),
             scope=FeatureScope.SHIP,
         ),
         Feature(
-            "prev_turn",
+            "pending_turn",
             Accessor(ObsKey.PREVIOUS_ACTION, [1]),
-            OneHot(7),
+            OneHot(NUM_OBS_TURN_ACTIONS),
             Identity(),
             scope=FeatureScope.SHIP,
         ),
         Feature(
-            "prev_shoot",
+            "pending_shoot",
             Accessor(ObsKey.PREVIOUS_ACTION, [2]),
-            OneHot(2),
+            OneHot(NUM_OBS_SHOOT_ACTIONS),
             Identity(),
             scope=FeatureScope.SHIP,
         ),

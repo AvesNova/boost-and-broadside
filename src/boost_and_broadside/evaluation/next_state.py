@@ -4,6 +4,7 @@ import torch
 
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.runtime.actions import write_pending_action_view
 
 ALIVE_HEALTH_EPS = 1.0
 
@@ -14,6 +15,7 @@ def decode_targets_to_observation(
     action: torch.Tensor,
     num_ships: int,
     coordinator,
+    observer_team: int = 0,
 ) -> YemongObservation:
     """Decode coordinator targets and retain non-predicted field tokens.
 
@@ -38,11 +40,16 @@ def decode_targets_to_observation(
         ObsKey.COOLDOWN: raw["cooldown"],
         ObsKey.LOCAL_LOG_INDEX: raw["local_log_index"],
         ObsKey.ALIVE: alive,
-        ObsKey.PREVIOUS_ACTION: action,
     }
     data = {key: value.clone() for key, value in prev_obs.items()}
     for key, values in ship_values.items():
         data[key] = torch.cat([values, prev_obs[key][:, num_ships:]], dim=1)
+    write_pending_action_view(
+        data[ObsKey.PREVIOUS_ACTION][:, :num_ships],
+        action,
+        prev_obs[ObsKey.TEAM_ID][:, :num_ships],
+        observer_team,
+    )
     return YemongObservation(data=data)
 
 
@@ -52,6 +59,7 @@ def imagine_trajectory(
     n_steps: int,
     num_ships: int,
     device,
+    observer_team: int = 0,
 ) -> list[torch.Tensor]:
     """Roll a policy's prediction head forward without mutating live hidden state.
 
@@ -83,7 +91,12 @@ def imagine_trajectory(
             )
             ship_targets = coordinator.apply_scaled_predictions(ship_targets, scaled_prediction)
             imagined = decode_targets_to_observation(
-                ship_targets, imagined, action, num_ships, coordinator
+                ship_targets,
+                imagined,
+                action,
+                num_ships,
+                coordinator,
+                observer_team,
             )
             poses.append(
                 torch.cat(

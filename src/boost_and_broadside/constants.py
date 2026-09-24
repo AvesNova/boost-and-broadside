@@ -39,10 +39,24 @@ NUM_POWER_ACTIONS: int = len(PowerActions)  # 3
 NUM_TURN_ACTIONS: int = len(TurnActions)  # 7
 NUM_SHOOT_ACTIONS: int = len(ShootActions)  # 2
 
-# Sum of logits for all action heads (used to size the action output layer)
-TOTAL_ACTION_LOGITS: int = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS  # 12
+# The policy emits one categorical over the physical Cartesian product. Runtime
+# commands stay as [power, turn, shoot] triples; only the policy boundary uses
+# the joint ID.
+NUM_JOINT_ACTIONS: int = NUM_POWER_ACTIONS * NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS  # 42
+TOTAL_ACTION_LOGITS: int = NUM_JOINT_ACTIONS
 
-# Slices into the flat logit vector
+# Pending-action observations are factorized for readability, but each factor
+# has an observation-only private value. These values are never valid physics
+# commands and must be rejected by action decoding/validation.
+PRIVATE_POWER_ACTION: int = NUM_POWER_ACTIONS
+PRIVATE_TURN_ACTION: int = NUM_TURN_ACTIONS
+PRIVATE_SHOOT_ACTION: int = NUM_SHOOT_ACTIONS
+NUM_OBS_POWER_ACTIONS: int = NUM_POWER_ACTIONS + 1
+NUM_OBS_TURN_ACTIONS: int = NUM_TURN_ACTIONS + 1
+NUM_OBS_SHOOT_ACTIONS: int = NUM_SHOOT_ACTIONS + 1
+
+# Slices into the scripted teacher's compact independent marginals. These do
+# not index policy logits now that the actor is joint.
 POWER_SLICE: slice = slice(0, NUM_POWER_ACTIONS)
 # Match outcome as a classification target, ego-relative: index 0 loss, 1 tie,
 # 2 win. Ordered so the index is monotone in the result, which lets
@@ -54,4 +68,7 @@ OUTCOME_TIE_INDEX: int = 1
 OUTCOME_WIN_INDEX: int = 2
 
 TURN_SLICE: slice = slice(NUM_POWER_ACTIONS, NUM_POWER_ACTIONS + NUM_TURN_ACTIONS)
-SHOOT_SLICE: slice = slice(NUM_POWER_ACTIONS + NUM_TURN_ACTIONS, TOTAL_ACTION_LOGITS)
+SHOOT_SLICE: slice = slice(
+    NUM_POWER_ACTIONS + NUM_TURN_ACTIONS,
+    NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS,
+)

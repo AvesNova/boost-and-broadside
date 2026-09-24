@@ -65,6 +65,10 @@ from boost_and_broadside.evaluation.agents import (
 )
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.models.yemong.policy import YemongPolicy
+from boost_and_broadside.runtime.actions import (
+    PendingActionState,
+    advance_autonomous_decision,
+)
 from boost_and_broadside.train.rl.belief import BeliefTracker
 
 _ELO_RATING_SCALE = 400.0
@@ -230,6 +234,9 @@ class EloEvaluator:
             device,
         )
         self.env.reset()
+        self.action_state = PendingActionState.allocate(
+            self.batch_size, self.num_ships, self.device
+        )
         # The evaluator builds its observation without reusable buffers, which
         # makes the builder a pure function of the state and so the one
         # perception path that can be compiled. Worth 4.84x on this batch.
@@ -506,6 +513,7 @@ class EloEvaluator:
         mask[size : 2 * size] = True  # slot 1: floating opponent changed
         mask[4 * size :] = True  # slot 4: floating protagonist changed
         self.env.reset_envs(mask)
+        self.action_state.reset(mask)
         # Stagger episode ends so rating updates arrive continuously.
         staggered = torch.randint_like(self.env.state.step_count, 0, self.max_episode_steps)
         self.env.state.step_count[mask] = staggered[mask]
@@ -726,10 +734,19 @@ class EloEvaluator:
                 self.env.env_config,
                 include_bullets=self.include_bullets,
             )
+            self.action_state.write_observation(
+                obs,
+                state.ship_team_id,
+                self.num_ships,
+            )
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 action_team0, action_team1 = self._compute_team_actions(obs)
-                action = merge_team_actions(action_team0, action_team1, state.ship_team_id)
-                dones, truncated = self.env.step(action)
+                selected_action = merge_team_actions(action_team0, action_team1, state.ship_team_id)
+                dones, truncated, _ = advance_autonomous_decision(
+                    self.env,
+                    self.action_state,
+                    selected_action,
+                )
                 done_any = dones | truncated
 
             team0_won, team1_won, tied = outcome_masks(self.env.state, done_any)
@@ -760,6 +777,7 @@ class EloEvaluator:
             # Env bookkeeping tracks every finished episode, rated or not.
             self._resample_anchor_assignments(done_any)
             self.env.reset_envs(done_any)
+            self.action_state.reset(done_any)
             self._reset_agent_hiddens(done_any)
             self._rated = self._rated | done_any  # recycled envs restart at step 0
 

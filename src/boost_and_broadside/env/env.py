@@ -28,6 +28,7 @@ from boost_and_broadside.env.physics import (
     update_ships,
 )
 from boost_and_broadside.env.state import TensorState
+from boost_and_broadside.runtime.actions import neutralize_invalidated_actions_
 
 
 class TensorEnv:
@@ -75,6 +76,10 @@ class TensorEnv:
             if env_config.frontline.respawn_speed < ship_config.min_speed:
                 raise ValueError("frontline respawn_speed must retain steering authority")
         self.state: TensorState | None = None
+        # Accumulated over the most recent decision-level ``step``. Direct
+        # physics schedulers use this to decide which newly selected commands
+        # survived death/respawn and may enter the next pending queue.
+        self.last_actuator_contiguous: torch.Tensor | None = None
 
     # ------------------------------------------------------------------
     # Reset
@@ -97,6 +102,7 @@ class TensorEnv:
         self._allocate_state()
         mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
         self.reset_envs(mask, options)
+        self.last_actuator_contiguous = self.state.ship_alive.clone()
 
     def _allocate_state(self) -> None:
         """Pre-allocate all state tensors on device."""
@@ -374,10 +380,22 @@ class TensorEnv:
         """
         dones = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        for _ in range(self.env_config.action_repeat):
-            tick_dones, tick_truncated = self.tick(actions, unlimited_resources=unlimited_resources)
+        actuator_contiguous = self.state.ship_alive.clone()
+        held_actions = actions if self.env_config.action_repeat == 1 else actions.clone()
+        for repeat_index in range(self.env_config.action_repeat):
+            tick_dones, tick_truncated = self.tick(
+                held_actions, unlimited_resources=unlimited_resources
+            )
             dones |= tick_dones
             truncated |= tick_truncated
+            actuator_contiguous &= self.state.ship_alive & ~self.state.ship_respawned
+            if repeat_index + 1 < self.env_config.action_repeat:
+                neutralize_invalidated_actions_(
+                    held_actions,
+                    self.state.ship_alive,
+                    self.state.ship_respawned,
+                )
+        self.last_actuator_contiguous = actuator_contiguous
         return dones, truncated
 
     def tick(

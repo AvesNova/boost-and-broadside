@@ -280,6 +280,7 @@ class TestPPOSmokeTest:
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path),
             rollouts_per_update=2,
+            league_fraction=0.5,
         )
 
         trainer.train()
@@ -291,6 +292,7 @@ class TestPPOSmokeTest:
         trainer = _make_trainer(
             checkpoint_dir=str(tmp_path),
             rollouts_per_update=2,
+            league_fraction=0.5,
             device="cuda",
         )
 
@@ -420,6 +422,38 @@ class TestEloLadder:
             runtime.elo_eval.step(0, avg_active=False)
         snapshot = runtime.elo_eval.flush(avg_active=False)
         assert snapshot.floating_elo is not None
+
+    def test_evaluator_consumes_the_previous_decision_not_the_new_selection(
+        self, tmp_path, monkeypatch
+    ):
+        """Continuous Elo must measure the same actuator latency as training."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        elo_eval = trainer._initialize_rollout_runtime().elo_eval
+        elo_eval.env.state.step_count.zero_()
+        shape = (elo_eval.batch_size, elo_eval.num_ships, 3)
+        selected_a = torch.tensor((1, 2, 1), device=elo_eval.device).expand(shape).clone()
+        selected_b = torch.tensor((2, 5, 0), device=elo_eval.device).expand(shape).clone()
+        selected = selected_a
+        applied: list[torch.Tensor] = []
+        original_step = elo_eval.env.step
+
+        def record_step(action):
+            applied.append(action.clone())
+            return original_step(action)
+
+        def fixed_team_actions(_obs):
+            return selected, selected
+
+        monkeypatch.setattr(elo_eval.env, "step", record_step)
+        monkeypatch.setattr(elo_eval, "_compute_team_actions", fixed_team_actions)
+
+        elo_eval.step(0, avg_active=False)
+        selected = selected_b
+        elo_eval.step(0, avg_active=False)
+
+        assert torch.equal(applied[0], torch.zeros_like(applied[0]))
+        assert torch.equal(applied[1], selected_a)
+        assert torch.equal(elo_eval.action_state.pending, selected_b)
 
     def test_milestones_land_on_an_absolute_grid(self, tmp_path):
         """A snapshot that fires late claims its grid point, not its own rating,
@@ -628,6 +662,104 @@ class TestLeagueAllocation:
         slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
         assert len(slots) == trainer.B_league
         assert all(slot.end > slot.start for slot in slots)
+
+    def test_slot_replacement_drains_at_episode_boundaries(self, tmp_path):
+        trainer = _make_trainer(
+            league_fraction=1.0,
+            league_slots=1,
+            checkpoint_dir=str(tmp_path),
+        )
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        old = slots[0]
+
+        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+
+        assert len(slots) == 2
+        replacement = slots[1]
+        assert old.retiring
+        assert old.active.all()
+        assert not replacement.active.any()
+
+        done = torch.zeros(trainer.cfg.scales[0].num_envs, dtype=torch.bool)
+        done[old.start] = True
+        trainer._advance_league_replacements(slots, done)
+
+        assert not old.active[0]
+        assert replacement.active[0]
+        assert old.active[1:].all()
+        assert not replacement.active[1:].any()
+        # A rollout boundary cannot start another generation while one drains.
+        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        assert len(slots) == 2
+
+    def test_drained_generation_is_released_at_a_rollout_boundary(self, tmp_path):
+        trainer = _make_trainer(
+            league_fraction=1.0,
+            league_slots=1,
+            checkpoint_dir=str(tmp_path),
+        )
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        replacement = slots[1]
+
+        done = torch.ones(trainer.cfg.scales[0].num_envs, dtype=torch.bool)
+        trainer._advance_league_replacements(slots, done)
+        # Prevent this boundary from immediately opening the next legal rotation;
+        # this assertion is about releasing the drained generation itself.
+        trainer._sample_league_entry = lambda: None
+        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+
+        assert slots == [replacement]
+        assert replacement.replacement_for is None
+        assert replacement.active.all()
+
+    def test_scheduled_contraction_waits_for_each_episode_boundary(self, tmp_path):
+        trainer = _make_trainer(
+            league_fraction=1.0,
+            league_slots=1,
+            checkpoint_dir=str(tmp_path),
+        )
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slot = slots[0]
+        trainer._schedule_state = dataclasses.replace(
+            trainer._schedule_state,
+            league_fraction=0.5,
+        )
+
+        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+
+        assert slot.active.tolist() == [True, True, True, True]
+        assert slot.target_active.tolist() == [False, False, True, True]
+        done = torch.tensor([True, False, False, False])
+        trainer._advance_league_replacements(slots, done)
+        assert slot.active.tolist() == [False, True, True, True]
+
+    def test_scheduled_expansion_activates_only_new_episodes(self, tmp_path):
+        trainer = _make_trainer(
+            league_fraction=1.0,
+            league_slots=1,
+            checkpoint_dir=str(tmp_path),
+        )
+        trainer._schedule_state = dataclasses.replace(
+            trainer._schedule_state,
+            league_fraction=0.5,
+        )
+        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        trainer._schedule_state = dataclasses.replace(
+            trainer._schedule_state,
+            league_fraction=1.0,
+        )
+
+        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+
+        expanded = next(slot for slot in slots if slot.start == 0)
+        assert expanded.target_active.all()
+        assert not expanded.active.any()
+        trainer._advance_league_replacements(
+            slots,
+            torch.tensor([True, False, False, False]),
+        )
+        assert expanded.active.tolist() == [True, False]
 
 
 class TestTargetKlGate:

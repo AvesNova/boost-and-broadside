@@ -17,16 +17,19 @@ import torch
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.models.yemong.policy import YemongPolicy
+from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker, DualBeliefTracker
 from boost_and_broadside.train.rl.roster import RosterEntry
 
 
 @dataclasses.dataclass
 class LeagueSlot:
-    """One contiguous block of league envs and the opponent currently in it.
+    """One fixed-shape generation of a logical league slot.
 
-    Resampled at each rollout boundary, so an episode never changes opponent
-    mid-flight except where a scheduled league fraction moves the block edge.
+    ``active`` selects the environments whose current episode belongs to this
+    generation. During replacement, the old and new generations share the same
+    contiguous block; completed episodes move to the new generation while
+    unfinished episodes keep their old controller, recurrent state, and belief.
 
     A ``policy`` of None means the scripted agent acts for this slot: it has no
     weights to load and no recurrent state to carry, which is why it is the one
@@ -39,6 +42,10 @@ class LeagueSlot:
     policy: YemongPolicy | None
     hidden: torch.Tensor | None
     belief: BeliefTracker | None = None
+    active: torch.Tensor | None = None
+    target_active: torch.Tensor | None = None
+    retiring: bool = False
+    replacement_for: "LeagueSlot | None" = dataclasses.field(default=None, repr=False)
 
 
 class RolloutNetworkOutput(NamedTuple):
@@ -71,7 +78,7 @@ class PrimaryStepOutput(NamedTuple):
     obs: YemongObservation
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
-    action_buffer: torch.Tensor
+    action_state: PendingActionState
     # done | truncated — the GAE boundary, not physics termination alone.
     terminated: torch.Tensor
 
@@ -84,6 +91,7 @@ class EnvironmentStepOutput(NamedTuple):
     dones: torch.Tensor
     truncated: torch.Tensor
     transition_contiguous: torch.Tensor
+    actuator_contiguous: torch.Tensor
     network: RolloutNetworkOutput
 
 
@@ -141,16 +149,18 @@ class OpponentMixin:
         action: torch.Tensor,
         actor_mask: torch.Tensor,
         team_id: torch.Tensor,
-        start: int,
-        end: int,
+        slot: LeagueSlot,
         opp_action: torch.Tensor,
     ) -> None:
-        """Replace opponent-controlled actions in environments ``[start, end)``."""
+        """Replace the opponent side only where this generation is active."""
+        start, end = slot.start, slot.end
         if self._ego_pass:
             opp_mask = team_id[start:end] == 1
         else:
             flags = self._opp_team_flag[start - self.B_self : end - self.B_self]
             opp_mask = team_id[start:end] == flags.unsqueeze(1)
+        if slot.active is not None:
+            opp_mask &= slot.active.unsqueeze(-1)
         action[start:end] = torch.where(opp_mask.unsqueeze(-1), opp_action, action[start:end])
         actor_mask[start:end] &= ~opp_mask
 
@@ -244,10 +254,144 @@ class OpponentMixin:
                     policy=policy,
                     hidden=hidden,
                     belief=belief,
+                    active=torch.ones(slot_width, dtype=torch.bool, device=self.device),
+                    target_active=torch.ones(slot_width, dtype=torch.bool, device=self.device),
                 )
             )
             offset += slot_width
         return slots
+
+    def _begin_league_replacement(
+        self,
+        slots: list[LeagueSlot],
+        num_recurrent: int,
+    ) -> None:
+        """Retire drained generations and, when possible, rotate one logical slot.
+
+        Called once per rollout shard. The only device-to-host checks are here,
+        never in the per-step path. At most one replacement drains at a time,
+        bounding fixed-shape policy forwards and loaded generations to ``K + 1``.
+        """
+        desired_start = self.cfg.scales[0].num_envs - self._active_league_width()
+        layout_changed = False
+        for slot in slots:
+            indices = torch.arange(slot.start, slot.end, device=self.device)
+            desired = indices >= desired_start
+            if slot.target_active is None or not torch.equal(slot.target_active, desired):
+                slot.target_active = desired
+                layout_changed = True
+
+        if slots and desired_start < min(slot.start for slot in slots):
+            start = desired_start
+            end = min(slot.start for slot in slots)
+            entry = self._sample_league_entry()
+            if entry is not None:
+                policy = self._league_policy(entry)
+                width = end - start
+                slots.append(
+                    LeagueSlot(
+                        start=start,
+                        end=end,
+                        entry=entry,
+                        policy=policy,
+                        hidden=(
+                            policy.initial_hidden(width, num_recurrent, self.device)
+                            if policy is not None
+                            else None
+                        ),
+                        belief=(
+                            BeliefTracker(
+                                width,
+                                num_recurrent,
+                                self.ship_config.dt * self.env_config.action_repeat,
+                                policy.coordinator,
+                                self.device,
+                            )
+                            if policy is not None and self._ego_pass
+                            else None
+                        ),
+                        active=torch.zeros(width, dtype=torch.bool, device=self.device),
+                        target_active=torch.ones(width, dtype=torch.bool, device=self.device),
+                    )
+                )
+                layout_changed = True
+
+        for old in [slot for slot in slots if slot.retiring]:
+            if bool(old.active.any()):
+                return
+            replacement = next(slot for slot in slots if slot.replacement_for is old)
+            replacement.replacement_for = None
+            slots.remove(old)
+
+        slots[:] = [
+            slot
+            for slot in slots
+            if slot.replacement_for is not None
+            or slot.retiring
+            or bool(slot.active.any())
+            or bool(slot.target_active.any())
+        ]
+
+        if layout_changed or any(slot.retiring for slot in slots) or not slots:
+            return
+
+        logical = [
+            slot for slot in slots if slot.replacement_for is None and bool(slot.active.any())
+        ]
+        if not logical:
+            return
+        rotation = getattr(self, "_league_rotation_index", 0) % len(logical)
+        old = logical[rotation]
+        self._league_rotation_index = rotation + 1
+        entry = self._sample_league_entry()
+        if entry is None:
+            return
+        policy = self._league_policy(entry)
+        width = old.end - old.start
+        replacement = LeagueSlot(
+            start=old.start,
+            end=old.end,
+            entry=entry,
+            policy=policy,
+            hidden=(
+                policy.initial_hidden(width, num_recurrent, self.device)
+                if policy is not None
+                else None
+            ),
+            belief=(
+                BeliefTracker(
+                    width,
+                    num_recurrent,
+                    self.ship_config.dt * self.env_config.action_repeat,
+                    policy.coordinator,
+                    self.device,
+                )
+                if policy is not None and self._ego_pass
+                else None
+            ),
+            active=torch.zeros(width, dtype=torch.bool, device=self.device),
+            target_active=old.target_active.clone(),
+            replacement_for=old,
+        )
+        old.retiring = True
+        slots.append(replacement)
+
+    @staticmethod
+    def _advance_league_replacements(
+        slots: list[LeagueSlot],
+        done_any: torch.Tensor,
+    ) -> None:
+        """Move newly reset episodes from a retiring generation to its replacement."""
+        for replacement in [slot for slot in slots if slot.replacement_for is not None]:
+            old = replacement.replacement_for
+            completed = done_any[old.start : old.end] & old.active
+            old.active &= ~completed
+            replacement.active |= completed & old.target_active
+
+        for slot in [slot for slot in slots if slot.replacement_for is None and not slot.retiring]:
+            completed = done_any[slot.start : slot.end]
+            slot.active |= completed & slot.target_active
+            slot.active &= ~(completed & ~slot.target_active)
 
     def _rollout_network_forwards(
         self,
@@ -348,14 +492,16 @@ class OpponentMixin:
 
     def _step_environment_and_network(
         self,
-        action_buffer: torch.Tensor,
+        action_state: PendingActionState,
         network_args: tuple,
         env_stream: torch.cuda.Stream | None,
         net_stream: torch.cuda.Stream | None,
     ) -> EnvironmentStepOutput:
         """Advance the environment and policy, overlapping them on CUDA streams."""
         if env_stream is None:
-            next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
+            next_obs, reward, dones, truncated, info = self.wrapper.step(
+                action_state.applied_action()
+            )
             network = self._rollout_network_forwards(*network_args)
             return EnvironmentStepOutput(
                 next_obs,
@@ -363,13 +509,16 @@ class OpponentMixin:
                 dones,
                 truncated,
                 info["transition_contiguous"],
+                info["actuator_contiguous"],
                 network,
             )
 
         env_stream.wait_stream(torch.cuda.current_stream())
         net_stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(env_stream):
-            next_obs, reward, dones, truncated, info = self.wrapper.step(action_buffer)
+            next_obs, reward, dones, truncated, info = self.wrapper.step(
+                action_state.applied_action()
+            )
         with torch.cuda.stream(net_stream):
             network = self._rollout_network_forwards(*network_args)
         torch.cuda.current_stream().wait_stream(env_stream)
@@ -380,6 +529,7 @@ class OpponentMixin:
             dones,
             truncated,
             info["transition_contiguous"],
+            info["actuator_contiguous"],
             network,
         )
 
@@ -399,9 +549,7 @@ class OpponentMixin:
             opponent_action = network.slot_actions[index]
             if opponent_action is None:
                 opponent_action = scripted.slot_actions[index]
-            self._apply_opponent_override(
-                action, actor_mask, team_id, slot.start, slot.end, opponent_action
-            )
+            self._apply_opponent_override(action, actor_mask, team_id, slot, opponent_action)
         return action, actor_mask
 
     def _reset_primary_hidden(
@@ -445,7 +593,7 @@ class OpponentMixin:
         beliefs: DualBeliefTracker | None,
         hidden: torch.Tensor,
         hidden_t1: torch.Tensor | None,
-        action_buffer: torch.Tensor,
+        action_state: PendingActionState,
         num_envs: int,
         num_ships: int,
         num_recurrent: int,
@@ -461,11 +609,20 @@ class OpponentMixin:
         scripted = self._scripted_step_outputs(slots)
         network_args = (obs, hidden, hidden_t1, num_ships, num_recurrent, slots)
         step = self._step_environment_and_network(
-            action_buffer, network_args, env_stream, net_stream
+            action_state, network_args, env_stream, net_stream
         )
         action, actor_mask = self._select_primary_actions(step.network, scripted, team_id, slots)
-        step.obs["previous_action"][:, :num_ships] = action
         done_any = step.dones | step.truncated
+        decision_committed = action_state.commit(
+            action,
+            step.actuator_contiguous,
+            done_any,
+        )
+        action_state.write_observation(
+            step.obs,
+            step.obs["team_id"][:, :num_ships],
+            num_ships,
+        )
         self.buffer.add(
             obs=obs,
             action=action,
@@ -474,6 +631,7 @@ class OpponentMixin:
             value=self.scaler.denormalize(step.network.value_norm),
             alive=obs["alive"][:, :num_ships].bool(),
             actor_mask=actor_mask,
+            decision_committed=decision_committed,
             expert_probs=scripted.expert_probs,
             terminated=done_any,
             transition_contiguous=step.transition_contiguous,
@@ -486,20 +644,19 @@ class OpponentMixin:
         )
 
         hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)
+        self._advance_league_replacements(slots, done_any)
         if beliefs is not None:
             beliefs.advance(obs, step.network.pred_next_t0, step.network.pred_next_t1)
             beliefs.reset(done_any)
             next_obs = beliefs.compose(step.obs)
         else:
             next_obs = step.obs
-        action_buffer = action.detach().clone()
-        action_buffer[done_any] = 0
         self._refresh_opponent_team_flags(done_any)
         self._global_step += num_envs
         return PrimaryStepOutput(
             next_obs,
             hidden,
             hidden_t1,
-            action_buffer,
+            action_state,
             done_any,
         )

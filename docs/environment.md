@@ -32,7 +32,7 @@ Respawns preserve slot identity, clear previous-life damage attribution on the n
 tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
 zero shields no longer implies death. Existing checkpoints are incompatible with the
-new `frontline_shields_v15` observation/feature contract.
+new `joint_actions_private_pending_v17` observation/feature contract.
 
 ## Tensorized simulation
 
@@ -89,10 +89,11 @@ enemy as a valid token, recursively replacing only its predictable physical chan
 adding time since observation. Every ship is visible to both teams for the one decision it
 spawns on, at match start and on every respawn, so no enemy is ever in the never-observed
 state and no remembered estimate survives a death it did not see. Losing contact thereafter
-leaves a remembered token rather than an absent one. Enemy pending actions and
-hidden local field gradients remain zero rather than being predicted. Enemy pending actions
-are private even while the enemy itself is visible. Allies and static map geometry remain
-known. `vision_range=None` is the explicit omniscient compatibility mode.
+leaves a remembered token rather than an absent one. Hidden local field gradients remain
+zero rather than being predicted. Enemy pending actions use the explicit observation-only
+private categories `(3, 7, 2)` even while the enemy itself is visible; they are never
+represented as a neutral physical command. Allies and static map geometry remain known.
+`vision_range=None` is the explicit omniscient compatibility mode.
 
 In Team 0/Team 1 rendering modes, unseen world pixels receive a mild neutral-gray overlay.
 The visible mask is the union of allied sight circles, each with every opaque core in range
