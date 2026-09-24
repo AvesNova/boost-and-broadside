@@ -744,6 +744,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._grad_tokens = 0
         self._elapsed_train_time = 0.0  # wall-clock seconds spent training
         self._train_start_time = time.time()  # reset at the top of train()
+        # Marks for the instantaneous throughput metrics: the step counters and
+        # the clock as they stood at the previous logging point. Reset at the
+        # top of train(), so a resumed run's first interval measures only the
+        # updates it ran itself.
+        self._perf_mark_time = self._train_start_time
+        self._perf_mark_step = 0
+        self._perf_mark_ship_steps = 0
         total_envs_all = sum(sc.num_envs for sc in train_config.scales)
         self._num_updates = train_config.total_timesteps // (
             total_envs_all * train_config.num_steps * train_config.rollouts_per_update
@@ -1489,6 +1496,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Run the full PPO training loop."""
         runtime = self._initialize_rollout_runtime()
         self._train_start_time = time.time()
+        self._perf_mark_time = self._train_start_time
+        self._perf_mark_step = self._global_step
+        self._perf_mark_ship_steps = self._ship_steps
 
         for update in range(self._start_update, self._num_updates + 1):
             avg_eval_active = self._avg_update_count > 0
