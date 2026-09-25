@@ -1,0 +1,5501 @@
+{
+ "checkpoint": "step_000221184000.pt",
+ "num_envs": 96,
+ "num_steps": 3000,
+ "warmup": 200,
+ "decision_dt": 0.03333333333333333,
+ "feature_names": [
+  "position_x_0",
+  "position_x_1",
+  "position_x_2",
+  "position_x_3",
+  "position_x_4",
+  "position_x_5",
+  "position_x_6",
+  "position_x_7",
+  "position_x_8",
+  "position_x_9",
+  "position_x_10",
+  "position_x_11",
+  "position_x_12",
+  "position_x_13",
+  "position_x_14",
+  "position_x_15",
+  "position_x_16",
+  "position_x_17",
+  "position_x_18",
+  "position_x_19",
+  "position_y_0",
+  "position_y_1",
+  "position_y_2",
+  "position_y_3",
+  "position_y_4",
+  "position_y_5",
+  "position_y_6",
+  "position_y_7",
+  "position_y_8",
+  "position_y_9",
+  "position_y_10",
+  "position_y_11",
+  "position_y_12",
+  "position_y_13",
+  "position_y_14",
+  "position_y_15",
+  "position_y_16",
+  "position_y_17",
+  "position_y_18",
+  "position_y_19",
+  "velocity_0",
+  "velocity_1",
+  "attitude_0",
+  "attitude_1",
+  "attitude_2",
+  "attitude_3",
+  "attitude_4",
+  "attitude_5",
+  "attitude_6",
+  "attitude_7",
+  "angular_velocity_0",
+  "shield_delay_0",
+  "health_0",
+  "power_0",
+  "cooldown_0",
+  "local_log_index_0"
+ ],
+ "harmonics": {
+  "position": 10,
+  "attitude": 4
+ },
+ "target_slices": {
+  "position_x": [
+   0,
+   20
+  ],
+  "position_y": [
+   20,
+   40
+  ],
+  "velocity": [
+   40,
+   42
+  ],
+  "attitude": [
+   42,
+   50
+  ],
+  "angular_velocity": [
+   50,
+   51
+  ],
+  "shield_delay": [
+   51,
+   52
+  ],
+  "health": [
+   52,
+   53
+  ],
+  "power": [
+   53,
+   54
+  ],
+  "cooldown": [
+   54,
+   55
+  ],
+  "local_log_index": [
+   55,
+   56
+  ]
+ },
+ "label_scale": [
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0,
+  1.0
+ ],
+ "metrics": {
+  "ally_visible/tokens": {
+   "mean": 1.0,
+   "count": 1342427.0
+  },
+  "ally_visible/dead_frac": {
+   "mean": 0.0,
+   "count": 1342427.0
+  },
+  "ally_visible/age_s": {
+   "mean": 0.0,
+   "count": 1342427.0
+  },
+  "ally_visible/head/position_px": {
+   "mean": 0.23867536186325217,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_position_px": {
+   "mean": 1599.6997914970423,
+   "count": 1342427.0
+  },
+  "ally_visible/head/velocity_px_s": {
+   "mean": 4.779670700902172,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_velocity_px_s": {
+   "mean": 43.355108322463714,
+   "count": 1342427.0
+  },
+  "ally_visible/head/speed_px_s": {
+   "mean": 4.530536856007813,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_speed_px_s": {
+   "mean": 41.89509299202117,
+   "count": 1342427.0
+  },
+  "ally_visible/head/attitude_rad": {
+   "mean": 0.003697158963299308,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_attitude_rad": {
+   "mean": 0.00010962702256764358,
+   "count": 1342427.0
+  },
+  "ally_visible/head/angular_velocity": {
+   "mean": 0.04776780052565242,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_angular_velocity": {
+   "mean": 0.019440937244632295,
+   "count": 1342427.0
+  },
+  "ally_visible/head/health": {
+   "mean": 1.2565499837235097,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_health": {
+   "mean": 2.943959336336352,
+   "count": 1342427.0
+  },
+  "ally_visible/head/power": {
+   "mean": 0.33126833898603053,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_power": {
+   "mean": 0.33774764847548505,
+   "count": 1342427.0
+  },
+  "ally_visible/head/cooldown_s": {
+   "mean": 0.009144071911126267,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_cooldown_s": {
+   "mean": 0.0007001341810916441,
+   "count": 1342427.0
+  },
+  "ally_visible/head/shield_delay_s": {
+   "mean": 0.039050846084181856,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_shield_delay_s": {
+   "mean": 0.06516575831497727,
+   "count": 1342427.0
+  },
+  "ally_visible/head/local_log_index": {
+   "mean": 0.006143009632693249,
+   "count": 1342427.0
+  },
+  "ally_visible/head/sq_local_log_index": {
+   "mean": 0.00011482247663871457,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/position_px": {
+   "mean": 3.0959154576003014,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_position_px": {
+   "mean": 11.594073271768222,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/velocity_px_s": {
+   "mean": 3.1359474295436547,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_velocity_px_s": {
+   "mean": 30.601124679405284,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/speed_px_s": {
+   "mean": 1.1206452008191135,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_speed_px_s": {
+   "mean": 5.336157943783908,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/attitude_rad": {
+   "mean": 0.05711538457957118,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_attitude_rad": {
+   "mean": 0.009344747685768016,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/angular_velocity": {
+   "mean": 1.6389287834645758,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_angular_velocity": {
+   "mean": 9.927020985126193,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/health": {
+   "mean": 0.279297310021327,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_health": {
+   "mean": 1.2212497402093372,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/power": {
+   "mean": 0.44364912393746553,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_power": {
+   "mean": 0.5494891435437458,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/cooldown_s": {
+   "mean": 0.00792785994485175,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_cooldown_s": {
+   "mean": 0.00048773588202154103,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/shield_delay_s": {
+   "mean": 0.033311660638716295,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_shield_delay_s": {
+   "mean": 0.0650219364814623,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/local_log_index": {
+   "mean": 0.002279958232540298,
+   "count": 1342427.0
+  },
+  "ally_visible/identity/sq_local_log_index": {
+   "mean": 0.0001921658290634123,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/position_px": {
+   "mean": 0.059136199771011755,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_position_px": {
+   "mean": 0.011109354957010698,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/velocity_px_s": {
+   "mean": 3.1359474295436547,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_velocity_px_s": {
+   "mean": 30.601124679405284,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/speed_px_s": {
+   "mean": 1.1206452008191135,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_speed_px_s": {
+   "mean": 5.336157943783908,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/attitude_rad": {
+   "mean": 0.11013335129210006,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_attitude_rad": {
+   "mean": 0.029544154798547707,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/angular_velocity": {
+   "mean": 1.6389287834645758,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_angular_velocity": {
+   "mean": 9.927020985126193,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/health": {
+   "mean": 0.279297310021327,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_health": {
+   "mean": 1.2212497402093372,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/power": {
+   "mean": 0.44364912393746553,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_power": {
+   "mean": 0.5494891435437458,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/cooldown_s": {
+   "mean": 0.00792785994485175,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_cooldown_s": {
+   "mean": 0.00048773588202154103,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/shield_delay_s": {
+   "mean": 0.033311660638716295,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_shield_delay_s": {
+   "mean": 0.0650219364814623,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/local_log_index": {
+   "mean": 0.002279958232540298,
+   "count": 1342427.0
+  },
+  "ally_visible/linear/sq_local_log_index": {
+   "mean": 0.0001921658290634123,
+   "count": 1342427.0
+  },
+  "ally_visible/dead_reckon/position_px": {
+   "mean": 0.059007648786488946,
+   "count": 1342427.0
+  },
+  "ally_visible/dead_reckon/sq_position_px": {
+   "mean": 0.011100076199441386,
+   "count": 1342427.0
+  },
+  "ally_visible/frozen/position_px": {
+   "mean": 3.0958251361154088,
+   "count": 1342427.0
+  },
+  "ally_visible/frozen/sq_position_px": {
+   "mean": 11.593416997721292,
+   "count": 1342427.0
+  },
+  "ally_visible/dim_sq/head": {
+   "mean": [
+    0.014245552942156792,
+    0.01415080577135086,
+    0.012864505872130394,
+    0.012091884389519691,
+    0.011478636413812637,
+    0.010602445341646671,
+    0.010294380597770214,
+    0.010273920372128487,
+    0.009846710599958897,
+    0.00013508721895050257,
+    0.01246684417128563,
+    0.013998621143400669,
+    0.016297664493322372,
+    0.011295449919998646,
+    0.013637596741318703,
+    0.011485270224511623,
+    0.010004542768001556,
+    0.009384856559336185,
+    0.009808662347495556,
+    8.553124644095078e-05,
+    0.01289523858577013,
+    0.015024459920823574,
+    0.013151800259947777,
+    0.011598285287618637,
+    0.011340507306158543,
+    0.01017899252474308,
+    0.009681466966867447,
+    0.013350405730307102,
+    0.009387335740029812,
+    0.00011199230357306078,
+    0.013395972549915314,
+    0.014657940715551376,
+    0.016966376453638077,
+    0.012711342424154282,
+    0.011225467547774315,
+    0.012236716225743294,
+    0.011386759579181671,
+    0.00974501483142376,
+    0.009431992657482624,
+    8.85715926415287e-05,
+    0.007119228132069111,
+    0.002396195661276579,
+    0.0030219785403460264,
+    0.012110579758882523,
+    0.016167815774679184,
+    0.0019521416397765279,
+    0.004438244737684727,
+    0.010109328664839268,
+    0.0170383732765913,
+    0.0014241124736145139,
+    0.000618439051322639,
+    0.007475884631276131,
+    0.0002943961007986218,
+    3.3774729672586545e-05,
+    0.07001344114542007,
+    0.00011482247646199539
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/dim_sq/identity": {
+   "mean": [
+    2.533761112033517e-08,
+    1.1486817896866341e-07,
+    3.9009574948067893e-07,
+    1.6506778592884075e-06,
+    6.1001219364698045e-06,
+    2.6275429263478145e-05,
+    0.00010617506632115692,
+    0.00042228918755427003,
+    0.0016870952676981688,
+    0.0067386026494205,
+    2.6229464822336013e-08,
+    9.139978374150814e-08,
+    4.349764708422299e-07,
+    1.6496102261953638e-06,
+    7.100991751940455e-06,
+    2.6528608941589482e-05,
+    0.00010503290832275525,
+    0.00042241738992743194,
+    0.0016896985471248627,
+    0.006736242678016424,
+    2.9165223125460216e-08,
+    1.0437358355375181e-07,
+    4.031174967167317e-07,
+    1.6920599819059134e-06,
+    7.139821263990598e-06,
+    2.7890551791642793e-05,
+    0.00011223101319046691,
+    0.00044831103878095746,
+    0.001801162725314498,
+    0.007184702903032303,
+    2.583809788347935e-08,
+    1.1563921020751877e-07,
+    4.769348151967279e-07,
+    1.8281461962033063e-06,
+    6.940963885426754e-06,
+    2.8432123144739307e-05,
+    0.00011305098450975493,
+    0.00045267725363373756,
+    0.0018005811143666506,
+    0.007186954841017723,
+    0.018980691209435463,
+    0.01854194700717926,
+    0.004587189760059118,
+    0.018170099705457687,
+    0.06834115833044052,
+    0.2138070911169052,
+    0.004694453906267881,
+    0.018239391967654228,
+    0.06740229576826096,
+    0.21221591532230377,
+    1.0047428607940674,
+    0.007601573597639799,
+    0.00012212501314934343,
+    5.494888318935409e-05,
+    0.04877358675003052,
+    0.00019216582586523145
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/dim_sq/linear": {
+   "mean": [
+    2.6663463104092955e-11,
+    1.0536251732196078e-10,
+    3.9890862835179064e-10,
+    1.5773539141505921e-09,
+    5.790170565234121e-09,
+    2.5150351135039273e-08,
+    1.0454962051653638e-07,
+    4.11268672451115e-07,
+    1.6641383808746468e-06,
+    6.676690645690542e-06,
+    2.3982720323556528e-11,
+    9.721921184757676e-11,
+    4.114168172808519e-10,
+    1.6639454258893238e-09,
+    7.1750254626579135e-09,
+    2.671038856760788e-08,
+    1.0289342355918052e-07,
+    4.1850194065773394e-07,
+    1.654914171922428e-06,
+    6.599081189051503e-06,
+    2.7253236126179026e-11,
+    9.082957302952721e-11,
+    3.605083453983582e-10,
+    1.6527043067426916e-09,
+    6.853258405215001e-09,
+    2.583270841682861e-08,
+    1.0693994312305222e-07,
+    4.0709588233767136e-07,
+    1.6658630102028837e-06,
+    6.687260793114547e-06,
+    2.418089860289907e-11,
+    1.1490190743312922e-10,
+    4.624172988965114e-10,
+    1.6389919421655463e-09,
+    6.313533695845308e-09,
+    2.683439426220957e-08,
+    1.0372817627057884e-07,
+    4.3557525941650965e-07,
+    1.704789838186116e-06,
+    6.79483673593495e-06,
+    0.018980691209435463,
+    0.01854194700717926,
+    0.014451677910983562,
+    0.05581368878483772,
+    0.192025825381279,
+    0.4741767644882202,
+    0.01468040980398655,
+    0.05602986365556717,
+    0.19226492941379547,
+    0.4746427536010742,
+    1.0047428607940674,
+    0.007601573597639799,
+    0.00012212501314934343,
+    5.494888318935409e-05,
+    0.04877358675003052,
+    0.00019216582586523145
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/dim_sq/label": {
+   "mean": [
+    0.5049866437911987,
+    0.4806132912635803,
+    0.5535153150558472,
+    0.4783994257450104,
+    0.5398387312889099,
+    0.4992527663707733,
+    0.4943891763687134,
+    0.497728556394577,
+    0.4993516802787781,
+    0.49795305728912354,
+    0.4950134754180908,
+    0.5193868279457092,
+    0.4464847445487976,
+    0.5216007828712463,
+    0.4601607322692871,
+    0.5007472038269043,
+    0.5056107044219971,
+    0.5022713541984558,
+    0.5006483197212219,
+    0.5020471811294556,
+    0.4700685739517212,
+    0.5540945529937744,
+    0.5224013328552246,
+    0.4933984875679016,
+    0.498308390378952,
+    0.5092330574989319,
+    0.5018946528434753,
+    0.5027123689651489,
+    0.4996544420719147,
+    0.5003259181976318,
+    0.5299317836761475,
+    0.44590556621551514,
+    0.4775981307029724,
+    0.5066014528274536,
+    0.5016916990280151,
+    0.4907670021057129,
+    0.49810534715652466,
+    0.49728766083717346,
+    0.5003455281257629,
+    0.4996740520000458,
+    9.628816604614258,
+    10.231968879699707,
+    0.5141358971595764,
+    0.49067923426628113,
+    0.49284783005714417,
+    0.4996681809425354,
+    0.48586398363113403,
+    0.5093204975128174,
+    0.5071521997451782,
+    0.5003318190574646,
+    1.5040520429611206,
+    1.0552648305892944,
+    0.45651742815971375,
+    0.018656792119145393,
+    0.071319080889225,
+    0.29529690742492676
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/dim_var": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0007649143226444721,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0007649143226444721,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.000977850635536015,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.000977850635536015,
+    0.02099204622209072,
+    0.016188394278287888,
+    0.0,
+    0.0,
+    0.0,
+    0.0021175164729356766,
+    0.0,
+    0.0,
+    0.0,
+    0.0021175164729356766,
+    0.0007426752126775682,
+    0.009668303653597832,
+    0.0009432198130525649,
+    0.0001247600739588961,
+    0.08340317010879517,
+    0.00033206577063538134
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/resultant/head_pos_x": {
+   "mean": [
+    0.9475411772727966,
+    0.9468532800674438,
+    0.9619662761688232,
+    0.9566224813461304,
+    0.9619988799095154,
+    0.9622258543968201,
+    0.961764395236969,
+    0.9653688073158264,
+    0.9712249040603638,
+    1.0003077983856201
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/resultant/head_pos_y": {
+   "mean": [
+    0.9436548352241516,
+    0.9505975842475891,
+    0.9616636633872986,
+    0.9561487436294556,
+    0.9572994709014893,
+    0.961764395236969,
+    0.9630532264709473,
+    0.9631996750831604,
+    0.9683828353881836,
+    1.0003705024719238
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/resultant/head_att": {
+   "mean": [
+    0.988000750541687,
+    0.969642698764801,
+    0.9662850499153137,
+    0.9974073171615601
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/resultant/belief_pos_x": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 1342427.0
+  },
+  "ally_visible/resultant/belief_att": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 1342427.0
+  },
+  "ally_hidden/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/dead_frac": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/speed_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_speed_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/angular_velocity": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_angular_velocity": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/health": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_health": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/power": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_power": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/cooldown_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_cooldown_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/shield_delay_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_shield_delay_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/local_log_index": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/head/sq_local_log_index": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/speed_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_speed_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/angular_velocity": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_angular_velocity": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/health": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_health": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/power": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_power": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/cooldown_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_cooldown_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/shield_delay_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_shield_delay_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/local_log_index": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/identity/sq_local_log_index": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/speed_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_speed_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/angular_velocity": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_angular_velocity": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/health": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_health": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/power": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_power": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/cooldown_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_cooldown_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/shield_delay_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_shield_delay_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/local_log_index": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/linear/sq_local_log_index": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/dead_reckon/sq_position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/frozen/sq_position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/dim_sq/head": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/dim_sq/identity": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/dim_sq/linear": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/dim_sq/label": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/dim_var": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/resultant/head_pos_x": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/resultant/head_pos_y": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/resultant/head_att": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/resultant/belief_pos_x": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/resultant/belief_att": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0_0.1/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.1_0.5/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_0.5_1/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_1_2/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_2_5/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_5_10/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_10_30/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "ally_hidden/age_30_inf/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_visible/tokens": {
+   "mean": 1.0,
+   "count": 782022.0
+  },
+  "enemy_visible/dead_frac": {
+   "mean": 0.0,
+   "count": 782022.0
+  },
+  "enemy_visible/age_s": {
+   "mean": 0.0,
+   "count": 782022.0
+  },
+  "enemy_visible/head/position_px": {
+   "mean": 0.20441290734148143,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_position_px": {
+   "mean": 0.10075416876059753,
+   "count": 782022.0
+  },
+  "enemy_visible/head/velocity_px_s": {
+   "mean": 4.69249138771032,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_velocity_px_s": {
+   "mean": 64.10922454866999,
+   "count": 782022.0
+  },
+  "enemy_visible/head/speed_px_s": {
+   "mean": 3.7029735096966583,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_speed_px_s": {
+   "mean": 51.42665040113961,
+   "count": 782022.0
+  },
+  "enemy_visible/head/attitude_rad": {
+   "mean": 0.06338705344926357,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_attitude_rad": {
+   "mean": 0.009730052651172218,
+   "count": 782022.0
+  },
+  "enemy_visible/head/angular_velocity": {
+   "mean": 2.2817350407021797,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_angular_velocity": {
+   "mean": 10.89073069555588,
+   "count": 782022.0
+  },
+  "enemy_visible/head/health": {
+   "mean": 1.2664686063819177,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_health": {
+   "mean": 3.6825626389027417,
+   "count": 782022.0
+  },
+  "enemy_visible/head/power": {
+   "mean": 0.6415719442675526,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_power": {
+   "mean": 1.2340336972617139,
+   "count": 782022.0
+  },
+  "enemy_visible/head/cooldown_s": {
+   "mean": 0.014919954198059646,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_cooldown_s": {
+   "mean": 0.0011101379279800873,
+   "count": 782022.0
+  },
+  "enemy_visible/head/shield_delay_s": {
+   "mean": 0.05083256429326796,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_shield_delay_s": {
+   "mean": 0.10419177185872008,
+   "count": 782022.0
+  },
+  "enemy_visible/head/local_log_index": {
+   "mean": 0.008921843166456634,
+   "count": 782022.0
+  },
+  "enemy_visible/head/sq_local_log_index": {
+   "mean": 0.0002736151127714138,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/position_px": {
+   "mean": 2.6749213896795743,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_position_px": {
+   "mean": 8.630379324366833,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/velocity_px_s": {
+   "mean": 2.8338956576669196,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_velocity_px_s": {
+   "mean": 21.143634066560786,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/speed_px_s": {
+   "mean": 1.0895360041021864,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_speed_px_s": {
+   "mean": 4.550231643099555,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/attitude_rad": {
+   "mean": 0.06686080582611487,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_attitude_rad": {
+   "mean": 0.011953328199206671,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/angular_velocity": {
+   "mean": 1.858958731340039,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_angular_velocity": {
+   "mean": 12.42375662065773,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/health": {
+   "mean": 0.36106976530072044,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_health": {
+   "mean": 2.0146603931858693,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/power": {
+   "mean": 0.49322317658582493,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_power": {
+   "mean": 0.583845507223582,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/cooldown_s": {
+   "mean": 0.012529137957036375,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_cooldown_s": {
+   "mean": 0.0007652526360801311,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/shield_delay_s": {
+   "mean": 0.04344404033710049,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_shield_delay_s": {
+   "mean": 0.1042555388467332,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/local_log_index": {
+   "mean": 0.0017932762374032476,
+   "count": 782022.0
+  },
+  "enemy_visible/identity/sq_local_log_index": {
+   "mean": 0.000129983898860502,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/position_px": {
+   "mean": 0.05223139202765395,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_position_px": {
+   "mean": 0.007355960509063364,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/velocity_px_s": {
+   "mean": 2.8338956576669196,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_velocity_px_s": {
+   "mean": 21.143634066560786,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/speed_px_s": {
+   "mean": 1.0895360041021864,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_speed_px_s": {
+   "mean": 4.550231643099555,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/attitude_rad": {
+   "mean": 0.1345686945987453,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_attitude_rad": {
+   "mean": 0.038881214139435974,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/angular_velocity": {
+   "mean": 1.858958731340039,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_angular_velocity": {
+   "mean": 12.42375662065773,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/health": {
+   "mean": 0.36106976530072044,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_health": {
+   "mean": 2.0146603931858693,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/power": {
+   "mean": 0.49322317658582493,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_power": {
+   "mean": 0.583845507223582,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/cooldown_s": {
+   "mean": 0.012529137957036375,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_cooldown_s": {
+   "mean": 0.0007652526360801311,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/shield_delay_s": {
+   "mean": 0.04344404033710049,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_shield_delay_s": {
+   "mean": 0.1042555388467332,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/local_log_index": {
+   "mean": 0.0017932762374032476,
+   "count": 782022.0
+  },
+  "enemy_visible/linear/sq_local_log_index": {
+   "mean": 0.000129983898860502,
+   "count": 782022.0
+  },
+  "enemy_visible/dead_reckon/position_px": {
+   "mean": 0.05219331465419132,
+   "count": 782022.0
+  },
+  "enemy_visible/dead_reckon/sq_position_px": {
+   "mean": 0.007347967782156384,
+   "count": 782022.0
+  },
+  "enemy_visible/frozen/position_px": {
+   "mean": 2.674964706875254,
+   "count": 782022.0
+  },
+  "enemy_visible/frozen/sq_position_px": {
+   "mean": 8.630718828882053,
+   "count": 782022.0
+  },
+  "enemy_visible/dim_sq/head": {
+   "mean": [
+    0.012607786804437637,
+    0.00994547363370657,
+    0.01025026198476553,
+    0.008396519348025322,
+    0.008216433227062225,
+    0.0074988724663853645,
+    0.007298770360648632,
+    0.008025183342397213,
+    0.007784649264067411,
+    0.0002747570688370615,
+    0.007748815231025219,
+    0.00976977776736021,
+    0.01349978893995285,
+    0.008015159517526627,
+    0.00954313762485981,
+    0.008639790117740631,
+    0.0072486684657633305,
+    0.006803843658417463,
+    0.006826895289123058,
+    0.00024226486857514828,
+    0.008466287516057491,
+    0.009705469012260437,
+    0.01108231395483017,
+    0.009235350415110588,
+    0.008153126575052738,
+    0.008068491704761982,
+    0.007665814831852913,
+    0.010655233636498451,
+    0.007274957839399576,
+    0.00027420982951298356,
+    0.00812013540416956,
+    0.012227767147123814,
+    0.013751021586358547,
+    0.01062631793320179,
+    0.008146742358803749,
+    0.012520816177129745,
+    0.00865866057574749,
+    0.0071508814580738544,
+    0.007593718823045492,
+    0.0002622700994834304,
+    0.01834046095609665,
+    0.016423635184764862,
+    0.007105507422238588,
+    0.025544261559844017,
+    0.07827138155698776,
+    0.19638893008232117,
+    0.008467225357890129,
+    0.026402976363897324,
+    0.07865649461746216,
+    0.19699864089488983,
+    0.8230032920837402,
+    0.011960266157984734,
+    0.00036825655843131244,
+    0.00012340332614257932,
+    0.11101403832435608,
+    0.0002736151509452611
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/dim_sq/identity": {
+   "mean": [
+    2.0481675022665513e-08,
+    8.073084956095045e-08,
+    2.7415916292738984e-07,
+    1.3017217952437932e-06,
+    5.439597771328408e-06,
+    2.0941788534400985e-05,
+    8.417564822593704e-05,
+    0.00033624964999035,
+    0.0013390914537012577,
+    0.005338078830391169,
+    2.0326140770521306e-08,
+    8.250037097923268e-08,
+    3.7876645819778787e-07,
+    1.3099773923386238e-06,
+    5.007171694160206e-06,
+    2.084503648802638e-05,
+    8.296688611153513e-05,
+    0.0003322451957501471,
+    0.0013336874544620514,
+    0.005333872511982918,
+    2.0508716502831703e-08,
+    6.869007052046072e-08,
+    3.0319597499328665e-07,
+    1.2126630508646485e-06,
+    4.7934349822753575e-06,
+    1.935264481289778e-05,
+    7.839872705517337e-05,
+    0.0003166644601151347,
+    0.0012626220704987645,
+    0.005031645763665438,
+    1.8012009661561024e-08,
+    8.539280571540075e-08,
+    3.1313572890212527e-07,
+    1.2526614909802447e-06,
+    5.067838628747268e-06,
+    2.009224408539012e-05,
+    7.937667396618053e-05,
+    0.00031436834251508117,
+    0.0012604235671460629,
+    0.005043172277510166,
+    0.017186466604471207,
+    0.017822271212935448,
+    0.005966055206954479,
+    0.023054657503962517,
+    0.08601439744234085,
+    0.26135027408599854,
+    0.005890818312764168,
+    0.023291409015655518,
+    0.0849849209189415,
+    0.2607339918613434,
+    1.1384295225143433,
+    0.012168028391897678,
+    0.00020146618771832436,
+    5.8384466683492064e-05,
+    0.07652515918016434,
+    0.00012998390593566
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/dim_sq/linear": {
+   "mean": [
+    1.6336662925220402e-11,
+    6.425634330176067e-11,
+    2.3273072358165336e-10,
+    1.0868297373178848e-09,
+    4.34074198807366e-09,
+    1.677780048225941e-08,
+    6.670641994332982e-08,
+    2.774544043404603e-07,
+    1.0859781696126447e-06,
+    4.312613327783765e-06,
+    1.6804717339891084e-11,
+    6.830844223593147e-11,
+    2.9752622587864153e-10,
+    1.0341989487017145e-09,
+    4.143374088272367e-09,
+    1.715868691576361e-08,
+    6.903940885649718e-08,
+    2.6552851295491564e-07,
+    1.0859424719456001e-06,
+    4.374914624349913e-06,
+    1.8404092486101753e-11,
+    6.85059786675879e-11,
+    2.431468915098378e-10,
+    9.888537766400418e-10,
+    4.542062281842618e-09,
+    1.7951487407685818e-08,
+    6.976281952120189e-08,
+    2.8222135028954654e-07,
+    1.1396878107916564e-06,
+    4.52712265541777e-06,
+    1.6036763930693532e-11,
+    6.925565676496603e-11,
+    3.078994836869242e-10,
+    1.215326839165698e-09,
+    4.2746495232393045e-09,
+    1.7315345601787158e-08,
+    7.130444856784379e-08,
+    2.82046983102191e-07,
+    1.1173752909598988e-06,
+    4.500956038100412e-06,
+    0.017186466604471207,
+    0.017822271212935448,
+    0.01924196630716324,
+    0.07289513200521469,
+    0.24843834340572357,
+    0.5906563997268677,
+    0.019041983410716057,
+    0.07350191473960876,
+    0.24814817309379578,
+    0.5922019481658936,
+    1.1384295225143433,
+    0.012168028391897678,
+    0.00020146618771832436,
+    5.8384466683492064e-05,
+    0.07652515918016434,
+    0.00012998390593566
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/dim_sq/label": {
+   "mean": [
+    0.49297070503234863,
+    0.4774337410926819,
+    0.5784077048301697,
+    0.47451701760292053,
+    0.5007177591323853,
+    0.5056942105293274,
+    0.4964069128036499,
+    0.4986310303211212,
+    0.4992985725402832,
+    0.4992285668849945,
+    0.5070292949676514,
+    0.5225664973258972,
+    0.42159292101860046,
+    0.5254831910133362,
+    0.4992824196815491,
+    0.4943057596683502,
+    0.5035930871963501,
+    0.5013691186904907,
+    0.5007014274597168,
+    0.5007715225219727,
+    0.46679890155792236,
+    0.5609511733055115,
+    0.5125511884689331,
+    0.49202990531921387,
+    0.5103724598884583,
+    0.5109744071960449,
+    0.5056074857711792,
+    0.501218855381012,
+    0.4973018765449524,
+    0.49873340129852295,
+    0.5332010984420776,
+    0.4390489161014557,
+    0.48744863271713257,
+    0.5079702138900757,
+    0.4896275997161865,
+    0.4890257716178894,
+    0.49439266324043274,
+    0.49878111481666565,
+    0.5026981234550476,
+    0.501266598701477,
+    9.550256729125977,
+    9.064497947692871,
+    0.4882897436618805,
+    0.49575671553611755,
+    0.4958413541316986,
+    0.5010578632354736,
+    0.5117101669311523,
+    0.5042433738708496,
+    0.5041587948799133,
+    0.49894216656684875,
+    1.8527940511703491,
+    1.2243473529815674,
+    0.5361378192901611,
+    0.019256751984357834,
+    0.1138334721326828,
+    0.310319721698761
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/dim_var": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0016044443473219872,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0016044443473219872,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.002043320331722498,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.002043320331722498,
+    0.06077459827065468,
+    0.042193397879600525,
+    0.0,
+    0.0,
+    0.0,
+    0.17619401216506958,
+    0.0,
+    0.0,
+    0.0,
+    0.17619401216506958,
+    0.6810606718063354,
+    0.03801209479570389,
+    0.0016225171275436878,
+    0.00028343527810648084,
+    0.1388896405696869,
+    0.0006928066723048687
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/resultant/head_pos_x": {
+   "mean": [
+    0.9835087656974792,
+    0.9798484444618225,
+    0.9791736006736755,
+    0.9740622043609619,
+    0.9791639447212219,
+    0.9758323431015015,
+    0.9785633683204651,
+    0.9828263521194458,
+    0.9847158193588257,
+    0.9991099834442139
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/resultant/head_pos_y": {
+   "mean": [
+    0.9871636629104614,
+    0.9857240915298462,
+    0.9794524908065796,
+    0.9733450412750244,
+    0.9810552597045898,
+    0.981531023979187,
+    0.9743874669075012,
+    0.9800271987915039,
+    0.9762006402015686,
+    0.999121904373169
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/resultant/head_att": {
+   "mean": [
+    0.9848693609237671,
+    0.9825016260147095,
+    0.8963796496391296,
+    0.79583340883255
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/resultant/belief_pos_x": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 782022.0
+  },
+  "enemy_visible/resultant/belief_att": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 782022.0
+  },
+  "enemy_hidden/tokens": {
+   "mean": 1.0,
+   "count": 560372.0
+  },
+  "enemy_hidden/dead_frac": {
+   "mean": 0.0,
+   "count": 560372.0
+  },
+  "enemy_hidden/age_s": {
+   "mean": 3.8697356398963545,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/position_px": {
+   "mean": 527.1539334584883,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_position_px": {
+   "mean": 477396.57284803665,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/velocity_px_s": {
+   "mean": 83.53869215449737,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_velocity_px_s": {
+   "mean": 9159.08238098977,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/speed_px_s": {
+   "mean": 64.0342843682411,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_speed_px_s": {
+   "mean": 6129.84757268386,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/attitude_rad": {
+   "mean": 0.7763875492529962,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_attitude_rad": {
+   "mean": 0.9893473665707779,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/angular_velocity": {
+   "mean": 1.9925761369233295,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_angular_velocity": {
+   "mean": 10.186022856245494,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/health": {
+   "mean": 3.3152651274510503,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_health": {
+   "mean": 33.15370503879566,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/power": {
+   "mean": 7.755282205392132,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_power": {
+   "mean": 128.4442763021707,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/cooldown_s": {
+   "mean": 0.001689409670676912,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_cooldown_s": {
+   "mean": 8.341006587729403e-05,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/shield_delay_s": {
+   "mean": 0.17055008492126658,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_shield_delay_s": {
+   "mean": 0.18796860612236158,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/local_log_index": {
+   "mean": 0.2773428856188389,
+   "count": 560372.0
+  },
+  "enemy_hidden/head/sq_local_log_index": {
+   "mean": 0.15891364631441257,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/position_px": {
+   "mean": 522.6336790560556,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_position_px": {
+   "mean": 473011.1486512531,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/velocity_px_s": {
+   "mean": 83.12642316175683,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_velocity_px_s": {
+   "mean": 9118.250076734741,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/speed_px_s": {
+   "mean": 63.621779817692534,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_speed_px_s": {
+   "mean": 6089.6182964173795,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/attitude_rad": {
+   "mean": 0.7729067699670933,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_attitude_rad": {
+   "mean": 0.9841377691961768,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/angular_velocity": {
+   "mean": 1.9874110412368926,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_angular_velocity": {
+   "mean": 10.123164612079119,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/health": {
+   "mean": 3.217673706038132,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_health": {
+   "mean": 31.915356227648775,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/power": {
+   "mean": 7.820763706966087,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_power": {
+   "mean": 131.49843318367084,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/cooldown_s": {
+   "mean": 0.0016886066109112006,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_cooldown_s": {
+   "mean": 8.358660995673898e-05,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/shield_delay_s": {
+   "mean": 0.166456640633365,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_shield_delay_s": {
+   "mean": 0.18488287691033814,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/local_log_index": {
+   "mean": 0.27599776911587304,
+   "count": 560372.0
+  },
+  "enemy_hidden/identity/sq_local_log_index": {
+   "mean": 0.15867538382984875,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/position_px": {
+   "mean": 522.4286152769946,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_position_px": {
+   "mean": 472810.75331387005,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/velocity_px_s": {
+   "mean": 83.12642316175683,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_velocity_px_s": {
+   "mean": 9118.250076734741,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/speed_px_s": {
+   "mean": 63.621779817692534,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_speed_px_s": {
+   "mean": 6089.6182964173795,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/attitude_rad": {
+   "mean": 0.7823779895319538,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_attitude_rad": {
+   "mean": 1.0023233450279456,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/angular_velocity": {
+   "mean": 1.9874110412368926,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_angular_velocity": {
+   "mean": 10.123164612079119,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/health": {
+   "mean": 3.217673706038132,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_health": {
+   "mean": 31.915356227648775,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/power": {
+   "mean": 7.820763706966087,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_power": {
+   "mean": 131.49843318367084,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/cooldown_s": {
+   "mean": 0.0016886066109112006,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_cooldown_s": {
+   "mean": 8.358660995673898e-05,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/shield_delay_s": {
+   "mean": 0.166456640633365,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_shield_delay_s": {
+   "mean": 0.18488287691033814,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/local_log_index": {
+   "mean": 0.27599776911587304,
+   "count": 560372.0
+  },
+  "enemy_hidden/linear/sq_local_log_index": {
+   "mean": 0.15867538382984875,
+   "count": 560372.0
+  },
+  "enemy_hidden/dead_reckon/position_px": {
+   "mean": 290.31143597467394,
+   "count": 560372.0
+  },
+  "enemy_hidden/dead_reckon/sq_position_px": {
+   "mean": 177165.0619517035,
+   "count": 560372.0
+  },
+  "enemy_hidden/frozen/position_px": {
+   "mean": 393.4290792544952,
+   "count": 560372.0
+  },
+  "enemy_hidden/frozen/sq_position_px": {
+   "mean": 299438.11610858503,
+   "count": 560372.0
+  },
+  "enemy_hidden/dim_sq/head": {
+   "mean": [
+    0.015348774380981922,
+    0.015999432653188705,
+    0.03089906834065914,
+    0.09569580852985382,
+    0.23846323788166046,
+    0.3619793951511383,
+    0.4227684736251831,
+    0.48987463116645813,
+    0.4904347062110901,
+    0.43963760137557983,
+    0.00862181931734085,
+    0.011143709532916546,
+    0.08050213009119034,
+    0.07170188426971436,
+    0.23957662284374237,
+    0.3833267092704773,
+    0.45274120569229126,
+    0.4827277660369873,
+    0.4780885577201843,
+    0.44744741916656494,
+    0.010420733131468296,
+    0.02161381207406521,
+    0.027716048061847687,
+    0.06743456423282623,
+    0.20344854891300201,
+    0.34627529978752136,
+    0.4387173652648926,
+    0.5099141597747803,
+    0.4843226969242096,
+    0.45400553941726685,
+    0.008162994869053364,
+    0.012462461367249489,
+    0.03524334356188774,
+    0.07419843971729279,
+    0.20754724740982056,
+    0.3276834785938263,
+    0.495868980884552,
+    0.48190009593963623,
+    0.513189435005188,
+    0.43330004811286926,
+    7.960588455200195,
+    4.944473743438721,
+    0.2349613904953003,
+    0.5927345156669617,
+    0.54110187292099,
+    0.4960969090461731,
+    0.3607288897037506,
+    0.4816970229148865,
+    0.561785876750946,
+    0.5038556456565857,
+    1.3109368085861206,
+    0.030845588073134422,
+    0.0033153677359223366,
+    0.012844447046518326,
+    0.008340995758771896,
+    0.15891364216804504
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/dim_sq/identity": {
+   "mean": [
+    0.0011638733558356762,
+    0.004292922094464302,
+    0.01744050718843937,
+    0.08318782597780228,
+    0.25521525740623474,
+    0.4913303256034851,
+    0.6959197521209717,
+    0.879115641117096,
+    0.8586713671684265,
+    0.8982824087142944,
+    0.0012801331467926502,
+    0.005451452452689409,
+    0.021036026999354362,
+    0.06304965168237686,
+    0.2265203446149826,
+    0.5537070631980896,
+    0.7173326015472412,
+    0.8582996726036072,
+    0.9754037261009216,
+    0.826062798500061,
+    0.000949479581322521,
+    0.003453395329415798,
+    0.013419844210147858,
+    0.05863231420516968,
+    0.18360227346420288,
+    0.47683486342430115,
+    0.7089894413948059,
+    1.0046695470809937,
+    0.9170657992362976,
+    0.8402389287948608,
+    0.0009498712606728077,
+    0.004122294019907713,
+    0.016538958996534348,
+    0.055920835584402084,
+    0.20266090333461761,
+    0.42779844999313354,
+    0.7002615928649902,
+    0.7988581657409668,
+    0.907240629196167,
+    0.8933780193328857,
+    7.924053192138672,
+    4.92501163482666,
+    0.3293531835079193,
+    0.8925168514251709,
+    0.9584943056106567,
+    1.0055744647979736,
+    0.4254636764526367,
+    0.7073813080787659,
+    1.0354474782943726,
+    0.984039843082428,
+    1.3018975257873535,
+    0.030285807326436043,
+    0.003191539319232106,
+    0.013149851933121681,
+    0.008358665741980076,
+    0.1586754024028778
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/dim_sq/linear": {
+   "mean": [
+    0.0011636257404461503,
+    0.004293124191462994,
+    0.01743471994996071,
+    0.08315975219011307,
+    0.2552089989185333,
+    0.4916360378265381,
+    0.695709764957428,
+    0.8792780041694641,
+    0.8589478135108948,
+    0.8975008726119995,
+    0.001280006137676537,
+    0.005449747201055288,
+    0.021036002784967422,
+    0.06305654346942902,
+    0.22646813094615936,
+    0.5533528327941895,
+    0.7175272107124329,
+    0.8585123419761658,
+    0.9747838377952576,
+    0.8267292380332947,
+    0.0009486714843660593,
+    0.003450957592576742,
+    0.013409655541181564,
+    0.05859260633587837,
+    0.18346886336803436,
+    0.4763980507850647,
+    0.7087970972061157,
+    1.0036466121673584,
+    0.91634601354599,
+    0.843010663986206,
+    0.0009492064127698541,
+    0.004118859302252531,
+    0.016525933519005775,
+    0.055872514843940735,
+    0.2025032937526703,
+    0.4275672435760498,
+    0.6995977759361267,
+    0.7992233037948608,
+    0.9077016115188599,
+    0.8896591663360596,
+    7.924053192138672,
+    4.92501163482666,
+    0.3343595266342163,
+    0.9094318747520447,
+    0.9635639190673828,
+    1.00870680809021,
+    0.4330879747867584,
+    0.7088879942893982,
+    1.041543960571289,
+    0.9866509437561035,
+    1.3018975257873535,
+    0.030285807326436043,
+    0.003191539319232106,
+    0.013149851933121681,
+    0.008358665741980076,
+    0.1586754024028778
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/dim_sq/label": {
+   "mean": [
+    0.5133408904075623,
+    0.5125816464424133,
+    0.5579861998558044,
+    0.46519020199775696,
+    0.48209047317504883,
+    0.5145744681358337,
+    0.4881802201271057,
+    0.49831172823905945,
+    0.4978213608264923,
+    0.4987768828868866,
+    0.48665887117385864,
+    0.48741817474365234,
+    0.44201403856277466,
+    0.5348103046417236,
+    0.5179094672203064,
+    0.48542553186416626,
+    0.51181960105896,
+    0.5016883015632629,
+    0.5021787881851196,
+    0.5012233853340149,
+    0.4696935713291168,
+    0.5424711108207703,
+    0.530377984046936,
+    0.5008219480514526,
+    0.5126917958259583,
+    0.4854757785797119,
+    0.49534350633621216,
+    0.4985380172729492,
+    0.49647578597068787,
+    0.5007708072662354,
+    0.530306339263916,
+    0.4575284719467163,
+    0.4696221351623535,
+    0.4991779029369354,
+    0.48730888962745667,
+    0.514524519443512,
+    0.5046563148498535,
+    0.5014619827270508,
+    0.5035244822502136,
+    0.4992291331291199,
+    11.022780418395996,
+    10.584749221801758,
+    0.4903765916824341,
+    0.4833180606365204,
+    0.48363202810287476,
+    0.49694427847862244,
+    0.5096234083175659,
+    0.5166817903518677,
+    0.5163676142692566,
+    0.503055989742279,
+    1.022447109222412,
+    0.7938624620437622,
+    0.3332255780696869,
+    0.019718961790204048,
+    0.008533963933587074,
+    0.31800106167793274
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/dim_var": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.4425727427005768,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.4425727427005768,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.5687723159790039,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.5687723159790039,
+    5.512607574462891,
+    2.794717788696289,
+    0.0,
+    0.0,
+    0.0,
+    0.48173996806144714,
+    0.0,
+    0.0,
+    0.0,
+    0.48173996806144714,
+    0.796937108039856,
+    0.040566131472587585,
+    0.005874657537788153,
+    0.005757672246545553,
+    0.021728934720158577,
+    0.10963766276836395
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/resultant/head_pos_x": {
+   "mean": [
+    0.9881114959716797,
+    0.9743235111236572,
+    0.9390943646430969,
+    0.9101609587669373,
+    0.8201063871383667,
+    0.5800209641456604,
+    0.4151419997215271,
+    0.21623483300209045,
+    0.20400260388851166,
+    0.24665050208568573
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/resultant/head_pos_y": {
+   "mean": [
+    0.9798005819320679,
+    0.987903892993927,
+    0.9596571326255798,
+    0.9012964963912964,
+    0.803886353969574,
+    0.6068713665008545,
+    0.4199700355529785,
+    0.20821042358875275,
+    0.29179811477661133,
+    0.2573283910751343
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/resultant/head_att": {
+   "mean": [
+    0.7496820688247681,
+    0.6108083724975586,
+    0.34921202063560486,
+    0.11321625858545303
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/resultant/belief_pos_x": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/resultant/belief_att": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 560372.0
+  },
+  "enemy_hidden/age_0_0.1/tokens": {
+   "mean": 1.0,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/head/position_px": {
+   "mean": 6.6273890605921855,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/head/velocity_px_s": {
+   "mean": 13.331881486568987,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/head/attitude_rad": {
+   "mean": 0.11473584669995802,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/identity/position_px": {
+   "mean": 2.562490937881563,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/identity/velocity_px_s": {
+   "mean": 8.938361378205128,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/identity/attitude_rad": {
+   "mean": 0.11236356146024115,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/linear/position_px": {
+   "mean": 0.7422625009539072,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/linear/velocity_px_s": {
+   "mean": 8.938361378205128,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/linear/attitude_rad": {
+   "mean": 0.11591849787040216,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/dead_reckon/position_px": {
+   "mean": 0.2736019595638736,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0_0.1/frozen/position_px": {
+   "mean": 5.981126945970696,
+   "count": 16380.0
+  },
+  "enemy_hidden/age_0.1_0.5/tokens": {
+   "mean": 1.0,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/head/position_px": {
+   "mean": 445.08494885533366,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/head/velocity_px_s": {
+   "mean": 37.51636629322942,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/head/attitude_rad": {
+   "mean": 0.363987248082075,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/identity/position_px": {
+   "mean": 398.52677382691996,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/identity/velocity_px_s": {
+   "mean": 35.98379201169021,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/identity/attitude_rad": {
+   "mean": 0.3474445425393733,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/linear/position_px": {
+   "mean": 398.4305893813931,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/linear/velocity_px_s": {
+   "mean": 35.98379201169021,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/linear/attitude_rad": {
+   "mean": 0.362265364963874,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/dead_reckon/position_px": {
+   "mean": 4.767135492774801,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.1_0.5/frozen/position_px": {
+   "mean": 22.91361219353791,
+   "count": 61590.0
+  },
+  "enemy_hidden/age_0.5_1/tokens": {
+   "mean": 1.0,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/head/position_px": {
+   "mean": 519.217258308157,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/head/velocity_px_s": {
+   "mean": 67.84161159365559,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/head/attitude_rad": {
+   "mean": 0.7067518528134441,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/identity/position_px": {
+   "mean": 523.5855740181269,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/identity/velocity_px_s": {
+   "mean": 67.2682590634441,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/identity/attitude_rad": {
+   "mean": 0.6958333825056646,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/linear/position_px": {
+   "mean": 523.7079682779456,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/linear/velocity_px_s": {
+   "mean": 67.2682590634441,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/linear/attitude_rad": {
+   "mean": 0.7146771295553248,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/dead_reckon/position_px": {
+   "mean": 25.631202794561933,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_0.5_1/frozen/position_px": {
+   "mean": 62.80462141238671,
+   "count": 52960.0
+  },
+  "enemy_hidden/age_1_2/tokens": {
+   "mean": 1.0,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/head/position_px": {
+   "mean": 449.8119211477896,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/head/velocity_px_s": {
+   "mean": 88.94350869007349,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/head/attitude_rad": {
+   "mean": 0.8667468906742097,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/identity/position_px": {
+   "mean": 450.7417706753762,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/identity/velocity_px_s": {
+   "mean": 88.76073136591624,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/identity/attitude_rad": {
+   "mean": 0.8625823807301994,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/linear/position_px": {
+   "mean": 450.89765542983787,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/linear/velocity_px_s": {
+   "mean": 88.76073136591624,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/linear/attitude_rad": {
+   "mean": 0.8739318755103231,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/dead_reckon/position_px": {
+   "mean": 79.89636649947509,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_1_2/frozen/position_px": {
+   "mean": 138.06262685174386,
+   "count": 85730.0
+  },
+  "enemy_hidden/age_2_5/tokens": {
+   "mean": 1.0,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/head/position_px": {
+   "mean": 493.15014458887106,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/head/velocity_px_s": {
+   "mean": 95.28919526800058,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/head/attitude_rad": {
+   "mean": 0.9032035015335184,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/identity/position_px": {
+   "mean": 493.03867971374325,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/identity/velocity_px_s": {
+   "mean": 95.27334014897035,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/identity/attitude_rad": {
+   "mean": 0.9027847049802833,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/linear/position_px": {
+   "mean": 492.8133197020593,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/linear/velocity_px_s": {
+   "mean": 95.27334014897035,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/linear/attitude_rad": {
+   "mean": 0.9074127355046006,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/dead_reckon/position_px": {
+   "mean": 254.1409668467942,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_2_5/frozen/position_px": {
+   "mean": 351.16749525339566,
+   "count": 171175.0
+  },
+  "enemy_hidden/age_5_10/tokens": {
+   "mean": 1.0,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/head/position_px": {
+   "mean": 657.0008029455805,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/head/velocity_px_s": {
+   "mean": 96.75590454351459,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/head/attitude_rad": {
+   "mean": 0.8368063969806353,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/identity/position_px": {
+   "mean": 657.6390506434416,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/identity/velocity_px_s": {
+   "mean": 96.65539890481116,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/identity/attitude_rad": {
+   "mean": 0.8375728347595865,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/linear/position_px": {
+   "mean": 657.2473868099912,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/linear/velocity_px_s": {
+   "mean": 96.65539890481116,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/linear/attitude_rad": {
+   "mean": 0.8455019223674597,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/dead_reckon/position_px": {
+   "mean": 586.5658957906844,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_5_10/frozen/position_px": {
+   "mean": 759.9910880274304,
+   "count": 138241.0
+  },
+  "enemy_hidden/age_10_30/tokens": {
+   "mean": 1.0,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/head/position_px": {
+   "mean": 775.0531840447866,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/head/velocity_px_s": {
+   "mean": 98.52458741544203,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/head/attitude_rad": {
+   "mean": 0.838164493034902,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/identity/position_px": {
+   "mean": 775.6555283414975,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/identity/velocity_px_s": {
+   "mean": 98.4671171565197,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/identity/attitude_rad": {
+   "mean": 0.8384207638099195,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/linear/position_px": {
+   "mean": 775.4884534639608,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/linear/velocity_px_s": {
+   "mean": 98.4671171565197,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/linear/attitude_rad": {
+   "mean": 0.8523073367703231,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/dead_reckon/position_px": {
+   "mean": 862.7123279682762,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_10_30/frozen/position_px": {
+   "mean": 1126.1373921156987,
+   "count": 34296.0
+  },
+  "enemy_hidden/age_30_inf/tokens": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/head/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/head/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/head/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/identity/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/identity/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/identity/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/linear/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/linear/velocity_px_s": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/linear/attitude_rad": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/dead_reckon/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_hidden/age_30_inf/frozen/position_px": {
+   "mean": 0.0,
+   "count": 0.0
+  },
+  "enemy_visible_anyalive/tokens": {
+   "mean": 1.0,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dead_frac": {
+   "mean": 0.002012508949092584,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/age_s": {
+   "mean": 0.0,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/position_px": {
+   "mean": 3.547136992262624,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_position_px": {
+   "mean": 5757.542743163276,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/velocity_px_s": {
+   "mean": 4.773229993912703,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_velocity_px_s": {
+   "mean": 69.39864905391661,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/speed_px_s": {
+   "mean": 3.7331163643649368,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_speed_px_s": {
+   "mean": 52.65086351565022,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/attitude_rad": {
+   "mean": 0.06597575936480266,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_attitude_rad": {
+   "mean": 0.0149330853934857,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/angular_velocity": {
+   "mean": 2.278278175444328,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_angular_velocity": {
+   "mean": 10.870085337015489,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/health": {
+   "mean": 1.2834550101518762,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_health": {
+   "mean": 3.8764581756740375,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/power": {
+   "mean": 0.6910617707526426,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_power": {
+   "mean": 2.7040635580188335,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/cooldown_s": {
+   "mean": 0.014891581434269953,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_cooldown_s": {
+   "mean": 0.0011079054011721877,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/shield_delay_s": {
+   "mean": 0.05132654046425531,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_shield_delay_s": {
+   "mean": 0.10477494108912849,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/local_log_index": {
+   "mean": 0.009951076150317317,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/head/sq_local_log_index": {
+   "mean": 0.0011794131318232843,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/position_px": {
+   "mean": 6.011789831278499,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_position_px": {
+   "mean": 5762.738543566288,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/velocity_px_s": {
+   "mean": 2.9833409690415635,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_velocity_px_s": {
+   "mean": 35.82869299220647,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/speed_px_s": {
+   "mean": 1.179893430823674,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_speed_px_s": {
+   "mean": 10.776395835114645,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/attitude_rad": {
+   "mean": 0.0694417082270396,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_attitude_rad": {
+   "mean": 0.017142603241980272,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/angular_velocity": {
+   "mean": 1.861366432320613,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_angular_velocity": {
+   "mean": 12.440935988943325,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/health": {
+   "mean": 0.3905303446022774,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_health": {
+   "mean": 2.4634200656202982,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/power": {
+   "mean": 0.5555488202511744,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_power": {
+   "mean": 2.7951043837472995,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/cooldown_s": {
+   "mean": 0.012519655650961142,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_cooldown_s": {
+   "mean": 0.0007649717410417749,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/shield_delay_s": {
+   "mean": 0.04394386310791617,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_shield_delay_s": {
+   "mean": 0.10498426172059944,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/local_log_index": {
+   "mean": 0.002934278383997268,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/identity/sq_local_log_index": {
+   "mean": 0.0012314037636756811,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/position_px": {
+   "mean": 3.3956223144746227,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_position_px": {
+   "mean": 5758.822091401342,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/velocity_px_s": {
+   "mean": 2.9833409690415635,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_velocity_px_s": {
+   "mean": 35.82869299220647,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/speed_px_s": {
+   "mean": 1.179893430823674,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_speed_px_s": {
+   "mean": 10.776395835114645,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/attitude_rad": {
+   "mean": 0.13707977948542557,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_attitude_rad": {
+   "mean": 0.04421126410798125,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/angular_velocity": {
+   "mean": 1.861366432320613,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_angular_velocity": {
+   "mean": 12.440935988943325,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/health": {
+   "mean": 0.3905303446022774,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_health": {
+   "mean": 2.4634200656202982,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/power": {
+   "mean": 0.5555488202511744,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_power": {
+   "mean": 2.7951043837472995,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/cooldown_s": {
+   "mean": 0.012519655650961142,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_cooldown_s": {
+   "mean": 0.0007649717410417749,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/shield_delay_s": {
+   "mean": 0.04394386310791617,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_shield_delay_s": {
+   "mean": 0.10498426172059944,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/local_log_index": {
+   "mean": 0.002934278383997268,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/linear/sq_local_log_index": {
+   "mean": 0.0012314037636756811,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dead_reckon/position_px": {
+   "mean": 3.3955840295865616,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dead_reckon/sq_position_px": {
+   "mean": 5758.822744796765,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/frozen/position_px": {
+   "mean": 6.011834496981237,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/frozen/sq_position_px": {
+   "mean": 5762.7365833800195,
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dim_sq/head": {
+   "mean": [
+    0.012653529644012451,
+    0.010034765116870403,
+    0.010410238988697529,
+    0.00905734021216631,
+    0.01019384153187275,
+    0.009473234415054321,
+    0.008912095800042152,
+    0.009668175131082535,
+    0.009246553294360638,
+    0.0019796432461589575,
+    0.007822136394679546,
+    0.009843485429883003,
+    0.013711088337004185,
+    0.008663629181683064,
+    0.011014629155397415,
+    0.010149993933737278,
+    0.009026768617331982,
+    0.008356202393770218,
+    0.008571960031986237,
+    0.0020264654885977507,
+    0.008526213467121124,
+    0.009775449521839619,
+    0.011261247098445892,
+    0.00981828011572361,
+    0.009567124769091606,
+    0.009981164708733559,
+    0.00931453611701727,
+    0.012274933978915215,
+    0.008809072896838188,
+    0.002026420785114169,
+    0.008180824108421803,
+    0.012309241108596325,
+    0.013924325816333294,
+    0.011234262026846409,
+    0.009962348267436028,
+    0.014137919060885906,
+    0.010335665196180344,
+    0.008646509610116482,
+    0.009202537126839161,
+    0.0019791012164205313,
+    0.04004262387752533,
+    0.03529685363173485,
+    0.008424120023846626,
+    0.027085287496447563,
+    0.07958994805812836,
+    0.19735397398471832,
+    0.009876573458313942,
+    0.02799818478524685,
+    0.08007099479436874,
+    0.19795604050159454,
+    0.8218720555305481,
+    0.011977160349488258,
+    0.0003876460832543671,
+    0.00027040671557188034,
+    0.11079078167676926,
+    0.0011794130550697446
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dim_sq/identity": {
+   "mean": [
+    1.354160031041829e-05,
+    5.227403744356707e-05,
+    0.00018550491950009018,
+    0.00079155876301229,
+    0.0024711466394364834,
+    0.0024965356569737196,
+    0.0021693005692213774,
+    0.0024151562247425318,
+    0.0032570657785981894,
+    0.007335680536925793,
+    1.371717189613264e-05,
+    5.614481051452458e-05,
+    0.00023845037503633648,
+    0.0007571328314952552,
+    0.0018358633387833834,
+    0.0019193453481420875,
+    0.0022748748306185007,
+    0.0022870597895234823,
+    0.003424313385039568,
+    0.007449557073414326,
+    1.368536595691694e-05,
+    4.3128868128405884e-05,
+    0.00018792207993101329,
+    0.0006892854580655694,
+    0.0018074802355840802,
+    0.002448256593197584,
+    0.0021423858124762774,
+    0.002364297630265355,
+    0.0032407103572040796,
+    0.007108160760253668,
+    1.192675881611649e-05,
+    5.875136412214488e-05,
+    0.00021062919404357672,
+    0.0007691649370826781,
+    0.002284299349412322,
+    0.002051980933174491,
+    0.002122969599440694,
+    0.0022055020090192556,
+    0.003245161147788167,
+    0.0070801470428705215,
+    0.043862197548151016,
+    0.04148055613040924,
+    0.007535132579505444,
+    0.025015806779265404,
+    0.08780714869499207,
+    0.2627791464328766,
+    0.007617110386490822,
+    0.025262335315346718,
+    0.08690815418958664,
+    0.26221081614494324,
+    1.1398924589157104,
+    0.012196747586131096,
+    0.00024634224246256053,
+    0.00027951051015406847,
+    0.07649705559015274,
+    0.0012314037885516882
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dim_sq/linear": {
+   "mean": [
+    1.3529989701055456e-05,
+    5.223113112151623e-05,
+    0.00018536386778578162,
+    0.0007905748207122087,
+    0.002466117264702916,
+    0.00247414642944932,
+    0.0020857839845120907,
+    0.0020794919691979885,
+    0.0019175901543349028,
+    0.0020135995000600815,
+    1.3707805010199081e-05,
+    5.610310472548008e-05,
+    0.00023823724768590182,
+    0.0007564733969047666,
+    0.0018317879876121879,
+    0.0018975990824401379,
+    0.002191269537433982,
+    0.0019533901941031218,
+    0.0020894750487059355,
+    0.002129988046362996,
+    1.3678268260264304e-05,
+    4.310138683649711e-05,
+    0.00018780308892019093,
+    0.0006886982009746134,
+    0.0018035625107586384,
+    0.0024278219789266586,
+    0.002063480205833912,
+    0.002046884037554264,
+    0.001982477493584156,
+    0.0020795802120119333,
+    1.191856699733762e-05,
+    5.8716381317935884e-05,
+    0.00021048111375421286,
+    0.0007684179581701756,
+    0.0022799617145210505,
+    0.0020310033578425646,
+    0.0020434348843991756,
+    0.0018931875238195062,
+    0.0019880379550158978,
+    0.0020556203089654446,
+    0.043862197548151016,
+    0.04148055613040924,
+    0.020836716517806053,
+    0.07477716356515884,
+    0.24989213049411774,
+    0.5914865136146545,
+    0.020792098715901375,
+    0.07537639886140823,
+    0.24974344670772552,
+    0.5930054187774658,
+    1.1398924589157104,
+    0.012196747586131096,
+    0.00024634224246256053,
+    0.00027951051015406847,
+    0.07649705559015274,
+    0.0012314037885516882
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dim_sq/label": {
+   "mean": [
+    0.4929743707180023,
+    0.4774874150753021,
+    0.5783843994140625,
+    0.4745021462440491,
+    0.5007190108299255,
+    0.505722165107727,
+    0.49633997678756714,
+    0.4986339807510376,
+    0.49925321340560913,
+    0.49920547008514404,
+    0.5070255398750305,
+    0.5225128531455994,
+    0.42161574959754944,
+    0.52549809217453,
+    0.49928104877471924,
+    0.49427780508995056,
+    0.5036601424217224,
+    0.5013660788536072,
+    0.5007468461990356,
+    0.500794529914856,
+    0.4668060541152954,
+    0.5609239339828491,
+    0.5125864148139954,
+    0.492124080657959,
+    0.5103293061256409,
+    0.5110229253768921,
+    0.5055772662162781,
+    0.5012406706809998,
+    0.49731722474098206,
+    0.4987536370754242,
+    0.5331937074661255,
+    0.43907594680786133,
+    0.4874134063720703,
+    0.5078758597373962,
+    0.4896707236766815,
+    0.4889771044254303,
+    0.49442288279533386,
+    0.49875956773757935,
+    0.5026828050613403,
+    0.5012463927268982,
+    9.544285774230957,
+    9.057496070861816,
+    0.48825889825820923,
+    0.49573829770088196,
+    0.4958448112010956,
+    0.5010654926300049,
+    0.5117409229278564,
+    0.5042617321014404,
+    0.5041552782058716,
+    0.4989345669746399,
+    1.8490653038024902,
+    1.228344440460205,
+    0.5351040363311768,
+    0.01954001560807228,
+    0.11360438168048859,
+    0.3102627396583557
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/dim_var": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0018274001777172089,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0018274001777172089,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0023288708180189133,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0023288708180189133,
+    0.06638987362384796,
+    0.04535343125462532,
+    0.0,
+    0.0,
+    0.0,
+    0.17637845873832703,
+    0.0,
+    0.0,
+    0.0,
+    0.17637845873832703,
+    0.6818527579307556,
+    0.037943217903375626,
+    0.0016435919096693397,
+    0.0003175207821186632,
+    0.13870972394943237,
+    0.0007810585084371269
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/resultant/head_pos_x": {
+   "mean": [
+    0.9831843376159668,
+    0.9795128107070923,
+    0.9788690805435181,
+    0.9737408757209778,
+    0.9787906408309937,
+    0.975439190864563,
+    0.9781339764595032,
+    0.9823828935623169,
+    0.9842604994773865,
+    0.9987639784812927
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/resultant/head_pos_y": {
+   "mean": [
+    0.9868002533912659,
+    0.9853852391242981,
+    0.9791279435157776,
+    0.9729936122894287,
+    0.9806249737739563,
+    0.9810919761657715,
+    0.9739875793457031,
+    0.9795317053794861,
+    0.9757677912712097,
+    0.9987661242485046
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/resultant/head_att": {
+   "mean": [
+    0.9844989776611328,
+    0.9820706248283386,
+    0.8959739804267883,
+    0.795421838760376
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/resultant/belief_pos_x": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 783599.0
+  },
+  "enemy_visible_anyalive/resultant/belief_att": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 783599.0
+  },
+  "enemy_hidden_anyalive/tokens": {
+   "mean": 1.0,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dead_frac": {
+   "mean": 4.2826858150307995e-05,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/age_s": {
+   "mean": 3.869589094140572,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/position_px": {
+   "mean": 527.1789805780198,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_position_px": {
+   "mean": 477443.4590396791,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/velocity_px_s": {
+   "mean": 83.53672046195905,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_velocity_px_s": {
+   "mean": 9158.770526556222,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/speed_px_s": {
+   "mean": 64.0323200022841,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_speed_px_s": {
+   "mean": 6129.614287039879,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/attitude_rad": {
+   "mean": 0.7764004159558597,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_attitude_rad": {
+   "mean": 0.9893877499125618,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/angular_velocity": {
+   "mean": 1.9925581642267254,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_angular_velocity": {
+   "mean": 10.18570617920185,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/health": {
+   "mean": 3.3155864335220095,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_health": {
+   "mean": 33.158006124240714,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/power": {
+   "mean": 7.756404399745894,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_power": {
+   "mean": 128.4911526848871,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/cooldown_s": {
+   "mean": 0.0016893825180165566,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_cooldown_s": {
+   "mean": 8.340653452910908e-05,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/shield_delay_s": {
+   "mean": 0.17058623500167738,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_shield_delay_s": {
+   "mean": 0.18805344513076466,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/local_log_index": {
+   "mean": 0.27735902937387136,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/head/sq_local_log_index": {
+   "mean": 0.1589369671178952,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/position_px": {
+   "mean": 522.6601189159095,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_position_px": {
+   "mean": 473062.8127823896,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/velocity_px_s": {
+   "mean": 83.12455477912047,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_velocity_px_s": {
+   "mean": 9117.945452858336,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/speed_px_s": {
+   "mean": 63.619854531438484,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_speed_px_s": {
+   "mean": 6089.388560946188,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/attitude_rad": {
+   "mean": 0.7729200645614887,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_attitude_rad": {
+   "mean": 0.9841777064789898,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/angular_velocity": {
+   "mean": 1.9873857058223114,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_angular_velocity": {
+   "mean": 10.122835459210986,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/health": {
+   "mean": 3.2179657331601224,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_health": {
+   "mean": 31.918928757521467,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/power": {
+   "mean": 7.82186525242864,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_power": {
+   "mean": 131.543736928886,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/cooldown_s": {
+   "mean": 0.0016885781856713824,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_cooldown_s": {
+   "mean": 8.358307785487155e-05,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/shield_delay_s": {
+   "mean": 0.16649080516277776,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_shield_delay_s": {
+   "mean": 0.18496592420806002,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/local_log_index": {
+   "mean": 0.27601408200629557,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/identity/sq_local_log_index": {
+   "mean": 0.1586988681887451,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/position_px": {
+   "mean": 522.455406533951,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_position_px": {
+   "mean": 472862.42602730927,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/velocity_px_s": {
+   "mean": 83.12455477912047,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_velocity_px_s": {
+   "mean": 9117.945452858336,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/speed_px_s": {
+   "mean": 63.619854531438484,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_speed_px_s": {
+   "mean": 6089.388560946188,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/attitude_rad": {
+   "mean": 0.7823909900320488,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_attitude_rad": {
+   "mean": 1.0023636187624465,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/angular_velocity": {
+   "mean": 1.9873857058223114,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_angular_velocity": {
+   "mean": 10.122835459210986,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/health": {
+   "mean": 3.2179657331601224,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_health": {
+   "mean": 31.918928757521467,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/power": {
+   "mean": 7.82186525242864,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_power": {
+   "mean": 131.543736928886,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/cooldown_s": {
+   "mean": 0.0016885781856713824,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_cooldown_s": {
+   "mean": 8.358307785487155e-05,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/shield_delay_s": {
+   "mean": 0.16649080516277776,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_shield_delay_s": {
+   "mean": 0.18496592420806002,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/local_log_index": {
+   "mean": 0.27601408200629557,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/linear/sq_local_log_index": {
+   "mean": 0.1586988681887451,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dead_reckon/position_px": {
+   "mean": 290.36881062677105,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dead_reckon/sq_position_px": {
+   "mean": 177280.1215140722,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/frozen/position_px": {
+   "mean": 393.48155233085174,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/frozen/sq_position_px": {
+   "mean": 299545.24934510596,
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dim_sq/head": {
+   "mean": [
+    0.015348992310464382,
+    0.016000574454665184,
+    0.030900804325938225,
+    0.09570196270942688,
+    0.2384772002696991,
+    0.3619886636734009,
+    0.42279136180877686,
+    0.4898776412010193,
+    0.4904390275478363,
+    0.4396468698978424,
+    0.008622643537819386,
+    0.011145230382680893,
+    0.08050690591335297,
+    0.07170939445495605,
+    0.23958821594715118,
+    0.3833320438861847,
+    0.4527628719806671,
+    0.4827316999435425,
+    0.47810107469558716,
+    0.4474656879901886,
+    0.010420636273920536,
+    0.021614201366901398,
+    0.027716167271137238,
+    0.06743700057268143,
+    0.20345160365104675,
+    0.3462853729724884,
+    0.4387131631374359,
+    0.5099273920059204,
+    0.48432761430740356,
+    0.4540102481842041,
+    0.008163322694599628,
+    0.012462956830859184,
+    0.0352436862885952,
+    0.07419996708631516,
+    0.20755459368228912,
+    0.3276861608028412,
+    0.495909184217453,
+    0.48190203309059143,
+    0.5132047533988953,
+    0.4333159625530243,
+    7.960567951202393,
+    4.944544792175293,
+    0.2349700927734375,
+    0.5927378535270691,
+    0.5411011576652527,
+    0.49609482288360596,
+    0.3607369363307953,
+    0.4816945791244507,
+    0.5618044137954712,
+    0.5038617253303528,
+    1.3109188079833984,
+    0.030849261209368706,
+    0.003315798006951809,
+    0.01284913532435894,
+    0.008340643718838692,
+    0.15893696248531342
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dim_sq/identity": {
+   "mean": [
+    0.0011640299344435334,
+    0.004293365404009819,
+    0.017443861812353134,
+    0.08319240808486938,
+    0.2552500069141388,
+    0.49134361743927,
+    0.6959326267242432,
+    0.8791159391403198,
+    0.8586670160293579,
+    0.8982841968536377,
+    0.0012803644640371203,
+    0.005452548153698444,
+    0.02103864587843418,
+    0.06306634098291397,
+    0.22653836011886597,
+    0.5537282228469849,
+    0.7173511981964111,
+    0.8583117723464966,
+    0.975405216217041,
+    0.8260769844055176,
+    0.0009495367994531989,
+    0.003453511279076338,
+    0.013420655392110348,
+    0.058634791523218155,
+    0.18361078202724457,
+    0.4768611192703247,
+    0.708996057510376,
+    1.0046937465667725,
+    0.9170679450035095,
+    0.8402398824691772,
+    0.0009498998406343162,
+    0.004122521728277206,
+    0.01653951033949852,
+    0.05592360720038414,
+    0.20267052948474884,
+    0.42781251668930054,
+    0.7002866268157959,
+    0.798859715461731,
+    0.9072515368461609,
+    0.8933838605880737,
+    7.9240403175354,
+    4.925100326538086,
+    0.3293634057044983,
+    0.8925230503082275,
+    0.9584991931915283,
+    1.005561113357544,
+    0.4254724681377411,
+    0.707373321056366,
+    1.0354629755020142,
+    0.9840424060821533,
+    1.3018752336502075,
+    0.030289456248283386,
+    0.0031918957829475403,
+    0.013154381886124611,
+    0.008358310908079147,
+    0.1586988866329193
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dim_sq/linear": {
+   "mean": [
+    0.0011637825518846512,
+    0.004293568432331085,
+    0.01743808016180992,
+    0.08316434919834137,
+    0.25524377822875977,
+    0.49164941906929016,
+    0.6957228779792786,
+    0.8792783617973328,
+    0.8589431047439575,
+    0.8975023627281189,
+    0.0012802374549210072,
+    0.005450844764709473,
+    0.021038630977272987,
+    0.06307323276996613,
+    0.2264862209558487,
+    0.553374171257019,
+    0.7175458669662476,
+    0.8585242033004761,
+    0.9747859239578247,
+    0.8267430663108826,
+    0.0009487287607043982,
+    0.003451073542237282,
+    0.013410469517111778,
+    0.05859508737921715,
+    0.18347740173339844,
+    0.47642430663108826,
+    0.7088035345077515,
+    1.0036702156066895,
+    0.9163479804992676,
+    0.8430110812187195,
+    0.0009492348181083798,
+    0.004119086544960737,
+    0.01652648113667965,
+    0.055875297635793686,
+    0.2025129795074463,
+    0.42758122086524963,
+    0.6996229290962219,
+    0.7992249727249146,
+    0.9077125787734985,
+    0.8896648287773132,
+    7.9240403175354,
+    4.925100326538086,
+    0.3343695104122162,
+    0.909437358379364,
+    0.963564932346344,
+    1.0086904764175415,
+    0.43309715390205383,
+    0.7088794708251953,
+    1.0415608882904053,
+    0.9866568446159363,
+    1.3018752336502075,
+    0.030289456248283386,
+    0.0031918957829475403,
+    0.013154381886124611,
+    0.008358310908079147,
+    0.1586988866329193
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dim_sq/label": {
+   "mean": [
+    0.5133397579193115,
+    0.512586236000061,
+    0.5579820275306702,
+    0.46519097685813904,
+    0.48209497332572937,
+    0.5145730376243591,
+    0.4881797730922699,
+    0.498315691947937,
+    0.4978184998035431,
+    0.4987730085849762,
+    0.48666003346443176,
+    0.4874136447906494,
+    0.4420183300971985,
+    0.5348095893859863,
+    0.517905056476593,
+    0.4854269325733185,
+    0.5118200182914734,
+    0.501684308052063,
+    0.5021815299987793,
+    0.5012272596359253,
+    0.46969541907310486,
+    0.5424720048904419,
+    0.5303767919540405,
+    0.5008165836334229,
+    0.5126925110816956,
+    0.4854809045791626,
+    0.4953366219997406,
+    0.4985417127609253,
+    0.4964759349822998,
+    0.5007656812667847,
+    0.530304491519928,
+    0.4575275778770447,
+    0.469623327255249,
+    0.4991832673549652,
+    0.4873080849647522,
+    0.5145193338394165,
+    0.5046632289886475,
+    0.5014582872390747,
+    0.5035244226455688,
+    0.49923425912857056,
+    11.022672653198242,
+    10.584444999694824,
+    0.4903685748577118,
+    0.48331642150878906,
+    0.48362797498703003,
+    0.4969390630722046,
+    0.5096314549446106,
+    0.5166833996772766,
+    0.5163716077804565,
+    0.5030612945556641,
+    1.022403359413147,
+    0.7939658164978027,
+    0.33321234583854675,
+    0.019724968820810318,
+    0.00853359792381525,
+    0.3179961144924164
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/dim_var": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.44256338477134705,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.44256338477134705,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.5687599182128906,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.5687599182128906,
+    5.512557506561279,
+    2.7947006225585938,
+    0.0,
+    0.0,
+    0.0,
+    0.48173969984054565,
+    0.0,
+    0.0,
+    0.0,
+    0.48173969984054565,
+    0.7969641089439392,
+    0.04056795686483383,
+    0.0058755408972501755,
+    0.005757483653724194,
+    0.021729251369833946,
+    0.109635129570961
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/resultant/head_pos_x": {
+   "mean": [
+    0.9881129860877991,
+    0.974321186542511,
+    0.9390897154808044,
+    0.9101592302322388,
+    0.820098876953125,
+    0.5800200700759888,
+    0.41515836119651794,
+    0.21624433994293213,
+    0.2040131688117981,
+    0.24666541814804077
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/resultant/head_pos_y": {
+   "mean": [
+    0.9798020124435425,
+    0.9879036545753479,
+    0.9596561193466187,
+    0.9012951254844666,
+    0.8038870096206665,
+    0.6068684458732605,
+    0.4199795722961426,
+    0.20822252333164215,
+    0.29180479049682617,
+    0.2573438584804535
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/resultant/head_att": {
+   "mean": [
+    0.7496824860572815,
+    0.610811173915863,
+    0.3492169976234436,
+    0.11322233825922012
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/resultant/belief_pos_x": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 560396.0
+  },
+  "enemy_hidden_anyalive/resultant/belief_att": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 560396.0
+  },
+  "ally_visible_anyalive/tokens": {
+   "mean": 1.0,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dead_frac": {
+   "mean": 0.0011666710069605914,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/age_s": {
+   "mean": 0.0,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/position_px": {
+   "mean": 2.210694422226273,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_position_px": {
+   "mean": 5049.915929746762,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/velocity_px_s": {
+   "mean": 4.833709202787213,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_velocity_px_s": {
+   "mean": 47.2286548685077,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/speed_px_s": {
+   "mean": 4.55258873730929,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_speed_px_s": {
+   "mean": 42.97804381712729,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/attitude_rad": {
+   "mean": 0.005249710358041696,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_attitude_rad": {
+   "mean": 0.003107344062152389,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/angular_velocity": {
+   "mean": 0.050306659204461326,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_angular_velocity": {
+   "mean": 0.03273545590757406,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/health": {
+   "mean": 1.2686406943478212,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_health": {
+   "mean": 3.101127794374235,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/power": {
+   "mean": 0.36311784084018167,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_power": {
+   "mean": 1.3373397966510292,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/cooldown_s": {
+   "mean": 0.009133665367756205,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_cooldown_s": {
+   "mean": 0.000699317536494509,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/shield_delay_s": {
+   "mean": 0.039363203894917764,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_shield_delay_s": {
+   "mean": 0.06567159615549165,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/local_log_index": {
+   "mean": 0.006759702126403,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/head/sq_local_log_index": {
+   "mean": 0.0007537209985289891,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/position_px": {
+   "mean": 5.062570545277326,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_position_px": {
+   "mean": 3454.136278780799,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/velocity_px_s": {
+   "mean": 3.220533558532584,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_velocity_px_s": {
+   "mean": 38.76390909192371,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/speed_px_s": {
+   "mean": 1.1729779500667785,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_speed_px_s": {
+   "mean": 8.99056320894051,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/attitude_rad": {
+   "mean": 0.058595595593733604,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_attitude_rad": {
+   "mean": 0.01230538286740278,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/angular_velocity": {
+   "mean": 1.6403952395656234,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_angular_velocity": {
+   "mean": 9.939064505448309,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/health": {
+   "mean": 0.2964714572970882,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_health": {
+   "mean": 1.4823264781491003,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/power": {
+   "mean": 0.4803132638142255,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_power": {
+   "mean": 1.8542020245611033,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/cooldown_s": {
+   "mean": 0.007926891207510072,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_cooldown_s": {
+   "mean": 0.00048784314855442637,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/shield_delay_s": {
+   "mean": 0.033637407737752,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_shield_delay_s": {
+   "mean": 0.06556608050997213,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/local_log_index": {
+   "mean": 0.002941538355274294,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/identity/sq_local_log_index": {
+   "mean": 0.0009277539935160659,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/position_px": {
+   "mean": 2.0301159974553475,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_position_px": {
+   "mean": 3445.452055997232,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/velocity_px_s": {
+   "mean": 3.220533558532584,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_velocity_px_s": {
+   "mean": 38.76390909192371,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/speed_px_s": {
+   "mean": 1.1729779500667785,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_speed_px_s": {
+   "mean": 8.99056320894051,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/attitude_rad": {
+   "mean": 0.11158821275376768,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_attitude_rad": {
+   "mean": 0.03259360967674731,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/angular_velocity": {
+   "mean": 1.6403952395656234,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_angular_velocity": {
+   "mean": 9.939064505448309,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/health": {
+   "mean": 0.2964714572970882,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_health": {
+   "mean": 1.4823264781491003,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/power": {
+   "mean": 0.4803132638142255,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_power": {
+   "mean": 1.8542020245611033,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/cooldown_s": {
+   "mean": 0.007926891207510072,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_cooldown_s": {
+   "mean": 0.00048784314855442637,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/shield_delay_s": {
+   "mean": 0.033637407737752,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_shield_delay_s": {
+   "mean": 0.06556608050997213,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/local_log_index": {
+   "mean": 0.002941538355274294,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/linear/sq_local_log_index": {
+   "mean": 0.0009277539935160659,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dead_reckon/position_px": {
+   "mean": 2.029985974650203,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dead_reckon/sq_position_px": {
+   "mean": 3445.453198858627,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/frozen/position_px": {
+   "mean": 5.062487955684359,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/frozen/sq_position_px": {
+   "mean": 3454.135897827001,
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dim_sq/head": {
+   "mean": [
+    0.01429979968816042,
+    0.014201639220118523,
+    0.012951749376952648,
+    0.01246165856719017,
+    0.012307549826800823,
+    0.011630689725279808,
+    0.011230511590838432,
+    0.01127827912569046,
+    0.010832629166543484,
+    0.001171453739516437,
+    0.01251841988414526,
+    0.014064586721360683,
+    0.016412168741226196,
+    0.011677267029881477,
+    0.014888358302414417,
+    0.01254582591354847,
+    0.011097804643213749,
+    0.01032565999776125,
+    0.010740610770881176,
+    0.0011724625946953893,
+    0.01295995432883501,
+    0.01508308108896017,
+    0.013252278789877892,
+    0.011973759159445763,
+    0.012432998046278954,
+    0.011252135038375854,
+    0.010674333199858665,
+    0.014282304793596268,
+    0.010417836718261242,
+    0.0011019230587407947,
+    0.013463296927511692,
+    0.014715597033500671,
+    0.017101401463150978,
+    0.013132249936461449,
+    0.012304923497140408,
+    0.013200690969824791,
+    0.012431005015969276,
+    0.010749672539532185,
+    0.01037583127617836,
+    0.0011426659766584635,
+    0.019424062222242355,
+    0.014848760329186916,
+    0.003880908014252782,
+    0.013020253740251064,
+    0.01706201769411564,
+    0.00289810448884964,
+    0.005248700734227896,
+    0.011053657159209251,
+    0.0180510263890028,
+    0.0024685640819370747,
+    0.002232656115666032,
+    0.007502327673137188,
+    0.00031011286773718894,
+    0.00013373405090533197,
+    0.069931760430336,
+    0.0007537209894508123
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dim_sq/identity": {
+   "mean": [
+    7.2427428676746786e-06,
+    3.457806451478973e-05,
+    0.00010750450746854767,
+    0.0004292834782972932,
+    0.0009604029473848641,
+    0.001264233491383493,
+    0.0012514367699623108,
+    0.0016292354557663202,
+    0.0028999873902648687,
+    0.007883560843765736,
+    7.812154763087165e-06,
+    2.530099118303042e-05,
+    0.00012663948291447014,
+    0.00042603141628205776,
+    0.0014213112881407142,
+    0.001300360425375402,
+    0.001375866704620421,
+    0.0015585676301270723,
+    0.0027957686688750982,
+    0.007945293560624123,
+    8.853740837366786e-06,
+    3.33110656356439e-05,
+    0.00011906268628081307,
+    0.0004405022191349417,
+    0.0013036733726039529,
+    0.0013247440801933408,
+    0.0012574195861816406,
+    0.0015871564392000437,
+    0.003033682471141219,
+    0.008285517804324627,
+    7.779304723953828e-06,
+    3.282388570369221e-05,
+    0.00013921615027356893,
+    0.0004981579259037971,
+    0.0012553536798804998,
+    0.001194265903905034,
+    0.0013734048698097467,
+    0.0016655512154102325,
+    0.0029322386253625154,
+    0.008359011262655258,
+    0.03322434052824974,
+    0.032690562307834625,
+    0.005523286759853363,
+    0.019285432994365692,
+    0.06938985735177994,
+    0.21470080316066742,
+    0.005635349545627832,
+    0.019344137981534004,
+    0.06853500753641129,
+    0.2131795734167099,
+    1.0056307315826416,
+    0.007631104905158281,
+    0.00014823264791630208,
+    0.00018541989265941083,
+    0.04878432676196098,
+    0.0009277539793401957
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dim_sq/linear": {
+   "mean": [
+    7.223890406748978e-06,
+    3.448860297794454e-05,
+    0.00010718458361225203,
+    0.00042794723412953317,
+    0.0009546539513394237,
+    0.0012373619247227907,
+    0.0011452586622908711,
+    0.0012086279457435012,
+    0.001216667122207582,
+    0.001160201383754611,
+    7.791081770847086e-06,
+    2.523019429645501e-05,
+    0.00012630900891963392,
+    0.00042463280260562897,
+    0.0014146249741315842,
+    0.0012734031770378351,
+    0.0012707140995189548,
+    0.0011381568619981408,
+    0.0011117488611489534,
+    0.0012257829075679183,
+    8.83300799614517e-06,
+    3.3239757613046095e-05,
+    0.00011876249482156709,
+    0.00043915744754485786,
+    0.0012969077797606587,
+    0.0012962138280272484,
+    0.0011452003382146358,
+    0.0011388073908165097,
+    0.0012379551772028208,
+    0.0011161527363583446,
+    7.760038897686172e-06,
+    3.273447509855032e-05,
+    0.00013886003580410033,
+    0.0004966912092640996,
+    0.0012488743523135781,
+    0.0011654365807771683,
+    0.001260541845113039,
+    0.001214612857438624,
+    0.0011344096856191754,
+    0.0011855672346428037,
+    0.03322434052824974,
+    0.032690562307834625,
+    0.015407529659569263,
+    0.05688641220331192,
+    0.19292041659355164,
+    0.47479742765426636,
+    0.015635859221220016,
+    0.0570945143699646,
+    0.1932627111673355,
+    0.475276380777359,
+    1.0056307315826416,
+    0.007631104905158281,
+    0.00014823264791630208,
+    0.00018541989265941083,
+    0.04878432676196098,
+    0.0009277539793401957
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dim_sq/label": {
+   "mean": [
+    0.504989504814148,
+    0.48057350516319275,
+    0.5534648895263672,
+    0.47843727469444275,
+    0.5397560000419617,
+    0.4992697238922119,
+    0.4943832457065582,
+    0.4977336823940277,
+    0.49937704205513,
+    0.49794864654541016,
+    0.4950106739997864,
+    0.5194265246391296,
+    0.4465354084968567,
+    0.521562933921814,
+    0.46024349331855774,
+    0.5007303357124329,
+    0.5056165456771851,
+    0.5022662878036499,
+    0.5006229281425476,
+    0.5020515322685242,
+    0.47008416056632996,
+    0.5540801286697388,
+    0.5223922729492188,
+    0.49339810013771057,
+    0.4983013868331909,
+    0.5091926455497742,
+    0.5018874406814575,
+    0.5026812553405762,
+    0.49967169761657715,
+    0.5003260970115662,
+    0.5299162864685059,
+    0.44591987133026123,
+    0.47760719060897827,
+    0.5066016912460327,
+    0.5016987323760986,
+    0.4908071756362915,
+    0.49811238050460815,
+    0.4973187744617462,
+    0.5003283619880676,
+    0.49967387318611145,
+    9.624324798583984,
+    10.227347373962402,
+    0.5141385197639465,
+    0.4906452000141144,
+    0.4928119480609894,
+    0.49964439868927,
+    0.4858614206314087,
+    0.509354829788208,
+    0.5071879029273987,
+    0.5003557205200195,
+    1.5022974014282227,
+    1.057777762413025,
+    0.4560108184814453,
+    0.01882168836891651,
+    0.07123587280511856,
+    0.295233815908432
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/dim_var": {
+   "mean": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0008844743715599179,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0008844743715599179,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0011337134055793285,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0011337134055793285,
+    0.024183891713619232,
+    0.018323764204978943,
+    0.0,
+    0.0,
+    0.0,
+    0.0022227386943995953,
+    0.0,
+    0.0,
+    0.0,
+    0.0022227386943995953,
+    0.0008262458723038435,
+    0.009659637697041035,
+    0.0009557806770317256,
+    0.0001378434244543314,
+    0.08337131142616272,
+    0.0003750932519324124
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/resultant/head_pos_x": {
+   "mean": [
+    0.9473344683647156,
+    0.9466540217399597,
+    0.9618508815765381,
+    0.9565340876579285,
+    0.9618903994560242,
+    0.9620568752288818,
+    0.9615875482559204,
+    0.9651817083358765,
+    0.9710224866867065,
+    1.0001733303070068
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/resultant/head_pos_y": {
+   "mean": [
+    0.9434372186660767,
+    0.9503853917121887,
+    0.961580753326416,
+    0.9560582637786865,
+    0.9571834206581116,
+    0.9615858793258667,
+    0.9628877639770508,
+    0.9630007147789001,
+    0.9682030081748962,
+    1.0002316236495972
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/resultant/head_att": {
+   "mean": [
+    0.9878818392753601,
+    0.9694386720657349,
+    0.9660677909851074,
+    0.9972442388534546
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/resultant/belief_pos_x": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 1343995.0
+  },
+  "ally_visible_anyalive/resultant/belief_att": {
+   "mean": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "count": 1343995.0
+  }
+ },
+ "percentiles": {
+  "ally_visible/head/position_px": {
+   "n": 400000,
+   "p50": 0.16943359375,
+   "p90": 0.3154296875,
+   "p99": 0.52978515625
+  },
+  "ally_visible/identity/position_px": {
+   "n": 400000,
+   "p50": 3.07421875,
+   "p90": 4.625,
+   "p99": 7.4140625
+  },
+  "ally_visible/linear/position_px": {
+   "n": 400000,
+   "p50": 0.034942626953125,
+   "p90": 0.1484375,
+   "p99": 0.423583984375
+  },
+  "enemy_visible/head/position_px": {
+   "n": 400000,
+   "p50": 0.176025390625,
+   "p90": 0.32421875,
+   "p99": 0.7607421875
+  },
+  "enemy_visible/identity/position_px": {
+   "n": 400000,
+   "p50": 2.609375,
+   "p90": 4.40625,
+   "p99": 6.01953125
+  },
+  "enemy_visible/linear/position_px": {
+   "n": 400000,
+   "p50": 0.035369873046875,
+   "p90": 0.13623046875,
+   "p99": 0.326904296875
+  },
+  "enemy_hidden/head/position_px": {
+   "n": 400000,
+   "p50": 401.0,
+   "p90": 1148.0,
+   "p99": 1927.0
+  },
+  "enemy_hidden/identity/position_px": {
+   "n": 400000,
+   "p50": 397.75,
+   "p90": 1144.0,
+   "p99": 1924.0
+  },
+  "enemy_hidden/linear/position_px": {
+   "n": 400000,
+   "p50": 397.5,
+   "p90": 1144.0,
+   "p99": 1924.0
+  },
+  "enemy_visible_anyalive/head/position_px": {
+   "n": 400000,
+   "p50": 0.17626953125,
+   "p90": 0.325927734375,
+   "p99": 0.91748046875
+  },
+  "enemy_visible_anyalive/identity/position_px": {
+   "n": 400000,
+   "p50": 2.615234375,
+   "p90": 4.41015625,
+   "p99": 6.1875
+  },
+  "enemy_visible_anyalive/linear/position_px": {
+   "n": 400000,
+   "p50": 0.035369873046875,
+   "p90": 0.13720703125,
+   "p99": 0.35693359375
+  },
+  "enemy_hidden_anyalive/head/position_px": {
+   "n": 400000,
+   "p50": 401.0,
+   "p90": 1148.0,
+   "p99": 1927.0
+  },
+  "enemy_hidden_anyalive/identity/position_px": {
+   "n": 400000,
+   "p50": 397.75,
+   "p90": 1144.0,
+   "p99": 1924.0
+  },
+  "enemy_hidden_anyalive/linear/position_px": {
+   "n": 400000,
+   "p50": 397.5,
+   "p90": 1144.0,
+   "p99": 1924.0
+  },
+  "ally_visible_anyalive/head/position_px": {
+   "n": 400000,
+   "p50": 0.1695556640625,
+   "p90": 0.31640625,
+   "p99": 0.5478515625
+  },
+  "ally_visible_anyalive/identity/position_px": {
+   "n": 400000,
+   "p50": 3.076171875,
+   "p90": 4.62890625,
+   "p99": 7.51953125
+  },
+  "ally_visible_anyalive/linear/position_px": {
+   "n": 400000,
+   "p50": 0.034942626953125,
+   "p90": 0.1488037109375,
+   "p99": 0.442138671875
+  }
+ }
+}
