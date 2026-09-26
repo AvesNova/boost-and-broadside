@@ -1990,3 +1990,50 @@ class TestSeatSymmetryOfPendingActions:
                 assert is_private[seen_enemy].all(), (
                     f"seat {observer} can read a visible enemy's pending command"
                 )
+
+    def test_seat_symmetry_metrics_are_clean_on_a_healthy_rollout(self) -> None:
+        num_ships = 6
+        trainer = _make_trainer(
+            env_config=EnvConfig(
+                num_ships=num_ships,
+                max_bullets=4,
+                max_episode_steps=400,
+                vision_range=300.0,
+                spawn_reveal=True,
+            ),
+        )
+        runtime = self._step_rollout(trainer, steps=12)
+        metrics = trainer._seat_symmetry_metrics(runtime.obs, runtime.num_ships)
+
+        assert metrics["seat/own_pending_hidden"] == 0.0
+        assert metrics["seat/enemy_pending_leaked"] == 0.0
+
+    def test_seat_symmetry_metrics_fire_on_a_masked_team_id(self) -> None:
+        """The detector must actually detect the historical bug."""
+        num_ships = 6
+        trainer = _make_trainer(
+            env_config=EnvConfig(
+                num_ships=num_ships,
+                max_bullets=4,
+                max_episode_steps=400,
+                vision_range=300.0,
+                spawn_reveal=True,
+            ),
+        )
+        runtime = self._step_rollout(trainer, steps=12)
+
+        # The rollout used to read TEAM_ID off the *raw* observation, where
+        # _mask_hidden_ships has zeroed every unseen ship. runtime.obs is the
+        # composed view, in which the belief tracker has already restored that
+        # channel, so the masking is reconstructed here to reproduce the bug.
+        true_team = trainer.wrapper.env.state.ship_team_id[:, :num_ships]
+        seen_by_team0 = trainer.wrapper.last_visibility.ship[:, 0].bool()
+        masked_team_id = torch.where(seen_by_team0, true_team, torch.zeros_like(true_team))
+        assert not torch.equal(masked_team_id, true_team), "nothing hidden; cannot reproduce"
+
+        runtime.action_state.write_observation(runtime.obs, masked_team_id, num_ships)
+        metrics = trainer._seat_symmetry_metrics(runtime.obs, runtime.num_ships)
+
+        assert metrics["seat/own_pending_hidden"] > 0.0, (
+            "the guardrail cannot see the bug it exists to catch"
+        )

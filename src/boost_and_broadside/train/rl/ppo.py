@@ -50,6 +50,9 @@ from boost_and_broadside.constants import (
     NUM_POWER_ACTIONS,
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
+    PRIVATE_POWER_ACTION,
+    PRIVATE_SHOOT_ACTION,
+    PRIVATE_TURN_ACTION,
     POWER_SLICE,
     SHOOT_SLICE,
     TURN_SLICE,
@@ -1451,6 +1454,48 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             wrapper.refresh_component_weights()
         return bc_factor
 
+    @torch.no_grad()
+    def _seat_symmetry_metrics(self, obs, num_ships: int) -> dict[str, float]:
+        """Per-update check that neither seat is reading the wrong pending actions.
+
+        Both sides play the same game, so each seat must see its own ships'
+        pending commands and none of the enemy's. Violating either direction is
+        the signature of a privacy mask built from the wrong team id -- the bug
+        that pinned run 747 at a 99.6% Team-0 win rate for 221M steps while every
+        loss curve looked healthy.
+
+        Costs a handful of reductions once per update. Hidden ships are excluded
+        because the belief tracker zeroes their pending action by design; an own
+        ship is always visible to itself, so the own-side check is unaffected.
+        """
+        if obs.team1_data is None:
+            return {}
+        private = torch.tensor(
+            [PRIVATE_POWER_ACTION, PRIVATE_TURN_ACTION, PRIVATE_SHOOT_ACTION],
+            device=self.device,
+        )
+        team_id = self.wrapper.env.state.ship_team_id[:, :num_ships]
+        visible = self.wrapper.last_visibility.ship
+        own_hidden = 0.0
+        enemy_leaked = 0.0
+        for observer, view in ((0, obs.data), (1, obs.team1_data)):
+            pending = view[ObsKey.PREVIOUS_ACTION][:, :num_ships]
+            is_private = (pending == private).all(-1)
+            own = team_id == observer
+            seen_enemy = (team_id != observer) & visible[:, observer].bool()
+            if own.any():
+                own_hidden = max(own_hidden, float((is_private & own).sum() / own.sum()))
+            if seen_enemy.any():
+                enemy_leaked = max(
+                    enemy_leaked, float((~is_private & seen_enemy).sum() / seen_enemy.sum())
+                )
+        return {
+            # Both are zero on a healthy run; either going positive means a seat
+            # is playing a different game from its opponent.
+            "seat/own_pending_hidden": own_hidden,
+            "seat/enemy_pending_leaked": enemy_leaked,
+        }
+
     def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
         """Refresh schedule-controlled optimization, reward, and averaging state."""
         bc_factor = self._apply_schedule_state(self._global_step)
@@ -1527,6 +1572,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
 
             self._refresh_training_schedule(metrics, runtime.elo_eval)
+            metrics.update(self._seat_symmetry_metrics(runtime.obs, runtime.num_ships))
             sps, ship_tps = self._assemble_metrics(metrics, update, runtime.ship_tokens_per_update)
 
             self._log_training_update(metrics, update, sps, ship_tps)
