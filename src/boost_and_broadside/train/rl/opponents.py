@@ -603,7 +603,12 @@ class OpponentMixin:
         net_stream: torch.cuda.Stream | None,
     ) -> PrimaryStepOutput:
         """Collect one primary-scale transition and update recurrent rollout state."""
-        team_id = obs["team_id"][:, :num_ships]
+        # Ground truth, never the observation's copy. Hidden ships are zeroed in
+        # ``ObsKey.TEAM_ID`` and zero is also Team 0's real id, so that channel
+        # cannot distinguish "on team 0" from "not currently seen". Read before
+        # the step: ``reset_envs`` reshuffles slot-to-team assignment, and these
+        # actions were selected under the pre-step one.
+        team_id = self.wrapper.env.state.ship_team_id[:, :num_ships]
         privileged_targets = self.coordinator.get_target_vector(
             self.wrapper.privileged_observation()
         )[:, :num_ships]
@@ -619,9 +624,12 @@ class OpponentMixin:
             step.actuator_contiguous,
             done_any,
         )
+        # Re-read after the step: ``step.obs`` describes the post-reset state, and
+        # a reset reshuffles team assignment, so the privacy mask has to match the
+        # observation it is being written into rather than the pre-step layout.
         action_state.write_observation(
             step.obs,
-            step.obs["team_id"][:, :num_ships],
+            self.wrapper.env.state.ship_team_id[:, :num_ships],
             num_ships,
         )
         self.buffer.add(
