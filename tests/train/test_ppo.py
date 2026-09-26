@@ -1909,3 +1909,84 @@ def test_offensive_schedule_updates_primary_and_auxiliary_rewards(tmp_path):
             ].weight == pytest.approx(ratio * components["combat_death"].weight)
             if step >= 300_000_000:
                 assert components["facing"].weight == 0
+
+
+class TestSeatSymmetryOfPendingActions:
+    """The rollout must build both seats' views from the authoritative team id.
+
+    Regression for the bug that pinned run 747 at a 99.6% Team-0 win rate: the
+    rollout passed ``step.obs["team_id"]`` into the pending-action privacy mask.
+    Hidden ships are zeroed in that channel and zero is also Team 0's real id, so
+    the mask saw all zeros -- Team 0 privatised nothing, and Team 1 privatised
+    everything including its own ships. Only ``state.ship_team_id`` is correct.
+
+    A short vision range is essential: with everything visible the observation's
+    team id happens to be right and the bug cannot bind.
+    """
+
+    @staticmethod
+    def _step_rollout(trainer: PPOTrainer, steps: int):
+        runtime = trainer._initialize_rollout_runtime()
+        slots = trainer._prepare_league_slots(runtime.num_recurrent)
+        for _ in range(steps):
+            (
+                runtime.obs,
+                runtime.hidden,
+                runtime.hidden_t1,
+                runtime.action_state,
+                _terminated,
+            ) = trainer._collect_primary_step(
+                obs=runtime.obs,
+                beliefs=runtime.beliefs,
+                hidden=runtime.hidden,
+                hidden_t1=runtime.hidden_t1,
+                action_state=runtime.action_state,
+                num_envs=runtime.num_envs,
+                num_ships=runtime.num_ships,
+                num_recurrent=runtime.num_recurrent,
+                slots=slots,
+                env_stream=None,
+                net_stream=None,
+            )
+        return runtime
+
+    def test_neither_seat_loses_sight_of_its_own_pending_actions(self) -> None:
+        from boost_and_broadside.constants import (
+            PRIVATE_POWER_ACTION,
+            PRIVATE_SHOOT_ACTION,
+            PRIVATE_TURN_ACTION,
+        )
+
+        num_ships = 6
+        trainer = _make_trainer(
+            env_config=EnvConfig(
+                num_ships=num_ships,
+                max_bullets=4,
+                max_episode_steps=400,
+                vision_range=300.0,
+                spawn_reveal=True,
+            ),
+        )
+        runtime = self._step_rollout(trainer, steps=12)
+
+        private = torch.tensor(
+            [PRIVATE_POWER_ACTION, PRIVATE_TURN_ACTION, PRIVATE_SHOOT_ACTION]
+        )
+        true_team = trainer.wrapper.env.state.ship_team_id
+        visibility = trainer.wrapper.last_visibility.ship
+
+        assert (~visibility[:, 0].bool()).any(), "nothing is hidden; the test cannot bind"
+
+        for observer, view in ((0, runtime.obs.data), (1, runtime.obs.team1_data)):
+            pending = view[ObsKey.PREVIOUS_ACTION][:, :num_ships]
+            is_private = (pending == private).all(-1)
+            own = true_team == observer
+            seen_enemy = (true_team != observer) & visibility[:, observer].bool()
+
+            assert not is_private[own].any(), (
+                f"seat {observer} cannot see its own pending commands"
+            )
+            if seen_enemy.any():
+                assert is_private[seen_enemy].all(), (
+                    f"seat {observer} can read a visible enemy's pending command"
+                )

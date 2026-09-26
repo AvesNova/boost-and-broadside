@@ -944,7 +944,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 ) = self._rollout_policy_pass(
                     aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_N
                 )
-            aux_team_id = aux_obs[i]["team_id"][:, :aux_N]  # (B_aux, N_aux)
+            # Ground truth, not the observation's masked copy (see
+            # _collect_primary_step). Read before the step, which may reset.
+            aux_team_id = aux_w.env.state.ship_team_id[:, :aux_N]  # (B_aux, N_aux)
             aux_action, aux_actor_mask = self._combine_actions(
                 aux_action_t0, aux_action_t1, aux_team_id
             )
@@ -958,9 +960,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 aux_info["actuator_contiguous"],
                 aux_done_any,
             )
+            # Re-read after the step: the privacy mask must match the post-reset
+            # observation it is written into.
             action_state.write_observation(
                 next_aux_obs,
-                next_aux_obs[ObsKey.TEAM_ID][:, :aux_N],
+                aux_w.env.state.ship_team_id[:, :aux_N],
                 aux_N,
             )
             aux_buf.add(

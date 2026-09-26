@@ -472,7 +472,11 @@ def _run_interactive_loop(
                     ghost_poses = merged
 
                 if not state_only:
-                    action_state.write_observation(obs, obs["team_id"][:, :N], N)
+                    # Authoritative team id: the observation's copy zeroes hidden
+                    # ships, and zero is also Team 0's real id.
+                    action_state.write_observation(
+                        obs, wrapper.env.state.ship_team_id[:, :N], N
+                    )
                     result_tensor = info["match_result"]
                     visibility = wrapper.last_visibility
 
