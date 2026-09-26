@@ -1,0 +1,152 @@
+{
+  "subject": "checkpoints/bright-forest-747/step_000221184000.pt",
+  "commit_before_fix": "30790f6968f3ae1f1862cc5db9be328229298564",
+  "conditions": [
+    "a vs a",
+    "a vs s",
+    "s vs a",
+    "s vs s"
+  ],
+  "notes": {
+    "a": "trained policy (run 747 final checkpoint)",
+    "s": "StochasticScriptedAgent(ship_config, StochasticAgentConfig()) -- the trainer's teacher, not resolve_agent_spec's fleet-scaled variant",
+    "driver.train": "YemongEnvWrapper + PPO rollout semantics (dual ego pass, DualBeliefTracker, PendingActionState)",
+    "driver.eval": "MatchRunner + advance_autonomous_decision (the Elo-eval path)",
+    "seats": "team 0 and team 1 are fixed per block; a-vs-s and s-vs-a are the same matchup with seats swapped"
+  },
+  "train_before_fix": {
+    "driver": "train",
+    "rows": [
+      {
+        "condition": "a vs a",
+        "games": 779,
+        "team0_win_rate": 0.9974326059050064,
+        "team1_win_rate": 0.0,
+        "draw_rate": 0.0025673940949935813,
+        "team0_score": 0.9987163029525032,
+        "stderr": 0.0012828728438500096,
+        "mean_episode_len": 3070.121951219512
+      },
+      {
+        "condition": "a vs s",
+        "games": 241,
+        "team0_win_rate": 0.25311203319502074,
+        "team1_win_rate": 0.3983402489626556,
+        "draw_rate": 0.34854771784232363,
+        "team0_score": 0.42738589211618255,
+        "stderr": 0.03186636979978662,
+        "mean_episode_len": 8836.165975103735
+      },
+      {
+        "condition": "s vs a",
+        "games": 814,
+        "team0_win_rate": 1.0,
+        "team1_win_rate": 0.0,
+        "draw_rate": 0.0,
+        "team0_score": 1.0,
+        "stderr": 0.0,
+        "mean_episode_len": 2983.4570024570025
+      },
+      {
+        "condition": "s vs s",
+        "games": 241,
+        "team0_win_rate": 0.34854771784232363,
+        "team1_win_rate": 0.3360995850622407,
+        "draw_rate": 0.3153526970954357,
+        "team0_score": 0.5062240663900415,
+        "stderr": 0.03220533582485341,
+        "mean_episode_len": 8773.56846473029
+      }
+    ]
+  },
+  "eval_before_fix": {
+    "driver": "eval",
+    "rows": [
+      {
+        "condition": "a vs a",
+        "games": 240,
+        "team0_win_rate": 0.26666666666666666,
+        "team1_win_rate": 0.3333333333333333,
+        "draw_rate": 0.4,
+        "team0_score": 0.4666666666666667,
+        "stderr": 0.03220305943597653,
+        "mean_episode_len": 8854.4
+      },
+      {
+        "condition": "a vs s",
+        "games": 241,
+        "team0_win_rate": 0.26141078838174275,
+        "team1_win_rate": 0.37344398340248963,
+        "draw_rate": 0.3651452282157676,
+        "team0_score": 0.44398340248962653,
+        "stderr": 0.03200506578181949,
+        "mean_episode_len": 8843.029045643154
+      },
+      {
+        "condition": "s vs a",
+        "games": 242,
+        "team0_win_rate": 0.34710743801652894,
+        "team1_win_rate": 0.33884297520661155,
+        "draw_rate": 0.3140495867768595,
+        "team0_score": 0.5041322314049587,
+        "stderr": 0.032140119663722676,
+        "mean_episode_len": 8819.227272727272
+      },
+      {
+        "condition": "s vs s",
+        "games": 241,
+        "team0_win_rate": 0.2946058091286307,
+        "team1_win_rate": 0.34439834024896265,
+        "draw_rate": 0.36099585062240663,
+        "team0_score": 0.475103734439834,
+        "stderr": 0.03216788016580593,
+        "mean_episode_len": 8829.69294605809
+      }
+    ]
+  },
+  "train_after_fix": {
+    "driver": "train",
+    "rows": [
+      {
+        "condition": "a vs a",
+        "games": 300,
+        "team0_win_rate": 0.3466666666666667,
+        "team1_win_rate": 0.3566666666666667,
+        "draw_rate": 0.2966666666666667,
+        "team0_score": 0.495,
+        "stderr": 0.02886607004772212,
+        "mean_episode_len": 8747.393333333333
+      },
+      {
+        "condition": "a vs s",
+        "games": 300,
+        "team0_win_rate": 0.23666666666666666,
+        "team1_win_rate": 0.4633333333333333,
+        "draw_rate": 0.3,
+        "team0_score": 0.38666666666666666,
+        "stderr": 0.028116161162550595,
+        "mean_episode_len": 8723.97
+      },
+      {
+        "condition": "s vs a",
+        "games": 300,
+        "team0_win_rate": 0.44333333333333336,
+        "team1_win_rate": 0.32666666666666666,
+        "draw_rate": 0.23,
+        "team0_score": 0.5583333333333333,
+        "stderr": 0.028670380896331685,
+        "mean_episode_len": 8620.416666666666
+      },
+      {
+        "condition": "s vs s",
+        "games": 300,
+        "team0_win_rate": 0.33,
+        "team1_win_rate": 0.36,
+        "draw_rate": 0.31,
+        "team0_score": 0.485,
+        "stderr": 0.028854520154272766,
+        "mean_episode_len": 8891.516666666666
+      }
+    ]
+  }
+}
