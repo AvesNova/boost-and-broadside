@@ -32,7 +32,7 @@ Respawns preserve slot identity, clear previous-life damage attribution on the n
 tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
 zero shields no longer implies death. Existing checkpoints are incompatible with the
-new `joint_actions_private_pending_v17` observation/feature contract.
+new `joint_pending_belief_v18` observation/feature contract.
 
 ## Tensorized simulation
 
@@ -79,7 +79,7 @@ one zone can see one another, but lines crossing its boundary are blocked. The e
 A successful shot reveals its firing ship to both teams for that state sample, regardless
 of range or intervening field cores. The reveal uses `ship_is_shooting`, so a requested shot
 that fails because of cooldown, power, or death does not reveal anything. The reveal exposes
-the ship's ordinary visible state but not its private pending action.
+the ship's ordinary visible state, but never its authoritative pending command.
 
 The environment constructs Team 0 and Team 1 observations independently. An unseen enemy
 ship has an explicit false visibility mask and every state channel is replaced with zero as
@@ -90,9 +90,12 @@ adding time since observation. Every ship is visible to both teams for the one d
 spawns on, at match start and on every respawn, so no enemy is ever in the never-observed
 state and no remembered estimate survives a death it did not see. Losing contact thereafter
 leaves a remembered token rather than an absent one. Hidden local field gradients remain
-zero rather than being predicted. Enemy pending actions use the explicit observation-only
-private categories `(3, 7, 2)` even while the enemy itself is visible; they are never
-represented as a neutral physical command. Allies and static map geometry remain known.
+zero rather than being predicted. Raw team views zero ordinary enemy pending-action slots
+regardless of physical visibility. Policy-side belief composition replaces those zeros with
+the previous decision's dedicated 42-way enemy-action prediction. Allied commands are exact
+one-hot vectors; every initial spawn and respawn instead exposes the exact null-command
+one-hot vector to both teams for that reveal decision. Authoritative enemy commands never
+enter policy input. Allies and static map geometry remain known.
 `vision_range=None` is the explicit omniscient compatibility mode.
 
 In Team 0/Team 1 rendering modes, unseen world pixels receive a mild neutral-gray overlay.

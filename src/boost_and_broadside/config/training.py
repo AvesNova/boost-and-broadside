@@ -236,8 +236,6 @@ class TrainConfig:
     # --- Gradient accumulation (memory-only, per-machine knob) ---
     # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches
     # larger than this are split into micro-batches whose gradients are accumulated
-    # Cross-entropy weight for the dedicated 42-way enemy-command predictor.
-    enemy_action_coef: float = 0.1
     # before each optimizer step, with loss terms normalized by minibatch-total
     # denominators so the update is equivalent to the unsplit minibatch. Does not
     # change training statistics — set it per GPU to fit VRAM. None = no splitting.
@@ -245,6 +243,8 @@ class TrainConfig:
 
     # --- Next-state prediction loss ---
     next_state_coef: float = 1.0  # weight for per-step aux prediction loss; 0 to disable
+    # Cross-entropy weight for the dedicated 42-way enemy-command predictor.
+    enemy_action_coef: float = 0.1
     # Cross-entropy weight for the categorical win/loss/tie head. A classifier
     # run beside the scalar ``outcome`` component, not in place of it: it never
     # reaches the advantage path, so this only buys representation in the trunk
