@@ -160,6 +160,7 @@ class MatchRunner:
         self.action_state.write_observation(
             observation,
             self.env.state.ship_team_id,
+            self.env.state.ship_spawned,
             self.num_ships,
         )
         return observation
@@ -232,7 +233,7 @@ class MatchRunner:
                 agent, obs.slice_envs(active), self.num_ships, self.team1_index[active] == index
             )
             view = agent.belief.compose(view)
-            action, prediction = get_actions(
+            action, prediction, enemy_logits = get_actions(
                 agent,
                 view,
                 self.env.state,
@@ -240,8 +241,9 @@ class MatchRunner:
                 self.num_ships,
                 self.device,
                 return_pred_next=True,
+                return_enemy_action=True,
             )
-            agent.belief.advance(view, prediction)
+            agent.belief.advance(view, prediction, enemy_logits)
             per_agent[index, active] = action.int()
             if index in trace_agents:
                 traced_observations[index] = view

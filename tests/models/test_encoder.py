@@ -54,7 +54,7 @@ def _make_obs(B: int, N: int) -> YemongObservation:
             ObsKey.COOLDOWN: torch.rand(B, N, 1),
             ObsKey.TEAM_ID: torch.randint(0, 2, (B, N)),
             ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
-            ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 3, dtype=torch.long),
+            ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 42),
             ObsKey.RADIUS: torch.rand(B, N, 1),
             ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
             ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),
@@ -1625,3 +1625,80 @@ class TestGradCheckpoint:
         g1 = ckpt.yemong_layers[0].temporal[0].linear1.weight.grad
         assert g0 is not None and g1 is not None
         assert torch.allclose(g0, g1, atol=1e-5)
+
+
+class TestEnemyActionHead:
+    """The action-belief head is separate and identical on rollout/re-evaluation paths."""
+
+    @staticmethod
+    def _policy(coordinator, num_ships: int) -> YemongPolicy:
+        return YemongPolicy(
+            ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            coordinator,
+            num_value_components=NUM_VALUE_COMPONENTS,
+            num_ships=num_ships,
+            team_pma_k=(),
+        ).eval()
+
+    def test_head_is_distinct_and_returns_joint_logits(self, coordinator) -> None:
+        batch, ships, steps = 2, 4, 3
+        policy = self._policy(coordinator, ships)
+        obs = _make_obs(batch, ships)
+        hidden = policy.initial_hidden(batch, ships, torch.device("cpu"))
+        action, _, _, _, enemy_logits, _ = policy.get_action_and_value(
+            obs, hidden, return_enemy_action=True
+        )
+        assert action.shape == (batch, ships, 3)
+        assert enemy_logits.shape == (batch, ships, TOTAL_ACTION_LOGITS)
+        assert not any(
+            actor.data_ptr() == enemy.data_ptr()
+            for actor in policy.action_head.parameters()
+            for enemy in policy.enemy_action_head.parameters()
+        )
+
+        sequence = YemongObservation(
+            data={key: value.unsqueeze(0).expand(steps, *value.shape) for key, value in obs.items()}
+        )
+        actions = action.unsqueeze(0).expand(steps, *action.shape)
+        outputs = policy.evaluate_actions(
+            sequence,
+            actions,
+            hidden,
+            sequence[ObsKey.ALIVE],
+            return_enemy_action=True,
+        )
+        assert outputs[-1].shape == (steps, batch, ships, TOTAL_ACTION_LOGITS)
+
+    def test_rollout_and_sequence_enemy_logits_agree(self, coordinator) -> None:
+        batch, ships, steps = 2, 3, 5
+        torch.manual_seed(37)
+        policy = self._policy(coordinator, ships)
+        observations = [_make_obs(batch, ships) for _ in range(steps)]
+        initial_hidden = policy.initial_hidden(batch, ships, torch.device("cpu"))
+        hidden = initial_hidden
+        actions = []
+        rollout_logits = []
+        for obs in observations:
+            action, _, _, _, enemy_logits, hidden = policy.get_action_and_value(
+                obs, hidden, return_enemy_action=True
+            )
+            actions.append(action)
+            rollout_logits.append(enemy_logits)
+
+        sequence = YemongObservation(
+            data={
+                key: torch.stack([obs.data[key] for obs in observations])
+                for key in observations[0].data
+            }
+        )
+        with torch.no_grad():
+            sequence_logits = policy.evaluate_actions(
+                sequence,
+                torch.stack(actions),
+                initial_hidden,
+                sequence[ObsKey.ALIVE],
+                return_enemy_action=True,
+            )[-1]
+        torch.testing.assert_close(
+            torch.stack(rollout_logits), sequence_logits, atol=1e-5, rtol=1e-5
+        )

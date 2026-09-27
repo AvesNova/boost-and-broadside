@@ -589,7 +589,7 @@ class TestYemongEnvWrapper:
         assert obs["cooldown"].shape == (B, N, 1)
         assert obs["team_id"].shape == (B, N)
         assert obs["alive"].shape == (B, N)
-        assert obs["previous_action"].shape == (B, N, 3)
+        assert obs["previous_action"].shape == (B, N, 42)
 
     def test_observation_from_state_matches_wrapper(self, ship_cfg, env_cfg, reward_cfg):
         """The standalone builder and training wrapper must emit the same raw tensors."""

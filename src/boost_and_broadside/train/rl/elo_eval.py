@@ -418,7 +418,7 @@ class EloEvaluator:
         """Compose, act from, and recursively advance one policy's belief."""
 
         view = agent.belief.compose(perceived)
-        action, prediction = get_actions(
+        action, prediction, enemy_logits = get_actions(
             agent,
             view,
             state,
@@ -426,8 +426,9 @@ class EloEvaluator:
             self.num_ships,
             self.device,
             return_pred_next=True,
+            return_enemy_action=True,
         )
-        agent.belief.advance(view, prediction)
+        agent.belief.advance(view, prediction, enemy_logits)
         return action.long()
 
     def _build_ladder_agents(self) -> None:
@@ -737,6 +738,7 @@ class EloEvaluator:
             self.action_state.write_observation(
                 obs,
                 state.ship_team_id,
+                state.ship_spawned,
                 self.num_ships,
             )
             with torch.autocast("cuda", dtype=torch.bfloat16):

@@ -14,11 +14,9 @@ import torch
 
 from boost_and_broadside.constants import (
     NUM_JOINT_ACTIONS,
+    NUM_POWER_ACTIONS,
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
-    PRIVATE_POWER_ACTION,
-    PRIVATE_SHOOT_ACTION,
-    PRIVATE_TURN_ACTION,
 )
 from boost_and_broadside.env.observation import (
     ObsKey,
@@ -65,22 +63,22 @@ def decode_joint_action_unchecked(action_id: torch.Tensor) -> torch.Tensor:
 
 
 def validate_physical_actions(action: torch.Tensor) -> None:
-    """Reject observation-only private categories at a non-hot boundary."""
+    """Reject values outside the physical action factors at a non-hot boundary."""
     if action.shape[-1] != 3:
         raise ValueError(f"physical actions need a final dimension of 3, got {action.shape}")
     encoded = encode_joint_action_unchecked(action)
     valid = (
         (action[..., 0] >= 0)
-        & (action[..., 0] < PRIVATE_POWER_ACTION)
+        & (action[..., 0] < NUM_POWER_ACTIONS)
         & (action[..., 1] >= 0)
-        & (action[..., 1] < PRIVATE_TURN_ACTION)
+        & (action[..., 1] < NUM_TURN_ACTIONS)
         & (action[..., 2] >= 0)
-        & (action[..., 2] < PRIVATE_SHOOT_ACTION)
+        & (action[..., 2] < NUM_SHOOT_ACTIONS)
         & (encoded >= 0)
         & (encoded < NUM_JOINT_ACTIONS)
     )
     if not bool(valid.all()):
-        raise ValueError("observation-only private categories are not physical actions")
+        raise ValueError("action contains a value outside the physical action factors")
 
 
 def neutralize_invalidated_actions_(
@@ -97,6 +95,7 @@ def write_pending_action_observation(
     observation: YemongObservation,
     pending_action: torch.Tensor,
     team_id: torch.Tensor,
+    spawn_revealed: torch.Tensor,
     num_ships: int,
 ) -> None:
     """Install a pending queue into both policy views with opponent privacy.
@@ -116,6 +115,7 @@ def write_pending_action_observation(
         pending_action,
         team_id,
         observer_team=0,
+        spawn_revealed=spawn_revealed,
     )
     if observation.team1_data is not None:
         write_pending_action_view(
@@ -123,6 +123,7 @@ def write_pending_action_observation(
             pending_action,
             team_id,
             observer_team=1,
+            spawn_revealed=spawn_revealed,
         )
 
 
@@ -199,9 +200,16 @@ class PendingActionState:
         self,
         observation: YemongObservation,
         team_id: torch.Tensor,
+        spawn_revealed: torch.Tensor,
         num_ships: int,
     ) -> None:
-        write_pending_action_observation(observation, self.pending, team_id, num_ships)
+        write_pending_action_observation(
+            observation,
+            self.pending,
+            team_id,
+            spawn_revealed,
+            num_ships,
+        )
 
 
 def advance_autonomous_decision(

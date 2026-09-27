@@ -4,13 +4,14 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
 import torch
+import torch.nn.functional as F
 
 from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES, EnvConfig, ShipConfig
 from boost_and_broadside.constants import (
     EPS,
-    PRIVATE_POWER_ACTION,
-    PRIVATE_SHOOT_ACTION,
-    PRIVATE_TURN_ACTION,
+    NUM_JOINT_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+    NUM_TURN_ACTIONS,
 )
 from boost_and_broadside.env.frontline import zone_terminal_distances
 from boost_and_broadside.env.perception import TeamVisibility, team_visibility_from_state
@@ -495,7 +496,7 @@ class ObservationBuffers:
             object_team_id=torch.full((num_envs, num_objects), 2, device=device, dtype=torch.int32),
             object_alive=torch.ones(num_envs, num_objects, device=device, dtype=torch.bool),
             object_prev_action=torch.zeros(
-                num_envs, num_objects, 3, device=device, dtype=torch.long
+                num_envs, num_objects, NUM_JOINT_ACTIONS, device=device
             ),
             ship_object_feature_zeros=torch.zeros(num_envs, num_ships, 1, device=device),
         )
@@ -512,15 +513,33 @@ def write_pending_action_view(
     pending_action: torch.Tensor,
     team_id: torch.Tensor,
     observer_team: int,
+    spawn_revealed: torch.Tensor,
 ) -> None:
-    """Write one policy view of pending actions with opponent privacy."""
+    """Write legal 42-way pending-action probabilities for one team view.
+    Allied commands and spawn/reveal null commands are exact one-hots. Ordinary
+    opponent slots remain zero here: a policy-side belief tracker fills them
+    from the preceding decision's dedicated enemy-action prediction.
+    """
     if observer_team not in (0, 1):
         raise ValueError(f"observer_team must be 0 or 1, got {observer_team}")
-    destination.copy_(pending_action)
-    opponent = team_id != observer_team
-    destination[..., 0].masked_fill_(opponent, PRIVATE_POWER_ACTION)
-    destination[..., 1].masked_fill_(opponent, PRIVATE_TURN_ACTION)
-    destination[..., 2].masked_fill_(opponent, PRIVATE_SHOOT_ACTION)
+    expected = (*team_id.shape, NUM_JOINT_ACTIONS)
+    if destination.shape != expected:
+        raise ValueError(
+            f"pending-action destination must have shape {expected}, got {destination.shape}"
+        )
+    if spawn_revealed.shape != team_id.shape:
+        raise ValueError(
+            f"spawn_revealed must have shape {team_id.shape}, got {spawn_revealed.shape}"
+        )
+    action_id = (
+        pending_action[..., 0].long() * NUM_TURN_ACTIONS
+        + pending_action[..., 1].long()
+    ) * NUM_SHOOT_ACTIONS + pending_action[..., 2].long()
+    known = (team_id == observer_team) | spawn_revealed
+    destination.copy_(
+        F.one_hot(action_id, NUM_JOINT_ACTIONS).to(destination.dtype)
+        * known.unsqueeze(-1)
+    )
 
 
 def bullet_observation_from_state(
@@ -658,14 +677,21 @@ def observation_from_state(
     ship_health = state.ship_health.unsqueeze(-1)
     ship_power = state.ship_power.unsqueeze(-1)
     ship_cooldown = state.ship_cooldown.unsqueeze(-1)
-    ship_prev_action = state.prev_action.long()
+    pending_action_id = (
+        state.prev_action[..., 0].long() * NUM_TURN_ACTIONS
+        + state.prev_action[..., 1].long()
+    ) * NUM_SHOOT_ACTIONS + state.prev_action[..., 2].long()
+    ship_prev_action = F.one_hot(
+        pending_action_id,
+        NUM_JOINT_ACTIONS,
+    ).float()
     if perspective_team is not None:
-        ship_prev_action = ship_prev_action.clone()
         write_pending_action_view(
             ship_prev_action,
             state.prev_action,
             state.ship_team_id,
             perspective_team,
+            state.ship_spawned,
         )
 
     log_scale = _index_log_scale(ship_config)

@@ -439,6 +439,7 @@ def measure(
         action_state.write_observation(
             observation,
             wrapper.state.ship_team_id,
+            wrapper.state.ship_spawned,
             ships,
         )
 

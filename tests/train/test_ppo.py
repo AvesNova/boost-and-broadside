@@ -232,12 +232,19 @@ class TestPPOSmokeTest:
         """At least one policy parameter must change after one PPO update."""
         trainer = _make_trainer(paradigm=paradigm, checkpoint_dir=str(tmp_path))
         params_before = [p.clone() for p in trainer.policy.parameters()]
+        enemy_head_before = [p.clone() for p in trainer.policy.enemy_action_head.parameters()]
 
         trainer.train()
 
         params_after = list(trainer.policy.parameters())
         any_changed = any(not torch.equal(b, a) for b, a in zip(params_before, params_after))
         assert any_changed, "No parameters changed after training"
+        assert any(
+            not torch.equal(before, after)
+            for before, after in zip(
+                enemy_head_before, trainer.policy.enemy_action_head.parameters(), strict=True
+            )
+        ), "enemy-action head did not train"
 
     def test_stable_gradient_buffers_train_identically(self, tmp_path):
         """The CUDA-graph modes keep `.grad` allocated; that must change nothing.
@@ -1915,6 +1922,18 @@ class TestUpdateEpochsMetricKeys:
             "loss/sigreg",
             "loss/next_state",
             "loss/next_state_cont",
+            "loss/enemy_action",
+            "loss_proxy/enemy_action",
+            "enemy_action/realized_probability",
+            "enemy_action/entropy",
+            "enemy_action/brier",
+            "enemy_action/accuracy",
+            "enemy_action/persistence_accuracy",
+            "enemy_action/persistence_cross_entropy",
+            "enemy_action/uniform_cross_entropy",
+            "enemy_action/uniform_probability",
+            "enemy_action/uniform_accuracy",
+            "enemy_action/uniform_entropy",
             "loss_proxy/policy_gradient",
             "loss_proxy/value",
             "loss_proxy/entropy",
@@ -2145,12 +2164,6 @@ class TestSeatSymmetryOfPendingActions:
         return runtime
 
     def test_neither_seat_loses_sight_of_its_own_pending_actions(self) -> None:
-        from boost_and_broadside.constants import (
-            PRIVATE_POWER_ACTION,
-            PRIVATE_SHOOT_ACTION,
-            PRIVATE_TURN_ACTION,
-        )
-
         num_ships = 6
         trainer = _make_trainer(
             env_config=EnvConfig(
@@ -2162,28 +2175,21 @@ class TestSeatSymmetryOfPendingActions:
             ),
         )
         runtime = self._step_rollout(trainer, steps=12)
-
-        private = torch.tensor(
-            [PRIVATE_POWER_ACTION, PRIVATE_TURN_ACTION, PRIVATE_SHOOT_ACTION]
-        )
         true_team = trainer.wrapper.env.state.ship_team_id
-        visibility = trainer.wrapper.last_visibility.ship
-
-        assert (~visibility[:, 0].bool()).any(), "nothing is hidden; the test cannot bind"
 
         for observer, view in ((0, runtime.obs.data), (1, runtime.obs.team1_data)):
             pending = view[ObsKey.PREVIOUS_ACTION][:, :num_ships]
-            is_private = (pending == private).all(-1)
             own = true_team == observer
-            seen_enemy = (true_team != observer) & visibility[:, observer].bool()
-
-            assert not is_private[own].any(), (
-                f"seat {observer} cannot see its own pending commands"
+            enemy = ~own
+            exact = (
+                pending.sum(-1).eq(1)
+                & pending.eq(1).sum(-1).eq(1)
+                & (pending.eq(0) | pending.eq(1)).all(-1)
             )
-            if seen_enemy.any():
-                assert is_private[seen_enemy].all(), (
-                    f"seat {observer} can read a visible enemy's pending command"
-                )
+            assert exact[own].all(), f"seat {observer} lost an allied exact command"
+            torch.testing.assert_close(
+                pending[enemy].sum(-1), torch.ones_like(pending[enemy, 0])
+            )
 
     def test_seat_symmetry_metrics_are_clean_on_a_healthy_rollout(self) -> None:
         num_ships = 6
@@ -2199,8 +2205,8 @@ class TestSeatSymmetryOfPendingActions:
         runtime = self._step_rollout(trainer, steps=12)
         metrics = trainer._seat_symmetry_metrics(runtime.obs, runtime.num_ships)
 
-        assert metrics["seat/own_pending_hidden"] == 0.0
-        assert metrics["seat/enemy_pending_leaked"] == 0.0
+        assert metrics["seat/own_pending_invalid"] == 0.0
+        assert metrics["seat/enemy_pending_invalid"] == 0.0
 
     def test_seat_symmetry_metrics_fire_on_a_masked_team_id(self) -> None:
         """The detector must actually detect the historical bug."""
@@ -2225,9 +2231,14 @@ class TestSeatSymmetryOfPendingActions:
         masked_team_id = torch.where(seen_by_team0, true_team, torch.zeros_like(true_team))
         assert not torch.equal(masked_team_id, true_team), "nothing hidden; cannot reproduce"
 
-        runtime.action_state.write_observation(runtime.obs, masked_team_id, num_ships)
+        runtime.action_state.write_observation(
+            runtime.obs,
+            masked_team_id,
+            trainer.wrapper.env.state.ship_spawned[:, :num_ships],
+            num_ships,
+        )
         metrics = trainer._seat_symmetry_metrics(runtime.obs, runtime.num_ships)
 
-        assert metrics["seat/own_pending_hidden"] > 0.0, (
+        assert metrics["seat/own_pending_invalid"] > 0.0, (
             "the guardrail cannot see the bug it exists to catch"
         )

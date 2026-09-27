@@ -327,9 +327,11 @@ def test_every_active_level_emits_finite_norms_and_cosines(tmp_path, level: str)
 
 def test_top_level_names_every_active_loss_term(tmp_path) -> None:
     metrics = _one_update(_diagnostic_trainer(tmp_path, "top_level"), update=1)
-    for term in ("policy", "value", "entropy", "next_state"):
+    for term in ("policy", "value", "entropy", "next_state", "enemy_action"):
         assert f"grad_norm/top_level/{term}" in metrics
     assert "grad_norm/trunk_top_level/policy" in metrics
+    assert "grad_norm/trunk_top_level/enemy_action" in metrics
+    assert "grad_cos/trunk_top_level/policy__enemy_action" in metrics
 
 
 def test_reward_levels_name_components_from_the_live_registry(tmp_path) -> None:

@@ -60,7 +60,7 @@ def _obs(
         ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((*shape, 1)),
         ObsKey.OBJECT_TYPE: torch.full(shape, int(ObjectType.SHIP), dtype=torch.int32),
         ObsKey.ZONE_ROLE: torch.full(shape, 5, dtype=torch.int32),
-        ObsKey.PREVIOUS_ACTION: torch.ones((*shape, 3), dtype=torch.long),
+        ObsKey.PREVIOUS_ACTION: torch.zeros((*shape, 42)),
         ObsKey.RADIUS: torch.full((*shape, 1), 16.0),
         ObsKey.LOCAL_LOG_INDEX: (torch.full((*shape, 1), 0.1) if indices is None else indices),
         ObsKey.LOCAL_INDEX_GRADIENT: torch.full((*shape, 2), 0.3),

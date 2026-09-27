@@ -246,9 +246,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     wall_ms
                 )
                 action_result, cuda_ms, wall_ms = _profile_call(
-                    lambda: side["policy"].get_action_and_value(view, side["hidden"]), device
+                    lambda: side["policy"].get_action_and_value(
+                        view, side["hidden"], return_enemy_action=True
+                    ),
+                    device,
                 )
-                action, _logprob, _value, prediction, side["hidden"] = action_result
+                action, _logprob, _value, prediction, enemy_logits, side["hidden"] = action_result
                 phase_collector.setdefault(f"{team_label}.get_action_and_value.cuda_ms", []).append(
                     cuda_ms
                 )
@@ -256,12 +259,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     wall_ms
                 )
             else:
-                action, _logprob, _value, prediction, side["hidden"] = side[
+                action, _logprob, _value, prediction, enemy_logits, side["hidden"] = side[
                     "policy"
-                ].get_action_and_value(view, side["hidden"])
+                ].get_action_and_value(view, side["hidden"], return_enemy_action=True)
             if profile_frame:
                 _result, cuda_ms, wall_ms = _profile_call(
-                    lambda: side["belief"].advance(view, prediction), device
+                    lambda: side["belief"].advance(view, prediction, enemy_logits), device
                 )
                 phase_collector.setdefault(f"{team_label}.belief_advance.cuda_ms", []).append(
                     cuda_ms
@@ -270,7 +273,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     wall_ms
                 )
             else:
-                side["belief"].advance(view, prediction)
+                side["belief"].advance(view, prediction, enemy_logits)
             actions_by_team.append(action)
             predictions.append(prediction)
 
@@ -302,6 +305,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 lambda: action_state.write_observation(
                     observation,
                     wrapper.state.ship_team_id,
+                    wrapper.state.ship_spawned,
                     ships,
                 ),
                 device,
@@ -312,6 +316,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             action_state.write_observation(
                 observation,
                 wrapper.state.ship_team_id,
+                wrapper.state.ship_spawned,
                 ships,
             )
 

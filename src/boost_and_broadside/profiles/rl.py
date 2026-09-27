@@ -109,6 +109,7 @@ RL_PROFILE = ProfileSpec(
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
     next_state_coef=0.2,
+    enemy_action_coef=0.1,
     # Low on purpose. The head is on trial: run 739 showed the single scalar
     # ``outcome`` beat both split win heads on explained variance at all thirty
     # late-phase points, and this tests whether treating the same event as three

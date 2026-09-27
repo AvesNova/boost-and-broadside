@@ -146,7 +146,7 @@ def _cuda_obs(envs: int, ships: int):
             ObsKey.TIME_SINCE_OBSERVATION: f(envs, ships, 1).abs(),
             ObsKey.OBJECT_TYPE: torch.zeros(envs, ships, dtype=torch.long, device="cuda"),
             ObsKey.RADIUS: f(envs, ships, 1).abs(),
-            ObsKey.PREVIOUS_ACTION: torch.zeros(envs, ships, 3, dtype=torch.long, device="cuda"),
+            ObsKey.PREVIOUS_ACTION: torch.zeros(envs, ships, 42, device="cuda"),
             ObsKey.LOCAL_LOG_INDEX: f(envs, ships, 1),
             ObsKey.LOCAL_INDEX_GRADIENT: f(envs, ships, 2),
             ObsKey.FIELD_TRANSITION_WIDTH: f(envs, ships, 1).abs(),
@@ -233,6 +233,24 @@ class TestCompilePolicy:
             assert action.shape == (envs, 4, 3)
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_enemy_action_logits_match_eager_and_compiled(self):
+        eager = self._policy().to("cuda").eval()
+        compiled_base = self._policy().to("cuda").eval()
+        compiled_base.load_state_dict(eager.state_dict())
+        compiled = compile_policy(compiled_base, "default")
+        obs = _cuda_obs(3, ships=4)
+        hidden = eager.initial_hidden(3, 4, "cuda")
+
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
+            eager_logits = eager.get_action_and_value(
+                obs, hidden, return_enemy_action=True
+            )[-2]
+            compiled_logits = compiled.get_action_and_value(
+                obs, hidden, return_enemy_action=True
+            )[-2]
+        torch.testing.assert_close(eager_logits, compiled_logits, atol=2e-3, rtol=2e-3)
+
     def test_a_cuda_graph_mode_returns_outputs_that_survive_the_next_call(self):
         """The property every caller here depends on, and the one graphs break.
 

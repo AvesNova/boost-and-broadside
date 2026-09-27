@@ -384,7 +384,7 @@ class TestStoragePrecision:
                 ObsKey.POS: torch.zeros((B, N, 2)),
                 ObsKey.VEL: torch.zeros((B, N, 2)),
                 ObsKey.TEAM_ID: torch.zeros((B, N), dtype=torch.int32),
-                ObsKey.PREVIOUS_ACTION: torch.zeros((B, N, 3), dtype=torch.int64),
+                ObsKey.PREVIOUS_ACTION: torch.zeros((B, N, 42)),
                 ObsKey.ALIVE: torch.zeros((B, N), dtype=torch.bool),
             }
         )
@@ -409,7 +409,7 @@ class TestStoragePrecision:
         assert buf.obs[ObsKey.VEL].dtype == torch.bfloat16
         # Small non-negative index channels compress to uint8; bool stays bool.
         assert buf.obs[ObsKey.TEAM_ID].dtype == torch.uint8
-        assert buf.obs[ObsKey.PREVIOUS_ACTION].dtype == torch.uint8
+        assert buf.obs[ObsKey.PREVIOUS_ACTION].dtype == torch.bfloat16
         assert buf.obs[ObsKey.ALIVE].dtype == torch.bool
 
     def test_per_component_arrays_are_bf16_never_fp16(self):
@@ -426,12 +426,13 @@ class TestStoragePrecision:
         assert buf.ret_agg.dtype == torch.float32
         assert buf.adv_rms.dtype == torch.float32
 
-    def test_uint8_index_channel_round_trips_through_add(self):
+    def test_pending_distribution_round_trips_through_add(self):
         from boost_and_broadside.env.observation import ObsKey, YemongObservation
 
         buf = self._make_typed_buffer(T=3, B=2, N=2)
         team = torch.tensor([[0, 1], [2, 0]], dtype=torch.int32)  # ships + field id 2
-        prev = torch.randint(0, 7, (2, 2, 3), dtype=torch.int64)  # OneHot(3/7/2) indices
+        prev = torch.rand(2, 2, 42)
+        prev /= prev.sum(-1, keepdim=True)
         obs = YemongObservation(
             data={
                 ObsKey.POS: torch.rand(2, 2, 2),
@@ -451,7 +452,7 @@ class TestStoragePrecision:
         )
         # Values survive the uint8 downcast exactly and read back correctly as long.
         assert torch.equal(buf.obs[ObsKey.TEAM_ID][0].long(), team.long())
-        assert torch.equal(buf.obs[ObsKey.PREVIOUS_ACTION][0].long(), prev.long())
+        torch.testing.assert_close(buf.obs[ObsKey.PREVIOUS_ACTION][0], prev.to(torch.bfloat16))
 
 
 class TestGAEComputation:

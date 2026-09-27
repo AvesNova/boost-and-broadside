@@ -184,9 +184,10 @@ def _candidate_view_from_common(
     ship_previous_action = previous_action[:, :num_ships].clone()
     write_pending_action_view(
         ship_previous_action,
-        previous_action[:, :num_ships],
+        state.prev_action,
         state.ship_team_id,
         observer_team=team,
+        spawn_revealed=state.ship_spawned,
     )
     data[ObsKey.PREVIOUS_ACTION] = torch.cat(
         [

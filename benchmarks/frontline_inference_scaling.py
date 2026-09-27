@@ -248,11 +248,14 @@ def run_scenario(
         action_state.write_observation(
             observation,
             env.state.ship_team_id,
+            env.state.ship_spawned,
             scenario.num_ships,
         )
         view = belief.compose(observation.for_team(0))
-        action, _, _, prediction, new_hidden = policy.get_action_and_value(view, state_hidden)
-        belief.advance(view, prediction)
+        action, _, _, prediction, enemy_logits, new_hidden = policy.get_action_and_value(
+            view, state_hidden, return_enemy_action=True
+        )
+        belief.advance(view, prediction, enemy_logits)
         dones, truncated, _ = advance_autonomous_decision(env, action_state, action.int())
         finished = dones | truncated
         if bool(finished.any()):
@@ -274,7 +277,9 @@ def run_scenario(
 
     # Policy forward alone, on a fixed observation so no simulator work is timed.
     observation, _ = perceived_observation_from_state(env.state, ship_config, env_config)
-    action_state.write_observation(observation, env.state.ship_team_id, scenario.num_ships)
+    action_state.write_observation(
+        observation, env.state.ship_team_id, env.state.ship_spawned, scenario.num_ships
+    )
     view = belief.compose(observation.for_team(0))
     for _ in range(5):
         policy.get_action_and_value(view, hidden)
