@@ -22,11 +22,6 @@ import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.constants import (
-    NUM_OBS_POWER_ACTIONS,
-    NUM_OBS_SHOOT_ACTIONS,
-    NUM_OBS_TURN_ACTIONS,
-)
 from boost_and_broadside.env.observation import (
     BulletObsKey,
     ObjectType,
@@ -970,7 +965,7 @@ class FeatureCoordinator:
                 ObsKey.BELIEF_VALID: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((1, 1, 1)),
                 ObsKey.RADIUS: torch.zeros((1, 1, 1)),
-                ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 3), dtype=torch.long),
+                ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 42), dtype=torch.float32),
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
                 ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
                 ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),
@@ -1543,23 +1538,9 @@ def build_standard_coordinator(
         Feature("object_type", Accessor(ObsKey.OBJECT_TYPE), OneHot(4), Identity()),
         Feature("zone_role", Accessor(ObsKey.ZONE_ROLE), OneHot(6), Identity()),
         Feature(
-            "pending_power",
-            Accessor(ObsKey.PREVIOUS_ACTION, [0]),
-            OneHot(NUM_OBS_POWER_ACTIONS),
+            "pending_action",
+            Accessor(ObsKey.PREVIOUS_ACTION),
             Identity(),
-            scope=FeatureScope.SHIP,
-        ),
-        Feature(
-            "pending_turn",
-            Accessor(ObsKey.PREVIOUS_ACTION, [1]),
-            OneHot(NUM_OBS_TURN_ACTIONS),
-            Identity(),
-            scope=FeatureScope.SHIP,
-        ),
-        Feature(
-            "pending_shoot",
-            Accessor(ObsKey.PREVIOUS_ACTION, [2]),
-            OneHot(NUM_OBS_SHOOT_ACTIONS),
             Identity(),
             scope=FeatureScope.SHIP,
         ),

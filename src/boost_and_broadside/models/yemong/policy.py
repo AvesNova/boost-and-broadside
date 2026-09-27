@@ -13,6 +13,7 @@ Architecture (per timestep):
                then n_temporal_per_block temporal sublayers]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
          → ActionHead                   → (B, N, 42)   [joint command logits]
+         → EnemyActionHead              → (B, N, 42)   [next enemy-command logits]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
@@ -257,6 +258,12 @@ class YemongPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
+        self.enemy_action_head = nn.Sequential(
+            nn.Linear(D, hidden_dim),
+            nn.RMSNorm(hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
+        )
         # Local value head: per-ship embedding → all K components.
         # For indices in team_pma_k, outputs are overridden by value_head_win.
         self.value_head_local = nn.Sequential(
@@ -307,7 +314,12 @@ class YemongPolicy(nn.Module):
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
         # rather than fixed Sequential index, so inserting a non-Linear layer (e.g.
         # Dropout) into a head can't silently init the wrong module.
-        for head in [self.action_head, self.value_head_local, self.next_state_head.net]:
+        for head in [
+            self.action_head,
+            self.enemy_action_head,
+            self.value_head_local,
+            self.next_state_head.net,
+        ]:
             _init_head_orthogonal(head)
         if self.outcome_head is not None:
             _init_head_orthogonal(self.outcome_head)
@@ -488,7 +500,8 @@ class YemongPolicy(nn.Module):
         self,
         obs: YemongObservation,
         hidden: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        return_enemy_action: bool = False,
+    ) -> tuple:
         """Sample an action and estimate value for one environment step.
 
         Args:
@@ -501,6 +514,7 @@ class YemongPolicy(nn.Module):
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
+            enemy_action_logits: optional (B, N, 42) next-command prediction.
             new_hidden: (n_layers, B*N, CONV_KERNEL*D) updated packed state.
         """
         # Hidden-but-remembered enemies remain attention/recurrent tokens. Their
@@ -570,6 +584,7 @@ class YemongPolicy(nn.Module):
         team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 42)
+        enemy_action_logits = self.enemy_action_head(x_ships)  # (B, N, 42)
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
         value = self.value_head_local(x_ships)  # (B, N, K)
         if self._team_pma_k:
@@ -580,7 +595,10 @@ class YemongPolicy(nn.Module):
 
         action, logprob = _sample_action(logits)
 
-        return action, logprob, value, pred_next, new_hidden
+        base = (action, logprob, value, pred_next)
+        if return_enemy_action:
+            return (*base, enemy_action_logits, new_hidden)
+        return (*base, new_hidden)
 
     # ------------------------------------------------------------------
     # Update-time forward (full rollout re-evaluation)
@@ -594,14 +612,8 @@ class YemongPolicy(nn.Module):
         alive_mask: torch.Tensor,
         done_mask: torch.Tensor | None = None,
         return_encoder_output: bool = False,
-    ) -> tuple[
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor | None,
-        torch.Tensor,
-    ]:
+        return_enemy_action: bool = False,
+    ) -> tuple:
         """Re-evaluate actions over a full rollout for PPO update.
 
         The encoder runs over all T*B*(N+M) inputs in parallel. Full-attention
@@ -628,6 +640,7 @@ class YemongPolicy(nn.Module):
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
+            enemy_action_logits: optional (T, B, N, 42) next-command prediction.
             pred_next:  (T, B, N, pred_dim) float — predicted next-state predictions (with grad).
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
@@ -710,6 +723,7 @@ class YemongPolicy(nn.Module):
         # Local value path: per-ship embedding, no team pooling.
         local_value = self.value_head_local(x_ships)  # (T, B, N, K)
 
+        enemy_action_logits = self.enemy_action_head(x_ships)  # (T, B, N, 42)
         if self._team_pma_k:
             # Win/loss path: TeamPMA over ship tokens, then fold T into B.
             x_s_flat = x_ships.reshape(T * B, N, D)
@@ -736,7 +750,10 @@ class YemongPolicy(nn.Module):
         logprob, entropy = _evaluate_action(logits, actions)
         outcome_logits = None if self.outcome_head is None else self.outcome_head(x_ships)
 
-        return logprob, entropy, new_value, logits, z, pred_next, outcome_logits
+        base = (logprob, entropy, new_value, logits, z, pred_next, outcome_logits)
+        if return_enemy_action:
+            return (*base, enemy_action_logits)
+        return base
 
 
 # ---------------------------------------------------------------------------

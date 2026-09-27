@@ -96,6 +96,7 @@ class ProfileSpec:
     schedule_spec: TrainingScheduleSpec
     rewards: RewardConfig
     next_state_coef: float
+    enemy_action_coef: float
     outcome_categorical_coef: float
 
     # --- Discounts, per physics tick ---

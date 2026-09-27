@@ -30,8 +30,19 @@ def _tensor(actions) -> torch.Tensor:
     return torch.tensor([actions], dtype=torch.int32)
 
 
+def _assert_joint_view(
+    view: torch.Tensor,
+    pending: torch.Tensor,
+    team_id: torch.Tensor,
+    observer_team: int,
+) -> None:
+    expected = torch.nn.functional.one_hot(encode_joint_action(pending), 42).float()
+    own = team_id == observer_team
+    expected = expected * own.unsqueeze(-1)
+    torch.testing.assert_close(view[:, : team_id.shape[1]], expected)
+
 def _pending_observation() -> YemongObservation:
-    team0 = torch.zeros((1, 2, 3), dtype=torch.float32)
+    team0 = torch.zeros((1, 2, 42), dtype=torch.float32)
     team1 = torch.zeros_like(team0)
     return YemongObservation(
         data={ObsKey.PREVIOUS_ACTION: team0},
@@ -50,9 +61,9 @@ def test_production_joint_codec_matches_the_reference_ordering() -> None:
     assert encoded.tolist() == list(range(42))
     assert torch.equal(decode_joint_action(encoded), actions.long())
     validate_physical_actions(actions)
-    with pytest.raises(ValueError, match="private categories"):
+    with pytest.raises(ValueError, match="physical action factors"):
         validate_physical_actions(torch.tensor([PRIVATE]))
-    with pytest.raises(ValueError, match="private categories"):
+    with pytest.raises(ValueError, match="physical action factors"):
         encode_joint_action(torch.tensor([PRIVATE]))
     with pytest.raises(ValueError, match="joint action IDs"):
         decode_joint_action(torch.tensor([42]))
@@ -67,13 +78,14 @@ def test_pending_state_matches_reference_neutral_a_b_c_and_privacy_trace() -> No
 
     for selected in (A, B, C):
         observation = _pending_observation()
-        production.write_observation(observation, team_id, 2)
-        assert tuple(map(tuple, observation.data[ObsKey.PREVIOUS_ACTION][0].int().tolist())) == (
-            oracle.observe(0).pending_action
+        production.write_observation(
+            observation, team_id, torch.zeros_like(team_id, dtype=torch.bool), 2
         )
-        assert (
-            tuple(map(tuple, observation.team1_data[ObsKey.PREVIOUS_ACTION][0].int().tolist()))
-            == oracle.observe(1).pending_action
+        _assert_joint_view(
+            observation.data[ObsKey.PREVIOUS_ACTION], production.pending, team_id, 0
+        )
+        _assert_joint_view(
+            observation.team1_data[ObsKey.PREVIOUS_ACTION], production.pending, team_id, 1
         )
 
         applied = production.applied_action().clone()
@@ -206,13 +218,12 @@ def test_match_runner_uses_the_same_delayed_trace_for_scripted_agents() -> None:
     assert tuple(map(tuple, runner.action_state.pending[0].tolist())) == A
 
     observation = runner.observe()
-    assert tuple(map(tuple, observation[ObsKey.PREVIOUS_ACTION][0].int().tolist())) == (
-        A[0],
-        PRIVATE,
+    team_id = env.state.ship_team_id[:, :2]
+    _assert_joint_view(
+        observation[ObsKey.PREVIOUS_ACTION], runner.action_state.pending, team_id, 0
     )
-    assert tuple(map(tuple, observation.team1_data[ObsKey.PREVIOUS_ACTION][0].int().tolist())) == (
-        PRIVATE,
-        A[1],
+    _assert_joint_view(
+        observation.team1_data[ObsKey.PREVIOUS_ACTION], runner.action_state.pending, team_id, 1
     )
 
     controller0.action = B[0]

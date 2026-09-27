@@ -40,7 +40,7 @@ def test_controller_bearing_advance_loops_declare_a_runtime_mechanism() -> None:
 
 
 def test_raw_pending_observation_access_has_explicit_owners() -> None:
-    """Modes must use the composer instead of patching pending-action fields."""
+    """Only raw-view, imagination, queue, and belief composers own this channel."""
 
     owners = {
         str(path.relative_to(ROOT))
@@ -51,4 +51,5 @@ def test_raw_pending_observation_access_has_explicit_owners() -> None:
         "src/boost_and_broadside/env/observation.py",
         "src/boost_and_broadside/evaluation/next_state.py",
         "src/boost_and_broadside/runtime/actions.py",
+        "src/boost_and_broadside/train/rl/belief.py",
     }

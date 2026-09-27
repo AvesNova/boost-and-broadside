@@ -25,11 +25,6 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.config.defaults import REWARDS
-from boost_and_broadside.constants import (
-    PRIVATE_POWER_ACTION,
-    PRIVATE_SHOOT_ACTION,
-    PRIVATE_TURN_ACTION,
-)
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.runtime.actions import PendingActionState
@@ -67,8 +62,12 @@ def _wrapper() -> tuple[YemongEnvWrapper, ShipConfig, EnvConfig]:
     return wrapper, ship_config, env_config
 
 
-def _private_triple() -> torch.Tensor:
-    return torch.tensor([PRIVATE_POWER_ACTION, PRIVATE_TURN_ACTION, PRIVATE_SHOOT_ACTION])
+def _is_exact_one_hot(distribution: torch.Tensor) -> torch.Tensor:
+    return (
+        distribution.sum(-1).eq(1)
+        & distribution.eq(1).sum(-1).eq(1)
+        & (distribution.eq(0) | distribution.eq(1)).all(-1)
+    )
 
 
 def _run_to_midgame(wrapper: YemongEnvWrapper, ship_config: ShipConfig):
@@ -80,16 +79,17 @@ def _run_to_midgame(wrapper: YemongEnvWrapper, ship_config: ShipConfig):
         selected = scripted.get_actions(wrapper.env.state, wrapper.last_visibility.ship).int()
         obs, _, dones, truncated, info = wrapper.step(action_state.applied_action())
         action_state.commit(selected, info["actuator_contiguous"], dones | truncated)
-        action_state.write_observation(obs, wrapper.env.state.ship_team_id, NUM_SHIPS)
+        action_state.write_observation(
+            obs,
+            wrapper.env.state.ship_team_id,
+            wrapper.env.state.ship_spawned,
+            NUM_SHIPS,
+        )
     return obs
 
 
 def test_observation_team_id_is_not_authoritative() -> None:
-    """Characterisation: the raw observation's TEAM_ID is masked, the state's is not.
-
-    Pinned rather than assumed, because this is the trap the bug fell into. Any
-    consumer that needs ground truth must read ``state.ship_team_id``.
-    """
+    """The masked TEAM_ID channel is not authoritative physical state."""
     wrapper, ship_config, _ = _wrapper()
     obs = _run_to_midgame(wrapper, ship_config)
 
@@ -98,45 +98,38 @@ def test_observation_team_id_is_not_authoritative() -> None:
     hidden = ~wrapper.last_visibility.ship[:, 0].bool()
 
     assert hidden.any(), "warmup hid nothing; the test cannot bind"
-    # Every ship hidden from Team 0 reads as team 0 there, whatever side it is on.
     assert torch.all(observed_team[hidden] == 0)
     assert not torch.equal(observed_team, true_team.long())
 
 
 def test_pending_action_privacy_hides_enemies_and_spares_own_ships() -> None:
-    """Own ships keep their pending command; enemies are private. Both views."""
+    """Own ships are exact one-hots; raw enemy slots contain no command."""
     wrapper, ship_config, _ = _wrapper()
     obs = _run_to_midgame(wrapper, ship_config)
 
     true_team = wrapper.env.state.ship_team_id
-    private = _private_triple()
-
     for observer, view in ((0, obs.data), (1, obs.team1_data)):
         pending = view[ObsKey.PREVIOUS_ACTION][:, :NUM_SHIPS]
-        is_private = (pending == private).all(-1)
         own = true_team == observer
         enemy = true_team != observer
         assert own.any() and enemy.any()
-        assert not is_private[own].any(), f"observer {observer} cannot see its own commands"
-        assert is_private[enemy].all(), f"observer {observer} can read enemy commands"
+        assert _is_exact_one_hot(pending)[own].all()
+        assert pending[enemy].eq(0).all(), f"observer {observer} can read enemy commands"
 
 
 def test_pending_action_privacy_survives_the_team_flip() -> None:
-    """After flip_team the canonical team-1 view must read like a team-0 view."""
+    """Team flipping relabels teams without moving physical action slots."""
     wrapper, ship_config, _ = _wrapper()
     obs = _run_to_midgame(wrapper, ship_config)
 
     flipped = flip_team_obs(obs.for_team(1), NUM_SHIPS)
     pending = flipped.data[ObsKey.PREVIOUS_ACTION][:, :NUM_SHIPS]
-    is_private = (pending == _private_triple()).all(-1)
-
     true_team = wrapper.env.state.ship_team_id
-    own = true_team == 1  # team 1's own ships, relabelled to 0 by the flip
+    own = true_team == 1
     enemy = true_team == 0
 
-    assert not is_private[own].any(), "team 1 cannot see its own commands after the flip"
-    assert is_private[enemy].all(), "team 1 can read enemy commands after the flip"
-
+    assert _is_exact_one_hot(pending)[own].all()
+    assert pending[enemy].eq(0).all()
 
 def _composed_views(wrapper, ship_config, env_config, steps: int):
     """Drive both sides with one controller and return the composed seat views."""
@@ -156,7 +149,12 @@ def _composed_views(wrapper, ship_config, env_config, steps: int):
         selected = scripted.get_actions(wrapper.env.state, wrapper.last_visibility.ship).int()
         raw, _, dones, truncated, info = wrapper.step(action_state.applied_action())
         action_state.commit(selected, info["actuator_contiguous"], dones | truncated)
-        action_state.write_observation(raw, wrapper.env.state.ship_team_id, NUM_SHIPS)
+        action_state.write_observation(
+            raw,
+            wrapper.env.state.ship_team_id,
+            wrapper.env.state.ship_spawned,
+            NUM_SHIPS,
+        )
         beliefs.reset(dones | truncated)
     composed = beliefs.compose(raw)
     return composed.for_team(0), flip_team_obs(composed.for_team(1), NUM_SHIPS)
@@ -248,7 +246,12 @@ def _play_script(script: list[torch.Tensor], *, mirrored: bool):
         raw, _, dones, truncated, info = wrapper.step(action_state.applied_action())
         assert not (dones | truncated).any(), "an episode ended; the two runs may have diverged"
         action_state.commit(selected, info["actuator_contiguous"], dones | truncated)
-        action_state.write_observation(raw, wrapper.env.state.ship_team_id, NUM_SHIPS)
+        action_state.write_observation(
+            raw,
+            wrapper.env.state.ship_team_id,
+            wrapper.env.state.ship_spawned,
+            NUM_SHIPS,
+        )
     composed = beliefs.compose(raw)
     return composed.for_team(0), flip_team_obs(composed.for_team(1), NUM_SHIPS), wrapper
 

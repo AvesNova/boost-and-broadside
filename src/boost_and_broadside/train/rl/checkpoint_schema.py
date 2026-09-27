@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "joint_actions_private_pending_v17"
+OBSERVATION_SCHEMA = "joint_pending_belief_v18"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 17,
+        "version": 18,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -83,9 +83,9 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         "auxiliary_label_scale": "identity_everywhere",
         "resource_targets": "normalised_scalar_input_and_target",
         "privileged_auxiliary_targets": "storage_only_never_policy_input",
-        "pending_action_features": "factorized_4_8_3_with_private_category",
+        "pending_action_features": "joint_42_probability_vector",
         "policy_action_distribution": "joint_categorical_3x7x2",
-        "enemy_actions": "always_private_explicit_unknown",
+        "enemy_actions": "dedicated_prediction_with_spawn_null_override",
         "position_fourier_basis": "base2",
         "position_finest_period": POSITION_FINEST_PERIOD,
         "position_frequencies": tuple(
@@ -117,6 +117,10 @@ def load_checkpoint_payload(
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
+
+    v18 replaces the factorized pending-action input and private categories with
+    a 42-way joint probability vector. It also adds a dedicated 42-way enemy
+    action head, so both the encoder and model state shapes are incompatible.
 
     v17 replaces the three independent actor categoricals with one 42-command
     joint categorical and widens pending-action inputs from 3+7+2 to 4+8+3 so

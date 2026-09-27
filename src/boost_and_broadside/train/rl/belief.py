@@ -7,7 +7,9 @@ previously seen hidden ship is advanced only by the policy's next-state head.
 """
 
 import torch
+import torch.nn.functional as F
 
+from boost_and_broadside.constants import NUM_JOINT_ACTIONS
 from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
 
 ALIVE_HEALTH_EPS = 1.0
@@ -42,17 +44,26 @@ class BeliefTracker:
         decision_dt: float,
         coordinator,
         device: str | torch.device,
+        observer_team: int = 0,
     ) -> None:
         self.num_envs = num_envs
         self.num_ships = num_ships
         self.decision_dt = float(decision_dt)
         self.coordinator = coordinator
         self.device = torch.device(device)
+        if observer_team not in (0, 1):
+            raise ValueError(f"observer_team must be 0 or 1, got {observer_team}")
+        self.observer_team = observer_team
         target_dim = coordinator.total_target_dimension
         self.valid = torch.zeros((num_envs, num_ships), dtype=torch.bool, device=self.device)
         self.age_steps = torch.zeros((num_envs, num_ships), dtype=torch.int32, device=self.device)
         self.predicted_targets = torch.zeros(
             (num_envs, num_ships, target_dim), dtype=torch.float32, device=self.device
+        )
+        self.action_belief = torch.full(
+            (num_envs, num_ships, NUM_JOINT_ACTIONS),
+            1.0 / NUM_JOINT_ACTIONS,
+            device=self.device,
         )
         # Accumulated variance of the belief, one channel per auxiliary
         # *uncertainty* column -- one per scalar channel and one per harmonic
@@ -77,6 +88,7 @@ class BeliefTracker:
             self.age_steps.zero_()
             self.predicted_targets.zero_()
             self.uncertainty.zero_()
+            self.action_belief.fill_(1.0 / NUM_JOINT_ACTIONS)
             self.team_id.zero_()
             self.radius.zero_()
             return
@@ -85,6 +97,7 @@ class BeliefTracker:
         self.age_steps[mask] = 0
         self.predicted_targets[mask] = 0.0
         self.uncertainty[mask] = 0.0
+        self.action_belief[mask] = 1.0 / NUM_JOINT_ACTIONS
         self.team_id[mask] = 0
         self.radius[mask] = 0.0
 
@@ -97,12 +110,14 @@ class BeliefTracker:
             self.decision_dt,
             self.coordinator,
             self.device,
+            observer_team=self.observer_team,
         )
         selected.valid.copy_(self.valid[idx])
         selected.age_steps.copy_(self.age_steps[idx])
         selected.predicted_targets.copy_(self.predicted_targets[idx])
         selected.uncertainty.copy_(self.uncertainty[idx])
         selected.team_id.copy_(self.team_id[idx])
+        selected.action_belief.copy_(self.action_belief[idx])
         selected.radius.copy_(self.radius[idx])
         return selected
 
@@ -112,8 +127,8 @@ class BeliefTracker:
 
         The input is a single team view.  No authoritative state is accepted by
         this method, making it difficult to accidentally leak truth into a hidden
-        token.  Non-predicted hidden channels, including enemy action and local
-        field gradient, remain at their masked zero values.
+        token. Enemy pending action comes only from this tracker's prior
+        prediction; local field gradient remains at its masked zero value.
         """
 
         if perceived.pos.shape[0] != self.num_envs:
@@ -205,12 +220,19 @@ class BeliefTracker:
         data[ObsKey.RADIUS][:, :n] = torch.where(
             hidden_belief.unsqueeze(-1), self.radius, data[ObsKey.RADIUS][:, :n]
         )
-        for key in (ObsKey.PREVIOUS_ACTION, ObsKey.LOCAL_INDEX_GRADIENT):
-            data[key][:, :n] = torch.where(
-                hidden_belief.unsqueeze(-1),
-                torch.zeros_like(data[key][:, :n]),
-                data[key][:, :n],
-            )
+        pending = data[ObsKey.PREVIOUS_ACTION][:, :n]
+        enemy = self.team_id != self.observer_team
+        unknown_enemy = enemy & (pending.sum(-1) == 0)
+        data[ObsKey.PREVIOUS_ACTION][:, :n] = torch.where(
+            unknown_enemy.unsqueeze(-1),
+            self.action_belief,
+            pending,
+        )
+        data[ObsKey.LOCAL_INDEX_GRADIENT][:, :n] = torch.where(
+            hidden_belief.unsqueeze(-1),
+            torch.zeros_like(data[ObsKey.LOCAL_INDEX_GRADIENT][:, :n]),
+            data[ObsKey.LOCAL_INDEX_GRADIENT][:, :n],
+        )
         data[ObsKey.OBJECT_TYPE][:, :n] = torch.where(
             hidden_belief,
             torch.full_like(data[ObsKey.OBJECT_TYPE][:, :n], int(ObjectType.SHIP)),
@@ -244,11 +266,21 @@ class BeliefTracker:
         self,
         current: YemongObservation,
         scaled_prediction: torch.Tensor,
+        enemy_action_logits: torch.Tensor | None = None,
     ) -> None:
         """Store the model's one-step forecast for the next call to ``compose``."""
 
         curr_targets = self.coordinator.get_target_vector(current)[:, : self.num_ships]
         forecast = self.coordinator.apply_scaled_predictions(curr_targets, scaled_prediction)
+        expected = (self.num_envs, self.num_ships, NUM_JOINT_ACTIONS)
+        if enemy_action_logits is not None and enemy_action_logits.shape != expected:
+            raise ValueError(
+                f"enemy_action_logits must have shape {expected}, got {enemy_action_logits.shape}"
+            )
+        if enemy_action_logits is None:
+            self.action_belief.fill_(1.0 / NUM_JOINT_ACTIONS)
+        else:
+            self.action_belief.copy_(F.softmax(enemy_action_logits.float(), dim=-1))
         # A hidden ship's belief is an autoregressive rollout of the next-state
         # head with nothing else bounding it, so a small bias compounds for as
         # long as the ship stays unseen. Run 734 died that way: velocity error in
@@ -296,8 +328,12 @@ class DualBeliefTracker:
         coordinator,
         device: str | torch.device,
     ) -> None:
-        self.team0 = BeliefTracker(num_envs, num_ships, decision_dt, coordinator, device)
-        self.team1 = BeliefTracker(num_envs, num_ships, decision_dt, coordinator, device)
+        self.team0 = BeliefTracker(
+            num_envs, num_ships, decision_dt, coordinator, device, observer_team=0
+        )
+        self.team1 = BeliefTracker(
+            num_envs, num_ships, decision_dt, coordinator, device, observer_team=1
+        )
 
     def reset(self, env_mask: torch.Tensor | None = None) -> None:
         self.team0.reset(env_mask)
@@ -322,6 +358,12 @@ class DualBeliefTracker:
         current: YemongObservation,
         scaled_prediction_t0: torch.Tensor,
         scaled_prediction_t1: torch.Tensor,
+        enemy_action_logits_t0: torch.Tensor,
+        enemy_action_logits_t1: torch.Tensor,
     ) -> None:
-        self.team0.advance(current.for_team(0), scaled_prediction_t0)
-        self.team1.advance(current.for_team(1), scaled_prediction_t1)
+        self.team0.advance(
+            current.for_team(0), scaled_prediction_t0, enemy_action_logits_t0
+        )
+        self.team1.advance(
+            current.for_team(1), scaled_prediction_t1, enemy_action_logits_t1
+        )

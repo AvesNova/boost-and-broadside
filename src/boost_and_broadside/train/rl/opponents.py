@@ -57,6 +57,8 @@ class RolloutNetworkOutput(NamedTuple):
     value_norm: torch.Tensor
     pred_next_t0: torch.Tensor
     pred_next_t1: torch.Tensor | None
+    enemy_action_logits_t0: torch.Tensor
+    enemy_action_logits_t1: torch.Tensor | None
     hidden: torch.Tensor
     hidden_t1: torch.Tensor | None
     # Per-slot opponent actions, aligned with the slot list. None where the slot
@@ -417,6 +419,8 @@ class OpponentMixin:
                 pred_next_t0,
                 pred_next_t1,
                 hidden,
+                enemy_action_logits_t0,
+                enemy_action_logits_t1,
                 hidden_t1,
             ) = self._rollout_policy_pass(obs, hidden, hidden_t1, num_ships, num_recurrent)
 
@@ -429,11 +433,13 @@ class OpponentMixin:
                 obs_slot = self._opponent_obs(slice_obs(obs, slot.start, slot.end), num_ships)
                 if slot.belief is not None:
                     obs_slot = slot.belief.compose(obs_slot)
-                action, _, _, prediction, slot.hidden = slot.policy.get_action_and_value(
-                    obs_slot, slot.hidden
+                action, _, _, prediction, enemy_logits, slot.hidden = (
+                    slot.policy.get_action_and_value(
+                        obs_slot, slot.hidden, return_enemy_action=True
+                    )
                 )
                 if slot.belief is not None:
-                    slot.belief.advance(obs_slot, prediction)
+                    slot.belief.advance(obs_slot, prediction, enemy_logits)
             slot_actions.append(action)
 
         return RolloutNetworkOutput(
@@ -443,6 +449,8 @@ class OpponentMixin:
             value_norm=value_norm,
             pred_next_t0=pred_next_t0,
             pred_next_t1=pred_next_t1,
+            enemy_action_logits_t0=enemy_action_logits_t0,
+            enemy_action_logits_t1=enemy_action_logits_t1,
             hidden=hidden,
             hidden_t1=hidden_t1,
             slot_actions=slot_actions,
@@ -630,6 +638,7 @@ class OpponentMixin:
         action_state.write_observation(
             step.obs,
             self.wrapper.env.state.ship_team_id[:, :num_ships],
+            self.wrapper.env.state.ship_spawned[:, :num_ships],
             num_ships,
         )
         self.buffer.add(
@@ -652,13 +661,22 @@ class OpponentMixin:
             ],
         )
 
-        hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)
+        hidden, hidden_t1 = self._reset_primary_hidden(
+            step.network, done_any, num_recurrent, slots
+        )
         self._advance_league_replacements(slots, done_any)
         if beliefs is not None:
-            beliefs.advance(obs, step.network.pred_next_t0, step.network.pred_next_t1)
+            beliefs.advance(
+                obs,
+                step.network.pred_next_t0,
+                step.network.pred_next_t1,
+                step.network.enemy_action_logits_t0,
+                step.network.enemy_action_logits_t1,
+            )
             beliefs.reset(done_any)
             next_obs = beliefs.compose(step.obs)
         else:
+            next_obs = step.obs
             next_obs = step.obs
         self._refresh_opponent_team_flags(done_any)
         self._global_step += num_envs

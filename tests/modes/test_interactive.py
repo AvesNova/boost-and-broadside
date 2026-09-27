@@ -156,7 +156,7 @@ def test_policy_action_buffer_starts_with_neutral_first_tick() -> None:
 
 
 def test_next_observation_exposes_own_queue_and_masks_opponent_queue() -> None:
-    previous = torch.zeros((1, 3, 3), dtype=torch.float32)
+    previous = torch.zeros((1, 3, 42), dtype=torch.float32)
     team1_previous = torch.zeros_like(previous)
     observation = YemongObservation(
         data={ObsKey.PREVIOUS_ACTION: previous},
@@ -166,11 +166,14 @@ def test_next_observation_exposes_own_queue_and_masks_opponent_queue() -> None:
     team_id = torch.tensor([[0, 1]], dtype=torch.int32)
     action_state = PendingActionState(decided)
 
-    action_state.write_observation(observation, team_id, num_ships=2)
+    action_state.write_observation(
+        observation, team_id, torch.zeros_like(team_id, dtype=torch.bool), num_ships=2
+    )
 
-    private = torch.tensor([3, 7, 2], dtype=torch.float32)
-    assert torch.equal(previous[0, 0], decided[0, 0].float())
-    assert torch.equal(previous[0, 1], private)
-    assert torch.equal(team1_previous[0, 0], private)
-    assert torch.equal(team1_previous[0, 1], decided[0, 1].float())
-    assert torch.equal(previous[:, 2], torch.zeros((1, 3)))
+    assert previous[0, 0].argmax().item() == 21
+    assert previous[0, 0].sum().item() == 1.0
+    assert not previous[0, 1].any()
+    assert not team1_previous[0, 0].any()
+    assert team1_previous[0, 1].argmax().item() == 36
+    assert team1_previous[0, 1].sum().item() == 1.0
+    assert torch.equal(previous[:, 2], torch.zeros((1, 42)))

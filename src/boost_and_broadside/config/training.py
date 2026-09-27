@@ -236,6 +236,8 @@ class TrainConfig:
     # --- Gradient accumulation (memory-only, per-machine knob) ---
     # Max entity-tokens (envs × num_steps × (N+M)) per backward pass. Minibatches
     # larger than this are split into micro-batches whose gradients are accumulated
+    # Cross-entropy weight for the dedicated 42-way enemy-command predictor.
+    enemy_action_coef: float = 0.1
     # before each optimizer step, with loss terms normalized by minibatch-total
     # denominators so the update is equivalent to the unsplit minibatch. Does not
     # change training statistics — set it per GPU to fit VRAM. None = no splitting.

@@ -2,10 +2,16 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.constants import NUM_JOINT_ACTIONS
 from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
-from boost_and_broadside.train.rl.belief import BELIEF_TARGET_LIMIT, BeliefTracker
+from boost_and_broadside.train.rl.belief import (
+    BELIEF_TARGET_LIMIT,
+    BeliefTracker,
+    DualBeliefTracker,
+)
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 
@@ -27,7 +33,12 @@ def _view(*, visible: bool, x: float = 300.0) -> YemongObservation:
         ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((b, n, 1)),
         ObsKey.OBJECT_TYPE: torch.full((b, n), int(ObjectType.SHIP), dtype=torch.int32),
         ObsKey.ZONE_ROLE: torch.full((b, n), 5, dtype=torch.int32),
-        ObsKey.PREVIOUS_ACTION: torch.tensor([[[1, 2, 1], [2, 3, 1]]]),
+        ObsKey.PREVIOUS_ACTION: torch.stack(
+            [
+                F.one_hot(torch.tensor(19), NUM_JOINT_ACTIONS).float(),
+                torch.zeros(NUM_JOINT_ACTIONS),
+            ]
+        ).unsqueeze(0),
         ObsKey.RADIUS: torch.full((b, n, 1), 16.0),
         ObsKey.LOCAL_LOG_INDEX: torch.tensor([[[0.1], [0.2]]]),
         ObsKey.LOCAL_INDEX_GRADIENT: torch.tensor([[[0.3, 0.4], [0.5, 0.6]]]),
@@ -82,13 +93,83 @@ def test_seen_then_hidden_uses_recursive_prediction_and_age() -> None:
     assert torch.allclose(hidden[ObsKey.POS][0, 1], torch.tensor([300.0, 400.0]))
     assert hidden[ObsKey.TEAM_ID][0, 1] == 1
     assert hidden[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0.1
-    assert hidden[ObsKey.PREVIOUS_ACTION][0, 1].equal(torch.zeros(3, dtype=torch.long))
+    torch.testing.assert_close(
+        hidden[ObsKey.PREVIOUS_ACTION][0, 1], torch.full((42,), 1.0 / 42)
+    )
     assert hidden[ObsKey.LOCAL_INDEX_GRADIENT][0, 1].equal(torch.zeros(2))
 
     tracker.advance(hidden, _hold(coordinator, hidden))
     hidden_again = tracker.compose(_view(visible=False))
     assert hidden_again[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0.2
 
+
+def test_action_prediction_from_t_appears_at_t_plus_one() -> None:
+    coordinator = build_standard_coordinator(ShipConfig())
+    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
+    current = tracker.compose(_view(visible=True))
+
+    # Before decision t is advanced, the enemy slot contains only the initial
+    # uninformative prior; the environment never supplied its true command.
+    torch.testing.assert_close(
+        current[ObsKey.PREVIOUS_ACTION][0, 1], torch.full((42,), 1.0 / 42)
+    )
+    logits = torch.full((1, 2, 42), -8.0)
+    logits[0, 1, 17] = 8.0
+    tracker.advance(current, _hold(coordinator, current), logits)
+
+    next_view = tracker.compose(_view(visible=False))
+    expected = logits[0, 1].softmax(-1)
+    torch.testing.assert_close(next_view[ObsKey.PREVIOUS_ACTION][0, 1], expected)
+    assert next_view[ObsKey.PREVIOUS_ACTION][0, 1].argmax().item() == 17
+    # The allied command remains environment truth, not a model prediction.
+    assert next_view[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 19
+
+
+def test_dual_trackers_keep_enemy_predictions_on_physical_ship_indices() -> None:
+    from boost_and_broadside.train.rl.opponents import flip_team_obs
+
+    coordinator = build_standard_coordinator(ShipConfig())
+    trackers = DualBeliefTracker(1, 2, 0.1, coordinator, "cpu")
+    raw = _view(visible=True)
+    team1 = {key: value.clone() for key, value in raw.data.items()}
+    team1[ObsKey.PREVIOUS_ACTION].zero_()
+    team1[ObsKey.PREVIOUS_ACTION][0, 1, 35] = 1.0
+    raw = YemongObservation(data=raw.data, team1_data=team1)
+    current = trackers.compose(raw)
+
+    logits0 = torch.full((1, 2, 42), -8.0)
+    logits1 = torch.full((1, 2, 42), -8.0)
+    logits0[0, 1, 6] = 8.0   # Team 0 predicts physical ship 1.
+    logits1[0, 0, 15] = 8.0  # Team 1 predicts physical ship 0.
+    trackers.advance(
+        current,
+        _hold(coordinator, current.for_team(0)),
+        _hold(coordinator, current.for_team(1)),
+        logits0,
+        logits1,
+    )
+
+    next_view = trackers.compose(raw)
+    assert next_view.data[ObsKey.PREVIOUS_ACTION][0, 1].argmax().item() == 6
+    assert next_view.team1_data[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 15
+    canonical_team1 = flip_team_obs(next_view.for_team(1), 2)
+    assert canonical_team1[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 15
+    assert canonical_team1[ObsKey.TEAM_ID][0, 0].item() == 1
+    assert canonical_team1[ObsKey.TEAM_ID][0, 1].item() == 0
+
+def test_spawn_null_overrides_a_stale_enemy_action_prediction() -> None:
+    coordinator = build_standard_coordinator(ShipConfig())
+    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
+    current = tracker.compose(_view(visible=True))
+    logits = torch.full((1, 2, 42), -8.0)
+    logits[0, 1, 17] = 8.0
+    tracker.advance(current, _hold(coordinator, current), logits)
+
+    spawned = _view(visible=True)
+    spawned.data[ObsKey.PREVIOUS_ACTION][0, 1, 0] = 1.0
+    composed = tracker.compose(spawned)
+    expected_null = F.one_hot(torch.tensor(0), NUM_JOINT_ACTIONS).float()
+    torch.testing.assert_close(composed[ObsKey.PREVIOUS_ACTION][0, 1], expected_null)
 
 def test_reacquisition_overwrites_prediction_and_reset_forgets() -> None:
     coordinator = build_standard_coordinator(ShipConfig())

@@ -46,14 +46,12 @@ from boost_and_broadside.config.diagnostics import (
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
 from boost_and_broadside.constants import (
+    NUM_JOINT_ACTIONS,
     NUM_OUTCOME_CLASSES,
     NUM_POWER_ACTIONS,
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
     POWER_SLICE,
-    PRIVATE_POWER_ACTION,
-    PRIVATE_SHOOT_ACTION,
-    PRIVATE_TURN_ACTION,
     SHOOT_SLICE,
     TURN_SLICE,
 )
@@ -62,7 +60,10 @@ from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
-from boost_and_broadside.runtime.actions import PendingActionState
+from boost_and_broadside.runtime.actions import (
+    PendingActionState,
+    encode_joint_action_unchecked,
+)
 from boost_and_broadside.train.rl.allocation import allocation_weights
 from boost_and_broadside.train.rl.belief import DualBeliefTracker
 from boost_and_broadside.train.rl.buffer import (
@@ -862,16 +863,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         hidden_t1: torch.Tensor | None,
         num_ships: int,
         num_recurrent: int,
-    ) -> tuple[
-        torch.Tensor,
-        torch.Tensor | None,
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor | None,
-        torch.Tensor,
-        torch.Tensor | None,
-    ]:
+    ) -> tuple:
         """Run the training policy's rollout forward pass(es) for one step.
 
         ego_pass: one batched 2B pass over both team perspectives. Team 1 ships
@@ -897,17 +889,29 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             hidden_t1:  Updated flipped-perspective hidden state; None in shared_pass.
         """
         if not self._ego_pass:
-            action, logprob, value_norm, pred_next, hidden = self.policy.get_action_and_value(
-                obs, hidden
+            action, logprob, value_norm, pred_next, enemy_action_logits, hidden = (
+                self.policy.get_action_and_value(obs, hidden, return_enemy_action=True)
             )
-            return action, None, logprob, value_norm, pred_next, None, hidden, None
-
+            return (
+                action,
+                None,
+                logprob,
+                value_norm,
+                pred_next,
+                None,
+                hidden,
+                enemy_action_logits,
+                None,
+                None,
+            )
         batch = hidden.shape[1] // num_recurrent
         obs_t1 = flip_team_obs(obs.for_team(1), num_ships)
         obs_both = obs.concat_batch(obs_t1)
         hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*N, CONV_KERNEL*D)
-        action_both, logprob_both, value_both, pred_next_both, hidden_out = (
-            self.policy.get_action_and_value(obs_both, hidden_both)
+        action_both, logprob_both, value_both, pred_next_both, enemy_both, hidden_out = (
+            self.policy.get_action_and_value(
+                obs_both, hidden_both, return_enemy_action=True
+            )
         )
         return (
             action_both[:batch],  # (B, N, 3)
@@ -917,6 +921,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             pred_next_both[:batch],  # (B, N, pred_dim)
             pred_next_both[batch:],  # (B, N, pred_dim)
             hidden_out[:, : batch * num_recurrent, :],  # (n_layers, B*N, CONV_KERNEL*D)
+            enemy_both[:batch],  # physical indices, Team-0 observer
+            enemy_both[batch:],  # physical indices, Team-1 canonical observer
             hidden_out[:, batch * num_recurrent :, :],  # (n_layers, B*N, CONV_KERNEL*D)
         )
 
@@ -944,6 +950,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     aux_pred_t0,
                     aux_pred_t1,
                     aux_hiddens[i],
+                    aux_enemy_t0,
+                    aux_enemy_t1,
                     aux_hidden_t1s[i],
                 ) = self._rollout_policy_pass(
                     aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_N
@@ -969,6 +977,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             action_state.write_observation(
                 next_aux_obs,
                 aux_w.env.state.ship_team_id[:, :aux_N],
+                aux_w.env.state.ship_spawned[:, :aux_N],
                 aux_N,
             )
             aux_buf.add(
@@ -984,14 +993,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 terminated=aux_done_any,
                 transition_contiguous=aux_info["transition_contiguous"],
             )
-            aux_hiddens[i] = self.policy.reset_hidden_for_envs(aux_hiddens[i], aux_done_any, aux_N)
+            aux_hiddens[i] = self.policy.reset_hidden_for_envs(
+                aux_hiddens[i], aux_done_any, aux_N
+            )
             if self._ego_pass:
                 aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
                     aux_hidden_t1s[i], aux_done_any, aux_N
                 )
             aux_last_dones[i] = aux_done_any
             if aux_beliefs[i] is not None:
-                aux_beliefs[i].advance(aux_obs[i], aux_pred_t0, aux_pred_t1)
+                aux_beliefs[i].advance(
+                    aux_obs[i], aux_pred_t0, aux_pred_t1, aux_enemy_t0, aux_enemy_t1
+                )
                 aux_beliefs[i].reset(aux_done_any)
                 next_aux_obs = aux_beliefs[i].compose(next_aux_obs)
             aux_obs[i] = next_aux_obs
@@ -1457,44 +1470,40 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
     @torch.no_grad()
     def _seat_symmetry_metrics(self, obs, num_ships: int) -> dict[str, float]:
-        """Per-update check that neither seat is reading the wrong pending actions.
-
-        Both sides play the same game, so each seat must see its own ships'
-        pending commands and none of the enemy's. Violating either direction is
-        the signature of a privacy mask built from the wrong team id -- the bug
-        that pinned run 747 at a 99.6% Team-0 win rate for 221M steps while every
-        loss curve looked healthy.
-
-        Costs a handful of reductions once per update. Hidden ships are excluded
-        because the belief tracker zeroes their pending action by design; an own
-        ship is always visible to itself, so the own-side check is unaffected.
-        """
+        """Check exact allied actions and normalized enemy beliefs for both seats."""
         if obs.team1_data is None:
             return {}
-        private = torch.tensor(
-            [PRIVATE_POWER_ACTION, PRIVATE_TURN_ACTION, PRIVATE_SHOOT_ACTION],
-            device=self.device,
-        )
         team_id = self.wrapper.env.state.ship_team_id[:, :num_ships]
-        visible = self.wrapper.last_visibility.ship
-        own_hidden = 0.0
-        enemy_leaked = 0.0
+        own_invalid = 0.0
+        enemy_invalid = 0.0
         for observer, view in ((0, obs.data), (1, obs.team1_data)):
-            pending = view[ObsKey.PREVIOUS_ACTION][:, :num_ships]
-            is_private = (pending == private).all(-1)
+            pending = view[ObsKey.PREVIOUS_ACTION][:, :num_ships].float()
             own = team_id == observer
-            seen_enemy = (team_id != observer) & visible[:, observer].bool()
+            enemy = ~own
+            invalid_distribution = (
+                ~torch.isfinite(pending).all(-1)
+                | (pending < 0).any(-1)
+                | ~torch.isclose(
+                    pending.sum(-1), torch.ones_like(pending[..., 0]), atol=2e-3, rtol=0.0
+                )
+            )
+            own_wrong = (
+                invalid_distribution
+                | (pending == 1.0).sum(-1).ne(1)
+                | ((pending != 0.0) & (pending != 1.0)).any(-1)
+            )
             if own.any():
-                own_hidden = max(own_hidden, float((is_private & own).sum() / own.sum()))
-            if seen_enemy.any():
-                enemy_leaked = max(
-                    enemy_leaked, float((~is_private & seen_enemy).sum() / seen_enemy.sum())
+                own_invalid = max(
+                    own_invalid, float((own_wrong & own).sum() / own.sum())
+                )
+            if enemy.any():
+                enemy_invalid = max(
+                    enemy_invalid,
+                    float((invalid_distribution & enemy).sum() / enemy.sum()),
                 )
         return {
-            # Both are zero on a healthy run; either going positive means a seat
-            # is playing a different game from its opponent.
-            "seat/own_pending_hidden": own_hidden,
-            "seat/enemy_pending_leaked": enemy_leaked,
+            "seat/own_pending_invalid": own_invalid,
+            "seat/enemy_pending_invalid": enemy_invalid,
         }
 
     def _refresh_training_schedule(self, metrics: dict, elo_eval: EloEvaluator) -> None:
@@ -1692,6 +1701,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pg_sum = _z.clone()
         bc_sum = _z.clone()
         ns_sum = _z.clone()
+        enemy_action_sum = _z.clone()
+        persistence_sum = _z.clone()
         ns_visible_sum = _z.clone()
         numel = 0
         need_bc = is_primary and self._behavior_cloning_coef > 0.0
@@ -1703,6 +1714,23 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             mb_expert_probs = chunk.expert_probs
             mb_terminated = chunk.terminated
             alive_sum += mb_alive.sum()
+            if self.cfg.enemy_action_coef > 0.0:
+                team_id = chunk.obs[ObsKey.TEAM_ID][
+                    : mb_alive.shape[0], :, : self.buffer.num_ships
+                ]
+                enemy_action_sum += (
+                    (team_id == 1) & mb_alive & mb_decision_committed
+                ).sum()
+                persistence_mask = torch.zeros_like(mb_alive)
+                persistence_mask[1:] = (
+                    (team_id[1:] == 1)
+                    & mb_alive[1:]
+                    & mb_decision_committed[1:]
+                    & mb_alive[:-1]
+                    & mb_decision_committed[:-1]
+                    & chunk.transition_contiguous[:-1]
+                )
+                persistence_sum += persistence_mask.sum()
             actor_sum += (mb_actor_mask & mb_alive).sum()
             pg_sum += (mb_actor_mask & mb_alive & mb_decision_committed).sum()
             numel += mb_alive.numel()
@@ -1735,6 +1763,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "ns_sum": ns_sum.clamp(min=1.0).to(self.device),
             "ns_visible_sum": ns_visible_sum.clamp(min=1.0).to(self.device),
             "ns_hidden_sum": (ns_sum - ns_visible_sum).clamp(min=1.0).to(self.device),
+            "enemy_action_sum": enemy_action_sum.clamp(min=1.0).to(self.device),
+            "persistence_sum": persistence_sum.clamp(min=1.0).to(self.device),
             "numel": float(numel),
             "adv_rms": buf.adv_rms,
         }
@@ -1823,13 +1853,23 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         alive_mask_full = curr_mb_obs[ObsKey.BELIEF_VALID].bool()  # (T, B_mb, N+M)
         evaluate = evaluate_actions or self._update_evaluate_actions()
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            logprob, entropy, new_value, policy_logits, z, pred_next, outcome_logits = evaluate(
+            (
+                logprob,
+                entropy,
+                new_value,
+                policy_logits,
+                z,
+                pred_next,
+                outcome_logits,
+                enemy_action_logits,
+            ) = evaluate(
                 obs=curr_mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
                 alive_mask=alive_mask_full,
                 done_mask=mb_terminated,
                 return_encoder_output=need_sigreg,
+                return_enemy_action=True,
             )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
@@ -1980,10 +2020,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     (0, 1, 2)
                 ) / ns_sum
 
+        # ---- Match-outcome classification ---------------------------------
         outcome_ce_loss = policy_logits.new_zeros(())
-        # Always present, zeroed when the head is off: the ``_additive`` table is
-        # walked unconditionally for every micro-batch, so a key that appears
-        # only sometimes is a KeyError rather than a missing series.
         zero = policy_logits.new_zeros(())
         diag_outcome = {"outcome_ce": zero, "outcome_correct": zero, "outcome_labelled": zero}
         if self.cfg.outcome_categorical_coef > 0.0:
@@ -1991,19 +2029,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 outcome_logits, batch.outcome_class, alive_f, mask_sum
             )
             with torch.no_grad():
-                # Graded on every step whose target is a realised result: the
-                # step a match ended on, and the steps before it the backward
-                # pass labelled from it. All ground truth. Grading the terminal
-                # step alone would sample about a thousandth of the batch.
-                #
-                # Both terms divide by the minibatch-total token count rather
-                # than their own per-chunk count, because ``_additive`` *sums*
-                # across micro-batches -- a ratio formed per chunk and then
-                # summed is not a ratio, and read as accuracies above 1.0 in run
-                # 740. The division happens once, after the accumulation.
+                # Divide by the minibatch-total token count because additive
+                # diagnostics sum across micro-batches before finalization.
                 graded = outcome_graded & mb_alive
-                predicted = outcome_logits.argmax(-1).to(batch.outcome_class.dtype)
-                correct = (predicted == outcome_target_class) & graded
+                outcome_predicted = outcome_logits.argmax(-1).to(batch.outcome_class.dtype)
+                correct = (outcome_predicted == outcome_target_class) & graded
                 numel = denoms["numel"]
                 diag_outcome.update(
                     {
@@ -2013,12 +2043,75 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     }
                 )
 
+        # ---- Enemy pending-action prediction -------------------------------
+        enemy_action_loss = self._zero_tensor
+        enemy_action_probability = self._zero_tensor
+        enemy_action_entropy = self._zero_tensor
+        enemy_action_brier = self._zero_tensor
+        enemy_action_accuracy = self._zero_tensor
+        persistence_accuracy = self._zero_tensor
+        persistence_ce = self._zero_tensor
+        if self.cfg.enemy_action_coef > 0.0:
+            team_id = curr_mb_obs[ObsKey.TEAM_ID][:, :, : self.buffer.num_ships]
+            enemy_mask = (team_id == 1) & mb_alive & mb_decision_committed
+            enemy_f = enemy_mask.float()
+            enemy_sum = denoms["enemy_action_sum"]
+            action_target = encode_joint_action_unchecked(mb_actions)
+            per_token_ce = F.cross_entropy(
+                enemy_action_logits.float().flatten(0, -2),
+                action_target.flatten(),
+                reduction="none",
+            ).reshape_as(action_target)
+            enemy_action_loss = (per_token_ce * enemy_f).sum() / enemy_sum
+            with torch.no_grad():
+                probabilities = F.softmax(enemy_action_logits.float(), dim=-1)
+                realised_probability = probabilities.gather(
+                    -1, action_target.unsqueeze(-1)
+                ).squeeze(-1)
+                entropy = Categorical(probs=probabilities).entropy()
+                target_one_hot = F.one_hot(
+                    action_target, NUM_JOINT_ACTIONS
+                ).to(probabilities.dtype)
+                brier = (probabilities - target_one_hot).pow(2).sum(-1)
+                predicted = probabilities.argmax(-1)
+                previous_action = torch.roll(action_target, shifts=1, dims=0)
+                persistence_mask = torch.zeros_like(enemy_mask)
+                persistence_mask[1:] = (
+                    enemy_mask[1:]
+                    & mb_alive[:-1]
+                    & mb_decision_committed[:-1]
+                    & mb_transition_contiguous[:-1]
+                )
+                persistence_f = persistence_mask.float()
+                same = previous_action == action_target
+                persistence_probability = torch.where(
+                    same,
+                    torch.full_like(realised_probability, 0.99),
+                    torch.full_like(
+                        realised_probability, 0.01 / (NUM_JOINT_ACTIONS - 1)
+                    ),
+                )
+                enemy_action_probability = (realised_probability * enemy_f).sum() / enemy_sum
+                enemy_action_entropy = (entropy * enemy_f).sum() / enemy_sum
+                enemy_action_brier = (brier * enemy_f).sum() / enemy_sum
+                enemy_action_accuracy = (
+                    (predicted == action_target).float() * enemy_f
+                ).sum() / enemy_sum
+                persistence_sum = denoms["persistence_sum"]
+                persistence_accuracy = (
+                    same.float() * persistence_f
+                ).sum() / persistence_sum
+                persistence_ce = (
+                    -persistence_probability.log() * persistence_f
+                ).sum() / persistence_sum
+
         loss = (
             self.cfg.outcome_categorical_coef * outcome_ce_loss
             + self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
             + self._entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
+            + self.cfg.enemy_action_coef * enemy_action_loss
             + self._schedule_state.sigreg_coef * sigreg_loss
             + self.cfg.next_state_coef * next_state_loss
         )
@@ -2034,6 +2127,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             terms = {
                 "policy": self._policy_gradient_coef * pg_loss,
                 "value": self._schedule_state.value_function_coef * vf_loss,
+                "enemy_action": self.cfg.enemy_action_coef * enemy_action_loss,
                 "entropy": self._entropy_coef * ent_loss,
                 "bc": self._behavior_cloning_coef * bc_loss,
                 "sigreg": self._schedule_state.sigreg_coef * sigreg_loss,
@@ -2100,6 +2194,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["approx_kl"] = (((ratio - 1) - log_ratio) * pg_f).sum() / pg_sum
             diag["clip_frac"] = (((ratio - 1).abs() > cfg.clip_coef).float() * pg_f).sum() / pg_sum
             diag["alive_frac"] = alive_f.sum() / denoms["numel"]
+            diag["enemy_action_loss"] = enemy_action_loss.detach()
+            diag["enemy_action_probability"] = enemy_action_probability.detach()
+            diag["enemy_action_entropy"] = enemy_action_entropy.detach()
+            diag["enemy_action_brier"] = enemy_action_brier.detach()
+            diag["enemy_action_accuracy"] = enemy_action_accuracy.detach()
+            diag["enemy_action_persistence_accuracy"] = persistence_accuracy.detach()
+            diag["enemy_action_persistence_ce"] = persistence_ce.detach()
             diag["ratio_mean"] = (ratio * pg_f).sum() / pg_sum
             diag["ratio_max"] = ratio.max()  # combine across chunks with max, not sum
 
@@ -2799,11 +2900,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "loss/next_state": [],
             "loss/next_state_cont": [],
             "loss_proxy/policy_gradient": [],
+            "loss/enemy_action": [],
+            "enemy_action/realized_probability": [],
+            "enemy_action/entropy": [],
+            "enemy_action/brier": [],
+            "enemy_action/accuracy": [],
+            "enemy_action/persistence_accuracy": [],
+            "enemy_action/persistence_cross_entropy": [],
+            "enemy_action/uniform_cross_entropy": [],
             "loss_proxy/value": [],
             "loss_proxy/entropy": [],
             "loss_proxy/behavioral_cloning": [],
             "loss_proxy/sigreg": [],
             "loss_proxy/next_state": [],
+            "loss_proxy/enemy_action": [],
             "policy/kl": [],
             "policy/clip_fraction": [],
             "policy/ratio_mean": [],
@@ -2922,6 +3032,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("entropy_power", "entropy_power"),
                     ("entropy_turn", "entropy_turn"),
                     ("entropy_shoot", "entropy_shoot"),
+                    ("enemy_action", "enemy_action_loss"),
+                    ("enemy_action_probability", "enemy_action_probability"),
+                    ("enemy_action_entropy", "enemy_action_entropy"),
+                    ("enemy_action_brier", "enemy_action_brier"),
+                    ("enemy_action_accuracy", "enemy_action_accuracy"),
+                    ("enemy_action_persistence_accuracy", "enemy_action_persistence_accuracy"),
+                    ("enemy_action_persistence_ce", "enemy_action_persistence_ce"),
                     ("outcome_ce", "outcome_ce"),
                     ("outcome_correct", "outcome_correct"),
                     ("outcome_labelled", "outcome_labelled"),
@@ -2946,6 +3063,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("loss/value", "vf"),
                     ("loss/entropy", "ent"),
                     ("loss/behavioral_cloning", "bc"),
+                    ("loss/enemy_action", "enemy_action"),
+                    ("enemy_action/realized_probability", "enemy_action_probability"),
+                    ("enemy_action/entropy", "enemy_action_entropy"),
+                    ("enemy_action/brier", "enemy_action_brier"),
+                    ("enemy_action/accuracy", "enemy_action_accuracy"),
+                    ("enemy_action/persistence_accuracy", "enemy_action_persistence_accuracy"),
+                    ("enemy_action/persistence_cross_entropy", "enemy_action_persistence_ce"),
                     ("loss/behavioral_cloning_kl", "bc_kl"),
                     ("loss/scripted_entropy", "scripted_entropy"),
                     ("loss/sigreg", "sigreg"),
@@ -3111,6 +3235,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 accum_scalar["loss_proxy/next_state"].append(
                     self.cfg.next_state_coef * scalar_accum_step["ns_loss"]
                 )
+                accum_scalar["loss_proxy/enemy_action"].append(
+                    self.cfg.enemy_action_coef * scalar_accum_step["enemy_action"]
+                )
                 accum_scalar["returns/advantage_std"].append(scalar_accum_step["adv_var"] ** 0.5)
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
                 accum_scalar["train/nonfinite_grad_fraction"].append(nonfinite_grad.float())
@@ -3168,6 +3295,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         if labelled > 0.0:
             metrics["outcome_head/accuracy"] = correct / labelled
         metrics["train/epochs_completed"] = float(epoch_idx + 1)
+        metrics["enemy_action/uniform_cross_entropy"] = math.log(NUM_JOINT_ACTIONS)
+        metrics["enemy_action/uniform_probability"] = 1.0 / NUM_JOINT_ACTIONS
+        metrics["enemy_action/uniform_accuracy"] = 1.0 / NUM_JOINT_ACTIONS
+        metrics["enemy_action/uniform_entropy"] = math.log(NUM_JOINT_ACTIONS)
 
         for key, tensors in accum_k.items():
             if not tensors:

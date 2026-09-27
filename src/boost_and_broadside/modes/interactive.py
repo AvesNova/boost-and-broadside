@@ -383,7 +383,7 @@ def _run_interactive_loop(
                     if obs is None
                     else obs["team_id"][:, :N]  # (1, N) — exclude field tokens
                 )
-                action0, prediction0 = get_actions(
+                action0, prediction0, enemy_logits0 = get_actions(
                     agent0,
                     team0_view,
                     state,
@@ -391,14 +391,15 @@ def _run_interactive_loop(
                     N,
                     device,
                     return_pred_next=True,
+                    return_enemy_action=True,
                     team_visibility=visibility.ship,
                 )
                 if agent0.kind == "policy":
-                    agent0.belief.advance(team0_view, prediction0)
+                    agent0.belief.advance(team0_view, prediction0, enemy_logits0)
                 if agent1 is agent0:
                     action1 = action0
                 else:
-                    action1, prediction1 = get_actions(
+                    action1, prediction1, enemy_logits1 = get_actions(
                         agent1,
                         team1_view,
                         state,
@@ -406,10 +407,11 @@ def _run_interactive_loop(
                         N,
                         device,
                         return_pred_next=True,
+                        return_enemy_action=True,
                         team_visibility=visibility.ship,
                     )
                     if agent1.kind == "policy":
-                        agent1.belief.advance(team1_view, prediction1)
+                        agent1.belief.advance(team1_view, prediction1, enemy_logits1)
                 selected_action = merge_team_actions(action0, action1, team_id).int()
                 human_control_mask = _selected_human_mask(
                     team_id, renderer.human_control_enabled, renderer.selected_ship
@@ -475,7 +477,10 @@ def _run_interactive_loop(
                     # Authoritative team id: the observation's copy zeroes hidden
                     # ships, and zero is also Team 0's real id.
                     action_state.write_observation(
-                        obs, wrapper.env.state.ship_team_id[:, :N], N
+                        obs,
+                        wrapper.env.state.ship_team_id[:, :N],
+                        wrapper.env.state.ship_spawned[:, :N],
+                        N,
                     )
                     result_tensor = info["match_result"]
                     visibility = wrapper.last_visibility

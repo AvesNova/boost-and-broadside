@@ -2,6 +2,7 @@
 
 import torch
 
+from boost_and_broadside.constants import NUM_JOINT_ACTIONS
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.runtime.actions import write_pending_action_view
@@ -16,6 +17,7 @@ def decode_targets_to_observation(
     num_ships: int,
     coordinator,
     observer_team: int = 0,
+    enemy_action_logits: torch.Tensor | None = None,
 ) -> YemongObservation:
     """Decode coordinator targets and retain non-predicted field tokens.
 
@@ -49,6 +51,20 @@ def decode_targets_to_observation(
         action,
         prev_obs[ObsKey.TEAM_ID][:, :num_ships],
         observer_team,
+        torch.zeros_like(prev_obs[ObsKey.TEAM_ID][:, :num_ships], dtype=torch.bool),
+    )
+    enemy = prev_obs[ObsKey.TEAM_ID][:, :num_ships] != observer_team
+    probabilities = (
+        torch.full_like(
+            data[ObsKey.PREVIOUS_ACTION][:, :num_ships], 1.0 / NUM_JOINT_ACTIONS
+        )
+        if enemy_action_logits is None
+        else enemy_action_logits.float().softmax(-1)
+    )
+    data[ObsKey.PREVIOUS_ACTION][:, :num_ships] = torch.where(
+        enemy.unsqueeze(-1),
+        probabilities,
+        data[ObsKey.PREVIOUS_ACTION][:, :num_ships],
     )
     return YemongObservation(data=data)
 
@@ -86,8 +102,10 @@ def imagine_trajectory(
     poses: list[torch.Tensor] = []
     with torch.no_grad():
         for _ in range(n_steps):
-            action, _, _, scaled_prediction, hidden = agent.agent.get_action_and_value(
-                imagined, hidden
+            action, _, _, scaled_prediction, enemy_logits, hidden = (
+                agent.agent.get_action_and_value(
+                    imagined, hidden, return_enemy_action=True
+                )
             )
             ship_targets = coordinator.apply_scaled_predictions(ship_targets, scaled_prediction)
             imagined = decode_targets_to_observation(
@@ -97,6 +115,7 @@ def imagine_trajectory(
                 num_ships,
                 coordinator,
                 observer_team,
+                enemy_action_logits=enemy_logits,
             )
             poses.append(
                 torch.cat(

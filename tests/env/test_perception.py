@@ -14,6 +14,7 @@ from boost_and_broadside.env.frontline import frontline_ship_config, roles_from_
 from boost_and_broadside.env.observation import ObsKey, perceived_observation_from_state
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.env.wrapper import SOURCE_STAT_NAMES, YemongEnvWrapper
+from boost_and_broadside.runtime.actions import encode_joint_action
 from tests.conftest import make_state
 
 
@@ -230,7 +231,7 @@ def test_team_views_are_independent_not_label_swaps_of_hidden_truth() -> None:
     assert not team1.visible[0, :2].any()
 
 
-def test_enemy_pending_actions_use_private_category_while_ship_is_visible() -> None:
+def test_pending_actions_are_exact_for_allies_and_absent_for_enemies() -> None:
     ship, state = _state()
     state.ship_pos[0] = torch.tensor([100 + 100j, 120 + 100j, 140 + 100j, 160 + 100j])
     state.prev_action[0] = torch.tensor(
@@ -239,15 +240,15 @@ def test_enemy_pending_actions_use_private_category_while_ship_is_visible() -> N
 
     obs, _ = perceived_observation_from_state(state, ship, _config(vision_range=300.0))
     team1 = obs.for_team(1)
-    private = torch.tensor([3, 7, 2], dtype=state.prev_action.dtype).expand(2, -1)
+    expected = torch.nn.functional.one_hot(encode_joint_action(state.prev_action), 42).float()
+    absent = torch.zeros((2, 42))
 
     assert obs.visible[0, :4].all()
-    assert torch.equal(obs.previous_action[0, :2], state.prev_action[0, :2])
-    assert torch.equal(obs.previous_action[0, 2:4], private)
+    assert torch.equal(obs.previous_action[0, :2], expected[0, :2])
+    assert torch.equal(obs.previous_action[0, 2:4], absent)
     assert team1.visible[0, :4].all()
-    assert torch.equal(team1.previous_action[0, :2], private)
-    assert torch.equal(team1.previous_action[0, 2:4], state.prev_action[0, 2:4])
-
+    assert torch.equal(team1.previous_action[0, :2], absent)
+    assert torch.equal(team1.previous_action[0, 2:4], expected[0, 2:4])
 
 def test_frontline_scripted_agent_does_not_target_hidden_enemy_truth() -> None:
     from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG

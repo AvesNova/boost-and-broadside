@@ -185,7 +185,9 @@ def _build_trace(device: torch.device, seed: int, steps: int):
     action_state = PendingActionState.allocate(1, ships, device)
     team1_mask = torch.ones(1, dtype=torch.bool, device=device)
     for step in range(steps):
-        action_state.write_observation(observation, wrapper.state.ship_team_id, ships)
+        action_state.write_observation(
+            observation, wrapper.state.ship_team_id, wrapper.state.ship_spawned, ships
+        )
         team0 = observation.for_team(0)
         team1 = observation.for_team(1).flip_team(ships, mask=team1_mask)
         views.append((_clone_observation(team0), _clone_observation(team1)))

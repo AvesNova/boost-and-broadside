@@ -174,19 +174,7 @@ def resolve_agent_spec(
 
 
 def init_hidden(agent: ResolvedAgent, num_envs: int, device) -> None:
-    """Allocate initial recurrent state for policy agents; no-op for all others.
-
-    The width is the policy's own ``num_recurrent_tokens``. Only ship tokens
-    carry recurrent state — field tokens, and Frontline's zone and boundary
-    tokens, are static within an episode and take the non-recurrent path, so
-    sizing this from the entity-token axis would allocate state the trunk never
-    consumes.
-
-    Every caller used to pass its token total in as a ``num_tokens`` argument
-    that was accepted and discarded; two of them computed it with a formula that
-    had gone stale. An argument nobody reads is an argument that can be wrong
-    forever, so there is no longer one to get wrong.
-    """
+    """Allocate initial recurrent state for policy agents; no-op for all others."""
     if agent.kind == "policy":
         agent.hidden = agent.agent.initial_hidden(
             num_envs, agent.agent.num_recurrent_tokens, device
@@ -201,17 +189,10 @@ def get_actions(
     num_ships: int,
     device: str | torch.device,
     return_pred_next: bool = False,
+    return_enemy_action: bool = False,
     team_visibility: torch.Tensor | None = None,
-) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor | None]:
-    """Return (B, N, 3) int actions for every ship in the batch.
-
-    Policy and scripted agents produce actions for all ships; the caller selects
-    the relevant team's actions via a team-id mask.  For the null agent the
-    returned tensor is all-zeros — the caller must apply keyboard overrides.
-
-    If return_pred_next is True, also returns the predicted next state (B, N, AUX_DIM)
-    from the policy, or None if the agent doesn't predict it.
-    """
+) -> torch.Tensor | tuple:
+    """Return physical actions and optional same-pass auxiliary predictions."""
     B, N = num_envs, num_ships
 
     if agent.kind == "random":
@@ -223,31 +204,35 @@ def get_actions(
             ],
             dim=-1,
         ).int()
-        return (action, None) if return_pred_next else action
-
-    if agent.kind == "scripted":
+    elif agent.kind == "scripted":
         with torch.no_grad():
             action = (
                 agent.agent.get_actions(state, team_visibility)
                 if isinstance(agent.agent, (StochasticScriptedAgent, BatchedFrontlineScriptedAgent))
                 else agent.agent.get_actions(state)
             )
-        return (action, None) if return_pred_next else action
-
-    if agent.kind == "semi_random":
+    elif agent.kind == "semi_random":
         with torch.no_grad():
             action = agent.agent.get_actions(state, team_visibility)
-        return (action, None) if return_pred_next else action
-
-    if agent.kind == "policy":
+    elif agent.kind == "policy":
         with torch.no_grad():
+            if return_enemy_action:
+                action, _, _, pred_next, enemy_logits, agent.hidden = (
+                    agent.agent.get_action_and_value(
+                        obs, agent.hidden, return_enemy_action=True
+                    )
+                )
+                return action, pred_next, enemy_logits
             action, _, _, pred_next, agent.hidden = agent.agent.get_action_and_value(
                 obs, agent.hidden
             )
         return (action, pred_next) if return_pred_next else action
+    else:
+        # null — zero placeholder; caller must override with keyboard input
+        action = torch.zeros(B, N, 3, dtype=torch.int32, device=device)
 
-    # null — zero placeholder; caller must override with keyboard input
-    action = torch.zeros(B, N, 3, dtype=torch.int32, device=device)
+    if return_enemy_action:
+        return action, None, None
     return (action, None) if return_pred_next else action
 
 

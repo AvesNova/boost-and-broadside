@@ -136,11 +136,15 @@ def _run_learned_accuracy(
             env_config,
             include_bullets=bundle.reads_bullets,
         )
-        action_state.write_observation(perceived, state.ship_team_id, env_config.num_ships)
+        action_state.write_observation(
+            perceived, state.ship_team_id, state.ship_spawned, env_config.num_ships
+        )
         view = tracker.compose(perceived.for_team(0))
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            policy_action, _, _, prediction, hidden = policy.get_action_and_value(view, hidden)
-        tracker.advance(view, prediction)
+            policy_action, _, _, prediction, enemy_logits, hidden = policy.get_action_and_value(
+                view, hidden, return_enemy_action=True
+            )
+        tracker.advance(view, prediction, enemy_logits)
 
         visible = view["visible"][:, : env_config.num_ships] & (
             view["team_id"][:, : env_config.num_ships] == 1
@@ -369,10 +373,11 @@ def run_suite(
     tracker = DualBeliefTracker(b, n, decision_dt, coordinator, device)
     composed = tracker.compose(perceived)
     prediction = torch.zeros((b, n, coordinator.total_prediction_dimension), device=device)
+    enemy_logits = torch.zeros((b, n, 42), device=device)
 
     def belief_iteration() -> None:
         nonlocal composed
-        tracker.advance(composed, prediction, prediction)
+        tracker.advance(composed, prediction, prediction, enemy_logits, enemy_logits)
         composed = tracker.compose(perceived)
 
     for _ in range(5):

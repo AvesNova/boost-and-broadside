@@ -146,7 +146,7 @@ def _cuda_obs(envs: int, ships: int):
             ObsKey.TIME_SINCE_OBSERVATION: f(envs, ships, 1).abs(),
             ObsKey.OBJECT_TYPE: torch.zeros(envs, ships, dtype=torch.long, device="cuda"),
             ObsKey.RADIUS: f(envs, ships, 1).abs(),
-            ObsKey.PREVIOUS_ACTION: torch.zeros(envs, ships, 3, dtype=torch.long, device="cuda"),
+            ObsKey.PREVIOUS_ACTION: torch.zeros(envs, ships, 42, device="cuda"),
             ObsKey.LOCAL_LOG_INDEX: f(envs, ships, 1),
             ObsKey.LOCAL_INDEX_GRADIENT: f(envs, ships, 2),
             ObsKey.FIELD_TRANSITION_WIDTH: f(envs, ships, 1).abs(),
