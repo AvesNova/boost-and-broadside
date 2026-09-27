@@ -258,12 +258,11 @@ class YemongPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
-        self.enemy_action_head = nn.Sequential(
-            nn.Linear(D, hidden_dim),
-            nn.RMSNorm(hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
-        )
+        # A linear classifier is deliberately sufficient here: the shared trunk
+        # already supplies contextual nonlinear features, while a second actor-sized
+        # MLP would materialize a 2D activation for every ship in every PPO
+        # microbatch. Parameters remain fully independent from the actor head.
+        self.enemy_action_head = nn.Sequential(nn.Linear(D, TOTAL_ACTION_LOGITS))
         # Local value head: per-ship embedding → all K components.
         # For indices in team_pma_k, outputs are overridden by value_head_win.
         self.value_head_local = nn.Sequential(
@@ -584,7 +583,9 @@ class YemongPolicy(nn.Module):
         team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 42)
-        enemy_action_logits = self.enemy_action_head(x_ships)  # (B, N, 42)
+        enemy_action_logits = (
+            self.enemy_action_head(x_ships) if return_enemy_action else None
+        )  # (B, N, 42) when requested
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
         value = self.value_head_local(x_ships)  # (B, N, K)
         if self._team_pma_k:
@@ -723,7 +724,9 @@ class YemongPolicy(nn.Module):
         # Local value path: per-ship embedding, no team pooling.
         local_value = self.value_head_local(x_ships)  # (T, B, N, K)
 
-        enemy_action_logits = self.enemy_action_head(x_ships)  # (T, B, N, 42)
+        enemy_action_logits = (
+            self.enemy_action_head(x_ships) if return_enemy_action else None
+        )  # (T, B, N, 42) when requested
         if self._team_pma_k:
             # Win/loss path: TeamPMA over ship tokens, then fold T into B.
             x_s_flat = x_ships.reshape(T * B, N, D)

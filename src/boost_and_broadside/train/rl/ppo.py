@@ -631,15 +631,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             _nt = N
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _h = self._policy_module.initial_hidden(B, _nt, self.device)
-                self.policy.get_action_and_value(sample_obs, _h)
+                self.policy.get_action_and_value(sample_obs, _h, return_enemy_action=self._ego_pass)
                 if self._ego_pass:
                     # Warm up the 2B batch used by the combined team-0/team-1 rollout pass.
                     _obs_t1 = sample_obs.flip_team(N)
                     _obs_2B = sample_obs.concat_batch(_obs_t1)
                     _h_2B = torch.cat([_h, _h], dim=1)
-                    self.policy.get_action_and_value(_obs_2B, _h_2B)
+                    self.policy.get_action_and_value(_obs_2B, _h_2B, return_enemy_action=True)
                 _h_avg = self._avg_policy_module.initial_hidden(B, _nt, self.device)
-                self.avg_policy.get_action_and_value(sample_obs, _h_avg)
+                self.avg_policy.get_action_and_value(
+                    sample_obs, _h_avg, return_enemy_action=self._ego_pass
+                )
 
         # Per-env flag (shared_pass only): which team_id the league opponent plays.
         # In ego_pass opponents always play team 1. Randomised at init and
