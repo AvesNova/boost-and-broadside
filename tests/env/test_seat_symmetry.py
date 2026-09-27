@@ -193,3 +193,139 @@ def test_composed_views_agree_on_ships_both_sides_can_see() -> None:
             mask = mask.unsqueeze(-1)
         mask = mask.expand_as(a)
         torch.testing.assert_close(a[mask], b[mask], msg=f"{key.name} differs between seats")
+
+
+def _fixed_action_script(steps: int) -> list[torch.Tensor]:
+    """One command sequence, indexed by slot, shared by a game and its mirror.
+
+    A controller would do, but only if it were provably side-blind and consumed
+    its randomness identically in both runs. A recorded script removes the
+    question: the two games then differ in exactly one thing, which is the point.
+    """
+    generator = torch.Generator().manual_seed(4242)
+    return [
+        torch.stack(
+            [
+                torch.randint(0, 3, (NUM_ENVS, NUM_SHIPS), generator=generator),
+                torch.randint(0, 7, (NUM_ENVS, NUM_SHIPS), generator=generator),
+                torch.randint(0, 2, (NUM_ENVS, NUM_SHIPS), generator=generator),
+            ],
+            dim=-1,
+        ).int()
+        for _ in range(steps)
+    ]
+
+
+def _play_script(script: list[torch.Tensor], *, mirrored: bool):
+    """Play the script, optionally with the two sides' labels exchanged.
+
+    The mirror relabels ``ship_team_id`` once, immediately after reset, and then
+    plays the identical commands per slot. Nothing physical changes: positions,
+    velocities, damage and the fog geometry are all side-blind, and the win
+    condition is symmetric, so the two runs stay in lockstep with only the labels
+    different. Non-Frontline on purpose -- a zone carries the side that owns it,
+    so mirroring the ships without mirroring the map is not a mirrored game.
+
+    Returns the composed seat views, both canonicalized to "my team is 0".
+    """
+    wrapper, ship_config, env_config = _wrapper()
+    coordinator = build_standard_coordinator(ship_config)
+    beliefs = DualBeliefTracker(
+        NUM_ENVS,
+        NUM_SHIPS,
+        ship_config.dt * env_config.action_repeat,
+        coordinator,
+        torch.device("cpu"),
+    )
+    action_state = PendingActionState.allocate(NUM_ENVS, NUM_SHIPS, torch.device("cpu"))
+    raw = wrapper.reset(seed=17)
+    if mirrored:
+        state = wrapper.env.state
+        state.ship_team_id = 1 - state.ship_team_id
+        raw = wrapper._get_obs()
+    for selected in script:
+        beliefs.compose(raw)
+        raw, _, dones, truncated, info = wrapper.step(action_state.applied_action())
+        assert not (dones | truncated).any(), "an episode ended; the two runs may have diverged"
+        action_state.commit(selected, info["actuator_contiguous"], dones | truncated)
+        action_state.write_observation(raw, wrapper.env.state.ship_team_id, NUM_SHIPS)
+    composed = beliefs.compose(raw)
+    return composed.for_team(0), flip_team_obs(composed.for_team(1), NUM_SHIPS), wrapper
+
+
+def _mirror_pair():
+    """Seat 1 of a game, and seat 0 of the mirror of that same game."""
+    script = _fixed_action_script(WARMUP_STEPS)
+    _, seat_one, wrapper = _play_script(script, mirrored=False)
+    mirrored_seat_zero, _, mirror_wrapper = _play_script(script, mirrored=True)
+    # The relabelling is the only difference: pin that the physics agreed, or a
+    # failure below could be divergence rather than asymmetry.
+    torch.testing.assert_close(
+        wrapper.env.state.ship_pos, mirror_wrapper.env.state.ship_pos, msg="the runs diverged"
+    )
+    assert torch.equal(wrapper.env.state.ship_team_id, 1 - mirror_wrapper.env.state.ship_team_id), (
+        "the mirror did not stay mirrored"
+    )
+    visibility = wrapper.last_visibility.ship
+    assert not visibility[:, 0].all(), "nothing is hidden; the test cannot bind"
+    return seat_one, mirrored_seat_zero
+
+
+def test_the_mirrored_game_hands_each_seat_the_other_seat_s_view() -> None:
+    """Relabelling the teams must exchange the two seats' canonical views exactly.
+
+    This is the whole seat-symmetry contract in one assertion, and it covers
+    every channel rather than the handful a "both sides can see it" test can
+    reach: if any of them carried physical seat identity, the two sides here
+    would differ.
+    """
+    seat_one, mirrored_seat_zero = _mirror_pair()
+
+    assert set(seat_one.data) == set(mirrored_seat_zero.data)
+    for key in seat_one.data:
+        torch.testing.assert_close(
+            seat_one.data[key],
+            mirrored_seat_zero.data[key],
+            msg=lambda message, key=key: f"{key} is not seat-symmetric\n{message}",
+        )
+    if seat_one.bullets is not None:
+        for key in seat_one.bullets:
+            torch.testing.assert_close(
+                seat_one.bullets[key],
+                mirrored_seat_zero.bullets[key],
+                msg=lambda message, key=key: f"bullet {key} is not seat-symmetric\n{message}",
+            )
+
+
+def test_the_mirrored_game_gives_the_policy_the_same_answers() -> None:
+    """And nothing downstream of the observation reintroduces seat identity.
+
+    Redundant with the view comparison only as long as the model reads nothing
+    but the view. That is what this pins: it fails if a head, the rotary
+    geometry or the team pooling ever reaches around the observation for the
+    physical side, or if a channel this test cannot name turns out to matter.
+    """
+    from boost_and_broadside.config import ModelConfig
+    from boost_and_broadside.train.rl.policy_io import build_policy
+
+    seat_one, mirrored_seat_zero = _mirror_pair()
+    policy = build_policy(
+        ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+        ShipConfig(),
+        num_value_components=3,
+        num_ships=NUM_SHIPS,
+        team_pma_k=(2,),
+    ).eval()
+
+    outputs = []
+    for view in (seat_one, mirrored_seat_zero):
+        # Seeded per call: the action is sampled, so an unseeded comparison would
+        # fail on the draw rather than on the distribution behind it.
+        torch.manual_seed(0)
+        with torch.no_grad():
+            hidden = policy.initial_hidden(NUM_ENVS, NUM_SHIPS, torch.device("cpu"))
+            outputs.append(policy.get_action_and_value(view, hidden))
+
+    names = ("action", "logprob", "value", "pred_next", "hidden")
+    for name, left, right in zip(names, *outputs):
+        torch.testing.assert_close(left, right, msg=f"{name} is not seat-symmetric")
