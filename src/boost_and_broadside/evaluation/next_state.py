@@ -1,4 +1,4 @@
-"""Shared next-state decoding and autoregressive imagination harness."""
+"""Shared physical next-state composition and autoregressive imagination harness."""
 
 import torch
 
@@ -6,65 +6,73 @@ from boost_and_broadside.constants import NUM_JOINT_ACTIONS
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.runtime.actions import write_pending_action_view
+from boost_and_broadside.train.rl.physical_belief import (
+    ALIVE_HEALTH_EPS,
+    ANGULAR_VELOCITY,
+    ATTITUDE,
+    COOLDOWN,
+    HEALTH,
+    LOCAL_LOG_INDEX,
+    POSITION_X,
+    POWER,
+    SHIELD_DELAY,
+    VELOCITY_X,
+    PhysicalNextState,
+    physical_means_from_observation,
+)
 
-ALIVE_HEALTH_EPS = 1.0
 
-
-def decode_targets_to_observation(
-    targets: torch.Tensor,
+def means_to_observation(
+    means: torch.Tensor,
     prev_obs: YemongObservation,
     action: torch.Tensor,
     num_ships: int,
-    coordinator,
+    index_log_scale: float,
     observer_team: int = 0,
     enemy_action_logits: torch.Tensor | None = None,
 ) -> YemongObservation:
-    """Decode coordinator targets and retain non-predicted field tokens.
+    """Write physical ship means into an observation, retaining the map tokens.
+
+    The imagined counterpart of legal-view composition: the same eleven physical
+    quantities, written into the same channels, with the same normalization the
+    environment's builder applies.
 
     Bullets are intentionally absent: next-state prediction does not model them,
     so an imagined rollout is blind to fire in flight.
     """
-    raw = coordinator.decode_targets(targets)
-    pos = torch.cat([raw["position_x"], raw["position_y"]], dim=-1)
+    attitude = means[..., ATTITUDE : ATTITUDE + 1]
     alive = torch.where(
         prev_obs[ObsKey.GAME_MODE][:, -1, 0:1] > 0,
         prev_obs.alive[:, :num_ships],
-        raw["health"].squeeze(-1) > ALIVE_HEALTH_EPS,
+        means[..., HEALTH] > ALIVE_HEALTH_EPS,
     )
     ship_values = {
-        ObsKey.POS: pos,
-        ObsKey.VEL: raw["velocity"],
-        ObsKey.ATT: raw["attitude"],
-        ObsKey.ANG_VEL: raw["angular_velocity"],
-        ObsKey.HEALTH: raw["health"],
-        ObsKey.SHIELD_DELAY: raw["shield_delay"].clamp_min(0),
-        ObsKey.POWER: raw["power"],
-        ObsKey.COOLDOWN: raw["cooldown"],
-        ObsKey.LOCAL_LOG_INDEX: raw["local_log_index"],
+        ObsKey.POS: means[..., POSITION_X : POSITION_X + 2],
+        ObsKey.VEL: means[..., VELOCITY_X : VELOCITY_X + 2],
+        ObsKey.ATT: torch.cat([torch.cos(attitude), torch.sin(attitude)], dim=-1),
+        ObsKey.ANG_VEL: means[..., ANGULAR_VELOCITY : ANGULAR_VELOCITY + 1],
+        ObsKey.HEALTH: means[..., HEALTH : HEALTH + 1],
+        ObsKey.SHIELD_DELAY: means[..., SHIELD_DELAY : SHIELD_DELAY + 1],
+        ObsKey.POWER: means[..., POWER : POWER + 1],
+        ObsKey.COOLDOWN: means[..., COOLDOWN : COOLDOWN + 1],
+        ObsKey.LOCAL_LOG_INDEX: means[..., LOCAL_LOG_INDEX : LOCAL_LOG_INDEX + 1] / index_log_scale,
         ObsKey.ALIVE: alive,
     }
     data = {key: value.clone() for key, value in prev_obs.items()}
     for key, values in ship_values.items():
         data[key] = torch.cat([values, prev_obs[key][:, num_ships:]], dim=1)
+    enemy_probabilities = (
+        torch.full_like(data[ObsKey.PREVIOUS_ACTION][:, :num_ships], 1.0 / NUM_JOINT_ACTIONS)
+        if enemy_action_logits is None
+        else enemy_action_logits.float().softmax(-1)
+    )
     write_pending_action_view(
         data[ObsKey.PREVIOUS_ACTION][:, :num_ships],
         action,
         prev_obs[ObsKey.TEAM_ID][:, :num_ships],
         observer_team,
         torch.zeros_like(prev_obs[ObsKey.TEAM_ID][:, :num_ships], dtype=torch.bool),
-    )
-    enemy = prev_obs[ObsKey.TEAM_ID][:, :num_ships] != observer_team
-    probabilities = (
-        torch.full_like(
-            data[ObsKey.PREVIOUS_ACTION][:, :num_ships], 1.0 / NUM_JOINT_ACTIONS
-        )
-        if enemy_action_logits is None
-        else enemy_action_logits.float().softmax(-1)
-    )
-    data[ObsKey.PREVIOUS_ACTION][:, :num_ships] = torch.where(
-        enemy.unsqueeze(-1),
-        probabilities,
-        data[ObsKey.PREVIOUS_ACTION][:, :num_ships],
+        belief_action=enemy_probabilities,
     )
     return YemongObservation(data=data)
 
@@ -76,44 +84,40 @@ def imagine_trajectory(
     num_ships: int,
     device,
     observer_team: int = 0,
+    next_state: PhysicalNextState | None = None,
+    index_log_scale: float | None = None,
 ) -> list[torch.Tensor]:
     """Roll a policy's prediction head forward without mutating live hidden state.
 
     Returns one ``(B, num_ships, 4)`` *pose* per imagined step -- world x, world
     y, and the Cartesian heading ``(cos, sin)`` -- rather than the raw prediction
-    vectors.
+    vectors, because the caller is a renderer.
 
-    Poses rather than predictions because the caller is a renderer, and a
-    prediction vector can only be read by something that knows the feature
-    layout. That layout is not stable: position is ten Fourier harmonics whose
-    count follows the world size, so a fixed channel index into it is wrong on
-    every map but one. The decode already happens here, one line further down,
-    to build the next step's input -- so handing back what it produced costs
-    nothing and leaves the prediction layout entirely inside this module.
+    ``next_state`` and ``index_log_scale`` come from the ship configuration; both
+    are required whenever ``n_steps`` is positive.
     """
     if agent.kind != "policy" or agent.hidden is None or n_steps <= 0:
         return []
+    if next_state is None or index_log_scale is None:
+        raise ValueError("imagining a trajectory needs the physical next-state model")
 
-    coordinator = agent.agent.coordinator
     hidden = agent.hidden.clone()
     imagined = YemongObservation(data={key: value.clone() for key, value in observation.items()})
-    ship_targets = coordinator.get_target_vector(imagined)[:, :num_ships]
+    means = physical_means_from_observation(imagined, index_log_scale, num_ships=num_ships)
 
     poses: list[torch.Tensor] = []
     with torch.no_grad():
         for _ in range(n_steps):
-            action, _, _, scaled_prediction, enemy_logits, hidden = (
-                agent.agent.get_action_and_value(
-                    imagined, hidden, return_enemy_action=True
-                )
+            action, _, _, prediction, enemy_logits, hidden = agent.agent.get_action_and_value(
+                imagined, hidden, return_enemy_action=True
             )
-            ship_targets = coordinator.apply_scaled_predictions(ship_targets, scaled_prediction)
-            imagined = decode_targets_to_observation(
-                ship_targets,
+            means = next_state.apply_means(means, prediction.float())
+            imagined = means_to_observation(
+                means,
                 imagined,
                 action,
                 num_ships,
-                coordinator,
+                index_log_scale,
                 observer_team,
                 enemy_action_logits=enemy_logits,
             )
@@ -126,5 +130,4 @@ def imagine_trajectory(
                     dim=-1,
                 )
             )
-            ship_targets = coordinator.get_target_vector(imagined)[:, :num_ships]
     return poses

@@ -9,6 +9,7 @@ Agent specs (--team0 / --team1) are resolved by evaluation/agents.py —
 Space to shoot); see that module for the full spec list.
 """
 
+import math
 import time
 from dataclasses import replace
 
@@ -45,12 +46,12 @@ from boost_and_broadside.evaluation.agents import (
 from boost_and_broadside.evaluation.environment import resolve_evaluation_environment
 from boost_and_broadside.evaluation.match import (
     agent_is_ego_pass,
-    agent_view,
     merge_team_actions,
 )
 from boost_and_broadside.evaluation.next_state import imagine_trajectory
 from boost_and_broadside.runtime.actions import PendingActionState
-from boost_and_broadside.train.rl.belief import BeliefTracker
+from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
+from boost_and_broadside.train.rl.physical_belief import PhysicalNextState
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig, VisionMode
 
 _PLAY_ZONE_RADIUS = 330.0
@@ -276,17 +277,17 @@ def _run_interactive_loop(
 
     N = wrapper.num_ships
     M = wrapper.env_config.num_fields
+    next_state = PhysicalNextState.from_ship_config(wrapper.ship_config)
+    index_log_scale = 2.0 * math.log(wrapper.ship_config.field_index_step)
     first_episode = True
     while True:
+        wrapper.env.reset()
         if state_only:
-            wrapper.env.reset()
-            obs = None
             visibility = team_visibility_from_state(
                 wrapper.state, wrapper.ship_config, wrapper.env_config
             )
         else:
-            obs = wrapper.reset()
-            visibility = wrapper.last_visibility
+            visibility = wrapper.perceive()
         init_hidden(agent0, 1, device)
         init_hidden(agent1, 1, device)
         for agent in {id(agent0): agent0, id(agent1): agent1}.values():
@@ -295,7 +296,7 @@ def _run_interactive_loop(
                     1,
                     N,
                     wrapper.ship_config.dt * wrapper.env_config.action_repeat,
-                    agent.agent.coordinator,
+                    wrapper.ship_config,
                     device,
                 )
         ghost_poses = None
@@ -342,22 +343,27 @@ def _run_interactive_loop(
                 )
                 renderer.set_living_ships(living_by_team)
 
-                team0_view = agent_view(
-                    agent0,
-                    obs,
-                    N,
-                    torch.zeros(1, dtype=torch.bool, device=device),
-                )
-                team1_view = agent_view(
-                    agent1,
-                    obs,
-                    N,
-                    torch.ones(1, dtype=torch.bool, device=device),
-                )
-                if agent0.kind == "policy":
-                    team0_view = agent0.belief.compose(team0_view)
-                if agent1.kind == "policy" and agent1 is not agent0:
-                    team1_view = agent1.belief.compose(team1_view)
+                # Each side composes its own legal view from the authoritative
+                # state and its own belief. Two policies watching the same game
+                # remember it differently, so there is no shared observation to
+                # take a perspective on.
+                def _view(agent, seat: int):
+                    if agent.kind != "policy":
+                        return None
+                    view = legal_policy_view(
+                        agent.belief,
+                        state,
+                        wrapper.ship_config,
+                        visibility,
+                        seat,
+                        num_ships=N,
+                        include_bullets=wrapper.include_bullets,
+                        pending_action=action_state.pending,
+                    )
+                    return view.flip_team(N) if seat == 1 and agent_is_ego_pass(agent) else view
+
+                team0_view = _view(agent0, 0)
+                team1_view = team0_view if agent1 is agent0 else _view(agent1, 1)
 
                 # Imagined trajectories use the hidden state BEFORE the real forward pass.
                 imag_nexts0 = imagine_trajectory(
@@ -367,6 +373,8 @@ def _run_interactive_loop(
                     N,
                     device,
                     observer_team=0,
+                    next_state=next_state,
+                    index_log_scale=index_log_scale,
                 )
                 imag_nexts1 = imagine_trajectory(
                     agent1,
@@ -375,14 +383,14 @@ def _run_interactive_loop(
                     N,
                     device,
                     observer_team=0 if agent_is_ego_pass(agent1) else 1,
+                    next_state=next_state,
+                    index_log_scale=index_log_scale,
                 )
 
                 # Select each agent's actions for their respective team (ship tokens only)
-                team_id = (
-                    state.ship_team_id
-                    if obs is None
-                    else obs["team_id"][:, :N]  # (1, N) — exclude field tokens
-                )
+                # Authoritative: a legal view zeroes the identity of a ship no
+                # observer has seen, and zero is also Team 0's real id.
+                team_id = state.ship_team_id[:, :N]
                 action0, prediction0, enemy_logits0 = get_actions(
                     agent0,
                     team0_view,
@@ -395,7 +403,7 @@ def _run_interactive_loop(
                     team_visibility=visibility.ship,
                 )
                 if agent0.kind == "policy":
-                    agent0.belief.advance(team0_view, prediction0, enemy_logits0)
+                    agent0.belief.advance(prediction0, enemy_logits0)
                 if agent1 is agent0:
                     action1 = action0
                 else:
@@ -411,7 +419,7 @@ def _run_interactive_loop(
                         team_visibility=visibility.ship,
                     )
                     if agent1.kind == "policy":
-                        agent1.belief.advance(team1_view, prediction1, enemy_logits1)
+                        agent1.belief.advance(prediction1, enemy_logits1)
                 selected_action = merge_team_actions(action0, action1, team_id).int()
                 human_control_mask = _selected_human_mask(
                     team_id, renderer.human_control_enabled, renderer.selected_ship
@@ -438,10 +446,11 @@ def _run_interactive_loop(
                         wrapper.state, wrapper.ship_config, wrapper.env_config
                     )
                 else:
-                    obs, dones, truncated, info = wrapper.step_interactive(
+                    _, dones, truncated, info = wrapper.step_interactive(
                         applied_action,
                         unlimited_resources=renderer.unlimited_resources,
                         auto_reset=False,
+                        observe=False,
                     )
                     actuator_contiguous = info["actuator_contiguous"]
 
@@ -474,14 +483,6 @@ def _run_interactive_loop(
                     ghost_poses = merged
 
                 if not state_only:
-                    # Authoritative team id: the observation's copy zeroes hidden
-                    # ships, and zero is also Team 0's real id.
-                    action_state.write_observation(
-                        obs,
-                        wrapper.env.state.ship_team_id[:, :N],
-                        wrapper.env.state.ship_spawned[:, :N],
-                        N,
-                    )
                     result_tensor = info["match_result"]
                     visibility = wrapper.last_visibility
 

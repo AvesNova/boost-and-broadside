@@ -1,26 +1,31 @@
-"""``feature-stats`` mode: collect label null-model MSE for label-scale calibration.
+"""``feature-stats`` mode: null-model MSE for the fixed physical delta scales.
 
-For each consecutive obs pair (excluding episode boundaries and dead ships), computes
-coordinator.compute_labels() then squares it. Since labels are pre-scaled by label_scale,
-the null-model MSE in scaled space should be ~1.0 if label_scale is well calibrated
-(label_scale = 1/std(raw_label) → scaled_label has std ≈ 1 → null MSE ≈ 1).
+For each consecutive truth pair (excluding episode boundaries, dead ships and
+respawn teleports), normalizes the eleven physical deltas by the Phase-1 scales
+and squares them. A channel whose scale still conditions its labels reads ~1.0,
+and the null model scores 1.0.
 
-Reports per-prediction-dim stats and suggested label_scale corrections:
-  suggested_scale = current_scale / sqrt(mean_sq)
+Reports per-channel stats and the scale that would restore that:
+  suggested_scale = current_scale * sqrt(mean_sq)
+
+This is a *check* on the one-time calibration in
+``benchmarks/physical_delta_calibration.py``, not a fitting loop. The constants
+are fixed by contract; a channel far from 1.0 here is a reason to re-run that
+benchmark deliberately, not to nudge a number.
 
 The measurement depends on both acting agents, the environment, and the sample
 budget, so it is not a property of the profile alone: it writes a
 ``feature-stats`` artifact owned by the single run behind its checkpoints, or by
 nothing at all.
 
-Caveat: targets are read from ``observation_from_state`` -- unoccluded truth --
-while controller decisions use the ordinary perceived/belief observation through
-``MatchRunner``. The statistic therefore measures truth-to-truth labels, while
-training re-bases the label on the *believed* current state (see
-``PPOTrainer._precompute_ns_labels``). The two agree exactly for a visible ship
-and diverge for a hidden one, where the label carries the belief correction and
-has a much wider distribution. So the scales suggested here are a lower bound on
-what training sees, and the gap grows with time spent out of contact.
+Caveat: state is read directly -- unoccluded truth -- while controller decisions
+use the ordinary perceived/belief view through ``MatchRunner``. The statistic
+therefore measures truth-to-truth labels, while training re-bases the label on
+the *believed* current state (see ``PPOTrainer._precompute_ns_labels``). The two
+agree exactly for a visible ship and diverge for a hidden one, where the label
+carries the belief correction and has a much wider distribution. So the scales
+suggested here are a lower bound on what training sees, and the gap grows with
+time spent out of contact.
 """
 
 import time
@@ -29,7 +34,6 @@ import torch
 
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.env.observation import observation_from_state
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
 from boost_and_broadside.evaluation.environment import (
     create_evaluation_env,
@@ -37,7 +41,12 @@ from boost_and_broadside.evaluation.environment import (
 )
 from boost_and_broadside.evaluation.match import MatchRunner
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+from boost_and_broadside.train.rl.physical_belief import (
+    PHYSICAL_MEAN_DIM,
+    PHYSICAL_MEAN_NAMES,
+    PhysicalNextState,
+    physical_means_from_state,
+)
 
 _SCHEMA_VERSION = 1
 
@@ -58,10 +67,10 @@ def run_feature_stats_mode(
     N = env_config.num_ships
     dev = torch.device(device)
 
-    coordinator = build_standard_coordinator(ship_config)
-    feat_names = coordinator.get_feature_names()
-    P = coordinator.total_prediction_dimension
-    curr_scale = coordinator.label_scale_vector(dev)
+    next_state = PhysicalNextState.from_ship_config(ship_config)
+    feat_names = list(PHYSICAL_MEAN_NAMES)
+    P = PHYSICAL_MEAN_DIM
+    curr_scale = next_state.scale_vector(dev)
 
     agent0 = resolve_agent_spec(
         team0_spec, ship_config, model_config, device, checkpoint_dir, num_ships=N
@@ -93,22 +102,17 @@ def run_feature_stats_mode(
     sq_err_sum = torch.zeros(P, device=dev)
     count = torch.zeros(1, device=dev)
 
-    obs = observation_from_state(env.state, ship_config, include_bullets=runner.include_bullets)
-    prev_targets = coordinator.get_target_vector(obs)[:, :N]  # (B, N, target_dim)
+    prev_means = physical_means_from_state(env.state, ship_config)[:, :N]  # (B, N, 11)
     prev_alive = env.state.ship_alive.clone()
 
     t0 = time.perf_counter()
     print(f"Collecting label null-model MSE for {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
-        policy_obs = runner.observe()
-        selected_action = runner.actions(policy_obs)
-        dones, truncated = runner.advance(selected_action)
+        runner.observe()
+        dones, truncated = runner.advance(runner.actions())
 
-        next_obs = observation_from_state(
-            env.state, ship_config, include_bullets=runner.include_bullets
-        )
-        next_targets = coordinator.get_target_vector(next_obs)[:, :N]
+        next_means = physical_means_from_state(env.state, ship_config)[:, :N]
         next_alive = env.state.ship_alive.clone()
 
         # Valid: both ships alive this step and no episode boundary
@@ -116,19 +120,14 @@ def run_feature_stats_mode(
         valid = prev_alive & next_alive & ~episode_end & ~env.state.ship_respawned
 
         if valid.any():
-            v_curr = prev_targets[valid]  # (K, target_dim)
-            v_next = next_targets[valid]  # (K, target_dim)
-            labels = coordinator.compute_labels(v_curr, v_next)  # (K, P) scaled
+            labels = next_state.labels(prev_means[valid], next_means[valid])  # (K, 11)
             sq_err_sum += labels.pow(2).sum(0)
             count += valid.sum().float()
 
         done_any = dones | truncated
         runner.reset_finished(done_any)
 
-        next_obs_after_reset = observation_from_state(
-            env.state, ship_config, include_bullets=runner.include_bullets
-        )
-        prev_targets = coordinator.get_target_vector(next_obs_after_reset)[:, :N]
+        prev_means = physical_means_from_state(env.state, ship_config)[:, :N]
         prev_alive = env.state.ship_alive.clone()
 
         if (step + 1) % 500 == 0:
@@ -140,7 +139,7 @@ def run_feature_stats_mode(
 
     mean_sq = (sq_err_sum / max(n, 1.0)).cpu()
     curr_scale_cpu = curr_scale.cpu()
-    suggested = curr_scale_cpu / mean_sq.sqrt().clamp(min=1e-9)
+    suggested = curr_scale_cpu * mean_sq.sqrt()
 
     print("=" * 72)
     print("Null-model MSE in scaled label space (target ≈ 1.0 if well-calibrated)")
@@ -155,9 +154,9 @@ def run_feature_stats_mode(
         )
     print("=" * 72)
 
-    print("\nSuggested label_scale values for build_standard_coordinator:")
+    print("\nSuggested PHYSICAL_DELTA_SCALES values:")
     for i, name in enumerate(feat_names):
-        print(f"  {name}: {suggested[i].item():.1f}")
+        print(f"  {name}: {suggested[i].item():.4g}")
 
     result = {
         "schema_version": _SCHEMA_VERSION,

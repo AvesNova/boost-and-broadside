@@ -36,6 +36,19 @@ class TeamVisibility:
             raise ValueError(f"team perspective must be 0 or 1, got {team}")
         return self.ship[:, team]
 
+    def slice_envs(self, idx: "slice | torch.Tensor") -> "TeamVisibility":
+        """A view over a subset of environments, for a caller acting on part of a batch."""
+
+        return TeamVisibility(
+            observer_ship=self.observer_ship[idx],
+            range_only_observer_ship=self.range_only_observer_ship[idx],
+            ship=self.ship[idx],
+            range_only_ship=self.range_only_ship[idx],
+            los_ship=self.los_ship[idx],
+            bullet=None if self.bullet is None else self.bullet[idx],
+            vision_range=self.vision_range,
+        )
+
 
 def _occluder_cores(
     state: TensorState,

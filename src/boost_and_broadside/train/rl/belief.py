@@ -1,320 +1,279 @@
-"""Recursive point-estimate beliefs for previously observed enemy ships.
+"""Physical belief state for the ships one observer cannot currently see.
 
-The environment remains authoritative and produces independently masked team
-views.  This module owns the policy-side memory layered on top of one such view:
-visible ships refresh from truth, never-seen hidden ships stay absent, and a
-previously seen hidden ship is advanced only by the policy's next-state head.
+The environment is authoritative and computes perception. This module owns the
+policy-side memory layered on top of it: a fixed-shape, GPU-resident store of
+**physical** ship state per observer, which the observation builder selects
+against truth when it composes that observer's legal view.
+
+Three operations, in the order one decision runs them:
+
+``observe``  assimilates authoritative truth for every ship in sight, voids the
+             belief of anything that just spawned, and hands the builder a
+             :class:`ShipBeliefSource`.
+``advance``  stores the next-state head's forecast: means move by the predicted
+             physical deltas, uncertainty becomes the predicted uncertainty
+             outright, and the enemy-action head's distribution is recorded for
+             the next view to carry.
+``reset``    forgets a completed episode.
+
+Nothing here decodes, re-encodes or substitutes anything: belief and truth are
+the same eleven physical quantities, so composition is a selection.
 """
+
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
 
+from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import NUM_JOINT_ACTIONS
-from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
-
-ALIVE_HEALTH_EPS = 1.0
-
-# Numerical ceiling on a stored belief target. Not a physical bound: no thrust,
-# drag, speed or index constant appears in it, so nothing here rots when the
-# simulation changes.
-#
-# Targets live in symlog space and ``Symlog.invert`` is ``sign(x)*expm1(|x|)``,
-# so the cap has to be read through an exponential. 30 decodes to about 1.1e13
-# and squares to 1.1e26, which leaves twelve orders of headroom under float32's
-# 3.4e38 for the squarings downstream (``mass = n**2``, the thrust impulse's
-# energy term). Physical values occupy |target| <= ~7 -- symlog of the fastest
-# speed the thrust/drag equilibrium admits, about 632 px/s, is 6.45 -- so this
-# sits ten orders above anything legitimate and cannot bind on a working model.
-#
-# It replaces ``nan_to_num``'s defaults, which were the specific reason the
-# previous guard did not hold: the default ``posinf`` is float32's maximum,
-# 3.4e38, and in *symlog* space that decodes to expm1(3.4e38) = inf on the very
-# next compose. The old guard swapped an infinity for a value that became one
-# again immediately.
-BELIEF_TARGET_LIMIT = 30.0
+from boost_and_broadside.env.observation import (
+    ObsKey,
+    ShipBeliefSource,
+    YemongObservation,
+    observation_from_state,
+    write_pending_action_view,
+)
+from boost_and_broadside.env.perception import TeamVisibility
+from boost_and_broadside.env.state import TensorState
+from boost_and_broadside.train.rl.physical_belief import (
+    ALIVE_HEALTH_EPS,
+    ANGULAR_VELOCITY,
+    ATTITUDE,
+    COOLDOWN,
+    HEALTH,
+    LOCAL_LOG_INDEX,
+    NEXT_STATE_OUTPUT_DIM,
+    PHYSICAL_MEAN_DIM,
+    PHYSICAL_UNCERTAINTY_DIM,
+    POSITION_X,
+    POWER,
+    SHIELD_DELAY,
+    VELOCITY_X,
+    PhysicalNextState,
+    certain_uncertainty,
+    physical_means_from_state,
+    unknown_uncertainty,
+)
 
 
 class BeliefTracker:
-    """Fixed-shape, GPU-resident belief cache for one policy perspective."""
+    """Fixed-shape, GPU-resident physical belief for one policy perspective."""
 
     def __init__(
         self,
         num_envs: int,
         num_ships: int,
         decision_dt: float,
-        coordinator,
+        ship_config: ShipConfig,
         device: str | torch.device,
         observer_team: int = 0,
     ) -> None:
         self.num_envs = num_envs
         self.num_ships = num_ships
         self.decision_dt = float(decision_dt)
-        self.coordinator = coordinator
+        self.ship_config = ship_config
+        self.spec = PhysicalNextState.from_ship_config(ship_config)
         self.device = torch.device(device)
         if observer_team not in (0, 1):
             raise ValueError(f"observer_team must be 0 or 1, got {observer_team}")
         self.observer_team = observer_team
-        target_dim = coordinator.total_target_dimension
         self.valid = torch.zeros((num_envs, num_ships), dtype=torch.bool, device=self.device)
         self.age_steps = torch.zeros((num_envs, num_ships), dtype=torch.int32, device=self.device)
-        self.predicted_targets = torch.zeros(
-            (num_envs, num_ships, target_dim), dtype=torch.float32, device=self.device
+        #: The eleven physical means, in ``PHYSICAL_MEAN_NAMES`` order. Zero
+        #: wherever ``valid`` is false, which is what lets the observation
+        #: builder select against it without a second mask.
+        self.means = torch.zeros(
+            (num_envs, num_ships, PHYSICAL_MEAN_DIM), dtype=torch.float32, device=self.device
+        )
+        #: Thirteen log/unconstrained uncertainty terms, stated by the head
+        #: rather than accumulated here. Never-observed slots hold the ceiling.
+        self.uncertainty = torch.zeros(
+            (num_envs, num_ships, PHYSICAL_UNCERTAINTY_DIM),
+            dtype=torch.float32,
+            device=self.device,
         )
         self.action_belief = torch.full(
             (num_envs, num_ships, NUM_JOINT_ACTIONS),
             1.0 / NUM_JOINT_ACTIONS,
             device=self.device,
         )
-        # Accumulated variance of the belief, one channel per auxiliary
-        # *uncertainty* column -- one per scalar channel and one per harmonic
-        # pair, which is the head's own reporting granularity. Zero while a ship
-        # is in sight and summed over every forecast since it went out of it, so
-        # it grows with the hidden duration rather than reporting a single
-        # step's spread.
-        self.uncertainty = torch.zeros(
-            (num_envs, num_ships, coordinator.total_uncertainty_dimension),
-            dtype=torch.float32,
-            device=self.device,
-        )
-        self.team_id = torch.zeros((num_envs, num_ships), dtype=torch.int32, device=self.device)
-        self.radius = torch.zeros((num_envs, num_ships, 1), dtype=torch.float32, device=self.device)
+        # The two constant uncertainty vectors, materialized once. Built here
+        # rather than per call: ``torch.tensor([...], device="cuda")`` is a
+        # synchronizing host copy, and these are read every decision.
+        self._certain = torch.tensor(
+            certain_uncertainty(), dtype=torch.float32, device=self.device
+        ).view(1, 1, PHYSICAL_UNCERTAINTY_DIM)
+        self._unknown = torch.tensor(
+            unknown_uncertainty(), dtype=torch.float32, device=self.device
+        ).view(1, 1, PHYSICAL_UNCERTAINTY_DIM)
+        self.uncertainty.copy_(self._unknown.expand_as(self.uncertainty))
+        # Non-finite forecasts, accumulated on device and read once per update.
+        # The recursion is bounded by construction -- every unbounded channel
+        # either wraps or clamps -- so a nonzero count means the head emitted a
+        # NaN or an infinity, which is a signal rather than something repaired.
         self.clamp_events = torch.zeros((), dtype=torch.long, device=self.device)
 
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
     def reset(self, env_mask: torch.Tensor | None = None) -> None:
-        """Forget completed episodes without touching recurrent policy history elsewhere."""
+        """Forget completed episodes without touching recurrent policy history."""
 
         if env_mask is None:
             self.valid.zero_()
             self.age_steps.zero_()
-            self.predicted_targets.zero_()
-            self.uncertainty.zero_()
+            self.means.zero_()
+            self.uncertainty.copy_(self._unknown.expand_as(self.uncertainty))
             self.action_belief.fill_(1.0 / NUM_JOINT_ACTIONS)
-            self.team_id.zero_()
-            self.radius.zero_()
             return
         mask = env_mask.bool()
         self.valid[mask] = False
         self.age_steps[mask] = 0
-        self.predicted_targets[mask] = 0.0
-        self.uncertainty[mask] = 0.0
+        self.means[mask] = 0.0
+        self.uncertainty[mask] = self._unknown
         self.action_belief[mask] = 1.0 / NUM_JOINT_ACTIONS
-        self.team_id[mask] = 0
-        self.radius[mask] = 0.0
 
-    def slice_envs(self, idx: slice | torch.Tensor) -> "BeliefTracker":
+    def slice_envs(self, idx: slice | torch.Tensor) -> BeliefTracker:
         """Copy a subset into an independent tracker (used by evaluation agents)."""
 
         selected = BeliefTracker(
             int(self.valid[idx].shape[0]),
             self.num_ships,
             self.decision_dt,
-            self.coordinator,
+            self.ship_config,
             self.device,
             observer_team=self.observer_team,
         )
         selected.valid.copy_(self.valid[idx])
         selected.age_steps.copy_(self.age_steps[idx])
-        selected.predicted_targets.copy_(self.predicted_targets[idx])
+        selected.means.copy_(self.means[idx])
         selected.uncertainty.copy_(self.uncertainty[idx])
-        selected.team_id.copy_(self.team_id[idx])
         selected.action_belief.copy_(self.action_belief[idx])
-        selected.radius.copy_(self.radius[idx])
         return selected
 
-    @torch.no_grad()
-    def compose(self, perceived: YemongObservation) -> YemongObservation:
-        """Overlay recursive predictions on hidden, previously-seen ship slots.
+    # ------------------------------------------------------------------
+    # Composition
+    # ------------------------------------------------------------------
 
-        The input is a single team view.  No authoritative state is accepted by
-        this method, making it difficult to accidentally leak truth into a hidden
-        token. Enemy pending action comes only from this tracker's prior
-        prediction; local field gradient remains at its masked zero value.
+    @torch.no_grad()
+    def observe(self, state: TensorState, visible: torch.Tensor) -> ShipBeliefSource:
+        """Assimilate what is in sight and return this observer's legal source.
+
+        A ship that spawned this decision has its belief voided: it teleported,
+        so whatever was remembered about it describes somewhere it no longer is.
+        Under ``spawn_reveal`` the same decision also makes it visible, so truth
+        lands in the same call and the net effect is a clean re-acquisition; with
+        the reveal disabled the slot correctly falls back to "never seen".
         """
 
-        if perceived.pos.shape[0] != self.num_envs:
+        if visible.shape != (self.num_envs, self.num_ships):
             raise ValueError(
-                f"belief tracker has {self.num_envs} envs, observation has {perceived.pos.shape[0]}"
+                f"visibility must have shape {(self.num_envs, self.num_ships)}, "
+                f"got {tuple(visible.shape)}"
             )
-        n = self.num_ships
-        visible = perceived[ObsKey.VISIBLE][:, :n].bool()
-        hidden_belief = self.valid & ~visible
+        visible = visible.bool()
+        spawned = state.ship_spawned[:, : self.num_ships]
+        self.valid = (self.valid & ~spawned) | visible
+        valid_vector = self.valid.unsqueeze(-1)
 
-        # Cache only facts that were actually perceived. Identity and radius are
-        # not predicted, but become legitimate memory after first observation.
-        self.team_id = torch.where(visible, perceived[ObsKey.TEAM_ID][:, :n], self.team_id)
-        self.radius = torch.where(
-            visible.unsqueeze(-1), perceived[ObsKey.RADIUS][:, :n], self.radius
+        truth = physical_means_from_state(state, self.ship_config)[:, : self.num_ships]
+        self.means = torch.where(
+            valid_vector, torch.where(visible.unsqueeze(-1), truth, self.means), 0.0
+        )
+        # Seeing a ship settles it: the spread becomes the finite certainty
+        # floor, discarding whatever the forecast claimed. A slot nothing has
+        # ever observed carries the ceiling, not a zero -- a zero log sigma reads
+        # as "one unit of doubt", which is a confident claim about nothing.
+        self.uncertainty = torch.where(
+            visible.unsqueeze(-1),
+            self._certain,
+            torch.where(valid_vector, self.uncertainty, self._unknown),
         )
         self.age_steps = torch.where(
             visible,
             torch.zeros_like(self.age_steps),
-            torch.where(hidden_belief, self.age_steps + 1, torch.zeros_like(self.age_steps)),
+            torch.where(self.valid, self.age_steps + 1, torch.zeros_like(self.age_steps)),
         )
-        self.valid |= visible
-        # Seeing a ship settles it: the estimate is the observation, so whatever
-        # the forecast had accumulated is discarded rather than decayed.
-        self.uncertainty = torch.where(
-            visible.unsqueeze(-1), torch.zeros_like(self.uncertainty), self.uncertainty
+        # A slot with no history has no prediction to offer either, so its
+        # pending-command belief is the uniform distribution rather than a
+        # forecast about a ship this observer has never met.
+        self.action_belief = torch.where(valid_vector, self.action_belief, 1.0 / NUM_JOINT_ACTIONS)
+        return self.source(state)
+
+    def source(self, state: TensorState) -> ShipBeliefSource:
+        """This observer's remembered state, in the observation's own units."""
+
+        means = self.means
+        attitude = means[..., ATTITUDE : ATTITUDE + 1]
+        # Instant respawn means a remembered ship is always alive; without it,
+        # believed health is the only account of whether it still is.
+        alive = self.valid if state.num_zones > 0 else means[..., HEALTH] > ALIVE_HEALTH_EPS
+        return ShipBeliefSource(
+            pos=means[..., POSITION_X : POSITION_X + 2],
+            vel=means[..., VELOCITY_X : VELOCITY_X + 2],
+            att=torch.cat([torch.cos(attitude), torch.sin(attitude)], dim=-1),
+            ang_vel=means[..., ANGULAR_VELOCITY : ANGULAR_VELOCITY + 1],
+            shield_delay=means[..., SHIELD_DELAY : SHIELD_DELAY + 1],
+            health=means[..., HEALTH : HEALTH + 1],
+            power=means[..., POWER : POWER + 1],
+            cooldown=means[..., COOLDOWN : COOLDOWN + 1],
+            local_log_index=means[..., LOCAL_LOG_INDEX : LOCAL_LOG_INDEX + 1],
+            uncertainty=self.uncertainty,
+            action=self.action_belief,
+            time_since_observation=(self.age_steps.float() * self.decision_dt).unsqueeze(-1),
+            valid=self.valid,
+            alive=alive,
+            certain=self._certain,
         )
 
-        data = {key: value.clone() for key, value in perceived.items()}
-        # The belief the *encoder* reads, in target space and uncopied: for a
-        # predicted feature, target space is its input space, so these columns
-        # are substituted straight into the encoded input and the head's own
-        # output becomes the next step's input. A hidden ship's position is a
-        # Fourier moment whose magnitude states how sure the belief is, and that
-        # magnitude only survives if it never passes through a coordinate.
-        believed = torch.zeros(
-            (*data[ObsKey.BELIEF_VALID].shape, self.predicted_targets.shape[-1]),
-            dtype=torch.float32,
-            device=self.predicted_targets.device,
-        )
-        believed[:, :n] = self.predicted_targets
-        substitute = torch.zeros(
-            (*data[ObsKey.BELIEF_VALID].shape, 1),
-            dtype=torch.bool,
-            device=self.predicted_targets.device,
-        )
-        substitute[:, :n] = hidden_belief.unsqueeze(-1)
-        data[ObsKey.BELIEF_TARGETS] = believed
-        data[ObsKey.BELIEF_SUBSTITUTE] = substitute
-
-        # The decoded *point* below is kept for everything that is not the
-        # encoder: the renderer, the relational-bias geometry, evaluation. Those
-        # need a coordinate and can only have a point one. It is deliberately no
-        # longer what the trunk reads -- a decode puts every harmonic back on the
-        # unit circle, which reports maximum confidence whatever the belief
-        # actually said. Run the fixed-shape decode even when this batch has no
-        # hidden beliefs: avoiding a tensor-dependent Python branch keeps this
-        # path free of GPU synchronization and friendly to torch.compile.
-        raw = self.coordinator.decode_targets(self.predicted_targets)
-        decoded = {
-            ObsKey.POS: torch.cat([raw["position_x"], raw["position_y"]], dim=-1),
-            ObsKey.VEL: raw["velocity"],
-            ObsKey.ATT: raw["attitude"],
-            ObsKey.ANG_VEL: raw["angular_velocity"],
-            ObsKey.HEALTH: raw["health"],
-            ObsKey.SHIELD_DELAY: raw["shield_delay"].clamp_min(0),
-            ObsKey.POWER: raw["power"],
-            ObsKey.COOLDOWN: raw["cooldown"],
-            ObsKey.LOCAL_LOG_INDEX: raw["local_log_index"],
-        }
-        for key, belief_value in decoded.items():
-            if key not in data:
-                data[key] = perceived[key].clone()
-            belief_value = torch.nan_to_num(belief_value)
-            mask = hidden_belief.unsqueeze(-1)
-            data[key][:, :n] = torch.where(mask, belief_value, data[key][:, :n])
-
-        predicted_alive = torch.where(
-            perceived[ObsKey.GAME_MODE][:, -1, 0:1] > 0,
-            self.valid,
-            decoded[ObsKey.HEALTH].squeeze(-1) > ALIVE_HEALTH_EPS,
-        )
-        data[ObsKey.ALIVE][:, :n] = torch.where(
-            hidden_belief, predicted_alive, data[ObsKey.ALIVE][:, :n]
-        )
-        data[ObsKey.TEAM_ID][:, :n] = torch.where(
-            hidden_belief, self.team_id, data[ObsKey.TEAM_ID][:, :n]
-        )
-        data[ObsKey.RADIUS][:, :n] = torch.where(
-            hidden_belief.unsqueeze(-1), self.radius, data[ObsKey.RADIUS][:, :n]
-        )
-        pending = data[ObsKey.PREVIOUS_ACTION][:, :n]
-        enemy = self.team_id != self.observer_team
-        unknown_enemy = enemy & (pending.sum(-1) == 0)
-        data[ObsKey.PREVIOUS_ACTION][:, :n] = torch.where(
-            unknown_enemy.unsqueeze(-1),
-            self.action_belief,
-            pending,
-        )
-        data[ObsKey.LOCAL_INDEX_GRADIENT][:, :n] = torch.where(
-            hidden_belief.unsqueeze(-1),
-            torch.zeros_like(data[ObsKey.LOCAL_INDEX_GRADIENT][:, :n]),
-            data[ObsKey.LOCAL_INDEX_GRADIENT][:, :n],
-        )
-        data[ObsKey.OBJECT_TYPE][:, :n] = torch.where(
-            hidden_belief,
-            torch.full_like(data[ObsKey.OBJECT_TYPE][:, :n], int(ObjectType.SHIP)),
-            data[ObsKey.OBJECT_TYPE][:, :n],
-        )
-        # Ship tokens have no zone role. Five is the explicit NONE value;
-        # leaving the masked zero would falsely describe a Team-0 spawn.
-        data[ObsKey.ZONE_ROLE][:, :n] = torch.where(
-            hidden_belief,
-            torch.full_like(data[ObsKey.ZONE_ROLE][:, :n], 5),
-            data[ObsKey.ZONE_ROLE][:, :n],
-        )
-
-        data[ObsKey.BELIEF_VALID][:, :n] = self.valid
-        # Map objects are static and carry no belief, so their uncertainty stays
-        # zero; only the ship slots are written.
-        belief_uncertainty = torch.zeros(
-            (*data[ObsKey.BELIEF_VALID].shape, self.uncertainty.shape[-1]),
-            dtype=torch.float32,
-            device=self.uncertainty.device,
-        )
-        belief_uncertainty[:, :n] = self.uncertainty
-        data[ObsKey.BELIEF_UNCERTAINTY] = belief_uncertainty
-        data[ObsKey.TIME_SINCE_OBSERVATION][:, :n] = (
-            self.age_steps.float() * self.decision_dt
-        ).unsqueeze(-1)
-        return YemongObservation(data=data, bullets=perceived.bullets)
+    # ------------------------------------------------------------------
+    # Forecast
+    # ------------------------------------------------------------------
 
     @torch.no_grad()
     def advance(
         self,
-        current: YemongObservation,
-        scaled_prediction: torch.Tensor,
+        prediction: torch.Tensor,
         enemy_action_logits: torch.Tensor | None = None,
     ) -> None:
-        """Store the model's one-step forecast for the next call to ``compose``."""
+        """Store the head's one-decision forecast for the next ``observe``.
 
-        curr_targets = self.coordinator.get_target_vector(current)[:, : self.num_ships]
-        forecast = self.coordinator.apply_scaled_predictions(curr_targets, scaled_prediction)
-        expected = (self.num_envs, self.num_ships, NUM_JOINT_ACTIONS)
-        if enemy_action_logits is not None and enemy_action_logits.shape != expected:
+        The means move by the predicted physical deltas and the uncertainty
+        becomes the predicted uncertainty outright. Nothing accumulates: the head
+        saw the current spread as an input and stated the next one, so summing
+        forecasts would double-count what it already accounts for.
+        """
+
+        expected = (self.num_envs, self.num_ships, NEXT_STATE_OUTPUT_DIM)
+        if prediction.shape != expected:
             raise ValueError(
-                f"enemy_action_logits must have shape {expected}, got {enemy_action_logits.shape}"
+                f"prediction must have shape {expected}, got {tuple(prediction.shape)}"
+            )
+        action_expected = (self.num_envs, self.num_ships, NUM_JOINT_ACTIONS)
+        if enemy_action_logits is not None and enemy_action_logits.shape != action_expected:
+            raise ValueError(
+                f"enemy_action_logits must have shape {action_expected}, "
+                f"got {tuple(enemy_action_logits.shape)}"
             )
         if enemy_action_logits is None:
             self.action_belief.fill_(1.0 / NUM_JOINT_ACTIONS)
         else:
-            self.action_belief.copy_(F.softmax(enemy_action_logits.float(), dim=-1))
-        # A hidden ship's belief is an autoregressive rollout of the next-state
-        # head with nothing else bounding it, so a small bias compounds for as
-        # long as the ship stays unseen. Run 734 died that way: velocity error in
-        # the 30s+ hidden bucket went 99 -> 1178 px/s over ten updates and then
-        # overflowed, and the non-finite logits asserted inside multinomial.
-        # Variance accumulates while a ship stays unseen: one forecast's spread
-        # added per step, cleared by the next sighting in ``compose``. The head
-        # reports a per-step spread, so the belief's own uncertainty is the sum
-        # of them and not the latest one.
-        self.uncertainty = self.uncertainty + self.coordinator.uncertainty_variance(
-            scaled_prediction
-        )
+            self.action_belief = F.softmax(enemy_action_logits.float(), dim=-1)
 
-        raw = forecast.float()
-        # Counted against the *raw* forecast, before the replacement: nan_to_num
-        # maps an infinity onto the limit exactly, so a count taken afterwards
-        # reads zero for the one case that matters most. Accumulated on device
-        # and read once per update -- the guard must never bind on a working
-        # model, so a nonzero count is a signal rather than a repair, and
-        # counting it must not cost a host sync on the hot path.
-        #
-        # Deliberately not counting the unit-disk projection below. A moment
-        # slightly outside the disk is an ordinary thing for an imperfect head
-        # to emit, so counting it would make this guard bind constantly and stop
-        # meaning anything. The disk is what the representation admits; the
-        # limit is a guard against a runaway.
-        self.clamp_events += ((~torch.isfinite(raw)) | (raw.abs() > BELIEF_TARGET_LIMIT)).sum()
-        forecast = torch.nan_to_num(
-            raw,
-            nan=0.0,
-            posinf=BELIEF_TARGET_LIMIT,
-            neginf=-BELIEF_TARGET_LIMIT,
+        prediction = prediction.float()
+        # Counted against the raw forecast, before the replacement: a count taken
+        # after ``nan_to_num`` reads zero for the one case that matters most.
+        self.clamp_events += (~torch.isfinite(prediction)).sum()
+        prediction = torch.nan_to_num(prediction, nan=0.0, posinf=0.0, neginf=0.0)
+        valid_vector = self.valid.unsqueeze(-1)
+        self.means = torch.where(
+            valid_vector, self.spec.apply_means(self.means, prediction), self.means
         )
-        self.predicted_targets.copy_(self.coordinator.project_targets(forecast))
+        self.uncertainty = torch.where(
+            valid_vector, prediction[..., PHYSICAL_MEAN_DIM:], self.uncertainty
+        )
 
 
 class DualBeliefTracker:
@@ -325,14 +284,14 @@ class DualBeliefTracker:
         num_envs: int,
         num_ships: int,
         decision_dt: float,
-        coordinator,
+        ship_config: ShipConfig,
         device: str | torch.device,
     ) -> None:
         self.team0 = BeliefTracker(
-            num_envs, num_ships, decision_dt, coordinator, device, observer_team=0
+            num_envs, num_ships, decision_dt, ship_config, device, observer_team=0
         )
         self.team1 = BeliefTracker(
-            num_envs, num_ships, decision_dt, coordinator, device, observer_team=1
+            num_envs, num_ships, decision_dt, ship_config, device, observer_team=1
         )
 
     def reset(self, env_mask: torch.Tensor | None = None) -> None:
@@ -340,30 +299,91 @@ class DualBeliefTracker:
         self.team1.reset(env_mask)
 
     @torch.no_grad()
-    def compose(self, perceived: YemongObservation) -> YemongObservation:
-        if perceived.team1_data is None:
-            raise ValueError("dual belief tracking requires independent team observations")
-        team0 = self.team0.compose(perceived.for_team(0))
-        team1 = self.team1.compose(perceived.for_team(1))
-        return YemongObservation(
-            data=team0.data,
-            bullets=team0.bullets,
-            team1_data=team1.data,
-            team1_bullets=team1.bullets,
+    def observe(
+        self, state: TensorState, ship_visibility: torch.Tensor
+    ) -> tuple[ShipBeliefSource, ShipBeliefSource]:
+        """Assimilate both perspectives and return their sources, team 0 first.
+
+        ``ship_visibility`` is ``TeamVisibility.ship``, ``(B, 2, N)``.
+        """
+
+        return (
+            self.team0.observe(state, ship_visibility[:, 0]),
+            self.team1.observe(state, ship_visibility[:, 1]),
         )
 
     @torch.no_grad()
     def advance(
         self,
-        current: YemongObservation,
-        scaled_prediction_t0: torch.Tensor,
-        scaled_prediction_t1: torch.Tensor,
-        enemy_action_logits_t0: torch.Tensor,
-        enemy_action_logits_t1: torch.Tensor,
+        prediction_t0: torch.Tensor,
+        prediction_t1: torch.Tensor,
+        enemy_action_logits_t0: torch.Tensor | None = None,
+        enemy_action_logits_t1: torch.Tensor | None = None,
     ) -> None:
-        self.team0.advance(
-            current.for_team(0), scaled_prediction_t0, enemy_action_logits_t0
+        self.team0.advance(prediction_t0, enemy_action_logits_t0)
+        self.team1.advance(prediction_t1, enemy_action_logits_t1)
+
+
+def team_view(values: torch.Tensor, observer_team: int | torch.Tensor) -> torch.Tensor:
+    """Select one observer's slice of a ``(B, 2, ...)`` per-team tensor.
+
+    ``observer_team`` may be a ``(B,)`` tensor, for a policy that plays team 0 in
+    some environments and team 1 in others -- an ego-pass league opponent or a
+    tournament seat. Gathering rather than indexing is what lets such a caller
+    compose one view instead of one per seat.
+    """
+
+    if not isinstance(observer_team, torch.Tensor):
+        return values[:, observer_team]
+    index = observer_team.long().view(-1, 1, *([1] * (values.dim() - 2)))
+    return values.gather(1, index.expand(-1, 1, *values.shape[2:])).squeeze(1)
+
+
+def legal_policy_view(
+    tracker: BeliefTracker | None,
+    state: TensorState,
+    ship_config: ShipConfig,
+    visibility: TeamVisibility,
+    observer_team: int | torch.Tensor,
+    *,
+    num_ships: int,
+    include_bullets: bool = False,
+    pending_action: torch.Tensor | None = None,
+    builder=observation_from_state,
+) -> YemongObservation:
+    """Compose one observer's legal observation from truth and its own belief.
+
+    The one entry point every policy-bearing caller outside the trainer's own
+    rollout uses: evaluation agents, league opponents, interactive play. Each
+    gets a view built from the authoritative state and *its own* memory, rather
+    than a shared view patched afterwards -- two policies watching the same game
+    have different memories of it, and attributing one's to the other makes its
+    behaviour unreproducible from its own weights.
+
+    ``pending_action`` is the command physics will consume next, when the caller
+    queues decisions a step ahead. Without it the view carries the command
+    already spent, which is what ``state.prev_action`` holds.
+    """
+
+    visible = team_view(visibility.ship, observer_team)
+    source = None if tracker is None else tracker.observe(state, visible)
+    view = builder(
+        state,
+        ship_config,
+        None,
+        include_bullets,
+        visible,
+        None if visibility.bullet is None else team_view(visibility.bullet, observer_team),
+        observer_team,
+        source,
+    )
+    if pending_action is not None:
+        write_pending_action_view(
+            view.data[ObsKey.PREVIOUS_ACTION][:, :num_ships],
+            pending_action,
+            state.ship_team_id[:, :num_ships],
+            observer_team,
+            state.ship_spawned[:, :num_ships],
+            belief_action=None if source is None else source.action,
         )
-        self.team1.advance(
-            current.for_team(1), scaled_prediction_t1, enemy_action_logits_t1
-        )
+    return view

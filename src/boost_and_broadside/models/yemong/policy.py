@@ -62,30 +62,37 @@ from boost_and_broadside.runtime.actions import (
     encode_joint_action_unchecked,
 )
 from boost_and_broadside.train.rl.features import FeatureCoordinator
-
-# Log-variance bounds for the heteroscedastic predictions. The upper bound only
-# has to clear the widest label the objective actually sees; the lower bound is
-# the one that matters, because the Gaussian NLL is unbounded below as sigma
-# falls and would otherwise pay the head to claim certainty it does not have.
-# Clamping is deliberate rather than a smooth squash: its zero gradient at the
-# floor is what stops a collapse continuing.
-LOG_VAR_MIN = -10.0
-LOG_VAR_MAX = 10.0
+from boost_and_broadside.train.rl.physical_belief import (
+    PHYSICAL_MEAN_DIM,
+    PHYSICAL_UNCERTAINTY_DIM,
+    uncertainty_clamp_bounds,
+)
 
 
 class NextStateHead(nn.Module):
-    """Predicts next-state deltas and absolutes for each ship, with uncertainty.
+    """Predicts one decision of physical ship dynamics, with its uncertainty.
 
-    Output is ``[means | log variances]``: ``pred_dim`` means followed by
-    ``uncertainty_dim`` log variances, for the predictors that report one. The
-    means stay contiguous and first so every rollout consumer -- the belief
-    tracker above all -- goes on slicing by ``p_offset`` without knowing the
-    block behind them exists.
+    Output is ``[means | uncertainty]``: ``pred_dim`` normalized physical mean
+    deltas followed by ``uncertainty_dim`` log-sigma and correlation-latent
+    terms. The means stay contiguous and first so every rollout consumer -- the
+    belief plane above all -- can slice them off without knowing the block behind
+    them exists.
 
-    Both widths come from the FeatureCoordinator.
+    The uncertainty block is clamped per column. The log-sigma floor is the bound
+    that matters, because a Gaussian likelihood is unbounded below as sigma falls
+    and would otherwise pay the head to claim certainty it does not have; the
+    correlation latents clamp tighter still, so ``tanh`` of one never reaches
+    exactly one and makes the bivariate likelihood infinite. Clamping rather than
+    squashing is deliberate: the zero gradient at the bound is what stops a
+    collapse continuing. See ``train/rl/physical_belief.py`` for the layout.
     """
 
-    def __init__(self, d_model: int, pred_dim: int, uncertainty_dim: int = 0) -> None:
+    def __init__(
+        self,
+        d_model: int,
+        pred_dim: int = PHYSICAL_MEAN_DIM,
+        uncertainty_dim: int = PHYSICAL_UNCERTAINTY_DIM,
+    ) -> None:
         super().__init__()
         self.pred_dim = pred_dim
         self.uncertainty_dim = uncertainty_dim
@@ -95,14 +102,31 @@ class NextStateHead(nn.Module):
             nn.GELU(),
             nn.Linear(d_model * 2, pred_dim + uncertainty_dim),
         )
+        if uncertainty_dim:
+            lower, upper = uncertainty_clamp_bounds()
+            if len(lower) != uncertainty_dim:
+                raise ValueError(
+                    f"uncertainty_dim {uncertainty_dim} does not match the "
+                    f"{len(lower)}-column physical uncertainty layout"
+                )
+            # Buffers rather than a tensor built per forward: materializing a
+            # constant vector from a host list inside the forward copies from the
+            # host and drains the CUDA queue. Non-persistent, so the clamp is a
+            # property of the code rather than of a saved checkpoint.
+            self.register_buffer("uncertainty_min", torch.tensor(lower), persistent=False)
+            self.register_buffer("uncertainty_max", torch.tensor(upper), persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Args: x (..., D). Returns: (..., pred_dim + uncertainty_dim)."""
         out = self.net(x)
         if not self.uncertainty_dim:
             return out
-        mean, log_var = out[..., : self.pred_dim], out[..., self.pred_dim :]
-        return torch.cat([mean, log_var.clamp(LOG_VAR_MIN, LOG_VAR_MAX)], dim=-1)
+        mean, uncertainty = out[..., : self.pred_dim], out[..., self.pred_dim :]
+        bounded = uncertainty.clamp(
+            min=self.uncertainty_min.to(uncertainty.dtype),
+            max=self.uncertainty_max.to(uncertainty.dtype),
+        )
+        return torch.cat([mean, bounded], dim=-1)
 
 
 class TeamPMA(nn.Module):
@@ -305,11 +329,10 @@ class YemongPolicy(nn.Module):
             if predict_outcome
             else None
         )
-        self.next_state_head = NextStateHead(
-            D,
-            pred_dim=coordinator.total_prediction_dimension,
-            uncertainty_dim=coordinator.total_uncertainty_dimension,
-        )
+        # Fixed widths, not the feature pipeline's: the next-state model predicts
+        # physical dynamics, so its shape follows the physical layout rather than
+        # however many Fourier harmonics the world size happens to imply.
+        self.next_state_head = NextStateHead(D)
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
         # rather than fixed Sequential index, so inserting a non-Linear layer (e.g.

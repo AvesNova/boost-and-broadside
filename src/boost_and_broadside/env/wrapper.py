@@ -20,12 +20,15 @@ from boost_and_broadside.config import EnvConfig, MatchResult, RewardConfig, Shi
 from boost_and_broadside.env.cuda_graph import CapturedTick
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import (
+    DualBeliefSources,
     ObservationBuffers,
     YemongObservation,
     compile_perception,
+    compile_visibility,
     observation_from_state,
 )
 from boost_and_broadside.env.outcome import outcome_masks
+from boost_and_broadside.env.perception import TeamVisibility
 from boost_and_broadside.env.rewards import (
     REWARD_COMPONENT_NAMES,
     RewardComponent,
@@ -127,8 +130,10 @@ class YemongEnvWrapper:
         self._interactive_cuda_graph = interactive_cuda_graph
         self._captured_tick: CapturedTick | None = None
         self._perceive = compile_perception(perception_compile_mode)
+        self._visibility = compile_visibility(perception_compile_mode)
         self._perception_compiled = perception_compile_mode is not None
         self._interactive_perceive = compile_perception(interactive_perception_compile_mode)
+        self._interactive_visibility = compile_visibility(interactive_perception_compile_mode)
         self._interactive_perception_compiled = interactive_perception_compile_mode is not None
 
         # All components (group-scale multipliers update individual weights each training step).
@@ -195,8 +200,14 @@ class YemongEnvWrapper:
         self,
         options: dict[str, Any] | None = None,
         seed: int | None = None,
+        belief: DualBeliefSources | None = None,
     ) -> YemongObservation:
-        """Reset all environments and return initial observations."""
+        """Reset all environments and return initial observations.
+
+        A caller with a belief passes its freshly reset sources, so the opening
+        observation is composed the same way every later one is rather than by a
+        second pass over an already-built view.
+        """
         self.env.reset(options=options, seed=seed)
         if self._captured_tick is not None:
             self._captured_tick.load_state(self.env.state)
@@ -210,7 +221,7 @@ class YemongEnvWrapper:
         self._counted.fill_(True)
         self._zero_stat_accumulators()
         self._reset_perception(torch.ones(self.num_envs, dtype=torch.bool, device=self.device))
-        return self._get_obs()
+        return self._get_obs(belief)
 
     def mark_seeded_uncounted(self) -> None:
         """Withhold mid-horizon episodes from the episode statistics.
@@ -308,7 +319,8 @@ class YemongEnvWrapper:
         *,
         unlimited_resources: bool = False,
         auto_reset: bool = True,
-    ) -> tuple[YemongObservation, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+        observe: bool = True,
+    ) -> tuple[YemongObservation | None, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """Advance all environments and return (obs, rewards, dones, truncated, info).
 
         The wrapper snapshots health/alive before physics, computes rewards from
@@ -323,6 +335,10 @@ class YemongEnvWrapper:
             unlimited_resources: Protect and refill alive ships for interactive play.
             auto_reset: Reset completed environments before returning. Interactive
                 callers may disable this to render the actual terminal state.
+            observe: Compose the next observation before returning. A caller
+                whose belief must forecast first -- which needs a policy output
+                this step is running concurrently with -- passes False, then
+                calls ``perceive``/``observe`` itself once the two have joined.
 
         One call is one *decision*: the action is held for ``action_repeat``
         physics ticks. Physics, collisions and projectile integration always run
@@ -403,8 +419,13 @@ class YemongEnvWrapper:
             self._ep_wins.masked_fill_(done_n, 0.0)
             self._ship_age.masked_fill_(done_n, 0)
 
+        if observe:
+            observation = self._get_obs()
+        else:
+            self.perceive()
+            observation = None
         return (
-            self._get_obs(),
+            observation,
             comp_rewards,
             dones,
             truncated,
@@ -421,7 +442,9 @@ class YemongEnvWrapper:
         *,
         unlimited_resources: bool = False,
         auto_reset: bool = True,
-    ) -> tuple[YemongObservation, torch.Tensor, torch.Tensor, dict]:
+        belief: DualBeliefSources | None = None,
+        observe: bool = True,
+    ) -> tuple[YemongObservation | None, torch.Tensor, torch.Tensor, dict]:
         """Advance an interactive decision without reward or metric bookkeeping.
 
         This is intentionally separate from :meth:`step`: play/watch still use
@@ -471,8 +494,18 @@ class YemongEnvWrapper:
             self._reset_perception(done_mask)
             self._refresh_field_obs(done_mask)
 
+        if observe:
+            observation = self._get_obs_interactive(belief)
+        else:
+            self.last_visibility = self._interactive_visibility(
+                self.env.state,
+                self.ship_config,
+                self.env_config,
+                self.perceive_bullets,
+            )
+            observation = None
         return (
-            self._get_obs_interactive(),
+            observation,
             dones,
             truncated,
             {
@@ -646,32 +679,67 @@ class YemongEnvWrapper:
     # Observation construction
     # ------------------------------------------------------------------
 
-    def _get_obs(self) -> YemongObservation:
-        """Build the combined (ship + field) raw observation as YemongObservation.
+    def perceive(self) -> TeamVisibility:
+        """Compute this decision's team visibility and fold the fog diagnostics in.
+
+        Separate from :meth:`observe` because a belief has to assimilate truth
+        against this visibility before the observation that stands on it can be
+        composed -- and because the policy forward whose forecast the belief
+        needs runs concurrently with the physics, so the composition cannot be
+        queued alongside it.
+        """
+
+        self.last_visibility = self._visibility(
+            self.env.state,
+            self.ship_config,
+            self.env_config,
+            self.perceive_bullets,
+        )
+        self._accumulate_perception()
+        return self.last_visibility
+
+    def observe(self, belief: DualBeliefSources | None = None) -> YemongObservation:
+        """Build both teams' legal observations from the cached visibility.
 
         All values are in native units — no normalization. Feature chains in
         FeatureCoordinator handle all encoding (Fourier, symlog, one-hot, etc.).
         """
-        observation, self.last_visibility = self._perceive(
+        assert self.last_visibility is not None, "call perceive() before observe()"
+        observation, _ = self._perceive(
             self.env.state,
             self.ship_config,
             self.env_config,
             None if self._perception_compiled else self._obs_buffers,
             self.include_bullets,
             self.perceive_bullets,
+            belief,
+            self.last_visibility,
         )
-        self._accumulate_perception()
         return observation
 
-    def _get_obs_interactive(self) -> YemongObservation:
+    def _get_obs(self, belief: DualBeliefSources | None = None) -> YemongObservation:
+        """Perceive and compose in one call, for callers with nothing to overlap."""
+
+        self.perceive()
+        return self.observe(belief)
+
+    def _get_obs_interactive(self, belief: DualBeliefSources | None = None) -> YemongObservation:
         """Build play/watch observations without training diagnostic updates."""
-        observation, self.last_visibility = self._interactive_perceive(
+        self.last_visibility = self._interactive_visibility(
+            self.env.state,
+            self.ship_config,
+            self.env_config,
+            self.perceive_bullets,
+        )
+        observation, _ = self._interactive_perceive(
             self.env.state,
             self.ship_config,
             self.env_config,
             None if self._interactive_perception_compiled else self._obs_buffers,
             self.include_bullets,
             self.perceive_bullets,
+            belief,
+            self.last_visibility,
         )
         return observation
 

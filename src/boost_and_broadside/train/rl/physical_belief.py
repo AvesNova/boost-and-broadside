@@ -179,6 +179,48 @@ def physical_means_from_state(state: TensorState, ship_config: ShipConfig) -> to
     )
 
 
+def physical_means_from_observation(
+    observation, index_log_scale: float, num_ships: int | None = None
+) -> torch.Tensor:
+    """The ``(..., N, 11)`` physical state one observation's ship slots carry.
+
+    This is the legal view's own account of the world: truth for the ships the
+    observer owns or can see, its belief for the rest. It is what the next-state
+    label steps *from*, which is the whole point of composing the belief in
+    physical units -- there is no decode, and no second store to keep in step
+    with the observation the policy actually read.
+
+    ``index_log_scale`` undoes the observation's normalization of the log index,
+    returning the natural log the belief plane stores.
+    """
+
+    from boost_and_broadside.env.observation import ObsKey
+
+    def channel(key: ObsKey) -> torch.Tensor:
+        value = observation[key]
+        return value if num_ships is None else value[..., :num_ships, :]
+
+    attitude = channel(ObsKey.ATT)
+    position = channel(ObsKey.POS)
+    velocity = channel(ObsKey.VEL)
+    return torch.stack(
+        (
+            position[..., 0],
+            position[..., 1],
+            velocity[..., 0],
+            velocity[..., 1],
+            torch.atan2(attitude[..., 1], attitude[..., 0]),
+            channel(ObsKey.ANG_VEL)[..., 0],
+            channel(ObsKey.SHIELD_DELAY)[..., 0],
+            channel(ObsKey.HEALTH)[..., 0],
+            channel(ObsKey.POWER)[..., 0],
+            channel(ObsKey.COOLDOWN)[..., 0],
+            channel(ObsKey.LOCAL_LOG_INDEX)[..., 0] * index_log_scale,
+        ),
+        dim=-1,
+    )
+
+
 def physical_mean_deltas(
     current: torch.Tensor,
     next_: torch.Tensor,
