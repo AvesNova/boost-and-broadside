@@ -167,21 +167,21 @@ The executor must expose enough lifecycle information to neutralize a respawned 
 without synchronizing unrelated ships or environments. A vectorized in-place mask is
 preferred in the batched executor.
 
-## Perspective and private action state
+## Perspective and action-belief state
 
 The observation composer produces team-specific policy views from shared physical and
 runtime state:
 
 | Observed ship | Pending-action value |
 | --- | --- |
-| Own ship | Its actual `Q_t`, subject to normal own-ship validity rules |
-| Opponent, physically visible | Unknown/private |
-| Opponent, physically hidden | Unknown/private |
-| Own newly reset or respawned ship | Neutral |
+| Own/allied ship | Exact one-hot of its actual `Q_t` |
+| Ordinary opponent, visible or hidden | Stored 42-way prediction from the preceding decision |
+| Any newly reset or respawned ship | Exact null-command one-hot for both teams |
 
-Belief state must not reconstruct or retain an opponent's private pending action. A
-future visualization may independently expose raw team perception, belief, and
-omniscient truth, but debug rendering must not change the policy view.
+Belief state must never reconstruct or retain an opponent's authoritative pending command.
+It carries only the policy's stored 42-way prediction. A future visualization may
+independently expose raw team perception, belief, and omniscient truth, but debug rendering
+must not change the policy view.
 
 Team canonicalization and private-information masking are authoritative observation
 operations. Modes must not obtain one team's observation by copying another team's view
@@ -242,17 +242,12 @@ remains a compact `(power, turn, shoot)` triple, with one authoritative encode/d
 implementation at the policy boundary. PPO log probability and entropy are those of the
 joint distribution, not the sum of three independently sampled heads.
 
-The pending-action observation remains factorized because each component is a compact,
-interpretable feature. It has explicit observation-only private categories:
-
-| Component | Physical values | Private value | One-hot width |
-| --- | ---: | ---: | ---: |
-| Power | `0..2` | `3` | 4 |
-| Turn | `0..6` | `7` | 8 |
-| Shoot | `0..1` | `2` | 3 |
-
-Thus pending action contributes 15 input features. Private values must be rejected by
-the physical action decoder. Neutral remains physical triple `(0, 0, 0)`.
+The pending-action observation is a 42-float vector using the same joint-ID ordering.
+Own/allied commands are exact one-hot vectors. Ordinary enemy slots are zero in the raw
+legal view and the belief tracker fills them from the dedicated prediction head's prior
+softmax distribution. On initial spawn or respawn both teams instead receive the exact
+null-command one-hot vector. The physical runtime still consumes only the compact triple
+`(0, 0, 0)` for neutral; probability vectors never enter the actuator.
 
 This is an intentional policy/observation schema break. Checkpoints from the factored
 12-logit actor and the previous observation width are not silently compatible.
@@ -409,7 +404,7 @@ complete validation matrix is:
 11. Match, live Elo, interactive/watch, replay, feature-statistics, autoregressive,
     next-state, and noise-calibration adapters.
 12. Episode-stable league identity across rollout shards and two-generation drain.
-13. All 42 joint-action codec round trips; private categories rejected by physics.
+13. All 42 joint-action codec round trips; probability observations never enter physics.
 14. Cross-scheduler trace parity under deterministic seeds.
 
 Known current divergences should first be captured as strict expected failures or as

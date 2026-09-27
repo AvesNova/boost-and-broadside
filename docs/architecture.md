@@ -310,10 +310,11 @@ turn, and shoot: `3 * 7 * 2 = 42` logits per ship. A sampled joint ID is decoded
 compact `(power, turn, shoot)` triple consumed by physics. PPO log probability and entropy
 belong to this joint distribution, so the policy may model correlations between factors.
 
-Pending actions remain factorized in the observation because the three indices are compact
-and interpretable. Each factor has an observation-only private category (`3`, `7`, and `2`
-respectively); these values are distinct from neutral and are rejected by the physical
-action codec.
+Pending action is also represented as one 42-way vector per ship. Allied commands are exact
+one-hot vectors. Ordinary enemy slots are zero in the raw legal view and are filled by the
+belief tracker with the dedicated enemy-action head's prior prediction; initial spawn and
+respawn override both teams with the exact null-command one-hot vector. The prediction head
+has the same layer shape as the actor head but owns disjoint parameters.
 
 The output shape is `(B, N, 3)` action indices.
 

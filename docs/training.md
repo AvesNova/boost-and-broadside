@@ -110,13 +110,12 @@ later, which GAE handles through the value function.
 
 Two consequences worth knowing before touching the auxiliary losses:
 
-- The channel is `(B, tokens, 3)`, so spatial attention lets each team read its allies'
-  pending actions. Enemy pending actions use the explicit private triple `(3, 7, 2)`,
-  including when the enemy ship is visible. Private is therefore never confused with the
-  valid neutral command `(0, 0, 0)`.
-- One-step next-state prediction is therefore a *deterministic* function of the
-  observation (up to `bullet_spread`), not merely a short-horizon one. That is why it is
-  a weak representation signal and why longer-horizon prediction is the useful version.
+- The channel is `(B, tokens, 42)`. Allies are exact one-hot commands; ordinary enemy
+  slots carry the dedicated head's stored probability distribution, never authoritative
+  enemy action state. Spawn and respawn are exact null-command one-hots for both teams.
+- A prediction made from decision `t` is stored after action selection/commit and appears in
+  observation `t+1`. Its privileged cross-entropy target is the actual committed enemy action
+  from decision `t`, masked to alive enemy ships with `decision_committed=true`.
 
 A logical update proceeds as follows:
 
@@ -222,7 +221,7 @@ is the retained resource channel name; it carries shield level in Frontline.
 `shield_delay` is observed and predicted. Attitude Fourier features consume the
 angle `atan2(sin(att), cos(att))`, and its prediction target is those same features --
 position and attitude are predicted as absolute Fourier moments rather than phase shifts.
-Checkpoints use `joint_actions_private_pending_v17`; older weights require retraining.
+Checkpoints use `joint_pending_belief_v18`; older weights require retraining.
 
 Projectile damage rewards use actual shield removed, proportionally divided among
 simultaneous attackers. Raw impact attribution remains separate so a finishing hit
@@ -573,12 +572,12 @@ can omit to produce a policy whose inputs disagree with its weights.
 Three compatibility rules follow from that:
 
 - **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
-  perception, visibility masks, private enemy actions, field-core LOS, recursively predicted
-  hidden-enemy beliefs copied into the encoded input, belief validity, and observation age
-  are part of the learned
+  perception, visibility masks, 42-way pending-action beliefs, spawn/respawn null-action
+  reveals, field-core LOS, recursively predicted hidden-enemy beliefs copied into the encoded
+  input, belief validity, and observation age are part of the learned
   input contract. Radius is shared across object types and normalized by half the shorter
   world dimension; ship-local `grad(n)` remains explicit. Payloads carry
-  `observation_schema=joint_actions_private_pending_v17`. Successful firing globally
+  `observation_schema=joint_pending_belief_v18`. Successful firing globally
   reveals the shooter for the current sample, which is also a learned-input semantic.
   Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.
