@@ -25,7 +25,7 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
-from boost_and_broadside.env.observation import ObsKey
+from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.logging import match_metrics
@@ -821,7 +821,201 @@ class TestAuxPredictionMetrics:
         for visibility in ("visible", "hidden"):
             assert f"belief/{visibility}/position_px" in metrics
             assert f"belief/{visibility}/velocity_px_s" in metrics
+            assert f"belief/{visibility}/position_beyond_legal_frac" in metrics
         assert "belief/hidden_age_0.5_1s/health" in metrics
+
+
+class TestBeliefDiagnosticAlignment:
+    """Which instant each tensor in the belief diagnostic describes.
+
+    The diagnostic compares a forecast made at decision ``t`` against truth at
+    ``t+1``. A one-decision slip in that pairing would be nearly invisible:
+    position is the only channel whose per-decision change is large against the
+    head's own error, so the slip would inflate position by an order of
+    magnitude and leave every other channel looking healthy -- which was the
+    published hypothesis for a 22x anomaly in ``belief/visible/position_px``.
+
+    Measured rather than assumed, the pairing is correct. The anomaly was
+    lifecycle discontinuities leaking past the transition filters: on a rollout
+    of run 747's checkpoint, the production cell reads 0.208 px and the same
+    cell with the contiguity filter dropped reads 3.86 px, from 36 extra tokens
+    in 16,998. ``position_beyond_legal_frac`` exists to make that visible.
+
+    These tests pin the alignment with the forecast replaced by the believed
+    target vector itself, which makes the answer exact rather than statistical:
+    against truth at ``t`` the error is a quantisation floor, and against truth
+    at ``t+1`` it is real motion.
+    """
+
+    @staticmethod
+    def _rollout(tmp_path):
+        trainer = _make_trainer(
+            checkpoint_dir=str(tmp_path),
+            env_config=EnvConfig(
+                num_ships=4,
+                max_bullets=4,
+                max_episode_steps=400,
+                vision_range=600.0,
+                spawn_reveal=True,
+            ),
+        )
+        runtime = trainer._initialize_rollout_runtime()
+        slots = trainer._prepare_league_slots(runtime.num_recurrent)
+        trainer.buffer.reset()
+        trainer.buffer.store_initial_hidden(runtime.hidden)
+        # Exactly one buffer's worth: a partially filled buffer leaves zeroed
+        # steps whose decoded "truth" is nonsense, and the diagnostic has no
+        # reason to defend against a state production never reaches.
+        for _ in range(trainer.cfg.num_steps):
+            (
+                runtime.obs,
+                runtime.hidden,
+                runtime.hidden_t1,
+                runtime.action_state,
+                _terminated,
+            ) = trainer._collect_primary_step(
+                obs=runtime.obs,
+                beliefs=runtime.beliefs,
+                hidden=runtime.hidden,
+                hidden_t1=runtime.hidden_t1,
+                action_state=runtime.action_state,
+                num_envs=runtime.num_envs,
+                num_ships=runtime.num_ships,
+                num_recurrent=runtime.num_recurrent,
+                slots=slots,
+                env_stream=None,
+                net_stream=None,
+            )
+        final = trainer.coordinator.get_target_vector(trainer.wrapper.privileged_observation())[
+            :, : runtime.num_ships
+        ]
+        trainer.buffer.store_final_obs(runtime.obs, privileged_targets=final)
+        return trainer
+
+    @staticmethod
+    def _identity_position_error(trainer, shift: int):
+        """Mean position error of a no-change forecast against truth at t+shift.
+
+        Position is an *absolute* Fourier-moment prediction, so a zero
+        prediction vector decodes to the origin rather than to no change. The
+        identity forecast is the believed target vector itself.
+        """
+        buf = trainer.buffer
+        coordinator = trainer.coordinator
+        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
+        curr_obs = YemongObservation(
+            data={
+                key: (
+                    value[:T, :, :N].reshape(T * B, N, *value.shape[3:])
+                    if value.dim() > 3
+                    else value[:T, :, :N].reshape(T * B, N)
+                )
+                for key, value in buf.obs.items()
+            }
+        )
+        believed = coordinator.get_target_vector(curr_obs).reshape(T, B, N, -1)
+        forecast = coordinator.decode_targets(believed)
+        truth = coordinator.decode_targets(buf.privileged_targets[shift : shift + T])
+        world = torch.tensor(trainer.ship_config.world_size, device=trainer.device)
+        pred = torch.cat([forecast["position_x"], forecast["position_y"]], dim=-1)
+        true = torch.cat([truth["position_x"], truth["position_y"]], dim=-1)
+        delta = torch.remainder(pred - true + world / 2.0, world) - world / 2.0
+        error = delta.norm(dim=-1)
+        # Own ships are never hidden, so their believed state is truth exactly.
+        own = buf.obs[ObsKey.VISIBLE][:T, :, :N].bool() & (buf.obs[ObsKey.TEAM_ID][:T, :, :N] == 0)
+        assert int(own.sum()) > 0
+        return float((error * own).sum() / own.sum())
+
+    def test_the_believed_state_and_privileged_truth_share_an_index(self, tmp_path):
+        """``obs[t]`` and ``privileged_targets[t]`` describe the same instant."""
+
+        trainer = self._rollout(tmp_path)
+        same_instant = self._identity_position_error(trainer, shift=0)
+        one_later = self._identity_position_error(trainer, shift=1)
+
+        # All that separates them is bf16 target storage and a Fourier-ladder
+        # round trip. Ships move further than that in a decision.
+        assert same_instant < 0.1, f"obs[t] does not agree with truth[t]: {same_instant} px"
+        assert one_later > 5.0 * same_instant, (
+            f"a decision of motion is not visible: {one_later} px against {same_instant} px"
+        )
+
+    @staticmethod
+    def _visible_position_total(trainer) -> float:
+        buf = trainer.buffer
+        trainer._precompute_belief_diagnostics(buf, buf.privileged_targets)
+        total, _ = buf.belief_diagnostics["belief/visible/position_px"]
+        return float(total)
+
+    def test_the_diagnostic_scores_the_forecast_against_the_next_decision(self, tmp_path):
+        """The production pairing is forecast-at-``t`` against truth-at-``t+1``.
+
+        Pinned by which slices of the truth tensor the statistic responds to,
+        rather than by reading the arithmetic: the target of the last stored
+        decision is truth index ``T``, and truth index 0 is the state the first
+        forecast was *made from* and must never be scored against.
+        """
+
+        trainer = self._rollout(tmp_path)
+        buf = trainer.buffer
+        baseline = self._visible_position_total(trainer)
+        last = buf.num_steps
+
+        # Index 0 is read by nobody. Scrambling it must change nothing.
+        buf.privileged_targets[0] = buf.privileged_targets[0].roll(1, dims=1)
+        assert self._visible_position_total(trainer) == pytest.approx(baseline), (
+            "the diagnostic scores a forecast against the state it was made from"
+        )
+
+        # Index T is the last decision's target. Scrambling it must be felt.
+        buf.privileged_targets[last] = buf.privileged_targets[last].roll(1, dims=1)
+        assert self._visible_position_total(trainer) != pytest.approx(baseline), (
+            "the final decision's target is not being scored"
+        )
+
+    def test_a_leaked_teleport_shows_up_in_its_own_series(self, tmp_path):
+        """The series that explains an inflated mean rather than hiding it.
+
+        A teleport contributes thousands of pixels where an honest sample
+        contributes a fifth of one, so the mean alone cannot distinguish a
+        handful of leaked lifecycle discontinuities from a model that has
+        stopped working. Measured against an identity forecast, where the only
+        error large enough to cross the threshold *is* a discontinuity.
+        """
+
+        trainer = self._rollout(tmp_path)
+        buf = trainer.buffer
+        coordinator = trainer.coordinator
+        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
+        believed = coordinator.get_target_vector(
+            YemongObservation(
+                data={
+                    key: (
+                        value[:T, :, :N].reshape(T * B, N, *value.shape[3:])
+                        if value.dim() > 3
+                        else value[:T, :, :N].reshape(T * B, N)
+                    )
+                    for key, value in buf.obs.items()
+                }
+            )
+        ).reshape(T, B, N, -1)
+        buf.rollout_predictions = coordinator.compute_labels(believed, believed)
+
+        trainer._precompute_belief_diagnostics(buf, buf.privileged_targets)
+        clean_total, clean_count = buf.belief_diagnostics[
+            "belief/visible/position_beyond_legal_frac"
+        ]
+        assert float(clean_count) > 0
+        assert float(clean_total) == 0.0, "a contiguous decision cannot outrun a ship"
+
+        # Hand every environment another one's next state, and stop masking
+        # anything: exactly what an unfiltered respawn teleport looks like.
+        buf.transition_contiguous.fill_(True)
+        buf.terminated.fill_(False)
+        buf.privileged_targets[1] = buf.privileged_targets[1].roll(1, dims=0)
+        trainer._precompute_belief_diagnostics(buf, buf.privileged_targets)
+        leaked_total, _ = buf.belief_diagnostics["belief/visible/position_beyond_legal_frac"]
+        assert float(leaked_total) > 0.0, "a leaked teleport is invisible in the diagnostics"
 
 
 class TestLiveEloMetricNaming:
