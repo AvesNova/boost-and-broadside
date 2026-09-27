@@ -14,6 +14,7 @@ an omniscient world and every fog-dependent measurement taken through
 ``TensorEnv`` reads a game nobody is training on.
 """
 
+import pytest
 import torch
 
 from boost_and_broadside.config import EnvConfig, FrontlineConfig, ShipConfig
@@ -181,6 +182,55 @@ def test_the_wrapper_and_direct_step_agree_on_the_latch() -> None:
         assert torch.equal(wrapper.state.ship_spawned, direct.state.ship_spawned), (
             f"latch diverged on decision {step_index}"
         )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="the captured tick requires CUDA")
+def test_the_captured_interactive_tick_still_carries_the_latch() -> None:
+    """The third decision-level entry point, on the executor that replaces state.
+
+    ``step_interactive`` owns the latch in Python, but with
+    ``interactive_cuda_graph`` its physics runs through ``CapturedTick.replay``,
+    which rebinds ``env.state`` to fixed storages and copies every
+    ``TensorState`` field back from inside the captured graph. If
+    ``ship_spawned`` were captured by value rather than aliased, every replay
+    would overwrite the clear and the re-fill, and the play/watch path would
+    quietly become the omniscient world the direct path was.
+    """
+
+    device = torch.device("cuda")
+    config = EnvConfig(
+        num_ships=4,
+        max_bullets=0,
+        max_episode_steps=600,
+        vision_range=512.0,
+        spawn_reveal=True,
+        frontline=_FRONTLINE,
+    )
+    wrapper = YemongEnvWrapper(
+        2,
+        ShipConfig(world_size=FRONTLINE_WORLD_SIZE),
+        config,
+        REWARDS,
+        device,
+        interactive_cuda_graph=True,
+    )
+    wrapper.reset(seed=7)
+    assert wrapper.state.ship_spawned.all(), "a reset is a spawn for every ship"
+
+    action = torch.zeros((2, 4, 3), dtype=torch.int32, device=device)
+    for decision in range(4):
+        wrapper.step_interactive(action)
+        assert not wrapper.state.ship_spawned.any(), f"the latch stuck on decision {decision}"
+
+    slot = 0
+    _push_outside(wrapper.env, slot)
+    wrapper.step_interactive(action)
+    revealed = wrapper.state.ship_spawned
+    assert revealed[:, slot].all(), "the respawn was not latched through the replay"
+    assert not revealed[:, 1:].any(), "and nothing else was"
+
+    wrapper.step_interactive(action)
+    assert not wrapper.state.ship_spawned.any(), "one decision later the reveal is gone"
 
 
 class _ConstantController:
