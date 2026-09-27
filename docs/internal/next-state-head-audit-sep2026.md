@@ -233,7 +233,19 @@ the series has been pinned at 4.1–4.5 px since 30M steps while `next_state_vis
 kept improving: a constant offset, not a plateau. Test by logging the same statistic
 against `privileged_targets[t]` and `[t+2]` for one update.
 
+**Tested and refuted**, September 27:
+[`belief-diagnostic-alignment-sep2026.md`](belief-diagnostic-alignment-sep2026.md).
+The pairing is correct to 0.019 px. The inflation is the 0.2% of tokens that
+`transition_contiguous` removes, averaging 1726 px each — which is this
+document's own `enemy_visible_anyalive` cell at 3.55 px, dismissed above as "2.2
+px, not 4.5" from a different cell.
+
 ## Harness bug found while measuring this
+
+**Fixed**, September 27, in `TensorEnv.step`; see
+[`tests/env/test_spawn_lifecycle.py`](../../tests/env/test_spawn_lifecycle.py).
+The description below is of the defect as it stood at `30790f6`, and every
+number in this document was measured with the probe's own workaround for it.
 
 `TensorEnv.step()` never clears `state.ship_spawned`; only `YemongEnvWrapper` does,
 at the start of each decision ([wrapper.py:361](../../src/boost_and_broadside/env/wrapper.py#L361)).

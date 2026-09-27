@@ -2544,8 +2544,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pos_delta = torch.remainder(pred_pos - true_pos + world / 2.0, world) - world / 2.0
         pred_att = torch.nn.functional.normalize(forecast["attitude"], dim=-1)
         true_att = torch.nn.functional.normalize(truth["attitude"], dim=-1)
+        position_error = pos_delta.norm(dim=-1)
+        # No ship can move further than this in one decision, so on the visible
+        # cell the fraction beyond it is exactly the rate at which lifecycle
+        # discontinuities are leaking past the transition filters. That rate
+        # matters out of proportion to its size: a teleport contributes a
+        # thousand pixels where an honest sample contributes a fifth of one, so
+        # two tokens in a thousand are enough to set the mean. Reading the mean
+        # alone, an eighteen-fold inflation is indistinguishable from a model
+        # that has stopped working. On the belief cells it is not a leak but a
+        # legitimate measure of how far the recursion has drifted.
+        legal_travel = self.ship_config.max_speed * self.ship_config.dt
+        leak_threshold = 10.0 * legal_travel * self.env_config.action_repeat
         errors = {
-            "position_px": pos_delta.norm(dim=-1),
+            "position_px": position_error,
+            "position_beyond_legal_frac": (position_error > leak_threshold).float(),
             "velocity_px_s": (forecast["velocity"] - truth["velocity"]).norm(dim=-1),
             "attitude_rad": torch.acos((pred_att * true_att).sum(dim=-1).clamp(-1.0, 1.0)),
             "angular_velocity": (forecast["angular_velocity"] - truth["angular_velocity"])
