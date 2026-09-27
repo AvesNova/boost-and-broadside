@@ -258,11 +258,12 @@ class YemongPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
-        # A linear classifier is deliberately sufficient here: the shared trunk
-        # already supplies contextual nonlinear features, while a second actor-sized
-        # MLP would materialize a 2D activation for every ship in every PPO
-        # microbatch. Parameters remain fully independent from the actor head.
-        self.enemy_action_head = nn.Sequential(nn.Linear(D, TOTAL_ACTION_LOGITS))
+        self.enemy_action_head = nn.Sequential(
+            nn.Linear(D, hidden_dim),
+            nn.RMSNorm(hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
+        )
         # Local value head: per-ship embedding → all K components.
         # For indices in team_pma_k, outputs are overridden by value_head_win.
         self.value_head_local = nn.Sequential(
