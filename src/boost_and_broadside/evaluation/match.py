@@ -18,11 +18,9 @@ from typing import NamedTuple
 import torch
 
 from boost_and_broadside.config import EnvConfig, ShipConfig
-from boost_and_broadside.env.observation import (
-    YemongObservation,
-    perceived_observation_from_state,
-)
+from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.outcome import outcome_masks
+from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     agents_read_bullets,
@@ -35,7 +33,7 @@ from boost_and_broadside.runtime.actions import (
     PendingActionState,
     advance_autonomous_decision,
 )
-from boost_and_broadside.train.rl.belief import BeliefTracker
+from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
 
 
 class DecisionTrace(NamedTuple):
@@ -70,23 +68,23 @@ def agent_view(
     num_ships: int,
     as_team1: torch.Tensor,
 ) -> YemongObservation | None:
-    """Return the observation from ``agent``'s own side of the match.
+    """Canonicalize an already-legal view onto ``agent``'s own side.
 
     An ego_pass policy only ever learned to act as team 0, so wherever it plays
     team 1 it must see mirrored team IDs — ships and bullets alike. Agents that
     read the raw state rather than the observation (scripted, random) are
     unaffected, and a shared_pass policy was trained on both sides already.
+
+    Pure relabelling: the view handed in was composed for this agent's seats
+    already, so nothing here selects between perspectives or fills a channel.
     """
     if obs is None:
         if agent.kind == "policy":
             raise ValueError("policy agents require an observation")
         return None
-    if obs.team1_data is None and (agent.kind != "policy" or not agent_is_ego_pass(agent)):
-        return obs
-    selected = obs.select_team(as_team1)
     if agent.kind != "policy" or not agent_is_ego_pass(agent):
-        return selected
-    return selected.flip_team(num_ships, mask=as_team1)
+        return obs
+    return obs.flip_team(num_ships, mask=as_team1)
 
 
 class MatchRunner:
@@ -145,33 +143,48 @@ class MatchRunner:
                     int(active.numel()),
                     self.num_ships,
                     self.ship_config.dt * self.env.env_config.action_repeat,
-                    agent.agent.coordinator,
+                    self.ship_config,
                     self.device,
                 )
 
-    def observe(self) -> YemongObservation:
-        """Build the observation for the current state."""
-        observation, self.visibility = perceived_observation_from_state(
+    def observe(self) -> None:
+        """Compute this decision's perception.
+
+        There is no shared observation any more: each policy agent composes its
+        own legal view from the authoritative state and its own belief, because
+        two policies watching the same game remember it differently. Agents that
+        read the raw state need only the visibility.
+        """
+        self.visibility = team_visibility_from_state(
             self.env.state,
             self.ship_config,
             self.env.env_config,
-            include_bullets=self.include_bullets,
+            self.include_bullets,
         )
-        self.action_state.write_observation(
-            observation,
-            self.env.state.ship_team_id,
-            self.env.state.ship_spawned,
-            self.num_ships,
-        )
-        return observation
 
-    def actions(self, obs: YemongObservation) -> torch.Tensor:
+    def _policy_view(self, index: int, active: torch.Tensor) -> YemongObservation:
+        """One agent's legal view over the environments it plays, on its own seats."""
+
+        agent = self.agents[index]
+        as_team1 = self.team1_index[active] == index
+        view = legal_policy_view(
+            agent.belief,
+            self.env.state.slice_envs(active),
+            self.ship_config,
+            self.visibility.slice_envs(active),
+            as_team1.to(torch.int32),
+            num_ships=self.num_ships,
+            include_bullets=self.include_bullets,
+            pending_action=self.action_state.pending[active],
+        )
+        return agent_view(agent, view, self.num_ships, as_team1)
+
+    def actions(self) -> torch.Tensor:
         """Every ship's action, taken from the agent that controls its team."""
-        return self.select_actions(obs).action
+        return self.select_actions().action
 
     def select_actions(
         self,
-        obs: YemongObservation,
         *,
         trace_agents: frozenset[int] = frozenset(),
     ) -> DecisionTrace:
@@ -229,10 +242,7 @@ class MatchRunner:
                 if index in trace_agents:
                     traced_predictions[index] = None
                 continue
-            view = agent_view(
-                agent, obs.slice_envs(active), self.num_ships, self.team1_index[active] == index
-            )
-            view = agent.belief.compose(view)
+            view = self._policy_view(index, active)
             action, prediction, enemy_logits = get_actions(
                 agent,
                 view,
@@ -243,7 +253,7 @@ class MatchRunner:
                 return_pred_next=True,
                 return_enemy_action=True,
             )
-            agent.belief.advance(view, prediction, enemy_logits)
+            agent.belief.advance(prediction, enemy_logits)
             per_agent[index, active] = action.int()
             if index in trace_agents:
                 traced_observations[index] = view
@@ -260,7 +270,8 @@ class MatchRunner:
 
     def step(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Run one delayed autonomous decision. Returns (dones, truncated)."""
-        return self.advance(self.actions(self.observe()))
+        self.observe()
+        return self.advance(self.actions())
 
     def advance(self, selected_action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Advance physics under pending commands, then commit ``selected_action``.

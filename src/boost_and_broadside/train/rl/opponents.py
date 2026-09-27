@@ -14,11 +14,17 @@ from typing import NamedTuple
 
 import torch
 
-from boost_and_broadside.env.observation import YemongObservation
+from boost_and_broadside.env.observation import (
+    ObsKey,
+    YemongObservation,
+    observation_from_state,
+    write_pending_action_view,
+)
 from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker, DualBeliefTracker
+from boost_and_broadside.train.rl.physical_belief import physical_means_from_state
 from boost_and_broadside.train.rl.roster import RosterEntry
 
 
@@ -42,6 +48,9 @@ class LeagueSlot:
     policy: YemongPolicy | None
     hidden: torch.Tensor | None
     belief: BeliefTracker | None = None
+    #: This slot's own legal team-1 view, composed at the end of the previous
+    #: decision. Only slots with a belief carry one.
+    obs: YemongObservation | None = None
     active: torch.Tensor | None = None
     target_active: torch.Tensor | None = None
     retiring: bool = False
@@ -86,9 +95,13 @@ class PrimaryStepOutput(NamedTuple):
 
 
 class EnvironmentStepOutput(NamedTuple):
-    """Environment and policy outputs computed concurrently when CUDA is available."""
+    """Environment and policy outputs computed concurrently when CUDA is available.
 
-    obs: YemongObservation
+    No observation: composing one needs the belief's forecast, which needs the
+    policy output this step produced, so the view is built after the two streams
+    join rather than inside the environment's half.
+    """
+
     reward: torch.Tensor
     dones: torch.Tensor
     truncated: torch.Tensor
@@ -132,6 +145,55 @@ class OpponentMixin:
         """Return the observation perspective used by policy opponents."""
         team1 = obs_slice.for_team(1)
         return flip_team_obs(team1, num_ships) if self._ego_pass else team1
+
+    def _compose_league_views(
+        self,
+        slots: list[LeagueSlot],
+        action_state: PendingActionState,
+        num_ships: int,
+    ) -> None:
+        """Build each belief-bearing league slot's own legal team-1 view.
+
+        A slot with its own belief cannot reuse the live policy's team-1 view:
+        that view was composed against the *trainee's* memory of the
+        battlefield, and this opponent is a different policy whose forecasts and
+        sightings are its own. Both views are team-1 legal, so sharing one would
+        not leak anything -- it would attribute the wrong memory to the wrong
+        player, which makes the opponent's behaviour unreproducible from its own
+        weights.
+
+        Slots without a belief are the shared-pass configuration, which has no
+        fog and therefore nothing observer-specific to compose; they keep
+        slicing the shared view.
+        """
+
+        for slot in slots:
+            if slot.policy is None or slot.belief is None:
+                continue
+            state = slice_state(self.wrapper.env.state, slot.start, slot.end)
+            visibility = self.wrapper.last_visibility.ship[slot.start : slot.end, 1]
+            bullets = self.wrapper.last_visibility.bullet
+            source = slot.belief.observe(state, visibility)
+            view = observation_from_state(
+                state,
+                self.ship_config,
+                include_bullets=self.wrapper.include_bullets,
+                ship_visibility=visibility,
+                bullet_visibility=(None if bullets is None else bullets[slot.start : slot.end, 1]),
+                perspective_team=1,
+                belief=source,
+            )
+            # The command physics will consume next, rather than the one already
+            # spent, exactly as the shared view carries it.
+            write_pending_action_view(
+                view.data[ObsKey.PREVIOUS_ACTION][:, :num_ships],
+                action_state.pending[slot.start : slot.end],
+                state.ship_team_id[:, :num_ships],
+                observer_team=1,
+                spawn_revealed=state.ship_spawned[:, :num_ships],
+                belief_action=source.action,
+            )
+            slot.obs = flip_team_obs(view, num_ships) if self._ego_pass else view
 
     def _combine_actions(
         self,
@@ -430,16 +492,22 @@ class OpponentMixin:
                 slot_actions.append(None)
                 continue
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                obs_slot = self._opponent_obs(slice_obs(obs, slot.start, slot.end), num_ships)
-                if slot.belief is not None:
-                    obs_slot = slot.belief.compose(obs_slot)
+                # A slot with a belief reads the view composed for it at the end
+                # of the previous decision. It cannot be composed here: the
+                # environment step is running concurrently on another stream, so
+                # ``env.state`` is mid-flight.
+                obs_slot = (
+                    slot.obs
+                    if slot.belief is not None
+                    else self._opponent_obs(slice_obs(obs, slot.start, slot.end), num_ships)
+                )
                 action, _, _, prediction, enemy_logits, slot.hidden = (
                     slot.policy.get_action_and_value(
                         obs_slot, slot.hidden, return_enemy_action=True
                     )
                 )
                 if slot.belief is not None:
-                    slot.belief.advance(obs_slot, prediction, enemy_logits)
+                    slot.belief.advance(prediction, enemy_logits)
             slot_actions.append(action)
 
         return RolloutNetworkOutput(
@@ -508,12 +576,11 @@ class OpponentMixin:
     ) -> EnvironmentStepOutput:
         """Advance the environment and policy, overlapping them on CUDA streams."""
         if env_stream is None:
-            next_obs, reward, dones, truncated, info = self.wrapper.step(
-                action_state.applied_action()
+            _, reward, dones, truncated, info = self.wrapper.step(
+                action_state.applied_action(), observe=False
             )
             network = self._rollout_network_forwards(*network_args)
             return EnvironmentStepOutput(
-                next_obs,
                 reward,
                 dones,
                 truncated,
@@ -525,15 +592,14 @@ class OpponentMixin:
         env_stream.wait_stream(torch.cuda.current_stream())
         net_stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(env_stream):
-            next_obs, reward, dones, truncated, info = self.wrapper.step(
-                action_state.applied_action()
+            _, reward, dones, truncated, info = self.wrapper.step(
+                action_state.applied_action(), observe=False
             )
         with torch.cuda.stream(net_stream):
             network = self._rollout_network_forwards(*network_args)
         torch.cuda.current_stream().wait_stream(env_stream)
         torch.cuda.current_stream().wait_stream(net_stream)
         return EnvironmentStepOutput(
-            next_obs,
             reward,
             dones,
             truncated,
@@ -617,9 +683,9 @@ class OpponentMixin:
         # the step: ``reset_envs`` reshuffles slot-to-team assignment, and these
         # actions were selected under the pre-step one.
         team_id = self.wrapper.env.state.ship_team_id[:, :num_ships]
-        privileged_targets = self.coordinator.get_target_vector(
-            self.wrapper.privileged_observation()
-        )[:, :num_ships]
+        privileged_means = physical_means_from_state(self.wrapper.env.state, self.ship_config)[
+            :, :num_ships
+        ]
         scripted = self._scripted_step_outputs(slots)
         network_args = (obs, hidden, hidden_t1, num_ships, num_recurrent, slots)
         step = self._step_environment_and_network(
@@ -631,15 +697,6 @@ class OpponentMixin:
             action,
             step.actuator_contiguous,
             done_any,
-        )
-        # Re-read after the step: ``step.obs`` describes the post-reset state, and
-        # a reset reshuffles team assignment, so the privacy mask has to match the
-        # observation it is being written into rather than the pre-step layout.
-        action_state.write_observation(
-            step.obs,
-            self.wrapper.env.state.ship_team_id[:, :num_ships],
-            self.wrapper.env.state.ship_spawned[:, :num_ships],
-            num_ships,
         )
         self.buffer.add(
             obs=obs,
@@ -653,31 +710,40 @@ class OpponentMixin:
             expert_probs=scripted.expert_probs,
             terminated=done_any,
             transition_contiguous=step.transition_contiguous,
-            privileged_targets=privileged_targets,
-            # Means only: the buffer feeds belief diagnostics, which compare
-            # forecasts against truth and have no use for the spread.
-            scaled_predictions=step.network.pred_next_t0[
-                ..., : self.coordinator.total_prediction_dimension
-            ],
+            privileged_means=privileged_means,
+            scaled_predictions=step.network.pred_next_t0,
         )
 
-        hidden, hidden_t1 = self._reset_primary_hidden(
-            step.network, done_any, num_recurrent, slots
-        )
+        hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)
         self._advance_league_replacements(slots, done_any)
+        # Belief before observation, in that order and only now: the forecast is
+        # this decision's policy output, which the environment step ran
+        # concurrently with, so the composition cannot be queued alongside the
+        # physics. ``reset`` precedes assimilation so a finished episode's memory
+        # never reaches the view built from its successor's opening state.
         if beliefs is not None:
             beliefs.advance(
-                obs,
                 step.network.pred_next_t0,
                 step.network.pred_next_t1,
                 step.network.enemy_action_logits_t0,
                 step.network.enemy_action_logits_t1,
             )
             beliefs.reset(done_any)
-            next_obs = beliefs.compose(step.obs)
+            sources = beliefs.observe(self.wrapper.env.state, self.wrapper.last_visibility.ship)
         else:
-            next_obs = step.obs
-            next_obs = step.obs
+            sources = None
+        next_obs = self.wrapper.observe(sources)
+        self._compose_league_views(slots, action_state, num_ships)
+        # Re-read after the step: ``next_obs`` describes the post-reset state, and
+        # a reset reshuffles team assignment, so the privacy mask has to match the
+        # observation it is being written into rather than the pre-step layout.
+        action_state.write_observation(
+            next_obs,
+            self.wrapper.env.state.ship_team_id[:, :num_ships],
+            self.wrapper.env.state.ship_spawned[:, :num_ships],
+            num_ships,
+            belief_action=None if sources is None else (sources[0].action, sources[1].action),
+        )
         self._refresh_opponent_team_flags(done_any)
         self._global_step += num_envs
         return PrimaryStepOutput(

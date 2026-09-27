@@ -32,6 +32,27 @@ from boost_and_broadside.train.rl.checkpoint_schema import (
     ATTITUDE_FOURIER_FREQUENCIES,
     position_fourier_frequencies,
 )
+from boost_and_broadside.train.rl.physical_belief import (
+    CORRELATION_COLUMNS,
+    LOG_SIGMA_MAX,
+    PHYSICAL_UNCERTAINTY_DIM,
+)
+
+
+def _uncertainty_input_scales() -> list[float]:
+    """Per-column divisors for the thirteen uncertainty channels.
+
+    The log sigmas divide by their own clamp bound, so the encoder sees the full
+    range of what the head can say as ``[-1, 1]``. The correlation latents are
+    left alone: they feed a ``tanh`` whose interesting range is a few units
+    wide, and scaling them down by the sigma bound would flatten it.
+    """
+
+    scales = [LOG_SIGMA_MAX] * PHYSICAL_UNCERTAINTY_DIM
+    for column in CORRELATION_COLUMNS:
+        scales[column] = 1.0
+    return scales
+
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -1608,9 +1629,15 @@ def build_standard_coordinator(
             Identity(),
             scope=FeatureScope.BOUNDARY,
         ),
-        # How far the belief has drifted, as the head's own accumulated variance
-        # per predicted channel. Symlog because it spans orders of magnitude
-        # between a ship in sight and one unseen for a minute.
+        # How uncertain the belief is, as the next-state head's own thirteen
+        # terms: a log sigma per channel plus one correlation latent for position
+        # and one for velocity. Already in log/unconstrained form, so the input
+        # encoding is a plain division that lands the clamped range in [-1, 1] --
+        # a symlog of a log would compress twice and flatten the difference
+        # between a ship in sight and one unseen for a minute, which is the whole
+        # signal. The correlation latents keep their own scale: they are not
+        # logs, and dividing them by the sigma bound would shrink a saturating
+        # tanh input to noise.
         #
         # ``time_since_observation`` says only how long it has been; this says
         # what that cost, which is the quantity a policy needs to decide whether
@@ -1618,8 +1645,8 @@ def build_standard_coordinator(
         # property of the estimate, not a thing to forecast.
         Feature(
             "belief_uncertainty",
-            Accessor(ObsKey.BELIEF_UNCERTAINTY),
-            Symlog(),
+            Accessor(ObsKey.BELIEF_UNCERTAINTY, absent_width=PHYSICAL_UNCERTAINTY_DIM),
+            Normalize(scales=_uncertainty_input_scales()),
             Identity(),
             scope=FeatureScope.SHIP,
         ),
@@ -1660,22 +1687,6 @@ def build_standard_coordinator(
 
     if local_presence:
         features.append(LocalPresenceFeature(ship_config))
-
-    # ``belief_uncertainty`` reads one channel per uncertainty column the
-    # predictors above declare, and that count now follows the world size --
-    # position contributes one per harmonic, and the harmonic count comes from
-    # ``position_fourier_frequencies``. So the width cannot be a module constant
-    # the way it was when a phase predictor reported one number per feature
-    # regardless of basis.
-    #
-    # Rather than restate the arithmetic somewhere a second time and let the two
-    # drift, probe a coordinator over just the predicted features -- none of
-    # which depends on this one -- and ask it. One authority, resolved at
-    # construction.
-    probe = FeatureCoordinator([f for f in features if f.predictor])
-    for feature in features:
-        if feature.name == "belief_uncertainty":
-            feature.accessor.absent_width = probe.total_uncertainty_dimension
 
     return FeatureCoordinator(features)
 

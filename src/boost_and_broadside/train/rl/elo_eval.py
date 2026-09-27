@@ -53,8 +53,8 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import EloEvalConfig, EnvConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import (
-    YemongObservation,
-    compile_perception,
+    compile_observation,
+    compile_visibility,
 )
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.evaluation.agents import (
@@ -69,7 +69,7 @@ from boost_and_broadside.runtime.actions import (
     PendingActionState,
     advance_autonomous_decision,
 )
-from boost_and_broadside.train.rl.belief import BeliefTracker
+from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
 
 _ELO_RATING_SCALE = 400.0
 
@@ -240,7 +240,9 @@ class EloEvaluator:
         # The evaluator builds its observation without reusable buffers, which
         # makes the builder a pure function of the state and so the one
         # perception path that can be compiled. Worth 4.84x on this batch.
-        self._perceive = compile_perception(compile_mode if device_type == "cuda" else None)
+        mode = compile_mode if device_type == "cuda" else None
+        self._visibility = compile_visibility(mode)
+        self._build_view = compile_observation(mode)
         self.env.state.step_count.random_(0, env_config.max_episode_steps)
         # Episodes seeded mid-horizon are too short to resolve, so their forced
         # truncation would score as a draw. They stay unrated until they recycle.
@@ -397,38 +399,58 @@ class EloEvaluator:
         self._init_belief(self.float_opp_agent, size)
         self._init_belief(self.float_pro_agent, size)
 
-    def _init_belief(self, agent: ResolvedAgent, num_envs: int) -> None:
-        """Attach the policy-side point estimate for one evaluation stream."""
+    def _init_belief(self, agent: ResolvedAgent, num_envs: int, observer_team: int = 0) -> None:
+        """Attach the policy-side physical belief for one evaluation stream."""
 
         agent.belief = BeliefTracker(
             num_envs,
             self.num_ships,
             self.ship_config.dt * self.env.env_config.action_repeat,
-            agent.agent.coordinator,
+            self.ship_config,
             self.device,
+            observer_team=observer_team,
         )
 
     def _policy_actions(
         self,
         agent: ResolvedAgent,
-        perceived: YemongObservation,
-        state,
-        num_envs: int,
+        lo: int,
+        hi: int,
+        observer_team: int,
     ) -> torch.Tensor:
-        """Compose, act from, and recursively advance one policy's belief."""
+        """Compose one policy's own legal view, act from it, and advance its belief.
 
-        view = agent.belief.compose(perceived)
+        Each rated policy gets its own build. Two policies watching the same game
+        remember it differently, and a shared view would hand one player the
+        other's memory -- both are legally sourced, so nothing leaks, but the
+        opponent's behaviour would stop being a function of its own weights.
+        """
+
+        state = self.env.state.slice_envs(slice(lo, hi))
+        view = legal_policy_view(
+            agent.belief,
+            state,
+            self.ship_config,
+            self.visibility.slice_envs(slice(lo, hi)),
+            observer_team,
+            num_ships=self.num_ships,
+            include_bullets=self.include_bullets,
+            pending_action=self.action_state.pending[lo:hi],
+            builder=self._build_view,
+        )
+        if observer_team == 1 and self.ego_pass:
+            view = view.flip_team(self.num_ships)
         action, prediction, enemy_logits = get_actions(
             agent,
             view,
             state,
-            num_envs,
+            hi - lo,
             self.num_ships,
             self.device,
             return_pred_next=True,
             return_enemy_action=True,
         )
-        agent.belief.advance(view, prediction, enemy_logits)
+        agent.belief.advance(prediction, enemy_logits)
         return action.long()
 
     def _build_ladder_agents(self) -> None:
@@ -572,14 +594,8 @@ class EloEvaluator:
     # Stepping
     # ------------------------------------------------------------------
 
-    def _opponent_obs(self, obs: YemongObservation, lo: int, hi: int) -> YemongObservation:
-        """Return the team-1 perspective for policy opponents in envs [lo, hi)."""
-        sliced = obs.slice_envs(slice(lo, hi)).for_team(1)
-        return sliced.flip_team(self.num_ships) if self.ego_pass else sliced
-
     def _anchor_actions(
         self,
-        obs: YemongObservation,
         lo: int,
         hi: int,
         agents: list[ResolvedAgent | None],
@@ -633,12 +649,7 @@ class EloEvaluator:
         for index, (spec, agent) in enumerate(zip(self._anchor_specs, agents, strict=True)):
             if spec.is_stateless:
                 continue
-            policy_action = self._policy_actions(
-                agent,
-                self._opponent_obs(obs, lo, hi),
-                state,
-                size,
-            )
+            policy_action = self._policy_actions(agent, lo, hi, 1)
             assigned = (idx == index).view(-1, 1, 1)
             # Written unconditionally rather than behind an ``.any()`` test: the
             # check would force a device sync every step to save a masked write.
@@ -648,23 +659,13 @@ class EloEvaluator:
         assert action is not None, "the evaluator needs at least one anchor"
         return action
 
-    def _compute_team_actions(self, obs: YemongObservation) -> tuple[torch.Tensor, torch.Tensor]:
+    def _compute_team_actions(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (team0, team1) actions, each (5·size, N, 3), for one eval step."""
         size = self.matchup_size
         state = self.env.state
 
-        action_live = self._policy_actions(
-            self.live_agent,
-            obs.slice_envs(slice(0, 4 * size)),
-            state,
-            4 * size,
-        )  # (4·size, N, 3)
-        action_avg = self._policy_actions(
-            self.avg_agent,
-            self._opponent_obs(obs, 3 * size, 4 * size),
-            state,
-            size,
-        )
+        action_live = self._policy_actions(self.live_agent, 0, 4 * size, 0)  # (4·size, N, 3)
+        action_avg = self._policy_actions(self.avg_agent, 3 * size, 4 * size, 1)
 
         if self.scripted_agent is not None:
             action_scripted = get_actions(
@@ -679,22 +680,12 @@ class EloEvaluator:
         else:  # idle slot — outcomes are never scored
             action_scripted = self._random_actions(size)
 
-        action_anchor_live = self._anchor_actions(obs, 0, size, self._anchor_agents_live)
+        action_anchor_live = self._anchor_actions(0, size, self._anchor_agents_live)
         if self.float_pro_agent is not None:
-            action_float_opp = self._policy_actions(
-                self.float_opp_agent,
-                self._opponent_obs(obs, size, 2 * size),
-                state,
-                size,
-            )
-            action_float_pro = self._policy_actions(
-                self.float_pro_agent,
-                obs.slice_envs(slice(4 * size, 5 * size)),
-                state,
-                size,
-            )
+            action_float_opp = self._policy_actions(self.float_opp_agent, size, 2 * size, 1)
+            action_float_pro = self._policy_actions(self.float_pro_agent, 4 * size, 5 * size, 0)
             action_anchor_float = self._anchor_actions(
-                obs, 4 * size, 5 * size, self._anchor_agents_float
+                4 * size, 5 * size, self._anchor_agents_float
             )
         else:
             # Fallback: slot 1 plays the random anchor (extra live rating games),
@@ -729,20 +720,17 @@ class EloEvaluator:
 
         with torch.no_grad():
             state = self.env.state
-            obs, self.visibility = self._perceive(
+            # Perception once; every rated policy then composes its own legal
+            # view against it from its own belief. There is no shared observation
+            # to patch.
+            self.visibility = self._visibility(
                 state,
                 self.ship_config,
                 self.env.env_config,
-                include_bullets=self.include_bullets,
-            )
-            self.action_state.write_observation(
-                obs,
-                state.ship_team_id,
-                state.ship_spawned,
-                self.num_ships,
+                self.include_bullets,
             )
             with torch.autocast("cuda", dtype=torch.bfloat16):
-                action_team0, action_team1 = self._compute_team_actions(obs)
+                action_team0, action_team1 = self._compute_team_actions()
                 selected_action = merge_team_actions(action_team0, action_team1, state.ship_team_id)
                 dones, truncated, _ = advance_autonomous_decision(
                     self.env,

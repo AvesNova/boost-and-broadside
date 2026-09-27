@@ -12,6 +12,8 @@ divergence charts, and the markdown that links them — is a rendering contract 
 ``bnb publish``, so a changed figure never means a replayed episode.
 """
 
+import math
+
 import numpy as np
 import torch
 
@@ -29,8 +31,12 @@ from boost_and_broadside.evaluation.environment import (
     resolve_evaluation_environment,
 )
 from boost_and_broadside.evaluation.match import MatchRunner
-from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
+from boost_and_broadside.evaluation.next_state import means_to_observation
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
+from boost_and_broadside.train.rl.physical_belief import (
+    PhysicalNextState,
+    physical_means_from_observation,
+)
 
 History = list[dict[str, torch.Tensor]]
 
@@ -135,6 +141,8 @@ def run_ar_report_mode(
         N,
     )
     runner.init_hidden()
+    next_state = PhysicalNextState.from_ship_config(ship_config)
+    index_log_scale = 2.0 * math.log(ship_config.field_index_step)
 
     history_sim: History = []
     actions_sim = []
@@ -148,14 +156,14 @@ def run_ar_report_mode(
         )
         hidden0_before = agent0.hidden.clone() if agent0.hidden is not None else None
         hidden1_before = agent1.hidden.clone() if agent1.hidden is not None else None
-        policy_obs = runner.observe()
-        selection = runner.select_actions(policy_obs, trace_agents=frozenset({0, 1}))
+        runner.observe()
+        selection = runner.select_actions(trace_agents=frozenset({0, 1}))
         actions_sim.append(selection.action.clone())
 
         if init_obs is None:
             # AR replay is anchored to the exact model input used for the first
             # real decision, including belief and the neutral pending queue.
-            first_view = selection.observations.get(0, policy_obs.for_team(0))
+            first_view = selection.observations[0]
             init_obs = _clone_observation(first_view)
             init_hidden0 = hidden0_before
             init_hidden1 = hidden1_before
@@ -195,6 +203,8 @@ def run_ar_report_mode(
         N,
         actions_sim,
         True,
+        next_state,
+        index_log_scale,
     )
 
     print("Running AR Rollout (Open Loop)...")
@@ -208,6 +218,8 @@ def run_ar_report_mode(
         N,
         actions_sim,
         False,
+        next_state,
+        index_log_scale,
     )
 
     store = store or ArtifactStore(checkpoint_root=checkpoint_dir)
@@ -303,6 +315,8 @@ def _run_ar(
     N: int,
     forced_actions: list[torch.Tensor] | None,
     is_closed_loop: bool,
+    next_state: PhysicalNextState,
+    index_log_scale: float,
 ) -> History:
     obs = _clone_observation(init_obs)
     if agent0.hidden is not None:
@@ -310,15 +324,8 @@ def _run_ar(
     if agent1.hidden is not None:
         agent1.hidden = init_hidden1.clone()
 
-    # Get coordinator from whichever agent is a policy (prefer agent0)
-    coordinator = None
-    if agent0.kind == "policy":
-        coordinator = agent0.agent.coordinator
-    elif agent1.kind == "policy":
-        coordinator = agent1.agent.coordinator
-
     history: History = []
-    curr_ship_targets = coordinator.get_target_vector(obs)[:, :N] if coordinator else None
+    curr_means = physical_means_from_observation(obs, index_log_scale, num_ships=N)
 
     for step in range(num_steps):
         recorded = (
@@ -375,11 +382,8 @@ def _run_ar(
             }
         )
 
-        if pred_next is not None and coordinator is not None:
-            next_ship_targets = coordinator.apply_scaled_predictions(curr_ship_targets, pred_next)
-            obs = decode_targets_to_observation(
-                next_ship_targets, obs, action_to_apply, N, coordinator
-            )
-            curr_ship_targets = coordinator.get_target_vector(obs)[:, :N]
+        if pred_next is not None:
+            curr_means = next_state.apply_means(curr_means, pred_next.float())
+            obs = means_to_observation(curr_means, obs, action_to_apply, N, index_log_scale)
 
     return history

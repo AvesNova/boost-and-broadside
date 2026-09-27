@@ -228,6 +228,20 @@ _STORAGE_FLOAT: torch.dtype = torch.bfloat16
 _OBS_STORAGE_OVERRIDES: dict[ObsKey | BulletObsKey, torch.dtype] = {
     ObsKey.POS: torch.float32,  # keep full precision — needed now and for large maps
     BulletObsKey.POS: torch.float32,  # same Fourier basis as ship position
+    # The other ten physical ship channels, for a second reason: with a physical
+    # belief plane these *are* the believed state the next-state label steps
+    # from, so their storage precision lands directly in the label rather than
+    # only in the encoder's input. bf16's ~0.4% resolution puts about 1.2 px/s of
+    # noise on a 300 px/s velocity, against a calibrated velocity delta scale of
+    # 4.0 px/s -- a third of the label's own spread, which is not a rounding.
+    ObsKey.VEL: torch.float32,
+    ObsKey.ATT: torch.float32,
+    ObsKey.ANG_VEL: torch.float32,
+    ObsKey.SHIELD_DELAY: torch.float32,
+    ObsKey.HEALTH: torch.float32,
+    ObsKey.POWER: torch.float32,
+    ObsKey.COOLDOWN: torch.float32,
+    ObsKey.LOCAL_LOG_INDEX: torch.float32,
 }
 # ``BELIEF_TARGETS`` is deliberately *not* in that list, and the reason is the
 # opposite of the one that puts ``POS`` there. A coordinate spends its bits on
@@ -634,22 +648,6 @@ class RolloutBuffer:
         # and gets no storage, which is correct for a configuration that will
         # never compose a belief into an observation.
         sampled_obs = dict(obs_sample.items())
-        # The belief the encoder substitutes, and where. Stored for the same
-        # reason as everything else here: the update replays these observations
-        # through the same encoder that read them during the rollout, and the
-        # substitution happens inside that encoder. Without storage the update
-        # would encode a hidden ship from its masked raw channels and train on
-        # an input the rollout never saw.
-        if ObsKey.BELIEF_TARGETS not in sampled_obs and prediction_target_dim:
-            tokens = obs_sample.pos
-            sampled_obs[ObsKey.BELIEF_TARGETS] = torch.zeros(
-                (*tokens.shape[:2], prediction_target_dim),
-                device=tokens.device,
-                dtype=torch.float32,
-            )
-            sampled_obs[ObsKey.BELIEF_SUBSTITUTE] = torch.zeros(
-                (*tokens.shape[:2], 1), device=tokens.device, dtype=torch.bool
-            )
         if ObsKey.BELIEF_UNCERTAINTY not in sampled_obs and uncertainty_dim:
             # Shaped from ``pos`` rather than from ``team_id`` -- a channel the
             # compact test fixtures omit.
@@ -704,31 +702,18 @@ class RolloutBuffer:
         # by PPOTrainer._precompute_ns_labels; None for aux scales or when the
         # aux losses are disabled.
         self.ns_labels: torch.Tensor | None = None
-        # Authoritative physical targets are auxiliary supervision only. They
-        # are deliberately stored outside ``obs`` so no actor/critic path can
-        # consume hidden enemy truth by key lookup.
+        # Authoritative physical ship state, ``(T+1, B, N, 11)``. Auxiliary
+        # supervision only, and deliberately stored outside ``obs`` so no
+        # actor/critic path can consume hidden enemy truth by key lookup.
         #
-        # bf16, for the reason the encoded belief is: these are target-space
-        # values, bounded per harmonic rather than spanning a world, so the bits
-        # buy phase instead of magnitude. Measured against fp32 labels over real
-        # transitions, as a fraction of each channel's label RMS:
-        #
-        #   absolute channels        0.02% - 0.13%
-        #   velocity (delta)         2.95% -> 6.22%
-        #   local_log_index (delta)  2.91% -> 3.71%
-        #
-        # The delta channels roughly double, because a label computed as
-        # ``next - curr`` cancels most of two quantised values -- but the "today"
-        # figures are what the buffer already carries, ``VEL`` having been bf16
-        # in ``obs`` all along, so this adds a second comparable term rather than
-        # a new failure mode. In the terms the likelihood actually sees it is
-        # smaller still: the worst case moves label *variance* by 0.3%, against a
-        # velocity ``label_scale`` that is separately about 33x miscalibrated.
-        #
-        # Labels come back out in fp32 regardless: ``compute_labels`` multiplies
-        # by the fp32 ``label_scale_vector``, which promotes.
-        self.privileged_targets: torch.Tensor | None = (
-            torch.zeros((T + 1, B, N, prediction_target_dim), device=device, dtype=_STORAGE_FLOAT)
+        # fp32 rather than the buffer's usual bf16: these are the far end of
+        # every next-state label, and a coordinate spends its bits on magnitude,
+        # so bf16 would quantise a 65536 px world into 128 px steps -- a
+        # position-delta label whose calibrated scale is 2.5 px. The whole tensor
+        # is eleven channels wide, which is cheap enough that there is nothing to
+        # trade off.
+        self.privileged_means: torch.Tensor | None = (
+            torch.zeros((T + 1, B, N, prediction_target_dim), device=device, dtype=torch.float32)
             if prediction_target_dim > 0
             else None
         )
@@ -821,7 +806,7 @@ class RolloutBuffer:
         expert_probs: torch.Tensor | None = None,
         terminated: torch.Tensor | None = None,
         transition_contiguous: torch.Tensor | None = None,
-        privileged_targets: torch.Tensor | None = None,
+        privileged_means: torch.Tensor | None = None,
         scaled_predictions: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
@@ -872,10 +857,10 @@ class RolloutBuffer:
             self.terminated[t] = terminated
         if transition_contiguous is not None:
             self.transition_contiguous[t] = transition_contiguous
-        if self.privileged_targets is not None:
-            if privileged_targets is None:
+        if self.privileged_means is not None:
+            if privileged_means is None:
                 raise ValueError("primary rollout requires privileged next-state targets")
-            self.privileged_targets[t].copy_(privileged_targets)
+            self.privileged_means[t].copy_(privileged_means)
         if self.rollout_predictions is not None:
             if scaled_predictions is None:
                 raise ValueError("primary rollout requires rollout-time predictions")
@@ -886,7 +871,7 @@ class RolloutBuffer:
     def store_final_obs(
         self,
         obs: YemongObservation,
-        privileged_targets: torch.Tensor | None = None,
+        privileged_means: torch.Tensor | None = None,
     ) -> None:
         """Store the observation at the end of the rollout (the T+1-th obs slot).
 
@@ -900,10 +885,10 @@ class RolloutBuffer:
         if self.bullet_obs is not None and obs.bullets is not None:
             for key, val in obs.bullets.items():
                 self.bullet_obs[key][T].copy_(val)
-        if self.privileged_targets is not None:
-            if privileged_targets is None:
+        if self.privileged_means is not None:
+            if privileged_means is None:
                 raise ValueError("primary rollout requires final privileged targets")
-            self.privileged_targets[T].copy_(privileged_targets)
+            self.privileged_means[T].copy_(privileged_means)
 
     # ------------------------------------------------------------------
     # GAE computation

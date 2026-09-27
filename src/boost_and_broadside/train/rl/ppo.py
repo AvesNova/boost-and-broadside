@@ -95,6 +95,27 @@ from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
 )
+from boost_and_broadside.train.rl.physical_belief import (
+    ANGULAR_VELOCITY,
+    ATTITUDE,
+    COOLDOWN,
+    HEALTH,
+    LOCAL_LOG_INDEX,
+    NEXT_STATE_OUTPUT_DIM,
+    PHYSICAL_MEAN_DIM,
+    PHYSICAL_MEAN_NAMES,
+    PHYSICAL_UNCERTAINTY_DIM,
+    POSITION_X,
+    POSITION_Y,
+    POWER,
+    SHIELD_DELAY,
+    VELOCITY_X,
+    VELOCITY_Y,
+    PhysicalNextState,
+    physical_means_from_observation,
+    physical_means_from_state,
+    wrap_symmetric,
+)
 from boost_and_broadside.train.rl.physical_deltas import PHYSICAL_DELTA_SCALES
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
@@ -565,9 +586,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             gae_lambda=self._lambda_t,
             device=self.device,
             num_tokens=sample_obs.pos.shape[1],
-            prediction_target_dim=self.coordinator.total_target_dimension,
-            prediction_dim=self.coordinator.total_prediction_dimension,
-            uncertainty_dim=self.coordinator.total_uncertainty_dimension,
+            prediction_target_dim=PHYSICAL_MEAN_DIM,
+            prediction_dim=NEXT_STATE_OUTPUT_DIM,
+            uncertainty_dim=PHYSICAL_UNCERTAINTY_DIM,
             store_expert_probs=self._stores_bc_targets,
         )
 
@@ -577,7 +598,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self.ally_zero_k = self._make_ally_zero_k(train_config.rewards.ally_zero_components)
         self.local_k = self._make_local_k()
 
-        self.aux_weights = self.coordinator.get_loss_weights(self.device)
+        # The physical next-state model: fixed Phase-1 delta scales, physical
+        # bounds for the belief recursion, and the Gaussian likelihood over them.
+        self.next_state = PhysicalNextState.from_ship_config(ship_config)
+        # One decision of game time, and the divisor that turns the observation's
+        # normalized log index back into the natural log the belief plane stores.
+        self._decision_dt = ship_config.dt * self.env_config.action_repeat
+        self._index_log_scale = 2.0 * math.log(ship_config.field_index_step)
 
         # Per-component return scaler: EMA of p5/p95 in symlog-reward space (critic)
         self.scaler = ReturnScaler(
@@ -911,9 +938,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         obs_both = obs.concat_batch(obs_t1)
         hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*N, CONV_KERNEL*D)
         action_both, logprob_both, value_both, pred_next_both, enemy_both, hidden_out = (
-            self.policy.get_action_and_value(
-                obs_both, hidden_both, return_enemy_action=True
-            )
+            self.policy.get_action_and_value(obs_both, hidden_both, return_enemy_action=True)
         )
         return (
             action_both[:batch],  # (B, N, 3)
@@ -965,22 +990,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 aux_action_t0, aux_action_t1, aux_team_id
             )
             action_state = aux_action_states[i]
-            next_aux_obs, aux_reward, aux_dones, aux_truncated, aux_info = aux_w.step(
-                action_state.applied_action()
+            _, aux_reward, aux_dones, aux_truncated, aux_info = aux_w.step(
+                action_state.applied_action(), observe=False
             )
             aux_done_any = aux_dones | aux_truncated
             decision_committed = action_state.commit(
                 aux_action,
                 aux_info["actuator_contiguous"],
                 aux_done_any,
-            )
-            # Re-read after the step: the privacy mask must match the post-reset
-            # observation it is written into.
-            action_state.write_observation(
-                next_aux_obs,
-                aux_w.env.state.ship_team_id[:, :aux_N],
-                aux_w.env.state.ship_spawned[:, :aux_N],
-                aux_N,
             )
             aux_buf.add(
                 obs=aux_obs[i],
@@ -995,20 +1012,27 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 terminated=aux_done_any,
                 transition_contiguous=aux_info["transition_contiguous"],
             )
-            aux_hiddens[i] = self.policy.reset_hidden_for_envs(
-                aux_hiddens[i], aux_done_any, aux_N
-            )
+            aux_hiddens[i] = self.policy.reset_hidden_for_envs(aux_hiddens[i], aux_done_any, aux_N)
             if self._ego_pass:
                 aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
                     aux_hidden_t1s[i], aux_done_any, aux_N
                 )
             aux_last_dones[i] = aux_done_any
+            sources = None
             if aux_beliefs[i] is not None:
-                aux_beliefs[i].advance(
-                    aux_obs[i], aux_pred_t0, aux_pred_t1, aux_enemy_t0, aux_enemy_t1
-                )
+                aux_beliefs[i].advance(aux_pred_t0, aux_pred_t1, aux_enemy_t0, aux_enemy_t1)
                 aux_beliefs[i].reset(aux_done_any)
-                next_aux_obs = aux_beliefs[i].compose(next_aux_obs)
+                sources = aux_beliefs[i].observe(aux_w.env.state, aux_w.last_visibility.ship)
+            next_aux_obs = aux_w.observe(sources)
+            # Re-read after the step: the privacy mask must match the post-reset
+            # observation it is written into.
+            action_state.write_observation(
+                next_aux_obs,
+                aux_w.env.state.ship_team_id[:, :aux_N],
+                aux_w.env.state.ship_spawned[:, :aux_N],
+                aux_N,
+                belief_action=None if sources is None else (sources[0].action, sources[1].action),
+            )
             aux_obs[i] = next_aux_obs
             self._global_step += sc.num_envs
 
@@ -1051,27 +1075,33 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Only ships carry recurrent state; field tokens take the non-recurrent path.
         num_recurrent = num_ships
 
-        obs = self.wrapper.reset()
         # Stagger truncation so episodes do not all end in one synchronized block.
         # The seeded first episode in each env is a fragment, so it is withheld
         # from the episode statistics until the env recycles -- otherwise the
         # first update of every run, and of every resume, reports a reward and
         # win rate that measure the seeding.
-        self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
-        self.wrapper.mark_seeded_uncounted()
         beliefs = (
             DualBeliefTracker(
                 num_envs,
                 num_ships,
-                self.ship_config.dt * self.env_config.action_repeat,
-                self.coordinator,
+                self._decision_dt,
+                self.ship_config,
                 self.device,
             )
             if self._ego_pass
             else None
         )
+        obs = self.wrapper.reset()
+        self.wrapper.env.state.step_count.random_(0, self.env_config.max_episode_steps)
+        self.wrapper.mark_seeded_uncounted()
+        # The opening view is composed the same way every later one is. The reset
+        # above returns a beliefless view, so recompose once the tracker has
+        # assimilated the spawn -- every ship is revealed on the decision it
+        # spawns, so this is a full acquisition rather than a patch.
         if beliefs is not None:
-            obs = beliefs.compose(obs)
+            obs = self.wrapper.observe(
+                beliefs.observe(self.wrapper.env.state, self.wrapper.last_visibility.ship)
+            )
         hidden = self.policy.initial_hidden(num_envs, num_recurrent, self.device)
         hidden_t1 = (
             self.policy.initial_hidden(num_envs, num_recurrent, self.device)
@@ -1095,7 +1125,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     scale.num_envs,
                     scale.env_config.num_ships,
                     self.ship_config.dt * scale.env_config.action_repeat,
-                    self.coordinator,
+                    self.ship_config,
                     self.device,
                 )
                 if self._ego_pass
@@ -1103,7 +1133,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
             aux_beliefs.append(aux_belief)
             aux_obs.append(
-                aux_belief.compose(raw_aux_obs) if aux_belief is not None else raw_aux_obs
+                wrapper.observe(aux_belief.observe(wrapper.env.state, wrapper.last_visibility.ship))
+                if aux_belief is not None
+                else raw_aux_obs
             )
             aux_tokens = scale.env_config.num_ships  # recurrent tokens: ships only
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
@@ -1191,6 +1223,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         else:
             self._begin_league_replacement(runtime.league_slots, runtime.num_recurrent)
         slots = runtime.league_slots
+        # A slot drawn or replaced this shard has no view yet, and the first
+        # forward of the loop runs concurrently with a physics step that makes
+        # the state unreadable. Compose here, where it is settled.
+        self._compose_league_views(slots, runtime.action_state, runtime.num_ships)
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
                 obs=runtime.obs,
@@ -1285,10 +1321,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             update_scalers: Update statistics immediately for a single-shard batch.
                 Logical host batches defer this until every shard is available.
         """
-        final_targets = self.coordinator.get_target_vector(self.wrapper.privileged_observation())[
+        final_truth = physical_means_from_state(self.wrapper.env.state, self.ship_config)[
             :, : runtime.num_ships
         ]
-        self.buffer.store_final_obs(runtime.obs, privileged_targets=final_targets)
+        self.buffer.store_final_obs(runtime.obs, privileged_means=final_truth)
         for index, aux_buffer in enumerate(self.aux_buffers):
             aux_buffer.store_final_obs(runtime.aux_obs[index])
 
@@ -1495,9 +1531,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 | ((pending != 0.0) & (pending != 1.0)).any(-1)
             )
             if own.any():
-                own_invalid = max(
-                    own_invalid, float((own_wrong & own).sum() / own.sum())
-                )
+                own_invalid = max(own_invalid, float((own_wrong & own).sum() / own.sum()))
             if enemy.any():
                 enemy_invalid = max(
                     enemy_invalid,
@@ -1717,12 +1751,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             mb_terminated = chunk.terminated
             alive_sum += mb_alive.sum()
             if self.cfg.enemy_action_coef > 0.0:
-                team_id = chunk.obs[ObsKey.TEAM_ID][
-                    : mb_alive.shape[0], :, : self.buffer.num_ships
-                ]
-                enemy_action_sum += (
-                    (team_id == 1) & mb_alive & mb_decision_committed
-                ).sum()
+                team_id = chunk.obs[ObsKey.TEAM_ID][: mb_alive.shape[0], :, : self.buffer.num_ships]
+                enemy_action_sum += ((team_id == 1) & mb_alive & mb_decision_committed).sum()
                 persistence_mask = torch.zeros_like(mb_alive)
                 persistence_mask[1:] = (
                     (team_id[1:] == 1)
@@ -1966,14 +1996,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # (see _precompute_ns_labels) — they depend only on rollout data.
             labels = mb_ns_labels  # (T, B_mb, N, pred_dim)
 
-            P = self.coordinator.total_prediction_dimension
-            # Gaussian NLL where a predictor reports uncertainty, squared error
-            # elsewhere. The NLL is scale-free in the label, so the features it
-            # covers no longer depend on ``label_scale`` being right, and a token
-            # whose label is mostly unpredictable belief error earns a wide sigma
-            # instead of dominating the sum.
-            per_dim = self.coordinator.prediction_loss(pred_next.float(), labels.detach())
-            per_dim = per_dim * self.aux_weights  # per-prediction weight
+            P = PHYSICAL_MEAN_DIM
+            # Gaussian negative log likelihood over the eleven physical deltas:
+            # full 2D covariance for position and velocity, scalar for the rest.
+            # It is scale-free in the label, so nothing here depends on a fitted
+            # weight being right, and a token whose label is mostly unpredictable
+            # belief error earns a wide sigma instead of dominating the sum.
+            per_dim = self.next_state.loss(pred_next.float(), labels.detach())
 
             if self.cfg.next_state_coef > 0.0:
                 next_state_cont_loss = (per_dim * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
@@ -1983,7 +2012,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 # Squared error, not the objective: this series predates the NLL
                 # and has to keep meaning the same thing across the change, and a
                 # likelihood is not an error anyone can read in physical units.
-                sq_err = (pred_next.float()[..., :P] - labels.detach()).pow(2) * self.aux_weights
+                sq_err = self.next_state.residual(pred_next.float(), labels.detach()).pow(2)
                 next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / ns_sum  # (pred_dim,) gpu, additive across chunks
@@ -2006,18 +2035,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 next_state_hidden_per_feat = (sq_err * (ns_mask_f - visible_f).unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / denoms["ns_hidden_sum"]
-                # Mean square of the *label* itself, which is what calibrates
-                # label_scale: the scale is defined as 1/std(raw label), so a
-                # well-scaled label has mean square 1 and the null model scores
-                # 1. Unweighted by aux_weights on purpose -- this measures the
-                # label, not the objective's opinion of it.
+                # Mean square of the *label* itself, against the fixed Phase-1
+                # scales: a channel whose scale still conditions its labels has
+                # mean square near 1, and the null model scores 1.
                 #
                 # Worth logging rather than measuring offline because the label
-                # now steps from the *believed* state, so its spread depends on
-                # how good this policy's own next-state head currently is. That
-                # makes the right scale a moving quantity rather than a property
-                # of the environment, and the series shows whether it moves
-                # enough to matter.
+                # steps from the *believed* state, so its spread depends on how
+                # good this policy's own next-state head currently is. The
+                # Phase-1 calibration measured truth-to-truth deltas, which is
+                # the visible half of this; the series shows how far the hidden
+                # half has moved away from it. The constants themselves stay
+                # fixed -- there is no online scaler by contract -- so this is a
+                # diagnostic, not a control input.
                 label_sq_per_feat = (labels.detach().float().pow(2) * ns_mask_f.unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / ns_sum
@@ -2071,9 +2100,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     -1, action_target.unsqueeze(-1)
                 ).squeeze(-1)
                 entropy = Categorical(probs=probabilities).entropy()
-                target_one_hot = F.one_hot(
-                    action_target, NUM_JOINT_ACTIONS
-                ).to(probabilities.dtype)
+                target_one_hot = F.one_hot(action_target, NUM_JOINT_ACTIONS).to(probabilities.dtype)
                 brier = (probabilities - target_one_hot).pow(2).sum(-1)
                 predicted = probabilities.argmax(-1)
                 previous_action = torch.roll(action_target, shifts=1, dims=0)
@@ -2089,9 +2116,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 persistence_probability = torch.where(
                     same,
                     torch.full_like(realised_probability, 0.99),
-                    torch.full_like(
-                        realised_probability, 0.01 / (NUM_JOINT_ACTIONS - 1)
-                    ),
+                    torch.full_like(realised_probability, 0.01 / (NUM_JOINT_ACTIONS - 1)),
                 )
                 enemy_action_probability = (realised_probability * enemy_f).sum() / enemy_sum
                 enemy_action_entropy = (entropy * enemy_f).sum() / enemy_sum
@@ -2100,9 +2125,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     (predicted == action_target).float() * enemy_f
                 ).sum() / enemy_sum
                 persistence_sum = denoms["persistence_sum"]
-                persistence_accuracy = (
-                    same.float() * persistence_f
-                ).sum() / persistence_sum
+                persistence_accuracy = (same.float() * persistence_f).sum() / persistence_sum
                 persistence_ce = (
                     -persistence_probability.log() * persistence_f
                 ).sum() / persistence_sum
@@ -2553,125 +2576,108 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     def _precompute_ns_labels(self, buf: RolloutBuffer) -> None:
         """Compute next-state prediction labels once per update.
 
-        Labels come from the stored T+1 observations only — not the policy — so
-        computing them here saves num_epochs × num_minibatches redundant passes
-        through the coordinator. Targets are computed once over all T+1 steps
-        and diffed.
+        Labels come from the stored T+1 observations and the privileged physical
+        truth beside them -- not the policy -- so computing them here saves
+        num_epochs x num_minibatches redundant passes.
 
-        The label is the step from the *believed* current state to the *true*
-        next state, not truth to truth. That is what the head's output is
-        actually used for: ``BeliefTracker.advance`` applies the forecast to the
-        composed observation, so ``belief[t+1] = belief[t] + pred[t]``. Training
-        it on ``true[t+1] - true[t]`` instead makes the substitution
+        The label is the normalized physical step from the *believed* current
+        state to the *true* next state, not truth to truth. That is what the
+        head's output is used for: ``BeliefTracker.advance`` applies the forecast
+        to the belief, so ``belief[t+1] = belief[t] + pred[t]``. Training it on
+        ``true[t+1] - true[t]`` instead makes the substitution
 
             error[t+1] = belief[t] + (true[t+1] - true[t]) - true[t+1] = error[t]
 
-        — the belief error is conserved exactly, every step's noise is retained
+        -- the belief error is conserved exactly, every step's noise is retained
         forever, and the head is never once shown what "too far" looks like. The
         drift that killed run 734 (velocity error 99 -> 1178 px/s in the 30s+
         hidden bucket, then a non-finite logit) is that identity, not an
-        incidental instability; ``BELIEF_TARGET_LIMIT`` bounds the symptom.
+        incidental instability.
 
         Re-basing on the belief makes the target the correction that carries the
         believed state onto the true next one, so error is nulled each step to
-        whatever extent it is inferable. For a visible ship the belief *is* the
-        observation, so its label is unchanged: this adds signal exactly where
-        the drift happens and leaves the rest of the supervision alone.
+        whatever extent it is inferable. For a ship the observer can see, the
+        belief *is* truth, so its label is exactly the Phase-1 truth-to-truth
+        delta the scales were calibrated on: this adds signal where the drift
+        happens and leaves the rest of the supervision alone.
 
         The residual is not fully predictable, so the head regresses toward the
-        conditional mean of the correction — shrinkage of a stale belief toward
-        the prior, which is the right behaviour for a point estimate and is not
-        reachable under truth-to-truth labels at all. Label *variance* rises
-        accordingly, so the loss magnitude is not comparable across this change
-        and ``next_state_coef`` weighs a bigger number than it used to.
+        conditional mean of the correction -- shrinkage of a stale belief toward
+        the prior, which is the right behaviour for a mean estimate. The
+        likelihood is what makes that safe: a token whose label is mostly
+        unpredictable belief error earns a wide sigma rather than dominating the
+        sum, so the objective is comparable across visible and hidden tokens
+        without any weight being tuned.
         """
-        need_labels = self.cfg.next_state_coef > 0.0
-        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        believed = None
-        if need_labels or buf.privileged_targets is None:
-            # What the policy actually saw: buf.obs holds the composed
-            # observation, belief-filled for every ship hidden on that step.
-            ship_obs = YemongObservation(
-                data={
-                    k: (
-                        v[:, :, :N].reshape((T + 1) * B, N, *v.shape[3:])
-                        if v.dim() > 3
-                        else v[:, :, :N].reshape((T + 1) * B, N)
-                    )
-                    for k, v in buf.obs.items()
-                }
-            )
-            believed = self.coordinator.get_target_vector(ship_obs).reshape(T + 1, B, N, -1)
+        T = buf.num_steps
+        believed = self._believed_means(buf, T + 1)
         # Ground truth where the rollout captured it. Without it there is no
         # privileged signal to correct towards and belief is the only account of
         # the world, which recovers the original truth-to-truth labels.
-        targets = buf.privileged_targets if buf.privileged_targets is not None else believed
-        buf.ns_labels = (  # (T, B, N, pred_dim)
-            self.coordinator.compute_labels(believed[:T], targets[1:]) if need_labels else None
+        truth = buf.privileged_means if buf.privileged_means is not None else believed
+        buf.ns_labels = (  # (T, B, N, 11)
+            self.next_state.labels(believed[:T], truth[1:])
+            if self.cfg.next_state_coef > 0.0
+            else None
         )
         # Diagnostics compare forecasts against hidden *truth*, so they keep
-        # reading the privileged targets rather than the re-based labels.
-        self._precompute_belief_diagnostics(buf, targets)
+        # reading the privileged means rather than the re-based labels.
+        self._precompute_belief_diagnostics(buf, believed, truth)
+
+    def _believed_means(self, buf: RolloutBuffer, steps: int) -> torch.Tensor:
+        """``(steps, B, N, 11)`` physical state the stored observations carry."""
+
+        N = buf.num_ships
+        return physical_means_from_observation(
+            YemongObservation(data={key: value[:steps] for key, value in buf.obs.items()}),
+            self._index_log_scale,
+            num_ships=N,
+        ).float()
 
     @torch.no_grad()
     def _precompute_belief_diagnostics(
         self,
         buf: RolloutBuffer,
-        truth_targets: torch.Tensor,
+        believed: torch.Tensor,
+        truth: torch.Tensor,
     ) -> None:
-        """Compare behavior-policy forecasts with hidden truth in physical units."""
+        """Compare behavior-policy forecasts with hidden truth in physical units.
+
+        Every series is the absolute error of a physical quantity in its own
+        unit, so it is directly comparable with the persistence and
+        dead-reckoning baselines reported beside it. There is no decode step:
+        belief and truth are the same eleven numbers.
+        """
 
         if buf.rollout_predictions is None:
             buf.belief_diagnostics = {}
             return
-        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        curr_obs = YemongObservation(
-            data={
-                key: (
-                    value[:T, :, :N].reshape(T * B, N, *value.shape[3:])
-                    if value.dim() > 3
-                    else value[:T, :, :N].reshape(T * B, N)
-                )
-                for key, value in buf.obs.items()
+        T, N = buf.num_steps, buf.num_ships
+        current = believed[:T]
+        truth_next = truth[1:]
+        forecast = self.next_state.apply_means(current, buf.rollout_predictions.float())
+        # Two baselines the model has to beat to be worth its cost. Persistence
+        # is the belief standing still; dead reckoning carries it forward on its
+        # own believed velocity for one decision, which is the strongest thing
+        # available without a learned model.
+        persistence = current
+        reckoned = current.clone()
+        reckoned[..., POSITION_X] = current[..., POSITION_X] + (
+            current[..., VELOCITY_X] * self._decision_dt
+        )
+        reckoned[..., POSITION_Y] = current[..., POSITION_Y] + (
+            current[..., VELOCITY_Y] * self._decision_dt
+        )
+        errors = self._physical_errors(forecast, truth_next)
+        errors.update(
+            {
+                f"persist_{name}": value
+                for name, value in self._physical_errors(persistence, truth_next).items()
+                if name in ("position_px", "velocity_px_s")
             }
         )
-        belief_targets = self.coordinator.get_target_vector(curr_obs).reshape(T, B, N, -1)
-        forecast_targets = self.coordinator.apply_scaled_predictions(
-            belief_targets, buf.rollout_predictions
-        )
-        forecast = self.coordinator.decode_targets(forecast_targets)
-        truth = self.coordinator.decode_targets(truth_targets[1:])
+        errors["reckon_position_px"] = self._physical_errors(reckoned, truth_next)["position_px"]
 
-        world = torch.tensor(self.ship_config.world_size, device=self.device)
-        pred_pos = torch.cat([forecast["position_x"], forecast["position_y"]], dim=-1)
-        true_pos = torch.cat([truth["position_x"], truth["position_y"]], dim=-1)
-        pos_delta = torch.remainder(pred_pos - true_pos + world / 2.0, world) - world / 2.0
-        pred_att = torch.nn.functional.normalize(forecast["attitude"], dim=-1)
-        true_att = torch.nn.functional.normalize(truth["attitude"], dim=-1)
-        position_error = pos_delta.norm(dim=-1)
-        # Ten calibrated position scales is an empirical outlier threshold, not
-        # a physics limit. The production scripted calibration's largest valid
-        # component was 11.32 px; even the worst per-axis bound implies a
-        # 16.01 px norm against this 25 px threshold. On a trained head, a
-        # visible-cell excursion beyond it is therefore a useful lifecycle
-        # leak signal; on a fresh head it still measures ordinary forecast error.
-        # Hidden-cell excursions measure legitimate recursive drift.
-        leak_threshold = 10.0 * PHYSICAL_DELTA_SCALES[0]
-        errors = {
-            "position_px": position_error,
-            "position_beyond_legal_frac": (position_error > leak_threshold).float(),
-            "velocity_px_s": (forecast["velocity"] - truth["velocity"]).norm(dim=-1),
-            "attitude_rad": torch.acos((pred_att * true_att).sum(dim=-1).clamp(-1.0, 1.0)),
-            "angular_velocity": (forecast["angular_velocity"] - truth["angular_velocity"])
-            .abs()
-            .squeeze(-1),
-            "health": (forecast["health"] - truth["health"]).abs().squeeze(-1),
-            "power": (forecast["power"] - truth["power"]).abs().squeeze(-1),
-            "cooldown_s": (forecast["cooldown"] - truth["cooldown"]).abs().squeeze(-1),
-            "local_log_index": (forecast["local_log_index"] - truth["local_log_index"])
-            .abs()
-            .squeeze(-1),
-        }
         visible = buf.obs[ObsKey.VISIBLE][:T, :, :N].bool()
         valid = buf.obs[ObsKey.BELIEF_VALID][:T, :, :N].bool()
         enemy = buf.obs[ObsKey.TEAM_ID][:T, :, :N] == 1
@@ -2696,6 +2702,49 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             lower = upper
         add("hidden_age_30_inf_s", hidden_enemy & (age > 30.0))
         buf.belief_diagnostics = diagnostics
+
+    def _physical_errors(
+        self, estimate: torch.Tensor, truth: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """Absolute physical error per channel, position and velocity as norms."""
+
+        world = torch.tensor(self.ship_config.world_size, device=estimate.device)
+        pos_delta = (
+            torch.remainder(
+                estimate[..., POSITION_X : POSITION_Y + 1]
+                - truth[..., POSITION_X : POSITION_Y + 1]
+                + world / 2.0,
+                world,
+            )
+            - world / 2.0
+        )
+        position_error = pos_delta.norm(dim=-1)
+        # Ten calibrated position scales is an empirical outlier threshold, not
+        # a physics limit. The production scripted calibration's largest valid
+        # component was 11.32 px; even the worst per-axis bound implies a
+        # 16.01 px norm against this 25 px threshold. On a trained head, a
+        # visible-cell excursion beyond it is therefore a useful lifecycle
+        # leak signal; on a fresh head it still measures ordinary forecast error.
+        # Hidden-cell excursions measure legitimate recursive drift.
+        leak_threshold = 10.0 * PHYSICAL_DELTA_SCALES[POSITION_X]
+        return {
+            "position_px": position_error,
+            "position_beyond_legal_frac": (position_error > leak_threshold).float(),
+            "velocity_px_s": (
+                estimate[..., VELOCITY_X : VELOCITY_Y + 1] - truth[..., VELOCITY_X : VELOCITY_Y + 1]
+            ).norm(dim=-1),
+            "attitude_rad": wrap_symmetric(
+                estimate[..., ATTITUDE] - truth[..., ATTITUDE], 2.0 * math.pi
+            ).abs(),
+            "angular_velocity": (
+                estimate[..., ANGULAR_VELOCITY] - truth[..., ANGULAR_VELOCITY]
+            ).abs(),
+            "shield_delay_s": (estimate[..., SHIELD_DELAY] - truth[..., SHIELD_DELAY]).abs(),
+            "health": (estimate[..., HEALTH] - truth[..., HEALTH]).abs(),
+            "power": (estimate[..., POWER] - truth[..., POWER]).abs(),
+            "cooldown_s": (estimate[..., COOLDOWN] - truth[..., COOLDOWN]).abs(),
+            "local_log_index": (estimate[..., LOCAL_LOG_INDEX] - truth[..., LOCAL_LOG_INDEX]).abs(),
+        }
 
     def _gradient_diagnostic_groups(
         self, accumulator: TermGradientAccumulator
@@ -2951,10 +3000,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "returns/advantage_std": [],
         }
         # Derived, never hand-listed: a parallel name list drifts from the
-        # coordinator's prediction width silently. It already had, dropping
-        # local_log_index — the one channel that says whether fields are being
-        # modelled — off the end of a 9-name list against 10 dimensions.
-        ns_feat_names = self.coordinator.get_feature_names()
+        # prediction width silently. It already had, dropping local_log_index --
+        # the one channel that says whether fields are being modelled -- off the
+        # end of a 9-name list against 10 dimensions.
+        ns_feat_names = list(PHYSICAL_MEAN_NAMES)
         ns_per_feat_accum: list[torch.Tensor] = []
         ns_visible_accum: list[torch.Tensor] = []
         ns_hidden_accum: list[torch.Tensor] = []
@@ -3340,15 +3389,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # combat. It gets no suggestion rather than one divided by roughly
             # zero, because this series exists to be copied into a config and a
             # plausible-looking wrong number is worse there than a gap.
-            avg_label_sq = torch.stack(label_sq_accum).mean(0).cpu()  # (pred_dim,)
-            current = self.coordinator.label_scale_vector(torch.device("cpu"))
+            avg_label_sq = torch.stack(label_sq_accum).mean(0).cpu()  # (11,)
             for i, name in enumerate(ns_feat_names):
                 mean_sq = avg_label_sq[i].item()
                 metrics[f"next_state_label_sq/{name}"] = mean_sq
                 if mean_sq > 0.0 and math.isfinite(mean_sq):
-                    metrics[f"next_state_label_scale/{name}"] = current[i].item() / math.sqrt(
-                        mean_sq
-                    )
+                    metrics[f"next_state_label_scale/{name}"] = self.next_state.scales[
+                        i
+                    ] * math.sqrt(mean_sq)
 
         for name, (total, count) in all_buffers[0].belief_diagnostics.items():
             metrics[name] = (total / count.clamp(min=1.0)).item()

@@ -97,13 +97,17 @@ def write_pending_action_observation(
     team_id: torch.Tensor,
     spawn_revealed: torch.Tensor,
     num_ships: int,
+    belief_action: tuple[torch.Tensor, torch.Tensor] | None = None,
 ) -> None:
     """Install a pending queue into both policy views with opponent privacy.
 
-    This is the intentionally tiny post-overlap operation. Physics/perception
-    may run concurrently with policy inference; after both complete, schedulers
-    call this once to make the already-built next observation describe the
-    command that physics will consume next.
+    This is the intentionally tiny post-overlap operation: the observation was
+    built from the state before this decision's command was chosen, and this
+    makes it describe the command physics will consume next.
+
+    ``belief_action`` supplies each observer's predicted opponent distribution,
+    team 0 first, so allied facts and opponent beliefs land in one write rather
+    than one overwriting the other. Without it, opponent slots read zero.
     """
     if pending_action.shape != (*team_id.shape, 3):
         raise ValueError(
@@ -116,6 +120,7 @@ def write_pending_action_observation(
         team_id,
         observer_team=0,
         spawn_revealed=spawn_revealed,
+        belief_action=None if belief_action is None else belief_action[0],
     )
     if observation.team1_data is not None:
         write_pending_action_view(
@@ -124,6 +129,7 @@ def write_pending_action_observation(
             team_id,
             observer_team=1,
             spawn_revealed=spawn_revealed,
+            belief_action=None if belief_action is None else belief_action[1],
         )
 
 
@@ -202,6 +208,7 @@ class PendingActionState:
         team_id: torch.Tensor,
         spawn_revealed: torch.Tensor,
         num_ships: int,
+        belief_action: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> None:
         write_pending_action_observation(
             observation,
@@ -209,6 +216,7 @@ class PendingActionState:
             team_id,
             spawn_revealed,
             num_ships,
+            belief_action=belief_action,
         )
 
 

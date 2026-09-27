@@ -506,6 +506,11 @@ class ObservationBuffers:
         """Compatibility no-op: field geometry is read directly from state."""
 
 
+#: Both observers' belief sources, team 0 first. ``None`` in either seat means
+#: that observer keeps no memory, so its hidden slots read zero.
+DualBeliefSources = tuple["ShipBeliefSource | None", "ShipBeliefSource | None"]
+
+
 @dataclass(frozen=True)
 class ShipBeliefSource:
     """One observer's legal stand-in for the ships it cannot currently see.
@@ -1086,6 +1091,46 @@ def observation_from_state(
 
 
 _PERCEPTION_CACHE: dict[str, object] = {}
+_VISIBILITY_CACHE: dict[str, object] = {}
+_OBSERVATION_CACHE: dict[str, object] = {}
+
+
+def compile_observation(mode: str | None):
+    """The single-observer builder, fused when a launch asks for compilation.
+
+    For callers that compose one legal view at a time rather than both -- an
+    evaluation agent, a league opponent -- each with its own belief. Cached per
+    mode, and subject to the same "only valid without ``buffers``" rule as
+    :func:`compile_perception`.
+    """
+
+    if mode is None:
+        return observation_from_state
+    compiled = _OBSERVATION_CACHE.get(mode)
+    if compiled is None:
+        compiled = torch.compile(observation_from_state, mode=mode, dynamic=False)
+        _OBSERVATION_CACHE[mode] = compiled
+    return compiled
+
+
+def compile_visibility(mode: str | None):
+    """Team perception, fused when a launch asks for compilation.
+
+    Separate from the observation builder because a belief has to be assimilated
+    against this decision's visibility *before* the view that stands on it can be
+    composed. The two used to be one fused callable; splitting them costs the
+    fusion across that boundary and buys the ordering the belief plane needs.
+
+    Cached per mode, for the same reason :func:`compile_perception` is.
+    """
+
+    if mode is None:
+        return team_visibility_from_state
+    compiled = _VISIBILITY_CACHE.get(mode)
+    if compiled is None:
+        compiled = torch.compile(team_visibility_from_state, mode=mode, dynamic=False)
+        _VISIBILITY_CACHE[mode] = compiled
+    return compiled
 
 
 def compile_perception(mode: str | None):

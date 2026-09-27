@@ -6,7 +6,7 @@ Runs two phases:
   Phase 2 — 256 envs × 20 windows, running short closed-loop AR rollouts (teacher-
              forced with real sim actions) to measure how RMSE grows with rollout depth.
 
-Target-vector dimensions are derived from the feature coordinator.
+Report dimensions are the eleven physical next-state channels.
 
 Errors are measured in target space (predicted target vs true target).
 
@@ -18,6 +18,7 @@ figures are rendered from the artifact by ``bnb figures``.
 """
 
 import datetime
+import math
 import time
 
 import numpy as np
@@ -25,7 +26,7 @@ import torch
 
 from boost_and_broadside.artifacts import ArtifactRecipe, ArtifactStore
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
-from boost_and_broadside.env.observation import YemongObservation, observation_from_state
+from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
     resolve_agent_spec,
@@ -35,9 +36,15 @@ from boost_and_broadside.evaluation.environment import (
     resolve_evaluation_environment,
 )
 from boost_and_broadside.evaluation.match import MatchRunner
-from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
+from boost_and_broadside.evaluation.next_state import means_to_observation
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
-from boost_and_broadside.train.rl.features import FeatureCoordinator, build_standard_coordinator
+from boost_and_broadside.train.rl.physical_belief import (
+    PHYSICAL_MEAN_DIM,
+    PHYSICAL_MEAN_NAMES,
+    PhysicalNextState,
+    physical_means_from_observation,
+    physical_means_from_state,
+)
 
 _AR_WINDOW = 20
 _WARMUP_STEPS = 50
@@ -51,46 +58,21 @@ _SCHEMA_VERSION = 1
 _MAX_RAW_SAMPLE_ROWS = 262_144
 
 
-# Coordinator feature name → stable report name, description, and channel labels.
-def _harmonic_channels(prefix: str):
-    """Name a blocked ``[sin_0..sin_n-1, cos_0..cos_n-1]`` Fourier target.
-
-    A callable rather than a tuple because the width is not fixed: the harmonic
-    count comes from ``position_fourier_frequencies``, so it follows the world
-    size and a literal list would be right for one map and wrong for the rest.
-    """
-
-    def name(width: int) -> tuple[str, ...]:
-        harmonics = width // 2
-        return tuple(f"{prefix}_sin{k}" for k in range(harmonics)) + tuple(
-            f"{prefix}_cos{k}" for k in range(harmonics)
-        )
-
-    return name
-
-
+# One report panel per physical channel, in the calibration's order. The error is
+# the normalized physical delta's residual, so every panel is in units of that
+# channel's Phase-1 scale and the panels are directly comparable.
 _REPORT_FEATURES = {
-    "position_x": ("pos_x", "pos_x (harmonic sin/cos)", _harmonic_channels("pos_x")),
-    "position_y": ("pos_y", "pos_y (harmonic sin/cos)", _harmonic_channels("pos_y")),
-    "velocity": (
-        "velocity",
-        "velocity (vx_norm, vy_norm)",
-        ("vel_vx_norm", "vel_vy_norm"),
-    ),
-    "attitude": ("att", "attitude (harmonic sin/cos)", _harmonic_channels("att")),
-    "angular_velocity": ("ang_vel", "angular velocity (symlog)", ("ang_vel_symlog",)),
-    "shield_delay": ("shield_delay", "shield recharge delay (symlog)", ("shield_delay_symlog",)),
-    # Bounded scalars normalised to [0, 1], not the quarter-wave pairs these
-    # were before: they never wrapped, so a phase target was modelling a
-    # discontinuity that does not exist.
-    "health": ("health", "health (fraction of max)", ("health_frac",)),
-    "power": ("power", "power (fraction of max)", ("power_frac",)),
-    "cooldown": ("cooldown", "cooldown (fraction of max)", ("cooldown_frac",)),
-    "local_log_index": (
-        "local_log_index",
-        "local encoded log-index delta",
-        ("local_log_index",),
-    ),
+    "position_x": ("pos_x", "position x (px / 2.5)"),
+    "position_y": ("pos_y", "position y (px / 2.5)"),
+    "velocity_x": ("velocity_x", "velocity x (px/s / 4)"),
+    "velocity_y": ("velocity_y", "velocity y (px/s / 4)"),
+    "attitude": ("att", "attitude (rad / 0.1)"),
+    "angular_velocity": ("ang_vel", "angular velocity (rad/s / 2.5pi)"),
+    "shield_delay": ("shield_delay", "shield recharge delay (s / 5)"),
+    "health": ("health", "health (/ 10)"),
+    "power": ("power", "power (/ 0.75)"),
+    "cooldown": ("cooldown", "cooldown (s / 0.1)"),
+    "local_log_index": ("local_log_index", "natural log-index (/ 0.05)"),
 }
 
 
@@ -127,32 +109,27 @@ class _RawSampleBuffer:
         return np.concatenate(self._steps) if self._steps else np.zeros(0, dtype=np.int32)
 
 
-def _report_layout(
-    coordinator: FeatureCoordinator,
-) -> tuple[dict[str, tuple[list[int], str]], list[str]]:
-    """Build report dimension groups from the coordinator's target layout."""
-    target_slices = coordinator.target_slices()
+def _report_layout() -> tuple[dict[str, tuple[list[int], str]], list[str]]:
+    """Build report dimension groups from the physical mean layout.
+
+    One dimension per panel now: the next-state model predicts eleven physical
+    quantities rather than a Fourier expansion of them, so the harmonic grouping
+    this used to do has nothing left to group.
+    """
+
     groups: dict[str, tuple[list[int], str]] = {}
-    dim_names = [""] * coordinator.total_target_dimension
-    for feature_name, (report_name, description, channel_names) in _REPORT_FEATURES.items():
-        target_slice = target_slices[feature_name]
-        dims = list(range(target_slice.start, target_slice.stop))
-        if callable(channel_names):
-            channel_names = channel_names(len(dims))
-        if len(dims) != len(channel_names):
-            raise ValueError(f"Unexpected target width for feature {feature_name!r}")
-        groups[report_name] = (dims, description)
-        for dim, channel_name in zip(dims, channel_names):
-            dim_names[dim] = channel_name
-    unnamed = [index for index, name in enumerate(dim_names) if not name]
-    if unnamed:
-        # A predictor the report does not know about is measured anyway and then
-        # published as a nameless empty panel. Fail here instead: the layout has
-        # to name every target dimension the coordinator produces.
-        raise ValueError(
-            f"noise report layout names no channel for target dimension(s) {unnamed}; "
-            f"add them to _REPORT_FEATURES (coordinator targets: {sorted(target_slices)})"
-        )
+    dim_names = [""] * PHYSICAL_MEAN_DIM
+    for channel, name in enumerate(PHYSICAL_MEAN_NAMES):
+        if name not in _REPORT_FEATURES:
+            # A channel the report does not know about would be measured anyway
+            # and published as a nameless empty panel. Fail here instead.
+            raise ValueError(
+                f"noise report layout names no panel for physical channel {name!r}; "
+                "add it to _REPORT_FEATURES"
+            )
+        report_name, description = _REPORT_FEATURES[name]
+        groups[report_name] = ([channel], description)
+        dim_names[channel] = report_name
     return groups, dim_names
 
 
@@ -198,8 +175,9 @@ def run_noise_calibration_mode(
             f"got kind={agent0.kind!r}. Pass a .pt path via --team0."
         )
 
-    coordinator = build_standard_coordinator(ship_config)
-    feature_groups, dim_names = _report_layout(coordinator)
+    next_state = PhysicalNextState.from_ship_config(ship_config)
+    index_log_scale = 2.0 * math.log(ship_config.field_index_step)
+    feature_groups, dim_names = _report_layout()
     scripted_for_warmup = resolve_agent_spec(
         "scripted", ship_config, model_config, device, num_ships=N
     )
@@ -217,7 +195,8 @@ def run_noise_calibration_mode(
         ship_config,
         env_config,
         dev,
-        coordinator,
+        next_state,
+        index_log_scale,
     )
 
     print(f"\n{'=' * 60}")
@@ -233,7 +212,8 @@ def run_noise_calibration_mode(
         ship_config,
         env_config,
         dev,
-        coordinator,
+        next_state,
+        index_log_scale,
     )
 
     print("\nBuilding output...")
@@ -304,7 +284,8 @@ def _run_phase1(
     ship_config: ShipConfig,
     env_config: EnvConfig,
     dev: torch.device,
-    coordinator,
+    next_state: PhysicalNextState,
+    index_log_scale: float,
 ) -> dict:
     env = create_evaluation_env(B, ship_config, env_config, dev)
     env.reset()
@@ -318,7 +299,7 @@ def _run_phase1(
     )
     runner.init_hidden()
 
-    num_targets = coordinator.total_target_dimension
+    num_targets = PHYSICAL_MEAN_DIM
     err_sum = torch.zeros(num_targets, device=dev)
     err_sq_sum = torch.zeros(num_targets, device=dev)
     err_count = torch.zeros(1, device=dev)
@@ -339,31 +320,27 @@ def _run_phase1(
     print(f"Collecting {num_steps} steps across {B} envs...")
 
     for step in range(num_steps):
-        truth_obs = observation_from_state(
-            env.state, ship_config, include_bullets=runner.include_bullets
-        )
-        policy_obs = runner.observe()
-        selection = runner.select_actions(policy_obs, trace_agents=frozenset({0}))
+        runner.observe()
+        selection = runner.select_actions(trace_agents=frozenset({0}))
 
         # Capture combat flag before step
         combat = (runner.action_state.pending[:, :N, 2] > 0).any(dim=1)  # (B,)
         pred_next_scaled = selection.predictions.get(0)
-        model_obs = selection.observations.get(0, policy_obs.for_team(0))
-        curr_alive = truth_obs["alive"][:, :N].clone()  # (B, N) bool, before step
-        curr_targets = coordinator.get_target_vector(model_obs)[:, :N]
+        model_obs = selection.observations[0]
+        curr_alive = env.state.ship_alive.clone()  # (B, N) bool, before step
+        curr_means = physical_means_from_observation(model_obs, index_log_scale, num_ships=N)
 
         dones, truncated = runner.advance(selection.action)
         done_any = dones | truncated  # (B,)
 
-        next_obs = observation_from_state(
-            env.state, ship_config, include_bullets=runner.include_bullets
-        )
         next_alive = env.state.ship_alive  # (B, N) bool, after step
 
         if pred_next_scaled is not None:
-            pred_targets = coordinator.apply_scaled_predictions(curr_targets, pred_next_scaled)
-            true_targets = coordinator.get_target_vector(next_obs)[:, :N]
-            err = pred_targets - true_targets  # (B, N, target_dim)
+            pred_means = next_state.apply_means(curr_means, pred_next_scaled.float())
+            true_means = physical_means_from_state(env.state, ship_config)[:, :N]
+            # In normalized units, so the eleven channels are comparable and the
+            # residual reads against the same scales the objective uses.
+            err = next_state.labels(true_means, pred_means)  # (B, N, 11)
 
             # valid: alive at both ends, no episode boundary
             episode_end = done_any.unsqueeze(-1)  # (B, 1)
@@ -447,7 +424,8 @@ def _run_phase2(
     ship_config: ShipConfig,
     env_config: EnvConfig,
     dev: torch.device,
-    coordinator,
+    next_state: PhysicalNextState,
+    index_log_scale: float,
 ) -> dict:
     env = create_evaluation_env(B, ship_config, env_config, dev)
     env.reset()
@@ -461,7 +439,7 @@ def _run_phase2(
     )
     runner.init_hidden()
 
-    ar_sq_sum = torch.zeros(_AR_WINDOW, coordinator.total_target_dimension, device=dev)
+    ar_sq_sum = torch.zeros(_AR_WINDOW, PHYSICAL_MEAN_DIM, device=dev)
     ar_count = torch.zeros(_AR_WINDOW, device=dev)
 
     t0 = time.perf_counter()
@@ -475,28 +453,29 @@ def _run_phase2(
 
         # --- Real-sim recording ---
         stored_actions = []  # list of (B, N, 3) int tensors
-        stored_true_targets = []  # list of (B, N, target_dim) float tensors
+        stored_true_means = []  # list of (B, N, 11) float tensors
         stored_alive = []  # list of (B, N) bool tensors
         window_valid = torch.ones(B, dtype=torch.bool, device=dev)
 
         for k in range(_AR_WINDOW):
             hidden_before = agent0.hidden.clone() if k == 0 else None
-            policy_obs = runner.observe()
-            selection = runner.select_actions(policy_obs, trace_agents=frozenset({0}))
+            runner.observe()
+            selection = runner.select_actions(trace_agents=frozenset({0}))
             if k == 0:
                 ar_start_obs = selection.observations[0]
                 ar_start_hidden = hidden_before
-                ar_start_targets = coordinator.get_target_vector(ar_start_obs)[:, :N]
+                ar_start_means = physical_means_from_observation(
+                    ar_start_obs, index_log_scale, num_ships=N
+                )
             stored_actions.append(selection.action.clone())
 
             dones, truncated = runner.advance(selection.action)
             done_any = dones | truncated
             window_valid &= ~done_any
 
-            next_obs = observation_from_state(
-                env.state, ship_config, include_bullets=runner.include_bullets
+            stored_true_means.append(
+                physical_means_from_state(env.state, ship_config)[:, :N].clone()
             )
-            stored_true_targets.append(coordinator.get_target_vector(next_obs)[:, :N].clone())
             stored_alive.append(env.state.ship_alive.clone())
 
             runner.reset_finished(done_any)
@@ -504,7 +483,7 @@ def _run_phase2(
         # --- AR replay from snapshot ---
         curr_obs = YemongObservation(data={k: v.clone() for k, v in ar_start_obs.items()})
         curr_hidden = ar_start_hidden.clone()
-        curr_targets = ar_start_targets.clone()
+        curr_means = ar_start_means.clone()
 
         with torch.no_grad():
             for k in range(_AR_WINDOW):
@@ -514,10 +493,8 @@ def _run_phase2(
                 if pred_next_scaled is None:
                     break
 
-                next_targets_ar = coordinator.apply_scaled_predictions(
-                    curr_targets, pred_next_scaled
-                )
-                err_k = (next_targets_ar - stored_true_targets[k]).pow(2)
+                curr_means = next_state.apply_means(curr_means, pred_next_scaled.float())
+                err_k = next_state.labels(stored_true_means[k], curr_means).pow(2)
 
                 # valid: window not terminated + ship alive in ground truth
                 valid_k = window_valid.unsqueeze(-1) & stored_alive[k]  # (B, N)
@@ -527,14 +504,13 @@ def _run_phase2(
                     ar_sq_sum[k] += (err_k * mask).sum(dim=(0, 1))
                     ar_count[k] += valid_k.sum().float()
 
-                curr_obs = decode_targets_to_observation(
-                    next_targets_ar,
+                curr_obs = means_to_observation(
+                    curr_means,
                     curr_obs,
                     stored_actions[k],
                     N,
-                    coordinator,
+                    index_log_scale,
                 )
-                curr_targets = coordinator.get_target_vector(curr_obs)[:, :N]
 
         elapsed = time.perf_counter() - t0
         if (window + 1) % 5 == 0 or window == 0:
@@ -547,7 +523,7 @@ def _run_phase2(
     print(f"Phase 2 done in {elapsed:.1f}s.")
 
     return {
-        "ar_sq_sum": ar_sq_sum.cpu().numpy(),  # (AR_WINDOW, target_dim)
+        "ar_sq_sum": ar_sq_sum.cpu().numpy(),  # (AR_WINDOW, 11)
         "ar_count": ar_count.cpu().numpy(),  # (20,)
     }
 
