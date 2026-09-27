@@ -371,6 +371,13 @@ class TensorEnv:
         simulated for the remainder; the returned flags are sticky, so the
         caller sees the episode as ended either way.
 
+        This method owns the ``ship_spawned`` reveal latch, because a decision
+        is the unit over which the reveal is defined and this is the level at
+        which one has passed. ``YemongEnvWrapper`` keeps its own copy of the
+        same three lines: it steps ``tick`` directly so that rewards and
+        episode statistics can accumulate per physics tick, and so never
+        reaches this body.
+
         Args:
             actions: (B, N, 3) int tensor — [power, turn, shoot].
             unlimited_resources: Protect and refill alive ships.
@@ -381,14 +388,19 @@ class TensorEnv:
         dones = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         actuator_contiguous = self.state.ship_alive.clone()
+        # A new decision: whatever spawned during the last one has been
+        # observed, so the latch starts empty and re-fills below.
+        self.state.ship_spawned.zero_()
         held_actions = actions if self.env_config.action_repeat == 1 else actions.clone()
         for repeat_index in range(self.env_config.action_repeat):
+            running = ~(dones | truncated)
             tick_dones, tick_truncated = self.tick(
                 held_actions, unlimited_resources=unlimited_resources
             )
             dones |= tick_dones
             truncated |= tick_truncated
             actuator_contiguous &= self.state.ship_alive & ~self.state.ship_respawned
+            self.state.ship_spawned |= self.state.ship_respawned & running.unsqueeze(1)
             if repeat_index + 1 < self.env_config.action_repeat:
                 neutralize_invalidated_actions_(
                     held_actions,
