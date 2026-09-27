@@ -26,7 +26,12 @@ import torch
 from realtime_latency import SCENARIOS, scenario_config
 
 from boost_and_broadside.config.defaults import REWARDS
-from boost_and_broadside.constants import NUM_POWER_ACTIONS, NUM_SHOOT_ACTIONS, NUM_TURN_ACTIONS
+from boost_and_broadside.constants import (
+    NUM_JOINT_ACTIONS,
+    NUM_POWER_ACTIONS,
+    NUM_SHOOT_ACTIONS,
+    NUM_TURN_ACTIONS,
+)
 from boost_and_broadside.env.observation import YemongObservation
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.profiles import PROFILES
@@ -36,7 +41,16 @@ from boost_and_broadside.train.rl.features import build_standard_coordinator
 
 ATOL = 2e-6
 RTOL = 2e-6
-STATE_FIELDS = ("valid", "age_steps", "predicted_targets", "team_id", "radius", "clamp_events")
+STATE_FIELDS = (
+    "valid",
+    "age_steps",
+    "predicted_targets",
+    "action_belief",
+    "uncertainty",
+    "team_id",
+    "radius",
+    "clamp_events",
+)
 
 
 def _git(*args: str) -> str:
@@ -165,6 +179,7 @@ def _build_trace(device: torch.device, seed: int, steps: int):
     )
     action_generator = torch.Generator(device="cpu").manual_seed(seed + 1)
     prediction_generator = torch.Generator(device="cpu").manual_seed(seed + 2)
+    action_belief_generator = torch.Generator(device="cpu").manual_seed(seed + 3)
     action_trace = torch.stack(
         (
             torch.randint(NUM_POWER_ACTIONS, (steps, 1, ships), generator=action_generator),
@@ -181,6 +196,10 @@ def _build_trace(device: torch.device, seed: int, steps: int):
         .mul_(0.05)
         .to(device)
     )
+    action_belief_logits_trace = torch.randn(
+        (steps, 2, 1, ships, NUM_JOINT_ACTIONS),
+        generator=action_belief_generator,
+    ).to(device)
     views: list[tuple[YemongObservation, YemongObservation]] = []
     action_state = PendingActionState.allocate(1, ships, device)
     team1_mask = torch.ones(1, dtype=torch.bool, device=device)
@@ -199,12 +218,20 @@ def _build_trace(device: torch.device, seed: int, steps: int):
         if bool(finished.any()):
             observation = wrapper.reset()
             action_state.reset(finished)
-    trace_tensors = [action_trace, prediction_trace]
+    trace_tensors = [action_trace, prediction_trace, action_belief_logits_trace]
     for team_views in views:
         for view in team_views:
             trace_tensors.extend(_observation_tensors(view))
     trace_digest = _tensor_digest(trace_tensors)
-    return wrapper, coordinator, env_config, views, prediction_trace, trace_digest
+    return (
+        wrapper,
+        coordinator,
+        env_config,
+        views,
+        prediction_trace,
+        action_belief_logits_trace,
+        trace_digest,
+    )
 
 
 @torch.inference_mode()
@@ -243,6 +270,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "steps": args.steps,
             "seed": args.seed,
             "prediction_trace": "seeded CPU torch.randn * 0.05, shared by eager/compiled",
+            "action_belief_logits_trace": ("seeded CPU torch.randn, shared by eager/compiled"),
             "action_trace": "seeded legal power/turn/shoot randint actions on CPU, shared",
             "compiler": "torch.compile(mode='default', dynamic=False)",
             "float_tolerance": {"atol": ATOL, "rtol": RTOL},
@@ -258,9 +286,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     _save(output, result)
 
-    wrapper, coordinator, env_config, views, predictions, trace_digest = _build_trace(
-        device, args.seed, args.steps
-    )
+    (
+        wrapper,
+        coordinator,
+        env_config,
+        views,
+        predictions,
+        action_belief_logits,
+        trace_digest,
+    ) = _build_trace(device, args.seed, args.steps)
     profile = PROFILES["rl"]
     trackers = {
         f"team{team}": {
@@ -305,6 +339,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 name = f"team{team}"
                 pair = trackers[name]
                 prediction = predictions[step, team]
+                belief_logits = action_belief_logits[step, team]
                 eager_start = time.perf_counter()
                 eager_composed = pair["eager"].compose(view)
                 if device.type == "cuda":
@@ -331,12 +366,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     (compiled_composed, _clone_observation(compiled_composed))
                 )
                 eager_advance_start = time.perf_counter()
-                pair["eager"].advance(eager_composed, prediction)
+                pair["eager"].advance(eager_composed, prediction, belief_logits)
                 if device.type == "cuda":
                     torch.cuda.synchronize(device)
                 eager_advance_seconds = time.perf_counter() - eager_advance_start
                 compiled_advance_start = time.perf_counter()
-                compiled_methods[name][1](compiled_composed, prediction)
+                compiled_methods[name][1](compiled_composed, prediction, belief_logits)
                 if device.type == "cuda":
                     torch.cuda.synchronize(device)
                 compiled_advance_seconds = time.perf_counter() - compiled_advance_start
