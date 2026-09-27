@@ -6,6 +6,7 @@ import torch
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.train.rl.physical_deltas import (
     PHYSICAL_DELTA_NAMES,
+    PHYSICAL_DELTA_SCALES,
     PhysicalShipSnapshot,
     normalize_physical_deltas,
     physical_ship_deltas,
@@ -83,3 +84,9 @@ def test_normalization_preserves_exact_zero_and_rejects_bad_scales() -> None:
     assert torch.equal(normalized, deltas)
     with pytest.raises(ValueError, match="finite and positive"):
         normalize_physical_deltas(deltas, scales.masked_fill(scales == 3, 0))
+
+
+def test_calibrated_position_and_velocity_scales_are_axis_symmetric() -> None:
+    assert PHYSICAL_DELTA_SCALES[0] == PHYSICAL_DELTA_SCALES[1]
+    assert PHYSICAL_DELTA_SCALES[2] == PHYSICAL_DELTA_SCALES[3]
+    assert len(PHYSICAL_DELTA_SCALES) == len(PHYSICAL_DELTA_NAMES)

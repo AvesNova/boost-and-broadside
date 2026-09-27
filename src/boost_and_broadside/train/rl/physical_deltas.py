@@ -12,7 +12,6 @@ from dataclasses import dataclass
 
 import torch
 
-from boost_and_broadside.env.frontline import toroidal_displacement
 from boost_and_broadside.env.state import TensorState
 
 PHYSICAL_DELTA_NAMES = (
@@ -27,6 +26,26 @@ PHYSICAL_DELTA_NAMES = (
     "power",
     "cooldown",
     "local_log_index",
+)
+
+# Fixed Phase-1 calibration for the production 5v5 Frontline profile. Continuous
+# channels use rounded RMS scales across valid truth-to-truth transitions;
+# sparse/reset channels use their physical event magnitude instead of allowing
+# the frequency of zeros to determine the scale. Position and velocity each use
+# one scale for both axes by contract. See the checked-in calibration artifact
+# and Phase-1 handoff for the distributions and selection rationale.
+PHYSICAL_DELTA_SCALES = (
+    2.5,  # position x (px)
+    2.5,  # position y (px)
+    4.0,  # velocity x (px/s)
+    4.0,  # velocity y (px/s)
+    0.1,  # attitude (rad)
+    7.853981633974483,  # angular velocity (rad/s): 2.5*pi, p90 nonzero event
+    5.0,  # shield delay (s): damage reset value
+    10.0,  # health: nominal projectile damage
+    0.75,  # power: rounded RMS
+    0.1,  # cooldown (s): full firing reset
+    0.05,  # natural log-index: representative field-interface change
 )
 
 
@@ -78,7 +97,12 @@ def physical_ship_deltas(
     profile-dependent normalization of that value.
     """
 
-    position = toroidal_displacement(next_.position - current.position, world_size)
+    position_raw = next_.position - current.position
+    world_w, world_h = world_size
+    position = torch.complex(
+        (position_raw.real + world_w / 2.0) % world_w - world_w / 2.0,
+        (position_raw.imag + world_h / 2.0) % world_h - world_h / 2.0,
+    )
     velocity = next_.velocity - current.velocity
     attitude = torch.angle(next_.attitude * torch.conj(current.attitude))
     return torch.stack(

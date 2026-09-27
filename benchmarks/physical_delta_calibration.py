@@ -32,6 +32,7 @@ from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 from boost_and_broadside.train.rl.physical_deltas import (
     PHYSICAL_DELTA_NAMES,
+    PHYSICAL_DELTA_SCALES,
     PhysicalShipSnapshot,
     physical_ship_deltas,
 )
@@ -216,6 +217,19 @@ def main() -> None:
         "channels": {
             name: summarize_channel(values[:, index])
             for index, name in enumerate(PHYSICAL_DELTA_NAMES)
+        },
+        "selected_scales": {
+            "values": dict(zip(PHYSICAL_DELTA_NAMES, PHYSICAL_DELTA_SCALES)),
+            "rule": (
+                "rounded signed RMS for dense continuous channels; physical event magnitude "
+                "for sparse/reset channels; representative conditional-nonzero magnitude for "
+                "local log-index"
+            ),
+            "shared_scales": {
+                "position_xy": PHYSICAL_DELTA_SCALES[0],
+                "velocity_xy": PHYSICAL_DELTA_SCALES[2],
+            },
+            "zero_normalization": "delta / positive scale maps exact zero to exact zero",
         },
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -50,10 +50,10 @@ from boost_and_broadside.constants import (
     NUM_POWER_ACTIONS,
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
+    POWER_SLICE,
     PRIVATE_POWER_ACTION,
     PRIVATE_SHOOT_ACTION,
     PRIVATE_TURN_ACTION,
-    POWER_SLICE,
     SHOOT_SLICE,
     TURN_SLICE,
 )
@@ -94,6 +94,7 @@ from boost_and_broadside.train.rl.opponents import (
     OpponentMixin,
     flip_team_obs,
 )
+from boost_and_broadside.train.rl.physical_deltas import PHYSICAL_DELTA_SCALES
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.sigreg import SIGReg
@@ -2545,17 +2546,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pred_att = torch.nn.functional.normalize(forecast["attitude"], dim=-1)
         true_att = torch.nn.functional.normalize(truth["attitude"], dim=-1)
         position_error = pos_delta.norm(dim=-1)
-        # No ship can move further than this in one decision, so on the visible
-        # cell the fraction beyond it is exactly the rate at which lifecycle
-        # discontinuities are leaking past the transition filters. That rate
-        # matters out of proportion to its size: a teleport contributes a
-        # thousand pixels where an honest sample contributes a fifth of one, so
-        # two tokens in a thousand are enough to set the mean. Reading the mean
-        # alone, an eighteen-fold inflation is indistinguishable from a model
-        # that has stopped working. On the belief cells it is not a leak but a
-        # legitimate measure of how far the recursion has drifted.
-        legal_travel = self.ship_config.max_speed * self.ship_config.dt
-        leak_threshold = 10.0 * legal_travel * self.env_config.action_repeat
+        # Ten calibrated position scales is an empirical outlier threshold, not
+        # a physics limit. The production scripted calibration's largest valid
+        # component was 11.32 px; even the worst per-axis bound implies a
+        # 16.01 px norm against this 25 px threshold. On a trained head, a
+        # visible-cell excursion beyond it is therefore a useful lifecycle
+        # leak signal; on a fresh head it still measures ordinary forecast error.
+        # Hidden-cell excursions measure legitimate recursive drift.
+        leak_threshold = 10.0 * PHYSICAL_DELTA_SCALES[0]
         errors = {
             "position_px": position_error,
             "position_beyond_legal_frac": (position_error > leak_threshold).float(),
