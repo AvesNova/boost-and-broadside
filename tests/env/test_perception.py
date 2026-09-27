@@ -208,10 +208,20 @@ def test_hidden_enemy_channels_and_projectiles_are_zeroed_before_policy() -> Non
     )
 
     assert not obs.visible[0, 2:].any()
+    # Three ship channels are the same constant for every slot and so say
+    # nothing about the ship occupying it: its collision radius, its SHIP object
+    # type, and the explicit "no zone role" value. Direct legal composition
+    # writes those constants rather than a zero, which for ``zone_role`` is what
+    # fixes a masked slot falsely reading as a Team-0 spawn zone.
+    constant = {ObsKey.RADIUS, ObsKey.OBJECT_TYPE, ObsKey.ZONE_ROLE}
     for key, value in obs.items():
         if key is ObsKey.VISIBLE:
             continue
         hidden = value[0, 2:4] if value.dim() == 2 else value[0, 2:4, :]
+        visible = value[0, 0:2] if value.dim() == 2 else value[0, 0:2, :]
+        if key in constant:
+            assert torch.equal(hidden, visible), key
+            continue
         assert not hidden.any(), key
     assert obs.bullets is not None
     assert not obs.bullets[next(k for k in obs.bullets if k.value == "bullet_active")][0, 4]
@@ -249,6 +259,7 @@ def test_pending_actions_are_exact_for_allies_and_absent_for_enemies() -> None:
     assert team1.visible[0, :4].all()
     assert torch.equal(team1.previous_action[0, :2], absent)
     assert torch.equal(team1.previous_action[0, 2:4], expected[0, 2:4])
+
 
 def test_frontline_scripted_agent_does_not_target_hidden_enemy_truth() -> None:
     from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG

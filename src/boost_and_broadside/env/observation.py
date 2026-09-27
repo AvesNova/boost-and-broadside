@@ -495,9 +495,7 @@ class ObservationBuffers:
             object_zero_scalar=torch.zeros(num_envs, num_objects, 1, device=device),
             object_team_id=torch.full((num_envs, num_objects), 2, device=device, dtype=torch.int32),
             object_alive=torch.ones(num_envs, num_objects, device=device, dtype=torch.bool),
-            object_prev_action=torch.zeros(
-                num_envs, num_objects, NUM_JOINT_ACTIONS, device=device
-            ),
+            object_prev_action=torch.zeros(num_envs, num_objects, NUM_JOINT_ACTIONS, device=device),
             ship_object_feature_zeros=torch.zeros(num_envs, num_ships, 1, device=device),
         )
 
@@ -508,20 +506,170 @@ class ObservationBuffers:
         """Compatibility no-op: field geometry is read directly from state."""
 
 
+@dataclass(frozen=True)
+class ShipBeliefSource:
+    """One observer's legal stand-in for the ships it cannot currently see.
+
+    Physical values in the observation's own units -- pixels, pixels/second,
+    radians, health -- so composing a view is a selection between two tensors of
+    the same meaning rather than a substitution inside an encoded vector. The
+    policy-side belief owns how that state is represented and hands these
+    channels over already converted; the builder never learns the layout.
+
+    ``local_log_index`` is the *natural* log of the refractive index, which the
+    builder normalizes exactly as it normalizes truth. ``uncertainty`` is in
+    log/unconstrained form, ``action`` is the 42-way pending-command
+    distribution predicted for hidden opponents, and ``valid`` marks the slots
+    whose values mean anything at all -- an invalid slot is zero everywhere and
+    carries the maximal spread the source's own store assigns it.
+    """
+
+    pos: torch.Tensor  # (B, N, 2) world x/y
+    vel: torch.Tensor  # (B, N, 2) px/s
+    att: torch.Tensor  # (B, N, 2) cos, sin
+    ang_vel: torch.Tensor  # (B, N, 1) rad/s
+    shield_delay: torch.Tensor  # (B, N, 1) seconds
+    health: torch.Tensor  # (B, N, 1)
+    power: torch.Tensor  # (B, N, 1)
+    cooldown: torch.Tensor  # (B, N, 1) seconds
+    local_log_index: torch.Tensor  # (B, N, 1) natural log
+    uncertainty: torch.Tensor  # (B, N, U) log/unconstrained
+    action: torch.Tensor  # (B, N, 42) predicted pending-command distribution
+    time_since_observation: torch.Tensor  # (B, N, 1) seconds
+    valid: torch.Tensor  # (B, N) bool — ever observed by this observer
+    alive: torch.Tensor  # (B, N) bool — believed alive
+    certain: torch.Tensor  # (1, 1, U) the spread an observed token carries
+
+
+@dataclass(frozen=True)
+class _ShipChannels:
+    """The ship half of one observation, after legal source selection."""
+
+    pos: torch.Tensor
+    vel: torch.Tensor
+    att: torch.Tensor
+    ang_vel: torch.Tensor
+    shield_delay: torch.Tensor
+    health: torch.Tensor
+    power: torch.Tensor
+    cooldown: torch.Tensor
+    local_log_index: torch.Tensor  # natural log; the caller normalizes
+    index_gradient: torch.Tensor
+    alive: torch.Tensor
+
+    def select(
+        self, belief: "ShipBeliefSource | None", from_truth: torch.Tensor
+    ) -> "_ShipChannels":
+        """Replace every slot not legally sourced from truth.
+
+        With a ``belief``, that slot takes the observer's remembered physical
+        state, which is already zero where nothing was ever observed. Without
+        one, it takes zero directly: a configuration with no memory has nothing
+        legal to say about a ship it cannot see.
+        """
+
+        vector = from_truth.unsqueeze(-1)
+
+        def pick(truth: torch.Tensor, remembered: torch.Tensor | None) -> torch.Tensor:
+            return torch.where(vector, truth, 0.0 if remembered is None else remembered)
+
+        return _ShipChannels(
+            pos=pick(self.pos, None if belief is None else belief.pos),
+            vel=pick(self.vel, None if belief is None else belief.vel),
+            att=pick(self.att, None if belief is None else belief.att),
+            ang_vel=pick(self.ang_vel, None if belief is None else belief.ang_vel),
+            shield_delay=pick(self.shield_delay, None if belief is None else belief.shield_delay),
+            health=pick(self.health, None if belief is None else belief.health),
+            power=pick(self.power, None if belief is None else belief.power),
+            cooldown=pick(self.cooldown, None if belief is None else belief.cooldown),
+            local_log_index=pick(
+                self.local_log_index, None if belief is None else belief.local_log_index
+            ),
+            # Not a predicted channel. grad(n) is a deterministic function of
+            # position given the static map, but the belief does not forecast it
+            # and inferring it from a believed position would state a field
+            # interaction nobody supervised, so a remembered ship reads zero.
+            index_gradient=torch.where(vector, self.index_gradient, 0.0),
+            alive=(
+                self.alive & from_truth
+                if belief is None
+                else torch.where(from_truth, self.alive, belief.alive & belief.valid)
+            ),
+        )
+
+
+def _truth_ship_source(state: TensorState, ship_config: ShipConfig) -> _ShipChannels:
+    """Authoritative ship channels, before any legality selection.
+
+    ``index_gradient`` is grad(n) at the ship: the direction the medium is
+    changing, and the force term in
+    ``a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v`` -- so without it a ship
+    feels an acceleration whose source it cannot see.
+    """
+
+    return _ShipChannels(
+        pos=torch.stack([state.ship_pos.real, state.ship_pos.imag], dim=-1),
+        vel=torch.stack([state.ship_vel.real, state.ship_vel.imag], dim=-1),
+        att=torch.stack([state.ship_attitude.real, state.ship_attitude.imag], dim=-1),
+        ang_vel=state.ship_ang_vel.unsqueeze(-1),
+        shield_delay=state.ship_shield_delay.unsqueeze(-1),
+        health=state.ship_health.unsqueeze(-1),
+        power=state.ship_power.unsqueeze(-1),
+        cooldown=state.ship_cooldown.unsqueeze(-1),
+        local_log_index=torch.log(state.ship_local_index).unsqueeze(-1),
+        index_gradient=torch.stack(
+            [state.ship_field_gradient.real, state.ship_field_gradient.imag],
+            dim=-1,
+        )
+        / index_gradient_scale(ship_config),
+        alive=state.ship_alive,
+    )
+
+
+def encode_prev_action(prev_action: torch.Tensor) -> torch.Tensor:
+    """Joint command IDs for a ``(..., 3)`` physical command tensor."""
+
+    return (
+        prev_action[..., 0].long() * NUM_TURN_ACTIONS + prev_action[..., 1].long()
+    ) * NUM_SHOOT_ACTIONS + prev_action[..., 2].long()
+
+
+def observer_team_mask(team_id: torch.Tensor, observer_team: "int | torch.Tensor") -> torch.Tensor:
+    """``(B, N)`` bool: which slots the observer owns.
+
+    ``observer_team`` is one team for the whole batch, or a ``(B,)`` tensor when
+    one policy plays team 0 in some environments and team 1 in others -- an
+    ego-pass league opponent or a tournament seat. The tensor form is what lets
+    such a caller compose its legal view in one build instead of per seat.
+    """
+
+    if isinstance(observer_team, torch.Tensor):
+        if observer_team.shape != team_id.shape[:1]:
+            raise ValueError(
+                f"observer_team must have shape {team_id.shape[:1]}, got {observer_team.shape}"
+            )
+        return team_id == observer_team.to(team_id.dtype).view(-1, *([1] * (team_id.dim() - 1)))
+    if observer_team not in (0, 1):
+        raise ValueError(f"observer_team must be 0 or 1, got {observer_team}")
+    return team_id == observer_team
+
+
 def write_pending_action_view(
     destination: torch.Tensor,
     pending_action: torch.Tensor,
     team_id: torch.Tensor,
-    observer_team: int,
+    observer_team: "int | torch.Tensor",
     spawn_revealed: torch.Tensor,
+    belief_action: torch.Tensor | None = None,
 ) -> None:
     """Write legal 42-way pending-action probabilities for one team view.
+
     Allied commands and spawn/reveal null commands are exact one-hots. Ordinary
-    opponent slots remain zero here: a policy-side belief tracker fills them
-    from the preceding decision's dedicated enemy-action prediction.
+    opponent slots take ``belief_action`` -- the preceding decision's dedicated
+    enemy-action prediction, owned by the policy-side belief -- or zero when the
+    caller has no belief to offer. Authoritative opponent commands never reach
+    this destination regardless of physical visibility.
     """
-    if observer_team not in (0, 1):
-        raise ValueError(f"observer_team must be 0 or 1, got {observer_team}")
     expected = (*team_id.shape, NUM_JOINT_ACTIONS)
     if destination.shape != expected:
         raise ValueError(
@@ -531,15 +679,17 @@ def write_pending_action_view(
         raise ValueError(
             f"spawn_revealed must have shape {team_id.shape}, got {spawn_revealed.shape}"
         )
+    if belief_action is not None and belief_action.shape != expected:
+        raise ValueError(f"belief_action must have shape {expected}, got {belief_action.shape}")
     action_id = (
-        pending_action[..., 0].long() * NUM_TURN_ACTIONS
-        + pending_action[..., 1].long()
+        pending_action[..., 0].long() * NUM_TURN_ACTIONS + pending_action[..., 1].long()
     ) * NUM_SHOOT_ACTIONS + pending_action[..., 2].long()
-    known = (team_id == observer_team) | spawn_revealed
-    destination.copy_(
-        F.one_hot(action_id, NUM_JOINT_ACTIONS).to(destination.dtype)
-        * known.unsqueeze(-1)
-    )
+    known = (observer_team_mask(team_id, observer_team) | spawn_revealed).unsqueeze(-1)
+    public = F.one_hot(action_id, NUM_JOINT_ACTIONS).to(destination.dtype)
+    if belief_action is None:
+        destination.copy_(public * known)
+    else:
+        destination.copy_(torch.where(known, public, belief_action.to(destination.dtype)))
 
 
 def bullet_observation_from_state(
@@ -645,9 +795,10 @@ def observation_from_state(
     include_bullets: bool = False,
     ship_visibility: torch.Tensor | None = None,
     bullet_visibility: torch.Tensor | None = None,
-    perspective_team: int | None = None,
+    perspective_team: "int | torch.Tensor | None" = None,
+    belief: "ShipBeliefSource | None" = None,
 ) -> YemongObservation:
-    """Build the raw policy observation for the supplied environment state.
+    """Build one observer's legal policy observation for the supplied state.
 
     Fields are represented as always-alive team-2 tokens. Passing reusable
     ``buffers`` keeps the training step path allocation-free; callers outside
@@ -655,9 +806,18 @@ def observation_from_state(
 
     ``include_bullets`` attaches the bullet cross-attention channels. It is off by
     default so profiles that do not read bullets pay neither the reduction nor the
-    rollout storage. ``perspective_team`` keeps allied pending actions while
-    replacing enemy actions with explicit private categories, even when the enemy
-    ship is visible.
+    rollout storage.
+
+    Every ship slot takes its physical state from exactly one legal source, in
+    one selection: authoritative truth where the observer owns the slot or can
+    currently see it, this observer's remembered ``belief`` where it can not, and
+    zero where nothing has ever been observed. Nothing privileged is ever
+    materialized into a slot and masked afterwards, and no channel is restored
+    later from a second pass -- see :class:`ShipBeliefSource`.
+
+    ``perspective_team`` names the observer: one team for the batch, a ``(B,)``
+    tensor for a caller that plays different seats in different environments, or
+    ``None`` for the omniscient/privileged view that has no observer at all.
     """
     if buffers is None:
         buffers = ObservationBuffers.allocate(
@@ -670,19 +830,34 @@ def observation_from_state(
         )
         buffers.refresh_field_state_all(state)
 
-    ship_pos = torch.stack([state.ship_pos.real, state.ship_pos.imag], dim=-1)
-    ship_vel = torch.stack([state.ship_vel.real, state.ship_vel.imag], dim=-1)
-    ship_att = torch.stack([state.ship_attitude.real, state.ship_attitude.imag], dim=-1)
-    ship_ang = state.ship_ang_vel.unsqueeze(-1)
-    ship_health = state.ship_health.unsqueeze(-1)
-    ship_power = state.ship_power.unsqueeze(-1)
-    ship_cooldown = state.ship_cooldown.unsqueeze(-1)
-    pending_action_id = (
-        state.prev_action[..., 0].long() * NUM_TURN_ACTIONS
-        + state.prev_action[..., 1].long()
-    ) * NUM_SHOOT_ACTIONS + state.prev_action[..., 2].long()
+    log_scale = _index_log_scale(ship_config)
+    visible_ships = (
+        torch.ones_like(state.ship_alive) if ship_visibility is None else ship_visibility
+    )
+    # Truth is legal for a slot the observer owns or can see. Allied visibility
+    # is guaranteed by ``team_visibility_from_state``, so the ownership term is
+    # redundant in the production path; it is written out anyway so this rule
+    # does not depend on a perception invariant established in another module.
+    omniscient = ship_visibility is None and perspective_team is None and belief is None
+    from_truth = visible_ships
+    if perspective_team is not None:
+        from_truth = from_truth | observer_team_mask(state.ship_team_id, perspective_team)
+    truth_source = _truth_ship_source(state, ship_config)
+    # An omniscient view has no observer and nothing to select: every slot is
+    # already truth, so the privileged/auxiliary path skips the selection
+    # entirely rather than paying eleven no-op ``where`` calls per step.
+    ship = truth_source if omniscient else truth_source.select(belief, from_truth)
+    known = from_truth if belief is None else (from_truth | belief.valid)
+
+    ship_pos = ship.pos
+    ship_vel = ship.vel
+    ship_att = ship.att
+    ship_ang = ship.ang_vel
+    ship_health = ship.health
+    ship_power = ship.power
+    ship_cooldown = ship.cooldown
     ship_prev_action = F.one_hot(
-        pending_action_id,
+        encode_prev_action(state.prev_action),
         NUM_JOINT_ACTIONS,
     ).float()
     if perspective_team is not None:
@@ -692,18 +867,11 @@ def observation_from_state(
             state.ship_team_id,
             perspective_team,
             state.ship_spawned,
+            belief_action=None if belief is None else belief.action,
         )
 
-    log_scale = _index_log_scale(ship_config)
-    ship_local_log_index = torch.log(state.ship_local_index).unsqueeze(-1) / log_scale
-
-    # grad(n) at the ship. This is the direction the medium is changing, and it is
-    # the force term in a = F/m + 0.5|v|^2 grad(log m) - (v.grad(log m))v — so
-    # without it a ship feels an acceleration whose source it cannot see.
-    ship_index_gradient = torch.stack(
-        [state.ship_field_gradient.real, state.ship_field_gradient.imag],
-        dim=-1,
-    ) / index_gradient_scale(ship_config)
+    ship_local_log_index = ship.local_log_index / log_scale
+    ship_index_gradient = ship.index_gradient
 
     bullets = (
         bullet_observation_from_state(state, ship_config, bullet_visibility)
@@ -711,10 +879,7 @@ def observation_from_state(
         else None
     )
 
-    visible_ships = (
-        torch.ones_like(state.ship_alive) if ship_visibility is None else ship_visibility
-    )
-    observed_alive = state.ship_alive & visible_ships
+    observed_alive = ship.alive
 
     batch = state.num_envs
     num_fields = state.num_fields
@@ -828,23 +993,30 @@ def observation_from_state(
             ObsKey.VEL: torch.cat([ship_vel, object_zero_vec], dim=1),
             ObsKey.ATT: torch.cat([ship_att, object_zero_vec], dim=1),
             ObsKey.ANG_VEL: torch.cat([ship_ang, object_zero_scalar], dim=1),
-            ObsKey.SHIELD_DELAY: torch.cat(
+            ObsKey.SHIELD_DELAY: torch.cat([ship.shield_delay, object_zero_scalar], dim=1),
+            ObsKey.HEALTH: torch.cat([ship_health, object_zero_scalar], dim=1),
+            ObsKey.POWER: torch.cat([ship_power, object_zero_scalar], dim=1),
+            ObsKey.COOLDOWN: torch.cat([ship_cooldown, object_zero_scalar], dim=1),
+            # Identity is remembered, not forecast: a slot whose team has ever
+            # been observed keeps it, and one that has not reads the neutral
+            # zero. Reading it from truth under ``known`` and reading it from a
+            # belief store are the same value, because a belief only ever held
+            # what was observed.
+            ObsKey.TEAM_ID: torch.cat(
+                [torch.where(known, state.ship_team_id, 0), object_team], dim=1
+            ),
+            ObsKey.ALIVE: torch.cat([observed_alive, object_alive], dim=1),
+            ObsKey.VISIBLE: torch.cat([visible_ships, object_alive], dim=1),
+            # Sticky: a ship seen once remains a token this observer may reason
+            # about, whether or not it is in sight now.
+            ObsKey.BELIEF_VALID: torch.cat([known, object_alive], dim=1),
+            ObsKey.TIME_SINCE_OBSERVATION: torch.cat(
                 [
-                    state.ship_shield_delay.unsqueeze(-1) * visible_ships.unsqueeze(-1),
+                    ship_zero if belief is None else belief.time_since_observation,
                     object_zero_scalar,
                 ],
                 dim=1,
             ),
-            ObsKey.HEALTH: torch.cat([ship_health, object_zero_scalar], dim=1),
-            ObsKey.POWER: torch.cat([ship_power, object_zero_scalar], dim=1),
-            ObsKey.COOLDOWN: torch.cat([ship_cooldown, object_zero_scalar], dim=1),
-            ObsKey.TEAM_ID: torch.cat([state.ship_team_id, object_team], dim=1),
-            ObsKey.ALIVE: torch.cat([observed_alive, object_alive], dim=1),
-            ObsKey.VISIBLE: torch.cat([visible_ships, object_alive], dim=1),
-            # A raw perceived observation contains no remembered enemies yet.
-            # BeliefTracker promotes previously-seen hidden slots to valid tokens.
-            ObsKey.BELIEF_VALID: torch.cat([visible_ships, object_alive], dim=1),
-            ObsKey.TIME_SINCE_OBSERVATION: torch.cat([ship_zero, object_zero_scalar], dim=1),
             ObsKey.OBJECT_TYPE: torch.cat([ship_type, object_type], dim=1),
             ObsKey.ZONE_ROLE: torch.cat([ship_no_zone, object_zone_role], dim=1),
             ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action, object_prev_action], dim=1),
@@ -898,34 +1070,19 @@ def observation_from_state(
             ),
         },
     )
-    return _mask_hidden_ships(observation, visible_ships, state.max_ships)
-
-
-def _mask_hidden_ships(
-    observation: YemongObservation,
-    visible_ships: torch.Tensor,
-    num_ships: int,
-) -> YemongObservation:
-    """Zero every hidden ship channel while retaining explicit false masks."""
-
-    data = dict(observation.data)
-    for key, value in tuple(data.items()):
-        if key == ObsKey.VISIBLE:
-            continue
-        ship_value = (
-            value[..., :num_ships] if key in _TOKEN_LAST_KEYS else value[..., :num_ships, :]
-        )
-        mask = visible_ships
-        while mask.dim() < ship_value.dim():
-            mask = mask.unsqueeze(-1)
-        masked = torch.where(mask, ship_value, torch.zeros_like(ship_value))
-        value = value.clone()
-        if key in _TOKEN_LAST_KEYS:
-            value[..., :num_ships] = masked
-        else:
-            value[..., :num_ships, :] = masked
-        data[key] = value
-    return YemongObservation(data=data, bullets=observation.bullets)
+    if belief is None:
+        return observation
+    # Map objects are static and carry no belief, so their spread stays at the
+    # certainty floor the source supplies for a ship in sight; only the ship
+    # slots vary.
+    observation.data[ObsKey.BELIEF_UNCERTAINTY] = torch.cat(
+        [
+            belief.uncertainty,
+            belief.certain.expand(batch, num_objects, belief.uncertainty.shape[-1]),
+        ],
+        dim=1,
+    )
+    return observation
 
 
 _PERCEPTION_CACHE: dict[str, object] = {}
@@ -968,21 +1125,30 @@ def perceived_observation_from_state(
     buffers: ObservationBuffers | None = None,
     include_bullets: bool = False,
     perceive_bullets: bool | None = None,
+    belief: "tuple[ShipBeliefSource | None, ShipBeliefSource | None] | None" = None,
+    visibility: TeamVisibility | None = None,
 ) -> tuple[YemongObservation, TeamVisibility]:
-    """Build independently masked team observations and return team 0 as root.
+    """Build both teams' legal observations and return team 0 as root.
 
     ``perceive_bullets`` decides whether projectile visibility is computed at
     all, and defaults to ``include_bullets`` -- a policy that does not read
     bullets should not pay to occlude them. It is separate because the play
     renderer draws projectiles from the returned masks whether or not the
     policies consume them, and so asks for them explicitly.
+
+    ``belief`` supplies each observer's remembered physical state, team 0 first.
+    ``visibility`` lets a caller that has already computed perception -- because
+    its belief had to be assimilated against it before composing -- pass it in
+    rather than paying for the line-of-sight tests twice.
     """
 
     if perceive_bullets is None:
         perceive_bullets = include_bullets
     if include_bullets and not perceive_bullets:
         raise ValueError("bullet observations cannot be built without bullet perception")
-    visibility = team_visibility_from_state(state, ship_config, env_config, perceive_bullets)
+    if visibility is None:
+        visibility = team_visibility_from_state(state, ship_config, env_config, perceive_bullets)
+    beliefs = (None, None) if belief is None else belief
     views = [
         observation_from_state(
             state,
@@ -992,6 +1158,7 @@ def perceived_observation_from_state(
             ship_visibility=visibility.ship[:, team],
             bullet_visibility=None if visibility.bullet is None else visibility.bullet[:, team],
             perspective_team=team,
+            belief=beliefs[team],
         )
         for team in (0, 1)
     ]
