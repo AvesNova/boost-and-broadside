@@ -20,8 +20,13 @@ from boost_and_broadside.config import EnvConfig, FrontlineConfig, ShipConfig
 from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import FRONTLINE_WORLD_SIZE
+from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.perception import team_visibility_from_state
+from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.evaluation.agents import ResolvedAgent
+from boost_and_broadside.evaluation.match import MatchRunner
+from boost_and_broadside.runtime.actions import PendingActionState
 
 _FRONTLINE = FrontlineConfig(
     zone_radius=330.0,
@@ -176,3 +181,115 @@ def test_the_wrapper_and_direct_step_agree_on_the_latch() -> None:
         assert torch.equal(wrapper.state.ship_spawned, direct.state.ship_spawned), (
             f"latch diverged on decision {step_index}"
         )
+
+
+class _ConstantController:
+    """A controller that always commands the same non-null action.
+
+    Non-null is the point: against an agent that already commands nothing, a
+    null pending action on a spawn decision would be indistinguishable from
+    business as usual.
+    """
+
+    def __init__(self, action: tuple[int, int, int]) -> None:
+        self.action = action
+
+    def get_actions(self, state: TensorState, team_visibility=None) -> torch.Tensor:
+        del team_visibility
+        return torch.tensor(self.action, dtype=torch.int32).expand(
+            state.num_envs, state.ship_pos.shape[1], 3
+        )
+
+
+def test_a_spawned_ship_enters_the_world_on_a_null_pending_action() -> None:
+    """The spawn decision's command is null everywhere, through the match runner.
+
+    The unit-level contract lives in ``tests/runtime_semantics`` against the
+    decision-runtime oracle. This is the end-to-end statement of the same rule
+    over real Frontline respawns: whenever the reveal latch is set, that ship's
+    queued command -- which is what physics consumes next, and what the
+    observation advertises -- is exactly ``(0, 0, 0)``.
+    """
+
+    env = _frontline_env(num_envs=2, num_ships=4)
+    runner = MatchRunner(
+        env,
+        [
+            ResolvedAgent("scripted", _ConstantController((2, 5, 1))),
+            ResolvedAgent("scripted", _ConstantController((1, 2, 1))),
+        ],
+        team0_index=torch.zeros(2, dtype=torch.long),
+        team1_index=torch.ones(2, dtype=torch.long),
+        ship_config=env.ship_config,
+        num_ships=4,
+    )
+    runner.init_hidden()
+
+    spawn_decisions = 0
+    for decision in range(24):
+        # Provoke a respawn on a rotating slot, and let the others run.
+        if decision % 3 == 0:
+            _push_outside(env, decision // 3 % 4)
+        dones, truncated = runner.step()
+
+        spawned = env.state.ship_spawned
+        if bool(spawned.any()):
+            spawn_decisions += 1
+            queued = runner.action_state.pending[spawned]
+            assert not queued.any(), f"decision {decision}: spawned on a live command {queued}"
+            observation = runner.observe()
+            for team in (0, 1):
+                view = observation.for_team(team)[ObsKey.PREVIOUS_ACTION][:, :4]
+                own = spawned & (env.state.ship_team_id == team)
+                assert not view[own].any(), (
+                    f"decision {decision}: team {team} sees a live command on its own spawn"
+                )
+        runner.reset_finished(dones | truncated)
+
+    assert spawn_decisions >= 8, f"only {spawn_decisions} spawn decisions were exercised"
+
+
+def test_the_initial_spawn_queue_is_null_in_the_training_path() -> None:
+    """A fresh queue and a reset queue are both null before the first command.
+
+    ``YemongEnvWrapper`` does not own the pending queue -- the PPO rollout does
+    -- so this asserts the pairing the rollout relies on: every ship is latched
+    as spawned by a reset, and every ship's queued command is null at that point.
+    """
+
+    config = EnvConfig(
+        num_ships=4,
+        max_bullets=0,
+        max_episode_steps=600,
+        vision_range=512.0,
+        spawn_reveal=True,
+        frontline=_FRONTLINE,
+    )
+    wrapper = YemongEnvWrapper(
+        2, ShipConfig(world_size=FRONTLINE_WORLD_SIZE), config, REWARDS, "cpu"
+    )
+    obs = wrapper.reset(seed=7)
+    action_state = PendingActionState.allocate(2, 4, "cpu")
+
+    assert wrapper.state.ship_spawned.all()
+    assert not action_state.pending.any(), "a freshly allocated queue is null"
+
+    action_state.write_observation(obs, wrapper.state.ship_team_id, 4)
+    for team in (0, 1):
+        own = wrapper.state.ship_team_id == team
+        view = obs.for_team(team)[ObsKey.PREVIOUS_ACTION][:, :4]
+        assert not view[own].any(), "the opening observation advertises no command"
+
+    # A live command, then an episode boundary: the queue must come back null
+    # for the ships the reset re-spawns.
+    action_state.commit(
+        torch.full((2, 4, 3), 1, dtype=torch.int32),
+        torch.ones((2, 4), dtype=torch.bool),
+        torch.zeros(2, dtype=torch.bool),
+    )
+    assert action_state.pending.any()
+    done = torch.tensor([True, False])
+    wrapper.env.reset_envs(done)
+    action_state.reset(done)
+    assert not action_state.pending[0].any(), "the reset env re-enters on a null command"
+    assert action_state.pending[1].any(), "and the running env keeps its queue"
