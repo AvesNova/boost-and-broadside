@@ -1,0 +1,433 @@
+{
+  "schema": "boost-and-broadside-physical-delta-calibration-v1",
+  "git_commit": "035b13861a1f0cfa583eeced9f0b4d7831f0213c",
+  "collection": {
+    "profile": "rl",
+    "controller": "StochasticScriptedAgent vs itself",
+    "device": "cuda",
+    "seeds": [
+      271828,
+      314159,
+      161803
+    ],
+    "parallel_envs": 64,
+    "decisions_per_seed": 3000,
+    "decision_hz": 30.0,
+    "num_ships": 10,
+    "num_fields": 10,
+    "vision_range": 1024.0,
+    "spawn_reveal": true,
+    "ship_config": {
+      "collision_radius": 10.0,
+      "max_health": 100.0,
+      "max_power": 100.0,
+      "random_speed": false,
+      "min_speed": 1.0,
+      "max_speed": 180.0,
+      "default_speed": 100.0,
+      "base_thrust": 8.0,
+      "boost_thrust": 80.0,
+      "reverse_thrust": -80.0,
+      "gravity_factor": 0.0,
+      "gravity_eps": 10000.0,
+      "field_index_step": 1.4142135623730951,
+      "field_radius_min": 30.0,
+      "field_radius_max": 750.0,
+      "field_transition_width_min": 40.0,
+      "field_transition_width_max": 40.0,
+      "field_integrator": "two_step",
+      "field_integration_substeps": 1,
+      "power_speed_constant": 200.0,
+      "passive_power_gain": 10.0,
+      "no_turn_drag_coeff": 0.0008,
+      "normal_turn_drag_coeff": 0.0012,
+      "normal_turn_lift_coeff": 0.015,
+      "sharp_turn_drag_coeff": 0.005,
+      "sharp_turn_lift_coeff": 0.027,
+      "normal_turn_angle": 0.08726646259971647,
+      "sharp_turn_angle": 0.2617993877991494,
+      "bullet_speed": 500.0,
+      "bullet_energy_cost": 2,
+      "bullet_damage": 10.0,
+      "bullet_min_damage_frac": 0.3,
+      "bullet_lifetime": 1.0,
+      "bullet_spread": 12.0,
+      "firing_cooldown": 0.1,
+      "bullet_drag_coeff": 0.0008,
+      "bullet_field_integrator": "two_step",
+      "bullet_field_integration_substeps": 2,
+      "world_size": [
+        65536.0,
+        65536.0
+      ],
+      "dt": 0.03333333333333333
+    },
+    "frontline_config": {
+      "zone_radius": 330.0,
+      "zone_ring_radius": 1200.0,
+      "playable_radius": 2600.0,
+      "capture_seconds": 10.0,
+      "respawn_power": 40.0,
+      "respawn_speed": 30.0,
+      "shield_recharge_delay": 5.0,
+      "shield_recharge_per_second": 15.0,
+      "respawn_health": 15.0,
+      "boundary_damage_per_second": 5.0,
+      "boundary_damage_per_pixel_second": 0.05,
+      "front_win_threshold": 3
+    },
+    "elapsed_seconds": 444.0968583020149,
+    "ship_transitions_per_second": 12970.143544863413,
+    "candidate_ship_transitions": 5760000,
+    "included_ship_transitions": 5753703,
+    "destination_respawn_excluded": 6297,
+    "destination_respawn_excluded_fraction": 0.0010932291666666666,
+    "env_decisions_with_respawn": 6270,
+    "terminal_envs_reset": 0
+  },
+  "runtime": {
+    "python": "3.13.11",
+    "torch": "2.13.0+cu130",
+    "torch_cuda": "13.0",
+    "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+    "peak_allocated_bytes": 13962752,
+    "peak_reserved_bytes": 29360128
+  },
+  "quantity_definition": {
+    "position": "minimum-image displacement on the 65536 px torus",
+    "attitude": "signed shortest angular displacement in [-pi, pi]",
+    "local_log_index": "delta of natural log(physical refractive index)",
+    "mask": "exclude every transition whose destination ship_respawned is true"
+  },
+  "channels": {
+    "position_x": {
+      "count": 5753703,
+      "mean_signed": 0.1971316933631897,
+      "std_signed": 2.4742867946624756,
+      "zero_fraction": 0.0005125394673086703,
+      "positive_fraction": 0.5333961248397827,
+      "negative_fraction": 0.4660913050174713,
+      "absolute": {
+        "p50": 1.77734375,
+        "p90": 4.03515625,
+        "p95": 4.52734375,
+        "p99": 6.203125,
+        "p99.9": 8.04296875,
+        "p99.99": 8.84375,
+        "max": 11.3203125,
+        "mean": 2.0345194339752197
+      },
+      "absolute_nonzero": {
+        "p50": 1.77734375,
+        "p90": 4.037109375,
+        "p95": 4.52734375,
+        "p99": 6.203125,
+        "p99.9": 8.04296875,
+        "p99.99": 8.84375,
+        "max": 11.3203125,
+        "mean": 2.035562753677368
+      }
+    },
+    "position_y": {
+      "count": 5753703,
+      "mean_signed": 0.034497980028390884,
+      "std_signed": 2.501126766204834,
+      "zero_fraction": 0.0004885549424216151,
+      "positive_fraction": 0.5069981813430786,
+      "negative_fraction": 0.4925132691860199,
+      "absolute": {
+        "p50": 1.76953125,
+        "p90": 4.0546875,
+        "p95": 4.587890625,
+        "p99": 6.453125,
+        "p99.9": 8.1015625,
+        "p99.99": 8.9140625,
+        "max": 11.20703125,
+        "mean": 2.041468381881714
+      },
+      "absolute_nonzero": {
+        "p50": 1.76953125,
+        "p90": 4.0546875,
+        "p95": 4.58984375,
+        "p99": 6.453125,
+        "p99.9": 8.1015625,
+        "p99.99": 8.9140625,
+        "max": 11.20703125,
+        "mean": 2.042466640472412
+      }
+    },
+    "velocity_x": {
+      "count": 5753703,
+      "mean_signed": -0.0011749971890822053,
+      "std_signed": 4.090721130371094,
+      "zero_fraction": 2.4332155589945614e-05,
+      "positive_fraction": 0.5075953602790833,
+      "negative_fraction": 0.492380291223526,
+      "absolute": {
+        "p50": 0.6366157531738281,
+        "p90": 5.46351432800293,
+        "p95": 8.392654418945312,
+        "p99": 17.901599884033203,
+        "p99.9": 32.579307556152344,
+        "p99.99": 49.30439758300781,
+        "max": 86.99391174316406,
+        "mean": 1.980479121208191
+      },
+      "absolute_nonzero": {
+        "p50": 0.63665771484375,
+        "p90": 5.463635444641113,
+        "p95": 8.392730712890625,
+        "p99": 17.90188980102539,
+        "p99.9": 32.579307556152344,
+        "p99.99": 49.30439758300781,
+        "max": 86.99391174316406,
+        "mean": 1.9805275201797485
+      }
+    },
+    "velocity_y": {
+      "count": 5753703,
+      "mean_signed": -0.0004808134399354458,
+      "std_signed": 4.030666828155518,
+      "zero_fraction": 2.6765372240333818e-05,
+      "positive_fraction": 0.502588152885437,
+      "negative_fraction": 0.49738508462905884,
+      "absolute": {
+        "p50": 0.6377391815185547,
+        "p90": 5.470959663391113,
+        "p95": 8.394927978515625,
+        "p99": 17.203170776367188,
+        "p99.9": 32.122169494628906,
+        "p99.99": 48.730018615722656,
+        "max": 78.85552978515625,
+        "mean": 1.9709985256195068
+      },
+      "absolute_nonzero": {
+        "p50": 0.6377897262573242,
+        "p90": 5.471076965332031,
+        "p95": 8.395024299621582,
+        "p99": 17.20326042175293,
+        "p99.9": 32.122169494628906,
+        "p99.99": 48.730018615722656,
+        "max": 78.85552978515625,
+        "mean": 1.9710512161254883
+      }
+    },
+    "attitude": {
+      "count": 5753703,
+      "mean_signed": -0.0001739160652505234,
+      "std_signed": 0.08465629070997238,
+      "zero_fraction": 6.378500984283164e-05,
+      "positive_fraction": 0.49819862842559814,
+      "negative_fraction": 0.5017375946044922,
+      "absolute": {
+        "p50": 0.02159840241074562,
+        "p90": 0.1277916133403778,
+        "p95": 0.2162921279668808,
+        "p99": 0.2617994248867035,
+        "p99.9": 0.4820926785469055,
+        "p99.99": 0.5370748043060303,
+        "max": 1.8316636085510254,
+        "mean": 0.04788044095039368
+      },
+      "absolute_nonzero": {
+        "p50": 0.021605169400572777,
+        "p90": 0.1278015524148941,
+        "p95": 0.21629776060581207,
+        "p99": 0.2617994248867035,
+        "p99.9": 0.4820926785469055,
+        "p99.99": 0.5370748043060303,
+        "max": 1.8316636085510254,
+        "mean": 0.047883495688438416
+      }
+    },
+    "angular_velocity": {
+      "count": 5753703,
+      "mean_signed": -2.2750591597286984e-05,
+      "std_signed": 2.7039103507995605,
+      "zero_fraction": 0.6924681663513184,
+      "positive_fraction": 0.15371109545230865,
+      "negative_fraction": 0.15382076799869537,
+      "absolute": {
+        "p50": 0.0,
+        "p90": 5.235988140106201,
+        "p95": 7.853981971740723,
+        "p99": 7.853981971740723,
+        "p99.9": 15.707963943481445,
+        "p99.99": 15.707963943481445,
+        "max": 15.707963943481445,
+        "mean": 1.3057411909103394
+      },
+      "absolute_nonzero": {
+        "p50": 2.6179938316345215,
+        "p90": 7.853981971740723,
+        "p95": 7.853981971740723,
+        "p99": 10.471975326538086,
+        "p99.9": 15.707963943481445,
+        "p99.99": 15.707963943481445,
+        "max": 15.707963943481445,
+        "mean": 4.245872974395752
+      }
+    },
+    "shield_delay": {
+      "count": 5753703,
+      "mean_signed": -0.0014064493589103222,
+      "std_signed": 0.24738705158233643,
+      "zero_fraction": 0.4638776183128357,
+      "positive_fraction": 0.020679030567407608,
+      "negative_fraction": 0.5154433846473694,
+      "absolute": {
+        "p50": 0.03333330154418945,
+        "p90": 0.03333330154418945,
+        "p95": 0.03333336114883423,
+        "p99": 0.09999990463256836,
+        "p99.9": 5.0,
+        "p99.99": 5.0,
+        "max": 5.0,
+        "mean": 0.03281306475400925
+      },
+      "absolute_nonzero": {
+        "p50": 0.03333330154418945,
+        "p90": 0.03333333507180214,
+        "p95": 0.03333336114883423,
+        "p99": 0.2666664123535156,
+        "p99.9": 5.0,
+        "p99.99": 5.0,
+        "max": 5.0,
+        "mean": 0.06120442599058151
+      }
+    },
+    "health": {
+      "count": 5753703,
+      "mean_signed": -0.002642296953126788,
+      "std_signed": 1.0746737718582153,
+      "zero_fraction": 0.7086394429206848,
+      "positive_fraction": 0.26950451731681824,
+      "negative_fraction": 0.02185601182281971,
+      "absolute": {
+        "p50": 0.0,
+        "p90": 0.5,
+        "p95": 0.5,
+        "p99": 6.338863372802734,
+        "p99.9": 9.999929428100586,
+        "p99.99": 17.67872428894043,
+        "max": 28.537757873535156,
+        "mean": 0.2709282636642456
+      },
+      "absolute_nonzero": {
+        "p50": 0.5,
+        "p90": 0.5,
+        "p95": 3.2845516204833984,
+        "p99": 9.995661735534668,
+        "p99.9": 13.018985748291016,
+        "p99.99": 19.955089569091797,
+        "max": 28.537757873535156,
+        "mean": 0.9298727512359619
+      }
+    },
+    "power": {
+      "count": 5753703,
+      "mean_signed": -0.04460481181740761,
+      "std_signed": 0.7432470321655273,
+      "zero_fraction": 0.14882172644138336,
+      "positive_fraction": 0.4440288245677948,
+      "negative_fraction": 0.40714943408966064,
+      "absolute": {
+        "p50": 0.22546052932739258,
+        "p90": 1.400600552558899,
+        "p95": 1.7634057998657227,
+        "p99": 2.3745269775390625,
+        "p99.9": 3.2095391750335693,
+        "p99.99": 3.7481002807617188,
+        "max": 5.561861038208008,
+        "mean": 0.438967227935791
+      },
+      "absolute_nonzero": {
+        "p50": 0.2605266571044922,
+        "p90": 1.5110234022140503,
+        "p95": 1.7991564273834229,
+        "p99": 2.4578449726104736,
+        "p99.9": 3.254598617553711,
+        "p99.99": 3.7715134620666504,
+        "max": 5.561861038208008,
+        "mean": 0.5157171487808228
+      }
+    },
+    "cooldown": {
+      "count": 5753703,
+      "mean_signed": 1.0781528544612229e-05,
+      "std_signed": 0.02088204398751259,
+      "zero_fraction": 0.8522626161575317,
+      "positive_fraction": 0.041298966854810715,
+      "negative_fraction": 0.10643841326236725,
+      "absolute": {
+        "p50": 0.0,
+        "p90": 0.03333333507180214,
+        "p95": 0.03333333879709244,
+        "p99": 0.10000000149011612,
+        "p99.9": 0.10000000149011612,
+        "p99.99": 0.10000000149011612,
+        "max": 0.10000000149011612,
+        "mean": 0.007106675300747156
+      },
+      "absolute_nonzero": {
+        "p50": 0.03333333879709244,
+        "p90": 0.10000000149011612,
+        "p95": 0.10000000149011612,
+        "p99": 0.10000000149011612,
+        "p99.9": 0.10000000149011612,
+        "p99.99": 0.10000000149011612,
+        "max": 0.10000000149011612,
+        "mean": 0.048103440552949905
+      }
+    },
+    "local_log_index": {
+      "count": 5753703,
+      "mean_signed": 0.00021830169134773314,
+      "std_signed": 0.010468154214322567,
+      "zero_fraction": 0.9158430695533752,
+      "positive_fraction": 0.046044956892728806,
+      "negative_fraction": 0.03811197727918625,
+      "absolute": {
+        "p50": 0.0,
+        "p90": 0.0,
+        "p95": 0.005680382251739502,
+        "p99": 0.054562464356422424,
+        "p99.9": 0.1295829713344574,
+        "p99.99": 0.1938890516757965,
+        "max": 0.33212578296661377,
+        "mean": 0.0018022131407633424
+      },
+      "absolute_nonzero": {
+        "p50": 0.009335115551948547,
+        "p90": 0.05986689776182175,
+        "p95": 0.08104978501796722,
+        "p99": 0.1344556361436844,
+        "p99.9": 0.19904747605323792,
+        "p99.99": 0.23539088666439056,
+        "max": 0.33212578296661377,
+        "mean": 0.02141490951180458
+      }
+    }
+  },
+  "selected_scales": {
+    "values": {
+      "position_x": 2.5,
+      "position_y": 2.5,
+      "velocity_x": 4.0,
+      "velocity_y": 4.0,
+      "attitude": 0.1,
+      "angular_velocity": 7.853981633974483,
+      "shield_delay": 5.0,
+      "health": 10.0,
+      "power": 0.75,
+      "cooldown": 0.1,
+      "local_log_index": 0.05
+    },
+    "rule": "rounded signed RMS for dense continuous channels; physical event magnitude for sparse/reset channels; representative conditional-nonzero magnitude for local log-index",
+    "shared_scales": {
+      "position_xy": 2.5,
+      "velocity_xy": 4.0
+    },
+    "zero_normalization": "delta / positive scale maps exact zero to exact zero"
+  }
+}
