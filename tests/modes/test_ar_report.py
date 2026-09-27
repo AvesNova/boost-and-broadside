@@ -2,9 +2,11 @@
 
 import torch
 
+from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.modes.ar_report import _run_ar
+from boost_and_broadside.train.rl.physical_belief import PhysicalNextState
 
 
 class _RequiresPhysicalState:
@@ -23,6 +25,8 @@ def _observation() -> YemongObservation:
         ObsKey.COOLDOWN: torch.zeros(1, 2, 1),
         ObsKey.ALIVE: torch.ones(1, 2, dtype=torch.bool),
         ObsKey.TEAM_ID: torch.tensor([[0, 1]], dtype=torch.int32),
+        ObsKey.LOCAL_LOG_INDEX: torch.zeros(1, 2, 1),
+        ObsKey.PREVIOUS_ACTION: torch.zeros(1, 2, 42),
     }
     return YemongObservation(data=data)
 
@@ -42,6 +46,8 @@ def test_imagined_rollout_replays_nonpolicy_decisions_without_fake_state() -> No
         2,
         recorded,
         False,
+        PhysicalNextState.from_ship_config(ShipConfig()),
+        1.0,
     )
 
     assert len(history) == 1

@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "joint_pending_belief_v18"
+OBSERVATION_SCHEMA = "physical_belief_v19"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,17 +42,18 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 18,
+        "version": 19,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
         "spawn_reveal": "visible_to_both_teams_for_the_spawn_decision",
-        "hidden_tokens": "recursive_encoded_belief_plus_age",
-        # The belief is substituted into the *encoded* input, not into the raw
-        # channels: a coordinate cannot carry a shrunken moment, so a decode
-        # would restore unit magnitude and report certainty the belief does not
-        # have. The spatial rotation reads the same moments, unnormalised.
-        "belief_substitution": "encoded_columns_moments_unnormalised_in_rope",
+        "hidden_tokens": "recursive_physical_belief_plus_age",
+        # There is no substitution any more. The belief stores the same eleven
+        # physical quantities truth does, so composing a legal view selects
+        # between two tensors of one meaning and the ordinary encoder reads the
+        # result. The spatial rotation reads the composed coordinate for the same
+        # reason.
+        "belief_substitution": "none_legal_source_selection_before_encoding",
         # Every ship is seen on the decision it spawns, and validity is sticky,
         # so this is constant-true rather than a mask the trunk has to read.
         # Not a mask any more: constant-true after spawn, so attention carries no
@@ -60,27 +61,22 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         # survives only to weight team pooling in the value head, and its
         # constant encoder feature is gone.
         "belief_existence_mask": "removed_constant_true_after_spawn",
-        "auxiliary_prediction": "mean_plus_clamped_log_variance",
-        # Position and attitude are predicted as absolute Fourier moments over
-        # the same harmonic basis their inputs use, with one isotropic spread per
-        # (sin, cos) pair. Squared error drives an unpredictable harmonic's mean
-        # to the origin, which *is* a uniform belief about that scale -- a phase
-        # predictor preserves unit norm and so cannot express one.
-        # Confidence rides on the moment magnitude, so nine of ten harmonics
-        # need no spread and train under plain squared error. The finest one
-        # carries a single isotropic sigma -- not for precision but for gradient
-        # share: squared error's gradient shrinks as a channel becomes accurate
-        # while a likelihood's grows, so without it position would be starved on
-        # exactly the visible ships whose labels are learnable dynamics.
-        "circular_targets": "absolute_harmonic_moments_finest_spread_only",
-        # Per uncertainty column, so one per scalar channel and one per harmonic
-        # pair. Width therefore follows the world size.
-        "belief_uncertainty": "accumulated_forecast_variance_per_uncertainty_column",
-        # Every channel is absolute now, so a label is the true next state and
-        # nothing is measured from a base. Re-basing survives as machinery for a
-        # future delta channel, not as something the shipped table relies on.
-        "auxiliary_label_origin": "true_next_state",
-        "auxiliary_label_scale": "identity_everywhere",
+        "auxiliary_prediction": "physical_mean_delta_plus_clamped_log_sigma",
+        # Eleven physical mean deltas, in the Phase-1 calibration's order and
+        # units. Position and velocity each carry a full 2D covariance -- two log
+        # sigmas and one correlation latent -- and the seven remaining channels
+        # carry one log sigma. Position wraps on the torus and attitude on the
+        # circle, so both are exact rather than clamped.
+        "next_state_targets": "eleven_physical_deltas_full_2d_covariance",
+        # Thirteen log/unconstrained terms, restated by the head each decision
+        # rather than accumulated: the head sees the current spread as an input.
+        # The width is a property of the physics, not of the world size.
+        "belief_uncertainty": "thirteen_predicted_log_sigma_and_correlation_latents",
+        # The label is the step from the *believed* current state to the *true*
+        # next one. A truth-to-truth delta conserves the belief error exactly,
+        # which is how run 734 died.
+        "auxiliary_label_origin": "believed_current_to_true_next",
+        "auxiliary_label_scale": "fixed_phase_one_physical_delta_calibration",
         "resource_targets": "normalised_scalar_input_and_target",
         "privileged_auxiliary_targets": "storage_only_never_policy_input",
         "pending_action_features": "joint_42_probability_vector",
@@ -117,6 +113,16 @@ def load_checkpoint_payload(
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
+
+    v19 replaces the encoded belief with a physical one. Hidden ships now reach
+    the trunk as ordinary physical channels selected before encoding rather than
+    as Fourier moments substituted after it, the next-state head narrows from
+    means-plus-spreads over the encoded target space to eleven physical deltas
+    and thirteen uncertainty terms, and ``belief_uncertainty`` narrows to those
+    thirteen. Both the encoder input width and the auxiliary head width change,
+    and a v18 head's outputs mean something else entirely -- absolute encoded
+    targets rather than physical deltas -- so no tensor-only migration exists
+    even where a shape happens to match.
 
     v18 replaces the factorized pending-action input and private categories with
     a 42-way joint probability vector. It also adds a dedicated 42-way enemy

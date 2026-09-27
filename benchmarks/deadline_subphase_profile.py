@@ -34,7 +34,7 @@ from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.runtime.actions import PendingActionState
-from boost_and_broadside.train.rl.belief import BeliefTracker
+from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 
 SEED_DEFAULT = 271828
@@ -101,8 +101,8 @@ def _make_wrapper(device: torch.device, seed: int):
         include_bullets=False,
         perceive_bullets=True,
     )
-    observation = wrapper.reset(seed=seed)
-    return wrapper, observation, profile, env_config, ships
+    wrapper.reset(seed=seed)
+    return wrapper, profile, env_config, ships
 
 
 @torch.inference_mode()
@@ -152,7 +152,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     _save(output, result)
 
     startup = time.perf_counter()
-    wrapper, observation, profile, env_config, ships = _make_wrapper(device, args.seed)
+    wrapper, profile, env_config, ships = _make_wrapper(device, args.seed)
     ship_config = profile.ship_config
     model_config = replace(profile.model_config, **STAGES["baseline"])
     compile_mode = None if args.compile == "none" else args.compile
@@ -174,7 +174,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     1,
                     ships,
                     ship_config.dt * env_config.action_repeat,
-                    policy.coordinator,
+                    ship_config,
                     device,
                 ),
                 "hidden": policy.initial_hidden(1, ships, device),
@@ -189,7 +189,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     _save(output, result)
 
     tick_original = wrapper.env.tick
-    observation_original = wrapper._get_obs_interactive
     phase_collector: dict[str, list[float]] | None = None
 
     def timed_method(label: str, fn: Callable[[], Any]) -> Any:
@@ -203,48 +202,35 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     def profiled_tick(actions: torch.Tensor, **kwargs: Any):
         return timed_method("environment.tensor_env_tick", lambda: tick_original(actions, **kwargs))
 
-    def profiled_observation():
-        return timed_method("environment.get_obs_interactive", observation_original)
-
     wrapper.env.tick = profiled_tick
-    wrapper._get_obs_interactive = profiled_observation
 
     def frame(profile_frame: bool) -> None:
-        nonlocal observation, phase_collector
+        nonlocal phase_collector
         phase_collector = {} if profile_frame else None
         actions_by_team = []
         predictions = []
         for team, side in enumerate(sides):
             team_label = f"team{team}"
-            view, cuda_ms, wall_ms = (
-                _profile_call(lambda: observation.for_team(team), device)
-                if profile_frame
-                else (observation.for_team(team), 0.0, 0.0)
-            )
-            if profile_frame:
-                phase_collector.setdefault(f"{team_label}.for_team.cuda_ms", []).append(cuda_ms)
-                phase_collector.setdefault(f"{team_label}.for_team.wall_ms", []).append(wall_ms)
-            if team == 1:
-                if profile_frame:
-                    view, cuda_ms, wall_ms = _profile_call(
-                        lambda: view.flip_team(ships, mask=team1_mask), device
-                    )
-                    phase_collector.setdefault(f"{team_label}.flip_team.cuda_ms", []).append(
-                        cuda_ms
-                    )
-                    phase_collector.setdefault(f"{team_label}.flip_team.wall_ms", []).append(
-                        wall_ms
-                    )
-                else:
-                    view = view.flip_team(ships, mask=team1_mask)
-            if profile_frame:
-                view, cuda_ms, wall_ms = _profile_call(lambda: side["belief"].compose(view), device)
-                phase_collector.setdefault(f"{team_label}.belief_compose.cuda_ms", []).append(
-                    cuda_ms
+
+            # One build per side, from the authoritative state and that side's own
+            # belief. There is no shared observation to take a perspective on, so
+            # the old ``for_team``/``flip_team``/``compose`` trio is one phase.
+            def _compose(team=team, side=side):
+                composed = legal_policy_view(
+                    side["belief"],
+                    wrapper.env.state,
+                    ship_config,
+                    wrapper.last_visibility,
+                    team,
+                    num_ships=ships,
+                    pending_action=action_state.pending,
                 )
-                phase_collector.setdefault(f"{team_label}.belief_compose.wall_ms", []).append(
-                    wall_ms
-                )
+                return composed.flip_team(ships, mask=team1_mask) if team == 1 else composed
+
+            if profile_frame:
+                view, cuda_ms, wall_ms = _profile_call(_compose, device)
+                phase_collector.setdefault(f"{team_label}.legal_view.cuda_ms", []).append(cuda_ms)
+                phase_collector.setdefault(f"{team_label}.legal_view.wall_ms", []).append(wall_ms)
                 action_result, cuda_ms, wall_ms = _profile_call(
                     lambda: side["policy"].get_action_and_value(
                         view, side["hidden"], return_enemy_action=True
@@ -258,13 +244,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 phase_collector.setdefault(f"{team_label}.get_action_and_value.wall_ms", []).append(
                     wall_ms
                 )
-            else:
-                action, _logprob, _value, prediction, enemy_logits, side["hidden"] = side[
-                    "policy"
-                ].get_action_and_value(view, side["hidden"], return_enemy_action=True)
-            if profile_frame:
                 _result, cuda_ms, wall_ms = _profile_call(
-                    lambda: side["belief"].advance(view, prediction, enemy_logits), device
+                    lambda: side["belief"].advance(prediction, enemy_logits), device
                 )
                 phase_collector.setdefault(f"{team_label}.belief_advance.cuda_ms", []).append(
                     cuda_ms
@@ -273,7 +254,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     wall_ms
                 )
             else:
-                side["belief"].advance(view, prediction, enemy_logits)
+                view = _compose()
+                action, _logprob, _value, prediction, enemy_logits, side["hidden"] = side[
+                    "policy"
+                ].get_action_and_value(view, side["hidden"], return_enemy_action=True)
+                side["belief"].advance(prediction, enemy_logits)
             actions_by_team.append(action)
             predictions.append(prediction)
 
@@ -291,8 +276,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 actions_by_team[0], actions_by_team[1], wrapper.env.state.ship_team_id
             ).int()
 
-        observation, dones, truncated, info = wrapper.step_interactive(
-            action_state.applied_action(), auto_reset=False
+        _, dones, truncated, info = wrapper.step_interactive(
+            action_state.applied_action(), auto_reset=False, observe=False
         )
         finished = dones | truncated
         action_state.commit(
@@ -300,28 +285,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             info["actuator_contiguous"],
             finished,
         )
-        if profile_frame:
-            _result, cuda_ms, wall_ms = _profile_call(
-                lambda: action_state.write_observation(
-                    observation,
-                    wrapper.state.ship_team_id,
-                    wrapper.state.ship_spawned,
-                    ships,
-                ),
-                device,
-            )
-            phase_collector.setdefault("action.expose_pending.cuda_ms", []).append(cuda_ms)
-            phase_collector.setdefault("action.expose_pending.wall_ms", []).append(wall_ms)
-        else:
-            action_state.write_observation(
-                observation,
-                wrapper.state.ship_team_id,
-                wrapper.state.ship_spawned,
-                ships,
-            )
 
         if bool(finished.any()):
-            observation = wrapper.reset()
+            wrapper.reset()
             action_state.reset(finished)
             for side in sides:
                 side["belief"].reset(finished)
@@ -357,7 +323,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         result["status"] = "complete"
     finally:
         wrapper.env.tick = tick_original
-        wrapper._get_obs_interactive = observation_original
     result["completed_utc"] = datetime.now(UTC).isoformat()
     _save(output, result)
     return result

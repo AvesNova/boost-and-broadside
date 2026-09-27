@@ -25,10 +25,14 @@ from boost_and_broadside.config import (
     stepped,
 )
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.logging import match_metrics
+from boost_and_broadside.train.rl.physical_belief import (
+    PHYSICAL_MEAN_NAMES,
+    physical_means_from_state,
+)
 from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, PPOTrainer, _huber
 
 
@@ -448,7 +452,7 @@ class TestEloLadder:
             applied.append(action.clone())
             return original_step(action)
 
-        def fixed_team_actions(_obs):
+        def fixed_team_actions():
             return selected, selected
 
         monkeypatch.setattr(elo_eval.env, "step", record_step)
@@ -815,9 +819,8 @@ class TestAuxPredictionMetrics:
         """Regression: a hand-written 9-name list against 10 prediction dims
         silently dropped local_log_index, the field-modelling channel."""
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        names = trainer.coordinator.get_feature_names()
-        assert len(names) == trainer.coordinator.total_prediction_dimension
-        assert "local_log_index_0" in names
+        names = list(PHYSICAL_MEAN_NAMES)
+        assert "local_log_index" in names
 
         trainer.train()
         metrics = trainer._update_epochs(
@@ -829,6 +832,9 @@ class TestAuxPredictionMetrics:
             assert f"belief/{visibility}/position_px" in metrics
             assert f"belief/{visibility}/velocity_px_s" in metrics
             assert f"belief/{visibility}/position_beyond_legal_frac" in metrics
+            # The baselines the head has to beat to be worth its cost.
+            assert f"belief/{visibility}/persist_position_px" in metrics
+            assert f"belief/{visibility}/reckon_position_px" in metrics
         assert "belief/hidden_age_0.5_1s/health" in metrics
 
 
@@ -893,41 +899,25 @@ class TestBeliefDiagnosticAlignment:
                 env_stream=None,
                 net_stream=None,
             )
-        final = trainer.coordinator.get_target_vector(trainer.wrapper.privileged_observation())[
+        final = physical_means_from_state(trainer.wrapper.env.state, trainer.ship_config)[
             :, : runtime.num_ships
         ]
-        trainer.buffer.store_final_obs(runtime.obs, privileged_targets=final)
+        trainer.buffer.store_final_obs(runtime.obs, privileged_means=final)
         return trainer
 
     @staticmethod
     def _identity_position_error(trainer, shift: int):
         """Mean position error of a no-change forecast against truth at t+shift.
 
-        Position is an *absolute* Fourier-moment prediction, so a zero
-        prediction vector decodes to the origin rather than to no change. The
-        identity forecast is the believed target vector itself.
+        The identity forecast is the believed physical state itself -- the belief
+        standing still, which is what a zero mean delta means now that the head
+        predicts physical deltas.
         """
         buf = trainer.buffer
-        coordinator = trainer.coordinator
-        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        curr_obs = YemongObservation(
-            data={
-                key: (
-                    value[:T, :, :N].reshape(T * B, N, *value.shape[3:])
-                    if value.dim() > 3
-                    else value[:T, :, :N].reshape(T * B, N)
-                )
-                for key, value in buf.obs.items()
-            }
-        )
-        believed = coordinator.get_target_vector(curr_obs).reshape(T, B, N, -1)
-        forecast = coordinator.decode_targets(believed)
-        truth = coordinator.decode_targets(buf.privileged_targets[shift : shift + T])
-        world = torch.tensor(trainer.ship_config.world_size, device=trainer.device)
-        pred = torch.cat([forecast["position_x"], forecast["position_y"]], dim=-1)
-        true = torch.cat([truth["position_x"], truth["position_y"]], dim=-1)
-        delta = torch.remainder(pred - true + world / 2.0, world) - world / 2.0
-        error = delta.norm(dim=-1)
+        T, N = buf.num_steps, buf.num_ships
+        believed = trainer._believed_means(buf, T)
+        truth = buf.privileged_means[shift : shift + T]
+        error = trainer._physical_errors(believed, truth)["position_px"]
         # Own ships are never hidden, so their believed state is truth exactly.
         own = buf.obs[ObsKey.VISIBLE][:T, :, :N].bool() & (buf.obs[ObsKey.TEAM_ID][:T, :, :N] == 0)
         assert int(own.sum()) > 0
@@ -950,7 +940,8 @@ class TestBeliefDiagnosticAlignment:
     @staticmethod
     def _visible_position_total(trainer) -> float:
         buf = trainer.buffer
-        trainer._precompute_belief_diagnostics(buf, buf.privileged_targets)
+        believed = trainer._believed_means(buf, buf.num_steps + 1)
+        trainer._precompute_belief_diagnostics(buf, believed, buf.privileged_means)
         total, _ = buf.belief_diagnostics["belief/visible/position_px"]
         return float(total)
 
@@ -969,13 +960,13 @@ class TestBeliefDiagnosticAlignment:
         last = buf.num_steps
 
         # Index 0 is read by nobody. Scrambling it must change nothing.
-        buf.privileged_targets[0] = buf.privileged_targets[0].roll(1, dims=1)
+        buf.privileged_means[0] = buf.privileged_means[0].roll(1, dims=1)
         assert self._visible_position_total(trainer) == pytest.approx(baseline), (
             "the diagnostic scores a forecast against the state it was made from"
         )
 
         # Index T is the last decision's target. Scrambling it must be felt.
-        buf.privileged_targets[last] = buf.privileged_targets[last].roll(1, dims=1)
+        buf.privileged_means[last] = buf.privileged_means[last].roll(1, dims=1)
         assert self._visible_position_total(trainer) != pytest.approx(baseline), (
             "the final decision's target is not being scored"
         )
@@ -992,23 +983,11 @@ class TestBeliefDiagnosticAlignment:
 
         trainer = self._rollout(tmp_path)
         buf = trainer.buffer
-        coordinator = trainer.coordinator
-        T, B, N = buf.num_steps, buf.num_envs, buf.num_ships
-        believed = coordinator.get_target_vector(
-            YemongObservation(
-                data={
-                    key: (
-                        value[:T, :, :N].reshape(T * B, N, *value.shape[3:])
-                        if value.dim() > 3
-                        else value[:T, :, :N].reshape(T * B, N)
-                    )
-                    for key, value in buf.obs.items()
-                }
-            )
-        ).reshape(T, B, N, -1)
-        buf.rollout_predictions = coordinator.compute_labels(believed, believed)
+        # The identity forecast: a zero mean delta is the belief standing still.
+        buf.rollout_predictions.zero_()
+        believed = trainer._believed_means(buf, buf.num_steps + 1)
 
-        trainer._precompute_belief_diagnostics(buf, buf.privileged_targets)
+        trainer._precompute_belief_diagnostics(buf, believed, buf.privileged_means)
         clean_total, clean_count = buf.belief_diagnostics[
             "belief/visible/position_beyond_legal_frac"
         ]
@@ -1019,8 +998,8 @@ class TestBeliefDiagnosticAlignment:
         # anything: exactly what an unfiltered respawn teleport looks like.
         buf.transition_contiguous.fill_(True)
         buf.terminated.fill_(False)
-        buf.privileged_targets[1] = buf.privileged_targets[1].roll(1, dims=0)
-        trainer._precompute_belief_diagnostics(buf, buf.privileged_targets)
+        buf.privileged_means[1] = buf.privileged_means[1].roll(1, dims=0)
+        trainer._precompute_belief_diagnostics(buf, believed, buf.privileged_means)
         leaked_total, _ = buf.belief_diagnostics["belief/visible/position_beyond_legal_frac"]
         assert float(leaked_total) > 0.0, "a leaked teleport is invisible in the diagnostics"
 
@@ -1991,7 +1970,7 @@ class TestUpdateEpochsMetricKeys:
             all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
         )
 
-        names = trainer.coordinator.get_feature_names()
+        names = list(PHYSICAL_MEAN_NAMES)
         assert any(f"next_state_visible/{n}" in metrics for n in names)
         assert any(f"next_state_hidden/{n}" in metrics for n in names)
         for name in names:
@@ -2187,9 +2166,7 @@ class TestSeatSymmetryOfPendingActions:
                 & (pending.eq(0) | pending.eq(1)).all(-1)
             )
             assert exact[own].all(), f"seat {observer} lost an allied exact command"
-            torch.testing.assert_close(
-                pending[enemy].sum(-1), torch.ones_like(pending[enemy, 0])
-            )
+            torch.testing.assert_close(pending[enemy].sum(-1), torch.ones_like(pending[enemy, 0]))
 
     def test_seat_symmetry_metrics_are_clean_on_a_healthy_rollout(self) -> None:
         num_ships = 6

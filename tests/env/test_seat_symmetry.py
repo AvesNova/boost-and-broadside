@@ -29,7 +29,6 @@ from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import DualBeliefTracker
-from boost_and_broadside.train.rl.features import build_standard_coordinator
 from boost_and_broadside.train.rl.opponents import flip_team_obs
 
 NUM_SHIPS = 6
@@ -131,33 +130,42 @@ def test_pending_action_privacy_survives_the_team_flip() -> None:
     assert _is_exact_one_hot(pending)[own].all()
     assert pending[enemy].eq(0).all()
 
+
 def _composed_views(wrapper, ship_config, env_config, steps: int):
     """Drive both sides with one controller and return the composed seat views."""
     scripted = StochasticScriptedAgent(ship_config, StochasticAgentConfig())
-    coordinator = build_standard_coordinator(ship_config)
     beliefs = DualBeliefTracker(
         NUM_ENVS,
         NUM_SHIPS,
         ship_config.dt * env_config.action_repeat,
-        coordinator,
+        ship_config,
         torch.device("cpu"),
     )
     action_state = PendingActionState.allocate(NUM_ENVS, NUM_SHIPS, torch.device("cpu"))
-    raw = wrapper.reset(seed=23)
+    wrapper.reset(seed=23)
+    composed = _compose(wrapper, beliefs, action_state)
     for _ in range(steps):
-        beliefs.compose(raw)
         selected = scripted.get_actions(wrapper.env.state, wrapper.last_visibility.ship).int()
-        raw, _, dones, truncated, info = wrapper.step(action_state.applied_action())
+        _, _, dones, truncated, info = wrapper.step(action_state.applied_action(), observe=False)
         action_state.commit(selected, info["actuator_contiguous"], dones | truncated)
-        action_state.write_observation(
-            raw,
-            wrapper.env.state.ship_team_id,
-            wrapper.env.state.ship_spawned,
-            NUM_SHIPS,
-        )
         beliefs.reset(dones | truncated)
-    composed = beliefs.compose(raw)
+        composed = _compose(wrapper, beliefs, action_state)
     return composed.for_team(0), flip_team_obs(composed.for_team(1), NUM_SHIPS)
+
+
+def _compose(wrapper, beliefs, action_state):
+    """One decision's pair of legal views, exactly as the trainer composes them."""
+
+    sources = beliefs.observe(wrapper.env.state, wrapper.last_visibility.ship)
+    observation = wrapper.observe(sources)
+    action_state.write_observation(
+        observation,
+        wrapper.env.state.ship_team_id,
+        wrapper.env.state.ship_spawned,
+        NUM_SHIPS,
+        belief_action=(sources[0].action, sources[1].action),
+    )
+    return observation
 
 
 def test_composed_seat_labels_are_exactly_self_relative() -> None:
@@ -227,32 +235,25 @@ def _play_script(script: list[torch.Tensor], *, mirrored: bool):
     Returns the composed seat views, both canonicalized to "my team is 0".
     """
     wrapper, ship_config, env_config = _wrapper()
-    coordinator = build_standard_coordinator(ship_config)
     beliefs = DualBeliefTracker(
         NUM_ENVS,
         NUM_SHIPS,
         ship_config.dt * env_config.action_repeat,
-        coordinator,
+        ship_config,
         torch.device("cpu"),
     )
     action_state = PendingActionState.allocate(NUM_ENVS, NUM_SHIPS, torch.device("cpu"))
-    raw = wrapper.reset(seed=17)
+    wrapper.reset(seed=17)
     if mirrored:
         state = wrapper.env.state
         state.ship_team_id = 1 - state.ship_team_id
-        raw = wrapper._get_obs()
+        wrapper.perceive()
+    composed = _compose(wrapper, beliefs, action_state)
     for selected in script:
-        beliefs.compose(raw)
-        raw, _, dones, truncated, info = wrapper.step(action_state.applied_action())
+        _, _, dones, truncated, info = wrapper.step(action_state.applied_action(), observe=False)
         assert not (dones | truncated).any(), "an episode ended; the two runs may have diverged"
         action_state.commit(selected, info["actuator_contiguous"], dones | truncated)
-        action_state.write_observation(
-            raw,
-            wrapper.env.state.ship_team_id,
-            wrapper.env.state.ship_spawned,
-            NUM_SHIPS,
-        )
-    composed = beliefs.compose(raw)
+        composed = _compose(wrapper, beliefs, action_state)
     return composed.for_team(0), flip_team_obs(composed.for_team(1), NUM_SHIPS), wrapper
 
 

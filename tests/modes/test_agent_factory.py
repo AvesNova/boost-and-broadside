@@ -1,5 +1,7 @@
 """Tests for shared agent and next-state evaluation helpers."""
 
+import math
+
 import pytest
 import torch
 
@@ -8,9 +10,9 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
-from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
+from boost_and_broadside.evaluation.next_state import means_to_observation
 from boost_and_broadside.evaluation.run_catalog import CheckpointNotFoundError
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+from boost_and_broadside.train.rl.physical_belief import physical_means_from_observation
 
 
 def _make_prev_obs(B: int, N: int) -> YemongObservation:
@@ -35,29 +37,14 @@ def _make_prev_obs(B: int, N: int) -> YemongObservation:
     )
 
 
-class TestDecodeTargetsToObs:
+class TestMeansToObservation:
     def test_pending_action_is_private_for_the_other_team(self):
-        coordinator = build_standard_coordinator(ShipConfig())
         previous = _make_prev_obs(B=1, N=2)
-        targets = coordinator.get_target_vector(previous)
+        means = physical_means_from_observation(previous, 1.0, num_ships=2)
         action = torch.tensor([[[1, 2, 1], [2, 5, 0]]])
 
-        team0 = decode_targets_to_observation(
-            targets,
-            previous,
-            action,
-            2,
-            coordinator,
-            observer_team=0,
-        )
-        team1 = decode_targets_to_observation(
-            targets,
-            previous,
-            action,
-            2,
-            coordinator,
-            observer_team=1,
-        )
+        team0 = means_to_observation(means, previous, action, 2, 1.0, observer_team=0)
+        team1 = means_to_observation(means, previous, action, 2, 1.0, observer_team=1)
 
         pending0 = team0[ObsKey.PREVIOUS_ACTION]
         pending1 = team1[ObsKey.PREVIOUS_ACTION]
@@ -68,40 +55,31 @@ class TestDecodeTargetsToObs:
         assert pending1[0, 1].argmax().item() == 38
         assert pending1[0, 1].sum().item() == 1.0
 
-    def test_position_decodes_each_axis_with_its_own_world_extent(self):
-        """Regression (audit §1.4): pos_y must decode with world height, not width.
+    def test_physical_means_round_trip_through_an_observation(self):
+        """The imagined writer and the observation reader must be exact inverses.
 
-        Uses a rectangular world (W != H) so decoding y with W produces the
-        wrong coordinate. The targets are built with each feature's *own* target
-        encoder rather than a hand-written (sin, cos) pair: position is a stack
-        of harmonics now, and its width follows the world size, so a literal
-        pair would be the wrong shape on every map.
+        Regression (audit 1.4): position used to be decoded from a Fourier
+        expansion, and decoding pos_y with the world *width* gave the wrong
+        coordinate on any rectangular map. Physical means have no encoding to get
+        wrong, so the property to pin is now the round trip -- including the
+        log-index normalization, which is the one channel the observation still
+        scales.
         """
-        ship_config = ShipConfig(
-            world_size=(1024.0, 512.0),
-            field_radius_max=200.0,
-        )
-        coordinator = build_standard_coordinator(ship_config)
-        target_slices = coordinator.target_slices()
-        W, H = ship_config.world_size
-        x, y = 700.0, 300.0
+        previous = _make_prev_obs(B=1, N=1)
+        means = torch.tensor([[[700.0, 300.0, 12.0, -7.0, 1.1, 0.4, 2.0, 55.0, 30.0, 0.05, 0.3]]])
+        log_scale = 2.0 * math.log(math.sqrt(2.0))
 
-        encoders = {spec.name: spec.target_encoder for spec in coordinator._predictor_specs}
-        targets = torch.zeros(1, 1, coordinator.total_target_dimension)
-        targets[0, 0, target_slices["position_x"]] = encoders["position_x"](torch.tensor([x]))
-        targets[0, 0, target_slices["position_y"]] = encoders["position_y"](torch.tensor([y]))
-        targets[0, 0, target_slices["attitude"]] = encoders["attitude"](torch.tensor([0.0, 1.0]))
-
-        obs = decode_targets_to_observation(
-            targets,
-            prev_obs=_make_prev_obs(B=1, N=1),
+        obs = means_to_observation(
+            means,
+            prev_obs=previous,
             action=torch.zeros(1, 1, 3, dtype=torch.long),
             num_ships=1,
-            coordinator=coordinator,
+            index_log_scale=log_scale,
         )
 
-        decoded = obs[ObsKey.POS][0, 0]
-        assert torch.allclose(decoded, torch.tensor([x, y]), atol=1e-3)
+        assert torch.allclose(obs[ObsKey.POS][0, 0], torch.tensor([700.0, 300.0]), atol=1e-3)
+        recovered = physical_means_from_observation(obs, log_scale, num_ships=1)
+        assert torch.allclose(recovered, means, atol=1e-4)
 
 
 class TestBulletReadingAgents:

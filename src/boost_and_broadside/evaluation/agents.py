@@ -218,9 +218,7 @@ def get_actions(
         with torch.no_grad():
             if return_enemy_action:
                 action, _, _, pred_next, enemy_logits, agent.hidden = (
-                    agent.agent.get_action_and_value(
-                        obs, agent.hidden, return_enemy_action=True
-                    )
+                    agent.agent.get_action_and_value(obs, agent.hidden, return_enemy_action=True)
                 )
                 return action, pred_next, enemy_logits
             action, _, _, pred_next, agent.hidden = agent.agent.get_action_and_value(

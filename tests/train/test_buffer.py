@@ -383,6 +383,9 @@ class TestStoragePrecision:
             data={
                 ObsKey.POS: torch.zeros((B, N, 2)),
                 ObsKey.VEL: torch.zeros((B, N, 2)),
+                ObsKey.HEALTH: torch.zeros((B, N, 1)),
+                ObsKey.COOLDOWN: torch.zeros((B, N, 1)),
+                ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((B, N, 1)),
                 ObsKey.TEAM_ID: torch.zeros((B, N), dtype=torch.int32),
                 ObsKey.PREVIOUS_ACTION: torch.zeros((B, N, 42)),
                 ObsKey.ALIVE: torch.zeros((B, N), dtype=torch.bool),
@@ -404,12 +407,16 @@ class TestStoragePrecision:
         from boost_and_broadside.env.observation import ObsKey
 
         buf = self._make_typed_buffer()
-        # Positions keep full precision (large-map accuracy); other floats drop to bf16.
-        assert buf.obs[ObsKey.POS].dtype == torch.float32
-        assert buf.obs[ObsKey.VEL].dtype == torch.bfloat16
+        # The eleven physical ship channels keep full precision: they are the
+        # believed state every next-state label steps from, so bf16's ~0.4%
+        # resolution would land in the label rather than only in the encoder's
+        # input. Everything else that is merely read once drops to bf16.
+        for key in (ObsKey.POS, ObsKey.VEL, ObsKey.HEALTH, ObsKey.COOLDOWN):
+            assert buf.obs[key].dtype == torch.float32, key
+        assert buf.obs[ObsKey.PREVIOUS_ACTION].dtype == torch.bfloat16
+        assert buf.obs[ObsKey.TIME_SINCE_OBSERVATION].dtype == torch.bfloat16
         # Small non-negative index channels compress to uint8; bool stays bool.
         assert buf.obs[ObsKey.TEAM_ID].dtype == torch.uint8
-        assert buf.obs[ObsKey.PREVIOUS_ACTION].dtype == torch.bfloat16
         assert buf.obs[ObsKey.ALIVE].dtype == torch.bool
 
     def test_per_component_arrays_are_bf16_never_fp16(self):

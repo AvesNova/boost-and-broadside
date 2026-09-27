@@ -162,22 +162,39 @@ class MatchRunner:
             self.include_bullets,
         )
 
-    def _policy_view(self, index: int, active: torch.Tensor) -> YemongObservation:
-        """One agent's legal view over the environments it plays, on its own seats."""
+    def legal_view(self, index: int, active: torch.Tensor | None = None) -> YemongObservation:
+        """Agent ``index``'s legal observation, on its own seats, uncanonicalized.
 
+        Composed from the authoritative state and that agent's own belief over
+        the environments it plays. Seats are per environment, because one agent
+        can hold team 0 in some games and team 1 in others.
+        """
+
+        if active is None:
+            active = self.active[index]
         agent = self.agents[index]
-        as_team1 = self.team1_index[active] == index
-        view = legal_policy_view(
+        return legal_policy_view(
             agent.belief,
             self.env.state.slice_envs(active),
             self.ship_config,
             self.visibility.slice_envs(active),
-            as_team1.to(torch.int32),
+            (self.team1_index[active] == index).to(torch.int32),
             num_ships=self.num_ships,
             include_bullets=self.include_bullets,
             pending_action=self.action_state.pending[active],
         )
-        return agent_view(agent, view, self.num_ships, as_team1)
+
+    def policy_view(self, index: int, active: torch.Tensor | None = None) -> YemongObservation:
+        """Agent ``index``'s legal view, canonicalized onto its own side."""
+
+        if active is None:
+            active = self.active[index]
+        return agent_view(
+            self.agents[index],
+            self.legal_view(index, active),
+            self.num_ships,
+            self.team1_index[active] == index,
+        )
 
     def actions(self) -> torch.Tensor:
         """Every ship's action, taken from the agent that controls its team."""
@@ -242,7 +259,7 @@ class MatchRunner:
                 if index in trace_agents:
                     traced_predictions[index] = None
                 continue
-            view = self._policy_view(index, active)
+            view = self.policy_view(index, active)
             action, prediction, enemy_logits = get_actions(
                 agent,
                 view,

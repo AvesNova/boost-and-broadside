@@ -143,15 +143,24 @@ builds independent team-shared perception for both sides. During rollout,
 masked observation and canonicalizes its team labels. The same weights therefore produce
 candidate actions for both perspectives without deriving one team's sight from the other's.
 
-Each policy instance owns a GPU-resident belief cache. Visible ships refresh that cache from
-perceived truth, and enemies out of contact retain a token whose physical channels are
-advanced recursively by the policy's next-state head. Every ship is revealed to both teams
-for the decision it spawns on, at match start and on every respawn, which seeds each cache
-from observation rather than from nothing and stops a remembered estimate outliving the ship
-it describes. The token also carries explicit visibility, validity,
-and time-since-observation features. Team 0, Team
-1, every league checkpoint, and every evaluation policy keep independent caches, so one
-policy's estimate cannot leak into another's input.
+Each policy instance owns a GPU-resident store of **physical** belief: eleven physical means,
+thirteen log/unconstrained uncertainty terms, the 42-way pending-command distribution, and
+how long ago the ship was last seen. Visible ships assimilate authoritative truth and drop
+to a certainty floor; enemies out of contact are advanced by the policy's next-state head and
+carry the spread that head reported. Every ship is revealed to both teams for the decision it
+spawns on, at match start and on every respawn, which seeds each store from observation rather
+than from nothing and stops a remembered estimate outliving the ship it describes.
+
+Each policy then composes *its own* legal observation from the authoritative state and that
+store — one selection per ship slot between truth, belief and nothing, before any encoding.
+Team 0, Team 1, every league checkpoint, and every evaluation policy keep independent stores
+and independent views, so one policy's estimate cannot reach another's input. Both views are
+legally sourced, so sharing one would leak nothing; it would attribute one player's memory to
+another and stop its behaviour being a function of its own weights.
+
+Composition runs after the environment step and the policy forward have joined, because a view
+depends on the forecast that forward pass produces. The physics and the forward still overlap
+on separate CUDA streams; only the composition is serial.
 
 [`opponents.py`](../src/boost_and_broadside/train/rl/opponents.py) then composes the action
 tensor according to each environment group's assigned opponent. In self-play, the learned
@@ -219,9 +228,9 @@ suppressed `field_death`'s critic gradient by four orders of magnitude; it now s
 The default RL and BC environments are 5v5 with opaque zones and shields. `health`
 is the retained resource channel name; it carries shield level in Frontline.
 `shield_delay` is observed and predicted. Attitude Fourier features consume the
-angle `atan2(sin(att), cos(att))`, and its prediction target is those same features --
-position and attitude are predicted as absolute Fourier moments rather than phase shifts.
-Checkpoints use `joint_pending_belief_v18`; older weights require retraining.
+angle `atan2(sin(att), cos(att))`; the next-state head predicts eleven *physical* deltas
+rather than any encoded target, so the input encoding and the prediction layout are now
+separate concerns. Checkpoints use `physical_belief_v19`; older weights require retraining.
 
 Projectile damage rewards use actual shield removed, proportionally divided among
 simultaneous attackers. Raw impact attribution remains separate so a finishing hit
@@ -573,11 +582,12 @@ Three compatibility rules follow from that:
 
 - **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
   perception, visibility masks, 42-way pending-action beliefs, spawn/respawn null-action
-  reveals, field-core LOS, recursively predicted hidden-enemy beliefs copied into the encoded
-  input, belief validity, and observation age are part of the learned
-  input contract. Radius is shared across object types and normalized by half the shorter
-  world dimension; ship-local `grad(n)` remains explicit. Payloads carry
-  `observation_schema=joint_pending_belief_v18`. Successful firing globally
+  reveals, field-core LOS, recursively predicted hidden-enemy physical state selected into the
+  view before encoding, thirteen belief-uncertainty channels, belief validity, and observation
+  age are part of the learned input contract. Radius is shared across object types and
+  normalized by half the shorter world dimension; ship-local `grad(n)` remains explicit and
+  reads zero for a remembered ship. Payloads carry
+  `observation_schema=physical_belief_v19`. Successful firing globally
   reveals the shooter for the current sample, which is also a learned-input semantic.
   Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.
@@ -642,9 +652,12 @@ never-seen share, mean hidden age, reacquisition count, and occlusion-duration b
 wrapper accumulates these counters on-device and transfers them only with the existing
 once-per-update metric synchronization; no per-step host read was added.
 
-They also log `belief/visible/*`, `belief/hidden/*`, and hidden-age buckets for position,
-velocity, attitude, angular velocity, health, power, cooldown, and local refractive index.
-Authoritative next-state targets are stored in a separate rollout tensor used only by the
+They also log `belief/visible/*`, `belief/hidden/*`, and hidden-age buckets for every physical
+channel, each as an absolute error in that channel's own unit. Two baselines sit beside them:
+`persist_position_px` and `persist_velocity_px_s`, the belief standing still, and
+`reckon_position_px`, the belief carried forward one decision on its own believed velocity.
+The head has to beat dead reckoning to be worth its cost, and these are what say whether it
+does. Authoritative physical truth is stored in a separate rollout tensor used only by the
 auxiliary loss and diagnostics. Every enemy is supervised, because the spawn reveal leaves
 none in the never-observed state; terminal discontinuities remain masked, and the reveal is
 what keeps a respawn from contaminating the label after the masked step.
@@ -653,8 +666,12 @@ The label pairs that authoritative next state with the *believed* current one, w
 the head's output is actually applied to at rollout. Taking both ends from truth instead
 would train the head on a transition it never gets to apply, and the belief error would then
 be carried forward intact at every step rather than corrected. The two definitions coincide
-for a visible ship; for a hidden one the label is the correction back onto truth, and its
-distribution is wider than a one-step delta by however far the estimate has drifted.
+for a visible ship, whose label is therefore exactly the truth-to-truth delta the fixed
+Phase-1 scales were calibrated against; for a hidden one the label is the correction back
+onto truth, and its distribution is wider by however far the estimate has drifted. The
+Gaussian likelihood is what makes those two comparable without a fitted weight, since a token
+whose label is mostly unpredictable belief error earns a wide sigma rather than dominating
+the sum.
 
 ### What `--vram` may and may not change
 

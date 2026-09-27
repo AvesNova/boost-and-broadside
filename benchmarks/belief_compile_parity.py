@@ -1,8 +1,10 @@
-"""Compare eager and compiled belief trackers on one fixed 50v50 trace.
+"""Compare eager and compiled legal-view composition on one fixed 50v50 trace.
 
 This verifies torch.compile(default, dynamic=False) parity for both independent
-team views. It is a correctness harness, not a speed benchmark. Run it in a
-separate process because the first compiled invocation can take a while:
+team views: the belief's ``observe``, the observation builder that composes
+against its source, and the belief's ``advance``. It is a correctness harness,
+not a speed benchmark. Run it in a separate process because the first compiled
+invocation can take a while:
 
     timeout 20m uv run --no-sync python benchmarks/belief_compile_parity.py \\
         --device cuda --seed 271828 --steps 24 \\
@@ -32,23 +34,26 @@ from boost_and_broadside.constants import (
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
 )
-from boost_and_broadside.env.observation import YemongObservation
+from boost_and_broadside.env.observation import (
+    ObsKey,
+    YemongObservation,
+    observation_from_state,
+    write_pending_action_view,
+)
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+from boost_and_broadside.train.rl.physical_belief import NEXT_STATE_OUTPUT_DIM
 
 ATOL = 2e-6
 RTOL = 2e-6
 STATE_FIELDS = (
     "valid",
     "age_steps",
-    "predicted_targets",
+    "means",
     "action_belief",
     "uncertainty",
-    "team_id",
-    "radius",
     "clamp_events",
 )
 
@@ -161,6 +166,13 @@ def _observation_tensors(observation: YemongObservation) -> list[torch.Tensor]:
 
 
 def _build_trace(device: torch.device, seed: int, steps: int):
+    """One fixed trace of authoritative states, perception, and head outputs.
+
+    States rather than observations: composing a legal view is now a function of
+    the state and a belief, so the two arms have to be driven from the same
+    authoritative input rather than from a pre-built observation.
+    """
+
     profile = PROFILES["rl"]
     ships, fields, scale = SCENARIOS["50v50"]
     env_config = scenario_config(ships, fields, scale)
@@ -173,10 +185,7 @@ def _build_trace(device: torch.device, seed: int, steps: int):
         include_bullets=False,
         perceive_bullets=True,
     )
-    observation = wrapper.reset(seed=seed)
-    coordinator = build_standard_coordinator(
-        profile.ship_config, local_presence=profile.model_config.local_presence
-    )
+    wrapper.reset(seed=seed)
     action_generator = torch.Generator(device="cpu").manual_seed(seed + 1)
     prediction_generator = torch.Generator(device="cpu").manual_seed(seed + 2)
     action_belief_generator = torch.Generator(device="cpu").manual_seed(seed + 3)
@@ -190,7 +199,7 @@ def _build_trace(device: torch.device, seed: int, steps: int):
     ).to(dtype=torch.int32, device=device)
     prediction_trace = (
         torch.randn(
-            (steps, 2, 1, ships, coordinator.total_prediction_dimension),
+            (steps, 2, 1, ships, NEXT_STATE_OUTPUT_DIM),
             generator=prediction_generator,
         )
         .mul_(0.05)
@@ -200,34 +209,32 @@ def _build_trace(device: torch.device, seed: int, steps: int):
         (steps, 2, 1, ships, NUM_JOINT_ACTIONS),
         generator=action_belief_generator,
     ).to(device)
-    views: list[tuple[YemongObservation, YemongObservation]] = []
+    frames: list[tuple[Any, Any, torch.Tensor]] = []
     action_state = PendingActionState.allocate(1, ships, device)
-    team1_mask = torch.ones(1, dtype=torch.bool, device=device)
     for step in range(steps):
-        action_state.write_observation(
-            observation, wrapper.state.ship_team_id, wrapper.state.ship_spawned, ships
+        frames.append(
+            (
+                wrapper.env.state.clone(),
+                wrapper.last_visibility,
+                action_state.pending.clone(),
+            )
         )
-        team0 = observation.for_team(0)
-        team1 = observation.for_team(1).flip_team(ships, mask=team1_mask)
-        views.append((_clone_observation(team0), _clone_observation(team1)))
-        observation, dones, truncated, info = wrapper.step_interactive(
-            action_state.applied_action(), auto_reset=False
+        _, dones, truncated, info = wrapper.step_interactive(
+            action_state.applied_action(), auto_reset=False, observe=False
         )
         finished = dones | truncated
         action_state.commit(action_trace[step], info["actuator_contiguous"], finished)
         if bool(finished.any()):
-            observation = wrapper.reset()
+            wrapper.reset()
             action_state.reset(finished)
     trace_tensors = [action_trace, prediction_trace, action_belief_logits_trace]
-    for team_views in views:
-        for view in team_views:
-            trace_tensors.extend(_observation_tensors(view))
+    for state, visibility, pending in frames:
+        trace_tensors.extend([state.ship_pos.real, state.ship_pos.imag, visibility.ship, pending])
     trace_digest = _tensor_digest(trace_tensors)
     return (
         wrapper,
-        coordinator,
         env_config,
-        views,
+        frames,
         prediction_trace,
         action_belief_logits_trace,
         trace_digest,
@@ -288,40 +295,66 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     (
         wrapper,
-        coordinator,
         env_config,
-        views,
+        frames,
         predictions,
         action_belief_logits,
         trace_digest,
     ) = _build_trace(device, args.seed, args.steps)
     profile = PROFILES["rl"]
+    ships = SCENARIOS["50v50"][0]
     trackers = {
         f"team{team}": {
             "eager": BeliefTracker(
                 1,
-                SCENARIOS["50v50"][0],
+                ships,
                 profile.ship_config.dt * env_config.action_repeat,
-                coordinator,
+                profile.ship_config,
                 device,
+                observer_team=team,
             ),
             "compiled": BeliefTracker(
                 1,
-                SCENARIOS["50v50"][0],
+                ships,
                 profile.ship_config.dt * env_config.action_repeat,
-                coordinator,
+                profile.ship_config,
                 device,
+                observer_team=team,
             ),
         }
         for team in range(2)
     }
     compiled_methods = {
         name: (
-            torch.compile(pair["compiled"].compose, mode="default", dynamic=False),
+            torch.compile(pair["compiled"].observe, mode="default", dynamic=False),
             torch.compile(pair["compiled"].advance, mode="default", dynamic=False),
         )
         for name, pair in trackers.items()
     }
+    compiled_builder = torch.compile(observation_from_state, mode="default", dynamic=False)
+
+    def compose(tracker, state, visibility, pending, team, builder, observe):
+        source = observe(state, visibility.ship[:, team])
+        view = builder(
+            state,
+            profile.ship_config,
+            None,
+            False,
+            visibility.ship[:, team],
+            None,
+            team,
+            source,
+        )
+        write_pending_action_view(
+            view.data[ObsKey.PREVIOUS_ACTION][:, :ships],
+            pending,
+            state.ship_team_id[:, :ships],
+            team,
+            state.ship_spawned[:, :ships],
+            belief_action=source.action,
+        )
+        return view
+
     result["startup_and_trace_build_seconds"] = time.perf_counter() - started
     result["trace_digest_sha256"] = trace_digest
     result["status"] = "comparing"
@@ -334,19 +367,35 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     errors: list[str] = result["errors"]
 
     try:
-        for step, team_views in enumerate(views):
-            for team, view in enumerate(team_views):
+        for step, (state, visibility, pending) in enumerate(frames):
+            for team in range(2):
                 name = f"team{team}"
                 pair = trackers[name]
                 prediction = predictions[step, team]
                 belief_logits = action_belief_logits[step, team]
                 eager_start = time.perf_counter()
-                eager_composed = pair["eager"].compose(view)
+                eager_composed = compose(
+                    pair["eager"],
+                    state,
+                    visibility,
+                    pending,
+                    team,
+                    observation_from_state,
+                    pair["eager"].observe,
+                )
                 if device.type == "cuda":
                     torch.cuda.synchronize(device)
                 eager_compose_seconds = time.perf_counter() - eager_start
                 compiled_start = time.perf_counter()
-                compiled_composed = compiled_methods[name][0](view)
+                compiled_composed = compose(
+                    pair["compiled"],
+                    state,
+                    visibility,
+                    pending,
+                    team,
+                    compiled_builder,
+                    compiled_methods[name][0],
+                )
                 if device.type == "cuda":
                     torch.cuda.synchronize(device)
                 compiled_compose_seconds = time.perf_counter() - compiled_start
@@ -366,12 +415,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     (compiled_composed, _clone_observation(compiled_composed))
                 )
                 eager_advance_start = time.perf_counter()
-                pair["eager"].advance(eager_composed, prediction, belief_logits)
+                pair["eager"].advance(prediction, belief_logits)
                 if device.type == "cuda":
                     torch.cuda.synchronize(device)
                 eager_advance_seconds = time.perf_counter() - eager_advance_start
                 compiled_advance_start = time.perf_counter()
-                compiled_methods[name][1](compiled_composed, prediction, belief_logits)
+                compiled_methods[name][1](prediction, belief_logits)
                 if device.type == "cuda":
                     torch.cuda.synchronize(device)
                 compiled_advance_seconds = time.perf_counter() - compiled_advance_start

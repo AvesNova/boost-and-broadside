@@ -32,7 +32,7 @@ Respawns preserve slot identity, clear previous-life damage attribution on the n
 tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
 zero shields no longer implies death. Existing checkpoints are incompatible with the
-new `joint_pending_belief_v18` observation/feature contract.
+new `physical_belief_v19` observation/feature contract.
 
 ## Tensorized simulation
 
@@ -81,21 +81,28 @@ of range or intervening field cores. The reveal uses `ship_is_shooting`, so a re
 that fails because of cooldown, power, or death does not reveal anything. The reveal exposes
 the ship's ordinary visible state, but never its authoritative pending command.
 
-The environment constructs Team 0 and Team 1 observations independently. An unseen enemy
-ship has an explicit false visibility mask and every state channel is replaced with zero as
-defense in depth. This includes position, velocity, health, power, cooldown, alive state,
-local refractive state, and bullets. Policy-side belief tracking may retain a previously seen
-enemy as a valid token, recursively replacing only its predictable physical channels and
-adding time since observation. Every ship is visible to both teams for the one decision it
-spawns on, at match start and on every respawn, so no enemy is ever in the never-observed
-state and no remembered estimate survives a death it did not see. Losing contact thereafter
-leaves a remembered token rather than an absent one. Hidden local field gradients remain
-zero rather than being predicted. Raw team views zero ordinary enemy pending-action slots
-regardless of physical visibility. Policy-side belief composition replaces those zeros with
-the previous decision's dedicated 42-way enemy-action prediction. Allied commands are exact
-one-hot vectors; every initial spawn and respawn instead exposes the exact null-command
-one-hot vector to both teams for that reveal decision. Authoritative enemy commands never
-enter policy input. Allies and static map geometry remain known.
+The environment constructs each observer's observation independently, and every ship slot
+takes its physical state from exactly one legal source in one selection: authoritative truth
+where the observer owns the slot or can currently see it, that observer's own belief where it
+cannot, and zero where nothing has ever been observed. Nothing privileged is materialized into
+a slot and masked afterwards, and no channel is restored later by a second pass. An unseen,
+never-observed enemy therefore reads zero across position, velocity, health, power, cooldown,
+alive state, local refractive state and bullets, and carries an explicit false visibility
+mask; the three ship constants — collision radius, the SHIP object type and the explicit
+"no zone role" value — are the same for every slot and so say nothing about the ship in it.
+
+A previously seen enemy is a valid token carrying its remembered physical state, its thirteen
+predicted uncertainty terms, and the time since it was observed. Every ship is visible to both
+teams for the one decision it spawns on, at match start and on every respawn, so no enemy is
+ever in the never-observed state and no remembered estimate survives a death it did not see.
+Hidden local field gradients read zero rather than being inferred from a believed position.
+
+Ordinary enemy pending-action slots carry the previous decision's dedicated 42-way enemy-action
+prediction, whether or not the ship is in sight, so physical visibility is not an
+action-information side channel. Allied commands are exact one-hot vectors; every initial spawn
+and respawn instead exposes the exact null-command one-hot vector to both teams for that reveal
+decision, and both facts land in one write. Authoritative enemy commands never enter policy
+input. Allies and static map geometry remain known.
 `vision_range=None` is the explicit omniscient compatibility mode.
 
 In Team 0/Team 1 rendering modes, unseen world pixels receive a mild neutral-gray overlay.

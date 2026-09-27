@@ -15,7 +15,7 @@ from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.observation import BulletObsKey, ObsKey
 from boost_and_broadside.evaluation.agents import ResolvedAgent
-from boost_and_broadside.evaluation.match import MatchRunner, agent_view, merge_team_actions
+from boost_and_broadside.evaluation.match import MatchRunner, merge_team_actions
 from boost_and_broadside.train.rl.policy_io import PolicyBundle, build_policy
 
 SHIP_CONFIG = ShipConfig()
@@ -92,35 +92,38 @@ class TestPerspective:
     def test_an_ego_pass_policy_playing_team_one_is_shown_the_mirror(self):
         agent = _policy_agent()
         runner = _runner([agent, ResolvedAgent("random", None)], team0=[1, 0], team1=[0, 1])
-        obs = runner.observe()
+        runner.observe()
 
-        view = agent_view(agent, obs, ENV_CONFIG.num_ships, runner.team1_index == 0)
+        legal = runner.legal_view(0)
+        view = runner.policy_view(0)
 
         N = ENV_CONFIG.num_ships
         # Env 0: the policy plays team 1 and sees mirrored ships and bullets.
-        assert torch.equal(view[ObsKey.TEAM_ID][0, :N], 1 - obs[ObsKey.TEAM_ID][0, :N])
+        assert torch.equal(view[ObsKey.TEAM_ID][0, :N], 1 - legal[ObsKey.TEAM_ID][0, :N])
         assert torch.equal(
-            view.bullets[BulletObsKey.TEAM_ID][0], 1 - obs.bullets[BulletObsKey.TEAM_ID][0]
+            view.bullets[BulletObsKey.TEAM_ID][0], 1 - legal.bullets[BulletObsKey.TEAM_ID][0]
         )
         # Env 1: it plays team 0 and sees the world as it is.
-        assert torch.equal(view[ObsKey.TEAM_ID][1, :N], obs[ObsKey.TEAM_ID][1, :N])
+        assert torch.equal(view[ObsKey.TEAM_ID][1, :N], legal[ObsKey.TEAM_ID][1, :N])
 
     def test_a_shared_pass_policy_is_never_mirrored(self):
         """It trained on both sides, so mirroring would hand it the wrong one."""
         agent = _policy_agent(paradigm="shared_pass")
         runner = _runner([agent], team0=[0, 0], team1=[0, 0])
-        obs = runner.observe()
+        runner.observe()
 
-        view = agent_view(agent, obs, ENV_CONFIG.num_ships, runner.team1_index == 0)
-        assert torch.equal(view[ObsKey.TEAM_ID], obs.for_team(1)[ObsKey.TEAM_ID])
+        assert torch.equal(
+            runner.policy_view(0)[ObsKey.TEAM_ID], runner.legal_view(0)[ObsKey.TEAM_ID]
+        )
 
     def test_scripted_agents_are_never_mirrored(self):
         """They keep absolute labels while receiving the selected sight mask separately."""
-        agent = ResolvedAgent("scripted", None)
-        obs = _runner([agent], team0=[0, 0], team1=[0, 0]).observe()
+        runner = _runner([ResolvedAgent("scripted", None)], team0=[0, 0], team1=[0, 0])
+        runner.observe()
 
-        view = agent_view(agent, obs, ENV_CONFIG.num_ships, torch.tensor([True, True]))
-        assert torch.equal(view[ObsKey.TEAM_ID], obs.for_team(1)[ObsKey.TEAM_ID])
+        assert torch.equal(
+            runner.policy_view(0)[ObsKey.TEAM_ID], runner.legal_view(0)[ObsKey.TEAM_ID]
+        )
 
 
 class TestBulletAxis:
