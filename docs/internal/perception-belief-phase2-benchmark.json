@@ -1,0 +1,237 @@
+{
+  "label": "phase2-rl-wall",
+  "updates": 2,
+  "env_steps_per_update": 491520,
+  "wall_seconds": 475.8414048559498,
+  "sps": 2065.8984064188217,
+  "profile": "rl",
+  "model_config": {
+    "d_model": 128,
+    "n_heads": 4,
+    "n_yemong_blocks": 2,
+    "n_spatial_heads": 2,
+    "n_spatial_per_block": 2,
+    "n_temporal_per_block": 1,
+    "encoder_split": true,
+    "map_read_mode": "kv_memory",
+    "map_memory_dim": 64,
+    "n_bullet_cross_per_block": 0,
+    "bullet_encoder_hidden": 64,
+    "spatial_rope": true,
+    "local_presence": true,
+    "relational_bias": false,
+    "grad_checkpoint": false
+  },
+  "compile_mode": "default",
+  "perception": "default",
+  "overrides": {},
+  "phases": {
+    "01_rollout/total": {
+      "seconds": 284.8642685999512,
+      "calls": 8,
+      "per_update": 142.4321342999756
+    },
+    "01a_rollout/primary_step": {
+      "seconds": 134.63708291220246,
+      "calls": 1024,
+      "per_update": 67.31854145610123
+    },
+    "01b_rollout/aux_steps": {
+      "seconds": 0.01597705075982958,
+      "calls": 1024,
+      "per_update": 0.00798852537991479
+    },
+    "01c_rollout/scripted": {
+      "seconds": 20.231266398564912,
+      "calls": 1024,
+      "per_update": 10.115633199282456
+    },
+    "01d_rollout/env+net": {
+      "seconds": 72.8523868889315,
+      "calls": 1024,
+      "per_update": 36.42619344446575
+    },
+    "01e_rollout/select_actions": {
+      "seconds": 1.1882337253773585,
+      "calls": 1024,
+      "per_update": 0.5941168626886792
+    },
+    "01f_rollout/reset_hidden": {
+      "seconds": 0.3370408301707357,
+      "calls": 1024,
+      "per_update": 0.16852041508536786
+    },
+    "01g_rollout/net_forward": {
+      "seconds": 11.528974288783502,
+      "calls": 1024,
+      "per_update": 5.764487144391751
+    },
+    "01i_rollout/ladder_alloc": {
+      "seconds": 5.298102041706443e-05,
+      "calls": 8,
+      "per_update": 2.6490510208532214e-05
+    },
+    "01j_rollout/buffer_add": {
+      "seconds": 1.2186181145953014,
+      "calls": 1024,
+      "per_update": 0.6093090572976507
+    },
+    "01k1_elo/team_actions": {
+      "seconds": 95.24001142801717,
+      "calls": 1024,
+      "per_update": 47.620005714008585
+    },
+    "01k2_elo/rating_update": {
+      "seconds": 1.1226778433192521,
+      "calls": 1024,
+      "per_update": 0.5613389216596261
+    },
+    "01k3_elo/match_counts": {
+      "seconds": 0.39445884624728933,
+      "calls": 1024,
+      "per_update": 0.19722942312364466
+    },
+    "01k4_elo/resample": {
+      "seconds": 1.0099123382242396,
+      "calls": 1024,
+      "per_update": 0.5049561691121198
+    },
+    "01k5_elo/reset_hidden": {
+      "seconds": 1.0438341837725602,
+      "calls": 1024,
+      "per_update": 0.5219170918862801
+    },
+    "01k6_elo/policy_actions": {
+      "seconds": 47.725022205733694,
+      "calls": 2048,
+      "per_update": 23.862511102866847
+    },
+    "01k7_elo/anchor_actions": {
+      "seconds": 21.76742159051355,
+      "calls": 1024,
+      "per_update": 10.883710795256775
+    },
+    "01k_rollout/elo_step": {
+      "seconds": 149.63986091403058,
+      "calls": 1024,
+      "per_update": 74.81993045701529
+    },
+    "01l_rollout/elo_flush": {
+      "seconds": 0.19819716102210805,
+      "calls": 8,
+      "per_update": 0.09909858051105402
+    },
+    "01m_rollout/belief_compose": {
+      "seconds": 36.954676608147565,
+      "calls": 4096,
+      "per_update": 18.477338304073783
+    },
+    "01n_rollout/belief_advance": {
+      "seconds": 14.627180596173275,
+      "calls": 4096,
+      "per_update": 7.313590298086638
+    },
+    "01o_rollout/privileged_obs": {
+      "seconds": 8.706561283906922,
+      "calls": 1032,
+      "per_update": 4.353280641953461
+    },
+    "01p_rollout/target_vector": {
+      "seconds": 4.9230272303684615,
+      "calls": 3096,
+      "per_update": 2.4615136151842307
+    },
+    "02_gae": {
+      "seconds": 0.49190421093953773,
+      "calls": 8,
+      "per_update": 0.24595210546976887
+    },
+    "02a_gae/compute": {
+      "seconds": 0.300749106972944,
+      "calls": 8,
+      "per_update": 0.150374553486472
+    },
+    "03_ns_labels": {
+      "seconds": 1.0694971680059098,
+      "calls": 8,
+      "per_update": 0.5347485840029549
+    },
+    "04_rollout_to_host": {
+      "seconds": 13.285956681938842,
+      "calls": 8,
+      "per_update": 6.642978340969421
+    },
+    "05_lambda_aggregates": {
+      "seconds": 1.1365770320408046,
+      "calls": 2,
+      "per_update": 0.5682885160204023
+    },
+    "06_update/total": {
+      "seconds": 170.40167304995703,
+      "calls": 2,
+      "per_update": 85.20083652497851
+    },
+    "06a_update/denominators": {
+      "seconds": 3.8603825227473862,
+      "calls": 192,
+      "per_update": 1.9301912613736931
+    },
+    "06b_update/forward_loss": {
+      "seconds": 73.71361707069445,
+      "calls": 1536,
+      "per_update": 36.85680853534723
+    },
+    "06c_update/stage_h2d": {
+      "seconds": 10.542116873490158,
+      "calls": 768,
+      "per_update": 5.271058436745079
+    },
+    "06d_update/backward": {
+      "seconds": 52.882347912353,
+      "calls": 1536,
+      "per_update": 26.4411739561765
+    },
+    "06e_update/optim_step": {
+      "seconds": 0.9898699062177911,
+      "calls": 192,
+      "per_update": 0.49493495310889557
+    },
+    "06f_update/host_gather": {
+      "seconds": 17.176368770131376,
+      "calls": 792,
+      "per_update": 8.588184385065688
+    },
+    "06g_update/clip_grad": {
+      "seconds": 0.5273968366673216,
+      "calls": 192,
+      "per_update": 0.2636984183336608
+    },
+    "07_schedule_refresh": {
+      "seconds": 0.07791265996638685,
+      "calls": 2,
+      "per_update": 0.03895632998319343
+    },
+    "08_metrics_assemble": {
+      "seconds": 0.012560576025862247,
+      "calls": 2,
+      "per_update": 0.006280288012931123
+    },
+    "09_log": {
+      "seconds": 7.98960099928081e-05,
+      "calls": 2,
+      "per_update": 3.994800499640405e-05
+    }
+  },
+  "per_update_seconds": [
+    263.3651880589896,
+    212.47609180700965
+  ],
+  "epochs_completed": [
+    4.0,
+    2.0
+  ],
+  "rollout_s_per_update": 142.4321342999756,
+  "update_s_per_epoch": 28.400278841659503,
+  "peak_allocated_mb": 3753.49267578125,
+  "peak_reserved_mb": 5060.0
+}
