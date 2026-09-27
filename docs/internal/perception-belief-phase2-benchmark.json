@@ -2,8 +2,8 @@
   "label": "phase2-rl-wall",
   "updates": 2,
   "env_steps_per_update": 491520,
-  "wall_seconds": 475.8414048559498,
-  "sps": 2065.8984064188217,
+  "wall_seconds": 471.0207822850207,
+  "sps": 2087.04166986235,
   "profile": "rl",
   "model_config": {
     "d_model": 128,
@@ -27,211 +27,211 @@
   "overrides": {},
   "phases": {
     "01_rollout/total": {
-      "seconds": 284.8642685999512,
+      "seconds": 280.29278609593166,
       "calls": 8,
-      "per_update": 142.4321342999756
+      "per_update": 140.14639304796583
     },
     "01a_rollout/primary_step": {
-      "seconds": 134.63708291220246,
+      "seconds": 132.60147367988247,
       "calls": 1024,
-      "per_update": 67.31854145610123
+      "per_update": 66.30073683994124
     },
     "01b_rollout/aux_steps": {
-      "seconds": 0.01597705075982958,
+      "seconds": 0.015883889223914593,
       "calls": 1024,
-      "per_update": 0.00798852537991479
+      "per_update": 0.007941944611957297
     },
     "01c_rollout/scripted": {
-      "seconds": 20.231266398564912,
+      "seconds": 19.956895101699047,
       "calls": 1024,
-      "per_update": 10.115633199282456
+      "per_update": 9.978447550849523
     },
     "01d_rollout/env+net": {
-      "seconds": 72.8523868889315,
+      "seconds": 71.84848907665582,
       "calls": 1024,
-      "per_update": 36.42619344446575
+      "per_update": 35.92424453832791
     },
     "01e_rollout/select_actions": {
-      "seconds": 1.1882337253773585,
+      "seconds": 1.1763826268725097,
       "calls": 1024,
-      "per_update": 0.5941168626886792
+      "per_update": 0.5881913134362549
     },
     "01f_rollout/reset_hidden": {
-      "seconds": 0.3370408301707357,
+      "seconds": 0.338825705985073,
       "calls": 1024,
-      "per_update": 0.16852041508536786
+      "per_update": 0.1694128529925365
     },
     "01g_rollout/net_forward": {
-      "seconds": 11.528974288783502,
+      "seconds": 11.455310696910601,
       "calls": 1024,
-      "per_update": 5.764487144391751
+      "per_update": 5.7276553484553006
     },
     "01i_rollout/ladder_alloc": {
-      "seconds": 5.298102041706443e-05,
+      "seconds": 4.0951010305434465e-05,
       "calls": 8,
-      "per_update": 2.6490510208532214e-05
+      "per_update": 2.0475505152717233e-05
     },
     "01j_rollout/buffer_add": {
-      "seconds": 1.2186181145953014,
+      "seconds": 1.222143657214474,
       "calls": 1024,
-      "per_update": 0.6093090572976507
+      "per_update": 0.611071828607237
     },
     "01k1_elo/team_actions": {
-      "seconds": 95.24001142801717,
+      "seconds": 93.6995952972793,
       "calls": 1024,
-      "per_update": 47.620005714008585
+      "per_update": 46.84979764863965
     },
     "01k2_elo/rating_update": {
-      "seconds": 1.1226778433192521,
+      "seconds": 1.1094225959968753,
       "calls": 1024,
-      "per_update": 0.5613389216596261
+      "per_update": 0.5547112979984377
     },
     "01k3_elo/match_counts": {
-      "seconds": 0.39445884624728933,
+      "seconds": 0.39159057434881106,
       "calls": 1024,
-      "per_update": 0.19722942312364466
+      "per_update": 0.19579528717440553
     },
     "01k4_elo/resample": {
-      "seconds": 1.0099123382242396,
+      "seconds": 0.9925408185808919,
       "calls": 1024,
-      "per_update": 0.5049561691121198
+      "per_update": 0.49627040929044597
     },
     "01k5_elo/reset_hidden": {
-      "seconds": 1.0438341837725602,
+      "seconds": 1.004568548174575,
       "calls": 1024,
-      "per_update": 0.5219170918862801
+      "per_update": 0.5022842740872875
     },
     "01k6_elo/policy_actions": {
-      "seconds": 47.725022205733694,
+      "seconds": 47.255231574352365,
       "calls": 2048,
-      "per_update": 23.862511102866847
+      "per_update": 23.627615787176182
     },
     "01k7_elo/anchor_actions": {
-      "seconds": 21.76742159051355,
+      "seconds": 21.339165651996154,
       "calls": 1024,
-      "per_update": 10.883710795256775
+      "per_update": 10.669582825998077
     },
     "01k_rollout/elo_step": {
-      "seconds": 149.63986091403058,
+      "seconds": 147.0951349643874,
       "calls": 1024,
-      "per_update": 74.81993045701529
+      "per_update": 73.5475674821937
     },
     "01l_rollout/elo_flush": {
-      "seconds": 0.19819716102210805,
+      "seconds": 0.20301818603184074,
       "calls": 8,
-      "per_update": 0.09909858051105402
+      "per_update": 0.10150909301592037
     },
     "01m_rollout/belief_compose": {
-      "seconds": 36.954676608147565,
+      "seconds": 36.36710768431658,
       "calls": 4096,
-      "per_update": 18.477338304073783
+      "per_update": 18.18355384215829
     },
     "01n_rollout/belief_advance": {
-      "seconds": 14.627180596173275,
+      "seconds": 14.491759973403532,
       "calls": 4096,
-      "per_update": 7.313590298086638
+      "per_update": 7.245879986701766
     },
     "01o_rollout/privileged_obs": {
-      "seconds": 8.706561283906922,
+      "seconds": 8.385214749490842,
       "calls": 1032,
-      "per_update": 4.353280641953461
+      "per_update": 4.192607374745421
     },
     "01p_rollout/target_vector": {
-      "seconds": 4.9230272303684615,
+      "seconds": 4.874283121083863,
       "calls": 3096,
-      "per_update": 2.4615136151842307
+      "per_update": 2.4371415605419315
     },
     "02_gae": {
-      "seconds": 0.49190421093953773,
+      "seconds": 0.392493849969469,
       "calls": 8,
-      "per_update": 0.24595210546976887
+      "per_update": 0.1962469249847345
     },
     "02a_gae/compute": {
-      "seconds": 0.300749106972944,
+      "seconds": 0.22488447109935805,
       "calls": 8,
-      "per_update": 0.150374553486472
+      "per_update": 0.11244223554967903
     },
     "03_ns_labels": {
-      "seconds": 1.0694971680059098,
+      "seconds": 1.0656401260057464,
       "calls": 8,
-      "per_update": 0.5347485840029549
+      "per_update": 0.5328200630028732
     },
     "04_rollout_to_host": {
-      "seconds": 13.285956681938842,
+      "seconds": 10.619282502972055,
       "calls": 8,
-      "per_update": 6.642978340969421
+      "per_update": 5.309641251486028
     },
     "05_lambda_aggregates": {
-      "seconds": 1.1365770320408046,
+      "seconds": 1.1948948409990408,
       "calls": 2,
-      "per_update": 0.5682885160204023
+      "per_update": 0.5974474204995204
     },
     "06_update/total": {
-      "seconds": 170.40167304995703,
+      "seconds": 172.92916706204414,
       "calls": 2,
-      "per_update": 85.20083652497851
+      "per_update": 86.46458353102207
     },
     "06a_update/denominators": {
-      "seconds": 3.8603825227473862,
+      "seconds": 4.006083161220886,
       "calls": 192,
-      "per_update": 1.9301912613736931
+      "per_update": 2.003041580610443
     },
     "06b_update/forward_loss": {
-      "seconds": 73.71361707069445,
+      "seconds": 75.70266718085622,
       "calls": 1536,
-      "per_update": 36.85680853534723
+      "per_update": 37.85133359042811
     },
     "06c_update/stage_h2d": {
-      "seconds": 10.542116873490158,
+      "seconds": 10.614183138648514,
       "calls": 768,
-      "per_update": 5.271058436745079
+      "per_update": 5.307091569324257
     },
     "06d_update/backward": {
-      "seconds": 52.882347912353,
+      "seconds": 52.900043945002835,
       "calls": 1536,
-      "per_update": 26.4411739561765
+      "per_update": 26.450021972501418
     },
     "06e_update/optim_step": {
-      "seconds": 0.9898699062177911,
+      "seconds": 1.0147010371438228,
       "calls": 192,
-      "per_update": 0.49493495310889557
+      "per_update": 0.5073505185719114
     },
     "06f_update/host_gather": {
-      "seconds": 17.176368770131376,
+      "seconds": 17.63328968267888,
       "calls": 792,
-      "per_update": 8.588184385065688
+      "per_update": 8.81664484133944
     },
     "06g_update/clip_grad": {
-      "seconds": 0.5273968366673216,
+      "seconds": 0.5274575003422797,
       "calls": 192,
-      "per_update": 0.2636984183336608
+      "per_update": 0.26372875017113984
     },
     "07_schedule_refresh": {
-      "seconds": 0.07791265996638685,
+      "seconds": 0.0023934869677759707,
       "calls": 2,
-      "per_update": 0.03895632998319343
+      "per_update": 0.0011967434838879853
     },
     "08_metrics_assemble": {
-      "seconds": 0.012560576025862247,
+      "seconds": 0.012482354009989649,
       "calls": 2,
-      "per_update": 0.006280288012931123
+      "per_update": 0.0062411770049948245
     },
     "09_log": {
-      "seconds": 7.98960099928081e-05,
+      "seconds": 7.532699964940548e-05,
       "calls": 2,
-      "per_update": 3.994800499640405e-05
+      "per_update": 3.766349982470274e-05
     }
   },
   "per_update_seconds": [
-    263.3651880589896,
-    212.47609180700965
+    265.5912456099759,
+    205.4294371419819
   ],
   "epochs_completed": [
     4.0,
     2.0
   ],
-  "rollout_s_per_update": 142.4321342999756,
-  "update_s_per_epoch": 28.400278841659503,
-  "peak_allocated_mb": 3753.49267578125,
-  "peak_reserved_mb": 5060.0
+  "rollout_s_per_update": 140.14639304796583,
+  "update_s_per_epoch": 28.821527843674023,
+  "peak_allocated_mb": 3765.98583984375,
+  "peak_reserved_mb": 5052.0
 }
