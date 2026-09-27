@@ -10,8 +10,10 @@ September 27, 2026.
 
 The phase's core is correct and holds up under falsification harder than the
 tests it shipped with. One half of one exit-gate line is knowingly unimplemented
-and deferred to Phase 2, and one new diagnostic's documented meaning is wrong in
-a way that will mislead whoever reads it on a fresh run. Neither blocks Phase 1.
+and deferred to Phase 2, and the one new diagnostic this phase added is
+documented as measuring something it does not measure — on both of its terms.
+Neither blocks Phase 1, and the diagnostic's defects are in its prose and its
+choice of constant, not in its arithmetic.
 
 ## Scope
 
@@ -20,7 +22,7 @@ a way that will mislead whoever reads it on a fresh run. Neither blocks Phase 1.
 | phase evaluated | 0 |
 | branch | `fix/seat-symmetry-pending-action` |
 | implementation commits | `590a25b..34415e3` — `375cf12`, `c41063f`, `b933da0`, `62c31d4`, `34415e3` |
-| evaluation commits | `af0bffb` |
+| evaluation commits | `af0bffb` (CUDA-graph latch regression) and `37aa553` (initial evaluation handoff); this cleanup follows in the evaluation-handoff commit |
 | hardware | RTX 4070 Laptop (8 GB), torch 2.13.0+cu130, CUDA 13.2, driver 595.84 |
 
 CUDA was available throughout. Nothing in this evaluation is CPU-only by
@@ -198,13 +200,53 @@ So on a fresh run the series pins at 1.0 and reports nothing about leaks. The
 metric itself is fine and additive; only its documented interpretation is
 overstated. Repair is a comment and a sentence of prose: say that the visible
 cell's series is a leak rate *conditional on* the visible-cell mean being small
-against the threshold, and that until then it reads head error. The threshold
-arithmetic is correct (`max_speed 180 · dt 1/60 · action_repeat`, ×10 = 30 px).
+against the threshold, and that until then it reads head error.
 
 Reproduction: `probe_leakfrac` — build the `test_ppo` trainer with
 `EnvConfig(num_ships=4, max_bullets=4, max_episode_steps=400, vision_range=600,
 spawn_reveal=True)`, collect one full buffer through `_collect_primary_step`,
 `store_final_obs`, then `_precompute_belief_diagnostics`.
+
+### D1b — the threshold is built on a spawn parameter, not a speed limit (low, robustness)
+
+`leak_threshold = 10 · max_speed · dt · action_repeat`. **`max_speed` is not a
+speed cap.** It lives in `ShipConfig`'s "Spawn settings" block beside
+`min_speed`, `default_speed` and `random_speed`, and its only consumer in the
+environment is [`env.py:270`](../../src/boost_and_broadside/env/env.py#L270),
+inside `reset_envs`, reached only when `random_speed` is on — which the `rl`
+profile leaves off, so on the production profile physics never reads it.
+Nothing clamps velocity to it. Real terminal velocity comes out of
+`boost_thrust` against quadratic drag, plus lift; and configured speeds are
+*proper* speeds `u = n·v` while `ship_vel` is a world velocity, so a refractive
+index of `n ≠ 1` separates them further.
+
+Measured over 1,920,000 contiguous ship-decisions of scripted play on the `rl`
+profile's Frontline geometry (64 envs × 3000 decisions, respawns excluded):
+
+| | p50 | p90 | p99 | p99.9 | max |
+|---|---|---|---|---|---|
+| speed, px/s | 100.73 | 198.81 | 211.72 | 214.89 | **218.82** |
+| travel, px/decision | 1.679 | 3.313 | 3.529 | 3.582 | **3.646** |
+
+Ships exceed `max_speed` **22.08%** of the time. The assumed 3.00 px of legal
+travel understates the real maximum of 3.646 px by 21%.
+
+**The 10× slack absorbs it: 0 of 1.92M transitions exceed 30 px.** So this
+produces no false positives today and the threshold is sound in practice — but
+by luck rather than derivation, and the true headroom is 8.2×, not the 10× the
+expression reads. It is unguarded against anything that raises speed: a trained
+policy that boosts harder than the scripted agent, a different `boost_thrust`,
+a profile with `action_repeat > 1`, or a low-index medium.
+
+The clean repair is to source the threshold from **Phase 1's measured
+position-delta scale** rather than from a config constant. Phase 1 collects
+precisely this quantity — truth→truth one-decision deltas from scripted
+Frontline trajectories with respawns excluded — so the number is free; the
+3.646 px above is that measurement in miniature.
+
+Reproduction: `probe_speed` — step `TensorEnv` under
+`StochasticScriptedAgent`, accumulate `toroidal_displacement` of `ship_pos`
+across each decision under `ship_alive & ~ship_respawned`.
 
 ### D2 — the recorded parity command does not run (low)
 
@@ -275,6 +317,7 @@ GPU, 8188 MiB, torch 2.13.0+cu130.
 | `belief_compile_parity.py --device cuda --steps 12 --seed 271828 --out …` | `parity_passed: true`, `error_count: 0`; identical `predicted_targets_sha256` per team between compiled and eager |
 | 4000-decision `MatchRunner` reveal probe on `cuda` | table above; all three must-be-zero counters zero |
 | 400-decision `MatchRunner` fog probe on `cuda` | 0.1609 mean enemy visibility |
+| 1.92M-sample per-decision travel probe on `cuda` | max 3.646 px/decision, 22.08% of speeds above `max_speed` — see D1b |
 | captured interactive CUDA-graph tick, latch behaviour | correct; now a CUDA-gated test |
 | `rl_pipeline_profile.py --profile rl --timing wall` | VRAM exact, SPS 1,748 against a recorded 2,810 — see **Benchmarks** |
 | `bnb smoke` (exercises the CUDA training and mode paths end to end) | all 16 passed |
@@ -375,9 +418,18 @@ measures. The handoff's own preconditions are correct and I confirm them:
 * one shared scale across position x/y and one across velocity vx/vy, zero
   physical delta to exactly zero normalized delta.
 
-One addition: Phase 1 should **not** reuse
-`belief/visible/position_beyond_legal_frac` as a leak check on a fresh or
-untrained model without reading D1 first.
+Two additions from this evaluation:
+
+* Phase 1 should **not** reuse `belief/visible/position_beyond_legal_frac` as a
+  leak check on a fresh or untrained model without reading D1 first.
+* Phase 1's position-delta calibration should be **fed back into the leak
+  threshold** (D1b). The threshold currently derives from `max_speed`, a spawn
+  parameter that ships exceed 22% of the time; Phase 1 is measuring the real
+  distribution anyway, so sourcing the threshold from its constant costs
+  nothing and removes a fragile assumption. A useful sanity check for Phase 1's
+  own output: scripted Frontline play on the `rl` profile gives a per-decision
+  position-delta max of **3.646 px** and p50 of **1.679 px** over 1.92M
+  samples, respawns excluded.
 
 ## Carried into later phases
 
@@ -392,7 +444,8 @@ handoff lists; and the handoff's own suggestion of a self-relative team feature
 class rather than test around it.
 
 **Any time:** D1 (a comment and a sentence), D2 (one flag in a table), D4 (a
-shared helper), and a Frontline state-level mirror for seat symmetry.
+shared helper), and a Frontline state-level mirror for seat symmetry. D1b is
+best done *with* Phase 1, since that phase produces the constant it needs.
 
 **Performance target Phase 3 inherits:** 26.00 s/update of sync-attributed
 perception and belief work, 12% of the update, against `01k_rollout/elo_step`'s
