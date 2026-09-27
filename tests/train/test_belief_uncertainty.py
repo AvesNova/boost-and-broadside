@@ -1,9 +1,10 @@
-"""The belief carries how far it has drifted, not just how long it has been.
+"""The belief carries how uncertain it is, not just how long it has been stale.
 
-``time_since_observation`` says only how stale an estimate is. The head now
-reports a spread per channel, and the tracker accumulates it while a ship is out
-of sight, so the policy can read what the staleness actually cost -- which is
-the quantity that decides whether to act on a remembered position or go look.
+``time_since_observation`` says only how old an estimate is. The next-state head
+states a spread per channel -- eleven log sigmas plus a correlation latent for
+position and one for velocity -- and the belief carries the head's latest claim
+outright rather than a running sum, because the head saw the current spread as an
+input and answered with the next one.
 """
 
 import pytest
@@ -11,9 +12,16 @@ import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObsKey
-from boost_and_broadside.train.rl.belief import BeliefTracker
 from boost_and_broadside.train.rl.features import build_standard_coordinator
-from tests.train.test_belief import _view
+from boost_and_broadside.train.rl.physical_belief import (
+    CERTAIN_LOG_SIGMA,
+    LOG_SIGMA_COLUMNS,
+    NEXT_STATE_OUTPUT_DIM,
+    PHYSICAL_MEAN_DIM,
+    PHYSICAL_UNCERTAINTY_DIM,
+    UNKNOWN_LOG_SIGMA,
+)
+from tests.train.test_belief import _HIDDEN_X, _env, _place, _tracker, _view
 
 
 @pytest.fixture
@@ -26,115 +34,120 @@ def _uncertainty_accessor(coordinator):
     return feature.accessor
 
 
-def test_the_channel_width_is_resolved_from_the_predictors(coordinator) -> None:
-    """One authority for the width, and it is the predictor layout.
-
-    There is no module constant to state it any more: position reports one
-    uncertainty column per Fourier harmonic, so the width follows the world size
-    and only the feature layout knows it.
-    """
-
-    assert (
-        _uncertainty_accessor(coordinator).absent_width == coordinator.total_uncertainty_dimension
+def _prediction(log_sigma: float) -> torch.Tensor:
+    return torch.cat(
+        [
+            torch.zeros(1, 2, PHYSICAL_MEAN_DIM),
+            torch.full((1, 2, PHYSICAL_UNCERTAINTY_DIM), log_sigma),
+        ],
+        dim=-1,
     )
 
 
-def test_the_channel_width_is_resolved_not_assumed() -> None:
-    """Whatever the width is, it comes from the predictors and nowhere else.
+class TestLayout:
+    def test_the_channel_width_is_the_physical_uncertainty_layout(self, coordinator):
+        assert _uncertainty_accessor(coordinator).absent_width == PHYSICAL_UNCERTAINTY_DIM
 
-    It happens to be world-independent again: the circular features report one
-    spread for their finest harmonic rather than one per harmonic, so a bigger
-    world adds harmonics without adding spreads. That was not true of the
-    previous layout and need not be true of the next one, which is the point --
-    the accessor reads the number off the coordinator instead of stating it.
-    """
+    def test_the_width_no_longer_follows_the_world_size(self):
+        """It is thirteen physical terms, not one per Fourier harmonic.
 
-    from dataclasses import replace
+        The previous layout reported one spread per position harmonic, so the
+        width moved with the map. The next-state model predicts physical
+        quantities, so it does not -- and the encoder's input width stops being a
+        function of the world.
+        """
+        from dataclasses import replace
 
-    widths = {}
-    for side in (1024.0, 65536.0):
-        c = build_standard_coordinator(replace(ShipConfig(), world_size=(side, side)))
-        widths[side] = c.total_uncertainty_dimension
-        assert _uncertainty_accessor(c).absent_width == widths[side]
-    assert all(w > 0 for w in widths.values())
+        for side in (1024.0, 65536.0):
+            config = replace(ShipConfig(), world_size=(side, side))
+            coordinator = build_standard_coordinator(config)
+            assert _uncertainty_accessor(coordinator).absent_width == PHYSICAL_UNCERTAINTY_DIM
 
+    def test_map_objects_carry_the_observed_spread(self, coordinator):
+        """Static geometry is not believed, so nothing about it is in doubt."""
+        env = _env()
+        view = _view(env, _tracker())
+        uncertainty = view[ObsKey.BELIEF_UNCERTAINTY]
+        assert uncertainty.shape[-1] == PHYSICAL_UNCERTAINTY_DIM
+        assert uncertainty.shape[1] > 2, "the view carries map tokens as well as ships"
+        map_spreads = uncertainty[0, 2:][:, list(LOG_SIGMA_COLUMNS)]
+        assert (map_spreads == CERTAIN_LOG_SIGMA).all()
 
-def _prediction(coordinator, log_uncertainty: float) -> torch.Tensor:
-    P = coordinator.total_prediction_dimension
-    U = coordinator.total_uncertainty_dimension
-    return torch.cat([torch.zeros(1, 2, P), torch.full((1, 2, U), log_uncertainty)], dim=-1)
+    def test_a_view_built_without_a_belief_reports_none(self, coordinator):
+        """An omniscient or fixture view has forecast nothing.
 
+        Read through the accessor: such a view carries no channel at all, because
+        the environment does not own the belief's representation.
+        """
+        from boost_and_broadside.env.observation import observation_from_state
 
-def test_uncertainty_accumulates_while_a_ship_is_unseen(coordinator) -> None:
-    """A spread per step, summed: the belief's own uncertainty, not the latest step's."""
-
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    composed = tracker.compose(_view(visible=True, x=300.0))
-    assert composed[ObsKey.BELIEF_UNCERTAINTY][0, 1].abs().max() == 0.0
-
-    readings = []
-    for _ in range(4):
-        tracker.advance(composed, _prediction(coordinator, 0.0))  # unit variance per step
-        composed = tracker.compose(_view(visible=False, x=300.0))
-        readings.append(composed[ObsKey.BELIEF_UNCERTAINTY][0, 1].clone())
-
-    for step, reading in enumerate(readings, start=1):
-        assert reading.min() == pytest.approx(float(step), rel=1e-5), (
-            "variance should be the running sum of each step's spread"
-        )
-
-
-def test_seeing_a_ship_settles_its_uncertainty(coordinator) -> None:
-    """An observation replaces the estimate, so its accumulated doubt is discarded."""
-
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    composed = tracker.compose(_view(visible=True, x=300.0))
-    for _ in range(3):
-        tracker.advance(composed, _prediction(coordinator, 0.0))
-        composed = tracker.compose(_view(visible=False, x=300.0))
-    assert composed[ObsKey.BELIEF_UNCERTAINTY][0, 1].min() > 0.0
-
-    tracker.advance(composed, _prediction(coordinator, 0.0))
-    reacquired = tracker.compose(_view(visible=True, x=900.0))
-    assert reacquired[ObsKey.BELIEF_UNCERTAINTY][0, 1].abs().max() == 0.0
-    # The ship we never lost was never uncertain either.
-    assert reacquired[ObsKey.BELIEF_UNCERTAINTY][0, 0].abs().max() == 0.0
+        env = _env()
+        view = observation_from_state(env.state, ShipConfig())
+        assert ObsKey.BELIEF_UNCERTAINTY not in view.data
+        supplied = _uncertainty_accessor(coordinator).get(view)
+        assert supplied.shape[-1] == PHYSICAL_UNCERTAINTY_DIM
+        assert supplied.abs().max() == 0.0
 
 
-def test_a_confident_forecast_accumulates_less_than_a_vague_one(coordinator) -> None:
-    """The accumulated doubt tracks the head's own claim, not merely elapsed steps."""
+class TestSemantics:
+    def test_the_head_restates_the_spread_rather_than_accumulating_it(self):
+        """Four steps of the same claim must read the same, not four times it."""
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
 
-    def after_one_step(log_uncertainty: float) -> torch.Tensor:
-        tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-        composed = tracker.compose(_view(visible=True, x=300.0))
-        tracker.advance(composed, _prediction(coordinator, log_uncertainty))
-        return tracker.compose(_view(visible=False, x=300.0))[ObsKey.BELIEF_UNCERTAINTY][0, 1]
+        readings = []
+        for _ in range(4):
+            tracker.advance(_prediction(1.0))
+            _place(env, enemy_x=_HIDDEN_X)
+            readings.append(_view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1].clone())
 
-    confident = after_one_step(-2.0)
-    vague = after_one_step(2.0)
-    assert (confident < vague).all(), "a tighter forecast must cost less certainty"
+        for reading in readings:
+            spreads = reading[list(LOG_SIGMA_COLUMNS)]
+            assert torch.allclose(spreads, torch.ones_like(spreads))
 
+    def test_a_confident_forecast_reports_less_doubt_than_a_vague_one(self):
+        def after_one_step(log_sigma: float) -> torch.Tensor:
+            env = _env()
+            tracker = _tracker()
+            _view(env, tracker)
+            tracker.advance(_prediction(log_sigma))
+            _place(env, enemy_x=_HIDDEN_X)
+            return _view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1]
 
-def test_map_objects_carry_no_uncertainty(coordinator) -> None:
-    """Static geometry is not believed, so nothing about it is in doubt."""
+        assert (after_one_step(-2.0) <= after_one_step(2.0)).all()
 
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    composed = tracker.compose(_view(visible=False, x=300.0))
-    uncertainty = composed[ObsKey.BELIEF_UNCERTAINTY]
-    assert uncertainty.shape[-1] == coordinator.total_uncertainty_dimension
-    assert uncertainty.shape[1] >= 2
+    def test_an_unobserved_slot_reports_the_ceiling_and_an_observed_one_the_floor(self):
+        env = _env()
+        _place(env, enemy_x=_HIDDEN_X)
+        view = _view(env, _tracker())
+        never_seen = view[ObsKey.BELIEF_UNCERTAINTY][0, 1][list(LOG_SIGMA_COLUMNS)]
+        observed = view[ObsKey.BELIEF_UNCERTAINTY][0, 0][list(LOG_SIGMA_COLUMNS)]
+        assert (never_seen == UNKNOWN_LOG_SIGMA).all()
+        assert (observed == CERTAIN_LOG_SIGMA).all()
 
+    def test_the_encoder_sees_the_clamped_range_inside_one_unit(self, coordinator):
+        """The input encoding divides the log sigmas by their own clamp bound.
 
-def test_an_observation_without_a_tracker_reports_no_uncertainty(coordinator) -> None:
-    """Raw environment views and test fixtures have forecast nothing.
+        A symlog of a log would compress twice and flatten the difference between
+        a ship in sight and one unseen for a minute, which is the whole signal.
+        """
+        (feature,) = [f for f in coordinator.features if f.name == "belief_uncertainty"]
+        extreme = torch.full((1, 1, PHYSICAL_UNCERTAINTY_DIM), UNKNOWN_LOG_SIGMA)
+        encoded = feature.input_encoder(extreme)[0, 0]
+        spreads = encoded[list(LOG_SIGMA_COLUMNS)]
+        assert torch.allclose(spreads, torch.ones_like(spreads))
 
-    Read through the accessor rather than the observation: the observation no
-    longer carries a default for this channel, because its width is a property
-    of the feature layout and the environment cannot know it.
-    """
+    def test_the_head_cannot_claim_a_spread_outside_its_clamp(self):
+        from boost_and_broadside.models.yemong.policy import NextStateHead
 
-    view = _view(visible=True, x=300.0)
-    assert ObsKey.BELIEF_UNCERTAINTY not in view.data
-    supplied = _uncertainty_accessor(coordinator).get(view)
-    assert supplied.shape[-1] == coordinator.total_uncertainty_dimension
-    assert supplied.abs().max() == 0.0
+        head = NextStateHead(16)
+        with torch.no_grad():
+            for layer in head.net:
+                if hasattr(layer, "bias") and layer.bias is not None:
+                    layer.bias.fill_(50.0)
+        out = head(torch.randn(8, 16) * 20.0)
+        uncertainty = out[..., PHYSICAL_MEAN_DIM:]
+        assert uncertainty.shape[-1] == PHYSICAL_UNCERTAINTY_DIM
+        assert torch.equal(uncertainty, uncertainty.clamp(-6.0, 6.0))
+        assert out.shape[-1] == NEXT_STATE_OUTPUT_DIM

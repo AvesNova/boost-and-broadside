@@ -78,33 +78,39 @@ The policy does not hand-encode those channels. The canonical
 channel to:
 
 1. an accessor from the observation dictionary;
-2. a network-facing input transform;
-3. where applicable, a target transform and predictor for the auxiliary dynamics loss.
+2. a network-facing input transform.
 
-| Feature | Network encoding | Auxiliary target |
-|---|---|---|
-| position x/y | base-2 Fourier features over the toroidal period | the same features, absolutely |
-| velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed | the same encoding, absolutely |
-| attitude | four-frequency Fourier features of the angle itself | the same features, absolutely |
-| angular velocity | symlog scalar | next absolute value |
-| health, power, cooldown | normalised scalar | next absolute value |
-| team identity | three-way one-hot | none |
-| alive state | scalar | none |
-| currently visible | scalar | none |
-| belief token valid | scalar, value-head team pooling only | none |
-| time since observation | symlog scalar | none |
-| previous power/turn/shoot | categorical one-hot | none |
-| radius | shared ship/field scalar divided by half the shorter world dimension | none |
-| field width | normalized scalar | none |
-| field target log index | normalized physical scalar | none |
-| shield recharge delay | symlog seconds | absolute prediction |
-| ship-local log index | `log(n)/(2 log(s))` | additive next-step delta |
-| ship-local index gradient | normalized `grad(n)` pair | none |
-| ally / enemy presence | two `log1p` Gaussian aggregates, optional | none |
+| Feature | Network encoding |
+|---|---|
+| position x/y | base-2 Fourier features over the toroidal period |
+| velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed |
+| attitude | four-frequency Fourier features of the angle itself |
+| angular velocity | symlog scalar |
+| health, power, cooldown | normalised scalar |
+| team identity | three-way one-hot |
+| alive state | scalar |
+| currently visible | scalar |
+| belief token valid | scalar, value-head team pooling only |
+| time since observation | symlog scalar |
+| pending joint command | 42-way probability vector |
+| belief uncertainty | thirteen log/unconstrained terms divided by their clamp bound |
+| radius | shared ship/field scalar divided by half the shorter world dimension |
+| field width | normalized scalar |
+| field target log index | normalized physical scalar |
+| shield recharge delay | symlog seconds |
+| ship-local log index | `log(n)/(2 log(s))` |
+| ship-local index gradient | normalized `grad(n)` pair |
+| ally / enemy presence | two `log1p` Gaussian aggregates, optional |
 
-Phase targets make wraparound natural: crossing the map boundary is a small rotation, not
-a large coordinate jump. Feature dimensions and prediction layout are derived from the
-registered features rather than hardcoded in model code.
+Fourier position features make wraparound natural: crossing the map boundary is a small
+rotation, not a large coordinate jump. The input width is derived from the registered
+features rather than hardcoded in model code.
+
+The auxiliary dynamics target is *not* in this table. The next-state head predicts physical
+quantities rather than encoded ones, so its layout lives beside the physics
+([`train/rl/physical_belief.py`](../src/boost_and_broadside/train/rl/physical_belief.py))
+rather than being a second role each feature plays — see
+[the next-state head](#auxiliary-next-state-head).
 
 Ally and enemy presence are the two channels `local_presence` adds. Softmax attention
 returns *proportions*, which is the invariant that survives a change in fleet size and is
@@ -311,10 +317,12 @@ compact `(power, turn, shoot)` triple consumed by physics. PPO log probability a
 belong to this joint distribution, so the policy may model correlations between factors.
 
 Pending action is also represented as one 42-way vector per ship. Allied commands are exact
-one-hot vectors. Ordinary enemy slots are zero in the raw legal view and are filled by the
-belief tracker with the dedicated enemy-action head's prior prediction; initial spawn and
-respawn override both teams with the exact null-command one-hot vector. The prediction head
-has the same layer shape as the actor head but owns disjoint parameters.
+one-hot vectors. Ordinary enemy slots carry the dedicated enemy-action head's prior
+prediction, whether or not the ship is in sight, so physical visibility is not an
+action-information side channel; initial spawn and respawn override both teams with the exact
+null-command one-hot vector. Allied facts and the opponent belief land in one write, so
+neither can overwrite the other. The prediction head has the same layer shape as the actor
+head but owns disjoint parameters.
 
 The output shape is `(B, N, 3)` action indices.
 
@@ -332,186 +340,159 @@ semantics, aggregation, and horizons are documented in [training](training.md#re
 
 ## Auxiliary next-state head
 
-The next-state head predicts the coordinator's registered target channels for every ship.
-Each channel's target lives in **the same space as its own input**, and every channel is
-predicted **absolutely**, so the head's output and the encoder's input are the same numbers:
-position and attitude as Fourier moments over their harmonic basis, velocity as a
-symlog-scaled direction, and the resources, angular velocity and ship-local log index as
-scalars. Static field material channels are inputs, not prediction targets; the local index
-target makes entering and leaving a medium visible to the learned dynamics model.
+The next-state head predicts **eleven physical mean deltas** per ship, one decision ahead,
+plus **thirteen uncertainty terms**. The channels, in order, are position x and y, velocity
+x and y, attitude, angular velocity, shield delay, health, power, cooldown, and the natural
+log of the ship-local refractive index. Static field material channels are inputs, not
+targets; the local-index target makes entering and leaving a medium visible to the learned
+dynamics model.
 
-Velocity is absolute for the reason position is. The origin of its encoding is zero speed,
-which is the conditional mean of an unseen ship's velocity, so an unpredictable target
-shrinks toward "could be going anywhere" rather than random-walking away from the last
-sighting. The objection to absolute prediction -- that reproducing the current value
-dominates the loss and drowns the dynamics signal -- is answered by the likelihood rather
-than the parameterisation: sigma falls to the dynamics residual, and the `1/sigma^2`
-weighting on the mean amplifies precisely the part that carries information.
+Physical, not encoded. The head's output is in pixels, pixels per second and radians rather
+than in the Fourier/symlog space the encoder reads, and that is what lets the belief plane
+below store the same quantities truth does — so composing a legal view is a *selection*
+between two tensors of one meaning rather than a substitution inside an encoded vector.
 
-### Why position is a stack of moments
+Each delta is normalized by a fixed constant measured once against scripted play
+([`train/rl/physical_deltas.py`](../src/boost_and_broadside/train/rl/physical_deltas.py)):
+2.5 px for each position axis, 4 px/s for each velocity axis, 0.1 rad for attitude, and so
+on. Position and velocity each use one scale for both axes by contract, and ordinary
+division means a zero physical delta maps to a bit-exact zero normalized one. The constants
+are fixed: there is no online scaler, deliberately, because a moving normalizer makes a
+training curve unreadable against the run before it.
 
-A position on a torus has no Cartesian mean. Averaging positions on a circle collapses
-toward its centre, which is not a point on the circle at all -- so a Gaussian over position
-cannot represent *ignorance* about one, only a confident claim about the wrong place.
-
-Predicting each harmonic's `(sin, cos)` pair absolutely fixes that, and the mechanism is
-squared error's own optimum: `argmin E[(a - sin w x)^2]` is `E[sin w x]`, the conditional
-Fourier moment. So the estimate shrinks toward the origin exactly as far as the quantity is
-unpredictable, and the origin is a uniform belief. The pair's magnitude is the resultant
-length at that frequency, which makes per-scale confidence a free by-product: coarse
-harmonics confident and fine ones at zero reads as "the right region, not the right block".
-A phase predictor cannot say any of this, because rotation preserves unit norm by
-construction.
-
-Three further consequences, none of them incidental:
-
-- **No `label_scale`.** A `(sin, cos)` target has variance at most 0.5 whatever the world
-  size, so there is no fitted constant to get wrong. This is what retired the calibration
-  problem below rather than answering it.
-- **No label base.** An absolute channel asks for the state, not a step away from a base,
-  so a stale belief cannot enter its label and error cannot be conserved across a step.
-- **The spatial rotation needs no decode.** `rotary.tables` builds its angles from
-  `base2_frequencies` -- the same basis these encodings use -- so a token's rotary table
-  *is* its moment vector.
-
-The remaining dyadic-ladder reconstruction back to a scalar is for rendering and
-diagnostics only. It reads harmonic 0 alone, whose period is the whole coordinate period,
-so it is unambiguous and has nothing to unwrap; the finer harmonics buy precision, not
-disambiguation.
+Two channels wrap instead of translating. Position advances modulo the torus and attitude
+modulo `2*pi`, which is exact; every other channel is clamped to its physical range — health
+to `[0, max_health]`, cooldown to `[0, firing_cooldown]`, angular velocity to the turn rate
+a command can actually set. So the autoregressive recursion below cannot leave a bounded
+set, however wrong the head is. That is a statement about the quantities rather than a
+numerical guard, and it is what makes run 734's failure mode (velocity error compounding to
+1178 px/s and then overflowing into a non-finite logit) unwritable rather than merely
+counted.
 
 ### The likelihood
 
-The objective is a hybrid, and which half a channel lands in depends on whether its
-encoding has a spare dimension to carry confidence.
+The objective is a Gaussian negative log likelihood throughout, and the uncertainty block is
+what it reads. Position carries a **full 2D covariance** — `log sigma x`, `log sigma y`, and
+an unconstrained correlation latent mapped through `tanh` — and velocity carries another.
+The seven remaining channels carry one log sigma each. Thirteen numbers, all in
+log/unconstrained form everywhere: head output, belief store, and observation channel alike.
 
-**Circular channels train under plain squared error.** A harmonic pair's magnitude already
-*is* its confidence, so nine of position's ten harmonics report no spread at all. The tenth
--- the finest -- carries one isotropic sigma, and the reason is gradient share rather than
-precision. Squared error's gradient is `2*eps`, which shrinks as a channel becomes accurate;
-a likelihood's is `eps/sigma^2`, which grows. Mixing the two hands the objective to whichever
-channels are both accurate and on the likelihood, and position is highly predictable for a
-ship in sight. Estimated over plausible residuals, position and attitude take 0.04% of the
-auxiliary gradient without that sigma and 48% with it. Without it the head would learn
-position almost entirely from *hidden* ships, whose labels are mostly unpredictable belief
-error, and ignore the visible ones where the learnable dynamics are.
+A full covariance rather than two independent variances because the error is not
+axis-aligned. A ship last seen on a heading has along-track and cross-track uncertainty that
+differ, and its principal axes follow the heading, not the map: fitting an axis-aligned
+ellipse to that either overstates the cross-track spread or understates the along-track one.
+The correlation is the one parameter that lets the ellipse rotate.
 
-**Everything else carries a sigma and trains under a Gaussian negative log likelihood**,
-`0.5 * ((y - mu)^2 / sigma^2 + log sigma^2)`. Velocity, angular velocity, shield delay and
-the three resources have no spare dimension -- in `SymlogVelocity` the magnitude *is* the
-speed, and a scalar's magnitude is its value -- so a shrunken prediction there is ambiguous
-between "small" and "unsure", and sigma is the only confidence signal available. Velocity
-keeps one sigma per axis: a ship last seen on a heading has different along-track and
-cross-track uncertainty, and isotropy would discard that.
+The bivariate term is
 
-One consequence worth knowing when reading curves: the two halves are not commensurable.
-Squared-error terms are bounded and non-negative; likelihood terms carry `log sigma^2` and
-go unboundedly negative, so `loss/next_state` is a mixed-unit quantity. The per-channel
-`next_state/*` series stay comparable, being squared error computed under `no_grad`.
+```
+log 2*pi + log sigma_x + log sigma_y + 0.5 log(1 - rho^2)
+    + (a^2 - 2 rho a b + b^2) / (2 (1 - rho^2))
+```
 
-A von Mises likelihood, `kappa * (1 - cos(d)) + log I0e(kappa)`, remains available for a
-channel predicted as a phase; nothing in the shipped table uses one, because moments
-represent an unknown angle without needing a concentration.
+with `a = r_x / sigma_x` and `b = r_y / sigma_y`; the scalar channels take
+`0.5 log 2*pi + log sigma + 0.5 (r / sigma)^2`. Both carry their normalizing constant, which
+cancels out of every gradient but makes the per-channel series *nats*, so a channel costing
+more of them is genuinely harder to predict than one costing fewer.
 
-The likelihood is there because no fixed label scale exists for the *delta* channels to
-normalize against. Their labels step from the believed state to the true next one, so their
-width is set by how wrong the belief currently is -- which depends on the head being
-trained, on how long ships stay unseen, and so on how well the policy plays. Measured over
-one run, velocity labels sat about 33x their calibrated width, and position's implied scale
-fell by a third *within* that run while velocity's held flat: position error is the integral
-of a stationary velocity error over a hidden duration that keeps growing as the policy
-learns to avoid contact. A constant cannot track that. `(y - mu)^2 / sigma^2` does not need
-to, being invariant to it.
+The attitude residual is wrapped onto the circle before it enters its scalar Gaussian. Both
+the predicted and the true delta live in `[-pi, pi]`, so their difference can reach `2*pi` —
+a prediction of `-pi` against a label of `+pi` is the same rotation, not the largest possible
+error.
 
-`label_scale` is now 1.0 on every channel. It survived on the delta channels because their
-labels had no bounded range to sit in; with those gone, nothing needs conditioning and
-nothing is fitted. The diagnostic that reported what would recalibrate it stays, because it
-is what would catch a future channel drifting out of range.
+A likelihood rather than a weighted squared error because no fixed label scale exists for
+these labels. They step from the believed state to the true next one (below), so their width
+is set by how wrong the belief currently is — which depends on the head being trained, on how
+long ships stay unseen, and so on how well the policy plays. Measured over one run, velocity
+labels sat about 33x their calibrated width, and position's implied scale fell by a third
+*within* that run while velocity's held flat: position error is the integral of a stationary
+velocity error over a hidden duration that keeps growing as the policy learns to avoid
+contact. A constant cannot track that. `(y - mu)^2 / sigma^2` does not need to, being
+invariant to it.
 
 Weighting the mean's gradient by `1/sigma^2` is the second reason. A long-unseen token's
-label is mostly belief error nobody could have predicted; the head widens sigma there and
-the signal concentrates on tokens whose labels are real dynamics. The likelihood is
-unbounded below as sigma falls, so the log variance is clamped -- nothing else stops a head
-from buying loss with certainty it has not earned.
+label is mostly belief error nobody could have predicted; the head widens sigma there and the
+signal concentrates on tokens whose labels are real dynamics. The likelihood is unbounded
+below as sigma falls, so the log sigma is clamped to `[-6, 6]` — nothing else stops a head
+from buying loss with certainty it has not earned — and the correlation latents clamp tighter
+still, because `tanh` of a large latent is exactly 1.0 in float32 and `1 - rho^2` would then
+be a pole.
 
-`label_scale` survives as a conditioning knob, not as a way to balance the objective, and no
-shipped channel currently needs it.
+`loss/next_state` is the mean likelihood in nats per channel. The per-channel
+`next_state/*` series remain squared error computed under `no_grad`, in units of each
+channel's own calibrated scale, so they stay readable and comparable across the change.
 
-A triangle-window cumulative loss on position and velocity ran alongside it until the
-label below was corrected. Its purpose was to catch systematic multi-step drift, which it
-amplified as window squared against a window-scaling noise floor -- but that drift was the
-old label conserving belief error step after step, and re-basing the label addresses it in
-the objective itself rather than by penalizing its signature. It was also the only term
-that could not decompose over micro-batches, so it perturbed the applied gradient by 0.1
-to 0.3 percent whenever a minibatch was split; without it, accumulation is exact to
-floating-point roundoff.
+### The belief plane
 
-The cache also carries how far it has drifted. Each forecast's spread is accumulated into a
-per-channel variance while a ship is out of sight and discarded the moment it is seen again,
-and the result is an observation channel the policy reads. `time_since_observation` says only
-how stale an estimate is; this says what the staleness cost, which is the quantity that
-decides whether to act on a remembered position or go and look. The belief mean itself is
-still propagated unshrunk -- using the spread to pull a stale estimate toward a prior is a
-further step, and needs a decision about what that prior is.
+With finite vision, each policy perspective owns a GPU-resident store of **physical** ship
+state: the eleven means, the thirteen uncertainty terms, the 42-way pending-command
+distribution, and how many decisions ago the ship was last seen. One decision runs three
+operations on it.
 
-With finite vision, visible ships refresh a policy-local point-estimate cache and the head's
-forecast becomes the next hidden input recursively. Hidden tokens receive privileged
-next-state supervision without exposing that truth to the actor or critic; death-to-respawn
-teleport labels are masked. Each policy/perspective owns its cache, including frozen league
-and evaluation policies.
+**Observe.** Authoritative truth is assimilated for every ship in sight, its spread drops to
+a finite certainty floor, and its age resets. A ship that spawned this decision has its
+belief voided first: it teleported, so whatever was remembered describes somewhere it no
+longer is. A slot nothing has ever observed reads zero everywhere and carries the *ceiling*
+spread — maximal doubt, rather than the zero a masked channel used to leave behind, which
+reads as one unit of doubt and so as a confident claim about nothing.
+
+**Compose.** Every ship slot takes its physical state from exactly one legal source, in one
+selection: truth where the observer owns the slot or can currently see it, this observer's
+belief where it cannot, and zero where nothing has ever been observed. The result is an
+ordinary observation, so the ordinary encoder reads it and the spatial rotation reads the
+composed coordinate. Nothing privileged is materialized into a slot and masked afterwards,
+and no channel is restored later by a second pass.
+
+Two consequences worth stating. `grad(n)` at the ship is *not* forecast — it is a
+deterministic function of position given the static map, but inferring it from a believed
+position would state a field interaction nobody supervised — so a remembered ship reads zero
+for it. And derived features that read several ships at once, `local_presence` above all, are
+computed from the composed legal view rather than from truth, because that is the view they
+are a property of.
+
+**Advance.** The means move by the predicted physical deltas and the uncertainty becomes the
+predicted uncertainty *outright*. Nothing accumulates: the head saw the current spread as an
+input and answered with the next one, so summing forecasts would double-count what it already
+accounts for. The stored enemy-action distribution is the softmax of the dedicated head's
+logits from this decision, which the next view carries.
+
+Each policy owns its own store, including frozen league and evaluation policies, and each
+composes its own view. Two policies watching the same game remember it differently; both
+views are legally sourced, so sharing one would leak nothing — it would attribute one
+player's memory to the other, and that player's behaviour would stop being a function of its
+own weights.
+
+Composition therefore happens after the environment step and the policy forward have joined,
+not alongside them: a view depends on the forecast the forward pass produces. The physics and
+the forward still overlap; only the composition is serial.
+
+### Spawn, respawn, and the label
 
 Every ship is visible to both teams for the one decision on which it enters the world, at
-deployment and on every respawn. Deployment is what makes the supervision above cover every
-enemy rather than only sighted ones, and why the trunk needs no key mask: token validity is
-a constant, not something attention has to be told.
+deployment and on every respawn. Deployment is what makes the privileged supervision cover
+every enemy rather than only sighted ones, and why the trunk needs no key mask: token
+validity is a constant, not something attention has to be told.
 
-Respawn matters for a different reason. The cache is advanced by the head's own forecast and
+Respawn matters for a different reason. The store is advanced by the head's own forecast and
 is never told a ship died, so an unobserved respawn would leave it tracking a corpse's
-trajectory -- handing the policy a phantom at the old position, and the label a teleport
+trajectory — handing the policy a phantom at the old position, and the label a teleport
 nothing could have predicted, on every step until that ship was next seen. Marking the single
 step the teleport happened on does not cover that, because the stale estimate outlives it.
 
-The label is the step from the *believed* current state to the true next one, not truth to
-truth -- for the channels that are still predicted as deltas. The head's output is applied to
-the cache, so a truth-to-truth label would ask it to reproduce a transition it is never in a
-position to apply, and the belief error would be carried forward unchanged at every step with
-nothing in the objective able to remove it. Re-basing makes the target the correction back
-onto truth. Position and attitude no longer need it: an absolute channel asks for the state
-rather than a step away from a base, so there is no base to be stale and the error cannot be
-conserved. Velocity and the local index are what is left.
+The label is the normalized physical step from the **believed** current state to the **true**
+next one, not truth to truth. The head's output is applied to the belief, so a truth-to-truth
+label makes the substitution
 
-### The belief is copied, not decoded
+```
+error[t+1] = belief[t] + (true[t+1] - true[t]) - true[t+1] = error[t]
+```
 
-A hidden ship's cached state is substituted into the **encoded** input, column for column,
-rather than into the raw observation channels. That is the reason every predicted feature
-encodes its target the same way it encodes its input: target space is input space, so the
-head's own output is the next step's input with nothing in between.
-
-It has to work that way, because the raw channels cannot carry the answer. A belief whose
-position moment has shrunk to 0.3 says "roughly here"; writing it into a coordinate and
-letting the encoder re-expand it puts every harmonic back on the unit circle, which says
-"here". The round trip does not lose the confidence -- it overwrites it with certainty. The
-decoded point is still published on `ObsKey.POS` for the renderer, the relational-bias
-geometry and evaluation, all of which need a coordinate and can only have a point one; it is
-simply no longer what the trunk reads.
-
-The spatial rotation reads the same moments, and reads them **unnormalised**. `apply_rotary`
-is linear in its table, so an attention logit is bilinear in the two tokens' tables, and for
-independent beliefs the expectation of a bilinear form is the form of the expectations.
-Feeding `(E cos, E sin)` therefore makes the logit's positional term exactly
-`E[cos(theta_q - theta_k)]` -- the expected cosine of the displacement under the posterior.
-Normalising first would rotate by the *mean*, which is not that expectation and overstates
-how well the geometry is known. Two things follow: a vague belief contributes a weaker
-positional term, attenuated by `r_q * r_k`, which is the Bayesian factor rather than a
-heuristic; and a fully uncertain token contributes nothing at all through the rotated
-dimensions, so attention to it rests on its remaining features. The approximation is
-independence -- exact for a query against a hidden key, since ego knows its own position, and
-optimistic for two hidden tokens advanced by the same recursion.
-
-A stored moment is projected onto the unit disk rather than clamped to a numerical ceiling. A
-moment is an expectation of a unit vector, so a magnitude above one is not a wide belief but
-an impossible one, and the recursion cannot leave a bounded set. The unbounded symlog channels
-keep the old ceiling, which is a guard against a runaway forecast rather than a property of
-the quantity.
+— the belief error is conserved exactly, every step's noise is retained forever, and the head
+is never once shown what "too far" looks like. Re-basing makes the target the correction back
+onto truth, so error is nulled each step to whatever extent it is inferable. For a ship the
+observer can see, the belief *is* truth, so its label is exactly the truth-to-truth delta the
+scales were calibrated on: re-basing adds signal where the drift happens and leaves the rest
+of the supervision alone. Death-to-respawn transitions are masked out of the loss entirely.
 
 The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
 with deeper autoregressive diagnostics in the reference run's

@@ -87,6 +87,10 @@ SCALAR_UNCERTAINTY = (
     (LOCAL_LOG_INDEX, 12),
 )
 CORRELATION_COLUMNS = (POSITION_RHO, VELOCITY_RHO)
+#: The eleven log-sigma columns, i.e. every uncertainty column that is a spread.
+LOG_SIGMA_COLUMNS = tuple(
+    column for column in range(len(UNCERTAINTY_NAMES)) if column not in CORRELATION_COLUMNS
+)
 
 # Log-sigma clamp for the head. Labels are normalized to O(1) by the Phase-1
 # scales, so ``exp(+/-6)`` spans spreads from 1/400th of a typical delta to 400

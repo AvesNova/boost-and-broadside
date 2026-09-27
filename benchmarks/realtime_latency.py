@@ -55,7 +55,7 @@ from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.match import merge_team_actions
 from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.runtime.actions import PendingActionState
-from boost_and_broadside.train.rl.belief import BeliefTracker
+from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 
 
@@ -209,7 +209,7 @@ def measure(
         # Both reset and the selected step path must use the same arm.
         wrapper._perceive = perception_override
         wrapper._interactive_perceive = perception_override
-    observation = wrapper.reset()
+    wrapper.reset()
     action_state = PendingActionState.allocate(1, ships, device)
     if cuda_graph_tick and environment_step != "step_interactive":
         raise ValueError("CUDA graph tick requires step_interactive")
@@ -228,17 +228,12 @@ def measure(
         policy.eval()
         policy.requires_grad_(False)
         belief = BeliefTracker(
-            1, ships, ship_config.dt * env_config.action_repeat, policy.coordinator, device
+            1, ships, ship_config.dt * env_config.action_repeat, ship_config, device
         )
         sides.append(
             {
                 "policy": compile_policy(policy, compile_mode),
                 "belief": belief,
-                "belief_compose": (
-                    torch.compile(belief.compose, mode=belief_compile_mode, dynamic=False)
-                    if belief_compile_mode is not None
-                    else belief.compose
-                ),
                 "belief_advance": (
                     torch.compile(belief.advance, mode=belief_compile_mode, dynamic=False)
                     if belief_compile_mode is not None
@@ -319,20 +314,42 @@ def measure(
     # has nothing to do with the per-frame work being measured.
     resets = {"count": 0}
 
-    def policy_actions(source_observation):
-        actions = []
+    def compose_views() -> list:
+        """Each side's own legal view, from authoritative state and its own belief.
+
+        Composed only when the environment is settled: the view depends on the
+        belief's forecast, which depends on this decision's policy output, so it
+        cannot be built alongside the physics the way the old shared observation
+        was. The concurrent region is therefore physics against a forward pass
+        over the *previous* decision's views.
+        """
+
+        composed = []
         for team, side in enumerate(sides):
-            view = source_observation.for_team(team)
+            view = legal_policy_view(
+                side["belief"],
+                wrapper.env.state,
+                ship_config,
+                wrapper.last_visibility,
+                team,
+                num_ships=ships,
+                pending_action=action_state.pending,
+            )
             if team == 1:
                 # An ego_pass policy only ever learned to act as team 0, so
                 # playing team 1 means seeing mirrored team IDs -- exactly what
                 # `agent_view` does in the interactive loop.
                 view = view.flip_team(ships, mask=as_team1)
-            view = side["belief_compose"](view)
+            composed.append(view)
+        return composed
+
+    def policy_actions(source_views):
+        actions = []
+        for side, view in zip(sides, source_views):
             action, _, _, prediction, side["hidden"] = side["policy"].get_action_and_value(
                 view, side["hidden"]
             )
-            side["belief_advance"](view, prediction)
+            side["belief_advance"](prediction)
             actions.append(action)
         # One policy side means the other team is a keyboard or scripted
         # controller, whose action costs nothing measurable next to a forward
@@ -340,8 +357,10 @@ def measure(
         opponent = actions[1] if len(actions) > 1 else torch.zeros_like(actions[0])
         return merge_team_actions(actions[0], opponent, wrapper.state.ship_team_id).int()
 
+    views = compose_views()
+
     def frame(record: bool) -> None:
-        nonlocal observation, previous_snapshot
+        nonlocal views, previous_snapshot
         policy_start = policy_end = env_start = env_end = None
         cpu_start = time.perf_counter()
 
@@ -356,7 +375,7 @@ def measure(
             # storage. Reusable ObservationBuffers sit underneath that final
             # assembly, so building the next observation cannot overwrite this
             # one while the policy reads it.
-            policy_observation = observation
+            policy_views = views
             current = torch.cuda.current_stream(device)
             env_stream.wait_stream(current)
             net_stream.wait_stream(current)
@@ -370,7 +389,7 @@ def measure(
                     if env_start is not None:
                         env_start.record(env_stream)
                     result = getattr(wrapper, environment_step)(
-                        action_state.applied_action(), auto_reset=False
+                        action_state.applied_action(), auto_reset=False, observe=False
                     )
                     if env_end is not None:
                         env_end.record(env_stream)
@@ -384,7 +403,7 @@ def measure(
                 ):
                     if policy_start is not None:
                         policy_start.record(net_stream)
-                    next_action_out = policy_actions(policy_observation)
+                    next_action_out = policy_actions(policy_views)
                     if policy_end is not None:
                         policy_end.record(net_stream)
                 return next_action_out
@@ -405,25 +424,25 @@ def measure(
             current.wait_stream(env_stream)
             current.wait_stream(net_stream)
             if environment_step == "step_interactive":
-                observation, dones, truncated, info = env_result
+                _, dones, truncated, info = env_result
             else:
-                observation, _, dones, truncated, info = env_result
+                _, _, dones, truncated, info = env_result
         else:
             if policy_start is not None:
                 policy_start.record()
-            next_action = policy_actions(observation)
+            next_action = policy_actions(views)
             if policy_end is not None:
                 policy_end.record()
             policy_mark = time.perf_counter()
             if env_start is not None:
                 env_start.record()
             env_result = getattr(wrapper, environment_step)(
-                action_state.applied_action(), auto_reset=False
+                action_state.applied_action(), auto_reset=False, observe=False
             )
             if environment_step == "step_interactive":
-                observation, dones, truncated, info = env_result
+                _, dones, truncated, info = env_result
             else:
-                observation, _, dones, truncated, info = env_result
+                _, _, dones, truncated, info = env_result
             if env_end is not None:
                 env_end.record()
             if record and device.type == "cpu":
@@ -436,12 +455,7 @@ def measure(
             info["actuator_contiguous"],
             finished,
         )
-        action_state.write_observation(
-            observation,
-            wrapper.state.ship_team_id,
-            wrapper.state.ship_spawned,
-            ships,
-        )
+        views = compose_views()
 
         if record and device.type == "cuda":
             torch.cuda.synchronize(device)
@@ -486,13 +500,14 @@ def measure(
 
         if bool(finished.any()):
             resets["count"] += 1
-            observation = wrapper.reset()
+            wrapper.reset()
             action_state.reset(finished)
             for side in sides:
                 side["belief"].reset(finished)
                 side["hidden"] = side["policy"].reset_hidden_for_envs(
                     side["hidden"], finished, ships
                 )
+            views = compose_views()
         return next_action
 
     warm_device(device)

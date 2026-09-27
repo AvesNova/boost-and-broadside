@@ -41,6 +41,7 @@ def _assert_joint_view(
     expected = expected * own.unsqueeze(-1)
     torch.testing.assert_close(view[:, : team_id.shape[1]], expected)
 
+
 def _pending_observation() -> YemongObservation:
     team0 = torch.zeros((1, 2, 42), dtype=torch.float32)
     team1 = torch.zeros_like(team0)
@@ -81,9 +82,7 @@ def test_pending_state_matches_reference_neutral_a_b_c_and_privacy_trace() -> No
         production.write_observation(
             observation, team_id, torch.zeros_like(team_id, dtype=torch.bool), 2
         )
-        _assert_joint_view(
-            observation.data[ObsKey.PREVIOUS_ACTION], production.pending, team_id, 0
-        )
+        _assert_joint_view(observation.data[ObsKey.PREVIOUS_ACTION], production.pending, team_id, 0)
         _assert_joint_view(
             observation.team1_data[ObsKey.PREVIOUS_ACTION], production.pending, team_id, 1
         )
@@ -217,13 +216,15 @@ def test_match_runner_uses_the_same_delayed_trace_for_scripted_agents() -> None:
     assert torch.equal(env.state.prev_action.int(), torch.zeros((1, 2, 3), dtype=torch.int32))
     assert tuple(map(tuple, runner.action_state.pending[0].tolist())) == A
 
-    observation = runner.observe()
+    runner.observe()
     team_id = env.state.ship_team_id[:, :2]
+    # Agent 0 holds team 0 and agent 1 team 1, so each agent's own legal view is
+    # that observer's view of the queue.
     _assert_joint_view(
-        observation[ObsKey.PREVIOUS_ACTION], runner.action_state.pending, team_id, 0
+        runner.legal_view(0)[ObsKey.PREVIOUS_ACTION], runner.action_state.pending, team_id, 0
     )
     _assert_joint_view(
-        observation.team1_data[ObsKey.PREVIOUS_ACTION], runner.action_state.pending, team_id, 1
+        runner.legal_view(1)[ObsKey.PREVIOUS_ACTION], runner.action_state.pending, team_id, 1
     )
 
     controller0.action = B[0]

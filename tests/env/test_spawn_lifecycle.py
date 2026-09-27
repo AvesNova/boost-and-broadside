@@ -287,10 +287,12 @@ def test_a_spawned_ship_enters_the_world_on_a_null_pending_action() -> None:
             spawn_decisions += 1
             queued = runner.action_state.pending[spawned]
             assert not queued.any(), f"decision {decision}: spawned on a live command {queued}"
-            observation = runner.observe()
+            runner.observe()
             for team in (0, 1):
-                view = observation.for_team(team)[ObsKey.PREVIOUS_ACTION][:, :4]
-                revealed = view[spawned]
+                # Agent 0 holds team 0 in every environment here and agent 1 team
+                # 1, so each agent's own legal view is that team's view.
+                pending = runner.legal_view(team)[ObsKey.PREVIOUS_ACTION][:, :4]
+                revealed = pending[spawned]
                 assert revealed[:, 0].eq(1).all() and revealed[:, 1:].eq(0).all(), (
                     f"decision {decision}: team {team} does not see an exact null "
                     "distribution on a spawned ship"
@@ -325,9 +327,7 @@ def test_the_initial_spawn_queue_is_null_in_the_training_path() -> None:
     assert wrapper.state.ship_spawned.all()
     assert not action_state.pending.any(), "a freshly allocated queue is null"
 
-    action_state.write_observation(
-        obs, wrapper.state.ship_team_id, wrapper.state.ship_spawned, 4
-    )
+    action_state.write_observation(obs, wrapper.state.ship_team_id, wrapper.state.ship_spawned, 4)
     for team in (0, 1):
         view = obs.for_team(team)[ObsKey.PREVIOUS_ACTION][:, :4]
         assert view[..., 0].eq(1).all() and view[..., 1:].eq(0).all(), (

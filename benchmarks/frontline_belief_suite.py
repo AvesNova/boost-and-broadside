@@ -22,12 +22,16 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import frontline_ship_config
-from boost_and_broadside.env.observation import perceived_observation_from_state
+from boost_and_broadside.env.observation import _index_log_scale, perceived_observation_from_state
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
-from boost_and_broadside.train.rl.belief import DualBeliefTracker
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+from boost_and_broadside.train.rl.belief import DualBeliefTracker, legal_policy_view
+from boost_and_broadside.train.rl.physical_belief import (
+    NEXT_STATE_OUTPUT_DIM,
+    PhysicalNextState,
+    physical_means_from_observation,
+)
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
 _AGE_EDGES = (0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0)
@@ -111,9 +115,10 @@ def _run_learned_accuracy(
         games,
         env_config.num_ships,
         ship_config.dt * env_config.action_repeat,
-        policy.coordinator,
+        ship_config,
         device,
     ).team0
+    next_state_model = PhysicalNextState.from_ship_config(ship_config)
     stats = _empty_stats(device)
     baseline_stats = _empty_stats(device)
     world_w, world_h = ship_config.world_size
@@ -130,21 +135,25 @@ def _run_learned_accuracy(
     started = time.perf_counter()
     for _ in range(decisions):
         state = env.state
-        perceived, sight = perceived_observation_from_state(
+        sight = team_visibility_from_state(state, ship_config, env_config, bundle.reads_bullets)
+        view = legal_policy_view(
+            tracker,
             state,
             ship_config,
-            env_config,
+            sight,
+            0,
+            num_ships=env_config.num_ships,
             include_bullets=bundle.reads_bullets,
+            pending_action=action_state.pending,
         )
-        action_state.write_observation(
-            perceived, state.ship_team_id, state.ship_spawned, env_config.num_ships
+        believed = physical_means_from_observation(
+            view, _index_log_scale(ship_config), num_ships=env_config.num_ships
         )
-        view = tracker.compose(perceived.for_team(0))
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
             policy_action, _, _, prediction, enemy_logits, hidden = policy.get_action_and_value(
                 view, hidden, return_enemy_action=True
             )
-        tracker.advance(view, prediction, enemy_logits)
+        tracker.advance(prediction, enemy_logits)
 
         visible = view["visible"][:, : env_config.num_ships] & (
             view["team_id"][:, : env_config.num_ships] == 1
@@ -182,23 +191,21 @@ def _run_learned_accuracy(
         )
         advance_autonomous_decision(env, action_state, selected_action)
 
-        forecast = policy.coordinator.decode_targets(tracker.predicted_targets)
-        forecast_pos = torch.complex(
-            forecast["position_x"].squeeze(-1), forecast["position_y"].squeeze(-1)
-        )
+        forecast = next_state_model.apply_means(believed, prediction.float())
+        forecast_pos = torch.complex(forecast[..., 0], forecast[..., 1])
         next_state = env.state
         transition_contiguous = ~next_state.ship_respawned
         dx = forecast_pos.real - next_state.ship_pos.real + world_w / 2.0
         dy = forecast_pos.imag - next_state.ship_pos.imag + world_h / 2.0
         dx = dx.remainder(world_w) - world_w / 2.0
         dy = dy.remainder(world_h) - world_h / 2.0
-        forecast_vel = torch.complex(forecast["velocity"][..., 0], forecast["velocity"][..., 1])
+        forecast_vel = torch.complex(forecast[..., 2], forecast[..., 3])
         errors = {
             "position_px": torch.sqrt(dx.square() + dy.square()),
             "velocity_px_s": (forecast_vel - next_state.ship_vel).abs(),
-            "health": (forecast["health"].squeeze(-1) - next_state.ship_health).abs(),
-            "power": (forecast["power"].squeeze(-1) - next_state.ship_power).abs(),
-            "cooldown_s": (forecast["cooldown"].squeeze(-1) - next_state.ship_cooldown).abs(),
+            "health": (forecast[..., 7] - next_state.ship_health).abs(),
+            "power": (forecast[..., 8] - next_state.ship_power).abs(),
+            "cooldown_s": (forecast[..., 9] - next_state.ship_cooldown).abs(),
         }
         visible &= transition_contiguous
         hidden_enemy &= transition_contiguous
@@ -366,19 +373,22 @@ def run_suite(
     elapsed = time.perf_counter() - started
 
     # Isolate the fixed-shape production cache overhead from physics/scripted work.
-    perceived, _ = perceived_observation_from_state(
-        env.state, ship_config, env_config, include_bullets=False
-    )
-    coordinator = build_standard_coordinator(ship_config)
-    tracker = DualBeliefTracker(b, n, decision_dt, coordinator, device)
-    composed = tracker.compose(perceived)
-    prediction = torch.zeros((b, n, coordinator.total_prediction_dimension), device=device)
+    visibility = team_visibility_from_state(env.state, ship_config, env_config, False)
+    tracker = DualBeliefTracker(b, n, decision_dt, ship_config, device)
+    prediction = torch.zeros((b, n, NEXT_STATE_OUTPUT_DIM), device=device)
     enemy_logits = torch.zeros((b, n, 42), device=device)
 
     def belief_iteration() -> None:
-        nonlocal composed
-        tracker.advance(composed, prediction, prediction, enemy_logits, enemy_logits)
-        composed = tracker.compose(perceived)
+        tracker.advance(prediction, prediction, enemy_logits, enemy_logits)
+        sources = tracker.observe(env.state, visibility.ship)
+        perceived_observation_from_state(
+            env.state,
+            ship_config,
+            env_config,
+            include_bullets=False,
+            belief=sources,
+            visibility=visibility,
+        )
 
     for _ in range(5):
         belief_iteration()

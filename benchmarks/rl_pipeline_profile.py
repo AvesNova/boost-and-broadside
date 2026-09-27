@@ -181,10 +181,9 @@ def instrument(trainer, detail: bool) -> None:
     # Belief tracking rides inside the primary step and is otherwise invisible.
     from boost_and_broadside.train.rl import belief as belief_mod
 
-    wrap(belief_mod.BeliefTracker, "compose", "01m_rollout/belief_compose")
+    wrap(belief_mod.BeliefTracker, "observe", "01m_rollout/belief_observe")
     wrap(belief_mod.BeliefTracker, "advance", "01n_rollout/belief_advance")
-    wrap(trainer.wrapper, "privileged_observation", "01o_rollout/privileged_obs")
-    wrap(trainer.coordinator, "get_target_vector", "01p_rollout/target_vector")
+    wrap(trainer.wrapper, "observe", "01o_rollout/compose_views")
 
     # Elo evaluator internals.
     wrap(elo_mod.EloEvaluator, "_compute_team_actions", "01k1_elo/team_actions")

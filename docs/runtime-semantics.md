@@ -99,6 +99,11 @@ controller inference for `D_t` may overlap the physical advance under `Q_t` on s
 CUDA streams. A synchronization dependency is required only before `D_t` is installed
 as `Q_(t+1)` or otherwise consumed.
 
+Composition, however, *is* downstream of both: `B_(t+1)^k` is updated by the next-state
+forecast the controller produced at `t`, so `O_(t+1)^k` cannot be built alongside the physics
+that produced `S_(t+1)`. A scheduler therefore advances physics and runs inference
+concurrently, joins, updates each observer's belief, and only then composes.
+
 The transition result must distinguish at least:
 
 - `selected_action`: `D_t`, useful for diagnostics;
@@ -167,10 +172,19 @@ The executor must expose enough lifecycle information to neutralize a respawned 
 without synchronizing unrelated ships or environments. A vectorized in-place mask is
 preferred in the batched executor.
 
-## Perspective and action-belief state
+## Perspective and belief state
 
-The observation composer produces team-specific policy views from shared physical and
-runtime state:
+The observation composer produces observer-specific policy views from shared physical and
+runtime state, selecting one legal source per ship slot: authoritative truth where the
+observer owns or can see the slot, that observer's own belief where it cannot, and zero where
+nothing has ever been observed. Belief and truth are the same physical quantities, so this is
+a selection rather than a substitution, and it happens before any encoding.
+
+Each controller session composes its own view. Two controllers watching one game remember it
+differently; both views are legally sourced, so sharing one leaks nothing, but it attributes
+one player's memory to the other and its behaviour stops being a function of its own weights.
+
+Pending action follows the same table:
 
 | Observed ship | Pending-action value |
 | --- | --- |
@@ -179,7 +193,8 @@ runtime state:
 | Any newly reset or respawned ship | Exact null-command one-hot for both teams |
 
 Belief state must never reconstruct or retain an opponent's authoritative pending command.
-It carries only the policy's stored 42-way prediction. A future visualization may
+It carries only the policy's stored 42-way prediction, alongside the physical means and the
+uncertainty terms the next-state head reported. A future visualization may
 independently expose raw team perception, belief, and omniscient truth, but debug rendering
 must not change the policy view.
 
@@ -243,11 +258,12 @@ implementation at the policy boundary. PPO log probability and entropy are those
 joint distribution, not the sum of three independently sampled heads.
 
 The pending-action observation is a 42-float vector using the same joint-ID ordering.
-Own/allied commands are exact one-hot vectors. Ordinary enemy slots are zero in the raw
-legal view and the belief tracker fills them from the dedicated prediction head's prior
-softmax distribution. On initial spawn or respawn both teams instead receive the exact
-null-command one-hot vector. The physical runtime still consumes only the compact triple
-`(0, 0, 0)` for neutral; probability vectors never enter the actuator.
+Own/allied commands are exact one-hot vectors. Ordinary enemy slots carry the dedicated
+prediction head's prior softmax distribution, whether or not the ship is in sight. On initial
+spawn or respawn both teams instead receive the exact null-command one-hot vector. The two
+facts are written together, so neither can overwrite the other. The physical runtime still
+consumes only the compact triple `(0, 0, 0)` for neutral; probability vectors never enter the
+actuator.
 
 This is an intentional policy/observation schema break. Checkpoints from the factored
 12-logit actor and the previous observation width are not silently compatible.
@@ -305,7 +321,8 @@ for its policy perspective. The lifecycle is:
 
 Belief prediction must use the action known to have driven the physical transition,
 not the newly selected decision. Observation composition occurs only after belief is in
-the state defined for that boundary.
+the state defined for that boundary — which, because the forecast is this decision's
+controller output, is after the physical advance and the inference have joined.
 
 ## Episode-stable league identity
 

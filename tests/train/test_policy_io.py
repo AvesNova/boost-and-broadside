@@ -243,12 +243,10 @@ class TestCompilePolicy:
         hidden = eager.initial_hidden(3, 4, "cuda")
 
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-            eager_logits = eager.get_action_and_value(
-                obs, hidden, return_enemy_action=True
-            )[-2]
-            compiled_logits = compiled.get_action_and_value(
-                obs, hidden, return_enemy_action=True
-            )[-2]
+            eager_logits = eager.get_action_and_value(obs, hidden, return_enemy_action=True)[-2]
+            compiled_logits = compiled.get_action_and_value(obs, hidden, return_enemy_action=True)[
+                -2
+            ]
         torch.testing.assert_close(eager_logits, compiled_logits, atol=2e-3, rtol=2e-3)
 
     def test_a_cuda_graph_mode_returns_outputs_that_survive_the_next_call(self):

@@ -2232,7 +2232,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # Marginals are diagnostics only. The objective entropy above is the
             # joint categorical entropy; summing these would be wrong once the
             # actor learns correlations among action factors.
-            joint_prob = F.softmax(policy_logits, dim=-1).reshape(
+            #
+            # fp32 before the softmax, because ``Categorical`` validates that its
+            # ``probs`` lie on the simplex and bf16 marginals do not: summing six
+            # bf16 probabilities to get the turn marginal lands a few thousandths
+            # either side of one, and the check raises rather than tolerating it.
+            # The block is under ``no_grad``, so the upcast costs nothing that
+            # reaches the backward pass. Diagnostics must not be able to stop a
+            # run.
+            joint_prob = F.softmax(policy_logits.float(), dim=-1).reshape(
                 *policy_logits.shape[:-1],
                 NUM_POWER_ACTIONS,
                 NUM_TURN_ACTIONS,

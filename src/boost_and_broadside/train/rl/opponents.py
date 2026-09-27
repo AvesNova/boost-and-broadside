@@ -304,7 +304,7 @@ class OpponentMixin:
                     slot_width,
                     num_recurrent,
                     self.ship_config.dt * self.env_config.action_repeat,
-                    policy.coordinator,
+                    self.ship_config,
                     self.device,
                 )
                 if policy is not None and self._ego_pass
@@ -369,7 +369,7 @@ class OpponentMixin:
                                 width,
                                 num_recurrent,
                                 self.ship_config.dt * self.env_config.action_repeat,
-                                policy.coordinator,
+                                self.ship_config,
                                 self.device,
                             )
                             if policy is not None and self._ego_pass
@@ -428,7 +428,7 @@ class OpponentMixin:
                     width,
                     num_recurrent,
                     self.ship_config.dt * self.env_config.action_repeat,
-                    policy.coordinator,
+                    self.ship_config,
                     self.device,
                 )
                 if policy is not None and self._ego_pass

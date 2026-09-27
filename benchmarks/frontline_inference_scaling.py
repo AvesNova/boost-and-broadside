@@ -46,10 +46,10 @@ import torch
 
 from boost_and_broadside.config.core import EnvConfig, ModelConfig, entity_token_count
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.observation import perceived_observation_from_state
+from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
-from boost_and_broadside.train.rl.belief import BeliefTracker
+from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 
 # ---------------------------------------------------------------------------
@@ -234,7 +234,7 @@ def run_scenario(
         scenario.num_envs,
         scenario.num_ships,
         ship_config.dt * env_config.action_repeat,
-        policy.coordinator,
+        ship_config,
         device,
     )
     hidden = policy.initial_hidden(scenario.num_envs, scenario.num_ships, device)
@@ -244,18 +244,20 @@ def run_scenario(
         torch.cuda.reset_peak_memory_stats()
 
     def one_step(state_hidden: torch.Tensor) -> torch.Tensor:
-        observation, _ = perceived_observation_from_state(env.state, ship_config, env_config)
-        action_state.write_observation(
-            observation,
-            env.state.ship_team_id,
-            env.state.ship_spawned,
-            scenario.num_ships,
+        visibility = team_visibility_from_state(env.state, ship_config, env_config, False)
+        view = legal_policy_view(
+            belief,
+            env.state,
+            ship_config,
+            visibility,
+            0,
+            num_ships=scenario.num_ships,
+            pending_action=action_state.pending,
         )
-        view = belief.compose(observation.for_team(0))
         action, _, _, prediction, enemy_logits, new_hidden = policy.get_action_and_value(
             view, state_hidden, return_enemy_action=True
         )
-        belief.advance(view, prediction, enemy_logits)
+        belief.advance(prediction, enemy_logits)
         dones, truncated, _ = advance_autonomous_decision(env, action_state, action.int())
         finished = dones | truncated
         if bool(finished.any()):
@@ -276,11 +278,15 @@ def run_scenario(
     elapsed = time.perf_counter() - start
 
     # Policy forward alone, on a fixed observation so no simulator work is timed.
-    observation, _ = perceived_observation_from_state(env.state, ship_config, env_config)
-    action_state.write_observation(
-        observation, env.state.ship_team_id, env.state.ship_spawned, scenario.num_ships
+    view = legal_policy_view(
+        belief,
+        env.state,
+        ship_config,
+        team_visibility_from_state(env.state, ship_config, env_config, False),
+        0,
+        num_ships=scenario.num_ships,
+        pending_action=action_state.pending,
     )
-    view = belief.compose(observation.for_team(0))
     for _ in range(5):
         policy.get_action_and_value(view, hidden)
     _sync()

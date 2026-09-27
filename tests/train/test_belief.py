@@ -1,369 +1,496 @@
-"""Contracts for recursive hidden-enemy point estimates."""
+"""Contracts for the physical belief plane and the legal views composed from it.
+
+Every test drives the production path: a real ``TensorState``, the tracker's own
+``observe``, and ``observation_from_state`` with the source it returns. There is
+no separate "compose onto an already-built observation" path left to test, which
+is the point of Phase 3.
+"""
+
+import math
 
 import pytest
 import torch
 import torch.nn.functional as F
 
-from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.config import EnvConfig, ShipConfig
+from boost_and_broadside.config.defaults import REWARDS
 from boost_and_broadside.constants import NUM_JOINT_ACTIONS
-from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObservation
-from boost_and_broadside.train.rl.belief import (
-    BELIEF_TARGET_LIMIT,
-    BeliefTracker,
-    DualBeliefTracker,
+from boost_and_broadside.env.env import TensorEnv
+from boost_and_broadside.env.observation import ObsKey, observation_from_state
+from boost_and_broadside.env.perception import team_visibility_from_state
+from boost_and_broadside.env.wrapper import YemongEnvWrapper
+from boost_and_broadside.train.rl.belief import BeliefTracker, DualBeliefTracker
+from boost_and_broadside.train.rl.physical_belief import (
+    CERTAIN_LOG_SIGMA,
+    HEALTH,
+    LOG_SIGMA_COLUMNS,
+    NEXT_STATE_OUTPUT_DIM,
+    PHYSICAL_MEAN_DIM,
+    POSITION_X,
+    SHIELD_DELAY,
+    UNKNOWN_LOG_SIGMA,
+    PhysicalNextState,
 )
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+
+_SHIP = ShipConfig()
+# 300 px of sight on a 1024 px torus: the enemy is visible at x=300 (200 px
+# away), hidden at x=600 (500 px, and 524 px the other way round the seam).
+_CONFIG = EnvConfig(
+    num_ships=2, num_fields=1, max_bullets=0, max_episode_steps=256, vision_range=300.0
+)
+_VISIBLE_X = 300.0
+_HIDDEN_X = 600.0
+_HOLD = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
 
 
-def _view(*, visible: bool, x: float = 300.0) -> YemongObservation:
-    b, n = 1, 2
-    seen = torch.tensor([[True, visible]])
-    data = {
-        ObsKey.POS: torch.tensor([[[100.0, 200.0], [x, 400.0]]]),
-        ObsKey.VEL: torch.tensor([[[1.0, 2.0], [3.0, 4.0]]]),
-        ObsKey.ATT: torch.tensor([[[1.0, 0.0], [0.0, 1.0]]]),
-        ObsKey.ANG_VEL: torch.tensor([[[0.1], [0.2]]]),
-        ObsKey.HEALTH: torch.tensor([[[80.0], [70.0]]]),
-        ObsKey.POWER: torch.tensor([[[60.0], [50.0]]]),
-        ObsKey.COOLDOWN: torch.tensor([[[0.2], [0.3]]]),
-        ObsKey.TEAM_ID: torch.tensor([[0, 1]], dtype=torch.int32),
-        ObsKey.ALIVE: torch.ones((b, n), dtype=torch.bool),
-        ObsKey.VISIBLE: seen.clone(),
-        ObsKey.BELIEF_VALID: seen.clone(),
-        ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((b, n, 1)),
-        ObsKey.OBJECT_TYPE: torch.full((b, n), int(ObjectType.SHIP), dtype=torch.int32),
-        ObsKey.ZONE_ROLE: torch.full((b, n), 5, dtype=torch.int32),
-        ObsKey.PREVIOUS_ACTION: torch.stack(
-            [
-                F.one_hot(torch.tensor(19), NUM_JOINT_ACTIONS).float(),
-                torch.zeros(NUM_JOINT_ACTIONS),
-            ]
-        ).unsqueeze(0),
-        ObsKey.RADIUS: torch.full((b, n, 1), 16.0),
-        ObsKey.LOCAL_LOG_INDEX: torch.tensor([[[0.1], [0.2]]]),
-        ObsKey.LOCAL_INDEX_GRADIENT: torch.tensor([[[0.3, 0.4], [0.5, 0.6]]]),
-    }
-    if not visible:
-        for key, value in data.items():
-            if key in {ObsKey.VISIBLE, ObsKey.BELIEF_VALID, ObsKey.TIME_SINCE_OBSERVATION}:
-                continue
-            if value.dim() == 2:
-                value[:, 1] = 0
-            else:
-                value[:, 1] = 0
-    return YemongObservation(data=data)
+def _env(*, frontline: bool = False) -> TensorEnv:
+    """A two-ship environment whose ships sit on team 0 and team 1."""
+
+    env = TensorEnv(1, _SHIP, _CONFIG, "cpu")
+    env.reset(seed=5)
+    env.state.ship_team_id[:] = torch.tensor([[0, 1]], dtype=torch.int32)
+    env.state.ship_alive[:] = True
+    env.state.ship_health[:] = torch.tensor([[80.0, 70.0]])
+    env.state.ship_power[:] = torch.tensor([[60.0, 50.0]])
+    env.state.ship_cooldown[:] = torch.tensor([[0.2, 0.3]])
+    env.state.ship_shield_delay[:] = 0.0
+    env.state.ship_spawned[:] = False
+    env.state.prev_action[:] = torch.tensor([[[0, 2, 1], [1, 3, 0]]], dtype=torch.int32)
+    _place(env, enemy_x=_VISIBLE_X)
+    if frontline:
+        # Instant respawn is what makes a remembered ship always alive.
+        env.state.zone_pos = torch.zeros((1, 5), dtype=torch.complex64)
+        env.state.zone_radius = torch.full((1, 5), 10.0)
+        env.state.zone_roles = torch.arange(5, dtype=torch.int32).unsqueeze(0)
+        env.state.zone_capture_progress = torch.zeros((1, 5))
+        env.state.zone_capture_direction = torch.zeros((1, 5), dtype=torch.int32)
+    return env
 
 
-def _hold(coordinator, composed, num_ships: int = 2) -> torch.Tensor:
-    """The scaled prediction that means "no change".
+def _place(env: TensorEnv, *, enemy_x: float) -> None:
+    """Ally at the origin; enemy at ``enemy_x`` -- in sight below 100 px."""
 
-    Not zeros. Position and attitude are predicted *absolutely* now, so a zero
-    output claims the origin rather than declining to move; only the remaining
-    delta channels read zero as "stand still". ``compute_labels`` of a state
-    against itself is exactly that distinction, per predictor, already scaled the
-    way ``advance`` expects its argument to be.
-    """
-
-    targets = coordinator.get_target_vector(composed)[:, :num_ships]
-    return coordinator.compute_labels(targets, targets)
+    env.state.ship_pos[:] = torch.tensor([[complex(100.0, 200.0), complex(enemy_x, 200.0)]])
+    env.state.ship_vel[:] = torch.tensor([[complex(1.0, 2.0), complex(3.0, 4.0)]])
+    env.state.ship_attitude[:] = torch.tensor([[complex(1.0, 0.0), complex(0.0, 1.0)]])
+    env.state.ship_ang_vel[:] = torch.tensor([[0.1, 0.2]])
 
 
-def test_never_seen_enemy_stays_absent() -> None:
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
+def _view(env: TensorEnv, tracker: BeliefTracker, team: int = 0):
+    """The legal observation this tracker's observer sees, composed as production does."""
 
-    composed = tracker.compose(_view(visible=False))
-
-    assert not composed[ObsKey.BELIEF_VALID][0, 1]
-    assert not composed[ObsKey.VISIBLE][0, 1]
-    assert composed[ObsKey.POS][0, 1].equal(torch.zeros(2))
-    assert composed[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0
-
-
-def test_seen_then_hidden_uses_recursive_prediction_and_age() -> None:
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    visible = tracker.compose(_view(visible=True, x=300.0))
-    tracker.advance(visible, _hold(coordinator, visible))
-
-    hidden = tracker.compose(_view(visible=False, x=9999.0))
-
-    assert hidden[ObsKey.BELIEF_VALID][0, 1]
-    assert not hidden[ObsKey.VISIBLE][0, 1]
-    assert torch.allclose(hidden[ObsKey.POS][0, 1], torch.tensor([300.0, 400.0]))
-    assert hidden[ObsKey.TEAM_ID][0, 1] == 1
-    assert hidden[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0.1
-    torch.testing.assert_close(
-        hidden[ObsKey.PREVIOUS_ACTION][0, 1], torch.full((42,), 1.0 / 42)
-    )
-    assert hidden[ObsKey.LOCAL_INDEX_GRADIENT][0, 1].equal(torch.zeros(2))
-
-    tracker.advance(hidden, _hold(coordinator, hidden))
-    hidden_again = tracker.compose(_view(visible=False))
-    assert hidden_again[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0.2
-
-
-def test_action_prediction_from_t_appears_at_t_plus_one() -> None:
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    current = tracker.compose(_view(visible=True))
-
-    # Before decision t is advanced, the enemy slot contains only the initial
-    # uninformative prior; the environment never supplied its true command.
-    torch.testing.assert_close(
-        current[ObsKey.PREVIOUS_ACTION][0, 1], torch.full((42,), 1.0 / 42)
-    )
-    logits = torch.full((1, 2, 42), -8.0)
-    logits[0, 1, 17] = 8.0
-    tracker.advance(current, _hold(coordinator, current), logits)
-
-    next_view = tracker.compose(_view(visible=False))
-    expected = logits[0, 1].softmax(-1)
-    torch.testing.assert_close(next_view[ObsKey.PREVIOUS_ACTION][0, 1], expected)
-    assert next_view[ObsKey.PREVIOUS_ACTION][0, 1].argmax().item() == 17
-    # The allied command remains environment truth, not a model prediction.
-    assert next_view[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 19
-
-
-def test_dual_trackers_keep_enemy_predictions_on_physical_ship_indices() -> None:
-    from boost_and_broadside.train.rl.opponents import flip_team_obs
-
-    coordinator = build_standard_coordinator(ShipConfig())
-    trackers = DualBeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    raw = _view(visible=True)
-    team1 = {key: value.clone() for key, value in raw.data.items()}
-    team1[ObsKey.PREVIOUS_ACTION].zero_()
-    team1[ObsKey.PREVIOUS_ACTION][0, 1, 35] = 1.0
-    raw = YemongObservation(data=raw.data, team1_data=team1)
-    current = trackers.compose(raw)
-
-    logits0 = torch.full((1, 2, 42), -8.0)
-    logits1 = torch.full((1, 2, 42), -8.0)
-    logits0[0, 1, 6] = 8.0   # Team 0 predicts physical ship 1.
-    logits1[0, 0, 15] = 8.0  # Team 1 predicts physical ship 0.
-    trackers.advance(
-        current,
-        _hold(coordinator, current.for_team(0)),
-        _hold(coordinator, current.for_team(1)),
-        logits0,
-        logits1,
+    visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
+    source = tracker.observe(env.state, visibility.ship[:, team])
+    return observation_from_state(
+        env.state,
+        _SHIP,
+        ship_visibility=visibility.ship[:, team],
+        perspective_team=team,
+        belief=source,
     )
 
-    next_view = trackers.compose(raw)
-    assert next_view.data[ObsKey.PREVIOUS_ACTION][0, 1].argmax().item() == 6
-    assert next_view.team1_data[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 15
-    canonical_team1 = flip_team_obs(next_view.for_team(1), 2)
-    assert canonical_team1[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 15
-    assert canonical_team1[ObsKey.TEAM_ID][0, 0].item() == 1
-    assert canonical_team1[ObsKey.TEAM_ID][0, 1].item() == 0
 
-def test_spawn_null_overrides_a_stale_enemy_action_prediction() -> None:
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    current = tracker.compose(_view(visible=True))
-    logits = torch.full((1, 2, 42), -8.0)
-    logits[0, 1, 17] = 8.0
-    tracker.advance(current, _hold(coordinator, current), logits)
-
-    spawned = _view(visible=True)
-    spawned.data[ObsKey.PREVIOUS_ACTION][0, 1, 0] = 1.0
-    composed = tracker.compose(spawned)
-    expected_null = F.one_hot(torch.tensor(0), NUM_JOINT_ACTIONS).float()
-    torch.testing.assert_close(composed[ObsKey.PREVIOUS_ACTION][0, 1], expected_null)
-
-def test_reacquisition_overwrites_prediction_and_reset_forgets() -> None:
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    first = tracker.compose(_view(visible=True, x=300.0))
-    tracker.advance(first, torch.zeros((1, 2, coordinator.total_prediction_dimension)))
-    tracker.compose(_view(visible=False))
-
-    reacquired = tracker.compose(_view(visible=True, x=777.0))
-    assert reacquired[ObsKey.POS][0, 1, 0] == 777.0
-    assert reacquired[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0.0
-
-    tracker.reset(torch.tensor([True]))
-    forgotten = tracker.compose(_view(visible=False))
-    assert not forgotten[ObsKey.BELIEF_VALID][0, 1]
+def _tracker(**kwargs) -> BeliefTracker:
+    return BeliefTracker(1, 2, 0.1, _SHIP, "cpu", **kwargs)
 
 
-def test_a_runaway_forecast_cannot_reach_infinity() -> None:
-    """The belief is an unbounded autoregressive rollout, so it needs a floor of
-    numerical safety independent of whether the next-state head is well behaved.
+class TestComposition:
+    def test_never_seen_enemy_stays_absent(self):
+        env = _env()
+        _place(env, enemy_x=_HIDDEN_X)
+        view = _view(env, _tracker())
 
-    Run 734 died here: a ship hidden long enough accumulated velocity error
-    until the stored target overflowed, and the resulting non-finite logits
-    asserted inside ``torch.multinomial``. The guard that existed used
-    ``nan_to_num``'s defaults, which map ``+inf`` to float32's maximum -- and
-    targets are symlog, so that decoded straight back to infinity on the next
-    ``compose``. What matters is therefore not merely that the stored target is
-    finite, but that it survives the exponential inverse.
-    """
+        assert not view[ObsKey.BELIEF_VALID][0, 1]
+        assert not view[ObsKey.VISIBLE][0, 1]
+        assert view[ObsKey.POS][0, 1].equal(torch.zeros(2))
+        assert view[ObsKey.TEAM_ID][0, 1] == 0, "identity is not known either"
+        assert view[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0
+        # Maximal doubt, not the zero a masked channel used to leave behind.
+        spreads = view[ObsKey.BELIEF_UNCERTAINTY][0, 1][list(LOG_SIGMA_COLUMNS)]
+        assert (spreads == UNKNOWN_LOG_SIGMA).all()
 
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    visible = tracker.compose(_view(visible=True, x=300.0))
+    def test_a_visible_ship_is_truth_to_the_bit(self):
+        env = _env()
+        view = _view(env, _tracker())
 
-    prediction = torch.full((1, 2, coordinator.total_prediction_dimension), float("inf"))
-    prediction[0, 0, 0] = float("nan")
-    prediction[0, 1, 0] = -float("inf")
-    tracker.advance(visible, prediction)
+        assert torch.equal(view[ObsKey.POS][0, 1], torch.tensor([_VISIBLE_X, 200.0]))
+        assert torch.equal(view[ObsKey.VEL][0, 1], torch.tensor([3.0, 4.0]))
+        assert view[ObsKey.HEALTH][0, 1, 0] == 70.0
+        spreads = view[ObsKey.BELIEF_UNCERTAINTY][0, :2][:, list(LOG_SIGMA_COLUMNS)]
+        assert (spreads == CERTAIN_LOG_SIGMA).all()
 
-    stored = tracker.predicted_targets
-    assert torch.isfinite(stored).all()
-    assert stored.abs().max() <= BELIEF_TARGET_LIMIT
-    assert tracker.clamp_events > 0
+    def test_seen_then_hidden_uses_the_forecast_and_ages(self):
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        tracker.advance(_HOLD)
 
-    # The property the old guard lacked: finite after decoding out of symlog.
-    for raw in coordinator.decode_targets(stored).values():
-        assert torch.isfinite(raw).all()
-        # And finite again after the squarings the physics applies downstream.
-        assert torch.isfinite(raw.double().square()).all()
+        _place(env, enemy_x=_HIDDEN_X)
+        hidden = _view(env, tracker)
 
+        assert hidden[ObsKey.BELIEF_VALID][0, 1]
+        assert not hidden[ObsKey.VISIBLE][0, 1]
+        assert torch.allclose(hidden[ObsKey.POS][0, 1], torch.tensor([_VISIBLE_X, 200.0]))
+        assert hidden[ObsKey.TEAM_ID][0, 1] == 1, "identity is remembered"
+        assert hidden[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == pytest.approx(0.1)
+        # grad(n) is not forecast, so a remembered ship reads zero for it.
+        assert hidden[ObsKey.LOCAL_INDEX_GRADIENT][0, 1].equal(torch.zeros(2))
 
-def test_the_guard_does_not_bind_on_ordinary_predictions() -> None:
-    """A guard that fires in normal operation would be silently reshaping the
-    model rather than catching a failure, so ordinary deltas must pass through
-    untouched and leave the counter at zero."""
+        tracker.advance(_HOLD)
+        again = _view(env, tracker)
+        assert again[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == pytest.approx(0.2)
 
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    visible = tracker.compose(_view(visible=True, x=300.0))
+    def test_the_forecast_moves_the_remembered_position(self):
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
+        prediction[0, 1, POSITION_X] = 4.0  # 4 * 2.5 px
+        tracker.advance(prediction)
 
-    prediction = torch.full((1, 2, coordinator.total_prediction_dimension), 0.5)
-    tracker.advance(visible, prediction)
+        _place(env, enemy_x=_HIDDEN_X)
+        hidden = _view(env, tracker)
+        assert hidden[ObsKey.POS][0, 1, 0] == pytest.approx(_VISIBLE_X + 10.0)
 
-    assert torch.isfinite(tracker.predicted_targets).all()
-    assert tracker.predicted_targets.abs().max() < BELIEF_TARGET_LIMIT
-    assert int(tracker.clamp_events) == 0
-
-
-def test_hidden_frontline_enemy_with_zero_shields_remains_alive():
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-    observed = _view(visible=True)
-    observed.data[ObsKey.GAME_MODE] = torch.ones(1, 2, 1)
-    visible = tracker.compose(observed)
-    tracker.advance(visible, torch.zeros(1, 2, coordinator.total_prediction_dimension))
-    tracker.predicted_targets[..., coordinator.target_slices()["health"]] = 0
-    tracker.predicted_targets[..., coordinator.target_slices()["shield_delay"]] = -1
-    hidden = _view(visible=False)
-    hidden.data[ObsKey.GAME_MODE] = torch.ones(1, 2, 1)
-    composed = tracker.compose(hidden)
-    assert composed[ObsKey.HEALTH][0, 1, 0] == 0
-    assert composed[ObsKey.ALIVE][0, 1]
-    assert composed[ObsKey.BELIEF_VALID][0, 1]
-    assert composed[ObsKey.SHIELD_DELAY][0, 1, 0] == 0
+    def test_the_old_encoded_substitution_channels_are_never_written(self):
+        """Phase 3 replaced them; nothing in a production view may carry one."""
+        env = _env()
+        view = _view(env, _tracker())
+        assert ObsKey.BELIEF_TARGETS not in view.data
+        assert ObsKey.BELIEF_SUBSTITUTE not in view.data
 
 
-def test_imagined_frontline_ship_with_zero_shields_remains_alive():
-    from boost_and_broadside.evaluation.next_state import decode_targets_to_observation
+class TestInformationFlow:
+    def test_hidden_truth_cannot_reach_an_opponent_slot(self):
+        """Plant distinctive truth on a hidden enemy and look for it everywhere."""
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)  # acquire, so the slot is valid and forecast-driven
+        tracker.advance(_HOLD)
 
-    coordinator = build_standard_coordinator(ShipConfig())
-    observed = _view(visible=True)
-    observed.data[ObsKey.GAME_MODE] = torch.ones(1, 2, 1)
-    targets = coordinator.get_target_vector(observed)
-    targets[..., coordinator.target_slices()["health"]] = 0
-    imagined = decode_targets_to_observation(
-        targets, observed, torch.zeros(1, 2, 3, dtype=torch.long), 2, coordinator
-    )
-    assert imagined[ObsKey.ALIVE].all()
-    assert imagined[ObsKey.HEALTH].eq(0).all()
+        _place(env, enemy_x=_HIDDEN_X)
+        env.state.ship_vel[0, 1] = complex(432.25, 567.75)
+        env.state.ship_health[0, 1] = 13.5
+        env.state.ship_power[0, 1] = 91.5
+        env.state.ship_cooldown[0, 1] = 0.07
+        env.state.ship_ang_vel[0, 1] = 12.25
+        env.state.prev_action[0, 1] = torch.tensor([2, 6, 1], dtype=torch.int32)
 
+        hidden = _view(env, tracker)
+        assert not hidden[ObsKey.VISIBLE][0, 1]
+        planted = {432.25, 567.75, 13.5, 91.5, 0.07, 12.25, _HIDDEN_X}
+        for key, value in hidden.items():
+            flat = value[0, 1].flatten().float()
+            for planted_value in planted:
+                assert not torch.isclose(flat, torch.tensor(planted_value), atol=1e-4).any(), (
+                    f"{key} leaked a hidden truth value"
+                )
+        # And the committed enemy command is not recoverable either: slot 41 is
+        # (2, 6, 1) as a joint id, and a belief distribution is not a one-hot.
+        pending = hidden[ObsKey.PREVIOUS_ACTION][0, 1]
+        assert pending.argmax().item() != 41 or pending.max().item() < 1.0
 
-def test_deploy_reveal_makes_belief_valid_constant() -> None:
-    """One revealed tick marks every ship valid for the rest of the episode.
+    def test_two_observers_on_one_seat_remember_different_things(self):
+        """What a league slot and the trainee are: same seat, separate memories.
 
-    This is the property the attention key mask removal rests on: ``valid`` is
-    sticky, so a single opening reveal makes ``BELIEF_VALID`` a constant rather
-    than something the trunk has to be told about.
-    """
+        Both views are team-0 legal, so sharing one would leak nothing -- it
+        would attribute one player's memory to another, which makes its
+        behaviour stop being a function of its own weights.
+        """
+        env = _env()
+        trainee, opponent = _tracker(), _tracker()
+        visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
+        trainee.observe(env.state, visibility.ship[:, 0])
+        opponent.observe(env.state, visibility.ship[:, 0])
 
-    from boost_and_broadside.config import EnvConfig
-    from boost_and_broadside.config.defaults import REWARDS
-    from boost_and_broadside.env.wrapper import YemongEnvWrapper
+        fast = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
+        fast[0, 1, POSITION_X] = 8.0  # 8 * 2.5 px
+        trainee.advance(fast)
+        opponent.advance(torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM)))
 
-    ship = ShipConfig()
-    coordinator = build_standard_coordinator(ship)
-    config = EnvConfig(
-        num_ships=4,
-        max_bullets=2,
-        max_episode_steps=64,
-        vision_range=100.0,
-        spawn_reveal=True,
-    )
-    wrapper = YemongEnvWrapper(2, ship, config, REWARDS, "cpu")
-    obs = wrapper.reset(seed=11)
-    tracker = BeliefTracker(2, 4, 0.1, coordinator, "cpu")
-
-    composed = tracker.compose(obs.for_team(0))
-    assert composed[ObsKey.BELIEF_VALID][:, :4].all(), "opening tick must reveal every ship"
-
-    prediction = torch.zeros((2, 4, coordinator.total_prediction_dimension))
-    for _ in range(8):
-        tracker.advance(composed.for_team(0), prediction)
-        obs, *_ = wrapper.step(torch.zeros((2, 4, 3), dtype=torch.long))
-        composed = tracker.compose(obs.for_team(0))
-        # Ships drift apart and out of sight, but validity never lapses.
-        assert composed[ObsKey.BELIEF_VALID][:, :4].all()
-
-
-def test_a_revealed_respawn_corrects_a_stale_belief() -> None:
-    """The reveal exists to end a lifecycle discontinuity the tracker cannot see.
-
-    ``BeliefTracker`` advances a hidden ship by the policy's own forecast and is
-    never told it died, so without the spawn reveal an unobserved respawn leaves
-    the belief tracking a corpse's trajectory: the policy acts on a phantom at
-    the old position, and the auxiliary label carries a teleport no head could
-    have predicted, on every step until the ship is next seen.
-    ``transition_contiguous`` masks only the step the teleport happened on.
-    """
-
-    coordinator = build_standard_coordinator(ShipConfig())
-    tracker = BeliefTracker(1, 2, 0.1, coordinator, "cpu")
-
-    seen = tracker.compose(_view(visible=True, x=300.0))
-    assert seen[ObsKey.POS][0, 1, 0] == pytest.approx(300.0)
-
-    # Out of contact, and meanwhile it dies and respawns far away at x=900.
-    for _ in range(3):
-        tracker.advance(seen, _hold(coordinator, seen))
-        seen = tracker.compose(_view(visible=False, x=900.0))
-    stale = seen[ObsKey.POS][0, 1, 0].item()
-    assert stale == pytest.approx(300.0), "belief should still be on the old trajectory"
-    assert abs(900.0 - stale) > 500.0, "and so the label would carry the whole teleport"
-
-    # The spawn reveal shows it for one decision: the belief snaps to truth.
-    tracker.advance(seen, _hold(coordinator, seen))
-    revealed = tracker.compose(_view(visible=True, x=900.0))
-    assert revealed[ObsKey.POS][0, 1, 0] == pytest.approx(900.0)
-    assert revealed[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0
-
-    # And it stays corrected once contact is lost again.
-    tracker.advance(revealed, _hold(coordinator, revealed))
-    after = tracker.compose(_view(visible=False, x=900.0))
-    assert after[ObsKey.POS][0, 1, 0] == pytest.approx(900.0)
+        _place(env, enemy_x=_HIDDEN_X)
+        visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
+        assert trainee.observe(env.state, visibility.ship[:, 0]).pos[0, 1, 0] == pytest.approx(
+            _VISIBLE_X + 20.0
+        )
+        assert opponent.observe(env.state, visibility.ship[:, 0]).pos[0, 1, 0] == pytest.approx(
+            _VISIBLE_X
+        )
 
 
-def test_the_environment_latches_a_spawn_for_the_whole_decision() -> None:
-    """Visibility reads a latch, not the one-tick physics flag.
+class TestActionBelief:
+    def test_the_prediction_from_t_appears_at_t_plus_one(self):
+        env = _env()
+        tracker = _tracker()
+        current = _view(env, tracker)
+        torch.testing.assert_close(
+            current[ObsKey.PREVIOUS_ACTION][0, 1], torch.full((42,), 1.0 / 42)
+        )
 
-    ``ship_respawned`` is cleared at the start of the next physics tick, so with
-    ``action_repeat`` above 1 it would be gone by the time the observation is
-    built. The latch is what survives to be observed.
-    """
+        logits = torch.full((1, 2, 42), -8.0)
+        logits[0, 1, 17] = 8.0
+        tracker.advance(_HOLD, logits)
 
-    from boost_and_broadside.config import EnvConfig
-    from boost_and_broadside.config.defaults import REWARDS
-    from boost_and_broadside.env.wrapper import YemongEnvWrapper
+        _place(env, enemy_x=_HIDDEN_X)
+        later = _view(env, tracker)
+        torch.testing.assert_close(later[ObsKey.PREVIOUS_ACTION][0, 1], logits[0, 1].softmax(-1))
+        # The allied command stays environment truth, exactly one-hot.
+        ally = later[ObsKey.PREVIOUS_ACTION][0, 0]
+        assert ally.sum().item() == pytest.approx(1.0)
+        assert ally.max().item() == 1.0
 
-    ship = ShipConfig()
-    config = EnvConfig(
-        num_ships=4, max_bullets=2, max_episode_steps=64, vision_range=100.0, spawn_reveal=True
-    )
-    wrapper = YemongEnvWrapper(2, ship, config, REWARDS, "cpu")
-    wrapper.reset(seed=5)
-    assert wrapper.state.ship_spawned.all(), "a reset is a spawn for every ship"
+    def test_a_visible_enemy_still_shows_the_prediction_not_its_command(self):
+        env = _env()
+        tracker = _tracker()
+        logits = torch.full((1, 2, 42), -8.0)
+        logits[0, 1, 3] = 8.0
+        _view(env, tracker)
+        tracker.advance(_HOLD, logits)
+        view = _view(env, tracker)  # enemy is in sight the whole time
+        assert view[ObsKey.VISIBLE][0, 1]
+        torch.testing.assert_close(view[ObsKey.PREVIOUS_ACTION][0, 1], logits[0, 1].softmax(-1))
 
-    wrapper.step(torch.zeros((2, 4, 3), dtype=torch.long))
-    assert not wrapper.state.ship_spawned.any(), "and the latch clears once observed"
+    def test_the_spawn_null_overrides_a_stale_prediction(self):
+        env = _env()
+        tracker = _tracker()
+        logits = torch.full((1, 2, 42), -8.0)
+        logits[0, 1, 17] = 8.0
+        _view(env, tracker)
+        tracker.advance(_HOLD, logits)
+
+        # A spawned ship's queue is null by construction -- the scheduler
+        # neutralizes a command across a death/respawn -- and that null is public.
+        env.state.ship_spawned[:] = True
+        env.state.prev_action[:] = 0
+        view = _view(env, tracker)
+        expected = F.one_hot(torch.tensor(0), NUM_JOINT_ACTIONS).float()
+        torch.testing.assert_close(view[ObsKey.PREVIOUS_ACTION][0, 1], expected)
+
+    def test_physical_indices_are_never_remapped_by_canonicalization(self):
+        from boost_and_broadside.train.rl.opponents import flip_team_obs
+
+        env = _env()
+        trackers = DualBeliefTracker(1, 2, 0.1, _SHIP, "cpu")
+        visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
+        trackers.observe(env.state, visibility.ship)
+        logits0 = torch.full((1, 2, 42), -8.0)
+        logits1 = torch.full((1, 2, 42), -8.0)
+        logits0[0, 1, 6] = 8.0  # Team 0 predicts physical ship 1.
+        logits1[0, 0, 15] = 8.0  # Team 1 predicts physical ship 0.
+        trackers.advance(_HOLD, _HOLD, logits0, logits1)
+
+        visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
+        source0, source1 = trackers.observe(env.state, visibility.ship)
+        view0 = observation_from_state(
+            env.state,
+            _SHIP,
+            ship_visibility=visibility.ship[:, 0],
+            perspective_team=0,
+            belief=source0,
+        )
+        view1 = observation_from_state(
+            env.state,
+            _SHIP,
+            ship_visibility=visibility.ship[:, 1],
+            perspective_team=1,
+            belief=source1,
+        )
+        assert view0[ObsKey.PREVIOUS_ACTION][0, 1].argmax().item() == 6
+        assert view1[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 15
+        canonical = flip_team_obs(view1, 2)
+        assert canonical[ObsKey.PREVIOUS_ACTION][0, 0].argmax().item() == 15
+        assert canonical[ObsKey.TEAM_ID][0, 0].item() == 1
+        assert canonical[ObsKey.TEAM_ID][0, 1].item() == 0
+
+
+class TestUncertainty:
+    def test_the_head_states_the_next_spread_rather_than_accumulating(self):
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
+        prediction[0, 1, PHYSICAL_MEAN_DIM] = 2.0  # position log sigma x
+        tracker.advance(prediction)
+        _place(env, enemy_x=_HIDDEN_X)
+        first = _view(env, tracker)
+        assert first[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(2.0)
+
+        tracker.advance(prediction)
+        second = _view(env, tracker)
+        assert second[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(2.0), (
+            "a restated spread must not compound into 4.0"
+        )
+
+    def test_seeing_a_ship_settles_it(self):
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
+        prediction[0, 1, PHYSICAL_MEAN_DIM] = 5.0
+        tracker.advance(prediction)
+        _place(env, enemy_x=_HIDDEN_X)
+        assert _view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(5.0)
+
+        tracker.advance(prediction)
+        _place(env, enemy_x=_VISIBLE_X)
+        assert _view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(
+            CERTAIN_LOG_SIGMA
+        )
+
+
+class TestLifecycle:
+    def test_reacquisition_overwrites_the_forecast_and_reset_forgets(self):
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        tracker.advance(_HOLD)
+        _place(env, enemy_x=_HIDDEN_X)
+        _view(env, tracker)
+
+        _place(env, enemy_x=177.0)
+        reacquired = _view(env, tracker)
+        assert reacquired[ObsKey.POS][0, 1, 0] == 177.0
+        assert reacquired[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0.0
+
+        tracker.reset(torch.tensor([True]))
+        _place(env, enemy_x=_HIDDEN_X)
+        assert not _view(env, tracker)[ObsKey.BELIEF_VALID][0, 1]
+
+    def test_a_revealed_respawn_corrects_a_stale_belief(self):
+        """The reveal ends a lifecycle discontinuity the tracker cannot see.
+
+        The belief advances a hidden ship by the policy's own forecast and is
+        never told it died, so without the reveal an unobserved respawn leaves it
+        tracking a corpse's trajectory: the policy acts on a phantom at the old
+        position, and the label carries a teleport no head could have predicted,
+        on every step until the ship is next seen.
+        """
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        for _ in range(3):
+            tracker.advance(_HOLD)
+            _place(env, enemy_x=_HIDDEN_X)
+            stale = _view(env, tracker)
+        assert stale[ObsKey.POS][0, 1, 0] == pytest.approx(_VISIBLE_X)
+
+        tracker.advance(_HOLD)
+        env.state.ship_spawned[0, 1] = True
+        _place(env, enemy_x=900.0)
+        revealed = _view(env, tracker)
+        assert revealed[ObsKey.POS][0, 1, 0] == pytest.approx(900.0)
+        assert revealed[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0
+
+    def test_a_spawn_without_a_reveal_voids_the_belief(self):
+        """A teleport invalidates whatever was remembered, reveal or no reveal."""
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        tracker.advance(_HOLD)
+        env.state.ship_spawned[0, 1] = True
+        _place(env, enemy_x=_HIDDEN_X)  # spawned far away and unseen
+        view = _view(env, tracker)
+        assert not view[ObsKey.BELIEF_VALID][0, 1]
+        assert view[ObsKey.POS][0, 1].equal(torch.zeros(2))
+
+    def test_the_opening_reveal_makes_validity_a_constant(self):
+        """One revealed decision marks every ship valid for the rest of the episode.
+
+        This is the property the attention key-mask removal rests on.
+        """
+        config = EnvConfig(
+            num_ships=4,
+            max_bullets=2,
+            max_episode_steps=64,
+            vision_range=100.0,
+            spawn_reveal=True,
+        )
+        wrapper = YemongEnvWrapper(2, _SHIP, config, REWARDS, "cpu")
+        wrapper.reset(seed=11)
+        trackers = DualBeliefTracker(2, 4, 0.1, _SHIP, "cpu")
+        prediction = torch.zeros((2, 4, NEXT_STATE_OUTPUT_DIM))
+
+        view = wrapper.observe(trackers.observe(wrapper.env.state, wrapper.last_visibility.ship))
+        assert view[ObsKey.BELIEF_VALID][:, :4].all(), "the opening decision reveals every ship"
+
+        for _ in range(8):
+            trackers.advance(prediction, prediction)
+            wrapper.step(torch.zeros((2, 4, 3), dtype=torch.long), observe=False)
+            view = wrapper.observe(
+                trackers.observe(wrapper.env.state, wrapper.last_visibility.ship)
+            )
+            assert view[ObsKey.BELIEF_VALID][:, :4].all()
+
+
+class TestNumericalSafety:
+    def test_the_recursion_cannot_leave_its_bounded_set(self):
+        """A hidden ship's belief is an autoregressive rollout with nothing else
+        bounding it, so a small bias compounds for as long as it stays unseen.
+
+        Run 734 died that way: velocity error in the 30s+ hidden bucket went
+        99 -> 1178 px/s over ten updates and then overflowed, and the non-finite
+        logits asserted inside ``multinomial``. Physical means make that
+        impossible rather than merely counted -- every channel either wraps or
+        clamps -- so what is checked here is the bound itself, not a repair.
+        """
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+
+        prediction = torch.full((1, 2, NEXT_STATE_OUTPUT_DIM), 1e9)
+        prediction[0, 0, 0] = float("nan")
+        prediction[0, 1, 0] = float("inf")
+        for _ in range(10):
+            tracker.advance(prediction)
+
+        means = tracker.means
+        assert torch.isfinite(means).all()
+        assert torch.isfinite(means.double().square()).all()
+        spec = PhysicalNextState.from_ship_config(_SHIP)
+        upper = spec.upper_vector(means.device)
+        lower = spec.lower_vector(means.device)
+        finite = torch.isfinite(upper) & torch.isfinite(lower)
+        assert (means[..., finite] <= upper[finite] + 1e-3).all()
+        assert (means[..., finite] >= lower[finite] - 1e-3).all()
+        assert (means[..., POSITION_X].abs() <= _SHIP.world_size[0]).all()
+        assert int(tracker.clamp_events) > 0, "the non-finite outputs were counted"
+
+    def test_the_counter_does_not_bind_on_ordinary_predictions(self):
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        tracker.advance(torch.full((1, 2, NEXT_STATE_OUTPUT_DIM), 0.5))
+        assert torch.isfinite(tracker.means).all()
+        assert int(tracker.clamp_events) == 0
+
+
+class TestRespawnMode:
+    def test_a_hidden_frontline_enemy_with_no_shields_remains_alive(self):
+        env = _env(frontline=True)
+        tracker = _tracker()
+        _view(env, tracker)
+        tracker.advance(_HOLD)
+        tracker.means[0, 1, HEALTH] = 0.0
+        tracker.means[0, 1, SHIELD_DELAY] = 0.0
+        _place(env, enemy_x=_HIDDEN_X)
+        view = _view(env, tracker)
+        assert view[ObsKey.HEALTH][0, 1, 0] == 0
+        assert view[ObsKey.ALIVE][0, 1], "instant respawn means a remembered ship is alive"
+        assert view[ObsKey.BELIEF_VALID][0, 1]
+        assert view[ObsKey.SHIELD_DELAY][0, 1, 0] == 0
+
+    def test_an_imagined_frontline_ship_with_no_shields_remains_alive(self):
+        from boost_and_broadside.evaluation.next_state import means_to_observation
+
+        env = _env(frontline=True)
+        view = _view(env, _tracker())
+        means = torch.zeros(1, 2, PHYSICAL_MEAN_DIM)
+        imagined = means_to_observation(
+            means,
+            view,
+            torch.zeros(1, 2, 3, dtype=torch.long),
+            2,
+            2.0 * math.log(_SHIP.field_index_step),
+        )
+        assert imagined[ObsKey.ALIVE][0, :2].all()
+        assert imagined[ObsKey.HEALTH][0, :2].eq(0).all()
