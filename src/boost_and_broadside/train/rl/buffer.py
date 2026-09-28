@@ -243,24 +243,6 @@ _OBS_STORAGE_OVERRIDES: dict[ObsKey | BulletObsKey, torch.dtype] = {
     ObsKey.COOLDOWN: torch.float32,
     ObsKey.LOCAL_LOG_INDEX: torch.float32,
 }
-# ``BELIEF_TARGETS`` is deliberately *not* in that list, and the reason is the
-# opposite of the one that puts ``POS`` there. A coordinate spends its bits on
-# magnitude, so bf16 quantises a 65536 px world to steps of about 128 px. The
-# Fourier expansion of that same coordinate is bounded in [-1, 1] at every
-# harmonic, so the bits go to *phase* instead, and the fine harmonics keep the
-# resolution the coarse ones lack. Measured over 20k uniform positions on the
-# Frontline world, round-tripping through bf16:
-#
-#   raw coordinate      mean 43.06 px, max 127.99 px
-#   harmonic 0 alone    mean  5.89 px, max  28.61 px
-#   full dyadic ladder  mean  0.012 px, max 0.055 px
-#
-# So the encoded form is not a precision compromise against the fp32 coordinate,
-# it is three orders of magnitude better per bit. It is also 56 channels wide on
-# the Frontline world, where fp32 would cost about 190 MB of rollout storage at
-# T=128, B=256 against 95 MB -- which the 8 GB development GPU does not have to
-# spare. Truth is still stored as the fp32 coordinate and re-encoded on read:
-# cheaper at 2 channels, and exact.
 
 
 def _obs_storage_dtype(key: ObsKey | BulletObsKey, dt: torch.dtype) -> torch.dtype:
@@ -962,7 +944,7 @@ class RolloutBuffer:
         the list always has exactly one entry (the whole minibatch).
 
         The extra T+1-th obs step enables computing aux next-state prediction
-        labels at update time: coordinator.compute_labels(target(obs[t]), target(obs[t+1])).
+        labels at update time: see ``PPOTrainer._precompute_ns_labels``.
 
         Yields:
             List of named micro-batches, each containing:

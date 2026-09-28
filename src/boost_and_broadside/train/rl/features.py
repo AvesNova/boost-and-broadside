@@ -1,19 +1,15 @@
-"""Composable feature pipeline for observation encoding and aux prediction.
+"""Composable feature pipeline for observation encoding.
 
 Each Feature bundles:
   - Accessor:  extracts raw channels from YemongObservation
   - Transform: encodes raw values into network-ready representation (input path)
-  - Transform: encodes raw values into target space (aux prediction path)
-  - Predictor: defines label computation and how predictions update the target
 
-FeatureCoordinator integrates a list of Features into:
-  - get_input_vector(obs)  → flat encoded observation for the encoder MLP
-  - get_target_vector(obs) → flat target representation for aux loss
-  - compute_labels(curr, next) → ground-truth labels (deltas or absolutes)
-  - apply_all_predictions(curr, preds) → apply predicted updates to targets
+FeatureCoordinator integrates a list of Features into
+``get_input_vector(obs)`` — a flat encoded observation for the encoder MLP.
+Physical-state auxiliary prediction (the next-state head) is a separate path;
+see ``train/rl/physical_belief.py``.
 """
 
-import dataclasses
 import math
 from abc import ABC, abstractmethod
 from enum import StrEnum
@@ -137,7 +133,7 @@ class Accessor:
                 if self.absent_width is None:
                     raise ValueError(
                         "belief_uncertainty accessor has no absent_width; it must be "
-                        "resolved from the coordinator's total_uncertainty_dimension"
+                        "PHYSICAL_UNCERTAINTY_DIM"
                     )
                 val = torch.zeros(
                     (*team_id.shape, self.absent_width),
@@ -191,15 +187,6 @@ class Transform(ABC):
     @abstractmethod
     def __call__(self, x: torch.Tensor) -> torch.Tensor: ...
 
-    def invert(self, x: torch.Tensor) -> torch.Tensor:
-        """Map target-encoded values back to raw physical space.
-
-        Only defined for transforms used as a Feature's target encoder on the
-        aux-prediction path; transforms that never need inversion inherit this
-        fail-fast default rather than a silently-wrong stub.
-        """
-        raise NotImplementedError(f"{type(self).__name__} does not define an inverse")
-
 
 class Identity(Transform):
     """Pass-through; ensures at least 3D."""
@@ -210,9 +197,6 @@ class Identity(Transform):
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 2:
             return x.unsqueeze(-1).float()
-        return x.float()
-
-    def invert(self, x: torch.Tensor) -> torch.Tensor:
         return x.float()
 
 
@@ -253,17 +237,6 @@ class Normalize(Transform):
             return x.float() / self._s_tensor
         return x.float() / self.scales
 
-    def invert(self, x: torch.Tensor) -> torch.Tensor:
-        if isinstance(self.scales, list):
-            if (
-                self._s_tensor is None
-                or self._s_tensor.device != x.device
-                or self._s_tensor.dtype != x.dtype
-            ):
-                self._s_tensor = torch.tensor(self.scales, device=x.device, dtype=x.dtype)
-            return x.float() * self._s_tensor
-        return x.float() * self.scales
-
 
 class Symlog(Transform):
     def out_dim(self, in_dim: int) -> int:
@@ -271,10 +244,6 @@ class Symlog(Transform):
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return symmetric_logarithm(x.float())
-
-    def invert(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.float()
-        return torch.sign(x) * torch.expm1(x.abs())
 
 
 class Fourier(Transform):
@@ -328,96 +297,6 @@ class Fourier(Transform):
             results.append(torch.cos(args))
         return torch.cat(results, dim=-1)
 
-    def invert(self, x: torch.Tensor) -> torch.Tensor:
-        """Recover the raw channels by climbing the dyadic harmonic ladder.
-
-        Harmonic 0 has period equal to the whole coordinate period, so its phase
-        localises the value uniquely -- there is nothing to unwrap and no
-        ambiguity to resolve. Each finer harmonic then refines that estimate: its
-        phase gives the value modulo its own period, and the candidate nearest
-        the running estimate is the one meant. Unwrapping is safe because the
-        incoming error is always far below a quarter of the next period.
-
-        Reading harmonic 0 alone is what this used to do, and it was wrong once
-        position carried ten harmonics instead of one. That harmonic spans the
-        entire world, so any error in its ``(sin, cos)`` is multiplied by
-        ``period / 2*pi``: a 1% error reads back as 83 px, 5% as 414 px. Applied
-        to a *predicted* moment rather than an exact one, that is what made
-        ``belief/*/position_px`` report 1434 px for ships in plain sight, and
-        what corrupted ``local_presence`` -- a 500 px radius judged from hidden
-        positions wrong by several times that.
-
-        Quantisation alone is milder but points the same way. Over 20k uniform
-        positions on the Frontline world stored in bf16, harmonic 0 alone gives
-        5.89 px mean error and the full ladder 0.012 px.
-
-        Each refinement is scaled by that harmonic's resultant length. A belief
-        the model cannot resolve at some scale has a moment shrunk toward the
-        origin, and its phase there is noise -- including it at full weight would
-        add error rather than precision. At unit magnitude the refinement is
-        exact, and it fades smoothly to nothing as the harmonic decoheres, so
-        the estimate degrades to the coarsest scale the belief still resolves
-        instead of being dragged around by the ones it does not.
-
-        Layout is blocked, not interleaved: channel ``c`` of ``n`` frequencies
-        occupies ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so harmonic ``k``'s
-        pair is ``(c*2n + k, c*2n + n + k)``.
-        """
-        x = x.float()
-        n = self.n_freqs
-        num_channels = x.shape[-1] // (2 * n)
-        ps = (
-            [self.periods] * num_channels
-            if isinstance(self.periods, (float, int))
-            else self.periods
-        )
-        outs = []
-        for c in range(num_channels):
-            base = c * 2 * n
-            period = float(ps[c])
-            sines = x[..., base : base + n]
-            cosines = x[..., base + n : base + 2 * n]
-            phase = torch.atan2(sines, cosines) % (2.0 * math.pi)
-            # Confidence per harmonic: the resultant length of its moment.
-            weight = torch.sqrt(sines * sines + cosines * cosines).clamp(0.0, 1.0)
-
-            estimate = phase[..., 0] * period / (2.0 * math.pi)
-            for k in range(1, n):
-                wavelength = period / (2.0**k)
-                candidate = phase[..., k] * wavelength / (2.0 * math.pi)
-                # Nearest candidate to the running estimate, i.e. the residual
-                # wrapped into (-lambda/2, +lambda/2].
-                delta = ((candidate - estimate + wavelength / 2.0) % wavelength) - wavelength / 2.0
-                estimate = estimate + weight[..., k] * delta
-            outs.append(estimate % period)
-        return torch.stack(outs, dim=-1)
-
-
-class UnitCircle(Transform):
-    """Map a [0, scale] scalar to a quarter-wave (sin, cos) pair."""
-
-    def __init__(self, scales: float = 1.0):
-        self.scales = scales
-
-    def out_dim(self, in_dim: int) -> int:
-        return in_dim * 2
-
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.float()
-        norm = (x / self.scales).clamp(0.0, 1.0)
-        angle = (math.pi / 2.0) * norm
-        return torch.stack([torch.sin(angle), torch.cos(angle)], dim=-1).flatten(-2)
-
-    def invert(self, x: torch.Tensor) -> torch.Tensor:
-        """Recover the raw [0, scale] scalar(s) from the (sin, cos) quarter-wave."""
-        x = x.float()
-        num_channels = x.shape[-1] // 2  # (..., 2C) laid out [sin_c, cos_c] per channel
-        outs = []
-        for c in range(num_channels):
-            angle = torch.atan2(x[..., 2 * c], x[..., 2 * c + 1]).clamp(0.0, math.pi / 2.0)
-            outs.append(angle / (math.pi / 2.0) * self.scales)
-        return torch.stack(outs, dim=-1)
-
 
 class SymlogVelocity(Transform):
     """Map 2D velocity to (vx_norm, vy_norm) where ‖output‖ = symlog(speed).
@@ -436,227 +315,6 @@ class SymlogVelocity(Transform):
         direction = x / speed
         symlog_speed = symmetric_logarithm(speed)
         return direction * symlog_speed
-
-    def invert(self, x: torch.Tensor) -> torch.Tensor:
-        """Recover raw (vx, vy) from direction * symlog(speed)."""
-        x = x.float()
-        symlog_speed = torch.norm(x, dim=-1, keepdim=True)
-        direction = x / symlog_speed.clamp(min=1e-8)
-        speed = torch.expm1(symlog_speed.clamp(min=0.0))
-        return direction * speed
-
-
-# ---------------------------------------------------------------------------
-# Predictors (define label computation and prediction application)
-# ---------------------------------------------------------------------------
-
-
-_LOG_TWO_PI = math.log(2.0 * math.pi)
-
-
-class Predictor(ABC):
-    @abstractmethod
-    def target_dim(self, in_channels: int) -> int: ...
-
-    @abstractmethod
-    def prediction_dim(self, in_channels: int) -> int: ...
-
-    #: What the head's uncertainty output means for this predictor, or None for
-    #: a predictor that reports none and keeps a plain squared error.
-    uncertainty_kind: str | None = None
-
-    def uncertainty_dim(self, in_channels: int) -> int:
-        """Uncertainty outputs this predictor wants, or 0 for a plain squared error.
-
-        A predictor that reports one makes its loss a Gaussian negative log
-        likelihood instead, which is what removes ``label_scale`` from the
-        objective: ``(y - mu)^2 / sigma^2`` is invariant to how the label is
-        scaled, so a feature whose labels are a thousand times too large learns
-        a correspondingly larger sigma rather than dominating the sum.
-
-        It also weights the gradient on the mean by ``1 / sigma^2``, which is
-        what this model needs: a long-hidden token's label is mostly belief
-        error nobody could predict, so the head learns a wide sigma there and
-        the signal concentrates on the tokens whose labels are real dynamics.
-        """
-
-        return 0
-
-    def uncertainty_gather(self, p_dim: int, u_dim: int) -> list[int]:
-        """Which uncertainty column each prediction dim reads.
-
-        The default lines the two blocks up elementwise and lets a predictor
-        reporting fewer spreads than means share its last one, which is what a
-        single-phase circular predictor wants. Override to group differently.
-
-        Return ``-1`` for a dimension that reports no spread at all. Those fall
-        through to plain squared error, which is how a predictor mixes the two
-        losses across its own channels.
-        """
-
-        return [min(i, u_dim - 1) for i in range(p_dim)]
-
-    @abstractmethod
-    def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor: ...
-
-    @abstractmethod
-    def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor: ...
-
-
-class AbsolutePredictor(Predictor):
-    """Predict next state directly (absolute, no delta)."""
-
-    uncertainty_kind = "gaussian"
-
-    def target_dim(self, in_channels: int) -> int:
-        return in_channels
-
-    def prediction_dim(self, in_channels: int) -> int:
-        return in_channels
-
-    def uncertainty_dim(self, in_channels: int) -> int:
-        return in_channels
-
-    def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor:
-        return next_
-
-    def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
-        return pred
-
-
-class FourierMomentPredictor(AbsolutePredictor):
-    """Absolute prediction over one channel's ``(sin, cos)`` harmonic pairs.
-
-    For a quantity encoded as harmonic ``(sin, cos)`` pairs, the two members of
-    a pair are one 2D vector and not two independent scalars. Predicting them
-    absolutely -- rather than as a phase rotation -- is what lets the mean land
-    *inside* the unit circle: the squared-error optimum is the conditional
-    Fourier moment ``(E[sin], E[cos])``, whose magnitude is the resultant length
-    at that frequency. So the estimate shrinks toward the origin exactly as the
-    quantity becomes unpredictable, and the origin is a uniform belief rather
-    than a confident claim about a particular angle. A rotation predictor cannot
-    express that, because it preserves unit norm by construction.
-
-    Confidence rides on the *magnitude*, not on a reported spread. Squared error
-    drives the mean to the conditional moment, whose length is the resultant at
-    that frequency -- so a harmonic the model cannot resolve shrinks toward the
-    origin, which is a uniform belief, and its phase gradient ``2r*sin(d)`` goes
-    with it. Nine of the ten harmonics therefore need no sigma at all and train
-    under plain squared error.
-
-    The finest harmonic is the exception, and the reason is gradient share
-    rather than precision. Squared error's gradient is ``2*eps``, which *shrinks*
-    as a channel becomes accurate, while a Gaussian likelihood's is ``eps/sigma^2``,
-    which *grows*. Mixing the two hands the objective to whichever channels are
-    both accurate and on the likelihood -- and position is highly predictable for
-    a ship in sight. Estimated over plausible residuals, position and attitude
-    take 0.04% of the auxiliary gradient without a sigma here and 48% with one.
-    Without it the head would learn position almost entirely from *hidden* ships,
-    whose labels are mostly unpredictable belief error, and ignore the visible
-    ones where the learnable dynamics are.
-
-    One spread for that pair rather than two, because the sin and cos axes are
-    arbitrary: two independent variances would fit an axis-aligned ellipse to a
-    distribution that has no preferred axis. Sharing one needs no separate loss
-    branch -- two scalar Gaussian terms over a shared sigma sum to
-    ``0.5 * (||r||^2 / sigma^2 + 2 log sigma^2 + 2 log 2*pi)``, which is the
-    isotropic bivariate normal likelihood written out.
-
-    Pairing follows ``Fourier``'s layout, which is *blocked* and not
-    interleaved: one channel of ``n`` frequencies encodes as
-    ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so harmonic ``k``'s pair is
-    ``(k, k + n)`` and never ``(2k, 2k + 1)``. Pairing adjacent columns would
-    share a spread between two *different* frequencies' sines -- the same
-    axis-aligned error this class exists to avoid, and silent.
-
-    Assumes a single encoded channel, which is what every feature using it has:
-    position takes one coordinate per feature and ``AttitudeFourier`` reduces
-    its heading to one angle before expanding.
-    """
-
-    def uncertainty_dim(self, in_channels: int) -> int:
-        return 1
-
-    def uncertainty_gather(self, p_dim: int, u_dim: int) -> list[int]:
-        if u_dim != 1 or p_dim % 2:
-            raise ValueError(
-                f"{type(self).__name__} reports one spread for its finest harmonic, "
-                f"got p_dim={p_dim} against u_dim={u_dim}"
-            )
-        # Blocked layout ``[sin_0..sin_{n-1}, cos_0..cos_{n-1}]``, so the finest
-        # harmonic is index n-1 of each block -- *not* the last two columns.
-        harmonics = p_dim // 2
-        columns = [-1] * p_dim
-        columns[harmonics - 1] = 0
-        columns[p_dim - 1] = 0
-        return columns
-
-
-class AdditivePredictor(Predictor):
-    """Predict delta: next − curr in target space."""
-
-    uncertainty_kind = "gaussian"
-
-    def target_dim(self, in_channels: int) -> int:
-        return in_channels
-
-    def prediction_dim(self, in_channels: int) -> int:
-        return in_channels
-
-    def uncertainty_dim(self, in_channels: int) -> int:
-        return in_channels
-
-    def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor:
-        return next_ - curr
-
-    def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
-        return curr + pred
-
-
-class UnitCirclePredictor(Predictor):
-    """Predict a phase shift for a 2-channel (sin,cos) or (cos,sin) unit circle.
-
-    Label: scalar phase delta wrapped to [-π, π].
-    Application: rotation — preserves unit norm exactly.
-
-    Its uncertainty is a von Mises concentration, not a variance: the quantity
-    lives on a circle, and a Gaussian over an angle has no idea that -pi and pi
-    are the same place. Concentration plays sigma's role inversely -- large kappa
-    is a tight belief -- and the likelihood becomes the Gaussian one in the limit,
-    with kappa standing in for 1/sigma^2.
-
-    Unlike the unbounded channels, a circular one has no scale ambiguity to
-    remove: an angle is already measured in radians against a fixed 2*pi period.
-    So the point here is the geometry, not scale invariance -- which is why the
-    loss has to undo ``label_scale`` before taking a cosine of anything.
-    """
-
-    uncertainty_kind = "von_mises"
-
-    def __init__(self, cosine_first: bool = False):
-        self.cosine_first = cosine_first
-
-    def uncertainty_dim(self, in_channels: int) -> int:
-        return 1
-
-    def target_dim(self, in_channels: int) -> int:
-        return 2
-
-    def prediction_dim(self, in_channels: int) -> int:
-        return 1
-
-    def compute_labels(self, curr: torch.Tensor, next_: torch.Tensor) -> torch.Tensor:
-        if self.cosine_first:
-            curr_angle = torch.atan2(curr[..., 1], curr[..., 0])
-            next_angle = torch.atan2(next_[..., 1], next_[..., 0])
-        else:
-            curr_angle = torch.atan2(curr[..., 0], curr[..., 1])
-            next_angle = torch.atan2(next_[..., 0], next_[..., 1])
-        delta = (next_angle - curr_angle + math.pi) % (2.0 * math.pi) - math.pi
-        return delta.unsqueeze(-1)
-
-    def apply_prediction(self, curr: torch.Tensor, pred: torch.Tensor) -> torch.Tensor:
-        return phase_shift_circle(curr, pred.squeeze(-1), self.cosine_first)
 
 
 # ---------------------------------------------------------------------------
@@ -686,24 +344,15 @@ class Feature:
         name: str,
         accessor: Accessor,
         input_encoder: Transform,
-        target_encoder: Transform,
-        predictor: Predictor | None = None,
-        label_scale: float | tuple[float, ...] = 1.0,
         scope: FeatureScope = FeatureScope.SHARED,
     ):
         self.name = name
         self.accessor = accessor
         self.input_encoder = input_encoder
-        self.target_encoder = target_encoder
-        self.predictor = predictor
-        self.label_scale = label_scale
         self.scope = scope
 
     def get_input(self, obs: YemongObservation) -> torch.Tensor:
         return self.input_encoder(self.accessor.get(obs))
-
-    def get_target(self, obs: YemongObservation) -> torch.Tensor:
-        return self.target_encoder(self.accessor.get(obs))
 
     def input_dimension(self, dummy: YemongObservation) -> int:
         """Encoded width this feature contributes to the input vector.
@@ -827,10 +476,7 @@ class LocalPresenceFeature(Feature):
 
     A plain ``Feature`` reads one channel through one ``Accessor``; this one needs
     positions, team identities and the belief-validity mask together, so it
-    overrides the input path and declares its own width. It has no target
-    encoding and no predictor: it is a deterministic function of channels the
-    auxiliary head already predicts, so predicting it again would supervise the
-    same information twice under an invented label scale.
+    overrides the input path and declares its own width.
     """
 
     def __init__(self, ship_config: ShipConfig, radius: float = PRESENCE_RADIUS):
@@ -838,7 +484,6 @@ class LocalPresenceFeature(Feature):
             name="local_presence",
             accessor=Accessor(ObsKey.POS),
             input_encoder=Identity(),
-            target_encoder=Identity(),
             scope=FeatureScope.SHIP,
         )
         self.world_size = tuple(float(side) for side in ship_config.world_size)
@@ -867,33 +512,8 @@ class LocalPresenceFeature(Feature):
 # ---------------------------------------------------------------------------
 
 
-@dataclasses.dataclass(frozen=True)
-class _PredictorSpec:
-    """Cached per-feature layout for a predictor feature.
-
-    Computed once in ``FeatureCoordinator._init_dims`` so every downstream method
-    reads offsets/dimensions from one source of truth instead of re-deriving them
-    from a fresh dummy observation on each call.
-    """
-
-    name: str
-    predictor: Predictor
-    target_encoder: Transform
-    t_dim: int  # target-space width
-    p_dim: int  # prediction-space width
-    t_offset: int  # start of this feature's slice in the target vector
-    p_offset: int  # start of this feature's slice in the prediction vector
-    label_scale: tuple[float, ...]  # per-prediction-dim scale, length == p_dim
-    # Log-variance outputs, laid out in a block *after* every mean. Keeping the
-    # means contiguous and first is what lets ``apply_prediction`` and every
-    # rollout consumer go on slicing by ``p_offset`` against a widened head
-    # without knowing uncertainty exists.
-    u_dim: int  # 0 for a predictor that does not report uncertainty
-    u_offset: int  # start of this feature's slice in the uncertainty block
-
-
 class FeatureCoordinator:
-    """Integrates a list of Features into cohesive input/target vectors."""
+    """Integrates a list of Features into one input vector for the encoder."""
 
     def __init__(self, features: list[Feature], dummy_obs: YemongObservation | None = None):
         self.features = features
@@ -904,65 +524,7 @@ class FeatureCoordinator:
 
     def _init_dims(self) -> None:
         dummy = self._dummy_obs()
-        self.total_input_dimension = 0
-        self.total_target_dimension = 0
-        self.total_prediction_dimension = 0
-        self.total_uncertainty_dimension = 0
-        # One cached spec per predictor feature — the single source of truth for
-        # every per-feature offset/dimension lookup below.
-        self._predictor_specs: list[_PredictorSpec] = []
-        # Lazily-built label-scale tensor, cached per device (see label_scale_vector).
-        self._label_scale_cache: torch.Tensor | None = None
-        self._uncertainty_cache: tuple[torch.Tensor, torch.Tensor] | None = None
-        # (scope, device) -> (input columns, target columns) for the belief copy.
-        self._override_cache: dict[tuple[object, torch.device], tuple[torch.Tensor, ...]] = {}
-
-        t_offset = 0
-        p_offset = 0
-        u_offset = 0
-        for f in self.features:
-            self.total_input_dimension += f.input_dimension(dummy)
-
-            if f.predictor:
-                t_dim = f.get_target(dummy).shape[-1]
-                in_dim = f.input_dimension(dummy)
-                if in_dim != t_dim:
-                    # The belief is copied from target space straight into the
-                    # encoded input, column for column, so a predicted feature's
-                    # two encodings have to be the same encoding. Caught here
-                    # because the alternative is a silent shape mismatch much
-                    # later, in a scatter that would look correct.
-                    raise ValueError(
-                        f"predicted feature {f.name!r} encodes to {in_dim} input channels "
-                        f"but {t_dim} target channels; a predicted feature's input and "
-                        "target encoders must match so the belief can be copied"
-                    )
-                p_dim = f.predictor.prediction_dim(t_dim)
-                u_dim = f.predictor.uncertainty_dim(t_dim)
-                if isinstance(f.label_scale, (list, tuple)):
-                    label_scale = tuple(float(s) for s in f.label_scale)
-                else:
-                    label_scale = (float(f.label_scale),) * p_dim
-                self._predictor_specs.append(
-                    _PredictorSpec(
-                        name=f.name,
-                        predictor=f.predictor,
-                        target_encoder=f.target_encoder,
-                        t_dim=t_dim,
-                        p_dim=p_dim,
-                        t_offset=t_offset,
-                        p_offset=p_offset,
-                        label_scale=label_scale,
-                        u_dim=u_dim,
-                        u_offset=u_offset,
-                    )
-                )
-                self.total_target_dimension += t_dim
-                self.total_prediction_dimension += p_dim
-                self.total_uncertainty_dimension += u_dim
-                t_offset += t_dim
-                p_offset += p_dim
-                u_offset += u_dim
+        self.total_input_dimension = sum(f.input_dimension(dummy) for f in self.features)
 
     def _dummy_obs(self) -> YemongObservation:
         from boost_and_broadside.env.observation import ObsKey, YemongObservation
@@ -994,13 +556,8 @@ class FeatureCoordinator:
             }
         )
 
-    # ------------------------------------------------------------------
-    # Forward paths
-    # ------------------------------------------------------------------
-
     def get_input_vector(self, obs: YemongObservation) -> torch.Tensor:
-        encoded = torch.cat([f.get_input(obs) for f in self.features], dim=-1)
-        return self._apply_belief_override(encoded, obs, None)
+        return torch.cat([f.get_input(obs) for f in self.features], dim=-1)
 
     def get_scoped_input_vector(
         self, obs: YemongObservation, scope: "FeatureScope"
@@ -1015,7 +572,7 @@ class FeatureCoordinator:
             for f in self.features
             if f.scope is FeatureScope.SHARED or f.scope is scope
         ]
-        return self._apply_belief_override(torch.cat(parts, dim=-1), obs, scope)
+        return torch.cat(parts, dim=-1)
 
     def scoped_input_dimension(self, scope: "FeatureScope") -> int:
         """Width of ``get_scoped_input_vector`` for the given entity type."""
@@ -1026,364 +583,6 @@ class FeatureCoordinator:
                 continue
             total += f.input_dimension(dummy)
         return total
-
-    def _override_columns(
-        self, scope: "FeatureScope | None", device: torch.device
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Aligned (input column, target column) indices for the belief copy.
-
-        Per scope, because a scoped input vector omits features and so shifts
-        every offset after the first omission; target offsets are global, since
-        ``get_target_vector`` does not filter by scope.
-        """
-
-        key = (scope, device)
-        cached = self._override_cache.get(key)
-        if cached is not None:
-            return cached
-        dummy = self._dummy_obs()
-        specs = {spec.name: spec for spec in self._predictor_specs}
-        input_columns: list[int] = []
-        target_columns: list[int] = []
-        offset = 0
-        for f in self.features:
-            if scope is not None and f.scope is not FeatureScope.SHARED and f.scope is not scope:
-                continue
-            width = f.input_dimension(dummy)
-            spec = specs.get(f.name) if f.predictor else None
-            if spec is not None:
-                input_columns.extend(range(offset, offset + width))
-                target_columns.extend(range(spec.t_offset, spec.t_offset + spec.t_dim))
-            offset += width
-        cached = (
-            torch.tensor(input_columns, dtype=torch.long, device=device),
-            torch.tensor(target_columns, dtype=torch.long, device=device),
-        )
-        self._override_cache[key] = cached
-        return cached
-
-    def _apply_belief_override(
-        self, encoded: torch.Tensor, obs: YemongObservation, scope: "FeatureScope | None"
-    ) -> torch.Tensor:
-        """Replace the predicted features' encoded columns with the belief.
-
-        This is the point of predicting every feature in its own input space: a
-        hidden ship's encoded input becomes the head's own output, copied in
-        without a decode. The magnitude survives, so a belief that has gone
-        vague reaches the trunk as a short vector -- and a fully uncertain one as
-        zeros, which is a uniform belief rather than a confident guess.
-
-        A no-op when the observation carries no belief, which is every caller
-        without a tracker: the raw environment view, an omniscient
-        configuration, a test fixture.
-        """
-
-        data = obs.data if hasattr(obs, "data") else obs
-        if ObsKey.BELIEF_TARGETS not in data or ObsKey.BELIEF_SUBSTITUTE not in data:
-            return encoded
-        targets = data[ObsKey.BELIEF_TARGETS].float()
-        substitute = data[ObsKey.BELIEF_SUBSTITUTE].bool()
-        input_columns, target_columns = self._override_columns(scope, encoded.device)
-        if not input_columns.numel():
-            return encoded
-        believed = targets.index_select(-1, target_columns)
-        current = encoded.index_select(-1, input_columns)
-        return encoded.index_copy(-1, input_columns, torch.where(substitute, believed, current))
-
-    def project_targets(self, targets: torch.Tensor) -> torch.Tensor:
-        """Constrain stored belief targets to the values a target can take.
-
-        A Fourier moment is an expectation of a unit vector, so its magnitude
-        cannot exceed one; anything outside the unit disk is not a wide belief
-        but an impossible one. Projecting onto the disk is therefore a statement
-        about the representation rather than an arbitrary ceiling, and it makes
-        autoregressive divergence impossible on these channels instead of merely
-        counted -- the recursion cannot leave a bounded set.
-
-        Every other channel keeps the numerical ceiling, which is what it was:
-        symlog space has no natural bound, so ``BELIEF_TARGET_LIMIT`` is a guard
-        against a runaway forecast and not a property of the quantity.
-        """
-
-        from boost_and_broadside.train.rl.belief import BELIEF_TARGET_LIMIT
-
-        # ``clamp`` already returns a new tensor, so the per-feature projection
-        # below writes through views of it rather than rebuilding it each time.
-        out = targets.clamp(-BELIEF_TARGET_LIMIT, BELIEF_TARGET_LIMIT)
-        for spec in self._predictor_specs:
-            if not isinstance(spec.predictor, FourierMomentPredictor):
-                continue
-            harmonics = spec.t_dim // 2
-            block = out.narrow(-1, spec.t_offset, spec.t_dim)
-            sines = block.narrow(-1, 0, harmonics)
-            cosines = block.narrow(-1, harmonics, harmonics)
-            norm = torch.sqrt(sines * sines + cosines * cosines).clamp_min(1e-12)
-            scale = torch.reciprocal(norm).clamp(max=1.0)
-            sines.mul_(scale)
-            cosines.mul_(scale)
-        return out
-
-    def get_target_vector(self, obs: YemongObservation) -> torch.Tensor:
-        parts = [f.get_target(obs) for f in self.features if f.predictor]
-        if not parts:
-            return obs.pos.new_zeros((*obs.pos.shape[:-1], 0))
-        return torch.cat(parts, dim=-1)
-
-    def target_slices(self) -> dict[str, slice]:
-        """Map predicted feature names to their slices in the target vector."""
-        return {
-            spec.name: slice(spec.t_offset, spec.t_offset + spec.t_dim)
-            for spec in self._predictor_specs
-        }
-
-    def decode_targets(self, targets: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Invert each predictor feature's target encoding back to raw physical space.
-
-        Args:
-            targets: (..., total_target_dimension) — absolute target-space values,
-                e.g. the output of ``apply_scaled_predictions``.
-
-        Returns:
-            Feature-name → raw tensor (..., raw_channels), one entry per predictor
-            feature, with each feature's own target Transform performing the inverse.
-        """
-        return {
-            spec.name: spec.target_encoder.invert(
-                targets[..., spec.t_offset : spec.t_offset + spec.t_dim]
-            )
-            for spec in self._predictor_specs
-        }
-
-    # ------------------------------------------------------------------
-    # Aux loss label computation
-    # ------------------------------------------------------------------
-
-    def label_scale_vector(self, device: torch.device) -> torch.Tensor:
-        """Per-prediction-dim scale factors (1/std of raw labels).
-
-        The vector is constant per coordinator, so it is built once and cached
-        per device (mirroring Normalize's own scale-tensor caching).
-        """
-        cache = self._label_scale_cache
-        if cache is None or cache.device != torch.device(device):
-            scales = [s for spec in self._predictor_specs for s in spec.label_scale]
-            cache = torch.tensor(scales, device=device, dtype=torch.float32)
-            self._label_scale_cache = cache
-        return cache
-
-    def compute_labels(
-        self, curr_targets: torch.Tensor, next_targets: torch.Tensor
-    ) -> torch.Tensor:
-        """Compute prediction labels from curr/next target vectors, scaled to O(1).
-
-        Both curr_targets and next_targets come from get_target_vector() and
-        have the same per-feature layout: t_dim channels per feature.
-        Labels are multiplied by label_scale so the network predicts O(1) values.
-        """
-        results = []
-        for spec in self._predictor_specs:
-            sl = slice(spec.t_offset, spec.t_offset + spec.t_dim)
-            curr_slice = curr_targets[..., sl]
-            next_slice = next_targets[..., sl]
-            results.append(spec.predictor.compute_labels(curr_slice, next_slice))
-
-        labels = torch.cat(results, dim=-1)
-        return labels * self.label_scale_vector(labels.device)
-
-    def _uncertainty_layout(self, device: torch.device) -> tuple[torch.Tensor, ...]:
-        """Per-prediction-dim masks and the gather into the uncertainty block.
-
-        ``gaussian`` and ``von_mises`` are disjoint masks over prediction dims;
-        ``gather[i]`` is dim i's index in the uncertainty block (0 and unused
-        where it has none). Cached per device the way ``label_scale_vector`` is
-        -- this sits in the per-micro-batch loss path.
-        """
-
-        cached = self._uncertainty_cache
-        if cached is not None and cached[0].device == device:
-            return cached
-        P = self.total_prediction_dimension
-        gaussian = torch.zeros(P, dtype=torch.bool)
-        von_mises = torch.zeros(P, dtype=torch.bool)
-        gather = torch.zeros(P, dtype=torch.long)
-        for spec in self._predictor_specs:
-            if not spec.u_dim:
-                continue
-            mask = gaussian if spec.predictor.uncertainty_kind == "gaussian" else von_mises
-            columns = spec.predictor.uncertainty_gather(spec.p_dim, spec.u_dim)
-            for offset, column in enumerate(columns):
-                if column < 0:
-                    # No spread reported for this dimension: it keeps plain
-                    # squared error, which is how a predictor mixes losses
-                    # across its own channels.
-                    continue
-                mask[spec.p_offset + offset] = True
-                gather[spec.p_offset + offset] = spec.u_offset + column
-        cached = tuple(t.to(device) for t in (gaussian, von_mises, gather))
-        self._uncertainty_cache = cached
-        return cached
-
-    def prediction_loss(self, predictions: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        """Per-prediction-dimension loss, given the head's full output.
-
-        ``predictions`` is ``[means | uncertainties]``: the first
-        ``total_prediction_dimension`` channels are means, the rest the
-        uncertainty block, in log space and clamped by the head.
-
-        Three forms, chosen per predictor, so channels convert one at a time:
-
-        * Gaussian, for unbounded channels --
-          ``0.5 * ((y - mu)^2 / sigma^2 + log sigma^2 + log 2*pi)``. Scale-free
-          in the label, which is what takes ``label_scale`` out of the objective.
-        * von Mises, for circular channels --
-          ``kappa * (1 - cos(d)) + log I0e(kappa) + log 2*pi``, where ``d`` is
-          the angular residual in radians. Written through ``i0e`` because
-          ``log I0`` overflows for a confident belief.
-
-          The head reports log variance here too, and this inverts it into a
-          concentration. Concentration is the natural von Mises parameter but
-          the opposite of a spread, and one block that meant "more uncertain" in
-          some channels and "less" in others would be a trap for every reader of
-          it -- including ``prediction_variance``.
-        * plain squared error, for anything not yet converted.
-
-        Both likelihoods carry their normalising constant, which cancels out of
-        every gradient but makes the per-channel series comparable: they are
-        then nats, and a channel costing more of them is genuinely harder to
-        predict than one costing fewer.
-
-        Both likelihoods weight the gradient on the mean by their precision, so
-        a token whose label is mostly unpredictable belief error earns a wide
-        spread and stops dominating the sum. Both are unbounded below as that
-        spread shrinks, which is why the head clamps -- nothing here can recover
-        from a sigma of zero.
-
-        Returns:
-            (..., total_prediction_dimension) elementwise loss.
-        """
-
-        mean = predictions[..., : self.total_prediction_dimension]
-        sq_err = (mean - labels).pow(2)
-        if not self.total_uncertainty_dimension:
-            return sq_err
-
-        gaussian_mask, von_mises_mask, gather = self._uncertainty_layout(predictions.device)
-        log_uncertainty = predictions[..., self.total_prediction_dimension :].index_select(
-            -1, gather
-        )
-
-        out = sq_err
-        if gaussian_mask.any():
-            nll = 0.5 * (sq_err * torch.exp(-log_uncertainty) + log_uncertainty + _LOG_TWO_PI)
-            out = torch.where(gaussian_mask, nll, out)
-        if von_mises_mask.any():
-            # Undo label_scale first: it conditions the mean, and a cosine of a
-            # residual multiplied by 177 would be measuring nothing.
-            residual = (mean - labels) / self.label_scale_vector(predictions.device)
-            kappa = torch.exp(-log_uncertainty)
-            nll = (
-                kappa * (1.0 - torch.cos(residual))
-                + torch.log(torch.special.i0e(kappa))
-                + _LOG_TWO_PI
-            )
-            out = torch.where(von_mises_mask, nll, out)
-        return out
-
-    def prediction_variance(self, predictions: torch.Tensor) -> torch.Tensor:
-        """Per-prediction-dim variance implied by the head's uncertainty block.
-
-        Every channel reports ``log sigma^2``, circular ones included -- the
-        von Mises loss inverts it into a concentration itself -- so this is one
-        exponential and no per-kind branching. For a circular channel the
-        variance is the ``1/kappa`` equivalent, exact in the limit where von
-        Mises becomes Gaussian, which is the regime a belief worth propagating
-        is in.
-
-        A channel with no uncertainty contributes zero rather than a guess: it
-        has not claimed to know how wrong it is.
-
-        Returns:
-            (..., total_prediction_dimension) non-negative variance.
-        """
-
-        if predictions.shape[-1] <= self.total_prediction_dimension:
-            # A mean-only prediction: no spread was reported, so none is
-            # accumulated. Same rule as a channel whose predictor declines to
-            # report one -- silence is not a claim of certainty.
-            return torch.zeros_like(predictions[..., : self.total_prediction_dimension])
-
-        gaussian_mask, von_mises_mask, gather = self._uncertainty_layout(predictions.device)
-        log_uncertainty = predictions[..., self.total_prediction_dimension :].index_select(
-            -1, gather
-        )
-        reported = gaussian_mask | von_mises_mask
-        return torch.where(reported, torch.exp(log_uncertainty), torch.zeros_like(log_uncertainty))
-
-    def uncertainty_variance(self, predictions: torch.Tensor) -> torch.Tensor:
-        """The head's reported variances, one per *uncertainty* column.
-
-        The minimal sufficient form of what the head said about its own spread.
-        ``prediction_variance`` broadcasts the same numbers out to one per
-        predicted dimension, which is what an elementwise loss wants; this is
-        what a *store* wants, because a paired predictor reports one spread for
-        a ``(sin, cos)`` pair and expanding it would put two identical columns
-        into the belief and then into the encoder's input.
-
-        Returns:
-            (..., total_uncertainty_dimension) non-negative variance; zeros when
-            the prediction carries no uncertainty block at all.
-        """
-
-        if predictions.shape[-1] <= self.total_prediction_dimension:
-            return predictions.new_zeros(
-                (*predictions.shape[:-1], self.total_uncertainty_dimension)
-            )
-        return torch.exp(predictions[..., self.total_prediction_dimension :])
-
-    def apply_all_predictions(
-        self, curr_targets: torch.Tensor, predictions: torch.Tensor
-    ) -> torch.Tensor:
-        results = []
-        for spec in self._predictor_specs:
-            t_slice = curr_targets[..., spec.t_offset : spec.t_offset + spec.t_dim]
-            p_slice = predictions[..., spec.p_offset : spec.p_offset + spec.p_dim]
-            results.append(spec.predictor.apply_prediction(t_slice, p_slice))
-
-        return torch.cat(results, dim=-1)
-
-    def apply_scaled_predictions(
-        self, curr_targets: torch.Tensor, scaled_predictions: torch.Tensor
-    ) -> torch.Tensor:
-        """Unscale network outputs then apply to curr_targets.
-
-        The network predicts in scaled space (labels * label_scale). Dividing by
-        label_scale recovers the raw delta/absolute before calling apply_all_predictions.
-
-        Takes the mean block only, so a head that also emits log variances can be
-        handed straight to every rollout consumer without any of them knowing.
-        """
-        scaled_predictions = scaled_predictions[..., : self.total_prediction_dimension]
-        scale = self.label_scale_vector(scaled_predictions.device)
-        predictions = scaled_predictions / scale
-        return self.apply_all_predictions(curr_targets, predictions)
-
-    # ------------------------------------------------------------------
-    # Loss weights and feature names
-    # ------------------------------------------------------------------
-
-    def get_loss_weights(self, device: torch.device) -> torch.Tensor:
-        """Return uniform per-prediction weights (all 1.0).
-
-        Importance weighting is deferred; relative scaling is handled by label_scale
-        in compute_labels so that all predictions are already O(1).
-        """
-        return torch.ones(self.total_prediction_dimension, device=device, dtype=torch.float32)
-
-    def get_feature_names(self) -> list[str]:
-        names = []
-        for spec in self._predictor_specs:
-            names.extend(f"{spec.name}_{i}" for i in range(spec.p_dim))
-        return names
 
 
 # ---------------------------------------------------------------------------
@@ -1396,172 +595,89 @@ def build_standard_coordinator(
 ) -> FeatureCoordinator:
     """Standard feature pipeline matching the current game's physics.
 
-    Prediction layout (10 dims total):
-      pos_x phase delta (1) | pos_y phase delta (1) | vel Δ(vx_norm, vy_norm) (2)
-      att phase delta (1)   | ang_vel absolute (1)
-      health phase delta (1) | power phase delta (1) | cooldown phase delta (1)
-      local encoded log-index delta (1)
-
-    label_scale values are 1/std(raw label) estimates so all scaled labels are O(1).
-    These are rough estimates derived from old calibration weights and will tighten
-    with dedicated measurement after training.
+    Physical-state auxiliary prediction (position, velocity, attitude, health,
+    power, cooldown, local index, and their uncertainty) is the next-state
+    head's job, not this pipeline's — see ``train/rl/physical_belief.py`` and
+    ``PHYSICAL_MEAN_NAMES``. This coordinator only encodes the input vector.
     """
     world_w, world_h = ship_config.world_size
 
     features = [
-        # Position: the target space *is* the input space -- every harmonic of
-        # the same base-2 Fourier basis, predicted absolutely. Three things fall
-        # out of that identity and none of them is available to a phase
-        # predictor over a single coarse harmonic:
-        #
-        # * No ``label_scale``. A (sin, cos) target has variance at most 0.5 by
-        #   construction, so there is no fitted constant to get wrong. Run 743
-        #   established that no static scale can serve a channel whose error
-        #   grows as the integral of velocity over a lengthening hidden
-        #   interval; this representation removes the question instead of
-        #   answering it.
-        # * No label base, so the error-conservation failure mode that killed
-        #   run 734 -- ``error[t+1] == error[t]`` -- cannot be written down.
-        # * The belief becomes a copy. ``predicted_targets`` is already in this
-        #   space, so a hidden ship's encoded input is the head's own output
-        #   scattered into place, with no decode and no re-encode.
-        #
         # Ten harmonics at the Frontline world (65536 px down to 128 px) are
-        # deliberately unequal as targets: four of those periods exceed the 5v5
-        # playable diameter, so their targets barely vary, while the finest wraps
-        # 41 times across it. See docs/training.md.
+        # deliberately unequal: four of those periods exceed the 5v5 playable
+        # diameter, so their encodings barely vary, while the finest wraps 41
+        # times across it. See docs/training.md.
         Feature(
             name="position_x",
             accessor=Accessor(ObsKey.POS, channels=[0]),
             input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
-            target_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
-            predictor=FourierMomentPredictor(),
-            label_scale=1.0,
         ),
         Feature(
             name="position_y",
             accessor=Accessor(ObsKey.POS, channels=[1]),
             input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
-            target_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
-            predictor=FourierMomentPredictor(),
-            label_scale=1.0,
         ),
-        # Velocity: SymlogVelocity encodes (vx, vy) → direction * symlog(speed),
-        # predicted absolutely like everything else. The 2D encoding is what
-        # makes that safe -- it has no angle discontinuity near zero speed, which
-        # is what plagued the old (Δphase, Δsymlog_speed) decomposition.
-        #
-        # Absolute rather than a delta for the same reason position is: the
-        # origin of this space is zero speed, which is exactly the conditional
-        # mean of an unseen ship's velocity, so an unpredictable target shrinks
-        # toward "could be going anywhere" instead of random-walking away from
-        # the last sighting. A delta cannot represent that.
-        #
-        # The objection to absolute prediction -- that reproducing the current
-        # value dominates the loss and drowns the dynamics signal -- is answered
-        # by the likelihood rather than by the parameterisation. Sigma falls to
-        # the dynamics residual and the 1/sigma^2 weighting on the mean amplifies
-        # precisely the part that carries information.
+        # SymlogVelocity encodes (vx, vy) → direction * symlog(speed). The 2D
+        # encoding has no angle discontinuity near zero speed.
         Feature(
             name="velocity",
             accessor=Accessor(ObsKey.VEL),
             input_encoder=SymlogVelocity(),
-            target_encoder=SymlogVelocity(),
-            predictor=AbsolutePredictor(),
-            label_scale=(1.0, 1.0),
             scope=FeatureScope.SHIP,
         ),
         # Attitude: position's treatment on the heading circle. Four harmonics
-        # over 2*pi, target space identical to input space, predicted as moments
-        # so an unknown heading shrinks to the origin instead of having to commit
-        # to an angle.
+        # over 2*pi.
         Feature(
             name="attitude",
             accessor=Accessor(ObsKey.ATT),
             input_encoder=AttitudeFourier(),
-            target_encoder=AttitudeFourier(),
-            predictor=FourierMomentPredictor(),
-            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
-        # Angular velocity: symlog scalar, absolute prediction
         Feature(
             name="angular_velocity",
             accessor=Accessor(ObsKey.ANG_VEL),
             input_encoder=Symlog(),
-            target_encoder=Symlog(),
-            predictor=AbsolutePredictor(),
-            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         Feature(
             name="shield_delay",
             accessor=Accessor(ObsKey.SHIELD_DELAY),
             input_encoder=Symlog(),
-            target_encoder=Symlog(),
-            predictor=AbsolutePredictor(),
-            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
-        # Resources predict as plain bounded scalars, normalised to [0, 1].
-        # They are not circular quantities: ``UnitCircle`` maps them onto a
-        # *quarter* wave, so nothing ever wraps and the phase-delta predictor was
-        # modelling a discontinuity that does not exist. A scalar target also
-        # makes them real-valued, which is what lets them carry a Gaussian
-        # uncertainty; the phase predictor cannot, and would need von Mises.
-        #
-        # The input encoder is the same normalised scalar, so target space and
-        # input space agree here as they do everywhere else and the belief can be
-        # copied rather than decoded.
-        #
-        # label_scale is 1.0 rather than a fitted constant because these now
-        # train under a scale-free likelihood; it survives only to condition the
-        # mean, and ``next_state_label_scale/*`` reports what would centre it.
+        # Resources are plain bounded scalars, normalised to [0, 1].
         Feature(
             name="health",
             accessor=Accessor(ObsKey.HEALTH),
             input_encoder=Normalize(scales=ship_config.max_health),
-            target_encoder=Normalize(scales=ship_config.max_health),
-            predictor=AbsolutePredictor(),
-            label_scale=1.0,
         ),
         Feature(
             name="power",
             accessor=Accessor(ObsKey.POWER),
             input_encoder=Normalize(scales=ship_config.max_power),
-            target_encoder=Normalize(scales=ship_config.max_power),
-            predictor=AbsolutePredictor(),
-            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
         Feature(
             name="cooldown",
             accessor=Accessor(ObsKey.COOLDOWN),
             input_encoder=Normalize(scales=ship_config.firing_cooldown),
-            target_encoder=Normalize(scales=ship_config.firing_cooldown),
-            predictor=AbsolutePredictor(),
-            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
-        # Categoricals and static (no predictor)
-        Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3), Identity()),
-        Feature("alive", Accessor(ObsKey.ALIVE), Identity(), Identity()),
-        Feature(
-            "visible", Accessor(ObsKey.VISIBLE), Identity(), Identity(), scope=FeatureScope.SHIP
-        ),
+        # Categoricals and static
+        Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3)),
+        Feature("alive", Accessor(ObsKey.ALIVE), Identity()),
+        Feature("visible", Accessor(ObsKey.VISIBLE), Identity(), scope=FeatureScope.SHIP),
         Feature(
             "time_since_observation",
             Accessor(ObsKey.TIME_SINCE_OBSERVATION),
             Symlog(),
-            Identity(),
             scope=FeatureScope.SHIP,
         ),
-        Feature("object_type", Accessor(ObsKey.OBJECT_TYPE), OneHot(4), Identity()),
-        Feature("zone_role", Accessor(ObsKey.ZONE_ROLE), OneHot(6), Identity()),
+        Feature("object_type", Accessor(ObsKey.OBJECT_TYPE), OneHot(4)),
+        Feature("zone_role", Accessor(ObsKey.ZONE_ROLE), OneHot(6)),
         Feature(
             "pending_action",
             Accessor(ObsKey.PREVIOUS_ACTION),
-            Identity(),
             Identity(),
             scope=FeatureScope.SHIP,
         ),
@@ -1569,7 +685,6 @@ def build_standard_coordinator(
             "radius",
             Accessor(ObsKey.RADIUS),
             Normalize(0.5 * min(ship_config.world_size)),
-            Identity(),
         ),
         # Field material features are numeric physical quantities. Ship slots are
         # zero for field-only channels; field slots are zero for ship-local index.
@@ -1577,13 +692,11 @@ def build_standard_coordinator(
             "field_transition_width",
             Accessor(ObsKey.FIELD_TRANSITION_WIDTH),
             Normalize(ship_config.field_transition_width_max),
-            Identity(),
             scope=FeatureScope.FIELD,
         ),
         Feature(
             "field_target_log_index",
             Accessor(ObsKey.FIELD_TARGET_LOG_INDEX),
-            Identity(),
             Identity(),
             scope=FeatureScope.FIELD,
         ),
@@ -1591,13 +704,11 @@ def build_standard_coordinator(
             "capture_progress",
             Accessor(ObsKey.CAPTURE_PROGRESS),
             Identity(),
-            Identity(),
             scope=FeatureScope.ZONE,
         ),
         Feature(
             "capture_direction",
             Accessor(ObsKey.CAPTURE_DIRECTION),
-            Identity(),
             Identity(),
             scope=FeatureScope.ZONE,
         ),
@@ -1605,28 +716,24 @@ def build_standard_coordinator(
             "zone_offensive_distance",
             Accessor(ObsKey.ZONE_OFFENSIVE_DISTANCE),
             Symlog(),
-            Identity(),
             scope=FeatureScope.ZONE,
         ),
         Feature(
             "zone_defensive_distance",
             Accessor(ObsKey.ZONE_DEFENSIVE_DISTANCE),
             Symlog(),
-            Identity(),
             scope=FeatureScope.ZONE,
         ),
         Feature(
             "front_position",
             Accessor(ObsKey.FRONT_POSITION),
             Symlog(),
-            Identity(),
             scope=FeatureScope.BOUNDARY,
         ),
         Feature(
             "front_win_threshold",
             Accessor(ObsKey.FRONT_WIN_THRESHOLD),
             Symlog(),
-            Identity(),
             scope=FeatureScope.BOUNDARY,
         ),
         # How uncertain the belief is, as the next-state head's own thirteen
@@ -1641,19 +748,16 @@ def build_standard_coordinator(
         #
         # ``time_since_observation`` says only how long it has been; this says
         # what that cost, which is the quantity a policy needs to decide whether
-        # to act on a remembered position or go and look. Input only -- it is a
-        # property of the estimate, not a thing to forecast.
+        # to act on a remembered position or go and look.
         Feature(
             "belief_uncertainty",
             Accessor(ObsKey.BELIEF_UNCERTAINTY, absent_width=PHYSICAL_UNCERTAINTY_DIM),
             Normalize(scales=_uncertainty_input_scales()),
-            Identity(),
             scope=FeatureScope.SHIP,
         ),
         Feature(
             "time_remaining",
             Accessor(ObsKey.TIME_REMAINING),
-            Identity(),
             Identity(),
             scope=FeatureScope.BOUNDARY,
         ),
@@ -1661,26 +765,20 @@ def build_standard_coordinator(
             "game_mode",
             Accessor(ObsKey.GAME_MODE),
             Identity(),
-            Identity(),
             scope=FeatureScope.BOUNDARY,
         ),
         Feature(
             name="local_log_index",
             accessor=Accessor(ObsKey.LOCAL_LOG_INDEX),
             input_encoder=Identity(),
-            target_encoder=Identity(),
-            predictor=AbsolutePredictor(),
-            label_scale=1.0,
             scope=FeatureScope.SHIP,
         ),
-        # grad(n) at the ship, already normalised in observation_from_state. Input
-        # only: it is a deterministic function of position given the static map, and
-        # setting an aux label_scale for it would need a measurement we do not have.
+        # grad(n) at the ship, already normalised in observation_from_state. A
+        # deterministic function of position given the static map.
         Feature(
             name="local_index_gradient",
             accessor=Accessor(ObsKey.LOCAL_INDEX_GRADIENT),
             input_encoder=Identity(),
-            target_encoder=Identity(),
             scope=FeatureScope.SHIP,
         ),
     ]
@@ -1715,8 +813,7 @@ def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
     compute "how far away is that bullet" at all.
 
     Damage and lifetime are plain normalised scalars rather than the quarter-wave
-    encoding ships use for bounded resources: that encoding exists to give smooth
-    phase-delta prediction targets, and bullets are never predicted.
+    encoding ships use for bounded resources: bullets are never predicted.
 
     Shooter identity is carried as a team one-hot and never as an index over
     ships — a per-ship one-hot would fix N in the weights and destroy zero-shot
@@ -1729,49 +826,41 @@ def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
             name="bullet_position_x",
             accessor=BulletAccessor(BulletObsKey.POS, channels=[0]),
             input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
-            target_encoder=Identity(),
         ),
         Feature(
             name="bullet_position_y",
             accessor=BulletAccessor(BulletObsKey.POS, channels=[1]),
             input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
-            target_encoder=Identity(),
         ),
         Feature(
             name="bullet_velocity",
             accessor=BulletAccessor(BulletObsKey.VEL),
             input_encoder=SymlogVelocity(),
-            target_encoder=Identity(),
         ),
         Feature(
             name="bullet_lifetime",
             accessor=BulletAccessor(BulletObsKey.LIFETIME),
             input_encoder=Identity(),
-            target_encoder=Identity(),
         ),
         Feature(
             name="bullet_local_log_index",
             accessor=BulletAccessor(BulletObsKey.LOCAL_LOG_INDEX),
             input_encoder=Identity(),
-            target_encoder=Identity(),
         ),
         Feature(
             name="bullet_local_index_gradient",
             accessor=BulletAccessor(BulletObsKey.LOCAL_INDEX_GRADIENT),
             input_encoder=Identity(),
-            target_encoder=Identity(),
         ),
         Feature(
             name="bullet_team_id",
             accessor=BulletAccessor(BulletObsKey.TEAM_ID),
             input_encoder=OneHot(2),
-            target_encoder=Identity(),
         ),
         Feature(
             name="bullet_active",
             accessor=BulletAccessor(BulletObsKey.ACTIVE),
             input_encoder=Identity(),
-            target_encoder=Identity(),
         ),
     ]
     return FeatureCoordinator(features, dummy_obs=_dummy_bullet_obs())
@@ -1794,7 +883,7 @@ def _dummy_bullet_obs() -> YemongObservation:
 
 
 class AttitudeFourier(Fourier):
-    """Encode heading phase, retaining Cartesian targets for phase prediction."""
+    """Encode a Cartesian heading as its phase's Fourier expansion."""
 
     def __init__(self):
         super().__init__(n_freqs=ATTITUDE_FOURIER_FREQUENCIES, periods=2.0 * math.pi)
@@ -1804,18 +893,3 @@ class AttitudeFourier(Fourier):
 
     def __call__(self, x):
         return super().__call__(torch.atan2(x[..., 1:2], x[..., 0:1]))
-
-    def invert(self, x):
-        """Back to a Cartesian ``(cos, sin)`` heading, via harmonic 0's phase.
-
-        ``Fourier.invert`` hands back the angle as a scalar in ``[0, 2*pi)``;
-        this feature's raw form is the Cartesian pair that ``__call__`` consumed,
-        so it has to go back through cos/sin rather than being returned as a
-        bare angle. Unit norm by construction, which is what makes the result a
-        heading again even when the harmonic pair it came from had collapsed
-        toward the origin -- a caller that cares how much that heading is worth
-        should read the belief's uncertainty, not the decoded vector's length.
-        """
-
-        angle = super().invert(x)
-        return torch.cat([torch.cos(angle), torch.sin(angle)], dim=-1)

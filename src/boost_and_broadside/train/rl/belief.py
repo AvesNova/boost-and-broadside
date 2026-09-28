@@ -178,7 +178,7 @@ class BeliefTracker:
         self.valid = (self.valid & ~spawned) | visible
         valid_vector = self.valid.unsqueeze(-1)
 
-        truth = physical_means_from_state(state, self.ship_config)[:, : self.num_ships]
+        truth = physical_means_from_state(state)[:, : self.num_ships]
         self.means = torch.where(
             valid_vector, torch.where(visible.unsqueeze(-1), truth, self.means), 0.0
         )

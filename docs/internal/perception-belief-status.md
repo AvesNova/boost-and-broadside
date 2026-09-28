@@ -2,7 +2,7 @@
 
 The single handoff document for the plan in
 `perception-belief-overarching-plan.md`. Updated at the end of every phase.
-Last updated September 28, 2026, after Phase 3. Phase 3 ended at `ff32f9f` on
+Last updated September 28, 2026, after Phase 4. Phase 3 ended at `ff32f9f` on
 `fix/seat-symmetry-pending-action`; Phases 4–8 all go on
 `feat/perception-belief-phases-4-8`.
 
@@ -54,6 +54,19 @@ through `legal_policy_view`. `RolloutBuffer.privileged_means` is eleven fp32
 channels; the ten physical ship channels are fp32 in the buffer. Persistence
 and dead-reckoning baselines are production diagnostics
 (`belief/<bucket>/persist_*`, `reckon_position_px`). Schema v19.
+
+**Phase 4 — Delete the legacy belief machinery.** Removed the whole predictor/target-space
+path from `FeatureCoordinator` (`train/rl/features.py`): the `Predictor` hierarchy,
+`target_encoder`/`predictor=`/`label_scale=` on `Feature`, and every method that built,
+scaled or decoded a target vector. `Feature` now takes only an accessor and an input
+encoder. Removed `ObsKey.BELIEF_TARGETS`/`BELIEF_SUBSTITUTE`, `YemongPolicy`'s believed-rotary
+override, `SpatialRotary.tables_from_moments`, and `UnitCircle`/every `Transform.invert` (all
+unread once the target path was gone). `physical_means_from_state` dropped its unused
+`ship_config` parameter. `BELIEF_UNCERTAINTY`/`TIME_SINCE_OBSERVATION` are now forced to the
+certainty floor/zero at the composition site for truth-sourced ship slots
+(`env/observation.py`), rather than relying on `BeliefTracker.observe`'s invariant. No head
+width, belief layout or composition semantics changed; `docs/architecture.md` needed only a
+stale-paragraph trim, since it already described the post-Phase-3 shape.
 
 ## Invariants to preserve
 
@@ -108,29 +121,10 @@ its last layer initializes near zero. See open question 1.
 
 ## Known caveats
 
-- The legacy encoded-belief machinery is inert and **untested**. Phase 4
-  deletes it. Removal list: `ObsKey.BELIEF_TARGETS`, `ObsKey.BELIEF_SUBSTITUTE`
-  and their `_TOKEN_LAST_KEYS` references (`env/observation.py`);
-  `FeatureCoordinator._apply_belief_override`, `_override_columns`,
-  `_override_cache`, `project_targets`, `decode_targets`, `compute_labels`,
-  `apply_all_predictions`, `apply_scaled_predictions`, `prediction_loss`,
-  `prediction_variance`, `uncertainty_variance`, `label_scale_vector`,
-  `get_loss_weights`, `get_feature_names`, `target_slices`,
-  `get_target_vector`, `_PredictorSpec`, the `Predictor` hierarchy, and every
-  `predictor=`/`label_scale=` argument in `build_standard_coordinator`
-  (`train/rl/features.py`); `YemongPolicy._believed_rotary_tables` and
-  `_rotary_target_slices`, then `SpatialRotary.tables_from_moments` if unused;
-  `PPOTrainer.aux_weights`; `Fourier.invert`, `UnitCircle`,
-  `UnitCirclePredictor`, `AttitudeFourier.invert` if unused. Check that
-  `total_prediction_dimension`, `total_target_dimension` and
-  `total_uncertainty_dimension` have no callers first.
-- `coordinator.total_prediction_dimension` is 56 on the Frontline world and is
-  wrong for the head. Nothing reads it today.
 - `shield_delay` has no upper clamp in `PhysicalNextState` (the recharge delay
-  lives on `FrontlineConfig`).
-- `BELIEF_UNCERTAINTY` and `TIME_SINCE_OBSERVATION` on truth-sourced slots are
-  read from the belief store, which is correct only because `observe` stamps
-  the certainty floor on every visible ship and own ships are always visible.
+  lives on `FrontlineConfig`, which the spec does not see). Not fixed in Phase
+  4: it needs a new parameter threaded through `from_ship_config` and every
+  caller, not a one-line change.
 - A metric block in `ppo.py::_compute_minibatch_loss` can raise and kill an
   update (one such crash was fixed in `33a4a0e`). It is not defended.
 - Compile startup grew: perception is three Inductor graphs
@@ -176,9 +170,7 @@ feature (ego/ally/enemy) that would make seat identity unrepresentable.
   tick it reaches zero.
 - Belief-cell diagnostics need thousands of decisions of warm-up before any
   enemy is in sight on Frontline.
-- Position is an absolute quantity in the belief; `FourierMomentPredictor` and
-  friends are the dead code, not the live path.
 
 ## Remaining
 
-Phases 4–8, as written in the plan. Next up: Phase 4.
+Phases 5–8, as written in the plan. Next up: Phase 5.

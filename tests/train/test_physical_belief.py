@@ -144,7 +144,7 @@ class TestDeltas:
             "cpu",
         )
         env.reset(seed=3)
-        means = physical_means_from_state(env.state, ShipConfig())
+        means = physical_means_from_state(env.state)
         assert means.shape == (2, 4, PHYSICAL_MEAN_DIM)
         assert torch.allclose(means[..., POSITION_X], env.state.ship_pos.real)
         assert torch.allclose(means[..., 7], env.state.ship_health)

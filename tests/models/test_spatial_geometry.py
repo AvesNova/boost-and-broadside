@@ -37,7 +37,6 @@ from boost_and_broadside.train.rl.features import (
     PRESENCE_RADIUS,
     AttitudeFourier,
     Fourier,
-    LocalPresenceFeature,
     build_standard_coordinator,
     local_presence,
 )
@@ -623,13 +622,6 @@ class TestPresenceFeatureWiring:
         plain = build_standard_coordinator(FRONTLINE_SHIP_CONFIG)
         widened = build_standard_coordinator(FRONTLINE_SHIP_CONFIG, local_presence=True)
         assert widened.total_input_dimension == plain.total_input_dimension + 2
-
-    def test_the_feature_is_input_only(self):
-        feature = LocalPresenceFeature(FRONTLINE_SHIP_CONFIG)
-        assert feature.predictor is None
-        coordinator = build_standard_coordinator(FRONTLINE_SHIP_CONFIG, local_presence=True)
-        plain = build_standard_coordinator(FRONTLINE_SHIP_CONFIG)
-        assert coordinator.total_prediction_dimension == plain.total_prediction_dimension
 
     def test_it_reaches_the_encoder_input(self):
         coordinator = build_standard_coordinator(FRONTLINE_SHIP_CONFIG, local_presence=True)

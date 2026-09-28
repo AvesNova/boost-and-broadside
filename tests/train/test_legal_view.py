@@ -4,8 +4,7 @@ A hidden ship's belief is physical state in the same units as truth, so the view
 composed from it is an ordinary observation and the encoder reads it without
 knowing which slots came from where. These pin that -- including that the encoded
 input of a believed ship is exactly what truth at the believed state would give,
-and that the spatial rotation follows the believed position -- and that the old
-encoded-substitution channels never appear.
+and that the spatial rotation follows the believed position.
 """
 
 import torch
@@ -95,29 +94,6 @@ class TestRotation:
         truth_tables = rotary.tables(truthful[ObsKey.POS], truthful[ObsKey.ATT])
         for mine, theirs in zip(believed_tables, truth_tables):
             torch.testing.assert_close(mine[0, 1], theirs[0, 1])
-
-
-class TestTheOldPathIsInert:
-    def test_no_production_view_carries_an_encoded_belief(self):
-        """Phase 4 deletes the substitution machinery; nothing may reach it now."""
-        env = _env()
-        for view in (_view(env, _tracker()), observation_from_state(env.state, _SHIP)):
-            assert ObsKey.BELIEF_TARGETS not in view.data
-            assert ObsKey.BELIEF_SUBSTITUTE not in view.data
-
-    def test_the_encoder_override_is_a_no_op_without_those_channels(self):
-        coordinator = build_standard_coordinator(_SHIP)
-        env = _env()
-        view = _view(env, _tracker())
-        raw = torch.cat(
-            [
-                feature.get_input(view)
-                for feature in coordinator.features
-                if feature.scope in (FeatureScope.SHARED, FeatureScope.SHIP)
-            ],
-            dim=-1,
-        )
-        torch.testing.assert_close(_encoded(coordinator, view), raw)
 
 
 class TestDerivedFeatures:
