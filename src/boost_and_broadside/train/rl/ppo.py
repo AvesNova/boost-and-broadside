@@ -55,7 +55,7 @@ from boost_and_broadside.constants import (
     SHOOT_SLICE,
     TURN_SLICE,
 )
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import ObsKey, YemongObservation, compile_observation
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
@@ -484,6 +484,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # enables both collision and perception fusion, while None remains the
         # explicit eager/debug escape hatch.
         self._env_compile_mode = collision_compile_mode
+        # A league opponent composes its own single-observer view, fused on the
+        # same switch the rest of perception follows.
+        self._build_opponent_view = compile_observation(collision_compile_mode)
         self.wrapper = YemongEnvWrapper(
             num_envs=train_config.scales[0].num_envs,
             ship_config=ship_config,
@@ -1225,8 +1228,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         slots = runtime.league_slots
         # A slot drawn or replaced this shard has no view yet, and the first
         # forward of the loop runs concurrently with a physics step that makes
-        # the state unreadable. Compose here, where it is settled.
-        self._compose_league_views(slots, runtime.action_state, runtime.num_ships)
+        # the state unreadable. Compose here, where it is settled -- and only for
+        # those slots, because nothing stepped since the previous shard's last
+        # decision composed the rest.
+        self._compose_league_views(slots, runtime.action_state, runtime.num_ships, only_new=True)
         for rollout_step in range(self.cfg.num_steps):
             primary = self._collect_primary_step(
                 obs=runtime.obs,

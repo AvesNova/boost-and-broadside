@@ -17,7 +17,6 @@ import torch
 from boost_and_broadside.env.observation import (
     ObsKey,
     YemongObservation,
-    observation_from_state,
     write_pending_action_view,
 )
 from boost_and_broadside.env.state import TensorState
@@ -151,6 +150,8 @@ class OpponentMixin:
         slots: list[LeagueSlot],
         action_state: PendingActionState,
         num_ships: int,
+        *,
+        only_new: bool = False,
     ) -> None:
         """Build each belief-bearing league slot's own legal team-1 view.
 
@@ -165,16 +166,24 @@ class OpponentMixin:
         Slots without a belief are the shared-pass configuration, which has no
         fog and therefore nothing observer-specific to compose; they keep
         slicing the shared view.
+
+        ``only_new`` composes for slots that do not have a view yet, which is
+        what a rollout-shard boundary wants: nothing stepped between the last
+        decision of the previous shard and the first of this one, so recomposing
+        a surviving slot would run ``observe`` twice for one decision and age its
+        hidden ships at double rate.
         """
 
         for slot in slots:
             if slot.policy is None or slot.belief is None:
                 continue
+            if only_new and slot.obs is not None:
+                continue
             state = slice_state(self.wrapper.env.state, slot.start, slot.end)
             visibility = self.wrapper.last_visibility.ship[slot.start : slot.end, 1]
             bullets = self.wrapper.last_visibility.bullet
             source = slot.belief.observe(state, visibility)
-            view = observation_from_state(
+            view = self._build_opponent_view(
                 state,
                 self.ship_config,
                 include_bullets=self.wrapper.include_bullets,

@@ -25,7 +25,6 @@ from boost_and_broadside.env.observation import (
     YemongObservation,
     compile_perception,
     compile_visibility,
-    observation_from_state,
 )
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.perception import TeamVisibility
@@ -742,20 +741,6 @@ class YemongEnvWrapper:
             self.last_visibility,
         )
         return observation
-
-    def privileged_observation(self) -> YemongObservation:
-        """Return omniscient state for auxiliary targets, never policy input.
-
-        Keeping this method explicitly named and separate from ``_get_obs`` makes
-        the one legal use of hidden truth auditable at rollout collection.
-        """
-
-        return observation_from_state(
-            self.env.state,
-            self.ship_config,
-            self._obs_buffers,
-            include_bullets=False,
-        )
 
     def _reset_perception(self, env_mask: torch.Tensor) -> None:
         mask = env_mask[:, None, None]
