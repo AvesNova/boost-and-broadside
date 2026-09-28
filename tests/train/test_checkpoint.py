@@ -167,7 +167,7 @@ class TestSavedCheckpointIntegrity:
         resumed.load_checkpoint(str(saved))
 
         assert sum(e.kind == "scripted" for e in resumed.roster.entries) == 1
-        slots = resumed._prepare_league_slots(resumed.wrapper.num_ships)
+        slots = resumed._prepare_league_slots()
         assert slots and all(slot.entry.kind == "scripted" for slot in slots)
 
     def test_shutdown_waits_for_inflight_checkpoint(self, tmp_path):
@@ -542,7 +542,7 @@ class TestBulletReadingCheckpoints:
             path=str(path), global_step=1, update=1, initial_elo=trainer._live_elo
         )
 
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
 
         assert slots
         assert all(slot.policy.bullet_encoder is not None for slot in slots)
@@ -594,7 +594,7 @@ class TestHeterogeneousLeague:
             path=str(snapshot), global_step=1, update=1, initial_elo=trainer._live_elo
         )
 
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
 
         assert slots[0].entry.bundle.model_config.d_model == 32
         # The opponent's hidden state is its own width, not the trainee's.
@@ -625,7 +625,7 @@ class TestHeterogeneousLeague:
             path=str(snapshot), global_step=1, update=1, initial_elo=trainer._live_elo
         )
 
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
 
         assert not entry.usable
         assert entry.elo == trainer._live_elo  # still on the ladder, just not drawn

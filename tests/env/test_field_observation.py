@@ -31,18 +31,19 @@ def _overlapping_observation():
 
 def test_field_material_features_and_ship_local_index_are_numeric_and_bounded():
     config, obs = _overlapping_observation()
-    assert obs.pos.shape == (1, 4, 2)
-    assert obs.team_id[0, 2:].tolist() == [2, 2]
-    assert obs.alive[0, 2:].tolist() == [True, True]
+    # Two ships, the global token, then the two fields.
+    assert obs.pos.shape == (1, 5, 2)
+    assert obs.team_id[0, 3:].tolist() == [2, 2]
+    assert obs.alive[0, 3:].tolist() == [True, True]
 
     # Absolute target log encoding is k/2. At the shared center the HIGH and
     # VERY_LOW targets blend to exponent -0.5, hence normalized value -0.25.
-    assert obs[ObsKey.FIELD_TARGET_LOG_INDEX][0, 2:, 0].tolist() == pytest.approx([0.5, -1.0])
-    assert obs.local_log_index[0, :, 0].tolist() == pytest.approx([-0.25, 0.0, 0.0, 0.0])
+    assert obs[ObsKey.FIELD_TARGET_LOG_INDEX][0, 3:, 0].tolist() == pytest.approx([0.5, -1.0])
+    assert obs.local_log_index[0, :, 0].tolist() == pytest.approx([-0.25, 0.0, 0.0, 0.0, 0.0])
 
     coordinator = build_standard_coordinator(config)
     encoded = coordinator.get_input_vector(obs)
-    assert encoded.shape[:2] == (1, 4)
+    assert encoded.shape[:2] == (1, 5)
     assert torch.isfinite(encoded).all()
 
     radius_feature = next(feature for feature in coordinator.features if feature.name == "radius")
@@ -52,6 +53,7 @@ def test_field_material_features_and_ship_local_index_are_numeric_and_bounded():
         [
             config.collision_radius / expected_scale,
             config.collision_radius / expected_scale,
+            0.0,  # the global token: no playable boundary in the unbounded arena
             140.0 / expected_scale,
             50.0 / expected_scale,
         ]

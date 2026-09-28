@@ -237,7 +237,7 @@ def run_scenario(
         ship_config,
         device,
     )
-    hidden = policy.initial_hidden(scenario.num_envs, scenario.num_ships, device)
+    hidden = policy.initial_hidden(scenario.num_envs, policy.num_recurrent_tokens, device)
     action_state = PendingActionState.allocate(scenario.num_envs, scenario.num_ships, device)
 
     if device.type == "cuda":
@@ -264,7 +264,9 @@ def run_scenario(
             env.reset_envs(finished)
             action_state.reset(finished)
             belief.reset(finished)
-            new_hidden = policy.reset_hidden_for_envs(new_hidden, finished, scenario.num_ships)
+            new_hidden = policy.reset_hidden_for_envs(
+                new_hidden, finished, policy.num_recurrent_tokens
+            )
         return new_hidden
 
     for _ in range(warmup):

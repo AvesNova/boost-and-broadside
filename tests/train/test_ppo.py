@@ -653,7 +653,7 @@ class TestLeagueAllocation:
     def test_zero_fraction_allocates_no_league(self, tmp_path):
         trainer = _make_trainer(league_fraction=0.0, checkpoint_dir=str(tmp_path))
         assert trainer.B_league == 0
-        assert trainer._prepare_league_slots(trainer.wrapper.num_ships) == []
+        assert trainer._prepare_league_slots() == []
 
     def test_active_width_follows_the_current_fraction(self, tmp_path):
         """A fraction below the allocated peak must return envs to self-play.
@@ -672,7 +672,7 @@ class TestLeagueAllocation:
 
     def test_slots_tile_the_active_block_without_gaps(self, tmp_path):
         trainer = _make_trainer(league_fraction=1.0, league_slots=3, checkpoint_dir=str(tmp_path))
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
         assert len(slots) == 3
         assert slots[0].start == trainer.B_self
         assert slots[-1].end == trainer.cfg.scales[0].num_envs
@@ -682,7 +682,7 @@ class TestLeagueAllocation:
     def test_slot_count_clamps_to_a_narrow_league(self, tmp_path):
         """--smoke runs four envs; asking for four slots must not make empty ones."""
         trainer = _make_trainer(league_fraction=0.5, league_slots=8, checkpoint_dir=str(tmp_path))
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
         assert len(slots) == trainer.B_league
         assert all(slot.end > slot.start for slot in slots)
 
@@ -692,10 +692,10 @@ class TestLeagueAllocation:
             league_slots=1,
             checkpoint_dir=str(tmp_path),
         )
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
         old = slots[0]
 
-        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        trainer._begin_league_replacement(slots)
 
         assert len(slots) == 2
         replacement = slots[1]
@@ -712,7 +712,7 @@ class TestLeagueAllocation:
         assert old.active[1:].all()
         assert not replacement.active[1:].any()
         # A rollout boundary cannot start another generation while one drains.
-        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        trainer._begin_league_replacement(slots)
         assert len(slots) == 2
 
     def test_drained_generation_is_released_at_a_rollout_boundary(self, tmp_path):
@@ -721,8 +721,8 @@ class TestLeagueAllocation:
             league_slots=1,
             checkpoint_dir=str(tmp_path),
         )
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
-        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
+        trainer._begin_league_replacement(slots)
         replacement = slots[1]
 
         done = torch.ones(trainer.cfg.scales[0].num_envs, dtype=torch.bool)
@@ -730,7 +730,7 @@ class TestLeagueAllocation:
         # Prevent this boundary from immediately opening the next legal rotation;
         # this assertion is about releasing the drained generation itself.
         trainer._sample_league_entry = lambda: None
-        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        trainer._begin_league_replacement(slots)
 
         assert slots == [replacement]
         assert replacement.replacement_for is None
@@ -742,14 +742,14 @@ class TestLeagueAllocation:
             league_slots=1,
             checkpoint_dir=str(tmp_path),
         )
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
         slot = slots[0]
         trainer._schedule_state = dataclasses.replace(
             trainer._schedule_state,
             league_fraction=0.5,
         )
 
-        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        trainer._begin_league_replacement(slots)
 
         assert slot.active.tolist() == [True, True, True, True]
         assert slot.target_active.tolist() == [False, False, True, True]
@@ -767,13 +767,13 @@ class TestLeagueAllocation:
             trainer._schedule_state,
             league_fraction=0.5,
         )
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
         trainer._schedule_state = dataclasses.replace(
             trainer._schedule_state,
             league_fraction=1.0,
         )
 
-        trainer._begin_league_replacement(slots, trainer.wrapper.num_ships)
+        trainer._begin_league_replacement(slots)
 
         expanded = next(slot for slot in slots if slot.start == 0)
         assert expanded.target_active.all()
@@ -885,7 +885,7 @@ class TestBeliefDiagnosticAlignment:
             ),
         )
         runtime = trainer._initialize_rollout_runtime()
-        slots = trainer._prepare_league_slots(runtime.num_recurrent)
+        slots = trainer._prepare_league_slots()
         trainer.buffer.reset()
         trainer.buffer.store_initial_hidden(runtime.hidden)
         # Exactly one buffer's worth: a partially filled buffer leaves zeroed
@@ -1164,7 +1164,7 @@ class TestLeagueOpponents:
         """The opponent curriculum is emergent: at step 0 the scripted agent is
         the only sampleable entry, so a 50% league is a 50% scripted split."""
         trainer = _make_trainer(league_fraction=0.5, league_slots=2, checkpoint_dir=str(tmp_path))
-        slots = trainer._prepare_league_slots(trainer.wrapper.num_ships)
+        slots = trainer._prepare_league_slots()
         assert slots
         assert all(slot.entry.kind == "scripted" for slot in slots)
         # A scripted slot needs no weights and carries no recurrent state.
@@ -2172,7 +2172,7 @@ class TestSeatSymmetryOfPendingActions:
     @staticmethod
     def _step_rollout(trainer: PPOTrainer, steps: int):
         runtime = trainer._initialize_rollout_runtime()
-        slots = trainer._prepare_league_slots(runtime.num_recurrent)
+        slots = trainer._prepare_league_slots()
         for _ in range(steps):
             (
                 runtime.obs,

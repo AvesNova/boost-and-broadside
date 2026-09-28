@@ -133,20 +133,23 @@ class MicroBatch(NamedTuple):
             if isinstance(value, torch.Tensor):
                 value.record_stream(stream)
 
-    def slice_envs(self, start: int, end: int, num_recurrent: int) -> "MicroBatch":
+    def slice_envs(self, start: int, end: int) -> "MicroBatch":
         """Slice a contiguous environment range from a staged shard minibatch.
+
+        Recurrent tokens per environment are read off the hidden tensor rather
+        than passed in, so the split follows however the policy sized its state
+        (ships plus the global token) and cannot assume it is the ship count.
 
         Args:
             start: Inclusive environment offset.
             end: Exclusive environment offset.
-            num_recurrent: Recurrent tokens per environment (ships), used to reshape
-                hidden state. Fields are non-recurrent, so this is not N+M.
 
         Returns:
             A view-only micro-batch over ``[start:end]``.
         """
         batch_envs = self.actions.shape[1]
-        n_layers, _, hidden_width = self.hidden.shape
+        n_layers, batch_tokens, hidden_width = self.hidden.shape
+        num_recurrent = batch_tokens // batch_envs  # N+G
         hidden = self.hidden.reshape(
             n_layers,
             batch_envs,
@@ -172,7 +175,7 @@ class MicroBatch(NamedTuple):
             ns_labels=self.ns_labels[:, start:end] if self.ns_labels is not None else None,
         )
 
-    def split_envs(self, num_chunks: int, num_recurrent: int) -> list["MicroBatch"]:
+    def split_envs(self, num_chunks: int) -> list["MicroBatch"]:
         """Split a staged shard minibatch into near-even contiguous views."""
         batch_envs = self.actions.shape[1]
         base, remainder = divmod(batch_envs, num_chunks)
@@ -180,7 +183,7 @@ class MicroBatch(NamedTuple):
         start = 0
         for index in range(num_chunks):
             width = base + (1 if index < remainder else 0)
-            chunks.append(self.slice_envs(start, start + width, num_recurrent))
+            chunks.append(self.slice_envs(start, start + width))
             start += width
         return chunks
 
@@ -975,7 +978,10 @@ class RolloutBuffer:
             n_micro = min(max(n_micro, 1), envs_per_batch)
 
         n_layers = self.initial_hidden.shape[0]
-        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, self.num_ships, D)
+        # Read off the stored state, not assumed to be the ship count: the
+        # policy's recurrent set is ships plus the global token.
+        num_recurrent = self.initial_hidden.shape[1] // self.num_envs  # N+G
+        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, num_recurrent, D)
 
         for start in range(0, self.num_envs, envs_per_batch):
             end = start + envs_per_batch
@@ -991,10 +997,8 @@ class RolloutBuffer:
                     ),
                 )
 
-                # Reconstruct initial hidden: (n_layers, B_mb*N, H) — ships only
-                mb_hidden = hidden_full[:, idx, :, :].reshape(
-                    n_layers, len(idx) * self.num_ships, D
-                )
+                # Reconstruct initial hidden: (n_layers, B_mb*(N+G), H)
+                mb_hidden = hidden_full[:, idx, :, :].reshape(n_layers, len(idx) * num_recurrent, D)
 
                 chunks.append(
                     MicroBatch(
@@ -1121,10 +1125,11 @@ class StoredRollout:
 
         n_layers = self.initial_hidden.shape[0]
         hidden_width = self.initial_hidden.shape[-1]
+        num_recurrent = self.initial_hidden.shape[1] // self.num_envs  # N+G
         hidden_full = self.initial_hidden.reshape(
             n_layers,
             self.num_envs,
-            self.num_ships,
+            num_recurrent,
             hidden_width,
         )
 
@@ -1140,7 +1145,7 @@ class StoredRollout:
             )
             hidden = hidden_full[:, indices].reshape(
                 n_layers,
-                len(indices) * self.num_ships,
+                len(indices) * num_recurrent,
                 hidden_width,
             )
             yield [

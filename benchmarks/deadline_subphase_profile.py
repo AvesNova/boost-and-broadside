@@ -177,7 +177,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     ship_config,
                     device,
                 ),
-                "hidden": policy.initial_hidden(1, ships, device),
+                "hidden": policy.initial_hidden(1, policy.num_recurrent_tokens, device),
             }
         )
     action_state = PendingActionState.allocate(1, ships, device)
@@ -292,7 +292,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             for side in sides:
                 side["belief"].reset(finished)
                 side["hidden"] = side["policy"].reset_hidden_for_envs(
-                    side["hidden"], finished, ships
+                    side["hidden"], finished, side["policy"].num_recurrent_tokens
                 )
 
         if profile_frame:

@@ -211,12 +211,15 @@ class ShipConfig:
             )
 
 
-# Zone tokens a Frontline environment presents, plus the single boundary token
-# that carries the front position and the match clock. Defined here rather than
-# in env/frontline so the launch arithmetic can size a batch without importing
-# the environment; ``env.frontline`` re-exports it.
+# Zone tokens a Frontline environment presents. Defined here rather than in
+# env/frontline so the launch arithmetic can size a batch without importing the
+# environment; ``env.frontline`` re-exports it.
 NUM_FRONTLINE_ZONES = 5
-NUM_FRONTLINE_GLOBAL_TOKENS = 1
+# The global/game token every environment presents in every mode, directly after
+# the ships. It carries the game mode, the match clock and, in Frontline, the
+# front; whether the policy promotes it to a recurrent query is
+# ``ModelConfig.global_token``, not a property of the environment.
+NUM_GLOBAL_TOKENS = 1
 
 
 def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineConfig | None") -> int:
@@ -228,7 +231,7 @@ def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineCon
     not an ``EnvConfig``. Everything derived from the batch -- environment width,
     shard count, the VRAM preset ceilings, the micro-batch bound -- is computed
     from it, and it used to be written out three times with two of the copies
-    omitting Frontline's zone and boundary tokens.
+    omitting Frontline's zone and global tokens.
 
     Adding a token kind means adding a term here.
     ``tests/config/test_entity_tokens.py`` pins the result against an
@@ -236,9 +239,9 @@ def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineCon
     and not the other fails rather than silently resizing the batch.
     """
 
-    tokens = num_ships + num_fields
+    tokens = num_ships + NUM_GLOBAL_TOKENS + num_fields
     if frontline is not None:
-        tokens += NUM_FRONTLINE_ZONES + NUM_FRONTLINE_GLOBAL_TOKENS
+        tokens += NUM_FRONTLINE_ZONES
     return tokens
 
 
@@ -378,6 +381,13 @@ class ModelConfig:
     # and never traverses the recurrent/FFN trunk.
     map_read_mode: Literal["full_attention", "kv_memory"] = "full_attention"
     map_memory_dim: int = 64
+    # Promote the global/game token (the slot directly after the ships) into the
+    # query/recurrent set, so it carries recurrent state and is updated by every
+    # spatial, temporal and FFN sublayer exactly as a ship is. Ship heads still
+    # read ships only. Off, the token is an ordinary map object: K/V-only in
+    # ``kv_memory`` mode, a non-recurrent query in ``full_attention``. On by
+    # default in every mode; the switch exists for the no-global-token ablation.
+    global_token: bool = True
     # Spatial sublayers per block that cross-attend to bullets, counted from the
     # first. 0 disables bullet observation entirely. The read must precede at
     # least one further spatial layer for a ship to reason about fire aimed at

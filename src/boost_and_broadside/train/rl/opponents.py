@@ -284,8 +284,13 @@ class OpponentMixin:
             return entry.policy  # already loaded by _sample_league_entry
         return None
 
-    def _prepare_league_slots(self, num_recurrent: int) -> list[LeagueSlot]:
-        """Draw this rollout's league opponents and lay them out over the block."""
+    def _prepare_league_slots(self) -> list[LeagueSlot]:
+        """Draw this rollout's league opponents and lay them out over the block.
+
+        Each slot's recurrent state is sized by its own policy's
+        ``num_recurrent_tokens``, and its belief by the ship count: the two are
+        not the same number once the global token is recurrent.
+        """
         width = self._active_league_width()
         if width == 0:
             self.roster.evict_all_checkpoint_policies()
@@ -304,14 +309,14 @@ class OpponentMixin:
                 break  # empty roster — the whole block falls back to self-play
             policy = self._league_policy(entry)
             hidden = (
-                policy.initial_hidden(slot_width, num_recurrent, self.device)
+                policy.initial_hidden(slot_width, policy.num_recurrent_tokens, self.device)
                 if policy is not None
                 else None
             )
             belief = (
                 BeliefTracker(
                     slot_width,
-                    num_recurrent,
+                    self.wrapper.num_ships,
                     self.ship_config.dt * self.env_config.action_repeat,
                     self.ship_config,
                     self.device,
@@ -337,7 +342,6 @@ class OpponentMixin:
     def _begin_league_replacement(
         self,
         slots: list[LeagueSlot],
-        num_recurrent: int,
     ) -> None:
         """Retire drained generations and, when possible, rotate one logical slot.
 
@@ -369,14 +373,14 @@ class OpponentMixin:
                         entry=entry,
                         policy=policy,
                         hidden=(
-                            policy.initial_hidden(width, num_recurrent, self.device)
+                            policy.initial_hidden(width, policy.num_recurrent_tokens, self.device)
                             if policy is not None
                             else None
                         ),
                         belief=(
                             BeliefTracker(
                                 width,
-                                num_recurrent,
+                                self.wrapper.num_ships,
                                 self.ship_config.dt * self.env_config.action_repeat,
                                 self.ship_config,
                                 self.device,
@@ -428,14 +432,14 @@ class OpponentMixin:
             entry=entry,
             policy=policy,
             hidden=(
-                policy.initial_hidden(width, num_recurrent, self.device)
+                policy.initial_hidden(width, policy.num_recurrent_tokens, self.device)
                 if policy is not None
                 else None
             ),
             belief=(
                 BeliefTracker(
                     width,
-                    num_recurrent,
+                    self.wrapper.num_ships,
                     self.ship_config.dt * self.env_config.action_repeat,
                     self.ship_config,
                     self.device,
@@ -652,7 +656,9 @@ class OpponentMixin:
         for slot in slots:
             if slot.policy is not None:
                 slot.hidden = slot.policy.reset_hidden_for_envs(
-                    slot.hidden, done_any[slot.start : slot.end], num_recurrent
+                    slot.hidden,
+                    done_any[slot.start : slot.end],
+                    slot.policy.num_recurrent_tokens,
                 )
                 if slot.belief is not None:
                     slot.belief.reset(done_any[slot.start : slot.end])

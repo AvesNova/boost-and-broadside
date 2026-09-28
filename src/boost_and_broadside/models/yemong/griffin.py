@@ -394,10 +394,13 @@ class YemongBlock(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Single-step forward for rollout inference.
 
+        ``N`` in the shape comments is ``num_recurrent``: the ships plus the
+        global token when the policy promotes it.
+
         Args:
-            num_recurrent: leading token count on the recurrent path (ships).
-                Trailing tokens (fields) take the non-recurrent path instead.
-                None means every token is recurrent.
+            num_recurrent: leading token count on the recurrent path (ships and
+                the global token). Trailing tokens (map objects) take the
+                non-recurrent path instead. None means every token is recurrent.
 
         Returns:
             x:           (B, N+M, D) updated embeddings.
@@ -446,8 +449,8 @@ class YemongBlock(nn.Module):
         """Full-sequence forward for PPO re-evaluation.
 
         Args:
-            num_recurrent: leading token count on the recurrent path (ships).
-                None means every token is recurrent.
+            num_recurrent: leading token count on the recurrent path (ships and
+                the global token). None means every token is recurrent.
 
         Returns:
             (T, B, N+M, D) updated embeddings, final RG-LRU h, final conv buf.

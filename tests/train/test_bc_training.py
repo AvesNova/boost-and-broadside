@@ -89,7 +89,7 @@ def test_bc_allocates_no_league_envs_despite_declaring_slots(tmp_path) -> None:
     assert trainer.cfg.league_slots == 4
     assert trainer.B_league == 0
     assert trainer.B_self == _NUM_ENVS
-    assert trainer._prepare_league_slots(trainer.wrapper.num_ships) == []
+    assert trainer._prepare_league_slots() == []
 
 
 def test_bc_requires_the_scripted_controller_it_clones(tmp_path) -> None:

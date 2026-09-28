@@ -260,8 +260,9 @@ class _RolloutRuntime:
 
     num_envs: int
     num_ships: int
-    # Recurrent tokens per env (ships). Fields are non-recurrent, so this is
-    # deliberately not N+M — it is the stride for every hidden-state operation.
+    # Recurrent tokens per env: ships plus the promoted global token (N+G). Map
+    # tokens are non-recurrent, so this is deliberately neither N nor N+G+M --
+    # it is the stride for every hidden-state operation.
     num_recurrent: int
     elo_eval: EloEvaluator
     obs: YemongObservation
@@ -657,8 +658,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Without this the internal fake-tensor trace runs in fp32 and compiles
         # a graph the first real autocast call immediately invalidates.
         if compile_mode is not None and self.device.type == "cuda":
-            # Hidden state covers ship tokens only; fields are non-recurrent.
-            _nt = N
+            # Hidden state covers ships and the global token; map tokens are
+            # non-recurrent.
+            _nt = self._policy_module.num_recurrent_tokens
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _h = self._policy_module.initial_hidden(B, _nt, self.device)
                 self.policy.get_action_and_value(sample_obs, _h, return_enemy_action=self._ego_pass)
@@ -904,12 +906,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         shared_pass: one B pass on raw obs — every ship acts from it.
 
         Args:
-            obs:        YemongObservation with (B, N+M, ...) tensors (raw team IDs).
-            hidden:     (n_layers, B*N, CONV_KERNEL*D) raw-perspective hidden state.
+            obs:        YemongObservation with (B, N+G+M, ...) tensors (raw team IDs).
+            hidden:     (n_layers, B*(N+G), CONV_KERNEL*D) raw-perspective hidden state.
             hidden_t1:  Flipped-perspective hidden state; None in shared_pass.
             num_ships:  N — ship token count for team flipping.
-            num_recurrent: N — recurrent tokens per env, used to split the 2B hidden
-                state. Fields are non-recurrent, so this is ships, not N+M.
+            num_recurrent: N+G — recurrent tokens per env, used to split the 2B
+                hidden state. Map tokens are non-recurrent, so this is not N+G+M.
 
         Returns:
             action_t0:  (B, N, 3) raw-perspective actions.
@@ -939,7 +941,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         batch = hidden.shape[1] // num_recurrent
         obs_t1 = flip_team_obs(obs.for_team(1), num_ships)
         obs_both = obs.concat_batch(obs_t1)
-        hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*N, CONV_KERNEL*D)
+        hidden_both = torch.cat([hidden, hidden_t1], dim=1)  # (n_layers, 2B*(N+G), CK*D)
         action_both, logprob_both, value_both, pred_next_both, enemy_both, hidden_out = (
             self.policy.get_action_and_value(obs_both, hidden_both, return_enemy_action=True)
         )
@@ -950,10 +952,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             value_both[:batch],  # (B, N, K)
             pred_next_both[:batch],  # (B, N, pred_dim)
             pred_next_both[batch:],  # (B, N, pred_dim)
-            hidden_out[:, : batch * num_recurrent, :],  # (n_layers, B*N, CONV_KERNEL*D)
+            hidden_out[:, : batch * num_recurrent, :],  # (n_layers, B*(N+G), CK*D)
             enemy_both[:batch],  # physical indices, Team-0 observer
             enemy_both[batch:],  # physical indices, Team-1 canonical observer
-            hidden_out[:, batch * num_recurrent :, :],  # (n_layers, B*N, CONV_KERNEL*D)
+            hidden_out[:, batch * num_recurrent :, :],  # (n_layers, B*(N+G), CK*D)
         )
 
     def _collect_aux_steps(
@@ -984,7 +986,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     aux_enemy_t1,
                     aux_hidden_t1s[i],
                 ) = self._rollout_policy_pass(
-                    aux_obs[i], aux_hiddens[i], aux_hidden_t1s[i], aux_N, aux_N
+                    aux_obs[i],
+                    aux_hiddens[i],
+                    aux_hidden_t1s[i],
+                    aux_N,
+                    self.policy.num_recurrent_tokens,
                 )
             # Ground truth, not the observation's masked copy (see
             # _collect_primary_step). Read before the step, which may reset.
@@ -1015,10 +1021,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 terminated=aux_done_any,
                 transition_contiguous=aux_info["transition_contiguous"],
             )
-            aux_hiddens[i] = self.policy.reset_hidden_for_envs(aux_hiddens[i], aux_done_any, aux_N)
+            aux_recurrent = self.policy.num_recurrent_tokens
+            aux_hiddens[i] = self.policy.reset_hidden_for_envs(
+                aux_hiddens[i], aux_done_any, aux_recurrent
+            )
             if self._ego_pass:
                 aux_hidden_t1s[i] = self.policy.reset_hidden_for_envs(
-                    aux_hidden_t1s[i], aux_done_any, aux_N
+                    aux_hidden_t1s[i], aux_done_any, aux_recurrent
                 )
             aux_last_dones[i] = aux_done_any
             sources = None
@@ -1075,8 +1084,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Initialize persistent primary, auxiliary, and evaluation rollout state."""
         num_envs = self.cfg.scales[0].num_envs
         num_ships = self.wrapper.num_ships
-        # Only ships carry recurrent state; field tokens take the non-recurrent path.
-        num_recurrent = num_ships
+        # Ships and the promoted global token carry recurrent state; map tokens
+        # take the non-recurrent path. The policy owns the count.
+        num_recurrent = self.policy.num_recurrent_tokens
 
         # Stagger truncation so episodes do not all end in one synchronized block.
         # The seeded first episode in each env is a fragment, so it is withheld
@@ -1140,7 +1150,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 if aux_belief is not None
                 else raw_aux_obs
             )
-            aux_tokens = scale.env_config.num_ships  # recurrent tokens: ships only
+            aux_tokens = self.policy.num_recurrent_tokens
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(
                 self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device)
@@ -1219,12 +1229,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.store_initial_hidden(aux_hidden)
 
         if not runtime.league_slots:
-            runtime.league_slots = self._prepare_league_slots(runtime.num_recurrent)
+            runtime.league_slots = self._prepare_league_slots()
             if self._global_step > 0:
                 for slot in runtime.league_slots:
                     slot.active.zero_()
         else:
-            self._begin_league_replacement(runtime.league_slots, runtime.num_recurrent)
+            self._begin_league_replacement(runtime.league_slots)
         slots = runtime.league_slots
         # A slot drawn or replaced this shard has no view yet, and the first
         # forward of the loop runs concurrently with a physics step that makes
@@ -1697,7 +1707,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         if self.device.type != "cuda":
             for chunk in chunks:
-                for microbatch in chunk.split_envs(split_count(chunk), buffer.num_ships):
+                for microbatch in chunk.split_envs(split_count(chunk)):
                     yield microbatch, microbatch
             return
 
@@ -1709,11 +1719,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             next_staged = (
                 self._stage_microbatch(chunks[index + 1]) if index + 1 < len(chunks) else None
             )
-            source_microbatches = source.split_envs(split_count(source), buffer.num_ships)
-            device_microbatches = staged.device.split_envs(
-                split_count(source),
-                buffer.num_ships,
-            )
+            source_microbatches = source.split_envs(split_count(source))
+            device_microbatches = staged.device.split_envs(split_count(source))
             yield from zip(source_microbatches, device_microbatches, strict=True)
             if next_staged is not None:
                 staged = next_staged
