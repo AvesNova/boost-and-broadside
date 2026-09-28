@@ -147,9 +147,9 @@ its last layer initializes near zero. See open question 1.
 ## Open questions
 
 1. Does the learned head beat dead reckoning at convergence, and at what
-   hidden age? Only a training run answers it. The audit recommends
-   dead-reckoning the position mean by default so the head learns a residual;
-   that is a spec change and needs the user's decision.
+   hidden age? Only a training run answers it. A physics prior is ruled out by
+   design (the head is meant to learn the dynamics); the baseline is the bar,
+   not a shortcut.
 2. Is the correlation latent used at all? One metric (mean `|ρ|` on hidden
    tokens) would tell.
 3. Is the certainty floor at −6 binding on visible tokens?

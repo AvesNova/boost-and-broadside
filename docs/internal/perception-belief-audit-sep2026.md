@@ -14,6 +14,15 @@ slow and expensive, and what in the instructions caused it. The rewritten spec
 
 ## Part 1 — Code audit
 
+Coverage: I read the Phase 3 modules in full (`physical_belief.py`,
+`belief.py`, the composition path in `observation.py`, the label/loss/join
+code in `ppo.py` and `opponents.py`, `NextStateHead`) and the Phase 2 code
+that lives in the same files (`write_pending_action_view`, action-belief
+storage). Phase 0's latch fix, Phase 1's calibration script and the tests
+were checked against the handoffs only, not read. Phases 0 and 1 are small
+and well-described, and Phase 3 rewrote most of what Phase 2 touched, so this
+is where the risk is, but it is not a full four-phase audit.
+
 Headline: **no correctness bug found in the Phase 3 data plane.** The label
 timing (`privileged_means` is read before the step, so `truth[t]` pairs with
 `obs[t]`; labels are `believed[t] → truth[t+1]`), the stream-join order
@@ -23,20 +32,14 @@ out against the spec. What follows is graded by how much I think it matters.
 
 ### Should be fixed or decided (cheap agent)
 
-1. **The learned position mean starts from persistence, not dead reckoning.**
-   `PhysicalNextState.apply_means` adds the head's delta to the current mean, and
-   the head's last layer is initialized near zero, so the belief's default
-   forecast is "the ship stays put". The Phase 3 probe measured dead reckoning
-   (`pos + vel·dt`) at 0.07 px error on visible ships versus 2.5 px for both
-   persistence and the untrained head. The head has to spend capacity learning
-   `pos += vel·dt`, which is a known physical fact. Recommend: make the
-   position label and the belief advance relative to the dead-reckoned position
-   (`current_pos + current_vel * decision_dt`), so the head predicts the residual
-   on top of the physics everyone already knows. This is a spec decision, not
-   only an implementation one, and it changes the position delta calibration
-   (the residual has a much smaller scale than 2.5 px). Files:
-   `train/rl/physical_belief.py` (`labels`, `apply_means`), Phase 1 scale for
-   position. Do the same for attitude (`att + ang_vel·dt`) if it is cheap.
+1. **Persistence-initialized position forecast: not a defect, by owner
+   decision.** The head starts out predicting zero delta (persistence) and the
+   Phase 3 probe shows dead reckoning beating it 34x on visible ships. I first
+   recommended a dead-reckoning prior. The owner's answer: the next-state head
+   exists as a *hard* auxiliary task that helps the policy learn, and giving it
+   the physics for free defeats that purpose. So: no prior. The dead-reckoning
+   diagnostic stays as the bar the head should eventually clear, and the open
+   question is whether it does at convergence.
 
 2. **`shield_delay` has no upper clamp** (`physical_belief.py`,
    `from_ship_config`). The handoff records it. The recharge delay lives on
@@ -59,17 +62,12 @@ out against the spec. What follows is graded by how much I think it matters.
    at the composition site would make the contract local. Same remark for
    `TIME_SINCE_OBSERVATION`.
 
-5. **Hidden-token label semantics should be stated in the spec, because they
-   are a modelling decision, not an implementation detail.** The label for a
-   hidden ship is `truth[t+1] − believed[t]`, which includes the belief's
-   accumulated error. So the head is trained to *correct* the belief toward
-   truth (a filter), not to model one step of dynamics from a believed state.
-   That is defensible and arguably the right thing, but the plan says "add
-   predicted mean deltas" as though the head were a dynamics model. The
-   rewritten spec states it explicitly; confirm it is what you want. If you
-   would rather have a pure dynamics model, the hidden label should be
-   `dynamics(believed[t]) − believed[t]`, which needs a simulator rollout from
-   the believed state and is a different project.
+5. **Hidden-token label semantics are intended.** The label is
+   `truth[t+1] − believed[t]`, so on a hidden ship the head learns to correct
+   the belief toward truth, with the sigmas saying how much to trust it. That is
+   the owner's design: reuse the aux-head machinery to estimate where hidden
+   ships might be. The v1 plan did not say this in so many words; the v2 spec
+   does.
 
 ### Worth knowing, no action required
 

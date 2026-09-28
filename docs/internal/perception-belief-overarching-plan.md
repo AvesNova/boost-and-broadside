@@ -69,8 +69,12 @@ scale for x/y position, one for x/y velocity; zero maps to exactly zero). The
 head sees the current uncertainty and states the next one directly; nothing
 accumulates variance. Propagation uses the predicted mean deterministically.
 The label is `truth[t+1] − believed[t]`, so on a hidden ship the head learns to
-correct the belief toward truth, not to simulate dynamics from a wrong state.
-This is deliberate; see the audit if you want to change it.
+correct the belief toward truth, with its sigmas saying how far to trust that
+correction. This is deliberate: the head began as a hard auxiliary task that
+helps the policy learn, and it now doubles as the estimator of where hidden
+ships are. **Do not give it a dead-reckoning or any other physics prior**;
+learning the dynamics is the point. Dead reckoning stays as a baseline
+diagnostic only.
 
 **Composition.** Every ship slot takes its physical state from exactly one
 source in one selection: truth where the observer owns or currently sees it,
