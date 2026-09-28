@@ -1883,6 +1883,49 @@ class TestNonFiniteGradientGuard:
         assert "train/epochs_completed" in metrics
 
 
+class TestMarginalEntropyDiagnostic:
+    """A diagnostic must not be able to stop a run.
+
+    ``Categorical`` validates that its ``probs`` lie on the simplex. The marginal
+    entropies are a sum over a bf16 joint distribution under autocast, and six
+    bf16 probabilities do not sum to one closely enough to pass that check -- a
+    peaked actor early in a real run raised
+
+        Expected parameter probs ... to satisfy the constraint Simplex()
+
+    from inside the metric block, killing the update. Found while measuring the
+    Phase-3 belief baselines on the production profile; the code predates that
+    phase.
+    """
+
+    def test_bf16_logits_do_not_break_the_marginal_entropies(self):
+        from torch.distributions import Categorical
+
+        from boost_and_broadside.constants import (
+            NUM_POWER_ACTIONS,
+            NUM_SHOOT_ACTIONS,
+            NUM_TURN_ACTIONS,
+        )
+
+        torch.manual_seed(11)
+        # Peaked enough that the softmax concentrates, which is when the bf16
+        # marginals drift furthest from one.
+        logits = (torch.randn(4, 3, 42) * 8.0).to(torch.bfloat16)
+        joint = torch.nn.functional.softmax(logits.float(), dim=-1).reshape(
+            *logits.shape[:-1], NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
+        )
+        for dims in ((-1, -2), (-3, -1), (-3, -2)):
+            entropy = Categorical(probs=joint.sum(dim=dims)).entropy()
+            assert torch.isfinite(entropy).all()
+
+        # And the bf16 route really does fail the check, so this is not vacuous.
+        bf16_joint = torch.nn.functional.softmax(logits, dim=-1).reshape(
+            *logits.shape[:-1], NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
+        )
+        with pytest.raises(ValueError, match="Simplex"):
+            Categorical(probs=bf16_joint.sum(dim=(-3, -1)))
+
+
 class TestUpdateEpochsMetricKeys:
     """AUDIT-015: the accumulator-to-output copy in _update_epochs is table-driven
     for direct renames; this pins the full output key set so a future edit can't

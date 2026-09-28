@@ -29,6 +29,7 @@ import dataclasses
 import json
 import platform
 import subprocess
+import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -99,7 +100,9 @@ def _trainer(args: argparse.Namespace, checkpoint_dir: Path) -> PPOTrainer:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     output = Path(args.out)
-    checkpoint_dir = output.parent / "phase3-baselines-checkpoints"
+    # Outside the repository: the trainer writes a milestone snapshot whatever
+    # the interval, and this probe's artifact is the JSON, not the weights.
+    checkpoint_dir = Path(tempfile.mkdtemp(prefix="phase3-baselines-"))
     started = time.perf_counter()
     result: dict[str, Any] = {
         "schema_version": 1,
@@ -122,6 +125,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "configuration": {
             "profile": "rl",
+            "compile_mode": None,
             "num_envs": args.envs,
             "num_steps": args.steps,
             "updates": args.updates,
