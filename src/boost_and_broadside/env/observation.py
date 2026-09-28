@@ -32,15 +32,6 @@ class ObsKey(StrEnum):
     VISIBLE = "visible"
     BELIEF_VALID = "belief_valid"
     BELIEF_UNCERTAINTY = "belief_uncertainty"
-    # The belief in *target space*, and which tokens it should replace. Written
-    # only by a BeliefTracker. The encoder substitutes these columns after
-    # encoding rather than before, because a hidden ship's belief is not the
-    # encoding of any single position: a Fourier moment whose magnitude has
-    # shrunk says "somewhere around here", and routing it through a raw
-    # coordinate and back would put it straight back on the unit circle -- which
-    # is a claim of certainty, not an absence of one.
-    BELIEF_TARGETS = "belief_targets"
-    BELIEF_SUBSTITUTE = "belief_substitute"
     TIME_SINCE_OBSERVATION = "time_since_observation"
     OBJECT_TYPE = "object_type"
     RADIUS = "radius"
@@ -1017,7 +1008,13 @@ def observation_from_state(
             ObsKey.BELIEF_VALID: torch.cat([known, object_alive], dim=1),
             ObsKey.TIME_SINCE_OBSERVATION: torch.cat(
                 [
-                    ship_zero if belief is None else belief.time_since_observation,
+                    ship_zero
+                    if belief is None
+                    else torch.where(
+                        from_truth.unsqueeze(-1),
+                        torch.zeros_like(belief.time_since_observation),
+                        belief.time_since_observation,
+                    ),
                     object_zero_scalar,
                 ],
                 dim=1,
@@ -1079,10 +1076,19 @@ def observation_from_state(
         return observation
     # Map objects are static and carry no belief, so their spread stays at the
     # certainty floor the source supplies for a ship in sight; only the ship
-    # slots vary.
+    # slots vary. A slot read from truth (owned or currently seen) is forced to
+    # the certainty floor here rather than trusted to ``belief.uncertainty``
+    # already holding it -- true today only because ``observe`` stamps every
+    # visible ship, which is an invariant of another module, not a property of
+    # this composition.
+    ship_uncertainty = torch.where(
+        from_truth.unsqueeze(-1),
+        belief.certain.expand_as(belief.uncertainty),
+        belief.uncertainty,
+    )
     observation.data[ObsKey.BELIEF_UNCERTAINTY] = torch.cat(
         [
-            belief.uncertainty,
+            ship_uncertainty,
             belief.certain.expand(batch, num_objects, belief.uncertainty.shape[-1]),
         ],
         dim=1,

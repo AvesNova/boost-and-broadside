@@ -156,7 +156,7 @@ def wrap_symmetric(x: torch.Tensor, period: float) -> torch.Tensor:
     return (x + period / 2.0) % period - period / 2.0
 
 
-def physical_means_from_state(state: TensorState, ship_config: ShipConfig) -> torch.Tensor:
+def physical_means_from_state(state: TensorState) -> torch.Tensor:
     """Authoritative ``(B, N, 11)`` physical ship state, in calibration order.
 
     ``local_log_index`` is the *natural* logarithm of the refractive index, not
@@ -164,7 +164,6 @@ def physical_means_from_state(state: TensorState, ship_config: ShipConfig) -> to
     physical state and the encoder normalizes afterwards.
     """
 
-    del ship_config  # every channel is already physical in the state
     return torch.stack(
         (
             state.ship_pos.real,

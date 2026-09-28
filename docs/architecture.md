@@ -128,11 +128,8 @@ reads crowded. A bounded `s/(s+k)` compresses the crowded end into 0.02 of its r
 50 ships a side, where `log1p` keeps 0.38 — the difference between a count and a sense of
 crowding, which is the semantics wanted.
 
-The index gradient is an input only. Given the static field map it is a deterministic
-function of position. Making it a target would also mean inventing a `label_scale`, since
-those are `1/std` estimates and there is nothing here to estimate one from. A mis-set
-scale can quietly dominate or vanish inside the aux loss, so it stays out until
-measured.
+The index gradient is a deterministic function of position given the static field map, so
+it carries no information the next-state head could usefully forecast on its own.
 
 Bullets have their own feature set on a separate axis, built by `build_bullet_coordinator`:
 

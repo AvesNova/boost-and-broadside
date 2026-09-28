@@ -1326,9 +1326,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             update_scalers: Update statistics immediately for a single-shard batch.
                 Logical host batches defer this until every shard is available.
         """
-        final_truth = physical_means_from_state(self.wrapper.env.state, self.ship_config)[
-            :, : runtime.num_ships
-        ]
+        final_truth = physical_means_from_state(self.wrapper.env.state)[:, : runtime.num_ships]
         self.buffer.store_final_obs(runtime.obs, privileged_means=final_truth)
         for index, aux_buffer in enumerate(self.aux_buffers):
             aux_buffer.store_final_obs(runtime.aux_obs[index])

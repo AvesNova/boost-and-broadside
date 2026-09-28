@@ -102,7 +102,7 @@ def run_feature_stats_mode(
     sq_err_sum = torch.zeros(P, device=dev)
     count = torch.zeros(1, device=dev)
 
-    prev_means = physical_means_from_state(env.state, ship_config)[:, :N]  # (B, N, 11)
+    prev_means = physical_means_from_state(env.state)[:, :N]  # (B, N, 11)
     prev_alive = env.state.ship_alive.clone()
 
     t0 = time.perf_counter()
@@ -112,7 +112,7 @@ def run_feature_stats_mode(
         runner.observe()
         dones, truncated = runner.advance(runner.actions())
 
-        next_means = physical_means_from_state(env.state, ship_config)[:, :N]
+        next_means = physical_means_from_state(env.state)[:, :N]
         next_alive = env.state.ship_alive.clone()
 
         # Valid: both ships alive this step and no episode boundary
@@ -127,7 +127,7 @@ def run_feature_stats_mode(
         done_any = dones | truncated
         runner.reset_finished(done_any)
 
-        prev_means = physical_means_from_state(env.state, ship_config)[:, :N]
+        prev_means = physical_means_from_state(env.state)[:, :N]
         prev_alive = env.state.ship_alive.clone()
 
         if (step + 1) % 500 == 0:

@@ -152,13 +152,6 @@ class TestComposition:
         hidden = _view(env, tracker)
         assert hidden[ObsKey.POS][0, 1, 0] == pytest.approx(_VISIBLE_X + 10.0)
 
-    def test_the_old_encoded_substitution_channels_are_never_written(self):
-        """Phase 3 replaced them; nothing in a production view may carry one."""
-        env = _env()
-        view = _view(env, _tracker())
-        assert ObsKey.BELIEF_TARGETS not in view.data
-        assert ObsKey.BELIEF_SUBSTITUTE not in view.data
-
 
 class TestInformationFlow:
     def test_hidden_truth_cannot_reach_an_opponent_slot(self):

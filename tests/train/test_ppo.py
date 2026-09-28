@@ -911,9 +911,7 @@ class TestBeliefDiagnosticAlignment:
                 env_stream=None,
                 net_stream=None,
             )
-        final = physical_means_from_state(trainer.wrapper.env.state, trainer.ship_config)[
-            :, : runtime.num_ships
-        ]
+        final = physical_means_from_state(trainer.wrapper.env.state)[:, : runtime.num_ships]
         trainer.buffer.store_final_obs(runtime.obs, privileged_means=final)
         return trainer
 

@@ -692,9 +692,7 @@ class OpponentMixin:
         # the step: ``reset_envs`` reshuffles slot-to-team assignment, and these
         # actions were selected under the pre-step one.
         team_id = self.wrapper.env.state.ship_team_id[:, :num_ships]
-        privileged_means = physical_means_from_state(self.wrapper.env.state, self.ship_config)[
-            :, :num_ships
-        ]
+        privileged_means = physical_means_from_state(self.wrapper.env.state)[:, :num_ships]
         scripted = self._scripted_step_outputs(slots)
         network_args = (obs, hidden, hidden_t1, num_ships, num_recurrent, slots)
         step = self._step_environment_and_network(

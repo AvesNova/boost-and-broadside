@@ -337,7 +337,7 @@ def _run_phase1(
 
         if pred_next_scaled is not None:
             pred_means = next_state.apply_means(curr_means, pred_next_scaled.float())
-            true_means = physical_means_from_state(env.state, ship_config)[:, :N]
+            true_means = physical_means_from_state(env.state)[:, :N]
             # In normalized units, so the eleven channels are comparable and the
             # residual reads against the same scales the objective uses.
             err = next_state.labels(true_means, pred_means)  # (B, N, 11)
@@ -473,9 +473,7 @@ def _run_phase2(
             done_any = dones | truncated
             window_valid &= ~done_any
 
-            stored_true_means.append(
-                physical_means_from_state(env.state, ship_config)[:, :N].clone()
-            )
+            stored_true_means.append(physical_means_from_state(env.state)[:, :N].clone())
             stored_alive.append(env.state.ship_alive.clone())
 
             runner.reset_finished(done_any)
