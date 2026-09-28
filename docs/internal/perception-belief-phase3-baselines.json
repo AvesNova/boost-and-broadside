@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "what": "Phase-3 hidden-state forecast against persistence and dead-reckoning baselines, read from the production belief diagnostics.",
+ "generated_utc": "2026-09-28T01:36:10.597371+00:00",
+ "commit": "d74f66a4ea276171917812ebdf77239bf019575a",
+ "dirty": true,
+ "runtime": {
+  "device": "cuda",
+  "torch": "2.13.0+cu130",
+  "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU"
+ },
+ "configuration": {
+  "profile": "rl",
+  "num_envs": 256,
+  "num_steps": 128,
+  "updates": 10
+ },
+ "status": "running",
+ "updates": []
+}

@@ -25,6 +25,7 @@ few minutes of training beats a linear extrapolator.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import platform
 import subprocess
@@ -37,8 +38,7 @@ import torch
 
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
-from boost_and_broadside.config import ModelConfig, TrainConfig
-from boost_and_broadside.profiles import PROFILES
+from boost_and_broadside.profiles import resolve_named_profile
 from boost_and_broadside.train.rl.ppo import PPOTrainer
 
 #: The series compared, and the baseline each is measured against.
@@ -70,51 +70,30 @@ def _git(*args: str) -> str:
 
 
 def _trainer(args: argparse.Namespace, checkpoint_dir: Path) -> PPOTrainer:
-    """The production ``rl`` profile, narrowed to a probe-sized batch."""
+    """The production ``rl`` profile, narrowed to a probe-sized batch.
 
-    profile = PROFILES["rl"]
+    Uncompiled on purpose: this measures forecast quality, and Inductor startup
+    on a laptop GPU costs more than the whole probe.
+    """
+
+    profile = resolve_named_profile("rl")
     scale = profile.train_config.scales[0]
-    train_config = TrainConfig(
-        **{
-            **{
-                field: getattr(profile.train_config, field)
-                for field in profile.train_config.__dataclass_fields__
-            },
-            "scales": (
-                type(scale)(
-                    **{
-                        **{
-                            field: getattr(scale, field)
-                            for field in scale.__dataclass_fields__
-                        },
-                        "num_envs": args.envs,
-                    }
-                ),
-            ),
-            "num_steps": args.steps,
-            "rollouts_per_update": 1,
-            "total_timesteps": args.envs * args.steps * args.updates,
-            "checkpoint_dir": str(checkpoint_dir),
-            "save_interval": 10**9,
-            "league_fraction": 0.0,
-        }
-    )
-    model_config = ModelConfig(
-        **{
-            **{
-                field: getattr(profile.model_config, field)
-                for field in profile.model_config.__dataclass_fields__
-            },
-            "compile_mode": None,
-        }
+    train_config = dataclasses.replace(
+        profile.train_config,
+        scales=(dataclasses.replace(scale, num_envs=args.envs),),
+        num_steps=args.steps,
+        rollouts_per_update=1,
+        total_timesteps=args.envs * args.steps * args.updates,
+        checkpoint_dir=str(checkpoint_dir),
     )
     return PPOTrainer(
         train_config=train_config,
-        model_config=model_config,
+        model_config=profile.model_config,
         ship_config=profile.ship_config,
         device=args.device,
         use_wandb=False,
         scripted_agent=StochasticScriptedAgent(profile.ship_config, StochasticAgentConfig()),
+        compile_mode=None,
     )
 
 
