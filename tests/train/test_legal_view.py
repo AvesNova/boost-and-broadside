@@ -118,3 +118,48 @@ class TestTheOldPathIsInert:
             dim=-1,
         )
         torch.testing.assert_close(_encoded(coordinator, view), raw)
+
+
+class TestDerivedFeatures:
+    """A feature over several ships must read the legal view, not truth.
+
+    ``local_presence`` is the case that matters: it is a sum over every ship a
+    token is allowed to see, so computing it from privileged truth and masking
+    afterwards would leak a hidden enemy's *position* through an aggregate the
+    observer is entitled to have — just not that one.
+    """
+
+    def test_presence_follows_the_believed_position(self):
+        coordinator = build_standard_coordinator(_SHIP, local_presence=True)
+        (presence,) = [f for f in coordinator.features if f.name == "local_presence"]
+
+        env = _env()
+        tracker = _tracker()
+        _view(env, tracker)
+        # Send the remembered enemy a long way off, and truth somewhere else.
+        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
+        prediction[0, 1, POSITION_X] = 160.0  # 400 px
+        tracker.advance(prediction)
+        _place(env, enemy_x=_HIDDEN_X)
+        believed = _view(env, tracker)
+
+        _place(env, enemy_x=_VISIBLE_X + 400.0)
+        at_belief = observation_from_state(env.state, _SHIP)
+        _place(env, enemy_x=_HIDDEN_X)
+        at_truth = observation_from_state(env.state, _SHIP)
+
+        mine = presence.get_input(believed)[0, 0]
+        torch.testing.assert_close(mine, presence.get_input(at_belief)[0, 0])
+        assert not torch.allclose(mine, presence.get_input(at_truth)[0, 0]), (
+            "the aggregate is reading truth, not the composed view"
+        )
+
+    def test_a_never_seen_ship_contributes_nothing(self):
+        coordinator = build_standard_coordinator(_SHIP, local_presence=True)
+        (presence,) = [f for f in coordinator.features if f.name == "local_presence"]
+
+        env = _env()
+        _place(env, enemy_x=_HIDDEN_X)
+        view = _view(env, _tracker())
+        assert not view[ObsKey.BELIEF_VALID][0, 1]
+        assert presence.get_input(view)[0, 0, 1] == 0.0, "enemy presence from a ship never seen"
