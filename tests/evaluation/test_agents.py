@@ -45,16 +45,16 @@ def policy_agent():
     return ResolvedAgent("policy", _policy())
 
 
-def test_the_policy_sizes_its_own_state_over_ships_alone(policy_agent) -> None:
-    """Not the entity-token axis. A Frontline environment presents ships, fields,
-    zones and a boundary token; only the ships are recurrent."""
+def test_the_policy_sizes_its_own_state_over_ships_and_the_global_token(policy_agent) -> None:
+    """Not the entity-token axis. A Frontline environment presents ships, the
+    global token, fields and zones; only the ships and the global token recur."""
 
     init_hidden(policy_agent, 3, "cpu")
 
     hidden = policy_agent.hidden
     assert hidden.shape[0] == policy_agent.agent.n_hidden_layers
     assert hidden.shape[1] == 3 * policy_agent.agent.num_recurrent_tokens
-    assert policy_agent.agent.num_recurrent_tokens == _NUM_SHIPS
+    assert policy_agent.agent.num_recurrent_tokens == _NUM_SHIPS + 1
     assert torch.count_nonzero(hidden) == 0
 
 

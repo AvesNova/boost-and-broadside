@@ -4,7 +4,7 @@ Everything derived from the logical batch -- environment width, shard count, the
 VRAM preset ceilings, the micro-batch bound -- is computed from a *prediction* of
 how wide the observation's token axis will be. That prediction used to be written
 out twice, and the two copies disagreed: the validator omitted Frontline's zone
-and boundary tokens and so capped the micro-batch at two thirds of the minibatch
+and global tokens and so capped the micro-batch at two thirds of the minibatch
 that actually existed.
 
 These tests pin the prediction against an observation a real environment builds,
@@ -85,9 +85,13 @@ def test_the_property_and_the_function_are_one_derivation() -> None:
     )
 
 
-def test_frontline_adds_the_zone_and_boundary_tokens() -> None:
-    """Stated as a difference so the six is never silently absorbed."""
+def test_frontline_adds_the_zone_tokens() -> None:
+    """Stated as a difference so the five is never silently absorbed.
+
+    The global token is in every mode, so it is not part of the difference.
+    """
     shared = {"num_ships": 8, "max_bullets": 0, "max_episode_steps": 600, "num_fields": 10}
     plain = EnvConfig(**shared)
     fronted = EnvConfig(**shared, frontline=_frontline())
-    assert fronted.num_entity_tokens - plain.num_entity_tokens == 6
+    assert plain.num_entity_tokens == 8 + 1 + 10
+    assert fronted.num_entity_tokens - plain.num_entity_tokens == 5

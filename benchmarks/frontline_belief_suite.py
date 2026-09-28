@@ -109,7 +109,9 @@ def _run_learned_accuracy(
         allow_config_drift=True,
     )
     policy = bundle.policy
-    hidden = policy.initial_hidden(games, env_config.num_ships, device)
+    hidden = policy.initial_hidden(
+        games, policy.recurrent_token_count(env_config.num_ships), device
+    )
     action_state = PendingActionState.allocate(games, env_config.num_ships, device)
     tracker = DualBeliefTracker(
         games,

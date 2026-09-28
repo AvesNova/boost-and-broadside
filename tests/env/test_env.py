@@ -570,7 +570,8 @@ class TestYemongEnvWrapper:
         assert "previous_action" in obs
 
     def test_obs_shapes_correct(self, ship_cfg, env_cfg, reward_cfg):
-        B, N = 2, env_cfg.num_ships
+        B = 2
+        N = env_cfg.num_entity_tokens  # ships, then the global token, then map objects
         wrapper = YemongEnvWrapper(
             num_envs=B,
             ship_config=ship_cfg,

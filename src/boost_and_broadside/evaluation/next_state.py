@@ -3,7 +3,7 @@
 import torch
 
 from boost_and_broadside.constants import NUM_JOINT_ACTIONS
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import GameMode, ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.runtime.actions import write_pending_action_view
 from boost_and_broadside.train.rl.physical_belief import (
@@ -42,7 +42,7 @@ def means_to_observation(
     """
     attitude = means[..., ATTITUDE : ATTITUDE + 1]
     alive = torch.where(
-        prev_obs[ObsKey.GAME_MODE][:, -1, 0:1] > 0,
+        prev_obs[ObsKey.GAME_MODE][:, num_ships, int(GameMode.FRONTLINE)].unsqueeze(-1) > 0,
         prev_obs.alive[:, :num_ships],
         means[..., HEALTH] > ALIVE_HEALTH_EPS,
     )

@@ -6,7 +6,12 @@ from enum import IntEnum, StrEnum
 import torch
 import torch.nn.functional as F
 
-from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES, EnvConfig, ShipConfig
+from boost_and_broadside.config.core import (
+    NUM_FRONTLINE_ZONES,
+    NUM_GLOBAL_TOKENS,
+    EnvConfig,
+    ShipConfig,
+)
 from boost_and_broadside.constants import (
     EPS,
     NUM_JOINT_ACTIONS,
@@ -64,7 +69,17 @@ class ObjectType(IntEnum):
     SHIP = 0
     FIELD = 1
     ZONE = 2
-    BOUNDARY = 3
+    GLOBAL = 3
+
+
+class GameMode(IntEnum):
+    """The game a token axis describes, one-hot on the global token."""
+
+    ELIMINATION = 0
+    FRONTLINE = 1
+
+
+NUM_GAME_MODES = len(GameMode)
 
 
 class BulletObsKey(StrEnum):
@@ -103,8 +118,8 @@ _TOKEN_LAST_KEYS = frozenset(
 class YemongObservation:
     """Typed immutable observation for all entities.
 
-    data: maps ObsKey → tensors whose token axis contains ships, fields, zones,
-    and the combined boundary/global token.
+    data: maps ObsKey → tensors whose token axis is laid out ships, the global
+    token, fields, then zones.
 
     team_id:  (B, tokens) int32 — 0/1 owned objects, 2 neutral objects
     alive:    (B, tokens) bool
@@ -159,9 +174,12 @@ class YemongObservation:
             ObsKey.FRONT_POSITION,
             ObsKey.FRONT_WIN_THRESHOLD,
             ObsKey.TIME_REMAINING,
-            ObsKey.GAME_MODE,
         }:
             return torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
+        if resolved == ObsKey.GAME_MODE:
+            return torch.zeros(
+                (*team_id.shape, NUM_GAME_MODES), dtype=torch.float32, device=team_id.device
+            )
         raise KeyError(resolved)
 
     def __contains__(self, key: "ObsKey | str") -> bool:
@@ -284,7 +302,7 @@ class YemongObservation:
         Ship and bullet team IDs flip *together*. A bullet's team is its
         shooter's, so mirroring one without the other shows a policy its own
         fire as the enemy's. Inactive bullet slots flip too, which is harmless —
-        they are masked out of attention. Field and boundary tokens use the
+        they are masked out of attention. Field and global tokens use the
         neutral team ID and therefore remain unchanged. Zone ownership swaps
         with the ship teams so the canonical team-0 view stays self-relative.
 
@@ -485,10 +503,7 @@ class ObservationBuffers:
             device=device,
             dtype=torch.float32,
         )
-        num_objects = num_fields + num_zones + (1 if num_zones > 0 else 0)
-        if num_objects == 0:
-            return cls(ship_radius=ship_radius)
-
+        num_objects = NUM_GLOBAL_TOKENS + num_fields + num_zones
         return cls(
             ship_radius=ship_radius,
             object_zero_vec=torch.zeros(num_envs, num_objects, 2, device=device),
@@ -793,6 +808,24 @@ def _index_log_scale(ship_config: ShipConfig) -> float:
     return 2.0 * math.log(ship_config.field_index_step)
 
 
+def _game_mode_channel(
+    batch: int,
+    num_ships: int,
+    num_objects: int,
+    mode: GameMode,
+    device: torch.device,
+) -> torch.Tensor:
+    """The game mode, one-hot on the global token and zero on every other token.
+
+    Categorical rather than a flag, so a batch that mixes modes -- or a mode
+    added later -- needs no new channel and no reinterpretation of an old one.
+    """
+
+    channel = torch.zeros((batch, num_ships + num_objects, NUM_GAME_MODES), device=device)
+    channel[:, num_ships, int(mode)] = 1.0
+    return channel
+
+
 def observation_from_state(
     state: TensorState,
     ship_config: ShipConfig,
@@ -890,86 +923,82 @@ def observation_from_state(
     num_fields = state.num_fields
     num_zones = state.num_zones
     has_frontline = num_zones > 0
-    num_objects = num_fields + num_zones + int(has_frontline)
+    num_objects = NUM_GLOBAL_TOKENS + num_fields + num_zones
     ship_zero = torch.zeros_like(ship_local_log_index)
     ship_type = torch.zeros_like(state.ship_team_id)
     ship_no_zone = torch.full_like(state.ship_team_id, 5)
 
-    if num_objects == 0:
-        object_pos = ship_pos[:, :0]
-        object_radius = ship_zero[:, :0]
-        object_type = state.ship_team_id[:, :0]
-        object_zone_role = state.ship_team_id[:, :0]
-        object_team = state.ship_team_id[:, :0]
-        object_alive = state.ship_alive[:, :0]
-        object_zero_vec = ship_pos[:, :0]
-        object_zero_scalar = ship_zero[:, :0]
-        object_prev_action = ship_prev_action[:, :0]
-    else:
-        assert buffers.object_zero_vec is not None
-        assert buffers.object_zero_scalar is not None
-        assert buffers.object_team_id is not None
-        assert buffers.object_alive is not None
-        assert buffers.object_prev_action is not None
-        assert buffers.ship_object_feature_zeros is not None
-        object_zero_vec = buffers.object_zero_vec
-        object_zero_scalar = buffers.object_zero_scalar
-        object_prev_action = buffers.object_prev_action
+    assert buffers.object_zero_vec is not None
+    assert buffers.object_zero_scalar is not None
+    assert buffers.object_alive is not None
+    assert buffers.object_prev_action is not None
+    object_zero_vec = buffers.object_zero_vec
+    object_zero_scalar = buffers.object_zero_scalar
+    object_prev_action = buffers.object_prev_action
+    object_alive = buffers.object_alive
 
-        field_pos = torch.stack([state.field_pos.real, state.field_pos.imag], dim=-1)
-        position_parts = [
-            field_pos,
+    def object_column(dtype_value: int, count: int) -> torch.Tensor:
+        return torch.full((batch, count), dtype_value, dtype=torch.int32, device=state.device)
+
+    # The global token comes first, directly after the ships, so the policy's
+    # query/recurrent set is one contiguous prefix of the token axis. It sits
+    # at the map center with the playable radius; neither is meaningful outside
+    # Frontline, where both are zero.
+    object_pos = torch.cat(
+        [
+            torch.stack([state.map_center.real, state.map_center.imag], dim=-1).unsqueeze(1),
+            torch.stack([state.field_pos.real, state.field_pos.imag], dim=-1),
             torch.stack([state.zone_pos.real, state.zone_pos.imag], dim=-1),
-        ]
-        radius_parts = [state.field_radius.unsqueeze(-1), state.zone_radius.unsqueeze(-1)]
-        type_parts = [
-            torch.full((batch, num_fields), 1, dtype=torch.int32, device=state.device),
-            torch.full((batch, num_zones), 2, dtype=torch.int32, device=state.device),
-        ]
-        role_parts = [
-            torch.full((batch, num_fields), 5, dtype=torch.int32, device=state.device),
-            state.zone_roles.to(torch.int32),
-        ]
-        zone_team = torch.where(
-            state.zone_roles <= 1,
-            torch.zeros_like(state.zone_roles, dtype=torch.int32),
-            torch.where(
-                state.zone_roles >= 3,
-                torch.ones_like(state.zone_roles, dtype=torch.int32),
-                torch.full_like(state.zone_roles, 2, dtype=torch.int32),
-            ),
-        )
-        team_parts = [
-            torch.full((batch, num_fields), 2, dtype=torch.int32, device=state.device),
-            zone_team,
-        ]
-        if has_frontline:
-            position_parts.append(
-                torch.stack([state.map_center.real, state.map_center.imag], dim=-1).unsqueeze(1)
-            )
-            radius_parts.append(state.playable_boundary_radius[:, None, None])
-            type_parts.append(torch.full((batch, 1), 3, dtype=torch.int32, device=state.device))
-            role_parts.append(torch.full((batch, 1), 5, dtype=torch.int32, device=state.device))
-            team_parts.append(torch.full((batch, 1), 2, dtype=torch.int32, device=state.device))
-        object_pos = torch.cat(position_parts, dim=1)
-        object_radius = torch.cat(radius_parts, dim=1)
-        object_type = torch.cat(type_parts, dim=1)
-        object_zone_role = torch.cat(role_parts, dim=1)
-        object_team = torch.cat(team_parts, dim=1)
-        object_alive = buffers.object_alive
+        ],
+        dim=1,
+    )
+    object_radius = torch.cat(
+        [
+            state.playable_boundary_radius[:, None, None],
+            state.field_radius.unsqueeze(-1),
+            state.zone_radius.unsqueeze(-1),
+        ],
+        dim=1,
+    )
+    object_type = torch.cat(
+        [
+            object_column(int(ObjectType.GLOBAL), NUM_GLOBAL_TOKENS),
+            object_column(int(ObjectType.FIELD), num_fields),
+            object_column(int(ObjectType.ZONE), num_zones),
+        ],
+        dim=1,
+    )
+    object_zone_role = torch.cat(
+        [object_column(5, NUM_GLOBAL_TOKENS + num_fields), state.zone_roles.to(torch.int32)],
+        dim=1,
+    )
+    zone_team = torch.where(
+        state.zone_roles <= 1,
+        torch.zeros_like(state.zone_roles, dtype=torch.int32),
+        torch.where(
+            state.zone_roles >= 3,
+            torch.ones_like(state.zone_roles, dtype=torch.int32),
+            torch.full_like(state.zone_roles, 2, dtype=torch.int32),
+        ),
+    )
+    object_team = torch.cat([object_column(2, NUM_GLOBAL_TOKENS + num_fields), zone_team], dim=1)
+
+    field_start = NUM_GLOBAL_TOKENS
+    zone_start = field_start + num_fields
 
     def object_scalar(
         field: torch.Tensor | None = None,
         zone: torch.Tensor | None = None,
-        boundary: torch.Tensor | None = None,
+        global_token: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        parts = [
-            object_zero_scalar[:, :num_fields] if field is None else field,
-            object_zero_scalar[:, num_fields : num_fields + num_zones] if zone is None else zone,
-        ]
-        if has_frontline:
-            parts.append(object_zero_scalar[:, -1:] if boundary is None else boundary)
-        return torch.cat(parts, dim=1) if parts else object_zero_scalar
+        return torch.cat(
+            [
+                object_zero_scalar[:, :field_start] if global_token is None else global_token,
+                object_zero_scalar[:, field_start:zone_start] if field is None else field,
+                object_zero_scalar[:, zone_start:] if zone is None else zone,
+            ],
+            dim=1,
+        )
 
     field_target = torch.log(state.field_index).unsqueeze(-1) / log_scale
     # Only the frontline layout has a front to measure against, and the residue
@@ -1049,29 +1078,36 @@ def observation_from_state(
                 [ship_zero, object_scalar(zone=zone_defensive)], dim=1
             ),
             ObsKey.FRONT_POSITION: torch.cat(
-                [ship_zero, object_scalar(boundary=state.front_position.float()[:, None, None])],
-                dim=1,
-            ),
-            ObsKey.FRONT_WIN_THRESHOLD: torch.cat(
-                [
-                    ship_zero,
-                    object_scalar(boundary=state.front_win_threshold.float()[:, None, None]),
-                ],
-                dim=1,
-            ),
-            ObsKey.TIME_REMAINING: torch.cat(
-                [ship_zero, object_scalar(boundary=remaining[:, None, None])], dim=1
-            ),
-            ObsKey.GAME_MODE: torch.cat(
                 [
                     ship_zero,
                     object_scalar(
-                        boundary=torch.ones((batch, 1, 1), device=state.device)
+                        global_token=state.front_position.float()[:, None, None]
                         if has_frontline
                         else None
                     ),
                 ],
                 dim=1,
+            ),
+            ObsKey.FRONT_WIN_THRESHOLD: torch.cat(
+                [
+                    ship_zero,
+                    object_scalar(
+                        global_token=state.front_win_threshold.float()[:, None, None]
+                        if has_frontline
+                        else None
+                    ),
+                ],
+                dim=1,
+            ),
+            ObsKey.TIME_REMAINING: torch.cat(
+                [ship_zero, object_scalar(global_token=remaining[:, None, None])], dim=1
+            ),
+            ObsKey.GAME_MODE: _game_mode_channel(
+                batch,
+                state.max_ships,
+                num_objects,
+                GameMode.FRONTLINE if has_frontline else GameMode.ELIMINATION,
+                state.device,
             ),
         },
     )

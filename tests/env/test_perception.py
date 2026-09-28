@@ -207,7 +207,7 @@ def test_hidden_enemy_channels_and_projectiles_are_zeroed_before_policy() -> Non
         state, ship, _config(vision_range=100.0), include_bullets=True
     )
 
-    assert not obs.visible[0, 2:].any()
+    assert not obs.visible[0, 2:4].any()
     # Three ship channels are the same constant for every slot and so say
     # nothing about the ship occupying it: its collision radius, its SHIP object
     # type, and the explicit "no zone role" value. Direct legal composition
@@ -236,8 +236,8 @@ def test_team_views_are_independent_not_label_swaps_of_hidden_truth() -> None:
     team1 = obs.for_team(1)
 
     assert obs.visible[0, :2].all()
-    assert not obs.visible[0, 2:].any()
-    assert team1.visible[0, 2:].all()
+    assert not obs.visible[0, 2:4].any()
+    assert team1.visible[0, 2:4].all()
     assert not team1.visible[0, :2].any()
 
 
@@ -309,7 +309,7 @@ def test_frontline_scripted_agent_does_not_target_hidden_enemy_truth() -> None:
     assert torch.equal(first_probs[0, :2], second_probs[0, :2])
 
 
-def test_frontline_observation_has_typed_field_zone_and_boundary_tokens() -> None:
+def test_frontline_observation_has_typed_global_field_and_zone_tokens() -> None:
     from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 
     ship = frontline_ship_config(ShipConfig())
@@ -318,19 +318,19 @@ def test_frontline_observation_has_typed_field_zone_and_boundary_tokens() -> Non
     obs, _ = perceived_observation_from_state(env.state, ship, PLAY_ENV_CONFIG)
     num_ships = PLAY_ENV_CONFIG.num_ships
     num_fields = PLAY_ENV_CONFIG.num_fields
-    zone_start = num_ships + num_fields
-    boundary = PLAY_ENV_CONFIG.num_entity_tokens - 1
+    global_token = num_ships
+    zone_start = num_ships + 1 + num_fields
 
     assert obs.pos.shape == (2, PLAY_ENV_CONFIG.num_entity_tokens, 2)
     assert (obs[ObsKey.OBJECT_TYPE][:, :num_ships] == 0).all()
-    assert (obs[ObsKey.OBJECT_TYPE][:, num_ships:zone_start] == 1).all()
-    assert (obs[ObsKey.OBJECT_TYPE][:, zone_start:boundary] == 2).all()
-    assert (obs[ObsKey.OBJECT_TYPE][:, boundary] == 3).all()
-    assert torch.equal(obs[ObsKey.ZONE_ROLE][:, zone_start:boundary], env.state.zone_roles)
+    assert (obs[ObsKey.OBJECT_TYPE][:, global_token] == 3).all()
+    assert (obs[ObsKey.OBJECT_TYPE][:, global_token + 1 : zone_start] == 1).all()
+    assert (obs[ObsKey.OBJECT_TYPE][:, zone_start:] == 2).all()
+    assert torch.equal(obs[ObsKey.ZONE_ROLE][:, zone_start:], env.state.zone_roles)
     assert obs.alive[:, num_ships:].all()
     assert obs.visible[:, num_ships:].all()
-    assert torch.equal(obs.pos[:, boundary, 0], env.state.map_center.real)
-    assert torch.equal(obs.radius[:, boundary, 0], env.state.playable_boundary_radius)
+    assert torch.equal(obs.pos[:, global_token, 0], env.state.map_center.real)
+    assert torch.equal(obs.radius[:, global_token, 0], env.state.playable_boundary_radius)
 
 
 def test_team_canonicalization_flips_strategic_semantics_as_well_as_labels() -> None:
@@ -344,8 +344,7 @@ def test_team_canonicalization_flips_strategic_semantics_as_well_as_labels() -> 
     env.state.zone_capture_direction[0] = torch.tensor([1, -1, 0, 1, -1], dtype=torch.int8)
     obs, _ = perceived_observation_from_state(env.state, ship, PLAY_ENV_CONFIG)
     team1 = obs.for_team(1).flip_team(PLAY_ENV_CONFIG.num_ships)
-    zone_start = PLAY_ENV_CONFIG.num_ships + PLAY_ENV_CONFIG.num_fields
-    boundary = PLAY_ENV_CONFIG.num_entity_tokens - 1
+    zone_start = PLAY_ENV_CONFIG.num_ships + 1 + PLAY_ENV_CONFIG.num_fields
 
     expected_roles = torch.where(
         env.state.zone_roles == 0,
@@ -360,17 +359,17 @@ def test_team_canonicalization_flips_strategic_semantics_as_well_as_labels() -> 
             ),
         ),
     )
-    assert torch.equal(team1[ObsKey.ZONE_ROLE][:, zone_start:boundary], expected_roles)
-    zone_team_ids = obs.team_id[:, zone_start:boundary]
+    assert torch.equal(team1[ObsKey.ZONE_ROLE][:, zone_start:], expected_roles)
+    zone_team_ids = obs.team_id[:, zone_start:]
     expected_team_ids = torch.where(
         zone_team_ids == 0,
         torch.ones_like(zone_team_ids),
         torch.where(zone_team_ids == 1, torch.zeros_like(zone_team_ids), zone_team_ids),
     )
-    assert torch.equal(team1.team_id[:, zone_start:boundary], expected_team_ids)
-    assert team1[ObsKey.FRONT_POSITION][0, boundary, 0] == -2
+    assert torch.equal(team1.team_id[:, zone_start:], expected_team_ids)
+    assert team1[ObsKey.FRONT_POSITION][0, PLAY_ENV_CONFIG.num_ships, 0] == -2
     assert torch.equal(
-        team1[ObsKey.CAPTURE_DIRECTION][0, zone_start:boundary, 0],
+        team1[ObsKey.CAPTURE_DIRECTION][0, zone_start:, 0],
         -env.state.zone_capture_direction[0].float(),
     )
 

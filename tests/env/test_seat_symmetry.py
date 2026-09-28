@@ -327,7 +327,9 @@ def test_the_mirrored_game_gives_the_policy_the_same_answers() -> None:
         # fail on the draw rather than on the distribution behind it.
         torch.manual_seed(0)
         with torch.no_grad():
-            hidden = policy.initial_hidden(NUM_ENVS, NUM_SHIPS, torch.device("cpu"))
+            hidden = policy.initial_hidden(
+                NUM_ENVS, policy.recurrent_token_count(NUM_SHIPS), torch.device("cpu")
+            )
             outputs.append(policy.get_action_and_value(view, hidden))
 
     names = ("action", "logprob", "value", "pred_next", "hidden")

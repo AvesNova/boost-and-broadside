@@ -194,7 +194,10 @@ def small_cpu_fixture() -> tuple[
     # Force distinct weights while retaining identical architecture.
     with torch.no_grad():
         next(policies[1].parameters()).add_(0.125)
-    hidden = tuple(policy.initial_hidden(1, 2, torch.device("cpu")) for policy in policies)
+    hidden = tuple(
+        policy.initial_hidden(1, policy.num_recurrent_tokens, torch.device("cpu"))
+        for policy in policies
+    )
     return policies, observations, hidden
 
 
@@ -230,7 +233,9 @@ def _frontline_50v50_inputs(device: torch.device):
     )
     root = wrapper.reset()
     policies = tuple(policy.to(device).eval() for policy in build_frontline_50v50_policies())
-    hidden = tuple(policy.initial_hidden(1, 100, device) for policy in policies)
+    hidden = tuple(
+        policy.initial_hidden(1, policy.recurrent_token_count(100), device) for policy in policies
+    )
     return policies, (root.for_team(0), root.for_team(1)), hidden
 
 

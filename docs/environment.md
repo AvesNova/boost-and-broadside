@@ -117,16 +117,19 @@ shadow geometry costs far less than the full-viewport composite that follows it,
 nothing to gain from holding a stale mask. The full-information spectator mode has no
 overlay.
 
-The entity-token axis is typed rather than inferred from position:
+The entity-token axis is typed rather than inferred from position, and laid out in this
+order:
 
 | Token type | Frontline count | Globally visible information |
 |---|---:|---|
 | Ship | 10 | Team-relative dynamic state when visible |
+| Global | 1 (every mode) | Map center, playable radius, front, win threshold, time remaining, one-hot game mode |
 | Field | configured (`10` in play) | Geometry, target index |
 | Zone | 5 | Position, role/owner, capture progress and direction |
-| Boundary/global | 1 | Playable radius, front, win threshold, time remaining, mode |
 
-The boundary and global state intentionally share one token. Team canonicalization swaps
+The global token is present in every mode, directly after the ships. The policy runs it
+through the query/recurrent trunk with the ships (`ModelConfig.global_token`); no head reads
+it. Fields and zones stay key/value-only map memory. Team canonicalization swaps
 zone ownership and roles as well as ship/bullet labels, and negates front/capture direction.
 Finite-vision training therefore requires `ego_pass`; the legacy `shared_pass` cannot safely
 serve one masked team view to both sides and is rejected.

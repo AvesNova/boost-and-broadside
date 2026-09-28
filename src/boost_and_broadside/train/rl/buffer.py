@@ -139,8 +139,9 @@ class MicroBatch(NamedTuple):
         Args:
             start: Inclusive environment offset.
             end: Exclusive environment offset.
-            num_recurrent: Recurrent tokens per environment (ships), used to reshape
-                hidden state. Fields are non-recurrent, so this is not N+M.
+            num_recurrent: Recurrent tokens per environment (ships and the global
+                token), used to reshape hidden state. Map objects are non-recurrent,
+                so this is not N+1+M.
 
         Returns:
             A view-only micro-batch over ``[start:end]``.
@@ -789,9 +790,16 @@ class RolloutBuffer:
         """Store the GRU hidden state at rollout start.
 
         Args:
-            hidden: (n_layers, B*num_tokens, H) float32.
+            hidden: (n_layers, B*Q, H) float32, Q = the policy's recurrent tokens
+                per environment (ships plus the global token).
         """
         self.initial_hidden = hidden.clone()
+
+    def _recurrent_tokens_per_env(self) -> int:
+        """Q, read off the stored state so the buffer never restates the policy's rule."""
+
+        assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
+        return self.initial_hidden.shape[1] // self.num_envs
 
     def add(
         self,
@@ -993,7 +1001,8 @@ class RolloutBuffer:
             n_micro = min(max(n_micro, 1), envs_per_batch)
 
         n_layers = self.initial_hidden.shape[0]
-        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, self.num_ships, D)
+        recurrent = self._recurrent_tokens_per_env()
+        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, recurrent, D)
 
         for start in range(0, self.num_envs, envs_per_batch):
             end = start + envs_per_batch
@@ -1009,10 +1018,8 @@ class RolloutBuffer:
                     ),
                 )
 
-                # Reconstruct initial hidden: (n_layers, B_mb*N, H) — ships only
-                mb_hidden = hidden_full[:, idx, :, :].reshape(
-                    n_layers, len(idx) * self.num_ships, D
-                )
+                # Reconstruct initial hidden: (n_layers, B_mb*Q, H) — ships + global
+                mb_hidden = hidden_full[:, idx, :, :].reshape(n_layers, len(idx) * recurrent, D)
 
                 chunks.append(
                     MicroBatch(
@@ -1139,12 +1146,8 @@ class StoredRollout:
 
         n_layers = self.initial_hidden.shape[0]
         hidden_width = self.initial_hidden.shape[-1]
-        hidden_full = self.initial_hidden.reshape(
-            n_layers,
-            self.num_envs,
-            self.num_ships,
-            hidden_width,
-        )
+        recurrent = self.initial_hidden.shape[1] // self.num_envs  # ships + global token
+        hidden_full = self.initial_hidden.reshape(n_layers, self.num_envs, recurrent, hidden_width)
 
         for start in range(0, self.num_envs, envs_per_batch):
             indices = env_order[start : start + envs_per_batch]
@@ -1157,9 +1160,7 @@ class StoredRollout:
                 ),
             )
             hidden = hidden_full[:, indices].reshape(
-                n_layers,
-                len(indices) * self.num_ships,
-                hidden_width,
+                n_layers, len(indices) * recurrent, hidden_width
             )
             yield [
                 MicroBatch(

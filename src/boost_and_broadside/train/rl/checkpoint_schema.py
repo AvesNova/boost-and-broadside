@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "physical_belief_v19"
+OBSERVATION_SCHEMA = "global_token_v20"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 19,
+        "version": 20,
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -82,6 +82,11 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         "pending_action_features": "joint_42_probability_vector",
         "policy_action_distribution": "joint_categorical_3x7x2",
         "enemy_actions": "dedicated_prediction_with_spawn_null_override",
+        # One global/game token in every mode, directly after the ships, at the
+        # map center. It queries and recurs with the ships unless the model's
+        # ``global_token`` switch demotes it to K/V memory; no head reads it.
+        "global_token": "permanent_token_after_ships_every_mode",
+        "game_mode": "categorical_one_hot_on_global_token",
         "position_fourier_basis": "base2",
         "position_finest_period": POSITION_FINEST_PERIOD,
         "position_frequencies": tuple(
@@ -113,6 +118,13 @@ def load_checkpoint_payload(
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
+
+    v20 gives every mode one global/game token, placed directly after the ships
+    rather than last and only on Frontline, and widens ``game_mode`` from a
+    Frontline flag to a one-hot. The recurrent state gains a slot per
+    environment for the token. A v19 policy read its boundary token as a map
+    object at a different position, so its weights would load and silently mean
+    something else.
 
     v19 replaces the encoded belief with a physical one. Hidden ships now reach
     the trunk as ordinary physical channels selected before encoding rather than

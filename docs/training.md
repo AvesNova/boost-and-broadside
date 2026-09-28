@@ -580,7 +580,7 @@ can omit to produce a policy whose inputs disagree with its weights.
 
 Three compatibility rules follow from that:
 
-- **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
+- **Observation schema.** Typed ship/global/field/zone tokens, independent team
   perception, visibility masks, 42-way pending-action beliefs, spawn/respawn null-action
   reveals, field-core LOS, recursively predicted hidden-enemy physical state selected into the
   view before encoding, thirteen belief-uncertainty channels, belief validity, and observation

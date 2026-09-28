@@ -211,12 +211,14 @@ class ShipConfig:
             )
 
 
-# Zone tokens a Frontline environment presents, plus the single boundary token
-# that carries the front position and the match clock. Defined here rather than
-# in env/frontline so the launch arithmetic can size a batch without importing
-# the environment; ``env.frontline`` re-exports it.
+# Zone tokens a Frontline environment presents. Defined here rather than in
+# env/frontline so the launch arithmetic can size a batch without importing the
+# environment.
 NUM_FRONTLINE_ZONES = 5
-NUM_FRONTLINE_GLOBAL_TOKENS = 1
+# The global/game token every environment presents, whatever its mode. It sits
+# directly after the ships on the token axis and carries the game mode, the
+# match clock and, on Frontline, the front position.
+NUM_GLOBAL_TOKENS = 1
 
 
 def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineConfig | None") -> int:
@@ -228,7 +230,7 @@ def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineCon
     not an ``EnvConfig``. Everything derived from the batch -- environment width,
     shard count, the VRAM preset ceilings, the micro-batch bound -- is computed
     from it, and it used to be written out three times with two of the copies
-    omitting Frontline's zone and boundary tokens.
+    omitting Frontline's zone and global tokens.
 
     Adding a token kind means adding a term here.
     ``tests/config/test_entity_tokens.py`` pins the result against an
@@ -236,9 +238,9 @@ def entity_token_count(num_ships: int, num_fields: int, frontline: "FrontlineCon
     and not the other fails rather than silently resizing the batch.
     """
 
-    tokens = num_ships + num_fields
+    tokens = num_ships + NUM_GLOBAL_TOKENS + num_fields
     if frontline is not None:
-        tokens += NUM_FRONTLINE_ZONES + NUM_FRONTLINE_GLOBAL_TOKENS
+        tokens += NUM_FRONTLINE_ZONES
     return tokens
 
 
@@ -405,6 +407,12 @@ class ModelConfig:
     # proximity, ego-frame bearing and range rate by one linear map per sublayer.
     # Zero-initialised, so enabling it does not by itself change the function.
     relational_bias: bool = False
+    # Route the global/game token through the query/recurrent trunk alongside the
+    # ships: it attends, carries recurrent state and takes every FFN and residual.
+    # Off, it is one more K/V-only map object -- the architecture before Phase 5,
+    # kept buildable because the recurrent token is an ablation arm. The token is
+    # in the observation either way; only its route through the trunk changes.
+    global_token: bool = True
     # Recompute each Yemong block's activations during the PPO backward pass instead
     # of storing them (torch.utils.checkpoint). Trades ~one extra forward per block
     # in backward for activation memory that no longer scales with depth — set True

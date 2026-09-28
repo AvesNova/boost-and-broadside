@@ -21,7 +21,7 @@ def ship_cfg() -> ShipConfig:
 
 @pytest.fixture
 def model_cfg() -> ModelConfig:
-    return ModelConfig(d_model=64, n_heads=4, n_yemong_blocks=2)
+    return ModelConfig(global_token=False, d_model=64, n_heads=4, n_yemong_blocks=2)
 
 
 @pytest.fixture
@@ -30,6 +30,11 @@ def coordinator(ship_cfg) -> FeatureCoordinator:
 
 
 NUM_VALUE_COMPONENTS = 12  # fixed K for encoder/policy unit tests
+
+# These fixtures build ship-and-field observations by hand, without the global
+# token every environment now emits, so the policies here are built with the
+# token demoted to map memory. The token's own route through the trunk is pinned
+# against real observations in ``test_global_token.py``.
 
 
 def _types(batch: int, num_ships: int, tokens: int) -> torch.Tensor:
@@ -425,6 +430,7 @@ class TestMapKVMemory:
     @staticmethod
     def _policy(coordinator, num_ships: int) -> YemongPolicy:
         cfg = ModelConfig(
+            global_token=False,
             d_model=64,
             n_heads=4,
             n_yemong_blocks=2,
@@ -562,6 +568,7 @@ class TestYemongBlockStructure:
     @staticmethod
     def _policy(coordinator, n_blocks: int, n_spatial: int, n_temporal: int, num_ships: int):
         cfg = ModelConfig(
+            global_token=False,
             d_model=64,
             n_heads=4,
             n_yemong_blocks=n_blocks,
@@ -721,7 +728,7 @@ class TestYemongBlockStructure:
 
     def test_defaults_reproduce_single_sublayer_trunk(self, coordinator):
         """Omitting the new knobs must give the pre-refactor 1S+1T structure."""
-        cfg = ModelConfig(d_model=64, n_heads=4, n_yemong_blocks=2)
+        cfg = ModelConfig(global_token=False, d_model=64, n_heads=4, n_yemong_blocks=2)
         assert cfg.n_spatial_per_block == 1
         assert cfg.n_temporal_per_block == 1
         assert cfg.n_hidden_layers == 2
@@ -737,7 +744,7 @@ class TestYemongBlockStructure:
     def test_rejects_negative_sublayer_counts(self, kwargs):
         kwargs.setdefault("n_yemong_blocks", 2)
         with pytest.raises(ValueError):
-            ModelConfig(d_model=64, n_heads=4, **kwargs)
+            ModelConfig(global_token=False, d_model=64, n_heads=4, **kwargs)
 
 
 def _make_bullets(B: int, NB: int, active: bool = True) -> dict:
@@ -761,6 +768,7 @@ class TestBulletCrossAttention:
     @staticmethod
     def _cfg(n_cross: int, n_spatial: int = 2) -> ModelConfig:
         return ModelConfig(
+            global_token=False,
             d_model=64,
             n_heads=4,
             n_yemong_blocks=2,
@@ -1062,6 +1070,7 @@ class TestEncoderSplit:
     @staticmethod
     def _cfg(split: bool) -> ModelConfig:
         return ModelConfig(
+            global_token=False,
             d_model=64,
             n_heads=4,
             n_yemong_blocks=2,
@@ -1255,6 +1264,7 @@ class TestNonRecurrentFieldPath:
     @staticmethod
     def _policy(coordinator, num_ships, n_spatial=2, n_temporal=1, n_blocks=2):
         cfg = ModelConfig(
+            global_token=False,
             d_model=64,
             n_heads=4,
             n_yemong_blocks=n_blocks,
@@ -1633,7 +1643,7 @@ class TestEnemyActionHead:
     @staticmethod
     def _policy(coordinator, num_ships: int) -> YemongPolicy:
         return YemongPolicy(
-            ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ModelConfig(global_token=False, d_model=32, n_heads=4, n_yemong_blocks=1),
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=num_ships,

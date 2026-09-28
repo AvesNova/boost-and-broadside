@@ -260,8 +260,9 @@ class _RolloutRuntime:
 
     num_envs: int
     num_ships: int
-    # Recurrent tokens per env (ships). Fields are non-recurrent, so this is
-    # deliberately not N+M — it is the stride for every hidden-state operation.
+    # Recurrent tokens per env (ships + the global token). Map objects are
+    # non-recurrent, so this is deliberately not N+1+M — it is the stride for
+    # every hidden-state operation.
     num_recurrent: int
     elo_eval: EloEvaluator
     obs: YemongObservation
@@ -657,8 +658,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Without this the internal fake-tensor trace runs in fp32 and compiles
         # a graph the first real autocast call immediately invalidates.
         if compile_mode is not None and self.device.type == "cuda":
-            # Hidden state covers ship tokens only; fields are non-recurrent.
-            _nt = N
+            # Hidden state covers ships and the global token; fields are non-recurrent.
+            _nt = self._policy_module.recurrent_token_count(N)
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
                 _h = self._policy_module.initial_hidden(B, _nt, self.device)
                 self.policy.get_action_and_value(sample_obs, _h, return_enemy_action=self._ego_pass)
@@ -1075,8 +1076,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """Initialize persistent primary, auxiliary, and evaluation rollout state."""
         num_envs = self.cfg.scales[0].num_envs
         num_ships = self.wrapper.num_ships
-        # Only ships carry recurrent state; field tokens take the non-recurrent path.
-        num_recurrent = num_ships
+        # Ships and the global token carry recurrent state; map tokens do not.
+        num_recurrent = self._policy_module.recurrent_token_count(num_ships)
 
         # Stagger truncation so episodes do not all end in one synchronized block.
         # The seeded first episode in each env is a fragment, so it is withheld
@@ -1140,7 +1141,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 if aux_belief is not None
                 else raw_aux_obs
             )
-            aux_tokens = scale.env_config.num_ships  # recurrent tokens: ships only
+            aux_tokens = self._policy_module.recurrent_token_count(scale.env_config.num_ships)
             aux_hiddens.append(self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device))
             aux_hidden_t1s.append(
                 self.policy.initial_hidden(scale.num_envs, aux_tokens, self.device)
@@ -1219,12 +1220,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_buffer.store_initial_hidden(aux_hidden)
 
         if not runtime.league_slots:
-            runtime.league_slots = self._prepare_league_slots(runtime.num_recurrent)
+            runtime.league_slots = self._prepare_league_slots(runtime.num_ships)
             if self._global_step > 0:
                 for slot in runtime.league_slots:
                     slot.active.zero_()
         else:
-            self._begin_league_replacement(runtime.league_slots, runtime.num_recurrent)
+            self._begin_league_replacement(runtime.league_slots, runtime.num_ships)
         slots = runtime.league_slots
         # A slot drawn or replaced this shard has no view yet, and the first
         # forward of the loop runs concurrently with a physics step that makes
@@ -1689,6 +1690,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             return
 
         tokens_per_env = buffer.num_steps * buffer.num_tokens
+        num_recurrent = self._policy_module.recurrent_token_count(buffer.num_ships)
 
         def split_count(batch: MicroBatch) -> int:
             if self.cfg.microbatch_tokens is None:
@@ -1699,7 +1701,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         if self.device.type != "cuda":
             for chunk in chunks:
-                for microbatch in chunk.split_envs(split_count(chunk), buffer.num_ships):
+                for microbatch in chunk.split_envs(split_count(chunk), num_recurrent):
                     yield microbatch, microbatch
             return
 
@@ -1711,11 +1713,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             next_staged = (
                 self._stage_microbatch(chunks[index + 1]) if index + 1 < len(chunks) else None
             )
-            source_microbatches = source.split_envs(split_count(source), buffer.num_ships)
-            device_microbatches = staged.device.split_envs(
-                split_count(source),
-                buffer.num_ships,
-            )
+            source_microbatches = source.split_envs(split_count(source), num_recurrent)
+            device_microbatches = staged.device.split_envs(split_count(source), num_recurrent)
             yield from zip(source_microbatches, device_microbatches, strict=True)
             if next_staged is not None:
                 staged = next_staged

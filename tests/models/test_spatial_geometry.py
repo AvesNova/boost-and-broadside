@@ -402,7 +402,7 @@ class TestRotaryPolicy:
         rotated.load_state_dict(plain.state_dict())  # identical weights
 
         observation = _observation()
-        hidden = plain.initial_hidden(3, 10, torch.device("cpu"))
+        hidden = plain.initial_hidden(3, plain.recurrent_token_count(10), torch.device("cpu"))
         _, _, plain_value, _, _ = plain.get_action_and_value(observation, hidden)
         _, _, rotated_value, _, _ = rotated.get_action_and_value(observation, hidden)
         assert not torch.allclose(plain_value, rotated_value)
@@ -417,7 +417,9 @@ class TestRotaryPolicy:
     def test_runs_at_unseen_fleet_sizes(self, num_ships):
         policy = _policy(ROPE_MODEL_CONFIG, num_ships=num_ships)
         observation = _observation(num_ships=num_ships)
-        hidden = policy.initial_hidden(3, num_ships, torch.device("cpu"))
+        hidden = policy.initial_hidden(
+            3, policy.recurrent_token_count(num_ships), torch.device("cpu")
+        )
         action, _, value, _, _ = policy.get_action_and_value(observation, hidden)
         assert action.shape == (3, num_ships, 3)
         assert torch.isfinite(value).all()
@@ -436,7 +438,7 @@ class TestRotaryPolicy:
         """
         policy = _policy(ROPE_MODEL_CONFIG)
         observation = _observation()
-        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
+        hidden = policy.initial_hidden(3, policy.recurrent_token_count(10), torch.device("cpu"))
 
         valid = observation["belief_valid"].clone()
         valid[:, 5:8] = False
@@ -459,7 +461,7 @@ class TestRotaryPolicy:
         steps = 4
         observations = [_observation(seed=10 + t) for t in range(steps)]
 
-        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
+        hidden = policy.initial_hidden(3, policy.recurrent_token_count(10), torch.device("cpu"))
         step_values = []
         with torch.no_grad():
             for observation in observations:
@@ -473,7 +475,7 @@ class TestRotaryPolicy:
         sequence_obs = YemongObservation(data=stacked)
         actions = torch.zeros(steps, 3, 10, 3, dtype=torch.long)
         alive = torch.stack([o["belief_valid"] for o in observations])
-        initial = policy.initial_hidden(3, 10, torch.device("cpu"))
+        initial = policy.initial_hidden(3, policy.recurrent_token_count(10), torch.device("cpu"))
         with torch.no_grad():
             _, _, sequence_value, _, _, _, _ = policy.evaluate_actions(
                 sequence_obs, actions, initial, alive
@@ -642,7 +644,7 @@ class TestPresenceFeatureWiring:
     def test_the_policy_runs_with_presence_at_unseen_fleet_sizes(self):
         policy = _policy(DENSITY_MODEL_CONFIG, num_ships=40)
         observation = _observation(num_ships=40)
-        hidden = policy.initial_hidden(3, 40, torch.device("cpu"))
+        hidden = policy.initial_hidden(3, policy.recurrent_token_count(40), torch.device("cpu"))
         _, _, value, _, _ = policy.get_action_and_value(observation, hidden)
         assert torch.isfinite(value).all()
 
@@ -753,7 +755,7 @@ class TestRelationalBias:
     def test_the_bias_changes_the_output_once_trained(self):
         policy = _policy(RELATION_MODEL_CONFIG)
         observation = _observation()
-        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
+        hidden = policy.initial_hidden(3, policy.recurrent_token_count(10), torch.device("cpu"))
         _, _, before, _, _ = policy.get_action_and_value(observation, hidden)
         with torch.no_grad():
             for block in policy.yemong_layers:
@@ -772,7 +774,7 @@ class TestRelationalBias:
         steps = 3
         observations = [_observation(seed=20 + t) for t in range(steps)]
 
-        hidden = policy.initial_hidden(3, 10, torch.device("cpu"))
+        hidden = policy.initial_hidden(3, policy.recurrent_token_count(10), torch.device("cpu"))
         step_values = []
         with torch.no_grad():
             for observation in observations:
@@ -789,7 +791,7 @@ class TestRelationalBias:
             _, _, sequence_value, _, _, _, _ = policy.evaluate_actions(
                 sequence_obs,
                 actions,
-                policy.initial_hidden(3, 10, torch.device("cpu")),
+                policy.initial_hidden(3, policy.recurrent_token_count(10), torch.device("cpu")),
                 alive,
             )
         assert torch.allclose(torch.stack(step_values), sequence_value, atol=1e-4)
