@@ -88,8 +88,14 @@ join
              action_state.write_observation(...)  the queue, plus the action belief
 ```
 
-The physics and the forward still overlap; only composition is serial, and it is not
-materially more work than the `compose` pass it replaces.
+The physics and the forward still overlap; only composition is serial, and it is measurably
+*less* work than the `compose` pass it replaces (see below), so the lost overlap is paid for.
+
+The order inside the join is load-bearing and easy to get wrong: `advance` before `reset`
+before `observe`. Advancing after a reset would forecast from a cleared belief; observing
+before a reset would assimilate into memory a finished episode still owns. League slots follow
+the same order, with `advance` inside the network forward, `reset` inside
+`_reset_primary_hidden`, and `observe` inside `_compose_league_views`.
 
 League slots are the awkward case: a slot's own view cannot be built inside
 `_rollout_network_forwards`, because the environment step is mid-flight on another stream.
