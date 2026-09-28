@@ -17,6 +17,1348 @@
   "num_steps": 128,
   "updates": 10
  },
- "status": "running",
- "updates": []
+ "status": "complete",
+ "updates": [
+  {
+   "global_step": 32768.0,
+   "loss_next_state": 186.451171875,
+   "visible": {
+    "position_px": {
+     "model": 1.0414974689483643,
+     "persistence": 1.0360690355300903,
+     "dead_reckoning": 0.0377611480653286,
+     "model_over_best_baseline": 27.581191841586058
+    },
+    "velocity_px_s": {
+     "model": 2.232680320739746,
+     "persistence": 2.230973958969116,
+     "model_over_best_baseline": 1.0007648505997884
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 134.2285919189453,
+     "persistence": 134.22398376464844,
+     "dead_reckoning": 133.20086669921875,
+     "model_over_best_baseline": 1.0077156045992348
+    },
+    "velocity_px_s": {
+     "model": 54.84482192993164,
+     "persistence": 54.83739471435547,
+     "model_over_best_baseline": 1.000135440708204
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 2.6028764247894287,
+     "persistence": 2.597703695297241,
+     "dead_reckoning": 1.5618795156478882,
+     "model_over_best_baseline": 1.6665026967267198
+    },
+    "velocity_px_s": {
+     "model": 3.612056255340576,
+     "persistence": 3.6100869178771973,
+     "model_over_best_baseline": 1.000545509708818
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 8.490100860595703,
+     "persistence": 8.485105514526367,
+     "dead_reckoning": 7.423246383666992,
+     "model_over_best_baseline": 1.143718047574988
+    },
+    "velocity_px_s": {
+     "model": 12.751270294189453,
+     "persistence": 12.746307373046875,
+     "model_over_best_baseline": 1.0003893614830812
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 53.08949661254883,
+     "persistence": 53.085205078125,
+     "dead_reckoning": 52.061038970947266,
+     "model_over_best_baseline": 1.0197548428139418
+    },
+    "velocity_px_s": {
+     "model": 71.19437408447266,
+     "persistence": 71.18411254882812,
+     "model_over_best_baseline": 1.0001441548581151
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 142.69497680664062,
+     "persistence": 142.69090270996094,
+     "dead_reckoning": 141.6934051513672,
+     "model_over_best_baseline": 1.0070685834263315
+    },
+    "velocity_px_s": {
+     "model": 103.55323791503906,
+     "persistence": 103.54181671142578,
+     "model_over_best_baseline": 1.0001103052271636
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 363.62109375,
+     "persistence": 363.61700439453125,
+     "dead_reckoning": 362.6210632324219,
+     "model_over_best_baseline": 1.0027577838657904
+    },
+    "velocity_px_s": {
+     "model": 108.16224670410156,
+     "persistence": 108.15020751953125,
+     "model_over_best_baseline": 1.000111319107438
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   }
+  },
+  {
+   "global_step": 65536.0,
+   "loss_next_state": 1209.934814453125,
+   "visible": {
+    "position_px": {
+     "model": 0.9544528722763062,
+     "persistence": 0.948823869228363,
+     "dead_reckoning": 0.03651013970375061,
+     "model_over_best_baseline": 26.14213147418489
+    },
+    "velocity_px_s": {
+     "model": 2.1113250255584717,
+     "persistence": 2.109677791595459,
+     "model_over_best_baseline": 1.000780798835526
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 434.9056091308594,
+     "persistence": 434.9007263183594,
+     "dead_reckoning": 433.9303894042969,
+     "model_over_best_baseline": 1.0022474105302956
+    },
+    "velocity_px_s": {
+     "model": 57.89616775512695,
+     "persistence": 57.888946533203125,
+     "model_over_best_baseline": 1.000124742672933
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 2.274082899093628,
+     "persistence": 2.2679245471954346,
+     "dead_reckoning": 1.3654472827911377,
+     "model_over_best_baseline": 1.665449064020348
+    },
+    "velocity_px_s": {
+     "model": 3.231626510620117,
+     "persistence": 3.2297523021698,
+     "model_over_best_baseline": 1.0005802947950708
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 6.433730602264404,
+     "persistence": 6.42733907699585,
+     "dead_reckoning": 5.42868709564209,
+     "model_over_best_baseline": 1.1851356486228721
+    },
+    "velocity_px_s": {
+     "model": 5.670175552368164,
+     "persistence": 5.667320728302002,
+     "model_over_best_baseline": 1.0005037343399157
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 54.525638580322266,
+     "persistence": 54.52069091796875,
+     "dead_reckoning": 53.10905075073242,
+     "model_over_best_baseline": 1.026673190530906
+    },
+    "velocity_px_s": {
+     "model": 58.9616584777832,
+     "persistence": 58.96092987060547,
+     "model_over_best_baseline": 1.000012357457376
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 167.39129638671875,
+     "persistence": 167.3879852294922,
+     "dead_reckoning": 166.2227020263672,
+     "model_over_best_baseline": 1.0070302933721182
+    },
+    "velocity_px_s": {
+     "model": 103.19047546386719,
+     "persistence": 103.2021713256836,
+     "model_over_best_baseline": 0.9998866703901075
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 556.8583374023438,
+     "persistence": 556.8543090820312,
+     "dead_reckoning": 555.8519287109375,
+     "model_over_best_baseline": 1.0018105697568418
+    },
+    "velocity_px_s": {
+     "model": 103.61843872070312,
+     "persistence": 103.60800170898438,
+     "model_over_best_baseline": 1.000100735575888
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 836.8763427734375,
+     "persistence": 836.8726806640625,
+     "dead_reckoning": 835.890869140625,
+     "model_over_best_baseline": 1.0011789501108268
+    },
+    "velocity_px_s": {
+     "model": 99.7015609741211,
+     "persistence": 99.69007873535156,
+     "model_over_best_baseline": 1.0001151793530028
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   }
+  },
+  {
+   "global_step": 98304.0,
+   "loss_next_state": 2441.4052734375,
+   "visible": {
+    "position_px": {
+     "model": 2.10793399810791,
+     "persistence": 2.1097159385681152,
+     "dead_reckoning": 0.04115736857056618,
+     "model_over_best_baseline": 51.21644243347972
+    },
+    "velocity_px_s": {
+     "model": 2.1641056537628174,
+     "persistence": 2.1611151695251465,
+     "model_over_best_baseline": 1.0013837690280654
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 634.0941772460938,
+     "persistence": 634.094970703125,
+     "dead_reckoning": 633.146728515625,
+     "model_over_best_baseline": 1.0014964125814723
+    },
+    "velocity_px_s": {
+     "model": 50.09083938598633,
+     "persistence": 50.086212158203125,
+     "model_over_best_baseline": 1.0000923852610093
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 2.0179128646850586,
+     "persistence": 2.017662286758423,
+     "dead_reckoning": 1.2100493907928467,
+     "model_over_best_baseline": 1.6676285117278435
+    },
+    "velocity_px_s": {
+     "model": 2.952153205871582,
+     "persistence": 2.9502151012420654,
+     "model_over_best_baseline": 1.0006569367191906
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 6.245718955993652,
+     "persistence": 6.245365142822266,
+     "dead_reckoning": 5.377425670623779,
+     "model_over_best_baseline": 1.1614700673806155
+    },
+    "velocity_px_s": {
+     "model": 5.5697503089904785,
+     "persistence": 5.56624698638916,
+     "model_over_best_baseline": 1.0006293868399811
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 71.08897399902344,
+     "persistence": 71.09043884277344,
+     "dead_reckoning": 68.61246490478516,
+     "model_over_best_baseline": 1.0360941572012459
+    },
+    "velocity_px_s": {
+     "model": 42.47720718383789,
+     "persistence": 42.4718017578125,
+     "model_over_best_baseline": 1.0001272709374613
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 181.15609741210938,
+     "persistence": 181.15574645996094,
+     "dead_reckoning": 178.67959594726562,
+     "model_over_best_baseline": 1.0138600126764035
+    },
+    "velocity_px_s": {
+     "model": 74.97303771972656,
+     "persistence": 74.97087860107422,
+     "model_over_best_baseline": 1.0000287994310941
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 483.8789367675781,
+     "persistence": 483.8800048828125,
+     "dead_reckoning": 481.93939208984375,
+     "model_over_best_baseline": 1.004024457659134
+    },
+    "velocity_px_s": {
+     "model": 84.22970581054688,
+     "persistence": 84.23512268066406,
+     "model_over_best_baseline": 0.9999356934501333
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 1125.1822509765625,
+     "persistence": 1125.1844482421875,
+     "dead_reckoning": 1124.1990966796875,
+     "model_over_best_baseline": 1.0008745375261185
+    },
+    "velocity_px_s": {
+     "model": 95.57463073730469,
+     "persistence": 95.56787872314453,
+     "model_over_best_baseline": 1.0000706515018474
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1381.4739990234375,
+     "persistence": 1381.475830078125,
+     "dead_reckoning": 1380.50048828125,
+     "model_over_best_baseline": 1.0007051868148193
+    },
+    "velocity_px_s": {
+     "model": 93.30294036865234,
+     "persistence": 93.29641723632812,
+     "model_over_best_baseline": 1.0000699183582549
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   }
+  },
+  {
+   "global_step": 131072.0,
+   "loss_next_state": 2862.5625,
+   "visible": {
+    "position_px": {
+     "model": 2.279456853866577,
+     "persistence": 2.289398193359375,
+     "dead_reckoning": 0.04498305171728134,
+     "model_over_best_baseline": 50.67368190564243
+    },
+    "velocity_px_s": {
+     "model": 2.3732004165649414,
+     "persistence": 2.3704867362976074,
+     "model_over_best_baseline": 1.001144777663499
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 707.9053344726562,
+     "persistence": 707.9140625,
+     "dead_reckoning": 706.7290649414062,
+     "model_over_best_baseline": 1.0016643853912355
+    },
+    "velocity_px_s": {
+     "model": 44.956485748291016,
+     "persistence": 44.95370101928711,
+     "model_over_best_baseline": 1.0000619466015204
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 1.9410024881362915,
+     "persistence": 1.9485403299331665,
+     "dead_reckoning": 1.1649062633514404,
+     "model_over_best_baseline": 1.6662306223266572
+    },
+    "velocity_px_s": {
+     "model": 2.8859851360321045,
+     "persistence": 2.883998394012451,
+     "model_over_best_baseline": 1.0006888845790545
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 6.725497245788574,
+     "persistence": 6.733295917510986,
+     "dead_reckoning": 5.833436489105225,
+     "model_over_best_baseline": 1.1529219968965807
+    },
+    "velocity_px_s": {
+     "model": 5.878745079040527,
+     "persistence": 5.8758416175842285,
+     "model_over_best_baseline": 1.000494135418424
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 87.7225341796875,
+     "persistence": 87.73716735839844,
+     "dead_reckoning": 84.14715576171875,
+     "model_over_best_baseline": 1.0424895932085123
+    },
+    "velocity_px_s": {
+     "model": 42.257652282714844,
+     "persistence": 42.25497817993164,
+     "model_over_best_baseline": 1.0000632849169113
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 187.04759216308594,
+     "persistence": 187.06350708007812,
+     "dead_reckoning": 183.0472412109375,
+     "model_over_best_baseline": 1.0218541996354842
+    },
+    "velocity_px_s": {
+     "model": 57.07200241088867,
+     "persistence": 57.06817626953125,
+     "model_over_best_baseline": 1.0000670450960156
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 362.2684631347656,
+     "persistence": 362.2818908691406,
+     "dead_reckoning": 358.858154296875,
+     "model_over_best_baseline": 1.0095032223653175
+    },
+    "velocity_px_s": {
+     "model": 85.46961212158203,
+     "persistence": 85.47090911865234,
+     "model_over_best_baseline": 0.9999848252805114
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 860.8734741210938,
+     "persistence": 860.8798217773438,
+     "dead_reckoning": 858.7184448242188,
+     "model_over_best_baseline": 1.0025095877582042
+    },
+    "velocity_px_s": {
+     "model": 84.37466430664062,
+     "persistence": 84.37956237792969,
+     "model_over_best_baseline": 0.9999419519235342
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1726.19921875,
+     "persistence": 1726.2078857421875,
+     "dead_reckoning": 1725.21240234375,
+     "model_over_best_baseline": 1.0005719970508613
+    },
+    "velocity_px_s": {
+     "model": 89.71070098876953,
+     "persistence": 89.70671081542969,
+     "model_over_best_baseline": 1.0000444802100485
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   }
+  },
+  {
+   "global_step": 163840.0,
+   "loss_next_state": 2334.80908203125,
+   "visible": {
+    "position_px": {
+     "model": 1.7647795677185059,
+     "persistence": 1.7805018424987793,
+     "dead_reckoning": 0.04381672292947769,
+     "model_over_best_baseline": 40.27639334321944
+    },
+    "velocity_px_s": {
+     "model": 2.270120143890381,
+     "persistence": 2.2683684825897217,
+     "model_over_best_baseline": 1.0007722119726594
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 726.5891723632812,
+     "persistence": 726.6047973632812,
+     "dead_reckoning": 725.2437133789062,
+     "model_over_best_baseline": 1.0018551818644612
+    },
+    "velocity_px_s": {
+     "model": 57.24363327026367,
+     "persistence": 57.24089813232422,
+     "model_over_best_baseline": 1.0000477829319367
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 1.9094372987747192,
+     "persistence": 1.9240281581878662,
+     "dead_reckoning": 1.1461116075515747,
+     "model_over_best_baseline": 1.6660134023542685
+    },
+    "velocity_px_s": {
+     "model": 2.7868404388427734,
+     "persistence": 2.784360408782959,
+     "model_over_best_baseline": 1.0008907000875287
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 5.997007369995117,
+     "persistence": 6.011985778808594,
+     "dead_reckoning": 5.17385196685791,
+     "model_over_best_baseline": 1.1590991409128217
+    },
+    "velocity_px_s": {
+     "model": 5.4482879638671875,
+     "persistence": 5.444813251495361,
+     "model_over_best_baseline": 1.000638169246828
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 72.30870056152344,
+     "persistence": 72.32872772216797,
+     "dead_reckoning": 69.45620727539062,
+     "model_over_best_baseline": 1.041068946866373
+    },
+    "velocity_px_s": {
+     "model": 43.43063735961914,
+     "persistence": 43.428306579589844,
+     "model_over_best_baseline": 1.0000536696042943
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 155.83395385742188,
+     "persistence": 155.85308837890625,
+     "dead_reckoning": 152.7146759033203,
+     "model_over_best_baseline": 1.0204255284284287
+    },
+    "velocity_px_s": {
+     "model": 80.88529205322266,
+     "persistence": 80.88471984863281,
+     "model_over_best_baseline": 1.0000070743224545
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 306.89581298828125,
+     "persistence": 306.91754150390625,
+     "dead_reckoning": 303.3539123535156,
+     "model_over_best_baseline": 1.0116758033785898
+    },
+    "velocity_px_s": {
+     "model": 124.63400268554688,
+     "persistence": 124.63300323486328,
+     "model_over_best_baseline": 1.000008019149484
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 559.2637329101562,
+     "persistence": 559.284423828125,
+     "dead_reckoning": 555.838134765625,
+     "model_over_best_baseline": 1.0061629419254865
+    },
+    "velocity_px_s": {
+     "model": 141.70086669921875,
+     "persistence": 141.6992950439453,
+     "model_over_best_baseline": 1.0000110914826565
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1929.42431640625,
+     "persistence": 1929.4383544921875,
+     "dead_reckoning": 1928.3966064453125,
+     "model_over_best_baseline": 1.0005329349561716
+    },
+    "velocity_px_s": {
+     "model": 97.91085052490234,
+     "persistence": 97.90785217285156,
+     "model_over_best_baseline": 1.0000306242245565
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   }
+  },
+  {
+   "global_step": 196608.0,
+   "loss_next_state": 1140.88427734375,
+   "visible": {
+    "position_px": {
+     "model": 2.4433670043945312,
+     "persistence": 2.4643099308013916,
+     "dead_reckoning": 0.0875912755727768,
+     "model_over_best_baseline": 27.895095583628255
+    },
+    "velocity_px_s": {
+     "model": 2.5213141441345215,
+     "persistence": 2.5204286575317383,
+     "model_over_best_baseline": 1.0003513238115815
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 630.7012939453125,
+     "persistence": 630.719482421875,
+     "dead_reckoning": 629.4906616210938,
+     "model_over_best_baseline": 1.0019231934610453
+    },
+    "velocity_px_s": {
+     "model": 59.5460090637207,
+     "persistence": 59.544281005859375,
+     "model_over_best_baseline": 1.0000290213910075
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 1.9230291843414307,
+     "persistence": 1.9409719705581665,
+     "dead_reckoning": 1.1567492485046387,
+     "model_over_best_baseline": 1.6624425620568875
+    },
+    "velocity_px_s": {
+     "model": 2.8399391174316406,
+     "persistence": 2.838168144226074,
+     "model_over_best_baseline": 1.0006239845969553
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 5.954553604125977,
+     "persistence": 5.972938537597656,
+     "dead_reckoning": 5.13976526260376,
+     "model_over_best_baseline": 1.1585263722937909
+    },
+    "velocity_px_s": {
+     "model": 5.998068809509277,
+     "persistence": 5.994926929473877,
+     "model_over_best_baseline": 1.00052408979665
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 74.37408447265625,
+     "persistence": 74.39739990234375,
+     "dead_reckoning": 71.8780746459961,
+     "model_over_best_baseline": 1.0347256077594338
+    },
+    "velocity_px_s": {
+     "model": 67.49806213378906,
+     "persistence": 67.49622344970703,
+     "model_over_best_baseline": 1.0000272412882982
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 163.07586669921875,
+     "persistence": 163.0967559814453,
+     "dead_reckoning": 160.40191650390625,
+     "model_over_best_baseline": 1.016670313258055
+    },
+    "velocity_px_s": {
+     "model": 90.19404602050781,
+     "persistence": 90.1926040649414,
+     "model_over_best_baseline": 1.0000159875145125
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 280.3700256347656,
+     "persistence": 280.3905944824219,
+     "dead_reckoning": 277.7314453125,
+     "model_over_best_baseline": 1.0095004738094986
+    },
+    "velocity_px_s": {
+     "model": 135.37933349609375,
+     "persistence": 135.38265991210938,
+     "model_over_best_baseline": 0.999975429526811
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 408.76202392578125,
+     "persistence": 408.7833557128906,
+     "dead_reckoning": 405.921875,
+     "model_over_best_baseline": 1.0069967870684013
+    },
+    "velocity_px_s": {
+     "model": 169.3986053466797,
+     "persistence": 169.40231323242188,
+     "model_over_best_baseline": 0.9999781119533055
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1864.3768310546875,
+     "persistence": 1864.3934326171875,
+     "dead_reckoning": 1863.2484130859375,
+     "model_over_best_baseline": 1.0006056186393746
+    },
+    "velocity_px_s": {
+     "model": 109.14630126953125,
+     "persistence": 109.1437759399414,
+     "model_over_best_baseline": 1.0000231376417765
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   }
+  },
+  {
+   "global_step": 229376.0,
+   "loss_next_state": 324.7074890136719,
+   "visible": {
+    "position_px": {
+     "model": 2.6089024543762207,
+     "persistence": 2.6322953701019287,
+     "dead_reckoning": 0.11431843787431717,
+     "model_over_best_baseline": 22.821362003253352
+    },
+    "velocity_px_s": {
+     "model": 2.554370403289795,
+     "persistence": 2.545046806335449,
+     "model_over_best_baseline": 1.0036634284804258
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 400.2124328613281,
+     "persistence": 400.2308349609375,
+     "dead_reckoning": 399.1070556640625,
+     "model_over_best_baseline": 1.002769625797335
+    },
+    "velocity_px_s": {
+     "model": 43.15718078613281,
+     "persistence": 43.150203704833984,
+     "model_over_best_baseline": 1.0001616928936548
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 2.104051351547241,
+     "persistence": 2.116150140762329,
+     "dead_reckoning": 1.2626686096191406,
+     "model_over_best_baseline": 1.6663527829221059
+    },
+    "velocity_px_s": {
+     "model": 2.9613468647003174,
+     "persistence": 2.955415964126587,
+     "model_over_best_baseline": 1.0020067904639214
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 6.995795726776123,
+     "persistence": 7.00913143157959,
+     "dead_reckoning": 6.07412576675415,
+     "model_over_best_baseline": 1.1517370557367448
+    },
+    "velocity_px_s": {
+     "model": 6.974937438964844,
+     "persistence": 6.965085983276367,
+     "model_over_best_baseline": 1.001414405466369
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 75.53384399414062,
+     "persistence": 75.5611572265625,
+     "dead_reckoning": 72.9085922241211,
+     "model_over_best_baseline": 1.0360074401375012
+    },
+    "velocity_px_s": {
+     "model": 75.45567321777344,
+     "persistence": 75.45540618896484,
+     "model_over_best_baseline": 1.000003538895648
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 161.46510314941406,
+     "persistence": 161.4892578125,
+     "dead_reckoning": 159.2080535888672,
+     "model_over_best_baseline": 1.014176729817798
+    },
+    "velocity_px_s": {
+     "model": 102.13042449951172,
+     "persistence": 102.12944793701172,
+     "model_over_best_baseline": 1.0000095620070384
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 390.6341247558594,
+     "persistence": 390.6634216308594,
+     "dead_reckoning": 388.73907470703125,
+     "model_over_best_baseline": 1.0048748638151601
+    },
+    "velocity_px_s": {
+     "model": 126.84413146972656,
+     "persistence": 126.83497619628906,
+     "model_over_best_baseline": 1.0000721825612466
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 505.43988037109375,
+     "persistence": 505.4664611816406,
+     "dead_reckoning": 503.48529052734375,
+     "model_over_best_baseline": 1.003882119061915
+    },
+    "velocity_px_s": {
+     "model": 147.6419219970703,
+     "persistence": 147.6326141357422,
+     "model_over_best_baseline": 1.0000630474599574
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1771.2193603515625,
+     "persistence": 1771.2493896484375,
+     "dead_reckoning": 1770.18896484375,
+     "model_over_best_baseline": 1.0005820822117166
+    },
+    "velocity_px_s": {
+     "model": 107.92758178710938,
+     "persistence": 107.92455291748047,
+     "model_over_best_baseline": 1.000028064694706
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "dead_reckoning": 0.0,
+     "model_over_best_baseline": null
+    },
+    "velocity_px_s": {
+     "model": 0.0,
+     "persistence": 0.0,
+     "model_over_best_baseline": null
+    }
+   }
+  },
+  {
+   "global_step": 262144.0,
+   "loss_next_state": 93.97055053710938,
+   "visible": {
+    "position_px": {
+     "model": 2.303499937057495,
+     "persistence": 2.314429521560669,
+     "dead_reckoning": 0.12561146914958954,
+     "model_over_best_baseline": 18.338293092601905
+    },
+    "velocity_px_s": {
+     "model": 2.3359742164611816,
+     "persistence": 2.322584390640259,
+     "model_over_best_baseline": 1.0057650545981804
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 258.4620666503906,
+     "persistence": 258.4369201660156,
+     "dead_reckoning": 257.20379638671875,
+     "model_over_best_baseline": 1.0048921138853644
+    },
+    "velocity_px_s": {
+     "model": 44.522586822509766,
+     "persistence": 44.511009216308594,
+     "model_over_best_baseline": 1.0002601065759913
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 2.419555902481079,
+     "persistence": 2.363856315612793,
+     "dead_reckoning": 1.454925537109375,
+     "model_over_best_baseline": 1.6630101271630833
+    },
+    "velocity_px_s": {
+     "model": 2.90665340423584,
+     "persistence": 2.893561363220215,
+     "model_over_best_baseline": 1.0045245423795177
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 8.639275550842285,
+     "persistence": 8.589077949523926,
+     "dead_reckoning": 7.548944473266602,
+     "model_over_best_baseline": 1.1444349049641205
+    },
+    "velocity_px_s": {
+     "model": 7.663034439086914,
+     "persistence": 7.64250373840332,
+     "model_over_best_baseline": 1.002686384120485
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 68.6668930053711,
+     "persistence": 68.6805191040039,
+     "dead_reckoning": 66.17311096191406,
+     "model_over_best_baseline": 1.0376857307629428
+    },
+    "velocity_px_s": {
+     "model": 57.32382583618164,
+     "persistence": 57.315860748291016,
+     "model_over_best_baseline": 1.000138968302781
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 143.90420532226562,
+     "persistence": 143.90721130371094,
+     "dead_reckoning": 141.70974731445312,
+     "model_over_best_baseline": 1.0154855826744438
+    },
+    "velocity_px_s": {
+     "model": 86.78406524658203,
+     "persistence": 86.78241729736328,
+     "model_over_best_baseline": 1.0000189894366862
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 338.08087158203125,
+     "persistence": 338.06536865234375,
+     "dead_reckoning": 336.5059509277344,
+     "model_over_best_baseline": 1.0046802163526525
+    },
+    "velocity_px_s": {
+     "model": 125.68661499023438,
+     "persistence": 125.6871566772461,
+     "model_over_best_baseline": 0.9999956901959911
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 685.6481323242188,
+     "persistence": 685.6931762695312,
+     "dead_reckoning": 683.9760131835938,
+     "model_over_best_baseline": 1.002444704358625
+    },
+    "velocity_px_s": {
+     "model": 136.93801879882812,
+     "persistence": 136.93858337402344,
+     "model_over_best_baseline": 0.9999958771649202
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1486.6885986328125,
+     "persistence": 1486.8084716796875,
+     "dead_reckoning": 1485.6187744140625,
+     "model_over_best_baseline": 1.0007201202873677
+    },
+    "velocity_px_s": {
+     "model": 111.05149841308594,
+     "persistence": 111.04559326171875,
+     "model_over_best_baseline": 1.0000531777191128
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 1908.3345947265625,
+     "persistence": 1908.3421630859375,
+     "dead_reckoning": 1907.6927490234375,
+     "model_over_best_baseline": 1.0003364512988024
+    },
+    "velocity_px_s": {
+     "model": 107.503173828125,
+     "persistence": 107.50726318359375,
+     "model_over_best_baseline": 0.9999619620540263
+    }
+   }
+  },
+  {
+   "global_step": 294912.0,
+   "loss_next_state": 37.326873779296875,
+   "visible": {
+    "position_px": {
+     "model": 2.177319288253784,
+     "persistence": 2.184147357940674,
+     "dead_reckoning": 0.1692078709602356,
+     "model_over_best_baseline": 12.867718717207081
+    },
+    "velocity_px_s": {
+     "model": 2.298689603805542,
+     "persistence": 2.2929327487945557,
+     "model_over_best_baseline": 1.002510695097365
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 238.9586944580078,
+     "persistence": 238.94110107421875,
+     "dead_reckoning": 237.46849060058594,
+     "model_over_best_baseline": 1.0062753751188336
+    },
+    "velocity_px_s": {
+     "model": 54.54754638671875,
+     "persistence": 54.54754638671875,
+     "model_over_best_baseline": 1.0
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 3.063572406768799,
+     "persistence": 3.0266799926757812,
+     "dead_reckoning": 1.8438198566436768,
+     "model_over_best_baseline": 1.6615356406593047
+    },
+    "velocity_px_s": {
+     "model": 2.9912109375,
+     "persistence": 2.986254930496216,
+     "model_over_best_baseline": 1.0016596061351537
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 10.889379501342773,
+     "persistence": 10.84879207611084,
+     "dead_reckoning": 9.55964183807373,
+     "model_over_best_baseline": 1.13909910912907
+    },
+    "velocity_px_s": {
+     "model": 7.361438274383545,
+     "persistence": 7.352866172790527,
+     "model_over_best_baseline": 1.0011658177085745
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 59.105934143066406,
+     "persistence": 59.0911750793457,
+     "dead_reckoning": 56.830657958984375,
+     "model_over_best_baseline": 1.0400360697165276
+    },
+    "velocity_px_s": {
+     "model": 44.42599868774414,
+     "persistence": 44.42181396484375,
+     "model_over_best_baseline": 1.0000942042327154
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 135.5061492919922,
+     "persistence": 135.5044708251953,
+     "dead_reckoning": 133.24195861816406,
+     "model_over_best_baseline": 1.0169930755845213
+    },
+    "velocity_px_s": {
+     "model": 80.82933044433594,
+     "persistence": 80.83392333984375,
+     "model_over_best_baseline": 0.9999431810888542
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 288.5660705566406,
+     "persistence": 288.5730285644531,
+     "dead_reckoning": 286.77850341796875,
+     "model_over_best_baseline": 1.006233267547486
+    },
+    "velocity_px_s": {
+     "model": 119.59323120117188,
+     "persistence": 119.60588836669922,
+     "model_over_best_baseline": 0.9998941760669129
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 552.2660522460938,
+     "persistence": 552.2506103515625,
+     "dead_reckoning": 550.7490844726562,
+     "model_over_best_baseline": 1.0027543718477354
+    },
+    "velocity_px_s": {
+     "model": 125.32369232177734,
+     "persistence": 125.33599853515625,
+     "model_over_best_baseline": 0.9999018142152076
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1191.18994140625,
+     "persistence": 1191.291748046875,
+     "dead_reckoning": 1189.996337890625,
+     "model_over_best_baseline": 1.001003031251122
+    },
+    "velocity_px_s": {
+     "model": 118.13365173339844,
+     "persistence": 118.13227844238281,
+     "model_over_best_baseline": 1.0000116250277546
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 1972.1390380859375,
+     "persistence": 1972.1302490234375,
+     "dead_reckoning": 1971.501708984375,
+     "model_over_best_baseline": 1.0003232708846552
+    },
+    "velocity_px_s": {
+     "model": 102.56666564941406,
+     "persistence": 102.57377624511719,
+     "model_over_best_baseline": 0.9999306782302122
+    }
+   }
+  },
+  {
+   "global_step": 327680.0,
+   "loss_next_state": 17.065074920654297,
+   "visible": {
+    "position_px": {
+     "model": 2.500495195388794,
+     "persistence": 2.521937131881714,
+     "dead_reckoning": 0.07278407365083694,
+     "model_over_best_baseline": 34.35497726307932
+    },
+    "velocity_px_s": {
+     "model": 2.5538442134857178,
+     "persistence": 2.5038840770721436,
+     "model_over_best_baseline": 1.0199530548842317
+    }
+   },
+   "hidden": {
+    "position_px": {
+     "model": 248.083251953125,
+     "persistence": 248.08226013183594,
+     "dead_reckoning": 246.50889587402344,
+     "model_over_best_baseline": 1.006386609592808
+    },
+    "velocity_px_s": {
+     "model": 59.55723190307617,
+     "persistence": 59.52717590332031,
+     "model_over_best_baseline": 1.0005049122404979
+    }
+   },
+   "hidden_age_0_0.1s": {
+    "position_px": {
+     "model": 4.201841831207275,
+     "persistence": 4.206667900085449,
+     "dead_reckoning": 2.5317060947418213,
+     "model_over_best_baseline": 1.6596878444674958
+    },
+    "velocity_px_s": {
+     "model": 3.8272037506103516,
+     "persistence": 3.7863476276397705,
+     "model_over_best_baseline": 1.0107903782189298
+    }
+   },
+   "hidden_age_0.1_0.5s": {
+    "position_px": {
+     "model": 15.25006103515625,
+     "persistence": 15.249076843261719,
+     "dead_reckoning": 13.556509017944336,
+     "model_over_best_baseline": 1.1249253782791875
+    },
+    "velocity_px_s": {
+     "model": 8.778670310974121,
+     "persistence": 8.719791412353516,
+     "model_over_best_baseline": 1.0067523287927727
+    }
+   },
+   "hidden_age_0.5_1s": {
+    "position_px": {
+     "model": 49.66870880126953,
+     "persistence": 49.66493606567383,
+     "dead_reckoning": 47.701011657714844,
+     "model_over_best_baseline": 1.0412506375687411
+    },
+    "velocity_px_s": {
+     "model": 25.998437881469727,
+     "persistence": 25.95952606201172,
+     "model_over_best_baseline": 1.0014989418283313
+    }
+   },
+   "hidden_age_1_2s": {
+    "position_px": {
+     "model": 115.40648651123047,
+     "persistence": 115.40270233154297,
+     "dead_reckoning": 113.40631866455078,
+     "model_over_best_baseline": 1.0176371816864638
+    },
+    "velocity_px_s": {
+     "model": 68.77540588378906,
+     "persistence": 68.75169372558594,
+     "model_over_best_baseline": 1.0003448956224668
+    }
+   },
+   "hidden_age_2_5s": {
+    "position_px": {
+     "model": 246.8888702392578,
+     "persistence": 246.89004516601562,
+     "dead_reckoning": 245.5133819580078,
+     "model_over_best_baseline": 1.0056024982030725
+    },
+    "velocity_px_s": {
+     "model": 114.31065368652344,
+     "persistence": 114.29685974121094,
+     "model_over_best_baseline": 1.0001206852519284
+    }
+   },
+   "hidden_age_5_10s": {
+    "position_px": {
+     "model": 451.2287292480469,
+     "persistence": 451.2200012207031,
+     "dead_reckoning": 449.8417663574219,
+     "model_over_best_baseline": 1.0030832239119456
+    },
+    "velocity_px_s": {
+     "model": 125.06495666503906,
+     "persistence": 125.07981872558594,
+     "model_over_best_baseline": 0.9998811793885033
+    }
+   },
+   "hidden_age_10_30s": {
+    "position_px": {
+     "model": 1078.77978515625,
+     "persistence": 1078.793212890625,
+     "dead_reckoning": 1077.69482421875,
+     "model_over_best_baseline": 1.001006742273525
+    },
+    "velocity_px_s": {
+     "model": 118.40306091308594,
+     "persistence": 118.37501525878906,
+     "model_over_best_baseline": 1.0002369220754528
+    }
+   },
+   "hidden_age_30_inf_s": {
+    "position_px": {
+     "model": 2033.588134765625,
+     "persistence": 2033.576171875,
+     "dead_reckoning": 2032.8250732421875,
+     "model_over_best_baseline": 1.0003753699880436
+    },
+    "velocity_px_s": {
+     "model": 109.79222869873047,
+     "persistence": 109.78300476074219,
+     "model_over_best_baseline": 1.0000840197260803
+    }
+   }
+  }
+ ],
+ "wall_seconds": 554.5923795980052
 }

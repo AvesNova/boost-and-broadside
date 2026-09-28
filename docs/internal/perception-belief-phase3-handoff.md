@@ -421,14 +421,47 @@ reads them out of the trainer and writes
 [`perception-belief-phase3-baselines.json`](perception-belief-phase3-baselines.json), including
 the `model / best baseline` ratio per bucket per update.
 
-**Read the artifact as a wiring and calibration check, not as a modelling result.** Phase 3
-breaks checkpoint compatibility (schema v19), so no trained weights exist for this
-architecture; the probe trains from random initialization for a few minutes, which is far too
-little for a learned head to beat a linear extrapolator on a 33 ms decision. What the artifact
-establishes is that the comparison exists, is in physical units, is stratified by how long the
-ship has been out of contact, and moves in the right direction as the head trains. The
-modelling question — does the head beat dead reckoning at convergence — belongs to a full run
-and is called out as unresolved below.
+### The measurement
+
+Exact command, on the production `rl` profile narrowed to a probe-sized batch and run
+uncompiled (Inductor startup costs more than the whole probe):
+
+```text
+.venv/bin/python docs/internal/perception-belief-phase3-baselines-probe.py \
+  --device cuda --envs 256 --steps 128 --updates 10 \
+  --out docs/internal/perception-belief-phase3-baselines.json
+```
+
+554.6 s wall, 327,680 environment steps. Position error in pixels:
+
+| global step | `loss/next_state` | visible: model | persist | **reckon** | hidden: model | persist | **reckon** |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 32,768 | 186.5 | 1.042 | 1.036 | **0.038** | 134.23 | 134.22 | **133.20** |
+| 131,072 | 2,862.6 | 2.280 | 2.289 | **0.045** | 707.91 | 707.91 | **706.73** |
+| 229,376 | 324.7 | 2.609 | 2.632 | **0.114** | 400.21 | 400.23 | **399.11** |
+| 327,680 | 17.1 | 2.501 | 2.522 | **0.073** | 248.08 | 248.08 | **246.51** |
+
+**The head loses to both baselines, and it is not close on visible ships.** Three things to
+read out of this, in order of importance:
+
+1. **Dead reckoning on a visible ship is near-exact: 0.07 px over one decision.** A ship's
+   position after 33 ms is almost exactly `pos + vel*dt`, so the bar the learned head has to
+   clear on the visible half is very high. That is the number Phase 4 onward should be measured
+   against, and it was not previously known.
+2. **The model tracks persistence to four decimal places**, because a head whose last layer is
+   orthogonal-initialized at gain 0.01 outputs approximately zero, and a zero mean delta *is*
+   persistence. This is under-training, not a missing gradient:
+   `test_policy_parameters_change_after_update` now asserts the next-state head's parameters
+   move under one update, so the two readings cannot be confused.
+3. **`loss/next_state` rises to 2,862 and then collapses to 17.** That is the likelihood
+   behaving correctly rather than diverging: the head starts claiming `sigma = 1` in normalized
+   units against residuals far wider than that, pays for it, and learns to widen sigma first.
+   The mean only becomes worth learning once the spread is roughly right.
+
+327,680 steps is 0.5% of a short run — Phase 2's crossover landed near 70M — so none of this
+says the architecture cannot learn the dynamics. It says the comparison is wired, in physical
+units, stratified by contact age, and currently unflattering, which is the honest state after
+one phase that deliberately changed the representation and retained no weights.
 
 ## New metrics and diagnostics
 
@@ -522,9 +555,11 @@ Caveats:
 
 Unresolved questions:
 
-1. **Does the learned head beat dead reckoning at convergence, and at what hidden age?** The
-   diagnostics now answer this; nothing has trained long enough to read the answer. This is the
-   first thing a full run should be asked.
+1. **Does the learned head beat dead reckoning at convergence, and at what hidden age?**
+   Measured above and the answer at 327k steps is no, by 34x on visible ships. The diagnostics
+   answer it properly; only a full run can. This is the first thing to ask of one, and if the
+   answer stays no, the next-state head is not earning its place and the plan's later phases
+   rest on something that does not work.
 2. **Is the correlation latent used?** The full 2D covariance is the plan's decision and it is
    implemented and differentiable, but no run has yet shown whether the head learns a nonzero
    rho or leaves it at the initialization. Worth a single metric (mean `|rho|` on hidden
