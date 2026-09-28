@@ -149,7 +149,10 @@ split-encoder input; route ships + global token through the full
 query/recurrent trunk; keep fields/zones K/V-only; remove any assumption that
 recurrent-token count equals ship count; keep ship heads ship-only; keep
 TeamPMA unchanged; keep rollout/update recurrent equivalence; represent mode
-categorically.
+categorically. **Keep a config switch that builds the model without the global
+token.** "Permanent" means on by default in every mode, not unconfigurable:
+Phase 8's variant A needs the token off, and adding that back later would be a
+rewrite of the kind Phase 3 did to Phase 2.
 
 **Gate.** Tests show: the global token receives recurrent state and trunk
 updates; map objects remain K/V-only; ship heads do not consume the global
@@ -202,6 +205,9 @@ budget, because this phase is training runs.
 | A | No | No | Yes |
 | B | Yes | No | Yes |
 | C | Yes | Yes | Yes |
+
+A is the Phase 5 switch off; B is the switch on with the Phase 7 coefficient at
+zero; C is both on. No new code should be needed for any arm.
 
 Questions: does the recurrent global token help (A→B)? Does density
 supervision add value (B→C)? Screening runs first; multi-seed only where a
