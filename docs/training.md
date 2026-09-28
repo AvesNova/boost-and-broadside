@@ -184,6 +184,9 @@ The total update combines:
   channels, whose magnitude already carries confidence, and a Gaussian likelihood over a
   predicted mean and variance everywhere else. The finest harmonic of each circular feature
   carries a sigma too, for gradient share rather than precision;
+- global ally/enemy density on a fixed hex grid, predicted from the global token against
+  privileged truth (`global_density_coef`; see
+  [architecture](architecture.md#global-density-head));
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.

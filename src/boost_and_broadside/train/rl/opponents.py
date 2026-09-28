@@ -699,6 +699,14 @@ class OpponentMixin:
         # actions were selected under the pre-step one.
         team_id = self.wrapper.env.state.ship_team_id[:, :num_ships]
         privileged_means = physical_means_from_state(self.wrapper.env.state)[:, :num_ships]
+        # Read from the same pre-step truth, for the same reason: the observation
+        # stored with it describes this decision, and the density field is a
+        # property of it. Team 0 is the observer, which is whose view is stored.
+        density_target = (
+            None
+            if self.density_target is None
+            else self.density_target(self.wrapper.env.state, self._density_observer_team)
+        )
         scripted = self._scripted_step_outputs(slots)
         network_args = (obs, hidden, hidden_t1, num_ships, num_recurrent, slots)
         step = self._step_environment_and_network(
@@ -725,6 +733,7 @@ class OpponentMixin:
             transition_contiguous=step.transition_contiguous,
             privileged_means=privileged_means,
             scaled_predictions=step.network.pred_next_t0,
+            density_target=density_target,
         )
 
         hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)

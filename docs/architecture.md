@@ -167,9 +167,10 @@ It sits at the map centre and carries a categorical game-mode one-hot, the match
 in Frontline, the front. It has its own split-encoder projection (`ObjectType.GLOBAL`).
 With `ModelConfig.global_token` on (the default), the policy treats ships plus this token
 as the query and recurrent set. The global token gets recurrent state and every spatial,
-temporal and FFN update a ship gets, while every head, `TeamPMA` included, still reads
-ships only. Fields and zones stay K/V-only. With the switch off, the token is an ordinary
-map object.
+temporal and FFN update a ship gets, while every per-ship head, `TeamPMA` included, still
+reads ships only; the global density head below is the one thing that reads the token
+itself. Fields and zones stay K/V-only. With the switch off, the token is an ordinary map
+object, and the density head cannot be built.
 
 [`BulletEncoder`](../src/boost_and_broadside/models/yemong/encoder.py) is separate and
 deliberately narrow. It runs over `N·K` entities where the entity encoder runs over `N+M`,
@@ -506,6 +507,29 @@ The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dy
 with deeper autoregressive diagnostics in the reference run's
 [autoregressive report](../checkpoints/good-leaf-719/artifacts/figures/ar_report_4v4/) and
 [noise calibration](../checkpoints/good-leaf-719/artifacts/figures/noise_calibration/).
+
+## Global density head
+
+The global token carries one more auxiliary task: where both fleets are, as a field rather
+than as a list. [`GlobalDensityHead`](../src/boost_and_broadside/models/yemong/policy.py)
+reads that token's final embedding and predicts the ally and enemy density at every cell of
+a fixed hexagonal grid over the playable circle
+([`hex_density.py`](../src/boost_and_broadside/train/rl/hex_density.py)), graded with mean
+squared error at `global_density_coef`.
+
+"Density" means what `local_presence` means — the same Gaussian kernel over toroidal
+distance and the same `log1p` compression — evaluated at fixed map points instead of at
+ships, so the head is asked for a quantity the encoder already speaks. Cell centres are
+stored in units of the playable radius, so a larger map carries the same cells as a zoom of
+a smaller one, and the cell order is part of the target's meaning.
+
+Targets read privileged truth: every living ship contributes, seen or not. The inputs stay
+legal, which is the point of putting the task here. A cell the observer has no information
+about is unpredictable, and the head's error on it is the honest cost of that; a cell behind
+a remembered fleet is not. Nothing the head predicts re-enters the policy's input, and the
+target is stored outside the observation so no input path can reach it by key. Beside the
+loss the trainer logs the mean square of the target itself, which is what a head predicting
+zero everywhere scores, and where this one starts.
 
 ## Why team size can change
 

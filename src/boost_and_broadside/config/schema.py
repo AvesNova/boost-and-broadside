@@ -98,6 +98,7 @@ class ProfileSpec:
     next_state_coef: float
     enemy_action_coef: float
     outcome_categorical_coef: float
+    global_density_coef: float
 
     # --- Discounts, per physics tick ---
     gamma_per_tick: float

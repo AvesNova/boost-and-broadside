@@ -45,6 +45,11 @@ def hex_cell_count(rings: int) -> int:
     return 1 + 3 * rings * (rings + 1)
 
 
+#: Width of one observer's density target, and of the head that predicts it:
+#: every cell's ally density followed by every cell's enemy density.
+HEX_DENSITY_DIM = 2 * hex_cell_count(HEX_DENSITY_RINGS)
+
+
 def hex_cell_offsets(rings: int) -> torch.Tensor:
     """Cell centres in units of the playable radius, in the grid's fixed order.
 

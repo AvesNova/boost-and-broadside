@@ -53,6 +53,10 @@ class MicroBatch(NamedTuple):
     # episodes labels barely one step in a hundred -- so the categorical head
     # bootstraps the rest rather than training on labelled steps alone.
     outcome_class: torch.Tensor
+    # (T, B, 2C) privileged ally/enemy hex density per step, or None for a scale
+    # that never trains the global density head. Deliberately outside ``obs``,
+    # like ``privileged_means``: no policy input path can reach it by key.
+    density_targets: torch.Tensor | None = None
 
     def pin_memory(self) -> "MicroBatch":
         """Copy one CPU micro-batch into page-locked transfer memory.
@@ -82,6 +86,9 @@ class MicroBatch(NamedTuple):
             adv_agg=self.adv_agg.pin_memory(),
             ret_agg=self.ret_agg.pin_memory(),
             ns_labels=self.ns_labels.pin_memory() if self.ns_labels is not None else None,
+            density_targets=(
+                self.density_targets.pin_memory() if self.density_targets is not None else None
+            ),
         )
 
     def to(self, device: torch.device, non_blocking: bool = False) -> "MicroBatch":
@@ -117,6 +124,11 @@ class MicroBatch(NamedTuple):
             ns_labels=(
                 self.ns_labels.to(device=device, non_blocking=non_blocking)
                 if self.ns_labels is not None
+                else None
+            ),
+            density_targets=(
+                self.density_targets.to(device=device, non_blocking=non_blocking)
+                if self.density_targets is not None
                 else None
             ),
         )
@@ -173,6 +185,9 @@ class MicroBatch(NamedTuple):
             adv_agg=self.adv_agg[:, start:end],
             ret_agg=self.ret_agg[:, start:end],
             ns_labels=self.ns_labels[:, start:end] if self.ns_labels is not None else None,
+            density_targets=(
+                self.density_targets[:, start:end] if self.density_targets is not None else None
+            ),
         )
 
     def split_envs(self, num_chunks: int) -> list["MicroBatch"]:
@@ -604,6 +619,7 @@ class RolloutBuffer:
         prediction_target_dim: int = 0,
         prediction_dim: int = 0,
         uncertainty_dim: int = 0,
+        density_dim: int = 0,
         store_expert_probs: bool = True,
     ) -> None:
         self.num_steps = num_steps
@@ -702,6 +718,20 @@ class RolloutBuffer:
             if prediction_target_dim > 0
             else None
         )
+        # Privileged ally/enemy density over the hex grid, ``(T, B, 2C)``, for
+        # the global density head. Only the step's own field is a target -- there
+        # is nothing to predict one step ahead -- so this needs no T+1 slot.
+        #
+        # ``_STORAGE_FLOAT`` unlike ``privileged_means``: a cell holds a
+        # ``log1p``-compressed count divided by the presence scale, so it is an
+        # O(1) number whose bf16 rounding is far below the head's own error. The
+        # tensor is the widest thing per step the buffer stores after the
+        # observation, and fp32 would double that for no accuracy that matters.
+        self.density_targets: torch.Tensor | None = (
+            torch.zeros((T, B, density_dim), device=device, dtype=_STORAGE_FLOAT)
+            if density_dim > 0
+            else None
+        )
         self.rollout_predictions: torch.Tensor | None = (
             torch.zeros((T, B, N, prediction_dim), device=device) if prediction_dim > 0 else None
         )
@@ -793,6 +823,7 @@ class RolloutBuffer:
         transition_contiguous: torch.Tensor | None = None,
         privileged_means: torch.Tensor | None = None,
         scaled_predictions: torch.Tensor | None = None,
+        density_target: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
@@ -850,6 +881,10 @@ class RolloutBuffer:
             if scaled_predictions is None:
                 raise ValueError("primary rollout requires rollout-time predictions")
             self.rollout_predictions[t].copy_(scaled_predictions)
+        if self.density_targets is not None:
+            if density_target is None:
+                raise ValueError("the global density head requires a density target")
+            self.density_targets[t].copy_(density_target)
 
         self.ptr += 1
 
@@ -1018,6 +1053,11 @@ class RolloutBuffer:
                         adv_agg=self.adv_agg[:, idx],
                         ret_agg=self.ret_agg[:, idx],
                         ns_labels=self.ns_labels[:, idx] if self.ns_labels is not None else None,
+                        density_targets=(
+                            self.density_targets[:, idx]
+                            if self.density_targets is not None
+                            else None
+                        ),
                     )
                 )
             yield chunks
@@ -1071,6 +1111,11 @@ class StoredRollout:
         self.ns_labels = (
             source.ns_labels.detach().to(device="cpu", copy=True)
             if source.ns_labels is not None
+            else None
+        )
+        self.density_targets = (
+            source.density_targets.detach().to(device="cpu", copy=True)
+            if source.density_targets is not None
             else None
         )
         self.belief_diagnostics = {
@@ -1166,6 +1211,11 @@ class StoredRollout:
                     adv_agg=self.adv_agg[:, indices],
                     ret_agg=self.ret_agg[:, indices],
                     ns_labels=(self.ns_labels[:, indices] if self.ns_labels is not None else None),
+                    density_targets=(
+                        self.density_targets[:, indices]
+                        if self.density_targets is not None
+                        else None
+                    ),
                 )
             ]
 

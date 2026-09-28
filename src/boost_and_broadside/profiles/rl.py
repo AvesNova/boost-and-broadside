@@ -117,6 +117,15 @@ RL_PROFILE = ProfileSpec(
     # else -- no advantage, no reward weight -- so a wrong answer costs a little
     # gradient rather than a run.
     outcome_categorical_coef=0.05,
+    # The global token's density field. Chosen from the Phase 7 gradient
+    # diagnostics rather than from the loss alone. The term's trunk gradient
+    # scales linearly in this weight, and at 1.0 it asks for well under a
+    # percent of the trunk's pre-clip gradient -- an order below the next-state
+    # head and two below the actor -- so it has room to grow by an order of
+    # magnitude as the head starts fitting and still not compete. The loss is a
+    # per-cell mean square whose untrained value is about 0.1, so this also puts
+    # the weighted term in the same band as the other two auxiliaries.
+    global_density_coef=1.0,
     # --- Discounts, per physics tick ---
     gamma_per_tick=0.99,
     gae_lambda_per_tick=0.95,

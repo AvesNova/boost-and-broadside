@@ -87,6 +87,8 @@ class PolicyBundle:
     # Whether these weights carry the categorical win/loss/tie head. Recorded so
     # a reload rebuilds the same architecture rather than a headless one.
     predict_outcome: bool = False
+    # Whether they carry the global density head, recorded for the same reason.
+    predict_density: bool = False
     global_step: int | None = None
     update: int | None = None
     # "ego_pass" | "shared_pass" — which perspectives these weights ever acted
@@ -226,6 +228,7 @@ def build_policy(
     num_ships: int,
     team_pma_k: tuple[int, ...],
     predict_outcome: bool = False,
+    predict_density: bool = False,
 ) -> YemongPolicy:
     """Construct a policy with the feature pipelines its config implies.
 
@@ -251,6 +254,7 @@ def build_policy(
             build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
         ),
         predict_outcome=predict_outcome,
+        predict_density=predict_density,
         ship_config=ship_config,
     )
 
@@ -436,6 +440,9 @@ def load_policy_bundle(
     checkpoint_predicts_outcome = isinstance(stored_weights, Mapping) and any(
         str(key).startswith("outcome_head.") for key in stored_weights
     )
+    checkpoint_predicts_density = isinstance(stored_weights, Mapping) and any(
+        str(key).startswith("density_head.") for key in stored_weights
+    )
     policy = build_policy(
         checkpoint_model_config,
         checkpoint_ship_config,
@@ -443,6 +450,7 @@ def load_policy_bundle(
         num_ships=num_ships,
         team_pma_k=checkpoint_team_pma_k,
         predict_outcome=checkpoint_predicts_outcome,
+        predict_density=checkpoint_predicts_density,
     )
     policy_state = checkpoint["policy_state_dict"]
     if not isinstance(policy_state, Mapping):
@@ -471,6 +479,8 @@ def load_policy_bundle(
         env_config=env_config,
         num_value_components=num_value_components,
         team_pma_k=checkpoint_team_pma_k,
+        predict_outcome=checkpoint_predicts_outcome,
+        predict_density=checkpoint_predicts_density,
         global_step=checkpoint.get("global_step"),
         update=checkpoint.get("update"),
         paradigm=_resolve_paradigm(checkpoint),

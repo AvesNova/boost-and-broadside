@@ -17,12 +17,15 @@ Architecture (per timestep):
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
+         → slice [N] (global token)      → (B, D)
+         → GlobalDensityHead            → (B, 2C)      [aux: hex ally/enemy density]
 
 Four object kinds, four levels of participation:
   ships  (team_id 0/1) — attention, recurrence, and every head.
   global token (G = 1 when ``ModelConfig.global_token``, else 0) — a query with
                          recurrent state, updated by every sublayer exactly as a
-                         ship is, but read by no head. Off, it is a map object.
+                         ship is. Read by no ship head, and by GlobalDensityHead
+                         alone. Off, it is a map object.
   map objects (team_id 2) — either full attention plus a non-recurrent temporal
                             adapter, or K/V-only reads with no trunk updates.
   bullets              — key/value only. Never queried, never recurrent, never
@@ -67,6 +70,7 @@ from boost_and_broadside.runtime.actions import (
     encode_joint_action_unchecked,
 )
 from boost_and_broadside.train.rl.features import FeatureCoordinator
+from boost_and_broadside.train.rl.hex_density import HEX_DENSITY_DIM
 from boost_and_broadside.train.rl.physical_belief import (
     PHYSICAL_MEAN_DIM,
     PHYSICAL_UNCERTAINTY_DIM,
@@ -132,6 +136,37 @@ class NextStateHead(nn.Module):
             max=self.uncertainty_max.to(uncertainty.dtype),
         )
         return torch.cat([mean, bounded], dim=-1)
+
+
+class GlobalDensityHead(nn.Module):
+    """Predicts the whole-map ally and enemy density field from the global token.
+
+    The one head that reads the global token rather than a ship token: it asks
+    that token to carry where both fleets are, which is a property of the game
+    rather than of any ship. Output is ``HEX_DENSITY_DIM`` wide -- every hex
+    cell's ally density, then every cell's enemy density, in the cell order
+    ``train/rl/hex_density.py`` fixes -- and is regressed on privileged truth
+    with MSE. Nothing it predicts re-enters the policy's input.
+
+    Args:
+        d_model: Token embedding dimension D.
+        out_dim: Target width; the grid decides it, so it is not a free choice.
+    """
+
+    def __init__(self, d_model: int, out_dim: int = HEX_DENSITY_DIM) -> None:
+        super().__init__()
+        self.out_dim = out_dim
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_model * 2),
+            nn.RMSNorm(d_model * 2),
+            nn.GELU(),
+            nn.Linear(d_model * 2, out_dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Args: x (..., D) global-token embedding. Returns: (..., out_dim)."""
+
+        return self.net(x)
 
 
 class TeamPMA(nn.Module):
@@ -213,6 +248,7 @@ class YemongPolicy(nn.Module):
         team_pma_k: tuple[int, ...],
         bullet_coordinator: FeatureCoordinator | None = None,
         predict_outcome: bool = False,
+        predict_density: bool = False,
         ship_config: ShipConfig | None = None,
     ) -> None:
         super().__init__()
@@ -332,6 +368,16 @@ class YemongPolicy(nn.Module):
         # physical dynamics, so its shape follows the physical layout rather than
         # however many Fourier harmonics the world size happens to imply.
         self.next_state_head = NextStateHead(D)
+        # Reads the global token, so it cannot exist without one in the query set:
+        # with the promotion off that token is K/V-only map memory and no final
+        # embedding for it ever leaves the trunk. Built only when something trains
+        # it, for the reason the outcome head is.
+        if predict_density and not self._num_global:
+            raise ValueError(
+                "the global density head reads the global token; it needs "
+                "ModelConfig.global_token on"
+            )
+        self.density_head = GlobalDensityHead(D) if predict_density else None
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
         # rather than fixed Sequential index, so inserting a non-Linear layer (e.g.
@@ -345,6 +391,8 @@ class YemongPolicy(nn.Module):
             _init_head_orthogonal(head)
         if self.outcome_head is not None:
             _init_head_orthogonal(self.outcome_head)
+        if self.density_head is not None:
+            _init_head_orthogonal(self.density_head.net)
         if team_pma_k:
             _init_head_orthogonal(self.value_head_win)
             nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
@@ -637,6 +685,7 @@ class YemongPolicy(nn.Module):
         done_mask: torch.Tensor | None = None,
         return_encoder_output: bool = False,
         return_enemy_action: bool = False,
+        return_density: bool = False,
     ) -> tuple:
         """Re-evaluate actions over a full rollout for PPO update.
 
@@ -667,6 +716,8 @@ class YemongPolicy(nn.Module):
                         or None if return_encoder_output=False.
             enemy_action_logits: optional (T, B, N, 42) next-command prediction.
             pred_next:  (T, B, N, pred_dim) float — predicted next-state predictions (with grad).
+            density:    optional (T, B, 2C) float — global ally/enemy density
+                        prediction, or None when this policy has no density head.
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         Q = self.num_recurrent_tokens  # N+G
@@ -780,7 +831,16 @@ class YemongPolicy(nn.Module):
 
         base = (logprob, entropy, new_value, logits, z, pred_next, outcome_logits)
         if return_enemy_action:
-            return (*base, enemy_action_logits)
+            base = (*base, enemy_action_logits)
+        if return_density:
+            # The global token's own final embedding, the one thing no ship head
+            # sees. G is one, so the token axis is squeezed out rather than kept.
+            density = (
+                None
+                if self.density_head is None
+                else self.density_head(x[:, :, N, :])  # (T, B, 2C)
+            )
+            base = (*base, density)
         return base
 
 
