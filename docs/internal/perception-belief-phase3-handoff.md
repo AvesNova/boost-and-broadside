@@ -12,7 +12,7 @@ September 28, 2026.
 |---|---|
 | branch | `fix/seat-symmetry-pending-action` |
 | starting commit | `f9e98d6` (`docs: complete Phase 2 handoff`) |
-| last code commit before this handoff | `02375fd` (`perf: fuse the league opponent's own view and stop double-observing it`) |
+| last code commit before this handoff | `33a4a0e` (`fix: keep the marginal entropy diagnostic off the simplex check`) |
 | handoff commit | the commit containing this document |
 | completed block | Phase 3 only |
 | recommended next block | Phase 4 only |
@@ -27,6 +27,7 @@ Ordered Phase 3 commits:
 | `55beec5` | Every remaining caller: evaluation agents, league opponents, interactive play, the analysis modes, the latency benchmarks, schema v19, and documentation. |
 | `b289aea` | A clean-revision CUDA compile-parity artifact over 24 steps for both team views. |
 | `02375fd` | The league opponent's own view fused onto the perception compile switch, and the rollout-shard boundary no longer observing twice for one decision. |
+| `33a4a0e` | A pre-existing crash in the marginal entropy diagnostic, found by the baselines probe and fixed with a regression test. |
 
 ## What changed
 
