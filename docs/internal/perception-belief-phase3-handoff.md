@@ -452,10 +452,38 @@ than an arccosine of normalized decoded headings, and the per-encoded-dimension
 Anything reading the old key names — a saved W&B panel, a chart recipe — needs updating. The
 `charts/renderers/training.py` note about a previous rename still applies.
 
+## A pre-existing bug the baselines probe found
+
+`_compute_minibatch_loss` builds the marginal entropy diagnostics as
+
+```python
+joint_prob = F.softmax(policy_logits, dim=-1).reshape(..., 3, 7, 2)
+turn_ent = Categorical(probs=joint_prob.sum(dim=(-3, -1))).entropy()
+```
+
+`Categorical` validates that its `probs` lie on the simplex, and a bf16 joint distribution
+under autocast does not: the six bf16 probabilities summed for the turn marginal land a few
+thousandths either side of one, and the check raises rather than tolerating it. On the
+production profile with a peaked actor it killed an update outright:
+
+```
+ValueError: Expected parameter probs (Tensor of shape (128, 8, 10, 7)) of distribution
+Categorical(...) to satisfy the constraint Simplex(), but found invalid values
+```
+
+**This predates Phase 3** -- the line arrived with `138f540`, the decision-runtime
+unification -- and it is a diagnostic, so nothing about the objective depended on it. The block
+is already under ``no_grad``, so taking the softmax in fp32 costs nothing that reaches the
+backward pass. Fixed in `33a4a0e`, with a regression test that also asserts the bf16 route
+really does fail the check, so the test is not vacuous.
+
+It surfaced only because the probe runs the production profile uncompiled at a batch the test
+suite does not cover. Worth knowing for Phase 4: **a diagnostic in this file can stop a run**,
+and the metric block is not otherwise defended against that.
+
 ## Known bugs, caveats, and unresolved questions
 
-
-Known Phase-3 bugs: none.
+Known Phase-3 bugs: none. One pre-existing crash was found and fixed (above).
 
 Caveats:
 
@@ -468,16 +496,19 @@ Caveats:
 3. **Compiled and eager differ at the ULP level.** Quantified above: 3.815e-06 absolute on the
    means at zero tolerance, which the default tolerance absorbs through its relative term over
    24 steps.
-4. **The league slot's first decision after a draw.** A slot created or replaced mid-run has
+4. **A diagnostic can stop a run.** The bug above was in the metric block, under
+   `no_grad`, computing something nothing depends on — and it raised. Phase 4 should consider
+   whether that block deserves to be defensive.
+5. **The league slot's first decision after a draw.** A slot created or replaced mid-run has
    its view composed at the start of the rollout shard, which is the settled point; there is no
    fallback to a shared view left in the code. But its belief is empty at that moment, so its
    hidden opponents read zero rather than a remembered position for one decision. Under
    `spawn_reveal` that resolves on the next decision the ships are revealed on.
-5. **`shield_delay` has no configured upper bound in this module.** The recharge delay lives on
+6. **`shield_delay` has no configured upper bound in this module.** The recharge delay lives on
    `FrontlineConfig`, which `PhysicalNextState.from_ship_config` does not see, so the channel
    clamps at zero from below and is otherwise unbounded. Non-negativity is the property that
    matters for a countdown; the ceiling would be a small improvement.
-6. **The velocity guard is a stated number, not a physics result.** Four times the
+7. **The velocity guard is a stated number, not a physics result.** Four times the
    `sqrt(boost_thrust / no_turn_drag_coeff)` equilibrium, which is 1,265 px/s per axis on the
    reference config. It is generous on purpose — collisions and refractive gradients briefly
    exceed the equilibrium — and it is a guard rather than a claim.
@@ -508,7 +539,7 @@ Unresolved questions:
   explicit that propagation uses the predicted mean deterministically, and shrinkage would
   need a decision about what the prior is.
 - Inferring `grad(n)` at a believed position.
-- An upper clamp for `shield_delay` (caveat 5).
+- An upper clamp for `shield_delay` (caveat 6).
 
 ## Compatibility and schema implications
 

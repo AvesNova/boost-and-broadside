@@ -1,9 +1,9 @@
 {
  "schema_version": 1,
  "what": "Phase-3 hidden-state forecast against persistence and dead-reckoning baselines, read from the production belief diagnostics.",
- "generated_utc": "2026-09-28T01:36:10.597371+00:00",
- "commit": "d74f66a4ea276171917812ebdf77239bf019575a",
- "dirty": true,
+ "generated_utc": "2026-09-28T01:47:47.866015+00:00",
+ "commit": "33a4a0e03a39132874fb10d9c97e043b5343a2db",
+ "dirty": false,
  "runtime": {
   "device": "cuda",
   "torch": "2.13.0+cu130",
@@ -12,6 +12,7 @@
  },
  "configuration": {
   "profile": "rl",
+  "compile_mode": null,
   "num_envs": 256,
   "num_steps": 128,
   "updates": 10
