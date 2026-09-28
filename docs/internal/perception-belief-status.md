@@ -2,8 +2,8 @@
 
 The single handoff document for the plan in
 `perception-belief-overarching-plan.md`. Updated at the end of every phase.
-Last updated September 28, 2026, after Phase 5 (its benchmark is still owed; see
-Blocked). Phase 3 ended at `ff32f9f` on
+Last updated September 28, 2026, after Phase 6 (the Phase 5 benchmark and a GPU
+run of Phase 6's are still owed; see Blocked). Phase 3 ended at `ff32f9f` on
 `fix/seat-symmetry-pending-action`; Phases 4–8 all go on
 `feat/perception-belief-phases-4-8`.
 
@@ -81,6 +81,17 @@ only hidden-state stride: league slots size from their own policy, beliefs from 
 count, and the buffer and microbatch splits read it off the stored tensor. The policy raises
 on a mismatched hidden state. Gate tests: `tests/models/test_global_token.py`. Schema v20.
 
+**Phase 6 — Hex density target.** `train/rl/hex_density.py` builds the privileged
+ally/enemy density target: `HEX_DENSITY_RINGS` hexagonal rings (331 cells), stored in units
+of the playable radius and scaled per env around `map_center`, so larger maps are a zoom of
+the same cells. Outer-ring corners sit on the boundary. Cell order (ring by ring from the
+centre, each ring starting on +x and walking counter-clockwise) is part of the target's
+meaning; do not change it once a head trains on it. The kernel, radius and `log1p` are
+`local_presence`'s, over every living ship, visible or not, with minimum-image distance.
+`HexDensityTarget(state, observer_team)` returns `(B, 2C)`, ally cells then enemy cells,
+optionally compiled. No loss is attached and nothing calls it in training yet. Tests:
+`tests/train/test_hex_density.py`; micro-benchmark: `benchmarks/hex_density_target.py`.
+
 ## Invariants to preserve
 
 1. `previous_action` is exactly 42 floats; raw enemy slots are zero; only the
@@ -130,6 +141,13 @@ Two-update measurements have a few percent of noise. Compare SPS across
 `perception-belief-phase{2,3}-compile-parity.json`; `error_count` is the
 criterion, not the hash.
 
+Phase 6 density target versus one rollout step (primary + aux + evaluator), 960 envs,
+5v5, `uv run --no-sync python benchmarks/hex_density_target.py` (GPU, compiled, by default):
+
+| device | compile | target ms | step ms | fraction | artifact |
+|---|---|---:|---:|---:|---|
+| CPU (4 cores) | none | 10.3 | 3,670 | 0.28% | `perception-belief-phase6-density-target.json` |
+
 Untrained-head baseline probe (Phase 3, 327k steps,
 `perception-belief-phase3-baselines.json`): on visible ships, dead reckoning
 0.07 px, persistence 2.5 px, model 2.5 px. The model equals persistence because
@@ -157,7 +175,10 @@ its last layer initializes near zero. See open question 1.
 - `map_read_mode="full_attention"` still sends fields and zones through the trunk
   as non-recurrent queries. Only `kv_memory` (production) keeps them K/V-only.
 - In combat the global token's position and radius are zero; the unbounded arena
-  has no map centre.
+  has no map centre. For the same reason every hex density cell collapses onto the
+  origin in combat; the target is only meaningful on Frontline.
+- `benchmarks/rl_kernel_profile.py` still calls `_prepare_league_slots` with an argument
+  and skips the aux scales; it crashes on the current trainer.
 - On a CPU-only cloud container, the `capture` smoke case and three default-suite
   tests fail for environmental reasons: no `ffmpeg`, no CUDA driver
   (`test_a_cuda_graph_mode_...`), and a CPU bf16 simplex check
@@ -200,9 +221,15 @@ feature (ego/ally/enemy) that would make seat identity unrepresentable.
 The Phase 5 gate's benchmark has not been run. This cloud container has no GPU,
 and `benchmarks/rl_pipeline_profile.py` hard-codes CUDA. Every other gate line is
 met. Next step: on the laptop, run the command in Numbers once and add a Phase 5
-row. If SPS is more than 10% below Phase 3's 3,190, report it and stop before
-Phase 6.
+row. If SPS is more than 10% below Phase 3's 3,190, report it before Phase 7.
+
+Phase 6's micro-benchmark was likewise run on CPU only (eager target against an eager
+rollout step, 0.28% against the 5% bar). Its compiled-versus-eager test is CUDA-only and
+was skipped. On the laptop, run `benchmarks/hex_density_target.py` once with its defaults
+and add a GPU row. A miss is very unlikely: the target is one fused reduction over
+`B × N × C`, about 3M elements.
 
 ## Remaining
 
-The Phase 5 benchmark (see Blocked), then Phases 6–8 as written in the plan.
+The Phase 5 benchmark and Phase 6's GPU row (see Blocked), then Phases 7–8 as written in
+the plan.
