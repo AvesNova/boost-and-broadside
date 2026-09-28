@@ -237,6 +237,7 @@ class TestPPOSmokeTest:
         trainer = _make_trainer(paradigm=paradigm, checkpoint_dir=str(tmp_path))
         params_before = [p.clone() for p in trainer.policy.parameters()]
         enemy_head_before = [p.clone() for p in trainer.policy.enemy_action_head.parameters()]
+        next_state_before = [p.clone() for p in trainer.policy.next_state_head.parameters()]
 
         trainer.train()
 
@@ -249,6 +250,17 @@ class TestPPOSmokeTest:
                 enemy_head_before, trainer.policy.enemy_action_head.parameters(), strict=True
             )
         ), "enemy-action head did not train"
+        # The physical objective has to reach its own head. A head whose output
+        # stays near its tiny initialization is indistinguishable from a belief
+        # standing still, which is exactly what the persistence baseline is -- so
+        # "the model matches persistence" must be readable as "not trained yet"
+        # rather than as "receives no gradient".
+        assert any(
+            not torch.equal(before, after)
+            for before, after in zip(
+                next_state_before, trainer.policy.next_state_head.parameters(), strict=True
+            )
+        ), "next-state head did not train"
 
     def test_stable_gradient_buffers_train_identically(self, tmp_path):
         """The CUDA-graph modes keep `.grad` allocated; that must change nothing.
