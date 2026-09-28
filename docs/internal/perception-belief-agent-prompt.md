@@ -19,7 +19,7 @@ Read, in this order, and nothing else before starting:
 Then read the code the phase names. Do not read the archived handoffs unless a
 specific number in the status document is unclear.
 
-Work on branch <branch>. Commit as you go with short conventional messages.
+Work on branch feat/perception-belief-phases-4-8. Commit as you go with short conventional messages.
 
 ## Scope
 

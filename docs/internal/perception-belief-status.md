@@ -2,8 +2,9 @@
 
 The single handoff document for the plan in
 `perception-belief-overarching-plan.md`. Updated at the end of every phase.
-Last updated September 28, 2026, after Phase 3, at `ff32f9f` on branch
-`fix/seat-symmetry-pending-action`.
+Last updated September 28, 2026, after Phase 3. Phase 3 ended at `ff32f9f` on
+`fix/seat-symmetry-pending-action`; Phases 4–8 all go on
+`feat/perception-belief-phases-4-8`.
 
 Everything a new phase owner needs is here, the spec, and the code. The
 per-phase handoffs that preceded this document are in `archive/` and are
