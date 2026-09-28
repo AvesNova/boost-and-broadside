@@ -7,11 +7,12 @@ September 28, 2026.
 
 ## Scope and history
 
+
 | | |
 |---|---|
 | branch | `fix/seat-symmetry-pending-action` |
 | starting commit | `f9e98d6` (`docs: complete Phase 2 handoff`) |
-| last code commit before this handoff | `PLACEHOLDER_LAST` |
+| last code commit before this handoff | `33a4a0e` (`fix: keep the marginal entropy diagnostic off the simplex check`) |
 | handoff commit | the commit containing this document |
 | completed block | Phase 3 only |
 | recommended next block | Phase 4 only |
@@ -25,9 +26,11 @@ Ordered Phase 3 commits:
 | `9b6c8c0` | The physical next-state head, the physical belief tracker, the re-based physical label, physical belief diagnostics with baselines, and the rollout-storage change. |
 | `55beec5` | Every remaining caller: evaluation agents, league opponents, interactive play, the analysis modes, the latency benchmarks, schema v19, and documentation. |
 | `b289aea` | A clean-revision CUDA compile-parity artifact over 24 steps for both team views. |
-| `PLACEHOLDER_LAST` | The derived-feature legal-view coverage, the baselines probe, and the end-to-end CUDA benchmark. |
+| `02375fd` | The league opponent's own view fused onto the perception compile switch, and the rollout-shard boundary no longer observing twice for one decision. |
+| `33a4a0e` | A pre-existing crash in the marginal entropy diagnostic, found by the baselines probe and fixed with a regression test. |
 
 ## What changed
+
 
 ### The belief is physical
 
@@ -85,8 +88,14 @@ join
              action_state.write_observation(...)  the queue, plus the action belief
 ```
 
-The physics and the forward still overlap; only composition is serial, and it is not
-materially more work than the `compose` pass it replaces.
+The physics and the forward still overlap; only composition is serial, and it is measurably
+*less* work than the `compose` pass it replaces (see below), so the lost overlap is paid for.
+
+The order inside the join is load-bearing and easy to get wrong: `advance` before `reset`
+before `observe`. Advancing after a reset would forecast from a cleared belief; observing
+before a reset would assimilate into memory a finished episode still owns. League slots follow
+the same order, with `advance` inside the network forward, `reset` inside
+`_reset_primary_hidden`, and `observe` inside `_compose_league_views`.
 
 League slots are the awkward case: a slot's own view cannot be built inside
 `_rollout_network_forwards`, because the environment step is mid-flight on another stream.
@@ -132,6 +141,7 @@ still) and `reckon_position_px` (the belief carried forward one decision on its 
 velocity).
 
 ## Implementation decisions
+
 
 ### The old machinery is inert, not deleted
 
@@ -185,6 +195,7 @@ supervised. This is unchanged from Phase 2 and is now explicit in one `torch.whe
 
 ## Materially changed components
 
+
 - new: `train/rl/physical_belief.py` (layout, bounds, objective, conversions)
 - rewritten: `train/rl/belief.py`, `evaluation/next_state.py`
 - composition: `env/observation.py`, `env/wrapper.py`, `env/perception.py`,
@@ -204,6 +215,7 @@ supervised. This is unchanged from Phase 2 and is now explicit in one `torch.whe
   `test_belief_copy.py`, `test_prediction_uncertainty.py`
 
 ## Validation during development
+
 
 Representative incremental checks, in execution order:
 
@@ -232,6 +244,7 @@ asserted bf16 for `VEL`, which moved to fp32 for the reason given above.
 
 ## Final validation
 
+
 | command | exact result |
 |---|---|
 | `.venv/bin/pytest -q -p no:randomly` | **1,747 passed**, 6 warnings, 393.37 s |
@@ -252,6 +265,7 @@ The `bnb smoke` pass covers `ar-report`, `feature-stats` and `noise-calibration`
 what exercises the three analysis modes this phase rewrote end to end.
 
 ## CUDA and compiled/eager validation
+
 
 Hardware/runtime for every Phase-3 CUDA check:
 
@@ -285,7 +299,110 @@ up to 3.815e-06 absolute on the physical means, against position values of order
 uncertainty block is the head's clamped output copied through, and the means pass through `%`,
 `clamp` and `atan2`. **The hash is not the parity criterion; `error_count` is.**
 
+## End-to-end performance
+
+
+Exact final command:
+
+```text
+.venv/bin/python benchmarks/rl_pipeline_profile.py \
+  --profile rl --timing wall --updates 2 --warmup 1 --no-checkpoint \
+  --out docs/internal/perception-belief-phase3-benchmark.json \
+  --label phase3-rl-wall
+```
+
+The committed result is
+[`perception-belief-phase3-benchmark.json`](perception-belief-phase3-benchmark.json). It ran
+the production 960-environment, 128-step, four-rollout logical update on the GPU above, with
+nothing else on the device. The two measured updates completed 4 and 2 PPO epochs, matching
+Phase 2's run exactly, so the comparison is like for like.
+
+| metric | Phase 0 `rl-wall` | Phase 2 | **Phase 3** | vs Phase 0 | vs Phase 2 |
+|---|---:|---:|---:|---:|---:|
+| SPS | 2,809.6 | 2,087.0 | **3,189.6** | **+13.5%** | **+52.8%** |
+| seconds/update | 174.95 | 235.51 | **154.10** | **-11.9%** | **-34.6%** |
+| rollout seconds/update | 103.84 | 140.15 | **93.30** | -10.1% | -33.4% |
+| update seconds/epoch | 21.39 | 28.82 | **18.74** | -12.4% | -35.0% |
+| peak allocated | 3,461.3 MiB | 3,766.0 MiB | **2,989.1 MiB** | **-472.2 MiB** | **-776.9 MiB** |
+| peak reserved | 4,656.0 MiB | 5,052.0 MiB | **3,678.0 MiB** | **-978.0 MiB** | -1,374.0 MiB |
+| perception/belief phases | 24.05 s/update | 32.06 s/update | **4.05 s/update** | **-83.2%** | -87.4% |
+
+**Phase 2's 25.7% SPS regression is not merely recovered — Phase 3 is 13.5% faster than the
+Phase-0 baseline and uses 472 MiB less.** The belief phases specifically:
+
+| phase | Phase 2 | Phase 3 |
+|---|---:|---:|
+| `belief_compose` / `belief_observe` | 18.184 | **1.626** |
+| `belief_advance` | 7.246 | **1.558** |
+| `privileged_obs` | 4.193 | — |
+| `target_vector` | 2.437 | — |
+| `compose_views` (new) | — | **0.864** |
+| total | **32.060** | **4.048** |
+
+The VRAM saving is the rollout buffer: `BELIEF_TARGETS` was `(T+1, B, tokens, 56)` in bf16 over
+26 tokens, and `privileged_targets` was 56 channels; together they cost more than the ten
+physical ship channels gained by moving to fp32.
+
+Every other phase fell too, which is worth understanding rather than celebrating: the head is
+43 outputs narrower, so `forward_loss` (37.85 -> 24.60) and `backward` (26.45 -> 19.61) both
+drop, and a smaller rollout buffer makes `rollout_to_host` (5.31 -> 2.47) and `host_gather`
+(8.82 -> 4.66) cheaper. `01k5_elo/reset_hidden` moved the other way (0.50 -> 6.89): the
+evaluator's per-agent view builds are enqueued differently, so wall attribution shifts work
+into the next synchronizing region. Under `--timing wall` phase attribution under-reports
+queued GPU work by design — read the totals, and take the split as indicative.
+
+The direct measurement above (7 ms per decision for both views, so ~3.5 s/update) is larger
+than the 0.864 s/update `compose_views` reports, for exactly that reason.
+
+The profiler again wrote an asynchronous best checkpoint despite `--no-checkpoint`; the
+directories it created were removed rather than left as repository artifacts. TorchInductor
+again emitted its complex-operator codegen warning and reported too few SMs for max-autotune
+GEMM on this laptop GPU.
+
+## Where the composition cost actually is
+
+
+Measured directly at production width (960 envs, 5v5 Frontline, RTX 4070 Laptop), because the
+end-to-end profile alone cannot separate the composition from everything around it. Twenty
+timed calls after warmup, `torch.cuda.synchronize` around each block:
+
+| operation | eager perception | compiled perception |
+|---:|---:|---:|
+| `wrapper.step(actions, observe=False)` — physics and perception only | 41.233 ms | 52.047 ms |
+| `advance` + `observe` + `wrapper.observe(sources)` — the whole belief plane and **both** legal views | **7.487 ms** | **6.740 ms** |
+| `wrapper.step(actions)` — the same, composed inline | 57.424 ms | 57.845 ms |
+
+Both team views compose in about 7 ms per decision. Over the production update — 128 steps x 4
+rollouts = 512 decisions — that is roughly **3.5 s/update** against the **32.06 s/update**
+Phase 2 recorded for `belief_compose` + `belief_advance` + `privileged_obs` + `target_vector`.
+
+The reasons are all structural rather than tuning. `_mask_hidden_ships` cloned and masked
+twenty-eight channels per view and is gone. `compose` cloned every channel again, decoded a
+56-dimensional Fourier target vector, and wrote back a dozen channels; it is gone. The
+privileged observation build and its target-vector pass are replaced by one eleven-channel
+stack straight off the state. And the head narrowed from 67 outputs to 24.
+
+## Startup cost
+
+
+One real regression, and it is in startup rather than throughput. Perception used to be a
+single fused callable; it is now three, because a belief has to be assimilated between
+computing visibility and composing the view that stands on it:
+
+| callable | who compiles it | shapes |
+|---|---|---|
+| `compile_visibility` | the wrapper and the evaluator | one per environment batch |
+| `compile_perception` (both team views) | the wrapper | one |
+| `compile_observation` (one observer) | the evaluator and each league slot | one per distinct width |
+
+That is roughly three to six Inductor compilations of a several-hundred-kernel function where
+Phase 2 had two, and each takes tens of seconds on this laptop GPU — the parity harness times
+a single compose graph at 16.98 s. It is paid once per process. A Phase-4 option, if it
+matters: leave the evaluator's single-observer builder eager and measure, since its builds are
+small and launch-bound rather than size-bound.
+
 ## Hidden-state performance against the baselines
+
 
 The plan requires hidden-state performance to be compared with persistence and dead-reckoning
 baselines. Both are now production diagnostics, emitted every update in physical units beside
@@ -315,6 +432,7 @@ and is called out as unresolved below.
 
 ## New metrics and diagnostics
 
+
 Added:
 
 - `belief/<bucket>/persist_position_px`, `persist_velocity_px_s`, `reckon_position_px` — the
@@ -341,9 +459,38 @@ than an arccosine of normalized decoded headings, and the per-encoded-dimension
 Anything reading the old key names — a saved W&B panel, a chart recipe — needs updating. The
 `charts/renderers/training.py` note about a previous rename still applies.
 
+## A pre-existing bug the baselines probe found
+
+`_compute_minibatch_loss` builds the marginal entropy diagnostics as
+
+```python
+joint_prob = F.softmax(policy_logits, dim=-1).reshape(..., 3, 7, 2)
+turn_ent = Categorical(probs=joint_prob.sum(dim=(-3, -1))).entropy()
+```
+
+`Categorical` validates that its `probs` lie on the simplex, and a bf16 joint distribution
+under autocast does not: the six bf16 probabilities summed for the turn marginal land a few
+thousandths either side of one, and the check raises rather than tolerating it. On the
+production profile with a peaked actor it killed an update outright:
+
+```
+ValueError: Expected parameter probs (Tensor of shape (128, 8, 10, 7)) of distribution
+Categorical(...) to satisfy the constraint Simplex(), but found invalid values
+```
+
+**This predates Phase 3** -- the line arrived with `138f540`, the decision-runtime
+unification -- and it is a diagnostic, so nothing about the objective depended on it. The block
+is already under ``no_grad``, so taking the softmax in fp32 costs nothing that reaches the
+backward pass. Fixed in `33a4a0e`, with a regression test that also asserts the bf16 route
+really does fail the check, so the test is not vacuous.
+
+It surfaced only because the probe runs the production profile uncompiled at a batch the test
+suite does not cover. Worth knowing for Phase 4: **a diagnostic in this file can stop a run**,
+and the metric block is not otherwise defended against that.
+
 ## Known bugs, caveats, and unresolved questions
 
-Known Phase-3 bugs: none.
+Known Phase-3 bugs: none. One pre-existing crash was found and fixed (above).
 
 Caveats:
 
@@ -356,16 +503,19 @@ Caveats:
 3. **Compiled and eager differ at the ULP level.** Quantified above: 3.815e-06 absolute on the
    means at zero tolerance, which the default tolerance absorbs through its relative term over
    24 steps.
-4. **The league slot's first decision after a draw.** A slot created or replaced mid-run has
+4. **A diagnostic can stop a run.** The bug above was in the metric block, under
+   `no_grad`, computing something nothing depends on — and it raised. Phase 4 should consider
+   whether that block deserves to be defensive.
+5. **The league slot's first decision after a draw.** A slot created or replaced mid-run has
    its view composed at the start of the rollout shard, which is the settled point; there is no
    fallback to a shared view left in the code. But its belief is empty at that moment, so its
    hidden opponents read zero rather than a remembered position for one decision. Under
    `spawn_reveal` that resolves on the next decision the ships are revealed on.
-5. **`shield_delay` has no configured upper bound in this module.** The recharge delay lives on
+6. **`shield_delay` has no configured upper bound in this module.** The recharge delay lives on
    `FrontlineConfig`, which `PhysicalNextState.from_ship_config` does not see, so the channel
    clamps at zero from below and is otherwise unbounded. Non-negativity is the property that
    matters for a countdown; the ceiling would be a small improvement.
-6. **The velocity guard is a stated number, not a physics result.** Four times the
+7. **The velocity guard is a stated number, not a physics result.** Four times the
    `sqrt(boost_thrust / no_turn_drag_coeff)` equilibrium, which is 1,265 px/s per axis on the
    reference config. It is generous on purpose — collisions and refractive gradients briefly
    exceed the equilibrium — and it is a guard rather than a claim.
@@ -385,6 +535,7 @@ Unresolved questions:
 
 ## Intentionally deferred
 
+
 - All Phase 4 removal of the inert encoded-belief machinery.
 - The global/game token (Phase 5), hex-density targets (Phase 6) and the density head
   (Phase 7). Nothing in this phase anticipates them.
@@ -395,9 +546,10 @@ Unresolved questions:
   explicit that propagation uses the predicted mean deterministically, and shrinkage would
   need a decision about what the prior is.
 - Inferring `grad(n)` at a believed position.
-- An upper clamp for `shield_delay` (caveat 5).
+- An upper clamp for `shield_delay` (caveat 6).
 
 ## Compatibility and schema implications
+
 
 - `physical_belief_v19` is intentionally checkpoint-incompatible with v18 and older. The
   encoder input width changes (`belief_uncertainty` narrows from one column per uncertainty
@@ -427,6 +579,7 @@ Unresolved questions:
 
 ## Exit gate
 
+
 | requirement | result |
 |---|---|
 | Information-flow tests show hidden truth cannot reach opponent observation slots through the new composition path | **met** — `test_belief.py::TestInformationFlow::test_hidden_truth_cannot_reach_an_opponent_slot` plants distinctive truth on a hidden enemy (position, velocity, health, power, cooldown, angular velocity, committed command) and sweeps every channel of the composed view for it; `tests/env/test_perception.py` pins the same property for the beliefless path, with the three ship constants named explicitly |
@@ -442,6 +595,7 @@ Unresolved questions:
 | Physical ship indexing stays aligned | **met** — `test_belief.py::TestActionBelief::test_physical_indices_are_never_remapped_by_canonicalization` |
 
 ## Exact prerequisites for Phase 4
+
 
 Start from the handoff commit and read this document, the overarching plan, and the Phase-1
 calibration artifact. Preserve these Phase-3 invariants:
@@ -494,6 +648,7 @@ deletion, so it should not move SPS, and a change either way is worth understand
 
 ## Surprising repository facts
 
+
 - **The full suite is much faster than Phase 2 recorded** — 393 s against 975 s. Some of that
   is the composition change (the belief no longer clones every observation channel twice per
   decision) and some is test-mix churn. It is not a measurement error; both numbers are
@@ -510,25 +665,3 @@ deletion, so it should not move SPS, and a change either way is worth understand
 - **`compile_visibility` and `compile_observation` are new** alongside `compile_perception`.
   Perception and composition had to split because a belief is assimilated between them, which
   costs the fusion across that boundary; the evaluator uses the single-observer builder.
-## Where the composition cost actually is
-
-Measured directly at production width (960 envs, 5v5 Frontline, RTX 4070 Laptop), because the
-end-to-end profile alone cannot separate the composition from everything around it. Twenty
-timed calls after warmup, `torch.cuda.synchronize` around each block:
-
-| operation | eager perception | compiled perception |
-|---:|---:|---:|
-| `wrapper.step(actions, observe=False)` — physics and perception only | 41.233 ms | 52.047 ms |
-| `advance` + `observe` + `wrapper.observe(sources)` — the whole belief plane and **both** legal views | **7.487 ms** | **6.740 ms** |
-| `wrapper.step(actions)` — the same, composed inline | 57.424 ms | 57.845 ms |
-
-Both team views compose in about 7 ms per decision. Over the production update — 128 steps x 4
-rollouts = 512 decisions — that is roughly **3.5 s/update** against the **32.06 s/update**
-Phase 2 recorded for `belief_compose` + `belief_advance` + `privileged_obs` + `target_vector`.
-
-The reasons are all structural rather than tuning. `_mask_hidden_ships` cloned and masked
-twenty-eight channels per view and is gone. `compose` cloned every channel again, decoded a
-56-dimensional Fourier target vector, and wrote back a dozen channels; it is gone. The
-privileged observation build and its target-vector pass are replaced by one eleven-channel
-stack straight off the state. And the head narrowed from 67 outputs to 24.
-
