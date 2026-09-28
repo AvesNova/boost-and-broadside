@@ -224,6 +224,7 @@ def build_synthetic_run(
         # to carry whatever heads the resolved profile trains -- a headless one
         # would pass the test while production could not load it.
         predict_outcome=resolved.train_config.outcome_categorical_coef > 0.0,
+        predict_density=resolved.train_config.global_density_coef > 0.0,
     )
     policy_payload = build_policy_checkpoint_payload(
         policy_state_dict=policy.state_dict(),

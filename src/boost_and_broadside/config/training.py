@@ -250,6 +250,11 @@ class TrainConfig:
     # reaches the advantage path, so this only buys representation in the trunk
     # and a calibrated probability to read. 0 disables the term outright.
     outcome_categorical_coef: float = 0.0
+    # MSE weight for the global token's hex ally/enemy density prediction. 0
+    # disables the head outright: it is never built, so nothing untrained enters
+    # a checkpoint. Requires ``model_config.global_token``, which is the only
+    # thing that gives the head an embedding to read.
+    global_density_coef: float = 0.0
 
     # --- Logging ---
     log_interval: int = 10  # print to terminal every N updates
