@@ -1,0 +1,183 @@
+# Perception and belief — status
+
+The single handoff document for the plan in
+`perception-belief-overarching-plan.md`. Updated at the end of every phase.
+Last updated September 28, 2026, after Phase 3, at `ff32f9f` on branch
+`fix/seat-symmetry-pending-action`.
+
+Everything a new phase owner needs is here, the spec, and the code. The
+per-phase handoffs that preceded this document are in `archive/` and are
+history, not required reading.
+
+## Done
+
+**Phase 0 — lifecycle and measurement.** `TensorEnv.step` now maintains the
+spawn-reveal latch the wrapper already maintained, so the reveal lasts one
+decision in every stepping path (before this, every non-training path was
+fog-free). Null pending action at spawn/respawn is pinned end to end
+(`tests/env/test_spawn_lifecycle.py`). Seat symmetry is tested as a mirrored
+game over every observation channel and the policy outputs
+(`tests/env/test_seat_symmetry.py`). The belief diagnostic's alignment was
+verified, not fixed: the "timing discrepancy" was respawn teleports leaking
+into a mean. Baseline numbers are in the table below.
+
+**Phase 1 — delta calibration.** `train/rl/physical_deltas.py` defines the
+eleven physical deltas and their fixed scales, measured over 5.75M scripted
+5v5 Frontline transitions with respawn destinations excluded
+(`perception-belief-phase1-calibration.json`,
+`benchmarks/physical_delta_calibration.py`). Position 2.5 px, velocity 4.0
+px/s, attitude 0.1 rad; sparse channels use their event magnitude (health 10,
+cooldown 0.1 s, shield delay 5 s) rather than a zero-dominated RMS.
+
+**Phase 2 — joint pending action and enemy head.** `previous_action` is 42
+floats per token. Allies and spawn-revealed ships are exact one-hots; ordinary
+enemy slots are zero in the raw view and filled only from the belief's stored
+softmax of the enemy head's previous prediction. The enemy head
+(`Linear(D,2D) → RMSNorm → GELU → Linear(2D,42)`) is disjoint from but
+identical in shape to the actor head and is returned by the same forward.
+Trained with cross-entropy masked to alive, committed enemy decisions. Metrics:
+`loss/enemy_action`, realized probability, entropy, Brier, top-1, persistence
+and uniform baselines, trunk gradient norm and cosine. Schema v18.
+
+**Phase 3 — physical belief plane.** `BeliefTracker` (`train/rl/belief.py`)
+stores eleven physical means, thirteen uncertainty terms, the action belief and
+an age per ship per observer. `observation_from_state` takes a
+`ShipBeliefSource` and selects each slot's physical state once
+(`_ShipChannels.select`); `_mask_hidden_ships` and `BeliefTracker.compose` are
+gone. `NextStateHead` emits 11 + 13 (`NEXT_STATE_OUTPUT_DIM`);
+`PhysicalNextState` (`train/rl/physical_belief.py`) owns the scales, bounds,
+label and Gaussian NLL. The rollout composes after the env/net stream join:
+`advance → reset → observe → wrapper.observe → write_observation`. Every
+evaluation agent, league slot and interactive side composes its own view
+through `legal_policy_view`. `RolloutBuffer.privileged_means` is eleven fp32
+channels; the ten physical ship channels are fp32 in the buffer. Persistence
+and dead-reckoning baselines are production diagnostics
+(`belief/<bucket>/persist_*`, `reckon_position_px`). Schema v19.
+
+## Invariants to preserve
+
+1. `previous_action` is exactly 42 floats; raw enemy slots are zero; only the
+   belief writes predicted values; spawn/respawn is the null one-hot for both
+   teams; a prediction made at decision `t` is the belief seen at `t+1`.
+2. Canonicalization relabels perspective and never reorders physical ship
+   slots.
+3. The enemy head is separate from, and shaped like, the actor head. No belief
+   output costs an extra policy forward.
+4. The belief stores physical state in `PHYSICAL_MEAN_NAMES` order and units.
+   Nothing decodes or re-encodes it.
+5. Composition is one selection per slot before encoding: truth where the
+   observer owns or sees it, belief where it cannot, zero where never seen.
+6. Each observer composes its own view from its own belief. No shared view.
+7. Uncertainty is restated by the head, never accumulated. Visible = floor
+   (`log σ = −6`), never-seen = ceiling (`+6`).
+8. The recursion is bounded: position and attitude wrap, everything else
+   clamps to its physical range. `clamp_events` counts only non-finite output.
+9. The label is `believed[t] → truth[t+1]`, normalized by the fixed scales.
+   `NEXT_STATE_OUTPUT_DIM` is the only correct head width.
+10. Composition happens after the stream join. Do not move it into the
+    environment step.
+11. The live policy stays on Team 0; seat symmetry is a test, not a
+    randomization.
+
+## Numbers
+
+Production `rl` profile (5v5 Frontline, 960 envs × 128 steps × 4 rollouts),
+RTX 4070 Laptop 8 GB, torch 2.13.0+cu130. Command:
+
+```
+uv run --no-sync python benchmarks/rl_pipeline_profile.py --profile rl \
+    --timing wall --updates 2 --warmup 1 --no-checkpoint
+```
+
+| after | SPS | s/update | peak alloc MiB | peak reserved MiB | artifact |
+|---|---:|---:|---:|---:|---|
+| Phase 0 | 2,810 | 175.0 | 3,461 | 4,656 | `perception-belief-phase0-baseline.json` |
+| Phase 2 | 2,087 | 235.5 | 3,766 | 5,052 | `perception-belief-phase2-benchmark.json` |
+| Phase 3 | 3,190 | 154.1 | 2,989 | 3,678 | `perception-belief-phase3-benchmark.json` |
+
+Two-update measurements have a few percent of noise. Compare SPS across
+`--timing wall` runs only. Compile parity artifacts:
+`perception-belief-phase{2,3}-compile-parity.json`; `error_count` is the
+criterion, not the hash.
+
+Untrained-head baseline probe (Phase 3, 327k steps,
+`perception-belief-phase3-baselines.json`): on visible ships, dead reckoning
+0.07 px, persistence 2.5 px, model 2.5 px. The model equals persistence because
+its last layer initializes near zero. See open question 1.
+
+## Known caveats
+
+- The legacy encoded-belief machinery is inert and **untested**. Phase 4
+  deletes it. Removal list: `ObsKey.BELIEF_TARGETS`, `ObsKey.BELIEF_SUBSTITUTE`
+  and their `_TOKEN_LAST_KEYS` references (`env/observation.py`);
+  `FeatureCoordinator._apply_belief_override`, `_override_columns`,
+  `_override_cache`, `project_targets`, `decode_targets`, `compute_labels`,
+  `apply_all_predictions`, `apply_scaled_predictions`, `prediction_loss`,
+  `prediction_variance`, `uncertainty_variance`, `label_scale_vector`,
+  `get_loss_weights`, `get_feature_names`, `target_slices`,
+  `get_target_vector`, `_PredictorSpec`, the `Predictor` hierarchy, and every
+  `predictor=`/`label_scale=` argument in `build_standard_coordinator`
+  (`train/rl/features.py`); `YemongPolicy._believed_rotary_tables` and
+  `_rotary_target_slices`, then `SpatialRotary.tables_from_moments` if unused;
+  `PPOTrainer.aux_weights`; `Fourier.invert`, `UnitCircle`,
+  `UnitCirclePredictor`, `AttitudeFourier.invert` if unused. Check that
+  `total_prediction_dimension`, `total_target_dimension` and
+  `total_uncertainty_dimension` have no callers first.
+- `coordinator.total_prediction_dimension` is 56 on the Frontline world and is
+  wrong for the head. Nothing reads it today.
+- `shield_delay` has no upper clamp in `PhysicalNextState` (the recharge delay
+  lives on `FrontlineConfig`).
+- `BELIEF_UNCERTAINTY` and `TIME_SINCE_OBSERVATION` on truth-sourced slots are
+  read from the belief store, which is correct only because `observe` stamps
+  the certainty floor on every visible ship and own ships are always visible.
+- A metric block in `ppo.py::_compute_minibatch_loss` can raise and kill an
+  update (one such crash was fixed in `33a4a0e`). It is not defended.
+- Compile startup grew: perception is three Inductor graphs
+  (`compile_visibility`, `compile_perception`, `compile_observation`) instead
+  of one, tens of seconds each on the laptop GPU, once per process.
+- A league slot created mid-run has an empty belief for one decision; hidden
+  opponents read zero until the next reveal.
+- `state.num_zones > 0` is how `BeliefTracker.source` knows respawn is on.
+- Checkpoints older than schema v19 cannot be loaded; there is no weight
+  migration. Evaluation numbers taken through `TensorEnv` before Phase 0's
+  latch fix were measured without fog.
+- Pre-existing `ruff` violations remain in the two `docs/internal/*-probe.py`
+  and `*-experiment.py` scripts. Leave them.
+
+## Open questions
+
+1. Does the learned head beat dead reckoning at convergence, and at what
+   hidden age? Only a training run answers it. The audit recommends
+   dead-reckoning the position mean by default so the head learns a residual;
+   that is a spec change and needs the user's decision.
+2. Is the correlation latent used at all? One metric (mean `|ρ|` on hidden
+   tokens) would tell.
+3. Is the certainty floor at −6 binding on visible tokens?
+
+## Deferred by design
+
+Batching the two team views into one `2B` build; shrinking a stale mean toward
+a prior; inferring `grad(n)` at a believed position; a Frontline mirrored-game
+seat-symmetry test (the map itself carries a side); a self-relative team
+feature (ego/ally/enemy) that would make seat identity unrepresentable.
+
+## Repository facts worth knowing
+
+- `pytest` defaults to `-m "not slow"`. The default suite is roughly 1,750
+  tests and takes about seven minutes on the laptop GPU. Do not run it more
+  than the phase prompt says.
+- `bnb smoke` runs 16 isolated end-to-end cases and is the check for the
+  analysis modes (`ar-report`, `feature-stats`, `noise-calibration`).
+- `TensorState` advances by tensor reassignment; reading `env.state` while a
+  queued kernel runs on another stream is a race. That is why league views are
+  composed at the end of the previous decision.
+- A ship dies on the tick it takes damage while already at zero health, not the
+  tick it reaches zero.
+- Belief-cell diagnostics need thousands of decisions of warm-up before any
+  enemy is in sight on Frontline.
+- Position is an absolute quantity in the belief; `FourierMomentPredictor` and
+  friends are the dead code, not the live path.
+
+## Remaining
+
+Phases 4–8, as written in the plan. Next up: Phase 4.
