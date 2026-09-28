@@ -44,6 +44,9 @@ MODEL_CONFIG = ModelConfig(
     # memory 1435 -> 840 MiB. The fused softmax replaces the earlier pair of
     # independent ones, so ships and map now compete for the same attention mass.
     map_read_mode="kv_memory",
+    # The global/game token joins the ships as a recurrent query; fields and
+    # zones stay K/V-only. Off is the no-global-token ablation.
+    global_token=True,
     # Per-entity-type first projection, with a shared second layer. A field token
     # otherwise spends most of its input width on ship-only channels that are hard
     # zeros for it. Each projection runs over its own contiguous span of the token

@@ -579,17 +579,18 @@ class TestYemongEnvWrapper:
             device="cpu",
         )
         obs = wrapper.reset(options={"team_sizes": (4, 4)})
+        T = N + 1  # ships, then the global token every mode presents
 
-        assert obs["pos"].shape == (B, N, 2)
-        assert obs["vel"].shape == (B, N, 2)
-        assert obs["att"].shape == (B, N, 2)
-        assert obs["ang_vel"].shape == (B, N, 1)
-        assert obs["health"].shape == (B, N, 1)
-        assert obs["power"].shape == (B, N, 1)
-        assert obs["cooldown"].shape == (B, N, 1)
-        assert obs["team_id"].shape == (B, N)
-        assert obs["alive"].shape == (B, N)
-        assert obs["previous_action"].shape == (B, N, 42)
+        assert obs["pos"].shape == (B, T, 2)
+        assert obs["vel"].shape == (B, T, 2)
+        assert obs["att"].shape == (B, T, 2)
+        assert obs["ang_vel"].shape == (B, T, 1)
+        assert obs["health"].shape == (B, T, 1)
+        assert obs["power"].shape == (B, T, 1)
+        assert obs["cooldown"].shape == (B, T, 1)
+        assert obs["team_id"].shape == (B, T)
+        assert obs["alive"].shape == (B, T)
+        assert obs["previous_action"].shape == (B, T, 42)
 
     def test_observation_from_state_matches_wrapper(self, ship_cfg, env_cfg, reward_cfg):
         """The standalone builder and training wrapper must emit the same raw tensors."""

@@ -8,7 +8,12 @@ import torch
 from boost_and_broadside.agents.semi_random_scripted import SemiRandomScriptedAgent
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import ObsKey, YemongObservation
+from boost_and_broadside.env.observation import (
+    NUM_GAME_MODES,
+    GameMode,
+    ObsKey,
+    YemongObservation,
+)
 from boost_and_broadside.evaluation.agents import resolve_agent_spec
 from boost_and_broadside.evaluation.next_state import means_to_observation
 from boost_and_broadside.evaluation.run_catalog import CheckpointNotFoundError
@@ -16,23 +21,28 @@ from boost_and_broadside.train.rl.physical_belief import physical_means_from_obs
 
 
 def _make_prev_obs(B: int, N: int) -> YemongObservation:
-    """Minimal ship-only observation with every key the next-state decoder touches."""
+    """Minimal combat observation -- ships then the global token -- with every key
+    the next-state decoder touches."""
+    T = N + 1
+    game_mode = torch.zeros(B, T, NUM_GAME_MODES)
+    game_mode[:, N, int(GameMode.COMBAT)] = 1.0
+    team_id = torch.cat([torch.arange(N) % 2, torch.tensor([2])]).expand(B, T).clone()
     return YemongObservation(
         data={
-            ObsKey.POS: torch.zeros(B, N, 2),
-            ObsKey.VEL: torch.zeros(B, N, 2),
-            ObsKey.ATT: torch.zeros(B, N, 2),
-            ObsKey.ANG_VEL: torch.zeros(B, N, 1),
-            ObsKey.HEALTH: torch.zeros(B, N, 1),
-            ObsKey.SHIELD_DELAY: torch.zeros(B, N, 1),
-            ObsKey.GAME_MODE: torch.zeros(B, N, 1),
-            ObsKey.POWER: torch.zeros(B, N, 1),
-            ObsKey.COOLDOWN: torch.zeros(B, N, 1),
-            ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
-            ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),
-            ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
-            ObsKey.TEAM_ID: (torch.arange(N) % 2).expand(B, N).clone(),
-            ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 42),
+            ObsKey.POS: torch.zeros(B, T, 2),
+            ObsKey.VEL: torch.zeros(B, T, 2),
+            ObsKey.ATT: torch.zeros(B, T, 2),
+            ObsKey.ANG_VEL: torch.zeros(B, T, 1),
+            ObsKey.HEALTH: torch.zeros(B, T, 1),
+            ObsKey.SHIELD_DELAY: torch.zeros(B, T, 1),
+            ObsKey.GAME_MODE: game_mode,
+            ObsKey.POWER: torch.zeros(B, T, 1),
+            ObsKey.COOLDOWN: torch.zeros(B, T, 1),
+            ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, T, 1),
+            ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, T, 2),
+            ObsKey.ALIVE: torch.ones(B, T, dtype=torch.bool),
+            ObsKey.TEAM_ID: team_id,
+            ObsKey.PREVIOUS_ACTION: torch.zeros(B, T, 42),
         }
     )
 

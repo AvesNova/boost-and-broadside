@@ -162,6 +162,15 @@ channels that are hard zeros for it. The shared output layer keeps both token ty
 latent space. Spatial layers apply a single `W_qkv` to ships and fields alike, and cannot
 reconcile two spaces that have drifted apart.
 
+Every environment, in every mode, presents one global/game token directly after the ships.
+It sits at the map centre and carries a categorical game-mode one-hot, the match clock and,
+in Frontline, the front. It has its own split-encoder projection (`ObjectType.GLOBAL`).
+With `ModelConfig.global_token` on (the default), the policy treats ships plus this token
+as the query and recurrent set. The global token gets recurrent state and every spatial,
+temporal and FFN update a ship gets, while every head, `TeamPMA` included, still reads
+ships only. Fields and zones stay K/V-only. With the switch off, the token is an ordinary
+map object.
+
 [`BulletEncoder`](../src/boost_and_broadside/models/yemong/encoder.py) is separate and
 deliberately narrow. It runs over `N·K` entities where the entity encoder runs over `N+M`,
 so its width is what sets encoder cost. A bullet is also a much simpler entity to
@@ -283,7 +292,7 @@ unit, following [Griffin](https://arxiv.org/abs/2402.19427) (De et al., 2024), f
 a gated MLP. Each ship carries its own temporal state, while attention supplies current
 cross-entity context.
 
-Only ships are recurrent. A field is static within an episode, so a recurrence over it
+Only ships and the global token are recurrent. A field is static within an episode, so a recurrence over it
 converges to a fixed point and carries nothing the encoder did not already supply, while
 costing the expensive half of every block. Field tokens instead take
 `forward_nonrecurrent`, which replaces the causal conv and RG-LRU with a per-sublayer
@@ -294,8 +303,10 @@ one thing shared weights cannot: a type-specific linear map. It is initialised t
 identity, because `b1_out` feeds a multiplicative gate and zeroing it would erase the
 branch entirely.
 
-The recurrent state therefore covers ships only, `(n_yemong_blocks · n_temporal_per_block,
-B·N, CONV_KERNEL·D)`, a third smaller than in the four-field profile before.
+The recurrent state therefore covers ships and the global token, `(n_yemong_blocks ·
+n_temporal_per_block, B·(N+G), CONV_KERNEL·D)` with `G = 1` when the token is promoted.
+Every consumer sizes it from `YemongPolicy.num_recurrent_tokens` or reads it off the
+tensor's width, and never from the ship count.
 
 The implementation supports both execution patterns required by recurrent PPO:
 

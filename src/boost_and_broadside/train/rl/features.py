@@ -19,6 +19,7 @@ import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import (
+    NUM_GAME_MODES,
     BulletObsKey,
     ObjectType,
     ObsKey,
@@ -148,9 +149,12 @@ class Accessor:
                 ObsKey.FRONT_POSITION,
                 ObsKey.FRONT_WIN_THRESHOLD,
                 ObsKey.TIME_REMAINING,
-                ObsKey.GAME_MODE,
             }:
                 val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
+            elif self.key == ObsKey.GAME_MODE:
+                val = torch.zeros(
+                    (*team_id.shape, NUM_GAME_MODES), dtype=torch.float32, device=team_id.device
+                )
             else:
                 raise
         return self._select(val)
@@ -335,7 +339,7 @@ class FeatureScope(StrEnum):
     SHIP = "ship"  # zero-filled on field tokens
     FIELD = "field"  # zero-filled on ship tokens
     ZONE = "zone"
-    BOUNDARY = "boundary"
+    GLOBAL = "global"  # the global/game token
 
 
 class Feature:
@@ -728,13 +732,13 @@ def build_standard_coordinator(
             "front_position",
             Accessor(ObsKey.FRONT_POSITION),
             Symlog(),
-            scope=FeatureScope.BOUNDARY,
+            scope=FeatureScope.GLOBAL,
         ),
         Feature(
             "front_win_threshold",
             Accessor(ObsKey.FRONT_WIN_THRESHOLD),
             Symlog(),
-            scope=FeatureScope.BOUNDARY,
+            scope=FeatureScope.GLOBAL,
         ),
         # How uncertain the belief is, as the next-state head's own thirteen
         # terms: a log sigma per channel plus one correlation latent for position
@@ -759,13 +763,13 @@ def build_standard_coordinator(
             "time_remaining",
             Accessor(ObsKey.TIME_REMAINING),
             Identity(),
-            scope=FeatureScope.BOUNDARY,
+            scope=FeatureScope.GLOBAL,
         ),
         Feature(
             "game_mode",
             Accessor(ObsKey.GAME_MODE),
             Identity(),
-            scope=FeatureScope.BOUNDARY,
+            scope=FeatureScope.GLOBAL,
         ),
         Feature(
             name="local_log_index",

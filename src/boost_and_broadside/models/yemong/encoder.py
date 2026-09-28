@@ -97,7 +97,7 @@ class ShipEncoder(nn.Module):
             ObjectType.SHIP: FeatureScope.SHIP,
             ObjectType.FIELD: FeatureScope.FIELD,
             ObjectType.ZONE: FeatureScope.ZONE,
-            ObjectType.BOUNDARY: FeatureScope.BOUNDARY,
+            ObjectType.GLOBAL: FeatureScope.GLOBAL,
         }
         self._type_scopes = scopes
         self.type_proj = nn.ModuleDict(
@@ -122,8 +122,8 @@ class ShipEncoder(nn.Module):
     def _token_spans(self, obs: YemongObservation) -> tuple[tuple[int, int, int], ...]:
         """``(object_type, start, end)`` per contiguous run of the token axis.
 
-        The environment lays the axis out grouped by kind -- ships, then fields,
-        then zones, then the boundary token -- identically for every env in the
+        The environment lays the axis out grouped by kind -- ships, then the
+        global token, then fields, then zones -- identically for every env in the
         batch, so one run per kind describes it. Derived from the observation
         rather than from a configured count, which is what keeps the encoder
         agnostic to how many of each kind exist.

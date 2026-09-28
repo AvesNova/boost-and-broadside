@@ -2,7 +2,8 @@
 
 The single handoff document for the plan in
 `perception-belief-overarching-plan.md`. Updated at the end of every phase.
-Last updated September 28, 2026, after Phase 4. Phase 3 ended at `ff32f9f` on
+Last updated September 28, 2026, after Phase 5 (its benchmark is still owed; see
+Blocked). Phase 3 ended at `ff32f9f` on
 `fix/seat-symmetry-pending-action`; Phases 4–8 all go on
 `feat/perception-belief-phases-4-8`.
 
@@ -68,6 +69,18 @@ certainty floor/zero at the composition site for truth-sourced ship slots
 width, belief layout or composition semantics changed; `docs/architecture.md` needed only a
 stale-paragraph trim, since it already described the post-Phase-3 shape.
 
+**Phase 5 — Promote the global/game token.** Every environment, combat included, now
+presents one global token directly after the ships (`env/observation.py`, `NUM_GLOBAL_TOKENS`,
+`ObjectType.GLOBAL`, `FeatureScope.GLOBAL`). It sits at the map centre and carries a
+`GameMode` one-hot, the clock and the front. `ModelConfig.global_token` (on by default, and
+set explicitly in `defaults.py`) makes ships plus that token the query/recurrent set in
+`YemongPolicy`. Fields and zones stay K/V-only, every head reads `[:N]`, and TeamPMA is
+unchanged. With the switch off, the token becomes an ordinary K/V map object, so Phase 8's
+variant A drops the promotion but keeps the information. `num_recurrent_tokens` (N+G) is the
+only hidden-state stride: league slots size from their own policy, beliefs from the ship
+count, and the buffer and microbatch splits read it off the stored tensor. The policy raises
+on a mismatched hidden state. Gate tests: `tests/models/test_global_token.py`. Schema v20.
+
 ## Invariants to preserve
 
 1. `previous_action` is exactly 42 floats; raw enemy slots are zero; only the
@@ -92,6 +105,9 @@ stale-paragraph trim, since it already described the post-Phase-3 shape.
     environment step.
 11. The live policy stays on Team 0; seat symmetry is a test, not a
     randomization.
+12. The token axis is ships, global token, fields, zones, so the query/recurrent
+    set is a prefix of it. Size hidden state from `num_recurrent_tokens`, never
+    from the ship count. (New in Phase 5: the global token made the two differ.)
 
 ## Numbers
 
@@ -133,11 +149,19 @@ its last layer initializes near zero. See open question 1.
 - A league slot created mid-run has an empty belief for one decision; hidden
   opponents read zero until the next reveal.
 - `state.num_zones > 0` is how `BeliefTracker.source` knows respawn is on.
-- Checkpoints older than schema v19 cannot be loaded; there is no weight
+- Checkpoints older than schema v20 cannot be loaded; there is no weight
   migration. Evaluation numbers taken through `TensorEnv` before Phase 0's
   latch fix were measured without fog.
 - Pre-existing `ruff` violations remain in the two `docs/internal/*-probe.py`
   and `*-experiment.py` scripts. Leave them.
+- `map_read_mode="full_attention"` still sends fields and zones through the trunk
+  as non-recurrent queries. Only `kv_memory` (production) keeps them K/V-only.
+- In combat the global token's position and radius are zero; the unbounded arena
+  has no map centre.
+- On a CPU-only cloud container, the `capture` smoke case and three default-suite
+  tests fail for environmental reasons: no `ffmpeg`, no CUDA driver
+  (`test_a_cuda_graph_mode_...`), and a CPU bf16 simplex check
+  (`test_bf16_logits_do_not_break_the_marginal_entropies`).
 
 ## Open questions
 
@@ -171,6 +195,14 @@ feature (ego/ally/enemy) that would make seat identity unrepresentable.
 - Belief-cell diagnostics need thousands of decisions of warm-up before any
   enemy is in sight on Frontline.
 
+## Blocked
+
+The Phase 5 gate's benchmark has not been run. This cloud container has no GPU,
+and `benchmarks/rl_pipeline_profile.py` hard-codes CUDA. Every other gate line is
+met. Next step: on the laptop, run the command in Numbers once and add a Phase 5
+row. If SPS is more than 10% below Phase 3's 3,190, report it and stop before
+Phase 6.
+
 ## Remaining
 
-Phases 5–8, as written in the plan. Next up: Phase 5.
+The Phase 5 benchmark (see Blocked), then Phases 6–8 as written in the plan.

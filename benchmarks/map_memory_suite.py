@@ -111,9 +111,9 @@ def _sequence_profile(
     sequence = type(obs)(
         data={key: value.unsqueeze(0).expand(steps, *value.shape) for key, value in obs.items()}
     )
-    batch, ships = obs.pos.shape[0], policy.num_recurrent_tokens
+    batch, ships = obs.pos.shape[0], policy.num_ships
     actions = torch.zeros((steps, batch, ships, 3), dtype=torch.long, device=device)
-    hidden = policy.initial_hidden(batch, ships, device)
+    hidden = policy.initial_hidden(batch, policy.num_recurrent_tokens, device)
     alive = sequence["belief_valid"]
 
     def step() -> None:

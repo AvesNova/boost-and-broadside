@@ -30,7 +30,7 @@ a ship through a full circle, therefore returns the rotation to where it
 started — continuity across the seam is exact rather than approximate.
 
 **The attitude axis degrades gracefully.** Tokens without a heading (fields,
-zones, the boundary/global token, bullets) carry ``ATT = (0, 0)``, and
+zones, the global/game token, bullets) carry ``ATT = (0, 0)``, and
 ``atan2(0, 0)`` is 0 — which is precisely the angle their input Fourier feature
 already encodes. Their rotation in the attitude block is the identity, so those
 dimensions contribute ``cos(k * theta_query)``: an absolute heading preference

@@ -1,13 +1,13 @@
 """YemongPolicy: the full per-ship actor-critic policy.
 
 Architecture (per timestep):
-    obs → EntityEncoder → (B, N+M, D)     [ships N then map objects M]
+    obs → EntityEncoder → (B, N+G+M, D)   [ships N, global token G, map objects M]
     bullets → BulletEncoder → (B, N*K, D) [key/value only; optional]
     full_attention:
-         → n_yemong_blocks x YemongBlock → (B, N+M, D)
+         → n_yemong_blocks x YemongBlock → (B, N+G+M, D)
     kv_memory:
-         → ships query projected (B, M, D_map) map K/V in every spatial layer
-         → n_yemong_blocks x YemongBlock → (B, N, D)
+         → ships + global query projected (B, M, D_map) map K/V in every spatial layer
+         → n_yemong_blocks x YemongBlock → (B, N+G, D)
               [n_spatial_per_block spatial sublayers, the first
                n_bullet_cross_per_block of which cross-attend to bullets,
                then n_temporal_per_block temporal sublayers]
@@ -18,8 +18,11 @@ Architecture (per timestep):
          → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
          → ValueHead                    → (B, N, K)    [MSE critic: K components]
 
-Three object kinds, three levels of participation:
-  ships  (team_id 0/1) — attention, recurrence, and all three heads.
+Four object kinds, four levels of participation:
+  ships  (team_id 0/1) — attention, recurrence, and every head.
+  global token (G = 1 when ``ModelConfig.global_token``, else 0) — a query with
+                         recurrent state, updated by every sublayer exactly as a
+                         ship is, but read by no head. Off, it is a map object.
   map objects (team_id 2) — either full attention plus a non-recurrent temporal
                             adapter, or K/V-only reads with no trunk updates.
   bullets              — key/value only. Never queried, never recurrent, never
@@ -29,7 +32,8 @@ K = num_value_components (one head per reward component).
 Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
 between symlog-reward space (GAE) and normalized space (value head I/O).
 
-Hidden state shape: (n_layers, B*N, CONV_KERNEL * D) — ships only — packed as:
+Hidden state shape: (n_layers, B*(N+G), CONV_KERNEL * D) — ships and the global
+token, which lead the token axis — packed as:
   hidden[:, :, :D]   -- RG-LRU recurrent state
   hidden[:, :, D:]   -- causal conv buffer (CONV_KERNEL-1 past linear1 outputs, flattened)
 
@@ -47,6 +51,7 @@ from torch.distributions import Categorical
 from torch.utils.checkpoint import checkpoint
 
 from boost_and_broadside.config import ModelConfig, ShipConfig
+from boost_and_broadside.config.core import NUM_GLOBAL_TOKENS
 from boost_and_broadside.constants import (
     NUM_OUTCOME_CLASSES,
     TOTAL_ACTION_LOGITS,
@@ -194,7 +199,7 @@ class YemongPolicy(nn.Module):
         model_config:  Architecture hyperparameters.
         coordinator:   Feature pipeline; drives encoder input dim and aux pred dim.
         num_value_components: K — one value head output per reward component.
-        num_ships:     N — first N tokens are ships; rest are fields.
+        num_ships:     N — first N tokens are ships; the global token follows.
         bullet_coordinator: Bullet feature pipeline; required when the model
             config enables bullet cross-attention.
     """
@@ -214,7 +219,11 @@ class YemongPolicy(nn.Module):
         D = model_config.d_model
         self._d_model = D
         self._K = num_value_components
-        self._num_ships = num_ships  # N — first N tokens are ships; rest are fields
+        self._num_ships = num_ships  # N — first N tokens are ships
+        # G — the global token that follows the ships, when promoted. Ships plus
+        # it are the query/recurrent set; everything after them is map memory.
+        self._num_global = NUM_GLOBAL_TOKENS if model_config.global_token else 0
+        self._map_is_memory = model_config.map_read_mode == "kv_memory"
         self._team_pma_k = team_pma_k  # K indices that use TeamPMA path for value
         self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
@@ -245,7 +254,7 @@ class YemongPolicy(nn.Module):
                 nn.Linear(D, model_config.map_memory_dim, bias=False),
                 nn.RMSNorm(model_config.map_memory_dim),
             )
-            if model_config.map_read_mode == "kv_memory"
+            if self._map_is_memory
             else None
         )
         # Bullets are encoded once per timestep and reused by every spatial
@@ -379,9 +388,10 @@ class YemongPolicy(nn.Module):
 
         Args:
             obs: Observation whose leading dims match the spatial layers' batch.
-            num_entity_tokens: N — where ships end and map objects begin, needed
-                only in K/V-memory mode, where the two are rotated separately
-                because they are passed to attention as separate tensors.
+            num_entity_tokens: N+G — where the query set ends and map objects
+                begin, needed only in K/V-memory mode, where the two are rotated
+                separately because they are passed to attention as separate
+                tensors.
             bullets_present: Whether bullet K/V tokens are attached this call.
             map_is_memory: Whether map objects are K/V-only rather than queries.
         """
@@ -432,14 +442,14 @@ class YemongPolicy(nn.Module):
         """Return zeroed hidden states for all temporal sublayers.
 
         Args:
-            num_recurrent_tokens: N — only ship tokens carry recurrent state. Field
-                tokens are static within an episode and take the non-recurrent path
-                (see ``GriffinTemporalBlock.forward_nonrecurrent``), so passing N+M
-                here would allocate a third more state than the trunk consumes.
+            num_recurrent_tokens: N+G — ``num_recurrent_tokens``. Map tokens are
+                static within an episode and take the non-recurrent path (see
+                ``GriffinTemporalBlock.forward_nonrecurrent``), so passing N+G+M
+                here would allocate more state than the trunk consumes.
 
         Returns:
-            (n_layers, B*N, CONV_KERNEL*D) float32 — packed RG-LRU state + conv
-            buffer, where n_layers is n_yemong_blocks * n_temporal_per_block.
+            (n_layers, B*(N+G), CONV_KERNEL*D) float32 — packed RG-LRU state +
+            conv buffer, where n_layers is n_yemong_blocks * n_temporal_per_block.
         """
         return torch.zeros(
             self.n_hidden_layers,
@@ -455,10 +465,35 @@ class YemongPolicy(nn.Module):
         return len(self.yemong_layers) * self._n_temporal
 
     @property
-    def num_recurrent_tokens(self) -> int:
-        """Tokens carrying recurrent state — ships only; fields are static."""
+    def num_ships(self) -> int:
+        """Ship tokens: the leading N of the token axis, and all any head reads."""
 
         return self._num_ships
+
+    @property
+    def num_recurrent_tokens(self) -> int:
+        """Tokens carrying recurrent state: ships plus the promoted global token."""
+
+        return self._num_ships + self._num_global
+
+    def _recurrent_count(self, hidden: torch.Tensor, batch: int) -> int:
+        """Recurrent tokens per environment, read off the hidden tensor's width.
+
+        Read rather than assumed, so the split can never disagree with how the
+        caller sized the state. It may not be smaller than the query set -- the
+        global token would silently lose its recurrence -- and in K/V-memory mode
+        it must equal it, because nothing after the query set enters the trunk.
+        """
+        n_rec = hidden.shape[1] // batch
+        if n_rec < self.num_recurrent_tokens or (
+            self._map_is_memory and n_rec != self.num_recurrent_tokens
+        ):
+            raise ValueError(
+                f"hidden state carries {n_rec} recurrent tokens per environment; this "
+                f"policy's query set is {self.num_recurrent_tokens} (size it with "
+                "num_recurrent_tokens)"
+            )
+        return n_rec
 
     def reset_hidden_for_envs(
         self,
@@ -469,9 +504,9 @@ class YemongPolicy(nn.Module):
         """Zero hidden states for all recurrent tokens in done environments.
 
         Args:
-            hidden:     (n_layers, B*N, CONV_KERNEL*D) current hidden state.
+            hidden:     (n_layers, B*(N+G), CONV_KERNEL*D) current hidden state.
             done_mask:  (B,) bool — True for envs that finished.
-            num_recurrent_tokens: N — must match what ``initial_hidden`` was given.
+            num_recurrent_tokens: N+G — must match what ``initial_hidden`` was given.
 
         Returns:
             Updated hidden state with done envs zeroed.
@@ -493,8 +528,8 @@ class YemongPolicy(nn.Module):
         """Sample an action and estimate value for one environment step.
 
         Args:
-            obs:    YemongObservation with (B, N+M, ...) tensors.
-            hidden: (n_layers, B*N, CONV_KERNEL*D) packed recurrent state.
+            obs:    YemongObservation with (B, N+G+M, ...) tensors.
+            hidden: (n_layers, B*(N+G), CONV_KERNEL*D) packed recurrent state.
 
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
@@ -503,35 +538,33 @@ class YemongPolicy(nn.Module):
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
             enemy_action_logits: optional (B, N, 42) next-command prediction.
-            new_hidden: (n_layers, B*N, CONV_KERNEL*D) updated packed state.
+            new_hidden: (n_layers, B*(N+G), CONV_KERNEL*D) updated packed state.
         """
         # Hidden-but-remembered enemies remain attention/recurrent tokens. Their
         # predicted ALIVE value is an input feature, never the existence mask --
         # and there is no existence mask any more: every ship is revealed on the
         # decision it spawns and validity is sticky, so attention carries no key
         # padding at all and SDPA can reach the flash kernel.
-        encoded = self.encoder(obs)  # (B, N+M, D)
+        encoded = self.encoder(obs)  # (B, N+G+M, D)
         N = self._num_ships
+        Q = self.num_recurrent_tokens  # N+G
         if self.map_memory_proj is not None:
-            map_memory = self.map_memory_proj(encoded[:, N:, :])
-            x = encoded[:, :N, :]
+            map_memory = self.map_memory_proj(encoded[:, Q:, :])  # (B, M, D_map)
+            x = encoded[:, :Q, :]  # (B, N+G, D)
         else:
             map_memory = None
             x = encoded
         bullets, bullet_mask = self._encode_bullets(obs)  # (B, N*K, D), (B, N*K)
         geometry = self._spatial_geometry(
-            obs, N, bullets is not None, self.map_memory_proj is not None
+            obs, Q, bullets is not None, self.map_memory_proj is not None
         )
 
         B, NM, D = x.shape
         n_layers = hidden.shape[0]
         n_temporal = self._n_temporal
-        # Recurrent token count is read off the hidden tensor rather than tracked
-        # separately, so the split can never disagree with how the caller sized it.
-        # A caller that still allocates B*(N+M) therefore keeps every token recurrent.
-        B_rec = hidden.shape[1]  # B*N — recurrent (ship) tokens only
-        n_rec = B_rec // B
-        rglru_states = hidden[:, :, :D]  # (n_layers, B*N, D)
+        n_rec = self._recurrent_count(hidden, B)  # N+G
+        B_rec = hidden.shape[1]  # B*(N+G)
+        rglru_states = hidden[:, :, :D]  # (n_layers, B*(N+G), D)
         conv_bufs = hidden[:, :, D:].reshape(n_layers, B_rec, CONV_KERNEL - 1, D)
 
         new_rglru, new_cbs = [], []
@@ -561,9 +594,10 @@ class YemongPolicy(nn.Module):
             if new_cbs
             else conv_bufs.reshape(n_layers, B_rec, conv_width)
         )
-        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)  # (n_layers, B*N, CONV_KERNEL*D)
+        new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)  # (n_layers, B*(N+G), CK*D)
 
-        # Slice ship tokens only for action and value heads
+        # Every head reads ships only; the global token shapes them through the
+        # trunk and is never decoded itself.
         x_ships = x[:, :N, :]  # (B, N, D)
         # Team pooling still weights by validity even though attention no longer
         # masks by it: a pooled team summary should not average in a token that
@@ -606,15 +640,16 @@ class YemongPolicy(nn.Module):
     ) -> tuple:
         """Re-evaluate actions over a full rollout for PPO update.
 
-        The encoder runs over all T*B*(N+M) inputs in parallel. Full-attention
+        The encoder runs over all T*B*(N+G+M) inputs in parallel. Full-attention
         mode sends every encoded token through spatial layers; K/V-memory mode
-        sends only ships through the trunk and exposes map objects as a smaller
-        read-only memory. Temporal scans and heads always operate on ships only.
+        sends only ships and the global token through the trunk and exposes map
+        objects as a smaller read-only memory. Temporal scans run over ships and
+        the global token; heads read ships only.
 
         Args:
-            obs:                  YemongObservation with (T, B, N+M, ...) tensors.
+            obs:                  YemongObservation with (T, B, N+G+M, ...) tensors.
             actions:              (T, B, N, 3) int actions taken during rollout.
-            initial_hidden:       (n_layers, B*N, CONV_KERNEL*D) rollout-start state.
+            initial_hidden:       (n_layers, B*(N+G), CONV_KERNEL*D) rollout-start state.
             alive_mask:           (T, B, N+M) bool — used only for team pooling in
                                   the value head; attention carries no key padding.
             done_mask:            (T, B) bool — True at step t means the episode ended
@@ -628,23 +663,24 @@ class YemongPolicy(nn.Module):
             entropy:    (T, B, N) float.
             new_value:  (T, B, N, K) float — per-component value in normalized space.
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
-            z:          (T, B, N+M, D) float — raw encoder embeddings before Yemong layers,
+            z:          (T, B, N+G+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
             enemy_action_logits: optional (T, B, N, 42) next-command prediction.
             pred_next:  (T, B, N, pred_dim) float — predicted next-state predictions (with grad).
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
+        Q = self.num_recurrent_tokens  # N+G
         D = self._d_model
         n_layers = initial_hidden.shape[0]
         n_temporal = self._n_temporal
-        B_rec = initial_hidden.shape[1]  # B*N — recurrent (ship) tokens only
-        n_rec = B_rec // B  # see get_action_and_value: split follows hidden sizing
+        n_rec = self._recurrent_count(initial_hidden, B)  # N+G
+        B_rec = initial_hidden.shape[1]  # B*(N+G)
 
-        rglru_states = initial_hidden[:, :, :D]  # (n_layers, B*(N+M), D)
+        rglru_states = initial_hidden[:, :, :D]  # (n_layers, B*(N+G), D)
         conv_bufs = initial_hidden[:, :, D:].reshape(n_layers, B_rec, CONV_KERNEL - 1, D)
 
-        # obs has (T, B, N+M, ...) — flatten T into B for encoder
-        NM = obs["pos"].shape[2]  # N+M total tokens
+        # obs has (T, B, N+G+M, ...) — flatten T into B for encoder
+        NM = obs["pos"].shape[2]  # N+G+M total tokens
         flat_obs = YemongObservation(
             data={k: v.reshape(T * B, *v.shape[2:]) for k, v in obs.items()},
             bullets=(
@@ -654,17 +690,17 @@ class YemongPolicy(nn.Module):
             ),
         )
 
-        encoded = self.encoder(flat_obs)  # (T*B, N+M, D)
+        encoded = self.encoder(flat_obs)  # (T*B, N+G+M, D)
         encoded_sequence = encoded.reshape(T, B, NM, D)
         if self.map_memory_proj is not None:
-            map_memory = self.map_memory_proj(encoded[:, N:, :])
-            x = encoded_sequence[:, :, :N, :]
+            map_memory = self.map_memory_proj(encoded[:, Q:, :])  # (T*B, M, D_map)
+            x = encoded_sequence[:, :, :Q, :]  # (T, B, N+G, D)
         else:
             map_memory = None
             x = encoded_sequence
         bullets, bullet_mask = self._encode_bullets(flat_obs)  # (T*B, N*K, D)
         geometry = self._spatial_geometry(
-            flat_obs, N, bullets is not None, self.map_memory_proj is not None
+            flat_obs, Q, bullets is not None, self.map_memory_proj is not None
         )
         z = encoded_sequence if return_encoder_output else None
 
@@ -702,7 +738,7 @@ class YemongPolicy(nn.Module):
                     geometry,
                 )
 
-        # Slice ship tokens for heads
+        # Slice ship tokens for heads; the global token is never decoded.
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
         alive_ships = alive_mask[:, :, :N]  # (T, B, N)
         team_id_ships = obs["team_id"][:, :, :N]  # (T, B, N)

@@ -85,9 +85,12 @@ def test_the_property_and_the_function_are_one_derivation() -> None:
     )
 
 
-def test_frontline_adds_the_zone_and_boundary_tokens() -> None:
-    """Stated as a difference so the six is never silently absorbed."""
+def test_frontline_adds_the_zone_tokens() -> None:
+    """Stated as a difference so the five is never silently absorbed.
+
+    The global token is not part of the difference: every mode presents it.
+    """
     shared = {"num_ships": 8, "max_bullets": 0, "max_episode_steps": 600, "num_fields": 10}
     plain = EnvConfig(**shared)
     fronted = EnvConfig(**shared, frontline=_frontline())
-    assert fronted.num_entity_tokens - plain.num_entity_tokens == 6
+    assert fronted.num_entity_tokens - plain.num_entity_tokens == 5

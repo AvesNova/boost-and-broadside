@@ -239,7 +239,7 @@ def measure(
                     if belief_compile_mode is not None
                     else belief.advance
                 ),
-                "hidden": policy.initial_hidden(1, ships, device),
+                "hidden": policy.initial_hidden(1, policy.num_recurrent_tokens, device),
             }
         )
     policy_startup_compile_ms = 1000.0 * (time.perf_counter() - policy_start)
@@ -505,7 +505,7 @@ def measure(
             for side in sides:
                 side["belief"].reset(finished)
                 side["hidden"] = side["policy"].reset_hidden_for_envs(
-                    side["hidden"], finished, ships
+                    side["hidden"], finished, side["policy"].num_recurrent_tokens
                 )
             views = compose_views()
         return next_action

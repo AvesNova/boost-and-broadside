@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "physical_belief_v19"
+OBSERVATION_SCHEMA = "global_token_v20"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics the attitude Fourier feature expands the heading angle on. Defined
 # here, beside the position count, because rotary spatial attention reuses both
@@ -42,7 +42,12 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 19,
+        "version": 20,
+        # Every mode presents one global/game token directly after the ships,
+        # carrying a categorical game-mode one-hot, the match clock and (in
+        # Frontline) the front. Whether the policy promotes it to a recurrent
+        # query is ``ModelConfig.global_token``.
+        "global_token": "permanent_after_ships_categorical_game_mode",
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
@@ -113,6 +118,12 @@ def load_checkpoint_payload(
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
+
+    v20 makes the global/game token permanent. It moves from the end of the
+    token axis to directly after the ships, exists in combat as well as
+    Frontline, and its ``game_mode`` channel widens from one scalar to a
+    categorical one-hot. The encoder input width changes and a recurrent global
+    token changes the hidden-state width, so no v19 checkpoint can load.
 
     v19 replaces the encoded belief with a physical one. Hidden ships now reach
     the trunk as ordinary physical channels selected before encoding rather than

@@ -124,8 +124,9 @@ class TestBuildPolicy:
 
 
 def _cuda_obs(envs: int, ships: int):
-    """A minimal well-formed observation on CUDA, for shape-specialization tests."""
-    from boost_and_broadside.env.observation import ObsKey, YemongObservation
+    """A minimal well-formed ship-only observation on CUDA, for shape-specialization
+    tests. It carries no global token, so the policies it feeds are built without one."""
+    from boost_and_broadside.env.observation import NUM_GAME_MODES, ObsKey, YemongObservation
 
     def f(*shape):
         return torch.randn(*shape, device="cuda")
@@ -157,7 +158,7 @@ def _cuda_obs(envs: int, ships: int):
             ObsKey.FRONT_POSITION: f(envs, ships, 1),
             ObsKey.FRONT_WIN_THRESHOLD: f(envs, ships, 1),
             ObsKey.TIME_REMAINING: f(envs, ships, 1),
-            ObsKey.GAME_MODE: f(envs, ships, 1),
+            ObsKey.GAME_MODE: f(envs, ships, NUM_GAME_MODES),
         }
     )
 
@@ -175,7 +176,7 @@ class TestCompilePolicy:
     @staticmethod
     def _policy():
         return build_policy(
-            ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1, global_token=False),
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
