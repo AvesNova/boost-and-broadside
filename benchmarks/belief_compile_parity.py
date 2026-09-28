@@ -459,7 +459,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 arm: {
                     "valid_count": int(pair[arm].valid.sum().item()),
                     "max_age_steps": int(pair[arm].age_steps.max().item()),
-                    "predicted_targets_sha256": _tensor_digest([pair[arm].predicted_targets]),
+                    "means_sha256": _tensor_digest([pair[arm].means]),
+                    "uncertainty_sha256": _tensor_digest([pair[arm].uncertainty]),
                 }
                 for arm in ("eager", "compiled")
             }
