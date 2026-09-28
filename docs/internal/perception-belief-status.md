@@ -2,9 +2,9 @@
 
 The single handoff document for the plan in
 `perception-belief-overarching-plan.md`. Updated at the end of every phase.
-Last updated September 28, 2026, after Phase 6 (the Phase 5 benchmark and a GPU
-run of Phase 6's are still owed; see Blocked). Phase 3 ended at `ff32f9f` on
-`fix/seat-symmetry-pending-action`; Phases 4–8 all go on
+Last updated September 28, 2026, after Phase 6 (the Phase 5 and 6 GPU benchmarks
+are deferred until after Phase 7; see Deferred GPU benchmarks). Phase 3 ended at
+`ff32f9f` on `fix/seat-symmetry-pending-action`; Phases 4–8 all go on
 `feat/perception-belief-phases-4-8`.
 
 Everything a new phase owner needs is here, the spec, and the code. The
@@ -216,20 +216,20 @@ feature (ego/ally/enemy) that would make seat identity unrepresentable.
 - Belief-cell diagnostics need thousands of decisions of warm-up before any
   enemy is in sight on Frontline.
 
-## Blocked
+## Deferred GPU benchmarks
 
-The Phase 5 gate's benchmark has not been run. This cloud container has no GPU,
-and `benchmarks/rl_pipeline_profile.py` hard-codes CUDA. Every other gate line is
-met. Next step: on the laptop, run the command in Numbers once and add a Phase 5
-row. If SPS is more than 10% below Phase 3's 3,190, report it before Phase 7.
+Owner's decision: the GPU benchmarks for Phases 5 and 6 are deferred until Phase 7 is
+done, and the owner runs them on the laptop. Phase 7 does not wait for them.
 
-Phase 6's micro-benchmark was likewise run on CPU only (eager target against an eager
-rollout step, 0.28% against the 5% bar). Its compiled-versus-eager test is CUDA-only and
-was skipped. On the laptop, run `benchmarks/hex_density_target.py` once with its defaults
-and add a GPU row. A miss is very unlikely: the target is one fused reduction over
-`B × N × C`, about 3M elements.
+- Phase 5: its gate benchmark has not been run (no GPU in the cloud container;
+  `benchmarks/rl_pipeline_profile.py` hard-codes CUDA). Run the command in Numbers once
+  and add a row. If SPS is more than 10% below Phase 3's 3,190, look for the cause
+  before Phase 8.
+- Phase 6: the micro-benchmark was run on CPU only (eager, 0.28% against the 5% bar),
+  and the compiled-versus-eager test is CUDA-only and was skipped. Run
+  `benchmarks/hex_density_target.py` once with its defaults and add a GPU row, and run
+  `tests/train/test_hex_density.py` on the GPU.
 
 ## Remaining
 
-The Phase 5 benchmark and Phase 6's GPU row (see Blocked), then Phases 7–8 as written in
-the plan.
+Phase 7, then the deferred GPU benchmarks above, then Phase 8 as written in the plan.

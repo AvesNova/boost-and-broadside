@@ -1,9 +1,9 @@
 """Cost of the hex density target against one real rollout step.
 
 Builds the production ``rl`` trainer (960 envs, 5v5 Frontline), times whole
-rollout steps -- the primary collection step plus the evaluator's, as
-``rl_kernel_profile.py`` defines one -- then times the density target alone on
-the same environment state. The gate is target time under 5% of step time.
+rollout steps -- the primary collection step, the auxiliary scales and the
+evaluator, as ``PPOTrainer``'s collection loop runs them -- then times the
+density target alone on the same environment state. The gate is target time under 5% of step time.
 
     uv run --no-sync python benchmarks/hex_density_target.py
 """
