@@ -532,3 +532,21 @@ twenty-eight channels per view and is gone. `compose` cloned every channel again
 privileged observation build and its target-vector pass are replaced by one eleven-channel
 stack straight off the state. And the head narrowed from 67 outputs to 24.
 
+## Startup cost
+
+One real regression, and it is in startup rather than throughput. Perception used to be a
+single fused callable; it is now three, because a belief has to be assimilated between
+computing visibility and composing the view that stands on it:
+
+| callable | who compiles it | shapes |
+|---|---|---|
+| `compile_visibility` | the wrapper and the evaluator | one per environment batch |
+| `compile_perception` (both team views) | the wrapper | one |
+| `compile_observation` (one observer) | the evaluator and each league slot | one per distinct width |
+
+That is roughly three to six Inductor compilations of a several-hundred-kernel function where
+Phase 2 had two, and each takes tens of seconds on this laptop GPU — the parity harness times
+a single compose graph at 16.98 s. It is paid once per process. A Phase-4 option, if it
+matters: leave the evaluator's single-observer builder eager and measure, since its builds are
+small and launch-bound rather than size-bound.
+
