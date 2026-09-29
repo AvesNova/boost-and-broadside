@@ -22,6 +22,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Generator, Mapping
+from typing import NamedTuple
 from datetime import UTC, datetime
 from pathlib import Path
 from queue import Queue
@@ -398,6 +399,27 @@ def _max_schedule_value(
     """
     step_size = max(1, total_steps // n_samples)
     return max(schedule_fn(s) for s in range(0, total_steps + step_size, step_size))
+
+
+class _DensityStats(NamedTuple):
+    """One micro-batch's global-density statistics, ally and enemy apart.
+
+    Every field is already divided by the minibatch's step-environment total,
+    so micro-batch contributions add.
+    """
+
+    loss: torch.Tensor
+    power: torch.Tensor
+    ally_loss: torch.Tensor
+    enemy_loss: torch.Tensor
+    ally_power: torch.Tensor
+    enemy_power: torch.Tensor
+
+    @classmethod
+    def zeros(cls, zero: torch.Tensor) -> "_DensityStats":
+        """All-zero stats for a scale or a schedule that does not train the head."""
+
+        return cls(zero, zero, zero, zero, zero, zero)
 
 
 class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
@@ -2202,12 +2224,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 ).sum() / persistence_sum
 
         # ---- Global density prediction (primary scale only) -----------------
-        density_loss = self._zero_tensor
-        density_target_power = self._zero_tensor
+        density = _DensityStats.zeros(self._zero_tensor)
         if is_primary and self.cfg.global_density_coef > 0.0:
-            density_loss, density_target_power = self._global_density_loss(
+            density = self._global_density_loss(
                 density_pred, batch.density_targets, denoms["density_sum"]
             )
+        density_loss = density.loss
 
         loss = (
             self.cfg.outcome_categorical_coef * outcome_ce_loss
@@ -2232,6 +2254,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             terms = {
                 "policy": self._policy_gradient_coef * pg_loss,
                 "value": self._schedule_state.value_function_coef * vf_loss,
+                "outcome": self.cfg.outcome_categorical_coef * outcome_ce_loss,
                 "enemy_action": self.cfg.enemy_action_coef * enemy_action_loss,
                 "entropy": self._entropy_coef * ent_loss,
                 "bc": self._behavior_cloning_coef * bc_loss,
@@ -2291,8 +2314,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["bc_loss"] = bc_loss.detach()
             diag["sigreg_loss"] = sigreg_loss.detach()
             diag["next_state_loss"] = next_state_loss.detach()
-            diag["density_loss"] = density_loss.detach()
-            diag["density_target_power"] = density_target_power.detach()
+            diag["density_loss"] = density.loss.detach()
+            diag["density_target_power"] = density.power.detach()
+            diag["density_ally_loss"] = density.ally_loss.detach()
+            diag["density_enemy_loss"] = density.enemy_loss.detach()
+            diag["density_ally_power"] = density.ally_power.detach()
+            diag["density_enemy_power"] = density.enemy_power.detach()
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
             diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
             diag["next_state_visible_per_feat"] = next_state_visible_per_feat
@@ -2372,7 +2399,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         prediction: torch.Tensor | None,
         target: torch.Tensor | None,
         density_sum: float,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> "_DensityStats":
         """Squared error between the predicted and the true hex density field.
 
         Averaged over cells and summed over steps and environments, then divided
@@ -2389,10 +2416,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             density_sum: Step-environment pairs in the whole minibatch.
 
         Returns:
-            The loss, and the mean square of the target itself -- the score a
-            head that predicted zero everywhere would get, which is where this
-            head starts, so the ratio of the two says whether it has learned
-            anything at all.
+            :class:`_DensityStats` -- the loss, the mean square of the target
+            itself, and both of those again for the ally and enemy halves alone.
+
+            The target's mean square is the score a head that predicted zero
+            everywhere would get, which is where this head starts, so the loss
+            only means something read against it.
+
+            The halves are reported because they are not the same problem. The
+            observer sees every ally, so the ally field is a smoothing of what
+            it already knows; the enemy field is mostly belief. One mean over
+            all ``2C`` cells lets an easy half carry a hard one, and the whole
+            question of whether this head has learned anything about *enemies*
+            is invisible in the aggregate.
 
         Raises:
             ValueError: If the head or the target is missing while the
@@ -2405,11 +2441,32 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 "density head or no density target"
             )
         labels = target.float()  # (T, B, 2C)
-        per_sample = (prediction.float() - labels).pow(2).mean(-1)  # (T, B)
-        loss = per_sample.sum() / density_sum
+        square = (prediction.float() - labels).pow(2)  # (T, B, 2C)
+        # Ally cells then enemy cells, equal halves by construction
+        # (``HEX_DENSITY_DIM`` is twice the cell count).
+        cells = labels.shape[-1] // 2
         with torch.no_grad():
-            power = labels.pow(2).mean(-1).sum() / density_sum
-        return loss, power
+            power_square = labels.pow(2)
+
+        def halves(values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            """Per-half cell means, summed over steps and envs and normalized."""
+            ally = values[..., :cells].mean(-1).sum() / density_sum
+            enemy = values[..., cells:].mean(-1).sum() / density_sum
+            return ally, enemy
+
+        ally_loss, enemy_loss = halves(square)
+        with torch.no_grad():
+            ally_power, enemy_power = halves(power_square)
+        # The mean over 2C equally weighted cells is the mean of the two half
+        # means, so the training term stays exactly what it was.
+        return _DensityStats(
+            loss=0.5 * (ally_loss + enemy_loss),
+            power=0.5 * (ally_power + enemy_power),
+            ally_loss=ally_loss,
+            enemy_loss=enemy_loss,
+            ally_power=ally_power,
+            enemy_power=enemy_power,
+        )
 
     def _active_component_weights(self) -> torch.Tensor:
         """(K,) current effective weight of every active reward component."""
@@ -3094,6 +3151,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # exactly this, and that is where this one starts, so the loss only
             # means something read against it.
             "global_density/target_power": [],
+            # The same two numbers per half. The observer sees every ally, so the
+            # ally field is a smoothing of what it already knows and the enemy
+            # field is mostly belief -- an aggregate over both lets the easy half
+            # carry the hard one.
+            "loss/global_density_ally": [],
+            "loss/global_density_enemy": [],
+            "global_density/ally_power": [],
+            "global_density/enemy_power": [],
             "loss_proxy/policy_gradient": [],
             "loss/enemy_action": [],
             "enemy_action/realized_probability": [],
@@ -3225,6 +3290,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("ns_cont", "next_state_cont_loss"),
                     ("density", "density_loss"),
                     ("density_target_power", "density_target_power"),
+                    ("density_ally", "density_ally_loss"),
+                    ("density_enemy", "density_enemy_loss"),
+                    ("density_ally_power", "density_ally_power"),
+                    ("density_enemy_power", "density_enemy_power"),
                     ("bc_kl", "bc_kl"),
                     ("scripted_entropy", "scripted_entropy"),
                     ("kl", "approx_kl"),
@@ -3279,6 +3348,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("loss/next_state_cont", "ns_cont"),
                     ("loss/global_density", "density"),
                     ("global_density/target_power", "density_target_power"),
+                    ("loss/global_density_ally", "density_ally"),
+                    ("loss/global_density_enemy", "density_enemy"),
+                    ("global_density/ally_power", "density_ally_power"),
+                    ("global_density/enemy_power", "density_enemy_power"),
                     ("policy/kl", "kl"),
                     ("policy/clip_fraction", "clip"),
                     ("policy/ratio_mean", "ratio_mean"),
