@@ -1,0 +1,32 @@
+{
+  "run": "pious-butterfly-748",
+  "checkpoint": "checkpoints/pious-butterfly-748/step_000084541440.pt",
+  "resumed_global_step": 84541440,
+  "samples": 122880,
+  "cells_per_half": 331,
+  "warmup_rollouts": 24,
+  "halves": {
+    "ally": {
+      "zero": 0.20883878866170133,
+      "mean": 0.08639645437268659,
+      "front": 0.08654828233950318,
+      "head": 0.006498626838027963,
+      "r2_vs_mean/zero": -1.4172148056080842,
+      "r2_vs_mean/mean": 0.0,
+      "r2_vs_mean/front": -0.001757340251043793,
+      "r2_vs_mean/head": 0.9247813248215607
+    },
+    "enemy": {
+      "zero": 0.20851034051901343,
+      "mean": 0.0860304958353032,
+      "front": 0.08603173076251681,
+      "ally": 0.07530634829260355,
+      "head": 0.007882025150694515,
+      "r2_vs_mean/zero": -1.4236793998977486,
+      "r2_vs_mean/mean": 0.0,
+      "r2_vs_mean/front": -1.4354528607762873e-05,
+      "r2_vs_mean/ally": 0.12465518696102795,
+      "r2_vs_mean/head": 0.9083810330957075
+    }
+  }
+}
