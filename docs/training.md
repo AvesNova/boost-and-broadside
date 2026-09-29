@@ -816,6 +816,38 @@ total is not the run's logged `train/gradient_norm`. On a profile with
 `policy_gradient_coef` at zero the reward scopes are all zero by construction and
 `--level top_level` is both sufficient and much cheaper.
 
+### Breaking the next-state term down further
+
+`loss/next_state` is one number over eleven channels whose residuals span four orders of
+magnitude, and the production series splits it only by visible/hidden — a split that puts
+allies, which an observer always sees, in the same bucket as the enemies it happens to have
+in sight. [`benchmarks/next_state_breakdown.py`](../benchmarks/next_state_breakdown.py)
+separates ally, visible enemy and hidden enemy, and reports per channel the mean NLL, the
+residual and label, the predicted sigma, the calibration ratio `z2 = E[(r/sigma)^2]`, the
+fraction of tokens sitting on the `LOG_SIGMA_MIN`/`MAX` clamp, and the trunk gradient norm
+that (channel, class) term contributes.
+
+```
+uv run --no-sync python benchmarks/next_state_breakdown.py --run pious-butterfly-748 \
+    --warmup-rollouts 24 --microbatch-tokens 20000
+```
+
+Two things it will mislead you about if they are left at their defaults.
+
+**Warm the environment up.** `_initialize_rollout_runtime` resets every environment
+together, so a cold probe measures the opening phase — teams spawned apart, not yet in
+contact — where under 1% of enemies are visible and no ship has respawned. A run tens of
+millions of steps in never sees that state. `--warmup-rollouts` discards rollouts first;
+the reported visible-enemy fraction is the check, and it should settle near the run's
+logged `fog/visible_fraction` (0.574 against 0.577 for run 748 at 24 rollouts).
+
+**Read the medians, not the RMS.** The labels are heavy-tailed: a respawn teleports a ship
+across the map, and one such token outweighs ten thousand ordinary steps in a mean square.
+Run 748's ally position label has a median of 1.7 px and a 99.9th percentile of 8.9 px, but
+an RMS of 41 px — so `skill_vs_zero`, computed on RMS, reads 0.00 for a head whose median
+skill is 0.99. The Phase-1 delta calibration excluded respawn destinations; the training
+label does not.
+
 ### Next-state populations
 
 Allies, visible enemies, and hidden enemies carry next-state labels that mean different
