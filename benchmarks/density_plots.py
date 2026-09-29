@@ -1,9 +1,4 @@
-"""
-SUPERSEDED for the current target. The field panels still render, but the
-colour scales, the `log1p units` label and the error metric all assume the
-smoothed regression target; the field is now soft ship counts. Re-express
-before reading the numbers off it.
-Render the hex density head: true field, prediction, error, and where it fails.
+"""Render the hex density head: true field, prediction, error, and where it fails.
 
 Companion to ``density_baselines.py``, which produces the ``.pt`` this reads.
 The baselines say *how much* of the field the head explains; these say *what it
@@ -31,7 +26,12 @@ Four figures into ``docs/internal/``:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from benchmarks.density_baselines import _deviance  # noqa: E402
 
 # Palette roles, from the data-viz reference instance. Sequential magnitude is
 # one hue light->dark; a signed error is diverging with a neutral gray midpoint
@@ -162,7 +162,8 @@ def main() -> None:
             (("ally", slice(0, cells)), ("enemy", slice(cells, 2 * cells)))
         ):
             truth = target[index, columns].numpy()
-            predicted = head[index, columns].numpy()
+            # The head emits a log-rate; the field is counts.
+            predicted = head[index, columns].exp().numpy()
             error = predicted - truth
             row = axes[2 * frame + half]
             top = float(max(truth.max(), predicted.max(), 1e-6))
@@ -184,7 +185,7 @@ def main() -> None:
             figure.colorbar(mesh, ax=row[2], fraction=0.046, shrink=0.85)
             row[0].set_ylabel(f"{int(hidden[index])} enemies hidden", color=INK_SECONDARY)
     figure.suptitle(
-        f"Hex density field, log1p units — {run} @ {step:,} steps",
+        f"Hex ship-count field — {run} @ {step:,} steps",
         color=INK,
         y=0.995,
     )
@@ -201,7 +202,7 @@ def main() -> None:
         positions = range(len(names))
         width = 0.38
         for offset, (half, colour) in enumerate(zip(("ally", "enemy"), SERIES, strict=True)):
-            values = [baselines[half].get(f"r2_vs_mean/{n}") for n in names]
+            values = [baselines[half].get(f"explained/{n}") for n in names]
             spots = [p + (offset - 0.5) * width for p in positions]
             bars = axis.bar(
                 [s for s, v in zip(spots, values, strict=True) if v is not None],
@@ -222,7 +223,7 @@ def main() -> None:
                 )
         axis.set_xticks(list(positions))
         axis.set_xticklabels(["per-cell\nmean", "+ front", "+ ally field\n(no belief)", "head"])
-        axis.set_ylabel("R² vs the constant heat map")
+        axis.set_ylabel("deviance explained vs a constant rate")
         axis.axhline(0.0, color=GRID, linewidth=1)
         axis.grid(axis="y", linewidth=0.6)
         axis.set_axisbelow(True)
@@ -246,9 +247,8 @@ def main() -> None:
             mask = hidden == level
             if int(mask.sum()) < 50:
                 continue
-            residual = head[mask][:, columns] - target[mask][:, columns]
             xs.append(level)
-            ys.append(float(residual.pow(2).mean()))
+            ys.append(_deviance(head[mask][:, columns].exp(), target[mask][:, columns]))
         axis.plot(xs, ys, marker="o", markersize=5, linewidth=2, color=colour, label=f"{half} half")
         axis.annotate(
             f"{half}",
@@ -260,7 +260,7 @@ def main() -> None:
             va="center",
         )
     axis.set_xlabel("enemies the observer cannot see")
-    axis.set_ylabel("mean squared error")
+    axis.set_ylabel("Poisson deviance, nats per cell")
     axis.grid(axis="y", linewidth=0.6)
     axis.set_axisbelow(True)
     axis.legend(frameon=False, loc="upper left")
@@ -280,8 +280,13 @@ def main() -> None:
         ("ally", slice(0, cells), SERIES[0]),
         ("enemy", slice(cells, 2 * cells), SERIES[1]),
     ):
-        residual = (head[:, columns] - target[:, columns]).pow(2).mean(0)  # (C,)
-        ys = [float(residual[ring_of == ring].mean()) for ring in range(HEX_DENSITY_RINGS + 1)]
+        ys = [
+            _deviance(
+                head[:, columns][:, ring_of == ring].exp(),
+                target[:, columns][:, ring_of == ring],
+            )
+            for ring in range(HEX_DENSITY_RINGS + 1)
+        ]
         axis.plot(
             range(HEX_DENSITY_RINGS + 1),
             ys,
@@ -292,7 +297,7 @@ def main() -> None:
             label=f"{half} half",
         )
     axis.set_xlabel("ring index (0 = centre cell, 10 = playable boundary)")
-    axis.set_ylabel("mean squared error")
+    axis.set_ylabel("Poisson deviance, nats per cell")
     axis.grid(axis="y", linewidth=0.6)
     axis.set_axisbelow(True)
     # Both series descend from the top left, so that corner is taken.
