@@ -89,8 +89,12 @@ def main() -> None:
     parser.add_argument("--ridge", type=float, default=1e-3)
     parser.add_argument("--microbatch-tokens", type=int, default=20000)
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--samples-output", type=Path, default=None,
-                        help="Also save the raw targets/predictions for the PNG renderer.")
+    parser.add_argument(
+        "--samples-output",
+        type=Path,
+        default=None,
+        help="Also save the raw targets/predictions for the PNG renderer.",
+    )
     parser.add_argument("--checkpoint-dir", type=Path, default=Path("checkpoints"))
     args = parser.parse_args()
 

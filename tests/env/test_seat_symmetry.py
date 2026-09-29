@@ -318,7 +318,7 @@ def test_the_mirrored_game_gives_the_policy_the_same_answers() -> None:
         ShipConfig(),
         num_value_components=3,
         num_ships=NUM_SHIPS,
-        team_pma_k=(2,),
+        global_value_k=(2,),
     ).eval()
 
     outputs = []

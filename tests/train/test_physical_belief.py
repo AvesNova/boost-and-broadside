@@ -21,6 +21,7 @@ from boost_and_broadside.train.rl.physical_belief import (
     SCALAR_UNCERTAINTY,
     UNCERTAINTY_NAMES,
     VELOCITY_RHO,
+    VELOCITY_X,
     PhysicalNextState,
     certain_uncertainty,
     physical_mean_deltas,
@@ -289,3 +290,105 @@ class TestObjective:
         variance = spec.variance(prediction)
         assert variance[0, 7].item() == pytest.approx(9.0)
         assert variance[0, 0].item() == pytest.approx(1.0)
+
+
+class TestBetaNLL:
+    """The beta-NLL weighting, which decides *which tokens* the term learns from.
+
+    A plain Gaussian likelihood weights a token by its Fisher information, so
+    ``d/dmu`` is ``r / sigma**2`` and, where sigma is calibrated, the gradient
+    goes as ``1 / r`` -- the head is pulled hardest by whatever it already
+    predicts best. Beta dials that exponent; what has to hold is that it dials
+    exactly the exponent and nothing else.
+    """
+
+    @staticmethod
+    def _model():
+        from boost_and_broadside.config.defaults import SHIP_CONFIG
+
+        return PhysicalNextState.from_ship_config(SHIP_CONFIG)
+
+    @staticmethod
+    def _sample(seed: int = 0):
+        torch.manual_seed(seed)
+        return (
+            torch.randn(128, NEXT_STATE_OUTPUT_DIM),
+            torch.randn(128, PHYSICAL_MEAN_DIM),
+        )
+
+    def _grad(self, model, prediction, labels, beta):
+        leaf = prediction.clone().requires_grad_(True)
+        model.loss(leaf, labels, beta=beta).sum().backward()
+        return leaf.grad[:, :PHYSICAL_MEAN_DIM].clone()
+
+    def test_beta_zero_is_the_plain_likelihood(self):
+        model = self._model()
+        prediction, labels = self._sample()
+        assert torch.equal(model.loss(prediction, labels, beta=0.0), model.loss(prediction, labels))
+
+    @pytest.mark.parametrize("beta", [0.5, 1.0])
+    def test_the_mean_gradient_is_the_residual_over_sigma_to_the_right_power(self, beta):
+        """``r / sigma**(2 - 2*beta)`` on the seven scalar channels: 1/sigma^2 at
+        beta 0, 1/sigma at 0.5, and plain ``r`` -- the MSE gradient -- at 1."""
+        model = self._model()
+        prediction, labels = self._sample()
+        scalars = [channel for channel, _ in SCALAR_UNCERTAINTY]
+        leaf = prediction.clone().requires_grad_(True)
+        expected = model.residual(leaf, labels) / model.variance(leaf).pow(1.0 - beta)
+        actual = self._grad(model, prediction, labels, beta)
+        assert torch.allclose(actual[:, scalars], expected[:, scalars], atol=1e-5)
+
+    @pytest.mark.parametrize("beta", [0.25, 0.5, 1.0])
+    def test_beta_only_rescales_the_gradient_it_never_redirects_it(self, beta):
+        """Every channel, bivariate blocks included: the beta gradient is the
+        plain one times the detached weight, so nothing about the direction of
+        the fit has changed -- only how much each token is listened to."""
+        model = self._model()
+        prediction, labels = self._sample(1)
+        leaf = prediction.clone().requires_grad_(True)
+        weight = model._beta_weight(leaf, beta)
+        plain = self._grad(model, prediction, labels, 0.0)
+        actual = self._grad(model, prediction, labels, beta)
+        assert torch.allclose(actual, weight * plain, atol=1e-5)
+
+    def test_the_two_axes_of_a_bivariate_block_share_one_weight(self):
+        """Position and velocity are single joint terms split across two
+        columns that share a cross term. Weighting the columns separately would
+        scale the two halves of that term differently and stop the pair summing
+        to any likelihood."""
+        model = self._model()
+        prediction, _ = self._sample(2)
+        weight = model._beta_weight(prediction, 0.5)
+        assert torch.allclose(weight[..., POSITION_X], weight[..., POSITION_X + 1])
+        assert torch.allclose(weight[..., VELOCITY_X], weight[..., VELOCITY_X + 1])
+
+    def test_the_weight_is_detached_so_sigma_still_trains(self):
+        """The whole point of beta-NLL over plain MSE here: the belief plane
+        reads sigma, so it has to keep being learned. Only the weighting is
+        frozen."""
+        model = self._model()
+        prediction, labels = self._sample(3)
+        leaf = prediction.clone().requires_grad_(True)
+        model.loss(leaf, labels, beta=0.5).sum().backward()
+        uncertainty_gradient = leaf.grad[:, PHYSICAL_MEAN_DIM:]
+        assert uncertainty_gradient.abs().sum() > 0.0
+
+    def test_beta_half_equalizes_a_confident_and_an_uncertain_token(self):
+        """The measured failure it exists to fix. At beta 0 two tokens with the
+        same standardized error pull in inverse proportion to their sigma; at
+        0.5 they pull equally, whatever their confidence."""
+        model = self._model()
+        labels = torch.zeros(2, PHYSICAL_MEAN_DIM)
+        prediction = torch.zeros(2, NEXT_STATE_OUTPUT_DIM)
+        cooldown, column = SCALAR_UNCERTAINTY[-2]
+        sigma_index = PHYSICAL_MEAN_DIM + column  # uncertainty follows the means
+        # Same standardized residual of one, sigmas two orders of magnitude apart.
+        prediction[0, sigma_index], prediction[1, sigma_index] = -5.0, -0.4
+        prediction[:, cooldown] = prediction[:, sigma_index].exp()
+
+        confident, uncertain = self._grad(model, prediction, labels, 0.0)[:, cooldown]
+        # Exactly the ratio of the two sigmas, exp(5 - 0.4).
+        assert float(confident / uncertain) == pytest.approx(math.exp(4.6), rel=1e-4)
+
+        confident, uncertain = self._grad(model, prediction, labels, 0.5)[:, cooldown]
+        assert float(confident / uncertain) == pytest.approx(1.0, rel=1e-4)

@@ -73,14 +73,14 @@ class TestBuildPolicy:
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
         )
         silent = build_policy(
             self._config(),
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
         )
         assert reads.bullet_encoder is not None
         assert silent.bullet_encoder is None
@@ -94,14 +94,14 @@ class TestBuildPolicy:
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
         )
         wide = build_policy(
             self._config(),
             dataclasses.replace(ShipConfig(), world_size=(16384.0, 16384.0)),
             num_value_components=3,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
         )
         assert set(narrow.state_dict()) == set(wide.state_dict())
         narrow_input = narrow.state_dict()["encoder.feature_extractor.0.weight"].shape[1]
@@ -180,7 +180,7 @@ class TestCompilePolicy:
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
         )
 
     def test_no_mode_leaves_the_policy_untouched(self):
@@ -427,7 +427,7 @@ class TestLegacyCheckpoints:
                 num_ships=trainer.wrapper.num_ships,
                 ship_config=trainer.ship_config,
                 model_config=trainer.model_config,
-                team_pma_k=trainer._win_k,
+                global_value_k=trainer._global_value_k,
             )
 
         assert bundle.model_config == trainer.model_config

@@ -48,21 +48,23 @@ SURFACE = "#fcfcfb"
 
 def _style(matplotlib):
     """Recessive axes and grid, text in ink tokens rather than series colour."""
-    matplotlib.rcParams.update({
-        "figure.facecolor": SURFACE,
-        "axes.facecolor": SURFACE,
-        "savefig.facecolor": SURFACE,
-        "text.color": INK,
-        "axes.labelcolor": INK_SECONDARY,
-        "axes.edgecolor": GRID,
-        "xtick.color": INK_SECONDARY,
-        "ytick.color": INK_SECONDARY,
-        "grid.color": GRID,
-        "font.size": 9,
-        "axes.titlesize": 10,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-    })
+    matplotlib.rcParams.update(
+        {
+            "figure.facecolor": SURFACE,
+            "axes.facecolor": SURFACE,
+            "savefig.facecolor": SURFACE,
+            "text.color": INK,
+            "axes.labelcolor": INK_SECONDARY,
+            "axes.edgecolor": GRID,
+            "xtick.color": INK_SECONDARY,
+            "ytick.color": INK_SECONDARY,
+            "grid.color": GRID,
+            "font.size": 9,
+            "axes.titlesize": 10,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+        }
+    )
 
 
 def ring_index(rings: int):
@@ -90,8 +92,9 @@ def _hex_patches(centres, spacing):
     # Axial spacing between neighbouring centres is `spacing`; a hexagon whose
     # centre-to-vertex radius is spacing/sqrt(3) tiles that lattice exactly.
     return [
-        RegularPolygon((float(x), float(y)), numVertices=6, radius=spacing / (3**0.5),
-                       orientation=0.0)
+        RegularPolygon(
+            (float(x), float(y)), numVertices=6, radius=spacing / (3**0.5), orientation=0.0
+        )
         for x, y in centres
     ]
 
@@ -122,6 +125,7 @@ def main() -> None:
     args = parser.parse_args()
 
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import torch
@@ -149,29 +153,40 @@ def main() -> None:
     # panel shows the easy and the hard case rather than three of whichever is
     # more common.
     order = torch.argsort(hidden)
-    picks = [order[int(q * (len(order) - 1))] for q in
-             torch.linspace(0.05, 0.95, args.frames).tolist()]
+    picks = [
+        order[int(q * (len(order) - 1))] for q in torch.linspace(0.05, 0.95, args.frames).tolist()
+    ]
     figure, axes = plt.subplots(2 * args.frames, 3, figsize=(9.5, 6.2 * args.frames))
     for frame, index in enumerate(picks):
-        for half, (name, columns) in enumerate((("ally", slice(0, cells)),
-                                                ("enemy", slice(cells, 2 * cells)))):
+        for half, (name, columns) in enumerate(
+            (("ally", slice(0, cells)), ("enemy", slice(cells, 2 * cells)))
+        ):
             truth = target[index, columns].numpy()
             predicted = head[index, columns].numpy()
             error = predicted - truth
             row = axes[2 * frame + half]
             top = float(max(truth.max(), predicted.max(), 1e-6))
             bound = float(abs(error).max()) or 1e-6
-            _draw_field(row[0], centres, spacing, truth, sequential, 0.0, top,
-                        f"{name} true")
-            _draw_field(row[1], centres, spacing, predicted, sequential, 0.0, top,
-                        f"{name} predicted")
-            mesh = _draw_field(row[2], centres, spacing, error, diverging, -bound, bound,
-                               f"{name} error  (max |e| {bound:.3f})")
+            _draw_field(row[0], centres, spacing, truth, sequential, 0.0, top, f"{name} true")
+            _draw_field(
+                row[1], centres, spacing, predicted, sequential, 0.0, top, f"{name} predicted"
+            )
+            mesh = _draw_field(
+                row[2],
+                centres,
+                spacing,
+                error,
+                diverging,
+                -bound,
+                bound,
+                f"{name} error  (max |e| {bound:.3f})",
+            )
             figure.colorbar(mesh, ax=row[2], fraction=0.046, shrink=0.85)
             row[0].set_ylabel(f"{int(hidden[index])} enemies hidden", color=INK_SECONDARY)
     figure.suptitle(
         f"Hex density field, log1p units — {run} @ {step:,} steps",
-        color=INK, y=0.995,
+        color=INK,
+        y=0.995,
     )
     figure.tight_layout(rect=(0, 0, 1, 0.985))
     path = args.out_prefix.with_name(args.out_prefix.name + "-fields.png")
@@ -188,13 +203,23 @@ def main() -> None:
         for offset, (half, colour) in enumerate(zip(("ally", "enemy"), SERIES, strict=True)):
             values = [baselines[half].get(f"r2_vs_mean/{n}") for n in names]
             spots = [p + (offset - 0.5) * width for p in positions]
-            bars = axis.bar([s for s, v in zip(spots, values, strict=True) if v is not None],
-                            [v for v in values if v is not None],
-                            width=width - 0.03, color=colour, label=f"{half} half")
+            bars = axis.bar(
+                [s for s, v in zip(spots, values, strict=True) if v is not None],
+                [v for v in values if v is not None],
+                width=width - 0.03,
+                color=colour,
+                label=f"{half} half",
+            )
             for bar, value in zip(bars, [v for v in values if v is not None], strict=True):
-                axis.annotate(f"{value:.2f}", (bar.get_x() + bar.get_width() / 2, value),
-                              textcoords="offset points", xytext=(0, 3),
-                              ha="center", fontsize=8, color=INK_SECONDARY)
+                axis.annotate(
+                    f"{value:.2f}",
+                    (bar.get_x() + bar.get_width() / 2, value),
+                    textcoords="offset points",
+                    xytext=(0, 3),
+                    ha="center",
+                    fontsize=8,
+                    color=INK_SECONDARY,
+                )
         axis.set_xticks(list(positions))
         axis.set_xticklabels(["per-cell\nmean", "+ front", "+ ally field\n(no belief)", "head"])
         axis.set_ylabel("R² vs the constant heat map")
@@ -212,8 +237,10 @@ def main() -> None:
     # ---- 3. error against hidden-enemy count --------------------------------
     figure, axis = plt.subplots(figsize=(7.0, 3.4))
     levels = sorted({int(v) for v in hidden.tolist()})
-    for half, columns, colour in (("ally", slice(0, cells), SERIES[0]),
-                                  ("enemy", slice(cells, 2 * cells), SERIES[1])):
+    for half, columns, colour in (
+        ("ally", slice(0, cells), SERIES[0]),
+        ("enemy", slice(cells, 2 * cells), SERIES[1]),
+    ):
         xs, ys = [], []
         for level in levels:
             mask = hidden == level
@@ -222,10 +249,16 @@ def main() -> None:
             residual = head[mask][:, columns] - target[mask][:, columns]
             xs.append(level)
             ys.append(float(residual.pow(2).mean()))
-        axis.plot(xs, ys, marker="o", markersize=5, linewidth=2, color=colour,
-                  label=f"{half} half")
-        axis.annotate(f"{half}", (xs[-1], ys[-1]), textcoords="offset points",
-                      xytext=(6, 0), color=INK_SECONDARY, fontsize=9, va="center")
+        axis.plot(xs, ys, marker="o", markersize=5, linewidth=2, color=colour, label=f"{half} half")
+        axis.annotate(
+            f"{half}",
+            (xs[-1], ys[-1]),
+            textcoords="offset points",
+            xytext=(6, 0),
+            color=INK_SECONDARY,
+            fontsize=9,
+            va="center",
+        )
     axis.set_xlabel("enemies the observer cannot see")
     axis.set_ylabel("mean squared error")
     axis.grid(axis="y", linewidth=0.6)
@@ -243,12 +276,21 @@ def main() -> None:
     # ---- 4. error by ring ----------------------------------------------------
     ring_of = ring_index(HEX_DENSITY_RINGS)
     figure, axis = plt.subplots(figsize=(7.0, 3.4))
-    for half, columns, colour in (("ally", slice(0, cells), SERIES[0]),
-                                  ("enemy", slice(cells, 2 * cells), SERIES[1])):
+    for half, columns, colour in (
+        ("ally", slice(0, cells), SERIES[0]),
+        ("enemy", slice(cells, 2 * cells), SERIES[1]),
+    ):
         residual = (head[:, columns] - target[:, columns]).pow(2).mean(0)  # (C,)
         ys = [float(residual[ring_of == ring].mean()) for ring in range(HEX_DENSITY_RINGS + 1)]
-        axis.plot(range(HEX_DENSITY_RINGS + 1), ys, marker="o", markersize=5,
-                  linewidth=2, color=colour, label=f"{half} half")
+        axis.plot(
+            range(HEX_DENSITY_RINGS + 1),
+            ys,
+            marker="o",
+            markersize=5,
+            linewidth=2,
+            color=colour,
+            label=f"{half} half",
+        )
     axis.set_xlabel("ring index (0 = centre cell, 10 = playable boundary)")
     axis.set_ylabel("mean squared error")
     axis.grid(axis="y", linewidth=0.6)

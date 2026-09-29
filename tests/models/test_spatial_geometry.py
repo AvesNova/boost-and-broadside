@@ -287,7 +287,7 @@ class TestRotaryBudget:
                 FRONTLINE_SHIP_CONFIG,
                 num_value_components=4,
                 num_ships=10,
-                team_pma_k=(),
+                global_value_k=(),
             )
 
     def test_rope_requires_a_ship_config(self):
@@ -300,7 +300,7 @@ class TestRotaryBudget:
                 build_standard_coordinator(FRONTLINE_SHIP_CONFIG),
                 num_value_components=4,
                 num_ships=10,
-                team_pma_k=(),
+                global_value_k=(),
             )
 
 
@@ -328,18 +328,21 @@ class TestSpatialHeadLayout:
         assert MODEL_CONFIG.spatial_head_dim == 64
         check_rotary_budget(MODEL_CONFIG, FRONTLINE_SHIP_CONFIG)
 
-    def test_two_wide_heads_leave_the_pooling_attention_alone(self):
+    def test_two_wide_heads_leave_the_team_level_value_head_alone(self):
+        """``n_spatial_heads`` reshapes the trunk's spatial attention only. The
+        team-level value head is an MLP on one token and has no head count to
+        disagree about -- it used to be a pooling attention that did."""
         config = replace(MODEL_CONFIG, n_spatial_heads=2)
         policy = build_policy(
             config,
             FRONTLINE_SHIP_CONFIG,
             num_value_components=4,
             num_ships=10,
-            team_pma_k=(0,),
+            global_value_k=(0,),
         )
         spatial = policy.yemong_layers[0].spatial[0]
         assert (spatial.n_heads, spatial.head_dim) == (2, 64)
-        assert policy.team_pma.attn.num_heads == config.n_heads == 4
+        assert policy.value_head_global.net[0].in_features == config.d_model
 
     def test_head_layout_does_not_change_the_parameter_count(self):
         """2x64 and 4x32 are the same weights read differently."""
@@ -350,7 +353,7 @@ class TestSpatialHeadLayout:
                 FRONTLINE_SHIP_CONFIG,
                 num_value_components=4,
                 num_ships=10,
-                team_pma_k=(0,),
+                global_value_k=(0,),
             )
             return sum(p.numel() for p in policy.parameters())
 
@@ -377,7 +380,7 @@ def _policy(model_config: ModelConfig, num_ships: int = 10):
         FRONTLINE_SHIP_CONFIG,
         num_value_components=4,
         num_ships=num_ships,
-        team_pma_k=(0,),
+        global_value_k=(0,),
     )
 
 

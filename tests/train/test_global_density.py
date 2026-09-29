@@ -72,7 +72,7 @@ def _policy(predict_density: bool = True, global_token: bool = True):
         SHIP_CONFIG,
         num_value_components=4,
         num_ships=NUM_SHIPS,
-        team_pma_k=(0,),
+        global_value_k=(0,),
         predict_density=predict_density,
     )
     return policy.eval()
@@ -284,9 +284,7 @@ class TestLoss:
         with torch.no_grad():
             opening = policy.density_head(torch.zeros(1, MODEL_CONFIG.d_model))
         assert float(opening.exp().sum()) == pytest.approx(NUM_SHIPS, rel=0.25)
-        assert policy.density_head.init_log_rate == pytest.approx(
-            math.log(NUM_SHIPS / 2.0 / cells)
-        )
+        assert policy.density_head.init_log_rate == pytest.approx(math.log(NUM_SHIPS / 2.0 / cells))
 
     def test_a_missing_head_is_an_error_rather_than_a_silent_zero(self):
         with pytest.raises(ValueError, match="density"):

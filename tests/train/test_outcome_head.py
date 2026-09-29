@@ -8,6 +8,8 @@ regressed onto {-1, 0, +1} cannot distinguish "confident tie" from "even odds",
 and those are different game states.
 """
 
+import math
+
 import pytest
 import torch
 
@@ -62,28 +64,45 @@ def test_a_realised_result_is_learned_from() -> None:
     assert float(_loss(logits, label)) > 8.0
 
 
-def test_an_unlabelled_step_bootstraps_instead_of_inventing_a_label() -> None:
-    """Nothing is known about a match still in progress, so the target is the
-    head's own belief at the chunk's end -- the truncation GAE already makes.
+def test_an_unlabelled_step_is_not_graded_at_all() -> None:
+    """Nothing is known about a match still in progress, so nothing is claimed
+    about it.
 
-    A self-consistent head owes only the *entropy* of that belief, not zero:
-    cross-entropy against a soft target bottoms out at H(p), not at 0. The
-    logged ``outcome_head/cross_entropy`` therefore carries a floor that moves
-    with the head's own confidence, which is why accuracy on realised results
-    is logged beside it.
+    These steps used to be graded against the head's own belief at the chunk's
+    end, to densify a label that is otherwise carried by under 1% of steps.
+    That target had a fixed point: every unlabelled step took the *same* one,
+    so any prediction constant across the chunk satisfied it exactly, and for
+    softmax cross-entropy ``d/dlogits = p - target`` is then identically zero.
+    Uniform is such a fixed point and is where the head initializes. Run 748
+    sat on it for 84.5M steps at cross-entropy ln 3 with chance accuracy.
     """
     logits = torch.randn(6, 2, 3, NUM_OUTCOME_CLASSES)
-    logits[:] = logits[-1]  # constant across time: perfectly self-consistent
     unlabelled = torch.full((6, 2, 3), -1, dtype=torch.int8)
 
-    belief = logits[-1].float().softmax(-1)
-    entropy = float(-(belief * belief.log()).sum(-1).mean())
-    assert float(_loss(logits, unlabelled)) == pytest.approx(entropy, abs=1e-5)
+    # No realised result anywhere in the chunk: nothing to learn from, so the
+    # term is zero rather than a number the head can satisfy by standing still.
+    assert float(_loss(logits, unlabelled)) == pytest.approx(0.0)
 
-    # A head that contradicts its own endpoint pays strictly more than the floor.
+    # And it is zero because nothing is graded, not because the head agrees
+    # with itself -- a wildly inconsistent head pays the same nothing.
     drifting = logits.clone()
     drifting[0] = -drifting[-1] * 8.0
-    assert float(_loss(drifting, unlabelled)) > entropy
+    assert float(_loss(drifting, unlabelled)) == pytest.approx(0.0)
+
+
+def test_a_constant_prediction_is_no_longer_a_free_fixed_point() -> None:
+    """The regression that cost run 748 its outcome head: a time-constant head
+    must pay for being wrong, not be excused by its own consistency."""
+    logits = torch.zeros(4, 1, 1, NUM_OUTCOME_CLASSES)  # uniform everywhere
+    outcome = torch.full((4, 1, 1), -1, dtype=torch.int8)
+    outcome[-1, 0, 0] = OUTCOME_WIN_INDEX
+
+    # Uniform against a realised one-hot costs ln 3, and it is a real gradient
+    # rather than the zero a self-target produced.
+    assert float(_loss(logits, outcome)) == pytest.approx(math.log(3.0), abs=1e-5)
+    leaf = logits.clone().requires_grad_(True)
+    _loss(leaf, outcome).backward()
+    assert float(leaf.grad.abs().sum()) > 0.0
 
 
 def test_the_label_travels_backwards_to_the_steps_that_led_to_it() -> None:

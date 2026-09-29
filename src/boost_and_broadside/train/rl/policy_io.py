@@ -83,7 +83,7 @@ class PolicyBundle:
     ship_config: ShipConfig
     env_config: EnvConfig | None
     num_value_components: int
-    team_pma_k: tuple[int, ...]
+    global_value_k: tuple[int, ...]
     # Whether these weights carry the categorical win/loss/tie head. Recorded so
     # a reload rebuilds the same architecture rather than a headless one.
     predict_outcome: bool = False
@@ -226,7 +226,7 @@ def build_policy(
     *,
     num_value_components: int,
     num_ships: int,
-    team_pma_k: tuple[int, ...],
+    global_value_k: tuple[int, ...],
     predict_outcome: bool = False,
     predict_density: bool = False,
 ) -> YemongPolicy:
@@ -242,14 +242,14 @@ def build_policy(
                               the one it trained at. No parameter is sized by ship
                               count; N only locates the ship/field boundary for a
                               split encoder.
-        team_pma_k:           Value-component indices routed through TeamPMA.
+        global_value_k:           Value-component indices routed through TeamPMA.
     """
     return YemongPolicy(
         model_config,
         build_standard_coordinator(ship_config, local_presence=model_config.local_presence),
         num_value_components=num_value_components,
         num_ships=num_ships,
-        team_pma_k=tuple(team_pma_k),
+        global_value_k=tuple(global_value_k),
         bullet_coordinator=(
             build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
         ),
@@ -272,24 +272,24 @@ def infer_num_value_components(ckpt: dict) -> int:
     return ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
 
 
-def infer_team_pma_k(ckpt: dict, fallback: tuple[int, ...] | None = None) -> tuple[int, ...]:
+def infer_global_value_k(ckpt: dict, fallback: tuple[int, ...] | None = None) -> tuple[int, ...]:
     """Return the win/loss value-component indices for a checkpoint.
 
-    Newer checkpoints store this directly under "team_pma_k". Older ones only carry
+    Newer checkpoints store this directly under "global_value_k". Older ones only carry
     the team_pma weights in the state_dict, so reconstruct the active-component
     ordering from the stored reward weights — the same filter the reward wrapper
     applies at training time. Payloads with neither (early ladder snapshots) fall
     back to the caller's ordering.
     """
-    if "team_pma_k" in ckpt:
-        return tuple(ckpt["team_pma_k"])
+    if "global_value_k" in ckpt:
+        return tuple(ckpt["global_value_k"])
     if "team_pma.seeds" not in ckpt["policy_state_dict"]:
         return ()
     if "train_config" not in ckpt:
         if fallback is None:
             raise ValueError(
-                "checkpoint has TeamPMA weights but records neither 'team_pma_k' nor "
-                "'train_config'; pass team_pma_k explicitly to load it"
+                "checkpoint has TeamPMA weights but records neither 'global_value_k' nor "
+                "'train_config'; pass global_value_k explicitly to load it"
             )
         return tuple(fallback)
 
@@ -368,7 +368,7 @@ def load_policy_bundle(
     num_ships: int,
     ship_config: ShipConfig,
     model_config: ModelConfig | None = None,
-    team_pma_k: tuple[int, ...] | None = None,
+    global_value_k: tuple[int, ...] | None = None,
     compile_mode: str | None = None,
     allow_config_drift: bool = False,
     freeze: bool = True,
@@ -388,7 +388,7 @@ def load_policy_bundle(
         ship_config:        Fallback physics constants, and the runtime constants
                             the checkpoint's own are checked against.
         model_config:       Fallback architecture.
-        team_pma_k:         Fallback win-component indices.
+        global_value_k:         Fallback win-component indices.
         compile_mode:       torch.compile mode; None loads uncompiled. Applied
                             only when the checkpoint's architecture matches
                             ``model_config`` — a roster spanning architectures
@@ -431,11 +431,11 @@ def load_policy_bundle(
     _check_config_drift(checkpoint_ship_config, ship_config, path, allow_config_drift)
 
     num_value_components = infer_num_value_components(checkpoint)
-    checkpoint_team_pma_k = infer_team_pma_k(checkpoint, team_pma_k)
+    checkpoint_global_value_k = infer_global_value_k(checkpoint, global_value_k)
     # Read the architecture off the weights rather than off the loading config:
     # a checkpoint written before the head existed, or under a coefficient of
     # zero, simply has no outcome_head.* keys, and rebuilding one would fail the
-    # strict load. The same reasoning as infer_team_pma_k.
+    # strict load. The same reasoning as infer_global_value_k.
     stored_weights = checkpoint.get("policy_state_dict")
     checkpoint_predicts_outcome = isinstance(stored_weights, Mapping) and any(
         str(key).startswith("outcome_head.") for key in stored_weights
@@ -448,7 +448,7 @@ def load_policy_bundle(
         checkpoint_ship_config,
         num_value_components=num_value_components,
         num_ships=num_ships,
-        team_pma_k=checkpoint_team_pma_k,
+        global_value_k=checkpoint_global_value_k,
         predict_outcome=checkpoint_predicts_outcome,
         predict_density=checkpoint_predicts_density,
     )
@@ -478,7 +478,7 @@ def load_policy_bundle(
         ship_config=checkpoint_ship_config,
         env_config=env_config,
         num_value_components=num_value_components,
-        team_pma_k=checkpoint_team_pma_k,
+        global_value_k=checkpoint_global_value_k,
         predict_outcome=checkpoint_predicts_outcome,
         predict_density=checkpoint_predicts_density,
         global_step=checkpoint.get("global_step"),

@@ -96,6 +96,7 @@ class ProfileSpec:
     schedule_spec: TrainingScheduleSpec
     rewards: RewardConfig
     next_state_coef: float
+    next_state_beta: float
     enemy_action_coef: float
     outcome_categorical_coef: float
     global_density_coef: float

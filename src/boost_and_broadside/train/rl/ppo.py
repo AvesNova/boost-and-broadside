@@ -22,10 +22,10 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Generator, Mapping
-from typing import NamedTuple
 from datetime import UTC, datetime
 from pathlib import Path
 from queue import Queue
+from typing import NamedTuple
 
 import torch
 import torch.nn as nn
@@ -57,7 +57,7 @@ from boost_and_broadside.constants import (
     TURN_SLICE,
 )
 from boost_and_broadside.env.observation import ObsKey, YemongObservation, compile_observation
-from boost_and_broadside.env.rewards import component_weights
+from boost_and_broadside.env.rewards import GLOBAL_VALUE_COMPONENTS, component_weights
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
@@ -534,10 +534,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
-        # Indices of win/loss components in the active set — these use the TeamPMA
-        # value path; all other components use the local (per-ship) path.
-        self._win_k: tuple[int, ...] = tuple(
-            i for i, n in enumerate(self._active_names) if n in {"ally_win", "enemy_win"}
+        # Components whose reward is identical for every ship on a side by
+        # construction, so their return is too and one estimate serves the team:
+        # all three are a function of team and match result alone, paid to the
+        # living and the dead alike. They read the global token; everything else
+        # keeps a per-ship head, including the zone rewards, whose whole point is
+        # that they pay the ships that showed up and charge the ones that did
+        # not. ``tests/train/test_global_value.py`` asserts the uniformity rather
+        # than trusting this list.
+        self._global_value_k: tuple[int, ...] = tuple(
+            i for i, n in enumerate(self._active_names) if n in GLOBAL_VALUE_COMPONENTS
         )
         # Where the categorical head reads its labels from. None when `outcome`
         # carries no weight, which is also when the head's loss is off.
@@ -560,7 +566,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ship_config,
             num_value_components=K,
             num_ships=N,
-            team_pma_k=self._win_k,
+            global_value_k=self._global_value_k,
             predict_outcome=train_config.outcome_categorical_coef > 0.0,
             predict_density=train_config.global_density_coef > 0.0,
         ).to(self.device)
@@ -572,8 +578,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # one and so run the whole update eagerly. See _update_evaluate_actions.
         self._eager_evaluate_actions = self._policy_module.evaluate_actions
         self.policy = compile_policy(self._policy_module, compile_mode)
+        # eps 1e-8, Torch's default, rather than the 1e-5 the PPO reference
+        # implementations carry. Measured on run 748's own ``exp_avg_sq``, 1e-5
+        # was 32% of the Adam denominator at the *median* parameter and at least
+        # 90% of it for 18.6% of them -- a third of the network was effectively
+        # on SGD, not Adam, and that is a hyperparameter rather than the
+        # numerical guard eps is supposed to be. At 1e-8 it is 0.1% at the
+        # median and the optimizer is scale-invariant again, which is also what
+        # lets the loss coefficients be rescaled to put the gradient under
+        # ``max_grad_norm`` without changing what the optimizer does.
+        #
+        # Consequence to watch: the parameters that were damped now take full
+        # steps, so this is an effective learning-rate increase across much of
+        # the network.
         self.optim = optim.Adam(
-            self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-5
+            self._policy_module.parameters(), lr=base_state.learning_rate, eps=1e-8
         )
         # CUDA-graph modes capture the backward too, and a `.grad` tensor first
         # allocated inside that capture lives in the graph's private pool -- the
@@ -691,7 +710,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ship_config,
             num_value_components=K,
             num_ships=N,
-            team_pma_k=self._win_k,
+            global_value_k=self._global_value_k,
             predict_outcome=train_config.outcome_categorical_coef > 0.0,
             predict_density=train_config.global_density_coef > 0.0,
         ).to(self.device)
@@ -2075,7 +2094,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # It is scale-free in the label, so nothing here depends on a fitted
             # weight being right, and a token whose label is mostly unpredictable
             # belief error earns a wide sigma instead of dominating the sum.
-            per_dim = self.next_state.loss(pred_next.float(), labels.detach())
+            per_dim = self.next_state.loss(
+                pred_next.float(), labels.detach(), beta=self.cfg.next_state_beta
+            )
 
             if self.cfg.next_state_coef > 0.0:
                 next_state_cont_loss = (per_dim * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
@@ -2511,31 +2532,42 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         No projection step, no discounting to shift the support -- the atoms are
         the three real outcomes and they do not move.
 
-        Labels are sparse (a 128-step rollout rarely contains an episode end), so
-        a step with no realised result ahead of it bootstraps from the head's own
-        belief at the chunk's last step, detached. That is the same truncation
-        GAE makes when it bootstraps from the final value, one step earlier.
-
         A step whose episode ends inside the rollout takes the nearest *future*
         terminal, which is what keeps a step landing after one episode end from
-        inheriting the previous episode's result.
+        inheriting the previous episode's result. Steps with no terminal ahead
+        of them inside the chunk are **not graded at all**.
 
-        Note the reported value has a floor: cross-entropy against a soft target
-        bottoms out at the target's own entropy, not at zero, so a bootstrapped
-        step owes H(belief) even when perfectly self-consistent. Read
-        ``outcome_head/accuracy``, which is graded on realised results only, to
-        see whether the head is right rather than merely confident.
+        They used to bootstrap from the head's own belief at the chunk's last
+        step, detached, to densify a signal that is otherwise sparse -- an
+        episode runs about 8,700 steps and a chunk is 128, so under 1% of steps
+        carry a realised result. That densification had a fixed point. Every
+        unlabelled step took the *same* target, ``logits[-1]``, so any
+        prediction constant across the chunk satisfied it exactly; and for
+        softmax cross-entropy ``d/dlogits`` is ``p - target``, which at such a
+        fixed point is identically zero. Uniform is one of those fixed points
+        and is where orthogonal init starts. Run 748 sat there for 84.5M steps:
+        cross-entropy pinned at ln 3 = 1.0986 to four decimals, accuracy at
+        chance, and 5.6e-05 of trunk gradient -- 1/200,000 of behaviour
+        cloning's. The 1% of real labels never outweighed the pull back to it,
+        and were further divided by a denominator counting every alive token.
+
+        So the bootstrap is gone and the mean is over graded tokens only. The
+        signal is sparse -- a few thousand tokens an update -- but it is signal,
+        and the reported number is now cross-entropy against realised results,
+        which is comparable to ``ln 3`` as a bar rather than being pinned to it.
 
         Args:
             logits:        (T, B, N, 3) head output.
             outcome_class: (T, B, N) int8 realised result, -1 where unknown.
             alive_f:       (T, B, N) float liveness mask.
-            mask_sum:      Scalar denominator shared with the other masked means.
+            mask_sum:      Unused; the mean is over graded tokens, which is a
+                count this function alone knows. Kept so the call site reads
+                like the other masked means.
 
         Returns:
-            ``(loss, graded, graded_class)`` -- the masked-mean cross-entropy,
-            the mask of steps whose target is a realised result rather than a
-            bootstrap, and the class each of those was graded against.
+            ``(loss, graded, graded_class)`` -- the cross-entropy averaged over
+            graded tokens, the mask of tokens that had a realised result ahead
+            of them, and the class each was graded against.
         """
 
         horizon = logits.shape[0]
@@ -2556,15 +2588,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 .unsqueeze(-1)
                 .expand(-1, -1, -1, NUM_OUTCOME_CLASSES),
             )
-            bootstrap = logits[-1].detach().float().softmax(-1).unsqueeze(0)
-            target = torch.where(found.unsqueeze(-1), carried, bootstrap.expand_as(carried))
+            graded_f = (found & (alive_f > 0.0)).float()  # (T, B, N)
+            # Every micro-batch of a minibatch divides by its own graded count.
+            # The alternative, a shared minibatch total, would need a count this
+            # loss cannot see; the head is a probe on a sparse label and the
+            # slight non-additivity across micro-batches costs it nothing.
+            graded_sum = graded_f.sum().clamp(min=1.0)
 
         log_probabilities = torch.nn.functional.log_softmax(logits.float(), dim=-1)
-        cross_entropy = -(target * log_probabilities).sum(-1)  # (T, B, N)
+        cross_entropy = -(carried * log_probabilities).sum(-1)  # (T, B, N)
         graded_class = torch.gather(
             outcome_class.clamp(min=0).long(), 0, nearest.clamp(max=horizon - 1)
         ).to(outcome_class.dtype)
-        return (cross_entropy * alive_f).sum() / mask_sum, found, graded_class
+        return (cross_entropy * graded_f).sum() / graded_sum, found, graded_class
 
     def _reward_policy_terms(
         self,
@@ -3210,6 +3246,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "outcome_head/correct_fraction": [],
             "outcome_head/labelled_fraction": [],
             "train/gradient_norm": [],
+            # Fraction of optimizer steps on which max_grad_norm actually bound.
+            # A guard should fire rarely; a value near one means the clip is not
+            # a guard but a reparameterization to normalized-gradient descent,
+            # and the loss coefficients want rescaling rather than the clip
+            # raising.
+            "train/clip_fire_rate": [],
             # Fraction of optimizer steps whose gradients were non-finite and
             # got scrubbed. Any sustained non-zero reading means the forward or
             # backward pass is overflowing and needs investigating at source.
@@ -3505,6 +3547,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 # The norm is finite only if every gradient is, so this is a
                 # no-op on healthy steps. Kept on-device: the flag rides along
                 # with the other metrics rather than forcing a host sync here.
+                # Whether the clip actually bound. The point of the rescale is
+                # that it should be a spike-catcher, and nothing said how often
+                # it fired -- on run 748 it was every step, by a factor of 100.
+                clipped = (grad_norm > cfg.max_grad_norm).float()
                 nonfinite_grad = ~torch.isfinite(grad_norm)
                 for param in params:
                     if param.grad is not None:
@@ -3551,6 +3597,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 )
                 accum_scalar["returns/advantage_std"].append(scalar_accum_step["adv_var"] ** 0.5)
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
+                accum_scalar["train/clip_fire_rate"].append(clipped)
                 accum_scalar["train/nonfinite_grad_fraction"].append(nonfinite_grad.float())
 
                 if k_stats:
@@ -3725,7 +3772,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 self.device,
                 model_config=self.model_config,
                 compile_mode=self._compile_mode,
-                team_pma_k=self._win_k,
+                global_value_k=self._global_value_k,
             )
             return LadderOpponent(
                 policy=entry.policy,

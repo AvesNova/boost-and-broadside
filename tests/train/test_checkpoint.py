@@ -190,7 +190,7 @@ class TestObservationSchema:
         payload = build_policy_checkpoint_payload(
             policy_state_dict={"weight": torch.ones(2)},
             num_value_components=3,
-            team_pma_k=(0, 2),
+            global_value_k=(0, 2),
             global_step=17,
             live_elo=42.0,
             model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
@@ -203,7 +203,7 @@ class TestObservationSchema:
 
         assert payload["observation_schema"] == OBSERVATION_SCHEMA
         assert payload["num_value_components"] == 3
-        assert payload["team_pma_k"] == (0, 2)
+        assert payload["global_value_k"] == (0, 2)
         assert payload["global_step"] == 17
         assert payload["resolved_config"]["profile"] == "abc"
         assert payload["launch"] == {"device": "cpu", "seed": 7}
@@ -268,7 +268,7 @@ class TestObservationSchema:
         ]
 
         for payload in families:
-            for key in ("model_config", "env_config", "ship_config", "team_pma_k"):
+            for key in ("model_config", "env_config", "ship_config", "global_value_k"):
                 assert key in payload, f"payload family is missing {key}"
             assert payload["ship_config"] == dataclasses.asdict(trainer.ship_config)
             assert payload["resolved_config"] == trainer.resolved_config_document
@@ -490,7 +490,7 @@ class TestBulletReadingCheckpoints:
             num_ships=trainer.wrapper.num_ships,
             ship_config=trainer.ship_config,
             model_config=trainer.model_config,
-            team_pma_k=trainer._win_k,
+            global_value_k=trainer._global_value_k,
         )
 
         assert bundle.policy.bullet_encoder is not None
@@ -513,14 +513,14 @@ class TestBulletReadingCheckpoints:
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
         )
         silent = build_policy(
             dataclasses.replace(self._bullet_model_config(), n_bullet_cross_per_block=0),
             ShipConfig(),
             num_value_components=3,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
         )
 
         assert reads.bullet_encoder is not None

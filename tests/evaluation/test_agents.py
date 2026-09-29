@@ -36,7 +36,7 @@ def _policy(**overrides):
         ShipConfig(),
         num_value_components=1,
         num_ships=_NUM_SHIPS,
-        team_pma_k=(),
+        global_value_k=(),
     )
 
 

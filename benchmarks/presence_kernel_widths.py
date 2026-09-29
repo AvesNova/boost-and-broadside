@@ -71,13 +71,23 @@ def lit_fraction(values, peak_fraction: float = 0.1) -> float:
 
 
 def _style(matplotlib):
-    matplotlib.rcParams.update({
-        "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
-        "text.color": INK, "axes.labelcolor": INK_SECONDARY, "axes.edgecolor": GRID,
-        "xtick.color": INK_SECONDARY, "ytick.color": INK_SECONDARY, "grid.color": GRID,
-        "font.size": 9, "axes.titlesize": 10,
-        "axes.spines.top": False, "axes.spines.right": False,
-    })
+    matplotlib.rcParams.update(
+        {
+            "figure.facecolor": SURFACE,
+            "axes.facecolor": SURFACE,
+            "savefig.facecolor": SURFACE,
+            "text.color": INK,
+            "axes.labelcolor": INK_SECONDARY,
+            "axes.edgecolor": GRID,
+            "xtick.color": INK_SECONDARY,
+            "ytick.color": INK_SECONDARY,
+            "grid.color": GRID,
+            "font.size": 9,
+            "axes.titlesize": 10,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+        }
+    )
 
 
 def _field(ships, radius: float, cells):
@@ -129,13 +139,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out-prefix", type=Path, required=True)
     parser.add_argument(
-        "--radii", type=float, nargs="+", default=[125.0, 250.0, 500.0, 1000.0, 2000.0],
+        "--radii",
+        type=float,
+        nargs="+",
+        default=[125.0, 250.0, 500.0, 1000.0, 2000.0],
         help="Kernel radii in pixels; the production value is 500.",
     )
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
 
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import torch
@@ -161,18 +175,21 @@ def main() -> None:
         values = _field([(0.0, 0.0)], radius, cells)
         lit = lit_fraction(values)
         half = half_max_radius(radius)
-        summary.append({
-            "radius_px": radius,
-            "half_max_px": half,
-            "half_max_rings": half / ring_px,
-            "cells_above_10pct_peak": lit,
-            "is_production": radius == PRESENCE_RADIUS,
-        })
+        summary.append(
+            {
+                "radius_px": radius,
+                "half_max_px": half,
+                "half_max_rings": half / ring_px,
+                "cells_above_10pct_peak": lit,
+                "is_production": radius == PRESENCE_RADIUS,
+            }
+        )
         label = f"r = {radius:.0f} px" + ("  (production)" if radius == PRESENCE_RADIUS else "")
         _draw(axis, cells.numpy(), values.numpy(), sequential, peak, label, spacing)
         axis.set_xlabel(
             f"half-max {half / ring_px:.1f} rings\n{lit:.0%} of cells lit",
-            color=INK_SECONDARY, fontsize=8,
+            color=INK_SECONDARY,
+            fontsize=8,
         )
     figure.suptitle(
         "One ship at the map centre — the density target's view of a point",
@@ -190,13 +207,18 @@ def main() -> None:
     for radius, colour in zip(args.radii, ORDINAL, strict=False):
         profile = torch.log1p(torch.exp(-(distance**2) / (2.0 * radius**2)))
         width = 2.6 if radius == PRESENCE_RADIUS else 2.0
-        axis.plot(distance / ring_px, profile, color=colour, linewidth=width,
-                  label=f"r = {radius:.0f} px" + (" (production)" if radius == PRESENCE_RADIUS
-                                                  else ""))
+        axis.plot(
+            distance / ring_px,
+            profile,
+            color=colour,
+            linewidth=width,
+            label=f"r = {radius:.0f} px" + (" (production)" if radius == PRESENCE_RADIUS else ""),
+        )
     axis.axhline(peak / 2, color=GRID, linewidth=1.2, linestyle="--")
     # Left edge: the right is where the widest kernel is still falling.
-    axis.annotate("half peak", (0.15, peak / 2), ha="left", va="bottom",
-                  color=INK_SECONDARY, fontsize=8)
+    axis.annotate(
+        "half peak", (0.15, peak / 2), ha="left", va="bottom", color=INK_SECONDARY, fontsize=8
+    )
     axis.set_xlabel("distance from the ship, in ring spacings (1 ring = 260 px)")
     axis.set_ylabel("density, log1p units")
     axis.set_xlim(0, HEX_DENSITY_RINGS)
@@ -221,11 +243,20 @@ def main() -> None:
         peaks = float(values.max())
         # A dip at the midpoint is what "two ships" looks like on this field.
         resolved = centre < 0.98 * peaks
-        _draw(axis, cells.numpy(), values.numpy(), sequential, float(values.max()),
-              f"{separation:.0f} px apart ({separation / ring_px:.0f} rings)", spacing)
+        _draw(
+            axis,
+            cells.numpy(),
+            values.numpy(),
+            sequential,
+            float(values.max()),
+            f"{separation:.0f} px apart ({separation / ring_px:.0f} rings)",
+            spacing,
+        )
         axis.set_xlabel(
-            ("two bumps" if resolved else "reads as one") + f"\nmidpoint {centre / peaks:.0%} of peak",
-            color=INK_SECONDARY, fontsize=8,
+            ("two bumps" if resolved else "reads as one")
+            + f"\nmidpoint {centre / peaks:.0%} of peak",
+            color=INK_SECONDARY,
+            fontsize=8,
         )
     figure.suptitle(
         f"Two ships at the production radius ({PRESENCE_RADIUS:.0f} px) — when do they separate?",

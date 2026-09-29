@@ -1,6 +1,6 @@
 """Construction seams that must not acquire a default.
 
-``team_pma_k`` decides which value heads are team-pooled. A default here would be
+``global_value_k`` decides which value heads are team-pooled. A default here would be
 silently wrong rather than loudly missing, which is why it is checked at the
 signature rather than at a call site.
 
@@ -19,9 +19,9 @@ from boost_and_broadside.train.rl.roster import EloRoster
 
 
 def test_team_pma_indices_are_required_at_policy_and_roster_construction_seams():
-    policy_parameter = inspect.signature(YemongPolicy).parameters["team_pma_k"]
-    builder_parameter = inspect.signature(build_policy).parameters["team_pma_k"]
+    policy_parameter = inspect.signature(YemongPolicy).parameters["global_value_k"]
+    builder_parameter = inspect.signature(build_policy).parameters["global_value_k"]
     assert policy_parameter.default is inspect.Parameter.empty
     assert builder_parameter.default is inspect.Parameter.empty
-    roster_parameter = inspect.signature(EloRoster.load_policy).parameters["team_pma_k"]
+    roster_parameter = inspect.signature(EloRoster.load_policy).parameters["global_value_k"]
     assert roster_parameter.default is inspect.Parameter.empty

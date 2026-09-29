@@ -1,5 +1,7 @@
 """Tests for the ship encoder and policy forward passes."""
 
+from dataclasses import replace
+
 import pytest
 import torch
 
@@ -299,7 +301,7 @@ class TestYemongPolicy:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         )
         obs = _make_obs(B, N + M)
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
@@ -328,7 +330,7 @@ class TestYemongPolicy:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
@@ -361,7 +363,7 @@ class TestYemongPolicy:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         )
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
@@ -380,7 +382,7 @@ class TestYemongPolicy:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         )
         K = NUM_VALUE_COMPONENTS
 
@@ -407,7 +409,7 @@ class TestYemongPolicy:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         )
         from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
@@ -440,7 +442,7 @@ class TestMapKVMemory:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=num_ships,
-            team_pma_k=(),
+            global_value_k=(),
         ).eval()
 
     def test_ships_and_map_share_one_softmax(self, coordinator, monkeypatch):
@@ -578,7 +580,7 @@ class TestYemongBlockStructure:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=num_ships,
-            team_pma_k=(),
+            global_value_k=(),
         )
         return cfg, policy.eval()
 
@@ -783,7 +785,7 @@ class TestBulletCrossAttention:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
             bullet_coordinator=build_bullet_coordinator(ship_cfg) if n_cross else None,
         ).eval()
 
@@ -1048,7 +1050,7 @@ class TestBulletCrossAttention:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=4,
-            team_pma_k=(),
+            global_value_k=(),
             bullet_coordinator=build_bullet_coordinator(ship_cfg),
         ).eval()
 
@@ -1196,7 +1198,7 @@ class TestEncoderSplit:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         ).eval()
         obs = _make_obs(B, N + M)
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
@@ -1269,7 +1271,7 @@ class TestNonRecurrentFieldPath:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=num_ships,
-            team_pma_k=(),
+            global_value_k=(),
         ).eval()
 
     def test_field_sub_is_identity_initialised(self, coordinator):
@@ -1445,18 +1447,20 @@ class TestOrthogonalHeadInit:
         assert torch.allclose(gram, 2.0 * torch.eye(4), atol=1e-4)
 
     def test_policy_heads_are_orthogonal_initialized(self, model_cfg, coordinator):
-        """YemongPolicy's actual heads (including the team_pma_k win/loss head) still
-        get orthogonal-initialized end to end after the by-type refactor."""
-        team_pma_k = (0, 1)
+        """YemongPolicy's actual heads, the team-level value head included, still
+        get orthogonal-initialized end to end after the by-type refactor. That
+        head reads the global token, so the promotion has to be on for it to
+        exist at all."""
+        global_value_k = (0, 1)
         policy = YemongPolicy(
-            model_cfg,
+            replace(model_cfg, global_token=True),
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=4,
-            team_pma_k=team_pma_k,
+            global_value_k=global_value_k,
         )
 
-        for head in [policy.action_head, policy.value_head_local, policy.value_head_win]:
+        for head in [policy.action_head, policy.value_head_local, policy.value_head_global.net]:
             linears = [m for m in head if isinstance(m, torch.nn.Linear)]
             first, last = linears[0], linears[-1]
             assert torch.allclose(first.bias, torch.zeros_like(first.bias))
@@ -1534,14 +1538,14 @@ class TestGradCheckpoint:
             coordinator,
             num_value_components=K,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         )
         ckpt = YemongPolicy(
             replace(model_cfg, grad_checkpoint=True),
             coordinator,
             num_value_components=K,
             num_ships=N,
-            team_pma_k=(),
+            global_value_k=(),
         )
         ckpt.load_state_dict(base.state_dict())  # identical weights
 
@@ -1579,7 +1583,7 @@ class TestEnemyActionHead:
             coordinator,
             num_value_components=NUM_VALUE_COMPONENTS,
             num_ships=num_ships,
-            team_pma_k=(),
+            global_value_k=(),
         ).eval()
 
     def test_head_is_distinct_and_returns_joint_logits(self, coordinator) -> None:

@@ -680,7 +680,7 @@ def test_the_vram_decision_is_stored_in_the_checkpoint(tmp_path: Path, fake_cuda
     payload = build_policy_checkpoint_payload(
         policy_state_dict={},
         num_value_components=1,
-        team_pma_k=(1,),
+        global_value_k=(1,),
         global_step=0,
         live_elo=0.0,
         model_config=launch.resolved.model_config,

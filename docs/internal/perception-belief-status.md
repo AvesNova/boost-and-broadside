@@ -167,7 +167,7 @@ its last layer initializes near zero. See open question 1.
 - A league slot created mid-run has an empty belief for one decision; hidden
   opponents read zero until the next reveal.
 - `state.num_zones > 0` is how `BeliefTracker.source` knows respawn is on.
-- Checkpoints older than schema v20 cannot be loaded; there is no weight
+- Checkpoints older than schema v21 cannot be loaded; there is no weight
   migration. Evaluation numbers taken through `TensorEnv` before Phase 0's
   latch fix were measured without fog.
 - Pre-existing `ruff` violations remain in the two `docs/internal/*-probe.py`
@@ -233,3 +233,24 @@ done, and the owner runs them on the laptop. Phase 7 does not wait for them.
 ## Remaining
 
 Phase 7, then the deferred GPU benchmarks above, then Phase 8 as written in the plan.
+
+
+## Schema v21 — September 30 2026
+
+Checkpoint-breaking, all of it ahead of the next BC run:
+
+* the hex density target is barycentric ship counts, not a Gaussian density,
+  and its head emits a Poisson log-rate (`GlobalDensityHead`, width unchanged);
+* `TeamPMA` and `value_head_win` are gone, replaced by `GlobalValueHead`
+  reading the global token. The components routed to it are
+  `GLOBAL_VALUE_COMPONENTS` = {`ally_win`, `enemy_win`, `outcome`} -- three,
+  where the pooled head carried two -- and `tests/train/test_global_value.py`
+  asserts against real rollouts that each pays every ship on a side the same,
+  which is the condition for estimating it once. With `global_token` off the
+  head is not built and those components fall back to the per-ship value head,
+  so Phase 8's variant A still runs;
+* `PRESENCE_RADIUS` is 330 px, so `local_presence` -- a policy input -- carries
+  a different distribution than any earlier checkpoint was trained on;
+* the next-state likelihood takes `next_state_beta = 0.5`;
+* the outcome classifier no longer bootstraps from its own belief;
+* Adam's `eps` is 1e-8.

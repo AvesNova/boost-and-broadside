@@ -50,15 +50,16 @@ def _observation(seed: int = 5, frontline: bool = True) -> YemongObservation:
     return observation.for_team(0)
 
 
-def _policy(global_token: bool = True):
+def _policy(global_token: bool = True, global_value_k=(0,), predict_density: bool = False):
     torch.manual_seed(0)
     policy = build_policy(
         replace(MODEL_CONFIG, global_token=global_token),
         SHIP_CONFIG,
         num_value_components=4,
         num_ships=NUM_SHIPS,
-        team_pma_k=(0,),
+        global_value_k=global_value_k,
         predict_outcome=True,
+        predict_density=predict_density,
     )
     return policy.eval()
 
@@ -192,18 +193,40 @@ class TestMapObjects:
 
 
 class TestHeads:
-    def test_no_head_reads_the_global_token(self):
+    def test_every_per_ship_head_still_reads_ships_only(self):
+        """The global token shapes these through the trunk; none of them decodes
+        it. Only the heads whose *subject* is the game read it directly."""
         policy = _policy()
         heads = {
             "action": policy.action_head,
             "enemy_action": policy.enemy_action_head,
             "value": policy.value_head_local,
             "next_state": policy.next_state_head,
-            "team_pma": policy.team_pma,
         }
         seen = _record_inputs(heads)
         _run_step(policy)
         assert {name: shape[-2] for name, shape in seen.items()} == dict.fromkeys(heads, NUM_SHIPS)
+
+    def test_the_team_level_value_head_reads_the_global_token(self):
+        """One estimate per environment, not one per ship: ``ally_win``,
+        ``enemy_win`` and ``outcome`` pay every ship on a side the same number,
+        so their return is the same number too."""
+        policy = _policy(global_value_k=(0,))
+        seen = _record_inputs({"global_value": policy.value_head_global.net})
+        _run_step(policy)
+        # The global token is one token, so the head sees the embedding itself
+        # with no token axis -- not a length-N slice of one.
+        assert seen["global_value"][-1] == MODEL_CONFIG.d_model
+        assert len(seen["global_value"]) == 2  # (B, D)
+
+    def test_the_team_level_value_falls_back_to_ships_when_the_token_is_off(self):
+        """Phase 8's variant A drops the promotion. The density head cannot
+        survive that and says so; this one can, because the per-ship value head
+        already covers every component -- so the ablation degrades to N
+        redundant estimates rather than failing to build."""
+        policy = _policy(global_token=False, global_value_k=(0,))
+        assert policy.value_head_global is None
+        assert policy._global_value_k == ()
 
     def test_the_outcome_head_reads_ships_only_in_re_evaluation(self):
         policy = _policy()

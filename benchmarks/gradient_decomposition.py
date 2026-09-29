@@ -248,8 +248,7 @@ def main() -> None:
         }
         if not records:
             raise RuntimeError(
-                f"no gradient-diagnostic records at level {args.level!r}; "
-                "is the level 'off'?"
+                f"no gradient-diagnostic records at level {args.level!r}; is the level 'off'?"
             )
         records["loss/total"] = float(metrics.get("loss/total", float("nan")))
         records["train/gradient_norm"] = float(metrics.get("train/gradient_norm", float("nan")))

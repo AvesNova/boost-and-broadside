@@ -54,6 +54,15 @@ BC_PROFILE = replace(
     name="bc",
     schedule_spec=BC_SCHEDULE_SPEC,
     next_state_coef=1.0,
+    # Beta-NLL weighting on the next-state likelihood. At zero the gradient is
+    # r / sigma**2, which put 7,421x more of itself on the channels and
+    # visibility classes the head already predicts best -- 80% on allies and
+    # 0.1% on hidden enemies, which is the bucket the belief plane exists for.
+    # At 0.5 the per-token gradient is the standardized residual r / sigma,
+    # which calibration pins near one everywhere, and the measured spread
+    # across all 33 (channel, class) cells falls to 2.6x. Sigma still trains;
+    # only the weighting is detached.
+    next_state_beta=0.5,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now
