@@ -43,7 +43,7 @@ from boost_and_broadside.runtime.actions import PendingActionState, advance_auto
 from boost_and_broadside.train.rl.features import PRESENCE_RADIUS, local_presence
 
 PROFILE = PROFILES["rl"]
-RADII = (250.0, 500.0, 1000.0)
+RADII = (200.0, 250.0, 500.0, 1000.0)
 LARGE_SCALE = 7000.0 / 2600.0
 
 

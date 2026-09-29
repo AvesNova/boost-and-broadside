@@ -121,11 +121,36 @@ field this smooth cannot express formation, only bulk position, so a head that
 scores 0.91 on it has learned where the fleets roughly are and nothing about
 how they are arranged.
 
-Two things to weigh before changing it. The radius is deliberately shared with
-`local_presence` so that "crowded" means the same thing at a ship and at a map
-cell, and the docstring commits to that; narrowing it here alone would break
-the coupling. And the cell ordering is fixed once a head trains on it, though
-the radius is not part of that contract.
+### Resolved: 200 px, September 30 2026
+
+Narrowed to 200 px, and kept coupled to `local_presence` rather than split, so
+"crowded" still means one thing at a ship and at a map cell.
+
+The prior basis for 500 px did not survive re-measurement. It rested on "at
+250 px the 5v5 enemy channel is dead, median 0.18 with most ships reading
+zero"; the frontline mechanic has since changed that scene distribution by
+holding both fleets in contact, and the same 250 px now reads a median of 0.77
+([`presence-radius-sep2026.json`](presence-radius-sep2026.json)). At 200 px the
+5v5 enemy channel carries a median of 0.55 with a 10th-to-90th spread of 1.31 —
+live and discriminating.
+
+| | one ship lights | two ships separate at |
+|---|---:|---:|
+| 500 px | 22% of cells | ~2080 px (8 rings) |
+| **200 px** | **4% of cells** | **520 px (2 rings)** |
+
+A four-fold gain in resolution, which is what the change was for.
+
+The cost is separation *across* fleet sizes, not within 5v5: the enemy median
+between 5v5 and 50v50 on one map falls from ×1.98 to ×1.18. That bears on the
+zero-shot crossover sweep, which is not what this run is doing, and is the
+thing to re-check if scale transfer matters again.
+
+Two consequences to carry forward. `RELATION_RADIUS` aliases this constant, so
+the relational bias narrows with it — inert while `relational_bias` is off, as
+it is in every current profile, but not free later. And `local_presence` is a
+policy *input*, so run 748's checkpoint now reads a feature distribution it was
+not trained on; this is one more reason the next run starts fresh.
 
 ## What this changes
 

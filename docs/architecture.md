@@ -121,10 +121,17 @@ every contributing ship and compressed with `log1p` — permutation invariant, s
 on the ally channel, and masked by the same belief validity attention keys on, so a ship
 never counts a neighbour it is not allowed to see.
 
-The 500 px radius and the `log1p` compression are measured rather than assumed
-([`presence_density_study.py`](../benchmarks/presence_density_study.py)). At 250 px the
-5v5 enemy channel is dead; at 1000 px the 5v5 ally spread collapses because every ship
-reads crowded. A bounded `s/(s+k)` compresses the crowded end into 0.02 of its range at
+The 200 px radius and the `log1p` compression are measured rather than assumed
+([`presence_density_study.py`](../benchmarks/presence_density_study.py)). The radius was
+500 px until September 2026, chosen when 250 px left the 5v5 enemy channel dead at a
+median of 0.18. The frontline mechanic changed that distribution — it holds both fleets
+in contact — and the same 250 px now reads 0.77, so the constraint that set 500 px no
+longer binds. At 200 px the 5v5 enemy channel carries a median of 0.55 with a
+10th-to-90th spread of 1.31; at 1000 px the 5v5 ally spread collapses because every ship
+reads crowded. Narrowing costs separation *across* fleet sizes (5v5 to 50v50 on one map
+falls from ×1.98 to ×1.18, which bears on the crossover sweep rather than on training)
+and buys resolution on the hex density target, which shares this kernel — see
+[the density audit](internal/density-audit-sep2026.md). A bounded `s/(s+k)` compresses the crowded end into 0.02 of its range at
 50 ships a side, where `log1p` keeps 0.38 — the difference between a count and a sense of
 crowding, which is the semantics wanted.
 
