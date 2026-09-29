@@ -121,17 +121,17 @@ every contributing ship and compressed with `log1p` — permutation invariant, s
 on the ally channel, and masked by the same belief validity attention keys on, so a ship
 never counts a neighbour it is not allowed to see.
 
-The 200 px radius and the `log1p` compression are measured rather than assumed
+The 330 px radius and the `log1p` compression are measured rather than assumed
 ([`presence_density_study.py`](../benchmarks/presence_density_study.py)). The radius was
-500 px until September 2026, chosen when 250 px left the 5v5 enemy channel dead at a
-median of 0.18. The frontline mechanic changed that distribution — it holds both fleets
-in contact — and the same 250 px now reads 0.77, so the constraint that set 500 px no
-longer binds. At 200 px the 5v5 enemy channel carries a median of 0.55 with a
-10th-to-90th spread of 1.31; at 1000 px the 5v5 ally spread collapses because every ship
-reads crowded. Narrowing costs separation *across* fleet sizes (5v5 to 50v50 on one map
-falls from ×1.98 to ×1.18, which bears on the crossover sweep rather than on training)
-and buys resolution on the hex density target, which shares this kernel — see
-[the density audit](internal/density-audit-sep2026.md). A bounded `s/(s+k)` compresses the crowded end into 0.02 of its range at
+500 px until September 2026, justified as putting the kernel's half-weight contour at the
+distance from which a ship can be shot — taking that as `bullet_speed × bullet_lifetime`,
+which ignores the bullet's quadratic drag. A bullet actually travels 420.6 px, so the
+contour at 589 px sat beyond any weapon. 330 px is the zone radius exactly, and its
+half-weight contour at 389 px lands on the scripted agent's 393 px combat radius, inside
+the 200–500 px band over which that agent's shooting probability falls from certain to
+nil. At 5v5 the enemy channel then carries a median of 0.99 with a 10th-to-90th spread of
+1.53; at 1000 px the ally spread collapses because every ship reads crowded, and at 150 px
+the cross-fleet-size response inverts, which is the floor. A bounded `s/(s+k)` compresses the crowded end into 0.02 of its range at
 50 ships a side, where `log1p` keeps 0.38 — the difference between a count and a sense of
 crowding, which is the semantics wanted.
 

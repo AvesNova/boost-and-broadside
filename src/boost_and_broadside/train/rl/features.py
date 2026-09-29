@@ -383,26 +383,29 @@ class Feature:
 # px/s for a ``bullet_lifetime`` of 1 s -- so the kernel's half-weight contour sits
 # at roughly the distance from which a ship can be shot.
 #
-# Re-measured September 30 2026 and narrowed from 500 px
+# Narrowed from 500 px on September 30 2026, to the Frontline zone radius
 # (``benchmarks/presence_density_study.py``,
-# docs/internal/presence-radius-sep2026.json). The earlier 500 px rested on
-# "at 250 px the 5v5 enemy channel is dead, median 0.18 with most ships reading
-# zero", and that is no longer the scene distribution: the frontline mechanic
-# holds both fleets in contact, so the same 250 px now reads median 0.77. At
-# 200 px the 5v5 enemy channel carries median 0.55 with a 10th-to-90th spread of
-# 1.31 -- a live, discriminating feature, not a dead one.
+# docs/internal/presence-radius-sep2026.json).
 #
-# What the narrowing costs is *scale* discrimination, not 5v5 discrimination:
-# between 5v5 and 50v50 on the same map the enemy median separates by x1.18 at
-# 200 px against x1.98 at 500 px. That matters to the zero-shot crossover sweep
-# and not to training, which is all 5v5.
+# 500 px was justified as putting the kernel's half-weight contour "at roughly
+# the distance from which a ship can be shot", taking that distance as
+# ``bullet_speed * bullet_lifetime``. That ignores the bullet's quadratic drag:
+# simulated with the real constants a bullet travels 420.6 px, not 500, so the
+# half-weight contour at 1.177 * 500 = 589 px sat beyond anything a ship can
+# reach with.
 #
-# What it buys is resolution, and the reason for the change. This same kernel
-# smooths the hex density target, where at 500 px one ship lit a fifth of the
-# 331 cells and two ships did not read as two until ~2000 px apart -- 40% of the
-# playable diameter (docs/internal/density-audit-sep2026.md). The field could
-# express bulk position but not formation.
-PRESENCE_RADIUS = 200.0
+# 330 px is the zone radius exactly, so the feature reads "how contested is my
+# zone", and its half-weight contour at 389 px lands on the scripted agent's
+# combat radius of 393 and just inside the bullet's 421. The scripted shoot
+# ramp runs from certain at 200 px to stopped at 500 px, and this sits in the
+# middle of that band rather than past the end of it.
+#
+# Measured at 5v5 the enemy channel carries median 0.99 with a 10th-to-90th
+# spread of 1.53, and separates 5v5 from 50v50 on one map by x1.67 (against
+# 1.24 / 1.66 / x1.98 at 500 px). There is a floor not far below: at 150 px the
+# cross-scale response *inverts*, 50v50 reading less crowded than 5v5, which is
+# the feature failing rather than merely weakening.
+PRESENCE_RADIUS = 330.0
 # Divisor applied after ``log1p``. 1.0 -- the compression alone already lands the
 # feature in a usable range (5v5 medians 1.40 ally / 1.04 enemy, 50v50 on the same
 # map 3.44 / 3.16), so there is nothing left for a scale factor to fix.

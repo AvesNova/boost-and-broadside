@@ -127,36 +127,42 @@ field this smooth cannot express formation, only bulk position, so a head that
 scores 0.91 on it has learned where the fleets roughly are and nothing about
 how they are arranged.
 
-### Resolved: 200 px, September 30 2026
+### Resolved: 330 px, September 30 2026
 
-Narrowed to 200 px, and kept coupled to `local_presence` rather than split, so
-"crowded" still means one thing at a ship and at a map cell.
+The kernel was narrowed, and then the density target stopped using a kernel at
+all (see *Replaced* below), so the radius was settled on `local_presence`'s own
+terms rather than on the density grid's.
 
-The prior basis for 500 px did not survive re-measurement. It rested on "at
-250 px the 5v5 enemy channel is dead, median 0.18 with most ships reading
-zero"; the frontline mechanic has since changed that scene distribution by
-holding both fleets in contact, and the same 250 px now reads a median of 0.77
-([`presence-radius-sep2026.json`](presence-radius-sep2026.json)). At 200 px the
-5v5 enemy channel carries a median of 0.55 with a 10th-to-90th spread of 1.31 —
-live and discriminating.
+The prior basis for 500 px did not survive re-measurement twice over. It rested
+on "at 250 px the 5v5 enemy channel is dead, median 0.18" — the frontline
+mechanic has since changed that scene distribution by holding both fleets in
+contact, and the same 250 px now reads 0.77
+([`presence-radius-sep2026.json`](presence-radius-sep2026.json)). And its own
+stated criterion, a half-weight contour at the distance a ship can be shot from,
+took that distance as `bullet_speed × bullet_lifetime` = 500 px; simulated with
+the real quadratic drag a bullet travels **420.6 px**, so 500 px put the contour
+at 589 px, beyond any weapon.
 
-| | one ship lights | two ships separate at |
-|---|---:|---:|
-| 500 px | 22% of cells | ~2080 px (8 rings) |
-| **200 px** | **4% of cells** | **520 px (2 rings)** |
+**330 px is the zone radius exactly.** Its half-weight contour at 389 px lands on
+the scripted agent's 393 px combat radius and just inside the bullet's 421,
+sitting in the middle of the 200–500 px band over which that agent's shooting
+falls from certain to nil rather than past the end of it.
 
-A four-fold gain in resolution, which is what the change was for.
+| r | 5v5 enemy p50 | spread | 5v5→50v50 |
+|---|---:|---:|---:|
+| 150 | 0.26 | 1.13 | ×0.78 — **inverted** |
+| 200 | 0.55 | 1.31 | ×1.18 |
+| **330** | **0.99** | **1.53** | **×1.67** |
+| 500 (was) | 1.24 | 1.66 | ×1.98 |
 
-The cost is separation *across* fleet sizes, not within 5v5: the enemy median
-between 5v5 and 50v50 on one map falls from ×1.98 to ×1.18. That bears on the
-zero-shot crossover sweep, which is not what this run is doing, and is the
-thing to re-check if scale transfer matters again.
+At 150 px the cross-scale response inverts — 50v50 reads less crowded than 5v5 —
+which is the feature failing rather than weakening, and marks the floor.
 
-Two consequences to carry forward. `RELATION_RADIUS` aliases this constant, so
-the relational bias narrows with it — inert while `relational_bias` is off, as
-it is in every current profile, but not free later. And `local_presence` is a
-policy *input*, so run 748's checkpoint now reads a feature distribution it was
-not trained on; this is one more reason the next run starts fresh.
+One consequence to carry forward: `RELATION_RADIUS` aliases this constant, so
+the relational bias narrows with it. Inert while `relational_bias` is off, as it
+is in every current profile, but not free later. And `local_presence` is a policy
+*input*, so run 748's checkpoint reads a feature distribution it was not trained
+on — one more reason the next run starts fresh.
 
 ## What this changes
 
