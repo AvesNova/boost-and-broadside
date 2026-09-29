@@ -781,6 +781,41 @@ On a diagnostic update the actor/critic split (`train/grad_norm_actor`,
 terms — the same quantity over a whole minibatch instead of one micro-batch of it — and the
 cheap histogram-cadence probe stands down rather than measuring it twice.
 
+### Measuring a run that did not carry diagnostics
+
+Any level above `off` costs the compiled update for the *whole* run — the eager switch
+reads `enabled`, not the interval — so raising the cadence does not buy the throughput
+back, and the default is `off`. Nothing is lost by deferring the measurement instead. Both
+scalers ride in the checkpoint, so resuming one and running a handful of updates with
+diagnostics on normalizes exactly as training did.
+
+[`benchmarks/gradient_decomposition.py`](../benchmarks/gradient_decomposition.py) is that
+procedure. It resumes a run's latest resumable checkpoint, runs a few ordinary PPO updates
+with diagnostics on, and reports the per-term trunk norms, shares and cosines averaged
+across them.
+
+```
+uv run --no-sync python benchmarks/gradient_decomposition.py --run pious-butterfly-748
+uv run --no-sync python benchmarks/gradient_decomposition.py \
+    --run pious-butterfly-748 --updates 3 --level reward_full \
+    --output docs/internal/grad-decomposition-748-sep2026.json
+```
+
+It is a read-only instrument: no checkpoint is written, no run status is recorded, W&B is
+never contacted, and the run directory is untouched, so it is safe to point at a run that
+is only paused and will be resumed. `--profile` and `--vram` default to what the run's
+manifest and the cached measurement say, so the rollout is the width the run used; pass
+`--num-envs` or `--microbatch-tokens` if the diagnosed update, which runs eagerly, will not
+fit where the compiled one did.
+
+The reported table is the `trunk_top_level` scope, ordered by share, with each term's
+cosine against `bc` — for a behaviour-cloning run that is the objective and everything else
+is an auxiliary spending part of the same clipped step. Read the shares, not the absolute
+norms: the measurement covers `--minibatches` of the update's `num_minibatches`, so its
+total is not the run's logged `train/gradient_norm`. On a profile with
+`policy_gradient_coef` at zero the reward scopes are all zero by construction and
+`--level top_level` is both sufficient and much cheaper.
+
 ### Next-state populations
 
 Allies, visible enemies, and hidden enemies carry next-state labels that mean different
