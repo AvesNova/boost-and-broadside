@@ -9,7 +9,7 @@ checked against the cell geometry it claims to describe rather than assumed.
 import pytest
 import torch
 
-from benchmarks.density_baselines import _fit_linear, _mse
+from benchmarks.density_baselines import _deviance, _fit_linear
 from benchmarks.density_plots import ring_index
 from boost_and_broadside.train.rl.hex_density import (
     HEX_DENSITY_RINGS,
@@ -34,12 +34,32 @@ class TestLinearBaseline:
         fitted = _fit_linear(features, torch.randn(200, 4, dtype=torch.float64), ridge=1e-3)
         assert torch.isfinite(fitted).all()
 
-    def test_predicting_the_column_mean_scores_the_variance(self):
-        """The bar the ladder's R2 is quoted against: a constant predictor's
-        error is the target's variance, which is the honest denominator."""
-        values = torch.randn(500, 7, dtype=torch.float64)
-        constant = values.mean(0, keepdim=True).expand_as(values)
-        assert _mse(constant, values) == pytest.approx(float(values.var(0, unbiased=False).mean()))
+
+class TestPoissonDeviance:
+    """The ladder's scale. A Poisson likelihood has no natural zero, so the
+    deviance -- the likelihood ratio against a predictor that matched every
+    count exactly -- is what makes two predictors comparable at all."""
+
+    def test_a_perfect_rate_scores_zero(self):
+        counts = torch.randint(0, 4, (200, 9)).double()
+        assert _deviance(counts, counts) == pytest.approx(0.0, abs=1e-9)
+
+    def test_it_is_non_negative_for_any_rate(self):
+        counts = torch.randint(0, 4, (200, 9)).double()
+        for rate in (0.01, 0.5, 3.0):
+            assert _deviance(torch.full_like(counts, rate), counts) >= -1e-9
+
+    def test_an_empty_cell_still_charges_a_claimed_rate(self):
+        """``y = 0`` contributes the rate itself, so a head cannot hedge by
+        spreading mass over cells that hold nothing."""
+        counts = torch.zeros(50, 4, dtype=torch.float64)
+        quiet = _deviance(torch.full_like(counts, 1e-6), counts)
+        assert _deviance(torch.full_like(counts, 1.0), counts) > quiet
+
+    def test_being_wrong_either_way_costs_something(self):
+        counts = torch.full((50, 4), 2.0, dtype=torch.float64)
+        assert _deviance(torch.full_like(counts, 1.0), counts) > 0.0
+        assert _deviance(torch.full_like(counts, 4.0), counts) > 0.0
 
 
 class TestRingIndex:

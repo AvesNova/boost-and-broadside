@@ -1,10 +1,4 @@
-"""
-SUPERSEDED for the current target. This scores an R^2 ladder against a
-smoothed regression field; the target is now barycentric ship counts graded by
-Poisson likelihood, so the mean-squared error and the R^2 here do not describe
-it. The ladder's shape is still the right question -- what predicts the field
-without belief -- and wants re-expressing in deviance before it is trusted.
-Is the hex density target actually learned, or is it easy for cheap reasons?
+"""Is the hex density target actually learned, or is it easy for cheap reasons?
 
 ``loss/global_density`` fell from 0.222 to 0.009 against a target power of
 0.208 -- apparently 96% of the target explained, including the *enemy* field,
@@ -22,17 +16,23 @@ without the head knowing anything about beliefs:
 This scores the head against that ladder, each half separately, on held-out
 environments:
 
-    zero        what the head scores before training (the target's power).
-    mean        the per-cell average heat map. A constant. Beating this is the
-                minimum bar, and the residual here is the target's *variance*,
-                which is the honest denominator for an R^2.
-    front       per-cell linear in the signed front position.
-    ally        enemy cells from the front and the *visible* ally field. What is
-                inferable with no belief whatsoever -- the bar that matters.
+    mean        the per-cell average rate. A constant. Beating this is the
+                minimum bar.
+    front       per-cell rate log-linear in the signed front position.
+    ally        enemy cells from the front and the *visible* ally counts. What
+                is inferable with no belief whatsoever -- the bar that matters.
     head        the trained global density head.
 
+Scored in **Poisson deviance** -- twice the log-likelihood ratio against a
+predictor that matched every count exactly -- because the target is counts and
+the head a rate, so a squared error would describe neither. Deviance is zero
+for a perfect predictor and positive otherwise, in nats per cell. The reported
+``explained`` is ``1 - D(model) / D(mean)``: the fraction of the deviance a
+constant rate leaves that the predictor removes, which is the count analogue of
+an R^2 against the mean.
+
 If ``head`` does not clear ``ally`` on the enemy half, the head is not using
-its beliefs and the aggregate series was flattering it.
+its beliefs.
 
     uv run --no-sync python benchmarks/density_baselines.py --run pious-butterfly-748
 """
@@ -70,10 +70,21 @@ def _fit_linear(features, targets, ridge: float):
     return torch.linalg.solve(gram, features.T @ targets)  # (F, C)
 
 
-def _mse(prediction, truth) -> float:
-    """Mean square error over every cell and sample."""
+def _deviance(rate, counts) -> float:
+    """Mean Poisson deviance per cell, in nats.
 
-    return float((prediction - truth).pow(2).mean())
+    ``2 * (loglik(saturated) - loglik(model))`` for the Poisson family, where
+    the saturated fit sets every rate to its own count. Zero when the rate
+    matches the count everywhere; positive otherwise, whatever the counts are,
+    which is what makes it comparable across predictors in a way the raw
+    likelihood is not. ``y log y`` is taken as its limit of zero at ``y = 0``,
+    which is almost every cell.
+    """
+    import torch
+
+    rate = rate.clamp(min=1e-12)
+    term = counts * (torch.log(counts.clamp(min=1e-12)) - torch.log(rate)) - (counts - rate)
+    return float(2.0 * torch.where(counts > 0, term, rate).mean())
 
 
 def main() -> None:
@@ -235,15 +246,13 @@ def main() -> None:
         truth_score = target[score_mask][:, columns]
         scores: dict[str, float] = {}
 
-        scores["zero"] = _mse(torch.zeros_like(truth_score), truth_score)
-
         cell_mean = truth_fit.mean(0, keepdim=True)
-        scores["mean"] = _mse(cell_mean.expand_as(truth_score), truth_score)
+        scores["mean"] = _deviance(cell_mean.expand_as(truth_score), truth_score)
 
         design_fit = torch.cat([ones_fit, fit_front], dim=1)
         design_score = torch.cat([ones_score, score_front], dim=1)
         coefficients = _fit_linear(design_fit, truth_fit, args.ridge)
-        scores["front"] = _mse(design_score @ coefficients, truth_score)
+        scores["front"] = _deviance((design_score @ coefficients).clamp(min=0.0), truth_score)
 
         if name == "enemy":
             # Front, plus the ally field the observer sees outright. Anything
@@ -253,17 +262,17 @@ def main() -> None:
             design_fit = torch.cat([ones_fit, fit_front, ally_fit], dim=1)
             design_score = torch.cat([ones_score, score_front, ally_score], dim=1)
             coefficients = _fit_linear(design_fit, truth_fit, args.ridge)
-            scores["ally"] = _mse(design_score @ coefficients, truth_score)
+            scores["ally"] = _deviance((design_score @ coefficients).clamp(min=0.0), truth_score)
 
-        scores["head"] = _mse(head[score_mask][:, columns], truth_score)
+        # The head emits a log-rate; exponentiate to compare on the count scale.
+        scores["head"] = _deviance(head[score_mask][:, columns].exp(), truth_score)
 
-        variance = scores["mean"]
+        floor = scores["mean"]
         report[name] = {
             **scores,
-            # Against the constant heat map, which is the honest denominator:
-            # the fraction of the field's actual variation the predictor
-            # explains, rather than the fraction of its raw power.
-            **{f"r2_vs_mean/{k}": 1.0 - v / variance for k, v in scores.items()},
+            # Deviance removed relative to a constant rate -- the count analogue
+            # of an R^2 against the mean.
+            **{f"explained/{k}": 1.0 - v / floor for k, v in scores.items()},
         }
 
     result = {
@@ -275,16 +284,16 @@ def main() -> None:
         "warmup_rollouts": args.warmup_rollouts,
         "halves": report,
     }
-    order = ("zero", "mean", "front", "ally", "head")
+    order = ("mean", "front", "ally", "head")
     for name, scores in report.items():
         print()
         print(f"=== {name} half ===")
-        print(f"{'predictor':<10}{'MSE':>12}{'R2 vs mean':>13}")
-        print("-" * 35)
+        print(f"{'predictor':<10}{'deviance':>12}{'explained':>12}")
+        print("-" * 34)
         for key in order:
             if key not in scores:
                 continue
-            print(f"{key:<10}{scores[key]:>12.6f}{scores[f'r2_vs_mean/{key}']:>13.3f}")
+            print(f"{key:<10}{scores[key]:>12.6f}{scores[f'explained/{key}']:>12.3f}")
     if args.output is not None:
         args.output.write_text(json.dumps(result, indent=2) + "\n")
         print(f"\nwrote {args.output}")
