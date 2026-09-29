@@ -6,6 +6,7 @@ its target is privileged truth the observation does not carry, and the loss
 decomposes over micro-batches the way every other masked-mean term does.
 """
 
+import math
 from dataclasses import replace
 
 import pytest
@@ -191,36 +192,61 @@ def _stats(prediction: torch.Tensor, target: torch.Tensor):
 
 def _loss(prediction: torch.Tensor, target: torch.Tensor) -> tuple[float, float]:
     stats = _stats(prediction, target)
-    return float(stats.loss), float(stats.power)
+    return float(stats.loss), float(stats.deviance)
 
 
 class TestLoss:
-    def test_a_perfect_prediction_costs_nothing(self):
-        target = torch.rand(4, 2, HEX_DENSITY_DIM)
-        assert _loss(target.clone(), target)[0] == pytest.approx(0.0)
+    """Poisson negative log likelihood of a soft count field."""
 
-    def test_predicting_zero_scores_exactly_the_target_s_power(self):
-        """Where the head starts, since its last layer initializes near zero.
-        The two series are logged side by side so the loss can be read against
-        the bar rather than as a bare number."""
-        target = torch.rand(4, 2, HEX_DENSITY_DIM)
-        value, power = _loss(torch.zeros_like(target), target)
-        assert value == pytest.approx(power)
-        assert power == pytest.approx(float(target.pow(2).mean()))
+    def test_a_perfect_rate_costs_no_deviance(self):
+        """The likelihood itself is not zero there -- it depends on the counts.
+        The deviance subtracts that floor, so *it* is zero and the loss is not."""
+        target = torch.randint(0, 3, (4, 2, HEX_DENSITY_DIM)).float()
+        stats = _stats(target.clamp(min=1e-12).log(), target)
+        assert float(stats.deviance) == pytest.approx(0.0, abs=1e-5)
+        assert float(stats.loss) != pytest.approx(0.0, abs=1e-3)
+
+    def test_deviance_is_non_negative_for_any_prediction(self):
+        """It is a likelihood ratio against the best possible fit, so nothing
+        the head can emit drives it below zero."""
+        torch.manual_seed(0)
+        target = torch.randint(0, 4, (4, 3, HEX_DENSITY_DIM)).float()
+        for scale in (-3.0, -1.0, 0.0, 1.0):
+            stats = _stats(torch.full_like(target, scale), target)
+            assert float(stats.deviance) >= -1e-6
+
+    def test_the_gradient_in_the_logit_is_rate_minus_count(self):
+        """The whole reason this is Poisson: the gradient is bounded and it
+        vanishes exactly when the rate matches the count, rather than growing
+        as the head gets more certain the way a Gaussian's r/sigma^2 does."""
+        target = torch.tensor([[[0.0, 1.0, 2.0, 0.5]]])
+        logit = torch.tensor([[[-1.0, 0.5, 0.0, -2.0]]], requires_grad=True)
+        samples = 1.0
+        PPOTrainer._global_density_loss(None, logit, target, samples).loss.backward()
+        expected = (logit.exp() - target) / target.shape[-1]
+        assert torch.allclose(logit.grad, expected, atol=1e-6)
+
+    def test_an_empty_cell_still_penalises_claimed_rate(self):
+        """``y = 0`` contributes ``exp(l)``: the head pays for putting ships
+        where there are none, which is what stops it hedging everywhere."""
+        target = torch.zeros(1, 1, HEX_DENSITY_DIM)
+        quiet = _stats(torch.full_like(target, -5.0), target)
+        loud = _stats(torch.full_like(target, 0.0), target)
+        assert float(loud.loss) > float(quiet.loss)
 
     def test_micro_batch_contributions_sum_to_the_whole(self):
         """The denominator is the minibatch's step-environment total, so
         splitting the environments and adding the pieces is exact -- which is
         what makes gradient accumulation equivalent to one large minibatch."""
-        target = torch.rand(4, 6, HEX_DENSITY_DIM)
-        prediction = torch.rand_like(target)
+        target = torch.randint(0, 3, (4, 6, HEX_DENSITY_DIM)).float()
+        prediction = torch.randn_like(target)
         samples = float(target.shape[0] * target.shape[1])
-        whole = float(PPOTrainer._global_density_loss(None, prediction, target, samples)[0])
+        whole = float(PPOTrainer._global_density_loss(None, prediction, target, samples).loss)
         parts = sum(
             float(
                 PPOTrainer._global_density_loss(
                     None, prediction[:, start : start + 2], target[:, start : start + 2], samples
-                )[0]
+                ).loss
             )
             for start in (0, 2, 4)
         )
@@ -240,7 +266,7 @@ class TestLoss:
             return_density=True,
         )[-1]
         target = _target(_state()).unsqueeze(0)
-        PPOTrainer._global_density_loss(None, density, target, float(NUM_ENVS))[0].backward()
+        PPOTrainer._global_density_loss(None, density, target, float(NUM_ENVS)).loss.backward()
         reached = [
             parameter
             for module in policy.trunk_modules()
@@ -248,6 +274,19 @@ class TestLoss:
             if parameter.grad is not None and parameter.grad.abs().sum() > 0.0
         ]
         assert reached
+
+    def test_the_head_opens_at_the_fleet_s_true_mean_rate(self):
+        """A zero bias would claim one ship per cell, two orders of magnitude
+        too crowded, and the first updates would go on removing the excess
+        rather than on learning where anything is."""
+        policy = _policy()
+        cells = HEX_DENSITY_DIM / 2
+        with torch.no_grad():
+            opening = policy.density_head(torch.zeros(1, MODEL_CONFIG.d_model))
+        assert float(opening.exp().sum()) == pytest.approx(NUM_SHIPS, rel=0.25)
+        assert policy.density_head.init_log_rate == pytest.approx(
+            math.log(NUM_SHIPS / 2.0 / cells)
+        )
 
     def test_a_missing_head_is_an_error_rather_than_a_silent_zero(self):
         with pytest.raises(ValueError, match="density"):
@@ -266,47 +305,45 @@ class TestHalves:
     def test_the_training_term_is_the_mean_of_the_two_halves(self):
         """The split is a decomposition, not a second opinion: whatever is
         logged per half has to add back to the number being optimized."""
-        target = torch.rand(4, 3, HEX_DENSITY_DIM)
-        stats = _stats(torch.rand_like(target), target)
+        target = torch.randint(0, 3, (4, 3, HEX_DENSITY_DIM)).float()
+        stats = _stats(torch.randn_like(target), target)
         assert float(stats.loss) == pytest.approx(
             0.5 * (float(stats.ally_loss) + float(stats.enemy_loss)), rel=1e-6
         )
-        assert float(stats.power) == pytest.approx(
-            0.5 * (float(stats.ally_power) + float(stats.enemy_power)), rel=1e-6
+        assert float(stats.deviance) == pytest.approx(
+            0.5 * (float(stats.ally_deviance) + float(stats.enemy_deviance)), rel=1e-6
         )
 
     def test_each_half_scores_only_its_own_cells(self):
         """Ally cells come first, enemy cells second."""
         cells = HEX_DENSITY_DIM // 2
         target = torch.zeros(2, 2, HEX_DENSITY_DIM)
-        prediction = torch.zeros_like(target)
-        prediction[..., :cells] = 1.0  # wrong on every ally cell, right on every enemy cell
+        prediction = torch.full_like(target, -20.0)  # rate ~0 everywhere: correct
+        prediction[..., :cells] = 0.0  # rate 1 on every ally cell: wrong
 
         stats = _stats(prediction, target)
 
-        assert float(stats.ally_loss) == pytest.approx(1.0)
-        assert float(stats.enemy_loss) == pytest.approx(0.0)
+        assert float(stats.ally_loss) == pytest.approx(1.0, rel=1e-5)
+        assert float(stats.enemy_loss) == pytest.approx(0.0, abs=1e-8)
 
     def test_an_easy_half_cannot_hide_a_hard_one(self):
-        """The regression this split exists to catch: a head perfect on allies
-        and useless on enemies reads as half-error in the aggregate and as the
+        """The regression this split exists to catch: a head exact on allies and
+        useless on enemies reads as half-deviance in the aggregate and as the
         truth in the halves."""
         cells = HEX_DENSITY_DIM // 2
-        target = torch.rand(4, 3, HEX_DENSITY_DIM)
-        prediction = target.clone()
-        prediction[..., cells:] = 0.0  # no idea where the enemy is
+        target = torch.randint(0, 3, (4, 3, HEX_DENSITY_DIM)).float()
+        prediction = target.clamp(min=1e-12).log()  # exact
+        prediction[..., cells:] = -20.0  # claims the enemy half is empty
 
         stats = _stats(prediction, target)
 
-        assert float(stats.ally_loss) == pytest.approx(0.0, abs=1e-7)
-        assert float(stats.enemy_loss) == pytest.approx(float(stats.enemy_power), rel=1e-6)
-        # And the number training actually sees is half of that, which is the
-        # reading the aggregate alone would have flattered.
-        assert float(stats.loss) == pytest.approx(0.5 * float(stats.enemy_power), rel=1e-6)
+        assert float(stats.ally_deviance) == pytest.approx(0.0, abs=1e-5)
+        assert float(stats.enemy_deviance) > 0.5
+        assert float(stats.deviance) == pytest.approx(0.5 * float(stats.enemy_deviance), rel=1e-5)
 
     def test_the_halves_are_additive_across_micro_batches_too(self):
-        target = torch.rand(4, 6, HEX_DENSITY_DIM)
-        prediction = torch.rand_like(target)
+        target = torch.randint(0, 3, (4, 6, HEX_DENSITY_DIM)).float()
+        prediction = torch.randn_like(target)
         samples = float(target.shape[0] * target.shape[1])
         whole = PPOTrainer._global_density_loss(None, prediction, target, samples)
         parts = [
@@ -315,7 +352,7 @@ class TestHalves:
             )
             for start in (0, 2, 4)
         ]
-        for field in ("ally_loss", "enemy_loss", "ally_power", "enemy_power"):
+        for field in ("ally_loss", "enemy_loss", "ally_deviance", "enemy_deviance"):
             assert sum(float(getattr(part, field)) for part in parts) == pytest.approx(
                 float(getattr(whole, field)), rel=1e-6
             )

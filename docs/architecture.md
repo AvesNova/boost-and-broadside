@@ -519,24 +519,48 @@ with deeper autoregressive diagnostics in the reference run's
 
 The global token carries one more auxiliary task: where both fleets are, as a field rather
 than as a list. [`GlobalDensityHead`](../src/boost_and_broadside/models/yemong/policy.py)
-reads that token's final embedding and predicts the ally and enemy density at every cell of
-a fixed hexagonal grid over the playable circle
-([`hex_density.py`](../src/boost_and_broadside/train/rl/hex_density.py)), graded with mean
-squared error at `global_density_coef`.
+reads that token's final embedding and predicts, for every cell of a fixed hexagonal grid
+over the playable circle
+([`hex_density.py`](../src/boost_and_broadside/train/rl/hex_density.py)), the **ally and
+enemy ship count** there — as a Poisson log-rate, graded by Poisson negative log
+likelihood at `global_density_coef`.
 
-"Density" means what `local_presence` means — the same Gaussian kernel over toroidal
-distance and the same `log1p` compression — evaluated at fixed map points instead of at
-ships, so the head is asked for a quantity the encoder already speaks. Cell centres are
-stored in units of the playable radius, so a larger map carries the same cells as a zoom of
-a smaller one, and the cell order is part of the target's meaning.
+Counts, not a density. Every living ship deposits exactly one unit of mass, split across
+the three cells whose centres form the triangle containing it, by barycentric weight. The
+field therefore sums to the living ship count per side. Three weights summing to one are
+the exact 2D analogue of a two-hot encoding of a continuous value on a line, and they are
+lossless: one ship's three weights invert to its exact position inside the triangle. There
+is no kernel and no radius to choose.
+
+It was a Gaussian smoothing of `local_presence` until September 2026, so that "crowded"
+meant one thing at a ship and at a map cell. That cost more resolution than the shared
+meaning was worth — at 500 px a single ship lit a fifth of the grid's 331 cells and two
+ships did not read as two until 2000 px apart, 40% of the playable diameter, so the field
+could express bulk position but not formation
+([the density audit](internal/density-audit-sep2026.md)).
+
+The output is a log-rate rather than a distribution, and deliberately not a softmax: the
+total mass is the ship count, which is half the information, and normalizing would throw
+it away. The likelihood's gradient in that output is `exp(logit) − count` — bounded, and
+zero exactly when the rate matches the count, which is the property the next-state head's
+Gaussian `r / σ²` lacks. The head's output bias opens at the fleet's true mean rate, since
+a zero bias would claim one ship per cell.
+
+Cell centres are stored in units of the playable radius, so a larger map carries the same
+cells as a zoom of a smaller one, and the cell order is part of the target's meaning. Off
+the grid, the lattice is treated as infinite: a ship's containing triangle is found
+wherever the ship is, and only those of its vertices that are cells of the finite grid
+receive their weight — so a ship just outside still lands partly on the rim and its
+contribution falls continuously to nothing, with no clamp and no discontinuity.
 
 Targets read privileged truth: every living ship contributes, seen or not. The inputs stay
 legal, which is the point of putting the task here. A cell the observer has no information
 about is unpredictable, and the head's error on it is the honest cost of that; a cell behind
 a remembered fleet is not. Nothing the head predicts re-enters the policy's input, and the
 target is stored outside the observation so no input path can reach it by key. Beside the
-loss the trainer logs the mean square of the target itself, which is what a head predicting
-zero everywhere scores, and where this one starts.
+loss the trainer logs the **deviance** — the excess nats over a predictor that matched
+every count exactly — which is zero for a perfect head, and the ally and enemy halves
+separately, because the observer sees every ally and the enemy field is mostly belief.
 
 ## Why team size can change
 

@@ -1,4 +1,10 @@
-"""Is the hex density target actually learned, or is it easy for cheap reasons?
+"""
+SUPERSEDED for the current target. This scores an R^2 ladder against a
+smoothed regression field; the target is now barycentric ship counts graded by
+Poisson likelihood, so the mean-squared error and the R^2 here do not describe
+it. The ladder's shape is still the right question -- what predicts the field
+without belief -- and wants re-expressing in deviance before it is trusted.
+Is the hex density target actually learned, or is it easy for cheap reasons?
 
 ``loss/global_density`` fell from 0.222 to 0.009 against a target power of
 0.208 -- apparently 96% of the target explained, including the *enemy* field,
