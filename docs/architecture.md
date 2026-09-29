@@ -90,7 +90,7 @@ channel to:
 | team identity | three-way one-hot |
 | alive state | scalar |
 | currently visible | scalar |
-| belief token valid | scalar, value-head team pooling only |
+| belief token valid | scalar, attention and composition |
 | time since observation | symlog scalar |
 | pending joint command | 42-way probability vector |
 | belief uncertainty | thirteen log/unconstrained terms divided by their clamp bound |
@@ -174,10 +174,11 @@ It sits at the map centre and carries a categorical game-mode one-hot, the match
 in Frontline, the front. It has its own split-encoder projection (`ObjectType.GLOBAL`).
 With `ModelConfig.global_token` on (the default), the policy treats ships plus this token
 as the query and recurrent set. The global token gets recurrent state and every spatial,
-temporal and FFN update a ship gets, while every per-ship head, `TeamPMA` included, still
-reads ships only; the global density head below is the one thing that reads the token
-itself. Fields and zones stay K/V-only. With the switch off, the token is an ordinary map
-object, and the density head cannot be built.
+temporal and FFN update a ship gets, while every per-ship head still reads ships only.
+Two heads read the token itself, and both have the game rather than a ship as their
+subject: the global density head and the team-level value head below. Fields and zones
+stay K/V-only. With the switch off, the token is an ordinary map object; the density head
+cannot be built, and the team-level value components fall back to the per-ship head.
 
 [`BulletEncoder`](../src/boost_and_broadside/models/yemong/encoder.py) is separate and
 deliberately narrow. It runs over `N·K` entities where the entity encoder runs over `N+M`,
@@ -192,11 +193,10 @@ Within each timestep, [`TransformerBlock`](../src/boost_and_broadside/models/yem
 applies pre-normalized multi-head self-attention and a gated MLP with residual connections.
 Every live ship can therefore condition its action on every other live ship and field.
 
-`n_spatial_heads` sets the head count here alone, separately from the pooling attention
-in the value head. Head *width* is what bounds how much relative geometry a single
-comparison can carry, and the critic's `TeamPMA` has no reason to follow a change made
-for that reason. Two 64-wide heads and four 32-wide ones are the same weights read
-differently — the parameter count is identical.
+`n_spatial_heads` sets the head count here alone. Head *width* is what bounds how much
+relative geometry a single comparison can carry, which is a property of the trunk's
+attention and of nothing else; no head follows it. Two 64-wide heads and four 32-wide
+ones are the same weights read differently — the parameter count is identical.
 
 ### Rotary position and attitude
 
@@ -345,11 +345,30 @@ The output shape is `(B, N, 3)` action indices.
 ## Decomposed value head
 
 The critic produces one value per ship and active reward component. Most components use a
-local token projection. Win/loss components use TeamPMA, which pools by multi-head
-attention in the style of the [Set Transformer](https://arxiv.org/abs/1810.00825)
-(Lee et al., 2019): learned seeds attend over the live ships of each team and feed a
-dedicated outcome-value projection. That gives global outcome targets an explicitly
-pooled team representation while retaining per-ship critic outputs.
+local token projection. The components in `GLOBAL_VALUE_COMPONENTS` — `ally_win`,
+`enemy_win` and `outcome` — use `GlobalValueHead`, which reads the global token and
+broadcasts one estimate per environment back across the ship axis.
+
+The split is a property of the *rewards*, not a modelling preference. Those three are a
+function of the ship's team and the match result alone and pay the living and the dead
+alike, so their return is bit-identical for every ship on a side, and estimating it once
+per ship was N regressions of one number — from a shrinking sample, since the value loss
+masks on alive while the reward does not.
+[`test_global_value.py`](../tests/train/test_global_value.py) asserts that uniformity
+against real rollouts, so a component cannot be added to the set for convenience.
+
+Everything else stays per-ship, the zone rewards emphatically so: `_ZoneCreditReward`
+pays the side the meter favours through its ships *inside* the zone and charges the other
+through its ships *outside* it, and that split is the credit assignment rather than an
+implementation detail.
+
+This replaced a `TeamPMA` that pooled ship tokens by multi-head attention in the style of
+the [Set Transformer](https://arxiv.org/abs/1810.00825) (Lee et al., 2019) to manufacture
+the same team representation. The global token already is a game-level summary, and a
+recurrent, attended one rather than a pooling recomputed each step, so the two were one
+mechanism too many. With `global_token` off the head is not built and those components
+fall back to the per-ship path — unlike the density head, which has nothing to fall back
+to and says so.
 
 Returns are normalized per component by the training system before value loss. Reward
 semantics, aggregation, and horizons are documented in [training](training.md#reward-decomposition).
