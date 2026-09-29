@@ -1,30 +1,30 @@
 {
-  "production_radius_px": 500.0,
+  "production_radius_px": 200.0,
   "playable_radius_px": 2600.0,
   "rings": 10,
   "ring_spacing_px": 260.0,
   "peak_value": 0.6931471805599453,
   "radii": [
     {
-      "radius_px": 125.0,
-      "half_max_px": 165.96061157503829,
-      "half_max_rings": 0.638310044519378,
-      "cells_above_10pct_peak": 0.021148037165403366,
+      "radius_px": 100.0,
+      "half_max_px": 132.7684892600306,
+      "half_max_rings": 0.5106480356155023,
+      "cells_above_10pct_peak": 0.003021148033440113,
       "is_production": false
     },
     {
-      "radius_px": 250.0,
-      "half_max_px": 331.92122315007657,
-      "half_max_rings": 1.276620089038756,
-      "cells_above_10pct_peak": 0.05740181356668472,
-      "is_production": false
+      "radius_px": 200.0,
+      "half_max_px": 265.5369785200612,
+      "half_max_rings": 1.0212960712310046,
+      "cells_above_10pct_peak": 0.039274923503398895,
+      "is_production": true
     },
     {
       "radius_px": 500.0,
       "half_max_px": 663.8424463001531,
       "half_max_rings": 2.553240178077512,
       "cells_above_10pct_peak": 0.22054380178451538,
-      "is_production": true
+      "is_production": false
     },
     {
       "radius_px": 1000.0,
