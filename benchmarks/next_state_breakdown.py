@@ -102,7 +102,7 @@ def main() -> None:
         "--microbatch-tokens",
         type=int,
         default=None,
-        help="Narrower than the run used, if the eager graph will not fit where the compiled one did.",
+        help="Narrower than the run used, if the eager graph will not fit.",
     )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--checkpoint-dir", type=Path, default=Path("checkpoints"))
@@ -318,9 +318,7 @@ def main() -> None:
                                 allow_unused=True,
                             )
                             total = torch.zeros((), device=trainer.device)
-                            for grad, is_trunk in zip(
-                                grads, trainer._grad_diag_trunk, strict=True
-                            ):
+                            for grad, is_trunk in zip(grads, trainer._grad_diag_trunk, strict=True):
                                 if grad is not None and is_trunk:
                                     total = total + grad.float().pow(2).sum()
                             gradient_norms[name][channel] = float(total.sqrt())
@@ -347,9 +345,7 @@ def main() -> None:
             held = samples[name][channel]
             drawn = torch.cat(held) if held else torch.zeros(0, 3)
             quantiles = (
-                drawn.quantile(
-                    torch.tensor([0.5, 0.999]), dim=0
-                )  # (2, 3) label, residual, sigma
+                drawn.quantile(torch.tensor([0.5, 0.999]), dim=0)  # (2, 3) label, residual, sigma
                 if drawn.numel()
                 else torch.full((2, 3), float("nan"))
             )

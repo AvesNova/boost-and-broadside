@@ -39,9 +39,7 @@ class TestLinearBaseline:
         error is the target's variance, which is the honest denominator."""
         values = torch.randn(500, 7, dtype=torch.float64)
         constant = values.mean(0, keepdim=True).expand_as(values)
-        assert _mse(constant, values) == pytest.approx(
-            float(values.var(0, unbiased=False).mean())
-        )
+        assert _mse(constant, values) == pytest.approx(float(values.var(0, unbiased=False).mean()))
 
 
 class TestRingIndex:

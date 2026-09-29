@@ -35,6 +35,19 @@ from boost_and_broadside.env.frontline import zone_membership
 from boost_and_broadside.env.outcome import outcome_masks
 from boost_and_broadside.env.state import TensorState
 
+#: Components whose per-tick reward is identical for every ship on a side, by
+#: construction rather than by coincidence: each is a function of the ship's
+#: team and the match result alone, and each pays the living and the dead
+#: alike. Their return is therefore the same number for every teammate, so the
+#: critic estimates it once per environment off the global token instead of
+#: once per ship. Everything else keeps a per-ship value head -- including the
+#: zone rewards, whose split between the ships that showed up and the ones that
+#: did not *is* their credit assignment.
+#:
+#: Adding a name here is a claim that ``tests/train/test_global_value.py``
+#: checks against real rollouts; it is not a free choice.
+GLOBAL_VALUE_COMPONENTS: frozenset[str] = frozenset({"ally_win", "enemy_win", "outcome"})
+
 
 class RewardComponent(ABC):
     """Base class for a single reward signal.

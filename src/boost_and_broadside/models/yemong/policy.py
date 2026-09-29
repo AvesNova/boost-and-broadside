@@ -15,8 +15,9 @@ Architecture (per timestep):
          → ActionHead                   → (B, N, 42)   [joint command logits]
          → EnemyActionHead              → (B, N, 42)   [next enemy-command logits]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
-         → TeamPMA                      → (B, N, D)    [pool per team, broadcast back]
-         → ValueHead                    → (B, N, K)    [MSE critic: K components]
+         → ValueHead                    → (B, N, K)    [MSE critic: per-ship components]
+         → slice [N] (global token)      → (B, D)
+         → GlobalValueHead              → (B, K_global) [team-level components]
          → slice [N] (global token)      → (B, D)
          → GlobalDensityHead            → (B, 2C)      [aux: hex ally/enemy density]
 
@@ -187,49 +188,49 @@ class GlobalDensityHead(nn.Module):
         return self.net(x)
 
 
-class TeamPMA(nn.Module):
-    """Pooling by Multi-head Attention over per-team ship embeddings.
+class GlobalValueHead(nn.Module):
+    """Value of the team-level reward components, read from the global token.
 
-    For each team t ∈ {0, 1}, a learned seed attends over the GRU outputs of
-    alive ships on that team. Dead ships and ships from the opposite team are
-    masked out as keys. The two team embeddings are broadcast back so every
-    ship holds its team's pooled embedding — preserving the (B, N, D) shape
-    expected by the value head.
+    Some reward components are identical for every ship on a side by
+    construction -- ``ally_win`` and ``enemy_win`` pay on the match result and
+    ``outcome`` is that result signed, all three a function of team and outcome
+    alone, paid to living and dead ships alike. Their return is therefore
+    bit-identical across teammates, and estimating it once per ship meant N
+    independent regressions of one number.
+
+    This replaces a ``TeamPMA`` that pooled ship tokens into a team summary for
+    exactly that purpose. The global token already is a game-level summary, and
+    a recurrent, attended one rather than a pooling recomputed each step, so the
+    pooling was a second mechanism for a job the trunk already did.
+
+    The estimate is per environment. It is broadcast back across the ship axis
+    so the value tensor keeps its ``(..., N, K)`` shape and GAE, the lambda
+    matrix, the scalers and the per-component logging are untouched.
+
+    The observer is always Team 0 -- every view is canonicalized before the
+    policy sees it -- so no perspective input is needed: "team 0 wins" is
+    unambiguously "I win" in every forward pass.
 
     Args:
-        d_model: Token embedding dimension D.
-        n_heads:  Attention heads (must divide d_model evenly).
+        d_model:    Token embedding dimension D.
+        hidden_dim: Width of the hidden layer.
+        num_global: How many components this head owns.
     """
 
-    def __init__(self, d_model: int, n_heads: int) -> None:
+    def __init__(self, d_model: int, hidden_dim: int, num_global: int) -> None:
         super().__init__()
-        self.seeds = nn.Parameter(torch.zeros(2, d_model))
-        self.attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True, bias=False)
-        self.norm = nn.RMSNorm(d_model)
+        self.net = nn.Sequential(
+            nn.Linear(d_model, hidden_dim),
+            nn.RMSNorm(hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, num_global),
+        )
 
-    def forward(
-        self,
-        x: torch.Tensor,  # (B, N, D)
-        team_id: torch.Tensor,  # (B, N) int
-        alive: torch.Tensor,  # (B, N) bool
-    ) -> torch.Tensor:  # (B, N, D)
-        B, N, D = x.shape
-        team_pool = x.new_zeros(B, 2, D)
+    def forward(self, x: torch.Tensor, num_ships: int) -> torch.Tensor:
+        """Args: x (..., tokens, D), num_ships N. Returns: (..., N, K_global)."""
 
-        for t in range(2):
-            mask = (team_id == t) & alive  # (B, N) — alive ships on team t
-            has_ship = mask.any(dim=1)  # (B,) bool
-
-            seed = self.seeds[t].view(1, 1, D).expand(B, 1, D)  # (B, 1, D)
-            # key_padding_mask: True = ignore that key position
-            out, _ = self.attn(seed, x, x, key_padding_mask=~mask, need_weights=False)
-            out = out.squeeze(1).nan_to_num(0.0)  # (B, D) — guard: all-dead → NaN → 0
-            out = out * has_ship.unsqueeze(1).to(out.dtype)  # zero dead-team envs before norm
-            team_pool[:, t] = self.norm(out)  # (B, D)
-
-        # Each ship gets its team's pooled embedding
-        idx = team_id.clamp(0, 1).long().unsqueeze(-1).expand(B, N, D)
-        return team_pool.gather(1, idx)  # (B, N, D)
+        value = self.net(x[..., num_ships, :])  # (..., K_global)
+        return value.unsqueeze(-2).expand(*value.shape[:-1], num_ships, value.shape[-1])
 
 
 def _init_head_orthogonal(head: nn.Sequential) -> None:
@@ -263,7 +264,7 @@ class YemongPolicy(nn.Module):
         coordinator: FeatureCoordinator,
         num_value_components: int,
         num_ships: int,
-        team_pma_k: tuple[int, ...],
+        global_value_k: tuple[int, ...],
         bullet_coordinator: FeatureCoordinator | None = None,
         predict_outcome: bool = False,
         predict_density: bool = False,
@@ -278,8 +279,6 @@ class YemongPolicy(nn.Module):
         # it are the query/recurrent set; everything after them is map memory.
         self._num_global = NUM_GLOBAL_TOKENS if model_config.global_token else 0
         self._map_is_memory = model_config.map_read_mode == "kv_memory"
-        self._team_pma_k = team_pma_k  # K indices that use TeamPMA path for value
-        self._team_pma_k_set = set(team_pma_k)
         self.coordinator = coordinator
 
         # Rotary spatial attention needs the world's physical periods, which is
@@ -342,23 +341,26 @@ class YemongPolicy(nn.Module):
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
         # Local value head: per-ship embedding → all K components.
-        # For indices in team_pma_k, outputs are overridden by value_head_win.
+        # For indices in global_value_k, outputs are overridden by value_head_global.
         self.value_head_local = nn.Sequential(
             nn.Linear(D, hidden_dim),
             nn.RMSNorm(hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, self._K),
         )
-        # TeamPMA + win/loss head: explicit team-pool → win/loss components only.
-        # Only instantiated when team_pma_k is non-empty.
-        if team_pma_k:
-            self.team_pma = TeamPMA(d_model=D, n_heads=model_config.n_heads)
-            self.value_head_win = nn.Sequential(
-                nn.Linear(D, hidden_dim),
-                nn.RMSNorm(hidden_dim),
-                nn.GELU(),
-                nn.Linear(hidden_dim, len(team_pma_k)),
-            )
+        # Team-level components, read from the global token. With the promotion
+        # off there is no global embedding to read, and unlike the density head
+        # this one has somewhere to fall back to: the per-ship value head
+        # already covers every component. So the ablation degrades to N
+        # redundant estimates rather than failing to build, which is what keeps
+        # Phase 8's variant A runnable.
+        self._global_value_k = global_value_k if self._num_global else ()
+        self._global_value_k_set = set(self._global_value_k)
+        self.value_head_global = (
+            GlobalValueHead(D, hidden_dim, len(self._global_value_k))
+            if self._global_value_k
+            else None
+        )
         # Categorical match-outcome head: three logits per ship for win / loss /
         # tie from that ship's own perspective. It is a classifier, not a value
         # head -- the scalar ``outcome`` component keeps its seat in the K-way
@@ -423,11 +425,8 @@ class YemongPolicy(nn.Module):
             # After the orthogonal pass, which zeroes it: the opening log-rate.
             final = [m for m in self.density_head.net if isinstance(m, nn.Linear)][-1]
             nn.init.constant_(final.bias, self.density_head.init_log_rate)
-        if team_pma_k:
-            _init_head_orthogonal(self.value_head_win)
-            nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
-            nn.init.orthogonal_(self.team_pma.attn.in_proj_weight, gain=math.sqrt(2))
-            nn.init.orthogonal_(self.team_pma.attn.out_proj.weight, gain=1.0)
+        if self.value_head_global is not None:
+            _init_head_orthogonal(self.value_head_global.net)
 
     def trunk_modules(self) -> tuple[nn.Module, ...]:
         """The submodules every head reads from.
@@ -674,14 +673,10 @@ class YemongPolicy(nn.Module):
         )
         new_hidden = torch.cat([new_rglru_t, new_cbs_t], dim=-1)  # (n_layers, B*(N+G), CK*D)
 
-        # Every head reads ships only; the global token shapes them through the
-        # trunk and is never decoded itself.
+        # Per-ship heads read ships only; the global token shapes them through
+        # the trunk and is decoded only by the two heads whose subject is the
+        # game -- the team-level value head and the density head.
         x_ships = x[:, :N, :]  # (B, N, D)
-        # Team pooling still weights by validity even though attention no longer
-        # masks by it: a pooled team summary should not average in a token that
-        # does not exist yet. Read here rather than threaded through the trunk.
-        alive_ships = obs[ObsKey.BELIEF_VALID][:, :N]  # (B, N)
-        team_id_ships = obs["team_id"][:, :N]  # (B, N) — fields excluded by TeamPMA
 
         logits = self.action_head(x_ships)  # (B, N, 42)
         enemy_action_logits = (
@@ -689,11 +684,10 @@ class YemongPolicy(nn.Module):
         )  # (B, N, 42) when requested
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
         value = self.value_head_local(x_ships)  # (B, N, K)
-        if self._team_pma_k:
-            x_team = self.team_pma(x_ships, team_id_ships, alive_ships)  # (B, N, D)
-            win_val = self.value_head_win(x_team)  # (B, N, K_win)
-            for i, k in enumerate(self._team_pma_k):
-                value[:, :, k] = win_val[:, :, i]
+        if self.value_head_global is not None:
+            global_val = self.value_head_global(x, N)  # (B, N, K_global)
+            for i, k in enumerate(self._global_value_k):
+                value[:, :, k] = global_val[:, :, i]
 
         action, logprob = _sample_action(logits)
 
@@ -819,37 +813,32 @@ class YemongPolicy(nn.Module):
                     geometry,
                 )
 
-        # Slice ship tokens for heads; the global token is never decoded.
+        # Ship tokens for the per-ship heads; the global token is sliced by the
+        # two heads whose subject is the game, at [N].
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
-        alive_ships = alive_mask[:, :, :N]  # (T, B, N)
-        team_id_ships = obs["team_id"][:, :, :N]  # (T, B, N)
 
         logits = self.action_head(x_ships)  # (T, B, N, 42)
         pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
 
-        # Local value path: per-ship embedding, no team pooling.
+        # Local value path: per-ship embedding, per-ship components.
         local_value = self.value_head_local(x_ships)  # (T, B, N, K)
 
         enemy_action_logits = (
             self.enemy_action_head(x_ships) if return_enemy_action else None
         )  # (T, B, N, 42) when requested
-        if self._team_pma_k:
-            # Win/loss path: TeamPMA over ship tokens, then fold T into B.
-            x_s_flat = x_ships.reshape(T * B, N, D)
-            alive_s_flat = alive_ships.reshape(T * B, N)
-            tid_s_flat = team_id_ships.reshape(T * B, N)
-            xv_flat = self.team_pma(x_s_flat, tid_s_flat, alive_s_flat)  # (T*B, N, D)
-            xv = xv_flat.reshape(T, B, N, D)
-            win_val = self.value_head_win(xv)  # (T, B, N, K_win)
+        if self.value_head_global is not None:
+            # Team-level components: one estimate per environment off the global
+            # token, broadcast across ships so the shape is unchanged.
+            global_val = self.value_head_global(x, N)  # (T, B, N, K_global)
 
             # Merge: cat approach preserves gradients through both paths.
             K = local_value.shape[-1]
             pieces = []
-            win_i = 0
+            global_i = 0
             for k in range(K):
-                if k in self._team_pma_k_set:
-                    pieces.append(win_val[..., win_i : win_i + 1])
-                    win_i += 1
+                if k in self._global_value_k_set:
+                    pieces.append(global_val[..., global_i : global_i + 1])
+                    global_i += 1
                 else:
                     pieces.append(local_value[..., k : k + 1])
             new_value = torch.cat(pieces, dim=-1)  # (T, B, N, K)

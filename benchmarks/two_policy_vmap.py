@@ -162,7 +162,7 @@ def build_frontline_50v50_policies() -> tuple[YemongPolicy, YemongPolicy]:
         ship_config=profile.ship_config,
         num_value_components=12,
         num_ships=100,
-        team_pma_k=(0, 1),
+        global_value_k=(0, 1),
     )
     return build_policy(**kwargs), build_policy(**kwargs)
 
@@ -188,7 +188,9 @@ def small_cpu_fixture() -> tuple[
     root = env.reset()
     observations = (root.for_team(0), root.for_team(1))
     policies = tuple(
-        build_policy(model_config, ship_config, num_value_components=2, num_ships=2, team_pma_k=())
+        build_policy(
+            model_config, ship_config, num_value_components=2, num_ships=2, global_value_k=()
+        )
         for _ in range(2)
     )
     # Force distinct weights while retaining identical architecture.

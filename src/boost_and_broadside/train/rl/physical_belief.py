@@ -401,7 +401,9 @@ class PhysicalNextState:
             dim=-1,
         )
 
-    def loss(self, prediction: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    def loss(
+        self, prediction: torch.Tensor, labels: torch.Tensor, beta: float = 0.0
+    ) -> torch.Tensor:
         """Per-channel negative log likelihood, ``(..., 11)``.
 
         Position and velocity use the full bivariate normal over their two axes;
@@ -413,6 +415,32 @@ class PhysicalNextState:
         Both forms carry their normalizing constant. That cancels out of the
         gradient but makes the per-channel series nats, so a channel costing
         more of them is genuinely harder to predict than one costing fewer.
+
+        ``beta`` is the beta-NLL weighting: each channel's term is multiplied by
+        its own ``sigma ** (2 * beta)``, detached. It exists because a plain
+        Gaussian likelihood weights each token by its Fisher information, and
+        ``d/dmu`` is ``r / sigma**2`` -- so where sigma is calibrated the
+        gradient goes as ``1 / r`` and the tokens the head already predicts best
+        dominate it. Measured on run 748 that spread was 7,421x across the
+        eleven channels and the three visibility classes, with 80% of the term's
+        trunk gradient on allies and 0.1% on hidden enemies, which is the bucket
+        the belief plane exists for.
+
+        The weighting is exactly that inversion, dialled:
+
+            beta = 0    plain NLL, gradient ``r / sigma**2``
+            beta = 0.5  gradient ``r / sigma``, the standardized residual, which
+                        calibration pins near one in every bucket
+            beta = 1    gradient ``r``, the mean-squared-error gradient, while
+                        sigma still trains
+
+        Detaching the weight is what keeps sigma learning: only the *weighting*
+        is frozen, not the spread itself, which the belief plane reads.
+
+        Args:
+            prediction: (..., NEXT_STATE_OUTPUT_DIM) means then uncertainty.
+            labels:     (..., PHYSICAL_MEAN_DIM) normalized targets.
+            beta:       Beta-NLL exponent. Zero is the plain likelihood.
         """
 
         if prediction.shape[-1] != NEXT_STATE_OUTPUT_DIM:
@@ -457,7 +485,41 @@ class PhysicalNextState:
             standardized = residual[..., mean_channel] * torch.exp(-log_sigma)
             terms[mean_channel] = _HALF_LOG_TWO_PI + log_sigma + 0.5 * standardized * standardized
 
-        return torch.stack(terms, dim=-1)
+        stacked = torch.stack(terms, dim=-1)
+        if beta == 0.0:
+            return stacked
+        return stacked * self._beta_weight(prediction, beta)
+
+    def _beta_weight(self, prediction: torch.Tensor, beta: float) -> torch.Tensor:
+        """``(..., 11)`` detached beta-NLL weight, one value per joint term.
+
+        For a scalar channel this is its own ``sigma ** (2 * beta)``. Position
+        and velocity are single bivariate terms split across two columns that
+        share a cross term, so both columns take the *same* weight -- the
+        geometric mean ``(sigma_x * sigma_y) ** beta`` -- which keeps the pair's
+        weighted loss equal to that one weight times the joint likelihood.
+        Weighting the axes separately would scale the two halves of the cross
+        term differently and stop the pair summing to any likelihood at all.
+
+        Detached throughout: the weighting is frozen, the spread it is computed
+        from is still trained by the unweighted part of the term.
+        """
+
+        variance = self.variance(prediction).detach()  # (..., 11) marginal sigma^2
+        weight = variance.pow(beta)
+        for mean_x in (POSITION_X, VELOCITY_X):
+            mean_y = mean_x + 1
+            paired = (variance[..., mean_x] * variance[..., mean_y]).sqrt().pow(beta)
+            weight = torch.cat(
+                [
+                    weight[..., :mean_x],
+                    paired.unsqueeze(-1),
+                    paired.unsqueeze(-1),
+                    weight[..., mean_y + 1 :],
+                ],
+                dim=-1,
+            )
+        return weight
 
     def variance(self, prediction: torch.Tensor) -> torch.Tensor:
         """Per-channel ``sigma**2`` implied by the uncertainty block, ``(..., 11)``."""

@@ -22,7 +22,11 @@ from boost_and_broadside.config.core import entity_token_count
 from boost_and_broadside.config.resolve import resolve_profile
 from boost_and_broadside.config.schema import LaunchSizingSpec, ResolvedTrainConfig
 from boost_and_broadside.config.service import resolved_profile_document
-from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES, build_reward_components
+from boost_and_broadside.env.rewards import (
+    GLOBAL_VALUE_COMPONENTS,
+    REWARD_COMPONENT_NAMES,
+    build_reward_components,
+)
 from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.train.rl.buffer import AdvantageScaler, ReturnScaler
 from boost_and_broadside.train.rl.checkpoint import (
@@ -183,10 +187,10 @@ def _active_value_layout(resolved: ResolvedTrainConfig) -> tuple[int, tuple[int,
     active = [
         name for name in REWARD_COMPONENT_NAMES if name in by_name and by_name[name].weight != 0
     ]
-    team_pma_k = tuple(
-        index for index, name in enumerate(active) if name in {"ally_win", "enemy_win"}
+    global_value_k = tuple(
+        index for index, name in enumerate(active) if name in GLOBAL_VALUE_COMPONENTS
     )
-    return len(active), team_pma_k
+    return len(active), global_value_k
 
 
 def build_synthetic_run(
@@ -213,13 +217,13 @@ def build_synthetic_run(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     torch.manual_seed(seed)
-    num_components, team_pma_k = _active_value_layout(resolved)
+    num_components, global_value_k = _active_value_layout(resolved)
     policy = build_policy(
         resolved.model_config,
         resolved.ship_config,
         num_value_components=num_components,
         num_ships=resolved.env_config.num_ships,
-        team_pma_k=team_pma_k,
+        global_value_k=global_value_k,
         # The fixture exists to prove a current checkpoint still loads, so it has
         # to carry whatever heads the resolved profile trains -- a headless one
         # would pass the test while production could not load it.
@@ -229,7 +233,7 @@ def build_synthetic_run(
     policy_payload = build_policy_checkpoint_payload(
         policy_state_dict=policy.state_dict(),
         num_value_components=num_components,
-        team_pma_k=team_pma_k,
+        global_value_k=global_value_k,
         global_step=1,
         live_elo=0.0,
         model_config=resolved.model_config,
