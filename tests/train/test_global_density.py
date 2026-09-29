@@ -184,10 +184,14 @@ class TestAlignment:
 # ---------------------------------------------------------------------------
 
 
-def _loss(prediction: torch.Tensor, target: torch.Tensor) -> tuple[float, float]:
+def _stats(prediction: torch.Tensor, target: torch.Tensor):
     samples = float(prediction.shape[0] * prediction.shape[1])
-    value, power = PPOTrainer._global_density_loss(None, prediction, target, samples)
-    return float(value), float(power)
+    return PPOTrainer._global_density_loss(None, prediction, target, samples)
+
+
+def _loss(prediction: torch.Tensor, target: torch.Tensor) -> tuple[float, float]:
+    stats = _stats(prediction, target)
+    return float(stats.loss), float(stats.power)
 
 
 class TestLoss:
@@ -248,3 +252,70 @@ class TestLoss:
     def test_a_missing_head_is_an_error_rather_than_a_silent_zero(self):
         with pytest.raises(ValueError, match="density"):
             PPOTrainer._global_density_loss(None, None, torch.zeros(1, 1, 2), 1.0)
+
+
+class TestHalves:
+    """Ally cells and enemy cells are not the same problem.
+
+    The observer sees every ally, so that half of the field is a smoothing of
+    what it already knows; the enemy half is mostly belief. One mean over all
+    ``2C`` cells lets the easy half carry the hard one, which is exactly the
+    reading the aggregate series cannot rule out.
+    """
+
+    def test_the_training_term_is_the_mean_of_the_two_halves(self):
+        """The split is a decomposition, not a second opinion: whatever is
+        logged per half has to add back to the number being optimized."""
+        target = torch.rand(4, 3, HEX_DENSITY_DIM)
+        stats = _stats(torch.rand_like(target), target)
+        assert float(stats.loss) == pytest.approx(
+            0.5 * (float(stats.ally_loss) + float(stats.enemy_loss)), rel=1e-6
+        )
+        assert float(stats.power) == pytest.approx(
+            0.5 * (float(stats.ally_power) + float(stats.enemy_power)), rel=1e-6
+        )
+
+    def test_each_half_scores_only_its_own_cells(self):
+        """Ally cells come first, enemy cells second."""
+        cells = HEX_DENSITY_DIM // 2
+        target = torch.zeros(2, 2, HEX_DENSITY_DIM)
+        prediction = torch.zeros_like(target)
+        prediction[..., :cells] = 1.0  # wrong on every ally cell, right on every enemy cell
+
+        stats = _stats(prediction, target)
+
+        assert float(stats.ally_loss) == pytest.approx(1.0)
+        assert float(stats.enemy_loss) == pytest.approx(0.0)
+
+    def test_an_easy_half_cannot_hide_a_hard_one(self):
+        """The regression this split exists to catch: a head perfect on allies
+        and useless on enemies reads as half-error in the aggregate and as the
+        truth in the halves."""
+        cells = HEX_DENSITY_DIM // 2
+        target = torch.rand(4, 3, HEX_DENSITY_DIM)
+        prediction = target.clone()
+        prediction[..., cells:] = 0.0  # no idea where the enemy is
+
+        stats = _stats(prediction, target)
+
+        assert float(stats.ally_loss) == pytest.approx(0.0, abs=1e-7)
+        assert float(stats.enemy_loss) == pytest.approx(float(stats.enemy_power), rel=1e-6)
+        # And the number training actually sees is half of that, which is the
+        # reading the aggregate alone would have flattered.
+        assert float(stats.loss) == pytest.approx(0.5 * float(stats.enemy_power), rel=1e-6)
+
+    def test_the_halves_are_additive_across_micro_batches_too(self):
+        target = torch.rand(4, 6, HEX_DENSITY_DIM)
+        prediction = torch.rand_like(target)
+        samples = float(target.shape[0] * target.shape[1])
+        whole = PPOTrainer._global_density_loss(None, prediction, target, samples)
+        parts = [
+            PPOTrainer._global_density_loss(
+                None, prediction[:, start : start + 2], target[:, start : start + 2], samples
+            )
+            for start in (0, 2, 4)
+        ]
+        for field in ("ally_loss", "enemy_loss", "ally_power", "enemy_power"):
+            assert sum(float(getattr(part, field)) for part in parts) == pytest.approx(
+                float(getattr(whole, field)), rel=1e-6
+            )
