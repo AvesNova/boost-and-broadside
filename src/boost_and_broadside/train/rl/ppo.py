@@ -409,11 +409,11 @@ class _DensityStats(NamedTuple):
     """
 
     loss: torch.Tensor
-    power: torch.Tensor
+    deviance: torch.Tensor
     ally_loss: torch.Tensor
     enemy_loss: torch.Tensor
-    ally_power: torch.Tensor
-    enemy_power: torch.Tensor
+    ally_deviance: torch.Tensor
+    enemy_deviance: torch.Tensor
 
     @classmethod
     def zeros(cls, zero: torch.Tensor) -> "_DensityStats":
@@ -2315,11 +2315,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["sigreg_loss"] = sigreg_loss.detach()
             diag["next_state_loss"] = next_state_loss.detach()
             diag["density_loss"] = density.loss.detach()
-            diag["density_target_power"] = density.power.detach()
+            diag["density_deviance"] = density.deviance
             diag["density_ally_loss"] = density.ally_loss.detach()
             diag["density_enemy_loss"] = density.enemy_loss.detach()
-            diag["density_ally_power"] = density.ally_power.detach()
-            diag["density_enemy_power"] = density.enemy_power.detach()
+            diag["density_ally_deviance"] = density.ally_deviance
+            diag["density_enemy_deviance"] = density.enemy_deviance
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
             diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
             diag["next_state_visible_per_feat"] = next_state_visible_per_feat
@@ -2400,35 +2400,47 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         target: torch.Tensor | None,
         density_sum: float,
     ) -> "_DensityStats":
-        """Squared error between the predicted and the true hex density field.
+        """Poisson negative log likelihood of the hex ship-count field.
 
-        Averaged over cells and summed over steps and environments, then divided
-        by the minibatch's total step-environment count, so a micro-batch's
-        contribution is additive exactly as every other masked-mean term is.
+        The target is a soft count per cell -- every living ship deposits one
+        unit, split barycentrically across the three cells whose centres form
+        the triangle containing it -- so the field sums to the living count per
+        side, not to one. The head emits a log-rate and the likelihood is
+
+            L = sum_c [ exp(l_c) - y_c * l_c ]
+
+        dropping the ``log y!`` constant, which does not depend on the model.
+        Its gradient in the logit is ``exp(l_c) - y_c``: bounded, and zero
+        exactly when the rate matches the count. That is the whole reason this
+        is a Poisson head rather than a Gaussian one -- the next-state head's
+        ``r / sigma^2`` is what concentrates gradient on whatever it already
+        predicts best, and this form cannot.
+
+        Averaged over cells and summed over steps and environments, then
+        divided by the minibatch's total step-environment count, so a
+        micro-batch's contribution is additive exactly as every other
+        masked-mean term is.
 
         Every step has a target -- the field is a property of the state the
-        observation was built from, not of a transition -- so there is nothing to
-        mask here. A step whose episode ends still has a legitimate density.
-
-        Args:
-            prediction:  (T, B, 2C) head output, with grad.
-            target:      (T, B, 2C) privileged density, bf16-stored.
-            density_sum: Step-environment pairs in the whole minibatch.
+        observation was built from, not of a transition -- so there is nothing
+        to mask here. A step whose episode ends still has a legitimate field.
 
         Returns:
-            :class:`_DensityStats` -- the loss, the mean square of the target
-            itself, and both of those again for the ally and enemy halves alone.
+            :class:`_DensityStats` -- the loss and the **deviance**, and both
+            again for the ally and enemy halves alone.
 
-            The target's mean square is the score a head that predicted zero
-            everywhere would get, which is where this head starts, so the loss
-            only means something read against it.
+            A Poisson likelihood has no natural zero: its value depends on the
+            counts as well as on the fit, so the bare number says nothing about
+            how good the head is. The deviance subtracts the likelihood of a
+            perfect predictor (``mu_c = y_c``), leaving excess nats per cell
+            that are zero when the head is exact and positive otherwise. That
+            is the series to read; the loss is what is optimized.
 
-            The halves are reported because they are not the same problem. The
-            observer sees every ally, so the ally field is a smoothing of what
-            it already knows; the enemy field is mostly belief. One mean over
-            all ``2C`` cells lets an easy half carry a hard one, and the whole
-            question of whether this head has learned anything about *enemies*
-            is invisible in the aggregate.
+            The halves are reported apart because they are not the same
+            problem. The observer sees every ally, so that field is a
+            restatement of what it already knows; the enemy field is mostly
+            belief. One mean over all ``2C`` cells lets the easy half carry the
+            hard one.
 
         Raises:
             ValueError: If the head or the target is missing while the
@@ -2440,13 +2452,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 "global_density_coef is positive but this rollout carries no "
                 "density head or no density target"
             )
-        labels = target.float()  # (T, B, 2C)
-        square = (prediction.float() - labels).pow(2)  # (T, B, 2C)
-        # Ally cells then enemy cells, equal halves by construction
-        # (``HEX_DENSITY_DIM`` is twice the cell count).
-        cells = labels.shape[-1] // 2
+        counts = target.float()  # (T, B, 2C)
+        log_rate = prediction.float()
+        # Clamped only against overflow; the head is free inside this range and
+        # the bound is far outside any rate the grid can legitimately carry
+        # (e2 cells hold every ship in the game; e-20 is empty to any precision).
+        log_rate = log_rate.clamp(-20.0, 2.0)
+        per_cell = log_rate.exp() - counts * log_rate  # (T, B, 2C)
         with torch.no_grad():
-            power_square = labels.pow(2)
+            # The same likelihood at mu = y, which is its minimum. ``y log y``
+            # is taken as zero at y = 0, its limit, which is also almost every
+            # cell.
+            saturated = counts - counts * torch.log(counts.clamp(min=1e-12))
+            saturated = torch.where(counts > 0.0, saturated, torch.zeros_like(saturated))
+
+        cells = counts.shape[-1] // 2
 
         def halves(values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
             """Per-half cell means, summed over steps and envs and normalized."""
@@ -2454,18 +2474,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             enemy = values[..., cells:].mean(-1).sum() / density_sum
             return ally, enemy
 
-        ally_loss, enemy_loss = halves(square)
+        ally_loss, enemy_loss = halves(per_cell)
         with torch.no_grad():
-            ally_power, enemy_power = halves(power_square)
+            ally_floor, enemy_floor = halves(saturated)
         # The mean over 2C equally weighted cells is the mean of the two half
-        # means, so the training term stays exactly what it was.
+        # means, so the training term stays a plain mean over the field.
         return _DensityStats(
             loss=0.5 * (ally_loss + enemy_loss),
-            power=0.5 * (ally_power + enemy_power),
+            deviance=0.5 * (ally_loss + enemy_loss).detach() - 0.5 * (ally_floor + enemy_floor),
             ally_loss=ally_loss,
             enemy_loss=enemy_loss,
-            ally_power=ally_power,
-            enemy_power=enemy_power,
+            ally_deviance=ally_loss.detach() - ally_floor,
+            enemy_deviance=enemy_loss.detach() - enemy_floor,
         )
 
     def _active_component_weights(self) -> torch.Tensor:
@@ -3147,18 +3167,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "loss/next_state": [],
             "loss/next_state_cont": [],
             "loss/global_density": [],
-            # Mean square of the density target. A head predicting zero scores
-            # exactly this, and that is where this one starts, so the loss only
-            # means something read against it.
-            "global_density/target_power": [],
+            # Excess nats per cell over a perfect predictor. A Poisson
+            # likelihood has no natural zero, so this is the series that says
+            # how good the head is; the loss is what is optimized.
+            "global_density/deviance": [],
             # The same two numbers per half. The observer sees every ally, so the
             # ally field is a smoothing of what it already knows and the enemy
             # field is mostly belief -- an aggregate over both lets the easy half
             # carry the hard one.
             "loss/global_density_ally": [],
             "loss/global_density_enemy": [],
-            "global_density/ally_power": [],
-            "global_density/enemy_power": [],
+            "global_density/ally_deviance": [],
+            "global_density/enemy_deviance": [],
             "loss_proxy/policy_gradient": [],
             "loss/enemy_action": [],
             "enemy_action/realized_probability": [],
@@ -3289,11 +3309,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("ns_loss", "next_state_loss"),
                     ("ns_cont", "next_state_cont_loss"),
                     ("density", "density_loss"),
-                    ("density_target_power", "density_target_power"),
+                    ("density_deviance", "density_deviance"),
                     ("density_ally", "density_ally_loss"),
                     ("density_enemy", "density_enemy_loss"),
-                    ("density_ally_power", "density_ally_power"),
-                    ("density_enemy_power", "density_enemy_power"),
+                    ("density_ally_deviance", "density_ally_deviance"),
+                    ("density_enemy_deviance", "density_enemy_deviance"),
                     ("bc_kl", "bc_kl"),
                     ("scripted_entropy", "scripted_entropy"),
                     ("kl", "approx_kl"),
@@ -3347,11 +3367,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("loss/next_state", "ns_loss"),
                     ("loss/next_state_cont", "ns_cont"),
                     ("loss/global_density", "density"),
-                    ("global_density/target_power", "density_target_power"),
+                    ("global_density/deviance", "density_deviance"),
                     ("loss/global_density_ally", "density_ally"),
                     ("loss/global_density_enemy", "density_enemy"),
-                    ("global_density/ally_power", "density_ally_power"),
-                    ("global_density/enemy_power", "density_enemy_power"),
+                    ("global_density/ally_deviance", "density_ally_deviance"),
+                    ("global_density/enemy_deviance", "density_enemy_deviance"),
                     ("policy/kl", "kl"),
                     ("policy/clip_fraction", "clip"),
                     ("policy/ratio_mean", "ratio_mean"),

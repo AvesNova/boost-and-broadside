@@ -89,7 +89,13 @@ ever revisited for capacity reasons.
 
 ## Kernel width — the target is smoother than the grid
 
-`density-kernel-sep2026-{single,profile,pairs}.png`, from
+> **Superseded September 30 2026.** This section argued the Gaussian target was
+> over-smoothed. It was, and the conclusion was to remove the Gaussian rather
+> than retune it: the target is now barycentric ship counts with no kernel at
+> all (see *Replaced* at the end). What follows is the evidence that led there,
+> and it still describes `local_presence`, which keeps the kernel.
+
+`presence-kernel-sep2026-{single,profile,pairs}.png`, from
 [`benchmarks/density_kernel_widths.py`](../../benchmarks/density_kernel_widths.py).
 No checkpoint involved: this is a property of the target's definition.
 
@@ -159,3 +165,31 @@ need rethinking on these grounds, and the "make the target harder rather than
 louder" suggestion is not supported by this evidence — the target is not too
 easy. The open question it leaves is capacity, not difficulty: whether 331
 cells with 62% of them near-empty is the right shape.
+
+
+## Replaced — barycentric counts, September 30 2026
+
+The Gaussian target is gone. Each living ship now deposits exactly one unit of
+mass, split across the three cells whose centres form the triangle containing
+it, by barycentric weight; the field sums to the living ship count per side and
+the head predicts it as a Poisson log-rate.
+
+No radius, and nothing to tune. Three weights summing to one are the exact 2D
+analogue of two-hot encoding on a line, and they are lossless — a ship's three
+weights invert to its exact position inside the triangle, which is precisely
+what the smoothing above was throwing away.
+
+Off the grid, the lattice is treated as infinite: a ship's containing triangle
+is found wherever it is, and only those vertices that are cells of the finite
+grid receive their weight. A ship at 1.02 playable radii still lands partly on
+the rim; by 1.10 it is gone. Continuous, with no clamp and no special case.
+
+The loss is Poisson negative log likelihood, whose gradient in the logit is
+`exp(l) - y`. That is bounded and vanishes exactly when the rate matches the
+count — unlike the `r / sigma^2` of the next-state head, which is what
+concentrated 76% of the trunk gradient on the tokens it already predicted best.
+
+**The audit above does not carry over.** Its R² ladder, its baselines and its
+`-fields`/`-ladder`/`-hidden`/`-rings` figures all score a regression against a
+smoothed field. They need re-running against the count target before any of
+those numbers mean anything again.

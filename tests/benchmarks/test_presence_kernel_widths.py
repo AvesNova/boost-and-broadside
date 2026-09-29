@@ -9,7 +9,7 @@ import math
 import pytest
 import torch
 
-from benchmarks.density_kernel_widths import half_max_radius, lit_fraction
+from benchmarks.presence_kernel_widths import half_max_radius, lit_fraction
 
 
 class TestHalfMaxRadius:

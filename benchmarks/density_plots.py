@@ -1,4 +1,9 @@
-"""Render the hex density head: true field, prediction, error, and where it fails.
+"""
+SUPERSEDED for the current target. The field panels still render, but the
+colour scales, the `log1p units` label and the error metric all assume the
+smoothed regression target; the field is now soft ship counts. Re-express
+before reading the numbers off it.
+Render the hex density head: true field, prediction, error, and where it fails.
 
 Companion to ``density_baselines.py``, which produces the ``.pt`` this reads.
 The baselines say *how much* of the field the head explains; these say *what it

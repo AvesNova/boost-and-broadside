@@ -1,25 +1,29 @@
-"""How wide is one ship on the hex density grid, and at what kernel radius?
+"""How wide is one ship under the presence kernel, at each candidate radius?
 
-The density target smooths every ship with a Gaussian of ``PRESENCE_RADIUS``
-before sampling it on the grid. That radius is 500 px against a 2600 px
-playable radius and a 260 px ring spacing, so a single ship is not a point on
-this field -- it is a broad hill, and the question this answers is how broad.
+``PRESENCE_RADIUS`` is the Gaussian width behind ``local_presence`` -- the
+ally/enemy crowding scalars the policy reads -- and behind ``RELATION_RADIUS``.
+This renders one ship under that kernel, on the hex grid purely as a convenient
+ruler, so the radius can be seen rather than reasoned about.
 
-Three figures, all from the target's own definition. No checkpoint and no
-trained head are involved: this is a property of the target, not of anything
-that learned it.
+It no longer describes the hex density target. That target was a smoothing of
+this same kernel until September 30 2026 and is now barycentric ship counts
+with no kernel at all, which is what these figures argued for: at 500 px one
+ship lit a fifth of the grid and two ships did not read as two until 2000 px
+apart. The figures are kept because the kernel they measure is still live in
+`local_presence`.
+
+Three figures, all from the kernel's own definition. No checkpoint and no
+trained head are involved.
 
 * ``*-single.png``  -- one ship at the map centre, at each candidate radius.
-  The ask: what does one ship look like.
 * ``*-profile.png`` -- the same, as density against distance, with the ring
   spacing and the playable boundary marked. The quantitative view.
 * ``*-pairs.png``   -- two ships at four separations, at the production radius.
-  Over-smoothing is really a question about resolution -- whether the field can
-  tell two ships apart from one pair sitting together -- and a single ship
-  cannot answer it.
+  Resolution -- whether the kernel can tell two ships apart from one pair
+  sitting together -- which a single ship cannot show.
 
-    uv run --no-sync python benchmarks/density_kernel_widths.py \\
-        --out-prefix docs/internal/density-kernel-sep2026
+    uv run --no-sync python benchmarks/presence_kernel_widths.py \\
+        --out-prefix docs/internal/presence-kernel-sep2026
 """
 
 from __future__ import annotations
@@ -77,23 +81,25 @@ def _style(matplotlib):
 
 
 def _field(ships, radius: float, cells):
-    """(C,) ally density for ships at ``ships`` (a list of (x, y) in pixels)."""
+    """(C,) presence at each cell for ships at ``ships``, (x, y) in pixels.
+
+    ``local_presence``'s own quantity -- a Gaussian over distance summed across
+    ships and compressed with ``log1p`` -- evaluated at the grid points rather
+    than at ships. Written out here rather than imported, because the hex
+    module no longer computes anything of the kind.
+    """
     import torch
 
-    from boost_and_broadside.train.rl.hex_density import hex_density
-
-    count = len(ships)
-    ship_x = torch.tensor([[x for x, _ in ships]], dtype=torch.float32)
-    ship_y = torch.tensor([[y for _, y in ships]], dtype=torch.float32)
-    world = torch.tensor(cells, dtype=torch.float32) * PLAYABLE_RADIUS  # (C, 2)
-    both = hex_density(
-        ship_x, ship_y,
-        torch.ones(1, count, dtype=torch.bool),
-        torch.ones(1, count, dtype=torch.bool),
-        world[:, 0].unsqueeze(0), world[:, 1].unsqueeze(0),
-        WORLD, radius=radius,
-    )
-    return both[0, : world.shape[0]]
+    points = torch.tensor(cells, dtype=torch.float32) * PLAYABLE_RADIUS  # (C, 2)
+    total = torch.zeros(points.shape[0])
+    for x, y in ships:
+        delta_x = points[:, 0] - x
+        delta_y = points[:, 1] - y
+        # Minimum image on the torus, well away from the wrap at this scale.
+        delta_x = delta_x - WORLD[0] * torch.round(delta_x / WORLD[0])
+        delta_y = delta_y - WORLD[1] * torch.round(delta_y / WORLD[1])
+        total += torch.exp(-(delta_x**2 + delta_y**2) / (2.0 * radius**2))
+    return torch.log1p(total)
 
 
 def _draw(axis, centres, values, cmap, vmax, title, spacing):

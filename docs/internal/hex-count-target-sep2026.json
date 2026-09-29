@@ -1,0 +1,13 @@
+{
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "torch": "2.13.0+cu130",
+  "compile_mode": "default",
+  "num_envs": 960,
+  "num_ships": 10,
+  "num_cells": 331,
+  "rollout_step_ms": 123.42052825260907,
+  "target_ms": 0.05221720086410642,
+  "fraction_of_step": 0.00042308359560114397,
+  "gate_fraction": 0.05,
+  "passes": true
+}

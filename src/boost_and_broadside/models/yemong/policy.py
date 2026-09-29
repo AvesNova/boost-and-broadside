@@ -139,23 +139,41 @@ class NextStateHead(nn.Module):
 
 
 class GlobalDensityHead(nn.Module):
-    """Predicts the whole-map ally and enemy density field from the global token.
+    """Predicts where both fleets are, as a Poisson intensity over hex cells.
 
     The one head that reads the global token rather than a ship token: it asks
     that token to carry where both fleets are, which is a property of the game
     rather than of any ship. Output is ``HEX_DENSITY_DIM`` wide -- every hex
-    cell's ally density, then every cell's enemy density, in the cell order
-    ``train/rl/hex_density.py`` fixes -- and is regressed on privileged truth
-    with MSE. Nothing it predicts re-enters the policy's input.
+    cell's ally log-rate, then every cell's enemy log-rate, in the cell order
+    ``train/rl/hex_density.py`` fixes. Nothing it predicts re-enters the
+    policy's input.
+
+    The output is a **log-rate, not a probability**: the target is a soft ship
+    count per cell, summing to the living count per side rather than to one, so
+    a softmax here would pin the total mass and discard the count. The loss is
+    the Poisson negative log likelihood, whose gradient in this output is the
+    bounded ``exp(logit) - count``.
 
     Args:
-        d_model: Token embedding dimension D.
-        out_dim: Target width; the grid decides it, so it is not a free choice.
+        d_model:       Token embedding dimension D.
+        out_dim:       Target width; the grid decides it, not a free choice.
+        init_log_rate: Bias the output layer starts at. Orthogonal init leaves
+            the weights near zero, so this alone sets the head's opening
+            prediction, and a rate of one ship per cell -- what a zero bias
+            means -- is two orders of magnitude too crowded. Starting at the
+            true mean rate makes the first updates about *where* the ships are
+            rather than about how many there are in total.
     """
 
-    def __init__(self, d_model: int, out_dim: int = HEX_DENSITY_DIM) -> None:
+    def __init__(
+        self,
+        d_model: int,
+        out_dim: int = HEX_DENSITY_DIM,
+        init_log_rate: float = -4.0,
+    ) -> None:
         super().__init__()
         self.out_dim = out_dim
+        self.init_log_rate = init_log_rate
         self.net = nn.Sequential(
             nn.Linear(d_model, d_model * 2),
             nn.RMSNorm(d_model * 2),
@@ -164,7 +182,7 @@ class GlobalDensityHead(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Args: x (..., D) global-token embedding. Returns: (..., out_dim)."""
+        """Args: x (..., D) global-token embedding. Returns: (..., out_dim) log-rates."""
 
         return self.net(x)
 
@@ -377,7 +395,16 @@ class YemongPolicy(nn.Module):
                 "the global density head reads the global token; it needs "
                 "ModelConfig.global_token on"
             )
-        self.density_head = GlobalDensityHead(D) if predict_density else None
+        # The opening rate is the true mean: one side's ships spread over the
+        # grid's cells. Read off the fleet and the grid rather than guessed.
+        self.density_head = (
+            GlobalDensityHead(
+                D,
+                init_log_rate=math.log(max(num_ships, 2) / 2.0 / (HEX_DENSITY_DIM / 2)),
+            )
+            if predict_density
+            else None
+        )
 
         # Orthogonal init — standard PPO practice. Located by type (first/last Linear)
         # rather than fixed Sequential index, so inserting a non-Linear layer (e.g.
@@ -393,6 +420,9 @@ class YemongPolicy(nn.Module):
             _init_head_orthogonal(self.outcome_head)
         if self.density_head is not None:
             _init_head_orthogonal(self.density_head.net)
+            # After the orthogonal pass, which zeroes it: the opening log-rate.
+            final = [m for m in self.density_head.net if isinstance(m, nn.Linear)][-1]
+            nn.init.constant_(final.bias, self.density_head.init_log_rate)
         if team_pma_k:
             _init_head_orthogonal(self.value_head_win)
             nn.init.normal_(self.team_pma.seeds, mean=0.0, std=0.02)
