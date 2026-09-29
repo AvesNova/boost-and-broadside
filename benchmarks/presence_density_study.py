@@ -43,7 +43,7 @@ from boost_and_broadside.runtime.actions import PendingActionState, advance_auto
 from boost_and_broadside.train.rl.features import PRESENCE_RADIUS, local_presence
 
 PROFILE = PROFILES["rl"]
-RADII = (200.0, 250.0, 500.0, 1000.0)
+RADII = (150.0, 200.0, 250.0, 330.0, 400.0, 500.0)
 LARGE_SCALE = 7000.0 / 2600.0
 
 
@@ -220,7 +220,7 @@ def main() -> None:
     reference = torch.log1p(raw_presence(position, team_id, source, world, PRESENCE_RADIUS))
     reference = reference * (team_id < 2).unsqueeze(-1)
     assert torch.allclose(shipped, reference, atol=1e-6), "shipped feature drifted from the study"
-    print("\nshipped local_presence matches log1p(raw, r=500) exactly")
+    print(f"\nshipped local_presence matches log1p(raw, r={PRESENCE_RADIUS:.0f}) exactly")
 
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
