@@ -1,15 +1,15 @@
 {
-  "production_radius_px": 200.0,
+  "production_radius_px": 330.0,
   "playable_radius_px": 2600.0,
   "rings": 10,
   "ring_spacing_px": 260.0,
   "peak_value": 0.6931471805599453,
   "radii": [
     {
-      "radius_px": 100.0,
-      "half_max_px": 132.7684892600306,
-      "half_max_rings": 0.5106480356155023,
-      "cells_above_10pct_peak": 0.003021148033440113,
+      "radius_px": 150.0,
+      "half_max_px": 199.15273389004594,
+      "half_max_rings": 0.7659720534232536,
+      "cells_above_10pct_peak": 0.021148037165403366,
       "is_production": false
     },
     {
@@ -17,6 +17,13 @@
       "half_max_px": 265.5369785200612,
       "half_max_rings": 1.0212960712310046,
       "cells_above_10pct_peak": 0.039274923503398895,
+      "is_production": false
+    },
+    {
+      "radius_px": 330.0,
+      "half_max_px": 438.13601455810107,
+      "half_max_rings": 1.685138517531158,
+      "cells_above_10pct_peak": 0.09365558624267578,
       "is_production": true
     },
     {
@@ -31,13 +38,6 @@
       "half_max_px": 1327.6848926003063,
       "half_max_rings": 5.106480356155024,
       "cells_above_10pct_peak": 0.8549848794937134,
-      "is_production": false
-    },
-    {
-      "radius_px": 2000.0,
-      "half_max_px": 2655.3697852006126,
-      "half_max_rings": 10.212960712310048,
-      "cells_above_10pct_peak": 1.0,
       "is_production": false
     }
   ]
