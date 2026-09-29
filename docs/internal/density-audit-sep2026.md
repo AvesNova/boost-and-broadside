@@ -87,6 +87,46 @@ little accuracy rather than buying free credit. But 62% of the head's output
 width is carrying 14% of the signal, which is worth knowing if the target is
 ever revisited for capacity reasons.
 
+## Kernel width — the target is smoother than the grid
+
+`density-kernel-sep2026-{single,profile,pairs}.png`, from
+[`benchmarks/density_kernel_widths.py`](../../benchmarks/density_kernel_widths.py).
+No checkpoint involved: this is a property of the target's definition.
+
+`PRESENCE_RADIUS` is 500 px against a 2600 px playable radius and a 260 px ring
+spacing. One ship on its own is therefore not a point on this field:
+
+| kernel radius | half-max | cells above 10% of peak |
+|---|---:|---:|
+| 125 px | 0.6 rings | 2% |
+| 250 px | 1.3 rings | 6% |
+| **500 px (production)** | **2.6 rings** | **22%** |
+| 1000 px | 5.1 rings | 85% |
+| 2000 px | 10.2 rings | 100% |
+
+At the production radius a single ship lights roughly a fifth of the 331 cells,
+and its half-max reaches 2.6 ring spacings — the grid samples the field about
+five times finer than the field varies.
+
+The resolution consequence is sharper than the spread. Two ships at 500 px do
+not read as two until they are about **2000 px apart, 8 ring spacings, roughly
+40% of the playable diameter**; at 1040 px (4 rings) the midpoint is still the
+field's maximum, so the pair reads as one elongated blob. A 5v5 fleet spread
+across a quarter of the map is, to this target, the same object as a 5v5 fleet
+stacked on one point.
+
+That does not contradict the audit above — the head predicts what it is asked
+to predict, and predicts it well. It bears on what the target is *worth*: a
+field this smooth cannot express formation, only bulk position, so a head that
+scores 0.91 on it has learned where the fleets roughly are and nothing about
+how they are arranged.
+
+Two things to weigh before changing it. The radius is deliberately shared with
+`local_presence` so that "crowded" means the same thing at a ship and at a map
+cell, and the docstring commits to that; narrowing it here alone would break
+the coupling. And the cell ordering is fixed once a head trains on it, though
+the radius is not part of that contract.
+
 ## What this changes
 
 Nothing immediately. The head earns its place, `global_density_coef` does not
