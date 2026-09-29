@@ -651,6 +651,77 @@ class TestGAEComputation:
         assert buf.advantages[0, 0, 0, 0] > 0.0
 
 
+class TestRespawnContinuitySurvivesTheUpdate:
+    """Respawn flags are written during the rollout and read a stage later.
+
+    ``_compute_rollout_gae`` runs between the two, so anything it touches has to
+    leave the flags alone. It did not: ``fill_outcome_class`` carried three lines
+    belonging to ``reset`` -- inserted into the middle of it by 1debbfd -- and
+    wiped every teleport mask before the update could read one, silently, from
+    September 16 2026. Nothing caught it because no test called the two in the
+    order the trainer does.
+    """
+
+    @staticmethod
+    def _add_step(buf, B, N, *, continuity, reward=0.0, terminated=False):
+        buf.add(
+            {
+                "pos": torch.zeros(B, N, 2),
+                "vel": torch.zeros(B, N, 2),
+                "alive": torch.ones(B, N),
+            },
+            torch.zeros(B, N, 3),
+            torch.zeros(B, N),
+            torch.full((B, N, K), reward),
+            torch.zeros(B, N, K),
+            torch.ones(B, N, dtype=torch.bool),
+            terminated=torch.full((B,), terminated, dtype=torch.bool),
+            transition_contiguous=continuity,
+        )
+
+    def test_labelling_the_outcome_does_not_clear_the_teleport_mask(self):
+        buf, T, B, N, _ = _make_buffer(T=1, B=1, N=2)
+        teleported = torch.tensor([[True, False]])
+        self._add_step(buf, B, N, continuity=teleported, terminated=True)
+
+        buf.fill_outcome_class(0)
+
+        assert torch.equal(buf.transition_contiguous[0], teleported)
+
+    def test_the_mask_reaches_the_minibatch_through_the_trainer_ordering(self):
+        """add -> compute_gae -> fill_outcome_class -> iterate, as PPOTrainer runs it."""
+        buf, T, B, N, D = _make_buffer(T=1, B=2, N=2)
+        teleported = torch.tensor([[True, False], [False, True]])
+        self._add_step(buf, B, N, continuity=teleported, terminated=True)
+        buf.store_initial_hidden(torch.zeros(1, B * N, D))
+        buf.compute_gae(torch.zeros(B, N, K), torch.zeros(B))
+        buf.fill_outcome_class(0)
+
+        batch = next(buf.get_minibatch_iterator(1))[0]
+
+        assert sorted(batch.transition_contiguous[0].tolist()) == sorted(teleported.tolist())
+
+    def test_reset_is_what_clears_the_mask_for_the_next_rollout(self):
+        buf, T, B, N, _ = _make_buffer(T=1, B=1, N=2)
+        self._add_step(buf, B, N, continuity=torch.tensor([[True, False]]))
+        assert not buf.transition_contiguous.all()
+
+        buf.reset()
+
+        assert buf.transition_contiguous.all()
+
+    def test_reset_clears_the_belief_diagnostics_and_labelling_does_not(self):
+        buf, T, B, N, _ = _make_buffer(T=1, B=1, N=2)
+        self._add_step(buf, B, N, continuity=torch.ones(B, N, dtype=torch.bool), terminated=True)
+        buf.belief_diagnostics = {"belief/position": (torch.ones(1), torch.ones(1))}
+
+        buf.fill_outcome_class(0)
+        assert buf.belief_diagnostics
+
+        buf.reset()
+        assert buf.belief_diagnostics == {}
+
+
 class TestMinibatchIterator:
     def test_carries_per_ship_transition_continuity(self):
         buf, T, B, N, D = _make_buffer(T=1, B=2, N=2)

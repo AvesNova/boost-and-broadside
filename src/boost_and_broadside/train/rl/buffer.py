@@ -770,6 +770,9 @@ class RolloutBuffer:
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
         self.terminated.zero_()
         self.outcome_class.fill_(-1)
+        self.transition_contiguous.fill_(True)
+        self.belief_diagnostics = {}
+        # obs[T] slot is overwritten by store_final_obs() — no need to zero it
 
     def fill_outcome_class(self, outcome_k: int) -> None:
         """Record the realised match result per ship, where the rollout saw one.
@@ -796,9 +799,6 @@ class RolloutBuffer:
         self.outcome_class = torch.where(
             self.terminated.unsqueeze(-1), realised, torch.full_like(realised, -1)
         )
-        self.transition_contiguous.fill_(True)
-        self.belief_diagnostics = {}
-        # obs[T] slot is overwritten by store_final_obs() — no need to zero it
 
     def store_initial_hidden(self, hidden: torch.Tensor) -> None:
         """Store the GRU hidden state at rollout start.
