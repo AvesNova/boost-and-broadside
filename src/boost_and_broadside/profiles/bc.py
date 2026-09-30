@@ -38,7 +38,13 @@ BC_SCHEDULE_SPEC = replace(
     # balanced one-to-one against the next-state auxiliary BC also weights at
     # 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term carried
     # alongside a live policy gradient.
-    behavior_cloning_coef=hold(1.0),
+    behavior_cloning_coef=hold(0.042),
+    # 18.9 looks large and is not: the value loss is a Huber on normalized
+    # returns whose raw value is ~0.04, so the weighted term lands near 0.8 --
+    # beside behaviour cloning's. The number is large because the value head
+    # was absorbing almost all of its own gradient and passing almost none to
+    # the trunk, which is the thing being corrected.
+    value_function_coef=hold(0.38),
     # League opposition disabled: no roster opponent plays a BC rollout.  The
     # Elo evaluator still runs -- BC's own scripted win rate is what decays the
     # cloning weight -- and it rates against the same derived rungs RL uses.
@@ -53,16 +59,37 @@ BC_PROFILE = replace(
     RL_PROFILE,
     name="bc",
     schedule_spec=BC_SCHEDULE_SPEC,
-    next_state_coef=1.0,
-    # Beta-NLL weighting on the next-state likelihood. At zero the gradient is
-    # r / sigma**2, which put 7,421x more of itself on the channels and
-    # visibility classes the head already predicts best -- 80% on allies and
-    # 0.1% on hidden enemies, which is the bucket the belief plane exists for.
-    # At 0.5 the per-token gradient is the standardized residual r / sigma,
-    # which calibration pins near one everywhere, and the measured spread
-    # across all 33 (channel, class) cells falls to 2.6x. Sigma still trains;
-    # only the weighting is detached.
-    next_state_beta=0.5,
+    # --- Gradient-share balance, set from a measured decomposition ----------
+    # Coefficients chosen so each term takes a target share of the trunk's
+    # pre-clip gradient, from `benchmarks/gradient_decomposition.py` on the
+    # 6.4M-step pilot (docs/internal/grad-decomposition-pilot-sep2026.json).
+    # The gradient of `c * L` is exactly `c * grad L`, so one measurement gives
+    # every coefficient at once:  c_new = c_old * (target share / measured) * G.
+    #
+    # Targets: bc 0.30, value 0.25, next_state 0.15, enemy_action 0.10,
+    # outcome 0.08, density 0.07. The objective takes the plurality; value gets
+    # a real share because BC shapes the trunk for *action*-relevant features
+    # and the critic needs *outcome*-relevant ones, which nothing else supplies
+    # -- run 748's explained variance plateaued at 0.574 with value holding
+    # 0.001 of the trunk. Regularizers are left out of share-targeting: their
+    # scale is meaningful in the nats they live in.
+    #
+    # Second set, from run 750's logged per-term norms (median of four points,
+    # 7-15M steps; each swings 2-5x per batch). Aim: typical total pre-clip norm
+    # ~0.5 so `train/clip_fire_rate` lands at 0.1-0.2. The first set missed by
+    # ~30x (total ~11, clip firing every step) because the relative sizes of the
+    # terms drift 10-300x during training; a static set is only a starting
+    # point. next_state is the least reliable: it assumes beta=0 shrinks the
+    # hidden-enemy gradient ~100x from the beta=0.5 measurements. Retune with one
+    # common multiplier on clip fire rate, then re-measure the shares.
+    next_state_coef=0.17,
+    enemy_action_coef=0.057,
+    outcome_categorical_coef=0.0083,
+    global_density_coef=2.0,
+    # Pure NLL. Beta = 0.5 weights by sigma, and sigma differs ~100x across
+    # populations (hidden enemy ~e^2..e^4, ally ~e^-0.7), which put 99% of the
+    # next-state gradient on hidden enemies in run 750.
+    next_state_beta=0.0,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now

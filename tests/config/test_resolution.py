@@ -65,9 +65,15 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         return {prefix} if left != right else set()
 
     assert {path.split(".")[0] for path in different_paths(rl, bc)} == {
-        # Full-strength next-state prediction while a dense supervised signal is
-        # available to learn the trunk from.
+        # Every auxiliary's weight is set from a measured gradient decomposition
+        # of this profile, not of RL's -- RL carries a live policy gradient, so
+        # the same target shares resolve to different coefficients there. See
+        # the balance block in profiles/bc.py.
         "next_state_coef",
+        "enemy_action_coef",
+        "outcome_categorical_coef",
+        "global_density_coef",
+        "next_state_beta",
         # ``total_timesteps`` is deliberately absent: BC no longer carries its own
         # budget. It used to run to 2B on the reasoning that it stops when
         # imitation saturates, but nothing self-terminates this profile any more

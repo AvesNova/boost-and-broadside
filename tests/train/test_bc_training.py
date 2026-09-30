@@ -122,9 +122,16 @@ def test_bc_takes_no_policy_gradient_across_its_whole_budget(tmp_path) -> None:
         assert trainer.cfg.schedule.policy_gradient_coef(step) == 0.0
         assert trainer.cfg.schedule.league_fraction(step) == 0.0
     assert trainer._policy_gradient_coef == 0.0
-    # Full strength before any scripted game has been recorded.
-    assert trainer._behavior_cloning_coef == pytest.approx(1.0)
-    assert trainer.cfg.next_state_coef == 1.0
+    # Held at its configured strength before any scripted game is recorded --
+    # what matters here is that nothing decays it, not the value itself, which
+    # is set by the gradient-share balance.
+    assert trainer._behavior_cloning_coef == pytest.approx(
+        trainer.cfg.schedule.behavior_cloning_coef(0)
+    )
+    # The next-state auxiliary is on, at whatever weight the gradient-share
+    # balance gives it. Its *value* is not the claim -- that it is trained
+    # alongside cloning, rather than disabled, is.
+    assert trainer.cfg.next_state_coef > 0.0
 
 
 def test_bounded_bc_run_learns_from_supervision_and_freezes_no_milestone(tmp_path) -> None:
