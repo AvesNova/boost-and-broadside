@@ -318,6 +318,16 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 metavar="MINIBATCHES",
                 help="Complete optimizer minibatches measured per diagnostic update.",
             ),
+            _option(
+                "--gradient-diagnostics-next-state",
+                action="store_true",
+                help=(
+                    "Also split the next-state gradient by ship population (ally, "
+                    "visible enemy, hidden enemy) and environment half, for the "
+                    "trained NLL and for beta-NLL(0.5) and MSE at the same weights. "
+                    "Needs --gradient-diagnostics above off."
+                ),
+            ),
             _DEVICE,
             _SEED,
             _ALLOW_DRIFT,

@@ -64,6 +64,17 @@ class GradientDiagnosticsConfig:
                          components. The expensive level; one extra backward
                          traversal per component per diagnosed micro-batch.
 
+    The next-state split is orthogonal to the level, because the question it
+    answers -- which ship population the next-state head learns from, and which
+    it *would* learn from under a different likelihood -- has nothing to do with
+    rewards. It divides the next-state gradient across allies, visible enemies,
+    and hidden enemies; divides each population again into two disjoint halves
+    of the environments, so the agreement between halves separates a coherent
+    gradient from per-token noise; and repeats all of it for the Gaussian NLL
+    being trained, beta-NLL at beta 0.5, and plain squared error, measured at
+    the same weights. Eighteen extra backward traversals per diagnosed
+    micro-batch.
+
     Args:
         level:       Diagnostic depth (see above).
         interval:    Diagnose every N PPO updates.
@@ -71,11 +82,15 @@ class GradientDiagnosticsConfig:
                      update. Gradients are accumulated over every micro-batch of
                      a minibatch before any norm or cosine is taken, so a
                      measurement always describes a real optimizer step.
+        next_state_populations: Also split the next-state gradient by ship
+                     population, environment half, and candidate likelihood.
+                     Needs a level above ``off`` to run at all.
     """
 
     level: GradientDiagnosticsLevel = "off"
     interval: int = 1
     minibatches: int = 1
+    next_state_populations: bool = False
 
     def __post_init__(self) -> None:
         if self.level not in GRADIENT_DIAGNOSTICS_LEVELS:
@@ -88,6 +103,11 @@ class GradientDiagnosticsConfig:
         if self.minibatches < 1:
             raise ValueError(
                 f"gradient diagnostics minibatches must be positive, got {self.minibatches}"
+            )
+        if self.next_state_populations and not self.enabled:
+            raise ValueError(
+                "the next-state population split is a gradient diagnostic and needs a "
+                "gradient diagnostics level above 'off'"
             )
 
     @property
@@ -107,6 +127,12 @@ class GradientDiagnosticsConfig:
         """Whether the critic gradient is split across reward components."""
 
         return self.level == "reward_full"
+
+    @property
+    def decomposes_next_state_by_population(self) -> bool:
+        """Whether the next-state gradient is split by ship population."""
+
+        return self.enabled and self.next_state_populations
 
     def measures_update(self, update: int) -> bool:
         """Whether PPO update index ``update`` is a diagnostic update."""

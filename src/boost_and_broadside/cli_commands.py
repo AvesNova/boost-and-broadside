@@ -126,6 +126,7 @@ def gradient_diagnostics_from_args(args: argparse.Namespace) -> GradientDiagnost
         level=args.gradient_diagnostics,
         interval=args.gradient_diagnostics_interval,
         minibatches=args.gradient_diagnostics_minibatches,
+        next_state_populations=args.gradient_diagnostics_next_state,
     )
 
 
