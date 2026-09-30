@@ -200,3 +200,18 @@ attn_mask = alive.unsqueeze(1).unsqueeze(2)        # (B, 1, 1, N) broadcast over
 *   **Inline Comments**: Use them to explain **why**, not **what**.
 *   **Block Comments**: Use them to explain complex algorithms or sections of code.
 *   **Variable Names**: Prefer renaming variables to be self-explanatory over adding comments.
+
+## 8. Commit Messages
+Commits follow the [Conventional Commits](https://www.conventionalcommits.org/) format.
+
+*   **Subject**: `type: summary` (or `type(scope): summary`), lowercase, imperative mood
+    ("add", not "added"), at most 72 characters, no trailing period.
+*   **Types**: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `bench`, `tune`,
+    `config`, `style`, `chore`.
+*   **Body** (optional): a blank line after the subject, wrapped at 72 columns. Say why the
+    change was made and state any measured result; the diff already shows what changed.
+    Keep it to a few sentences and put long write-ups in `docs/`.
+*   **One idea per commit**: fold fixes and follow-ups into the commit they belong to, and
+    keep distinct ideas (including measurement and docs commits) separate.
+*   **Trailers**: only ones that tooling reads, such as `Closes #123` or `BREAKING CHANGE:`.
+    No `Co-Authored-By` lines, session links or other tool attribution.
