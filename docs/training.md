@@ -781,6 +781,42 @@ On a diagnostic update the actor/critic split (`train/grad_norm_actor`,
 terms — the same quantity over a whole minibatch instead of one micro-batch of it — and the
 cheap histogram-cadence probe stands down rather than measuring it twice.
 
+### Next-state populations
+
+Allies, visible enemies, and hidden enemies carry next-state labels that mean different
+things. An ally's or a visible enemy's label is one step of real dynamics. A hidden enemy's
+pairs the believed current state with the true next one, so it also carries the correction
+of however far the belief has drifted. One likelihood over all three decides how much each
+population moves the trunk, and the aggregate loss cannot say which one it is.
+
+Every run logs the calibration of each population, with no gradient diagnostic needed:
+
+- `next_state_population/<population>/token_share` — its share of supervised tokens.
+- `next_state_population/<population>/{nll,z2,log_sigma,sq_err}` — channel means of the
+  likelihood, the squared standardized residual, the log spread, and the squared error.
+- `next_state_z2/<population>/<channel>` and `next_state_log_sigma/<population>/<channel>`.
+  A head whose spread is honest reads `z2` = 1.0; above means overconfident.
+
+`--gradient-diagnostics-next-state`, alongside any level, splits the `next_state` term's
+gradient by population and splits each population again into even and odd environments. It
+does this for the trained NLL and, at the same weights, for beta-NLL at beta 0.5 and for
+squared error on the means. So one run trains one objective and still reports how the
+alternatives would divide the trunk once the spread has trained. Groups are
+`next_state_<likelihood>` and `trunk_next_state_<likelihood>`, with the usual `grad_norm`,
+`grad_share`, and `grad_cos` per population, plus:
+
+- `grad_halves_cos/<group>/<population>` — cosine between the two halves. The halves are
+  independent samples of one population's gradient, so near 1 is signal and near 0 is noise.
+- `grad_coherent_norm/<group>/<population>` — `2 sqrt(<g_a, g_b>)`, the population's
+  expected gradient norm with the per-token noise removed.
+- `grad_coherent_fraction/<group>/<population>` — the coherent part of its squared norm.
+- `grad_coherent_share/<group>/<population>` — its share of the summed coherent norms: which
+  population the optimizer learns from, as opposed to which one is loudest.
+
+The trained likelihood's six parts sum to the `next_state` term's gradient to floating-point
+tolerance, which [`test_next_state_populations.py`](../tests/train/test_next_state_populations.py)
+asserts. The split costs eighteen extra backward traversals per diagnosed micro-batch.
+
 ## Engineering validation
 
 Training behavior is covered across:

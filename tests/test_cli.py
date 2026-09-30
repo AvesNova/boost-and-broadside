@@ -431,7 +431,12 @@ def test_print_config_bypasses_runtime_dispatch_and_records_cli_sources(
         # Observability, recorded like any other launch decision. Off is what a
         # run that measured nothing has to say for itself, and what a run that
         # wants its compiled update has to be.
-        "gradient_diagnostics": {"level": "off", "interval": 10, "minibatches": 1},
+        "gradient_diagnostics": {
+            "level": "off",
+            "interval": 10,
+            "minibatches": 1,
+            "next_state_populations": False,
+        },
         # A CPU launch has nothing to size, and says so rather than implying a
         # decision it did not make. The tiers are still claimed: this launch
         # really does run at half the profile's width and a smaller microbatch,
@@ -838,7 +843,23 @@ def test_gradient_diagnostics_reach_the_trainer_through_the_launch(monkeypatch) 
         "level": "top_level",
         "interval": 4,
         "minibatches": 1,
+        "next_state_populations": False,
     }
+
+
+def test_the_next_state_population_split_is_one_flag_away() -> None:
+    args = _parse(
+        [
+            "train",
+            "--profile",
+            "bc",
+            "--gradient-diagnostics",
+            "top_level",
+            "--gradient-diagnostics-next-state",
+        ]
+    )
+    settings = cli_commands.gradient_diagnostics_from_args(args)
+    assert settings.decomposes_next_state_by_population
 
 
 def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -> None:
@@ -871,7 +892,12 @@ def test_trainer_receives_complete_resolved_and_launch_provenance(monkeypatch) -
         "compile_mode": "default",
         "wandb": False,
         "allow_config_drift": False,
-        "gradient_diagnostics": {"level": "off", "interval": 1, "minibatches": 1},
+        "gradient_diagnostics": {
+            "level": "off",
+            "interval": 1,
+            "minibatches": 1,
+            "next_state_populations": False,
+        },
         # What the command line changed, recorded beside what it resolved to.
         "overrides": {},
     }

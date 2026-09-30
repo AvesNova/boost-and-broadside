@@ -471,6 +471,53 @@ class PhysicalNextState:
         index = torch.tensor(columns, dtype=torch.long, device=uncertainty.device)
         return torch.exp(2.0 * uncertainty.index_select(-1, index))
 
+    def log_sigma(self, prediction: torch.Tensor) -> torch.Tensor:
+        """Per-channel log spread, ``(..., 11)``, in mean-channel order.
+
+        :meth:`variance` gathers with an index tensor built on the device, a
+        synchronizing host copy; this stacks slices instead, so it is safe on the
+        per-micro-batch path.
+        """
+
+        uncertainty = prediction[..., PHYSICAL_MEAN_DIM:]
+        columns = [0] * PHYSICAL_MEAN_DIM
+        columns[POSITION_X], columns[POSITION_Y] = POSITION_SIGMA
+        columns[VELOCITY_X], columns[VELOCITY_Y] = VELOCITY_SIGMA
+        for mean_channel, column in SCALAR_UNCERTAINTY:
+            columns[mean_channel] = column
+        return torch.stack([uncertainty[..., column] for column in columns], dim=-1)
+
+    def standardized_square(self, prediction: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """Per-channel squared standardized residual, ``(..., 11)``.
+
+        The calibration reading of :meth:`loss`: a head whose spreads are honest
+        averages 1.0 on every channel, above 1.0 where it claims more certainty
+        than it has, and below where it claims less. Position and velocity use
+        the bivariate Mahalanobis distance, split evenly between the two axes
+        exactly as the likelihood is, so each axis also averages 1.0 when
+        calibrated -- a per-axis ``(r / sigma)**2`` would not, once rho is
+        nonzero.
+        """
+
+        residual = self.residual(prediction, labels)
+        uncertainty = prediction[..., PHYSICAL_MEAN_DIM:]
+        terms = [None] * PHYSICAL_MEAN_DIM
+        for mean_x, axes, rho_column in (
+            (POSITION_X, POSITION_SIGMA, POSITION_RHO),
+            (VELOCITY_X, VELOCITY_SIGMA, VELOCITY_RHO),
+        ):
+            a = residual[..., mean_x] * torch.exp(-uncertainty[..., axes[0]])
+            b = residual[..., mean_x + 1] * torch.exp(-uncertainty[..., axes[1]])
+            rho = torch.tanh(uncertainty[..., rho_column])
+            one_minus = (1.0 - rho * rho).clamp_min(1e-6)
+            half = 0.5 * (a * a - 2.0 * rho * a * b + b * b) / one_minus
+            terms[mean_x] = half
+            terms[mean_x + 1] = half
+        for mean_channel, column in SCALAR_UNCERTAINTY:
+            standardized = residual[..., mean_channel] * torch.exp(-uncertainty[..., column])
+            terms[mean_channel] = standardized * standardized
+        return torch.stack(terms, dim=-1)
+
 
 _VECTOR_CACHE: dict[tuple[tuple[float, ...], torch.device], torch.Tensor] = {}
 

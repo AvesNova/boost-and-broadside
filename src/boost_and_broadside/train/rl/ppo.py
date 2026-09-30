@@ -91,6 +91,17 @@ from boost_and_broadside.train.rl.hex_density import HEX_DENSITY_DIM, HexDensity
 from boost_and_broadside.train.rl.live_rating import TwoStageRating
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.match_matrix import MatchMatrix
+from boost_and_broadside.train.rl.next_state_populations import (
+    candidate_losses,
+    environment_halves,
+    gradient_terms,
+    population_masks,
+    population_metric_records,
+    population_moments,
+)
+from boost_and_broadside.train.rl.next_state_populations import (
+    gradient_metric_records as next_state_gradient_records,
+)
 from boost_and_broadside.train.rl.opponents import (
     LeagueSlot,
     OpponentMixin,
@@ -2017,6 +2028,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         next_state_visible_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu
         next_state_hidden_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu
         label_sq_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
+        # Per-population calibration sums, (3, 4, 11) and (3,), float64 on gpu.
+        ns_population_sums: torch.Tensor | None = None
+        ns_population_counts: torch.Tensor | None = None
+        ns_population_terms: dict[str, torch.Tensor] = {}
         _need_aux = is_primary and self.cfg.next_state_coef > 0.0
         if _need_aux:
             non_terminal = ~mb_terminated.unsqueeze(-1)  # (T, B_mb, 1)
@@ -2043,6 +2058,26 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if self.cfg.next_state_coef > 0.0:
                 next_state_cont_loss = (per_dim * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
                 next_state_loss = next_state_cont_loss
+
+            # Allies, visible enemies, and hidden enemies carry labels that mean
+            # different things (see next_state_populations), so the objective's
+            # balance between them is measured rather than read off the sum.
+            populations = population_masks(
+                ns_mask,
+                curr_mb_obs[ObsKey.TEAM_ID][:, :, : self.buffer.num_ships],
+                curr_mb_obs[ObsKey.VISIBLE][:, :, : self.buffer.num_ships].bool(),
+            )  # (3, T, B_mb, N)
+            ns_population_sums, ns_population_counts = population_moments(
+                self.next_state, pred_next, labels.detach(), per_dim, populations
+            )
+            if grad_terms is not None and self._grad_diag.decomposes_next_state_by_population:
+                ns_population_terms = gradient_terms(
+                    candidate_losses(self.next_state, pred_next.float(), labels.detach(), per_dim),
+                    populations,
+                    environment_halves(populations.shape[2], populations.device),
+                    ns_sum,
+                    self.cfg.next_state_coef,
+                )
 
             with torch.no_grad():
                 # Squared error, not the objective: this series predates the NLL
@@ -2224,6 +2259,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                         num_components=K,
                     )
                 )
+            terms.update(ns_population_terms)
             grad_terms.accumulate(terms, scale=grad_scale)
 
         # ---- Actor / critic gradient split ------------------------------------
@@ -2262,6 +2298,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["next_state_visible_per_feat"] = next_state_visible_per_feat
             diag["next_state_hidden_per_feat"] = next_state_hidden_per_feat
             diag["label_sq_per_feat"] = label_sq_per_feat  # (pred_dim,) gpu or None
+            diag["ns_population_sums"] = ns_population_sums  # (3, 4, 11) gpu or None
+            diag["ns_population_counts"] = ns_population_counts  # (3,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
             diag["approx_kl"] = (((ratio - 1) - log_ratio) * pg_f).sum() / pg_sum
@@ -2899,6 +2937,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 records.update(scope_metric_records(prefix, statistics))
 
         records.update(self._actor_critic_split(accumulator))
+        records.update(next_state_gradient_records(accumulator))
         records["grad_diag/microbatches"] = float(accumulator.microbatches)
         records["grad_diag/terms"] = float(len(accumulator.term_names))
         records["grad_diag/seconds"] = seconds
@@ -3114,6 +3153,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ns_visible_accum: list[torch.Tensor] = []
         ns_hidden_accum: list[torch.Tensor] = []
         label_sq_accum: list[torch.Tensor] = []
+        # Raw sums over every pass of the update, finalized once at the end: a
+        # small population's mean is a ratio of sums, not a mean of ratios.
+        ns_population_sums: torch.Tensor | None = None
+        ns_population_counts: torch.Tensor | None = None
         hist_returns: torch.Tensor | None = None
         hist_logprob: torch.Tensor | None = None
         hist_alive: torch.Tensor | None = None
@@ -3329,6 +3372,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                                         if ns_hid_step is None
                                         else ns_hid_step + diag[_key]
                                     )
+                            if diag.get("ns_population_sums") is not None:
+                                if ns_population_sums is None:
+                                    ns_population_sums = diag["ns_population_sums"]
+                                    ns_population_counts = diag["ns_population_counts"]
+                                else:
+                                    ns_population_sums = (
+                                        ns_population_sums + diag["ns_population_sums"]
+                                    )
+                                    ns_population_counts = (
+                                        ns_population_counts + diag["ns_population_counts"]
+                                    )
                             if diag.get("label_sq_per_feat") is not None:
                                 label_sq_step = (
                                     diag["label_sq_per_feat"]
@@ -3510,6 +3564,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     metrics[f"next_state_label_scale/{name}"] = self.next_state.scales[
                         i
                     ] * math.sqrt(mean_sq)
+
+        if ns_population_sums is not None:
+            metrics.update(population_metric_records(ns_population_sums, ns_population_counts))
 
         for name, (total, count) in all_buffers[0].belief_diagnostics.items():
             metrics[name] = (total / count.clamp(min=1.0)).item()

@@ -268,9 +268,11 @@ def test_measuring_does_not_disturb_the_gradient_that_gets_applied(tmp_path) -> 
 
     Compared on one fixed minibatch rather than end to end, because the update
     loop draws its minibatch order from the unseeded global numpy RNG and two
-    whole updates are not reproducible even with diagnostics off.
+    whole updates are not reproducible even with diagnostics off. Measured at
+    the widest setting, next-state population split included.
     """
     trainer = _prepared_trainer(tmp_path, "reward_full")
+    trainer._grad_diag = GradientDiagnosticsConfig(level="reward_full", next_state_populations=True)
     trainer._precompute_lambda_aggregates(
         trainer.buffer, trainer._active_component_weights(), is_primary=True
     )
