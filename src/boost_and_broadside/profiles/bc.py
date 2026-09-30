@@ -38,7 +38,13 @@ BC_SCHEDULE_SPEC = replace(
     # balanced one-to-one against the next-state auxiliary BC also weights at
     # 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term carried
     # alongside a live policy gradient.
-    behavior_cloning_coef=hold(1.0),
+    behavior_cloning_coef=hold(0.93),
+    # 18.9 looks large and is not: the value loss is a Huber on normalized
+    # returns whose raw value is ~0.04, so the weighted term lands near 0.8 --
+    # beside behaviour cloning's. The number is large because the value head
+    # was absorbing almost all of its own gradient and passing almost none to
+    # the trunk, which is the thing being corrected.
+    value_function_coef=hold(18.9),
     # League opposition disabled: no roster opponent plays a BC rollout.  The
     # Elo evaluator still runs -- BC's own scripted win rate is what decays the
     # cloning weight -- and it rates against the same derived rungs RL uses.
@@ -53,7 +59,35 @@ BC_PROFILE = replace(
     RL_PROFILE,
     name="bc",
     schedule_spec=BC_SCHEDULE_SPEC,
-    next_state_coef=1.0,
+    # --- Gradient-share balance, set from a measured decomposition ----------
+    # Coefficients chosen so each term takes a target share of the trunk's
+    # pre-clip gradient, from `benchmarks/gradient_decomposition.py` on the
+    # 6.4M-step pilot (docs/internal/grad-decomposition-pilot-sep2026.json).
+    # The gradient of `c * L` is exactly `c * grad L`, so one measurement gives
+    # every coefficient at once:  c_new = c_old * (target share / measured) * G.
+    #
+    # Targets: bc 0.30, value 0.25, next_state 0.15, enemy_action 0.10,
+    # outcome 0.08, density 0.07. The objective takes the plurality; value gets
+    # a real share because BC shapes the trunk for *action*-relevant features
+    # and the critic needs *outcome*-relevant ones, which nothing else supplies
+    # -- run 748's explained variance plateaued at 0.574 with value holding
+    # 0.001 of the trunk. Regularizers are left out of share-targeting: their
+    # scale is meaningful in the nats they live in.
+    #
+    # G puts the total pre-clip norm near 0.4 against max_grad_norm 1.0, so the
+    # clip becomes a spike-catcher instead of binding every step by a factor of
+    # 100. That rescale is only safe because Adam's eps is 1e-8; at the old
+    # 1e-5 it would have pushed a third of the network further into SGD.
+    #
+    # Provisional, and known to be. They come from a head whose sigma has not
+    # calibrated (hidden-enemy position read z^2 = 11 at 6.4M), which matters
+    # most for next_state, whose beta-NLL weighting is sigma-dependent.
+    # Re-measure near 30M and adjust once; `train/clip_fire_rate` and the term
+    # shares are the readouts.
+    next_state_coef=2.9e-4,
+    enemy_action_coef=1.0,
+    outcome_categorical_coef=0.052,
+    global_density_coef=4.9,
     # Beta-NLL weighting on the next-state likelihood. At zero the gradient is
     # r / sigma**2, which put 7,421x more of itself on the channels and
     # visibility classes the head already predicts best -- 80% on allies and
