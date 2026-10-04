@@ -229,6 +229,33 @@ same square-lattice axis bias at every level (the 5-colour code rotates 26.6° p
 Both share the residue-code failure mode: losing a middle level costs about one coarser
 cell of error.
 
+**Why 9 among all possible colour counts.** A code that wraps the square torus and is
+self-similar from level to level must step by multiplication by a Gaussian integer
+`β = a + bi`. The colour count is then `N = a² + b²` and each level rotates by
+`atan(b/a)`. So the possible counts are 4, 5, 8, 9, 10, 13, 16, 17, 18, 20, 25, ...;
+3, 6, 7 and 12 are hexagonal-lattice counts and cannot tile a square torus. A real
+base (2, 3, 4, 5) has no rotation and splits into independent x and y codes; a base
+with `gcd(a, b) = 1` (2+i, 3+i, 3+2i, 4+i) rotates and its colours form one cycle of
+length N. N = 2 fails because two corners of a cell share a colour.
+
+| N | base | rotation | per-axis | levels to ~4 px | finest | logits | step | info mean | info min | info per logit |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 4 | 2 | 0° | yes | 14 | 4.0 px | 56 | 2.00x | 0.39 | 0.00 | 0.097 |
+| 5 | 2+i | 26.6° | no | 12 | 4.2 px | 60 | 2.24x | 0.61 | 0.22 | 0.122 |
+| 8 | 2+2i | 45° | no | 10 | 2.0 px | 80 | 2.83x | 1.08 | 0.69 | 0.135 |
+| 9 | 3 | 0° | yes | 9 | 3.3 px | 81 | 3.00x | 1.20 | 0.81 | 0.133 |
+| 10 | 3+i | 18.4° | no | 9 | 2.1 px | 90 | 3.16x | 1.30 | 0.92 | 0.130 |
+| 13 | 3+2i | 33.7° | no | 8 | 2.3 px | 104 | 3.61x | 1.57 | 1.18 | 0.120 |
+| 16 | 4 | 0° | yes | 7 | 4.0 px | 112 | 4.00x | 1.77 | 1.39 | 0.111 |
+| 17 | 4+i | 14.0° | no | 7 | 3.2 px | 119 | 4.12x | 1.83 | 1.45 | 0.108 |
+| 25 | 5 | 0° | yes | 6 | 4.2 px | 150 | 5.00x | 2.22 | 1.83 | 0.089 |
+
+Information per logit peaks at N = 8 to 10. Above that, logits grow faster than the
+information they carry, the error from losing one level grows with the step (3.6x at
+13, 4x at 16), and blur steps coarsen. 16 is the dyadic code with pairs of levels fused.
+9 is kept for its per-axis decode; 10 (3+i) is the swap-in if square-lattice axis bias
+shows up, since its 18.4° rotation per level averages the bias out.
+
 Joint 9-way softmax per level, 9 levels, finest 3.3 px. A factorised 2×3-way variant
 (54 logits) is the cheaper fallback.
 
