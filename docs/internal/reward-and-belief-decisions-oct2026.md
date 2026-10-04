@@ -189,7 +189,9 @@ resident shard and 3.2 GB host RAM for the stored shards. Decided instead:
 * The belief and the rollout buffer store **moments**, about today's footprint:
   * position: mean (2, fp32) and one sigma;
   * velocity: 2D mean and 2x2 covariance;
-  * attitude and the small channels: mean and spread each;
+  * attitude: mean angle and spread;
+  * health, power, shield delay, local log index: mean and sigma each;
+  * cooldown: its 4-bin distribution directly (cheaper and exact);
   * angular velocity: taken from the enemy-action head's distribution, already stored.
 * The categorical **input and baseline** are rebuilt inside the forward pass from the
   moments: position by the per-level blur curve λ(σ / d_ℓ); each velocity axis as the
@@ -259,14 +261,64 @@ shows up, since its 18.4° rotation per level averages the bias out.
 Joint 9-way softmax per level, 9 levels, finest 3.3 px. A factorised 2×3-way variant
 (54 logits) is the cheaper fallback.
 
-### 3.4 Other channels
+### 3.4 Attitude: 4-colour, 4-level circular code
 
-As in §2.3–2.4 of the plan, with sharp targets. Velocity keeps the symlog-with-knee
-encoding at v₀ ≈ 100 px/s. **Open:** three 1D axes at 0°/120°/240° (243 logits) against
-a hex barycentric two-hot in the u-disc (~640 cells); the axes cannot represent a bimodal
-joint, but with moment storage the belief is unimodal anyway, which weakens the case for
-the hex variant. Angular velocity is tied to the enemy-action head's turn marginal.
-Gaussian uncertainty terms are removed; `time_since_observation` stays.
+The 1D analogue of the position code. Level ℓ has 4 colours spaced
+`360° / 4^(ℓ+1)` apart and repeats every `360° / 4^ℓ`; each level is a two-hot between
+the two neighbouring colours. It wraps the circle exactly. Colour spacings by level:
+90°, 22.5°, 5.6°, 1.4°. **16 logits, 1.4° finest**, against the plan's flat 72 bins at
+5°. Aiming needs about 1.5°: a 10 px hull at 200–400 px subtends 1.4°–2.9°.
+
+| colours per level | levels | logits | finest | info mean | info at midpoint | per logit |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 8 | 16 | 1.4° | 0.19 | 0 | 0.10 |
+| 3 | 5 | 15 | 1.5° | 0.60 | 0.41 | 0.20 |
+| **4** | **4** | **16** | **1.4°** | **0.89** | **0.69** | **0.22** |
+| 6 | 3 | 18 | 1.7° | 1.29 | 1.10 | 0.22 |
+
+Information is `ln k` minus the entropy of the two-hot target, in nats.
+
+Known wrinkle: an enemy's next attitude is a five-spike mixture (heading plus 0°, ±5°,
+±15°) spanning 30°, wider than the two finer levels' periods (22.5°, 5.6°), so those
+levels sit near uniform for enemies. Training is unaffected (per-level cross-entropy
+against sharp truth is proper) and the belief collapses to mean and spread anyway.
+
+**Open:** derive a hidden ship's attitude belief instead of storing it. Physics sets
+attitude to the velocity heading rotated by the turn offset; the velocity belief gives the
+heading and the enemy-action head gives the offset distribution. Stalled ships (below
+minimum speed) hold attitude and are the exception. If derived, the code above remains
+the input encoding but the next-state head has no attitude target.
+
+### 3.5 Other channels
+
+Sharp targets everywhere. Bins are sized to resolve the events that matter (a hit, a
+shield-delay reset, a field transition) with natural values on bin centres; slow
+deterministic drift is cheap because the residual baseline makes "no change" free.
+
+| channel | range | bins | spacing | event resolved | drift per decision |
+|---|---|---:|---|---|---|
+| health | 0–100 | 21 | 5 hp | 10 hp hit = 2 bins | recharge 0.5 hp, 0.1 bin |
+| power | 0–100 | 21 | 5 | boost drain | ~0.15 bin |
+| shield delay | 0–5 s | 21 | 0.25 s | reset to 5 s is the last bin | countdown, 0.13 bin |
+| local log index | −ln 2 to ln 2 | 21 | 0.069 | the five plateaus land on bins 0, 5, 10, 15, 20 | ~0.7 bin |
+| cooldown | 0–0.1 s | 4 | 1 tick | exactly 3 ticks | — |
+| angular velocity | 5 values | 5 | — | exact | — |
+
+* **Local log index** goes from 5 to 21 bins because transitions between plateaus
+  matter and the per-decision change (about 0.05) moved a 5-bin two-hot by only 0.14
+  bin. **Open:** compute it at the believed position from the static field map instead
+  of storing a belief (reopens the deferred "inferring grad(n) at a believed position").
+* **Angular velocity** stays at 5 bins: in both flight paths the stored value is exactly
+  `turn_offset / dt` (0, ±5°, ±15° per tick; 0 when stalled) and does not depend on speed
+  or index. The rotation of the velocity heading under lift is carried by the velocity
+  and attitude channels. Tied to the enemy-action head's turn marginal; no separate
+  belief. (Raised in review as possibly 21 bins; kept at 5 on this evidence.)
+* **Velocity** keeps the symlog-with-knee encoding at v₀ ≈ 100 px/s. **Open:** three 1D
+  axes at 0°/120°/240° (243 logits) against a hex barycentric two-hot in the u-disc
+  (~640 cells); with moment storage the belief is unimodal, which weakens the hex case.
+* Going finer than 21 (e.g. 51 for health and shield delay) is worth trying only if
+  those channels sit at the identity baseline after training.
+* Gaussian uncertainty terms are removed; `time_since_observation` stays.
 
 Before the first run, set `next_state_coef` from a measured trunk gradient share; the
 head's norm will differ from the Gaussian head's (76% of the trunk in run 748).
