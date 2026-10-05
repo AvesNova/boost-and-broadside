@@ -125,8 +125,13 @@ Follows DreamerV3 / Dreamer 4.
   equals the scalar return, so what the value means does not change.
 * **Return scaler:** no longer needed for the critic; the symlog-spaced support handles
   scale. The compression lives in exactly one place, the bin spacing.
-* Bin count: DreamerV3 and Dreamer 4 use 255. "Stop Regressing" (Farebrother et al.,
-  2024) used 51–101 with HL-Gauss. **Open:** pick by measurement.
+* **51 bins** per head. DreamerV3 and Dreamer 4 use 255 because they span many
+  domains; this project does not need to. DreamerV3's support is
+  `symexp(linspace(-20, 20))`; at 51 bins that range would leave a spacing of 0.8 symlog
+  units, with the first bins off zero at ±1.2 and ±4.0 in raw units, far too coarse
+  for these returns. **Narrow the range** to cover each head's measured maximum |return|
+  with margin (for example ±5 symlog units, ±147 raw, spacing 0.2). Two-hot target as in
+  DreamerV3.
 * Explained variance is computed on the expectation so the series stays comparable
   with runs 748 and 750. The Huber value loss and any value clipping go away.
 
@@ -149,8 +154,31 @@ Follows DreamerV3 / Dreamer 4.
 ### 2.3 Combining heads into one advantage
 
 * Weight each head's scalar advantage by its level weight, **sum, then normalise
-  once**, using DreamerV3's scale: EMA of the 5th–95th percentile range S of the
-  returns, divide by max(1, S).
+  once**, exactly as DreamerV3 does. Verified against the official source
+  (`github.com/danijar/dreamerv3`, `dreamerv3/configs.yaml`, `dreamerv3/agent.py`
+  `imag_loss`, `embodied/jax/utils.py` `Normalize`):
+
+  | setting | DreamerV3 value |
+  |---|---|
+  | `retnorm` | `impl: perc, rate: 0.01, limit: 1.0, perclo: 5.0, perchi: 95.0, debias: False` |
+  | scale | `max(limit, hi − lo)` of EMA percentiles of the lambda-returns (EMA rate 0.01, i.e. decay 0.99) |
+  | advantage | `(ret − value) / scale`: the mean is **not** subtracted |
+  | `advnorm`, `valnorm` | `impl: none` |
+  | critic / reward heads | `symexp_twohot`, 255 bins, `symexp(linspace(-20, 20))` |
+  | discount | `horizon: 333`, so gamma = 1 − 1/333 ≈ 0.997; lambda 0.95 |
+  | critic regulariser | `slowreg: 1.0` toward an EMA copy of the critic (`slowvalue rate 0.02`) |
+  | actor entropy | `actent: 3e-4` |
+
+  So: the summed return's 5th–95th percentile spread, EMA decay 0.99, floored at 1;
+  divide the summed advantage by it; **drop PPO's per-minibatch advantage
+  standardisation** (no mean subtraction). The slow-critic regulariser is not adopted;
+  PPO's fixed rollout targets do that job here.
+* **The unit, "1".** DreamerV3's floor is in raw reward units: advantages are never
+  amplified when the return spread is under one unit. **A win is 1** (`win_weight` is
+  already 1.0, and the win is the objective and the largest single event). The floor
+  then binds only when outcomes barely vary across the batch, as in the run-735
+  stalemate where 90% of games timed out; in that regime small kill and damage
+  differences stay at their natural size instead of being blown up.
 * This replaces the per-component `AdvantageScaler`, which normalised each component
   to unit RMS before weighting and so cancelled the derived weights. After the change
   the level weights reach the policy exactly as derived, and splitting or merging events
@@ -160,10 +188,8 @@ Follows DreamerV3 / Dreamer 4.
 
 ### 2.4 Policy objective
 
-PPO is unchanged. **Open, later and separate:** Dreamer 4's PMPO (advantage sign only,
-alpha 0.5, reverse KL to the behaviour-cloned prior at beta 0.3). It suits a project with
-a BC phase and needs no advantage scaling, but it replaces the actor loss and must not
-ride along with the reward change.
+PPO is unchanged. Dreamer 4's PMPO (advantage sign only, alpha 0.5, reverse KL to the
+behaviour-cloned prior at beta 0.3) was considered and is not part of this change.
 
 ---
 
@@ -198,7 +224,14 @@ resident shard and 3.2 GB host RAM for the stored shards. Decided instead:
   exact 1D Gaussian with variance `nᵀ Σ n` projected onto that axis, then binned. These
   activations are transient and micro-batched.
 * The moments for the next step are decoded from the head's predicted distribution
-  (mean by the coarse-to-fine projection, sigma from per-level sharpness). Sharp
+  by **closed-form least squares only: no sampling, no branching search over
+  candidates.** Per level, the mean is the probability-weighted circular mean of the
+  colour positions (a complex phase); levels combine coarse to fine by unwrapping each
+  finer phase against the coarser estimate, as the Fourier ladder decode does today.
+  Sigma is a weighted least-squares fit of log per-level sharpness against the blur
+  curve. Velocity: the 2D mean is the least-squares solution from the three axis
+  means; the three axis variances give the 2x2 covariance exactly. Scalars: mean and
+  variance of the histogram. Sharp
   targets keep the head calibrated, which is what makes the decoded sigma meaningful.
 * Visible ships: mean = truth, sigma = floor.
 * Accepted cost: the belief cannot represent multimodal positions ("left or right of
@@ -351,77 +384,59 @@ head's norm will differ from the Gaussian head's (76% of the trunk in run 748).
 
 ## 5. Build order and gates
 
-1. **Rewards and critic together** (§1, §2), behind config switches. The categorical
-   critic is a loss-time change, so landing it with the rewards saves one schema bump
-   and one cold start. Gates: per-head zero-sum test at ratio 1; per-head gradient
-   shares measured before any comparison.
-2. **Next-state head and belief** (§3). Read against the dead-reckoning and persistence
-   baselines already logged, not against the Gaussian head. The first thing to check is
-   cooldown, where a free "no change" was the audit's diagnosis.
-3. **Map-scale randomisation** (§4), compared with step 2 at s = 1.
+**Decided: everything lands together and is tested once.** Rewards, critic, next-state
+head, belief and map scale go in as one change with one schema bump and one cold start.
+No per-change config switches, no intermediate A/Bs (five heads against fifteen and
+PMPO are not run). Coefficients set from measured gradient norms (`next_state_coef`, the
+BC loss balance) are re-measured **once, at the end**.
 
-Each step retires the checkpoint schema; there is no weight migration.
-
-**Open A/B worth running in step 1:** five heads against today's fifteen at the same
-weights. Linearity says the policy gradient should not differ; the critic's
-representation might.
+Gates before the run: the per-head zero-sum test at ratio 1; the encode/decode
+round-trip tests (§6). Read the run against the dead-reckoning and persistence baselines
+already logged, not against the Gaussian head; check cooldown first, where a free "no
+change" was the audit's diagnosis.
 
 
 ---
 
-## 6. Open questions and concerns
+## 6. Review outcomes and remaining concerns
 
-Raised in the final review pass. Ordered by how much a wrong answer would cost.
+Resolved in review:
 
-1. **Step 1 bundles too many changes.** Five heads, raw rewards, a categorical critic,
-   the new advantage normalisation and the reward redefinition land together. If the run
-   is worse, nothing says which one. Put each behind its own config switch so a
-   regression can be bisected with short runs, even if the first long run turns them all
-   on.
-2. **The first hidden step starts sharp.** When a ship disappears its belief is the last
-   visible state with sigma at the floor, so the baseline is sharp. With a zero residual
-   the belief stays sharp and frozen: the "static prior" the September audit measured.
-   Widening and moving it is now a learned skill with no prior (by decision). Watch the
-   hidden-age position error against dead reckoning from the first updates; this is
-   where the design is most likely to underperform.
-3. **The encode/decode round trip must be exact.** If the head outputs zero residual,
-   decoding the blurred input must return the same mean and sigma, or the belief drifts
-   on its own every step. Needs a unit test for each code: 9-colour position (coarse to
-   fine decode), 4-colour attitude, the three velocity axes, and the 21-bin scalars near
-   their range edges where clipping breaks the Gaussian.
-4. **The unit of the advantage floor.** DreamerV3 divides by max(1, S); the 1 assumes a
-   meaningful reward unit. With derived weights the unit is whatever the level weights
-   make it. Choose it deliberately (for example, a kill worth about 1) or the floor
-   either never binds or always binds. Also decide whether PPO's per-minibatch
-   advantage standardisation stays; DreamerV3 does not subtract the mean.
-5. **Critic bin count and range.** 255 (Dreamer) against 51–101 (HL-Gauss). Five heads
-   at 255 bins is 1 275 logits per ship token, which is activation memory
-   in the update. Measure.
-6. **Zone progress gamma** (~0.995) is a starting guess. Log the discount-weighted lag
-   between entering a zone and being paid, and set it from that.
-7. **Map-scale range and the scripted opponent.** The range and distribution are open.
-   Field generation and the scripted strategy read scalar radii, so per-episode scale
-   breaks the BC teacher and the scripted opponent on every scaled environment until they
-   read per-env geometry.
-8. **Coarse position levels carry little at s = 1.** Levels 0–1 of the 9-colour code
-   (spacings 21 845 and 7 282 px) barely change within a 2 600 px playable radius and only
-   encode the random map centre. Harmless, about 18 logits; they matter at large maps.
-9. **Hidden health and shield delay are bimodal** (hit or not); the Gaussian belief
-   blurs that. Log hidden health error by age.
-10. **Every step retires the checkpoint schema**, so BC and every tuned coefficient
-    (`next_state_coef`, the BC loss balance from `db55887`) must be re-measured at each
-    step. Budget the cold starts.
-11. **Research details unverified.** DreamerV3's normaliser decay and critic range came
-    from memory because the proxy blocked arxiv. Check before copying them into config.
-12. **Five heads against fifteen** (§5) and **PMPO** (§2.4) remain later experiments.
+| # | item | decision |
+|---|---|---|
+| 1 | bundling many changes into one step | accepted: everything at once, tested once (§5) |
+| 2 | first hidden step starts sharp and frozen | accepted risk; watch hidden-age position error against dead reckoning from the first updates |
+| 3 | encode/decode round trip | must be exact; closed-form least squares, no sampling or branching (§3.2). Unit test each code: 9-colour position, 4-colour attitude, three velocity axes, 21-bin scalars near their range edges where clipping distorts the Gaussian |
+| 4 | advantage floor unit | follow DreamerV3 exactly, verified (§2.3); a win is 1 |
+| 5 | critic bins | 51, with a narrowed range (§2.1) |
+| 6 | zone progress gamma | see below |
+| 7 | map scale breaks the scripted agents | **required work**: field generation and the scripted strategy must read per-env geometry (`state.zone_radius`, per-env field radii) before scale randomisation is on |
+| 8 | coarse position levels near-constant at s = 1 | accepted |
+| 9 | bimodal hidden health and shield delay | accepted limitation; log hidden health and shield-delay error by hidden age |
+| 10 | retuning after schema changes | once, at the end |
+| 11 | unverified DreamerV3 numbers | verified from the official repository (§2.3) |
+| 12 | five-vs-fifteen heads, PMPO | not run |
+
+**Zone progress gamma.** The payment lag is one tick when the zone is uncontested:
+progress is paid on the tick a ship's presence moves the meter. But gamma sets how far
+back credit reaches, and the decision that earns progress is choosing a zone and flying
+to it, several seconds before the first payment (adjacent zones on the 1 200 px ring
+are about 1 400 px apart, roughly 14 s at cruise). Repeated payments after arrival also
+credit the approach. That is an engagement-length horizon, so **0.995 / lambda 0.95**
+(the kill-and-death values) stays; damage's 0.991 would be too short.
+
+Still open:
+
+* **Map-scale range and distribution** (§4).
 
 ---
 
 ## Sources
 
-The research was done through search summaries; arxiv and several publisher sites were
-blocked by the network proxy, so DreamerV3's normaliser decay and critic range are from
-memory and unverified.
+Most research was done through search summaries because arxiv and several publisher
+sites were blocked by the network proxy. The DreamerV3 settings in §2.3 were then
+verified directly against `github.com/danijar/dreamerv3` (main branch, fetched
+October 5, 2026).
 
 * Hafner et al., *Mastering Diverse Domains through World Models* (DreamerV3).
 * Hafner, Yan et al., *Training Agents Inside of Scalable World Models* (Dreamer 4),
