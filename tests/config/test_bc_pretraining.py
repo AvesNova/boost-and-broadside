@@ -64,11 +64,6 @@ def test_the_architecture_matches_rl_exactly(bc, rl) -> None:
     assert bc_env.num_ships == rl_env.num_ships
     assert bc_env.num_fields == rl_env.num_fields
     assert (bc_env.frontline is None) == (rl_env.frontline is None)
-    # The categorical outcome head is built only when something trains it, so a
-    # mismatch here would hand RL a checkpoint missing those weights entirely.
-    assert (bc.train_config.outcome_categorical_coef > 0.0) == (
-        rl.train_config.outcome_categorical_coef > 0.0
-    )
 
 
 def test_a_none_target_is_accepted_but_a_nonsense_one_is_not() -> None:

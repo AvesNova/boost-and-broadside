@@ -271,7 +271,11 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
             (500_000_000, 1.5e-4, "hold"),
         ),
         policy_gradient_coef=hold(1.0),
-        entropy_coef=hold(0.005),
+        # DreamerV3's actor entropy with this advantage normaliser. Advantages
+        # are now in win units with a floor of one, so a dense level's
+        # advantage can be ~0.01 and 0.005 would let the bonus dominate it.
+        # A starting point for the retune (plan section 7.4).
+        entropy_coef=hold(3e-4),
         behavior_cloning_coef=hold(2.0),
         value_function_coef=hold(1.0),
         sigreg_coef=hold(0.00),

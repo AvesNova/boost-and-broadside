@@ -98,7 +98,6 @@ class ProfileSpec:
     next_state_coef: float
     next_state_beta: float
     enemy_action_coef: float
-    outcome_categorical_coef: float
     global_density_coef: float
 
     # --- Discounts, per physics tick ---
@@ -107,14 +106,12 @@ class ProfileSpec:
     component_gammas_per_tick: Mapping[str, float]
     component_lambdas_per_tick: Mapping[str, float]
 
-    # --- Optimizer, scalers, budget ---
+    # --- Optimizer, advantage normaliser, budget ---
     clip_coef: float
     max_grad_norm: float
     total_timesteps: int
-    return_ema_alpha: float
-    return_min_span: float
-    advantage_min_rms: float
-    value_huber_delta: float
+    return_percentile_decay: float
+    return_scale_floor: float
 
     # --- League and live evaluation ---
     league_size: int

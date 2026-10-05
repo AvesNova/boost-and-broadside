@@ -344,10 +344,12 @@ The output shape is `(B, N, 3)` action indices.
 
 ## Decomposed value head
 
-The critic produces one value per ship and active reward level. Most levels use a
-local token projection. The levels in `GLOBAL_VALUE_COMPONENTS` — just `outcome` — use
-`GlobalValueHead`, which reads the global token and broadcasts one estimate per
-environment back across the ship axis.
+The critic is categorical. Every per-ship reward level is read off a local token
+projection as logits over fixed symlog-spaced bins and valued by their expectation in raw
+reward units. The level in `GLOBAL_VALUE_COMPONENTS` — the outcome — uses
+`GlobalValueHead`, which reads the global token and returns four class logits per
+environment (win, tie, loss, unresolved); its value is `P(win) - P(loss)` from the
+observer's side, which the trainer signs per ship by team.
 
 The split is a property of the *rewards*, not a modelling preference. The outcome is a
 function of the ship's team and the match result alone and pays the living and the dead

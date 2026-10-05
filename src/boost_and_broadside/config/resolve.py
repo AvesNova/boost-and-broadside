@@ -253,17 +253,15 @@ def _validate_profile(profile: ProfileSpec) -> None:
     for name, value in (
         ("profile.clip_coef", profile.clip_coef),
         ("profile.max_grad_norm", profile.max_grad_norm),
-        ("profile.return_ema_alpha", profile.return_ema_alpha),
-        ("profile.return_min_span", profile.return_min_span),
-        ("profile.advantage_min_rms", profile.advantage_min_rms),
-        ("profile.value_huber_delta", profile.value_huber_delta),
+        ("profile.return_percentile_decay", profile.return_percentile_decay),
+        ("profile.return_scale_floor", profile.return_scale_floor),
     ):
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"{name} must be positive and finite, got {value}")
     if profile.clip_coef >= 1.0:
         raise ValueError("profile.clip_coef must be below 1")
-    if profile.return_ema_alpha > 1.0:
-        raise ValueError("profile.return_ema_alpha must be at most 1")
+    if profile.return_percentile_decay >= 1.0:
+        raise ValueError("profile.return_percentile_decay must be below 1")
     if profile.histogram_interval < 1 or profile.log_interval < 1:
         raise ValueError("optimizer logging intervals must be positive")
     if not profile.checkpoint_dir:

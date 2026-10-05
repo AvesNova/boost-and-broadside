@@ -17,17 +17,13 @@ from typing import NamedTuple
 
 import torch
 
-from boost_and_broadside.constants import (
-    NUM_EXPERT_MARGINALS,
-    OUTCOME_LOSS_INDEX,
-    OUTCOME_TIE_INDEX,
-    OUTCOME_WIN_INDEX,
-)
+from boost_and_broadside.constants import NUM_EXPERT_MARGINALS, NUM_OUTCOME_CLASSES
 from boost_and_broadside.env.observation import (
     BulletObsKey,
     ObsKey,
     YemongObservation,
 )
+from boost_and_broadside.train.rl.critic import outcome_targets
 
 
 class MicroBatch(NamedTuple):
@@ -48,12 +44,11 @@ class MicroBatch(NamedTuple):
     adv_agg: torch.Tensor
     ret_agg: torch.Tensor
     ns_labels: torch.Tensor | None
-    # (T, B, N) int8 realised match outcome per ship, ego-relative: 0 loss,
-    # 1 tie, 2 win, and -1 where this step's episode does not end inside the
-    # rollout. Sparse by construction -- a 128-step rollout against ~7,900-step
-    # episodes labels barely one step in a hundred -- so the categorical head
-    # bootstraps the rest rather than training on labelled steps alone.
-    outcome_class: torch.Tensor
+    # (T, B, 4) categorical lambda-return of the match outcome per environment,
+    # in the observer's frame: win, tie, loss, unresolved (see train/rl/critic.py).
+    outcome_targets: torch.Tensor
+    # (T, B, N) bool, the ship is on the observer's team.
+    observer_side: torch.Tensor
     # (T, B, 2C) privileged ally/enemy hex density per step, or None for a scale
     # that never trains the global density head. Deliberately outside ``obs``,
     # like ``privileged_means``: no policy input path can reach it by key.
@@ -82,7 +77,8 @@ class MicroBatch(NamedTuple):
             decision_committed=self.decision_committed.pin_memory(),
             expert_probs=self.expert_probs.pin_memory(),
             terminated=self.terminated.pin_memory(),
-            outcome_class=self.outcome_class.pin_memory(),
+            outcome_targets=self.outcome_targets.pin_memory(),
+            observer_side=self.observer_side.pin_memory(),
             transition_contiguous=self.transition_contiguous.pin_memory(),
             adv_agg=self.adv_agg.pin_memory(),
             ret_agg=self.ret_agg.pin_memory(),
@@ -116,7 +112,8 @@ class MicroBatch(NamedTuple):
             decision_committed=self.decision_committed.to(device=device, non_blocking=non_blocking),
             expert_probs=self.expert_probs.to(device=device, non_blocking=non_blocking),
             terminated=self.terminated.to(device=device, non_blocking=non_blocking),
-            outcome_class=self.outcome_class.to(device=device, non_blocking=non_blocking),
+            outcome_targets=self.outcome_targets.to(device=device, non_blocking=non_blocking),
+            observer_side=self.observer_side.to(device=device, non_blocking=non_blocking),
             transition_contiguous=self.transition_contiguous.to(
                 device=device, non_blocking=non_blocking
             ),
@@ -181,7 +178,8 @@ class MicroBatch(NamedTuple):
             decision_committed=self.decision_committed[:, start:end],
             expert_probs=self.expert_probs[:, start:end],
             terminated=self.terminated[:, start:end],
-            outcome_class=self.outcome_class[:, start:end],
+            outcome_targets=self.outcome_targets[:, start:end],
+            observer_side=self.observer_side[:, start:end],
             transition_contiguous=self.transition_contiguous[:, start:end],
             adv_agg=self.adv_agg[:, start:end],
             ret_agg=self.ret_agg[:, start:end],
@@ -204,20 +202,6 @@ class MicroBatch(NamedTuple):
         return chunks
 
 
-def symlog(x: torch.Tensor) -> torch.Tensor:
-    """Symmetric log transform: sign(x) * log(1 + |x|).
-
-    Compresses large reward magnitudes while preserving sign and the zero point.
-    Applied to raw rewards at storage time [symlog #1].
-    """
-    return torch.sign(x) * torch.log1p(x.abs())
-
-
-def symexp(x: torch.Tensor) -> torch.Tensor:
-    """Inverse of symlog: sign(x) * (exp(|x|) - 1)."""
-    return torch.sign(x) * torch.expm1(x.abs())
-
-
 # --------------------------------------------------------------------------
 # Reduced-precision storage for the GPU-resident rollout buffer
 # --------------------------------------------------------------------------
@@ -231,8 +215,8 @@ def symexp(x: torch.Tensor) -> torch.Tensor:
 #      is negligible; range safety is what matters.
 #
 #   2. Accumulators stay fp32. Anything that sums or runs an EMA over the stored
-#      data upcasts first (see compute_gae, AdvantageScaler/ReturnScaler.update
-#      and PPOTrainer._precompute_lambda_aggregates). bf16's ~0.4% resolution
+#      data upcasts first (see compute_gae and
+#      PPOTrainer._precompute_lambda_aggregates). bf16's ~0.4% resolution
 #      would let small increments vanish under a large running value — the classic
 #      swamping failure — so no running statistic is ever held in bf16.
 #
@@ -276,315 +260,6 @@ def _obs_storage_dtype(key: ObsKey | BulletObsKey, dt: torch.dtype) -> torch.dty
     # team_id (0-2) and previous_action indices (0-6) are small non-negatives; the
     # feature read path upcasts via .long()/.float() before any arithmetic.
     return torch.uint8
-
-
-class ReturnScaler:
-    """Per-component EMA of return mean and standard deviation.
-
-    Maps symlog-reward space returns to roughly [-1, 1] per component so that
-    value loss is comparable across components with very different natural
-    scales (e.g. victory ±80 vs turn_rate ±0.001). ``STD_MULTIPLE`` standard
-    deviations map to 1.
-
-    The scaler is updated once per rollout from the buffer's computed returns.
-    Lambdas in the PPO advantage aggregation then act as pure importance weights
-    (sign + magnitude) rather than also implicitly controlling scale.
-
-    Scale is a masked standard deviation rather than a p5/p95 span. For a sparse
-    component — a death, a win, a friendly kill — the return distribution is a
-    spike at zero with rare large excursions, and p5/p95 measures the width of
-    the spike rather than the range of the signal. Measured on run 719,
-    ``field_death`` had a p5-p95 span of 0.0059 against a full range of 0.137, a
-    factor of 23, while dense components disagreed by 1.1-1.3x. A standard
-    deviation is an L2 statistic and sees the excursions.
-
-    Dead ships are excluded. Their returns sit at zero, and including them
-    concentrates yet more mass on the spike for exactly the components that can
-    least afford it.
-
-    ``min_span`` is a divide-by-zero guard, not a scale. It must sit far below
-    every active component's real span: a floor that binds on a live component
-    silently shrinks that component's critic targets, and so its share of the
-    value loss, by the ratio between the floor and the truth. Under the previous
-    p5/p95 estimator and a floor of 1.0 this bound 8 of 12 components on every
-    update of run 719, suppressing ``field_death``'s critic gradient by four
-    orders of magnitude. Check ``floor_bound`` — the trainer logs it per
-    component — before raising it.
-
-    Args:
-        num_components: K — number of value components.
-        device:         Torch device (must match the returns tensor).
-        ema_alpha:      EMA decay rate per rollout update (default 0.005 ≈ 200-update
-                        memory). Slower = more stable but slower adaptation.
-        min_span:       Degeneracy epsilon on the full normalized span
-                        (symlog-space). Guards a component whose returns collapse
-                        to a constant.
-    """
-
-    # Standard deviations mapped to 1. Two puts ~95% of a normal component's
-    # mass inside [-1, 1], close to what the p5/p95 span did for dense
-    # components while remaining sensitive to sparse tails.
-    STD_MULTIPLE: float = 2.0
-
-    def __init__(
-        self,
-        num_components: int,
-        device: torch.device,
-        ema_alpha: float = 0.005,
-        min_span: float = 1e-3,
-    ) -> None:
-        self.alpha = ema_alpha
-        self.min_span = min_span
-        self._initialized = False
-        self._mean = torch.zeros(num_components, device=device)
-        self._sq_mean = torch.ones(num_components, device=device)
-
-    @torch.no_grad()
-    def update(self, returns: torch.Tensor, alive_mask: torch.Tensor) -> None:
-        """Update EMA moments from this rollout's returns.
-
-        Args:
-            returns:    (T, B, N, K) bf16-stored — GAE returns in symlog-reward
-                        space (upcast to fp32 internally for the reduction).
-            alive_mask: (T, B, N) bool — which ships were alive each step.
-        """
-        self.update_chunks([returns], [alive_mask])
-
-    @torch.no_grad()
-    def update_chunks(
-        self,
-        returns_chunks: list[torch.Tensor],
-        alive_chunks: list[torch.Tensor],
-    ) -> None:
-        """Update moments from one logical rollout split across host shards.
-
-        Args:
-            returns_chunks: Shards shaped ``(T, B, N, K)`` on a common device.
-            alive_chunks:   Matching alive masks shaped ``(T, B, N)``.
-        """
-        if len(returns_chunks) == 0 or len(returns_chunks) != len(alive_chunks):
-            raise ValueError("returns_chunks and alive_chunks must be non-empty and aligned")
-        K = returns_chunks[0].shape[-1]
-        device = returns_chunks[0].device
-        total = torch.zeros(K, dtype=torch.float32, device=device)
-        square_total = torch.zeros(K, dtype=torch.float32, device=device)
-        mask_sum = torch.zeros((), dtype=torch.float32, device=device)
-        for returns, alive in zip(returns_chunks, alive_chunks):
-            alive_k = alive.float().unsqueeze(-1)  # (T, B, N, 1)
-            values = returns.float()
-            total += (values * alive_k).sum((0, 1, 2))
-            square_total += (values.pow(2) * alive_k).sum((0, 1, 2))
-            mask_sum += alive.float().sum()
-        mask_sum.clamp_(min=1.0)
-        self._update_moments(total / mask_sum, square_total / mask_sum)
-
-    def _update_moments(self, mean: torch.Tensor, sq_mean: torch.Tensor) -> None:
-        """Apply one observed moment pair to the running EMA."""
-        mean = mean.to(self._mean.device)
-        sq_mean = sq_mean.to(self._sq_mean.device)
-        if not self._initialized:
-            self._mean = mean
-            self._sq_mean = sq_mean
-            self._initialized = True
-        else:
-            self._mean = (1.0 - self.alpha) * self._mean + self.alpha * mean
-            self._sq_mean = (1.0 - self.alpha) * self._sq_mean + self.alpha * sq_mean
-
-    def _std(self) -> torch.Tensor:
-        """(K,) per-component standard deviation of returns, before any floor."""
-        return (self._sq_mean - self._mean.pow(2)).clamp(min=0.0).sqrt()
-
-    def _half_span(self) -> torch.Tensor:
-        """Half the normalized window, clamped to at least min_span/2."""
-        return (self._std() * self.STD_MULTIPLE).clamp(min=self.min_span * 0.5)
-
-    @property
-    def floor_bound(self) -> torch.Tensor:
-        """(K,) bool — components whose span is being held up by ``min_span``.
-
-        True for an active component means its critic targets are compressed by
-        the guard rather than scaled by its own statistics.
-        """
-        return self._std() * (2.0 * self.STD_MULTIPLE) < self.min_span
-
-    def normalize(self, x: torch.Tensor) -> torch.Tensor:
-        """Map from symlog-reward space → normalized space (≈ [-1, 1] per component).
-
-        Args:
-            x: (..., K) float — values in symlog-reward space.
-
-        Returns:
-            (..., K) float — normalized values.
-        """
-        return (x - self._mean) / self._half_span()
-
-    def denormalize(self, x: torch.Tensor) -> torch.Tensor:
-        """Map from normalized space → symlog-reward space.
-
-        Args:
-            x: (..., K) float — normalized values.
-
-        Returns:
-            (..., K) float — values in symlog-reward space.
-        """
-        return x * self._half_span() + self._mean
-
-    def state_dict(self) -> dict:
-        return {
-            "mean": self._mean.cpu(),
-            "sq_mean": self._sq_mean.cpu(),
-            "initialized": self._initialized,
-            "min_span": self.min_span,
-        }
-
-    @property
-    def moments(self) -> tuple[torch.Tensor, torch.Tensor]:
-        """Current per-component mean and standard deviation."""
-        return self._mean, self._std()
-
-    def load_state_dict(self, d: dict) -> None:
-        # A checkpoint written under the p5/p95 estimator carries statistics this
-        # scaler cannot interpret. Re-seeding costs one rollout; the alternative
-        # is refusing to load a run that is otherwise perfectly resumable.
-        if "mean" not in d or "sq_mean" not in d:
-            self._initialized = False
-            return
-        self._mean = d["mean"].to(self._mean.device)
-        self._sq_mean = d["sq_mean"].to(self._sq_mean.device)
-        self._initialized = d.get("initialized", True)
-        # A checkpoint written under a different floor carries statistics shaped
-        # by that floor. Re-seeding costs one rollout; EMA-ing a stale floor out
-        # takes ~1/alpha updates, during which the component is mis-scaled.
-        if d.get("min_span") != self.min_span:
-            self._initialized = False
-
-
-class AdvantageScaler:
-    """Per-component EMA of advantage RMS for policy gradient normalization.
-
-    The actor-side counterpart to ReturnScaler. While ReturnScaler normalizes
-    value targets so MSE loss is comparable across components, AdvantageScaler
-    normalizes advantages before lambda aggregation so each component contributes
-    equally to the policy gradient regardless of raw reward magnitude or density.
-
-    Follows Dreamer v3's approach: running scale statistics make the system
-    invariant to reward magnitude across all K components. Uses RMS rather than
-    p5/p95 because advantages are already approximately zero-mean from GAE's
-    baseline subtraction.
-
-    ``min_rms`` is a divide-by-zero guard, not a scale. Sparse components have
-    genuinely small advantages — a terminal win reward spread over a whole
-    episode by GAE lands two orders of magnitude below a per-step damage signal —
-    so a floor set at "small" rather than "epsilon" binds on them forever and
-    silently downweights them in the policy gradient by the ratio between the
-    floor and the truth. Check ``floor_bound``, which the trainer logs per
-    component, before raising it.
-
-    Args:
-        num_components: K — number of value components.
-        device:         Torch device.
-        ema_alpha:      EMA decay per rollout (default 0.005 ≈ 200-rollout memory,
-                        matching ReturnScaler).
-        min_rms:        Degeneracy epsilon on the advantage RMS. Guards a
-                        component whose advantages collapse to zero — e.g. one
-                        whose reward group scale is scheduled to zero.
-    """
-
-    def __init__(
-        self,
-        num_components: int,
-        device: torch.device,
-        ema_alpha: float = 0.005,
-        min_rms: float = 1e-4,
-    ) -> None:
-        self.alpha = ema_alpha
-        self.min_rms = min_rms
-        self._initialized = False
-        self._rms = torch.ones(num_components, device=device)
-
-    @torch.no_grad()
-    def update(self, advantages: torch.Tensor, alive_mask: torch.Tensor) -> None:
-        """Update EMA RMS from this rollout's per-component advantages.
-
-        Args:
-            advantages: (T, B, N, K) bf16-stored — GAE advantages in symlog-reward space
-                        (upcast to fp32 internally for the RMS reduction).
-            alive_mask: (T, B, N) bool — which ships were alive each step.
-        """
-        self.update_chunks([advantages], [alive_mask])
-
-    @torch.no_grad()
-    def update_chunks(
-        self,
-        advantage_chunks: list[torch.Tensor],
-        alive_chunks: list[torch.Tensor],
-    ) -> None:
-        """Update RMS from one logical rollout split across host shards.
-
-        Args:
-            advantage_chunks: Shards shaped ``(T, B, N, K)``.
-            alive_chunks: Matching alive masks shaped ``(T, B, N)``.
-        """
-        if len(advantage_chunks) == 0 or len(advantage_chunks) != len(alive_chunks):
-            raise ValueError("advantage_chunks and alive_chunks must be non-empty and aligned")
-        K = advantage_chunks[0].shape[-1]
-        square_sum = torch.zeros(K, dtype=torch.float32, device=advantage_chunks[0].device)
-        mask_sum = torch.zeros((), dtype=torch.float32, device=advantage_chunks[0].device)
-        for advantages, alive_mask in zip(advantage_chunks, alive_chunks):
-            alive_k = alive_mask.float().unsqueeze(-1)  # (T, B, N, 1)
-            square_sum += (advantages.float().pow(2) * alive_k).sum((0, 1, 2))
-            mask_sum += alive_mask.float().sum()
-        mask_sum.clamp_(min=1.0)
-        # Upcast before squaring/reducing: advantages are bf16-stored, and a bf16
-        # sum-of-squares over T*B*N elements would swamp small terms under the total.
-        rms_k = (square_sum / mask_sum).sqrt().clamp(min=self.min_rms)  # (K,)
-        rms_k = rms_k.to(self._rms.device)
-        if not self._initialized:
-            self._rms = rms_k
-            self._initialized = True
-        else:
-            self._rms = (1.0 - self.alpha) * self._rms + self.alpha * rms_k
-
-    def normalize(self, advantages: torch.Tensor) -> torch.Tensor:
-        """Divide advantages by per-component EMA RMS → approximately unit RMS per component.
-
-        Args:
-            advantages: (..., K) float — advantages in symlog-reward space.
-
-        Returns:
-            (..., K) float — normalized advantages.
-        """
-        return advantages / (self._rms.clamp(min=self.min_rms) + 1e-8)
-
-    def state_dict(self) -> dict:
-        return {
-            "rms": self._rms.cpu(),
-            "initialized": self._initialized,
-            "min_rms": self.min_rms,
-        }
-
-    @property
-    def rms(self) -> torch.Tensor:
-        """Current per-component advantage RMS vector."""
-        return self._rms
-
-    @property
-    def floor_bound(self) -> torch.Tensor:
-        """(K,) bool — components whose RMS is being held up by ``min_rms``.
-
-        True for an active component means its policy-gradient share is set by
-        the guard rather than by its own statistics.
-        """
-        return self._rms <= self.min_rms
-
-    def load_state_dict(self, d: dict) -> None:
-        self._rms = d["rms"].to(self._rms.device)
-        self._initialized = d.get("initialized", True)
-        # A checkpoint written under a different floor carries an RMS shaped by
-        # that floor. Re-seeding costs one rollout; EMA-ing a stale floor out
-        # takes ~1/alpha updates, during which the component is mis-scaled.
-        if d.get("min_rms") != self.min_rms:
-            self._initialized = False
 
 
 class RolloutBuffer:
@@ -683,23 +358,39 @@ class RolloutBuffer:
         self.actions = torch.zeros((T, B, N, 3), device=device, dtype=torch.int32)
         # logprobs stay fp32: PPO's ratio exp(new - old) is precision-sensitive.
         self.logprobs = torch.zeros((T, B, N), device=device, dtype=torch.float32)
-        # Per-component float arrays are read-once leaf data → bf16 (see _STORAGE_FLOAT).
-        self.rewards = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
-        self.values = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
+        # Raw per-level rewards, values, advantages and returns, in win units.
+        # fp32 rather than bf16: they are no longer compressed, and at a value of
+        # 50 bf16's resolution is 0.25 -- larger than a typical per-step reward.
+        self.rewards = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.values = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
         self.alive_mask = torch.zeros((T, B, N), device=device, dtype=torch.bool)
 
-        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
-        self.returns = torch.zeros((T, B, N, K), device=device, dtype=_STORAGE_FLOAT)
+        self.advantages = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        self.returns = torch.zeros((T, B, N, K), device=device, dtype=torch.float32)
+        # The outcome critic's rollout-time class probabilities and the signed
+        # result per transition, both per environment in the observer's frame,
+        # and the categorical targets built from them after the rollout.
+        self.outcome_probs = torch.zeros(
+            (T, B, NUM_OUTCOME_CLASSES), device=device, dtype=torch.float32
+        )
+        self.outcome_result = torch.zeros((T, B), device=device, dtype=torch.float32)
+        self.outcome_targets = torch.zeros(
+            (T, B, NUM_OUTCOME_CLASSES), device=device, dtype=torch.float32
+        )
+        # Which ships are on the observer's (Team 0's) side, from authoritative
+        # team ids: the observation's team channel zeroes hidden enemies. The
+        # outcome critic's estimate is the observer's, so this signs it per ship.
+        self.observer_side = torch.ones((T, B, N), device=device, dtype=torch.bool)
 
         # Lambda-aggregated advantages/returns — filled once per update by
         # PPOTrainer._precompute_lambda_aggregates before the epoch loop (they
         # depend only on rollout data, not the policy).
         self.adv_agg = torch.zeros((T, B, N), device=device, dtype=torch.float32)
         self.ret_agg = torch.zeros((T, B, N), device=device, dtype=torch.float32)
-        # Mean squared aggregated advantage over actor tokens — set once per
-        # update by _precompute_lambda_aggregates. Global (whole-buffer) so the
-        # advantage normalization is independent of minibatch/micro-batch splits.
-        self.adv_rms = torch.ones((), device=device, dtype=torch.float32)
+        # The return normaliser's scale the summed advantage is divided by --
+        # set once per update, so the normalisation is independent of
+        # minibatch/micro-batch splits.
+        self.return_scale = torch.ones((), device=device, dtype=torch.float32)
         # Next-state prediction labels (T, B, N, pred_dim) — set once per update
         # by PPOTrainer._precompute_ns_labels; None for aux scales or when the
         # aux losses are disabled.
@@ -750,7 +441,6 @@ class RolloutBuffer:
         # Episode termination mask: done | truncated — used to exclude terminal transitions
         # from the aux next-state prediction loss.
         self.terminated = torch.zeros((T, B), device=device, dtype=torch.bool)
-        self.outcome_class = torch.full((T, B, N), -1, device=device, dtype=torch.int8)
         # Per-ship physical continuity. False excludes a death->respawn teleport
         # from auxiliary dynamics targets without ending the strategic episode.
         self.transition_contiguous = torch.ones((T, B, N), device=device, dtype=torch.bool)
@@ -770,36 +460,9 @@ class RolloutBuffer:
         self.initial_hidden = None
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
         self.terminated.zero_()
-        self.outcome_class.fill_(-1)
         self.transition_contiguous.fill_(True)
         self.belief_diagnostics = {}
         # obs[T] slot is overwritten by store_final_obs() — no need to zero it
-
-    def fill_outcome_class(self, outcome_k: int) -> None:
-        """Record the realised match result per ship, where the rollout saw one.
-
-        The ``outcome`` reward component is already ego-relative -- it pays a
-        ship ``+1`` for its own team's win and ``-1`` for its loss -- so its sign
-        at a terminal step is the label, and a draw's zero is the tie class. A
-        truncation at the step cap is a genuine draw under the frontline rules,
-        which is why it is labelled rather than skipped.
-
-        Non-terminal steps stay at ``-1``: they have no realised result yet, and
-        the categorical head bootstraps them instead.
-
-        Args:
-            outcome_k: Index of the ``outcome`` component in the active set.
-        """
-
-        reward = self.rewards[..., outcome_k]  # (T, B, N) symlog space
-        realised = torch.where(
-            reward > 0.0,
-            OUTCOME_WIN_INDEX,
-            torch.where(reward < 0.0, OUTCOME_LOSS_INDEX, OUTCOME_TIE_INDEX),
-        ).to(torch.int8)
-        self.outcome_class = torch.where(
-            self.terminated.unsqueeze(-1), realised, torch.full_like(realised, -1)
-        )
 
     def store_initial_hidden(self, hidden: torch.Tensor) -> None:
         """Store the GRU hidden state at rollout start.
@@ -825,6 +488,9 @@ class RolloutBuffer:
         privileged_means: torch.Tensor | None = None,
         scaled_predictions: torch.Tensor | None = None,
         density_target: torch.Tensor | None = None,
+        outcome_probs: torch.Tensor | None = None,
+        outcome_result: torch.Tensor | None = None,
+        observer_side: torch.Tensor | None = None,
     ) -> None:
         """Store one step.
 
@@ -832,8 +498,8 @@ class RolloutBuffer:
             obs:          YemongObservation with (B, N+M, ...) tensors.
             action:       (B, N, 3) int.
             logprob:      (B, N) float.
-            reward:       (B, N, K) float — raw per-component per-ship rewards.
-            value:        (B, N, K) float — critic expected values (symlog-reward space).
+            reward:       (B, N, K) float — raw per-level per-ship rewards, win units.
+            value:        (B, N, K) float — critic expected returns, same units.
             alive:        (B, N) bool.
             actor_mask:   (B, N) bool — True for ships that should contribute to actor loss.
                           Defaults to all-True (pure self-play).
@@ -846,6 +512,11 @@ class RolloutBuffer:
                           Cuts the GAE trace and masks the aux loss at boundaries.
             transition_contiguous: (B, N) bool — False where the physical next
                           state is a respawn teleport. Does not cut GAE/recurrent state.
+            outcome_probs: (B, 4) outcome-class probabilities, observer's frame.
+            outcome_result: (B,) signed match result on this transition,
+                          observer's frame; zero until the terminal one.
+            observer_side: (B, N) bool — the ship is on the observer's team,
+                          from authoritative team ids.
         """
         if self.ptr >= self.num_steps:
             raise IndexError("Buffer is full — call reset() before reuse.")
@@ -859,7 +530,7 @@ class RolloutBuffer:
 
         self.actions[t] = action.int()
         self.logprobs[t] = logprob
-        self.rewards[t] = symlog(reward)  # symlog #1: compress raw reward scale
+        self.rewards[t] = reward
         self.values[t] = value
         self.alive_mask[t] = alive
         self.actor_masks[t] = actor_mask if actor_mask is not None else torch.ones_like(alive)
@@ -874,6 +545,12 @@ class RolloutBuffer:
             self.terminated[t] = terminated
         if transition_contiguous is not None:
             self.transition_contiguous[t] = transition_contiguous
+        if outcome_probs is not None:
+            self.outcome_probs[t] = outcome_probs
+        if outcome_result is not None:
+            self.outcome_result[t] = outcome_result
+        if observer_side is not None:
+            self.observer_side[t] = observer_side
         if self.privileged_means is not None:
             if privileged_means is None:
                 raise ValueError("primary rollout requires privileged next-state targets")
@@ -934,15 +611,11 @@ class RolloutBuffer:
         that reach the horizon.
 
         Args:
-            next_value: (B, N, K) float — critic expected values at step T+1,
-                        in symlog-reward space (symexp of expected bin).
+            next_value: (B, N, K) float — critic expected returns at step T+1.
             next_done:  (B,) float — whether step T+1 ended an episode
                         (done | truncated).
         """
         with torch.no_grad():
-            # Accumulate in fp32 even though rewards/values are stored bf16: gamma/lam
-            # are fp32 so every product promotes, and lastgaelam is fp32-seeded, so the
-            # recursion runs at full precision. Only the stored advantage is downcast.
             lastgaelam = torch.zeros_like(next_value, dtype=torch.float32)  # (B, N, K)
             gamma = self.gamma.view(1, 1, -1)  # (1, 1, K) — broadcasts over (B, N, K)
             lam = self.gae_lambda.view(1, 1, -1)  # (1, 1, K)
@@ -957,10 +630,28 @@ class RolloutBuffer:
 
                 delta = self.rewards[t] + gamma * next_val * non_terminal - self.values[t]
                 lastgaelam = delta + gamma * lam * non_terminal * lastgaelam
-                self.advantages[t] = lastgaelam.to(self.advantages.dtype)  # store bf16
+                self.advantages[t] = lastgaelam
 
-            # returns = advantages + values, summed in fp32 then stored bf16.
-            self.returns = (self.advantages.float() + self.values.float()).to(self.returns.dtype)
+            self.returns = self.advantages + self.values
+
+    def compute_outcome_targets(
+        self, next_probs: torch.Tensor, gamma: float, gae_lambda: float
+    ) -> None:
+        """Build the outcome critic's categorical lambda-return targets.
+
+        Args:
+            next_probs: (B, 4) outcome-class probabilities at step T+1.
+            gamma, gae_lambda: The outcome level's discount and GAE lambda.
+        """
+        self.outcome_targets = outcome_targets(
+            self.outcome_probs,
+            self.outcome_result,
+            self.terminated,
+            next_probs,
+            self.terminated[-1],
+            gamma,
+            gae_lambda,
+        )
 
     # ------------------------------------------------------------------
     # Minibatch iteration for PPO update
@@ -1049,7 +740,8 @@ class RolloutBuffer:
                         decision_committed=self.decision_committed[:, idx],
                         expert_probs=self.expert_probs[:, idx],
                         terminated=self.terminated[:, idx],
-                        outcome_class=self.outcome_class[:, idx],
+                        outcome_targets=self.outcome_targets[:, idx],
+                        observer_side=self.observer_side[:, idx],
                         transition_contiguous=self.transition_contiguous[:, idx],
                         adv_agg=self.adv_agg[:, idx],
                         ret_agg=self.ret_agg[:, idx],
@@ -1101,7 +793,8 @@ class StoredRollout:
         self.decision_committed = source.decision_committed.detach().to(device="cpu", copy=True)
         self.expert_probs = source.expert_probs.detach().to(device="cpu", copy=True)
         self.terminated = source.terminated.detach().to(device="cpu", copy=True)
-        self.outcome_class = source.outcome_class.detach().to(device="cpu", copy=True)
+        self.outcome_targets = source.outcome_targets.detach().to(device="cpu", copy=True)
+        self.observer_side = source.observer_side.detach().to(device="cpu", copy=True)
         self.transition_contiguous = source.transition_contiguous.detach().to(
             device="cpu", copy=True
         )
@@ -1207,7 +900,8 @@ class StoredRollout:
                     decision_committed=self.decision_committed[:, indices],
                     expert_probs=self.expert_probs[:, indices],
                     terminated=self.terminated[:, indices],
-                    outcome_class=self.outcome_class[:, indices],
+                    outcome_targets=self.outcome_targets[:, indices],
+                    observer_side=self.observer_side[:, indices],
                     transition_contiguous=self.transition_contiguous[:, indices],
                     adv_agg=self.adv_agg[:, indices],
                     ret_agg=self.ret_agg[:, indices],
@@ -1242,7 +936,7 @@ class StoredRollout:
 class LogicalRolloutBuffer:
     """Host-backed logical PPO batch composed of fixed-width rollout shards."""
 
-    def __init__(self, shards: list[StoredRollout], adv_rms: torch.Tensor) -> None:
+    def __init__(self, shards: list[StoredRollout], return_scale: torch.Tensor) -> None:
         if len(shards) == 0:
             raise ValueError("shards must contain at least one stored rollout")
         first = shards[0]
@@ -1254,7 +948,7 @@ class LogicalRolloutBuffer:
         self.num_ships = first.num_ships
         self.num_tokens = first.num_tokens
         self.num_components = first.num_components
-        self.adv_rms = adv_rms
+        self.return_scale = return_scale
         self.belief_diagnostics: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
         for shard in shards:
             for key, (total, count) in shard.belief_diagnostics.items():

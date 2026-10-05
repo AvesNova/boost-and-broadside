@@ -176,9 +176,9 @@ masked observation cannot correctly represent both teams.
 
 The total update combines:
 
-- clipped PPO policy loss over the sum of the three action-factor log probabilities;
-- normalized per-component critic mean-squared error;
-- entropy bonuses for power, turn, and shoot distributions;
+- clipped PPO policy loss over the joint action's log probability;
+- a categorical critic: cross-entropy per reward level against its categorical target;
+- an entropy bonus on the joint action distribution;
 - behavior cloning from the scripted controller, gated down as scripted win rate rises;
 - one-step next-state prediction, as a hybrid: plain squared error on the Fourier-moment
   channels, whose magnitude already carries confidence, and a Gaussian likelihood over a
@@ -198,33 +198,22 @@ behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_
 also keeps the trust region independent of the Elo gauge, which would otherwise need
 re-deriving whenever the anchor or the environment moved.
 
-Advantages and returns are both scaled per component with running second-moment
-statistics in symlog reward space, which keeps critic targets in a stable range without
-forcing components with different natural scales into one value head. Returns map two
-standard deviations to one. A standard deviation rather than a percentile span, because
-for a sparse component — a death, a win, a friendly kill — the return distribution is a
-spike at zero with rare large excursions, and p5/p95 measures the width of the spike:
-run 719's `field_death` returns had a p5–p95 span of 0.0059 against a full range of
-0.137, while dense components disagreed by 1.1–1.3x. Dead ships are excluded from both
-scalers, since their returns sit at zero and would narrow exactly the components that can
-least afford it. The exact loss assembly and logging proxies live in
-[`ppo.py`](../src/boost_and_broadside/train/rl/ppo.py).
+Rewards, returns and advantages are raw scalars in win units; only the critic's output is
+a distribution ([`critic.py`](../src/boost_and_broadside/train/rl/critic.py)). Each
+per-ship level is read off logits over 51 bins at `symexp(linspace(-5, 5, 51))` and valued
+by their expectation; its target is the realised lambda-return two-hot over the bins
+(DreamerV3), so the target's mean is the return. The outcome is read per environment off
+the global token as four classes -- win, tie, loss, and unresolved, the probability mass
+the discount leaks away. Its target is the categorical lambda-return
+`Q_t = gamma [(1 - lambda) p(s_{t+1}) + lambda Q_{t+1}] + (1 - gamma) e_unresolved`, one-hot
+on the terminal transition, whose expectation is exactly the scalar return GAE uses.
 
-The critic's loss is squared error out to `value_huber_delta` normalized units and linear
-beyond, matching plain squared error in the bulk so the switch reshapes only the tails.
-Per-component normalization necessarily produces those tails, and bounding them here is
-what lets `return_min_span` be a true epsilon.
-
-Both scalers carry a floor, and a floor that binds on an active component replaces that
-component's own scale with the guard's. Both are true epsilons:
-the terminal win signal's advantage RMS is around 0.008, two orders of magnitude below a
-per-step damage signal, and an earlier floor of 0.1 was downweighting it roughly
-thirteenfold in the policy gradient. `return_min_span` was likewise held at 1.0 for a
-time, where it bound eight of twelve components on every update of the reference run and
-suppressed `field_death`'s critic gradient by four orders of magnitude; it now sits at
-1e-3, more than an order of magnitude below the narrowest live component's spread.
-`scaler/floor_bound_span/*` and
-`scaler/floor_bound_rms/*` report which components each floor is currently holding up.
+GAE runs per level. The levels' advantages are summed (optionally mixed with teammates' by
+`team_spirit`) and the sum is normalised once, as DreamerV3 does: divided by the EMA (decay
+0.99) 5th-95th percentile spread of the summed return, floored at one win, with no mean
+subtracted and no per-minibatch standardisation. The level weights therefore reach the
+policy exactly as set, and splitting or merging events inside a level cannot change its
+gradient share. `return_normalizer/*` logs the percentiles and the scale.
 
 ## Frontline reward accounting and curriculum
 

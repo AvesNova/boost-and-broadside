@@ -23,6 +23,7 @@ from boost_and_broadside.env.state import TensorState
 from boost_and_broadside.models.yemong.policy import YemongPolicy
 from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker, DualBeliefTracker
+from boost_and_broadside.train.rl.critic import CriticOutput
 from boost_and_broadside.train.rl.physical_belief import physical_means_from_state
 from boost_and_broadside.train.rl.roster import RosterEntry
 
@@ -62,7 +63,7 @@ class RolloutNetworkOutput(NamedTuple):
     action_t0: torch.Tensor
     action_t1: torch.Tensor | None
     logprob: torch.Tensor
-    value_norm: torch.Tensor
+    critic: CriticOutput
     pred_next_t0: torch.Tensor
     pred_next_t1: torch.Tensor | None
     enemy_action_logits_t0: torch.Tensor
@@ -490,7 +491,7 @@ class OpponentMixin:
                 action_t0,
                 action_t1,
                 logprob,
-                value_norm,
+                critic,
                 pred_next_t0,
                 pred_next_t1,
                 hidden,
@@ -527,7 +528,7 @@ class OpponentMixin:
             action_t0=action_t0,
             action_t1=action_t1,
             logprob=logprob,
-            value_norm=value_norm,
+            critic=critic,
             pred_next_t0=pred_next_t0,
             pred_next_t1=pred_next_t1,
             enemy_action_logits_t0=enemy_action_logits_t0,
@@ -719,12 +720,13 @@ class OpponentMixin:
             step.actuator_contiguous,
             done_any,
         )
+        observer_side = team_id == 0  # (B, N)
         self.buffer.add(
             obs=obs,
             action=action,
             logprob=step.network.logprob,
             reward=step.reward,
-            value=self.scaler.denormalize(step.network.value_norm),
+            value=self._ship_values(step.network.critic.value, observer_side),
             alive=obs["alive"][:, :num_ships].bool(),
             actor_mask=actor_mask,
             decision_committed=decision_committed,
@@ -734,6 +736,8 @@ class OpponentMixin:
             privileged_means=privileged_means,
             scaled_predictions=step.network.pred_next_t0,
             density_target=density_target,
+            observer_side=observer_side,
+            **self._outcome_step(step.network.critic, step.reward, observer_side),
         )
 
         hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)

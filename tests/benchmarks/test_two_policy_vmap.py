@@ -17,7 +17,9 @@ def test_vmapped_distinct_weight_outputs_match_separate_team_view_forwards():
 
     with deterministic_sampling():
         for policy, observation, policy_hidden in zip(policies, observations, hidden, strict=True):
-            expected.append(policy.get_action_and_value(observation, policy_hidden))
+            outputs = list(policy.get_action_and_value(observation, policy_hidden))
+            outputs[2] = outputs[2].value
+            expected.append(outputs)
     actual = vmap_deterministic_step(policies, observations, hidden)
     for actual_tensor, result_index in (
         (actual.action, 0),

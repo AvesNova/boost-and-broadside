@@ -84,10 +84,8 @@ class PolicyBundle:
     env_config: EnvConfig | None
     num_value_components: int
     global_value_k: tuple[int, ...]
-    # Whether these weights carry the categorical win/loss/tie head. Recorded so
-    # a reload rebuilds the same architecture rather than a headless one.
-    predict_outcome: bool = False
-    # Whether they carry the global density head, recorded for the same reason.
+    # Whether these weights carry the global density head. Recorded so a reload
+    # rebuilds the same architecture rather than a headless one.
     predict_density: bool = False
     global_step: int | None = None
     update: int | None = None
@@ -227,7 +225,6 @@ def build_policy(
     num_value_components: int,
     num_ships: int,
     global_value_k: tuple[int, ...],
-    predict_outcome: bool = False,
     predict_density: bool = False,
 ) -> YemongPolicy:
     """Construct a policy with the feature pipelines its config implies.
@@ -242,7 +239,8 @@ def build_policy(
                               the one it trained at. No parameter is sized by ship
                               count; N only locates the ship/field boundary for a
                               split encoder.
-        global_value_k:           Value-component indices routed through TeamPMA.
+        global_value_k:       The reward level valued as four outcome classes off
+                              the global token (the outcome), or empty.
     """
     return YemongPolicy(
         model_config,
@@ -253,7 +251,6 @@ def build_policy(
         bullet_coordinator=(
             build_bullet_coordinator(ship_config) if model_config.reads_bullets else None
         ),
-        predict_outcome=predict_outcome,
         predict_density=predict_density,
         ship_config=ship_config,
     )
@@ -401,13 +398,9 @@ def load_policy_bundle(
     num_value_components = infer_num_value_components(checkpoint)
     checkpoint_global_value_k = infer_global_value_k(checkpoint, global_value_k)
     # Read the architecture off the weights rather than off the loading config:
-    # a checkpoint written before the head existed, or under a coefficient of
-    # zero, simply has no outcome_head.* keys, and rebuilding one would fail the
-    # strict load. The same reasoning as infer_global_value_k.
+    # a checkpoint written under a density coefficient of zero simply has no
+    # density_head.* keys, and rebuilding one would fail the strict load.
     stored_weights = checkpoint.get("policy_state_dict")
-    checkpoint_predicts_outcome = isinstance(stored_weights, Mapping) and any(
-        str(key).startswith("outcome_head.") for key in stored_weights
-    )
     checkpoint_predicts_density = isinstance(stored_weights, Mapping) and any(
         str(key).startswith("density_head.") for key in stored_weights
     )
@@ -417,7 +410,6 @@ def load_policy_bundle(
         num_value_components=num_value_components,
         num_ships=num_ships,
         global_value_k=checkpoint_global_value_k,
-        predict_outcome=checkpoint_predicts_outcome,
         predict_density=checkpoint_predicts_density,
     )
     policy_state = checkpoint["policy_state_dict"]
@@ -447,7 +439,6 @@ def load_policy_bundle(
         env_config=env_config,
         num_value_components=num_value_components,
         global_value_k=checkpoint_global_value_k,
-        predict_outcome=checkpoint_predicts_outcome,
         predict_density=checkpoint_predicts_density,
         global_step=checkpoint.get("global_step"),
         update=checkpoint.get("update"),

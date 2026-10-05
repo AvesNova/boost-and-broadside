@@ -58,7 +58,6 @@ def _policy(global_token: bool = True, global_value_k=(0,), predict_density: boo
         num_value_components=4,
         num_ships=NUM_SHIPS,
         global_value_k=global_value_k,
-        predict_outcome=True,
         predict_density=predict_density,
     )
     return policy.eval()
@@ -126,8 +125,10 @@ class TestRecurrence:
         torch.manual_seed(1)
         _global_slot(seeded).copy_(torch.randn_like(_global_slot(seeded)))
         with torch.no_grad():
-            _, _, value_zero, _, _ = policy.get_action_and_value(observation, zero)
-            _, _, value_seeded, _, _ = policy.get_action_and_value(observation, seeded)
+            _, _, value_zero_critic, _, _ = policy.get_action_and_value(observation, zero)
+            value_zero = value_zero_critic.value
+            _, _, value_seeded_critic, _, _ = policy.get_action_and_value(observation, seeded)
+            value_seeded = value_seeded_critic.value
         assert not torch.allclose(value_zero, value_seeded, atol=1e-5)
 
     def test_it_is_updated_by_attention_over_the_ships(self):
@@ -208,9 +209,8 @@ class TestHeads:
         assert {name: shape[-2] for name, shape in seen.items()} == dict.fromkeys(heads, NUM_SHIPS)
 
     def test_the_team_level_value_head_reads_the_global_token(self):
-        """One estimate per environment, not one per ship: ``ally_win``,
-        ``enemy_win`` and ``outcome`` pay every ship on a side the same number,
-        so their return is the same number too."""
+        """One estimate per environment, not one per ship: the outcome pays
+        every ship on a side the same number, so its return is the same too."""
         policy = _policy(global_value_k=(0,))
         seen = _record_inputs({"global_value": policy.value_head_global.net})
         _run_step(policy)
@@ -221,26 +221,25 @@ class TestHeads:
 
     def test_the_team_level_value_falls_back_to_ships_when_the_token_is_off(self):
         """Phase 8's variant A drops the promotion. The density head cannot
-        survive that and says so; this one can, because the per-ship value head
-        already covers every component -- so the ablation degrades to N
-        redundant estimates rather than failing to build."""
+        survive that and says so; this one can, because the per-ship categorical
+        head can value the outcome like any other level -- so the ablation
+        degrades to N redundant estimates rather than failing to build."""
         policy = _policy(global_token=False, global_value_k=(0,))
         assert policy.value_head_global is None
         assert policy._global_value_k == ()
 
-    def test_the_outcome_head_reads_ships_only_in_re_evaluation(self):
-        policy = _policy()
-        seen = _record_inputs({"outcome": policy.outcome_head})
+    def test_the_outcome_head_returns_four_classes_per_environment(self):
+        policy = _policy(global_value_k=(0,))
         observation = _observation()
         sequence = YemongObservation(data={key: value[None] for key, value in observation.items()})
         with torch.no_grad():
-            policy.evaluate_actions(
+            critic = policy.evaluate_actions(
                 sequence,
                 torch.zeros(1, NUM_ENVS, NUM_SHIPS, 3, dtype=torch.long),
                 policy.initial_hidden(NUM_ENVS, policy.num_recurrent_tokens, CPU),
                 sequence[ObsKey.BELIEF_VALID],
-            )
-        assert seen["outcome"][-2] == NUM_SHIPS
+            )[2]
+        assert critic.outcome_logits.shape == (1, NUM_ENVS, 4)
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +261,10 @@ class TestEquivalence:
         step_values, actions = [], []
         with torch.no_grad():
             for t, observation in enumerate(observations):
-                action, _, value, _, hidden = policy.get_action_and_value(observation, hidden)
+                action, _, value_critic, _, hidden = policy.get_action_and_value(
+                    observation, hidden
+                )
+                value = value_critic.value
                 hidden = policy.reset_hidden_for_envs(hidden, done[t], policy.num_recurrent_tokens)
                 step_values.append(value)
                 actions.append(action)
@@ -271,11 +273,12 @@ class TestEquivalence:
             data={key: torch.stack([o[key] for o in observations]) for key in observations[0].data}
         )
         with torch.no_grad():
-            _, _, sequence_value, _, _, _, _ = policy.evaluate_actions(
+            _, _, sequence_value_critic, _, _, _ = policy.evaluate_actions(
                 sequence,
                 torch.stack(actions),
                 initial,
                 sequence[ObsKey.BELIEF_VALID],
                 done_mask=done,
             )
+            sequence_value = sequence_value_critic.value
         assert torch.allclose(torch.stack(step_values), sequence_value, atol=1e-4)

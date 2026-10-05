@@ -214,6 +214,25 @@ Entries are added as the work proceeds.
     every consumer; events are the per-component breakdown (`events()`, logged as
     `episode/event/<level>/<event>`).
 
+17. **The outcome value is the observer's, signed per ship by the trainer.** In
+    both paradigms the stored values come from Team 0's forward pass, so a global
+    outcome estimate broadcast to Team 1's ships would contradict their negated
+    outcome rewards (the old broadcast had this contradiction). The critic returns
+    `P(win) − P(loss)` from the observer's side; the trainer signs it per ship from
+    authoritative team ids (`observer_side`, now stored in the buffer) and scales
+    it by the outcome weight. The 4-class targets are built per environment in
+    the observer's frame.
+18. **With the global token off, the outcome is valued by the per-ship categorical
+    head** (51 bins) rather than as four classes; the ablation still runs.
+19. **The normaliser's EMA advances once per rollout shard**, so with
+    `rollouts_per_update` > 1 it moves that many steps per update. DreamerV3 steps
+    it once per batch; the difference is a faster effective decay.
+20. **Rewards, values, advantages and returns are stored fp32** (they were bf16
+    in symlog space); raw returns of ~100 win units would otherwise round to 0.5.
+21. **Critic loss weighting.** Per-ship levels average their cross-entropy over
+    living ships, the outcome over environment-steps; the value loss is the mean
+    over levels, as before.
+
 ### Measured (Phase 4)
 
 `docs/internal/flight-envelope-slip-oct2026.json`, all §10.1 checks pass:

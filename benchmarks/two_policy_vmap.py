@@ -80,7 +80,11 @@ class _PolicyStep(nn.Module):
     def forward(
         self, observation_data: dict, hidden: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        return self.policy.get_action_and_value(YemongObservation(data=observation_data), hidden)
+        # vmap returns tensors only, so the critic is reduced to its value.
+        action, logprob, critic, prediction, new_hidden = self.policy.get_action_and_value(
+            YemongObservation(data=observation_data), hidden
+        )
+        return action, logprob, critic.value, prediction, new_hidden
 
 
 def vmap_deterministic_step(

@@ -46,14 +46,13 @@ TOTAL_ACTION_LOGITS: int = NUM_JOINT_ACTIONS
 # Slices into the scripted teacher's compact independent marginals. These do
 # not index policy logits now that the actor is joint.
 POWER_SLICE: slice = slice(0, NUM_POWER_ACTIONS)
-# Match outcome as a classification target, ego-relative: index 0 loss, 1 tie,
-# 2 win. Ordered so the index is monotone in the result, which lets
-# ``(probabilities * OUTCOME_VALUES).sum(-1)`` recover the signed expectation
-# the scalar ``outcome`` component regresses directly.
-NUM_OUTCOME_CLASSES: int = 3
-OUTCOME_LOSS_INDEX: int = 0
+# Match outcome as the outcome critic's classes: win, tie, loss, and
+# "unresolved", the probability mass the discount leaks away, worth zero.
+NUM_OUTCOME_CLASSES: int = 4
+OUTCOME_WIN_INDEX: int = 0
 OUTCOME_TIE_INDEX: int = 1
-OUTCOME_WIN_INDEX: int = 2
+OUTCOME_LOSS_INDEX: int = 2
+OUTCOME_UNRESOLVED_INDEX: int = 3
 
 # Width of the scripted teacher's independent marginals, power then turn then shoot.
 NUM_EXPERT_MARGINALS: int = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS

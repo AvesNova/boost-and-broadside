@@ -266,12 +266,19 @@ class TestCompilePolicy:
 
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
             first = policy.get_action_and_value(_cuda_obs(6, ships=4), hidden)
-        kept = [tensor.clone() for tensor in first]
+        # The critic output is a tuple of tensors (or None) of its own.
+        held_tensors = [
+            tensor
+            for output in first
+            for tensor in (output if isinstance(output, tuple) else (output,))
+            if tensor is not None
+        ]
+        kept = [tensor.clone() for tensor in held_tensors]
 
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
             policy.get_action_and_value(_cuda_obs(6, ships=4), first[4])
 
-        for index, (held, expected) in enumerate(zip(first, kept)):
+        for index, (held, expected) in enumerate(zip(held_tensors, kept)):
             torch.testing.assert_close(
                 held, expected, msg=f"output {index} changed under a later call"
             )

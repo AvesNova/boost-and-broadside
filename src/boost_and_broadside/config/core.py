@@ -472,6 +472,14 @@ class ModelConfig:
     # in backward for activation memory that no longer scales with depth — set True
     # to fit deeper networks. Only affects the update-time re-evaluation path.
     grad_checkpoint: bool = False
+    # Categorical critic support: each per-ship reward level is read off
+    # ``value_bins`` logits over ``symexp(linspace(-L, L, value_bins))`` with
+    # ``L = value_symlog_limit``. 51 bins over +-5 symlog units (+-147 raw, in
+    # win units) is a 0.2 spacing; DreamerV3's 255 over +-20 would put the
+    # first bins at +-1.2 and +-4.0 raw at this count, far too coarse for these
+    # returns.
+    value_bins: int = 51
+    value_symlog_limit: float = 5.0
 
     @property
     def n_hidden_layers(self) -> int:
@@ -500,6 +508,10 @@ class ModelConfig:
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
             raise ValueError(f"d_model={self.d_model} must be divisible by n_heads={self.n_heads}")
+        if self.value_bins < 3 or self.value_bins % 2 == 0:
+            raise ValueError("value_bins must be odd and at least 3, so zero is a bin")
+        if self.value_symlog_limit <= 0.0:
+            raise ValueError("value_symlog_limit must be positive")
         if self.n_spatial_heads is not None:
             if self.n_spatial_heads < 1:
                 raise ValueError(f"n_spatial_heads must be positive, got {self.n_spatial_heads}")

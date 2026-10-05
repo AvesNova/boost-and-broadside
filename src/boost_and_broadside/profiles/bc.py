@@ -84,7 +84,6 @@ BC_PROFILE = replace(
     # common multiplier on clip fire rate, then re-measure the shares.
     next_state_coef=0.17,
     enemy_action_coef=0.057,
-    outcome_categorical_coef=0.0083,
     global_density_coef=2.0,
     # Pure NLL. Beta = 0.5 weights by sigma, and sigma differs ~100x across
     # populations (hidden enemy ~e^2..e^4, ally ~e^-0.7), which put 99% of the

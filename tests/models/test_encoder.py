@@ -307,7 +307,10 @@ class TestYemongPolicy:
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
         hidden = policy.initial_hidden(B, policy.num_recurrent_tokens, torch.device("cpu"))
 
-        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(obs, hidden)
+        action, logprob, value_critic, pred_next, new_hidden = policy.get_action_and_value(
+            obs, hidden
+        )
+        value = value_critic.value
 
         from boost_and_broadside.models.yemong.griffin import CONV_KERNEL
 
@@ -335,7 +338,10 @@ class TestYemongPolicy:
         obs = _make_obs(B, N)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
 
-        action, logprob, value, pred_next, new_hidden = policy.get_action_and_value(obs, hidden)
+        action, logprob, value_critic, pred_next, new_hidden = policy.get_action_and_value(
+            obs, hidden
+        )
+        value = value_critic.value
 
         K = NUM_VALUE_COMPONENTS
         assert action.shape == (B, N, 3)
@@ -392,9 +398,10 @@ class TestYemongPolicy:
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
         alive_mask = torch.ones(T, B, N, dtype=torch.bool)
 
-        logprob, entropy, new_value, logits, _, _, _ = policy.evaluate_actions(
+        logprob, entropy, new_value_critic, logits, _, _ = policy.evaluate_actions(
             obs, actions, hidden, alive_mask
         )
+        new_value = new_value_critic.value
 
         assert logprob.shape == (T, B, N)
         assert entropy.shape == (T, B, N)
@@ -498,7 +505,8 @@ class TestMapKVMemory:
 
         handle = policy.yemong_layers[0].spatial[0].register_forward_pre_hook(record_shapes)
         try:
-            action, _, value, _, new_hidden = policy.get_action_and_value(obs, hidden)
+            action, _, value_critic, _, new_hidden = policy.get_action_and_value(obs, hidden)
+            value = value_critic.value
         finally:
             handle.remove()
 
@@ -540,7 +548,8 @@ class TestMapKVMemory:
         hidden = initial_hidden
         step_values, actions = [], []
         for obs in observations:
-            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            action, _, value_critic, _, hidden = policy.get_action_and_value(obs, hidden)
+            value = value_critic.value
             actions.append(action)
             step_values.append(value)
 
@@ -556,7 +565,7 @@ class TestMapKVMemory:
                 torch.stack(actions),
                 initial_hidden,
                 sequence[ObsKey.ALIVE],
-            )[2]
+            )[2].value
 
         assert torch.allclose(torch.stack(step_values), sequence_values, atol=1e-5)
 
@@ -649,7 +658,8 @@ class TestYemongBlockStructure:
         hidden = initial_hidden
         step_values, actions = [], []
         for obs in obs_seq:
-            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            action, _, value_critic, _, hidden = policy.get_action_and_value(obs, hidden)
+            value = value_critic.value
             step_values.append(value)
             actions.append(action)
         step_value = torch.stack(step_values, dim=0)  # (T, B, N, K)
@@ -662,9 +672,10 @@ class TestYemongBlockStructure:
         )
         alive_mask = stacked.data[ObsKey.ALIVE]  # (T, B, N+M)
         with torch.no_grad():
-            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value_critic, _, _, _ = policy.evaluate_actions(
                 stacked, torch.stack(actions, dim=0), initial_hidden, alive_mask
             )
+            seq_value = seq_value_critic.value
 
         assert torch.allclose(step_value, seq_value, atol=1e-5), (
             f"max diff: {(step_value - seq_value).abs().max().item()}"
@@ -701,7 +712,8 @@ class TestYemongBlockStructure:
         hidden = initial_hidden
         step_values, actions = [], []
         for t, obs in enumerate(obs_seq):
-            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            action, _, value_critic, _, hidden = policy.get_action_and_value(obs, hidden)
+            value = value_critic.value
             step_values.append(value)
             actions.append(action)
             hidden = policy.reset_hidden_for_envs(hidden, done_mask[t], N + M)
@@ -713,13 +725,14 @@ class TestYemongBlockStructure:
             }
         )
         with torch.no_grad():
-            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value_critic, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
                 stacked.data[ObsKey.ALIVE],
                 done_mask=done_mask,
             )
+            seq_value = seq_value_critic.value
 
         assert torch.allclose(step_value, seq_value, atol=1e-5), (
             f"max diff: {(step_value - seq_value).abs().max().item()}"
@@ -862,7 +875,8 @@ class TestBulletCrossAttention:
         torch.manual_seed(5)
         obs = self._obs(B, N, M, NB, active=False)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
-        _, _, base_value, _, _ = policy.get_action_and_value(obs, hidden)
+        _, _, base_value_critic, _, _ = policy.get_action_and_value(obs, hidden)
+        base_value = base_value_critic.value
 
         # Same masked-out slots, wildly different contents.
         garbled = dict(obs.bullets)
@@ -870,7 +884,8 @@ class TestBulletCrossAttention:
             if val.dtype.is_floating_point:
                 garbled[key] = val + 500.0
         moved = YemongObservation(data=obs.data, bullets=garbled)
-        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+        _, _, moved_value_critic, _, _ = policy.get_action_and_value(moved, hidden)
+        moved_value = moved_value_critic.value
 
         assert torch.allclose(base_value, moved_value, atol=1e-5)
 
@@ -902,8 +917,10 @@ class TestBulletCrossAttention:
         moved = YemongObservation(data=obs.data, bullets=garbled)
 
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
-        _, _, base_value, _, _ = policy.get_action_and_value(base, hidden)
-        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+        _, _, base_value_critic, _, _ = policy.get_action_and_value(base, hidden)
+        base_value = base_value_critic.value
+        _, _, moved_value_critic, _, _ = policy.get_action_and_value(moved, hidden)
+        moved_value = moved_value_critic.value
 
         assert torch.allclose(base_value, moved_value, atol=1e-5)
 
@@ -915,12 +932,14 @@ class TestBulletCrossAttention:
         torch.manual_seed(5)
         obs = self._obs(B, N, M, NB, active=True)
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
-        _, _, base_value, _, _ = policy.get_action_and_value(obs, hidden)
+        _, _, base_value_critic, _, _ = policy.get_action_and_value(obs, hidden)
+        base_value = base_value_critic.value
 
         moved_bullets = dict(obs.bullets)
         moved_bullets[list(moved_bullets)[0]] = moved_bullets[list(moved_bullets)[0]] + 300.0
         moved = YemongObservation(data=obs.data, bullets=moved_bullets)
-        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+        _, _, moved_value_critic, _, _ = policy.get_action_and_value(moved, hidden)
+        moved_value = moved_value_critic.value
 
         assert not torch.allclose(base_value, moved_value, atol=1e-5)
 
@@ -947,7 +966,8 @@ class TestBulletCrossAttention:
         hidden = initial_hidden
         step_values, actions = [], []
         for obs in obs_seq:
-            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            action, _, value_critic, _, hidden = policy.get_action_and_value(obs, hidden)
+            value = value_critic.value
             step_values.append(value)
             actions.append(action)
 
@@ -961,12 +981,13 @@ class TestBulletCrossAttention:
             },
         )
         with torch.no_grad():
-            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value_critic, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
                 stacked.data[ObsKey.ALIVE],
             )
+            seq_value = seq_value_critic.value
 
         assert torch.allclose(torch.stack(step_values, dim=0), seq_value, atol=1e-5)
 
@@ -1058,7 +1079,8 @@ class TestBulletCrossAttention:
             policy._num_ships = N
             obs = self._obs(1, N, M, NB)
             hidden = policy.initial_hidden(1, N, torch.device("cpu"))
-            action, _, value, _, _ = policy.get_action_and_value(obs, hidden)
+            action, _, value_critic, _, _ = policy.get_action_and_value(obs, hidden)
+            value = value_critic.value
             assert action.shape == (1, N, 3)
             assert torch.isfinite(value).all()
 
@@ -1204,7 +1226,8 @@ class TestEncoderSplit:
         obs.data[ObsKey.TEAM_ID][:, N:] = 2
         hidden = policy.initial_hidden(B, N, torch.device("cpu"))
 
-        action, _, value, _, _ = policy.get_action_and_value(obs, hidden)
+        action, _, value_critic, _, _ = policy.get_action_and_value(obs, hidden)
+        value = value_critic.value
 
         assert action.shape == (B, N, 3)
         assert torch.isfinite(value).all()
@@ -1386,7 +1409,8 @@ class TestNonRecurrentFieldPath:
         hidden = initial_hidden
         step_values, actions = [], []
         for obs in obs_seq:
-            action, _, value, _, hidden = policy.get_action_and_value(obs, hidden)
+            action, _, value_critic, _, hidden = policy.get_action_and_value(obs, hidden)
+            value = value_critic.value
             step_values.append(value)
             actions.append(action)
 
@@ -1396,12 +1420,13 @@ class TestNonRecurrentFieldPath:
             }
         )
         with torch.no_grad():
-            _, _, seq_value, _, _, _, _ = policy.evaluate_actions(
+            _, _, seq_value_critic, _, _, _ = policy.evaluate_actions(
                 stacked,
                 torch.stack(actions, dim=0),
                 initial_hidden,
                 stacked.data[ObsKey.ALIVE],
             )
+            seq_value = seq_value_critic.value
 
         assert torch.allclose(torch.stack(step_values, dim=0), seq_value, atol=1e-5)
 
@@ -1451,7 +1476,7 @@ class TestOrthogonalHeadInit:
         get orthogonal-initialized end to end after the by-type refactor. That
         head reads the global token, so the promotion has to be on for it to
         exist at all."""
-        global_value_k = (0, 1)
+        global_value_k = (0,)
         policy = YemongPolicy(
             replace(model_cfg, global_token=True),
             coordinator,
@@ -1557,8 +1582,10 @@ class TestGradCheckpoint:
         hidden = base.initial_hidden(B, N, torch.device("cpu"))
         alive = torch.ones(T, B, N, dtype=torch.bool)
 
-        lp0, _, val0, _, _, pn0, _ = base.evaluate_actions(obs, actions, hidden, alive)
-        lp1, _, val1, _, _, pn1, _ = ckpt.evaluate_actions(obs, actions, hidden, alive)
+        lp0, _, val0_critic, _, _, pn0 = base.evaluate_actions(obs, actions, hidden, alive)
+        val0 = val0_critic.value
+        lp1, _, val1_critic, _, _, pn1 = ckpt.evaluate_actions(obs, actions, hidden, alive)
+        val1 = val1_critic.value
 
         assert torch.allclose(lp0, lp1, atol=1e-6)
         assert torch.allclose(val0, val1, atol=1e-6)

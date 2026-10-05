@@ -48,7 +48,6 @@ from boost_and_broadside.config.diagnostics import (
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO, live_reference_ladder
 from boost_and_broadside.constants import (
     NUM_JOINT_ACTIONS,
-    NUM_OUTCOME_CLASSES,
     NUM_POWER_ACTIONS,
     NUM_SHOOT_ACTIONS,
     NUM_TURN_ACTIONS,
@@ -73,14 +72,17 @@ from boost_and_broadside.runtime.actions import (
 from boost_and_broadside.train.rl.allocation import allocation_weights
 from boost_and_broadside.train.rl.belief import DualBeliefTracker
 from boost_and_broadside.train.rl.buffer import (
-    AdvantageScaler,
     LogicalRolloutBuffer,
     MicroBatch,
-    ReturnScaler,
     RolloutBuffer,
     StoredRollout,
 )
 from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+from boost_and_broadside.train.rl.critic import (
+    CriticOutput,
+    ReturnNormalizer,
+    two_hot,
+)
 from boost_and_broadside.train.rl.elo_diagnostics import LiveEloDiagnostics
 from boost_and_broadside.train.rl.elo_eval import MAX_ANCHORS, EloEvaluator, LadderOpponent
 from boost_and_broadside.train.rl.features import (
@@ -159,6 +161,11 @@ def _build_component_tensor(
         dtype=torch.float32,
         device=device,
     )
+
+
+def _slice_critic(critic: CriticOutput, rows: slice) -> CriticOutput:
+    """Slice a critic output's leading (batch) axis."""
+    return CriticOutput(*(None if field is None else field[rows] for field in critic))
 
 
 # ------------------------------------------------------------------
@@ -249,37 +256,6 @@ class _StagedMicroBatch:
     pinned: MicroBatch
     device: MicroBatch
     ready: torch.cuda.Event
-
-
-def _huber(error: torch.Tensor, delta: float) -> torch.Tensor:
-    """Squared error inside ``delta``, linear outside, continuous in both value
-    and slope at the join.
-
-    Scaled to agree with ``error**2`` in the quadratic region rather than with
-    the textbook ``0.5 * error**2``, so switching a squared-error critic to this
-    changes the tails and leaves the bulk of the loss — and therefore the critic's
-    gradient scale — where it was.
-
-    The tails are the point. Normalizing each component by its own statistics
-    necessarily exposes them: a sparse component's returns are a spike at zero
-    with rare large excursions, so its normalized error reaches values a dense
-    component never sees. Under squared error one such token can outweigh a
-    minibatch of ordinary ones, which is what the oversized ``return_min_span``
-    floor was compensating for by shrinking every sparse component instead.
-
-    Args:
-        error: Any shape — the critic residual in normalized space.
-        delta: Half-width of the quadratic region, in normalized units.
-
-    Returns:
-        Elementwise loss, same shape as ``error``.
-    """
-    magnitude = error.abs()
-    return torch.where(
-        magnitude <= delta,
-        error.pow(2),
-        delta * (2.0 * magnitude - delta),
-    )
 
 
 def _actor_entropy_coef(
@@ -491,11 +467,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._global_value_k: tuple[int, ...] = tuple(
             i for i, n in enumerate(self._active_names) if n in GLOBAL_VALUE_COMPONENTS
         )
-        # Where the categorical head reads its labels from. None when `outcome`
-        # carries no weight, which is also when the head's loss is off.
-        self._outcome_k: int | None = (
-            self._active_names.index("outcome") if "outcome" in self._active_names else None
-        )
 
         # Build per-component (K,) discount tensors — used by all RolloutBuffers.
         self._gamma_t = _build_component_tensor(
@@ -513,7 +484,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_value_components=K,
             num_ships=N,
             global_value_k=self._global_value_k,
-            predict_outcome=train_config.outcome_categorical_coef > 0.0,
             predict_density=train_config.global_density_coef > 0.0,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
@@ -628,22 +598,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self._decision_dt = ship_config.dt * self.env_config.action_repeat
         self._index_log_scale = 2.0 * math.log(ship_config.field_index_step)
 
-        # Per-component return scaler: EMA of p5/p95 in symlog-reward space (critic)
-        self.scaler = ReturnScaler(
-            num_components=K,
-            device=self.device,
-            ema_alpha=train_config.return_ema_alpha,
-            min_span=train_config.return_min_span,
+        # The one advantage normaliser: DreamerV3's EMA 5th-95th percentile spread
+        # of the summed return, floored at one win. The level weights then reach
+        # the policy exactly as derived.
+        self.return_normalizer = ReturnNormalizer(
+            train_config.return_percentile_decay,
+            train_config.return_scale_floor,
+            self.device,
         )
-        # Per-component advantage scaler: EMA of RMS in symlog-reward space (actor)
-        self.adv_scaler = AdvantageScaler(
-            num_components=K,
-            device=self.device,
-            min_rms=train_config.advantage_min_rms,
-        )
-        # Components whose scaler floor has already been reported, so a binding
-        # floor warns once rather than every update.
-        self._floor_warned: set[str] = set()
+        # The level the policy values as outcome classes off the global token, if
+        # any: the policy drops it to the per-ship path when it has no global token.
+        self._outcome_global_k: tuple[int, ...] = self._policy_module._global_value_k
 
         # Per-component aggregated-return diagnostic — refreshed once per update
         # by _precompute_lambda_aggregates (primary scale).
@@ -659,7 +624,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_value_components=K,
             num_ships=N,
             global_value_k=self._global_value_k,
-            predict_outcome=train_config.outcome_categorical_coef > 0.0,
             predict_density=train_config.global_density_coef > 0.0,
         ).to(self.device)
         self.avg_policy = compile_policy(self._avg_policy_module, compile_mode)
@@ -904,7 +868,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             action_t0:  (B, N, 3) raw-perspective actions.
             action_t1:  (B, N, 3) flipped-perspective actions; None in shared_pass.
             logprob:    (B, N) raw-perspective log probs.
-            value_norm: (B, N, K) raw-perspective values (normalized space).
+            critic:     Raw-perspective ``CriticOutput``.
             pred_next:  (B, N, pred_dim) raw-perspective next-state predictions.
             hidden:     Updated raw-perspective hidden state.
             hidden_t1:  Updated flipped-perspective hidden state; None in shared_pass.
@@ -936,7 +900,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             action_both[:batch],  # (B, N, 3)
             action_both[batch:],  # (B, N, 3)
             logprob_both[:batch],  # (B, N)
-            value_both[:batch],  # (B, N, K)
+            _slice_critic(value_both, slice(0, batch)),  # value (B, N, K)
             pred_next_both[:batch],  # (B, N, pred_dim)
             pred_next_both[batch:],  # (B, N, pred_dim)
             hidden_out[:, : batch * num_recurrent, :],  # (n_layers, B*(N+G), CK*D)
@@ -965,7 +929,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     aux_action_t0,
                     aux_action_t1,
                     aux_logprob,
-                    aux_value_norm,
+                    aux_critic,
                     aux_pred_t0,
                     aux_pred_t1,
                     aux_hiddens[i],
@@ -995,12 +959,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 aux_info["actuator_contiguous"],
                 aux_done_any,
             )
+            aux_side = aux_team_id == 0  # (B_aux, N_aux)
             aux_buf.add(
                 obs=aux_obs[i],
                 action=aux_action,
                 logprob=aux_logprob,
                 reward=aux_reward,
-                value=self.scaler.denormalize(aux_value_norm),
+                value=self._ship_values(aux_critic.value, aux_side),
+                observer_side=aux_side,
+                **self._outcome_step(aux_critic, aux_reward, aux_side),
                 alive=aux_obs[i]["alive"][:, :aux_N].bool(),
                 actor_mask=aux_actor_mask,
                 decision_committed=decision_committed,
@@ -1328,29 +1295,84 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         for index, aux_buffer in enumerate(self.aux_buffers):
             aux_buffer.store_final_obs(runtime.aux_obs[index])
 
+        self._bootstrap(
+            self.buffer, self.wrapper, runtime.obs, runtime.hidden, terminated, runtime.num_ships
+        )
+        for index, (aux_buffer, aux_wrapper) in enumerate(zip(self.aux_buffers, self.aux_wrappers)):
+            self._bootstrap(
+                aux_buffer,
+                aux_wrapper,
+                runtime.aux_obs[index],
+                runtime.aux_hiddens[index],
+                runtime.aux_last_dones[index],
+                aux_buffer.num_ships,
+            )
+        del update_scalers  # the return normaliser updates on the summed returns
+
+    def _bootstrap(
+        self,
+        buffer: RolloutBuffer,
+        wrapper: YemongEnvWrapper,
+        obs: YemongObservation,
+        hidden: torch.Tensor,
+        terminated: torch.Tensor,
+        num_ships: int,
+    ) -> None:
+        """GAE per level, and the outcome's categorical targets, off the final state."""
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-            _, _, next_value_norm, _, _ = self.policy.get_action_and_value(
-                runtime.obs, runtime.hidden
+            _, _, critic, _, _ = self.policy.get_action_and_value(obs, hidden)
+        side = wrapper.env.state.ship_team_id[:, :num_ships] == 0  # (B, N)
+        buffer.compute_gae(self._ship_values(critic.value, side), terminated.float())
+        if self._outcome_global_k:
+            k = self._outcome_global_k[0]
+            buffer.compute_outcome_targets(
+                F.softmax(critic.outcome_logits.float(), dim=-1),
+                float(self._gamma_t[k]),
+                float(self._lambda_t[k]),
             )
-        self.buffer.compute_gae(self.scaler.denormalize(next_value_norm), terminated.float())
-        if self._outcome_k is not None and self.cfg.outcome_categorical_coef > 0.0:
-            self.buffer.fill_outcome_class(self._outcome_k)
-        for index, (aux_buffer, aux_hidden) in enumerate(
-            zip(self.aux_buffers, runtime.aux_hiddens)
-        ):
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                _, _, next_aux_norm, _, _ = self.policy.get_action_and_value(
-                    runtime.aux_obs[index], aux_hidden
-                )
-            aux_buffer.compute_gae(
-                self.scaler.denormalize(next_aux_norm),
-                runtime.aux_last_dones[index].float(),
-            )
-            if self._outcome_k is not None and self.cfg.outcome_categorical_coef > 0.0:
-                aux_buffer.fill_outcome_class(self._outcome_k)
-        if update_scalers:
-            self.scaler.update(self.buffer.returns, self.buffer.alive_mask)
-            self.adv_scaler.update(self.buffer.advantages, self.buffer.alive_mask)
+
+    def _ship_values(self, value: torch.Tensor, observer_side: torch.Tensor) -> torch.Tensor:
+        """Per-ship expected returns from a ``CriticOutput.value``.
+
+        The outcome column arrives as ``P(win) - P(loss)`` in the observer's
+        frame; each ship's outcome reward is its own team's result times the
+        level weight, so the column is signed per ship and weighted.
+
+        Args:
+            value: (..., N, K) critic values.
+            observer_side: (..., N) bool, the ship is on the observer's team.
+
+        Returns:
+            (..., N, K) expected returns in reward units.
+        """
+        if not self._outcome_global_k:
+            return value
+        k = self._outcome_global_k[0]
+        weight = self.wrapper.active_components[k].weight
+        sign = observer_side.to(value.dtype) * 2.0 - 1.0
+        columns = list(value.unbind(-1))
+        columns[k] = columns[k] * sign * weight
+        return torch.stack(columns, dim=-1)
+
+    def _outcome_step(
+        self, critic: CriticOutput, reward: torch.Tensor, observer_side: torch.Tensor
+    ) -> dict[str, torch.Tensor]:
+        """The outcome critic's per-environment rollout record for ``buffer.add``.
+
+        Returns:
+            ``outcome_probs`` (B, 4) and ``outcome_result`` (B,), the signed
+            result on this transition in the observer's frame; empty when the
+            outcome is valued per ship.
+        """
+        if not self._outcome_global_k:
+            return {}
+        k = self._outcome_global_k[0]
+        sign = observer_side.float() * 2.0 - 1.0
+        result = torch.sign((reward[..., k] * sign).sum(-1))  # (B,)
+        return {
+            "outcome_probs": F.softmax(critic.outcome_logits.float(), dim=-1),
+            "outcome_result": result,
+        }
 
     def _collect_host_rollouts(
         self,
@@ -1380,15 +1402,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     buffer.ns_labels = None
                 shards.append(StoredRollout(buffer))
 
-        primary_shards = stored_by_scale[0]
-        self.scaler.update_chunks(
-            [shard.returns for shard in primary_shards],
-            [shard.alive_mask for shard in primary_shards],
-        )
-        self.adv_scaler.update_chunks(
-            [shard.advantages for shard in primary_shards],
-            [shard.alive_mask for shard in primary_shards],
-        )
         return self._prepare_host_rollouts(device_buffers, stored_by_scale)
 
     @torch.no_grad()
@@ -1411,29 +1424,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             zip(device_buffers, stored_by_scale, strict=True)
         ):
             is_primary = scale_index == 0
-            adv_square_sum = torch.zeros((), device=self.device)
-            adv_count = torch.zeros((), device=self.device)
             ret_component_sum = torch.zeros(device_buffer.num_components, device=self.device)
             ret_actor_count = torch.zeros((), device=self.device)
 
             for stored in stored_shards:
                 stored.restore_aggregate_inputs(device_buffer)
-                shard_stats = self._precompute_lambda_aggregates(
+                shard_ret_sum, shard_actor_count = self._precompute_lambda_aggregates(
                     device_buffer, is_primary=is_primary
                 )
-                shard_adv_sum, shard_adv_count, shard_ret_sum, shard_actor_count = shard_stats
-                adv_square_sum += shard_adv_sum
-                adv_count += shard_adv_count
-                if shard_ret_sum is not None and shard_actor_count is not None:
-                    ret_component_sum += shard_ret_sum
-                    ret_actor_count += shard_actor_count
-
+                ret_component_sum += shard_ret_sum
+                ret_actor_count += shard_actor_count
                 stored.capture_aggregates(device_buffer)
 
-            adv_rms = adv_square_sum / adv_count.clamp(min=1.0)
             if is_primary:
                 self._ret_per_comp_mean_k = ret_component_sum / ret_actor_count.clamp(min=1.0)
-            logical_buffers.append(LogicalRolloutBuffer(stored_shards, adv_rms))
+            # Every scale divides by the scale the primary shards just updated.
+            logical_buffers.append(
+                LogicalRolloutBuffer(stored_shards, self.return_normalizer.scale.clone())
+            )
         return logical_buffers
 
     def _apply_schedule_state(self, step: int) -> float:
@@ -1774,6 +1782,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 if is_primary and self.cfg.global_density_coef > 0.0
                 else 1.0
             ),
+            "env_step_sum": float(
+                sum(chunk.alive.shape[0] * chunk.alive.shape[1] for chunk in chunks)
+            ),
             "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
             "pg_sum": pg_sum.clamp(min=1.0).to(self.device),
@@ -1784,7 +1795,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "enemy_action_sum": enemy_action_sum.clamp(min=1.0).to(self.device),
             "persistence_sum": persistence_sum.clamp(min=1.0).to(self.device),
             "numel": float(numel),
-            "adv_rms": buf.adv_rms,
+            "return_scale": buf.return_scale,
         }
 
     def _compute_minibatch_loss(
@@ -1824,7 +1835,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                           critic diagnostics. Aux scales skip these to avoid shape mismatches
                           (different N) and because BC targets only exist in the primary env.
             denoms:       Minibatch-total denominators from _minibatch_denominators,
-                          plus "adv_rms" (whole-buffer advantage normalizer).
+                          plus "return_scale" (the update's advantage divisor).
             frac:         This micro-batch's env count / minibatch env count.
             grad_terms:   Accumulator collecting this micro-batch's per-term
                           gradients, or None (the default) for no diagnostics.
@@ -1874,11 +1885,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             (
                 logprob,
                 entropy,
-                new_value,
+                critic,
                 policy_logits,
                 z,
                 pred_next,
-                outcome_logits,
                 enemy_action_logits,
                 density_pred,
             ) = evaluate(
@@ -1901,14 +1911,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pg_f = (mb_actor_mask & mb_alive & mb_decision_committed).float()
         pg_sum = denoms["pg_sum"]
 
-        # ---- Lambda aggregation (precomputed once per update) --------------
-        # See _precompute_lambda_aggregates: the (T, B, N_i, N_j, K) lambda
-        # tensor depends only on rollout data + per-update scalers, so it is
-        # built and reduced once per update, not per minibatch.
+        # ---- One advantage, normalised once --------------------------------
+        # The levels' advantages are mixed and summed once per update (see
+        # _precompute_lambda_aggregates) and divided by the return normaliser's
+        # scale: DreamerV3's percentile spread, floored at one win, with no mean
+        # subtracted and no per-minibatch standardisation.
         adv_agg = mb_adv_agg  # (T, B_mb, N)
         ret_agg = mb_ret_agg  # (T, B_mb, N)
 
-        adv_norm = adv_agg / (denoms["adv_rms"].sqrt().clamp(min=0.1) + 1e-8)
+        adv_norm = adv_agg / denoms["return_scale"]
 
         # ---- Policy gradient loss ----------------------------------------
         log_ratio = logprob - mb_old_logprobs
@@ -1917,10 +1928,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pg_loss2 = -adv_norm * ratio.clamp(1 - cfg.clip_coef, 1 + cfg.clip_coef)
         pg_loss = (torch.max(pg_loss1, pg_loss2) * pg_f).sum() / pg_sum
 
-        # ---- Value loss --------------------------------------------------
-        target_norm = self.scaler.normalize(mb_returns).detach()  # (T, B_mb, N, K)
-        vf_loss_raw = _huber(new_value - target_norm, cfg.value_huber_delta)  # (T, B_mb, N, K)
-        vf_loss = (vf_loss_raw * alive_k).sum() / (mask_sum * K)
+        # ---- Value loss: cross-entropy against the categorical return -------
+        value_per_level = self._critic_losses(critic, batch, alive_f, denoms)  # (K,)
+        vf_loss = value_per_level.sum() / K
 
         # ---- Entropy bonus -----------------------------------------------
         ent_loss = -(entropy * actor_f).sum() / actor_sum
@@ -2065,28 +2075,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     (0, 1, 2)
                 ) / ns_sum
 
-        # ---- Match-outcome classification ---------------------------------
-        outcome_ce_loss = policy_logits.new_zeros(())
         zero = policy_logits.new_zeros(())
-        diag_outcome = {"outcome_ce": zero, "outcome_correct": zero, "outcome_labelled": zero}
-        if self.cfg.outcome_categorical_coef > 0.0:
-            outcome_ce_loss, outcome_graded, outcome_target_class = self._outcome_categorical_loss(
-                outcome_logits, batch.outcome_class, alive_f, mask_sum
+        diag_outcome = {
+            "outcome_ce": (
+                value_per_level[self._outcome_global_k[0]].detach()
+                if self._outcome_global_k
+                else zero
             )
-            with torch.no_grad():
-                # Divide by the minibatch-total token count because additive
-                # diagnostics sum across micro-batches before finalization.
-                graded = outcome_graded & mb_alive
-                outcome_predicted = outcome_logits.argmax(-1).to(batch.outcome_class.dtype)
-                correct = (outcome_predicted == outcome_target_class) & graded
-                numel = denoms["numel"]
-                diag_outcome.update(
-                    {
-                        "outcome_ce": outcome_ce_loss.detach(),
-                        "outcome_labelled": graded.sum() / numel,
-                        "outcome_correct": correct.sum() / numel,
-                    }
-                )
+        }
 
         # ---- Enemy pending-action prediction -------------------------------
         enemy_action_loss = self._zero_tensor
@@ -2153,8 +2149,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         density_loss = density.loss
 
         loss = (
-            self.cfg.outcome_categorical_coef * outcome_ce_loss
-            + self._policy_gradient_coef * pg_loss
+            self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
             + self._entropy_coef * ent_loss
             + self._behavior_cloning_coef * bc_loss
@@ -2175,7 +2170,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             terms = {
                 "policy": self._policy_gradient_coef * pg_loss,
                 "value": self._schedule_state.value_function_coef * vf_loss,
-                "outcome": self.cfg.outcome_categorical_coef * outcome_ce_loss,
                 "enemy_action": self.cfg.enemy_action_coef * enemy_action_loss,
                 "entropy": self._entropy_coef * ent_loss,
                 "bc": self._behavior_cloning_coef * bc_loss,
@@ -2191,17 +2185,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                         adv_norm=adv_norm,
                         pg_f=pg_f,
                         pg_sum=pg_sum,
-                        adv_rms=denoms["adv_rms"],
+                        return_scale=denoms["return_scale"],
                     )
                 )
             if self._grad_diag.decomposes_value_by_reward:
                 terms.update(
-                    self._reward_value_terms(
-                        vf_loss_raw=vf_loss_raw,
-                        alive_k=alive_k,
-                        mask_sum=mask_sum,
-                        num_components=K,
-                    )
+                    self._reward_value_terms(value_per_level=value_per_level, num_components=K)
                 )
             terms.update(ns_population_terms)
             grad_terms.accumulate(terms, scale=grad_scale)
@@ -2297,11 +2286,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # All additive GPU tensors; ev/std finalization and the single CPU
             # transfer happen once per minibatch in _update_epochs.
             if is_primary:
-                pred_k = self.scaler.denormalize(new_value.detach())  # (T, B_mb, N, K)
+                pred_k = self._ship_values(
+                    critic.value.detach().float(), batch.observer_side
+                )  # (T, B_mb, N, K)
                 residuals_k = mb_returns - pred_k  # (T, B_mb, N, K)
-                diag["value_loss_k"] = (vf_loss_raw.detach() * alive_k).sum(
-                    (0, 1, 2)
-                ) / mask_sum  # (K,)
+                diag["value_loss_k"] = value_per_level.detach()  # (K,)
                 diag["ret_mean_k"] = (mb_returns * alive_k).sum((0, 1, 2)) / mask_sum
                 diag["ret_sq_k"] = (mb_returns.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
                 diag["res_mean_k"] = (residuals_k * alive_k).sum((0, 1, 2)) / mask_sum
@@ -2409,90 +2398,39 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             enemy_deviance=enemy_loss.detach() - enemy_floor,
         )
 
-    def _outcome_categorical_loss(
+    def _critic_losses(
         self,
-        logits: torch.Tensor,
-        outcome_class: torch.Tensor,
+        critic: CriticOutput,
+        batch: MicroBatch,
         alive_f: torch.Tensor,
-        mask_sum: torch.Tensor,
+        denoms: dict,
     ) -> torch.Tensor:
-        """Cross-entropy for the win / loss / tie head.
+        """Each level's cross-entropy against its categorical target.
 
-        With ``outcome``'s gamma at 1.0 and no reward before the terminal, the
-        return from any state *is* the match result, so the distributional
-        Bellman backup degenerates to "carry the terminal one-hot backwards".
-        No projection step, no discounting to shift the support -- the atoms are
-        the three real outcomes and they do not move.
-
-        A step whose episode ends inside the rollout takes the nearest *future*
-        terminal, which is what keeps a step landing after one episode end from
-        inheriting the previous episode's result. Steps with no terminal ahead
-        of them inside the chunk are **not graded at all**.
-
-        They used to bootstrap from the head's own belief at the chunk's last
-        step, detached, to densify a signal that is otherwise sparse -- an
-        episode runs about 8,700 steps and a chunk is 128, so under 1% of steps
-        carry a realised result. That densification had a fixed point. Every
-        unlabelled step took the *same* target, ``logits[-1]``, so any
-        prediction constant across the chunk satisfied it exactly; and for
-        softmax cross-entropy ``d/dlogits`` is ``p - target``, which at such a
-        fixed point is identically zero. Uniform is one of those fixed points
-        and is where orthogonal init starts. Run 748 sat there for 84.5M steps:
-        cross-entropy pinned at ln 3 = 1.0986 to four decimals, accuracy at
-        chance, and 5.6e-05 of trunk gradient -- 1/200,000 of behaviour
-        cloning's. The 1% of real labels never outweighed the pull back to it,
-        and were further divided by a denominator counting every alive token.
-
-        So the bootstrap is gone and the mean is over graded tokens only. The
-        signal is sparse -- a few thousand tokens an update -- but it is signal,
-        and the reported number is now cross-entropy against realised results,
-        which is comparable to ``ln 3`` as a bar rather than being pinned to it.
-
-        Args:
-            logits:        (T, B, N, 3) head output.
-            outcome_class: (T, B, N) int8 realised result, -1 where unknown.
-            alive_f:       (T, B, N) float liveness mask.
-            mask_sum:      Unused; the mean is over graded tokens, which is a
-                count this function alone knows. Kept so the call site reads
-                like the other masked means.
+        Per-ship levels: the realised lambda-return two-hot over the value bins,
+        averaged over living ships. The outcome: its categorical lambda-return
+        (``train/rl/critic.outcome_targets``), averaged over environment-steps.
+        Both denominators are minibatch totals, so micro-batches add exactly.
 
         Returns:
-            ``(loss, graded, graded_class)`` -- the cross-entropy averaged over
-            graded tokens, the mask of tokens that had a realised result ahead
-            of them, and the class each was graded against.
+            (K,) loss per level, in active-level order.
         """
-
-        horizon = logits.shape[0]
-        with torch.no_grad():
-            labelled = outcome_class >= 0  # (T, B, N)
-            step = torch.arange(horizon, device=logits.device).view(-1, 1, 1)
-            # Nearest labelled step at or after t; `horizon` where there is none.
-            reach = torch.where(labelled, step.expand_as(labelled), horizon)
-            nearest = reach.flip(0).cummin(0).values.flip(0)  # (T, B, N)
-            found = nearest < horizon
-            realised = torch.nn.functional.one_hot(
-                outcome_class.clamp(min=0).long(), NUM_OUTCOME_CLASSES
-            ).float()  # (T, B, N, 3)
-            carried = torch.gather(
-                realised,
-                0,
-                nearest.clamp(max=horizon - 1)
-                .unsqueeze(-1)
-                .expand(-1, -1, -1, NUM_OUTCOME_CLASSES),
-            )
-            graded_f = (found & (alive_f > 0.0)).float()  # (T, B, N)
-            # Every micro-batch of a minibatch divides by its own graded count.
-            # The alternative, a shared minibatch total, would need a count this
-            # loss cannot see; the head is a probe on a sparse label and the
-            # slight non-additivity across micro-batches costs it nothing.
-            graded_sum = graded_f.sum().clamp(min=1.0)
-
-        log_probabilities = torch.nn.functional.log_softmax(logits.float(), dim=-1)
-        cross_entropy = -(carried * log_probabilities).sum(-1)  # (T, B, N)
-        graded_class = torch.gather(
-            outcome_class.clamp(min=0).long(), 0, nearest.clamp(max=horizon - 1)
-        ).to(outcome_class.dtype)
-        return (cross_entropy * graded_f).sum() / graded_sum, found, graded_class
+        K = batch.returns.shape[-1]
+        losses: list[torch.Tensor] = [alive_f.new_zeros(())] * K
+        local_k = self._policy_module._local_value_k
+        if local_k:
+            support = self._policy_module.value_support
+            targets = two_hot(batch.returns[..., list(local_k)].float(), support)
+            log_p = F.log_softmax(critic.local_logits.float(), dim=-1)  # (T, B, N, K_l, n)
+            cross_entropy = -(targets * log_p).sum(-1)  # (T, B, N, K_l)
+            per_level = (cross_entropy * alive_f.unsqueeze(-1)).sum((0, 1, 2)) / denoms["mask_sum"]
+            for position, k in enumerate(local_k):
+                losses[k] = per_level[position]
+        if self._outcome_global_k:
+            log_q = F.log_softmax(critic.outcome_logits.float(), dim=-1)  # (T, B, 4)
+            cross_entropy = -(batch.outcome_targets * log_q).sum(-1)  # (T, B)
+            losses[self._outcome_global_k[0]] = cross_entropy.sum() / denoms["env_step_sum"]
+        return torch.stack(losses)
 
     def _reward_policy_terms(
         self,
@@ -2502,9 +2440,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         adv_norm: torch.Tensor,
         pg_f: torch.Tensor,
         pg_sum: torch.Tensor,
-        adv_rms: torch.Tensor,
+        return_scale: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """Split this micro-batch's policy loss across reward components.
+        """Split this micro-batch's policy loss across reward levels.
 
         PPO's clipping decision belongs to the aggregate objective: the ratio is
         clipped or not for a *token*, not for a reward. Choosing a branch per
@@ -2525,7 +2463,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                        the live objective uses.
             pg_f:      (T, b, N) causal policy-gradient mask.
             pg_sum:    Minibatch-total committed policy-decision count.
-            adv_rms:   Whole-buffer aggregated-advantage mean square.
+            return_scale: The return normaliser's scale for this update.
 
         Returns:
             Term name → weighted scalar loss, one per component with a non-zero
@@ -2535,12 +2473,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         T, _, N = batch.alive.shape
         team_id = batch.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, b, N)
         with torch.no_grad():
-            lambda_ij = self._team_mixing(team_id, batch.alive)
-            adv_normed = self.adv_scaler.normalize(batch.advantages)  # (T, b, N, K)
+            mixing = self._team_mixing(team_id, batch.alive)
             # Same aggregation as _precompute_lambda_aggregates, minus the sum
-            # over components: adv_agg_k.sum(-1) is the adv_agg it produced.
-            adv_agg_k = torch.einsum("tbijk,tbjk->tbik", lambda_ij, adv_normed)  # (T, b, N, K)
-            adv_norm_k = adv_agg_k / (adv_rms.sqrt().clamp(min=0.1) + 1e-8)  # (T, b, N, K)
+            # over levels: adv_agg_k.sum(-1) is the adv_agg it produced.
+            adv_agg_k = torch.einsum(
+                "tbijk,tbjk->tbik", mixing, batch.advantages.float()
+            )  # (T, b, N, K)
+            adv_norm_k = adv_agg_k / return_scale  # (T, b, N, K)
 
         clipped = ratio.clamp(1 - self.cfg.clip_coef, 1 + self.cfg.clip_coef)  # (T, b, N)
         # torch.max(-A*r, -A*clip(r)) selects a branch; reproduce that selection
@@ -2558,29 +2497,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         }
 
     def _reward_value_terms(
-        self,
-        *,
-        vf_loss_raw: torch.Tensor,
-        alive_k: torch.Tensor,
-        mask_sum: torch.Tensor,
-        num_components: int,
+        self, *, value_per_level: torch.Tensor, num_components: int
     ) -> dict[str, torch.Tensor]:
-        """Split this micro-batch's critic loss across reward components.
+        """Split this micro-batch's critic loss across reward levels.
 
-        The critic objective is already a sum of independent per-component
-        squared errors, so this is the existing loss regrouped rather than a
-        second objective: the components sum back to ``vf_loss`` by construction.
+        The critic objective is already a sum of independent per-level
+        cross-entropies, so this is the existing loss regrouped rather than a
+        second objective: the levels sum back to ``vf_loss`` by construction.
 
         Args:
-            vf_loss_raw:    (T, b, N, K) per-component squared critic error.
-            alive_k:        (T, b, N, 1) float alive mask.
-            mask_sum:       Minibatch-total alive token count.
-            num_components: K — the critic's own averaging divisor.
+            value_per_level: (K,) each level's cross-entropy.
+            num_components:  K — the critic's own averaging divisor.
 
         Returns:
-            Term name → weighted scalar loss, one per active component.
+            Term name → weighted scalar loss, one per active level.
         """
-        per_component = (vf_loss_raw * alive_k).sum((0, 1, 2)) / (mask_sum * num_components)  # (K,)
+        per_component = value_per_level / num_components  # (K,)
         coefficient = self._schedule_state.value_function_coef
         return {
             f"value/{name}": coefficient * per_component[index]
@@ -2616,42 +2548,28 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     @torch.no_grad()
     def _precompute_lambda_aggregates(
         self, buf: RolloutBuffer, is_primary: bool
-    ) -> tuple[
-        torch.Tensor,
-        torch.Tensor,
-        torch.Tensor | None,
-        torch.Tensor | None,
-    ]:
-        """Fill buf.adv_agg / buf.ret_agg with lambda-aggregated advantages/returns.
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Fill buf.adv_agg / buf.ret_agg: each ship's levels mixed and summed.
 
-        The (T, B, N_i, N_j, K) lambda tensor depends only on rollout data and
-        the per-update scalers/weights — not on the policy — so it is built once
-        per update here instead of once per minibatch inside the epoch loop.
-        Work is chunked over envs to keep peak memory at the per-minibatch level.
+        ``adv_agg_i = sum_k (adv_ik + s_k * mean_{teammates j} adv_jk)``, and
+        ``ret_agg`` the same of the returns. Rewards are stored in win units, so
+        the level weights are already in the sum. Built once per update here
+        rather than per minibatch: it depends only on rollout data. Chunked over
+        envs to keep peak memory at the per-minibatch level.
 
-        Lambda semantics (unchanged from the previous in-loss computation):
-        allies share signals, enemies are zero-sum (enemy_neg_k), enemy-only
-        components zero the ally contribution (ally_zero_k), local components
-        use a diagonal lambda, dead contributing ships are zeroed, and each
-        ship's weights are normalized to a weighted mean over alive ships.
+        The primary scale's summed returns over living actors update the return
+        normaliser, and every scale's buffer takes its scale.
 
-        Also fills buf.adv_rms — the actor-masked mean squared aggregated
-        advantage over the whole buffer. Computing it globally (not per
-        minibatch) makes the advantage normalization independent of the
-        minibatch/micro-batch split.
-
-        For the primary buffer this also computes the per-component
-        aggregated-return diagnostic mean (self._ret_per_comp_mean_k).
+        Returns:
+            ``(return sum per level (K,), living actor count)`` over the
+            buffer's actor tokens, for the per-level return diagnostic.
         """
         T = buf.num_steps
         B = buf.num_envs
         N = buf.num_ships
 
-        adv_sq_sum = torch.zeros((), device=self.device)
-        adv_cnt = torch.zeros((), device=self.device)
-        if is_primary:
-            ret_pc_sum = torch.zeros(buf.num_components, device=self.device)
-            actor_sum = torch.zeros((), device=self.device)
+        ret_pc_sum = torch.zeros(buf.num_components, device=self.device)
+        actor_sum = torch.zeros((), device=self.device)
 
         chunk = max(1, B // self.cfg.num_minibatches)
         if self.cfg.microbatch_tokens is not None:
@@ -2660,30 +2578,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             sl = slice(start, start + chunk)
             alive = buf.alive_mask[:, sl]  # (T, b, N)
             team_id_t = buf.obs[ObsKey.TEAM_ID][:T, sl, :N].long()  # (T, b, N)
-            lambda_ij_t = self._team_mixing(team_id_t, alive)
-
-            # advantages/returns are bf16-stored; normalize() promotes advantages via
-            # the fp32 rms divisor, and returns is upcast explicitly so the einsum with
-            # the fp32 lambda tensor stays fp32 (einsum will not mix dtypes).
-            adv_normed = self.adv_scaler.normalize(buf.advantages[:, sl])
+            mixing = self._team_mixing(team_id_t, alive)  # (T, b, N, N, K)
             returns_sl = buf.returns[:, sl].float()
-            buf.adv_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, adv_normed)
-            buf.ret_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", lambda_ij_t, returns_sl)
+            ret_pc = torch.einsum("tbijk,tbjk->tbik", mixing, returns_sl)  # (T, b, N, K)
+            buf.adv_agg[:, sl] = torch.einsum("tbijk,tbjk->tbi", mixing, buf.advantages[:, sl])
+            buf.ret_agg[:, sl] = ret_pc.sum(-1)
 
             actor_f = (buf.actor_masks[:, sl] & buf.decision_committed[:, sl] & alive).float()
-            adv_sq_sum += (buf.adv_agg[:, sl].pow(2) * actor_f).sum()
-            adv_cnt += actor_f.sum()
+            ret_pc_sum += (ret_pc * actor_f.unsqueeze(-1)).sum((0, 1, 2))
+            actor_sum += actor_f.sum()
 
-            if is_primary:
-                ret_pc = torch.einsum("tbijk,tbjk->tbik", lambda_ij_t, returns_sl)  # (T, b, N, K)
-                ret_pc_sum += (ret_pc * actor_f.unsqueeze(-1)).sum((0, 1, 2))
-                actor_sum += actor_f.sum()
-
-        buf.adv_rms = adv_sq_sum / adv_cnt.clamp(min=1.0)
         if is_primary:
+            actors = buf.actor_masks & buf.decision_committed & buf.alive_mask
+            self.return_normalizer.update(buf.ret_agg, actors)
             self._ret_per_comp_mean_k = ret_pc_sum / actor_sum.clamp(min=1.0)
-            return adv_sq_sum, adv_cnt, ret_pc_sum, actor_sum
-        return adv_sq_sum, adv_cnt, None, None
+        buf.return_scale = self.return_normalizer.scale.clone()
+        return ret_pc_sum, actor_sum
 
     @torch.no_grad()
     def _precompute_ns_labels(self, buf: RolloutBuffer) -> None:
@@ -3096,11 +3006,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "policy/entropy_shoot": [],
             "returns/aggregate": [],
             "returns/aggregate_std": [],
-            "returns/advantage_std": [],
+            "returns/scale": [],
             "episode/alive_fraction": [],
-            "outcome_head/cross_entropy": [],
-            "outcome_head/correct_fraction": [],
-            "outcome_head/labelled_fraction": [],
+            "critic/outcome_cross_entropy": [],
             "train/gradient_norm": [],
             # Fraction of optimizer steps on which max_grad_norm actually bound.
             # A guard should fire rarely; a value near one means the clip is not
@@ -3229,8 +3137,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("enemy_action_persistence_accuracy", "enemy_action_persistence_accuracy"),
                     ("enemy_action_persistence_ce", "enemy_action_persistence_ce"),
                     ("outcome_ce", "outcome_ce"),
-                    ("outcome_correct", "outcome_correct"),
-                    ("outcome_labelled", "outcome_labelled"),
                 )
                 _primary_k = (
                     "value_loss_k",
@@ -3280,14 +3186,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("returns/aggregate", "ret_agg_mean"),
                     ("returns/aggregate_std", "ret_agg_std"),
                     ("episode/alive_fraction", "alive_frac"),
-                    ("outcome_head/cross_entropy", "outcome_ce"),
-                    ("outcome_head/correct_fraction", "outcome_correct"),
-                    ("outcome_head/labelled_fraction", "outcome_labelled"),
+                    ("critic/outcome_cross_entropy", "outcome_ce"),
                 )
                 scalar_accum_step: dict[str, torch.Tensor] = {
                     key: _z.clone() for key, _ in _additive
                 }
-                for key in ("adv_var", "ret_agg_mean", "ret_agg_std", "ratio_max"):
+                for key in ("return_scale", "ret_agg_mean", "ret_agg_std", "ratio_max"):
                     scalar_accum_step[key] = _z.clone()
 
                 k_stats: dict[str, torch.Tensor] = {}  # primary per-K moments
@@ -3388,7 +3292,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     scalar_accum_step["ret_agg_mean"] += ret_agg_mean / n_scales
                     ret_agg_var = (ret_agg_sq - ret_agg_mean.pow(2)).clamp(min=0.0)
                     scalar_accum_step["ret_agg_std"] += ret_agg_var.sqrt() / n_scales
-                    scalar_accum_step["adv_var"] += buf.adv_rms / n_scales
+                    scalar_accum_step["return_scale"] += buf.return_scale / n_scales
 
                 params = list(self._policy_module.parameters())
                 grad_norm = nn.utils.clip_grad_norm_(params, cfg.max_grad_norm)
@@ -3451,7 +3355,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 accum_scalar["loss_proxy/enemy_action"].append(
                     self.cfg.enemy_action_coef * scalar_accum_step["enemy_action"]
                 )
-                accum_scalar["returns/advantage_std"].append(scalar_accum_step["adv_var"] ** 0.5)
+                accum_scalar["returns/scale"].append(scalar_accum_step["return_scale"])
                 accum_scalar["train/gradient_norm"].append(grad_norm.detach())
                 accum_scalar["train/clip_fire_rate"].append(clipped)
                 accum_scalar["train/nonfinite_grad_fraction"].append(nonfinite_grad.float())
@@ -3500,14 +3404,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         accum_k["critic/explained_variance"] = ev_epoch
 
         metrics: dict = {k: torch.stack(v).mean().item() for k, v in accum_scalar.items() if v}
-        # Accuracy is a ratio of two accumulated shares, so it is formed after
-        # the sum rather than inside it. Undefined when no match ended anywhere
-        # in the batch, which is ordinary: a 128-step rollout against ~8,000-step
-        # episodes labels well under a percent of steps.
-        labelled = metrics.get("outcome_head/labelled_fraction", 0.0)
-        correct = metrics.pop("outcome_head/correct_fraction", 0.0)
-        if labelled > 0.0:
-            metrics["outcome_head/accuracy"] = correct / labelled
         metrics["train/epochs_completed"] = float(epoch_idx + 1)
         metrics["enemy_action/uniform_cross_entropy"] = math.log(NUM_JOINT_ACTIONS)
         metrics["enemy_action/uniform_probability"] = 1.0 / NUM_JOINT_ACTIONS

@@ -32,10 +32,10 @@ GRADIENT_DIAGNOSTICS_LEVELS: tuple[str, ...] = (
 # that back: a diagnosed update adds roughly a tenth of an update's work at
 # interval ten, so the eager forward is nearly all of the bill.
 #
-# Nothing is lost by deferring it. Both scalers ride in the checkpoint
-# (``adv_scaler_state_dict`` holds the per-component EMA), so resuming a
-# checkpoint with ``--gradient-diagnostics reward_full`` for a handful of
-# updates normalizes exactly as training did and reconstructs the same per-tier
+# Nothing is lost by deferring it. The return normaliser rides in the checkpoint
+# (``return_normalizer_state_dict``), so resuming a checkpoint with
+# ``--gradient-diagnostics reward_full`` for a handful of updates normalizes
+# exactly as training did and reconstructs the same per-tier
 # curve after the fact, for a few minutes of GPU per point. A balance that
 # drifts over tens of millions of steps does not need per-update resolution.
 DEFAULT_DIAGNOSTIC_LEVEL: GradientDiagnosticsLevel = "off"

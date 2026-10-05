@@ -92,8 +92,7 @@ def build_training_checkpoint_payload(
     *,
     policy_payload: Mapping[str, Any],
     optimizer_state_dict: Mapping[str, Any],
-    scaler_state_dict: Mapping[str, Any],
-    adv_scaler_state_dict: Mapping[str, Any],
+    return_normalizer_state_dict: Mapping[str, Any],
     avg_policy_state_dict: Mapping[str, Any],
     avg_param_cumsum: list[torch.Tensor],
     avg_update_count: int,
@@ -124,8 +123,7 @@ def build_training_checkpoint_payload(
     return {
         **policy_payload,
         "optimizer_state_dict": optimizer_state_dict,
-        "scaler_state_dict": scaler_state_dict,
-        "adv_scaler_state_dict": adv_scaler_state_dict,
+        "return_normalizer_state_dict": return_normalizer_state_dict,
         "avg_policy_state_dict": avg_policy_state_dict,
         "avg_param_cumsum": avg_param_cumsum,
         "avg_update_count": avg_update_count,
@@ -183,8 +181,7 @@ OPTIONAL_CHECKPOINT_FIELDS: tuple[str, ...] = ("resolved_config", "launch")
 RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
     *POLICY_CHECKPOINT_FIELDS,
     "optimizer_state_dict",
-    "scaler_state_dict",
-    "adv_scaler_state_dict",
+    "return_normalizer_state_dict",
     "avg_policy_state_dict",
     "avg_param_cumsum",
     "avg_update_count",
@@ -567,8 +564,7 @@ class CheckpointMixin:
         return build_training_checkpoint_payload(
             policy_payload=self._provenance(),
             optimizer_state_dict=self.optim.state_dict(),
-            scaler_state_dict=self.scaler.state_dict(),
-            adv_scaler_state_dict=self.adv_scaler.state_dict(),
+            return_normalizer_state_dict=self.return_normalizer.state_dict(),
             avg_policy_state_dict=self._avg_policy_module.state_dict(),
             # Left on device; the clone_to_cpu walk over this payload copies it.
             avg_param_cumsum=list(self._avg_param_cumsum),
@@ -698,8 +694,7 @@ class CheckpointMixin:
         """Build a best-model payload without heavy optimizer and average states."""
         return {
             **self._provenance(),
-            "scaler_state_dict": self.scaler.state_dict(),
-            "adv_scaler_state_dict": self.adv_scaler.state_dict(),
+            "return_normalizer_state_dict": self.return_normalizer.state_dict(),
             "update": update,
             "eval_window_rand": list(self._eval_window_rand),
             "eval_window_sc": list(self._eval_window_sc),
@@ -778,11 +773,12 @@ class CheckpointMixin:
             for p in self._policy_module.parameters()
         ]
         self._avg_update_count = 0
-        if "scaler_state_dict" in ckpt:
-            _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
-        if "adv_scaler_state_dict" in ckpt:
+        if "return_normalizer_state_dict" in ckpt:
             _load_checkpoint_state(
-                self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
+                self.return_normalizer,
+                ckpt["return_normalizer_state_dict"],
+                path,
+                "return-normaliser state",
             )
         print(f"Pretrained weights loaded from: {path} (optimizer state discarded)")
 
@@ -821,9 +817,11 @@ class CheckpointMixin:
             self._policy_module, ckpt["policy_state_dict"], path, "policy weights"
         )
         _load_checkpoint_state(self.optim, ckpt["optimizer_state_dict"], path, "optimizer state")
-        _load_checkpoint_state(self.scaler, ckpt["scaler_state_dict"], path, "scaler state")
         _load_checkpoint_state(
-            self.adv_scaler, ckpt["adv_scaler_state_dict"], path, "advantage-scaler state"
+            self.return_normalizer,
+            ckpt["return_normalizer_state_dict"],
+            path,
+            "return-normaliser state",
         )
         _load_checkpoint_state(
             self._avg_policy_module,

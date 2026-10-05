@@ -405,8 +405,10 @@ class TestRotaryPolicy:
 
         observation = _observation()
         hidden = plain.initial_hidden(3, plain.num_recurrent_tokens, torch.device("cpu"))
-        _, _, plain_value, _, _ = plain.get_action_and_value(observation, hidden)
-        _, _, rotated_value, _, _ = rotated.get_action_and_value(observation, hidden)
+        _, _, plain_value_critic, _, _ = plain.get_action_and_value(observation, hidden)
+        plain_value = plain_value_critic.value
+        _, _, rotated_value_critic, _, _ = rotated.get_action_and_value(observation, hidden)
+        rotated_value = rotated_value_critic.value
         assert not torch.allclose(plain_value, rotated_value)
 
     def test_rotation_adds_no_parameters_or_state_dict_keys(self):
@@ -420,7 +422,8 @@ class TestRotaryPolicy:
         policy = _policy(ROPE_MODEL_CONFIG, num_ships=num_ships)
         observation = _observation(num_ships=num_ships)
         hidden = policy.initial_hidden(3, policy.num_recurrent_tokens, torch.device("cpu"))
-        action, _, value, _, _ = policy.get_action_and_value(observation, hidden)
+        action, _, value_critic, _, _ = policy.get_action_and_value(observation, hidden)
+        value = value_critic.value
         assert action.shape == (3, num_ships, 3)
         assert torch.isfinite(value).all()
 
@@ -443,12 +446,14 @@ class TestRotaryPolicy:
         valid = observation["belief_valid"].clone()
         valid[:, 5:8] = False
         masked = observation.update("belief_valid", valid)
-        _, _, base_value, _, _ = policy.get_action_and_value(masked, hidden)
+        _, _, base_value_critic, _, _ = policy.get_action_and_value(masked, hidden)
+        base_value = base_value_critic.value
 
         position = masked["pos"].clone()
         position[:, 5:8] += 3333.0
         moved = masked.update("pos", position)
-        _, _, moved_value, _, _ = policy.get_action_and_value(moved, hidden)
+        _, _, moved_value_critic, _, _ = policy.get_action_and_value(moved, hidden)
+        moved_value = moved_value_critic.value
 
         # Moving those tokens now reaches every other token, not just themselves.
         others = torch.tensor([0, 1, 2, 3, 4, 8, 9])
@@ -465,7 +470,8 @@ class TestRotaryPolicy:
         step_values = []
         with torch.no_grad():
             for observation in observations:
-                _, _, value, _, hidden = policy.get_action_and_value(observation, hidden)
+                _, _, value_critic, _, hidden = policy.get_action_and_value(observation, hidden)
+                value = value_critic.value
                 step_values.append(value)
         step_value = torch.stack(step_values)
 
@@ -477,9 +483,10 @@ class TestRotaryPolicy:
         alive = torch.stack([o["belief_valid"] for o in observations])
         initial = policy.initial_hidden(3, policy.num_recurrent_tokens, torch.device("cpu"))
         with torch.no_grad():
-            _, _, sequence_value, _, _, _, _ = policy.evaluate_actions(
+            _, _, sequence_value_critic, _, _, _ = policy.evaluate_actions(
                 sequence_obs, actions, initial, alive
             )
+            sequence_value = sequence_value_critic.value
         assert torch.allclose(step_value, sequence_value, atol=1e-4)
 
 
@@ -638,7 +645,8 @@ class TestPresenceFeatureWiring:
         policy = _policy(DENSITY_MODEL_CONFIG, num_ships=40)
         observation = _observation(num_ships=40)
         hidden = policy.initial_hidden(3, policy.num_recurrent_tokens, torch.device("cpu"))
-        _, _, value, _, _ = policy.get_action_and_value(observation, hidden)
+        _, _, value_critic, _, _ = policy.get_action_and_value(observation, hidden)
+        value = value_critic.value
         assert torch.isfinite(value).all()
 
 
@@ -749,12 +757,14 @@ class TestRelationalBias:
         policy = _policy(RELATION_MODEL_CONFIG)
         observation = _observation()
         hidden = policy.initial_hidden(3, policy.num_recurrent_tokens, torch.device("cpu"))
-        _, _, before, _, _ = policy.get_action_and_value(observation, hidden)
+        _, _, before_critic, _, _ = policy.get_action_and_value(observation, hidden)
+        before = before_critic.value
         with torch.no_grad():
             for block in policy.yemong_layers:
                 for sublayer in block.spatial:
                     sublayer.relational.project.weight.normal_(0.0, 1.0)
-        _, _, after, _, _ = policy.get_action_and_value(observation, hidden)
+        _, _, after_critic, _, _ = policy.get_action_and_value(observation, hidden)
+        after = after_critic.value
         assert not torch.allclose(before, after)
 
     def test_step_and_sequence_paths_agree_with_the_full_stack(self):
@@ -771,7 +781,8 @@ class TestRelationalBias:
         step_values = []
         with torch.no_grad():
             for observation in observations:
-                _, _, value, _, hidden = policy.get_action_and_value(observation, hidden)
+                _, _, value_critic, _, hidden = policy.get_action_and_value(observation, hidden)
+                value = value_critic.value
                 step_values.append(value)
 
         from boost_and_broadside.env.observation import YemongObservation
@@ -781,10 +792,11 @@ class TestRelationalBias:
         actions = torch.zeros(steps, 3, 10, 3, dtype=torch.long)
         alive = torch.stack([o["belief_valid"] for o in observations])
         with torch.no_grad():
-            _, _, sequence_value, _, _, _, _ = policy.evaluate_actions(
+            _, _, sequence_value_critic, _, _, _ = policy.evaluate_actions(
                 sequence_obs,
                 actions,
                 policy.initial_hidden(3, policy.num_recurrent_tokens, torch.device("cpu")),
                 alive,
             )
+            sequence_value = sequence_value_critic.value
         assert torch.allclose(torch.stack(step_values), sequence_value, atol=1e-4)

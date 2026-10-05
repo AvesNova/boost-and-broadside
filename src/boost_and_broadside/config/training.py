@@ -182,17 +182,11 @@ class TrainConfig:
     clip_coef: float  # PPO clip epsilon
     max_grad_norm: float  # gradient clipping norm
     total_timesteps: int  # total environment steps before stopping
-    return_ema_alpha: float  # EMA decay for per-component return percentile scaler
-    # Degeneracy epsilons for the two per-component scalers. Both are
-    # divide-by-zero guards and nothing more: they must sit far below the
-    # smallest span/RMS any *active* component really has, or they quietly
-    # rescale that component's critic targets and policy-gradient share. The
-    # trainer logs scaler/floor_bound/<name> and warns when one binds.
-    return_min_span: float  # ReturnScaler span epsilon (symlog-space)
-    # Normalized critic error beyond which the value loss goes linear.
-    # Inside it the loss is exactly squared error, so this only reshapes tails.
-    value_huber_delta: float
-    advantage_min_rms: float  # AdvantageScaler RMS epsilon (symlog-space)
+    # The advantage normaliser (DreamerV3's ``perc``): the summed advantage is
+    # divided by ``max(floor, EMA p95 - EMA p5)`` of the summed return, with the
+    # percentiles' EMA decaying at ``return_percentile_decay`` per update.
+    return_percentile_decay: float
+    return_scale_floor: float  # in win units
     checkpoint_dir: str  # directory to write .pt files
 
     # --- League play + Elo (static tournament parameters) ---
@@ -251,11 +245,6 @@ class TrainConfig:
     next_state_beta: float = 0.0
     # Cross-entropy weight for the dedicated 30-way enemy-command predictor.
     enemy_action_coef: float = 0.1
-    # Cross-entropy weight for the categorical win/loss/tie head. A classifier
-    # run beside the scalar ``outcome`` component, not in place of it: it never
-    # reaches the advantage path, so this only buys representation in the trunk
-    # and a calibrated probability to read. 0 disables the term outright.
-    outcome_categorical_coef: float = 0.0
     # MSE weight for the global token's hex ally/enemy density prediction. 0
     # disables the head outright: it is never built, so nothing untrained enters
     # a checkpoint. Requires ``model_config.global_token``, which is the only

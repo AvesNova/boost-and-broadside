@@ -215,8 +215,7 @@ class TestObservationSchema:
         built = build_training_checkpoint_payload(
             policy_payload=trainer._provenance(),
             optimizer_state_dict=trainer.optim.state_dict(),
-            scaler_state_dict=trainer.scaler.state_dict(),
-            adv_scaler_state_dict=trainer.adv_scaler.state_dict(),
+            return_normalizer_state_dict=trainer.return_normalizer.state_dict(),
             avg_policy_state_dict=trainer._avg_policy_module.state_dict(),
             avg_param_cumsum=list(trainer._avg_param_cumsum),
             avg_update_count=0,

@@ -33,7 +33,7 @@ from boost_and_broadside.train.rl.physical_belief import (
     PHYSICAL_MEAN_NAMES,
     physical_means_from_state,
 )
-from boost_and_broadside.train.rl.ppo import _TIER, PPOTrainer, _huber
+from boost_and_broadside.train.rl.ppo import _TIER, PPOTrainer
 
 
 def _make_rewards(**overrides) -> RewardConfig:
@@ -101,10 +101,8 @@ def _make_train_config(
         clip_coef=0.2,
         max_grad_norm=0.5,
         total_timesteps=64 * rollouts_per_update,
-        return_ema_alpha=0.005,
-        return_min_span=1e-3,
-        value_huber_delta=1.0,
-        advantage_min_rms=1e-4,
+        return_percentile_decay=0.99,
+        return_scale_floor=1.0,
         checkpoint_dir=checkpoint_dir,
         league_size=20,
         league_slots=league_slots,
@@ -1372,10 +1370,8 @@ class TestSchedulePrimitives:
                 clip_coef=0.2,
                 max_grad_norm=0.5,
                 total_timesteps=64,
-                return_ema_alpha=0.005,
-                return_min_span=1e-3,
-                value_huber_delta=1.0,
-                advantage_min_rms=1e-4,
+                return_percentile_decay=0.99,
+                return_scale_floor=1.0,
                 checkpoint_dir=str(tmp_path),
                 league_size=20,
                 league_slots=1,
@@ -1407,43 +1403,6 @@ class TestSchedulePrimitives:
         assert torch.equal(trainer.wrapper.component_weights.cpu(), expected_t)
 
 
-class TestValueHuberLoss:
-    """The critic loss is squared error in the bulk and linear in the tails.
-
-    Per-component normalization exposes heavy tails on sparse components; the
-    previous defence was an oversized ``return_min_span`` that shrank those
-    components' targets instead, starving their critics.
-    """
-
-    def test_matches_squared_error_inside_delta(self):
-        error = torch.linspace(-0.99, 0.99, 51)
-        assert torch.allclose(_huber(error, 1.0), error.pow(2))
-
-    def test_is_continuous_and_linear_outside_delta(self):
-        delta = 1.0
-        just_inside = _huber(torch.tensor(delta - 1e-6), delta)
-        just_outside = _huber(torch.tensor(delta + 1e-6), delta)
-        assert just_outside.item() == pytest.approx(just_inside.item(), abs=1e-4)
-
-        # Slope is constant beyond delta: equal steps give equal increments.
-        far = _huber(torch.tensor([5.0, 6.0, 7.0]), delta)
-        assert (far[1] - far[0]).item() == pytest.approx((far[2] - far[1]).item())
-
-    def test_bounds_the_gradient_a_single_outlier_contributes(self):
-        """A 20-sigma residual must not outweigh a minibatch of ordinary ones."""
-        outlier = torch.tensor(20.0, requires_grad=True)
-        _huber(outlier, 1.0).backward()
-        assert outlier.grad.abs().item() == pytest.approx(2.0)
-
-        squared = torch.tensor(20.0, requires_grad=True)
-        squared.pow(2).backward()
-        assert squared.grad.abs().item() == pytest.approx(40.0)
-
-    def test_delta_scales_the_quadratic_region(self):
-        assert _huber(torch.tensor(1.5), 2.0).item() == pytest.approx(2.25)  # still squared
-        assert _huber(torch.tensor(1.5), 1.0).item() == pytest.approx(2.0)  # already linear
-
-
 class TestTeamMixing:
     """Team spirit mixes a ship's advantage with its living teammates' mean."""
 
@@ -1467,6 +1426,30 @@ class TestTeamMixing:
         row = trainer._team_mixing(team_id, alive)[0, 0, 0, :, 0]
         # Ship 2 is dead and ship 3 is an enemy, so ship 1 is the whole mean.
         assert row.tolist() == [1.0, 0.5, 0.0, 0.0]
+
+
+class TestShipValues:
+    """The outcome critic speaks for the observer; each ship's reward for its team."""
+
+    def test_the_outcome_value_is_signed_by_team_and_weighted(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        assert trainer._outcome_global_k, "the fixture should value the outcome globally"
+        k = trainer._outcome_global_k[0]
+        weight = trainer.wrapper.active_components[k].weight
+        value = torch.zeros(1, 4, len(trainer._active_names))
+        value[..., k] = 0.5  # observer's P(win) - P(loss)
+        side = torch.tensor([[True, True, False, False]])
+        signed = trainer._ship_values(value, side)[0, :, k]
+        assert signed.tolist() == pytest.approx([0.5 * weight] * 2 + [-0.5 * weight] * 2)
+
+    def test_per_ship_levels_pass_through_unchanged(self, tmp_path):
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        k = trainer._outcome_global_k[0]
+        value = torch.randn(1, 4, len(trainer._active_names))
+        side = torch.tensor([[True, False, True, False]])
+        signed = trainer._ship_values(value, side)
+        others = [i for i in range(value.shape[-1]) if i != k]
+        assert torch.equal(signed[..., others], value[..., others])
 
 
 class TestComponentClassification:
@@ -1536,10 +1519,8 @@ class TestRLSmokeTest:
             clip_coef=0.2,
             max_grad_norm=1.0,
             total_timesteps=16 * 32 * 3,  # 3 updates
-            return_ema_alpha=0.005,
-            return_min_span=1e-3,
-            value_huber_delta=1.0,
-            advantage_min_rms=1e-4,
+            return_percentile_decay=0.99,
+            return_scale_floor=1.0,
             checkpoint_dir=str(tmp_path),
             league_size=5,
             league_slots=2,
@@ -1566,18 +1547,20 @@ class TestRLSmokeTest:
         trainer.train()
 
         assert captured, "the training loop logged nothing"
-        # Every component the production vector switches on, and nothing else:
-        # the scaler namespace is the last place a dropped component is visible.
+        # Every level the production vector switches on reaches the critic's
+        # per-level metrics, the last place a dropped level is visible.
         weighted = {
             component.name
             for component in trainer.wrapper.active_components
             if component.weight != 0.0
         }
         assert weighted, "the production reward vector activated no component"
-        scaled = {
-            key.rpartition("/")[2] for key in captured if key.startswith("scaler/return_mean/")
+        critiqued = {
+            key.rpartition("/")[2]
+            for key in captured
+            if key.startswith("critic/explained_variance/")
         }
-        assert weighted <= scaled, f"never scaled: {sorted(weighted - scaled)}"
+        assert weighted <= critiqued, f"never valued: {sorted(weighted - critiqued)}"
         assert weighted == {"outcome", "zone_capture", "zone_progress", "kill_death", "damage"}
 
         finite = {
@@ -1678,15 +1661,13 @@ class TestNonFiniteGradientGuard:
             "healthy gradients must not be reported as scrubbed"
         )
 
-    def test_update_with_histograms_handles_bf16_returns(self, tmp_path):
-        """record_histograms=True must not choke on the bf16-stored returns buffer.
+    def test_update_with_histograms_runs(self, tmp_path):
+        """record_histograms=True reaches the histogram path and completes.
 
-        The histogram diagnostic path calls .numpy() on mb_returns, and numpy has no
-        bfloat16 dtype — so the buffer's reduced-precision storage requires an explicit
-        upcast. record_histograms=False paths never exercise this, hence the guard here.
+        The path calls .numpy() on the returns, which once failed on bf16
+        storage; record_histograms=False paths never exercise it.
         """
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        assert trainer.buffer.returns.dtype == torch.bfloat16  # precondition for the bug
         runtime = trainer._initialize_rollout_runtime()
         dones = trainer._collect_rollout(runtime, False)
         trainer._compute_rollout_gae(runtime, dones)
@@ -1786,7 +1767,7 @@ class TestUpdateEpochsMetricKeys:
             "policy/entropy_shoot",
             "returns/aggregate",
             "returns/aggregate_std",
-            "returns/advantage_std",
+            "returns/scale",
             "episode/alive_fraction",
             "train/gradient_norm",
             "train/nonfinite_grad_fraction",

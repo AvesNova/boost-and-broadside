@@ -119,13 +119,6 @@ RL_PROFILE = ProfileSpec(
     # only the weighting is detached.
     next_state_beta=0.5,
     enemy_action_coef=0.1,
-    # Low on purpose. The head is on trial: run 739 showed the single scalar
-    # ``outcome`` beat both split win heads on explained variance at all thirty
-    # late-phase points, and this tests whether treating the same event as three
-    # classes beats the scalar in turn. It bids for trunk capacity and nothing
-    # else -- no advantage, no reward weight -- so a wrong answer costs a little
-    # gradient rather than a run.
-    outcome_categorical_coef=0.05,
     # The global token's density field. Chosen from the Phase 7 gradient
     # diagnostics rather than from the loss alone. The term's trunk gradient
     # scales linearly in this weight, and at 1.0 it asks for well under a
@@ -140,7 +133,7 @@ RL_PROFILE = ProfileSpec(
     gae_lambda_per_tick=0.95,
     component_gammas_per_tick=COMPONENT_GAMMAS_PER_TICK,
     component_lambdas_per_tick=COMPONENT_LAMBDAS_PER_TICK,
-    # --- Optimizer, scalers, budget ---
+    # --- Optimizer, advantage normaliser, budget ---
     clip_coef=0.15,
     max_grad_norm=1.0,
     # 500M rather than 1B, which is where the schedules finish rather than an
@@ -152,24 +145,11 @@ RL_PROFILE = ProfileSpec(
     # over the first 200M. Run 731 reproduced the same saturation profile under
     # different physics and different reward weights.
     total_timesteps=500_000_000,
-    return_ema_alpha=0.005,
-    # A divide-by-zero guard, and nothing more.  At the previous 1.0 it bound 8
-    # of 12 components on every update of run 719 -- including the win pair --
-    # compressing their critic targets by up to 121x and their critic gradients
-    # by four orders of magnitude.  The outlier problem that motivated the large
-    # floor is now handled where it belongs, by ``value_huber_delta``.
-    #
-    # 1e-3 rather than 1e-2 because the guard has to sit far below every live
-    # component's spread, not just below it.  Measured on run 719's logged return
-    # histograms, the narrowest component (field_death) has a 4-sigma span of
-    # 0.0127: twelve times this floor, but only 1.3x a floor of 1e-2.
-    return_min_span=1e-3,
-    advantage_min_rms=1e-4,
-    # Squared error inside one normalized unit, linear outside.  Per-component
-    # normalization necessarily exposes heavy tails -- a sparse component is a
-    # spike at zero with rare large excursions -- and bounding their gradient
-    # here keeps one component's tail from setting the whole critic's step.
-    value_huber_delta=1.0,
+    # DreamerV3's return normaliser, as published: EMA decay 0.99 of the 5th
+    # and 95th percentiles, floor 1. The floor is one win, so advantages are
+    # never amplified while the summed return spreads less than a win.
+    return_percentile_decay=0.99,
+    return_scale_floor=1.0,
     # --- League and live evaluation ---
     league_size=20,
     league_slots=4,

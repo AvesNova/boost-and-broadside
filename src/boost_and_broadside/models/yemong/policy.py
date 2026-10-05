@@ -15,9 +15,9 @@ Architecture (per timestep):
          → ActionHead                   → (B, N, 30)   [joint command logits]
          → EnemyActionHead              → (B, N, 30)   [next enemy-command logits]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
-         → ValueHead                    → (B, N, K)    [MSE critic: per-ship components]
+         → ValueHead                    → (B, N, K_local, bins) [categorical critic]
          → slice [N] (global token)      → (B, D)
-         → GlobalValueHead              → (B, K_global) [team-level components]
+         → GlobalValueHead              → (B, 4)       [outcome: win/tie/loss/unresolved]
          → slice [N] (global token)      → (B, D)
          → GlobalDensityHead            → (B, 2C)      [aux: hex ally/enemy density]
 
@@ -32,9 +32,10 @@ Four object kinds, four levels of participation:
   bullets              — key/value only. Never queried, never recurrent, never
                          updated; they exist solely as things ships can look at.
 
-K = num_value_components (one head per reward component).
-Value head outputs in normalized space. The ReturnScaler in PPOTrainer maps
-between symlog-reward space (GAE) and normalized space (value head I/O).
+K = num_value_components (one critic head per reward level). Per-ship levels are
+categorical over fixed symlog-spaced bins and valued by their expectation in raw
+reward units; the outcome is four classes off the global token (see
+``train/rl/critic.py``).
 
 Hidden state shape: (n_layers, B*(N+G), CONV_KERNEL * D) — ships and the global
 token, which lead the token axis — packed as:
@@ -51,6 +52,7 @@ import math
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.distributions import Categorical
 from torch.utils.checkpoint import checkpoint
 
@@ -69,6 +71,12 @@ from boost_and_broadside.models.yemong.rope import SpatialRotary, check_rotary_b
 from boost_and_broadside.runtime.actions import (
     decode_joint_action_unchecked,
     encode_joint_action_unchecked,
+)
+from boost_and_broadside.train.rl.critic import (
+    CriticOutput,
+    expectation,
+    outcome_values,
+    value_bins,
 )
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 from boost_and_broadside.train.rl.hex_density import HEX_DENSITY_DIM
@@ -189,48 +197,37 @@ class GlobalDensityHead(nn.Module):
 
 
 class GlobalValueHead(nn.Module):
-    """Value of the team-level reward components, read from the global token.
+    """The match outcome as four classes, read once per environment off the global token.
 
-    Some reward components are identical for every ship on a side by
-    construction -- ``ally_win`` and ``enemy_win`` pay on the match result and
-    ``outcome`` is that result signed, all three a function of team and outcome
-    alone, paid to living and dead ships alike. Their return is therefore
-    bit-identical across teammates, and estimating it once per ship meant N
-    independent regressions of one number.
+    The outcome level pays every ship on a side the same number -- a function of
+    team and result alone, paid to the living and the dead alike -- so its
+    return is the same for every teammate and one estimate per environment is
+    enough. The global token is a recurrent, attended game-level summary, so it
+    is the token to read it from.
 
-    This replaces a ``TeamPMA`` that pooled ship tokens into a team summary for
-    exactly that purpose. The global token already is a game-level summary, and
-    a recurrent, attended one rather than a pooling recomputed each step, so the
-    pooling was a second mechanism for a job the trunk already did.
-
-    The estimate is per environment. It is broadcast back across the ship axis
-    so the value tensor keeps its ``(..., N, K)`` shape and GAE, the lambda
-    matrix, the scalers and the per-component logging are untouched.
-
-    The observer is always Team 0 -- every view is canonicalized before the
-    policy sees it -- so no perspective input is needed: "team 0 wins" is
-    unambiguously "I win" in every forward pass.
+    The classes are win, tie, loss and unresolved (the discount's leak; see
+    ``train/rl/critic.py``). The observer is always Team 0 -- every view is
+    canonicalized before the policy sees it -- so "team 0 wins" is "I win"; the
+    trainer signs the estimate per ship by authoritative team.
 
     Args:
         d_model:    Token embedding dimension D.
         hidden_dim: Width of the hidden layer.
-        num_global: How many components this head owns.
     """
 
-    def __init__(self, d_model: int, hidden_dim: int, num_global: int) -> None:
+    def __init__(self, d_model: int, hidden_dim: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(d_model, hidden_dim),
             nn.RMSNorm(hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, num_global),
+            nn.Linear(hidden_dim, NUM_OUTCOME_CLASSES),
         )
 
     def forward(self, x: torch.Tensor, num_ships: int) -> torch.Tensor:
-        """Args: x (..., tokens, D), num_ships N. Returns: (..., N, K_global)."""
+        """Args: x (..., tokens, D), num_ships N. Returns: (..., 4) class logits."""
 
-        value = self.net(x[..., num_ships, :])  # (..., K_global)
-        return value.unsqueeze(-2).expand(*value.shape[:-1], num_ships, value.shape[-1])
+        return self.net(x[..., num_ships, :])
 
 
 def _init_head_orthogonal(head: nn.Sequential) -> None:
@@ -266,7 +263,6 @@ class YemongPolicy(nn.Module):
         num_ships: int,
         global_value_k: tuple[int, ...],
         bullet_coordinator: FeatureCoordinator | None = None,
-        predict_outcome: bool = False,
         predict_density: bool = False,
         ship_config: ShipConfig | None = None,
     ) -> None:
@@ -340,50 +336,28 @@ class YemongPolicy(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, TOTAL_ACTION_LOGITS),
         )
-        # Local value head: per-ship embedding → all K components.
-        # For indices in global_value_k, outputs are overridden by value_head_global.
+        # The outcome level is read off the global token as four classes. With
+        # the promotion off there is no global embedding to read, and it falls
+        # back to an ordinary per-ship categorical value like every other level.
+        self._global_value_k = global_value_k if self._num_global else ()
+        if len(self._global_value_k) > 1:
+            raise ValueError("only the outcome level is valued off the global token")
+        self._local_value_k = tuple(k for k in range(self._K) if k not in self._global_value_k)
+        # Categorical critic for every per-ship level: logits over fixed bins at
+        # symexp(linspace(-L, L, n)), valued by their expectation.
+        self.register_buffer(
+            "value_support",
+            value_bins(model_config.value_bins, model_config.value_symlog_limit),
+            persistent=False,
+        )
+        self._value_bins = model_config.value_bins
         self.value_head_local = nn.Sequential(
             nn.Linear(D, hidden_dim),
             nn.RMSNorm(hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, self._K),
+            nn.Linear(hidden_dim, len(self._local_value_k) * model_config.value_bins),
         )
-        # Team-level components, read from the global token. With the promotion
-        # off there is no global embedding to read, and unlike the density head
-        # this one has somewhere to fall back to: the per-ship value head
-        # already covers every component. So the ablation degrades to N
-        # redundant estimates rather than failing to build, which is what keeps
-        # Phase 8's variant A runnable.
-        self._global_value_k = global_value_k if self._num_global else ()
-        self._global_value_k_set = set(self._global_value_k)
-        self.value_head_global = (
-            GlobalValueHead(D, hidden_dim, len(self._global_value_k))
-            if self._global_value_k
-            else None
-        )
-        # Categorical match-outcome head: three logits per ship for win / loss /
-        # tie from that ship's own perspective. It is a classifier, not a value
-        # head -- the scalar ``outcome`` component keeps its seat in the K-way
-        # critic, and this predicts the same event without feeding advantages.
-        #
-        # A scalar regressed onto {-1, 0, +1} cannot say whether an output of
-        # zero means "confident tie" or "even odds of winning", which are
-        # different game states. Three classes separate them, and run 739
-        # measured the tie class at 20% of episodes, so it is a real mode rather
-        # than a rounding of the other two.
-        # Built only when something trains it. An untrained head is dead weight
-        # in every checkpoint and trips the optimizer-moment integrity check,
-        # which exists to catch exactly this.
-        self.outcome_head = (
-            nn.Sequential(
-                nn.Linear(D, hidden_dim),
-                nn.RMSNorm(hidden_dim),
-                nn.GELU(),
-                nn.Linear(hidden_dim, NUM_OUTCOME_CLASSES),
-            )
-            if predict_outcome
-            else None
-        )
+        self.value_head_global = GlobalValueHead(D, hidden_dim) if self._global_value_k else None
         # Fixed widths, not the feature pipeline's: the next-state model predicts
         # physical dynamics, so its shape follows the physical layout rather than
         # however many Fourier harmonics the world size happens to imply.
@@ -391,7 +365,8 @@ class YemongPolicy(nn.Module):
         # Reads the global token, so it cannot exist without one in the query set:
         # with the promotion off that token is K/V-only map memory and no final
         # embedding for it ever leaves the trunk. Built only when something trains
-        # it, for the reason the outcome head is.
+        # it: an untrained head is dead weight in every checkpoint and trips the
+        # optimizer-moment integrity check.
         if predict_density and not self._num_global:
             raise ValueError(
                 "the global density head reads the global token; it needs "
@@ -418,8 +393,6 @@ class YemongPolicy(nn.Module):
             self.next_state_head.net,
         ]:
             _init_head_orthogonal(head)
-        if self.outcome_head is not None:
-            _init_head_orthogonal(self.outcome_head)
         if self.density_head is not None:
             _init_head_orthogonal(self.density_head.net)
             # After the orthogonal pass, which zeroes it: the opening log-rate.
@@ -591,6 +564,35 @@ class YemongPolicy(nn.Module):
         token_keep = (~done_mask.repeat_interleave(num_recurrent_tokens)).to(hidden.dtype)
         return hidden * token_keep[None, :, None]
 
+    def _critic(self, x: torch.Tensor, x_ships: torch.Tensor, return_logits: bool) -> CriticOutput:
+        """Every reward level's value, and the logits that produced it.
+
+        Args:
+            x: (..., N+G, D) final query-set embeddings.
+            x_ships: (..., N, D) the ship slice of ``x``.
+            return_logits: Keep the per-ship bin logits for the update's loss.
+
+        Returns:
+            ``CriticOutput`` with ``value`` (..., N, K): per-ship levels as the
+            expectation over the value bins, the outcome level as
+            ``P(win) - P(loss)`` in the observer's frame.
+        """
+        N = x_ships.shape[-2]
+        local_logits = self.value_head_local(x_ships).unflatten(
+            -1, (len(self._local_value_k), self._value_bins)
+        )  # (..., N, K_local, bins)
+        local_value = expectation(local_logits, self.value_support)  # (..., N, K_local)
+        outcome_logits = None
+        columns: list[torch.Tensor | None] = [None] * self._K
+        for position, k in enumerate(self._local_value_k):
+            columns[k] = local_value[..., position]
+        if self.value_head_global is not None:
+            outcome_logits = self.value_head_global(x, N)  # (..., 4)
+            outcome = outcome_values(F.softmax(outcome_logits.float(), dim=-1))  # (...,)
+            columns[self._global_value_k[0]] = outcome.unsqueeze(-1).expand(local_value.shape[:-1])
+        value = torch.stack(columns, dim=-1)  # (..., N, K)
+        return CriticOutput(value, local_logits if return_logits else None, outcome_logits)
+
     # ------------------------------------------------------------------
     # Rollout-time forward (single step)
     # ------------------------------------------------------------------
@@ -611,8 +613,8 @@ class YemongPolicy(nn.Module):
         Returns:
             action:     (B, N, 3) int — sampled [power, turn, shoot].
             logprob:    (B, N) float — log probability of the joint command.
-            value:      (B, N, K) float — per-component value in normalized space.
-                        Caller must denormalize via ReturnScaler before using for GAE.
+            critic:     ``CriticOutput``; ``value`` (B, N, K) per-level expected
+                        return, the outcome column in the observer's frame.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
             enemy_action_logits: optional (B, N, 30) next-command prediction.
             new_hidden: (n_layers, B*(N+G), CONV_KERNEL*D) updated packed state.
@@ -683,15 +685,11 @@ class YemongPolicy(nn.Module):
             self.enemy_action_head(x_ships) if return_enemy_action else None
         )  # (B, N, 30) when requested
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
-        value = self.value_head_local(x_ships)  # (B, N, K)
-        if self.value_head_global is not None:
-            global_val = self.value_head_global(x, N)  # (B, N, K_global)
-            for i, k in enumerate(self._global_value_k):
-                value[:, :, k] = global_val[:, :, i]
+        critic = self._critic(x, x_ships, return_logits=False)
 
         action, logprob = _sample_action(logits)
 
-        base = (action, logprob, value, pred_next)
+        base = (action, logprob, critic, pred_next)
         if return_enemy_action:
             return (*base, enemy_action_logits, new_hidden)
         return (*base, new_hidden)
@@ -734,7 +732,8 @@ class YemongPolicy(nn.Module):
         Returns:
             logprob:    (T, B, N) float.
             entropy:    (T, B, N) float.
-            new_value:  (T, B, N, K) float — per-component value in normalized space.
+            critic:     ``CriticOutput`` with the per-ship bin logits and the
+                        outcome class logits for the critic loss.
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+G+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
@@ -820,35 +819,14 @@ class YemongPolicy(nn.Module):
         logits = self.action_head(x_ships)  # (T, B, N, 30)
         pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
 
-        # Local value path: per-ship embedding, per-ship components.
-        local_value = self.value_head_local(x_ships)  # (T, B, N, K)
-
+        critic = self._critic(x, x_ships, return_logits=True)
         enemy_action_logits = (
             self.enemy_action_head(x_ships) if return_enemy_action else None
         )  # (T, B, N, 30) when requested
-        if self.value_head_global is not None:
-            # Team-level components: one estimate per environment off the global
-            # token, broadcast across ships so the shape is unchanged.
-            global_val = self.value_head_global(x, N)  # (T, B, N, K_global)
-
-            # Merge: cat approach preserves gradients through both paths.
-            K = local_value.shape[-1]
-            pieces = []
-            global_i = 0
-            for k in range(K):
-                if k in self._global_value_k_set:
-                    pieces.append(global_val[..., global_i : global_i + 1])
-                    global_i += 1
-                else:
-                    pieces.append(local_value[..., k : k + 1])
-            new_value = torch.cat(pieces, dim=-1)  # (T, B, N, K)
-        else:
-            new_value = local_value
 
         logprob, entropy = _evaluate_action(logits, actions)
-        outcome_logits = None if self.outcome_head is None else self.outcome_head(x_ships)
 
-        base = (logprob, entropy, new_value, logits, z, pred_next, outcome_logits)
+        base = (logprob, entropy, critic, logits, z, pred_next)
         if return_enemy_action:
             base = (*base, enemy_action_logits)
         if return_density:

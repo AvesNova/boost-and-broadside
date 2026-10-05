@@ -28,13 +28,13 @@ from boost_and_broadside.env.rewards import (
     build_reward_components,
 )
 from boost_and_broadside.profiles import PROFILES
-from boost_and_broadside.train.rl.buffer import AdvantageScaler, ReturnScaler
 from boost_and_broadside.train.rl.checkpoint import (
     build_policy_checkpoint_payload,
     build_training_checkpoint_payload,
     clone_to_cpu,
     write_checkpoint_payload,
 )
+from boost_and_broadside.train.rl.critic import ReturnNormalizer
 from boost_and_broadside.train.rl.policy_io import build_policy
 from boost_and_broadside.train.rl.roster import EloRoster
 
@@ -227,7 +227,6 @@ def build_synthetic_run(
         # The fixture exists to prove a current checkpoint still loads, so it has
         # to carry whatever heads the resolved profile trains -- a headless one
         # would pass the test while production could not load it.
-        predict_outcome=resolved.train_config.outcome_categorical_coef > 0.0,
         predict_density=resolved.train_config.global_density_coef > 0.0,
     )
     policy_payload = build_policy_checkpoint_payload(
@@ -250,22 +249,15 @@ def build_synthetic_run(
         },
     )
     optimizer = torch.optim.Adam(policy.parameters(), lr=3e-4, eps=1e-5)
-    scaler = ReturnScaler(
-        num_components,
+    normalizer = ReturnNormalizer(
+        resolved.train_config.return_percentile_decay,
+        resolved.train_config.return_scale_floor,
         torch.device("cpu"),
-        ema_alpha=resolved.train_config.return_ema_alpha,
-        min_span=resolved.train_config.return_min_span,
-    )
-    adv_scaler = AdvantageScaler(
-        num_components,
-        torch.device("cpu"),
-        min_rms=resolved.train_config.advantage_min_rms,
     )
     payload = build_training_checkpoint_payload(
         policy_payload=policy_payload,
         optimizer_state_dict=optimizer.state_dict(),
-        scaler_state_dict=scaler.state_dict(),
-        adv_scaler_state_dict=adv_scaler.state_dict(),
+        return_normalizer_state_dict=normalizer.state_dict(),
         avg_policy_state_dict=policy.state_dict(),
         avg_param_cumsum=[torch.zeros_like(parameter) for parameter in policy.parameters()],
         avg_update_count=0,
