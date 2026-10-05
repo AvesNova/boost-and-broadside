@@ -91,7 +91,7 @@ def main() -> None:
         (env_module, "advance_bullets", "tick.advance_bullets"),
         (env_module, "resolve_collisions", "tick.resolve_collisions"),
         (env_module, "apply_frontline_tick", "tick.apply_frontline"),
-        (physics_module, "_update_kinematics_in_fields", "ships.kinematics_fields"),
+        (physics_module, "_update_kinematics", "ships.kinematics"),
         (physics_module, "_handle_shooting", "ships.shooting"),
         (physics_module, "_transport_bullets_through_fields", "bullets.field_transport"),
         (physics_module, "_apply_combat_damage", "collision.combat_damage"),

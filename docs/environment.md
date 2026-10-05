@@ -136,8 +136,9 @@ of static-for-one-episode fields. `profiles/rl.py` trains at ten ships (5-vs-5) 
 lengths are the 5v5 reference the scaling resizes; zone and field *counts* never
 change with fleet size.
 There is no separate field-free profile: `num_fields` sets the token count and no weight
-shape depends on it, so zero fields is a configuration -- the one run 682 trained under, and
-the ambient-only hot path it still exercises -- rather than a different model.
+shape depends on it, so zero fields is a configuration -- the one run 682 trained under --
+rather than a different model. A field-free tick runs the same flight half-steps as a field
+tick, with a straight drift in place of optical transport, so at `n = 1` the two coincide.
 
 Ships also observe `grad(n)` at their own position. The physics had been computing and
 consuming it long before it reached the observation, as the force term in

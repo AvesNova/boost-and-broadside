@@ -43,16 +43,17 @@ class TestThrust:
         assert abs(state.ship_vel[0, 0].imag) < 1e-5
 
     def test_reverse_decreases_speed(self, cfg):
-        """REVERSE action with no initial velocity produces negative (backward) velocity."""
+        """REVERSE slows a moving ship without pushing it backward."""
         state = make_state(num_envs=1, max_ships=1, ship_config=cfg)
         state.ship_attitude[:] = 1.0 + 0j
+        state.ship_vel[:] = 100.0 + 0j
 
         actions = torch.zeros((1, 1, 3), dtype=torch.float32)
         actions[0, 0, 0] = PowerActions.REVERSE
 
         state = update_ships(state, actions, cfg)
 
-        assert state.ship_vel[0, 0].real < 0
+        assert 0.0 < state.ship_vel[0, 0].real < 100.0
 
     def test_coast_with_no_velocity_produces_small_positive_thrust(self, cfg):
         """COAST provides base thrust — not zero — from standstill."""

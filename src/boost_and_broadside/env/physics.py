@@ -102,120 +102,6 @@ def _build_lookup_tables(
 # ---------------------------------------------------------------------------
 
 
-def _update_kinematics(
-    state: TensorState,
-    actions: torch.Tensor,
-    config: ShipConfig,
-    tables: tuple[torch.Tensor, ...],
-) -> TensorState:
-    """Update power, attitude, velocity, and position for all ships.
-
-    GPU kernel: kept together for performance — splitting would force extra tensor
-    allocations and destroy cache locality.
-    """
-    device = state.device
-    (
-        thrust_table,
-        turn_offset_table,
-        drag_coeff_table,
-        lift_coeff_table,
-    ) = tables
-
-    power_action = actions[..., 0].long()  # (B, N)
-    turn_action = actions[..., 1].long()  # (B, N)
-
-    thrust_mag = thrust_table[power_action]  # (B, N)
-    turn_offset = turn_offset_table[turn_action]  # (B, N)
-    drag_coeff = drag_coeff_table[turn_action]  # (B, N)
-    lift_coeff = lift_coeff_table[turn_action]  # (B, N)
-
-    # Speed from current velocity — used for power drain and forces below
-    speed = state.ship_vel.abs()  # (B, N)
-
-    # Gates both stall (turn/lift zeroing) and attitude-hold below: a ship this
-    # slow has neither turning authority nor a well-defined velocity direction.
-    below_min_speed = speed < config.min_speed
-
-    # Stall: below min_speed, lose turning authority and reverse thrust
-    turn_offset = torch.where(below_min_speed, torch.zeros_like(turn_offset), turn_offset)
-    lift_coeff = torch.where(below_min_speed, torch.zeros_like(lift_coeff), lift_coeff)
-
-    # Ships with no power can't thrust
-    thrust_mag = thrust_mag * (state.ship_power > 0).float()
-
-    # Power exchange: forward thrust drains, reverse thrust gains (equal and opposite).
-    # Passive regen added on top regardless of action.
-    power_delta = (
-        -(thrust_mag / config.power_speed_constant) * speed + config.passive_power_gain
-    ) * config.dt
-    state.ship_power = torch.clamp(state.ship_power + power_delta, 0.0, config.max_power)
-
-    # Attitude — align with velocity direction then apply turn rotation
-    speed_safe = torch.clamp(speed, min=EPS)
-    vel_dir = state.ship_vel / speed_safe
-    base_att = torch.where(below_min_speed, state.ship_attitude, vel_dir)
-
-    rotation = torch.polar(torch.ones_like(turn_offset), turn_offset)  # (B, N)
-    state.ship_attitude = base_att * rotation
-    state.ship_ang_vel = turn_offset / config.dt
-
-    # Forces
-    thrust_force = thrust_mag * state.ship_attitude  # (B, N) complex
-    drag_force = -drag_coeff * speed * state.ship_vel  # (B, N) complex
-    lift_force = lift_coeff * speed * (state.ship_vel * 1j)  # (B, N) complex  — perpendicular
-
-    # Pairwise gravity (attracts fast ships toward each other)
-    _, num_ships = state.ship_pos.shape
-    world_w, world_h = config.world_size
-
-    if config.gravity_factor == 0.0:
-        gravity = torch.zeros_like(thrust_force)
-    else:
-        # (B, N_i, N_j) complex — wrapped difference i→j
-        diff = state.ship_pos.unsqueeze(1) - state.ship_pos.unsqueeze(2)
-        diff.real = (diff.real + world_w / 2) % world_w - world_w / 2
-        diff.imag = (diff.imag + world_h / 2) % world_h - world_h / 2
-
-        dist_sq = diff.real**2 + diff.imag**2  # (B, N, N)
-        dist = torch.sqrt(dist_sq)
-
-        def _symlog(x: torch.Tensor) -> torch.Tensor:
-            return torch.sign(x) * torch.log(torch.abs(x) + 1.0)
-
-        speed_i = speed.unsqueeze(2)  # (B, N, 1)
-        speed_j = speed.unsqueeze(1)  # (B, 1, N)
-        force_mag = (
-            config.gravity_factor
-            * config.gravity_eps
-            * _symlog(speed_i * speed_j)
-            / (dist_sq + config.gravity_eps)
-        )  # (B, N, N)
-        force_dir = diff / torch.clamp(dist, min=EPS)  # (B, N, N)
-        force_vec = force_mag * force_dir  # (B, N, N) complex
-
-        alive_mask = state.ship_alive.unsqueeze(2) & state.ship_alive.unsqueeze(1)  # (B, N, N)
-        self_mask = torch.eye(num_ships, device=device, dtype=torch.bool).unsqueeze(0)
-        force_vec = torch.where(alive_mask & ~self_mask, force_vec, torch.zeros_like(force_vec))
-        gravity = force_vec.sum(dim=2)  # (B, N) complex
-
-    # Integrate
-    total_force = thrust_force + drag_force + lift_force + gravity
-    state.ship_vel = state.ship_vel + total_force * config.dt
-    state.ship_pos = state.ship_pos + state.ship_vel * config.dt
-
-    # Toroidal wrap
-    state.ship_pos.real = state.ship_pos.real % world_w
-    state.ship_pos.imag = state.ship_pos.imag % world_h
-
-    # Prevent exactly-zero velocity (would break direction computations)
-    new_speed = state.ship_vel.abs()
-    too_slow = new_speed < EPS
-    min_vel = EPS * state.ship_attitude
-    state.ship_vel = torch.where(too_slow, min_vel, state.ship_vel)
-
-    return state
-
-
 def _field_optical_acceleration(
     velocity: torch.Tensor,
     index: torch.Tensor,
@@ -462,7 +348,7 @@ def _apply_thrust_impulse_with_power(
     return state
 
 
-def _apply_field_flight_half_step(
+def _apply_flight_half_step(
     state: TensorState,
     thrust_mag: torch.Tensor,
     drag_coeff: torch.Tensor,
@@ -536,13 +422,25 @@ def _transport_through_fields(state: TensorState, config: ShipConfig) -> TensorS
     return state
 
 
-def _update_kinematics_in_fields(
+def _drift(state: TensorState, config: ShipConfig) -> TensorState:
+    """Field-free transport: a straight drift over one tick at n = 1."""
+
+    state.ship_pos = _wrap_positions(state.ship_pos + state.ship_vel * config.dt, config.world_size)
+    return state
+
+
+def _update_kinematics(
     state: TensorState,
     actions: torch.Tensor,
     config: ShipConfig,
     tables: tuple[torch.Tensor, ...],
 ) -> TensorState:
-    """Split flight/control around passive effective-mass field transport."""
+    """Split flight/control around passive transport.
+
+    Transport is optical through the field map, or a plain drift when the map
+    has no fields. Either way the flight steps are the same exact half-steps,
+    so there is one flight model: at n = 1 the two transports coincide.
+    """
 
     thrust_table, turn_offset_table, drag_coeff_table, lift_coeff_table = tables
     power_action = actions[..., 0].long()
@@ -568,9 +466,12 @@ def _update_kinematics_in_fields(
     state.ship_attitude = base_attitude * torch.polar(torch.ones_like(turn_offset), turn_offset)
     state.ship_ang_vel = turn_offset / config.dt
 
-    state = _apply_field_flight_half_step(state, thrust_mag, drag_coeff, lift_coeff, config)
-    state = _transport_through_fields(state, config)
-    state = _apply_field_flight_half_step(state, thrust_mag, drag_coeff, lift_coeff, config)
+    state = _apply_flight_half_step(state, thrust_mag, drag_coeff, lift_coeff, config)
+    if state.num_fields == 0:
+        state = _drift(state, config)
+    else:
+        state = _transport_through_fields(state, config)
+    state = _apply_flight_half_step(state, thrust_mag, drag_coeff, lift_coeff, config)
     state.ship_power = torch.clamp(
         state.ship_power + config.passive_power_gain * config.dt,
         0.0,
@@ -668,11 +569,7 @@ def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) 
         The mutated state.
     """
     tables = _get_lookup_tables(config, state.device)
-    if state.num_fields == 0:
-        # Preserve the exact ambient-only baseline and its cheap hot path.
-        state = _update_kinematics(state, actions, config, tables)
-    else:
-        state = _update_kinematics_in_fields(state, actions, config, tables)
+    state = _update_kinematics(state, actions, config, tables)
     state = _handle_shooting(state, actions[..., 2].long(), config)
     return state
 
