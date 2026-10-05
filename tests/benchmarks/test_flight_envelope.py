@@ -1,8 +1,8 @@
 """CPU tests for the flight-envelope harness.
 
-The baseline numbers in ``docs/internal/flight-envelope-baseline-oct2026.json``
-are only as good as the probe that measured them, so each test checks the probe
-against a closed form of the current flight model.
+The envelope numbers in ``docs/internal/flight-envelope-*.json`` are only as
+good as the probe that measured them, so each test checks the probe against a
+closed form of the flight model.
 """
 
 import math
@@ -17,6 +17,7 @@ from benchmarks.flight_envelope import (
     fly,
     measure_bullets,
     measure_em_grid,
+    measure_nose,
 )
 from boost_and_broadside.config.defaults import SHIP_CONFIG
 from boost_and_broadside.constants import PowerActions, TurnActions
@@ -37,7 +38,7 @@ def _coast_turn(turn: TurnActions, index: float, start_speed: float, seconds: fl
 def test_coast_cruise_is_the_thrust_drag_balance_at_every_index(index):
     """Coast thrust balances quadratic drag at u = sqrt(base_thrust / drag) in proper speed."""
     _, trace = _coast_turn(TurnActions.GO_STRAIGHT, index, 50.0, 90.0)
-    expected = math.sqrt(LIVE.base_thrust / LIVE.no_turn_drag_coeff)
+    expected = math.sqrt(LIVE.base_thrust / LIVE.zero_slip_drag_coeff)
     assert trace.proper_speed[-1, 0].item() == pytest.approx(expected, rel=0.01)
 
 
@@ -49,8 +50,8 @@ def test_the_probe_holds_the_ship_inside_the_uniform_field():
 @pytest.mark.parametrize(
     ("turn", "lift"),
     [
-        (TurnActions.TURN_LEFT, LIVE.normal_turn_lift_coeff),
-        (TurnActions.SHARP_LEFT, LIVE.sharp_turn_lift_coeff),
+        (TurnActions.TURN_LEFT, LIVE.normal_lift_coeff),
+        (TurnActions.SHARP_LEFT, LIVE.max_lift_coeff),
     ],
 )
 def test_sustained_radius_is_close_to_the_inverse_lift_coefficient(turn, lift):
@@ -62,10 +63,10 @@ def test_sustained_radius_is_close_to_the_inverse_lift_coefficient(turn, lift):
     assert (distance.item() / turned) == pytest.approx(1.0 / lift, rel=0.07)
 
 
-def test_one_tick_sharp_turn_rate_matches_lift_times_speed():
-    rows = measure_em_grid(LIVE, CPU, indices=(1.0,), speeds=(100.0,))
+def test_settled_sharp_turn_rate_at_corner_matches_lift_times_speed():
+    rows = measure_em_grid(LIVE, CPU, indices=(1.0,), speeds=(LIVE.corner_speed,))
     row = next(r for r in rows if r["power"] == "COAST" and r["turn"] == "SHARP_LEFT")
-    expected = -math.degrees(LIVE.sharp_turn_lift_coeff * 100.0)
+    expected = -math.degrees(LIVE.max_lift_coeff * LIVE.corner_speed)
     assert row["turn_rate_deg_s"] == pytest.approx(expected, rel=0.05)
 
 
@@ -80,7 +81,7 @@ def test_world_turn_rate_is_reciprocal_in_the_index_at_fixed_proper_speed():
 
 
 def test_straight_flight_does_not_turn_the_path():
-    _, trace = _coast_turn(TurnActions.AIR_BRAKE, 1.0, 150.0, 2.0)
+    _, trace = _coast_turn(TurnActions.GO_STRAIGHT, 1.0, 150.0, 2.0)
     assert trace.heading.abs().max().item() == pytest.approx(0.0, abs=1e-4)
 
 
@@ -95,3 +96,15 @@ def test_bullet_range_matches_exact_quadratic_drag():
 def test_first_tick_reports_none_for_a_column_that_never_crosses():
     mask = torch.tensor([[False, False], [False, True], [False, True]])  # (T+1, B)
     assert first_tick(mask) == [None, 1]
+
+
+def test_above_corner_the_settled_turn_is_g_limited():
+    rows = measure_em_grid(LIVE, CPU, indices=(1.0,), speeds=(200.0,))
+    row = next(r for r in rows if r["power"] == "COAST" and r["turn"] == "SHARP_LEFT")
+    allowance = LIVE.base_thrust * math.sin(LIVE.stall_angle)
+    assert row["lateral_accel"] == pytest.approx(LIVE.max_lateral_accel, abs=allowance + 1.0)
+
+
+def test_the_nose_onset_is_reported_in_the_design_window():
+    rows = measure_nose(LIVE, CPU, speeds=(60.0,))
+    assert all(0.13 <= r["onset_90_seconds"] <= 0.20 for r in rows)

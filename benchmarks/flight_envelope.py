@@ -1,4 +1,4 @@
-"""Measure the flight envelope of the current ship physics.
+"""Measure the flight envelope of the ship physics.
 
 Every scenario flies one ship per environment through ``update_ships`` directly,
 so nothing but the flight model is measured: no collisions, no boundary, no
@@ -10,9 +10,13 @@ path takes n = 1 only.
 Speeds are proper speeds ``u = n|v|`` unless a key says ``world``. Angles are
 degrees and rates degrees per second. Lengths are world pixels.
 
-Example (the checked-in baseline):
-    uv run --no-sync python benchmarks/flight_envelope.py \
-        --device cuda --out docs/internal/flight-envelope-baseline-oct2026.json
+``--baseline`` compares the settled envelope with an earlier artifact and
+evaluates the slip model's validation checks (spec section 10.1).
+
+Example (the checked-in slip-model measurement):
+    uv run --no-sync python benchmarks/flight_envelope.py --device cuda \
+        --baseline docs/internal/flight-envelope-baseline-oct2026.json \
+        --out docs/internal/flight-envelope-slip-oct2026.json
 """
 
 from __future__ import annotations
@@ -43,7 +47,13 @@ from boost_and_broadside.constants import (
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.field_physics import refresh_ship_field_cache
 from boost_and_broadside.env.frontline import frontline_ship_config
-from boost_and_broadside.env.physics import advance_bullets, update_ships
+from boost_and_broadside.env.physics import (
+    TURN_SHARP,
+    TURN_SIDE,
+    advance_bullets,
+    slip_command,
+    update_ships,
+)
 
 INDICES = (0.5, 2.0**-0.5, 1.0, 2.0**0.5, 2.0)
 EM_SPEEDS = (10, 20, 30, 40, 60, 80, 100, 120, 136, 160, 200, 250, 300, 400, 500, 600)
@@ -76,6 +86,7 @@ class Trace:
     power: torch.Tensor  # (T+1, B)
     heading: torch.Tensor  # (T+1, B) cumulative path heading change, degrees
     gun: torch.Tensor  # (T+1, B) cumulative attitude change, degrees
+    slip: torch.Tensor  # (T+1, B) nose angle to the flight path, degrees
     position: torch.Tensor  # (T+1, B) complex, displacement from start, world px
     dt: float
 
@@ -133,12 +144,18 @@ class FlightProbe:
         state.ship_vel = torch.complex(speed, torch.zeros_like(speed)).unsqueeze(1)  # (B, 1)
         state.ship_attitude = torch.ones_like(state.ship_attitude)
         state.ship_ang_vel = torch.zeros_like(state.ship_ang_vel)
+        state.ship_slip = torch.zeros_like(state.ship_slip)
+        state.ship_slip_rate = torch.zeros_like(state.ship_slip_rate)
         state.ship_power = power.to(self.device, torch.float32).unsqueeze(1)  # (B, 1)
         state.ship_cooldown = torch.zeros_like(state.ship_cooldown)
 
     @property
     def proper_speed(self) -> torch.Tensor:
         return (self.state.ship_local_index * self.state.ship_vel.abs())[:, 0]  # (B,)
+
+    @property
+    def slip(self) -> torch.Tensor:
+        return torch.rad2deg(self.state.ship_slip[:, 0])  # (B,)
 
     @property
     def power(self) -> torch.Tensor:
@@ -196,11 +213,12 @@ def fly(
     """Fly ``ticks`` ticks under ``controller(tick) -> (power, turn)``."""
     batch = probe.index.shape[0]
     zeros = torch.zeros(batch, device=probe.device)
-    speeds, powers, headings, guns, positions = (
+    speeds, powers, headings, guns, slips, positions = (
         [probe.proper_speed],
         [probe.power],
         [zeros],
         [zeros],
+        [probe.slip],
         [torch.complex(zeros, zeros)],
     )
     for tick in range(ticks):
@@ -212,12 +230,14 @@ def fly(
         powers.append(probe.power)
         headings.append(headings[-1] + torch.rad2deg(heading_change))
         guns.append(guns[-1] + torch.rad2deg(attitude_change))
+        slips.append(probe.slip)
         positions.append(positions[-1] + displacement)
     return Trace(
         torch.stack(speeds).cpu(),  # (T+1, B)
         torch.stack(powers).cpu(),
         torch.stack(headings).cpu(),
         torch.stack(guns).cpu(),
+        torch.stack(slips).cpu(),
         torch.stack(positions).cpu(),
         probe.config.dt,
     )
@@ -314,6 +334,9 @@ def measure_em_grid(
 ) -> list[dict]:
     """One-tick instantaneous performance: the energy-manoeuvrability grid.
 
+    The nose starts settled at the slip the turn action commands at that speed,
+    so the tick measures the turn the ship holds there rather than the onset.
+
     ``energy_rate`` is d(½u² + K·power)/dt, which includes passive regeneration.
     ``excess_power_accel`` divides it by u: the along-track acceleration the
     ship would have if the whole energy change went into speed, the analogue
@@ -325,10 +348,15 @@ def measure_em_grid(
     probe = FlightProbe(config, index, device, path=path)
     speed = torch.tensor([float(u) for _, u, _, _ in combos])
     probe.set_flight(speed, torch.full((batch,), start_power))
-    energy_before = probe.energy
-    speed_before = probe.proper_speed
     power = torch.tensor([p for _, _, p, _ in combos], device=device)
     turn = torch.tensor([t for _, _, _, t in combos], device=device)
+    side = torch.tensor([TURN_SIDE[t] for _, _, _, t in combos], device=device)  # (B,)
+    sharp = torch.tensor([TURN_SHARP[t] for _, _, _, t in combos], device=device)  # (B,)
+    settled = slip_command(side, sharp, speed.to(device), config)  # (B,)
+    probe.state.ship_slip = settled.unsqueeze(1)  # (B, 1)
+    probe.state.ship_attitude = torch.polar(torch.ones_like(settled), settled).unsqueeze(1)
+    energy_before = probe.energy
+    speed_before = probe.proper_speed
     _, heading_change, _ = probe.step(power, turn)
     dt = config.dt
     rate = torch.rad2deg(heading_change) / dt  # (B,)
@@ -357,7 +385,7 @@ def measure_em_grid(
     return rows
 
 
-_STRAIGHT = {TurnActions.GO_STRAIGHT, TurnActions.AIR_BRAKE, TurnActions.SHARP_AIR_BRAKE}
+_STRAIGHT = {TurnActions.GO_STRAIGHT}
 
 
 def measure_straight_line(
@@ -374,20 +402,9 @@ def measure_straight_line(
         "boost_from_rest": (2.0, config.max_power, PowerActions.BOOST, TurnActions.GO_STRAIGHT),
         "boost_from_cruise": (100.0, config.max_power, PowerActions.BOOST, TurnActions.GO_STRAIGHT),
         "coast_from_dash": (215.0, 0.0, PowerActions.COAST, TurnActions.GO_STRAIGHT),
-        "air_brake_from_dash": (215.0, 0.0, PowerActions.COAST, TurnActions.AIR_BRAKE),
-        "sharp_air_brake_from_dash": (
-            215.0,
-            0.0,
-            PowerActions.COAST,
-            TurnActions.SHARP_AIR_BRAKE,
-        ),
+        "sharp_pull_from_dash": (215.0, 0.0, PowerActions.COAST, TurnActions.SHARP_LEFT),
         "reverse_from_dash": (215.0, 0.0, PowerActions.REVERSE, TurnActions.GO_STRAIGHT),
-        "reverse_sharp_air_brake_from_dash": (
-            215.0,
-            0.0,
-            PowerActions.REVERSE,
-            TurnActions.SHARP_AIR_BRAKE,
-        ),
+        "reverse_sharp_pull_from_dash": (215.0, 0.0, PowerActions.REVERSE, TurnActions.SHARP_LEFT),
         "reverse_from_cruise": (100.0, 0.0, PowerActions.REVERSE, TurnActions.GO_STRAIGHT),
     }
     combos = list(itertools.product(indices, scenarios))
@@ -499,23 +516,28 @@ def measure_nose(
     device: torch.device,
     *,
     path: str = "field",
+    indices: Sequence[float] = (1.0,),
     speeds: Sequence[float] = NOSE_SPEEDS,
     hold_seconds: float = 0.5,
 ) -> list[dict]:
-    """Gun (attitude) response: a nose throw and a full reversal, coasting at n = 1.
+    """Gun (attitude) response: a nose throw and a full reversal, coasting.
 
     ``throw`` holds sharp left from straight flight, then releases to straight.
-    ``reversal`` holds sharp left, then switches to sharp right.
+    ``reversal`` holds sharp left, then switches to sharp right. Onset is the
+    time for the slip to reach 90% of its settled value under the hold;
+    ``slip_settle_seconds_after_switch`` is the time after the switch until
+    the slip is within 1° of its new command (zero for a throw, 90% of the
+    opposite for a reversal).
     """
     hold = round(hold_seconds / config.dt)
-    combos = list(itertools.product(("throw", "reversal"), speeds))
+    combos = list(itertools.product(indices, ("throw", "reversal"), speeds))
     batch = len(combos)
-    probe = FlightProbe(config, torch.ones(batch), device, path=path)
-    probe.set_flight(torch.tensor([float(u) for _, u in combos]), torch.full((batch,), 50.0))
+    probe = FlightProbe(config, torch.tensor([n for n, _, _ in combos]), device, path=path)
+    probe.set_flight(torch.tensor([float(u) for _, _, u in combos]), torch.full((batch,), 50.0))
     after = torch.tensor(
         [
             TurnActions.GO_STRAIGHT if kind == "throw" else TurnActions.SHARP_RIGHT
-            for kind, _ in combos
+            for _, kind, _ in combos
         ],
         device=device,
     )
@@ -529,22 +551,40 @@ def measure_nose(
     dt = config.dt
     sample_seconds = (dt, 0.1, 0.25, hold_seconds)
     rows = []
-    for column, (kind, u) in enumerate(combos):
+    for column, (n, kind, u) in enumerate(combos):
         gun = trace.gun[:, column]
         heading = trace.heading[:, column]
+        slip = trace.slip[:, column]
         gun_rate = (gun[1:] - gun[:-1]).abs() / dt
-        slip = gun - heading
-        released = slip[hold + 1 :].abs()
-        settle = first_tick((released <= 1.0).unsqueeze(1))[0]
+        held = slip[: hold + 1]
+        settled = held[-1].item()
+        onset = first_tick((held.abs() >= 0.9 * abs(settled)).unsqueeze(1))[0]
+        released = slip[hold + 1 :]
+        target = 0.0 if kind == "throw" else -0.9 * settled
+        if kind == "throw":
+            reached = released.abs() <= 1.0
+        else:
+            reached = released * math.copysign(1.0, target) >= abs(target)
+        settle = first_tick(reached.unsqueeze(1))[0]
+        slip_rate = slip[1:] - slip[:-1]
+        hold_rate = slip_rate[:hold]
         rows.append(
             {
+                "index": round(n, 4),
                 "kind": kind,
                 "speed": u,
                 "gun_deg": {f"{s:.3f}": _r(gun[round(s / dt)].item(), 2) for s in sample_seconds},
                 "path_deg": {
                     f"{s:.3f}": _r(heading[round(s / dt)].item(), 2) for s in sample_seconds
                 },
+                "slip_deg": {f"{s:.3f}": _r(slip[round(s / dt)].item(), 2) for s in sample_seconds},
                 "peak_gun_rate_deg_s": _r(gun_rate.max().item(), 1),
+                "peak_slip_rate_deg_s": _r((slip_rate.abs().max() / dt).item(), 1),
+                "max_abs_slip_deg": _r(slip.abs().max().item(), 3),
+                "onset_90_seconds": _seconds(onset, dt),
+                "hold_slip_rate_sign_changes": int(
+                    ((hold_rate[1:] * hold_rate[:-1]) < -1e-9).sum().item()
+                ),
                 "gun_step_on_switch_deg": _r((gun[hold + 1] - gun[hold]).item(), 2),
                 "slip_settle_seconds_after_switch": _seconds(
                     None if settle is None else settle + 1, dt
@@ -700,12 +740,141 @@ def measure_play(device: torch.device, *, envs: int, decisions: int, seeds: Sequ
     }
 
 
+# Settled rows that stay below both corners, so the slip model must reproduce
+# the earlier envelope: every coasting turn, the boosted sharp turn, and the
+# straight-line terminals. The boosted normal turn and the power-held-full turns
+# settle above corner and are meant to change.
+_UNCHANGED_TERMINALS = {
+    ("coast", "GO_STRAIGHT"),
+    ("coast", "TURN_LEFT"),
+    ("coast", "SHARP_LEFT"),
+    ("boost", "GO_STRAIGHT"),
+    ("boost", "SHARP_LEFT"),
+    ("boost_unlimited", "GO_STRAIGHT"),
+}
+
+
+def _within(value: float | None, low: float, high: float) -> bool:
+    return value is not None and low <= value <= high
+
+
+def validate(artifact: dict, baseline: dict | None, config: ShipConfig) -> dict:
+    """The slip model's physics checks (spec section 10.1), each with its numbers."""
+    checks: dict[str, dict] = {}
+
+    if baseline is not None:
+        before = {
+            (r["index"], r["power_mode"], r["turn"]): r
+            for r in baseline["terminal"]
+            if (r["power_mode"], r["turn"]) in _UNCHANGED_TERMINALS
+        }
+        worst = 0.0
+        rows, above_corner = [], []
+        for row in artifact["terminal"]:
+            key = (row["index"], row["power_mode"], row["turn"])
+            if key not in before:
+                continue
+            if row["turn"] != "GO_STRAIGHT" and row["proper_speed"] > config.corner_speed:
+                # A second, g-limited equilibrium: entered fast with power to
+                # spare, the turn never bleeds down to the stall-slip one.
+                above_corner.append({"key": list(key), "proper_speed": row["proper_speed"]})
+                continue
+            old = before[key]
+            speed_error = row["proper_speed"] / old["proper_speed"] - 1.0
+            rate_error = (
+                abs(row["turn_rate_deg_s"]) / abs(old["turn_rate_deg_s"]) - 1.0
+                if abs(old["turn_rate_deg_s"] or 0.0) > 1e-6
+                else 0.0
+            )
+            worst = max(worst, abs(speed_error), abs(rate_error))
+            rows.append({"key": list(key), "speed": _r(speed_error, 4), "rate": _r(rate_error, 4)})
+        checks["below_corner_matches_baseline"] = {
+            "pass": worst <= 0.02,
+            "worst_relative_error": _r(worst, 4),
+            "rows": rows,
+            "settled_above_corner": above_corner,
+        }
+
+    allowance = config.boost_thrust * math.sin(config.stall_angle)
+    above = [
+        r
+        for r in artifact["em_grid"]
+        if r["index"] == 1.0 and r["turn"] == "SHARP_LEFT" and r["proper_speed"] > 100
+    ]
+    peak = max(r["lateral_accel"] for r in above)
+    checks["lateral_accel_above_corner"] = {
+        "pass": peak <= config.max_lateral_accel + allowance,
+        "peak": peak,
+        "limit": config.max_lateral_accel,
+        "slipped_thrust_allowance": _r(allowance),
+    }
+
+    nose = artifact["nose"]
+    at_one = [r for r in nose if r["index"] == 1.0]
+
+    # Step responses are read below corner, where the command is constant
+    # while the speed bleeds; above it the command grows as the ship slows.
+    def stepped(row: dict) -> bool:
+        return config.slip_fade_speed <= row["speed"] <= config.corner_speed
+
+    onsets = [r["onset_90_seconds"] for r in at_one if stepped(r)]
+    snaps = [
+        r["slip_settle_seconds_after_switch"] for r in at_one if r["kind"] == "throw" and stepped(r)
+    ]
+    reversals = [r["slip_settle_seconds_after_switch"] for r in at_one if r["kind"] == "reversal"]
+    checks["onset_90"] = {"pass": all(_within(t, 0.13, 0.20) for t in onsets), "seconds": onsets}
+    checks["snap_back"] = {"pass": all(_within(t, 0.13, 0.20) for t in snaps), "seconds": snaps}
+    checks["reversal"] = {"seconds": reversals}
+    checks["no_jitter"] = {
+        "pass": all(r["hold_slip_rate_sign_changes"] == 0 for r in nose)
+        and all(r["max_abs_slip_deg"] <= math.degrees(config.stall_angle) + 1e-3 for r in nose),
+        "max_abs_slip_deg": max(r["max_abs_slip_deg"] for r in nose),
+    }
+
+    reference = {(r["kind"], r["speed"]): r for r in at_one}
+    ratios = []
+    for row in nose:
+        if row["index"] == 1.0 or not stepped(row):
+            continue
+        base = reference[(row["kind"], row["speed"])]
+        for key in ("onset_90_seconds", "slip_settle_seconds_after_switch"):
+            if row[key] is not None and base[key]:
+                ratios.append(
+                    {
+                        "index": row["index"],
+                        "kind": row["kind"],
+                        "speed": row["speed"],
+                        "metric": key,
+                        "ratio_over_index": _r(row[key] / base[key] / row["index"]),
+                    }
+                )
+    tick_slack = 1.5 * config.dt / min(r["onset_90_seconds"] or 1.0 for r in at_one)
+    checks["nose_times_scale_with_index"] = {
+        "pass": all(abs(r["ratio_over_index"] - 1.0) <= tick_slack + 0.05 for r in ratios),
+        "ratios": ratios,
+    }
+
+    free = {(r["power_mode"], r["turn"]): r for r in artifact["terminal_field_free"]}
+    worst = 0.0
+    for row in artifact["terminal"]:
+        if row["index"] != 1.0:
+            continue
+        other = free[(row["power_mode"], row["turn"])]
+        worst = max(worst, abs(other["proper_speed"] / row["proper_speed"] - 1.0))
+    checks["field_free_matches_field_path"] = {
+        "pass": worst <= 1e-3,
+        "worst_relative_error": _r(worst, 6),
+    }
+    return checks
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path, default=None)
     parser.add_argument("--play-envs", type=int, default=64)
     parser.add_argument("--play-decisions", type=int, default=1500)
     parser.add_argument("--play-seeds", default="271828,314159")
@@ -713,12 +882,11 @@ def main() -> None:
     args = parser.parse_args()
     device = torch.device(args.device)
     live = frontline_ship_config(SHIP_CONFIG)
-    reference = ShipConfig()  # Appendix A: ambient path at 60 Hz
 
     started = time.perf_counter()
     with torch.inference_mode():
         artifact = {
-            "schema": "boost-and-broadside-flight-envelope-v1",
+            "schema": "boost-and-broadside-flight-envelope-v2",
             "git_commit": _git_head(),
             "units": {
                 "speed": "proper px/s unless the key says world",
@@ -730,15 +898,15 @@ def main() -> None:
                 **asdict(live),
             },
             "terminal": measure_terminal(live, device),
-            "terminal_reference_60hz_ambient": measure_terminal(
-                reference, device, path="ambient", indices=(1.0,)
-            ),
+            "terminal_field_free": measure_terminal(live, device, path="ambient", indices=(1.0,)),
             "em_grid": measure_em_grid(live, device),
             "straight_line": measure_straight_line(live, device),
             "turn_transients": measure_turn_transients(live, device, indices=(0.5, 1.0, 2.0)),
-            "nose": measure_nose(live, device),
+            "nose": measure_nose(live, device, indices=(0.5, 1.0, 2.0)),
             "bullets": measure_bullets(live, device),
         }
+    baseline = json.loads(args.baseline.read_text()) if args.baseline else None
+    artifact["validation"] = validate(artifact, baseline, live)
     if not args.skip_play:
         seeds = tuple(int(s) for s in args.play_seeds.split(",") if s)
         artifact["play"] = measure_play(
@@ -752,6 +920,9 @@ def main() -> None:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(artifact, indent=1) + "\n")
+    for name, check in artifact["validation"].items():
+        verdict = check.get("pass")
+        print(f"{name:34s} {'-' if verdict is None else ('PASS' if verdict else 'FAIL')}")
     print(f"wrote {args.out}")
 
 

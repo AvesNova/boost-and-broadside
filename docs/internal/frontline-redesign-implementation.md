@@ -38,7 +38,7 @@ that the change makes stale updated, one commit per idea, pushed.
 * `TensorState`: `ship_slip`, `ship_slip_rate` (B, N) float32, zeroed on reset
   and respawn.
 * `ShipConfig`: replace the per-action angle, drag and lift constants with
-  `stall_angle`, `lift_coeff_max`, `normal_lift_coeff`, `drag_coeff_zero`,
+  `stall_angle`, `max_lift_coeff`, `normal_lift_coeff`, `zero_slip_drag_coeff`,
   `normal_slip_drag_coeff`, `stall_drag_coeff`, `max_lateral_accel`,
   `nose_frequency`, `max_slip_rate`, `slip_fade_speed` (`min_speed` stays).
 * Tick: command from proper speed (g-limit cap, fade), exact critically damped
@@ -133,3 +133,63 @@ that the change makes stale updated, one commit per idea, pushed.
 ## Deviation log
 
 Entries are added as the work proceeds.
+
+### Part I
+
+1. **Attitude is re-aligned to the end-of-tick flight path.** The spec sets the
+   attitude from the velocity direction and the slip; doing that at the start of
+   the tick (as the old code did with its offset) leaves the observed
+   attitude-minus-heading off the stored slip by the path turn within the tick
+   (up to 5° at 155°/s). The tick now flies with the start-of-tick attitude and
+   stores `end_direction · e^{iα}`, and a stalled ship's slip is re-derived
+   against the end-of-tick path, so slip is exactly attitude minus velocity
+   heading (§3.1's Markov claim) and `ship_ang_vel` is the true heading rate.
+2. **No-overshoot clamp.** Under the slip-rate limit the state can carry an
+   approach speed the exact critically damped step would take past the command.
+   Arrival is clamped (error and rate zeroed when the step crosses the command),
+   and |α| is bounded by max(stall, |α_prev|).
+3. **Drag is held at its 2×-stall value beyond it.** Only a ship leaving a stall
+   with a large held slip reaches there; the quartic would otherwise stop it dead
+   (C_D ≈ 14.5 at 180°).
+4. **`nose_slew_rate` replaces `reversal_time` as the handling quantity** that
+   pins `max_slip_rate`. The closed form 2·stall/rate (0.20 s) is not the
+   measured reversal (0.27 s at 150°/s: onset and arrival are not rate-limited),
+   and pinning reversal at 0.25 s through it would have set the limit to 120°/s,
+   which binds on onset. The spec's 150°/s is kept; the measured reversal is
+   reported by the harness.
+5. **The correction stage runs offline** (`python -m benchmarks.flight_spec
+   --correct`), not at configuration time: it needs the simulator. It converges
+   in two iterations to within 0.2% on every measured target. The live config
+   stays on the closed-form solve because §5.3 states the sharp rate in closed
+   form (114; 119.3 measured). Onset is tick-quantised (5 ticks = 0.167 s), so the
+   correction leaves it out.
+6. **Bistable boosted sharp turn at n ≥ 1.41.** Entered at 100 px/s with full
+   power, the boosted sharp turn settles on a second, above-corner equilibrium
+   (130 proper at n = 1.41, 160 at n = 2) instead of the stall-slip one (82, 92):
+   world-time regeneration supplies enough power to hold a low-slip g-limited
+   turn there. This is the physics as specified, not a bug; the validation
+   excludes those rows from the below-corner comparison and lists them.
+7. **Step-response checks are read between fade and corner speed.** Above corner
+   the command grows as speed bleeds, so "90% of the final slip" is not a step
+   response (it reads 0.23–0.30 s at 160–300 px/s).
+8. **Reverse no longer pushes a stationary ship backwards on the field-free path**
+   (Phase 1): the field path's exact energy step stops reverse at the
+   minimum-energy point.
+9. **Throughput.** Compiled `update_ships` at 960 envs: 0.87 → 0.98 ms per tick
+   (+13% on the ship-physics kernel; a small share of a full step).
+10. **Drag validation is non-strict** (`C_D0 ≤ C_D,normal ≤ C_D,stall`) so that
+    drag-free test configurations remain expressible.
+
+### Measured (Phase 4)
+
+`docs/internal/flight-envelope-slip-oct2026.json`, all §10.1 checks pass:
+below-corner envelope within 0.53% of the October baseline at every index;
+onset to 90% 0.167 s; snap-back 0.20 s; reversal 0.27 s (below corner) and
+0.20 s (above); peak settled lateral acceleration 283 px/s² against 270 + 21
+slipped-thrust allowance; no slip-rate sign changes in held turns; nose times
+scale with n within a tick; the field-free terminal matches the field path at
+n = 1 to 1e-3. The boosted normal turn widened from 66 to 126 px (59.5°/s at
+131 px/s). A 0.5 s sharp throw from 300 px/s now turns the gun 24° (179°
+before). Scripted play with the unmodified controller: median proper speed 113
+→ 124 px/s, median heading rate 0 → 19°/s (the nose no longer jumps), p95
+lateral acceleration 292 → 233 px/s².
