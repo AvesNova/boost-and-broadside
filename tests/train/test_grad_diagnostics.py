@@ -506,9 +506,7 @@ def test_per_component_clipping_would_be_a_different_objective(tmp_path) -> None
     lambda_ij = trainer._team_mixing(
         batch.obs["team_id"][:steps, :, :num_ships].long(), batch.alive
     )
-    advantage_k = torch.einsum(
-        "tbijk,tbjk->tbik", lambda_ij, batch.advantages
-    )  # (T, b, N, K)
+    advantage_k = torch.einsum("tbijk,tbjk->tbik", lambda_ij, batch.advantages)  # (T, b, N, K)
     aggregate = advantage_k.sum(-1)  # (T, b, N)
 
     ratio = torch.full_like(aggregate, 1.5)  # well outside any sane clip band
