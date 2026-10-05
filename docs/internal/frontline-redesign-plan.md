@@ -177,9 +177,16 @@ alpha_cmd = sign · lift_inverse(cl)
   today's; above it the nose angle shrinks with 1/u² and the radius grows with u².
 * **Proper speed.** The cap uses proper speed, so the corner speed is the same in every
   field. World turn rate stays reciprocal in n at a fixed proper speed.
-* **Lift only.** The cap applies to lift. Slipped boost thrust adds up to about
-  80 · sin 15° ≈ 21 px/s² of lateral force on top, so measured lateral acceleration
-  can sit slightly above `max_lateral_accel`. Validation allows for this (§10.1).
+* **Lift only, as for aircraft.** An aircraft's g-limit is on load factor, lift over
+  weight: the aerodynamic force normal to the flight path. Drag is not included; it
+  acts along the path. Fly-by-wire limiters measure body-axis normal acceleration,
+  `L cos α + D sin α`, which at these slips is lift plus about 5% (D sin 15° against
+  L at stall slip). Thrust along the body axis has no body-normal component, so it
+  never counts against the limit, yet its `T sin α` still turns the flight path. The
+  game follows the same convention. Capping lift keeps the closed forms of §5. Slipped
+  boost thrust adds up to about 80 · sin 15° ≈ 21 px/s² of path-normal acceleration on
+  top (2 px/s² coasting), so measured lateral acceleration can sit slightly above
+  `max_lateral_accel`. Validation allows for this (§10.1).
 * **Starting point:** corner speed **100 px/s**, so `max_lateral_accel` = 270 px/s².
   The normal level's own corner is then about 95 px/s.
 
@@ -217,10 +224,17 @@ frequency ω, under a slip-rate limit `max_slip_rate`.
 * **Release.** The nose returns to the flight path over the same ~0.16 s.
 * **ω does not scale with speed.** Speed dependence comes from the g-limit and the
   low-speed fade. Scaling ω with speed would make low-speed nose throws sluggish.
-* **Field index: open.** Path turns and every other time in the game scale with n (the
-  field acts as time dilation). Whether the nose response should also run in proper
-  time, ω and `max_slip_rate` divided by n in world time, is undecided (§13). The
-  angular-velocity code is sized to cover both choices (§8.6).
+* **Field index: written as a torque, so it follows from the physics.** In a field the
+  ship is a particle of mass m = n² whose forces are functions of proper quantities
+  (thrust, drag on proper speed, lift). Writing u = n|v| turns the equations of motion
+  into today's n = 1 equations with world time divided by n, which is why every path
+  time scales with n. The one exception is passive power regeneration, which runs in
+  world time and is why energy-limited top speed rises as n^⅓. The nose is written the
+  same way: a rotational inertia `I = n² I₀`, a restoring torque on the slip error and
+  a damping torque on the proper slip rate `n α̇`. In world time that is ω/n, and the
+  slip-rate limit, stated on the proper slip rate, is `max_slip_rate / n`. Every nose
+  time in §3.4 therefore scales with n like the path times in Appendix A, and ω,
+  onset and `max_slip_rate` are quoted in proper time.
 
 ### 3.5 Low speed
 
@@ -234,9 +248,9 @@ frequency ω, under a slip-rate limit `max_slip_rate`.
 ### 3.6 Air brakes removed
 
 `AIR_BRAKE` and `SHARP_AIR_BRAKE` are removed from `TurnActions`. The scripted
-controller never selects them (0% of decisions, Appendix A.8). Slowing remains
-available through reverse thrust and sharp-pull drag (Appendix A.5). Before removing
-them, measure a trained policy's air-brake usage (§12, step 1).
+controller never selects them (0% of decisions, Appendix A.8), and several trained
+agents checked by hand never used either. Slowing remains available through reverse
+thrust and sharp-pull drag (Appendix A.5).
 
 ### 3.7 One flight path
 
@@ -263,8 +277,9 @@ capture.
   `nonzero`.
 * **No per-tick tensor construction.** All constants are plain floats on the frozen
   `ShipConfig`.
-* **No iterative solves.** The lift inverse is a `sqrt`, and the damped step is
-  multiply-adds with precomputed coefficients.
+* **No iterative solves.** The lift inverse is a `sqrt`. The damped step's coefficients
+  depend on `ω·dt / n`, so they are an elementwise `exp` per ship at the local index of
+  the flight half-step, followed by multiply-adds.
 * **Static shapes.** The two new fields are `(B, N)` float32, zeroed on reset and
   respawn, and advanced by reassignment.
 * **Cost** is a few dozen elementwise operations per ship. Confirm it with the
@@ -884,7 +899,7 @@ Fourier harmonics whose finest period is 45°.
 | 6 | 3 | 18 | 1.7° | 1.29 | 1.10 | 0.22 |
 
 With the slip model (§3.4) attitude moves continuously: per decision at most the path
-turn plus the slip-rate limit, (155/n + 150)/30 ≈ 10° at n = 1 and 15° at n = 0.5. An
+turn plus the slip-rate limit, (155 + 150)/(30n) ≈ 10° at n = 1 and 20° at n = 0.5. An
 enemy's next attitude, whose command is unknown, is a smooth spread of that width
 rather than today's five spikes; the finest level (1.4°) sits near uniform for enemies
 during manoeuvres. Training is unaffected (per-level cross-entropy is proper). For
@@ -894,8 +909,8 @@ level is predictable.
 **Angular velocity: continuous.** Today it is exactly `turn_offset / dt`, five values.
 With the slip model it is the path turn rate plus α̇, continuous. It is a two-hot over
 **41 bins spanning ±610°/s**, 30.5°/s apart (1° of attitude per decision). The range is
-(155 + 150)/n at n = 0.5: the path turn rate is reciprocal in n, and the range also
-covers a nose response run in proper time (§3.4). It is rebuilt from mean and sigma
+(155 + 150)/n at n = 0.5: the path turn rate and the slip rate are both reciprocal in
+n (§3.4). It is rebuilt from mean and sigma
 like the other scalars. Under the critically damped response the rate can change by
 more than 100°/s within one decision during onset, so the per-decision change is large
 against the bin; hidden-ship angular velocity is expected to sit near its prior.
@@ -972,9 +987,11 @@ physics is `docs/internal/flight-envelope-baseline-oct2026.json` (Appendix A).
     thrust's share above `max_lateral_accel`;
   * excluded: the boosted normal turn and the power-held-full rows, which settle above
     corner.
-* **Transients:** onset to 90% in 0.13–0.20 s; snap-back to within 1° of the path in
-  0.13–0.20 s; reversal time; nose throw (0.5 s sharp from straight at 60, 100 and
-  160 px/s: peak gun angle and path heading change).
+* **Transients** at n = 1: onset to 90% in 0.13–0.20 s; snap-back to within 1° of the
+  path in 0.13–0.20 s; reversal time; nose throw (0.5 s sharp from straight at 60, 100
+  and 160 px/s: peak gun angle and path heading change).
+* **Field scaling:** at n = 0.5 and n = 2, every transient time is n times its n = 1
+  value, as path times are (§3.4).
 * **No jitter:** α̇ never changes sign during a held turn, and α never passes the stall
   angle.
 * **One flight path:** with no fields, lift alone keeps speed constant; energy never
@@ -1030,24 +1047,23 @@ for it.
 
 ## 12. Order of work
 
-1. **Measure air-brake usage** of a trained policy (§3.6).
-2. **Unify the flight path** (§3.7) as its own change, so later measurements compare
+1. **Unify the flight path** (§3.7) as its own change, so later measurements compare
    one change at a time.
-3. **Extend the solver** to the new model's constants and quantities, add the
+2. **Extend the solver** to the new model's constants and quantities, add the
    correction stage, and derive `ShipConfig` flight constants from a handling spec.
    Today's constants must round-trip.
-4. **Implement the slip state,** lift and drag curves, g-limit, fade and air-brake
+3. **Implement the slip state,** lift and drag curves, g-limit, fade and air-brake
    removal.
-5. **Measure** with the harness against §10.1.
-6. **Re-tune the scripted controllers** and run the duels. Physics is now fixed; no RL
+4. **Measure** with the harness against §10.1.
+5. **Re-tune the scripted controllers** and run the duels. Physics is now fixed; no RL
    run is needed for this part.
-7. **Build Part II** against the new physics: rewards, critic, next-state head and
+6. **Build Part II** against the new physics: rewards, critic, next-state head and
    belief, per-environment geometry for map scale. One checkpoint-schema bump.
-8. **Pass the gates** of §10.2.
-9. **Retune PPO** and the gradient-balanced coefficients (`next_state_coef`, the BC
+7. **Pass the gates** of §10.2.
+8. **Retune PPO** and the gradient-balanced coefficients (`next_state_coef`, the BC
    loss balance) with short runs from the cold start (§7.4).
-10. **Train once from the cold start** and read it against §10.3. No weight migration
-    and no intermediate comparisons of Part II pieces.
+9. **Train once from the cold start** and read it against §10.3. No weight migration
+   and no intermediate comparisons of Part II pieces.
 
 ## 13. Open questions
 
@@ -1057,14 +1073,12 @@ for it.
 2. **Compactness.** Turning circles are about a twelfth of an aircraft's relative to
    gun reach. Halving lift doubles every radius but changes the sustained envelope.
    Leave compactness unchanged unless it is chosen deliberately.
-3. **Nose response in proper time.** Whether ω and `max_slip_rate` scale with the field
-   index like every other time in the game (§3.4).
-4. **Deep nose throws.** A sharp ceiling past stall (25–30°) at low speed would trade
+3. **Deep nose throws.** A sharp ceiling past stall (25–30°) at low speed would trade
    lift for drag steeply, which is closer to real aircraft. Try it as a variant after
    the 15° version works.
-5. **Thrust vectoring** is out of scope. If it returns, cap its rotation rate and scale
+4. **Thrust vectoring** is out of scope. If it returns, cap its rotation rate and scale
    it with applied thrust. A near-stationary turret is the abuse case to test.
-6. **Map-scale range and distribution** (§9).
+5. **Map-scale range and distribution** (§9).
 
 ---
 
