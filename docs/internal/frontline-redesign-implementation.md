@@ -61,12 +61,11 @@ that the change makes stale updated, one commit per idea, pushed.
 
 ### Phase 5. Scripted controllers (§4)
 
-* `turn_toward` and the stochastic scripted agent: decide turns against a
-  predicted nose (lead term from slip rate) with hysteresis read from the
-  previous action, so the controllers do not chatter under the 0.16 s onset.
-* Short scripted duels before/after (hit rate, time-to-kill, mean speed, time
-  above corner) via the existing scripted suites. Re-tune ramps only as far as
-  the duels say is needed.
+* Measure first: `benchmarks/scripted_duels.py` reports scripted play (damage per
+  shot, kills per ship-minute, speed, time above corner, turn-command changes and
+  side flips) and plays side-balanced matches of a candidate configuration
+  against the default controller.
+* Change the controllers only where the measurements show a problem.
 
 ## Part II. Learning
 
@@ -180,6 +179,16 @@ Entries are added as the work proceeds.
 10. **Drag validation is non-strict** (`C_D0 ≤ C_D,normal ≤ C_D,stall`) so that
     drag-free test configurations remain expressible.
 
+11. **The scripted controllers are unchanged** (§4 predicted chatter and asked for
+    hysteresis or a lead term). Measured instead of assumed: under the slip model
+    the stochastic controller's turn command flips side on 0.4% of decisions
+    (1.0% before) and `turn_toward` settles a 40° turn with 2–4 command changes
+    inside its 5° deadband at 60–160 px/s. Two candidate retunes were played
+    head-to-head against the unchanged controller, 256 full matches per seed
+    (score SE ≈ 0.03): a nose lead of 0.1 s (0.53, 0.52, 0.47), 0.2 s (0.46,
+    0.41), a combat governor fading boost above corner when in shooting range
+    (0.52, 0.51), and both (0.50, 0.44). None helps, so none was kept.
+
 ### Measured (Phase 4)
 
 `docs/internal/flight-envelope-slip-oct2026.json`, all §10.1 checks pass:
@@ -193,3 +202,11 @@ n = 1 to 1e-3. The boosted normal turn widened from 66 to 126 px (59.5°/s at
 before). Scripted play with the unmodified controller: median proper speed 113
 → 124 px/s, median heading rate 0 → 19°/s (the nose no longer jumps), p95
 lateral acceleration 292 → 233 px/s².
+
+### Measured (Phase 5)
+
+Scripted self-play, 2 seeds × 256 envs × 2000 decisions, slip model against the
+old physics (same controller): damage per shot 3.13 vs 3.33 (−6%), kills per
+ship-minute 1.70 vs 1.88 (−9%), mean proper speed 114 vs 105 px/s, time above
+corner 70% vs 60%, turn-command change rate 0.25 vs 0.31, side flips 0.4% vs
+1.0%. Fights cost a little more under the g-limit, as intended (§2.1).

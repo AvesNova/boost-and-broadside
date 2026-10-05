@@ -35,7 +35,7 @@ class _ActionTables(NamedTuple):
     turn_sharp: torch.Tensor  # (5,) bool — by turn action
 
 
-def _get_lookup_tables(config: ShipConfig, device: torch.device) -> _ActionTables:
+def action_tables(config: ShipConfig, device: torch.device) -> _ActionTables:
     """Return cached per-action physics lookup tensors for (config, device)."""
     key = (config, str(device))
     tables = _LOOKUP_TABLE_CACHE.get(key)
@@ -428,6 +428,15 @@ def slip_lift_drag(slip: torch.Tensor, config: ShipConfig) -> tuple[torch.Tensor
     return lift, drag
 
 
+def _damped_error(
+    error: torch.Tensor, rate: torch.Tensor, frequency: torch.Tensor, horizon: float
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Exact critically damped evolution of ``(error, rate)`` over ``horizon``."""
+    decay = torch.exp(-frequency * horizon)
+    drive = rate + frequency * error
+    return (error + drive * horizon) * decay, (rate - frequency * drive * horizon) * decay
+
+
 def _nose_step(
     slip: torch.Tensor,
     slip_rate: torch.Tensor,
@@ -454,10 +463,7 @@ def _nose_step(
     frequency = config.nose_frequency / index  # (B, N) world rad/s
     rate_limit = config.max_slip_rate / index  # (B, N)
     error = slip - command
-    decay = torch.exp(-frequency * dt)
-    drive = slip_rate + frequency * error
-    next_error = (error + drive * dt) * decay
-    next_rate = (slip_rate - frequency * drive * dt) * decay
+    next_error, next_rate = _damped_error(error, slip_rate, frequency, dt)
 
     step = (next_error - error).clamp(min=-rate_limit * dt, max=rate_limit * dt)
     next_error = error + step
@@ -647,7 +653,7 @@ def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) 
     Returns:
         The mutated state.
     """
-    tables = _get_lookup_tables(config, state.device)
+    tables = action_tables(config, state.device)
     state = _update_kinematics(state, actions, config, tables)
     state = _handle_shooting(state, actions[..., 2].long(), config)
     return state
