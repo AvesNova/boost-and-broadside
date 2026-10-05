@@ -150,6 +150,10 @@ class TensorEnv:
             zone_roles=torch.zeros((B, Z), dtype=torch.int8, device=dev),
             zone_capture_progress=torch.zeros((B, Z), dtype=torch.float32, device=dev),
             zone_capture_direction=torch.zeros((B, Z), dtype=torch.int8, device=dev),
+            zone_attack_ledger=torch.zeros((B, Z, N), dtype=torch.float32, device=dev),
+            zone_defense_ledger=torch.zeros((B, Z, N), dtype=torch.float32, device=dev),
+            ship_capture_gain=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_capture_loss=torch.zeros((B, N), dtype=torch.float32, device=dev),
             team0_captured=torch.zeros((B,), dtype=torch.bool, device=dev),
             team1_captured=torch.zeros((B,), dtype=torch.bool, device=dev),
             simultaneous_capture=torch.zeros((B,), dtype=torch.bool, device=dev),
@@ -163,6 +167,8 @@ class TensorEnv:
             bullet_cursor=torch.zeros((B, N), dtype=torch.long, device=dev),
             damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
             cumulative_damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
+            recharge_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
+            ship_unattributed_recharge=torch.zeros((B, N), dtype=torch.float32, device=dev),
             field_pos=torch.zeros((B, M), dtype=torch.complex64, device=dev),
             field_radius=torch.zeros((B, M), dtype=torch.float32, device=dev),
             field_transition_width=torch.zeros((B, M), dtype=torch.float32, device=dev),
@@ -336,8 +342,14 @@ class TensorEnv:
         s.bullet_field_gradient = torch.where(m3, 0.0, s.bullet_field_gradient)
         s.bullet_cursor = torch.where(m, 0, s.bullet_cursor)
 
-        # Clear damage attribution
+        # Clear damage and capture attribution
         s.cumulative_damage_matrix = torch.where(m3, 0.0, s.cumulative_damage_matrix)
+        s.recharge_matrix = torch.where(m3, 0.0, s.recharge_matrix)
+        s.ship_unattributed_recharge = torch.where(m, 0.0, s.ship_unattributed_recharge)
+        s.zone_attack_ledger = torch.where(m3, 0.0, s.zone_attack_ledger)
+        s.zone_defense_ledger = torch.where(m3, 0.0, s.zone_defense_ledger)
+        s.ship_capture_gain = torch.where(m, 0.0, s.ship_capture_gain)
+        s.ship_capture_loss = torch.where(m, 0.0, s.ship_capture_loss)
 
         # Clear previous action
         s.prev_action = torch.where(m3, 0.0, s.prev_action)

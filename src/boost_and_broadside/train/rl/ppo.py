@@ -57,7 +57,12 @@ from boost_and_broadside.constants import (
     TURN_SLICE,
 )
 from boost_and_broadside.env.observation import ObsKey, YemongObservation, compile_observation
-from boost_and_broadside.env.rewards import GLOBAL_VALUE_COMPONENTS, component_weights
+from boost_and_broadside.env.rewards import (
+    GLOBAL_VALUE_COMPONENTS,
+    REWARD_COMPONENT_NAMES,
+    component_payout_ratios,
+    component_weights,
+)
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
@@ -166,78 +171,21 @@ def _build_component_tensor(
 # so three gives the trigger two near-independent looks at the win rate.
 _BC_CUTOFF_UPDATES = 3
 
-# Maps reward component name → the TrainingSchedule tier-scale field to apply.
-# Effective weight = tier_scale * individual_weight (from RewardConfig).
+# Maps reward level → the TrainingSchedule tier-scale field to apply.
+# Effective weight = tier_scale * level weight (from RewardConfig).
 #
-# The tiers are a credit-assignment ladder, and the per-component gammas and
-# lambdas in config/defaults.py already follow the same partition: an outcome is
-# discounted over a whole episode, a kill over an engagement, damage over an
-# exchange, geometry over the next moment. Scaling a whole tier at once is how a
-# run shifts weight between "what actually wins" and the proxies for it.
+# The tiers are a credit-assignment ladder, and the per-level gammas and lambdas
+# in config/defaults.py follow the same partition: the outcome and the zones are
+# the objective, discounted over the match; a kill over an engagement; damage
+# over an exchange. Scaling a whole tier at once is how a run shifts weight
+# between "what actually wins" and the proxies for it.
 _TIER: dict[str, str] = {
-    "shield_recharge": "damage_scale",
-    "boundary": "kill_death_scale",
-    "boundary_damage": "damage_scale",
-    "ally_win": "outcome_scale",
-    "enemy_win": "outcome_scale",
-    "front_advance": "outcome_scale",
-    "capture_progress": "outcome_scale",
     "outcome": "outcome_scale",
-    "ally_combat_death": "kill_death_scale",
-    "enemy_combat_death": "kill_death_scale",
-    "combat_death": "kill_death_scale",
-    "kill_shot": "kill_death_scale",
-    "kill_assist": "kill_death_scale",
-    "kill_ally_shot": "kill_death_scale",
-    "kill_ally_assist": "kill_death_scale",
-    "ally_combat_damage": "damage_scale",
-    "enemy_combat_damage": "damage_scale",
-    "combat_damage_taken": "damage_scale",
-    "damage_dealt_enemy": "damage_scale",
-    "damage_dealt_ally": "damage_scale",
-    "facing": "shaping_scale",
-    "closing_speed": "shaping_scale",
-    "shoot_quality": "shaping_scale",
-    "shooting_penalty": "shaping_scale",
-    "speed": "shaping_scale",
+    "zone_capture": "outcome_scale",
+    "zone_progress": "outcome_scale",
+    "kill_death": "kill_death_scale",
+    "damage": "damage_scale",
 }
-
-# Components with self-only rewards use a diagonal lambda (i == j); all others
-# use team-based lambda aggregation.
-#
-# Stated outright rather than derived from the tier map. Locality is a
-# credit-assignment property and the tier is a weighting one, and they are
-# orthogonal: combat_death and ally_combat_death sit in the same tier and differ
-# only in whether the signal propagates to teammates. The previous registry
-# derived one from the other, which worked only because the scale groups
-# happened to be drawn along the locality line. ``test_every_component_is
-# _classified`` pins that both maps stay complete.
-_LOCAL_COMPONENTS: frozenset[str] = frozenset(
-    {
-        "shield_recharge",
-        "boundary",
-        "boundary_damage",
-        "facing",
-        "closing_speed",
-        "shoot_quality",
-        "kill_shot",
-        "kill_assist",
-        "kill_ally_shot",
-        "kill_ally_assist",
-        "combat_damage_taken",
-        "damage_dealt_enemy",
-        "damage_dealt_ally",
-        "combat_death",
-        "shooting_penalty",
-        "speed",
-        # The strategic tier attributes its own credit: the side a meter favours
-        # splits the payment among its ships on the point, the other side splits
-        # the charge among its ships elsewhere. A team-shared lambda would average
-        # that straight back out, which is the whole signal.
-        "capture_progress",
-        "front_advance",
-    }
-)
 
 
 @dataclasses.dataclass
@@ -258,7 +206,6 @@ class _ResolvedSchedule:
     outcome_scale: float
     kill_death_scale: float
     damage_scale: float
-    shaping_scale: float
     league_fraction: float
     checkpoint_interval: int
     num_epochs: int
@@ -378,7 +325,6 @@ def _resolve_schedule(schedule: TrainingSchedule, step: int) -> _ResolvedSchedul
         outcome_scale=schedule.outcome_scale(step),
         kill_death_scale=schedule.kill_death_scale(step),
         damage_scale=schedule.damage_scale(step),
-        shaping_scale=schedule.shaping_scale(step),
         league_fraction=schedule.league_fraction(step),
         checkpoint_interval=schedule.checkpoint_interval(step),
         num_epochs=schedule.num_epochs(step),
@@ -651,11 +597,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             store_expert_probs=self._stores_bc_targets,
         )
 
-        # Pre-compute lambda masks for active components only.
-        # Static for the entire run — derived from RewardConfig.
-        self.enemy_neg_k = self._make_enemy_neg_k(train_config.rewards.enemy_neg_lambda_components)
-        self.ally_zero_k = self._make_ally_zero_k(train_config.rewards.ally_zero_components)
-        self.local_k = self._make_local_k()
+        # OpenAI Five's team spirit per active level: how much of the mean
+        # teammate advantage each ship's own advantage absorbs. Zero is pure
+        # per-ship credit, which is what the rewards already assign.
+        spirit = dict(zip(REWARD_COMPONENT_NAMES, train_config.rewards.team_spirit, strict=True))
+        self._team_spirit_k = torch.tensor(
+            [spirit[name] for name in self._active_names], dtype=torch.float32, device=self.device
+        )  # (K,)
 
         # The physical next-state model: fixed Phase-1 delta scales, physical
         # bounds for the belief recursion, and the Gaussian likelihood over them.
@@ -928,38 +876,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
     # ------------------------------------------------------------------
     # Main training loop
     # ------------------------------------------------------------------
-
-    def _make_enemy_neg_k(self, enemy_neg_set: frozenset[str]) -> torch.Tensor:
-        """Build the (K,) bool tensor marking components with lambda=-1 for enemy ships."""
-        return torch.tensor(
-            [name in enemy_neg_set for name in self._active_names],
-            dtype=torch.bool,
-            device=self.device,
-        )
-
-    def _make_ally_zero_k(self, ally_zero_set: frozenset[str]) -> torch.Tensor:
-        """Build the (K,) bool tensor marking components where same-team lambda=0.
-
-        Used for enemy-perspective source-split damage/death components and enemy_win,
-        where allies should not contribute their own signal to the aggregated advantage.
-        """
-        return torch.tensor(
-            [name in ally_zero_set for name in self._active_names],
-            dtype=torch.bool,
-            device=self.device,
-        )
-
-    def _make_local_k(self) -> torch.Tensor:
-        """Build the (K,) bool tensor marking self-only (local) reward components.
-
-        Local components use a diagonal lambda matrix (lambda_ij = 1 if i==j, else 0)
-        so each ship's reward signal never propagates to teammates or enemies.
-        """
-        return torch.tensor(
-            [name in _LOCAL_COMPONENTS for name in self._active_names],
-            dtype=torch.bool,
-            device=self.device,
-        )
 
     def _rollout_policy_pass(
         self,
@@ -1490,11 +1406,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         Returns:
             Logical host buffers ready for PPO epoch iteration.
         """
-        comp_weights = torch.tensor(
-            [component.weight for component in self.wrapper.active_components],
-            dtype=torch.float32,
-            device=self.device,
-        )  # (K,)
         logical_buffers = []
         for scale_index, (device_buffer, stored_shards) in enumerate(
             zip(device_buffers, stored_by_scale, strict=True)
@@ -1508,9 +1419,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             for stored in stored_shards:
                 stored.restore_aggregate_inputs(device_buffer)
                 shard_stats = self._precompute_lambda_aggregates(
-                    device_buffer,
-                    comp_weights,
-                    is_primary=is_primary,
+                    device_buffer, is_primary=is_primary
                 )
                 shard_adv_sum, shard_adv_count, shard_ret_sum, shard_actor_count = shard_stats
                 adv_square_sum += shard_adv_sum
@@ -1572,21 +1481,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             behavior_cloning_coef=self._behavior_cloning_coef,
         )
         self.optim.param_groups[0]["lr"] = self._schedule_state.learning_rate
-        bias = self._schedule_state.offensive_bias
-        rewards = dataclasses.replace(
-            self.cfg.rewards,
-            **{
-                name: 1.0 + bias * (getattr(self.cfg.rewards, name) - 1.0)
-                for name in ("kill_payout_ratio", "damage_payout_ratio", "capture_payout_ratio")
-            },
-        )
-        weights = component_weights(rewards)
+        weights = component_weights(self.cfg.rewards)
+        ratios = component_payout_ratios(self.cfg.rewards, self._schedule_state.offensive_bias)
         for wrapper in (self.wrapper, *self.aux_wrappers):
             for component in wrapper.reward_components:
-                if component.name in {"capture_progress", "front_advance"}:
-                    component.payout_ratio = rewards.capture_payout_ratio
-                raw_weight = weights[component.name]
-                component.weight = raw_weight * getattr(self._schedule_state, _TIER[component.name])
+                component.payout_ratio = ratios[component.name]
+                tier = getattr(self._schedule_state, _TIER[component.name])
+                component.weight = weights[component.name] * tier
             wrapper.refresh_component_weights()
         return bc_factor
 
@@ -1642,7 +1543,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         metrics["schedule/kill_death_scale"] = self._schedule_state.kill_death_scale
         metrics["schedule/offensive_bias"] = self._schedule_state.offensive_bias
         metrics["schedule/damage_scale"] = self._schedule_state.damage_scale
-        metrics["schedule/shaping_scale"] = self._schedule_state.shaping_scale
 
         # Avg-model accumulation picks up exactly where the BC aux loss lets go:
         # bc_factor hits zero when the scripted win rate reaches bc_winrate_target.
@@ -2509,14 +2409,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             enemy_deviance=enemy_loss.detach() - enemy_floor,
         )
 
-    def _active_component_weights(self) -> torch.Tensor:
-        """(K,) current effective weight of every active reward component."""
-        return torch.tensor(
-            [component.weight for component in self.wrapper.active_components],
-            dtype=torch.float32,
-            device=self.device,
-        )
-
     def _outcome_categorical_loss(
         self,
         logits: torch.Tensor,
@@ -2642,9 +2534,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """
         T, _, N = batch.alive.shape
         team_id = batch.obs[ObsKey.TEAM_ID][:T, :, :N].long()  # (T, b, N)
-        comp_weights = self._active_component_weights()  # (K,)
         with torch.no_grad():
-            lambda_ij = self._lambda_matrix(team_id, batch.alive, comp_weights)
+            lambda_ij = self._team_mixing(team_id, batch.alive)
             adv_normed = self.adv_scaler.normalize(batch.advantages)  # (T, b, N, K)
             # Same aggregation as _precompute_lambda_aggregates, minus the sum
             # over components: adv_agg_k.sum(-1) is the adv_agg it produced.
@@ -2696,64 +2587,35 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             for index, name in enumerate(self._active_names)
         }
 
-    def _lambda_matrix(
-        self,
-        team_id: torch.Tensor,
-        alive: torch.Tensor,
-        comp_weights: torch.Tensor,
-    ) -> torch.Tensor:
-        """Build the normalized credit-assignment weights for one env chunk.
+    def _team_mixing(self, team_id: torch.Tensor, alive: torch.Tensor) -> torch.Tensor:
+        """Per-level advantage mixing: own advantage plus team spirit times the team's.
 
-        Allies share signals, enemies are zero-sum (``enemy_neg_k``),
-        enemy-only components zero the ally contribution (``ally_zero_k``),
-        local components use a diagonal lambda, dead contributing ships are
-        zeroed, and each ship's row is normalized to a mean over its alive
-        contributors before the component weight is applied.
-
-        Normalization runs on the unweighted pattern so that ``comp_weights``
-        stays linear: a row normalized by its own weighted sum divides the
-        weight back out. ``clamp(min=1.0)`` therefore bounds the number of
-        contributors, not the weight — a single-contributor row (every local
-        component, and any global one down to its last alive ship) passes
-        through at exactly its weight.
+        ``adv_i + s_k * mean_{j != i, same side, alive} adv_j``. With every
+        ``s_k`` zero this is the identity: each ship keeps the credit its
+        rewards already assigned it.
 
         Shared by the per-update aggregation and by the reward-decomposed
         gradient diagnostic, so the diagnostic cannot drift from the credit
         assignment the policy gradient actually used.
 
         Args:
-            team_id:      (T, b, N) long — raw team labels.
-            alive:        (T, b, N) bool — living ships.
-            comp_weights: (K,) — current effective per-component weights.
+            team_id: (T, b, N) long — raw team labels.
+            alive:   (T, b, N) bool — living ships.
 
         Returns:
-            (T, b, N_i, N_j, K) float32 lambda tensor.
+            (T, b, N_i, N_j, K) float32 mixing tensor.
         """
         N = alive.shape[-1]
-        ally_lam = torch.where(self.ally_zero_k, 0.0, 1.0)  # (K,)
-        enemy_lam = torch.where(self.enemy_neg_k, -1.0, 0.0)  # (K,)
-        identity = torch.eye(N, dtype=torch.float32, device=self.device)
-        local_lambda = identity[None, None, :, :, None]  # (1, 1, N, N, 1)
-
-        same_team = team_id.unsqueeze(3) == team_id.unsqueeze(2)  # (T, b, N, N)
-        alive_j = alive.float().unsqueeze(2).unsqueeze(-1)  # (T, b, 1, N_j, 1)
-        global_lambda = (
-            same_team.float().unsqueeze(-1) * ally_lam
-            + (~same_team).float().unsqueeze(-1) * enemy_lam
-        )  # (T, b, N_i, N_j, K)
-        # Normalize the *unweighted* pattern, then apply the weight. Dividing a
-        # weighted row by its own weighted sum cancels the weight: local
-        # components came out at min(w, 1) and global ones lost their weight
-        # entirely once w * n_alive exceeded the clamp, so ally_win_weight=1.5
-        # trained identically to 0.25. Splitting the two steps keeps the row a
-        # mean over contributors while leaving the weight a linear knob.
-        pattern = torch.where(self.local_k, local_lambda, global_lambda) * alive_j
-        row_sum = pattern.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
-        return pattern / row_sum * comp_weights  # (T, b, N_i, N_j, K)
+        itself = torch.eye(N, dtype=torch.bool, device=self.device)
+        teammates = (team_id.unsqueeze(3) == team_id.unsqueeze(2)) & ~itself  # (T, b, N, N)
+        teammates = teammates & alive.unsqueeze(2)
+        mean = teammates.float() / teammates.sum(3, keepdim=True).clamp(min=1)
+        own = itself.float()[None, None, :, :, None]  # (1, 1, N, N, 1)
+        return own + mean.unsqueeze(-1) * self._team_spirit_k  # (T, b, N, N, K)
 
     @torch.no_grad()
     def _precompute_lambda_aggregates(
-        self, buf: RolloutBuffer, comp_weights: torch.Tensor, is_primary: bool
+        self, buf: RolloutBuffer, is_primary: bool
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -2798,7 +2660,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             sl = slice(start, start + chunk)
             alive = buf.alive_mask[:, sl]  # (T, b, N)
             team_id_t = buf.obs[ObsKey.TEAM_ID][:T, sl, :N].long()  # (T, b, N)
-            lambda_ij_t = self._lambda_matrix(team_id_t, alive, comp_weights)
+            lambda_ij_t = self._team_mixing(team_id_t, alive)
 
             # advantages/returns are bf16-stored; normalize() promotes advantages via
             # the fp32 rms divisor, and returns is upcast explicitly so the einsum with
@@ -3172,19 +3034,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         K = self.buffer.num_components
         n_scales = len(all_buffers)
 
-        comp_weights = torch.tensor(
-            [c.weight for c in self.wrapper.active_components],
-            dtype=torch.float32,
-            device=self.device,
-        )  # (K,)
-
         # Precompute everything that depends only on rollout data (not the
         # policy) once per update instead of once per minibatch: the lambda
         # aggregation and the aux next-state labels (primary scale only).
         if not precomputed:
             for scale_idx, buf in enumerate(all_buffers):
                 assert isinstance(buf, RolloutBuffer)
-                self._precompute_lambda_aggregates(buf, comp_weights, is_primary=(scale_idx == 0))
+                self._precompute_lambda_aggregates(buf, is_primary=(scale_idx == 0))
                 if scale_idx > 0:
                     buf.ns_labels = None  # aux scales never use the aux losses
             primary = all_buffers[0]

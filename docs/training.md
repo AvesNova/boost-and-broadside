@@ -235,20 +235,48 @@ angle `atan2(sin(att), cos(att))`; the next-state head predicts eleven *physical
 rather than any encoded target, so the input encoding and the prediction layout are now
 separate concerns. Checkpoints use `physical_belief_v19`; older weights require retraining.
 
-Projectile damage rewards use actual shield removed, proportionally divided among
-simultaneous attackers. Raw impact attribution remains separate so a finishing hit
-on zero shields still earns kill credit. Shield recovery pays the recovering ship
-and charges the enemy team equally in total. Boundary losses and friendly-fire blame
-have opposing payouts, preventing deliberate damage/recharge cycles from creating
-reward. Recharge grants neither energy nor speed.
+Rewards are grouped into five levels, each read by one critic head
+([`env/rewards.py`](../src/boost_and_broadside/env/rewards.py)):
 
-The configured kill, damage and capture payout ratios start at 2:1. The schedule's
+| level | events | gamma | GAE lambda |
+|---|---|---:|---:|
+| outcome | the match result, +1 / 0 / -1, broadcast to the team | 0.9997 | 0.97 |
+| zone capture | a completed capture | 0.999 | 0.97 |
+| zone progress | every movement of a capture meter | 0.995 | 0.95 |
+| kill and death | deaths, kills, allied kills | 0.995 | 0.95 |
+| damage | damage taken and dealt, friendly fire, recharge, charge-back | 0.991 | 0.90 |
+
+Each level has one weight (`RewardConfig`), and rewards are stored already weighted, in
+win units: a win is 1. Every reward is written onto the ship that earned it; only the
+outcome is broadcast. Each level is zero-sum: an event charges the side it happens to
+the weight and pays the side that caused it the payout ratio times the weight. If
+nobody on the opposing side caused it -- the boundary, friendly fire -- the counterpart
+is split evenly over the opposing team, dead slots included. At every ratio 1 each
+level summed over both teams is zero on every tick; `reward/zero_sum_residual/*`
+logs the realised sum and [`test_rewards.py`](../tests/env/test_rewards.py) checks it
+on scripted play.
+
+Damage is priced in applied shield, shared among simultaneous hits by applied
+damage. An outstanding-damage ledger per attacker and target grows with every applied
+hit and shrinks pro rata as the target recharges; recharge pays the recovering ship and
+reverses, through that ledger, exactly the payment the recovered damage earned (the
+charge-back). A death charges the dying ship one and shares the kill half by the raw
+impact of the final tick -- the killing hit lands on an empty shield, so its applied
+damage is zero -- and half by the outstanding ledger. A completed capture pays the
+attacking side and charges the defending side, each split half by presence on the
+completing tick and half by per-zone ledgers of the meter movement each ship was
+present (attackers) or absent (defenders) for. Progress pays the favoured side's ships
+inside the zone and charges the other side's ships outside it.
+
+Advantages are mixed across a team only through `team_spirit` (OpenAI Five's): a ship's
+advantage plus `s` times its living teammates' mean, per level. The default is zero,
+pure per-ship credit.
+
+The kill, damage and capture payout ratios start at 2:1. The schedule's
 `offensive_bias` retains this premium through 50M steps, decreases it linearly to zero
 by 300M, and holds 1:1 through the remaining 200M of the default 500M-step run.
-Shaping reaches zero by 300M as well. The schedule updates attribution weights and
-capture-component ratios together; restarting from a checkpoint uses the restored
-global step. Custom shortened runs should move these keypoints if they need the
-complete curriculum.
+Restarting from a checkpoint uses the restored global step. Custom shortened runs should
+move these keypoints if they need the complete curriculum.
 
 Respawn transitions are excluded from next-state labels. Recurrent match memory
 persists across lives; episode resets clear it. Hidden shield-depleted enemies remain

@@ -227,7 +227,7 @@ def test_resolution_tracks_sources_and_cli_overrides() -> None:
     assert resolved.value_sources["train_config.scales.0.num_envs"] == "cli"
     assert resolved.value_sources["train_config.microbatch_tokens"] == "cli"
     assert resolved.value_sources["train_config.gamma"] == "derived"
-    assert resolved.value_sources["train_config.component_gammas.ally_win"] == "derived"
+    assert resolved.value_sources["train_config.component_gammas.outcome"] == "derived"
     assert resolved.value_sources["model_config.d_model"] == "profile"
     assert resolved.train_config.scales[0].num_envs == 640
     assert resolved.train_config.microbatch_tokens == 20_000
@@ -367,9 +367,9 @@ def test_resolved_component_discounts_are_deeply_immutable() -> None:
     stored_document = resolved_profile_document(resolved)
 
     with pytest.raises(TypeError):
-        resolved.train_config.component_gammas["ally_win"] = 0.5  # type: ignore[index]
+        resolved.train_config.component_gammas["outcome"] = 0.5  # type: ignore[index]
     with pytest.raises(TypeError):
-        resolved.train_config.component_lambdas["ally_win"] = 0.5  # type: ignore[index]
+        resolved.train_config.component_lambdas["outcome"] = 0.5  # type: ignore[index]
 
     assert resolved_profile_document(resolved) == stored_document
     assert json.loads(format_resolved_config(resolve_profile(PROFILES["rl"]))) == stored_document
@@ -398,7 +398,7 @@ def test_an_overlay_shares_the_bases_values_without_sharing_its_identity() -> No
     assert set(PROFILES) == {"bc", "rl"}
     assert {profile.name for profile in PROFILES.values()} == set(PROFILES)
     with pytest.raises(TypeError):
-        rl.component_gammas_per_tick["ally_win"] = 0.5  # type: ignore[index]
+        rl.component_gammas_per_tick["outcome"] = 0.5  # type: ignore[index]
 
 
 def test_only_untransformed_intent_shares_a_name_with_the_resolved_config() -> None:

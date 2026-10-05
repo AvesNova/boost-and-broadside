@@ -453,11 +453,6 @@ class TestNumValueComponents:
         }
         assert infer_num_value_components(ckpt) == 7
 
-    def test_infer_falls_back_to_state_dict_shape_for_legacy_checkpoints(self):
-        """Checkpoints written before the field recover K from the value head."""
-        ckpt = {"policy_state_dict": {"value_head_local.3.weight": torch.zeros(5, 4)}}
-        assert infer_num_value_components(ckpt) == 5
-
 
 class TestBulletReadingCheckpoints:
     """A checkpoint's weights and the policy rebuilt to hold them must agree.

@@ -145,7 +145,7 @@ RL_PROFILE = ProfileSpec(
     max_grad_norm=1.0,
     # 500M rather than 1B, which is where the schedules finish rather than an
     # arbitrary truncation: the learning rate reaches its 1.5e-4 floor at exactly
-    # 500M and holds, and shaping_scale finishes its taper at 400M. Past that the
+    # 500M and holds, and the offensive bias finishes its taper at 300M. Past that the
     # run is pure incremental self-play at fixed coefficients, and run 719's
     # calibrated curve prices it accordingly -- 500M captures 94.4% of the 1B
     # result, and the last 500M bought +37 Elo for 51 hours, against 0.06 h/Elo

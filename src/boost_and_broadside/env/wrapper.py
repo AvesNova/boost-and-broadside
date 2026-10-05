@@ -149,6 +149,19 @@ class YemongEnvWrapper:
         self._active_components: list[RewardComponent] = [
             _comp_by_name[name] for name in self._active_names
         ]
+        # Every active component's events, flattened onto one axis for logging,
+        # and the (E, K) map that sums them back into their components.
+        self._event_names: list[str] = [
+            f"{component.name}/{event}"
+            for component in self._active_components
+            for event in component.event_names
+        ]
+        event_component = [
+            k for k, component in enumerate(self._active_components) for _ in component.event_names
+        ]
+        self._event_to_component = torch.nn.functional.one_hot(
+            torch.tensor(event_component, dtype=torch.long), len(self._active_components)
+        ).to(device=self.device, dtype=torch.float32)  # (E, K)
 
         self._obs_buffers = ObservationBuffers.allocate(
             num_envs,
@@ -173,11 +186,11 @@ class YemongEnvWrapper:
         K_active = len(self._active_names)
         self._ep_reward = torch.zeros((B, N), device=self.device)
         self._ep_length = torch.zeros((B,), device=self.device, dtype=torch.int32)
+        # Rewards are already weighted (win units); comp.weight is mutated each
+        # update by ppo.py, and the trainer must call refresh_component_weights()
+        # afterwards to re-sync the cached per-event weight tensor.
         self._ep_comp = torch.zeros((B, N, K_active), device=self.device)
-        # Scaled rewards: raw compute output × (individual_weight × group_scale).
-        # comp.weight is mutated each update step by ppo.py; the trainer must call
-        # refresh_component_weights() afterwards to re-sync the cached tensor.
-        self._ep_comp_scaled = torch.zeros((B, N, K_active), device=self.device)
+        self._ep_events = torch.zeros((B, N, len(self._event_names)), device=self.device)
         # Win flag: +1 for ships on the winning team, 0 otherwise (draws = 0).
         self._ep_wins = torch.zeros((B, N), device=self.device)
         # Steps each ship has been alive this episode (stops at death, resets on episode end).
@@ -214,7 +227,7 @@ class YemongEnvWrapper:
         self._ep_reward.zero_()
         self._ep_length.zero_()
         self._ep_comp.zero_()
-        self._ep_comp_scaled.zero_()
+        self._ep_events.zero_()
         self._ep_wins.zero_()
         self._ship_age.zero_()
         self._counted.fill_(True)
@@ -257,6 +270,7 @@ class YemongEnvWrapper:
             device=self.device,
             dtype=torch.float32,
         )
+        self._event_weight_t = self._event_to_component @ self._weight_t  # (E,)
 
     def _zero_stat_accumulators(self) -> None:
         d = self.device
@@ -267,7 +281,11 @@ class YemongEnvWrapper:
         self._acc_reward_max = torch.full((), float("-inf"), device=d)
         self._acc_length_sum = torch.zeros((), device=d)
         self._acc_comp_sum = torch.zeros((K,), device=d)
-        self._acc_comp_scaled_sum = torch.zeros((K,), device=d)
+        self._acc_event_sum = torch.zeros((len(self._event_names),), device=d)
+        # Absolute per-tick sum of each level over every ship of an env: zero at
+        # every payout ratio 1, since each level is zero-sum by construction.
+        self._acc_zero_sum_residual = torch.zeros((K,), device=d)
+        self._acc_running_ticks = torch.zeros((), device=d)
         self._acc_wins_sum = torch.zeros((), device=d)
         self._acc_lifespan_sum = torch.zeros((), device=d)
         self._acc_source_stats = torch.zeros((len(SOURCE_STAT_NAMES),), device=d)
@@ -284,8 +302,10 @@ class YemongEnvWrapper:
             reward_min/max:   () — extremes over finished ship-episodes
                               (±inf when episodes == 0).
             length_sum:       () — total episode length (per env-episode).
-            comp_sum:         (K,) — per-component reward sums (ship-episodes).
-            comp_scaled_sum:  (K,) — same, scaled by component weights.
+            comp_sum:         (K,) — per-component (weighted) reward sums.
+            event_sum:        (E,) — the same, per event (``event_names``).
+            zero_sum_residual:(K,) — summed |per-env, per-tick team sum|.
+            running_ticks:    () — env-ticks the residual was summed over.
             wins_sum:         () — total win flags over finished ship-episodes.
             lifespan_sum:     () — total ship lifespans (steps alive).
         """
@@ -296,7 +316,9 @@ class YemongEnvWrapper:
             "reward_max": self._acc_reward_max,
             "length_sum": self._acc_length_sum,
             "comp_sum": self._acc_comp_sum,
-            "comp_scaled_sum": self._acc_comp_scaled_sum,
+            "event_sum": self._acc_event_sum,
+            "zero_sum_residual": self._acc_zero_sum_residual,
+            "running_ticks": self._acc_running_ticks,
             "wins_sum": self._acc_wins_sum,
             "lifespan_sum": self._acc_lifespan_sum,
             "source_stats": self._acc_source_stats,
@@ -414,7 +436,7 @@ class YemongEnvWrapper:
             self._ep_reward.masked_fill_(done_n, 0.0)
             self._ep_length.masked_fill_(done_mask, 0)
             self._ep_comp.masked_fill_(done_mask.view(B, 1, 1), 0.0)
-            self._ep_comp_scaled.masked_fill_(done_mask.view(B, 1, 1), 0.0)
+            self._ep_events.masked_fill_(done_mask.view(B, 1, 1), 0.0)
             self._ep_wins.masked_fill_(done_n, 0.0)
             self._ship_age.masked_fill_(done_n, 0)
 
@@ -597,23 +619,22 @@ class YemongEnvWrapper:
             ]
         )
 
-        # Compute rewards for active components only — (B, N, K_active)
-        tick_rewards = torch.zeros_like(comp_rewards)
-        for k, comp in enumerate(self._active_components):
-            tick_rewards[:, :, k] = comp.compute(
-                prev_state,
-                actions,
-                self.env.state,
-                dones | truncated,
-            )
-
-        # Normalize all rewards by total ship count so reward scale is invariant
-        # to game size across 1v1, 2v2, 4v4, etc. Win rewards are included: in 2v2
-        # both allies each contribute +1, so without normalization the win signal
-        # would be 2× stronger than in 1v1 after lambda aggregation.
-        tick_rewards /= self.env_config.num_ships
-        tick_rewards *= running_n.unsqueeze(-1)  # finished envs stop earning
+        # Every active level's events, weighted -- (B, N, E) -- and their sums
+        # per level -- (B, N, K_active). Rewards are per ship and in win units,
+        # so they are not divided by the ship count.
+        tick_events = torch.cat(
+            [
+                component.events(prev_state, actions, self.env.state, dones | truncated)
+                for component in self._active_components
+            ],
+            dim=-1,
+        )
+        tick_events = tick_events * self._event_weight_t * running_n.unsqueeze(-1)
+        tick_rewards = tick_events @ self._event_to_component  # (B, N, K_active)
         comp_rewards += tick_rewards
+        self._ep_events += tick_events
+        self._acc_zero_sum_residual += tick_rewards.sum(1).abs().sum(0)
+        self._acc_running_ticks += running.sum()
 
         # Accumulate per-episode trackers (active components only). Lengths and
         # ages are in physics ticks, so they stay comparable across action_repeat.
@@ -623,7 +644,6 @@ class YemongEnvWrapper:
         # in elimination mode it retains the historical first-life behavior.
         self._ship_age += (prev_alive & running_n).int()
         self._ep_comp += tick_rewards
-        self._ep_comp_scaled += tick_rewards * self._weight_t
 
         # Only envs finishing on *this* tick fold into the per-update stats; an
         # env that ended earlier in the hold was already counted.
@@ -659,9 +679,7 @@ class YemongEnvWrapper:
         )
         self._acc_length_sum += (self._ep_length.float() * counted_f).sum()
         self._acc_comp_sum += (self._ep_comp * counted_nf.unsqueeze(-1)).sum(dim=(0, 1))
-        self._acc_comp_scaled_sum += (self._ep_comp_scaled * counted_nf.unsqueeze(-1)).sum(
-            dim=(0, 1)
-        )
+        self._acc_event_sum += (self._ep_events * counted_nf.unsqueeze(-1)).sum(dim=(0, 1))
         self._acc_wins_sum += (self._ep_wins * counted_nf).sum()
         self._acc_lifespan_sum += (self._ship_age.float() * counted_nf).sum()
         self._acc_result_counts += torch.stack(
@@ -836,6 +854,11 @@ class YemongEnvWrapper:
     def component_weights(self) -> torch.Tensor:
         """Cached weights for the active reward components."""
         return self._weight_t
+
+    @property
+    def event_names(self) -> list[str]:
+        """``component/event`` for every active component's events, in order."""
+        return self._event_names
 
     @property
     def num_active_components(self) -> int:

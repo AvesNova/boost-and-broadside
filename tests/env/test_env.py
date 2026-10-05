@@ -27,28 +27,10 @@ def env_cfg() -> EnvConfig:
 def reward_cfg() -> RewardConfig:
     return RewardConfig(
         win_weight=1.0,
+        zone_capture_weight=2.0,
+        zone_progress_weight=2.0,
         death_weight=0.5,
         damage_weight=0.1,
-        kill_shot_fraction=0.5,
-        facing_weight=0.01,
-        closing_speed_weight=0.01,
-        shoot_quality_weight=0.01,
-        proximity_radius=300.0,
-        shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset(
-            {
-                "enemy_combat_damage",
-                "enemy_combat_death",
-                "enemy_win",
-            }
-        ),
-        ally_zero_components=frozenset(
-            {
-                "enemy_combat_damage",
-                "enemy_combat_death",
-                "enemy_win",
-            }
-        ),
     )
 
 

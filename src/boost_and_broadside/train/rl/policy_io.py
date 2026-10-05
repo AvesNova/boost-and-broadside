@@ -260,53 +260,21 @@ def build_policy(
 
 
 def infer_num_value_components(ckpt: dict) -> int:
-    """Return the critic width K (number of value components) for a checkpoint.
-
-    Newer checkpoints store this directly under "num_value_components". Older ones
-    predate the field, so fall back to reading the final value-head Linear's output
-    width straight from the state dict — the same shape introspection every loader
-    used before the field existed.
-    """
-    if "num_value_components" in ckpt:
-        return int(ckpt["num_value_components"])
-    return ckpt["policy_state_dict"]["value_head_local.3.weight"].shape[0]
+    """Return the critic width K (number of reward levels) a checkpoint records."""
+    return int(ckpt["num_value_components"])
 
 
 def infer_global_value_k(ckpt: dict, fallback: tuple[int, ...] | None = None) -> tuple[int, ...]:
-    """Return the win/loss value-component indices for a checkpoint.
+    """Return the indices of the levels valued off the global token.
 
-    Newer checkpoints store this directly under "global_value_k". Older ones only carry
-    the team_pma weights in the state_dict, so reconstruct the active-component
-    ordering from the stored reward weights — the same filter the reward wrapper
-    applies at training time. Payloads with neither (early ladder snapshots) fall
-    back to the caller's ordering.
+    Recorded by every checkpoint the current schema writes; ``fallback`` serves
+    payloads that carry no critic (ladder snapshots).
     """
     if "global_value_k" in ckpt:
         return tuple(ckpt["global_value_k"])
-    if "team_pma.seeds" not in ckpt["policy_state_dict"]:
-        return ()
-    if "train_config" not in ckpt:
-        if fallback is None:
-            raise ValueError(
-                "checkpoint has TeamPMA weights but records neither 'global_value_k' nor "
-                "'train_config'; pass global_value_k explicitly to load it"
-            )
-        return tuple(fallback)
-
-    from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES, component_weights
-
-    # component_weights reads either shape: the four event weights a current run
-    # records, or the per-component weights older checkpoints carry.
-    weights = component_weights(ckpt["train_config"]["rewards"])
-    active = [name for name in REWARD_COMPONENT_NAMES if weights[name] != 0.0]
-    win_k = tuple(i for i, name in enumerate(active) if name in ("ally_win", "enemy_win"))
-    n_win = ckpt["policy_state_dict"]["value_head_win.3.weight"].shape[0]
-    if len(win_k) != n_win:
-        raise ValueError(
-            f"inferred {len(win_k)} win components from checkpoint train_config but "
-            f"value_head_win outputs {n_win}."
-        )
-    return win_k
+    if fallback is None:
+        raise ValueError("checkpoint records no 'global_value_k'; pass it explicitly")
+    return tuple(fallback)
 
 
 def _resolve_paradigm(checkpoint: dict) -> str:

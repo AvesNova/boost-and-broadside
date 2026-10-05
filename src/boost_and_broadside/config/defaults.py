@@ -196,150 +196,48 @@ ELO_CALIBRATE = EloCalibrateConfig(
 LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
 
 REWARDS = RewardConfig(
-    # Event weights carry forward the previous Frontline tier balance as a
-    # starting point. Shield-game gradient shares still need a long training run.
-    # The balance rule derives paired component weights from these event costs.
+    # The levels carry the previous Frontline tier balance forward as a starting
+    # point: a win is the unit, a completed capture and a full meter of progress
+    # are each worth two, a death 0.283 and a unit of shield 0.274 of one.
     win_weight=1.0,
+    zone_capture_weight=2.0,
+    zone_progress_weight=2.0,
     death_weight=0.283,
     damage_weight=0.274,
-    # Divide kill credit evenly between the finishing shot and prior damage.
-    kill_shot_fraction=0.5,
-    # Initial offensive premium; offensive_bias tapers all three payout ratios
-    # to 1:1, including captures, for the final zero-sum training phase.
+    # Offensive premium: the causing side is paid twice the charge until the
+    # schedule's offensive bias anneals every ratio to 1:1 for the zero-sum
+    # phase. The premium exists because priced evenly an even trade is worth
+    # nothing, and a policy that cannot reliably win it declines it.
     kill_payout_ratio=2.0,
     damage_payout_ratio=2.0,
-    # Both off. These were 720's values, carried over from a deathmatch where the
-    # only thing to do was fight. They are not potential-based, so they bias the
-    # optimum for as long as they are on, and in Frontline the bias points away
-    # from the objective: holding a point means breaking off a chase and sitting
-    # still, which costs both. Run 735 made the consequence concrete -- once
-    # behavior cloning decayed at 50M steps and stopped supplying the scripted
-    # prior, zone occupancy fell from 0.075 of live ship-steps to 0.0006, front
-    # advances from 220 an update to 1, and 90% of matches ended level with the
-    # clock run out while total reward rose 63%. The policy was not failing to
-    # capture; it had stopped entering the zones at all.
-    facing_weight=0.0,
-    closing_speed_weight=0.0,
-    proximity_radius=400.0,
-    shoot_quality_radius=200.0,
-    enemy_neg_lambda_components=frozenset(
-        {
-            "enemy_combat_damage",
-            "enemy_combat_death",
-            "enemy_win",
-        }
-    ),
-    ally_zero_components=frozenset(
-        {
-            "enemy_combat_damage",
-            "enemy_combat_death",
-            "enemy_win",
-        }
-    ),
-    shooting_penalty_weight=0.0,
-    # The strategic tier, stated as what the *absent* side is charged.
-    # ``capture_payout_ratio`` then pays the side holding the point twice that,
-    # the same 2:1 the kill and damage tiers carry -- but expressed differently.
-    # Kills and deaths are separate components, so their ratio lives in the
-    # weights; a capture component carries both sides internally, so its ratio
-    # lives in the reward and the scaler normalizes the component as a whole.
-    # The ratio therefore shapes offense against defense *within* the tier and
-    # does not change the tier's share of the gradient.
-    #
-    # Capture and capture progress are now equal rather than the former 2:1
-    # ladder between them. They are two of the five tiers the balance rule
-    # names, and the rule asks for equal pressure across tiers; the ordering
-    # that used to separate them is what the ladder inside each tier is for.
-    #
-    # Both are totals rather than rates: a meter runs 0 -> 1 over one capture, so
-    # these compare to the kill payout without further arithmetic.
     capture_payout_ratio=2.0,
-    # Token weight: trains the head, does not move the policy. Outside the tier
-    # balance by design -- it is a value-head probe, not a fifth of the update.
-    outcome_weight=0.01,
-    capture_progress_weight=2.0,
-    front_advance_weight=2.0,
-    speed_weight=0.0,
-    speed_penalty_min=10.0,
 )
 
-# Values are expressed per 60 Hz physics tick.  The resolver raises them to
-# action_repeat so decision-step horizons remain normalized to game time.
-# Gamma buckets are win=.999, kill/death=.995, damage=.991, shaping=.975;
-# their approximate horizons are full episode, engagement, exchange, and
-# immediate geometry respectively.
+# Per-level discount and GAE lambda, per 30 Hz tick (one decision). A horizon is
+# 1 / (1 - gamma): the outcome spans the match (~3 300 decisions), a capture
+# ~1 000, zone progress and kills an engagement (~200; progress is earned by
+# choosing a zone and flying to it, about 14 s at cruise between neighbours),
+# damage an exchange (~110).
+#
+# The outcome keeps 0.9997 rather than 1: a 128-step rollout against ~8 600-step
+# episodes bootstraps the value about 67 times before a terminal grounds it,
+# and at gamma 1 nothing damps the error across those hops (run 737: win
+# explained variance fell from 0.994 to 0.42). The categorical outcome head
+# models the discount as mass leaking into an "unresolved" class.
 COMPONENT_GAMMAS_PER_TICK: dict[str, float] = {
-    # Undiscounted. A win is terminal in a finite-horizon game with a hard step
-    # cap, and GAE cuts every trace at the episode boundary, so nothing can
-    # diverge. At 0.999/tick a win at the start of a typical match was worth
-    # 0.999^2557 = 7.7% of one at the end -- an artifact of a rate inherited from
-    # 1024-step episodes, not a statement about the game. At 1.0 the critic head
-    # learns P(win) itself. Expect its explained variance to *fall*: a discounted
-    # terminal target is about zero for most of an episode and trivially
-    # predictable, where P(win) early is genuinely uncertain.
-    # 0.9997: a 3,333-step horizon against ~8,600-step episodes, which reaches
-    # well down the match while keeping a real contraction per rollout segment
-    # (0.9997^128 = 0.962). Undiscounted was worse here than the theory suggested:
-    # a 128-step rollout against that episode length bootstraps the value roughly
-    # 67 times before any terminal grounds it, and at gamma 1 there is no
-    # contraction to damp error across those hops. Run 737 showed it -- win
-    # explained variance fell from 0.994 to 0.42, and since the win pair carried
-    # 70% of the gradient weight, most of the update became noise: KL pinned at
-    # target and `epochs_completed` collapsed to 1.0 for most of the run.
-    "ally_win": 0.9997,
-    "enemy_win": 0.9997,
-    # The single stream stays markovian, which is the thing being measured.
-    "outcome": 1.0,
-    "front_advance": 0.999,
-    "capture_progress": 0.999,
-    "ally_combat_death": 0.995,
-    "enemy_combat_death": 0.995,
-    "combat_death": 0.995,
-    "kill_shot": 0.995,
-    "kill_assist": 0.995,
-    "kill_ally_shot": 0.995,
-    "kill_ally_assist": 0.995,
-    "shield_recharge": 0.991,
-    "boundary": 0.995,
-    "boundary_damage": 0.991,
-    "ally_combat_damage": 0.991,
-    "enemy_combat_damage": 0.991,
-    "combat_damage_taken": 0.991,
-    "damage_dealt_enemy": 0.991,
-    "damage_dealt_ally": 0.991,
-    "facing": 0.975,
-    "closing_speed": 0.975,
-    "shoot_quality": 0.975,
-    "speed": 0.975,
-    "shooting_penalty": 0.975,
+    "outcome": 0.9997,
+    "zone_capture": 0.999,
+    "zone_progress": 0.995,
+    "kill_death": 0.995,
+    "damage": 0.991,
 }
 
 COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
-    "ally_win": 0.97,
-    "enemy_win": 0.97,
-    "front_advance": 0.97,
-    "capture_progress": 0.97,
     "outcome": 0.97,
-    "ally_combat_death": 0.95,
-    "enemy_combat_death": 0.95,
-    "combat_death": 0.95,
-    "kill_shot": 0.87,
-    "kill_assist": 0.97,
-    "kill_ally_shot": 0.87,
-    "kill_ally_assist": 0.97,
-    "shield_recharge": 0.90,
-    "boundary": 0.90,
-    "boundary_damage": 0.90,
-    "ally_combat_damage": 0.90,
-    "enemy_combat_damage": 0.90,
-    "combat_damage_taken": 0.90,
-    "damage_dealt_enemy": 0.90,
-    "damage_dealt_ally": 0.90,
-    "facing": 0.80,
-    "closing_speed": 0.80,
-    "shoot_quality": 0.80,
-    "speed": 0.80,
-    "shooting_penalty": 0.80,
+    "zone_capture": 0.97,
+    "zone_progress": 0.95,
+    "kill_death": 0.95,
+    "damage": 0.90,
 }
 
 
@@ -387,12 +285,6 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
         offensive_bias=((0, 1.0, "hold"), (50_000_000, 1.0, "linear"), (300_000_000, 0.0, "hold")),
-        # No unpaired shaping remains during the final zero-sum phase.
-        shaping_scale=(
-            (0, 1.0, "hold"),
-            (50_000_000, 1.0, "linear"),
-            (300_000_000, 0.0, "hold"),
-        ),
         league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy
         # against an update measured in minutes, and the writer already skips

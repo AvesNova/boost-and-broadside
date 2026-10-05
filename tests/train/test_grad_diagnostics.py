@@ -273,9 +273,7 @@ def test_measuring_does_not_disturb_the_gradient_that_gets_applied(tmp_path) -> 
     """
     trainer = _prepared_trainer(tmp_path, "reward_full")
     trainer._grad_diag = GradientDiagnosticsConfig(level="reward_full", next_state_populations=True)
-    trainer._precompute_lambda_aggregates(
-        trainer.buffer, trainer._active_component_weights(), is_primary=True
-    )
+    trainer._precompute_lambda_aggregates(trainer.buffer, is_primary=True)
     trainer._precompute_ns_labels(trainer.buffer)
     chunks = next(
         trainer.buffer.get_minibatch_iterator(
@@ -396,9 +394,7 @@ def test_the_actor_critic_split_comes_from_the_full_minibatch_when_measuring(tmp
 
 def _accumulate_one_minibatch(trainer, *, level: str) -> TermGradientAccumulator:
     """Run one primary minibatch through the diagnostic and return its gradients."""
-    trainer._precompute_lambda_aggregates(
-        trainer.buffer, trainer._active_component_weights(), is_primary=True
-    )
+    trainer._precompute_lambda_aggregates(trainer.buffer, is_primary=True)
     trainer._precompute_ns_labels(trainer.buffer)
     accumulator = TermGradientAccumulator(trainer._grad_diag_params, trainer._grad_diag_trunk)
     chunks = next(
@@ -502,17 +498,13 @@ def test_per_component_clipping_would_be_a_different_objective(tmp_path) -> None
     not subtle.
     """
     trainer = _prepared_trainer(tmp_path, "reward_policy", clip_coef=0.02, jitter=0.05)
-    trainer._precompute_lambda_aggregates(
-        trainer.buffer, trainer._active_component_weights(), is_primary=True
-    )
+    trainer._precompute_lambda_aggregates(trainer.buffer, is_primary=True)
     chunks = next(trainer.buffer.get_minibatch_iterator(trainer.cfg.num_minibatches, None))
     batch = chunks[0]
     steps, _, num_ships = batch.alive.shape
 
-    lambda_ij = trainer._lambda_matrix(
-        batch.obs["team_id"][:steps, :, :num_ships].long(),
-        batch.alive,
-        trainer._active_component_weights(),
+    lambda_ij = trainer._team_mixing(
+        batch.obs["team_id"][:steps, :, :num_ships].long(), batch.alive
     )
     advantage_k = torch.einsum(
         "tbijk,tbjk->tbik", lambda_ij, trainer.adv_scaler.normalize(batch.advantages)
@@ -576,7 +568,7 @@ def test_a_reward_component_scheduled_to_zero_is_not_logged(tmp_path) -> None:
 
 def test_no_series_is_logged_for_a_component_the_environment_does_not_have(tmp_path) -> None:
     """Every reward series names a component the live registry actually emits."""
-    trainer = _diagnostic_trainer(tmp_path, "reward_full")
+    trainer = _diagnostic_trainer(tmp_path, "reward_full", zone_capture_weight=0.0)
     metrics = _one_update(trainer, update=1)
 
     active = set(trainer._active_names)

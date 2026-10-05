@@ -108,7 +108,6 @@ class TrainingScheduleSpec:
     outcome_scale: Keypoints
     kill_death_scale: Keypoints
     damage_scale: Keypoints
-    shaping_scale: Keypoints
     league_fraction: Keypoints
     checkpoint_interval: Keypoints
     num_epochs: Keypoints

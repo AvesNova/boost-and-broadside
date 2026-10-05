@@ -73,6 +73,16 @@ class TensorState:
     zone_roles: torch.Tensor  # (B, Z) int8 — ZoneRole
     zone_capture_progress: torch.Tensor  # (B, Z) float32 in [0, 1]
     zone_capture_direction: torch.Tensor  # (B, Z) int8 — {-1, 0, +1}
+    # Capture-attempt ledgers per zone: the meter movement each attacking ship
+    # was present for, and each defending ship was absent for. Both sum to the
+    # meter's progress; cleared on completion, rotation, or an empty meter.
+    zone_attack_ledger: torch.Tensor  # (B, Z, N) float32
+    zone_defense_ledger: torch.Tensor  # (B, Z, N) float32
+    # Shares of a capture completed this tick, summed over zones: what each
+    # attacking ship earned and each defending ship owes, each side summing to
+    # one per completed zone.
+    ship_capture_gain: torch.Tensor  # (B, N) float32
+    ship_capture_loss: torch.Tensor  # (B, N) float32
     team0_captured: torch.Tensor  # (B,) bool — completed this tick
     team1_captured: torch.Tensor  # (B,) bool — completed this tick
     simultaneous_capture: torch.Tensor  # (B,) bool — both completed this tick
@@ -91,11 +101,17 @@ class TensorState:
     # Ring-buffer write cursor
     bullet_cursor: torch.Tensor  # (B, N) int64
 
-    # Per-step and per-episode damage attribution (shooter × target)
-    damage_matrix: torch.Tensor  # (B, N, N) float32  — damage dealt this step; zeroed each step
-    cumulative_damage_matrix: (
-        torch.Tensor
-    )  # (B, N, N) float32  — accumulated this episode; zeroed on reset
+    # Per-step and per-life damage attribution (shooter × target)
+    damage_matrix: torch.Tensor  # (B, N, N) float32  — raw impact this step; zeroed each step
+    # Outstanding *applied* damage by attacker: grows with every applied hit,
+    # shrinks pro rata as the target recharges, and is cleared when either slot
+    # respawns. The reward heads' attribution ledger.
+    cumulative_damage_matrix: torch.Tensor  # (B, N, N) float32
+    # The recharge applied this tick, split pro rata over what is outstanding:
+    # by attacker, and the remainder no attacker caused (boundary damage, a
+    # shield that started below full).
+    recharge_matrix: torch.Tensor  # (B, N, N) float32 — this tick, by attacker
+    ship_unattributed_recharge: torch.Tensor  # (B, N) float32 — this tick
 
     # Static-for-one-episode refractive-field map. Each field carries an
     # absolute target material; arbitrary overlaps are composed at evaluation.

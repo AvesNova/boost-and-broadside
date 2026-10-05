@@ -42,9 +42,7 @@ def _trainer(tmp_path) -> PPOTrainer:
     runtime = trainer._initialize_rollout_runtime()
     terminated = trainer._collect_rollout(runtime, False)
     trainer._compute_rollout_gae(runtime, terminated)
-    trainer._precompute_lambda_aggregates(
-        trainer.buffer, trainer._active_component_weights(), is_primary=True
-    )
+    trainer._precompute_lambda_aggregates(trainer.buffer, is_primary=True)
     trainer._precompute_ns_labels(trainer.buffer)
     return trainer
 

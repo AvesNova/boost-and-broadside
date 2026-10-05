@@ -344,20 +344,20 @@ The output shape is `(B, N, 3)` action indices.
 
 ## Decomposed value head
 
-The critic produces one value per ship and active reward component. Most components use a
-local token projection. The components in `GLOBAL_VALUE_COMPONENTS` — `ally_win`,
-`enemy_win` and `outcome` — use `GlobalValueHead`, which reads the global token and
-broadcasts one estimate per environment back across the ship axis.
+The critic produces one value per ship and active reward level. Most levels use a
+local token projection. The levels in `GLOBAL_VALUE_COMPONENTS` — just `outcome` — use
+`GlobalValueHead`, which reads the global token and broadcasts one estimate per
+environment back across the ship axis.
 
-The split is a property of the *rewards*, not a modelling preference. Those three are a
-function of the ship's team and the match result alone and pay the living and the dead
-alike, so their return is bit-identical for every ship on a side, and estimating it once
+The split is a property of the *rewards*, not a modelling preference. The outcome is a
+function of the ship's team and the match result alone and pays the living and the dead
+alike, so its return is bit-identical for every ship on a side, and estimating it once
 per ship was N regressions of one number — from a shrinking sample, since the value loss
 masks on alive while the reward does not.
 [`test_global_value.py`](../tests/train/test_global_value.py) asserts that uniformity
 against real rollouts, so a component cannot be added to the set for convenience.
 
-Everything else stays per-ship, the zone rewards emphatically so: `_ZoneCreditReward`
+Everything else stays per-ship, the zone levels emphatically so: zone progress
 pays the side the meter favours through its ships *inside* the zone and charges the other
 through its ships *outside* it, and that split is the credit assignment rather than an
 implementation detail.

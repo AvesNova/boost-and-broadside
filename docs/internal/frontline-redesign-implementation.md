@@ -189,6 +189,31 @@ Entries are added as the work proceeds.
     0.41), a combat governor fading boost above corner when in shooting range
     (0.52, 0.51), and both (0.50, 0.44). None helps, so none was kept.
 
+### Part II
+
+12. **Rewards are stored weighted, in win units, and no longer divided by the
+    ship count.** Each level component returns `weight × Σ events`, so the critic
+    fits returns where a win is 1 (§6.3 "the unit") and the advantage is the
+    plain sum over heads. The old per-tick division by `num_ships` would have made
+    a win 0.1.
+13. **Recharge is split between attributed and unattributed damage.** §6.4 reduces
+    the ledger by the full recharge (`O ← O·(1 − h/S)`), which over-refunds when
+    part of the shield deficit has no attacker (boundary damage, a respawn below
+    full shield). Recharge is split pro rata over the deficit: each attacker's
+    outstanding damage shrinks by the recharged fraction of the deficit and its
+    charge-back follows; the remainder is unattributed and charges the opposing
+    team. With no unattributed deficit this is exactly the spec's rule.
+14. **An allied cause pays the opposing team twice.** For friendly fire and allied
+    kills the opposing team receives both the counterpart of the event (nobody on
+    its side caused it) and the counterpart of the blame, which is what makes the
+    level exactly zero-sum at ratio 1. The charge-back reverses both.
+15. **`cumulative_damage_matrix` now holds outstanding *applied* damage** (it
+    accumulated raw impact). Raw impact stays in the per-tick `damage_matrix`.
+16. **The code keeps the word "component"** for a reward level (one component per
+    critic head, `REWARD_COMPONENT_NAMES` = the five levels), to avoid renaming
+    every consumer; events are the per-component breakdown (`events()`, logged as
+    `episode/event/<level>/<event>`).
+
 ### Measured (Phase 4)
 
 `docs/internal/flight-envelope-slip-oct2026.json`, all §10.1 checks pass:

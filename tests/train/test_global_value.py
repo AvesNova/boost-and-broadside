@@ -94,13 +94,13 @@ def test_a_global_component_pays_every_teammate_the_same(rollout, name):
 
 def test_the_zone_rewards_are_not_uniform_and_so_stay_per_ship(rollout):
     """The split between the ships that showed up and the ones that did not
-    *is* ``_ZoneCreditReward``'s credit assignment. If this ever passes as
+    *is* the zone levels' credit assignment. If this ever passes as
     uniform, either the reward changed or the rollout never contested a zone --
     both worth knowing before anything is moved."""
     rewards, teams = rollout
     contested = [
         name
-        for name in ("capture_progress", "front_advance")
+        for name in ("zone_capture", "zone_progress")
         if name in rewards and float(rewards[name].abs().sum()) > 0.0
     ]
     assert contested, "no zone reward was paid in this rollout; the test proves nothing"

@@ -217,10 +217,9 @@ class TrainingSchedule:
     sigreg_coef: Callable[[int], float]  # weight for SIGReg encoder regularization loss
 
     # --- Reward tier scales (component → tier mapping: _TIER in train/rl/ppo.py) ---
-    outcome_scale: Callable[[int], float]  # ally_win, enemy_win
-    kill_death_scale: Callable[[int], float]  # kills, deaths, friendly kills
-    damage_scale: Callable[[int], float]  # damage dealt and taken
-    shaping_scale: Callable[[int], float]  # dense geometry: facing, closing speed, ...
+    outcome_scale: Callable[[int], float]  # outcome, zone capture, zone progress
+    kill_death_scale: Callable[[int], float]  # the kill and death level
+    damage_scale: Callable[[int], float]  # the damage level
 
     # --- Opponents ---
     # Fraction of primary-scale envs whose opponent side is played by a league

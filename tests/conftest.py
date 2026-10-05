@@ -82,6 +82,10 @@ def make_state(
         zone_roles=torch.zeros((num_envs, 0), dtype=torch.int8, device=dev),
         zone_capture_progress=torch.zeros((num_envs, 0), dtype=torch.float32, device=dev),
         zone_capture_direction=torch.zeros((num_envs, 0), dtype=torch.int8, device=dev),
+        zone_attack_ledger=torch.zeros((num_envs, 0, max_ships), dtype=torch.float32, device=dev),
+        zone_defense_ledger=torch.zeros((num_envs, 0, max_ships), dtype=torch.float32, device=dev),
+        ship_capture_gain=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_capture_loss=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
         team0_captured=torch.zeros((num_envs,), dtype=torch.bool, device=dev),
         team1_captured=torch.zeros((num_envs,), dtype=torch.bool, device=dev),
         simultaneous_capture=torch.zeros((num_envs,), dtype=torch.bool, device=dev),
@@ -108,6 +112,12 @@ def make_state(
         ),
         cumulative_damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
+        ),
+        recharge_matrix=torch.zeros(
+            (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
+        ),
+        ship_unattributed_recharge=torch.zeros(
+            (num_envs, max_ships), dtype=torch.float32, device=dev
         ),
         field_pos=torch.zeros((num_envs, num_fields), dtype=torch.complex64, device=dev),
         field_radius=torch.zeros((num_envs, num_fields), dtype=torch.float32, device=dev),

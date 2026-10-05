@@ -16,7 +16,7 @@ from boost_and_broadside.env.frontline import (
 )
 from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.env.physics import _apply_combat_damage
-from boost_and_broadside.env.rewards import LocalDamageDealtEnemyReward, ShieldRechargeReward
+from boost_and_broadside.env.rewards import DamageReward
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 from boost_and_broadside.train.rl.features import AttitudeFourier, Fourier
 
@@ -49,8 +49,9 @@ def test_simultaneous_overkill_breaks_shield_but_next_tick_kills():
     hit(e, (5, 6, 7))
     assert e.state.ship_health[0, 0] == 0
     assert not e.state.ship_combat_death[0, 0]
-    payout = LocalDamageDealtEnemyReward(1).compute(e.state, None, e.state, None)
-    assert payout.sum() == 15
+    damage = DamageReward(1.0, payout_ratio=1.0)
+    dealt = damage.events(e.state, None, e.state, None)[..., damage.event_names.index("dealt")]
+    assert dealt.sum() == 15
     tick(e)
     assert not e.state.ship_respawned.any()
     hit(e)
@@ -99,7 +100,7 @@ def test_delay_recharge_clamp_and_zero_sum_reward():
     s.ship_shield_delay.zero_()
     tick(e)
     assert torch.all(s.ship_health == 100)
-    r = ShieldRechargeReward(1).compute(s, None, s, None)
+    r = DamageReward(1.0, payout_ratio=1.0).compute(s, None, s, None)
     assert r.sum().abs() < 1e-5
     tick(e)
     assert s.ship_shield_recharge.sum() == 0
@@ -126,10 +127,8 @@ def test_damage_and_recovery_are_zero_sum_at_final_ratio(owners):
     cfg = replace(REWARDS, kill_payout_ratio=1, damage_payout_ratio=1, capture_payout_ratio=1)
     components = build_reward_components(cfg, e.ship_config)
     total = sum(
-        c.weight
-        * c.compute(e.state, torch.zeros(1, 10, 3), e.state, torch.zeros(1, dtype=torch.bool))
+        c.compute(e.state, torch.zeros(1, 10, 3), e.state, torch.zeros(1, dtype=torch.bool))
         for c in components
-        if c.weight
     )
     assert total.sum().abs() < 1e-5
 
@@ -169,7 +168,6 @@ def test_curriculum_has_a_long_final_zero_sum_phase():
     assert schedule.offensive_bias(175_000_000) == pytest.approx(0.5)
     for step in (300_000_000, 400_000_000, 500_000_000):
         assert schedule.offensive_bias(step) == 0
-        assert schedule.shaping_scale(step) == 0
     assert PROFILES["rl"].total_timesteps - 300_000_000 >= 200_000_000
 
 
@@ -177,6 +175,27 @@ def test_recovery_is_zero_sum_even_with_unequal_teams():
     e = env()
     e.state.ship_team_id[0, 4] = 1
     e.state.ship_shield_recharge[0, 0] = 3
-    reward = ShieldRechargeReward(1).compute(e.state, None, e.state, None)
+    e.state.ship_unattributed_recharge[0, 0] = 3
+    reward = DamageReward(1.0, payout_ratio=1.0).compute(e.state, None, e.state, None)
     assert reward[0, 0] == 3
     assert reward.sum().abs() < 1e-6
+
+
+def test_recharge_charges_back_the_attacker_that_caused_the_damage():
+    e = env()
+    hit(e, (5,))
+    tick(e)
+    e.state.ship_shield_delay[0, 0] = 0.0
+    e.state.ship_combat_damage.zero_()
+    e.state.damage_matrix.zero_()
+    tick(e)
+    s = e.state
+    assert s.ship_shield_recharge[0, 0] > 0
+    # Ship 0 was at 15 with a full 100 shield, so 85 of its deficit predates
+    # the hit and only the hit's share of the recharge is the attacker's.
+    deficit = 100.0 - (15.0 - 10.0)
+    share = s.ship_shield_recharge[0, 0] * 10.0 / deficit
+    assert s.recharge_matrix[0, 5, 0] == pytest.approx(share.item(), rel=1e-5)
+    assert s.ship_unattributed_recharge[0, 0] == pytest.approx(
+        (s.ship_shield_recharge[0, 0] - share).item(), rel=1e-5
+    )

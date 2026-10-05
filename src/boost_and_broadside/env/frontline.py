@@ -7,6 +7,7 @@ import torch
 
 from boost_and_broadside.config import FrontlineConfig, MatchResult, ShipConfig, ZoneRole
 from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES
+from boost_and_broadside.constants import EPS
 from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.state import TensorState
 
@@ -504,6 +505,68 @@ def _harmonic(n: torch.Tensor) -> torch.Tensor:
     return torch.digamma(n.to(torch.float32) + 1.0) + _EULER_MASCHERONI
 
 
+def _update_capture_ledgers(
+    state: TensorState,
+    alive_in_zone: torch.Tensor,
+    previous: torch.Tensor,
+    progress: torch.Tensor,
+    t0_defense: torch.Tensor,
+    t1_defense: torch.Tensor,
+) -> None:
+    """Advance the per-zone attack and defense ledgers and pay completions.
+
+    Each tick a meter moves by ``delta > 0`` toward the attacker, every present
+    attacking ship is credited ``delta / n_present`` and every absent defending
+    ship (dead ones count as absent) is debited ``delta / n_absent``, so both
+    ledgers sum to the meter's progress. A reversal scales both pro rata. On
+    completion each side's share is half presence on the completing tick and
+    half its ledger over the attempt, so each side's shares sum to one.
+
+    Args:
+        alive_in_zone: (B, N, Z) bool.
+        previous, progress: (B, Z) meter before and after this tick.
+        t0_defense, t1_defense: (B, Z) bool zone roles before rotation.
+    """
+    active = t0_defense | t1_defense  # (B, Z)
+    team0 = (state.ship_team_id == 0).unsqueeze(1)  # (B, 1, N)
+    # The attacker of a defense is the side that does not hold it.
+    attacker = torch.where(t1_defense.unsqueeze(-1), team0, ~team0) & active.unsqueeze(-1)
+    defender = ~attacker & active.unsqueeze(-1)  # (B, Z, N)
+    present = alive_in_zone.transpose(1, 2)  # (B, Z, N)
+    attackers_present = attacker & present
+    defenders_absent = defender & ~present
+    # A meter moves only on a strict alive majority, so some defender is always
+    # dead or elsewhere; charge the whole side if that ever fails to hold.
+    defenders_absent = torch.where(
+        defenders_absent.any(-1, keepdim=True), defenders_absent, defender
+    )
+    present_share = attackers_present / attackers_present.sum(-1, keepdim=True).clamp(min=1)
+    absent_share = defenders_absent / defenders_absent.sum(-1, keepdim=True).clamp(min=1)
+
+    delta = (progress - previous).unsqueeze(-1)  # (B, Z, 1)
+    gained = delta.clamp(min=0.0)
+    # A reversal by r scales both ledgers by (1 - r/P), which is new/old progress.
+    kept = torch.where(
+        delta < 0.0, (progress / previous.clamp(min=EPS)).unsqueeze(-1), torch.ones_like(delta)
+    )
+    attack = (state.zone_attack_ledger + gained * present_share) * kept
+    defense = (state.zone_defense_ledger + gained * absent_share) * kept
+
+    completed = ((progress >= 1.0) & active).unsqueeze(-1)  # (B, Z, 1)
+    total = progress.clamp(min=EPS).unsqueeze(-1)
+    gain = 0.5 * present_share + 0.5 * attack / total  # (B, Z, N)
+    loss = 0.5 * absent_share + 0.5 * defense / total
+    state.ship_capture_gain = (gain * completed).sum(1)  # (B, N)
+    state.ship_capture_loss = (loss * completed).sum(1)
+
+    # A completion rotates every role and zeroes every meter; an empty meter
+    # ends its attempt.
+    any_capture = completed.any(1, keepdim=True)  # (B, 1, 1)
+    cleared = any_capture | (progress <= 0.0).unsqueeze(-1)
+    state.zone_attack_ledger = torch.where(cleared, 0.0, attack)
+    state.zone_defense_ledger = torch.where(cleared, 0.0, defense)
+
+
 def _advance_capture_state(
     state: TensorState,
     membership: torch.Tensor,
@@ -536,8 +599,10 @@ def _advance_capture_state(
     attacker_direction = torch.where(t1_defense, 1, torch.where(t0_defense, -1, 0))
     signed_motion = direction * attacker_direction
     delta = signed_motion.float() * pressure * (ship_config.dt / config.capture_seconds)
-    progress = (state.zone_capture_progress + delta).clamp(0.0, 1.0)
+    previous = state.zone_capture_progress
+    progress = (previous + delta).clamp(0.0, 1.0)
     progress = torch.where(active_defense, progress, 0.0)
+    _update_capture_ledgers(state, alive_in_zone, previous, progress, t0_defense, t1_defense)
 
     state.team0_captured.copy_((progress >= 1.0).logical_and(t1_defense).any(dim=1))
     state.team1_captured.copy_((progress >= 1.0).logical_and(t0_defense).any(dim=1))
@@ -555,6 +620,29 @@ def _advance_capture_state(
         state.zone_capture_direction,
     )
     state.zone_roles = roles_from_front(state.front_position)
+
+
+def _attribute_recharge(
+    state: TensorState, recharge: torch.Tensor, ship_config: ShipConfig
+) -> None:
+    """Split this tick's recharge pro rata over the outstanding damage.
+
+    Each attacker's outstanding damage shrinks by the recharged fraction of the
+    shield deficit, and that much is recorded against it in
+    ``recharge_matrix``; whatever part of the deficit no attacker caused
+    (boundary damage, a shield that spawned below full) takes the rest.
+
+    Args:
+        recharge: (B, N) shield restored this tick, before it is applied.
+    """
+    deficit = (ship_config.max_health - state.ship_health).clamp(min=0.0)  # (B, N)
+    fraction = torch.where(
+        deficit > 0.0, (recharge / deficit.clamp(min=EPS)).clamp(max=1.0), 0.0
+    )  # (B, N_target)
+    attributed = state.cumulative_damage_matrix * fraction.unsqueeze(1)  # (B, N, N)
+    state.recharge_matrix = attributed
+    state.ship_unattributed_recharge = (recharge - attributed.sum(1)).clamp(min=0.0)
+    state.cumulative_damage_matrix = state.cumulative_damage_matrix - attributed
 
 
 def apply_frontline_tick(
@@ -603,6 +691,7 @@ def apply_frontline_tick(
     )
     recharge = recharge * (state.ship_alive & ~damaged)
     state.ship_shield_recharge = recharge
+    _attribute_recharge(state, recharge, ship_config)
     state.ship_health = state.ship_health + recharge
     respawned = state.ship_combat_death | state.ship_boundary_death
     state.ship_respawned.copy_(respawned)

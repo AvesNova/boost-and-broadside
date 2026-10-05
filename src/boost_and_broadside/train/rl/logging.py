@@ -149,17 +149,25 @@ class LoggingMixin:
             for index, count in enumerate(occlusion_hist):
                 upper = "inf" if index == len(edges) else f"{edges[index].item():g}s"
                 metrics[f"fog/occlusion_duration_le_{upper}"] = count.item()
+        running_ticks = ep_stats["running_ticks"].item()
+        if running_ticks > 0:
+            # Zero for every level at payout ratio 1; positive by design while
+            # the offensive premium pays the causing side more than it charges.
+            residual = ep_stats["zero_sum_residual"].cpu()
+            for i, name in enumerate(self._active_names):
+                metrics[f"reward/zero_sum_residual/{name}"] = residual[i].item() / running_ticks
         if n_eps > 0:
             n_ship_eps = n_eps * self.wrapper.num_ships
             comp_sum = ep_stats["comp_sum"].cpu()
-            comp_scaled_sum = ep_stats["comp_scaled_sum"].cpu()
+            event_sum = ep_stats["event_sum"].cpu()
             metrics["episode/reward_mean"] = ep_stats["reward_sum"].item() / n_ship_eps
             metrics["episode/reward_min"] = ep_stats["reward_min"].item()
             metrics["episode/reward_max"] = ep_stats["reward_max"].item()
             metrics["episode/length_mean"] = ep_stats["length_sum"].item() / n_eps
             for i, name in enumerate(self._active_names):
                 metrics[f"episode/reward_{name}"] = comp_sum[i].item() / n_ship_eps
-                metrics[f"episode/scaled_{name}"] = comp_scaled_sum[i].item() / n_ship_eps
+            for i, name in enumerate(self.wrapper.event_names):
+                metrics[f"episode/event/{name}"] = event_sum[i].item() / n_ship_eps
             metrics["episode/win_rate"] = ep_stats["wins_sum"].item() / n_ship_eps
             metrics["episode/lifespan_mean"] = ep_stats["lifespan_sum"].item() / n_ship_eps
             result_counts = ep_stats["result_counts"].cpu()

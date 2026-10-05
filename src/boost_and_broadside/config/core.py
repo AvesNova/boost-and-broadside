@@ -527,164 +527,56 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class RewardConfig:
-    """Reward weights and geometry parameters for the decomposed critic.
+    """Weights of the five reward levels and the payout ratios.
 
-    Core reward weights and geometry must be set explicitly at the call site.
-    Optional behavior-shaping rewards default to disabled values.
-    Reward tier scales (outcome, kill/death, damage, shaping) live in
-    TrainingSchedule since they vary over the course of a run.
+    Rewards are grouped into five levels, each one critic head: the match
+    outcome, completed captures, capture-meter progress, kills and deaths, and
+    damage (see ``env/rewards.py``). Each level has one weight; everything else
+    is derived from one rule: **an event charges the side it happens to the
+    weight and pays the side that caused it the payout ratio times the
+    weight.** At every ratio 1, each level is exactly zero-sum.
 
-    Weights obey one rule: **every event pays one side exactly what it charges the
-    other.** A ship's death costs its team ``death_weight`` and pays the ships that
-    caused it ``death_weight`` between them; damage works the same way with
-    ``damage_weight``. That fixes every ratio in the system and leaves four numbers.
+    A win is worth 1. That is the unit the advantage normaliser's floor is
+    measured in, so the other weights are what an event is worth against a win.
 
-
-    Shield recovery pays its ship and charges the opposing team. Boundary loss
-    and friendly-fire penalties have matching opposing payouts.
-
-    Equal weight is not equal gradient. The kill side spends its weight across two
-    correlated components while the death side spends it on one, so the kill side
-    delivers roughly 87% of the death side's gradient magnitude. That is expected
-    and is left alone: weights state what an event means, and pressure is allowed
-    to follow how coherent each signal actually is.
-
-    Local rewards are self-only: lambda=0 for every other ship (diagonal lambda
-    matrix), so the signal never propagates. Global rewards flow through the lambda
-    aggregation matrix at PPO update time, so a ship's signal reaches its teammates
-    and, for zero-sum components, its enemies.
-
-    Reward tier scales (outcome, kill/death, damage, shaping) live in
-    TrainingSchedule since they vary over the course of a run.
-
-    Tier scales (applied as a multiplier on top of the derived weights; the
-    authoritative component -> tier mapping is _TIER in train/rl/ppo.py):
-        outcome     -> ally_win, enemy_win
-        kill_death  -> kills, deaths, friendly kills
-        damage      -> damage dealt and taken
-        shaping     -> dense geometry rewards
+    The schedule's tier scales multiply the weights (outcome scale for the
+    outcome and both zone levels, the kill/death scale, the damage scale), and
+    its offensive bias anneals the three payout ratios toward 1.
     """
 
-    # --- Event weights ---
-    # Every event component derives from these four numbers, because the weights
-    # are not free of one another: an event that costs one team should pay the
-    # other the same. See ``component_weights`` in env/rewards.py for the algebra.
-    win_weight: float  # W: to the winning team, charged to the losing one
+    win_weight: float  # the match result, +1 / 0 / -1
+    zone_capture_weight: float  # per completed capture, split by who held it
+    zone_progress_weight: float  # per full meter of movement, split by presence
     death_weight: float  # U: charged to a dying ship, paid to whoever caused it
-    damage_weight: float  # V: charged to a damaged ship, paid to whoever dealt it
-    # How U splits between "landed the finishing blow" and "contributed damage".
-    # The only ratio the balance rules leave free.
-    kill_shot_fraction: float
-    # ``kill_payout_ratio`` and ``damage_payout_ratio`` break the balance rule for
-    # their own tier on purpose; they live with the other defaulted fields below.
+    damage_weight: float  # V: per unit of shield, charged and paid the same way
 
-    # --- Shaping ---
-    # Not events. Facing a target is a state, not something that happens to
-    # somebody, so there is no opposing side to charge and no rule to apply.
-    # These stay individually weighted.
-    facing_weight: float  # pointing nose toward nearest enemy
-    closing_speed_weight: float  # velocity component toward nearest enemy
-
-    # --- Geometry params ---
-    proximity_radius: float  # falloff radius used by FacingReward
-    shoot_quality_radius: float  # engagement radius used by ShootQualityReward
-
-    # --- Lambda configuration ---
-    enemy_neg_lambda_components: frozenset[str]  # enemies get lambda=-1 (zero-sum)
-    ally_zero_components: frozenset[str]  # allies get lambda=0 (enemy-perspective only)
-
-    # Two named, deliberate exceptions to the balance rule, one per tier. The
-    # side that *caused* an event is paid the ratio times the weight while the
-    # side it happened to is still charged the plain weight. At 1.0 the rule
-    # holds and an event pays exactly what it charges.
-    #
-    # The kill side is paid ``kill_payout_ratio * U`` against a charge of ``U``.
-    #
-    # It is a knob rather than a constant because the balance rule cannot express
-    # it at all -- raising ``U`` raises charge and payout together, so no setting
-    # of the four event weights reaches a ratio other than 1:1. The reference run
-    # sat at 2:1 by accident, carrying ``kill_shot`` and ``kill_assist`` at the
-    # same weight as ``combat_death``, and is the strongest policy measured;
-    # every balanced run since has been more passive than it. Charging a death
-    # and paying the kill equally makes an even trade worth nothing, so a policy
-    # that cannot reliably win the trade declines it.
-    #
+    # The deliberate exceptions to the balance rule, one per level that has a
+    # causing side. Priced evenly, an even trade is worth nothing, and a policy
+    # that cannot reliably win it declines it. The schedule's offensive bias
+    # anneals each toward 1 (``1 + bias * (ratio - 1)``).
     kill_payout_ratio: float = 1.0
-
-    # Damage dealt is paid ``damage_payout_ratio * V`` against a charge of ``V``
-    # for damage taken. Separate evidence from the kill ratio, and weaker.
-    #
-    # Run 720 is the only configuration measured that beat the reference run, and
-    # its weights -- solved per component against measured coherence rather than
-    # derived -- came out tilted offensively in this tier as well:
-    # ``damage_dealt_enemy`` 0.54 against ``combat_damage_taken`` 0.32, a ratio
-    # of 1.69. The reference run was flat here, and run 725 reproduced the
-    # reference run's strength exactly while staying flat -- so a flat damage
-    # tier is consistent with matching that run and not with beating it. This is
-    # the one structural difference left between 725 and 720.
-    #
-    # Set to 2.0 for symmetry with the kill ratio rather than to 720's measured
-    # 1.69; one run cannot resolve the two. The tier-share side effect is larger
-    # than the knob looks: doubling the paid side moves the damage tier from
-    # about 25% of the policy gradient to about 34% and dilutes kill/death from
-    # 57% toward 50%, which is itself a move toward 720's flat allocation. A win
-    # here therefore does not attribute cleanly to the ratio alone.
-    #
-    # Win stays balanced. It is one signal to each side of the same event, with
-    # no third party to pay, so there is no asymmetry to express.
     damage_payout_ratio: float = 1.0
-
-    # Strategic event weight. Disabled for the legacy combat profile; frontline
-    # training configs opt in so a one-step front movement is the primary event.
-    front_advance_weight: float = 0.0
-
-    # The dense half of the strategic tier: signed movement of a defense meter,
-    # paid to whichever side the meter moved toward. A full capture moves a meter
-    # from 0 to 1, so this weight *is* the total paid for capturing a point --
-    # directly comparable to the kill payout rather than to a per-tick rate.
-    #
-    # It exists because ``front_advance_weight`` alone made the objective
-    # unreachable rather than merely sparse. Standing on a point paid nothing for
-    # the whole capture and then +1 on one tick, while every dense term pulled the
-    # other way; run 735 answered by leaving the zones entirely, taking zone
-    # occupancy from 0.075 of live ship-steps to 0.0006 once behavior cloning
-    # stopped supplying the scripted prior.
-    capture_progress_weight: float = 0.0
-
-    # The strategic tier's exception to the balance rule, alongside
-    # ``kill_payout_ratio`` and ``damage_payout_ratio`` and for the same reason:
-    # the side a meter favours is paid this multiple of what the absent side is
-    # charged. Priced evenly, contesting a point is a wash, and a policy that
-    # cannot reliably win the contest declines it.
     capture_payout_ratio: float = 1.0
 
-    # A single signed match result, undiscounted, carried at a token weight so its
-    # value head trains without the policy depending on it. Measurement first:
-    # whether one stream can replace the split pair is a question about whether
-    # the head is learnable, and that can be answered without risking a run on it.
-    outcome_weight: float = 0.0
-
-    # --- Behaviour shaping (local, self-only; 0.0 = disabled) ---
-    shoot_quality_weight: float = 0.0  # shot quality when firing
-    shooting_penalty_weight: float = 0.0  # negative reward each step this ship fires
-    speed_weight: float = 0.0  # penalty when speed < speed_penalty_min
-    speed_penalty_min: float = 40.0  # speed threshold below which penalty is applied
+    # OpenAI Five's "team spirit", per level, in ``REWARD_COMPONENT_NAMES``
+    # order: a ship's advantage is ``adv_i + s * mean_{j != i, same side}
+    # adv_j``. Zero is pure per-ship credit.
+    team_spirit: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0)
 
     def __post_init__(self) -> None:
-        if not 0.0 <= self.kill_shot_fraction <= 1.0:
-            raise ValueError(f"kill_shot_fraction must be in [0, 1], got {self.kill_shot_fraction}")
         for name in ("kill_payout_ratio", "damage_payout_ratio", "capture_payout_ratio"):
             ratio = getattr(self, name)
             if not np.isfinite(ratio) or ratio < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative, got {ratio}")
         for name in (
             "win_weight",
+            "zone_capture_weight",
+            "zone_progress_weight",
             "death_weight",
             "damage_weight",
-            "front_advance_weight",
-            "capture_progress_weight",
-            "outcome_weight",
         ):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0.0:
                 raise ValueError(f"{name} must be finite and non-negative, got {value}")
+        if len(self.team_spirit) != 5 or not all(0.0 <= s <= 1.0 for s in self.team_spirit):
+            raise ValueError("team_spirit needs one value in [0, 1] per reward level")

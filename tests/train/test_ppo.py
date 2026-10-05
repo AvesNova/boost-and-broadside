@@ -33,34 +33,16 @@ from boost_and_broadside.train.rl.physical_belief import (
     PHYSICAL_MEAN_NAMES,
     physical_means_from_state,
 )
-from boost_and_broadside.train.rl.ppo import _LOCAL_COMPONENTS, _TIER, PPOTrainer, _huber
+from boost_and_broadside.train.rl.ppo import _TIER, PPOTrainer, _huber
 
 
 def _make_rewards(**overrides) -> RewardConfig:
     defaults = dict(
         win_weight=1.0,
+        zone_capture_weight=2.0,
+        zone_progress_weight=2.0,
         death_weight=0.5,
         damage_weight=0.1,
-        kill_shot_fraction=0.5,
-        facing_weight=0.01,
-        closing_speed_weight=0.01,
-        shoot_quality_weight=0.01,
-        proximity_radius=300.0,
-        shoot_quality_radius=200.0,
-        enemy_neg_lambda_components=frozenset(
-            {
-                "enemy_combat_damage",
-                "enemy_combat_death",
-                "enemy_win",
-            }
-        ),
-        ally_zero_components=frozenset(
-            {
-                "enemy_combat_damage",
-                "enemy_combat_death",
-                "enemy_win",
-            }
-        ),
     )
     defaults.update(overrides)
     return RewardConfig(**defaults)
@@ -77,7 +59,6 @@ def _make_schedule(**overrides) -> TrainingSchedule:
         outcome_scale=constant(1.0),
         kill_death_scale=constant(1.0),
         damage_scale=constant(1.0),
-        shaping_scale=constant(1.0),
         league_fraction=constant(0.0),
         checkpoint_interval=stepped((0, 0)),
         num_epochs=constant(1),
@@ -1362,14 +1343,11 @@ class TestSchedulePrimitives:
             join((100, constant(1.0)), (0, constant(2.0)))
 
     def test_tier_scales_applied_by_trainer(self, tmp_path):
-        """After training, effective weight = tier_scale * individual weight for EVERY
-        component (regression: setattr on a per-class attribute name silently missed the
-        18 components whose weight lived in a `_weight`-backed property)."""
+        """After training, effective weight = tier_scale * level weight for every level."""
         group_scales = {
             "outcome_scale": 0.25,
             "kill_death_scale": 2.0,
             "damage_scale": 0.5,
-            "shaping_scale": 1.5,
         }
         trainer = PPOTrainer(
             train_config=TrainConfig(
@@ -1384,7 +1362,6 @@ class TestSchedulePrimitives:
                     outcome_scale=constant(group_scales["outcome_scale"]),
                     kill_death_scale=constant(group_scales["kill_death_scale"]),
                     damage_scale=constant(group_scales["damage_scale"]),
-                    shaping_scale=constant(group_scales["shaping_scale"]),
                 ),
                 rewards=_make_rewards(),
                 num_steps=16,
@@ -1430,42 +1407,6 @@ class TestSchedulePrimitives:
         assert torch.equal(trainer.wrapper.component_weights.cpu(), expected_t)
 
 
-class TestWinComponentLambdaMatrix:
-    """Regression for the win-component lambda design (audit §1.2): ally_win/enemy_win
-    must use the team-based zero-sum lambda path, not the diagonal (self-only) path."""
-
-    def test_win_component_lambda_rows_are_zero_sum(self, tmp_path):
-        """In a 2v2 layout, ship 0 aggregates ally_win from its own team (+1) and
-        enemy_win from the enemy team (-1), so win/draw/loss are distinguishable."""
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        names = trainer._active_names
-        k_ally, k_enemy = names.index("ally_win"), names.index("enemy_win")
-
-        # Build the per-pair lambda matrix the same way _precompute_lambda_aggregates does.
-        teams = torch.tensor([0, 0, 1, 1])
-        same_team = teams.unsqueeze(1) == teams.unsqueeze(0)  # (N, N)
-        ally_lam = torch.where(trainer.ally_zero_k, 0.0, 1.0)  # (K,)
-        enemy_lam = torch.where(trainer.enemy_neg_k, -1.0, 0.0)  # (K,)
-        global_lambda = (
-            same_team.float().unsqueeze(-1) * ally_lam
-            + (~same_team).float().unsqueeze(-1) * enemy_lam
-        )  # (N, N, K)
-        lam = torch.where(trainer.local_k, torch.eye(4).unsqueeze(-1), global_lambda)
-
-        assert lam[0, :, k_ally].tolist() == [1.0, 1.0, 0.0, 0.0]
-        assert lam[0, :, k_enemy].tolist() == [0.0, 0.0, -1.0, -1.0]
-
-    def test_production_config_win_lambda_sets(self):
-        """config/defaults.py must agree with the field profile and test configs on
-        which win components are zero-sum (enemy_win) vs ally-shared (ally_win)."""
-        from boost_and_broadside.config.defaults import REWARDS
-
-        assert "enemy_win" in REWARDS.enemy_neg_lambda_components
-        assert "enemy_win" in REWARDS.ally_zero_components
-        assert "ally_win" not in REWARDS.enemy_neg_lambda_components
-        assert "ally_win" not in REWARDS.ally_zero_components
-
-
 class TestValueHuberLoss:
     """The critic loss is squared error in the bulk and linear in the tails.
 
@@ -1503,182 +1444,47 @@ class TestValueHuberLoss:
         assert _huber(torch.tensor(1.5), 1.0).item() == pytest.approx(2.0)  # already linear
 
 
-class TestLambdaMatrixWeighting:
-    """Regression: ``comp_weights`` must reach the lambda matrix linearly.
-
-    The row normalization used to divide by the *weighted* row sum, which cancels
-    the weight it just applied: local components saturated at ``min(w, 1)`` and
-    global ones lost their weight entirely once ``w * n_alive`` passed the clamp.
-    ``ally_win_weight=1.5`` therefore trained identically to ``0.25``.
-    """
-
-    @staticmethod
-    def _legacy_lambda(trainer, team_id, alive, comp_weights):
-        """The pre-fix implementation, kept to pin the w=1 equivalence."""
-        N = alive.shape[-1]
-        ally_lam = torch.where(trainer.ally_zero_k, 0.0, 1.0)
-        enemy_lam = torch.where(trainer.enemy_neg_k, -1.0, 0.0)
-        identity = torch.eye(N, dtype=torch.float32, device=trainer.device)
-        local_lambda = identity[None, None, :, :, None]
-        same_team = team_id.unsqueeze(3) == team_id.unsqueeze(2)
-        alive_j = alive.float().unsqueeze(2).unsqueeze(-1)
-        global_lambda = (
-            same_team.float().unsqueeze(-1) * ally_lam
-            + (~same_team).float().unsqueeze(-1) * enemy_lam
-        )
-        lambda_ij = (
-            torch.where(trainer.local_k, local_lambda, global_lambda) * comp_weights * alive_j
-        )
-        return lambda_ij / lambda_ij.abs().sum(dim=3, keepdim=True).clamp(min=1.0)
+class TestTeamMixing:
+    """Team spirit mixes a ship's advantage with its living teammates' mean."""
 
     @staticmethod
     def _inputs(trainer):
-        team_id = torch.tensor([[[0, 0, 1, 1]]], device=trainer.device)
-        alive = torch.ones(1, 1, 4, dtype=torch.bool, device=trainer.device)
+        team_id = torch.tensor([[[0, 0, 0, 1]]], device=trainer.device)
+        alive = torch.tensor([[[True, True, False, True]]], device=trainer.device)
         return team_id, alive
 
-    def test_matches_legacy_at_unit_weight(self, tmp_path):
-        """At w=1 the fix is a no-op: the run being replaced is the w=1 case."""
+    def test_zero_spirit_is_pure_per_ship_credit(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         team_id, alive = self._inputs(trainer)
-        ones = torch.ones(len(trainer._active_names), device=trainer.device)
+        mixing = trainer._team_mixing(team_id, alive)  # (1, 1, 4, 4, K)
+        identity = torch.eye(4).unsqueeze(-1).expand_as(mixing[0, 0])
+        assert torch.equal(mixing[0, 0], identity)
 
-        assert torch.equal(
-            trainer._lambda_matrix(team_id, alive, ones),
-            self._legacy_lambda(trainer, team_id, alive, ones),
-        )
-
-    def test_local_weight_is_linear_above_one(self, tmp_path):
-        """A local component's row is exactly its weight, at any magnitude."""
+    def test_spirit_adds_the_mean_of_living_teammates(self, tmp_path):
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._team_spirit_k = torch.full_like(trainer._team_spirit_k, 0.5)
         team_id, alive = self._inputs(trainer)
-        k = trainer._active_names.index("combat_death")
-
-        for weight in (0.5, 1.0, 2.0, 7.5):
-            w = torch.ones(len(trainer._active_names), device=trainer.device)
-            w[k] = weight
-            lam = trainer._lambda_matrix(team_id, alive, w)
-            assert lam[0, 0, 0, 0, k] == pytest.approx(weight)
-            # Self-only: no teammate or enemy contributes.
-            assert lam[0, 0, 0, 1:, k].abs().sum() == pytest.approx(0.0)
-
-    def test_global_weight_is_linear(self, tmp_path):
-        """A win component's row sums to its weight, spread over alive allies."""
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        team_id, alive = self._inputs(trainer)
-        k = trainer._active_names.index("ally_win")
-
-        for weight in (0.5, 1.0, 1.5, 3.0):
-            w = torch.ones(len(trainer._active_names), device=trainer.device)
-            w[k] = weight
-            lam = trainer._lambda_matrix(team_id, alive, w)
-            # Ships 0 and 1 are ship 0's team; each contributes weight/2.
-            assert lam[0, 0, 0, :, k].sum() == pytest.approx(weight)
-            assert lam[0, 0, 0, 0, k] == pytest.approx(weight / 2)
-
-    def test_scaling_every_weight_scales_the_matrix(self, tmp_path):
-        """The whole matrix is homogeneous in the weight vector.
-
-        The aggregate advantage is divided by its own RMS, so a uniform rescale
-        of every weight must be a no-op for training — which holds only if the
-        matrix is linear in the weights.
-        """
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        team_id, alive = self._inputs(trainer)
-        base = torch.linspace(0.1, 1.0, len(trainer._active_names), device=trainer.device)
-
-        lam = trainer._lambda_matrix(team_id, alive, base)
-        scaled = trainer._lambda_matrix(team_id, alive, base * 4.0)
-        assert torch.allclose(scaled, lam * 4.0)
-
-    def test_dead_contributors_are_excluded_from_the_mean(self, tmp_path):
-        """A dead ally neither contributes nor dilutes the row it is absent from."""
-        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        team_id, _ = self._inputs(trainer)
-        alive = torch.tensor([[[True, False, True, True]]], device=trainer.device)
-        k = trainer._active_names.index("ally_win")
-        w = torch.ones(len(trainer._active_names), device=trainer.device)
-        w[k] = 2.0
-
-        lam = trainer._lambda_matrix(team_id, alive, w)
-        assert lam[0, 0, 0, 1, k] == pytest.approx(0.0)
-        # Ship 0 is its team's only survivor, so it carries the full weight.
-        assert lam[0, 0, 0, 0, k] == pytest.approx(2.0)
+        row = trainer._team_mixing(team_id, alive)[0, 0, 0, :, 0]
+        # Ship 2 is dead and ship 3 is an enemy, so ship 1 is the whole mean.
+        assert row.tolist() == [1.0, 0.5, 0.0, 0.0]
 
 
 class TestComponentClassification:
-    """Both registries must stay complete and must not be confused for each other.
-
-    Locality (which lambda a component uses) and tier (which schedule scales it)
-    were one map when the scale groups happened to be drawn along the locality
-    line. They are independent now, so each needs its own check.
-    """
-
-    def test_every_reward_component_has_a_tier(self):
-        """A component missing from _TIER would KeyError on the first update."""
+    def test_every_reward_level_has_a_tier(self):
+        """A level missing from _TIER would KeyError on the first update."""
         from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
 
         assert set(REWARD_COMPONENT_NAMES) == set(_TIER)
 
-    def test_local_components_are_registered_components(self):
-        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
-
-        assert _LOCAL_COMPONENTS <= set(REWARD_COMPONENT_NAMES)
-
-    def test_shared_components_are_exactly_the_team_signals(self):
-        """Everything that is not self-only is a source-split pair or a win
-        component — those are the only signals with a team perspective to
-        propagate.
-
-        The strategic tier is deliberately absent. A meter moves because ships
-        stood on the point and against you because ships did not, so those two
-        components attribute their own credit per ship; a team-shared lambda
-        would average exactly that back out."""
-        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
-
-        shared = set(REWARD_COMPONENT_NAMES) - _LOCAL_COMPONENTS
-        assert shared == {
-            "ally_combat_damage",
-            "enemy_combat_damage",
-            "ally_combat_death",
-            "enemy_combat_death",
-            "ally_win",
-            "enemy_win",
-            "outcome",
-        }
-
-    def test_tiers_partition_the_registry(self):
-        """Four tiers, and every component in exactly one."""
-        from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
-
-        assert set(_TIER.values()) == {
-            "outcome_scale",
-            "kill_death_scale",
-            "damage_scale",
-            "shaping_scale",
-        }
-        assert len(_TIER) == len(REWARD_COMPONENT_NAMES)
-
-    def test_a_tier_scale_of_zero_leaves_its_components_registered(self):
-        """The shaping taper must not evict what it silences.
-
-        `_active_names` freezes at init from the *initial* weight, so a tier
-        scaled to zero mid-run keeps its components active and measurable. That
-        is why the taper has a floor rather than reaching zero — but the floor is
-        a choice about instrumentation, not a correctness requirement."""
-        from boost_and_broadside.config.defaults import REWARDS
-        from boost_and_broadside.env.rewards import build_reward_components
-
-        components = build_reward_components(REWARDS, ShipConfig())
-        shaping = [c for c in components if _TIER[c.name] == "shaping_scale"]
-        assert shaping, "no shaping components to taper"
+    def test_the_tiers_are_the_three_schedule_scales(self):
+        assert set(_TIER.values()) == {"outcome_scale", "kill_death_scale", "damage_scale"}
 
 
 class TestRLSmokeTest:
     """Full RL smoke test using the real config/defaults.py config.
 
     Exercises the complete training stack with the production reward config
-    (including kill_shot and kill_assist) for a small number of updates.
+    (all five levels) for a small number of updates.
     Uses a scripted opponent to ensure combat happens and kill rewards fire.
 
     This used to call ``train()`` and assert nothing, which made it the most
@@ -1705,7 +1511,6 @@ class TestRLSmokeTest:
             outcome_scale=constant(1.0),
             kill_death_scale=constant(1.0),
             damage_scale=constant(1.0),
-            shaping_scale=constant(1.0),
             league_fraction=constant(0.5),
             checkpoint_interval=constant(9999),
             num_epochs=constant(1),
@@ -1773,7 +1578,7 @@ class TestRLSmokeTest:
             key.rpartition("/")[2] for key in captured if key.startswith("scaler/return_mean/")
         }
         assert weighted <= scaled, f"never scaled: {sorted(weighted - scaled)}"
-        assert "kill_shot" in weighted and "kill_assist" in weighted
+        assert weighted == {"outcome", "zone_capture", "zone_progress", "kill_death", "damage"}
 
         finite = {
             key: value
@@ -2144,16 +1949,9 @@ def test_offensive_schedule_updates_primary_and_auxiliary_rewards(tmp_path):
         trainer._apply_schedule_state(step)
         for wrapper in (trainer.wrapper, *trainer.aux_wrappers):
             components = {component.name: component for component in wrapper.reward_components}
-            assert components["capture_progress"].payout_ratio == pytest.approx(ratio)
-            assert components["front_advance"].payout_ratio == pytest.approx(ratio)
-            assert components["damage_dealt_enemy"].weight == pytest.approx(
-                ratio * components["combat_damage_taken"].weight
-            )
-            assert components["kill_shot"].weight + components[
-                "kill_assist"
-            ].weight == pytest.approx(ratio * components["combat_death"].weight)
-            if step >= 300_000_000:
-                assert components["facing"].weight == 0
+            for name in ("zone_capture", "zone_progress", "kill_death", "damage"):
+                assert components[name].payout_ratio == pytest.approx(ratio)
+            assert components["outcome"].payout_ratio == 1.0
 
 
 class TestSeatSymmetryOfPendingActions:

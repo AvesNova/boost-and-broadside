@@ -893,14 +893,17 @@ def _apply_combat_damage(
         per_shooter = per_shooter * ~protected[:, None, :]
         total_damage = per_shooter.sum(1)
     state.damage_matrix.copy_(per_shooter)
-    state.cumulative_damage_matrix += per_shooter
 
     # Record only applied health loss: simultaneous hits and overkill cannot
     # inflate source-specific damage rewards.
     alive_before = state.ship_alive
     health_before = state.ship_health
     health_after = (health_before - total_damage).clamp(min=0.0)
-    state.ship_combat_damage.copy_(health_before - health_after)
+    applied = health_before - health_after  # (B, N)
+    state.ship_combat_damage.copy_(applied)
+    # Simultaneous hits share what was actually applied in proportion to impact.
+    applied_fraction = applied / total_damage.clamp(min=EPS)  # (B, N_target)
+    state.cumulative_damage_matrix += per_shooter * applied_fraction.unsqueeze(1)
     if frontline is None:
         died = health_after <= 0.0
     else:
