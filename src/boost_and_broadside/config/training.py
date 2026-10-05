@@ -249,7 +249,7 @@ class TrainConfig:
     # predicts best; 0.5 makes the per-token gradient the standardized residual
     # and equalizes the channels and visibility classes. Sigma still trains.
     next_state_beta: float = 0.0
-    # Cross-entropy weight for the dedicated 42-way enemy-command predictor.
+    # Cross-entropy weight for the dedicated 30-way enemy-command predictor.
     enemy_action_coef: float = 0.1
     # Cross-entropy weight for the categorical win/loss/tie head. A classifier
     # run beside the scalar ``outcome`` component, not in place of it: it never

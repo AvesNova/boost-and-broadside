@@ -25,6 +25,7 @@ from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.config.defaults import REWARDS
+from boost_and_broadside.constants import NUM_TURN_ACTIONS
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.runtime.actions import PendingActionState
@@ -213,7 +214,7 @@ def _fixed_action_script(steps: int) -> list[torch.Tensor]:
         torch.stack(
             [
                 torch.randint(0, 3, (NUM_ENVS, NUM_SHIPS), generator=generator),
-                torch.randint(0, 7, (NUM_ENVS, NUM_SHIPS), generator=generator),
+                torch.randint(0, NUM_TURN_ACTIONS, (NUM_ENVS, NUM_SHIPS), generator=generator),
                 torch.randint(0, 2, (NUM_ENVS, NUM_SHIPS), generator=generator),
             ],
             dim=-1,

@@ -1920,7 +1920,7 @@ class TestMarginalEntropyDiagnostic:
         torch.manual_seed(11)
         # Peaked enough that the softmax concentrates, which is when the bf16
         # marginals drift furthest from one.
-        logits = (torch.randn(4, 3, 42) * 8.0).to(torch.bfloat16)
+        logits = (torch.randn(4, 3, 30) * 8.0).to(torch.bfloat16)
         joint = torch.nn.functional.softmax(logits.float(), dim=-1).reshape(
             *logits.shape[:-1], NUM_POWER_ACTIONS, NUM_TURN_ACTIONS, NUM_SHOOT_ACTIONS
         )

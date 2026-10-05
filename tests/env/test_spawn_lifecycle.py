@@ -265,7 +265,7 @@ def test_a_spawned_ship_enters_the_world_on_a_null_pending_action() -> None:
     runner = MatchRunner(
         env,
         [
-            ResolvedAgent("scripted", _ConstantController((2, 5, 1))),
+            ResolvedAgent("scripted", _ConstantController((2, 3, 1))),
             ResolvedAgent("scripted", _ConstantController((1, 2, 1))),
         ],
         team0_index=torch.zeros(2, dtype=torch.long),

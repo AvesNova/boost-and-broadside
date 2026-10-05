@@ -97,7 +97,7 @@ teams for the one decision it spawns on, at match start and on every respawn, so
 ever in the never-observed state and no remembered estimate survives a death it did not see.
 Hidden local field gradients read zero rather than being inferred from a believed position.
 
-Ordinary enemy pending-action slots carry the previous decision's dedicated 42-way enemy-action
+Ordinary enemy pending-action slots carry the previous decision's dedicated 30-way enemy-action
 prediction, whether or not the ship is in sight, so physical visibility is not an
 action-information side channel. Allied commands are exact one-hot vectors; every initial spawn
 and respawn instead exposes the exact null-command one-hot vector to both teams for that reveal
@@ -147,9 +147,30 @@ which medium it occupied but not which way that medium was changing.
 
 ## Flight, proper speed, and power
 
-Actions factor into power (coast/base thrust, boost, reverse), turn (straight, normal or
-sharp sideslip, and air brakes), and shoot. Sideslip induces lift and drag; below the
-configured minimum proper speed the ship stalls and loses turning authority.
+Actions factor into power (coast/base thrust, boost, reverse), turn (straight, or a
+normal or sharp pull to either side), and shoot.
+
+The nose is a degree of freedom of its own. Each ship carries a slip angle, the nose's
+angle to the flight path, and its rate; the attitude is the velocity direction rotated by
+the slip. A turn action commands a lift coefficient -- sharp asks for the maximum, normal
+for a fixed lower level -- capped so that lateral acceleration `C_L u^2` stays within
+`max_lateral_accel` (the normal level within half of it). The commanded slip is the exact
+inverse of the lift curve
+
+```text
+C_L(x) = C_L_max * (1 - (1 - x)^2),   C_D(x) = C_D0 + b x^2 + c x^4,   x = |slip| / stall_angle
+```
+
+so below corner speed `sqrt(max_lateral_accel / C_L_max)` a turn holds a fixed radius,
+and above it the slip shrinks with `1/u^2` and the radius grows with `u^2`. The slip tracks
+its command as a critically damped second-order system (`nose_frequency`, about 0.16 s to
+90%) under a slip-rate limit, stepped exactly over the tick so it never rings. Below
+`slip_fade_speed` the command fades with speed; below the minimum proper speed the ship
+stalls, holds its attitude, and its slip is re-derived from it.
+
+The flight constants are solved from handling targets (turn radius, sustained turn rate,
+corner speed, top speed, onset time) by `config/handling.py`; `config/defaults.py` states
+the live spec as `STARTING_HANDLING`.
 
 The ambient medium has refractive index `n=1`. Inside fields, a ship has physical
 effective mass
@@ -166,7 +187,9 @@ a = F_ship/m + 0.5 |v|^2 grad(log m) - (v·grad(log m))v.
 ```
 
 The simulator uses proper or medium-relative speed `u=n*v_world` for configured spawn
-speed, stall, and the existing lift/drag interpretation. Thus a ship initialized inside
+speed, stall, the g-limit, and the lift/drag interpretation. The nose is a rotor of inertia
+`n^2` with torques on proper quantities, so in world time its frequency is `omega/n` and
+every nose time scales with `n`, like the path times. Thus a ship initialized inside
 index `n` starts at `default_speed/n`. Low index increases world speed and control rate;
 high index decreases them, while the log-symmetric tiers remain approximately reciprocal.
 

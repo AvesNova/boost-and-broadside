@@ -287,10 +287,19 @@ class PhysicalNextState:
         # collision or a refractive gradient can briefly exceed it, so this is
         # four times that speed on each axis.
         speed_guard = 4.0 * math.sqrt(
-            ship_config.boost_thrust / max(ship_config.no_turn_drag_coeff, 1e-12)
+            ship_config.boost_thrust / max(ship_config.zero_slip_drag_coeff, 1e-12)
         )
-        # Exact: a turn command sets the angular velocity to angle/dt.
-        turn_rate = ship_config.sharp_turn_angle / ship_config.dt
+        # A guard, twice the largest attitude rate the flight model produces:
+        # the g-limited path rate plus the slip-rate limit, at the lowest index.
+        lowest_index = ship_config.field_index_step**-2
+        turn_rate = (
+            2.0
+            * (
+                math.sqrt(ship_config.max_lateral_accel * ship_config.max_lift_coeff)
+                + ship_config.max_slip_rate
+            )
+            / lowest_index
+        )
         # Exact: the configured index ladder spans step**-2 .. step**2.
         index_span = 2.0 * math.log(ship_config.field_index_step)
         lower = [0.0] * PHYSICAL_MEAN_DIM

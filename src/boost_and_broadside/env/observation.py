@@ -532,7 +532,7 @@ class ShipBeliefSource:
 
     ``local_log_index`` is the *natural* log of the refractive index, which the
     builder normalizes exactly as it normalizes truth. ``uncertainty`` is in
-    log/unconstrained form, ``action`` is the 42-way pending-command
+    log/unconstrained form, ``action`` is the 30-way pending-command
     distribution predicted for hidden opponents, and ``valid`` marks the slots
     whose values mean anything at all -- an invalid slot is zero everywhere and
     carries the maximal spread the source's own store assigns it.
@@ -548,7 +548,7 @@ class ShipBeliefSource:
     cooldown: torch.Tensor  # (B, N, 1) seconds
     local_log_index: torch.Tensor  # (B, N, 1) natural log
     uncertainty: torch.Tensor  # (B, N, U) log/unconstrained
-    action: torch.Tensor  # (B, N, 42) predicted pending-command distribution
+    action: torch.Tensor  # (B, N, 30) predicted pending-command distribution
     time_since_observation: torch.Tensor  # (B, N, 1) seconds
     valid: torch.Tensor  # (B, N) bool — ever observed by this observer
     alive: torch.Tensor  # (B, N) bool — believed alive
@@ -676,7 +676,7 @@ def write_pending_action_view(
     spawn_revealed: torch.Tensor,
     belief_action: torch.Tensor | None = None,
 ) -> None:
-    """Write legal 42-way pending-action probabilities for one team view.
+    """Write legal 30-way pending-action probabilities for one team view.
 
     Allied commands and spawn/reveal null commands are exact one-hots. Ordinary
     opponent slots take ``belief_action`` -- the preceding decision's dedicated

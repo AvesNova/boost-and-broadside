@@ -83,7 +83,7 @@ class YemongEnvWrapper:
         "cooldown"        (B, N+M, 1)  — raw seconds; fields = 0
         "team_id"         (B, N+M)     — int32; 0/1 for ships, 2 for fields
         "alive"           (B, N+M)     — bool; fields are always True
-        "previous_action" (B, N+M, 42) — joint probabilities; enemies are policy beliefs
+        "previous_action" (B, N+M, 30) — joint probabilities; enemies are policy beliefs
         "radius"          (B, N+M, 1)  — raw px; ship collision or nominal field radius
         "local_index_gradient" (B, N+M, 2) — normalized grad(n); zero for fields
         field material     (B, N+M, 1)  — numeric width/index-ratio/damage channels

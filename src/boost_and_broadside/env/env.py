@@ -119,6 +119,8 @@ class TensorEnv:
             ship_vel=torch.zeros((B, N), dtype=torch.complex64, device=dev),
             ship_attitude=torch.zeros((B, N), dtype=torch.complex64, device=dev),
             ship_ang_vel=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_slip=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_slip_rate=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_shield_delay=torch.zeros((B, N), device=dev),
             ship_shield_recharge=torch.zeros((B, N), device=dev),
             ship_health=torch.zeros((B, N), dtype=torch.float32, device=dev),
@@ -298,6 +300,8 @@ class TensorEnv:
         s.ship_power = torch.where(m, power, s.ship_power)
         s.ship_cooldown = torch.where(m, cooldown, s.ship_cooldown)
         s.ship_ang_vel = torch.where(m, 0.0, s.ship_ang_vel)
+        s.ship_slip = torch.where(m, 0.0, s.ship_slip)
+        s.ship_slip_rate = torch.where(m, 0.0, s.ship_slip_rate)
 
         if self.env_config.single_team:
             # All ships share one randomly chosen team id (0 or 1) per env.

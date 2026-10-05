@@ -141,16 +141,34 @@ class ShipConfig:
     # Passive power regen added every step regardless of action (like a slow engine recharge).
     passive_power_gain: float = 10.0
 
-    # Drag and lift coefficients
-    no_turn_drag_coeff: float = 8e-4
-    normal_turn_drag_coeff: float = 1.2e-3
-    normal_turn_lift_coeff: float = 15e-3
-    sharp_turn_drag_coeff: float = 5.0e-3
-    sharp_turn_lift_coeff: float = 27e-3
+    # Flight: lift and drag as functions of the slip angle, the nose's angle to
+    # the flight path. With x = |slip| / stall_angle,
+    #
+    #   C_L = max_lift_coeff * (1 - (1 - x)^2)      (clamped at zero past 2x)
+    #   C_D = zero_slip_drag_coeff + b x^2 + c x^4
+    #
+    # where b and c are fixed by the drag at the normal slip (the slip whose
+    # lift is normal_lift_coeff) and at the stall slip. A turn action commands
+    # a lift coefficient: sharp asks for max_lift_coeff, normal for
+    # normal_lift_coeff, each capped so that lateral acceleration C_L u^2 stays
+    # within max_lateral_accel (normal at half of it). Corner speed is
+    # sqrt(max_lateral_accel / max_lift_coeff). Speeds are proper px/s.
+    zero_slip_drag_coeff: float = 8e-4
+    normal_slip_drag_coeff: float = 1.2e-3
+    stall_drag_coeff: float = 5.0e-3
+    max_lift_coeff: float = 27e-3
+    normal_lift_coeff: float = 15e-3
+    max_lateral_accel: float = 270.0
+    stall_angle: float = float(np.deg2rad(15.0))
 
-    # Maneuverability angles (radians)
-    normal_turn_angle: float = float(np.deg2rad(5.0))
-    sharp_turn_angle: float = float(np.deg2rad(15.0))
+    # Nose response: the slip tracks its command as a critically damped
+    # second-order system of natural frequency nose_frequency (rad/s), under a
+    # slip-rate limit (rad/s). Both are in proper time, so in a field of index
+    # n every nose time scales with n like the path times. Below
+    # slip_fade_speed the commanded slip fades linearly with proper speed.
+    nose_frequency: float = 25.0
+    max_slip_rate: float = float(np.deg2rad(150.0))
+    slip_fade_speed: float = 35.0
 
     # Bullet parameters
     bullet_speed: float = 500.0
@@ -190,6 +208,21 @@ class ShipConfig:
             raise ValueError("field_integration_substeps must be positive")
         if self.field_integrator not in {"two_step", "midpoint"}:
             raise ValueError("field_integrator must be 'two_step' or 'midpoint'")
+        if not 0.0 < self.normal_lift_coeff < self.max_lift_coeff:
+            raise ValueError("lift coefficients must satisfy 0 < normal < max")
+        if not 0.0 < self.stall_angle < 0.5 * np.pi:
+            raise ValueError("stall_angle must lie in (0, pi/2)")
+        if self.max_lateral_accel <= 0.0 or self.nose_frequency <= 0.0:
+            raise ValueError("max_lateral_accel and nose_frequency must be positive")
+        if self.max_slip_rate <= 0.0 or self.slip_fade_speed <= 0.0:
+            raise ValueError("max_slip_rate and slip_fade_speed must be positive")
+        quadratic, quartic = self.slip_drag_terms
+        if not (
+            0.0 <= self.zero_slip_drag_coeff <= self.normal_slip_drag_coeff <= self.stall_drag_coeff
+            and quadratic >= 0.0
+            and quadratic + 2.0 * quartic >= 0.0
+        ):
+            raise ValueError("drag must rise with slip from zero to the stall angle")
         if not np.isfinite(self.bullet_drag_coeff) or self.bullet_drag_coeff < 0.0:
             raise ValueError("bullet_drag_coeff must be non-negative")
         if self.bullet_field_integrator not in {"two_step", "midpoint"}:
@@ -209,6 +242,25 @@ class ShipConfig:
                 "field_radius_max + field_transition_width_max/2 must be below "
                 f"the toroidal limit {safe_limit:g}, got {outer_extent:g}"
             )
+
+    @property
+    def normal_slip_fraction(self) -> float:
+        """Slip of the normal lift level as a fraction of the stall angle."""
+        return 1.0 - float(np.sqrt(1.0 - self.normal_lift_coeff / self.max_lift_coeff))
+
+    @property
+    def slip_drag_terms(self) -> tuple[float, float]:
+        """``(b, c)`` of ``C_D = C_D0 + b x^2 + c x^4`` from the two drag points."""
+        x2 = self.normal_slip_fraction**2
+        normal_rise = self.normal_slip_drag_coeff - self.zero_slip_drag_coeff
+        stall_rise = self.stall_drag_coeff - self.zero_slip_drag_coeff
+        quartic = (normal_rise - x2 * stall_rise) / (x2 * x2 - x2)
+        return stall_rise - quartic, quartic
+
+    @property
+    def corner_speed(self) -> float:
+        """Proper speed above which the g-limit caps the sharp turn."""
+        return float(np.sqrt(self.max_lateral_accel / self.max_lift_coeff))
 
 
 # Zone tokens a Frontline environment presents. Defined here rather than in

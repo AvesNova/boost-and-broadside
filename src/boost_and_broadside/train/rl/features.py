@@ -18,6 +18,7 @@ import torch
 import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.constants import NUM_JOINT_ACTIONS
 from boost_and_broadside.env.observation import (
     NUM_GAME_MODES,
     BulletObsKey,
@@ -568,7 +569,7 @@ class FeatureCoordinator:
                 ObsKey.BELIEF_VALID: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((1, 1, 1)),
                 ObsKey.RADIUS: torch.zeros((1, 1, 1)),
-                ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, 42), dtype=torch.float32),
+                ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, NUM_JOINT_ACTIONS), dtype=torch.float32),
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
                 ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros((1, 1, 2)),
                 ObsKey.FIELD_TRANSITION_WIDTH: torch.zeros((1, 1, 1)),

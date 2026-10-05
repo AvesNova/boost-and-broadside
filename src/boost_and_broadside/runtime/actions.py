@@ -47,14 +47,14 @@ def encode_joint_action_unchecked(action: torch.Tensor) -> torch.Tensor:
 
 
 def decode_joint_action(action_id: torch.Tensor) -> torch.Tensor:
-    """Decode joint IDs in ``[0, 42)`` into physical action triples."""
+    """Decode joint IDs in ``[0, 30)`` into physical action triples."""
     if not bool(((action_id >= 0) & (action_id < NUM_JOINT_ACTIONS)).all()):
         raise ValueError(f"joint action IDs must be in [0, {NUM_JOINT_ACTIONS})")
     return decode_joint_action_unchecked(action_id)
 
 
 def decode_joint_action_unchecked(action_id: torch.Tensor) -> torch.Tensor:
-    """Hot-path decoder for IDs sampled from the 42-way policy distribution."""
+    """Hot-path decoder for IDs sampled from the 30-way policy distribution."""
     action_id = action_id.long()
     power = action_id // (NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS)
     turn = (action_id // NUM_SHOOT_ACTIONS) % NUM_TURN_ACTIONS

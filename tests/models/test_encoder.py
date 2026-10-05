@@ -58,7 +58,7 @@ def _make_obs(B: int, N: int) -> YemongObservation:
             ObsKey.COOLDOWN: torch.rand(B, N, 1),
             ObsKey.TEAM_ID: torch.randint(0, 2, (B, N)),
             ObsKey.ALIVE: torch.ones(B, N, dtype=torch.bool),
-            ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 42),
+            ObsKey.PREVIOUS_ACTION: torch.zeros(B, N, 30),
             ObsKey.RADIUS: torch.rand(B, N, 1),
             ObsKey.LOCAL_LOG_INDEX: torch.zeros(B, N, 1),
             ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, N, 2),

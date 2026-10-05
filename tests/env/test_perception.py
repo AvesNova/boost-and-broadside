@@ -197,7 +197,7 @@ def test_hidden_enemy_channels_and_projectiles_are_zeroed_before_policy() -> Non
     state.ship_power[0, 2:] = torch.tensor([29.0, 81.0])
     state.ship_cooldown[0, 2:] = torch.tensor([0.07, 0.03])
     state.ship_alive[0, 3] = False
-    state.prev_action[0, 2:] = torch.tensor([[2, 6, 1], [1, 4, 1]])
+    state.prev_action[0, 2:] = torch.tensor([[2, 3, 1], [1, 4, 1]])
     state.ship_local_index[0, 2:] = torch.tensor([2.0, 0.5])
     state.ship_field_gradient[0, 2:] = torch.tensor([1 + 2j, 3 + 4j])
     state.bullet_active[0, 2, 0] = True
@@ -245,13 +245,13 @@ def test_pending_actions_are_exact_for_allies_and_absent_for_enemies() -> None:
     ship, state = _state()
     state.ship_pos[0] = torch.tensor([100 + 100j, 120 + 100j, 140 + 100j, 160 + 100j])
     state.prev_action[0] = torch.tensor(
-        [[2, 6, 1], [1, 4, 0], [2, 2, 1], [0, 3, 0]], dtype=torch.long
+        [[2, 3, 1], [1, 4, 0], [2, 2, 1], [0, 3, 0]], dtype=torch.long
     )
 
     obs, _ = perceived_observation_from_state(state, ship, _config(vision_range=300.0))
     team1 = obs.for_team(1)
-    expected = torch.nn.functional.one_hot(encode_joint_action(state.prev_action), 42).float()
-    absent = torch.zeros((2, 42))
+    expected = torch.nn.functional.one_hot(encode_joint_action(state.prev_action), 30).float()
+    absent = torch.zeros((2, 30))
 
     assert obs.visible[0, :4].all()
     assert torch.equal(obs.previous_action[0, :2], expected[0, :2])
@@ -296,7 +296,7 @@ def test_frontline_scripted_agent_does_not_target_hidden_enemy_truth() -> None:
     changed.ship_pos[0, 2:] = torch.tensor([8000 + 8000j, 8200 + 8000j])
     changed.ship_vel[0, 2:] = torch.tensor([100 + 0j, -100 + 20j])
     changed.ship_health[0, 2:] = torch.tensor([5.0, 91.0])
-    changed.prev_action[0, 2:] = torch.tensor([[2, 6, 1], [1, 4, 1]])
+    changed.prev_action[0, 2:] = torch.tensor([[2, 3, 1], [1, 4, 1]])
     changed_visibility = team_visibility_from_state(changed, ship, env_config).ship
 
     torch.manual_seed(91)

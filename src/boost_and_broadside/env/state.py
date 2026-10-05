@@ -40,7 +40,12 @@ class TensorState:
     ship_pos: torch.Tensor  # (B, N) complex64  — world position
     ship_vel: torch.Tensor  # (B, N) complex64  — velocity
     ship_attitude: torch.Tensor  # (B, N) complex64  — unit heading vector
-    ship_ang_vel: torch.Tensor  # (B, N) float32    — angular velocity (rad/s)
+    ship_ang_vel: torch.Tensor  # (B, N) float32    — attitude turn rate (rad/s)
+    # Nose angle relative to the flight path and its rate. The attitude is the
+    # velocity direction rotated by the slip, except in a stall, where the
+    # attitude is held and the slip is re-derived from it.
+    ship_slip: torch.Tensor  # (B, N) float32    — radians
+    ship_slip_rate: torch.Tensor  # (B, N) float32    — rad/s
 
     # Ship resource state
     ship_shield_delay: torch.Tensor  # (B, N) seconds until recharge

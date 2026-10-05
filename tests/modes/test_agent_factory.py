@@ -42,7 +42,7 @@ def _make_prev_obs(B: int, N: int) -> YemongObservation:
             ObsKey.LOCAL_INDEX_GRADIENT: torch.zeros(B, T, 2),
             ObsKey.ALIVE: torch.ones(B, T, dtype=torch.bool),
             ObsKey.TEAM_ID: team_id,
-            ObsKey.PREVIOUS_ACTION: torch.zeros(B, T, 42),
+            ObsKey.PREVIOUS_ACTION: torch.zeros(B, T, 30),
         }
     )
 
@@ -51,18 +51,18 @@ class TestMeansToObservation:
     def test_pending_action_is_private_for_the_other_team(self):
         previous = _make_prev_obs(B=1, N=2)
         means = physical_means_from_observation(previous, 1.0, num_ships=2)
-        action = torch.tensor([[[1, 2, 1], [2, 5, 0]]])
+        action = torch.tensor([[[1, 2, 1], [2, 4, 0]]])
 
         team0 = means_to_observation(means, previous, action, 2, 1.0, observer_team=0)
         team1 = means_to_observation(means, previous, action, 2, 1.0, observer_team=1)
 
         pending0 = team0[ObsKey.PREVIOUS_ACTION]
         pending1 = team1[ObsKey.PREVIOUS_ACTION]
-        assert pending0[0, 0].argmax().item() == 19
+        assert pending0[0, 0].argmax().item() == 15
         assert pending0[0, 0].sum().item() == 1.0
-        torch.testing.assert_close(pending0[0, 1], torch.full((42,), 1.0 / 42))
-        torch.testing.assert_close(pending1[0, 0], torch.full((42,), 1.0 / 42))
-        assert pending1[0, 1].argmax().item() == 38
+        torch.testing.assert_close(pending0[0, 1], torch.full((30,), 1.0 / 30))
+        torch.testing.assert_close(pending1[0, 0], torch.full((30,), 1.0 / 30))
+        assert pending1[0, 1].argmax().item() == 28
         assert pending1[0, 1].sum().item() == 1.0
 
     def test_physical_means_round_trip_through_an_observation(self):

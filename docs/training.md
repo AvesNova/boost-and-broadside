@@ -110,7 +110,7 @@ later, which GAE handles through the value function.
 
 Two consequences worth knowing before touching the auxiliary losses:
 
-- The channel is `(B, tokens, 42)`. Allies are exact one-hot commands; ordinary enemy
+- The channel is `(B, tokens, 30)`. Allies are exact one-hot commands; ordinary enemy
   slots carry the dedicated head's stored probability distribution, never authoritative
   enemy action state. Spawn and respawn are exact null-command one-hots for both teams.
 - A prediction made from decision `t` is stored after action selection/commit and appears in
@@ -144,7 +144,7 @@ masked observation and canonicalizes its team labels. The same weights therefore
 candidate actions for both perspectives without deriving one team's sight from the other's.
 
 Each policy instance owns a GPU-resident store of **physical** belief: eleven physical means,
-thirteen log/unconstrained uncertainty terms, the 42-way pending-command distribution, and
+thirteen log/unconstrained uncertainty terms, the 30-way pending-command distribution, and
 how long ago the ship was last seen. Visible ships assimilate authoritative truth and drop
 to a certainty floor; enemies out of contact are advanced by the policy's next-state head and
 carry the spread that head reported. Every ship is revealed to both teams for the decision it
@@ -584,7 +584,7 @@ can omit to produce a policy whose inputs disagree with its weights.
 Three compatibility rules follow from that:
 
 - **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
-  perception, visibility masks, 42-way pending-action beliefs, spawn/respawn null-action
+  perception, visibility masks, 30-way pending-action beliefs, spawn/respawn null-action
   reveals, field-core LOS, recursively predicted hidden-enemy physical state selected into the
   view before encoding, thirteen belief-uncertainty channels, belief validity, and observation
   age are part of the learned input contract. Radius is shared across object types and

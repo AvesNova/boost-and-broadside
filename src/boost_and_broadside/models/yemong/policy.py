@@ -12,8 +12,8 @@ Architecture (per timestep):
                n_bullet_cross_per_block of which cross-attend to bullets,
                then n_temporal_per_block temporal sublayers]
          → slice [:N]                    → (B, N, D)    [ship tokens only]
-         → ActionHead                   → (B, N, 42)   [joint command logits]
-         → EnemyActionHead              → (B, N, 42)   [next enemy-command logits]
+         → ActionHead                   → (B, N, 30)   [joint command logits]
+         → EnemyActionHead              → (B, N, 30)   [next enemy-command logits]
          → NextStateHead                → (B, N, P)    [aux: pred next state deltas; P from coord.]
          → ValueHead                    → (B, N, K)    [MSE critic: per-ship components]
          → slice [N] (global token)      → (B, D)
@@ -614,7 +614,7 @@ class YemongPolicy(nn.Module):
             value:      (B, N, K) float — per-component value in normalized space.
                         Caller must denormalize via ReturnScaler before using for GAE.
             pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
-            enemy_action_logits: optional (B, N, 42) next-command prediction.
+            enemy_action_logits: optional (B, N, 30) next-command prediction.
             new_hidden: (n_layers, B*(N+G), CONV_KERNEL*D) updated packed state.
         """
         # Hidden-but-remembered enemies remain attention/recurrent tokens. Their
@@ -678,10 +678,10 @@ class YemongPolicy(nn.Module):
         # game -- the team-level value head and the density head.
         x_ships = x[:, :N, :]  # (B, N, D)
 
-        logits = self.action_head(x_ships)  # (B, N, 42)
+        logits = self.action_head(x_ships)  # (B, N, 30)
         enemy_action_logits = (
             self.enemy_action_head(x_ships) if return_enemy_action else None
-        )  # (B, N, 42) when requested
+        )  # (B, N, 30) when requested
         pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
         value = self.value_head_local(x_ships)  # (B, N, K)
         if self.value_head_global is not None:
@@ -738,7 +738,7 @@ class YemongPolicy(nn.Module):
             logits:     (T, B, N, TOTAL_ACTION_LOGITS) float — raw action logits.
             z:          (T, B, N+G+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
-            enemy_action_logits: optional (T, B, N, 42) next-command prediction.
+            enemy_action_logits: optional (T, B, N, 30) next-command prediction.
             pred_next:  (T, B, N, pred_dim) float — predicted next-state predictions (with grad).
             density:    optional (T, B, 2C) float — global ally/enemy density
                         prediction, or None when this policy has no density head.
@@ -817,7 +817,7 @@ class YemongPolicy(nn.Module):
         # two heads whose subject is the game, at [N].
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
 
-        logits = self.action_head(x_ships)  # (T, B, N, 42)
+        logits = self.action_head(x_ships)  # (T, B, N, 30)
         pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
 
         # Local value path: per-ship embedding, per-ship components.
@@ -825,7 +825,7 @@ class YemongPolicy(nn.Module):
 
         enemy_action_logits = (
             self.enemy_action_head(x_ships) if return_enemy_action else None
-        )  # (T, B, N, 42) when requested
+        )  # (T, B, N, 30) when requested
         if self.value_head_global is not None:
             # Team-level components: one estimate per environment off the global
             # token, broadcast across ships so the shape is unchanged.
@@ -910,7 +910,7 @@ def _sample_action(
     """Sample one physical command per ship from the joint categorical.
 
     Args:
-        logits: (..., 42) joint physical-command logits.
+        logits: (..., 30) joint physical-command logits.
 
     Returns:
         action:  (..., 3) int — [power, turn, shoot].
@@ -928,7 +928,7 @@ def _evaluate_action(
     """Compute log-probs and entropy for given actions under the policy.
 
     Args:
-        logits:  (..., 42) joint physical-command logits.
+        logits:  (..., 30) joint physical-command logits.
         actions: (..., 3) int.
 
     Returns:

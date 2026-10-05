@@ -406,6 +406,8 @@ def place_ships_at_spawns(
     state.ship_attitude = torch.where(ship_mask, bearing, state.ship_attitude)
     state.ship_vel = torch.where(ship_mask, velocity, state.ship_vel)
     state.ship_ang_vel = torch.where(ship_mask, 0.0, state.ship_ang_vel)
+    state.ship_slip = torch.where(ship_mask, 0.0, state.ship_slip)
+    state.ship_slip_rate = torch.where(ship_mask, 0.0, state.ship_slip_rate)
     state.ship_health = torch.where(ship_mask, config.respawn_health, state.ship_health)
     state.ship_power = torch.where(ship_mask, config.respawn_power, state.ship_power)
     state.ship_shield_delay = torch.where(

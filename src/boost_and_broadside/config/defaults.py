@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from boost_and_broadside.config.core import ModelConfig, RewardConfig, ShipConfig
+from boost_and_broadside.config.handling import HandlingSpec, ship_config_from_handling
 from boost_and_broadside.config.live_elo import LIVE_SCRIPTED_ELO
 from boost_and_broadside.config.schedule_spec import TrainingScheduleSpec, hold
 from boost_and_broadside.config.training import EloCalibrateConfig, EloEvalConfig
@@ -17,7 +18,35 @@ from boost_and_broadside.config.training import EloCalibrateConfig, EloEvalConfi
 # run under this config cannot be compared on Elo to 719-730 however either was
 # measured. Cross-config comparison needs a shared opponent played under one
 # physics, which is what `bnb crossover` measures.
-SHIP_CONFIG = ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=0.3)
+#
+# The flight constants are solved from handling targets rather than set by hand
+# (config/handling.py). This first spec keeps the earlier game's straight-line
+# and below-corner handling and adds a corner speed, a continuous nose and a
+# low-speed fade. Speeds are proper px/s at n = 1. The drag at normal slip is
+# the one direction no target pins, so it keeps ShipConfig's value.
+STARTING_HANDLING = HandlingSpec(
+    cruise_speed=100.0,
+    top_speed=136.0,
+    unlimited_top_speed=316.0,
+    boost_accel=80.0,
+    reverse_decel=80.0,
+    recharge_time=10.0,
+    tank_speed=200.0,
+    sharp_radius=37.0,
+    normal_radius=67.0,
+    # Closed form; slipped thrust makes the measured rate about 5% higher.
+    sharp_sustained_rate=114.0,
+    corner_speed=100.0,
+    sharp_gun_offset=15.0,
+    onset_time=0.16,
+    nose_slew_rate=150.0,
+    fade_speed=35.0,
+    stall_speed=1.0,
+)
+SHIP_CONFIG = ship_config_from_handling(
+    STARTING_HANDLING,
+    ShipConfig(bullet_energy_cost=2, bullet_min_damage_frac=0.3),
+)
 
 MODEL_CONFIG = ModelConfig(
     d_model=128,

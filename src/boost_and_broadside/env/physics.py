@@ -19,82 +19,38 @@ from boost_and_broadside.env.state import TensorState
 # Lookup table construction
 # ---------------------------------------------------------------------------
 
-# Keyed by (config, device string). Building the tables allocates four tensors
-# from Python lists (host→device copies), so they must not be rebuilt on the
+# Keyed by (config, device string). Building the tables allocates tensors from
+# Python lists (host→device copies), so they must not be rebuilt on the
 # per-step hot path.
 _LOOKUP_TABLE_CACHE: dict = {}
 
+# Turn action → (side, sharp). Left is the negative slip direction.
+TURN_SIDE = (0.0, -1.0, 1.0, -1.0, 1.0)
+TURN_SHARP = (False, False, False, True, True)
 
-def _get_lookup_tables(
-    config: ShipConfig, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+class _ActionTables(NamedTuple):
+    thrust: torch.Tensor  # (3,) float32 — by power action
+    turn_side: torch.Tensor  # (5,) float32 — by turn action, {-1, 0, +1}
+    turn_sharp: torch.Tensor  # (5,) bool — by turn action
+
+
+def _get_lookup_tables(config: ShipConfig, device: torch.device) -> _ActionTables:
     """Return cached per-action physics lookup tensors for (config, device)."""
     key = (config, str(device))
     tables = _LOOKUP_TABLE_CACHE.get(key)
     if tables is None:
-        tables = _build_lookup_tables(config, device)
+        tables = _ActionTables(
+            torch.tensor(
+                [config.base_thrust, config.boost_thrust, config.reverse_thrust],
+                device=device,
+                dtype=torch.float32,
+            ),
+            torch.tensor(TURN_SIDE, device=device, dtype=torch.float32),
+            torch.tensor(TURN_SHARP, device=device, dtype=torch.bool),
+        )
         _LOOKUP_TABLE_CACHE[key] = tables
     return tables
-
-
-def _build_lookup_tables(
-    config: ShipConfig, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Build per-action physics lookup tensors from config.
-
-    Returns:
-        (thrust, turn_offset, drag_coeff, lift_coeff) — all float32.
-    """
-    thrust_table = torch.tensor(
-        [config.base_thrust, config.boost_thrust, config.reverse_thrust],
-        device=device,
-        dtype=torch.float32,
-    )
-    turn_offset_table = torch.tensor(
-        [
-            0.0,
-            -config.normal_turn_angle,
-            config.normal_turn_angle,
-            -config.sharp_turn_angle,
-            config.sharp_turn_angle,
-            0.0,
-            0.0,
-        ],
-        device=device,
-        dtype=torch.float32,
-    )
-    drag_coeff_table = torch.tensor(
-        [
-            config.no_turn_drag_coeff,
-            config.normal_turn_drag_coeff,
-            config.normal_turn_drag_coeff,
-            config.sharp_turn_drag_coeff,
-            config.sharp_turn_drag_coeff,
-            config.normal_turn_drag_coeff,
-            config.sharp_turn_drag_coeff,
-        ],
-        device=device,
-        dtype=torch.float32,
-    )
-    lift_coeff_table = torch.tensor(
-        [
-            0.0,
-            -config.normal_turn_lift_coeff,
-            config.normal_turn_lift_coeff,
-            -config.sharp_turn_lift_coeff,
-            config.sharp_turn_lift_coeff,
-            0.0,
-            0.0,
-        ],
-        device=device,
-        dtype=torch.float32,
-    )
-    return (
-        thrust_table,
-        turn_offset_table,
-        drag_coeff_table,
-        lift_coeff_table,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +378,100 @@ def _transport_through_fields(state: TensorState, config: ShipConfig) -> TensorS
     return state
 
 
+def slip_command(
+    turn_side: torch.Tensor,
+    turn_sharp: torch.Tensor,
+    proper_speed: torch.Tensor,
+    config: ShipConfig,
+) -> torch.Tensor:
+    """The slip a turn action commands at a proper speed, in radians.
+
+    The action asks for a lift coefficient, capped so that lateral
+    acceleration ``C_L u^2`` stays within ``max_lateral_accel`` (the normal
+    level within half of it); the slip is the exact inverse of the lift curve.
+    Below ``slip_fade_speed`` the command fades linearly with speed.
+
+    Args:
+        turn_side: (B, N) float — -1 left, 0 straight, +1 right.
+        turn_sharp: (B, N) bool — sharp rather than normal pull.
+        proper_speed: (B, N) float — ``n |v|``.
+
+    Returns:
+        (B, N) float — commanded slip.
+    """
+    speed_sq = proper_speed.square().clamp(min=EPS)
+    sharp_lift = (config.max_lateral_accel / speed_sq).clamp(max=config.max_lift_coeff)
+    normal_lift = (0.5 * config.max_lateral_accel / speed_sq).clamp(max=config.normal_lift_coeff)
+    lift = torch.where(turn_sharp, sharp_lift, normal_lift)  # (B, N)
+    fraction = 1.0 - torch.sqrt((1.0 - lift / config.max_lift_coeff).clamp(min=0.0))
+    fade = (proper_speed / config.slip_fade_speed).clamp(max=1.0)
+    return turn_side * config.stall_angle * fraction * fade
+
+
+def slip_lift_drag(slip: torch.Tensor, config: ShipConfig) -> tuple[torch.Tensor, torch.Tensor]:
+    """Signed lift and drag coefficients at a slip angle.
+
+    Past the stall angle lift falls along the same parabola and is clamped at
+    zero. Drag is held at its value at twice the stall angle beyond it: only a
+    ship leaving a stall with a large held slip gets there, and the quartic
+    would otherwise stop it dead.
+
+    Returns:
+        ``(lift, drag)``, each shaped like ``slip``.
+    """
+    fraction = slip.abs() / config.stall_angle
+    lift = torch.sign(slip) * config.max_lift_coeff * (1.0 - (1.0 - fraction).square())
+    lift = torch.where(lift * torch.sign(slip) > 0.0, lift, torch.zeros_like(lift))
+    quadratic, quartic = config.slip_drag_terms
+    drag_fraction_sq = fraction.clamp(max=2.0).square()
+    drag = config.zero_slip_drag_coeff + drag_fraction_sq * (quadratic + quartic * drag_fraction_sq)
+    return lift, drag
+
+
+def _nose_step(
+    slip: torch.Tensor,
+    slip_rate: torch.Tensor,
+    command: torch.Tensor,
+    index: torch.Tensor,
+    config: ShipConfig,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Advance the slip one tick toward its command.
+
+    A critically damped response stepped exactly with the command held, so it
+    is stable at any ``omega dt`` and never rings. The ship is a rotor of
+    inertia ``n^2`` with torques on proper quantities, so in world time its
+    frequency is ``omega / n`` and its slip-rate limit ``max_slip_rate / n``.
+    The rate limit can leave a residual approach speed the exact step would
+    carry past the command; arrival is clamped so the slip never overshoots.
+
+    Args:
+        slip, slip_rate, command, index: (B, N) float.
+
+    Returns:
+        ``(slip, slip_rate)`` after one tick.
+    """
+    dt = config.dt
+    frequency = config.nose_frequency / index  # (B, N) world rad/s
+    rate_limit = config.max_slip_rate / index  # (B, N)
+    error = slip - command
+    decay = torch.exp(-frequency * dt)
+    drive = slip_rate + frequency * error
+    next_error = (error + drive * dt) * decay
+    next_rate = (slip_rate - frequency * drive * dt) * decay
+
+    step = (next_error - error).clamp(min=-rate_limit * dt, max=rate_limit * dt)
+    next_error = error + step
+    next_rate = torch.maximum(torch.minimum(next_rate, rate_limit), -rate_limit)
+    arrived = next_error * error <= 0.0
+    next_error = torch.where(arrived, torch.zeros_like(next_error), next_error)
+    next_rate = torch.where(arrived, torch.zeros_like(next_rate), next_rate)
+
+    next_slip = command + next_error
+    bound = torch.maximum(slip.abs(), torch.full_like(slip, config.stall_angle))
+    next_slip = torch.maximum(torch.minimum(next_slip, bound), -bound)
+    return next_slip, next_rate
+
+
 def _drift(state: TensorState, config: ShipConfig) -> TensorState:
     """Field-free transport: a straight drift over one tick at n = 1."""
 
@@ -433,38 +483,52 @@ def _update_kinematics(
     state: TensorState,
     actions: torch.Tensor,
     config: ShipConfig,
-    tables: tuple[torch.Tensor, ...],
+    tables: _ActionTables,
 ) -> TensorState:
-    """Split flight/control around passive transport.
+    """Advance the nose, then fly: half-step, transport, half-step.
 
     Transport is optical through the field map, or a plain drift when the map
     has no fields. Either way the flight steps are the same exact half-steps,
     so there is one flight model: at n = 1 the two transports coincide.
+
+    GPU kernel: kept together for performance.
     """
 
-    thrust_table, turn_offset_table, drag_coeff_table, lift_coeff_table = tables
-    power_action = actions[..., 0].long()
-    turn_action = actions[..., 1].long()
-    thrust_mag = thrust_table[power_action]
-    turn_offset = turn_offset_table[turn_action]
-    drag_coeff = drag_coeff_table[turn_action]
-    lift_coeff = lift_coeff_table[turn_action]
+    power_action = actions[..., 0].long()  # (B, N)
+    turn_action = actions[..., 1].long()  # (B, N)
+    thrust_mag = tables.thrust[power_action]  # (B, N)
+    turn_side = tables.turn_side[turn_action]  # (B, N)
+    turn_sharp = tables.turn_sharp[turn_action]  # (B, N)
 
-    proper_speed = state.ship_local_index * state.ship_vel.abs()
+    index = state.ship_local_index  # (B, N)
+    proper_speed = index * state.ship_vel.abs()
     below_min_speed = proper_speed < config.min_speed
-    turn_offset = torch.where(below_min_speed, torch.zeros_like(turn_offset), turn_offset)
-    lift_coeff = torch.where(below_min_speed, torch.zeros_like(lift_coeff), lift_coeff)
     # Reverse is a kinetic-energy recovery action and has no useful effect at a
     # stall; forward thrust remains able to restart the ship.
     thrust_mag = torch.where(
         below_min_speed & (thrust_mag < 0.0), torch.zeros_like(thrust_mag), thrust_mag
     )
 
+    previous_attitude = state.ship_attitude
     speed = state.ship_vel.abs()
-    velocity_direction = state.ship_vel / speed.clamp(min=EPS)
-    base_attitude = torch.where(below_min_speed, state.ship_attitude, velocity_direction)
-    state.ship_attitude = base_attitude * torch.polar(torch.ones_like(turn_offset), turn_offset)
-    state.ship_ang_vel = turn_offset / config.dt
+    velocity_direction = state.ship_vel / speed.clamp(min=EPS)  # (B, N) complex
+
+    command = slip_command(turn_side, turn_sharp, proper_speed, config)
+    flown_slip, flown_rate = _nose_step(
+        state.ship_slip, state.ship_slip_rate, command, index, config
+    )
+    # A stalled ship holds its absolute attitude; its slip is re-derived from
+    # it with zero rate, so leaving the stall does not jump the nose.
+    held_slip = torch.angle(previous_attitude * torch.conj(velocity_direction))
+    slip = torch.where(below_min_speed, held_slip, flown_slip)
+    state.ship_slip_rate = torch.where(below_min_speed, torch.zeros_like(flown_rate), flown_rate)
+
+    slip_rotation = torch.polar(torch.ones_like(slip), slip)
+    state.ship_attitude = torch.where(
+        below_min_speed, previous_attitude, velocity_direction * slip_rotation
+    )
+    lift_coeff, drag_coeff = slip_lift_drag(slip, config)
+    lift_coeff = torch.where(below_min_speed, torch.zeros_like(lift_coeff), lift_coeff)
 
     state = _apply_flight_half_step(state, thrust_mag, drag_coeff, lift_coeff, config)
     if state.num_fields == 0:
@@ -480,6 +544,21 @@ def _update_kinematics(
 
     speed = state.ship_vel.abs()
     state.ship_vel = torch.where(speed < EPS, EPS * state.ship_attitude, state.ship_vel)
+
+    # The nose rides the flight path through the tick, so the attitude read
+    # after it is the end-of-tick path rotated by the slip, and the turn rate is
+    # the path's plus the slip rate. A stalled ship's held attitude is measured
+    # against the end-of-tick path instead. Either way slip is exactly attitude
+    # minus velocity heading, so the state stays observable.
+    end_direction = state.ship_vel / state.ship_vel.abs().clamp(min=EPS)
+    state.ship_attitude = torch.where(
+        below_min_speed, state.ship_attitude, end_direction * slip_rotation
+    )
+    end_held_slip = torch.angle(state.ship_attitude * torch.conj(end_direction))
+    state.ship_slip = torch.where(below_min_speed, end_held_slip, slip)
+    state.ship_ang_vel = (
+        torch.angle(state.ship_attitude * torch.conj(previous_attitude)) / config.dt
+    )
     return state
 
 

@@ -13,26 +13,26 @@ from dataclasses import dataclass
 Action = tuple[int, int, int]
 
 NEUTRAL_ACTION: Action = (0, 0, 0)
-PRIVATE_ACTION: Action = (3, 7, 2)
+PRIVATE_ACTION: Action = (3, 5, 2)
 
 
 def encode_joint_action(action: Action) -> int:
-    """Encode one physical action using the normative 3 * 7 * 2 ordering."""
+    """Encode one physical action using the normative 3 * 5 * 2 ordering."""
     _validate_physical_action(action)
     power, turn, shoot = action
-    return ((power * 7) + turn) * 2 + shoot
+    return ((power * 5) + turn) * 2 + shoot
 
 
 def decode_joint_action(action_id: int) -> Action:
-    """Decode one of the 42 physical joint-action IDs."""
-    if not 0 <= action_id < 42:
-        raise ValueError(f"joint action ID must be in [0, 42), got {action_id}")
-    return action_id // 14, (action_id // 2) % 7, action_id % 2
+    """Decode one of the 30 physical joint-action IDs."""
+    if not 0 <= action_id < 30:
+        raise ValueError(f"joint action ID must be in [0, 30), got {action_id}")
+    return action_id // 10, (action_id // 2) % 5, action_id % 2
 
 
 def _validate_physical_action(action: Action) -> None:
     power, turn, shoot = action
-    if not (0 <= power < 3 and 0 <= turn < 7 and 0 <= shoot < 2):
+    if not (0 <= power < 3 and 0 <= turn < 5 and 0 <= shoot < 2):
         raise ValueError(f"not a physical action: {action!r}")
 
 

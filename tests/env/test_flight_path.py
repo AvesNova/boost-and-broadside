@@ -43,9 +43,9 @@ def test_lift_alone_keeps_speed_constant_without_fields(turn):
     config = replace(
         ShipConfig(),
         base_thrust=0.0,
-        no_turn_drag_coeff=0.0,
-        normal_turn_drag_coeff=0.0,
-        sharp_turn_drag_coeff=0.0,
+        zero_slip_drag_coeff=0.0,
+        normal_slip_drag_coeff=0.0,
+        stall_drag_coeff=0.0,
     )
     state = _flying_state(config, 120.0)
     for _ in range(600):
@@ -73,7 +73,7 @@ def test_turn_with_power_held_full_stays_finite(turn):
         state = update_ships(state, _actions(PowerActions.BOOST, turn), config)
         state.ship_power = torch.full_like(state.ship_power, config.max_power)
     speed = float(state.ship_vel.abs()[0, 0])
-    assert speed < 1.05 * (config.boost_thrust / config.no_turn_drag_coeff) ** 0.5
+    assert speed < 1.05 * (config.boost_thrust / config.zero_slip_drag_coeff) ** 0.5
 
 
 def test_field_free_tick_matches_the_field_tick_at_unit_index():

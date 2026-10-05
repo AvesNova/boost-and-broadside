@@ -60,6 +60,8 @@ def make_state(
         ship_vel=torch.zeros((num_envs, max_ships), dtype=torch.complex64, device=dev),
         ship_attitude=torch.ones((num_envs, max_ships), dtype=torch.complex64, device=dev),
         ship_ang_vel=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_slip=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_slip_rate=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_shield_delay=torch.zeros((num_envs, max_ships), device=dev),
         ship_shield_recharge=torch.zeros((num_envs, max_ships), device=dev),
         ship_health=torch.full((num_envs, max_ships), ship_config.max_health, device=dev),

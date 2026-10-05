@@ -23,8 +23,8 @@ class StochasticAgentConfig:
       - speed < 20  → probability = 1.0  (definitely boost)
       - speed > 40  → probability = 0.0  (definitely don't boost)
 
-    flat_action_sampling: Whether to sample from the joint 42-dim distribution
-                          or 3 independent marginal distributions (3, 7, 2).
+    flat_action_sampling: Whether to sample from the joint 30-way distribution
+                          or 3 independent marginal distributions (3, 5, 2).
 
     # Power Ramps
     boost_speed_ramp:    Speed range where boost probability transitions.

@@ -65,7 +65,7 @@ def test_keyboard_controls_only_one_selected_ally() -> None:
 
 def test_spectator_selection_leaves_every_ship_scripted() -> None:
     action = torch.tensor([[[1, 2, 1], [2, 4, 0], [0, 1, 1], [1, 0, 0]]], dtype=torch.int32)
-    keyboard = torch.tensor([2, 6, 1], dtype=torch.int32)
+    keyboard = torch.tensor([2, 3, 1], dtype=torch.int32)
 
     result = _apply_keyboard_override(action, keyboard, None)
 
@@ -74,7 +74,7 @@ def test_spectator_selection_leaves_every_ship_scripted() -> None:
 
 def test_all_autonomous_actions_use_the_delayed_queue() -> None:
     decided = torch.tensor([[[1, 1, 1], [2, 2, 0], [1, 3, 0], [0, 4, 1]]], dtype=torch.int32)
-    buffered = torch.tensor([[[2, 6, 0], [1, 5, 1], [0, 2, 1], [2, 1, 0]]], dtype=torch.int32)
+    buffered = torch.tensor([[[2, 3, 0], [1, 4, 1], [0, 2, 1], [2, 1, 0]]], dtype=torch.int32)
     action_state = PendingActionState(buffered.clone())
 
     applied = action_state.applied_action().clone()
@@ -91,7 +91,7 @@ def test_all_autonomous_actions_use_the_delayed_queue() -> None:
 def test_human_policy_override_is_immediate_and_clears_its_policy_buffer_slot() -> None:
     team_id = torch.tensor([[0, 1]], dtype=torch.int32)
     decided = torch.tensor([[[1, 3, 1], [2, 4, 0]]], dtype=torch.int32)
-    buffered = torch.tensor([[[2, 6, 0], [1, 5, 1]]], dtype=torch.int32)
+    buffered = torch.tensor([[[2, 3, 0], [1, 4, 1]]], dtype=torch.int32)
     human = _selected_human_mask(team_id, True, 0)
     action_state = PendingActionState(buffered.clone())
 
@@ -156,7 +156,7 @@ def test_policy_action_buffer_starts_with_neutral_first_tick() -> None:
 
 
 def test_next_observation_exposes_own_queue_and_masks_opponent_queue() -> None:
-    previous = torch.zeros((1, 3, 42), dtype=torch.float32)
+    previous = torch.zeros((1, 3, 30), dtype=torch.float32)
     team1_previous = torch.zeros_like(previous)
     observation = YemongObservation(
         data={ObsKey.PREVIOUS_ACTION: previous},
@@ -170,10 +170,10 @@ def test_next_observation_exposes_own_queue_and_masks_opponent_queue() -> None:
         observation, team_id, torch.zeros_like(team_id, dtype=torch.bool), num_ships=2
     )
 
-    assert previous[0, 0].argmax().item() == 21
+    assert previous[0, 0].argmax().item() == 17
     assert previous[0, 0].sum().item() == 1.0
     assert not previous[0, 1].any()
     assert not team1_previous[0, 0].any()
-    assert team1_previous[0, 1].argmax().item() == 36
+    assert team1_previous[0, 1].argmax().item() == 28
     assert team1_previous[0, 1].sum().item() == 1.0
-    assert torch.equal(previous[:, 2], torch.zeros((1, 42)))
+    assert torch.equal(previous[:, 2], torch.zeros((1, 30)))

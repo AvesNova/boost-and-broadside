@@ -171,7 +171,7 @@ def test_permutation_equivariance_and_finite_distributions(size):
     after = agent.get_actions_and_probs(changed, visibility[:, :, permutation])[1]
     torch.testing.assert_close(after, before[:, permutation], atol=1e-6, rtol=1e-5)
     assert torch.isfinite(after).all() and (after >= 0).all()
-    for head in after.split([3, 7, 2], -1):
+    for head in after.split([3, 5, 2], -1):
         torch.testing.assert_close(head.sum(-1), torch.ones_like(head[..., 0]))
 
 

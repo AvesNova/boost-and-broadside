@@ -23,11 +23,9 @@ def _passive_config(**overrides) -> ShipConfig:
         boost_thrust=0.0,
         reverse_thrust=0.0,
         passive_power_gain=0.0,
-        no_turn_drag_coeff=0.0,
-        normal_turn_drag_coeff=0.0,
-        normal_turn_lift_coeff=0.0,
-        sharp_turn_drag_coeff=0.0,
-        sharp_turn_lift_coeff=0.0,
+        zero_slip_drag_coeff=0.0,
+        normal_slip_drag_coeff=0.0,
+        stall_drag_coeff=0.0,
         bullet_spread=0.0,
     )
     return replace(config, **overrides)
@@ -181,7 +179,9 @@ def test_low_index_high_incidence_reflects_smoothly_and_preserves_energy():
 
 
 def test_drag_dissipates_generalized_kinetic_energy():
-    config = _passive_config(no_turn_drag_coeff=1e-3)
+    config = _passive_config(
+        zero_slip_drag_coeff=1e-3, normal_slip_drag_coeff=1e-3, stall_drag_coeff=1e-3
+    )
     index = config.field_index_step**-2
     state = _single_field_state(config, index=index, radius=150.0, width=20.0)
     state.ship_pos[:] = 512.0 + 512.0j
@@ -195,7 +195,7 @@ def test_drag_dissipates_generalized_kinetic_energy():
 
 
 def test_low_and_high_media_have_reciprocal_bounded_control_rates():
-    config = _passive_config(normal_turn_lift_coeff=15e-3, boost_thrust=80.0)
+    config = _passive_config(boost_thrust=80.0)
     results = {}
     for index in (config.field_index_step**-1, config.field_index_step):
         state = _single_field_state(config, index=index, radius=150.0, width=20.0)

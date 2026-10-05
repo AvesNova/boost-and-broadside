@@ -18,6 +18,7 @@ from typing import NamedTuple
 import torch
 
 from boost_and_broadside.constants import (
+    NUM_EXPERT_MARGINALS,
     OUTCOME_LOSS_INDEX,
     OUTCOME_TIE_INDEX,
     OUTCOME_WIN_INDEX,
@@ -741,7 +742,7 @@ class RolloutBuffer:
         self.decision_committed = torch.ones((T, B, N), device=device, dtype=torch.bool)
         # A zero-width tensor keeps MicroBatch structurally uniform without
         # reserving rollout memory in schedules that never enable BC.
-        expert_width = 12 if store_expert_probs else 0
+        expert_width = NUM_EXPERT_MARGINALS if store_expert_probs else 0
         self.expert_probs = torch.zeros(
             (T, B, N, expert_width), device=device, dtype=_STORAGE_FLOAT
         )
@@ -839,7 +840,7 @@ class RolloutBuffer:
             decision_committed: (B, N) bool — True where the selected action entered
                           the continuing actuator queue. Used for causal PPO credit,
                           not BC supervision or entropy regularization.
-            expert_probs: (B, N, 12) float — scripted-agent marginal probs for BC loss.
+            expert_probs: (B, N, 10) float — scripted-agent marginal probs for BC loss.
                           Zero for envs without a scripted opponent.
             terminated:   (B,) bool — True when the episode ended (done | truncated).
                           Cuts the GAE trace and masks the aux loss at boundaries.
@@ -994,7 +995,7 @@ class RolloutBuffer:
                 mb_alive:        (T, B_mb, N) bool
                 mb_hidden:       (n_layers, B_mb*num_tokens, H) float32
                 mb_actor_mask:   (T, B_mb, N) bool
-                mb_expert_probs: (T, B_mb, N, 12) float32
+                mb_expert_probs: (T, B_mb, N, 10) float32
                 mb_terminated:   (T, B_mb) bool
                 mb_adv_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated advantages
                 mb_ret_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated returns

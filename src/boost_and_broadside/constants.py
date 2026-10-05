@@ -26,8 +26,6 @@ class TurnActions(IntEnum):
     TURN_RIGHT = 2
     SHARP_LEFT = 3
     SHARP_RIGHT = 4
-    AIR_BRAKE = 5
-    SHARP_AIR_BRAKE = 6
 
 
 class ShootActions(IntEnum):
@@ -36,13 +34,13 @@ class ShootActions(IntEnum):
 
 
 NUM_POWER_ACTIONS: int = len(PowerActions)  # 3
-NUM_TURN_ACTIONS: int = len(TurnActions)  # 7
+NUM_TURN_ACTIONS: int = len(TurnActions)  # 5
 NUM_SHOOT_ACTIONS: int = len(ShootActions)  # 2
 
 # The policy emits one categorical over the physical Cartesian product. Runtime
 # commands stay as [power, turn, shoot] triples; only the policy boundary uses
 # the joint ID.
-NUM_JOINT_ACTIONS: int = NUM_POWER_ACTIONS * NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS  # 42
+NUM_JOINT_ACTIONS: int = NUM_POWER_ACTIONS * NUM_TURN_ACTIONS * NUM_SHOOT_ACTIONS  # 30
 TOTAL_ACTION_LOGITS: int = NUM_JOINT_ACTIONS
 
 # Slices into the scripted teacher's compact independent marginals. These do
@@ -56,6 +54,9 @@ NUM_OUTCOME_CLASSES: int = 3
 OUTCOME_LOSS_INDEX: int = 0
 OUTCOME_TIE_INDEX: int = 1
 OUTCOME_WIN_INDEX: int = 2
+
+# Width of the scripted teacher's independent marginals, power then turn then shoot.
+NUM_EXPERT_MARGINALS: int = NUM_POWER_ACTIONS + NUM_TURN_ACTIONS + NUM_SHOOT_ACTIONS
 
 TURN_SLICE: slice = slice(NUM_POWER_ACTIONS, NUM_POWER_ACTIONS + NUM_TURN_ACTIONS)
 SHOOT_SLICE: slice = slice(

@@ -26,7 +26,7 @@ def _observation() -> YemongObservation:
         ObsKey.ALIVE: torch.ones(1, 2, dtype=torch.bool),
         ObsKey.TEAM_ID: torch.tensor([[0, 1]], dtype=torch.int32),
         ObsKey.LOCAL_LOG_INDEX: torch.zeros(1, 2, 1),
-        ObsKey.PREVIOUS_ACTION: torch.zeros(1, 2, 42),
+        ObsKey.PREVIOUS_ACTION: torch.zeros(1, 2, 30),
     }
     return YemongObservation(data=data)
 

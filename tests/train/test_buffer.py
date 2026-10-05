@@ -387,7 +387,7 @@ class TestStoragePrecision:
                 ObsKey.COOLDOWN: torch.zeros((B, N, 1)),
                 ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((B, N, 1)),
                 ObsKey.TEAM_ID: torch.zeros((B, N), dtype=torch.int32),
-                ObsKey.PREVIOUS_ACTION: torch.zeros((B, N, 42)),
+                ObsKey.PREVIOUS_ACTION: torch.zeros((B, N, 30)),
                 ObsKey.ALIVE: torch.zeros((B, N), dtype=torch.bool),
             }
         )
@@ -438,7 +438,7 @@ class TestStoragePrecision:
 
         buf = self._make_typed_buffer(T=3, B=2, N=2)
         team = torch.tensor([[0, 1], [2, 0]], dtype=torch.int32)  # ships + field id 2
-        prev = torch.rand(2, 2, 42)
+        prev = torch.rand(2, 2, 30)
         prev /= prev.sum(-1, keepdim=True)
         obs = YemongObservation(
             data={
@@ -799,7 +799,7 @@ class TestMinibatchIterator:
         B_mb = B // 2
         assert batch.hidden.shape == (1, B_mb * N, D)
         assert batch.actor_mask.shape == (T, B_mb, N)
-        assert batch.expert_probs.shape == (T, B_mb, N, 12)
+        assert batch.expert_probs.shape == (T, B_mb, N, 10)
 
     def test_the_env_order_repeats_for_a_seeded_process(self):
         """Minibatch grouping is drawn from the Torch RNG that ``--seed`` sets.

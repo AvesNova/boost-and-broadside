@@ -189,11 +189,11 @@ Pending action follows the same table:
 | Observed ship | Pending-action value |
 | --- | --- |
 | Own/allied ship | Exact one-hot of its actual `Q_t` |
-| Ordinary opponent, visible or hidden | Stored 42-way prediction from the preceding decision |
+| Ordinary opponent, visible or hidden | Stored 30-way prediction from the preceding decision |
 | Any newly reset or respawned ship | Exact null-command one-hot for both teams |
 
 Belief state must never reconstruct or retain an opponent's authoritative pending command.
-It carries only the policy's stored 42-way prediction, alongside the physical means and the
+It carries only the policy's stored 30-way prediction, alongside the physical means and the
 uncertainty terms the next-state head reported. A future visualization may
 independently expose raw team perception, belief, and omniscient truth, but debug rendering
 must not change the policy view.
@@ -208,7 +208,7 @@ and manually patching action fields.
 | --- | --- | --- |
 | Neural | One-decision delayed | Recurrent and belief state follow this document |
 | Scripted | One-decision delayed | No privileged pending-action bypass |
-| Random | One-decision delayed | Samples the same 42 physical commands |
+| Random | One-decision delayed | Samples the same 30 physical commands |
 | Human | Immediate override | Overridden ship's autonomous pending queue becomes neutral |
 
 Using the same delay for autonomous controllers keeps BC demonstrations, evaluation,
@@ -240,24 +240,24 @@ neutral handoff is preferable to silently applying a stale command.
 Physical commands remain the Cartesian product:
 
 ```text
-3 power choices * 7 turn choices * 2 shoot choices = 42 commands
+3 power choices * 5 turn choices * 2 shoot choices = 30 commands
 ```
 
 The authoritative joint ID is:
 
 ```text
-joint_id = ((power * 7) + turn) * 2 + shoot
-power = joint_id // 14
-turn = (joint_id // 2) % 7
+joint_id = ((power * 5) + turn) * 2 + shoot
+power = joint_id // 10
+turn = (joint_id // 2) % 5
 shoot = joint_id % 2
 ```
 
-The actor emits one 42-way categorical distribution. The runtime/environment command
+The actor emits one 30-way categorical distribution. The runtime/environment command
 remains a compact `(power, turn, shoot)` triple, with one authoritative encode/decode
 implementation at the policy boundary. PPO log probability and entropy are those of the
 joint distribution, not the sum of three independently sampled heads.
 
-The pending-action observation is a 42-float vector using the same joint-ID ordering.
+The pending-action observation is a 30-float vector using the same joint-ID ordering.
 Own/allied commands are exact one-hot vectors. Ordinary enemy slots carry the dedicated
 prediction head's prior softmax distribution, whether or not the ship is in sight. On initial
 spawn or respawn both teams instead receive the exact null-command one-hot vector. The two
@@ -294,11 +294,11 @@ produced by `Q_t`: `D_t` affects future state through `Q_(t+1)`, and `Q_t` is pr
 - auxiliary next-state targets are invalid across full reset and for a ship whose
   actuator lifetime ended. Other targets must document their lifecycle mask.
 
-The BC teacher and neural student both select one of the same 42 joint commands under
+The BC teacher and neural student both select one of the same 30 joint commands under
 the same delayed timing. The scripted teacher may continue to compute compact independent
 marginals internally. BC storage should retain the current 12 marginal probabilities
-and construct their 42-way outer product transiently in the loss, avoiding a persistent
-42-way rollout buffer. This represents the current teacher distribution exactly. If a
+and construct their 30-way outer product transiently in the loss, avoiding a persistent
+30-way rollout buffer. This represents the current teacher distribution exactly. If a
 future teacher models correlated factors, it must provide a true joint distribution.
 
 Training configurations that disable BC must not allocate or populate BC-only buffers.
@@ -421,7 +421,7 @@ complete validation matrix is:
 11. Match, live Elo, interactive/watch, replay, feature-statistics, autoregressive,
     next-state, and noise-calibration adapters.
 12. Episode-stable league identity across rollout shards and two-generation drain.
-13. All 42 joint-action codec round trips; probability observations never enter physics.
+13. All 30 joint-action codec round trips; probability observations never enter physics.
 14. Cross-scheduler trace parity under deterministic seeds.
 
 Known current divergences should first be captured as strict expected failures or as

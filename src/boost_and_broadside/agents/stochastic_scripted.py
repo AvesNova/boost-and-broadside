@@ -9,6 +9,7 @@ from boost_and_broadside.agents.scripted_utils import (
 )
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.constants import NUM_JOINT_ACTIONS, NUM_TURN_ACTIONS
 from boost_and_broadside.env.state import TensorState
 
 
@@ -56,7 +57,7 @@ class StochasticScriptedAgent:
         dir_shoot: torch.Tensor,
         active_mask: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Compute marginal probability distributions for Power(3), Turn(7), Shoot(2).
+        """Compute marginal probability distributions for Power(3), Turn(5), Shoot(2).
 
         dir_turn:  direction used for turn decisions (may be team-target-blended).
         dir_shoot: direction used for shoot alignment (always personal intercept).
@@ -69,7 +70,7 @@ class StochasticScriptedAgent:
         rel_angle = torch.angle(dir_turn * torch.conj(att))  # range (-pi, pi)
         abs_angle = torch.abs(rel_angle)
 
-        # --- 1. Turn Probabilities (7 options) ---
+        # --- 1. Turn Probabilities (5 options) ---
         p_needs_turn = self._linear_ramp(
             abs_angle,
             self.config.turn_angle_ramp[0],
@@ -99,9 +100,6 @@ class StochasticScriptedAgent:
         p_normal_right = self._prob_and(p_turn_right_base, 1.0 - p_is_sharp)
         p_straight = 1.0 - p_needs_turn
 
-        p_air_brake = torch.zeros_like(p_straight)
-        p_sharp_air_brake = torch.zeros_like(p_straight)
-
         turn_probs = torch.stack(
             [
                 p_straight,
@@ -109,8 +107,6 @@ class StochasticScriptedAgent:
                 p_normal_right,
                 p_sharp_left,
                 p_sharp_right,
-                p_air_brake,
-                p_sharp_air_brake,
             ],
             dim=-1,
         )
@@ -239,22 +235,24 @@ class StochasticScriptedAgent:
                 p_power.unsqueeze(-1).unsqueeze(-1)
                 * p_turn.unsqueeze(-2).unsqueeze(-1)
                 * p_shoot.unsqueeze(-2).unsqueeze(-2)
-            ).reshape(batch_size, num_ships, 42)
+            ).reshape(batch_size, num_ships, NUM_JOINT_ACTIONS)
             expert_probs = joint_probs
-            sampled_flat = torch.multinomial(joint_probs.view(-1, 42), num_samples=1).view(
-                batch_size, num_ships
-            )
+            sampled_flat = torch.multinomial(
+                joint_probs.view(-1, NUM_JOINT_ACTIONS), num_samples=1
+            ).view(batch_size, num_ships)
             actions_shoot = sampled_flat % 2
             sampled_flat = sampled_flat // 2
-            actions_turn = sampled_flat % 7
-            actions_power = sampled_flat // 7
+            actions_turn = sampled_flat % NUM_TURN_ACTIONS
+            actions_power = sampled_flat // NUM_TURN_ACTIONS
             actions = torch.stack([actions_power, actions_turn, actions_shoot], dim=-1)
         else:
             expert_probs = torch.cat([p_power, p_turn, p_shoot], dim=-1)
             actions = torch.stack(
                 [
                     torch.multinomial(p_power.view(-1, 3), 1).view(batch_size, num_ships),
-                    torch.multinomial(p_turn.view(-1, 7), 1).view(batch_size, num_ships),
+                    torch.multinomial(p_turn.view(-1, NUM_TURN_ACTIONS), 1).view(
+                        batch_size, num_ships
+                    ),
                     torch.multinomial(p_shoot.view(-1, 2), 1).view(batch_size, num_ships),
                 ],
                 dim=-1,
@@ -335,8 +333,8 @@ class StochasticScriptedAgent:
 
         Returns:
             actions:      (B, N, 3) int tensor
-            expert_probs: (B, N, 12) float tensor (independent marginals) or
-                          (B, N, 42) float tensor (joint, if flat_action_sampling=True)
+            expert_probs: (B, N, 10) float tensor (independent marginals) or
+                          (B, N, 30) float tensor (joint, if flat_action_sampling=True)
         """
         # A zero-length zone axis is the exact legacy combat contract. Keep its
         # control path below unchanged so adding frontline objectives cannot alter
@@ -359,22 +357,24 @@ class StochasticScriptedAgent:
                 * p_turn.unsqueeze(-2).unsqueeze(-1)
                 * p_shoot.unsqueeze(-2).unsqueeze(-2)
             )
-            joint_probs = joint_probs.reshape(batch_size, num_ships, 42)
+            joint_probs = joint_probs.reshape(batch_size, num_ships, NUM_JOINT_ACTIONS)
             expert_probs = joint_probs
 
-            flat_probs = joint_probs.view(-1, 42)
+            flat_probs = joint_probs.view(-1, NUM_JOINT_ACTIONS)
             sampled_flat = torch.multinomial(flat_probs, num_samples=1).view(batch_size, num_ships)
 
             actions_shoot = sampled_flat % 2
             sampled_flat = sampled_flat // 2
-            actions_turn = sampled_flat % 7
-            actions_power = sampled_flat // 7
+            actions_turn = sampled_flat % NUM_TURN_ACTIONS
+            actions_power = sampled_flat // NUM_TURN_ACTIONS
             actions = torch.stack([actions_power, actions_turn, actions_shoot], dim=-1)
         else:
-            expert_probs = torch.cat([p_power, p_turn, p_shoot], dim=-1)  # (B, N, 12)
+            expert_probs = torch.cat([p_power, p_turn, p_shoot], dim=-1)  # (B, N, 10)
 
             a_p = torch.multinomial(p_power.view(-1, 3), num_samples=1).view(batch_size, num_ships)
-            a_t = torch.multinomial(p_turn.view(-1, 7), num_samples=1).view(batch_size, num_ships)
+            a_t = torch.multinomial(p_turn.view(-1, NUM_TURN_ACTIONS), num_samples=1).view(
+                batch_size, num_ships
+            )
             a_s = torch.multinomial(p_shoot.view(-1, 2), num_samples=1).view(batch_size, num_ships)
             actions = torch.stack([a_p, a_t, a_s], dim=-1)
 

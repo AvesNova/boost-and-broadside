@@ -20,9 +20,9 @@ from boost_and_broadside.runtime.actions import (
 from tests.runtime_semantics.reference import ReferenceDecisionRuntime
 
 A = ((1, 2, 1), (2, 3, 0))
-B = ((2, 5, 0), (1, 6, 1))
+B = ((2, 3, 0), (1, 4, 1))
 C = ((1, 4, 1), (2, 1, 0))
-PRIVATE = (3, 7, 2)
+PRIVATE = (3, 5, 2)
 NEUTRAL = (0, 0, 0)
 
 
@@ -36,14 +36,14 @@ def _assert_joint_view(
     team_id: torch.Tensor,
     observer_team: int,
 ) -> None:
-    expected = torch.nn.functional.one_hot(encode_joint_action(pending), 42).float()
+    expected = torch.nn.functional.one_hot(encode_joint_action(pending), 30).float()
     own = team_id == observer_team
     expected = expected * own.unsqueeze(-1)
     torch.testing.assert_close(view[:, : team_id.shape[1]], expected)
 
 
 def _pending_observation() -> YemongObservation:
-    team0 = torch.zeros((1, 2, 42), dtype=torch.float32)
+    team0 = torch.zeros((1, 2, 30), dtype=torch.float32)
     team1 = torch.zeros_like(team0)
     return YemongObservation(
         data={ObsKey.PREVIOUS_ACTION: team0},
@@ -53,13 +53,13 @@ def _pending_observation() -> YemongObservation:
 
 def test_production_joint_codec_matches_the_reference_ordering() -> None:
     actions = torch.tensor(
-        [(power, turn, shoot) for power in range(3) for turn in range(7) for shoot in range(2)],
+        [(power, turn, shoot) for power in range(3) for turn in range(5) for shoot in range(2)],
         dtype=torch.int32,
     )
 
     encoded = encode_joint_action(actions)
 
-    assert encoded.tolist() == list(range(42))
+    assert encoded.tolist() == list(range(30))
     assert torch.equal(decode_joint_action(encoded), actions.long())
     validate_physical_actions(actions)
     with pytest.raises(ValueError, match="physical action factors"):
@@ -67,7 +67,7 @@ def test_production_joint_codec_matches_the_reference_ordering() -> None:
     with pytest.raises(ValueError, match="physical action factors"):
         encode_joint_action(torch.tensor([PRIVATE]))
     with pytest.raises(ValueError, match="joint action IDs"):
-        decode_joint_action(torch.tensor([42]))
+        decode_joint_action(torch.tensor([30]))
 
 
 def test_pending_state_matches_reference_neutral_a_b_c_and_privacy_trace() -> None:

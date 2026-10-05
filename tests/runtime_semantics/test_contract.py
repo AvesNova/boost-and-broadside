@@ -14,8 +14,8 @@ from tests.runtime_semantics.reference import (
 
 A0 = (1, 2, 1)
 A1 = (2, 3, 0)
-B0 = (2, 5, 0)
-B1 = (1, 6, 1)
+B0 = (2, 3, 0)
+B1 = (1, 4, 1)
 C0 = (1, 4, 1)
 C1 = (2, 1, 0)
 
@@ -166,11 +166,11 @@ def test_respawn_cancels_held_human_override_for_remaining_substeps() -> None:
 
 def test_joint_action_codec_round_trips_all_42_physical_commands() -> None:
     actions = [
-        (power, turn, shoot) for power in range(3) for turn in range(7) for shoot in range(2)
+        (power, turn, shoot) for power in range(3) for turn in range(5) for shoot in range(2)
     ]
 
-    assert [encode_joint_action(action) for action in actions] == list(range(42))
-    assert [decode_joint_action(action_id) for action_id in range(42)] == actions
+    assert [encode_joint_action(action) for action in actions] == list(range(30))
+    assert [decode_joint_action(action_id) for action_id in range(30)] == actions
 
 
 def test_private_observation_category_cannot_reach_physics() -> None:

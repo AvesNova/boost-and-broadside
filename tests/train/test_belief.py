@@ -167,7 +167,7 @@ class TestInformationFlow:
         env.state.ship_power[0, 1] = 91.5
         env.state.ship_cooldown[0, 1] = 0.07
         env.state.ship_ang_vel[0, 1] = 12.25
-        env.state.prev_action[0, 1] = torch.tensor([2, 6, 1], dtype=torch.int32)
+        env.state.prev_action[0, 1] = torch.tensor([2, 3, 1], dtype=torch.int32)
 
         hidden = _view(env, tracker)
         assert not hidden[ObsKey.VISIBLE][0, 1]
@@ -179,7 +179,7 @@ class TestInformationFlow:
                     f"{key} leaked a hidden truth value"
                 )
         # And the committed enemy command is not recoverable either: slot 41 is
-        # (2, 6, 1) as a joint id, and a belief distribution is not a one-hot.
+        # (2, 3, 1) as a joint id, and a belief distribution is not a one-hot.
         pending = hidden[ObsKey.PREVIOUS_ACTION][0, 1]
         assert pending.argmax().item() != 41 or pending.max().item() < 1.0
 
@@ -217,10 +217,10 @@ class TestActionBelief:
         tracker = _tracker()
         current = _view(env, tracker)
         torch.testing.assert_close(
-            current[ObsKey.PREVIOUS_ACTION][0, 1], torch.full((42,), 1.0 / 42)
+            current[ObsKey.PREVIOUS_ACTION][0, 1], torch.full((30,), 1.0 / 30)
         )
 
-        logits = torch.full((1, 2, 42), -8.0)
+        logits = torch.full((1, 2, 30), -8.0)
         logits[0, 1, 17] = 8.0
         tracker.advance(_HOLD, logits)
 
@@ -235,7 +235,7 @@ class TestActionBelief:
     def test_a_visible_enemy_still_shows_the_prediction_not_its_command(self):
         env = _env()
         tracker = _tracker()
-        logits = torch.full((1, 2, 42), -8.0)
+        logits = torch.full((1, 2, 30), -8.0)
         logits[0, 1, 3] = 8.0
         _view(env, tracker)
         tracker.advance(_HOLD, logits)
@@ -246,7 +246,7 @@ class TestActionBelief:
     def test_the_spawn_null_overrides_a_stale_prediction(self):
         env = _env()
         tracker = _tracker()
-        logits = torch.full((1, 2, 42), -8.0)
+        logits = torch.full((1, 2, 30), -8.0)
         logits[0, 1, 17] = 8.0
         _view(env, tracker)
         tracker.advance(_HOLD, logits)
@@ -266,8 +266,8 @@ class TestActionBelief:
         trackers = DualBeliefTracker(1, 2, 0.1, _SHIP, "cpu")
         visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
         trackers.observe(env.state, visibility.ship)
-        logits0 = torch.full((1, 2, 42), -8.0)
-        logits1 = torch.full((1, 2, 42), -8.0)
+        logits0 = torch.full((1, 2, 30), -8.0)
+        logits1 = torch.full((1, 2, 30), -8.0)
         logits0[0, 1, 6] = 8.0  # Team 0 predicts physical ship 1.
         logits1[0, 0, 15] = 8.0  # Team 1 predicts physical ship 0.
         trackers.advance(_HOLD, _HOLD, logits0, logits1)
