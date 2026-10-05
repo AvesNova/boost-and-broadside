@@ -22,7 +22,9 @@ Out of scope for now: thrust vectoring, and a roll stage before the pull.
 
 ## 1. The current model
 
-Read from `env/physics.py` (`_update_kinematics`, `_update_kinematics_in_fields`):
+Read from `env/physics.py` (`_update_kinematics`, `_update_kinematics_in_fields`).
+Measured numbers for the live configuration are in Appendix A, real aircraft in
+Appendix B, and the targets they suggest in §8.
 
 * **Nose angle is a lookup.** Attitude is `velocity_direction · e^{i·offset}`, with
   offset 0, ±5° or ±15° from `turn_offset_table`. It jumps the full amount in one tick.
@@ -274,8 +276,10 @@ runtime switch to the old model.
    limits itself, but it changes the sustained low-speed sharp turn into a decelerating
    slide. Start at 15° and try a deeper ceiling as a variant.
 2. **Corner speed.** 110–130 px/s puts it between coast cruise (100 px/s) and
-   energy-limited boost at n = 1 (136 px/s). Tune it against measured play speeds, which
-   span about 20–215 px/s.
+   energy-limited boost at n = 1 (136 px/s). Tune it against measured play speeds: the
+   scripted controller's proper speed has median 113 px/s and p1–p99 28–166 px/s, and
+   42% of its decisions are above 120 (Appendix A.8). §8.2 compares 100, 120 and a
+   halved lift curve.
 3. **Landing.** The reward, critic and belief redesign already forces a cold start and a
    checkpoint-schema bump. Folding this change into the same cold start avoids a second
    one. Validate the physics with scripted duels first (§6), since those need no
@@ -283,3 +287,326 @@ runtime switch to the old model.
 4. **Thrust vectoring.** Deferred. If it returns, cap its rotation rate low and scale its
    torque with applied thrust. Boost from near zero speed is almost free under the energy
    law, so a near-stationary turret is the abuse case to test.
+
+## 8. Targets
+
+### 8.1 Comparing a game with aircraft
+
+Absolute numbers do not carry over: the game turns far faster and in far less room than
+an aircraft. Ratios do carry over, once two scales are fixed.
+
+* **Length.** One ship length L = 20 px (renderer `ship_size` 10 px centre to tip;
+  `collision_radius` 10 px).
+* **Time.** The best sustained 360° takes 3.0 s in the game (boost, sharp, n = 1) and
+  17.5–27.5 s for the WWII piston fighters in Appendix B. Rotation therefore runs about
+  **k ≈ 6–7 times faster** than real. Coasting turns (5.1–5.7 s per 360°) give k ≈ 4.
+
+| quantity | today | §2 as written | WWII piston fighters |
+|---|---:|---:|---:|
+| best instantaneous / best sustained turn rate | 1.75 at 136 px/s, unbounded above | 1.56 | 1.5–1.9 |
+| speed of best sustained turn / top speed | 0.54 | 0.54 | 0.49–0.59 |
+| corner speed / top speed | none | 0.88 | 0.69–0.86 |
+| turn rate at top speed / at corner | > 1 at every speed | 0.88 | 0.69–0.86 |
+| top speed / lowest flying speed | 136 (`min_speed` 1) | ≈ 3.9 (fade at 35) | 2.8–3.5 |
+| turn onset, straight to full pull | 1 tick (33 ms) | 0.16 s | ≈ 0.6–1.5 s; ÷ k ≈ 0.1–0.2 s |
+| speed lost per second in a max-rate turn at corner | 52% at 120 px/s | 52% | ≈ 9%; × k ≈ 55–60% |
+| sustained radius / L | 1.8 (sharp), 3.3 (normal) | same below corner | 21–36 |
+| gun reach / L | 24.5 | 24.5 | ≈ 25–40 |
+| sustained radius / gun reach | 0.07 | 0.07 below corner, 0.24 at 215 px/s | ≈ 0.5–1 |
+| top speed, L per second | 6.8 (10.5 on a dash) | 6.8 | 14–20 |
+| muzzle speed / top speed | 3.7 | 3.7 | 4.5–6 |
+
+"Top speed" is the energy-limited boost terminal, 136 px/s at n = 1. A full-power dash
+from cruise peaks at 209 px/s and lasts about 1.9 s (A.5). For aircraft the corner speed
+is taken at a 6 g pilot limit, and turn onset is roll-to-bank plus the pull. The bleed
+estimate assumes a lift-to-drag ratio of about 5 at maximum lift and a thrust-to-weight
+ratio of 0.3, so treat it as an order of magnitude.
+
+What the comparison says:
+
+* **Already in range:** the speed of the best sustained turn, and the bleed in a hard
+  turn once time is scaled.
+* **Brought into range by §2:** the instantaneous-to-sustained ratio, a corner speed
+  and its falling turn rate above it, a low-speed floor, and onset time once time is
+  scaled. The proposed ω = 25 rad/s lands inside the scaled real range without being
+  tuned to it.
+* **Not addressed by §2: compactness.** Turning circles are about 12 times tighter
+  than an aircraft's relative to ship length and gun reach. A sharp 180° fits in about
+  a sixth of the ship's own gun reach. §2 keeps the radii below corner by construction
+  and only opens them above it. Closing the gap fully would mean sustained radii of
+  250–500 px, half the vision range, which is a different game. Decide it explicitly; do
+  not let it drift in through tuning.
+* **Speed is low relative to turning.** At 6.8 L/s against 14–20 L/s, passes are slow
+  and turning dominates. Boom-and-zoom (§3) depends on the dash; the current energy law
+  allows one about 2 s long.
+
+### 8.2 Candidate parameter sets
+
+These are all the §2 model. The values are lift-only and analytic, at n = 1. Sustained
+rates come from the measured boost sharp equilibrium (73 px/s), which sits below every
+corner speed here.
+
+| | A: §2 as written | B: lower corner | C: roomier |
+|---|---:|---:|---:|
+| `C_L_max` | 0.027 | 0.027 | 0.0135 |
+| corner speed (px/s) | 120 | 100 | 120 |
+| `max_lateral_accel` (px/s²) | 389 | 270 | 194 |
+| best sustained sharp rate | 119°/s | 119°/s | ≈ 60°/s |
+| sharp rate at corner | 186°/s | 155°/s | 93°/s |
+| instantaneous / sustained | 1.56 | 1.30 | ≈ 1.55 |
+| sharp rate at 136 / 209 px/s | 164 / 107°/s | 114 / 74°/s | 82 / 53°/s |
+| corner / top speed (136) | 0.88 | 0.74 | 0.88 |
+| sharp radius at corner / at 209 px/s | 37 / 112 px | 37 / 162 px | 74 / 225 px |
+| scripted decisions above corner | 42% | 61% | 42% |
+| scripted p99 lateral acceleration (434) / cap | 1.1 | 1.6 | 2.2 |
+
+* **A** keeps the most of today's game and puts corner/top at the upper edge of the real
+  range.
+* **B** matches the real ratios best on corner/top and rate-at-top. It gives up some of
+  the instantaneous-to-sustained gap (1.30), and the cap binds on most fast decisions.
+* **C** halves lift. Every radius doubles and every turn rate halves, and the sustained
+  envelope changes. It is the only set that moves compactness at all, and only by 2×. It
+  breaks §2.1's "settled turns unchanged", so it needs its own cold-start justification.
+
+The index matters. The energy-limited boost terminal is 107 px/s (proper) at n = 0.5
+and 171 at n = 2, so a corner at 120 sits above top speed in low-index fields and well
+below it in high-index ones. High-index fields (18% of scripted time) are where the cap
+will bind.
+
+Recommendation: implement A as §2 specifies, then run the §6.5 duels at A and B. Choose
+between them on time above corner and on hit rate, not on the ratio table alone. Keep C
+in reserve until the compactness question is decided.
+
+### 8.3 Acceptance numbers for §6
+
+* **Settled envelope below corner:** terminal speed, turn rate and radius within 2% of
+  A.2 at every index.
+* **Onset:** 90% of the commanded slip in 0.13–0.20 s.
+* **Snap-back:** release to within 1° of the flight path in 0.13–0.20 s. Today this is
+  one tick (A.6).
+* **Nose throw:** 0.5 s sharp from straight at 100 px/s. Compare the path heading change
+  (71° today) and the gun's lead over the path (10° today).
+* **Re-measure:** run `benchmarks/flight_envelope.py` before and after, and diff it
+  against `docs/internal/flight-envelope-baseline-oct2026.json`.
+
+---
+
+## Appendix A. Measured baseline
+
+Measured with `benchmarks/flight_envelope.py` at `f3e0f1f`. The raw output is
+`docs/internal/flight-envelope-baseline-oct2026.json`. The configuration is the live one:
+`frontline_ship_config(SHIP_CONFIG)`, dt = 1/30, field path. Each probe ship sits at the
+centre of one large uniform field of index n and is re-centred every tick. Speeds are
+proper (u = n|v|) and rates are world °/s, unless stated otherwise.
+
+### A.1 Straight-line speeds (px/s, proper)
+
+| n | coast | boost, energy-limited | dash peak from cruise (time) | boost, power held full |
+|---:|---:|---:|---:|---:|
+| 0.5 | 100 | 107 | 203 (0.9 s) | 315 |
+| 0.707 | 100 | 121 | 206 (1.3 s) | 315 |
+| 1 | 100 | 135 | 209 (1.9 s) | 316 |
+| 1.414 | 100 | 152 | 214 (2.8 s) | 316 |
+| 2 | 100 | 171 | 221 (4.3 s) | 316 |
+
+The coast terminal is sqrt(`base_thrust`/`no_turn_drag_coeff`) at every index. Holding
+power full is not a game state; it bounds what a ship with power left approaches.
+
+### A.2 Sustained turns (n = 1)
+
+| power | turn | speed | rate | radius | 360° |
+|---|---|---:|---:|---:|---:|
+| coast | normal | 81.5 | 70.4°/s | 66.3 px | 5.1 s |
+| coast | sharp | 39.3 | 63.7°/s | 35.3 px | 5.7 s |
+| boost | normal | 118.3 | 102.5°/s | 66.3 px | 3.5 s |
+| boost | sharp | 73.2 | 119.2°/s | 35.4 px | 3.0 s |
+| power held full | normal | 257.3 | 222.1°/s | 66.4 px | 1.6 s |
+| power held full | sharp | 124.1 | 200.4°/s | 35.5 px | 1.8 s |
+
+Radius is independent of index and power. World turn rate at the same proper speed is
+reciprocal in n: boost sharp turns at 189°/s at n = 0.5 and 75°/s at n = 2.
+
+### A.3 Instantaneous performance (one tick, coast, n = 1)
+
+| u (px/s) | 40 | 100 | 120 | 136 | 160 | 300 | 600 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| sharp rate (°/s) | 65 | 154 | 184 | 208 | 244 | 448 | 864 |
+| sharp lateral accel (px/s²) | 45 | 267 | 382 | 489 | 672 | 2 291 | 8 641 |
+| sharp du/dt (px/s²) | −0.3 | −42 | −63 | −83 | −117 | −421 | −1 630 |
+| normal rate (°/s) | 35 | 86 | 103 | 117 | 137 | 256 | 507 |
+| normal du/dt (px/s²) | +6.0 | −4.0 | −9.3 | −14 | −23 | −99 | −414 |
+
+There is no corner. Rate rises linearly with speed without limit, and lateral
+acceleration with its square. Boost adds about 70 px/s² along track at 100 px/s, so a
+boosted sharp turn holds speed up to about 125 px/s. The air brakes have the drag of the
+matching turn with no lift. The JSON's `excess_power_accel` includes passive power
+regeneration (2 000 px²/s³ of energy), which stops once power is full.
+
+### A.4 Turning from straight flight (n = 1, full power)
+
+Time to turn 180°, in seconds:
+
+| entry u (px/s) | 40 | 70 | 100 | 136 | 180 | 215 | 300 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| coast, sharp | 2.80 | 1.97 | 1.47 | 1.13 | 0.87 | 0.73 | 0.53 |
+| boost, sharp | 1.37 | 1.17 | 1.03 | 0.87 | 0.73 | 0.63 | 0.50 |
+| coast, normal | 4.07 | 2.87 | 2.17 | 1.67 | 1.30 | 1.10 | 0.80 |
+| boost, normal | 1.90 | 1.67 | 1.47 | 1.27 | 1.07 | 0.93 | 0.73 |
+
+The lateral offset at 180° is 66–75 px for sharp turns and 129–134 px for normal turns,
+whatever the entry speed. A faster entry turns the same 180° sooner in the same space.
+Times scale with n.
+
+### A.5 Acceleration and braking (n = 1)
+
+* **Boost from rest:** 100 px/s in 1.3 s, 136 in 1.8 s; peak 199 at 2.9 s, when power runs
+  out.
+* **Boost from cruise at full power:** 136 in 0.53 s, 200 in 1.67 s; peak 209 at 1.87 s,
+  when power runs out.
+* **From 215 px/s to 100:**
+
+  | method | time |
+  |---|---:|
+  | coast | 43.6 s |
+  | air brake | 7.6 s |
+  | sharp air brake | 1.2 s |
+  | reverse | 1.17 s |
+  | reverse with sharp air brake | 0.6 s |
+
+* **Reverse from cruise to standstill** takes 1.2 s. It returns 33 power within the
+  first second: 25 from kinetic energy, the rest from regeneration.
+* **Index.** Times scale with n (mass n²). At n = 2 the boost from cruise peaks at
+  4.3 s.
+
+### A.6 Gun response (coast, n = 1)
+
+* **Onset.** The gun steps 15° in one tick (450°/s).
+* **Reversal.** Sharp left to sharp right moves it 21–28° in one tick (630–835°/s),
+  less at higher speed.
+* **Release.** The slip returns to zero in one tick.
+
+Nose throw, 0.5 s of sharp from straight flight:
+
+| u (px/s) | 40 | 60 | 100 | 160 | 215 | 300 |
+|---|---:|---:|---:|---:|---:|---:|
+| gun at 0.1 s | 19° | 21° | 25° | 31° | 36° | 44° |
+| gun at 0.5 s | 45° | 58° | 81° | 114° | 141° | 179° |
+| path at 0.5 s | 32° | 46° | 71° | 105° | 134° | 173° |
+
+Today's nose throw is mostly a real path turn: above about 60 px/s the path has turned
+further than the 15° slip within 0.15 s.
+
+### A.7 Bullets (n = 1, no spread)
+
+| ship speed (px/s) | 0 | 100 | 215 |
+|---|---:|---:|---:|
+| reach in 1 s (px) | 421 | 490 | 565 |
+| time to 200 px (s) | 0.47 | 0.37 | 0.33 |
+
+The muzzle speed is 500 px/s relative to the ship. Drag leaves the bullet with 64–71% of
+its launch speed at expiry.
+
+### A.8 Scripted play
+
+`StochasticScriptedAgent` against itself on the `rl` profile: 64 environments, 2 seeds,
+1 500 decisions each, 1.92 M ship-decisions.
+
+* **Proper speed:**
+
+  | p1 | p5 | p25 | p50 | p75 | p95 | p99 |
+  |---:|---:|---:|---:|---:|---:|---:|
+  | 28 | 41 | 80 | 113 | 133 | 152 | 166 |
+
+  Above 100: 61%; above 120: 42%; above 136: 19%; above 160: 2.4%; above 215: 0.
+* **Heading rate:** zero on 59% of decisions; |rate| p75 75°/s, p95 154, p99 217.
+  Lateral acceleration p95 292 px/s², p99 434.
+* **Actions:** boost straight 46%; normal turns 21%; sharp turns 20%; air brakes 0%.
+* **Local index:** n = 1 50%, n = 2 18%, n = 1.414 10%, n = 0.707 7%, n = 0.5 7%, in a
+  transition 7%.
+
+Trained-policy usage is not measured here. Air-brake usage in particular should be
+checked on a policy before §2.6 removes them.
+
+### A.9 The ambient path
+
+With no fields (`num_fields == 0`), `_update_kinematics` integrates lift as an explicit
+velocity kick. Each tick multiplies speed by sqrt(1 + (c_L·u·dt)²), so lift adds energy.
+
+* At 60 Hz, the energy-limited boost terminal there is 224 px/s, against 135 on the
+  field path.
+* A boosted normal turn settles faster (228 px/s) than straight flight.
+* With power held full, a normal turn runs away and reaches NaN after about 29 s.
+
+No current profile takes this path. Every profile has fields, and the field path rotates
+the velocity exactly. The shared slip helper in §4 should take the exact rotation from
+the field path for both paths.
+
+## Appendix B. Reference aircraft
+
+### B.1 Data
+
+Sea-level figures for six WWII piston fighters and one early jet, from the IL-2 Great
+Battles aircraft database (v5.204). That database is simulator data, compiled from
+historical tests. The cross-check holds: the derived Spitfire sustained radius (211 m)
+matches the RAE's 700 ft (212 m) estimate. Lengths are from the manufacturers'
+specifications.
+
+| aircraft | length | top speed | stall | 360° (speed) | max load |
+|---|---:|---:|---:|---:|---:|
+| Spitfire Mk IXc | 9.47 m | 542 km/h | 143–163 km/h | 17.7 s (270 km/h) | 12.5 g |
+| Yak-9 | 8.55 m | 537 km/h | 152–160 km/h | 17.5 s (270 km/h) | 10.5 g |
+| Bf 109 G-6 | 8.95 m | 529 km/h | 160–177 km/h | 21.5 s (270 km/h) | 10.5 g |
+| P-51D-15 | 9.83 m | 592 km/h | 159–196 km/h | 20.0 s (290 km/h) | 10 g |
+| Fw 190 A-8 | 9.00 m | 558 km/h | 177–208 km/h | 24.2 s (280 km/h) | 11 g |
+| P-47D-28 | 11.0 m | 557 km/h | 178–215 km/h | 27.5 s (322 km/h) | 11 g |
+| Me 262 A | 10.6 m | 759 km/h | 165–200 km/h | 33.5 s (450 km/h) | 12.5 g |
+
+The maximum load is the database's structural figure. The comparison uses 6 g as the
+practical limit for a pilot without a g-suit.
+
+### B.2 Derived values
+
+The corner speed is the stall speed × √6. The instantaneous rate at corner is
+g·√35 / V_c. Ratios use the same top speed as above.
+
+| aircraft | sustained rate | sustained radius | load | corner | rate at corner | inst/sust | turn/top | corner/top | top/stall | top (L/s) | radius / L |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Spitfire IXc | 20.3°/s | 211 m | 2.9 g | 375 km/h | 31.9°/s | 1.57 | 0.50 | 0.69 | 3.5 | 15.9 | 22 |
+| Yak-9 | 20.6°/s | 209 m | 2.9 g | 382 km/h | 31.3°/s | 1.52 | 0.50 | 0.71 | 3.4 | 17.4 | 24 |
+| Bf 109 G-6 | 16.7°/s | 257 m | 2.5 g | 412 km/h | 29.1°/s | 1.74 | 0.51 | 0.78 | 3.2 | 16.4 | 29 |
+| P-51D-15 | 18.0°/s | 256 m | 2.8 g | 434 km/h | 27.6°/s | 1.53 | 0.49 | 0.73 | 3.3 | 16.7 | 26 |
+| Fw 190 A-8 | 14.9°/s | 300 m | 2.3 g | 470 km/h | 25.5°/s | 1.71 | 0.50 | 0.84 | 2.9 | 17.2 | 33 |
+| P-47D-28 | 13.1°/s | 391 m | 2.3 g | 480 km/h | 24.9°/s | 1.90 | 0.58 | 0.86 | 2.8 | 14.1 | 36 |
+| Me 262 A | 10.7°/s | 666 m | 2.6 g | 446 km/h | 26.9°/s | 2.50 | 0.59 | 0.59 | 4.2 | 19.9 | 63 |
+
+### B.3 Modern jet and other figures
+
+* **F-16 (Block 50, clean),** for contrast:
+  * sustained 21.5°/s at 9 g and Mach 0.7;
+  * instantaneous about 25°/s;
+  * corner 350–450 KCAS;
+  * inst/sust about 1.2, sustained radius about 42 L.
+
+  Fly-by-wire and high thrust-to-weight flatten the instantaneous-to-sustained gap
+  that defines the WWII feel.
+* **Roll rates** at combat speed are roughly 60–160°/s. The Fw 190 is near 160°/s and
+  the P-47D about 85°/s at 250 mph. Spitfire figures are disputed between NACA Report
+  868 and other tests. Banking 60–90° therefore takes about 0.4–1.5 s before the pull
+  builds.
+* **Muzzle speeds:** AN/M2 .50 calibre 866 m/s; Hispano Mk II 840–880 m/s; MG 151/20
+  700–785 m/s. That is about 4.5–6 times top speed. Effective firing ranges of
+  250–400 m are about 25–40 ship lengths.
+
+## Appendix C. Sources
+
+* IL-2 Great Battles aircraft database, v5.204: `aergistal.github.io/il2/`. Pages used:
+  Spitfire Mk.IXc, Yak-9 ser.1, Bf 109 G-6, P-51D-15, Fw 190 A-8, P-47D-28 and Me 262 A.
+* RAE turning-circle estimate for the Spitfire (700 ft at 12 000 ft) and the Bf 109E:
+  Wikipedia, "Aircraft of the Battle of Britain".
+* Bf 109 G-6 dimensions: Wikipedia, "Messerschmitt Bf 109", specifications.
+* F-16 turn figures: f-16.net forum threads "F-16 Sustained Turn Performance" and "F-16
+  maneuverability data", and boltflight.com "F-16 Turn Rate". These are secondary; the
+  figures agree to within about 1°/s.
+* Roll rates: NACA Report 868 (1947), as discussed on ww2aircraft.net ("Roll rate P47 vs
+  FW190", "Relative rolling characteristics of WWII fighters").
+* Muzzle velocities: Wikipedia, "AN/M2", "Hispano-Suiza HS.404" and "MG 151 cannon".
