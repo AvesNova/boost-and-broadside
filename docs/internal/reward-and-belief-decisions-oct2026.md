@@ -283,11 +283,8 @@ Known wrinkle: an enemy's next attitude is a five-spike mixture (heading plus 0�
 levels sit near uniform for enemies. Training is unaffected (per-level cross-entropy
 against sharp truth is proper) and the belief collapses to mean and spread anyway.
 
-**Open:** derive a hidden ship's attitude belief instead of storing it. Physics sets
-attitude to the velocity heading rotated by the turn offset; the velocity belief gives the
-heading and the enemy-action head gives the offset distribution. Stalled ships (below
-minimum speed) hold attitude and are the exception. If derived, the code above remains
-the input encoding but the next-state head has no attitude target.
+Attitude is stored and predicted like every other channel; it is **not** derived from
+the velocity heading and turn offset (see §3.6).
 
 ### 3.5 Other channels
 
@@ -306,19 +303,28 @@ deterministic drift is cheap because the residual baseline makes "no change" fre
 
 * **Local log index** goes from 5 to 21 bins because transitions between plateaus
   matter and the per-decision change (about 0.05) moved a 5-bin two-hot by only 0.14
-  bin. **Open:** compute it at the believed position from the static field map instead
-  of storing a belief (reopens the deferred "inferring grad(n) at a believed position").
+  bin. It is stored and predicted, not computed from the field map (see §3.6).
 * **Angular velocity** stays at 5 bins: in both flight paths the stored value is exactly
   `turn_offset / dt` (0, ±5°, ±15° per tick; 0 when stalled) and does not depend on speed
   or index. The rotation of the velocity heading under lift is carried by the velocity
-  and attitude channels. Tied to the enemy-action head's turn marginal; no separate
-  belief. (Raised in review as possibly 21 bins; kept at 5 on this evidence.)
-* **Velocity** keeps the symlog-with-knee encoding at v₀ ≈ 100 px/s. **Open:** three 1D
-  axes at 0°/120°/240° (243 logits) against a hex barycentric two-hot in the u-disc
-  (~640 cells); with moment storage the belief is unimodal, which weakens the hex case.
+  and attitude channels. Predicted by the next-state head like every other channel
+  (see §3.6); the enemy-action head's turn marginal is a diagnostic to compare it with,
+  not its source. (Raised in review as possibly 21 bins; kept at 5 on this evidence.)
+* **Velocity** keeps the symlog-with-knee encoding at v₀ ≈ 100 px/s, as **three 1D axes**
+  at 0°/120°/240°, 81 bins each (243 logits). Decided over a hex barycentric two-hot:
+  with moment storage the belief is unimodal anyway. The three axis variances determine
+  the 2x2 covariance exactly, so the moment round trip is exact.
 * Going finer than 21 (e.g. 51 for health and shield delay) is worth trying only if
   those channels sit at the identity baseline after training.
 * Gaussian uncertainty terms are removed; `time_since_observation` stays.
+
+### 3.6 Hidden ships: model outputs and last sighting only
+
+A hidden ship's input is built **only** from the next-state head's own outputs, carried
+forward from the last visible state. Nothing is computed from physics or the map for it:
+no attitude from heading plus turn offset, no log index from the field map at the
+believed position, no angular velocity from the action head. This keeps the head's
+job, learning the dynamics, as the owner's earlier decision required (no physics prior).
 
 Before the first run, set `next_state_coef` from a measured trunk gradient share; the
 head's norm will differ from the Gaussian head's (76% of the trunk in run 748).
@@ -359,6 +365,55 @@ Each step retires the checkpoint schema; there is no weight migration.
 **Open A/B worth running in step 1:** five heads against today's fifteen at the same
 weights. Linearity says the policy gradient should not differ; the critic's
 representation might.
+
+
+---
+
+## 6. Open questions and concerns
+
+Raised in the final review pass. Ordered by how much a wrong answer would cost.
+
+1. **Step 1 bundles too many changes.** Five heads, raw rewards, a categorical critic,
+   the new advantage normalisation and the reward redefinition land together. If the run
+   is worse, nothing says which one. Put each behind its own config switch so a
+   regression can be bisected with short runs, even if the first long run turns them all
+   on.
+2. **The first hidden step starts sharp.** When a ship disappears its belief is the last
+   visible state with sigma at the floor, so the baseline is sharp. With a zero residual
+   the belief stays sharp and frozen: the "static prior" the September audit measured.
+   Widening and moving it is now a learned skill with no prior (by decision). Watch the
+   hidden-age position error against dead reckoning from the first updates; this is
+   where the design is most likely to underperform.
+3. **The encode/decode round trip must be exact.** If the head outputs zero residual,
+   decoding the blurred input must return the same mean and sigma, or the belief drifts
+   on its own every step. Needs a unit test for each code: 9-colour position (coarse to
+   fine decode), 4-colour attitude, the three velocity axes, and the 21-bin scalars near
+   their range edges where clipping breaks the Gaussian.
+4. **The unit of the advantage floor.** DreamerV3 divides by max(1, S); the 1 assumes a
+   meaningful reward unit. With derived weights the unit is whatever the level weights
+   make it. Choose it deliberately (for example, a kill worth about 1) or the floor
+   either never binds or always binds. Also decide whether PPO's per-minibatch
+   advantage standardisation stays; DreamerV3 does not subtract the mean.
+5. **Critic bin count and range.** 255 (Dreamer) against 51–101 (HL-Gauss). Five heads
+   at 255 bins is 1 275 logits per ship token, which is activation memory
+   in the update. Measure.
+6. **Zone progress gamma** (~0.995) is a starting guess. Log the discount-weighted lag
+   between entering a zone and being paid, and set it from that.
+7. **Map-scale range and the scripted opponent.** The range and distribution are open.
+   Field generation and the scripted strategy read scalar radii, so per-episode scale
+   breaks the BC teacher and the scripted opponent on every scaled environment until they
+   read per-env geometry.
+8. **Coarse position levels carry little at s = 1.** Levels 0–1 of the 9-colour code
+   (spacings 21 845 and 7 282 px) barely change within a 2 600 px playable radius and only
+   encode the random map centre. Harmless, about 18 logits; they matter at large maps.
+9. **Hidden health and shield delay are bimodal** (hit or not); the Gaussian belief
+   blurs that. Log hidden health error by age.
+10. **Every step retires the checkpoint schema**, so BC and every tuned coefficient
+    (`next_state_coef`, the BC loss balance from `db55887`) must be re-measured at each
+    step. Budget the cold starts.
+11. **Research details unverified.** DreamerV3's normaliser decay and critic range came
+    from memory because the proxy blocked arxiv. Check before copying them into config.
+12. **Five heads against fifteen** (§5) and **PMPO** (§2.4) remain later experiments.
 
 ---
 
