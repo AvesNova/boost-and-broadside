@@ -80,28 +80,36 @@ alpha_cmd = sign · lift_inverse(cl)          # closed form, §2.3
 
 Corner speed is `sqrt(max_lateral_accel / C_L_max)`:
 
-* **Below it**, both levels command today's 5° and 15°.
+* **Below it**, both levels command today's 5° and 15° (normal only below its own
+  corner, 95 px/s at the chosen numbers).
 * **Above it**, the nose angle shrinks with 1/u² and the radius grows with u².
 
 The cap uses proper speed `u = n|v|`. This keeps the corner proper speed independent of
 the index, and keeps world turn rate reciprocal in n at a fixed proper speed, matching
 today's field behaviour.
 
-Worked numbers for a corner speed of 120 px/s at n = 1 (`max_lateral_accel` ≈ 389). The
-radii here are lift-only; the measured radii include about 5% from thrust.
+**Corner speed is 100 px/s** (`max_lateral_accel` = 0.027 · 100² = 270 px/s²), chosen
+in §8.2. Worked numbers at n = 1 follow. The radii here are lift-only; the measured radii
+include about 5% from thrust.
 
 | u (px/s) | normal α | sharp α | normal R | sharp R | sharp rate, today | sharp rate, capped |
 |---:|---:|---:|---:|---:|---:|---:|
 | 40 | 5.0° | 15.0° | 67 | 37 | 62°/s | 62°/s |
-| 100 | 5.0° | 15.0° | 67 | 37 | 155°/s | 155°/s |
-| 120 | 4.4° | 15.0° | 74 | 37 | 186°/s | 186°/s |
-| 136 | 3.3° | 7.9° | 95 | 48 | 210°/s | 164°/s |
-| 160 | 2.3° | 5.1° | 132 | 66 | 248°/s | 139°/s |
-| 215 | 1.2° | 2.6° | 238 | 119 | 333°/s | 104°/s |
-| 300 | 0.6° | 1.3° | 463 | 231 | 464°/s | 74°/s |
+| 100 | 4.4° | 15.0° | 74 | 37 | 155°/s | 155°/s |
+| 120 | 2.9° | 6.7° | 107 | 53 | 186°/s | 129°/s |
+| 136 | 2.2° | 4.8° | 137 | 69 | 210°/s | 114°/s |
+| 160 | 1.5° | 3.3° | 190 | 95 | 248°/s | 97°/s |
+| 215 | 0.8° | 1.7° | 342 | 171 | 333°/s | 72°/s |
+| 300 | 0.4° | 0.9° | 667 | 333 | 464°/s | 52°/s |
+
+The normal level's own corner is sqrt(270 / (2 · 0.015)) ≈ 95 px/s, so normal turns
+begin to soften just below 100 px/s. One settled turn therefore changes: the boosted
+normal turn, which settles at 118 px/s today (Appendix A.2), will widen and slow. Every
+coasting turn and the boosted sharp turn (73 px/s) settle below both corners and stay
+as they are.
 
 The parabolic lift curve is flat near its peak, so the sharp nose angle falls quickly
-just above corner speed: 15° at 120 px/s, 7.9° at 136. That gives high-speed flight its
+just above corner speed: 15° at 100 px/s, 6.7° at 120. That gives high-speed flight its
 "committed" feel.
 
 ### 2.3 Lift and drag from the actual slip
@@ -184,6 +192,32 @@ dependence comes from the g-cap (§2.2) and from the low-speed fade (§2.5).
   changes with `NUM_TURN_ACTIONS`.
 * Slowing down still comes from reverse thrust, and from the drag of sharp pulls.
 
+### 2.7 Fixing the ambient path
+
+Appendix A.9 records a defect in the no-field path (`num_fields == 0`):
+`_update_kinematics` applies lift as an explicit velocity kick, which multiplies speed by
+sqrt(1 + (c_L·u·dt)²) every tick. It also drains power linearly in speed, not by exact
+work. Lift therefore adds energy, a boosted normal turn outruns straight flight, and
+with power held full the turn runs away to NaN.
+
+* **Fix by deletion.** Remove `_update_kinematics`. With no fields, run the field path's
+  flight half-steps (`_apply_field_flight_half_step`) around a plain drift
+  `pos += v·dt` in place of `_transport_through_fields`. With n = 1 and zero gradient
+  that is the field path exactly: exact drag scale, exact lift rotation, exact-work
+  thrust, and the same stall rule for reverse. One flight path remains, which is what
+  §4 relies on.
+* **Order.** Land it as its own commit before the slip change. §6 then compares one
+  change at a time, and the field-path baseline in Appendix A does not move.
+* **Tests.**
+  * Lift alone (zero thrust and drag) keeps speed constant over 10 000 ticks at
+    470 px/s and 60 Hz.
+  * Generalized energy never rises without thrust or regeneration.
+  * A held-power normal turn stays finite.
+  * The no-field step matches a probe at n = 1 to float tolerance at the same dt.
+* **Fallout.**
+  * Any test that pins ambient-path numbers moves to the corrected values.
+  * No profile runs this path, so throughput and trained checkpoints are unaffected.
+
 ## 3. What changes in play
 
 * **Turning fights get an energy trade-off.**
@@ -222,8 +256,9 @@ hot path are regressions.
 * **Reassignment, not in-place mutation.** The fields advance by reassignment, per the
   `TensorState` carve-out in the style guide. `CapturedTick` copies every `TensorState`
   field back after capture, so the new fields need no special handling there.
-* **Both flight paths change in step.** The ambient path (`num_fields == 0`) and the
-  field path share one slip-update helper, so they cannot diverge.
+* **One flight path.** After §2.7 the ambient case (`num_fields == 0`) runs the field
+  path's flight steps with no transport, so the slip update exists once and the two
+  cannot diverge.
 * **Cost** is a few dozen elementwise operations on `(B, N)`, which is negligible next
   to collisions and observation. Confirm it with the `rl-throughput` benchmark, not by
   assumption.
@@ -235,7 +270,7 @@ hot path are regressions.
     smoothly, which makes the finer attitude levels more predictable.
   * §3.7: angular velocity is no longer five exact values and needs a continuous
     binning. Its range is about ±(`max_lateral_accel` / corner speed + `max_slip_rate`),
-    roughly ±340°/s at the numbers above.
+    roughly ±305°/s at the numbers above (155°/s + 150°/s).
   * Appendix A must be re-measured above corner speed.
 * **Observation.** The `ang_vel` normalisation was chosen for the action echo and must be
   re-derived. Slip is visible as attitude minus velocity heading, so the state remains
@@ -268,6 +303,9 @@ runtime switch to the old model.
    replay matches eager within float tolerance. Throughput is within noise of today.
 5. **Play.** Scripted duels: hit rate, time-to-kill, mean speed and time spent above
    corner speed.
+6. **Ambient path.** The §2.7 tests pass. The `flight_envelope.py` reference block
+   (`terminal_reference_60hz_ambient`) reproduces the field path at n = 1: energy-limited
+   boost near 135 px/s rather than 224, and no missing rows.
 
 ## 7. Open questions
 
@@ -275,11 +313,10 @@ runtime switch to the old model.
    where lift drops and drag rises steeply)? That is closer to the real trade-off, and it
    limits itself, but it changes the sustained low-speed sharp turn into a decelerating
    slide. Start at 15° and try a deeper ceiling as a variant.
-2. **Corner speed.** 110–130 px/s puts it between coast cruise (100 px/s) and
-   energy-limited boost at n = 1 (136 px/s). Tune it against measured play speeds: the
-   scripted controller's proper speed has median 113 px/s and p1–p99 28–166 px/s, and
-   42% of its decisions are above 120 (Appendix A.8). §8.2 compares 100, 120 and a
-   halved lift curve.
+2. **Corner speed.** Settled at 100 px/s (§8.2): coast cruise, and 0.74 of the
+   energy-limited boost terminal at n = 1. The scripted controller is above it on 61% of
+   decisions (Appendix A.8), so the cap shapes most fast flight. Revisit only if the
+   §6.5 duels show fast passes becoming unusable.
 3. **Landing.** The reward, critic and belief redesign already forces a cold start and a
    checkpoint-schema bump. Folding this change into the same cold start avoids a second
    one. Validate the physics with scripted duels first (§6), since those need no
@@ -301,18 +338,18 @@ an aircraft. Ratios do carry over, once two scales are fixed.
   17.5–27.5 s for the WWII piston fighters in Appendix B. Rotation therefore runs about
   **k ≈ 6–7 times faster** than real. Coasting turns (5.1–5.7 s per 360°) give k ≈ 4.
 
-| quantity | today | §2 as written | WWII piston fighters |
+| quantity | today | §2 (corner 100) | WWII piston fighters |
 |---|---:|---:|---:|
-| best instantaneous / best sustained turn rate | 1.75 at 136 px/s, unbounded above | 1.56 | 1.5–1.9 |
+| best instantaneous / best sustained turn rate | 1.75 at 136 px/s, unbounded above | 1.30 | 1.5–1.9 |
 | speed of best sustained turn / top speed | 0.54 | 0.54 | 0.49–0.59 |
-| corner speed / top speed | none | 0.88 | 0.69–0.86 |
-| turn rate at top speed / at corner | > 1 at every speed | 0.88 | 0.69–0.86 |
+| corner speed / top speed | none | 0.74 | 0.69–0.86 |
+| turn rate at top speed / at corner | > 1 at every speed | 0.74 | 0.69–0.86 |
 | top speed / lowest flying speed | 136 (`min_speed` 1) | ≈ 3.9 (fade at 35) | 2.8–3.5 |
 | turn onset, straight to full pull | 1 tick (33 ms) | 0.16 s | ≈ 0.6–1.5 s; ÷ k ≈ 0.1–0.2 s |
-| speed lost per second in a max-rate turn at corner | 52% at 120 px/s | 52% | ≈ 9%; × k ≈ 55–60% |
+| speed lost per second in a max-rate turn at corner | 42% at 100 px/s | 42% | ≈ 9%; × k ≈ 55–60% |
 | sustained radius / L | 1.8 (sharp), 3.3 (normal) | same below corner | 21–36 |
 | gun reach / L | 24.5 | 24.5 | ≈ 25–40 |
-| sustained radius / gun reach | 0.07 | 0.07 below corner, 0.24 at 215 px/s | ≈ 0.5–1 |
+| sustained radius / gun reach | 0.07 | 0.07 below corner, 0.35 at 215 px/s | ≈ 0.5–1 |
 | top speed, L per second | 6.8 (10.5 on a dash) | 6.8 | 14–20 |
 | muzzle speed / top speed | 3.7 | 3.7 | 4.5–6 |
 
@@ -324,12 +361,14 @@ ratio of 0.3, so treat it as an order of magnitude.
 
 What the comparison says:
 
-* **Already in range:** the speed of the best sustained turn, and the bleed in a hard
-  turn once time is scaled.
-* **Brought into range by §2:** the instantaneous-to-sustained ratio, a corner speed
-  and its falling turn rate above it, a low-speed floor, and onset time once time is
-  scaled. The proposed ω = 25 rad/s lands inside the scaled real range without being
-  tuned to it.
+* **Already in range:** the speed of the best sustained turn, and, to within its rough
+  estimate, the bleed in a hard turn once time is scaled.
+* **Brought into range by §2:** a corner speed and its falling turn rate above it, a
+  low-speed floor, and onset time once time is scaled. The proposed ω = 25 rad/s lands
+  inside the scaled real range without being tuned to it.
+* **Moved toward range but short:** instantaneous over sustained turn rate is 1.30
+  against 1.5–1.9. That is the price of the 100 px/s corner (§8.2): the gap between
+  the best sustained turn (73 px/s) and the corner is small.
 * **Not addressed by §2: compactness.** Turning circles are about 12 times tighter
   than an aircraft's relative to ship length and gun reach. A sharp 180° fits in about
   a sixth of the ship's own gun reach. §2 keeps the radii below corner by construction
@@ -346,7 +385,7 @@ These are all the §2 model. The values are lift-only and analytic, at n = 1. Su
 rates come from the measured boost sharp equilibrium (73 px/s), which sits below every
 corner speed here.
 
-| | A: §2 as written | B: lower corner | C: roomier |
+| | A: corner 120 | **B: corner 100 (chosen)** | C: roomier |
 |---|---:|---:|---:|
 | `C_L_max` | 0.027 | 0.027 | 0.0135 |
 | corner speed (px/s) | 120 | 100 | 120 |
@@ -362,25 +401,27 @@ corner speed here.
 
 * **A** keeps the most of today's game and puts corner/top at the upper edge of the real
   range.
-* **B** matches the real ratios best on corner/top and rate-at-top. It gives up some of
-  the instantaneous-to-sustained gap (1.30), and the cap binds on most fast decisions.
+* **B**, the choice, matches the real ratios best on corner/top and rate-at-top. It gives
+  up some of the instantaneous-to-sustained gap (1.30), and the cap binds on most fast
+  decisions.
 * **C** halves lift. Every radius doubles and every turn rate halves, and the sustained
   envelope changes. It is the only set that moves compactness at all, and only by 2×. It
   breaks §2.1's "settled turns unchanged", so it needs its own cold-start justification.
 
 The index matters. The energy-limited boost terminal is 107 px/s (proper) at n = 0.5
-and 171 at n = 2, so a corner at 120 sits above top speed in low-index fields and well
-below it in high-index ones. High-index fields (18% of scripted time) are where the cap
-will bind.
+and 171 at n = 2. A corner at 100 sits just below top speed at n = 0.5 and well below
+it at n = 2, so the cap binds in every medium, most strongly in high-index fields (18%
+of scripted time).
 
-Recommendation: implement A as §2 specifies, then run the §6.5 duels at A and B. Choose
-between them on time above corner and on hit rate, not on the ratio table alone. Keep C
-in reserve until the compactness question is decided.
+Decision (2026-10-05): corner speed 100 px/s, set B. The §6.5 duels report time above
+corner and hit rate against today. A is the fallback if fast passes stop producing
+kills. C stays in reserve until the compactness question is decided.
 
 ### 8.3 Acceptance numbers for §6
 
 * **Settled envelope below corner:** terminal speed, turn rate and radius within 2% of
-  A.2 at every index.
+  A.2 at every index, except the boosted normal turn (§2.2) and the power-held-full
+  rows, which settle above corner.
 * **Onset:** 90% of the commanded slip in 0.13–0.20 s.
 * **Snap-back:** release to within 1° of the flight path in 0.13–0.20 s. Today this is
   one tick (A.6).
@@ -538,8 +579,7 @@ velocity kick. Each tick multiplies speed by sqrt(1 + (c_L·u·dt)²), so lift a
 * With power held full, a normal turn runs away and reaches NaN after about 29 s.
 
 No current profile takes this path. Every profile has fields, and the field path rotates
-the velocity exactly. The shared slip helper in §4 should take the exact rotation from
-the field path for both paths.
+the velocity exactly. §2.7 removes it.
 
 ## Appendix B. Reference aircraft
 
