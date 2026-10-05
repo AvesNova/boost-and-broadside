@@ -95,7 +95,7 @@ class TestShipEncoder:
         encoder = ShipEncoder(model_cfg, coordinator)
 
         obs_alive = _make_obs(B, N)
-        obs_dead = {k: v.clone() for k, v in obs_alive.items()}
+        obs_dead = YemongObservation(data={k: v.clone() for k, v in obs_alive.items()})
         obs_dead["alive"][0, 0] = False
 
         out_alive = encoder(obs_alive)
@@ -826,35 +826,6 @@ class TestBulletCrossAttention:
         assert obs.bullets[BulletObsKey.ACTIVE].shape == (B, N * K)
         # Ring-buffer slots start empty, and log(0) must not leak a -inf.
         assert torch.isfinite(obs.bullets[BulletObsKey.LOCAL_LOG_INDEX]).all()
-
-    def test_bullet_position_shares_the_ship_frequency_basis(self, ship_cfg):
-        """Attention computes relative geometry only if both bases match.
-
-        ``q.k`` over Fourier features reduces to a function of the displacement
-        only when ship and bullet positions expand on one shared basis. Mismatched
-        frequencies leave cross terms that never form relative geometry.
-        """
-        from boost_and_broadside.train.rl.features import (
-            build_bullet_coordinator,
-            build_standard_coordinator,
-        )
-
-        ship_feats = {f.name: f for f in build_standard_coordinator(ship_cfg).features}
-        bullet_feats = {f.name: f for f in build_bullet_coordinator(ship_cfg).features}
-
-        for ship_name, bullet_name in [
-            ("position_x", "bullet_position_x"),
-            ("position_y", "bullet_position_y"),
-        ]:
-            ship_enc = ship_feats[ship_name].input_encoder
-            bullet_enc = bullet_feats[bullet_name].input_encoder
-            assert ship_enc.n_freqs == bullet_enc.n_freqs
-            assert ship_enc.periods == bullet_enc.periods
-
-        # Velocity is compared against the ship's own in the FFN, so it matches too.
-        assert type(ship_feats["velocity"].input_encoder) is type(
-            bullet_feats["bullet_velocity"].input_encoder
-        )
 
     def test_no_ship_index_onehot_in_bullet_features(self, ship_cfg):
         """A per-ship one-hot would fix N in the weights and kill zero-shot transfer."""

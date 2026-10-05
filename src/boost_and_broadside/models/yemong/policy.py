@@ -80,71 +80,33 @@ from boost_and_broadside.train.rl.critic import (
 )
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 from boost_and_broadside.train.rl.hex_density import HEX_DENSITY_DIM
-from boost_and_broadside.train.rl.physical_belief import (
-    PHYSICAL_MEAN_DIM,
-    PHYSICAL_UNCERTAINTY_DIM,
-    uncertainty_clamp_bounds,
-)
+from boost_and_broadside.train.rl.ship_codes import SHIP_CODE_DIM, ShipStateCodec
 
 
 class NextStateHead(nn.Module):
-    """Predicts one decision of physical ship dynamics, with its uncertainty.
+    """Predicts the next decision's ship-state code as a residual on the current one.
 
-    Output is ``[means | uncertainty]``: ``pred_dim`` normalized physical mean
-    deltas followed by ``uncertainty_dim`` log-sigma and correlation-latent
-    terms. The means stay contiguous and first so every rollout consumer -- the
-    belief plane above all -- can slice them off without knowing the block behind
-    them exists.
-
-    The uncertainty block is clamped per column. The log-sigma floor is the bound
-    that matters, because a Gaussian likelihood is unbounded below as sigma falls
-    and would otherwise pay the head to claim certainty it does not have; the
-    correlation latents clamp tighter still, so ``tanh`` of one never reaches
-    exactly one and makes the bivariate likelihood infinite. Clamping rather than
-    squashing is deliberate: the zero gradient at the bound is what stops a
-    collapse continuing. See ``train/rl/physical_belief.py`` for the layout.
+    ``logits = log(code + eps) + f(h)`` per softmax group of the code
+    (``train/rl/ship_codes.py``), with ``f``'s last layer zero-initialised, so
+    the head starts as "nothing changes" and learning the dynamics is all it
+    does (``frontline-redesign-plan.md`` §8.2). For a hidden ship the code is
+    the belief's, already smoothed by its spreads, so an unresolvable level
+    costs nothing to leave alone.
     """
 
-    def __init__(
-        self,
-        d_model: int,
-        pred_dim: int = PHYSICAL_MEAN_DIM,
-        uncertainty_dim: int = PHYSICAL_UNCERTAINTY_DIM,
-    ) -> None:
+    def __init__(self, d_model: int, code_dim: int = SHIP_CODE_DIM) -> None:
         super().__init__()
-        self.pred_dim = pred_dim
-        self.uncertainty_dim = uncertainty_dim
+        self.code_dim = code_dim
         self.net = nn.Sequential(
             nn.Linear(d_model, d_model * 2),
             nn.RMSNorm(d_model * 2),
             nn.GELU(),
-            nn.Linear(d_model * 2, pred_dim + uncertainty_dim),
+            nn.Linear(d_model * 2, code_dim),
         )
-        if uncertainty_dim:
-            lower, upper = uncertainty_clamp_bounds()
-            if len(lower) != uncertainty_dim:
-                raise ValueError(
-                    f"uncertainty_dim {uncertainty_dim} does not match the "
-                    f"{len(lower)}-column physical uncertainty layout"
-                )
-            # Buffers rather than a tensor built per forward: materializing a
-            # constant vector from a host list inside the forward copies from the
-            # host and drains the CUDA queue. Non-persistent, so the clamp is a
-            # property of the code rather than of a saved checkpoint.
-            self.register_buffer("uncertainty_min", torch.tensor(lower), persistent=False)
-            self.register_buffer("uncertainty_max", torch.tensor(upper), persistent=False)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Args: x (..., D). Returns: (..., pred_dim + uncertainty_dim)."""
-        out = self.net(x)
-        if not self.uncertainty_dim:
-            return out
-        mean, uncertainty = out[..., : self.pred_dim], out[..., self.pred_dim :]
-        bounded = uncertainty.clamp(
-            min=self.uncertainty_min.to(uncertainty.dtype),
-            max=self.uncertainty_max.to(uncertainty.dtype),
-        )
-        return torch.cat([mean, bounded], dim=-1)
+    def forward(self, x: torch.Tensor, code: torch.Tensor) -> torch.Tensor:
+        """Args: x (..., D), code (..., code_dim). Returns float32 logits (..., code_dim)."""
+        return ShipStateCodec.baseline(code.float()) + self.net(x).float()
 
 
 class GlobalDensityHead(nn.Module):
@@ -358,9 +320,9 @@ class YemongPolicy(nn.Module):
             nn.Linear(hidden_dim, len(self._local_value_k) * model_config.value_bins),
         )
         self.value_head_global = GlobalValueHead(D, hidden_dim) if self._global_value_k else None
-        # Fixed widths, not the feature pipeline's: the next-state model predicts
-        # physical dynamics, so its shape follows the physical layout rather than
-        # however many Fourier harmonics the world size happens to imply.
+        # Predicts the ship-state code the encoder reads; the coordinator owns it.
+        if coordinator.ship_codec is None:
+            raise ValueError("the policy's feature pipeline must carry the ship-state code")
         self.next_state_head = NextStateHead(D)
         # Reads the global token, so it cannot exist without one in the query set:
         # with the promotion off that token is K/V-only map memory and no final
@@ -400,6 +362,9 @@ class YemongPolicy(nn.Module):
             nn.init.constant_(final.bias, self.density_head.init_log_rate)
         if self.value_head_global is not None:
             _init_head_orthogonal(self.value_head_global.net)
+        # The residual starts at exactly zero: "nothing changes" (§8.2).
+        final = [m for m in self.next_state_head.net if isinstance(m, nn.Linear)][-1]
+        nn.init.zeros_(final.weight)
 
     def trunk_modules(self) -> tuple[nn.Module, ...]:
         """The submodules every head reads from.
@@ -615,7 +580,7 @@ class YemongPolicy(nn.Module):
             logprob:    (B, N) float — log probability of the joint command.
             critic:     ``CriticOutput``; ``value`` (B, N, K) per-level expected
                         return, the outcome column in the observer's frame.
-            pred_next:  (B, N, pred_dim) float — predicted next-state deltas/phase shifts.
+            pred_next:  (B, N, 25) float — next-state prediction decoded to moments.
             enemy_action_logits: optional (B, N, 30) next-command prediction.
             new_hidden: (n_layers, B*(N+G), CONV_KERNEL*D) updated packed state.
         """
@@ -684,7 +649,12 @@ class YemongPolicy(nn.Module):
         enemy_action_logits = (
             self.enemy_action_head(x_ships) if return_enemy_action else None
         )  # (B, N, 30) when requested
-        pred_next = self.next_state_head(x_ships)  # (B, N, AUX_PRED_DIM)
+        # Decoded here, once: everything downstream of a rollout step -- the
+        # belief, the buffer, the diagnostics -- works in moments.
+        codec = self.coordinator.ship_codec
+        pred_next = codec.decode_logits(
+            self.next_state_head(x_ships, self.coordinator.ship_codes(obs, N))
+        )  # (B, N, 25)
         critic = self._critic(x, x_ships, return_logits=False)
 
         action, logprob = _sample_action(logits)
@@ -738,7 +708,7 @@ class YemongPolicy(nn.Module):
             z:          (T, B, N+G+M, D) float — raw encoder embeddings before Yemong layers,
                         or None if return_encoder_output=False.
             enemy_action_logits: optional (T, B, N, 30) next-command prediction.
-            pred_next:  (T, B, N, pred_dim) float — predicted next-state predictions (with grad).
+            pred_next:  (T, B, N, 469) float — next-state code logits (with grad).
             density:    optional (T, B, 2C) float — global ally/enemy density
                         prediction, or None when this policy has no density head.
         """
@@ -817,7 +787,8 @@ class YemongPolicy(nn.Module):
         x_ships = x[:, :, :N, :]  # (T, B, N, D)
 
         logits = self.action_head(x_ships)  # (T, B, N, 30)
-        pred_next = self.next_state_head(x_ships)  # (T, B, N, AUX_PRED_DIM)
+        codes = self.coordinator.ship_codes(flat_obs, N).reshape(T, B, N, -1)
+        pred_next = self.next_state_head(x_ships, codes)  # (T, B, N, 469) logits
 
         critic = self._critic(x, x_ships, return_logits=True)
         enemy_action_logits = (

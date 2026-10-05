@@ -22,15 +22,14 @@ from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAge
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.env import TensorEnv
 from boost_and_broadside.env.frontline import frontline_ship_config
-from boost_and_broadside.env.observation import _index_log_scale, perceived_observation_from_state
+from boost_and_broadside.env.observation import perceived_observation_from_state
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 from boost_and_broadside.runtime.actions import PendingActionState, advance_autonomous_decision
 from boost_and_broadside.train.rl.belief import DualBeliefTracker, legal_policy_view
 from boost_and_broadside.train.rl.physical_belief import (
-    NEXT_STATE_OUTPUT_DIM,
-    PhysicalNextState,
-    physical_means_from_observation,
+    BELIEF_MOMENT_DIM,
+    predicted_means,
 )
 from boost_and_broadside.train.rl.policy_io import load_policy_bundle
 
@@ -118,7 +117,6 @@ def _run_learned_accuracy(
         ship_config,
         device,
     ).team0
-    next_state_model = PhysicalNextState.from_ship_config(ship_config)
     stats = _empty_stats(device)
     baseline_stats = _empty_stats(device)
     world_w, world_h = ship_config.world_size
@@ -145,9 +143,6 @@ def _run_learned_accuracy(
             num_ships=env_config.num_ships,
             include_bullets=bundle.reads_bullets,
             pending_action=action_state.pending,
-        )
-        believed = physical_means_from_observation(
-            view, _index_log_scale(ship_config), num_ships=env_config.num_ships
         )
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
             policy_action, _, _, prediction, enemy_logits, hidden = policy.get_action_and_value(
@@ -191,7 +186,7 @@ def _run_learned_accuracy(
         )
         advance_autonomous_decision(env, action_state, selected_action)
 
-        forecast = next_state_model.apply_means(believed, prediction.float())
+        forecast = predicted_means(prediction.float())
         forecast_pos = torch.complex(forecast[..., 0], forecast[..., 1])
         next_state = env.state
         transition_contiguous = ~next_state.ship_respawned
@@ -375,7 +370,7 @@ def run_suite(
     # Isolate the fixed-shape production cache overhead from physics/scripted work.
     visibility = team_visibility_from_state(env.state, ship_config, env_config, False)
     tracker = DualBeliefTracker(b, n, decision_dt, ship_config, device)
-    prediction = torch.zeros((b, n, NEXT_STATE_OUTPUT_DIM), device=device)
+    prediction = torch.zeros((b, n, BELIEF_MOMENT_DIM), device=device)
     enemy_logits = torch.zeros((b, n, 42), device=device)
 
     def belief_iteration() -> None:

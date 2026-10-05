@@ -144,10 +144,9 @@ masked observation and canonicalizes its team labels. The same weights therefore
 candidate actions for both perspectives without deriving one team's sight from the other's.
 
 Each policy instance owns a GPU-resident store of **physical** belief: eleven physical means,
-thirteen log/unconstrained uncertainty terms, the 30-way pending-command distribution, and
-how long ago the ship was last seen. Visible ships assimilate authoritative truth and drop
-to a certainty floor; enemies out of contact are advanced by the policy's next-state head and
-carry the spread that head reported. Every ship is revealed to both teams for the decision it
+fourteen physical spreads, the 30-way pending-command distribution, and how long ago the ship
+was last seen. Visible ships assimilate authoritative truth at zero spread; enemies out of
+contact carry the policy's next-state forecast, decoded to means and spreads. Every ship is revealed to both teams for the decision it
 spawns on, at match start and on every respawn, which seeds each store from observation rather
 than from nothing and stops a remembered estimate outliving the ship it describes.
 
@@ -180,10 +179,9 @@ The total update combines:
 - a categorical critic: cross-entropy per reward level against its categorical target;
 - an entropy bonus on the joint action distribution;
 - behavior cloning from the scripted controller, gated down as scripted win rate rises;
-- one-step next-state prediction, as a hybrid: plain squared error on the Fourier-moment
-  channels, whose magnitude already carries confidence, and a Gaussian likelihood over a
-  predicted mean and variance everywhere else. The finest harmonic of each circular feature
-  carries a sigma too, for gradient share rather than precision;
+- one-step next-state prediction: residual logits on the ship's categorical code, trained by
+  per-group cross-entropy against the exact code of the true next state (see
+  [architecture](architecture.md#auxiliary-next-state-head));
 - global ally/enemy density on a fixed hex grid, predicted from the global token against
   privileged truth (`global_density_coef`; see
   [architecture](architecture.md#global-density-head));
@@ -219,10 +217,9 @@ gradient share. `return_normalizer/*` logs the percentiles and the scale.
 
 The default RL and BC environments are 5v5 with opaque zones and shields. `health`
 is the retained resource channel name; it carries shield level in Frontline.
-`shield_delay` is observed and predicted. Attitude Fourier features consume the
-angle `atan2(sin(att), cos(att))`; the next-state head predicts eleven *physical* deltas
-rather than any encoded target, so the input encoding and the prediction layout are now
-separate concerns. Checkpoints use `physical_belief_v19`; older weights require retraining.
+`shield_delay` is observed and predicted. Every predicted ship channel enters the encoder
+as a categorical code and the next-state head predicts the same code. Checkpoints use
+`categorical_codes_v21`; older weights require retraining.
 
 Rewards are grouped into five levels, each read by one critic head
 ([`env/rewards.py`](../src/boost_and_broadside/env/rewards.py)):
@@ -603,11 +600,11 @@ Three compatibility rules follow from that:
 - **Observation schema.** Typed ship/field/zone/boundary tokens, independent team
   perception, visibility masks, 30-way pending-action beliefs, spawn/respawn null-action
   reveals, field-core LOS, recursively predicted hidden-enemy physical state selected into the
-  view before encoding, thirteen belief-uncertainty channels, belief validity, and observation
-  age are part of the learned input contract. Radius is shared across object types and
+  view before encoding, fourteen belief spreads, the categorical ship-state codes rebuilt from
+  them, belief validity, and observation age are part of the learned input contract. Radius is shared across object types and
   normalized by half the shorter world dimension; ship-local `grad(n)` remains explicit and
   reads zero for a remembered ship. Payloads carry
-  `observation_schema=physical_belief_v19`. Successful firing globally
+  `observation_schema=categorical_codes_v21`. Successful firing globally
   reveals the shooter for the current sample, which is also a learned-input semantic.
   Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.
@@ -682,16 +679,12 @@ auxiliary loss and diagnostics. Every enemy is supervised, because the spawn rev
 none in the never-observed state; terminal discontinuities remain masked, and the reveal is
 what keeps a respawn from contaminating the label after the masked step.
 
-The label pairs that authoritative next state with the *believed* current one, which is what
-the head's output is actually applied to at rollout. Taking both ends from truth instead
-would train the head on a transition it never gets to apply, and the belief error would then
-be carried forward intact at every step rather than corrected. The two definitions coincide
-for a visible ship, whose label is therefore exactly the truth-to-truth delta the fixed
-Phase-1 scales were calibrated against; for a hidden one the label is the correction back
-onto truth, and its distribution is wider by however far the estimate has drifted. The
-Gaussian likelihood is what makes those two comparable without a fitted weight, since a token
-whose label is mostly unpredictable belief error earns a wide sigma rather than dominating
-the sum.
+The target is that authoritative next state itself, as its exact code. The head's decoded
+output becomes the next belief, so meeting the target lands the belief on the truth whatever
+it read; a step from truth to truth applied to a belief would carry its error forward intact.
+For a visible ship the head reads a sharp code; for a hidden one it reads the belief's code,
+smoothed by its spread, and cross-entropy's optimum at a level it cannot resolve is the
+conditional distribution rather than a forced guess.
 
 ### What `--vram` may and may not change
 
@@ -833,60 +826,26 @@ total is not the run's logged `train/gradient_norm`. On a profile with
 `policy_gradient_coef` at zero the reward scopes are all zero by construction and
 `--level top_level` is both sufficient and much cheaper.
 
-### Breaking the next-state term down further
-
-`loss/next_state` is one number over eleven channels whose residuals span four orders of
-magnitude, and the production series splits it only by visible/hidden — a split that puts
-allies, which an observer always sees, in the same bucket as the enemies it happens to have
-in sight. [`benchmarks/next_state_breakdown.py`](../benchmarks/next_state_breakdown.py)
-separates ally, visible enemy and hidden enemy, and reports per channel the mean NLL, the
-residual and label, the predicted sigma, the calibration ratio `z2 = E[(r/sigma)^2]`, the
-fraction of tokens sitting on the `LOG_SIGMA_MIN`/`MAX` clamp, and the trunk gradient norm
-that (channel, class) term contributes.
-
-```
-uv run --no-sync python benchmarks/next_state_breakdown.py --run pious-butterfly-748 \
-    --warmup-rollouts 24 --microbatch-tokens 20000
-```
-
-Two things it will mislead you about if they are left at their defaults.
-
-**Warm the environment up.** `_initialize_rollout_runtime` resets every environment
-together, so a cold probe measures the opening phase — teams spawned apart, not yet in
-contact — where under 1% of enemies are visible and no ship has respawned. A run tens of
-millions of steps in never sees that state. `--warmup-rollouts` discards rollouts first;
-the reported visible-enemy fraction is the check, and it should settle near the run's
-logged `fog/visible_fraction` (0.574 against 0.577 for run 748 at 24 rollouts).
-
-**Read the medians, not the RMS.** The labels are heavy-tailed: a respawn teleports a ship
-across the map, and one such token outweighs ten thousand ordinary steps in a mean square.
-Run 748's ally position label has a median of 1.7 px and a 99.9th percentile of 8.9 px, but
-an RMS of 41 px — so `skill_vs_zero`, computed on RMS, reads 0.00 for a head whose median
-skill is 0.99. The Phase-1 delta calibration excluded respawn destinations; the training
-label does not.
-
 ### Next-state populations
 
-Allies, visible enemies, and hidden enemies carry next-state labels that mean different
-things. An ally's or a visible enemy's label is one step of real dynamics. A hidden enemy's
-pairs the believed current state with the true next one, so it also carries the correction
-of however far the belief has drifted. One likelihood over all three decides how much each
-population moves the trunk, and the aggregate loss cannot say which one it is.
+Allies, visible enemies, and hidden enemies carry next-state targets that mean different
+things. An ally or a visible enemy is read sharp and its target is one step of real dynamics.
+A hidden enemy is read through the belief, so its target also carries however far the belief
+has drifted. One cross-entropy over all three decides how much each population moves the
+trunk, and the aggregate loss cannot say which one it is.
 
-Every run logs the calibration of each population, with no gradient diagnostic needed:
+Every run logs each population, with no gradient diagnostic needed:
 
 - `next_state_population/<population>/token_share` — its share of supervised tokens.
-- `next_state_population/<population>/{nll,z2,log_sigma,sq_err}` — channel means of the
-  likelihood, the squared standardized residual, the log spread, and the squared error.
-- `next_state_z2/<population>/<channel>` and `next_state_log_sigma/<population>/<channel>`.
-  A head whose spread is honest reads `z2` = 1.0; above means overconfident.
+- `next_state_population/<population>/{ce,baseline_ce}` — the head's cross-entropy and the
+  zero-residual head's ("nothing changes" from the code it read), averaged over groups.
+- `next_state_ce/<population>/<group>` and `next_state_baseline_ce/<population>/<group>` for
+  each of the 22 code groups. The head earns its cost on a group where the first sits below
+  the second; the finest position level on visible ships is the one to watch.
 
 `--gradient-diagnostics-next-state`, alongside any level, splits the `next_state` term's
-gradient by population and splits each population again into even and odd environments. It
-does this for the trained NLL and, at the same weights, for beta-NLL at beta 0.5 and for
-squared error on the means. So one run trains one objective and still reports how the
-alternatives would divide the trunk once the spread has trained. Groups are
-`next_state_<likelihood>` and `trunk_next_state_<likelihood>`, with the usual `grad_norm`,
+gradient by population and splits each population again into even and odd environments.
+Groups are `next_state_ce` and `trunk_next_state_ce`, with the usual `grad_norm`,
 `grad_share`, and `grad_cos` per population, plus:
 
 - `grad_halves_cos/<group>/<population>` — cosine between the two halves. The halves are
@@ -897,9 +856,9 @@ alternatives would divide the trunk once the spread has trained. Groups are
 - `grad_coherent_share/<group>/<population>` — its share of the summed coherent norms: which
   population the optimizer learns from, as opposed to which one is loudest.
 
-The trained likelihood's six parts sum to the `next_state` term's gradient to floating-point
-tolerance, which [`test_next_state_populations.py`](../tests/train/test_next_state_populations.py)
-asserts. The split costs eighteen extra backward traversals per diagnosed micro-batch.
+The six parts sum to the `next_state` term's gradient to floating-point tolerance, which
+[`test_next_state_populations.py`](../tests/train/test_next_state_populations.py) asserts.
+The split costs six extra backward traversals per diagnosed micro-batch.
 
 ## Engineering validation
 

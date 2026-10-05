@@ -51,7 +51,6 @@ from boost_and_broadside.evaluation.match import (
 from boost_and_broadside.evaluation.next_state import imagine_trajectory
 from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
-from boost_and_broadside.train.rl.physical_belief import PhysicalNextState
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig, VisionMode
 
 _PLAY_ZONE_RADIUS = 330.0
@@ -277,7 +276,6 @@ def _run_interactive_loop(
 
     N = wrapper.num_ships
     M = wrapper.env_config.num_fields
-    next_state = PhysicalNextState.from_ship_config(wrapper.ship_config)
     index_log_scale = 2.0 * math.log(wrapper.ship_config.field_index_step)
     first_episode = True
     while True:
@@ -373,7 +371,6 @@ def _run_interactive_loop(
                     N,
                     device,
                     observer_team=0,
-                    next_state=next_state,
                     index_log_scale=index_log_scale,
                 )
                 imag_nexts1 = imagine_trajectory(
@@ -383,7 +380,6 @@ def _run_interactive_loop(
                     N,
                     device,
                     observer_team=0 if agent_is_ego_pass(agent1) else 1,
-                    next_state=next_state,
                     index_log_scale=index_log_scale,
                 )
 

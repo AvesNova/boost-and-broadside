@@ -82,35 +82,35 @@ channel to:
 
 | Feature | Network encoding |
 |---|---|
-| position x/y | base-2 Fourier features over the toroidal period |
-| velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed |
-| attitude | four-frequency Fourier features of the angle itself |
-| angular velocity | symlog scalar |
-| health, power, cooldown | normalised scalar |
+| position x/y | 9-level nested code, 9 colours per level (81) |
+| velocity | three projections of log-compressed velocity, 81 bins each (243) |
+| attitude | 4-level nested circular code, 4 colours per level (16) |
+| angular velocity | 41 bins over ±610°/s |
+| shield delay, health, power, ship-local log index | 21 bins each |
+| cooldown | 4 bins, one per tick |
 | team identity | three-way one-hot |
 | alive state | scalar |
 | currently visible | scalar |
 | belief token valid | scalar, attention and composition |
 | time since observation | symlog scalar |
 | pending joint command | 42-way probability vector |
-| belief uncertainty | thirteen log/unconstrained terms divided by their clamp bound |
 | radius | shared ship/field scalar divided by half the shorter world dimension |
 | field width | normalized scalar |
 | field target log index | normalized physical scalar |
-| shield recharge delay | symlog seconds |
-| ship-local log index | `log(n)/(2 log(s))` |
 | ship-local index gradient | normalized `grad(n)` pair |
 | ally / enemy presence | two `log1p` Gaussian aggregates, optional |
 
-Fourier position features make wraparound natural: crossing the map boundary is a small
-rotation, not a large coordinate jump. The input width is derived from the registered
-features rather than hardcoded in model code.
-
-The auxiliary dynamics target is *not* in this table. The next-state head predicts physical
-quantities rather than encoded ones, so its layout lives beside the physics
-([`train/rl/physical_belief.py`](../src/boost_and_broadside/train/rl/physical_belief.py))
-rather than being a second role each feature plays — see
-[the next-state head](#auxiliary-next-state-head).
+The first six rows are one categorical code per ship, 469 wide
+([`ship_codes.py`](../src/boost_and_broadside/train/rl/ship_codes.py)), and they are also
+what [the next-state head](#auxiliary-next-state-head) predicts. Each is a set of softmax
+groups: a two-hot (or, for position, a bilinear four-hot) for a ship in sight, smoothed by
+the belief's spread for one out of sight. The code is rebuilt from the observation's
+physical values inside the forward pass, so the observation and the rollout buffer hold
+moments, not codes. Every position level wraps the torus exactly, so crossing the seam
+moves the code as little as any other step. Map tokens read the position code at zero
+spread. The input width is derived from the registered features rather than hardcoded in
+model code, and the code columns of the first projection are initialised like an
+embedding table, `N(0, 1/G)` for `G` softmax groups.
 
 Ally and enemy presence are the two channels `local_presence` adds. Softmax attention
 returns *proportions*, which is the invariant that survives a change in fleet size and is
@@ -142,8 +142,8 @@ Bullets have their own feature set on a separate axis, built by `build_bullet_co
 
 | Bullet feature | Network encoding |
 |---|---|
-| position x/y | four-frequency Fourier, **identical basis to ships** |
-| velocity | direction scaled by symlog speed, as for ships |
+| position x/y | base-2 Fourier features, the rotary encoding's basis |
+| velocity | direction scaled by [symlog](https://arxiv.org/abs/2301.04104) speed |
 | remaining lifetime | normalized scalar |
 | local log index, local index gradient | normalized physical scalars |
 | shooter team | two-way one-hot, never a per-ship index |
@@ -212,13 +212,12 @@ so displacement enters the comparison directly instead of being something the tr
 reconstruct from absolute-position features it first has to preserve through two
 projections and a norm.
 
-The frequencies are not a second scheme. They come from `base2_frequencies`, the same
-function the encoder's `Fourier` transform calls, at the same periods: world width, world
-height, and `2*pi`. Every frequency is an integer multiple of `2*pi / period`, so each is
-exactly periodic over its own physical period — crossing the toroidal seam or turning
-through a full circle returns the rotation to where it started, exactly rather than
-approximately. The explicit Fourier features stay in the token; the rotation is additive
-to them, using the same basis in a second place on purpose.
+The frequencies come from `base2_frequencies`, the same function the bullets' `Fourier`
+position feature calls, at the periods world width, world height, and `2*pi`. Every
+frequency is an integer multiple of `2*pi / period`, so each is exactly periodic over its
+own physical period — crossing the toroidal seam or turning through a full circle returns
+the rotation to where it started, exactly rather than approximately. The rotation is
+additive to the tokens' own position inputs.
 
 Each frequency costs one dimension pair. The Frontline world wants `2*(8 + 8 + 4) = 40`
 of them, which does not fit a 32-wide head at all and leaves 24 unrotated dimensions in a
@@ -279,12 +278,11 @@ recurrence. A bullet therefore costs `2·D²` per token against `16·D²` for a 
 cheap enough to attend over all of them instead of selecting a top-k. Nothing persists
 between steps either, so a recycled ring-buffer slot cannot carry stale state.
 
-Bullet position and velocity use the *same* encodings as ships. Attention computes relative
-geometry as a bilinear form over Fourier features, and `q·k` reduces to a function of the
-displacement only when both sides expand on one shared frequency basis; mismatched
-frequencies leave cross terms that never form relative geometry at all. Shooter identity is
-carried as a team one-hot and never as an index over ships, which would fix `N` in the
-weights and break zero-shot transfer.
+Bullets are never predicted and there are many of them, so they keep a compact dense
+encoding rather than the ships' codes. Where a bullet is relative to a ship reaches
+attention through the rotary encoding, which rotates both on the same physical
+coordinates. Shooter identity is carried as a team one-hot and never as an index over
+ships, which would fix `N` in the weights and break zero-shot transfer.
 
 Softmax normalises, so this read conveys *which* bullets are relevant but not *how many*.
 Threat intensity is still not available on the bullet axis. The ship axis now has the
@@ -372,106 +370,85 @@ mechanism too many. With `global_token` off the head is not built and those comp
 fall back to the per-ship path — unlike the density head, which has nothing to fall back
 to and says so.
 
-Returns are normalized per component by the training system before value loss. Reward
-semantics, aggregation, and horizons are documented in [training](training.md#reward-decomposition).
+Rewards and returns stay raw, in win units; the training system normalises the summed
+advantage once. Reward semantics, aggregation, and horizons are documented in
+[training](training.md#frontline-reward-accounting-and-curriculum).
 
 ## Auxiliary next-state head
 
-The next-state head predicts **eleven physical mean deltas** per ship, one decision ahead,
-plus **thirteen uncertainty terms**. The channels, in order, are position x and y, velocity
-x and y, attitude, angular velocity, shield delay, health, power, cooldown, and the natural
-log of the ship-local refractive index. Static field material channels are inputs, not
-targets; the local-index target makes entering and leaving a medium visible to the learned
-dynamics model.
+The next-state head predicts each ship's **categorical code one decision ahead**: the same
+469-wide code the encoder reads, in 22 softmax groups — nine position levels, three
+velocity axes, four attitude levels, and one group each for angular velocity, shield delay,
+health, power, the ship-local log index and cooldown
+([`ship_codes.py`](../src/boost_and_broadside/train/rl/ship_codes.py)). Static field
+material channels are inputs, not targets; the local-index target makes entering and
+leaving a medium visible to the learned dynamics model.
 
-Physical, not encoded. The head's output is in pixels, pixels per second and radians rather
-than in the Fourier/symlog space the encoder reads, and that is what lets the belief plane
-below store the same quantities truth does — so composing a legal view is a *selection*
-between two tensors of one meaning rather than a substitution inside an encoded vector.
+### Residual logits
 
-Each delta is normalized by a fixed constant measured once against scripted play
-([`train/rl/physical_deltas.py`](../src/boost_and_broadside/train/rl/physical_deltas.py)):
-2.5 px for each position axis, 4 px/s for each velocity axis, 0.1 rad for attitude, and so
-on. Position and velocity each use one scale for both axes by contract, and ordinary
-division means a zero physical delta maps to a bit-exact zero normalized one. The constants
-are fixed: there is no online scaler, deliberately, because a moving normalizer makes a
-training curve unreadable against the run before it.
-
-Two channels wrap instead of translating. Position advances modulo the torus and attitude
-modulo `2*pi`, which is exact; every other channel is clamped to its physical range — health
-to `[0, max_health]`, cooldown to `[0, firing_cooldown]`, angular velocity to the turn rate
-a command can actually set. So the autoregressive recursion below cannot leave a bounded
-set, however wrong the head is. That is a statement about the quantities rather than a
-numerical guard, and it is what makes run 734's failure mode (velocity error compounding to
-1178 px/s and then overflowing into a non-finite logit) unwritable rather than merely
-counted.
-
-### The likelihood
-
-The objective is a Gaussian negative log likelihood throughout, and the uncertainty block is
-what it reads. Position carries a **full 2D covariance** — `log sigma x`, `log sigma y`, and
-an unconstrained correlation latent mapped through `tanh` — and velocity carries another.
-The seven remaining channels carry one log sigma each. Thirteen numbers, all in
-log/unconstrained form everywhere: head output, belief store, and observation channel alike.
-
-A full covariance rather than two independent variances because the error is not
-axis-aligned. A ship last seen on a heading has along-track and cross-track uncertainty that
-differ, and its principal axes follow the heading, not the map: fitting an axis-aligned
-ellipse to that either overstates the cross-track spread or understates the along-track one.
-The correlation is the one parameter that lets the ellipse rotate.
-
-The bivariate term is
+The logits are a residual on the code the head read:
 
 ```
-log 2*pi + log sigma_x + log sigma_y + 0.5 log(1 - rho^2)
-    + (a^2 - 2 rho a b + b^2) / (2 (1 - rho^2))
+logits = log(code + eps) + f(h)
 ```
 
-with `a = r_x / sigma_x` and `b = r_y / sigma_y`; the scalar channels take
-`0.5 log 2*pi + log sigma + 0.5 (r / sigma)^2`. Both carry their normalizing constant, which
-cancels out of every gradient but makes the per-channel series *nats*, so a channel costing
-more of them is genuinely harder to predict than one costing fewer.
+per softmax group, with `f`'s last layer zero-initialised and `eps = 1e-3`. The head starts
+as "nothing changes", and learning the dynamics is all it does; it is given no physics
+prior, and dead reckoning is the bar it is measured against rather than a shortcut. For a
+ship in sight the code is sharp, so on a fast ship the baseline puts only `eps` on the cell
+the ship moves into. For a hidden ship the code is the belief's, already smoothed by its
+spread, so a level the head cannot resolve costs nothing to leave alone.
 
-The attitude residual is wrapped onto the circle before it enters its scalar Gaussian. Both
-the predicted and the true delta live in `[-pi, pi]`, so their difference can reach `2*pi` —
-a prediction of `-pi` against a label of `+pi` is the same rotation, not the largest possible
-error.
+### The objective
 
-A likelihood rather than a weighted squared error because no fixed label scale exists for
-these labels. They step from the believed state to the true next one (below), so their width
-is set by how wrong the belief currently is — which depends on the head being trained, on how
-long ships stay unseen, and so on how well the policy plays. Measured over one run, velocity
-labels sat about 33x their calibrated width, and position's implied scale fell by a third
-*within* that run while velocity's held flat: position error is the integral of a stationary
-velocity error over a hidden duration that keeps growing as the policy learns to avoid
-contact. A constant cannot track that. `(y - mu)^2 / sigma^2` does not need to, being
-invariant to it.
+Cross-entropy per group against the **exact code of the true next state**, for every
+supervised ship, hidden ones included. Cross-entropy is proper: at a level the head cannot
+resolve, its optimum is the conditional distribution, which is near uniform, so sharp
+targets need no smoothing and no learned spread. `loss/next_state` is the mean over the 22
+groups, in nats; `next_state/<group>` reports each, split into `next_state_visible/*` and
+`next_state_hidden/*`.
 
-Weighting the mean's gradient by `1/sigma^2` is the second reason. A long-unseen token's
-label is mostly belief error nobody could have predicted; the head widens sigma there and the
-signal concentrates on tokens whose labels are real dynamics. The likelihood is unbounded
-below as sigma falls, so the log sigma is clamped to `[-6, 6]` — nothing else stops a head
-from buying loss with certainty it has not earned — and the correlation latents clamp tighter
-still, because `tanh` of a large latent is exactly 1.0 in float32 and `1 - rho^2` would then
-be a pole.
+### Codes and moments
 
-`loss/next_state` is the mean likelihood in nats per channel. The per-channel
-`next_state/*` series remain squared error computed under `no_grad`, in units of each
-channel's own calibrated scale, so they stay readable and comparable across the change.
+The rollout never stores a code. The policy decodes its prediction to **moments** inside the
+rollout step — eleven physical means and fourteen spreads — and the belief plane, the
+rollout buffer and the diagnostics work in those. Decoding is closed form:
+
+* **Position and attitude** — per level, the probability-weighted circular mean of the
+  colours as a phase, the chord interpolation inverted, levels combined coarse to fine by
+  unwrapping each finer phase against the coarser estimate. The spread is a least-squares fit
+  of each level's sharpness against the blur a Gaussian of that width would cause.
+* **Velocity** — three projections of `u = v̂ · v₀ log(1 + |v|/v₀)`, `v₀ = 100 px/s`, at 0°,
+  120° and 240°. The mean is their least-squares solution, the covariance is solved exactly
+  from the three axis variances, and both map back to raw world velocity through the
+  compression's Jacobian at the mean.
+* **Scalars** — the histogram mean, and its variance less the two-hot's own `h² t (1 − t)`.
+
+Encoding inverts each. A scalar is the exact two-hot of the mean convolved with a discrete
+Gaussian kernel, which keeps the mean and adds the variance; mass spilled past either end is
+folded into the end bin and one closed-form correction on the interior bins restores both
+moments. With a zero residual the head therefore decodes to the belief it read, after the
+`eps` floor is removed (`softmax(log(p + eps))` is `p` mixed with uniform, which inverts
+exactly) — so a hidden ship's belief does not drift on its own. Near a range edge, where the
+end bin holds most of the mass, the moments are projected once and then held.
+
+Every decoded mean lies inside its code's range or wraps, so the autoregressive recursion
+below cannot leave a bounded set however wrong the head is. That is what makes run 734's
+failure mode (velocity error compounding to 1178 px/s and then overflowing into a
+non-finite logit) unwritable rather than merely counted.
 
 ### The belief plane
 
 With finite vision, each policy perspective owns a GPU-resident store of **physical** ship
-state: the eleven means, the thirteen uncertainty terms, the 42-way pending-command
-distribution, and how many decisions ago the ship was last seen. One decision runs three
-operations on it.
+state: the eleven means, the fourteen spreads, the 30-way pending-command distribution,
+and how many decisions ago the ship was last seen. One decision runs three operations on
+it.
 
 **Observe.** Authoritative truth is assimilated for every ship in sight, its spread drops to
-a finite certainty floor, and its age resets. A ship that spawned this decision has its
-belief voided first: it teleported, so whatever was remembered describes somewhere it no
-longer is. A slot nothing has ever observed reads zero everywhere and carries the *ceiling*
-spread — maximal doubt, rather than the zero a masked channel used to leave behind, which
-reads as one unit of doubt and so as a confident claim about nothing.
+zero, and its age resets. A ship that spawned this decision has its belief voided first: it
+teleported, so whatever was remembered describes somewhere it no longer is. A slot nothing
+has ever observed reads zero everywhere; it is masked out of the next-state loss, and the
+spawn reveal means a live ship is never in that state.
 
 **Compose.** Every ship slot takes its physical state from exactly one legal source, in one
 selection: truth where the observer owns the slot or can currently see it, this observer's
@@ -487,10 +464,9 @@ for it. And derived features that read several ships at once, `local_presence` a
 computed from the composed legal view rather than from truth, because that is the view they
 are a property of.
 
-**Advance.** The means move by the predicted physical deltas and the uncertainty becomes the
-predicted uncertainty *outright*. Nothing accumulates: the head saw the current spread as an
-input and answered with the next one, so summing forecasts would double-count what it already
-accounts for. The stored enemy-action distribution is the softmax of the dedicated head's
+**Advance.** The decoded prediction replaces the belief outright, means and spreads both.
+Nothing accumulates: the head read the current belief as its baseline and stated the next
+one. The stored enemy-action distribution is the softmax of the dedicated head's
 logits from this decision, which the next view carries.
 
 Each policy owns its own store, including frozen league and evaluation policies, and each
@@ -516,20 +492,15 @@ trajectory — handing the policy a phantom at the old position, and the label a
 nothing could have predicted, on every step until that ship was next seen. Marking the single
 step the teleport happened on does not cover that, because the stale estimate outlives it.
 
-The label is the normalized physical step from the **believed** current state to the **true**
-next one, not truth to truth. The head's output is applied to the belief, so a truth-to-truth
-label makes the substitution
+The target is the true next state itself, never a step from the belief. The head's decoded
+output *is* the next belief, so meeting the target puts the belief on the truth whatever it
+read; a step applied to a belief would instead carry its error forward intact,
 
 ```
 error[t+1] = belief[t] + (true[t+1] - true[t]) - true[t+1] = error[t]
 ```
 
-— the belief error is conserved exactly, every step's noise is retained forever, and the head
-is never once shown what "too far" looks like. Re-basing makes the target the correction back
-onto truth, so error is nulled each step to whatever extent it is inferable. For a ship the
-observer can see, the belief *is* truth, so its label is exactly the truth-to-truth delta the
-scales were calibrated on: re-basing adds signal where the drift happens and leaves the rest
-of the supervision alone. Death-to-respawn transitions are masked out of the loss entirely.
+which is how run 734 died. Death-to-respawn transitions are masked out of the loss entirely.
 
 The measured channel errors are shown in [evaluation](evaluation.md#auxiliary-dynamics-learning),
 with deeper autoregressive diagnostics in the reference run's
@@ -563,8 +534,8 @@ could express bulk position but not formation
 The output is a log-rate rather than a distribution, and deliberately not a softmax: the
 total mass is the ship count, which is half the information, and normalizing would throw
 it away. The likelihood's gradient in that output is `exp(logit) − count` — bounded, and
-zero exactly when the rate matches the count, which is the property the next-state head's
-Gaussian `r / σ²` lacks. The head's output bias opens at the fleet's true mean rate, since
+zero exactly when the rate matches the count, which a Gaussian's `r / σ²` is not. The
+head's output bias opens at the fleet's true mean rate, since
 a zero bias would claim one ship per cell.
 
 Cell centres are stored in units of the playable radius, so a larger map carries the same

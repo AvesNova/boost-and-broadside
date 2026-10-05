@@ -13,11 +13,17 @@ from boost_and_broadside.config import ModelConfig
 from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.models.yemong.encoder import ShipEncoder
 from boost_and_broadside.train.rl.features import FeatureScope, build_standard_coordinator
-from boost_and_broadside.train.rl.physical_belief import (
-    NEXT_STATE_OUTPUT_DIM,
-    POSITION_X,
+from boost_and_broadside.train.rl.physical_belief import POSITION_X
+from tests.train.test_belief import (
+    _HIDDEN_X,
+    _SHIP,
+    _VISIBLE_X,
+    _env,
+    _hold,
+    _place,
+    _tracker,
+    _view,
 )
-from tests.train.test_belief import _HIDDEN_X, _SHIP, _VISIBLE_X, _env, _place, _tracker, _view
 
 
 def _encoded(coordinator, view):
@@ -39,8 +45,8 @@ class TestEncodedInput:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
-        prediction[0, 1, POSITION_X] = 4.0  # 4 * 2.5 px
+        prediction = _hold(tracker)
+        prediction[0, 1, POSITION_X] += 10.0
         tracker.advance(prediction)
 
         _place(env, enemy_x=_HIDDEN_X)
@@ -53,8 +59,8 @@ class TestEncodedInput:
 
         mine = _encoded(coordinator, believed)[0, 1]
         theirs = _encoded(coordinator, truthful)[0, 1]
-        position = coordinator.features[0].input_encoder.out_dim(1)
-        torch.testing.assert_close(mine[:position], theirs[:position])
+        (start, stop), _ = coordinator.sparse_code_columns(FeatureScope.SHIP)
+        torch.testing.assert_close(mine[start:stop], theirs[start:stop])
 
     def test_the_encoder_accepts_a_composed_view_unchanged(self):
         """The trunk's first projection is width-stable across the new channels."""
@@ -81,8 +87,8 @@ class TestRotation:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
-        prediction[0, 1, POSITION_X] = 40.0  # 100 px
+        prediction = _hold(tracker)
+        prediction[0, 1, POSITION_X] += 100.0
         tracker.advance(prediction)
 
         _place(env, enemy_x=_HIDDEN_X)
@@ -113,8 +119,8 @@ class TestDerivedFeatures:
         tracker = _tracker()
         _view(env, tracker)
         # Send the remembered enemy a long way off, and truth somewhere else.
-        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
-        prediction[0, 1, POSITION_X] = 160.0  # 400 px
+        prediction = _hold(tracker)
+        prediction[0, 1, POSITION_X] += 400.0
         tracker.advance(prediction)
         _place(env, enemy_x=_HIDDEN_X)
         believed = _view(env, tracker)

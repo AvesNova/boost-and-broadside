@@ -96,6 +96,10 @@ that the change makes stale updated, one commit per idea, pushed.
 
 ### Phase 8. Next-state head and belief (§8)
 
+Status (2026-10-06): **done.** Codes in `train/rl/categorical_codes.py`, the ship
+layout in `train/rl/ship_codes.py`, the scalar encoder as decided in
+[the scalar-code decision](phase8-scalar-code-decision.md). Deviations 22–33.
+
 * Codes, each with encode (moments → logits/probabilities) and decode
   (probabilities → moments) and an exact round-trip test: position 9-colour
   nested (81), velocity three-axis (243), attitude 4-colour (16), angular
@@ -232,6 +236,51 @@ Entries are added as the work proceeds.
 21. **Critic loss weighting.** Per-ship levels average their cross-entropy over
     living ships, the outcome over environment-steps; the value loss is the mean
     over levels, as before.
+
+22. **Scalar encoder: exact two-hot convolved with a discrete Gaussian, then one
+    closed-form moment correction at the edges** (§8.3 asked for a discretised
+    Gaussian, which cannot round-trip exactly). Exact in the interior and at sigma 0;
+    near an edge where the end bin holds most of the mass the moments are projected
+    once and held. See the decision note for the measurements.
+23. **The belief is 25 floats, not 24.** Cooldown keeps its mean beside the
+    distribution, stored as the distribution's residual from the mean's two-hot, so
+    every spread is zero when certain and the observation builder needs no codec.
+    A never-observed slot carries zero spreads (it was the ceiling): its means are
+    zero too, it is masked out of the next-state loss, and every ship is revealed on
+    the decision it spawns.
+24. **The head's floor is removed before decoding.** `softmax(log(p + ε))` is `p`
+    mixed with uniform; decoding inverts that mixture (ε = 1e-3), so a zero residual
+    decodes to exactly the belief it read. Without it the belief would blur toward
+    uniform by ε every decision.
+25. **The policy decodes inside its rollout step** and returns moments (25 wide);
+    the belief, the rollout buffer and the diagnostics never see logits. Storing the
+    469 logits per ship-step would cost 2.3 GB per shard.
+26. **Targets are the true next state, absolute.** The stored label is privileged
+    truth at t + 1 (11 floats); its exact code is built in the loss. The head's
+    output is the next belief, so an absolute target nulls belief error each step
+    the way the old belief-relative delta did.
+27. **Bullets keep their dense encoding** (Fourier position, symlog velocity). Map
+    tokens read the position code at zero spread. The old argument for a shared
+    Fourier basis between ships and bullets does not survive the encoders' MLPs;
+    relative geometry reaches attention through the rotary encoding.
+28. **Code columns of the encoder's first projection are drawn from N(0, 1/G)**
+    for G softmax groups (22 on ships, 9 on map tokens), so the summed code has a
+    unit-variance pre-activation whatever its width.
+29. **The next-state loss is the mean per-group cross-entropy** over 22 groups and
+    the supervised tokens. `next_state_coef` was measured on the Gaussian head and
+    has to be re-measured (Phase 11). `next_state_beta` is gone with the Gaussian.
+30. **Belief spreads are stored fp32** in the rollout buffer, like the physical
+    channels, so the update rebuilds the code the rollout read.
+31. **`benchmarks/next_state_breakdown.py` is removed.** It read the Gaussian's
+    per-channel NLL and sigma clamps on v20 checkpoints, which no longer load. Its
+    population split is logged every update instead, per code group, beside the
+    zero-residual head's cross-entropy (`next_state_baseline_ce/...`), which is the
+    "nothing changes" bar.
+32. **Shield delay's range is fixed at 5 s**, the Frontline recharge delay, because
+    the codec is built from `ShipConfig` and the delay lives on `FrontlineConfig`.
+    Longer delays clamp to the last bin.
+33. **The schema bump landed with Phase 8** (`categorical_codes_v21`), since Phase 8
+    is where every input and head width changes. It is the one bump for Part II.
 
 ### Measured (Phase 4)
 

@@ -8,12 +8,13 @@ from typing import Any
 
 import torch
 
-OBSERVATION_SCHEMA = "global_token_v20"
+from boost_and_broadside.train.rl.ship_codes import SHIP_CODE_DIM
+
+OBSERVATION_SCHEMA = "categorical_codes_v21"
 POSITION_FINEST_PERIOD = 128.0
-# Harmonics the attitude Fourier feature expands the heading angle on. Defined
-# here, beside the position count, because rotary spatial attention reuses both
-# bases verbatim and a second definition of either would let the input features
-# and the Q/K rotations drift apart silently.
+# Harmonics of the attitude axis of rotary spatial attention. Defined here,
+# beside the position count, because the rotation and the bullets' Fourier
+# position feature share these bases.
 ATTITUDE_FOURIER_FREQUENCIES = 4
 
 
@@ -42,7 +43,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 20,
+        "version": 21,
         # Every mode presents one global/game token directly after the ships,
         # carrying a categorical game-mode one-hot, the match clock and (in
         # Frontline) the front. Whether the policy promotes it to a recurrent
@@ -66,23 +67,17 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         # survives only to weight team pooling in the value head, and its
         # constant encoder feature is gone.
         "belief_existence_mask": "removed_constant_true_after_spawn",
-        "auxiliary_prediction": "physical_mean_delta_plus_clamped_log_sigma",
-        # Eleven physical mean deltas, in the Phase-1 calibration's order and
-        # units. Position and velocity each carry a full 2D covariance -- two log
-        # sigmas and one correlation latent -- and the seven remaining channels
-        # carry one log sigma. Position wraps on the torus and attitude on the
-        # circle, so both are exact rather than clamped.
-        "next_state_targets": "eleven_physical_deltas_full_2d_covariance",
-        # Thirteen log/unconstrained terms, restated by the head each decision
-        # rather than accumulated: the head sees the current spread as an input.
-        # The width is a property of the physics, not of the world size.
-        "belief_uncertainty": "thirteen_predicted_log_sigma_and_correlation_latents",
-        # The label is the step from the *believed* current state to the *true*
-        # next one. A truth-to-truth delta conserves the belief error exactly,
-        # which is how run 734 died.
-        "auxiliary_label_origin": "believed_current_to_true_next",
-        "auxiliary_label_scale": "fixed_phase_one_physical_delta_calibration",
-        "resource_targets": "normalised_scalar_input_and_target",
+        # Every predicted ship channel is read and predicted as one categorical
+        # code (train/rl/ship_codes.py): 9-colour nested position (81), three
+        # velocity axes (243), 4-colour attitude (16), angular velocity (41),
+        # four bounded scalars (21 each) and cooldown (4).
+        "ship_state_input": "categorical_code_469_rebuilt_from_belief_moments",
+        "auxiliary_prediction": "residual_logits_on_input_code_per_group_cross_entropy",
+        "next_state_targets": "exact_code_of_true_next_state",
+        # Fourteen physical spreads, zero when certain: position sigma, raw
+        # velocity covariance, five sigmas and the cooldown residual.
+        "belief_uncertainty": "fourteen_physical_spreads_zero_is_certain",
+        "ship_code_dim": SHIP_CODE_DIM,
         "privileged_auxiliary_targets": "storage_only_never_policy_input",
         "pending_action_features": "joint_42_probability_vector",
         "policy_action_distribution": "joint_categorical_3x7x2",
@@ -118,6 +113,14 @@ def load_checkpoint_payload(
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
+
+    v21 is the learning redesign's one bump (``frontline-redesign-plan.md`` Part
+    II). Ship state enters the encoder as categorical codes instead of Fourier
+    and symlog features, the next-state head predicts those codes as residual
+    logits instead of Gaussian deltas, the belief's uncertainty becomes fourteen
+    physical spreads, the reward has five levels with a categorical critic per
+    level, and the outcome is valued as four classes off the global token.
+    Every learned input and head width changes.
 
     v20 makes the global/game token permanent. It moves from the end of the
     token axis to directly after the ships, exists in combat as well as

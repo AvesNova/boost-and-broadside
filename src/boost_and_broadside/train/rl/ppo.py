@@ -100,7 +100,6 @@ from boost_and_broadside.train.rl.live_rating import TwoStageRating
 from boost_and_broadside.train.rl.logging import LoggingMixin
 from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 from boost_and_broadside.train.rl.next_state_populations import (
-    candidate_losses,
     environment_halves,
     gradient_terms,
     population_masks,
@@ -118,12 +117,11 @@ from boost_and_broadside.train.rl.opponents import (
 from boost_and_broadside.train.rl.physical_belief import (
     ANGULAR_VELOCITY,
     ATTITUDE,
+    BELIEF_MOMENT_DIM,
     COOLDOWN,
     HEALTH,
     LOCAL_LOG_INDEX,
-    NEXT_STATE_OUTPUT_DIM,
     PHYSICAL_MEAN_DIM,
-    PHYSICAL_MEAN_NAMES,
     PHYSICAL_UNCERTAINTY_DIM,
     POSITION_X,
     POSITION_Y,
@@ -134,11 +132,13 @@ from boost_and_broadside.train.rl.physical_belief import (
     PhysicalNextState,
     physical_means_from_observation,
     physical_means_from_state,
+    predicted_means,
     wrap_symmetric,
 )
 from boost_and_broadside.train.rl.physical_deltas import PHYSICAL_DELTA_SCALES
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
+from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_DIM, CODE_GROUP_NAMES
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
 # ------------------------------------------------------------------
@@ -561,7 +561,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             device=self.device,
             num_tokens=sample_obs.pos.shape[1],
             prediction_target_dim=PHYSICAL_MEAN_DIM,
-            prediction_dim=NEXT_STATE_OUTPUT_DIM,
+            prediction_dim=BELIEF_MOMENT_DIM,
             uncertainty_dim=PHYSICAL_UNCERTAINTY_DIM,
             density_dim=HEX_DENSITY_DIM if train_config.global_density_coef > 0.0 else 0,
             store_expert_probs=self._stores_bc_targets,
@@ -575,8 +575,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             [spirit[name] for name in self._active_names], dtype=torch.float32, device=self.device
         )  # (K,)
 
-        # The physical next-state model: fixed Phase-1 delta scales, physical
-        # bounds for the belief recursion, and the Gaussian likelihood over them.
+        # The ship-state code the next-state head predicts, and the fixed
+        # Phase-1 delta scales the belief diagnostics read errors against.
+        self.ship_codec = self.coordinator.ship_codec
         self.next_state = PhysicalNextState.from_ship_config(ship_config)
         # The privileged hex density target, grid resident on device. Built only
         # when the head that consumes it exists, and fused on the same launch
@@ -1975,11 +1976,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # ---- Next-state prediction loss (primary scale only) ----------------
         next_state_loss = self._zero_tensor
         next_state_cont_loss = self._zero_tensor
-        next_state_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
-        next_state_visible_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu
-        next_state_hidden_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu
-        label_sq_per_feat: torch.Tensor | None = None  # (pred_dim,) gpu, for logging
-        # Per-population calibration sums, (3, 4, 11) and (3,), float64 on gpu.
+        next_state_per_feat: torch.Tensor | None = None  # (G,) gpu, for logging
+        next_state_visible_per_feat: torch.Tensor | None = None  # (G,) gpu
+        next_state_hidden_per_feat: torch.Tensor | None = None  # (G,) gpu
+        # Per-population sums, (3, 2, G) and (3,), float64 on gpu.
         ns_population_sums: torch.Tensor | None = None
         ns_population_counts: torch.Tensor | None = None
         ns_population_terms: dict[str, torch.Tensor] = {}
@@ -1994,25 +1994,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ns_mask_f = ns_mask.float()
             ns_sum = denoms["ns_sum"]
 
-            # Labels precomputed once per update from the T+1 obs storage
-            # (see _precompute_ns_labels) — they depend only on rollout data.
-            labels = mb_ns_labels  # (T, B_mb, N, pred_dim)
-
-            P = PHYSICAL_MEAN_DIM
-            # Gaussian negative log likelihood over the eleven physical deltas:
-            # full 2D covariance for position and velocity, scalar for the rest.
-            # It is scale-free in the label, so nothing here depends on a fitted
-            # weight being right, and a token whose label is mostly unpredictable
-            # belief error earns a wide sigma instead of dominating the sum.
-            per_dim = self.next_state.loss(
-                pred_next.float(), labels.detach(), beta=self.cfg.next_state_beta
-            )
+            # The exact code of the true next state, built on the fly from the
+            # privileged truth (see _precompute_ns_labels). Targets are sharp for
+            # every token, hidden ones included: cross-entropy is proper, so at a
+            # level the head cannot resolve its optimum is the conditional
+            # distribution (§8.2).
+            target = self.ship_codec.sharp(mb_ns_labels.float())  # (T, B_mb, N, 469)
+            per_group = self.ship_codec.cross_entropy(pred_next, target)  # (T, B_mb, N, G)
+            G = CODE_GROUP_DIM
 
             if self.cfg.next_state_coef > 0.0:
-                next_state_cont_loss = (per_dim * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * P)
+                next_state_cont_loss = (per_group * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * G)
                 next_state_loss = next_state_cont_loss
 
-            # Allies, visible enemies, and hidden enemies carry labels that mean
+            # Allies, visible enemies, and hidden enemies carry targets that mean
             # different things (see next_state_populations), so the objective's
             # balance between them is measured rather than read off the sum.
             populations = population_masks(
@@ -2020,60 +2015,43 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 curr_mb_obs[ObsKey.TEAM_ID][:, :, : self.buffer.num_ships],
                 curr_mb_obs[ObsKey.VISIBLE][:, :, : self.buffer.num_ships].bool(),
             )  # (3, T, B_mb, N)
+            with torch.no_grad():
+                # The zero-residual head: "nothing changes" from the code it read.
+                baseline_codes = self.coordinator.ship_codes(curr_mb_obs, self.buffer.num_ships)
+                baseline_per_group = self.ship_codec.cross_entropy(
+                    self.ship_codec.baseline(baseline_codes), target
+                )
             ns_population_sums, ns_population_counts = population_moments(
-                self.next_state, pred_next, labels.detach(), per_dim, populations
+                per_group, baseline_per_group, populations
             )
             if grad_terms is not None and self._grad_diag.decomposes_next_state_by_population:
                 ns_population_terms = gradient_terms(
-                    candidate_losses(self.next_state, pred_next.float(), labels.detach(), per_dim),
+                    {"ce": per_group},
                     populations,
                     environment_halves(populations.shape[2], populations.device),
-                    ns_sum,
+                    ns_sum * G,
                     self.cfg.next_state_coef,
                 )
 
             with torch.no_grad():
-                # Squared error, not the objective: this series predates the NLL
-                # and has to keep meaning the same thing across the change, and a
-                # likelihood is not an error anyone can read in physical units.
-                sq_err = self.next_state.residual(pred_next.float(), labels.detach()).pow(2)
-                next_state_per_feat = (sq_err * ns_mask_f.unsqueeze(-1)).sum(
+                ce = per_group.detach()
+                next_state_per_feat = (ce * ns_mask_f.unsqueeze(-1)).sum(
                     (0, 1, 2)
-                ) / ns_sum  # (pred_dim,) gpu, additive across chunks
-                # The same error split by whether the ship was in sight. The two
-                # halves answer different questions: a visible token's label is
-                # one step of real dynamics and measures the learned model, while
-                # a hidden one's is dominated by belief error and measures how far
-                # the recursion has drifted. Aggregated they are a mixture whose
+                ) / ns_sum  # (G,) gpu, additive across chunks
+                # The same cross-entropy split by whether the ship was in sight.
+                # A visible token's target is one step of real dynamics from a
+                # sharp input; a hidden one's is the belief's account of a ship it
+                # last saw some time ago. Aggregated they are a mixture whose
                 # proportions move with the fog, so neither is readable alone.
-                #
-                # Masked reductions over a tensor already materialised for the
-                # aggregate, so the cost is two more passes over ``sq_err`` and
-                # no additional forward or backward work.
                 visible_f = (
                     curr_mb_obs[ObsKey.VISIBLE][:, :, : self.buffer.num_ships].bool() & ns_mask
                 ).float()
-                next_state_visible_per_feat = (sq_err * visible_f.unsqueeze(-1)).sum(
+                next_state_visible_per_feat = (ce * visible_f.unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / denoms["ns_visible_sum"]
-                next_state_hidden_per_feat = (sq_err * (ns_mask_f - visible_f).unsqueeze(-1)).sum(
+                next_state_hidden_per_feat = (ce * (ns_mask_f - visible_f).unsqueeze(-1)).sum(
                     (0, 1, 2)
                 ) / denoms["ns_hidden_sum"]
-                # Mean square of the *label* itself, against the fixed Phase-1
-                # scales: a channel whose scale still conditions its labels has
-                # mean square near 1, and the null model scores 1.
-                #
-                # Worth logging rather than measuring offline because the label
-                # steps from the *believed* state, so its spread depends on how
-                # good this policy's own next-state head currently is. The
-                # Phase-1 calibration measured truth-to-truth deltas, which is
-                # the visible half of this; the series shows how far the hidden
-                # half has moved away from it. The constants themselves stay
-                # fixed -- there is no online scaler by contract -- so this is a
-                # diagnostic, not a control input.
-                label_sq_per_feat = (labels.detach().float().pow(2) * ns_mask_f.unsqueeze(-1)).sum(
-                    (0, 1, 2)
-                ) / ns_sum
 
         zero = policy_logits.new_zeros(())
         diag_outcome = {
@@ -2231,11 +2209,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["density_ally_deviance"] = density.ally_deviance
             diag["density_enemy_deviance"] = density.enemy_deviance
             diag["next_state_cont_loss"] = next_state_cont_loss.detach()
-            diag["next_state_per_feat"] = next_state_per_feat  # (pred_dim,) gpu or None
+            diag["next_state_per_feat"] = next_state_per_feat  # (G,) gpu or None
             diag["next_state_visible_per_feat"] = next_state_visible_per_feat
             diag["next_state_hidden_per_feat"] = next_state_hidden_per_feat
-            diag["label_sq_per_feat"] = label_sq_per_feat  # (pred_dim,) gpu or None
-            diag["ns_population_sums"] = ns_population_sums  # (3, 4, 11) gpu or None
+            diag["ns_population_sums"] = ns_population_sums  # (3, 2, G) gpu or None
             diag["ns_population_counts"] = ns_population_counts  # (3,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
@@ -2597,54 +2574,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
     @torch.no_grad()
     def _precompute_ns_labels(self, buf: RolloutBuffer) -> None:
-        """Compute next-state prediction labels once per update.
+        """Gather the next-state targets once per update.
 
-        Labels come from the stored T+1 observations and the privileged physical
-        truth beside them -- not the policy -- so computing them here saves
-        num_epochs x num_minibatches redundant passes.
+        The target is the true physical state one decision later, whose exact
+        code the head is trained toward (the code itself is built on the fly in
+        the loss and never stored). It is absolute, not a step from the belief:
+        the head's output *is* the next belief, so a target that described a
+        step would let belief error persist unseen, which is what ended run 734.
 
-        The label is the normalized physical step from the *believed* current
-        state to the *true* next state, not truth to truth. That is what the
-        head's output is used for: ``BeliefTracker.advance`` applies the forecast
-        to the belief, so ``belief[t+1] = belief[t] + pred[t]``. Training it on
-        ``true[t+1] - true[t]`` instead makes the substitution
-
-            error[t+1] = belief[t] + (true[t+1] - true[t]) - true[t+1] = error[t]
-
-        -- the belief error is conserved exactly, every step's noise is retained
-        forever, and the head is never once shown what "too far" looks like. The
-        drift that killed run 734 (velocity error 99 -> 1178 px/s in the 30s+
-        hidden bucket, then a non-finite logit) is that identity, not an
-        incidental instability.
-
-        Re-basing on the belief makes the target the correction that carries the
-        believed state onto the true next one, so error is nulled each step to
-        whatever extent it is inferable. For a ship the observer can see, the
-        belief *is* truth, so its label is exactly the Phase-1 truth-to-truth
-        delta the scales were calibrated on: this adds signal where the drift
-        happens and leaves the rest of the supervision alone.
-
-        The residual is not fully predictable, so the head regresses toward the
-        conditional mean of the correction -- shrinkage of a stale belief toward
-        the prior, which is the right behaviour for a mean estimate. The
-        likelihood is what makes that safe: a token whose label is mostly
-        unpredictable belief error earns a wide sigma rather than dominating the
-        sum, so the objective is comparable across visible and hidden tokens
-        without any weight being tuned.
+        Without privileged truth there is no signal beyond the observation, and
+        the target falls back to the next stored observation's own state.
         """
         T = buf.num_steps
         believed = self._believed_means(buf, T + 1)
-        # Ground truth where the rollout captured it. Without it there is no
-        # privileged signal to correct towards and belief is the only account of
-        # the world, which recovers the original truth-to-truth labels.
         truth = buf.privileged_means if buf.privileged_means is not None else believed
-        buf.ns_labels = (  # (T, B, N, 11)
-            self.next_state.labels(believed[:T], truth[1:])
-            if self.cfg.next_state_coef > 0.0
-            else None
-        )
-        # Diagnostics compare forecasts against hidden *truth*, so they keep
-        # reading the privileged means rather than the re-based labels.
+        # (T, B, N, 11)
+        buf.ns_labels = truth[1:].clone() if self.cfg.next_state_coef > 0.0 else None
+        # Diagnostics compare forecasts against hidden *truth*, so they read the
+        # privileged means as well.
         self._precompute_belief_diagnostics(buf, believed, truth)
 
     def _believed_means(self, buf: RolloutBuffer, steps: int) -> torch.Tensor:
@@ -2678,7 +2625,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         T, N = buf.num_steps, buf.num_ships
         current = believed[:T]
         truth_next = truth[1:]
-        forecast = self.next_state.apply_means(current, buf.rollout_predictions.float())
+        forecast = predicted_means(buf.rollout_predictions.float())
         # Two baselines the model has to beat to be worth its cost. Persistence
         # is the belief standing still; dead reckoning carries it forward on its
         # own believed velocity for one decision, which is the strongest thing
@@ -3035,15 +2982,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "returns/component": [],
             "returns/advantage_std": [],
         }
-        # Derived, never hand-listed: a parallel name list drifts from the
-        # prediction width silently. It already had, dropping local_log_index --
-        # the one channel that says whether fields are being modelled -- off the
-        # end of a 9-name list against 10 dimensions.
-        ns_feat_names = list(PHYSICAL_MEAN_NAMES)
+        # One cross-entropy per softmax group of the ship-state code: the nine
+        # position levels, three velocity axes, four attitude levels, and one
+        # per remaining channel.
+        ns_feat_names = list(CODE_GROUP_NAMES)
         ns_per_feat_accum: list[torch.Tensor] = []
         ns_visible_accum: list[torch.Tensor] = []
         ns_hidden_accum: list[torch.Tensor] = []
-        label_sq_accum: list[torch.Tensor] = []
         # Raw sums over every pass of the update, finalized once at the end: a
         # small population's mean is a ratio of sums, not a mean of ratios.
         ns_population_sums: torch.Tensor | None = None
@@ -3198,7 +3143,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 ns_feat_step: torch.Tensor | None = None
                 ns_vis_step: torch.Tensor | None = None
                 ns_hid_step: torch.Tensor | None = None
-                label_sq_step: torch.Tensor | None = None
                 hist_diag: dict = {}
 
                 for scale_idx, (buf, chunks) in enumerate(zip(all_buffers, batches)):
@@ -3278,12 +3222,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                                     ns_population_counts = (
                                         ns_population_counts + diag["ns_population_counts"]
                                     )
-                            if diag.get("label_sq_per_feat") is not None:
-                                label_sq_step = (
-                                    diag["label_sq_per_feat"]
-                                    if label_sq_step is None
-                                    else label_sq_step + diag["label_sq_per_feat"]
-                                )
                             hist_diag = diag
 
                     # Non-additive stats finalized per scale: max for the ratio,
@@ -3384,8 +3322,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ns_visible_accum.append(ns_vis_step)
                 if ns_hid_step is not None:
                     ns_hidden_accum.append(ns_hid_step)
-                if label_sq_step is not None:
-                    label_sq_accum.append(label_sq_step)
 
                 if record_histograms and "alive_flat" in hist_diag:
                     # Sampled from the last micro-batch of the last primary
@@ -3419,43 +3355,24 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 metrics[f"{prefix}/{name}"] = avg[i].item()
 
         if ns_per_feat_accum:
-            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (pred_dim,)
+            avg_per_feat = torch.stack(ns_per_feat_accum).mean(0).cpu()  # (G,)
             for i, name in enumerate(ns_feat_names):
                 metrics[f"next_state/{name}"] = avg_per_feat[i].item()
 
-        # The same error split by sight. A visible token's label is one step of
-        # real dynamics and measures the learned model; a hidden one's is mostly
-        # belief error and measures how far the recursion has drifted. The
-        # aggregate above is a mixture of the two whose proportions move with the
-        # fog, so a change in it cannot be attributed without these.
+        # The same cross-entropy split by sight. A visible token's target is one
+        # step of real dynamics and measures the learned model; a hidden one's
+        # measures the belief. The aggregate above is a mixture of the two whose
+        # proportions move with the fog, so a change in it cannot be attributed
+        # without these.
         for accum, prefix in (
             (ns_visible_accum, "next_state_visible"),
             (ns_hidden_accum, "next_state_hidden"),
         ):
             if not accum:
                 continue
-            avg = torch.stack(accum).mean(0).cpu()  # (pred_dim,)
+            avg = torch.stack(accum).mean(0).cpu()  # (G,)
             for i, name in enumerate(ns_feat_names):
                 metrics[f"{prefix}/{name}"] = avg[i].item()
-
-        if label_sq_accum:
-            # A calibrated label reads 1.0 here. The suggested scale is the
-            # correction that would restore that, so it can be read off the
-            # chart and written straight into the feature's label_scale.
-            #
-            # A feature whose label never moved in this update has no scale to
-            # suggest -- health and shield delay do that in any sample without
-            # combat. It gets no suggestion rather than one divided by roughly
-            # zero, because this series exists to be copied into a config and a
-            # plausible-looking wrong number is worse there than a gap.
-            avg_label_sq = torch.stack(label_sq_accum).mean(0).cpu()  # (11,)
-            for i, name in enumerate(ns_feat_names):
-                mean_sq = avg_label_sq[i].item()
-                metrics[f"next_state_label_sq/{name}"] = mean_sq
-                if mean_sq > 0.0 and math.isfinite(mean_sq):
-                    metrics[f"next_state_label_scale/{name}"] = self.next_state.scales[
-                        i
-                    ] * math.sqrt(mean_sq)
 
         if ns_population_sums is not None:
             metrics.update(population_metric_records(ns_population_sums, ns_population_counts))

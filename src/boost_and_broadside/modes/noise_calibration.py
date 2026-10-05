@@ -44,6 +44,8 @@ from boost_and_broadside.train.rl.physical_belief import (
     PhysicalNextState,
     physical_means_from_observation,
     physical_means_from_state,
+    predicted_means,
+    predicted_uncertainty,
 )
 
 _AR_WINDOW = 20
@@ -326,9 +328,7 @@ def _run_phase1(
         # Capture combat flag before step
         combat = (runner.action_state.pending[:, :N, 2] > 0).any(dim=1)  # (B,)
         pred_next_scaled = selection.predictions.get(0)
-        model_obs = selection.observations[0]
         curr_alive = env.state.ship_alive.clone()  # (B, N) bool, before step
-        curr_means = physical_means_from_observation(model_obs, index_log_scale, num_ships=N)
 
         dones, truncated = runner.advance(selection.action)
         done_any = dones | truncated  # (B,)
@@ -336,7 +336,7 @@ def _run_phase1(
         next_alive = env.state.ship_alive  # (B, N) bool, after step
 
         if pred_next_scaled is not None:
-            pred_means = next_state.apply_means(curr_means, pred_next_scaled.float())
+            pred_means = predicted_means(pred_next_scaled.float())
             true_means = physical_means_from_state(env.state)[:, :N]
             # In normalized units, so the eleven channels are comparable and the
             # residual reads against the same scales the objective uses.
@@ -491,7 +491,7 @@ def _run_phase2(
                 if pred_next_scaled is None:
                     break
 
-                curr_means = next_state.apply_means(curr_means, pred_next_scaled.float())
+                curr_means = predicted_means(pred_next_scaled.float())
                 err_k = next_state.labels(stored_true_means[k], curr_means).pow(2)
 
                 # valid: window not terminated + ship alive in ground truth
@@ -508,6 +508,7 @@ def _run_phase2(
                     stored_actions[k],
                     N,
                     index_log_scale,
+                    uncertainty=predicted_uncertainty(pred_next_scaled.float()),
                 )
 
         elapsed = time.perf_counter() - t0

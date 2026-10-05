@@ -79,16 +79,13 @@ BC_PROFILE = replace(
     # ~0.5 so `train/clip_fire_rate` lands at 0.1-0.2. The first set missed by
     # ~30x (total ~11, clip firing every step) because the relative sizes of the
     # terms drift 10-300x during training; a static set is only a starting
-    # point. next_state is the least reliable: it assumes beta=0 shrinks the
-    # hidden-enemy gradient ~100x from the beta=0.5 measurements. Retune with one
-    # common multiplier on clip fire rate, then re-measure the shares.
+    # point. next_state is the least reliable: it was measured on the Gaussian
+    # head that the categorical code replaced, and needs re-measuring (§8.2).
+    # Retune with one common multiplier on clip fire rate, then re-measure the
+    # shares.
     next_state_coef=0.17,
     enemy_action_coef=0.057,
     global_density_coef=2.0,
-    # Pure NLL. Beta = 0.5 weights by sigma, and sigma differs ~100x across
-    # populations (hidden enemy ~e^2..e^4, ally ~e^-0.7), which put 99% of the
-    # next-state gradient on hidden enemies in run 750.
-    next_state_beta=0.0,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now

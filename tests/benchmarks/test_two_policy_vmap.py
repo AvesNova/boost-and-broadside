@@ -28,8 +28,15 @@ def test_vmapped_distinct_weight_outputs_match_separate_team_view_forwards():
         (actual.prediction, 3),
         (actual.hidden, 4),
     ):
-        assert torch.allclose(actual_tensor[0], expected[0][result_index])
-        assert torch.allclose(actual_tensor[1], expected[1][result_index])
+        # Batched and separate forwards reduce in different orders; float32
+        # reassociation, not a different computation, is all that may differ.
+        for team in (0, 1):
+            torch.testing.assert_close(
+                actual_tensor[team].float(),
+                expected[team][result_index].float(),
+                rtol=1e-4,
+                atol=1e-4,
+            )
     assert not torch.allclose(actual.value[0], actual.value[1])
 
 

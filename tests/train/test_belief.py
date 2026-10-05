@@ -21,15 +21,12 @@ from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.train.rl.belief import BeliefTracker, DualBeliefTracker
 from boost_and_broadside.train.rl.physical_belief import (
-    CERTAIN_LOG_SIGMA,
+    BELIEF_MOMENT_DIM,
     HEALTH,
-    LOG_SIGMA_COLUMNS,
-    NEXT_STATE_OUTPUT_DIM,
     PHYSICAL_MEAN_DIM,
+    POSITION_SIGMA,
     POSITION_X,
     SHIELD_DELAY,
-    UNKNOWN_LOG_SIGMA,
-    PhysicalNextState,
 )
 
 _SHIP = ShipConfig()
@@ -40,7 +37,12 @@ _CONFIG = EnvConfig(
 )
 _VISIBLE_X = 300.0
 _HIDDEN_X = 600.0
-_HOLD = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
+
+
+def _hold(tracker: BeliefTracker) -> torch.Tensor:
+    """A forecast that states the current belief back: what a zero residual decodes to."""
+
+    return torch.cat([tracker.means, tracker.uncertainty], dim=-1).clone()
 
 
 def _env(*, frontline: bool = False) -> TensorEnv:
@@ -105,9 +107,9 @@ class TestComposition:
         assert view[ObsKey.POS][0, 1].equal(torch.zeros(2))
         assert view[ObsKey.TEAM_ID][0, 1] == 0, "identity is not known either"
         assert view[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == 0
-        # Maximal doubt, not the zero a masked channel used to leave behind.
-        spreads = view[ObsKey.BELIEF_UNCERTAINTY][0, 1][list(LOG_SIGMA_COLUMNS)]
-        assert (spreads == UNKNOWN_LOG_SIGMA).all()
+        # Zero means and zero spreads: the slot is masked out of the next-state
+        # loss, and nothing reads its code as a belief.
+        assert (view[ObsKey.BELIEF_UNCERTAINTY][0, 1] == 0).all()
 
     def test_a_visible_ship_is_truth_to_the_bit(self):
         env = _env()
@@ -116,14 +118,14 @@ class TestComposition:
         assert torch.equal(view[ObsKey.POS][0, 1], torch.tensor([_VISIBLE_X, 200.0]))
         assert torch.equal(view[ObsKey.VEL][0, 1], torch.tensor([3.0, 4.0]))
         assert view[ObsKey.HEALTH][0, 1, 0] == 70.0
-        spreads = view[ObsKey.BELIEF_UNCERTAINTY][0, :2][:, list(LOG_SIGMA_COLUMNS)]
-        assert (spreads == CERTAIN_LOG_SIGMA).all()
+        # Zero spread: the exact code of the true state.
+        assert (view[ObsKey.BELIEF_UNCERTAINTY][0, :2] == 0).all()
 
     def test_seen_then_hidden_uses_the_forecast_and_ages(self):
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        tracker.advance(_HOLD)
+        tracker.advance(_hold(tracker))
 
         _place(env, enemy_x=_HIDDEN_X)
         hidden = _view(env, tracker)
@@ -136,7 +138,7 @@ class TestComposition:
         # grad(n) is not forecast, so a remembered ship reads zero for it.
         assert hidden[ObsKey.LOCAL_INDEX_GRADIENT][0, 1].equal(torch.zeros(2))
 
-        tracker.advance(_HOLD)
+        tracker.advance(_hold(tracker))
         again = _view(env, tracker)
         assert again[ObsKey.TIME_SINCE_OBSERVATION][0, 1, 0] == pytest.approx(0.2)
 
@@ -144,8 +146,8 @@ class TestComposition:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
-        prediction[0, 1, POSITION_X] = 4.0  # 4 * 2.5 px
+        prediction = _hold(tracker)
+        prediction[0, 1, POSITION_X] += 10.0
         tracker.advance(prediction)
 
         _place(env, enemy_x=_HIDDEN_X)
@@ -159,7 +161,7 @@ class TestInformationFlow:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)  # acquire, so the slot is valid and forecast-driven
-        tracker.advance(_HOLD)
+        tracker.advance(_hold(tracker))
 
         _place(env, enemy_x=_HIDDEN_X)
         env.state.ship_vel[0, 1] = complex(432.25, 567.75)
@@ -196,10 +198,10 @@ class TestInformationFlow:
         trainee.observe(env.state, visibility.ship[:, 0])
         opponent.observe(env.state, visibility.ship[:, 0])
 
-        fast = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
-        fast[0, 1, POSITION_X] = 8.0  # 8 * 2.5 px
+        fast = _hold(trainee)
+        fast[0, 1, POSITION_X] += 20.0
         trainee.advance(fast)
-        opponent.advance(torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM)))
+        opponent.advance(_hold(opponent))
 
         _place(env, enemy_x=_HIDDEN_X)
         visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
@@ -222,7 +224,7 @@ class TestActionBelief:
 
         logits = torch.full((1, 2, 30), -8.0)
         logits[0, 1, 17] = 8.0
-        tracker.advance(_HOLD, logits)
+        tracker.advance(_hold(tracker), logits)
 
         _place(env, enemy_x=_HIDDEN_X)
         later = _view(env, tracker)
@@ -238,7 +240,7 @@ class TestActionBelief:
         logits = torch.full((1, 2, 30), -8.0)
         logits[0, 1, 3] = 8.0
         _view(env, tracker)
-        tracker.advance(_HOLD, logits)
+        tracker.advance(_hold(tracker), logits)
         view = _view(env, tracker)  # enemy is in sight the whole time
         assert view[ObsKey.VISIBLE][0, 1]
         torch.testing.assert_close(view[ObsKey.PREVIOUS_ACTION][0, 1], logits[0, 1].softmax(-1))
@@ -249,7 +251,7 @@ class TestActionBelief:
         logits = torch.full((1, 2, 30), -8.0)
         logits[0, 1, 17] = 8.0
         _view(env, tracker)
-        tracker.advance(_HOLD, logits)
+        tracker.advance(_hold(tracker), logits)
 
         # A spawned ship's queue is null by construction -- the scheduler
         # neutralizes a command across a death/respawn -- and that null is public.
@@ -270,7 +272,7 @@ class TestActionBelief:
         logits1 = torch.full((1, 2, 30), -8.0)
         logits0[0, 1, 6] = 8.0  # Team 0 predicts physical ship 1.
         logits1[0, 0, 15] = 8.0  # Team 1 predicts physical ship 0.
-        trackers.advance(_HOLD, _HOLD, logits0, logits1)
+        trackers.advance(_hold(trackers.team0), _hold(trackers.team1), logits0, logits1)
 
         visibility = team_visibility_from_state(env.state, _SHIP, _CONFIG, False)
         source0, source1 = trackers.observe(env.state, visibility.ship)
@@ -301,16 +303,16 @@ class TestUncertainty:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
-        prediction[0, 1, PHYSICAL_MEAN_DIM] = 2.0  # position log sigma x
+        prediction = _hold(tracker)
+        prediction[0, 1, PHYSICAL_MEAN_DIM + POSITION_SIGMA] = 2.0  # position sigma, px
         tracker.advance(prediction)
         _place(env, enemy_x=_HIDDEN_X)
         first = _view(env, tracker)
-        assert first[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(2.0)
+        assert first[ObsKey.BELIEF_UNCERTAINTY][0, 1, POSITION_SIGMA] == pytest.approx(2.0)
 
         tracker.advance(prediction)
         second = _view(env, tracker)
-        assert second[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(2.0), (
+        assert second[ObsKey.BELIEF_UNCERTAINTY][0, 1, POSITION_SIGMA] == pytest.approx(2.0), (
             "a restated spread must not compound into 4.0"
         )
 
@@ -318,17 +320,15 @@ class TestUncertainty:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        prediction = torch.zeros((1, 2, NEXT_STATE_OUTPUT_DIM))
-        prediction[0, 1, PHYSICAL_MEAN_DIM] = 5.0
+        prediction = _hold(tracker)
+        prediction[0, 1, PHYSICAL_MEAN_DIM + POSITION_SIGMA] = 5.0
         tracker.advance(prediction)
         _place(env, enemy_x=_HIDDEN_X)
         assert _view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(5.0)
 
         tracker.advance(prediction)
         _place(env, enemy_x=_VISIBLE_X)
-        assert _view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1, 0] == pytest.approx(
-            CERTAIN_LOG_SIGMA
-        )
+        assert (_view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1] == 0).all()
 
 
 class TestLifecycle:
@@ -336,7 +336,7 @@ class TestLifecycle:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        tracker.advance(_HOLD)
+        tracker.advance(_hold(tracker))
         _place(env, enemy_x=_HIDDEN_X)
         _view(env, tracker)
 
@@ -362,12 +362,12 @@ class TestLifecycle:
         tracker = _tracker()
         _view(env, tracker)
         for _ in range(3):
-            tracker.advance(_HOLD)
+            tracker.advance(_hold(tracker))
             _place(env, enemy_x=_HIDDEN_X)
             stale = _view(env, tracker)
         assert stale[ObsKey.POS][0, 1, 0] == pytest.approx(_VISIBLE_X)
 
-        tracker.advance(_HOLD)
+        tracker.advance(_hold(tracker))
         env.state.ship_spawned[0, 1] = True
         _place(env, enemy_x=900.0)
         revealed = _view(env, tracker)
@@ -379,7 +379,7 @@ class TestLifecycle:
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        tracker.advance(_HOLD)
+        tracker.advance(_hold(tracker))
         env.state.ship_spawned[0, 1] = True
         _place(env, enemy_x=_HIDDEN_X)  # spawned far away and unseen
         view = _view(env, tracker)
@@ -401,7 +401,7 @@ class TestLifecycle:
         wrapper = YemongEnvWrapper(2, _SHIP, config, REWARDS, "cpu")
         wrapper.reset(seed=11)
         trackers = DualBeliefTracker(2, 4, 0.1, _SHIP, "cpu")
-        prediction = torch.zeros((2, 4, NEXT_STATE_OUTPUT_DIM))
+        prediction = torch.zeros((2, 4, BELIEF_MOMENT_DIM))
 
         view = wrapper.observe(trackers.observe(wrapper.env.state, wrapper.last_visibility.ship))
         assert view[ObsKey.BELIEF_VALID][:, :4].all(), "the opening decision reveals every ship"
@@ -416,43 +416,32 @@ class TestLifecycle:
 
 
 class TestNumericalSafety:
-    def test_the_recursion_cannot_leave_its_bounded_set(self):
-        """A hidden ship's belief is an autoregressive rollout with nothing else
-        bounding it, so a small bias compounds for as long as it stays unseen.
+    def test_a_non_finite_forecast_is_counted_and_never_stored(self):
+        """Run 734 died of a non-finite logit that reached ``multinomial``.
 
-        Run 734 died that way: velocity error in the 30s+ hidden bucket went
-        99 -> 1178 px/s over ten updates and then overflowed, and the non-finite
-        logits asserted inside ``multinomial``. Physical means make that
-        impossible rather than merely counted -- every channel either wraps or
-        clamps -- so what is checked here is the bound itself, not a repair.
+        Every decoded mean already lies inside its code's range or wraps, so a
+        bounded belief is a property of the codec (``test_ship_codes``); what the
+        tracker owns is never storing a NaN or an infinity, and counting them.
         """
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
 
-        prediction = torch.full((1, 2, NEXT_STATE_OUTPUT_DIM), 1e9)
+        prediction = torch.full((1, 2, BELIEF_MOMENT_DIM), 1e9)
         prediction[0, 0, 0] = float("nan")
         prediction[0, 1, 0] = float("inf")
         for _ in range(10):
             tracker.advance(prediction)
 
-        means = tracker.means
-        assert torch.isfinite(means).all()
-        assert torch.isfinite(means.double().square()).all()
-        spec = PhysicalNextState.from_ship_config(_SHIP)
-        upper = spec.upper_vector(means.device)
-        lower = spec.lower_vector(means.device)
-        finite = torch.isfinite(upper) & torch.isfinite(lower)
-        assert (means[..., finite] <= upper[finite] + 1e-3).all()
-        assert (means[..., finite] >= lower[finite] - 1e-3).all()
-        assert (means[..., POSITION_X].abs() <= _SHIP.world_size[0]).all()
+        assert torch.isfinite(tracker.means).all()
+        assert torch.isfinite(tracker.uncertainty).all()
         assert int(tracker.clamp_events) > 0, "the non-finite outputs were counted"
 
     def test_the_counter_does_not_bind_on_ordinary_predictions(self):
         env = _env()
         tracker = _tracker()
         _view(env, tracker)
-        tracker.advance(torch.full((1, 2, NEXT_STATE_OUTPUT_DIM), 0.5))
+        tracker.advance(_hold(tracker))
         assert torch.isfinite(tracker.means).all()
         assert int(tracker.clamp_events) == 0
 
@@ -462,7 +451,7 @@ class TestRespawnMode:
         env = _env(frontline=True)
         tracker = _tracker()
         _view(env, tracker)
-        tracker.advance(_HOLD)
+        tracker.advance(_hold(tracker))
         tracker.means[0, 1, HEALTH] = 0.0
         tracker.means[0, 1, SHIELD_DELAY] = 0.0
         _place(env, enemy_x=_HIDDEN_X)

@@ -1,39 +1,26 @@
-"""The next-state label steps from the believed state to the true next one.
+"""The next-state target is the true next state, never a step from the belief.
 
-``BeliefTracker.advance`` applies the head's forecast to the belief, so
-``belief[t+1] = belief[t] + pred[t]``. Training on a truth-to-truth delta instead
-makes the substitution
-
-    error[t+1] = belief[t] + (true[t+1] - true[t]) - true[t+1] = error[t]
-
--- the belief error is conserved exactly, every step's noise is retained forever,
-and the head is never once shown what "too far" looks like. Run 734 died that
-way. Re-basing on the belief makes the label the correction that carries the
-believed state onto the true next one, so error is nulled each step to whatever
-extent it is inferable.
-
-For a ship the observer can see, the belief *is* truth, so its label is exactly
-the Phase-1 truth-to-truth delta the scales were calibrated on: re-basing adds
-signal where the drift happens and leaves the rest of the supervision alone.
+The head's decoded output *is* the next belief, so it is trained toward the
+exact code of where the ship really is one decision later. A stale belief cannot
+survive that: whatever the head reads, the target says where the ship is. Run 734
+died of the opposite, a truth-to-truth step applied to a belief, which conserves
+the belief's error exactly.
 """
 
 import math
 import types
 
-import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObjectType, ObsKey
 from boost_and_broadside.train.rl.physical_belief import (
     PHYSICAL_MEAN_DIM,
-    PHYSICAL_MEAN_NAMES,
     POSITION_X,
-    VELOCITY_X,
-    PhysicalNextState,
     physical_means_from_observation,
 )
 from boost_and_broadside.train.rl.ppo import PPOTrainer
+from boost_and_broadside.train.rl.ship_codes import ShipStateCodec
 
 T, B, N = 2, 1, 2
 _SHIP = ShipConfig()
@@ -73,10 +60,9 @@ def _obs(
     }
 
 
-def _run() -> tuple:
+def _run(privileged: bool = True) -> tuple:
     """Drive ``_precompute_ns_labels`` over a belief that is stale by 40 px."""
 
-    next_state = PhysicalNextState.from_ship_config(_SHIP)
     truth_pos = torch.zeros((T + 1, B, N, 2))
     truth_pos[..., 0] = torch.tensor([100.0, 110.0, 120.0]).view(T + 1, 1, 1)
     truth_pos[..., 1] = 200.0
@@ -99,96 +85,40 @@ def _run() -> tuple:
         num_envs=B,
         num_ships=N,
         obs=believed_obs,
-        privileged_means=truth_means,
+        privileged_means=truth_means if privileged else None,
         ns_labels=None,
     )
     trainer = types.SimpleNamespace(
         cfg=types.SimpleNamespace(next_state_coef=1.0),
-        next_state=next_state,
         _index_log_scale=_LOG_SCALE,
         _believed_means=lambda buf, steps: PPOTrainer._believed_means(trainer, buf, steps),
         _precompute_belief_diagnostics=lambda *args: None,
     )
     PPOTrainer._precompute_ns_labels(trainer, buf)
-    return next_state, buf, believed_means, truth_means
+    return buf, believed_means, truth_means
 
 
-def test_the_label_steps_from_the_belief_to_the_true_next_state() -> None:
-    next_state, buf, believed, truth = _run()
-    expected = next_state.labels(believed[:T], truth[1:])
-    assert torch.allclose(buf.ns_labels, expected)
+def test_the_target_is_the_true_next_state() -> None:
+    buf, _, truth = _run()
+    assert buf.ns_labels.shape == (T, B, N, PHYSICAL_MEAN_DIM)
+    assert torch.equal(buf.ns_labels, truth[1:])
 
 
-def test_a_stale_belief_shows_up_in_the_label() -> None:
-    """The visible ship's label is the ordinary delta; the stale one's is bigger.
-
-    Ship 0's belief is truth, so its position label is the 10 px step divided by
-    the calibrated 2.5 px scale. Ship 1's belief lags by 40 px, so its label
-    carries that correction as well -- which is the signal re-basing exists to
-    produce, and the one a truth-to-truth label cannot contain.
-    """
-    _, buf, _, _ = _run()
-    labels = buf.ns_labels
-    assert labels[0, 0, 0, POSITION_X].item() == pytest.approx(10.0 / 2.5)
-    assert labels[0, 0, 1, POSITION_X].item() == pytest.approx((10.0 - 40.0) / 2.5)
-    assert labels[0, 0, 0, VELOCITY_X].item() == pytest.approx(0.0)
-    assert labels[0, 0, 1, VELOCITY_X].item() == pytest.approx(-5.0 / 4.0)
+def test_a_stale_belief_does_not_move_the_target() -> None:
+    """Ship 1's belief lags by 40 px; its target is where it really is."""
+    buf, believed, _ = _run()
+    assert buf.ns_labels[0, 0, 1, POSITION_X].item() == 110.0
+    assert believed[0, 0, 1, POSITION_X].item() == 140.0
 
 
-def test_applying_the_label_to_the_belief_lands_on_the_truth() -> None:
-    """The identity the re-basing exists for: error is nulled, not conserved."""
-    next_state, buf, believed, truth = _run()
-    prediction = torch.cat([buf.ns_labels[0], torch.zeros(B, N, PHYSICAL_MEAN_DIM + 2)], dim=-1)
-    landed = next_state.apply_means(believed[0], prediction)
-    assert torch.allclose(landed, truth[1], atol=1e-3)
+def test_a_head_that_meets_its_target_lands_the_belief_on_the_truth() -> None:
+    """The identity the absolute target exists for: error is nulled, not conserved."""
+    buf, _, truth = _run()
+    codec = ShipStateCodec.from_ship_config(_SHIP)
+    landed = codec.decode(codec.sharp(buf.ns_labels[0]))[..., :PHYSICAL_MEAN_DIM]
+    torch.testing.assert_close(landed, truth[1], atol=1e-3, rtol=0.0)
 
 
-def test_a_truth_to_truth_label_would_conserve_the_error() -> None:
-    """The failure mode, stated as arithmetic rather than as a comment."""
-    next_state, _, believed, truth = _run()
-    conserving = next_state.labels(truth[:T], truth[1:])
-    prediction = torch.cat([conserving[0], torch.zeros(B, N, PHYSICAL_MEAN_DIM + 2)], dim=-1)
-    landed = next_state.apply_means(believed[0], prediction)
-    error_before = (believed[0, 0, 1, POSITION_X] - truth[0, 0, 1, POSITION_X]).abs()
-    error_after = (landed[0, 1, POSITION_X] - truth[1, 0, 1, POSITION_X]).abs()
-    assert error_after.item() == pytest.approx(error_before.item(), abs=1e-3)
-
-
-def test_the_label_scale_diagnostic_reports_the_correction_that_recalibrates_it() -> None:
-    """A conditioned label has mean square 1; the suggestion is what restores it.
-
-    The Phase-1 scales are fixed by contract, so this is a diagnostic rather than
-    a control input -- but it has to be readable as a scale or it says nothing.
-    """
-
-    import tempfile
-
-    from tests.train.test_ppo import _make_trainer
-
-    torch.manual_seed(3)
-    with tempfile.TemporaryDirectory() as tmp:
-        trainer = _make_trainer(checkpoint_dir=tmp)
-        runtime = trainer._initialize_rollout_runtime()
-        dones = trainer._collect_rollout(runtime, False)
-        trainer._compute_rollout_gae(runtime, dones)
-        metrics = trainer._update_epochs(
-            all_buffers=[trainer.buffer, *trainer.aux_buffers], record_histograms=False
-        )
-
-    calibrated = 0
-    for index, name in enumerate(PHYSICAL_MEAN_NAMES):
-        mean_sq = metrics[f"next_state_label_sq/{name}"]
-        assert math.isfinite(mean_sq) and mean_sq >= 0.0
-        if mean_sq == 0.0:
-            # No variation in this sample, so no scale to suggest.
-            assert f"next_state_label_scale/{name}" not in metrics
-            continue
-        calibrated += 1
-        # suggested = current * sqrt(mean_sq): applying it would drive the
-        # label's mean square to 1.
-        suggested = metrics[f"next_state_label_scale/{name}"]
-        assert suggested / math.sqrt(mean_sq) == pytest.approx(
-            trainer.next_state.scales[index], rel=1e-5
-        )
-
-    assert calibrated, "no channel produced a usable scale suggestion"
+def test_without_privileged_truth_the_target_is_the_next_observation() -> None:
+    buf, believed, _ = _run(privileged=False)
+    assert torch.equal(buf.ns_labels, believed[1:])

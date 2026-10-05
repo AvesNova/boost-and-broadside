@@ -1,27 +1,24 @@
-"""The belief carries how uncertain it is, not just how long it has been stale.
+"""The belief carries how uncertain it is, and the encoder reads it in the code.
 
-``time_since_observation`` says only how old an estimate is. The next-state head
-states a spread per channel -- eleven log sigmas plus a correlation latent for
-position and one for velocity -- and the belief carries the head's latest claim
-outright rather than a running sum, because the head saw the current spread as an
-input and answered with the next one.
+``time_since_observation`` says only how old an estimate is. The belief's
+fourteen physical spreads say what that cost, and they reach the trunk by
+smoothing the hidden ship's code (§8.3): the encoder reads exactly the
+categorical input the next-state head takes as its baseline.
 """
 
 import pytest
 import torch
 
 from boost_and_broadside.config import ShipConfig
-from boost_and_broadside.env.observation import ObsKey
+from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.train.rl.features import build_standard_coordinator
 from boost_and_broadside.train.rl.physical_belief import (
-    CERTAIN_LOG_SIGMA,
-    LOG_SIGMA_COLUMNS,
-    NEXT_STATE_OUTPUT_DIM,
     PHYSICAL_MEAN_DIM,
     PHYSICAL_UNCERTAINTY_DIM,
-    UNKNOWN_LOG_SIGMA,
+    POSITION_SIGMA,
+    physical_means_from_state,
 )
-from tests.train.test_belief import _HIDDEN_X, _env, _place, _tracker, _view
+from tests.train.test_belief import _HIDDEN_X, _SHIP, _env, _hold, _place, _tracker, _view
 
 
 @pytest.fixture
@@ -29,125 +26,60 @@ def coordinator():
     return build_standard_coordinator(ShipConfig())
 
 
-def _uncertainty_accessor(coordinator):
-    (feature,) = [f for f in coordinator.features if f.name == "belief_uncertainty"]
-    return feature.accessor
-
-
-def _prediction(log_sigma: float) -> torch.Tensor:
-    return torch.cat(
-        [
-            torch.zeros(1, 2, PHYSICAL_MEAN_DIM),
-            torch.full((1, 2, PHYSICAL_UNCERTAINTY_DIM), log_sigma),
-        ],
-        dim=-1,
-    )
+def _entropy(code: torch.Tensor) -> torch.Tensor:
+    return -(code * torch.log(code.clamp_min(1e-12))).sum(-1)
 
 
 class TestLayout:
-    def test_the_channel_width_is_the_physical_uncertainty_layout(self, coordinator):
-        assert _uncertainty_accessor(coordinator).absent_width == PHYSICAL_UNCERTAINTY_DIM
-
-    def test_the_width_no_longer_follows_the_world_size(self):
-        """It is thirteen physical terms, not one per Fourier harmonic.
-
-        The previous layout reported one spread per position harmonic, so the
-        width moved with the map. The next-state model predicts physical
-        quantities, so it does not -- and the encoder's input width stops being a
-        function of the world.
-        """
-        from dataclasses import replace
-
-        for side in (1024.0, 65536.0):
-            config = replace(ShipConfig(), world_size=(side, side))
-            coordinator = build_standard_coordinator(config)
-            assert _uncertainty_accessor(coordinator).absent_width == PHYSICAL_UNCERTAINTY_DIM
-
-    def test_map_objects_carry_the_observed_spread(self, coordinator):
-        """Static geometry is not believed, so nothing about it is in doubt."""
+    def test_the_channel_width_is_the_physical_spread_layout(self):
         env = _env()
         view = _view(env, _tracker())
-        uncertainty = view[ObsKey.BELIEF_UNCERTAINTY]
-        assert uncertainty.shape[-1] == PHYSICAL_UNCERTAINTY_DIM
+        assert view[ObsKey.BELIEF_UNCERTAINTY].shape[-1] == PHYSICAL_UNCERTAINTY_DIM
+
+    def test_map_objects_carry_no_spread(self):
+        """Static geometry is not believed, so nothing about it is in doubt."""
+        env = _env()
+        uncertainty = _view(env, _tracker())[ObsKey.BELIEF_UNCERTAINTY]
         assert uncertainty.shape[1] > 2, "the view carries map tokens as well as ships"
-        map_spreads = uncertainty[0, 2:][:, list(LOG_SIGMA_COLUMNS)]
-        assert (map_spreads == CERTAIN_LOG_SIGMA).all()
+        assert (uncertainty[0, 2:] == 0).all()
 
-    def test_a_view_built_without_a_belief_reports_none(self, coordinator):
-        """An omniscient or fixture view has forecast nothing.
 
-        Read through the accessor: such a view carries no channel at all, because
-        the environment does not own the belief's representation.
-        """
-        from boost_and_broadside.env.observation import observation_from_state
-
+class TestTheEncoderReadsTheCode:
+    def test_a_visible_ship_reads_the_exact_code_of_its_truth(self, coordinator):
         env = _env()
-        view = observation_from_state(env.state, ShipConfig())
+        view = _view(env, _tracker())
+        codes = coordinator.ship_codes(view, 2)
+        truth = physical_means_from_state(env.state)[:, :2]
+        torch.testing.assert_close(codes, coordinator.ship_codec.sharp(truth))
+
+    def test_a_view_built_without_a_belief_reads_sharp_codes(self, coordinator):
+        env = _env()
+        view = observation_from_state(env.state, _SHIP)
         assert ObsKey.BELIEF_UNCERTAINTY not in view.data
-        supplied = _uncertainty_accessor(coordinator).get(view)
-        assert supplied.shape[-1] == PHYSICAL_UNCERTAINTY_DIM
-        assert supplied.abs().max() == 0.0
+        truth = physical_means_from_state(env.state)[:, :2]
+        torch.testing.assert_close(
+            coordinator.ship_codes(view, 2), coordinator.ship_codec.sharp(truth)
+        )
 
-
-class TestSemantics:
-    def test_the_head_restates_the_spread_rather_than_accumulating_it(self):
-        """Four steps of the same claim must read the same, not four times it."""
-        env = _env()
-        tracker = _tracker()
-        _view(env, tracker)
-
-        readings = []
-        for _ in range(4):
-            tracker.advance(_prediction(1.0))
-            _place(env, enemy_x=_HIDDEN_X)
-            readings.append(_view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1].clone())
-
-        for reading in readings:
-            spreads = reading[list(LOG_SIGMA_COLUMNS)]
-            assert torch.allclose(spreads, torch.ones_like(spreads))
-
-    def test_a_confident_forecast_reports_less_doubt_than_a_vague_one(self):
-        def after_one_step(log_sigma: float) -> torch.Tensor:
+    def test_a_vaguer_belief_reads_as_a_smoother_code(self, coordinator):
+        def hidden_code(position_sigma: float) -> torch.Tensor:
             env = _env()
             tracker = _tracker()
             _view(env, tracker)
-            tracker.advance(_prediction(log_sigma))
+            forecast = _hold(tracker)
+            forecast[0, 1, PHYSICAL_MEAN_DIM + POSITION_SIGMA] = position_sigma
+            tracker.advance(forecast)
             _place(env, enemy_x=_HIDDEN_X)
-            return _view(env, tracker)[ObsKey.BELIEF_UNCERTAINTY][0, 1]
+            return coordinator.ship_codes(_view(env, tracker), 2)[0, 1, :81]
 
-        assert (after_one_step(-2.0) <= after_one_step(2.0)).all()
+        sharp, vague = hidden_code(0.0), hidden_code(50.0)
+        assert _entropy(vague.view(9, 9)).sum() > _entropy(sharp.view(9, 9)).sum()
 
-    def test_an_unobserved_slot_reports_the_ceiling_and_an_observed_one_the_floor(self):
+    def test_the_input_vector_carries_the_code(self, coordinator):
         env = _env()
-        _place(env, enemy_x=_HIDDEN_X)
         view = _view(env, _tracker())
-        never_seen = view[ObsKey.BELIEF_UNCERTAINTY][0, 1][list(LOG_SIGMA_COLUMNS)]
-        observed = view[ObsKey.BELIEF_UNCERTAINTY][0, 0][list(LOG_SIGMA_COLUMNS)]
-        assert (never_seen == UNKNOWN_LOG_SIGMA).all()
-        assert (observed == CERTAIN_LOG_SIGMA).all()
-
-    def test_the_encoder_sees_the_clamped_range_inside_one_unit(self, coordinator):
-        """The input encoding divides the log sigmas by their own clamp bound.
-
-        A symlog of a log would compress twice and flatten the difference between
-        a ship in sight and one unseen for a minute, which is the whole signal.
-        """
-        (feature,) = [f for f in coordinator.features if f.name == "belief_uncertainty"]
-        extreme = torch.full((1, 1, PHYSICAL_UNCERTAINTY_DIM), UNKNOWN_LOG_SIGMA)
-        encoded = feature.input_encoder(extreme)[0, 0]
-        spreads = encoded[list(LOG_SIGMA_COLUMNS)]
-        assert torch.allclose(spreads, torch.ones_like(spreads))
-
-    def test_the_head_cannot_claim_a_spread_outside_its_clamp(self):
-        from boost_and_broadside.models.yemong.policy import NextStateHead
-
-        head = NextStateHead(16)
-        with torch.no_grad():
-            for layer in head.net:
-                if hasattr(layer, "bias") and layer.bias is not None:
-                    layer.bias.fill_(50.0)
-        out = head(torch.randn(8, 16) * 20.0)
-        uncertainty = out[..., PHYSICAL_MEAN_DIM:]
-        assert uncertainty.shape[-1] == PHYSICAL_UNCERTAINTY_DIM
-        assert torch.equal(uncertainty, uncertainty.clamp(-6.0, 6.0))
-        assert out.shape[-1] == NEXT_STATE_OUTPUT_DIM
+        vector = coordinator.get_input_vector(view)
+        codes = coordinator.ship_codes(view, 2)
+        (start, stop), (state_start, state_stop) = coordinator.sparse_code_columns()
+        torch.testing.assert_close(vector[0, :2, start:stop], codes[0, :, :81])
+        torch.testing.assert_close(vector[0, :2, state_start:state_stop], codes[0, :, 81:])

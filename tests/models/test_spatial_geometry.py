@@ -35,7 +35,6 @@ from boost_and_broadside.train.rl.checkpoint_schema import (
 )
 from boost_and_broadside.train.rl.features import (
     PRESENCE_RADIUS,
-    AttitudeFourier,
     Fourier,
     build_standard_coordinator,
     local_presence,
@@ -86,7 +85,6 @@ class TestReusedFourierBasis:
         assert axis_x.n_freqs == position_fourier_frequencies(width)
         assert axis_y.n_freqs == position_fourier_frequencies(height)
         assert axis_att.n_freqs == ATTITUDE_FOURIER_FREQUENCIES
-        assert axis_att.n_freqs == AttitudeFourier().n_freqs
         assert (axis_x.period, axis_y.period) == (width, height)
         assert axis_att.period == pytest.approx(2.0 * math.pi)
 
@@ -118,7 +116,7 @@ class TestReusedFourierBasis:
         """
         width, height = FRONTLINE_SHIP_CONFIG.world_size
         position = Fourier(position_fourier_frequencies(width), periods=width)
-        attitude = AttitudeFourier()
+        attitude = Fourier(ATTITUDE_FOURIER_FREQUENCIES, 2.0 * math.pi)
         probe = torch.zeros(1, 1, 1)
 
         expected = (

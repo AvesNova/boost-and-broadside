@@ -1,24 +1,22 @@
-"""Who the next-state head learns from, and who it would learn from instead.
+"""Who the next-state head learns from, and how much each population teaches it.
 
 Every supervised next-state token belongs to one of three populations whose
-labels mean different things:
+targets mean different things:
 
-* **ally** -- always in sight, so the label is one step of real dynamics.
-* **enemy_visible** -- in sight now, so the same kind of label as an ally's.
-* **enemy_hidden** -- out of sight, so the label pairs a *believed* current
-  state with the true next one. It is one step of dynamics plus the correction
-  of however far the belief has drifted, and it is wider by that drift.
+* **ally** -- always in sight, so the input is sharp and the target one step of
+  real dynamics.
+* **enemy_visible** -- in sight now, so the same kind of target as an ally's.
+* **enemy_hidden** -- out of sight, so the input is the belief's smoothed code
+  and the target is where the ship really is, however far that has drifted.
 
-A single likelihood over all three decides how much each population moves the
+One cross-entropy over all three decides how much each population moves the
 shared trunk, and the answer is not readable from the aggregate loss. This
 module supplies the two measurements that make it readable.
 
-**Calibration moments**, cheap enough for every update: per population and
-channel, the mean likelihood, the mean squared standardized residual (1.0 when
-the head's spread is honest), the mean log spread, and the mean squared error.
-Whether one population swamps another under a given likelihood depends mostly
-on whether the spread has caught up with its labels, so this is the reading
-that says whether a gradient imbalance is structural or merely early.
+**Population sums**, cheap enough for every update: per population and code
+group, the mean cross-entropy and the mean cross-entropy of the zero-residual
+head ("nothing changes" from the code the head read). The head is worth its
+cost on a group only where the first sits below the second.
 
 **Gradient decomposition**, as a gradient diagnostic: the next-state term split
 by population, and each population split again into two disjoint halves of the
@@ -27,13 +25,6 @@ gradient, so their inner product estimates the squared norm of the *coherent*
 gradient -- the part a larger batch would keep -- while the norm of their sum
 also carries per-token noise. A population can dominate the gradient norm and
 still contribute little a step can use, and only the halves tell those apart.
-
-The decomposition is repeated for three likelihoods at the same weights: the
-Gaussian NLL being trained, beta-NLL at beta 0.5, and squared error on the
-means. A run therefore trains one objective and still reports how the
-alternatives would have divided the trunk between populations once the spread
-is trained, which a short run under each alternative cannot, because under
-those the spread does not train the same way or at all.
 """
 
 from __future__ import annotations
@@ -48,23 +39,17 @@ from boost_and_broadside.train.rl.grad_diagnostics import (
     scope_metric_records,
     scope_statistics,
 )
-from boost_and_broadside.train.rl.physical_belief import (
-    PHYSICAL_MEAN_DIM,
-    PHYSICAL_MEAN_NAMES,
-    PhysicalNextState,
-)
+from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_NAMES
 
 #: Supervised next-state populations, in a fixed order every tensor here uses.
 NEXT_STATE_POPULATIONS: tuple[str, ...] = ("ally", "enemy_visible", "enemy_hidden")
 #: The two disjoint environment halves each population is split into.
 ENVIRONMENT_HALVES: tuple[str, ...] = ("a", "b")
-#: Candidate likelihoods, the trained one first.
-NEXT_STATE_LIKELIHOODS: tuple[str, ...] = ("nll", "beta_nll", "mse")
-#: The beta of the beta-NLL candidate (Seitzer et al., 2022).
-BETA_NLL_BETA = 0.5
+#: The objectives decomposed: the trained cross-entropy.
+NEXT_STATE_LIKELIHOODS: tuple[str, ...] = ("ce",)
 
 #: Rows of :func:`population_moments`' second axis.
-MOMENT_NAMES: tuple[str, ...] = ("nll", "z2", "log_sigma", "sq_err")
+MOMENT_NAMES: tuple[str, ...] = ("ce", "baseline_ce")
 
 _EPS = 1e-12
 
@@ -110,35 +95,6 @@ def environment_halves(num_envs: int, device: torch.device) -> torch.Tensor:
     return torch.stack([even, ~even])
 
 
-def candidate_losses(
-    model: PhysicalNextState,
-    prediction: torch.Tensor,
-    labels: torch.Tensor,
-    nll: torch.Tensor,
-) -> dict[str, torch.Tensor]:
-    """Per-channel loss under each candidate likelihood, ``(..., 11)`` each.
-
-    Args:
-        model:      The next-state model the trainer uses.
-        prediction: (..., 24) head output, means then uncertainty.
-        labels:     (..., 11) normalized labels.
-        nll:        (..., 11) the trained likelihood, already computed.
-
-    Returns:
-        Likelihood name → per-channel loss. ``beta_nll`` weights each channel's
-        NLL by a stop-gradient ``sigma**(2*beta)``; ``mse`` is half the squared
-        normalized residual on the means alone, so it sends no gradient to the
-        spread.
-    """
-
-    weight = torch.exp(2.0 * BETA_NLL_BETA * model.log_sigma(prediction).detach())
-    return {
-        "nll": nll,
-        "beta_nll": nll * weight,
-        "mse": 0.5 * model.residual(prediction, labels).pow(2),
-    }
-
-
 def gradient_terms(
     losses: Mapping[str, torch.Tensor],
     masks: torch.Tensor,
@@ -146,28 +102,26 @@ def gradient_terms(
     denominator: torch.Tensor,
     coef: float,
 ) -> dict[str, torch.Tensor]:
-    """One scalar term per likelihood, population, and environment half.
+    """One scalar term per objective, population, and environment half.
 
-    Each term is normalized exactly as the training loss is -- the minibatch
-    supervised-token count times the channel count -- so the trained
-    likelihood's six terms sum to the ``next_state`` term's gradient, and every
-    likelihood's terms are on the scale that likelihood would train at.
+    Each term is normalized exactly as the training loss is, so the six terms
+    of the trained objective sum to the ``next_state`` term's gradient.
 
     Args:
-        losses:      Likelihood name → (T, B, N, 11) per-channel loss.
+        losses:      Objective name → (T, B, N, G) per-group loss.
         masks:       (3, T, B, N) bool population masks.
         halves:      (2, B) bool environment halves.
-        denominator: Minibatch supervised-token count (scalar tensor).
+        denominator: The training loss's divisor: supervised tokens times groups.
         coef:        The next-state loss coefficient.
 
     Returns:
-        ``"ns_<likelihood>/<population>/<half>"`` → scalar loss.
+        ``"ns_<objective>/<population>/<half>"`` → scalar loss.
     """
 
-    scale = coef / (denominator * PHYSICAL_MEAN_DIM)
+    scale = coef / denominator
     terms: dict[str, torch.Tensor] = {}
-    for likelihood, per_dim in losses.items():
-        per_token = per_dim.sum(-1)  # (T, B, N)
+    for likelihood, per_group in losses.items():
+        per_token = per_group.sum(-1)  # (T, B, N)
         for p, population in enumerate(NEXT_STATE_POPULATIONS):
             for h, half in enumerate(ENVIRONMENT_HALVES):
                 weight = (masks[p] & halves[h].view(1, -1, 1)).float()  # (T, B, N)
@@ -176,48 +130,38 @@ def gradient_terms(
 
 
 def population_moments(
-    model: PhysicalNextState,
-    prediction: torch.Tensor,
-    labels: torch.Tensor,
-    nll: torch.Tensor,
+    cross_entropy: torch.Tensor,
+    baseline_cross_entropy: torch.Tensor,
     masks: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Additive per-population calibration sums for one micro-batch.
+    """Additive per-population sums for one micro-batch.
 
     Args:
-        model:      The next-state model.
-        prediction: (T, B, N, 24) head output.
-        labels:     (T, B, N, 11) labels.
-        nll:        (T, B, N, 11) per-channel NLL.
-        masks:      (3, T, B, N) bool population masks.
+        cross_entropy:          (T, B, N, G) the head's per-group cross-entropy.
+        baseline_cross_entropy: (T, B, N, G) the zero-residual head's.
+        masks:                  (3, T, B, N) bool population masks.
 
     Returns:
-        ``(sums, counts)``: sums is (3, 4, 11) in :data:`MOMENT_NAMES` order and
+        ``(sums, counts)``: sums is (3, 2, G) in :data:`MOMENT_NAMES` order and
         counts is (3,), both float64 so they can be summed over a whole update
         without losing the small populations to roundoff.
     """
 
     with torch.no_grad():
-        prediction = prediction.detach().float()
         per_token = torch.stack(
-            [
-                nll.detach().float(),
-                model.standardized_square(prediction, labels),
-                model.log_sigma(prediction),
-                model.residual(prediction, labels).pow(2),
-            ]
-        )  # (4, T, B, N, 11)
+            [cross_entropy.detach().float(), baseline_cross_entropy.detach().float()]
+        )  # (2, T, B, N, G)
         weights = masks.float()  # (3, T, B, N)
-        sums = torch.einsum("mtbnc,ptbn->pmc", per_token, weights)  # (3, 4, 11)
+        sums = torch.einsum("mtbng,ptbn->pmg", per_token, weights)  # (3, 2, G)
         counts = weights.sum((1, 2, 3))  # (3,)
     return sums.double(), counts.double()
 
 
 def population_metric_records(sums: torch.Tensor, counts: torch.Tensor) -> dict[str, float]:
-    """Finalize accumulated calibration sums into logger keys.
+    """Finalize accumulated population sums into logger keys.
 
     Args:
-        sums:   (3, 4, 11) accumulated :func:`population_moments` sums.
+        sums:   (3, 2, G) accumulated :func:`population_moments` sums.
         counts: (3,) accumulated token counts.
 
     Returns:
@@ -234,12 +178,12 @@ def population_metric_records(sums: torch.Tensor, counts: torch.Tensor) -> dict[
         records[f"next_state_population/{population}/token_share"] = count / max(total, 1.0)
         if count <= 0.0:
             continue
-        means = sums[p] / count  # (4, 11)
+        means = sums[p] / count  # (2, G)
         for m, moment in enumerate(MOMENT_NAMES):
             records[f"next_state_population/{population}/{moment}"] = float(means[m].mean())
-        for c, channel in enumerate(PHYSICAL_MEAN_NAMES):
-            records[f"next_state_z2/{population}/{channel}"] = float(means[1, c])
-            records[f"next_state_log_sigma/{population}/{channel}"] = float(means[2, c])
+        for g, group in enumerate(CODE_GROUP_NAMES):
+            records[f"next_state_ce/{population}/{group}"] = float(means[0, g])
+            records[f"next_state_baseline_ce/{population}/{group}"] = float(means[1, g])
     return records
 
 
@@ -260,9 +204,8 @@ def _merge_gram(gram: torch.Tensor, groups: Sequence[Sequence[int]]) -> torch.Te
 def gradient_metric_records(accumulator: TermGradientAccumulator) -> dict[str, float]:
     """The population decomposition's metrics for one diagnosed minibatch.
 
-    For every likelihood and both parameter scopes (whole model and shared
-    trunk), under group ``next_state_<likelihood>`` or
-    ``trunk_next_state_<likelihood>``:
+    For the objective and both parameter scopes (whole model and shared trunk),
+    under group ``next_state_ce`` or ``trunk_next_state_ce``:
 
     * ``grad_norm`` / ``grad_share`` / ``grad_cos`` per population, and the
       group's ``total_norm`` and ``agreement``, exactly as the other groups
@@ -330,12 +273,10 @@ def gradient_metric_records(accumulator: TermGradientAccumulator) -> dict[str, f
 
 
 __all__ = [
-    "BETA_NLL_BETA",
     "ENVIRONMENT_HALVES",
     "MOMENT_NAMES",
     "NEXT_STATE_LIKELIHOODS",
     "NEXT_STATE_POPULATIONS",
-    "candidate_losses",
     "environment_halves",
     "gradient_metric_records",
     "gradient_terms",

@@ -17,8 +17,8 @@ from boost_and_broadside.train.rl.physical_belief import (
     POWER,
     SHIELD_DELAY,
     VELOCITY_X,
-    PhysicalNextState,
-    physical_means_from_observation,
+    predicted_means,
+    predicted_uncertainty,
 )
 
 
@@ -30,12 +30,15 @@ def means_to_observation(
     index_log_scale: float,
     observer_team: int = 0,
     enemy_action_logits: torch.Tensor | None = None,
+    uncertainty: torch.Tensor | None = None,
 ) -> YemongObservation:
     """Write physical ship means into an observation, retaining the map tokens.
 
     The imagined counterpart of legal-view composition: the same eleven physical
     quantities, written into the same channels, with the same normalization the
-    environment's builder applies.
+    environment's builder applies. ``uncertainty``, the ``(B, N, 14)`` spreads
+    that came with the means, is written to the belief channel when given, so
+    the next forward reads the smoothed code the forecast stated.
 
     Bullets are intentionally absent: next-state prediction does not model them,
     so an imagined rollout is blind to fire in flight.
@@ -58,7 +61,15 @@ def means_to_observation(
         ObsKey.LOCAL_LOG_INDEX: means[..., LOCAL_LOG_INDEX : LOCAL_LOG_INDEX + 1] / index_log_scale,
         ObsKey.ALIVE: alive,
     }
+    if uncertainty is not None:
+        ship_values[ObsKey.BELIEF_UNCERTAINTY] = uncertainty
     data = {key: value.clone() for key, value in prev_obs.items()}
+    if uncertainty is not None and ObsKey.BELIEF_UNCERTAINTY not in data:
+        data[ObsKey.BELIEF_UNCERTAINTY] = torch.zeros(
+            (*prev_obs[ObsKey.POS].shape[:-1], uncertainty.shape[-1]),
+            device=uncertainty.device,
+            dtype=uncertainty.dtype,
+        )
     for key, values in ship_values.items():
         data[key] = torch.cat([values, prev_obs[key][:, num_ships:]], dim=1)
     enemy_probabilities = (
@@ -84,26 +95,27 @@ def imagine_trajectory(
     num_ships: int,
     device,
     observer_team: int = 0,
-    next_state: PhysicalNextState | None = None,
     index_log_scale: float | None = None,
 ) -> list[torch.Tensor]:
     """Roll a policy's prediction head forward without mutating live hidden state.
+
+    Each step's forecast, decoded to moments, becomes the next step's input:
+    means and spreads both, so an imagined ship blurs as the head says it should.
 
     Returns one ``(B, num_ships, 4)`` *pose* per imagined step -- world x, world
     y, and the Cartesian heading ``(cos, sin)`` -- rather than the raw prediction
     vectors, because the caller is a renderer.
 
-    ``next_state`` and ``index_log_scale`` come from the ship configuration; both
-    are required whenever ``n_steps`` is positive.
+    ``index_log_scale`` comes from the ship configuration and is required
+    whenever ``n_steps`` is positive.
     """
     if agent.kind != "policy" or agent.hidden is None or n_steps <= 0:
         return []
-    if next_state is None or index_log_scale is None:
-        raise ValueError("imagining a trajectory needs the physical next-state model")
+    if index_log_scale is None:
+        raise ValueError("imagining a trajectory needs the observation's log-index scale")
 
     hidden = agent.hidden.clone()
     imagined = YemongObservation(data={key: value.clone() for key, value in observation.items()})
-    means = physical_means_from_observation(imagined, index_log_scale, num_ships=num_ships)
 
     poses: list[torch.Tensor] = []
     with torch.no_grad():
@@ -111,15 +123,15 @@ def imagine_trajectory(
             action, _, _, prediction, enemy_logits, hidden = agent.agent.get_action_and_value(
                 imagined, hidden, return_enemy_action=True
             )
-            means = next_state.apply_means(means, prediction.float())
             imagined = means_to_observation(
-                means,
+                predicted_means(prediction.float()),
                 imagined,
                 action,
                 num_ships,
                 index_log_scale,
                 observer_team,
                 enemy_action_logits=enemy_logits,
+                uncertainty=predicted_uncertainty(prediction.float()),
             )
             poses.append(
                 torch.cat(

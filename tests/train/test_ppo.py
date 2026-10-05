@@ -29,11 +29,9 @@ from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.rewards import component_weights
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.logging import match_metrics
-from boost_and_broadside.train.rl.physical_belief import (
-    PHYSICAL_MEAN_NAMES,
-    physical_means_from_state,
-)
+from boost_and_broadside.train.rl.physical_belief import physical_means_from_state
 from boost_and_broadside.train.rl.ppo import _TIER, PPOTrainer
+from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_NAMES
 
 
 def _make_rewards(**overrides) -> RewardConfig:
@@ -808,10 +806,12 @@ class TestTargetKlGate:
 class TestAuxPredictionMetrics:
     def test_every_prediction_dimension_is_logged(self, tmp_path):
         """Regression: a hand-written 9-name list against 10 prediction dims
-        silently dropped local_log_index, the field-modelling channel."""
+        silently dropped local_log_index, the field-modelling channel. One
+        cross-entropy per softmax group of the code, every one of them logged."""
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        names = list(PHYSICAL_MEAN_NAMES)
+        names = list(CODE_GROUP_NAMES)
         assert "local_log_index" in names
+        assert "position_8" in names, "the finest position level"
 
         trainer.train()
         metrics = trainer._update_epochs(
@@ -972,9 +972,10 @@ class TestBeliefDiagnosticAlignment:
 
         trainer = self._rollout(tmp_path)
         buf = trainer.buffer
-        # The identity forecast: a zero mean delta is the belief standing still.
-        buf.rollout_predictions.zero_()
+        # The identity forecast: the belief standing still.
         believed = trainer._believed_means(buf, buf.num_steps + 1)
+        buf.rollout_predictions.zero_()
+        buf.rollout_predictions[..., : believed.shape[-1]] = believed[: buf.num_steps]
 
         trainer._precompute_belief_diagnostics(buf, believed, buf.privileged_means)
         clean_total, clean_count = buf.belief_diagnostics[
@@ -1809,7 +1810,7 @@ class TestUpdateEpochsMetricKeys:
             all_buffers=[trainer.buffer] + trainer.aux_buffers, record_histograms=False
         )
 
-        names = list(PHYSICAL_MEAN_NAMES)
+        names = list(CODE_GROUP_NAMES)
         assert any(f"next_state_visible/{n}" in metrics for n in names)
         assert any(f"next_state_hidden/{n}" in metrics for n in names)
         for name in names:
@@ -1817,7 +1818,7 @@ class TestUpdateEpochsMetricKeys:
                 key = f"{prefix}/{name}"
                 assert key in metrics, f"missing {key}"
                 assert math.isfinite(metrics[key]), f"{key} is not finite"
-                assert metrics[key] >= 0.0, f"{key} is a squared error, got {metrics[key]}"
+                assert metrics[key] >= 0.0, f"{key} is a cross-entropy, got {metrics[key]}"
 
     def test_gradient_split_is_measured_at_the_histogram_cadence(self, tmp_path):
         """The actor/critic split of the pre-clip gradient must be observable.

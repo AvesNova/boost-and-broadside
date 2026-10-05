@@ -1,22 +1,24 @@
-"""Physical belief state, its uncertainty layout, and the Gaussian next-state model.
+"""Physical belief state: its moment layout and the helpers that read it.
 
 The belief plane stores **physical** ship state -- pixels, pixels/second,
-radians -- not the policy's Fourier/symlog encoding of it. Two things follow.
+radians -- not the policy's encoding of it. Belief and authoritative truth have
+the same units, so composing a legal observation is a selection between two
+tensors of the same meaning.
 
-The belief and authoritative truth have the same units, so composing a legal
-observation is a selection between two tensors of the same meaning rather than a
-substitution inside an encoded vector. And the next-state head predicts eleven
-physical deltas against the Phase-1 calibration in
-:mod:`boost_and_broadside.train.rl.physical_deltas`, so its labels are
-scale-free by measurement rather than by a fitted constant.
+A belief is moments, not distributions (``frontline-redesign-plan.md`` §8.3):
+the eleven physical means below and fourteen spread terms. The encoder rebuilds
+each channel's categorical code from them inside the forward pass
+(:mod:`boost_and_broadside.train.rl.ship_codes`), and the next-state head's
+categorical prediction is decoded back to them, so the rollout buffer stores
+moments only.
 
-Uncertainty is thirteen numbers, kept in log/unconstrained form everywhere --
-head output, belief store, and observation channel alike. Position and velocity
-each carry a full 2D covariance (two log sigmas and one unconstrained
-correlation latent); the seven remaining channels carry one log sigma each.
-Nothing accumulates: the head sees the current uncertainty as an input and
-states the *next* one directly, so a long-hidden ship's spread is whatever the
-model says it is rather than a running sum nobody supervises.
+The spread terms are physical and zero means certain: a ship in sight carries
+all zeros, which is the exact code of its true state. Position has one sigma
+(px); velocity a full covariance of raw world velocity, packed ``(xx, xy, yy)``
+in px²/s²; attitude, angular velocity and the four bounded scalars one sigma
+each in their own units. Cooldown is the one channel kept as a distribution:
+its four probabilities minus the exact two-hot of the cooldown mean, so that it
+too is zero when certain.
 """
 
 from __future__ import annotations
@@ -37,28 +39,26 @@ from boost_and_broadside.train.rl.physical_deltas import (
 PHYSICAL_MEAN_NAMES = PHYSICAL_DELTA_NAMES
 PHYSICAL_MEAN_DIM = len(PHYSICAL_MEAN_NAMES)
 
-#: The thirteen uncertainty outputs. Position and velocity get a full 2D
-#: covariance; every other channel gets one spread. ``*_correlation`` is an
-#: unconstrained latent mapped to rho in (-1, 1) by ``tanh``.
+#: Cooldown bins: ready, then one tick per bin up to the firing cooldown.
+COOLDOWN_BINS = 4
+
+#: The fourteen spread terms. All zero is certainty.
 UNCERTAINTY_NAMES = (
-    "position_log_sigma_x",
-    "position_log_sigma_y",
-    "position_correlation",
-    "velocity_log_sigma_x",
-    "velocity_log_sigma_y",
-    "velocity_correlation",
-    "attitude_log_sigma",
-    "angular_velocity_log_sigma",
-    "shield_delay_log_sigma",
-    "health_log_sigma",
-    "power_log_sigma",
-    "cooldown_log_sigma",
-    "local_log_index_log_sigma",
-)
+    "position_sigma",
+    "velocity_covariance_xx",
+    "velocity_covariance_xy",
+    "velocity_covariance_yy",
+    "attitude_sigma",
+    "angular_velocity_sigma",
+    "shield_delay_sigma",
+    "health_sigma",
+    "power_sigma",
+    "local_log_index_sigma",
+) + tuple(f"cooldown_residual_{k}" for k in range(COOLDOWN_BINS))
 PHYSICAL_UNCERTAINTY_DIM = len(UNCERTAINTY_NAMES)
 
-#: Head width: every mean first, then the uncertainty block.
-NEXT_STATE_OUTPUT_DIM = PHYSICAL_MEAN_DIM + PHYSICAL_UNCERTAINTY_DIM
+#: One stored belief, and one decoded next-state prediction: means, then spreads.
+BELIEF_MOMENT_DIM = PHYSICAL_MEAN_DIM + PHYSICAL_UNCERTAINTY_DIM
 
 # Channel indices into the mean vector, by name rather than by counting.
 POSITION_X, POSITION_Y = 0, 1
@@ -71,83 +71,34 @@ POWER = 8
 COOLDOWN = 9
 LOCAL_LOG_INDEX = 10
 
-# Uncertainty columns, grouped so the clamp and the likelihood read one layout.
-POSITION_SIGMA = (0, 1)
-POSITION_RHO = 2
-VELOCITY_SIGMA = (3, 4)
-VELOCITY_RHO = 5
-#: ``(mean channel, uncertainty column)`` for every channel with a lone spread.
-SCALAR_UNCERTAINTY = (
-    (ATTITUDE, 6),
-    (ANGULAR_VELOCITY, 7),
-    (SHIELD_DELAY, 8),
-    (HEALTH, 9),
-    (POWER, 10),
-    (COOLDOWN, 11),
-    (LOCAL_LOG_INDEX, 12),
+# Columns of the spread block.
+POSITION_SIGMA = 0
+VELOCITY_COVARIANCE = slice(1, 4)
+ATTITUDE_SIGMA = 4
+ANGULAR_VELOCITY_SIGMA = 5
+#: ``(mean channel, sigma column)`` for the four bounded scalars, in code order.
+SCALAR_SIGMAS = (
+    (SHIELD_DELAY, 6),
+    (HEALTH, 7),
+    (POWER, 8),
+    (LOCAL_LOG_INDEX, 9),
 )
-CORRELATION_COLUMNS = (POSITION_RHO, VELOCITY_RHO)
-#: The eleven log-sigma columns, i.e. every uncertainty column that is a spread.
-LOG_SIGMA_COLUMNS = tuple(
-    column for column in range(len(UNCERTAINTY_NAMES)) if column not in CORRELATION_COLUMNS
-)
-
-# Log-sigma clamp for the head. Labels are normalized to O(1) by the Phase-1
-# scales, so ``exp(+/-6)`` spans spreads from 1/400th of a typical delta to 400
-# times one -- wider than any residual the objective sees. The *floor* is the
-# bound that matters: a Gaussian likelihood is unbounded below as sigma falls,
-# so without it the head is paid to claim certainty it does not have. Clamping
-# rather than squashing is deliberate; the zero gradient at the bound is what
-# stops a collapse continuing.
-LOG_SIGMA_MIN = -6.0
-LOG_SIGMA_MAX = 6.0
-# ``tanh`` of a latent this large is 0.9999 in float32 and exactly 1.0 not much
-# further out, which would make ``1 - rho**2`` zero and the bivariate likelihood
-# infinite. The bound keeps the correlation strictly inside the unit interval.
-CORRELATION_LATENT_LIMIT = 5.0
-
-#: The finite "I can see it" spread assimilated truth is given, standing in for
-#: a mathematical ``log(0)``.
-CERTAIN_LOG_SIGMA = LOG_SIGMA_MIN
-#: The spread of a ship this observer has never seen. Its slot carries no
-#: physical value at all, so the honest statement is maximal doubt -- not the
-#: zero a masked channel used to leave behind, which reads as ``sigma = 1``.
-UNKNOWN_LOG_SIGMA = LOG_SIGMA_MAX
+COOLDOWN_RESIDUAL = slice(10, 10 + COOLDOWN_BINS)
 
 #: Health above which a ship is considered alive, in health units.
 ALIVE_HEALTH_EPS = 1.0
 
-_LOG_TWO_PI = math.log(2.0 * math.pi)
-_HALF_LOG_TWO_PI = 0.5 * _LOG_TWO_PI
+
+def predicted_means(prediction: torch.Tensor) -> torch.Tensor:
+    """The ``(..., 11)`` means of a decoded ``(..., 25)`` prediction."""
+
+    return prediction[..., :PHYSICAL_MEAN_DIM]
 
 
-def uncertainty_clamp_bounds() -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Per-column ``(min, max)`` for the thirteen uncertainty outputs."""
+def predicted_uncertainty(prediction: torch.Tensor) -> torch.Tensor:
+    """The ``(..., 14)`` spread terms of a decoded ``(..., 25)`` prediction."""
 
-    lower = [LOG_SIGMA_MIN] * PHYSICAL_UNCERTAINTY_DIM
-    upper = [LOG_SIGMA_MAX] * PHYSICAL_UNCERTAINTY_DIM
-    for column in CORRELATION_COLUMNS:
-        lower[column] = -CORRELATION_LATENT_LIMIT
-        upper[column] = CORRELATION_LATENT_LIMIT
-    return tuple(lower), tuple(upper)
-
-
-def certain_uncertainty() -> tuple[float, ...]:
-    """The uncertainty vector assimilated truth carries: floor spreads, zero rho."""
-
-    values = [CERTAIN_LOG_SIGMA] * PHYSICAL_UNCERTAINTY_DIM
-    for column in CORRELATION_COLUMNS:
-        values[column] = 0.0
-    return tuple(values)
-
-
-def unknown_uncertainty() -> tuple[float, ...]:
-    """The uncertainty vector a never-observed slot carries: ceiling, zero rho."""
-
-    values = [UNKNOWN_LOG_SIGMA] * PHYSICAL_UNCERTAINTY_DIM
-    for column in CORRELATION_COLUMNS:
-        values[column] = 0.0
-    return tuple(values)
+    return prediction[..., PHYSICAL_MEAN_DIM:]
 
 
 def wrap_symmetric(x: torch.Tensor, period: float) -> torch.Tensor:
@@ -264,330 +215,33 @@ def physical_mean_deltas(
 
 @dataclass(frozen=True)
 class PhysicalNextState:
-    """Fixed scales, physical bounds, and the Gaussian objective over them.
+    """Fixed per-channel delta scales, for reading one-decision errors.
 
-    One instance per ship configuration. Everything here is either a Phase-1
-    calibration constant or derived from ``ShipConfig``; nothing adapts during
-    training, by contract -- there is no online delta scaler.
+    The next-state objective is cross-entropy on categorical codes and needs no
+    scale. These remain the Phase-1 calibration constants that turn physical
+    one-decision deltas into comparable O(1) units for the analysis modes and
+    the label diagnostics.
     """
 
     world_size: tuple[float, float]
-    #: Divisors turning physical deltas into O(1) network units.
+    #: Divisors turning physical deltas into O(1) units.
     scales: tuple[float, ...]
-    #: Inclusive physical bounds for the belief recursion, ``-inf``/``inf`` where
-    #: the quantity has none. Position and attitude wrap instead and are ``inf``.
-    lower: tuple[float, ...]
-    upper: tuple[float, ...]
 
     @classmethod
     def from_ship_config(cls, ship_config: ShipConfig) -> PhysicalNextState:
-        inf = float("inf")
-        # A generous numerical guard rather than a physical claim. The
-        # thrust/drag equilibrium sits at sqrt(boost_thrust / drag), and a
-        # collision or a refractive gradient can briefly exceed it, so this is
-        # four times that speed on each axis.
-        speed_guard = 4.0 * math.sqrt(
-            ship_config.boost_thrust / max(ship_config.zero_slip_drag_coeff, 1e-12)
-        )
-        # A guard, twice the largest attitude rate the flight model produces:
-        # the g-limited path rate plus the slip-rate limit, at the lowest index.
-        lowest_index = ship_config.field_index_step**-2
-        turn_rate = (
-            2.0
-            * (
-                math.sqrt(ship_config.max_lateral_accel * ship_config.max_lift_coeff)
-                + ship_config.max_slip_rate
-            )
-            / lowest_index
-        )
-        # Exact: the configured index ladder spans step**-2 .. step**2.
-        index_span = 2.0 * math.log(ship_config.field_index_step)
-        lower = [0.0] * PHYSICAL_MEAN_DIM
-        upper = [0.0] * PHYSICAL_MEAN_DIM
-        for channel, (low, high) in {
-            POSITION_X: (-inf, inf),
-            POSITION_Y: (-inf, inf),
-            VELOCITY_X: (-speed_guard, speed_guard),
-            VELOCITY_Y: (-speed_guard, speed_guard),
-            ATTITUDE: (-inf, inf),
-            ANGULAR_VELOCITY: (-turn_rate, turn_rate),
-            # No configured ceiling reaches this module; the recharge delay
-            # lives on the frontline config. Non-negativity is the property
-            # that matters for a countdown.
-            SHIELD_DELAY: (0.0, inf),
-            HEALTH: (0.0, ship_config.max_health),
-            POWER: (0.0, ship_config.max_power),
-            COOLDOWN: (0.0, ship_config.firing_cooldown),
-            LOCAL_LOG_INDEX: (-index_span, index_span),
-        }.items():
-            lower[channel] = low
-            upper[channel] = high
         return cls(
             world_size=(float(ship_config.world_size[0]), float(ship_config.world_size[1])),
             scales=tuple(float(s) for s in PHYSICAL_DELTA_SCALES),
-            lower=tuple(lower),
-            upper=tuple(upper),
         )
-
-    # ------------------------------------------------------------------
-    # Cached device vectors
-    # ------------------------------------------------------------------
 
     def scale_vector(self, device: torch.device | str) -> torch.Tensor:
         return _cached_vector(self.scales, device)
 
-    def lower_vector(self, device: torch.device | str) -> torch.Tensor:
-        return _cached_vector(self.lower, device)
-
-    def upper_vector(self, device: torch.device | str) -> torch.Tensor:
-        return _cached_vector(self.upper, device)
-
-    # ------------------------------------------------------------------
-    # Labels and likelihood
-    # ------------------------------------------------------------------
-
     def labels(self, current: torch.Tensor, next_: torch.Tensor) -> torch.Tensor:
-        """Normalized ``(..., 11)`` deltas from ``current`` means to ``next_`` means.
-
-        Ordinary division by a fixed positive scale, so a zero physical delta
-        maps to a bit-exact zero normalized delta.
-        """
+        """Normalized ``(..., 11)`` deltas from ``current`` means to ``next_`` means."""
 
         deltas = physical_mean_deltas(current, next_, self.world_size)
         return deltas / self.scale_vector(deltas.device)
-
-    def apply_means(self, means: torch.Tensor, prediction: torch.Tensor) -> torch.Tensor:
-        """Advance ``(..., 11)`` means by the head's normalized mean block.
-
-        Position wraps onto the torus and attitude onto the circle, which is
-        exact rather than a clamp. Every other channel is clamped to its
-        physical range, so the autoregressive recursion cannot leave a bounded
-        set however wrong the head is.
-        """
-
-        delta = prediction[..., :PHYSICAL_MEAN_DIM] * self.scale_vector(prediction.device)
-        raw = means + delta
-        width, height = self.world_size
-        bounded = raw.clamp(min=self.lower_vector(raw.device), max=self.upper_vector(raw.device))
-        # ``clamp`` left the wrapping channels alone (their bounds are infinite);
-        # write the wrapped values over them.
-        return torch.stack(
-            (
-                raw[..., POSITION_X] % width,
-                raw[..., POSITION_Y] % height,
-                bounded[..., VELOCITY_X],
-                bounded[..., VELOCITY_Y],
-                wrap_symmetric(raw[..., ATTITUDE], 2.0 * math.pi),
-                bounded[..., ANGULAR_VELOCITY],
-                bounded[..., SHIELD_DELAY],
-                bounded[..., HEALTH],
-                bounded[..., POWER],
-                bounded[..., COOLDOWN],
-                bounded[..., LOCAL_LOG_INDEX],
-            ),
-            dim=-1,
-        )
-
-    def residual(self, prediction: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        """``(..., 11)`` normalized residuals, with attitude wrapped on the circle.
-
-        Both the predicted and the true attitude delta live in ``[-pi, pi]``, so
-        their difference can reach ``2*pi`` -- a prediction of ``-pi`` against a
-        label of ``+pi`` is the same rotation, not the largest possible error.
-        Wrapping the residual is what makes the scalar Gaussian on this channel
-        measure the rotation it is meant to.
-        """
-
-        residual = prediction[..., :PHYSICAL_MEAN_DIM] - labels
-        attitude_scale = self.scales[ATTITUDE]
-        wrapped = wrap_symmetric(residual[..., ATTITUDE] * attitude_scale, 2.0 * math.pi)
-        return torch.cat(
-            [
-                residual[..., :ATTITUDE],
-                (wrapped / attitude_scale).unsqueeze(-1),
-                residual[..., ATTITUDE + 1 :],
-            ],
-            dim=-1,
-        )
-
-    def loss(
-        self, prediction: torch.Tensor, labels: torch.Tensor, beta: float = 0.0
-    ) -> torch.Tensor:
-        """Per-channel negative log likelihood, ``(..., 11)``.
-
-        Position and velocity use the full bivariate normal over their two axes;
-        the other seven channels use a scalar normal. The bivariate term is
-        split evenly between its two axes so the returned vector still sums to
-        the exact joint likelihood while reading per channel -- the gradient is
-        unaffected, since every consumer sums it.
-
-        Both forms carry their normalizing constant. That cancels out of the
-        gradient but makes the per-channel series nats, so a channel costing
-        more of them is genuinely harder to predict than one costing fewer.
-
-        ``beta`` is the beta-NLL weighting: each channel's term is multiplied by
-        its own ``sigma ** (2 * beta)``, detached. It exists because a plain
-        Gaussian likelihood weights each token by its Fisher information, and
-        ``d/dmu`` is ``r / sigma**2`` -- so where sigma is calibrated the
-        gradient goes as ``1 / r`` and the tokens the head already predicts best
-        dominate it. Measured on run 748 that spread was 7,421x across the
-        eleven channels and the three visibility classes, with 80% of the term's
-        trunk gradient on allies and 0.1% on hidden enemies, which is the bucket
-        the belief plane exists for.
-
-        The weighting is exactly that inversion, dialled:
-
-            beta = 0    plain NLL, gradient ``r / sigma**2``
-            beta = 0.5  gradient ``r / sigma``, the standardized residual, which
-                        calibration pins near one in every bucket
-            beta = 1    gradient ``r``, the mean-squared-error gradient, while
-                        sigma still trains
-
-        Detaching the weight is what keeps sigma learning: only the *weighting*
-        is frozen, not the spread itself, which the belief plane reads.
-
-        Args:
-            prediction: (..., NEXT_STATE_OUTPUT_DIM) means then uncertainty.
-            labels:     (..., PHYSICAL_MEAN_DIM) normalized targets.
-            beta:       Beta-NLL exponent. Zero is the plain likelihood.
-        """
-
-        if prediction.shape[-1] != NEXT_STATE_OUTPUT_DIM:
-            raise ValueError(
-                f"prediction must have {NEXT_STATE_OUTPUT_DIM} channels, got {prediction.shape[-1]}"
-            )
-        residual = self.residual(prediction, labels)
-        uncertainty = prediction[..., PHYSICAL_MEAN_DIM:]
-        terms = [None] * PHYSICAL_MEAN_DIM
-
-        # The two paired channels, each as (mean x, sigma columns, rho column).
-        # The mean and uncertainty layouts differ -- position's means are (0, 1)
-        # and its sigmas (0, 1), velocity's means (2, 3) and its sigmas (3, 4) --
-        # so the pairing is stated rather than derived by arithmetic.
-        for mean_x, axes, rho_column in (
-            (POSITION_X, POSITION_SIGMA, POSITION_RHO),
-            (VELOCITY_X, VELOCITY_SIGMA, VELOCITY_RHO),
-        ):
-            log_sigma_x = uncertainty[..., axes[0]]
-            log_sigma_y = uncertainty[..., axes[1]]
-            mean_y = mean_x + 1
-            a = residual[..., mean_x] * torch.exp(-log_sigma_x)
-            b = residual[..., mean_y] * torch.exp(-log_sigma_y)
-            rho = torch.tanh(uncertainty[..., rho_column])
-            one_minus = (1.0 - rho * rho).clamp_min(1e-6)
-            cross = rho * a * b
-            terms[mean_x] = (
-                _HALF_LOG_TWO_PI
-                + log_sigma_x
-                + 0.25 * torch.log(one_minus)
-                + (a * a - cross) / (2.0 * one_minus)
-            )
-            terms[mean_y] = (
-                _HALF_LOG_TWO_PI
-                + log_sigma_y
-                + 0.25 * torch.log(one_minus)
-                + (b * b - cross) / (2.0 * one_minus)
-            )
-
-        for mean_channel, column in SCALAR_UNCERTAINTY:
-            log_sigma = uncertainty[..., column]
-            standardized = residual[..., mean_channel] * torch.exp(-log_sigma)
-            terms[mean_channel] = _HALF_LOG_TWO_PI + log_sigma + 0.5 * standardized * standardized
-
-        stacked = torch.stack(terms, dim=-1)
-        if beta == 0.0:
-            return stacked
-        return stacked * self._beta_weight(prediction, beta)
-
-    def _beta_weight(self, prediction: torch.Tensor, beta: float) -> torch.Tensor:
-        """``(..., 11)`` detached beta-NLL weight, one value per joint term.
-
-        For a scalar channel this is its own ``sigma ** (2 * beta)``. Position
-        and velocity are single bivariate terms split across two columns that
-        share a cross term, so both columns take the *same* weight -- the
-        geometric mean ``(sigma_x * sigma_y) ** beta`` -- which keeps the pair's
-        weighted loss equal to that one weight times the joint likelihood.
-        Weighting the axes separately would scale the two halves of the cross
-        term differently and stop the pair summing to any likelihood at all.
-
-        Detached throughout: the weighting is frozen, the spread it is computed
-        from is still trained by the unweighted part of the term.
-        """
-
-        variance = self.variance(prediction).detach()  # (..., 11) marginal sigma^2
-        weight = variance.pow(beta)
-        for mean_x in (POSITION_X, VELOCITY_X):
-            mean_y = mean_x + 1
-            paired = (variance[..., mean_x] * variance[..., mean_y]).sqrt().pow(beta)
-            weight = torch.cat(
-                [
-                    weight[..., :mean_x],
-                    paired.unsqueeze(-1),
-                    paired.unsqueeze(-1),
-                    weight[..., mean_y + 1 :],
-                ],
-                dim=-1,
-            )
-        return weight
-
-    def variance(self, prediction: torch.Tensor) -> torch.Tensor:
-        """Per-channel ``sigma**2`` implied by the uncertainty block, ``(..., 11)``."""
-
-        uncertainty = prediction[..., PHYSICAL_MEAN_DIM:]
-        columns = [0] * PHYSICAL_MEAN_DIM
-        columns[POSITION_X], columns[POSITION_Y] = POSITION_SIGMA
-        columns[VELOCITY_X], columns[VELOCITY_Y] = VELOCITY_SIGMA
-        for mean_channel, column in SCALAR_UNCERTAINTY:
-            columns[mean_channel] = column
-        index = torch.tensor(columns, dtype=torch.long, device=uncertainty.device)
-        return torch.exp(2.0 * uncertainty.index_select(-1, index))
-
-    def log_sigma(self, prediction: torch.Tensor) -> torch.Tensor:
-        """Per-channel log spread, ``(..., 11)``, in mean-channel order.
-
-        :meth:`variance` gathers with an index tensor built on the device, a
-        synchronizing host copy; this stacks slices instead, so it is safe on the
-        per-micro-batch path.
-        """
-
-        uncertainty = prediction[..., PHYSICAL_MEAN_DIM:]
-        columns = [0] * PHYSICAL_MEAN_DIM
-        columns[POSITION_X], columns[POSITION_Y] = POSITION_SIGMA
-        columns[VELOCITY_X], columns[VELOCITY_Y] = VELOCITY_SIGMA
-        for mean_channel, column in SCALAR_UNCERTAINTY:
-            columns[mean_channel] = column
-        return torch.stack([uncertainty[..., column] for column in columns], dim=-1)
-
-    def standardized_square(self, prediction: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        """Per-channel squared standardized residual, ``(..., 11)``.
-
-        The calibration reading of :meth:`loss`: a head whose spreads are honest
-        averages 1.0 on every channel, above 1.0 where it claims more certainty
-        than it has, and below where it claims less. Position and velocity use
-        the bivariate Mahalanobis distance, split evenly between the two axes
-        exactly as the likelihood is, so each axis also averages 1.0 when
-        calibrated -- a per-axis ``(r / sigma)**2`` would not, once rho is
-        nonzero.
-        """
-
-        residual = self.residual(prediction, labels)
-        uncertainty = prediction[..., PHYSICAL_MEAN_DIM:]
-        terms = [None] * PHYSICAL_MEAN_DIM
-        for mean_x, axes, rho_column in (
-            (POSITION_X, POSITION_SIGMA, POSITION_RHO),
-            (VELOCITY_X, VELOCITY_SIGMA, VELOCITY_RHO),
-        ):
-            a = residual[..., mean_x] * torch.exp(-uncertainty[..., axes[0]])
-            b = residual[..., mean_x + 1] * torch.exp(-uncertainty[..., axes[1]])
-            rho = torch.tanh(uncertainty[..., rho_column])
-            one_minus = (1.0 - rho * rho).clamp_min(1e-6)
-            half = 0.5 * (a * a - 2.0 * rho * a * b + b * b) / one_minus
-            terms[mean_x] = half
-            terms[mean_x + 1] = half
-        for mean_channel, column in SCALAR_UNCERTAINTY:
-            standardized = residual[..., mean_channel] * torch.exp(-uncertainty[..., column])
-            terms[mean_channel] = standardized * standardized
-        return torch.stack(terms, dim=-1)
 
 
 _VECTOR_CACHE: dict[tuple[tuple[float, ...], torch.device], torch.Tensor] = {}
@@ -596,11 +250,8 @@ _VECTOR_CACHE: dict[tuple[tuple[float, ...], torch.device], torch.Tensor] = {}
 def _cached_vector(values: tuple[float, ...], device: torch.device | str) -> torch.Tensor:
     """A constant vector on ``device``, built once.
 
-    Cached because these sit in the per-micro-batch loss and per-step belief
-    paths, where ``torch.tensor([...], device="cuda")`` is a synchronizing host
-    copy. Safe to cache, unlike the encoder's frequency tables: nothing here is
-    created inside a CUDA-graph capture -- the objective is called from eager
-    Python and the values are read-only.
+    Cached because ``torch.tensor([...], device="cuda")`` is a synchronizing host
+    copy. Safe to cache: nothing here is created inside a CUDA-graph capture.
     """
 
     key = (values, torch.device(device))

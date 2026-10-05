@@ -109,15 +109,6 @@ RL_PROFILE = ProfileSpec(
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
     next_state_coef=0.2,
-    # Beta-NLL weighting on the next-state likelihood. At zero the gradient is
-    # r / sigma**2, which put 7,421x more of itself on the channels and
-    # visibility classes the head already predicts best -- 80% on allies and
-    # 0.1% on hidden enemies, which is the bucket the belief plane exists for.
-    # At 0.5 the per-token gradient is the standardized residual r / sigma,
-    # which calibration pins near one everywhere, and the measured spread
-    # across all 33 (channel, class) cells falls to 2.6x. Sigma still trains;
-    # only the weighting is detached.
-    next_state_beta=0.5,
     enemy_action_coef=0.1,
     # The global token's density field. Chosen from the Phase 7 gradient
     # diagnostics rather than from the loss alone. The term's trunk gradient

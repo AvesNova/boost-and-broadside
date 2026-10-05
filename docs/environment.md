@@ -31,8 +31,8 @@ collision tick. Spawn offers protection, not a special healing rate.
 Respawns preserve slot identity, clear previous-life damage attribution on the next
 tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
-zero shields no longer implies death. Existing checkpoints are incompatible with the
-new `physical_belief_v19` observation/feature contract.
+zero shields no longer implies death. Checkpoints from before the
+`categorical_codes_v21` observation/feature contract are incompatible.
 
 ## Tensorized simulation
 
@@ -91,8 +91,8 @@ alive state, local refractive state and bullets, and carries an explicit false v
 mask; the three ship constants — collision radius, the SHIP object type and the explicit
 "no zone role" value — are the same for every slot and so say nothing about the ship in it.
 
-A previously seen enemy is a valid token carrying its remembered physical state, its thirteen
-predicted uncertainty terms, and the time since it was observed. Every ship is visible to both
+A previously seen enemy is a valid token carrying its remembered physical state, its fourteen
+predicted spreads, and the time since it was observed. Every ship is visible to both
 teams for the one decision it spawns on, at match start and on every respawn, so no enemy is
 ever in the never-observed state and no remembered estimate survives a death it did not see.
 Hidden local field gradients read zero rather than being inferred from a believed position.

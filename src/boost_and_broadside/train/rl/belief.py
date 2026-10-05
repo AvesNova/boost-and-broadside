@@ -10,14 +10,15 @@ Three operations, in the order one decision runs them:
 ``observe``  assimilates authoritative truth for every ship in sight, voids the
              belief of anything that just spawned, and hands the builder a
              :class:`ShipBeliefSource`.
-``advance``  stores the next-state head's forecast: means move by the predicted
-             physical deltas, uncertainty becomes the predicted uncertainty
+``advance``  stores the next-state head's forecast, already decoded to
+             moments: the predicted means and spreads replace the belief
              outright, and the enemy-action head's distribution is recorded for
              the next view to carry.
 ``reset``    forgets a completed episode.
 
-Nothing here decodes, re-encodes or substitutes anything: belief and truth are
-the same eleven physical quantities, so composition is a selection.
+Nothing here encodes or substitutes anything: belief and truth are the same
+eleven physical quantities, so composition is a selection. A ship in sight
+carries zero spread, which is the exact code of its true state.
 """
 
 from __future__ import annotations
@@ -40,20 +41,17 @@ from boost_and_broadside.train.rl.physical_belief import (
     ALIVE_HEALTH_EPS,
     ANGULAR_VELOCITY,
     ATTITUDE,
+    BELIEF_MOMENT_DIM,
     COOLDOWN,
     HEALTH,
     LOCAL_LOG_INDEX,
-    NEXT_STATE_OUTPUT_DIM,
     PHYSICAL_MEAN_DIM,
     PHYSICAL_UNCERTAINTY_DIM,
     POSITION_X,
     POWER,
     SHIELD_DELAY,
     VELOCITY_X,
-    PhysicalNextState,
-    certain_uncertainty,
     physical_means_from_state,
-    unknown_uncertainty,
 )
 
 
@@ -73,7 +71,6 @@ class BeliefTracker:
         self.num_ships = num_ships
         self.decision_dt = float(decision_dt)
         self.ship_config = ship_config
-        self.spec = PhysicalNextState.from_ship_config(ship_config)
         self.device = torch.device(device)
         if observer_team not in (0, 1):
             raise ValueError(f"observer_team must be 0 or 1, got {observer_team}")
@@ -86,8 +83,9 @@ class BeliefTracker:
         self.means = torch.zeros(
             (num_envs, num_ships, PHYSICAL_MEAN_DIM), dtype=torch.float32, device=self.device
         )
-        #: Thirteen log/unconstrained uncertainty terms, stated by the head
-        #: rather than accumulated here. Never-observed slots hold the ceiling.
+        #: Fourteen physical spread terms, stated by the head rather than
+        #: accumulated here. Zero is certainty: a ship in sight, and a slot
+        #: nothing has observed, whose means are zero too.
         self.uncertainty = torch.zeros(
             (num_envs, num_ships, PHYSICAL_UNCERTAINTY_DIM),
             dtype=torch.float32,
@@ -98,16 +96,10 @@ class BeliefTracker:
             1.0 / NUM_JOINT_ACTIONS,
             device=self.device,
         )
-        # The two constant uncertainty vectors, materialized once. Built here
-        # rather than per call: ``torch.tensor([...], device="cuda")`` is a
-        # synchronizing host copy, and these are read every decision.
-        self._certain = torch.tensor(
-            certain_uncertainty(), dtype=torch.float32, device=self.device
-        ).view(1, 1, PHYSICAL_UNCERTAINTY_DIM)
-        self._unknown = torch.tensor(
-            unknown_uncertainty(), dtype=torch.float32, device=self.device
-        ).view(1, 1, PHYSICAL_UNCERTAINTY_DIM)
-        self.uncertainty.copy_(self._unknown.expand_as(self.uncertainty))
+        # The spread an observed ship carries, materialized once for the builder.
+        self._certain = torch.zeros(
+            (1, 1, PHYSICAL_UNCERTAINTY_DIM), dtype=torch.float32, device=self.device
+        )
         # Non-finite forecasts, accumulated on device and read once per update.
         # The recursion is bounded by construction -- every unbounded channel
         # either wraps or clamps -- so a nonzero count means the head emitted a
@@ -125,14 +117,14 @@ class BeliefTracker:
             self.valid.zero_()
             self.age_steps.zero_()
             self.means.zero_()
-            self.uncertainty.copy_(self._unknown.expand_as(self.uncertainty))
+            self.uncertainty.zero_()
             self.action_belief.fill_(1.0 / NUM_JOINT_ACTIONS)
             return
         mask = env_mask.bool()
         self.valid[mask] = False
         self.age_steps[mask] = 0
         self.means[mask] = 0.0
-        self.uncertainty[mask] = self._unknown
+        self.uncertainty[mask] = 0.0
         self.action_belief[mask] = 1.0 / NUM_JOINT_ACTIONS
 
     def slice_envs(self, idx: slice | torch.Tensor) -> BeliefTracker:
@@ -182,15 +174,9 @@ class BeliefTracker:
         self.means = torch.where(
             valid_vector, torch.where(visible.unsqueeze(-1), truth, self.means), 0.0
         )
-        # Seeing a ship settles it: the spread becomes the finite certainty
-        # floor, discarding whatever the forecast claimed. A slot nothing has
-        # ever observed carries the ceiling, not a zero -- a zero log sigma reads
-        # as "one unit of doubt", which is a confident claim about nothing.
-        self.uncertainty = torch.where(
-            visible.unsqueeze(-1),
-            self._certain,
-            torch.where(valid_vector, self.uncertainty, self._unknown),
-        )
+        # Seeing a ship settles it: the spread becomes zero, discarding whatever
+        # the forecast claimed. A slot nothing has observed is zero throughout.
+        self.uncertainty = torch.where(visible.unsqueeze(-1) | ~valid_vector, 0.0, self.uncertainty)
         self.age_steps = torch.where(
             visible,
             torch.zeros_like(self.age_steps),
@@ -240,13 +226,14 @@ class BeliefTracker:
     ) -> None:
         """Store the head's one-decision forecast for the next ``observe``.
 
-        The means move by the predicted physical deltas and the uncertainty
-        becomes the predicted uncertainty outright. Nothing accumulates: the head
-        saw the current spread as an input and stated the next one, so summing
-        forecasts would double-count what it already accounts for.
+        ``prediction`` is the head's output decoded to moments, means then
+        spreads (``ShipStateCodec.decode_logits``). It replaces the belief
+        outright: the head read the current belief as its baseline and states
+        the next one, so with a zero residual the belief stands still. Every
+        decoded mean is already inside its channel's range or wrapped.
         """
 
-        expected = (self.num_envs, self.num_ships, NEXT_STATE_OUTPUT_DIM)
+        expected = (self.num_envs, self.num_ships, BELIEF_MOMENT_DIM)
         if prediction.shape != expected:
             raise ValueError(
                 f"prediction must have shape {expected}, got {tuple(prediction.shape)}"
@@ -268,9 +255,7 @@ class BeliefTracker:
         self.clamp_events += (~torch.isfinite(prediction)).sum()
         prediction = torch.nan_to_num(prediction, nan=0.0, posinf=0.0, neginf=0.0)
         valid_vector = self.valid.unsqueeze(-1)
-        self.means = torch.where(
-            valid_vector, self.spec.apply_means(self.means, prediction), self.means
-        )
+        self.means = torch.where(valid_vector, prediction[..., :PHYSICAL_MEAN_DIM], self.means)
         self.uncertainty = torch.where(
             valid_vector, prediction[..., PHYSICAL_MEAN_DIM:], self.uncertainty
         )

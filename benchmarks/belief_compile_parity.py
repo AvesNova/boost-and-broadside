@@ -44,7 +44,7 @@ from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.profiles import PROFILES
 from boost_and_broadside.runtime.actions import PendingActionState
 from boost_and_broadside.train.rl.belief import BeliefTracker
-from boost_and_broadside.train.rl.physical_belief import NEXT_STATE_OUTPUT_DIM
+from boost_and_broadside.train.rl.physical_belief import BELIEF_MOMENT_DIM
 
 ATOL = 2e-6
 RTOL = 2e-6
@@ -199,7 +199,7 @@ def _build_trace(device: torch.device, seed: int, steps: int):
     ).to(dtype=torch.int32, device=device)
     prediction_trace = (
         torch.randn(
-            (steps, 2, 1, ships, NEXT_STATE_OUTPUT_DIM),
+            (steps, 2, 1, ships, BELIEF_MOMENT_DIM),
             generator=prediction_generator,
         )
         .mul_(0.05)

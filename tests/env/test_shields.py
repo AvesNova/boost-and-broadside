@@ -1,6 +1,5 @@
 """Frontline shield lifecycle at physics-tick granularity."""
 
-import math
 from dataclasses import replace
 
 import pytest
@@ -18,7 +17,6 @@ from boost_and_broadside.env.observation import ObsKey, observation_from_state
 from boost_and_broadside.env.physics import _apply_combat_damage
 from boost_and_broadside.env.rewards import DamageReward
 from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
-from boost_and_broadside.train.rl.features import AttitudeFourier, Fourier
 
 
 def env():
@@ -106,14 +104,10 @@ def test_delay_recharge_clamp_and_zero_sum_reward():
     assert s.ship_shield_recharge.sum() == 0
 
 
-def test_recharge_timer_is_observed_and_fourier_encodes_phase():
+def test_recharge_timer_is_observed():
     e = env()
     obs = observation_from_state(e.state, e.ship_config)
     assert torch.equal(obs[ObsKey.SHIELD_DELAY][:, :10, 0], e.state.ship_shield_delay)
-    theta = torch.tensor([[-math.pi, 0.4, math.pi]]).unsqueeze(-1)
-    cart = torch.cat([theta.cos(), theta.sin()], -1)
-    assert torch.allclose(AttitudeFourier()(cart), Fourier(4, 2 * math.pi)(theta), atol=2e-6)
-    assert AttitudeFourier().out_dim(2) == 8
 
 
 @pytest.mark.parametrize("owners", [(5, 6), (1, 5), (1, 2)])

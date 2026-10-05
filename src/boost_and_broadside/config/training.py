@@ -237,12 +237,6 @@ class TrainConfig:
 
     # --- Next-state prediction loss ---
     next_state_coef: float = 1.0  # weight for per-step aux prediction loss; 0 to disable
-    # Beta-NLL weighting on that likelihood: each channel's term is scaled by
-    # its own detached ``sigma ** (2 * beta)``. Zero is the plain Gaussian,
-    # whose ``r / sigma**2`` gradient concentrates on whatever the head already
-    # predicts best; 0.5 makes the per-token gradient the standardized residual
-    # and equalizes the channels and visibility classes. Sigma still trains.
-    next_state_beta: float = 0.0
     # Cross-entropy weight for the dedicated 30-way enemy-command predictor.
     enemy_action_coef: float = 0.1
     # MSE weight for the global token's hex ally/enemy density prediction. 0

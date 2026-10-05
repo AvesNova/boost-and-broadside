@@ -6,8 +6,11 @@ Each Feature bundles:
 
 FeatureCoordinator integrates a list of Features into
 ``get_input_vector(obs)`` — a flat encoded observation for the encoder MLP.
-Physical-state auxiliary prediction (the next-state head) is a separate path;
-see ``train/rl/physical_belief.py``.
+
+A ship's physical state enters as its categorical code
+(``train/rl/ship_codes.py``), rebuilt here from the observation's means and
+belief spreads. The same code is the next-state head's baseline, which the
+coordinator also supplies (:meth:`FeatureCoordinator.ship_codes`).
 """
 
 import math
@@ -26,31 +29,19 @@ from boost_and_broadside.env.observation import (
     ObsKey,
     YemongObservation,
 )
-from boost_and_broadside.train.rl.checkpoint_schema import (
-    ATTITUDE_FOURIER_FREQUENCIES,
-    position_fourier_frequencies,
-)
+from boost_and_broadside.train.rl.checkpoint_schema import position_fourier_frequencies
 from boost_and_broadside.train.rl.physical_belief import (
-    CORRELATION_COLUMNS,
-    LOG_SIGMA_MAX,
     PHYSICAL_UNCERTAINTY_DIM,
+    POSITION_SIGMA,
+    physical_means_from_observation,
 )
-
-
-def _uncertainty_input_scales() -> list[float]:
-    """Per-column divisors for the thirteen uncertainty channels.
-
-    The log sigmas divide by their own clamp bound, so the encoder sees the full
-    range of what the head can say as ``[-1, 1]``. The correlation latents are
-    left alone: they feed a ``tanh`` whose interesting range is a few units
-    wide, and scaling them down by the sigma bound would flatten it.
-    """
-
-    scales = [LOG_SIGMA_MAX] * PHYSICAL_UNCERTAINTY_DIM
-    for column in CORRELATION_COLUMNS:
-        scales[column] = 1.0
-    return scales
-
+from boost_and_broadside.train.rl.ship_codes import (
+    CODE_GROUP_DIM,
+    CODE_RUN,
+    POSITION_CODE_DIM,
+    SHIP_CODE_DIM,
+    ShipStateCodec,
+)
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -344,6 +335,12 @@ class FeatureScope(StrEnum):
 
 
 class Feature:
+    #: Whether the input is a sparse code, one unit per category, whose first
+    #: projection should be initialised like an embedding table, and how many
+    #: softmax groups it holds.
+    sparse_code = False
+    sparse_groups = 0
+
     def __init__(
         self,
         name: str,
@@ -369,6 +366,65 @@ class Feature:
         raw = self.accessor.get(dummy)
         in_channels = raw.shape[-1] if raw.dim() > 2 else 1
         return self.input_encoder.out_dim(in_channels)
+
+
+# ---------------------------------------------------------------------------
+# Ship-state codes
+# ---------------------------------------------------------------------------
+
+
+def _belief_spreads(obs: YemongObservation, like: torch.Tensor) -> torch.Tensor:
+    """The observation's ``(..., T, 14)`` belief spreads, zero when it has none.
+
+    Only a belief tracker fills the channel; a view composed without one states
+    truth for everything it carries, which is zero spread.
+    """
+
+    if ObsKey.BELIEF_UNCERTAINTY in obs:
+        return obs[ObsKey.BELIEF_UNCERTAINTY].float()
+    return torch.zeros(
+        (*like.shape[:-1], PHYSICAL_UNCERTAINTY_DIM), dtype=torch.float32, device=like.device
+    )
+
+
+class ShipCodeFeature(Feature):
+    """A token's physical state as its categorical code (§8.4–8.7).
+
+    Rebuilt from the observation's means and belief spreads on every forward:
+    the exact code for anything read from truth, the belief's smoothed code for
+    a hidden ship. ``part`` selects the position code, which every token with a
+    position carries, or the rest of the ship state, which only ships do.
+    """
+
+    sparse_code = True
+
+    def __init__(self, codec: ShipStateCodec, index_log_scale: float, part: str):
+        if part not in ("position", "state"):
+            raise ValueError(f"part must be 'position' or 'state', got {part!r}")
+        super().__init__(
+            name=f"{part}_code",
+            accessor=Accessor(ObsKey.POS),
+            input_encoder=Identity(),
+            scope=FeatureScope.SHARED if part == "position" else FeatureScope.SHIP,
+        )
+        self.codec = codec
+        self.index_log_scale = index_log_scale
+        self.part = part
+        position_groups = CODE_RUN["position"].groups
+        self.sparse_groups = (
+            position_groups if part == "position" else CODE_GROUP_DIM - position_groups
+        )
+
+    def input_dimension(self, dummy: YemongObservation) -> int:
+        return POSITION_CODE_DIM if self.part == "position" else SHIP_CODE_DIM - POSITION_CODE_DIM
+
+    def get_input(self, obs: YemongObservation) -> torch.Tensor:
+        position = obs[ObsKey.POS].float()
+        spreads = _belief_spreads(obs, position)
+        if self.part == "position":
+            return self.codec.encode_position(position, spreads[..., POSITION_SIGMA])
+        means = physical_means_from_observation(obs, self.index_log_scale).float()
+        return self.codec.encode_state(means, spreads)
 
 
 # ---------------------------------------------------------------------------
@@ -536,8 +592,20 @@ class LocalPresenceFeature(Feature):
 class FeatureCoordinator:
     """Integrates a list of Features into one input vector for the encoder."""
 
-    def __init__(self, features: list[Feature], dummy_obs: YemongObservation | None = None):
+    def __init__(
+        self,
+        features: list[Feature],
+        dummy_obs: YemongObservation | None = None,
+        ship_codec: ShipStateCodec | None = None,
+        index_log_scale: float | None = None,
+    ):
         self.features = features
+        #: The ship-state code the encoder reads and the next-state head
+        #: predicts, with the divisor that returns the observation's log index
+        #: to the natural log the code is stated in. None for a pipeline with
+        #: no ship tokens.
+        self.ship_codec = ship_codec
+        self.index_log_scale = index_log_scale
         # Bullet features read a different observation axis, so their coordinator
         # supplies its own probe rather than the ship/field one.
         self._dummy_override = dummy_obs
@@ -580,6 +648,47 @@ class FeatureCoordinator:
     def get_input_vector(self, obs: YemongObservation) -> torch.Tensor:
         return torch.cat([f.get_input(obs) for f in self.features], dim=-1)
 
+    def ship_codes(self, obs: YemongObservation, num_ships: int) -> torch.Tensor:
+        """``(..., N, 469)`` code of the first ``num_ships`` tokens' state.
+
+        What the encoder reads for those ships, and the next-state head's
+        baseline: with a zero residual the head predicts this code back.
+        """
+
+        if self.ship_codec is None or self.index_log_scale is None:
+            raise ValueError("this feature pipeline has no ship-state code")
+        ships = obs.slice_tokens(0, num_ships)
+        means = physical_means_from_observation(ships, self.index_log_scale).float()
+        return self.ship_codec.encode(means, _belief_spreads(ships, means))
+
+    def sparse_code_groups(self, scope: "FeatureScope | None" = None) -> int:
+        """How many softmax groups the sparse-code features in ``scope`` carry."""
+
+        return sum(
+            f.sparse_groups
+            for f in self.features
+            if f.sparse_code
+            and (scope is None or f.scope is FeatureScope.SHARED or f.scope is scope)
+        )
+
+    def sparse_code_columns(self, scope: "FeatureScope | None" = None) -> list[tuple[int, int]]:
+        """``(start, stop)`` input columns of every sparse-code feature.
+
+        Over the full input vector, or over ``scope``'s scoped vector.
+        """
+
+        dummy = self._dummy_obs()
+        spans = []
+        offset = 0
+        for f in self.features:
+            if scope is not None and f.scope is not FeatureScope.SHARED and f.scope is not scope:
+                continue
+            width = f.input_dimension(dummy)
+            if f.sparse_code:
+                spans.append((offset, offset + width))
+            offset += width
+        return spans
+
     def get_scoped_input_vector(
         self, obs: YemongObservation, scope: "FeatureScope"
     ) -> torch.Tensor:
@@ -616,74 +725,18 @@ def build_standard_coordinator(
 ) -> FeatureCoordinator:
     """Standard feature pipeline matching the current game's physics.
 
-    Physical-state auxiliary prediction (position, velocity, attitude, health,
-    power, cooldown, local index, and their uncertainty) is the next-state
-    head's job, not this pipeline's — see ``train/rl/physical_belief.py`` and
-    ``PHYSICAL_MEAN_NAMES``. This coordinator only encodes the input vector.
+    Every predicted ship channel enters as its categorical code, the same code
+    the next-state head predicts (``train/rl/ship_codes.py``). Position's code
+    is shared with map tokens; the rest is ship-only. How uncertain a hidden
+    ship's belief is enters through the code itself, smoothed by the belief's
+    spreads, with ``time_since_observation`` beside it.
     """
-    world_w, world_h = ship_config.world_size
+    codec = ShipStateCodec.from_ship_config(ship_config)
+    index_log_scale = 2.0 * math.log(ship_config.field_index_step)
 
     features = [
-        # Ten harmonics at the Frontline world (65536 px down to 128 px) are
-        # deliberately unequal: four of those periods exceed the 5v5 playable
-        # diameter, so their encodings barely vary, while the finest wraps 41
-        # times across it. See docs/training.md.
-        Feature(
-            name="position_x",
-            accessor=Accessor(ObsKey.POS, channels=[0]),
-            input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_w), periods=world_w),
-        ),
-        Feature(
-            name="position_y",
-            accessor=Accessor(ObsKey.POS, channels=[1]),
-            input_encoder=Fourier(n_freqs=position_fourier_frequencies(world_h), periods=world_h),
-        ),
-        # SymlogVelocity encodes (vx, vy) → direction * symlog(speed). The 2D
-        # encoding has no angle discontinuity near zero speed.
-        Feature(
-            name="velocity",
-            accessor=Accessor(ObsKey.VEL),
-            input_encoder=SymlogVelocity(),
-            scope=FeatureScope.SHIP,
-        ),
-        # Attitude: position's treatment on the heading circle. Four harmonics
-        # over 2*pi.
-        Feature(
-            name="attitude",
-            accessor=Accessor(ObsKey.ATT),
-            input_encoder=AttitudeFourier(),
-            scope=FeatureScope.SHIP,
-        ),
-        Feature(
-            name="angular_velocity",
-            accessor=Accessor(ObsKey.ANG_VEL),
-            input_encoder=Symlog(),
-            scope=FeatureScope.SHIP,
-        ),
-        Feature(
-            name="shield_delay",
-            accessor=Accessor(ObsKey.SHIELD_DELAY),
-            input_encoder=Symlog(),
-            scope=FeatureScope.SHIP,
-        ),
-        # Resources are plain bounded scalars, normalised to [0, 1].
-        Feature(
-            name="health",
-            accessor=Accessor(ObsKey.HEALTH),
-            input_encoder=Normalize(scales=ship_config.max_health),
-        ),
-        Feature(
-            name="power",
-            accessor=Accessor(ObsKey.POWER),
-            input_encoder=Normalize(scales=ship_config.max_power),
-            scope=FeatureScope.SHIP,
-        ),
-        Feature(
-            name="cooldown",
-            accessor=Accessor(ObsKey.COOLDOWN),
-            input_encoder=Normalize(scales=ship_config.firing_cooldown),
-            scope=FeatureScope.SHIP,
-        ),
+        ShipCodeFeature(codec, index_log_scale, "position"),
+        ShipCodeFeature(codec, index_log_scale, "state"),
         # Categoricals and static
         Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3)),
         Feature("alive", Accessor(ObsKey.ALIVE), Identity()),
@@ -757,25 +810,6 @@ def build_standard_coordinator(
             Symlog(),
             scope=FeatureScope.GLOBAL,
         ),
-        # How uncertain the belief is, as the next-state head's own thirteen
-        # terms: a log sigma per channel plus one correlation latent for position
-        # and one for velocity. Already in log/unconstrained form, so the input
-        # encoding is a plain division that lands the clamped range in [-1, 1] --
-        # a symlog of a log would compress twice and flatten the difference
-        # between a ship in sight and one unseen for a minute, which is the whole
-        # signal. The correlation latents keep their own scale: they are not
-        # logs, and dividing them by the sigma bound would shrink a saturating
-        # tanh input to noise.
-        #
-        # ``time_since_observation`` says only how long it has been; this says
-        # what that cost, which is the quantity a policy needs to decide whether
-        # to act on a remembered position or go and look.
-        Feature(
-            "belief_uncertainty",
-            Accessor(ObsKey.BELIEF_UNCERTAINTY, absent_width=PHYSICAL_UNCERTAINTY_DIM),
-            Normalize(scales=_uncertainty_input_scales()),
-            scope=FeatureScope.SHIP,
-        ),
         Feature(
             "time_remaining",
             Accessor(ObsKey.TIME_REMAINING),
@@ -787,12 +821,6 @@ def build_standard_coordinator(
             Accessor(ObsKey.GAME_MODE),
             Identity(),
             scope=FeatureScope.GLOBAL,
-        ),
-        Feature(
-            name="local_log_index",
-            accessor=Accessor(ObsKey.LOCAL_LOG_INDEX),
-            input_encoder=Identity(),
-            scope=FeatureScope.SHIP,
         ),
         # grad(n) at the ship, already normalised in observation_from_state. A
         # deterministic function of position given the static map.
@@ -807,7 +835,7 @@ def build_standard_coordinator(
     if local_presence:
         features.append(LocalPresenceFeature(ship_config))
 
-    return FeatureCoordinator(features)
+    return FeatureCoordinator(features, ship_codec=codec, index_log_scale=index_log_scale)
 
 
 # ---------------------------------------------------------------------------
@@ -826,15 +854,11 @@ class BulletAccessor(Accessor):
 def build_bullet_coordinator(ship_config: ShipConfig) -> FeatureCoordinator:
     """Feature pipeline for key/value-only bullet tokens.
 
-    Position and velocity use the *same* encodings as ships. This is required,
-    not stylistic: a ship's query and a bullet's key meet in a bilinear form, and
-    ``q.k`` only reduces to a function of their displacement when both sides
-    expand position on one shared Fourier basis. Mismatched frequencies leave
-    cross terms that never combine into relative geometry, and the ship could not
-    compute "how far away is that bullet" at all.
-
-    Damage and lifetime are plain normalised scalars rather than the quarter-wave
-    encoding ships use for bounded resources: bullets are never predicted.
+    Bullets are never predicted, and there are many of them, so they keep a
+    compact dense encoding rather than the ships' categorical codes: a Fourier
+    expansion of position, the symlog velocity, and plain scalars. Where a bullet
+    is relative to a ship reaches attention through the rotary encoding, which
+    rotates both on the same physical coordinates.
 
     Shooter identity is carried as a team one-hot and never as an index over
     ships — a per-ship one-hot would fix N in the weights and destroy zero-shot
@@ -901,16 +925,3 @@ def _dummy_bullet_obs() -> YemongObservation:
             BulletObsKey.ACTIVE: torch.zeros((1, 1), dtype=torch.bool),
         },
     )
-
-
-class AttitudeFourier(Fourier):
-    """Encode a Cartesian heading as its phase's Fourier expansion."""
-
-    def __init__(self):
-        super().__init__(n_freqs=ATTITUDE_FOURIER_FREQUENCIES, periods=2.0 * math.pi)
-
-    def out_dim(self, in_dim):
-        return 2 * self.n_freqs
-
-    def __call__(self, x):
-        return super().__call__(torch.atan2(x[..., 1:2], x[..., 0:1]))

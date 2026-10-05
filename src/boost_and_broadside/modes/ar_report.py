@@ -34,8 +34,8 @@ from boost_and_broadside.evaluation.match import MatchRunner
 from boost_and_broadside.evaluation.next_state import means_to_observation
 from boost_and_broadside.evaluation.subjects import describe_agents, describe_environment
 from boost_and_broadside.train.rl.physical_belief import (
-    PhysicalNextState,
-    physical_means_from_observation,
+    predicted_means,
+    predicted_uncertainty,
 )
 
 History = list[dict[str, torch.Tensor]]
@@ -141,7 +141,6 @@ def run_ar_report_mode(
         N,
     )
     runner.init_hidden()
-    next_state = PhysicalNextState.from_ship_config(ship_config)
     index_log_scale = 2.0 * math.log(ship_config.field_index_step)
 
     history_sim: History = []
@@ -203,7 +202,6 @@ def run_ar_report_mode(
         N,
         actions_sim,
         True,
-        next_state,
         index_log_scale,
     )
 
@@ -218,7 +216,6 @@ def run_ar_report_mode(
         N,
         actions_sim,
         False,
-        next_state,
         index_log_scale,
     )
 
@@ -315,7 +312,6 @@ def _run_ar(
     N: int,
     forced_actions: list[torch.Tensor] | None,
     is_closed_loop: bool,
-    next_state: PhysicalNextState,
     index_log_scale: float,
 ) -> History:
     obs = _clone_observation(init_obs)
@@ -325,7 +321,6 @@ def _run_ar(
         agent1.hidden = init_hidden1.clone()
 
     history: History = []
-    curr_means = physical_means_from_observation(obs, index_log_scale, num_ships=N)
 
     for step in range(num_steps):
         recorded = (
@@ -383,7 +378,13 @@ def _run_ar(
         )
 
         if pred_next is not None:
-            curr_means = next_state.apply_means(curr_means, pred_next.float())
-            obs = means_to_observation(curr_means, obs, action_to_apply, N, index_log_scale)
+            obs = means_to_observation(
+                predicted_means(pred_next.float()),
+                obs,
+                action_to_apply,
+                N,
+                index_log_scale,
+                uncertainty=predicted_uncertainty(pred_next.float()),
+            )
 
     return history

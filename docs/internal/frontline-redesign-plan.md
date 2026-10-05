@@ -739,15 +739,26 @@ buffer store moments instead:
 | attitude | mean angle and spread | 2 |
 | angular velocity | mean and sigma | 2 |
 | health, power, shield delay, local log index | mean and sigma each | 8 |
-| cooldown | the distribution (4 bins) | 4 |
+| cooldown | the mean and the distribution's residual from its two-hot (4 bins) | 5 |
 
-24 floats per ship, the same as today.
+25 floats per ship. Every spread is zero when certain, so a ship in sight carries zeros.
 
 **Rebuilding the input.** Inside the forward pass the categorical input, which is also
 the head's baseline, is rebuilt from the moments: position and attitude by the
-per-level blur curve, each velocity axis as a 1D Gaussian (§8.5), scalars as a
-discretised Gaussian over their bins. These activations are transient and
-micro-batched; the buffer stays at today's size.
+per-level blur curve, each velocity axis and every scalar by the scalar encoder below.
+These activations are transient and micro-batched; the buffer stays at today's size.
+
+**Scalar encoder.** The exact two-hot of the mean, convolved with a discrete Gaussian
+kernel of variance σ². The kernel is symmetric, so the mean is exact, and variances add
+under convolution, so the histogram's variance is σ² plus the two-hot's own
+`h² t (1 − t)` (bin width h, fraction t of the mean between its two bins). The kernel is
+a sampled Gaussian for σ ≥ h, whose variance is exact to 1e-8 there, and the spike
+mixed with the unit sampled Gaussian in proportion σ²/h² below that. Mass past either
+end is folded into the end bin, which pulls the mean inward and narrows the spread; one
+closed-form step on the interior bins restores both, each interior bin sending a fraction
+of its mass one bin toward the deficit (the mean) and a fraction to both neighbours (the
+variance). End bins never send, so nothing spills again. A spread beyond what the range
+admits, `(m − a)(b − m) − h² t (1 − t)` for a mean m on [a, b], is projected to it.
 
 **Visible ships: mean = truth, sigma = 0.** The input of a visible ship has no
 uncertainty, so it is the exact code of the true value: the bilinear multi-hot for
@@ -770,12 +781,20 @@ candidates.**
   unwrapping each finer phase against the coarser estimate. Sigma is a weighted
   least-squares fit of log per-level sharpness against the blur curve, clamped at 0.
 * Velocity: §8.5.
-* Scalars: mean and variance of the histogram.
+* Scalars: mean of the histogram, and its variance less `h² t (1 − t)`. On a lattice
+  the two-hot is the least-variance distribution with a given mean, so the subtraction
+  is never negative.
 
 **Round trip must be exact.** With a zero residual, decoding the rebuilt input must
-return the same moments, or the belief drifts by itself every step. Each code has a
-round-trip unit test, including sigma 0, and the scalars near their range edges where
-clipping distorts the Gaussian.
+return the same moments, or the belief drifts by itself every step. The head's floor
+under the log is removed before decoding (`softmax(log(p + ε))` is `p` mixed with
+uniform, which inverts exactly). Each code has a round-trip unit test, including sigma
+0. The scalars are exact in the interior and wherever the edge correction reaches its
+target, about 92% of edge cases at σ ≤ 2 bins. Where the end bin holds too much of the
+mass for one step to reach the target (a mean inside the last bin with σ of a few bins),
+the moments are projected once and then held: repeated zero-residual round trips settle
+within about 3 units for σ ≤ 10 instead of compounding. That residual edge error is
+accepted.
 
 **Accepted limitations.**
 
@@ -867,8 +886,8 @@ J = f′(r) · v̂v̂ᵀ + (f(r) / r) · (I − v̂v̂ᵀ),   f(r) = v₀ log(1 
 
 which is the identity at r = 0.
 
-* **Encode:** u-mean = compression of the v-mean; Σ_u = J Σ_v Jᵀ; axis k is the 1D
-  Gaussian with mean `n_k · u` and variance `n_kᵀ Σ_u n_k`.
+* **Encode:** u-mean = compression of the v-mean; Σ_u = J Σ_v Jᵀ; axis k is the scalar
+  code (§8.3) with mean `n_k · u` and variance `n_kᵀ Σ_u n_k`.
 * **Decode:** the u-mean is the least-squares solution from the three axis means, and
   the v-mean its inverse compression; the three axis variances determine Σ_u exactly;
   Σ_v = J⁻¹ Σ_u J⁻ᵀ.

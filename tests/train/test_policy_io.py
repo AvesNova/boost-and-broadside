@@ -85,8 +85,8 @@ class TestBuildPolicy:
         assert reads.bullet_encoder is not None
         assert silent.bullet_encoder is None
 
-    def test_encoder_width_follows_ship_config(self):
-        """The large world widens position features to preserve 128 px detail."""
+    def test_encoder_width_does_not_follow_the_world(self):
+        """The position code's levels scale with the world; its width does not."""
         import dataclasses
 
         narrow = build_policy(
@@ -106,14 +106,8 @@ class TestBuildPolicy:
         assert set(narrow.state_dict()) == set(wide.state_dict())
         narrow_input = narrow.state_dict()["encoder.feature_extractor.0.weight"].shape[1]
         wide_input = wide.state_dict()["encoder.feature_extractor.0.weight"].shape[1]
-        # Position's Fourier input is the only channel that scales with the
-        # world: 2 axes x 2 (sin, cos) x 4 extra harmonics = 16. It was briefly
-        # 16 + 8, while the head reported a spread per harmonic and
-        # belief_uncertainty widened with them; the circular features now report
-        # one spread for their finest harmonic only, so that channel is a
-        # constant width again.
-        assert position_fourier_frequencies(16384.0) - position_fourier_frequencies(1024.0) == 4
-        assert wide_input - narrow_input == 16
+        # Nine levels of nine colours on any torus: 81 columns either way.
+        assert wide_input == narrow_input
 
     def test_position_frequency_contract_is_explicit_and_scale_preserving(self):
         assert position_fourier_frequencies(1024.0) == 4

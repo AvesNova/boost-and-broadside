@@ -22,6 +22,28 @@ from boost_and_broadside.env.observation import ObjectType, ObsKey, YemongObserv
 from boost_and_broadside.train.rl.features import FeatureCoordinator, FeatureScope
 
 
+def init_sparse_code_columns(
+    linear: nn.Linear, coordinator: FeatureCoordinator, scope: FeatureScope | None
+) -> None:
+    """Initialise a first projection's code columns like an embedding table.
+
+    A code input is mostly zeros with each softmax group summing to one, so a
+    column is the embedding of one category and a group's contribution is an
+    interpolation between a few columns. Drawing columns from ``N(0, 1/G)`` for
+    ``G`` groups gives the summed code a unit-variance pre-activation however
+    wide the code is; the fan-in default would shrink it with the width.
+    """
+
+    spans = coordinator.sparse_code_columns(scope)
+    groups = coordinator.sparse_code_groups(scope)
+    if not spans or groups == 0:
+        return
+    std = groups**-0.5
+    with torch.no_grad():
+        for start, stop in spans:
+            nn.init.normal_(linear.weight[:, start:stop], std=std)
+
+
 class BulletEncoder(nn.Module):
     """Projects raw bullet channels into the trunk's token width.
 
@@ -88,6 +110,7 @@ class ShipEncoder(nn.Module):
                 nn.Linear(2 * D, D),
                 nn.RMSNorm(D),
             )
+            init_sparse_code_columns(self.feature_extractor[0], coordinator, None)
             return
 
         if num_ships is None:
@@ -110,6 +133,8 @@ class ShipEncoder(nn.Module):
                 for object_type, scope in scopes.items()
             }
         )
+        for object_type, scope in scopes.items():
+            init_sparse_code_columns(self.type_proj[str(int(object_type))][0], coordinator, scope)
         # Shared output projection: one latent space for both types.
         self.shared_proj = nn.Sequential(nn.Linear(2 * D, D), nn.RMSNorm(D))
         # Token-axis spans per object type, derived on first use and cached under

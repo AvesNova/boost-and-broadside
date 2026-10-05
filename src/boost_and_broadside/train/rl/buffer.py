@@ -245,6 +245,9 @@ _OBS_STORAGE_OVERRIDES: dict[ObsKey | BulletObsKey, torch.dtype] = {
     ObsKey.POWER: torch.float32,
     ObsKey.COOLDOWN: torch.float32,
     ObsKey.LOCAL_LOG_INDEX: torch.float32,
+    # The belief's spreads, from which the update rebuilds the same code the
+    # rollout read, as the next-state head's baseline and the encoder's input.
+    ObsKey.BELIEF_UNCERTAINTY: torch.float32,
 }
 
 
@@ -319,11 +322,8 @@ class RolloutBuffer:
         # that read them during the rollout, so storage has to cover the channel
         # either way or the two would see different inputs.
         #
-        # The width comes from the caller's coordinator rather than a constant:
-        # it follows the world size, because position reports one uncertainty
-        # column per Fourier harmonic. A caller with no coordinator passes zero
-        # and gets no storage, which is correct for a configuration that will
-        # never compose a belief into an observation.
+        # A caller that will never compose a belief into an observation passes
+        # zero and gets no storage.
         sampled_obs = dict(obs_sample.items())
         if ObsKey.BELIEF_UNCERTAINTY not in sampled_obs and uncertainty_dim:
             # Shaped from ``pos`` rather than from ``team_id`` -- a channel the
@@ -391,18 +391,19 @@ class RolloutBuffer:
         # set once per update, so the normalisation is independent of
         # minibatch/micro-batch splits.
         self.return_scale = torch.ones((), device=device, dtype=torch.float32)
-        # Next-state prediction labels (T, B, N, pred_dim) — set once per update
+        # Next-state targets (T, B, N, 11): the true physical state one decision
+        # later, whose exact code the head is trained toward. Set once per update
         # by PPOTrainer._precompute_ns_labels; None for aux scales or when the
-        # aux losses are disabled.
+        # next-state loss is disabled.
         self.ns_labels: torch.Tensor | None = None
         # Authoritative physical ship state, ``(T+1, B, N, 11)``. Auxiliary
         # supervision only, and deliberately stored outside ``obs`` so no
         # actor/critic path can consume hidden enemy truth by key lookup.
         #
         # fp32 rather than the buffer's usual bf16: these are the far end of
-        # every next-state label, and a coordinate spends its bits on magnitude,
-        # so bf16 would quantise a 65536 px world into 128 px steps -- a
-        # position-delta label whose calibrated scale is 2.5 px. The whole tensor
+        # every next-state target, and a coordinate spends its bits on magnitude,
+        # so bf16 would quantise a 65536 px world into 128 px steps, against a
+        # finest position cell of 3.3 px. The whole tensor
         # is eleven channels wide, which is cheap enough that there is nothing to
         # trade off.
         self.privileged_means: torch.Tensor | None = (
@@ -424,6 +425,8 @@ class RolloutBuffer:
             if density_dim > 0
             else None
         )
+        # The behaviour policy's next-state forecasts, decoded to moments
+        # (T, B, N, 25), for the belief diagnostics.
         self.rollout_predictions: torch.Tensor | None = (
             torch.zeros((T, B, N, prediction_dim), device=device) if prediction_dim > 0 else None
         )
@@ -690,7 +693,7 @@ class RolloutBuffer:
                 mb_terminated:   (T, B_mb) bool
                 mb_adv_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated advantages
                 mb_ret_agg:      (T, B_mb, N) float32 — precomputed lambda-aggregated returns
-                mb_ns_labels:    (T, B_mb, N, pred_dim) float32 or None — precomputed aux labels
+                mb_ns_labels:    (T, B_mb, N, 11) float32 or None — next-state truth
         """
         assert self.initial_hidden is not None, "Call store_initial_hidden() before iterating."
 

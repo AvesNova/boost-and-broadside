@@ -2,11 +2,9 @@
 
 import torch
 
-from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.env.observation import ObsKey, YemongObservation
 from boost_and_broadside.evaluation.agents import ResolvedAgent
 from boost_and_broadside.modes.ar_report import _run_ar
-from boost_and_broadside.train.rl.physical_belief import PhysicalNextState
 
 
 class _RequiresPhysicalState:
@@ -46,7 +44,6 @@ def test_imagined_rollout_replays_nonpolicy_decisions_without_fake_state() -> No
         2,
         recorded,
         False,
-        PhysicalNextState.from_ship_config(ShipConfig()),
         1.0,
     )
 
