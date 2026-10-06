@@ -1,0 +1,247 @@
+{
+  "run": "scarlet-wind-755",
+  "note": "BC pilot 2 on the weights of commit b5ec98a, damage priced per full shield and bins at +-2 symlog (ba58d2d). Extended 14.7M -> 19.7M by resume. Shares are trunk_top_level, 3 diagnosed updates per checkpoint.",
+  "weights": {
+    "behavior_cloning_coef": 0.025,
+    "value_function_coef": 0.007,
+    "next_state_coef": 0.003,
+    "enemy_action_coef": 0.063,
+    "global_density_coef": 0.024
+  },
+  "targets": {
+    "bc": 0.3,
+    "value": 0.3,
+    "next_state": 0.2,
+    "enemy_action": 0.12,
+    "density": 0.08
+  },
+  "median_share": {
+    "bc": 0.4477214810733914,
+    "next_state": 0.2818020274761924,
+    "enemy_action": 0.13698923898075022,
+    "density": 0.09753293288766239,
+    "value": 0.011904011983503817
+  },
+  "value_trunk_norm_by_level": {
+    "outcome": [
+      2.0830085199054787e-05,
+      3.0140307518311308e-05,
+      3.07179643928257e-05,
+      5.679725414815004e-05
+    ],
+    "zone_capture": [
+      0.0009221519659502541,
+      0.0029512598965822172,
+      0.00413316855549319,
+      0.006634901825413184
+    ],
+    "zone_progress": [
+      0.0009305005920542091,
+      0.0034285657019154417,
+      0.0032997474814689897,
+      0.005476133855437034
+    ],
+    "kill_death": [
+      0.0005770633163846597,
+      0.0007579700478105161,
+      0.0025450888046242496,
+      0.002699729224487749
+    ],
+    "damage": [
+      0.004942835637552615,
+      0.006427768443522073,
+      0.007440853715920946,
+      0.010414700535723798
+    ]
+  },
+  "checkpoints": [
+    {
+      "checkpoint": "checkpoints/pilot-snapshots/scarlet-wind-755/step_000010321920.pt",
+      "summary": {
+        "bc": {
+          "trunk_norm": 0.23770438741537883,
+          "trunk_share": 0.4114867699316172,
+          "whole_model_norm": 0.24536481746235905
+        },
+        "density": {
+          "trunk_norm": 0.09037505532571939,
+          "trunk_share": 0.155823667012242,
+          "whole_model_norm": 0.0930651097041559,
+          "trunk_cos_with_bc": 0.006564257079288584
+        },
+        "enemy_action": {
+          "trunk_norm": 0.05701402783046764,
+          "trunk_share": 0.10638394239088551,
+          "whole_model_norm": 0.09700704817761312,
+          "trunk_cos_with_bc": -0.13817807382001726
+        },
+        "entropy": {
+          "trunk_norm": 0.0006495171564449195,
+          "trunk_share": 0.0011248208465290447,
+          "whole_model_norm": 0.0010860851960186504,
+          "trunk_cos_with_bc": 0.0726961643699086
+        },
+        "next_state": {
+          "trunk_norm": 0.1801139125658773,
+          "trunk_share": 0.3157015978665682,
+          "whole_model_norm": 0.18641771191768067,
+          "trunk_cos_with_bc": 0.004855525621998094
+        },
+        "policy": {
+          "trunk_norm": 0.0,
+          "trunk_share": 0.0,
+          "whole_model_norm": 0.0,
+          "trunk_cos_with_bc": 0.0
+        },
+        "value": {
+          "trunk_norm": 0.005792327278469497,
+          "trunk_share": 0.009479201950391989,
+          "whole_model_norm": 0.012770661332260772,
+          "trunk_cos_with_bc": 0.08932946051128528
+        }
+      },
+      "pre_clip_gradient_norm": 0.1568076809247335
+    },
+    {
+      "checkpoint": "checkpoints/pilot-snapshots/scarlet-wind-755/step_000013271040.pt",
+      "summary": {
+        "bc": {
+          "trunk_norm": 0.2794964058914386,
+          "trunk_share": 0.4156677730182213,
+          "whole_model_norm": 0.28741226185218766
+        },
+        "density": {
+          "trunk_norm": 0.0787589602266397,
+          "trunk_share": 0.11924145444243077,
+          "whole_model_norm": 0.08188734665295888,
+          "trunk_cos_with_bc": 0.027979358561789038
+        },
+        "enemy_action": {
+          "trunk_norm": 0.10559499709254387,
+          "trunk_share": 0.14767286056852488,
+          "whole_model_norm": 0.13787293752918023,
+          "trunk_cos_with_bc": -0.005689185771869189
+        },
+        "entropy": {
+          "trunk_norm": 0.0008854878357606768,
+          "trunk_share": 0.0013399045980941986,
+          "whole_model_norm": 0.001316725381486414,
+          "trunk_cos_with_bc": 0.04241109822739208
+        },
+        "next_state": {
+          "trunk_norm": 0.19707398417883493,
+          "trunk_share": 0.3035475025533632,
+          "whole_model_norm": 0.20281210288693477,
+          "trunk_cos_with_bc": 0.012271023095311431
+        },
+        "policy": {
+          "trunk_norm": 0.0,
+          "trunk_share": 0.0,
+          "whole_model_norm": 0.0,
+          "trunk_cos_with_bc": 0.0
+        },
+        "value": {
+          "trunk_norm": 0.008554840427888835,
+          "trunk_share": 0.012530504817861618,
+          "whole_model_norm": 0.013570295968235084,
+          "trunk_cos_with_bc": 0.018264406345355335
+        }
+      },
+      "pre_clip_gradient_norm": 0.14743505915006003
+    },
+    {
+      "checkpoint": "checkpoints/pilot-snapshots/scarlet-wind-755/step_000016711680.pt",
+      "summary": {
+        "bc": {
+          "trunk_norm": 0.5944201116511795,
+          "trunk_share": 0.5556465180134159,
+          "whole_model_norm": 0.6012482285821578
+        },
+        "density": {
+          "trunk_norm": 0.07839798175199782,
+          "trunk_share": 0.07110135195861696,
+          "whole_model_norm": 0.08132331329953509,
+          "trunk_cos_with_bc": -0.005827919582362939
+        },
+        "enemy_action": {
+          "trunk_norm": 0.12102827932704856,
+          "trunk_share": 0.12630561739297558,
+          "whole_model_norm": 0.13332397927315273,
+          "trunk_cos_with_bc": -0.2667158782370905
+        },
+        "entropy": {
+          "trunk_norm": 0.0009492759888976757,
+          "trunk_share": 0.0008777435335754267,
+          "whole_model_norm": 0.0014969802167839237,
+          "trunk_cos_with_bc": 0.4332508374034915
+        },
+        "next_state": {
+          "trunk_norm": 0.270308055040937,
+          "trunk_share": 0.2347912499513036,
+          "whole_model_norm": 0.27586487666103526,
+          "trunk_cos_with_bc": -0.01077867542568337
+        },
+        "policy": {
+          "trunk_norm": 0.0,
+          "trunk_share": 0.0,
+          "whole_model_norm": 0.0,
+          "trunk_cos_with_bc": 0.0
+        },
+        "value": {
+          "trunk_norm": 0.011627847298036365,
+          "trunk_share": 0.011277519149146016,
+          "whole_model_norm": 0.015773554765415584,
+          "trunk_cos_with_bc": 0.010480663050777295
+        }
+      },
+      "pre_clip_gradient_norm": 0.16203157107035318
+    },
+    {
+      "checkpoint": "checkpoints/pilot-snapshots/scarlet-wind-755/step_000019660800.pt",
+      "summary": {
+        "bc": {
+          "trunk_norm": 0.4414942611513739,
+          "trunk_share": 0.4797751891285615,
+          "whole_model_norm": 0.4469399295252896
+        },
+        "density": {
+          "trunk_norm": 0.06920880300708775,
+          "trunk_share": 0.07582441133289401,
+          "whole_model_norm": 0.07215702437703175,
+          "trunk_cos_with_bc": 0.0212579177714093
+        },
+        "enemy_action": {
+          "trunk_norm": 0.13010637348103513,
+          "trunk_share": 0.163701358803474,
+          "whole_model_norm": 0.13657584628417804,
+          "trunk_cos_with_bc": -0.23280518250101914
+        },
+        "entropy": {
+          "trunk_norm": 0.0011459325023189992,
+          "trunk_share": 0.0013022468465907586,
+          "whole_model_norm": 0.0016560029800813776,
+          "trunk_cos_with_bc": 0.17433528534252182
+        },
+        "next_state": {
+          "trunk_norm": 0.24587729301122277,
+          "trunk_share": 0.26005655239902153,
+          "whole_model_norm": 0.2497515088589272,
+          "trunk_cos_with_bc": -0.022067398557477604
+        },
+        "policy": {
+          "trunk_norm": 0.0,
+          "trunk_share": 0.0,
+          "whole_model_norm": 0.0,
+          "trunk_cos_with_bc": 0.0
+        },
+        "value": {
+          "trunk_norm": 0.01771560820120743,
+          "trunk_share": 0.019340241488327834,
+          "whole_model_norm": 0.02082768526881545,
+          "trunk_cos_with_bc": 0.054805280858448546
+        }
+      },
+      "pre_clip_gradient_norm": 0.16745133697986603
+    }
+  ]
+}

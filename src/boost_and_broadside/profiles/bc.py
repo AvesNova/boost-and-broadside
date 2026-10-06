@@ -37,11 +37,10 @@ BC_SCHEDULE_SPEC = replace(
     # In BC this is the policy head's only learning signal. RL's 2.0 is the
     # strength of an *auxiliary* imitation term carried alongside a live policy
     # gradient. Set by the gradient-share balance in BC_PROFILE.
-    behavior_cloning_coef=hold(0.025),
+    behavior_cloning_coef=hold(0.017),
     # Per reward level: the critic sums its five levels' cross-entropies, each
-    # at weight one (COMPONENT_VALUE_WEIGHTS). Still the first guess; see the
-    # balance block in BC_PROFILE.
-    value_function_coef=hold(0.007),
+    # at weight one (COMPONENT_VALUE_WEIGHTS). Set by the balance in BC_PROFILE.
+    value_function_coef=hold(0.18),
     # League opposition disabled: no roster opponent plays a BC rollout.  The
     # Elo evaluator still runs -- BC's own scripted win rate is what decays the
     # cloning weight -- and it rates against the same derived rungs RL uses.
@@ -63,8 +62,9 @@ BC_PROFILE = replace(
     # `benchmarks/gradient_decomposition.py`. The gradient of `c * L` is
     # exactly `c * grad L`, so one measurement gives every weight at once:
     #     c_new = c_old * target share / measured share
-    # then one common multiplier sets the total pre-clip norm near 0.5, so
-    # `train/clip_fire_rate` lands at 0.1-0.2.
+    # Only the ratios matter: Adam divides out a common scale, and the global
+    # clip (max_grad_norm 1.0, several times the ~0.2 typical norm) is a spike
+    # guard, not a target.
     #
     # Targets: bc 0.30, value 0.30 (about 0.06 per level), next_state 0.20,
     # enemy_action 0.12, density 0.08. The objective takes the plurality.
@@ -76,24 +76,29 @@ BC_PROFILE = replace(
     # 8.3), so its quality is an input's quality. Regularizers are left out:
     # their scale is meaningful in the nats they live in.
     #
-    # Measured on pilot 754 (docs/internal/bc-pilot-754-oct2026.json): the
-    # median share over three checkpoints at 13.8-14.7M steps, from first
-    # guesses of bc 0.042, next_state 0.0023, enemy_action 0.07, density 0.03:
-    #     bc 0.51, next_state 0.15, enemy_action 0.13, density 0.10
-    # solved term by term with the formula above. Value is not solved yet: the
-    # pilot priced damage per health point, which put 96% of the critic's trunk
-    # gradient on damage and left the outcome head at uniform, so its share
-    # (0.105) measured a critic that no longer exists. It is re-measured on the
-    # next pilot along with the common multiplier -- the pre-clip norm sat near
-    # 0.2 and clipping never fired.
+    # Two pilots, each solved from the median share over checkpoints past the
+    # warmup:
+    # * 754 (docs/internal/bc-pilot-754-oct2026.json), 13.8-14.7M steps, from
+    #   first guesses bc 0.042, value 0.007, next_state 0.0023, enemy_action
+    #   0.07, density 0.03. It priced damage per health point, so value was not
+    #   solved from it.
+    # * 755 (docs/internal/bc-pilot-755-oct2026.json), 10.3-19.7M steps, from
+    #   bc 0.025, value 0.007, next_state 0.0030, enemy_action 0.063, density
+    #   0.024. Measured: bc 0.45, value 0.012, next_state 0.28, enemy_action
+    #   0.14, density 0.10. With damage fixed, value had lost the gradient the
+    #   mispricing gave it.
+    # Inside value the outcome still draws next to nothing of the trunk
+    # (~1e-5 against 3e-3 to 1e-2 for each per-ship level), and its
+    # explained variance sits near 0.35. Its per-level weight is the knob if
+    # the next run shows the same.
     #
     # Shares drift by design: BC's teacher targets are soft, so its gradient
     # falls toward zero as imitation converges, while value and next-state
     # keep a noise floor. Measure in one window, after the 6M warmup and once
     # next-state's zero-initialised residual has stopped growing its share.
-    next_state_coef=0.0030,
-    enemy_action_coef=0.063,
-    global_density_coef=0.024,
+    next_state_coef=0.0021,
+    enemy_action_coef=0.055,
+    global_density_coef=0.020,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now

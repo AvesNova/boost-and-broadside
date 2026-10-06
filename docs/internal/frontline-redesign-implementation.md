@@ -146,8 +146,11 @@ KL and advantage scales are the regime RL actually starts in. Loss units unified
 (deviations 38–40). BC pilot 754 (`bc-pilot-754-oct2026.json`) solved the bc,
 next-state, enemy-action and density weights, and found damage priced per health
 point (deviation 41) and the critic's bins far wider than its returns
-(deviation 42). Next: a second pilot to solve value's weight and the common
-multiplier on `train/clip_fire_rate`.
+(deviation 42). Pilot 755 (`bc-pilot-755-oct2026.json`, 10.3–19.7M steps) solved
+all five weights: bc 0.017, value 0.18 per level, next-state 0.0021, enemy action
+0.055, density 0.020. No common multiplier: Adam divides out a common scale and the
+global clip stays a spike guard. Open: the outcome level still draws ~1e-5 of the
+trunk gradient and its explained variance sits near 0.35.
 
 * Short runs only if the 8 GB dev GPU allows; otherwise hand over with the
   reading list of §7.4. The cold-start run itself is the user's to launch.
