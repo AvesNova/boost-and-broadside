@@ -205,3 +205,60 @@ class ReturnNormalizer:
     def load_state_dict(self, state: dict) -> None:
         self.low = state["low"].to(self.low.device)
         self.high = state["high"].to(self.high.device)
+
+
+#: Equal-width bins of the predicted win probability for the reliability diagram.
+OUTCOME_CALIBRATION_BINS = 10
+
+
+def outcome_calibration(
+    probabilities: torch.Tensor, result: torch.Tensor, terminated: torch.Tensor
+) -> dict[str, tuple[torch.Tensor, torch.Tensor]]:
+    """``P(win | resolved)`` against realised wins, as additive ``(total, count)`` sums.
+
+    Every transition whose episode ends inside the rollout is scored against
+    that episode's result: a win if the terminal result is positive, otherwise
+    a loss or a tie. Transitions whose episode is still running at the end of the
+    rollout carry no realised outcome and are left out.
+
+    Args:
+        probabilities: (T, B, 4) rollout-time outcome-class probabilities.
+        result: (T, B) signed result on each transition, zero until the terminal one.
+        terminated: (T, B) bool, the episode ended on transition t.
+
+    Returns:
+        ``outcome/calibration_brier``, ``outcome/predicted_win``,
+        ``outcome/realised_win``, and per bin ``b`` of the prediction
+        ``outcome/calibration_bin_<b>/{predicted,realised}`` -- a reliability
+        diagram, whose two series agree when the head is calibrated.
+    """
+
+    steps = probabilities.shape[0]
+    realised = torch.full_like(result, float("nan"), dtype=torch.float32)
+    pending = torch.full_like(result[0], float("nan"), dtype=torch.float32)
+    for t in range(steps - 1, -1, -1):
+        pending = torch.where(terminated[t], result[t].float(), pending)
+        realised[t] = pending
+    resolved = ~torch.isnan(realised)
+    count = resolved.sum().float()
+    win = (realised > 0).float()
+    resolved_mass = probabilities[..., :OUTCOME_UNRESOLVED_INDEX].sum(-1)
+    predicted = probabilities[..., OUTCOME_WIN_INDEX] / resolved_mass.clamp_min(
+        torch.finfo(probabilities.dtype).tiny
+    )
+    mask = resolved.float()
+    diagnostics = {
+        "outcome/calibration_brier": (((predicted - win).square() * mask).sum(), count),
+        "outcome/predicted_win": ((predicted * mask).sum(), count),
+        "outcome/realised_win": ((win * mask).sum(), count),
+    }
+    bins = (predicted * OUTCOME_CALIBRATION_BINS).long().clamp(0, OUTCOME_CALIBRATION_BINS - 1)
+    for b in range(OUTCOME_CALIBRATION_BINS):
+        in_bin = (bins == b).float() * mask
+        bin_count = in_bin.sum()
+        diagnostics[f"outcome/calibration_bin_{b}/predicted"] = (
+            (predicted * in_bin).sum(),
+            bin_count,
+        )
+        diagnostics[f"outcome/calibration_bin_{b}/realised"] = ((win * in_bin).sum(), bin_count)
+    return diagnostics

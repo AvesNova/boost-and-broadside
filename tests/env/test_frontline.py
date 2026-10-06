@@ -666,3 +666,40 @@ class TestZoneTerminalDistances:
             ego_target = int((flipped_roles == int(ZoneRole.TEAM1_DEFENSE)).nonzero()[0])
             # After the swap the ego team's offensive channel is the old defensive one.
             assert int(defensive[0, ego_target]) == threshold + position - 1, position
+
+
+def test_event_magnitudes_bound_their_signed_sums_and_share_each_level() -> None:
+    """``event_abs`` is per-tick |event| summed, so it bounds the signed totals.
+
+    It is what the charge-back's share of the damage level is read from.
+    """
+    config = _frontline(boundary_damage_per_second=50.0)
+    wrapper = YemongEnvWrapper(
+        2,
+        ShipConfig(world_size=FRONTLINE_WORLD_SIZE),
+        EnvConfig(4, 4, 30, frontline=config),
+        REWARDS,
+        "cpu",
+    )
+    wrapper.reset(seed=5)
+    # Push one ship out past the boundary so damage events certainly fire.
+    wrapper.state.ship_pos[:, 0] = wrapper.state.map_center + complex(
+        config.playable_radius + 400.0, 0.0
+    )
+    generator = torch.Generator().manual_seed(1)
+    for _ in range(40):
+        action = torch.stack(
+            [
+                torch.randint(0, 2, (2, 4), generator=generator),
+                torch.randint(0, 5, (2, 4), generator=generator),
+                torch.randint(0, 2, (2, 4), generator=generator),
+            ],
+            dim=-1,
+        ).int()
+        wrapper.step(action)
+    stats = wrapper.pop_episode_stats()
+    magnitude = stats["event_abs"]
+    assert magnitude.shape == (len(wrapper.event_names),)
+    assert (magnitude >= stats["event_sum"].abs() - 1e-4).all()
+    damage = [i for i, name in enumerate(wrapper.event_names) if name.startswith("damage/")]
+    assert magnitude[damage].sum() > 0

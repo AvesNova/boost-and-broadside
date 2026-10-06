@@ -312,6 +312,9 @@ class YemongEnvWrapper:
         self._acc_length_sum = torch.zeros((), device=d)
         self._acc_comp_sum = torch.zeros((K,), device=d)
         self._acc_event_sum = torch.zeros((len(self._event_names),), device=d)
+        # Every tick's |event| summed over ships, for each event's share of its
+        # level's reward magnitude -- the charge-back's share of damage above all.
+        self._acc_event_abs = torch.zeros((len(self._event_names),), device=d)
         # Absolute per-tick sum of each level over every ship of an env: zero at
         # every payout ratio 1, since each level is zero-sum by construction.
         self._acc_zero_sum_residual = torch.zeros((K,), device=d)
@@ -334,6 +337,7 @@ class YemongEnvWrapper:
             length_sum:       () — total episode length (per env-episode).
             comp_sum:         (K,) — per-component (weighted) reward sums.
             event_sum:        (E,) — the same, per event (``event_names``).
+            event_abs:        (E,) — summed |per-ship, per-tick event| magnitude.
             zero_sum_residual:(K,) — summed |per-env, per-tick team sum|.
             running_ticks:    () — env-ticks the residual was summed over.
             wins_sum:         () — total win flags over finished ship-episodes.
@@ -347,6 +351,7 @@ class YemongEnvWrapper:
             "length_sum": self._acc_length_sum,
             "comp_sum": self._acc_comp_sum,
             "event_sum": self._acc_event_sum,
+            "event_abs": self._acc_event_abs,
             "zero_sum_residual": self._acc_zero_sum_residual,
             "running_ticks": self._acc_running_ticks,
             "wins_sum": self._acc_wins_sum,
@@ -663,6 +668,7 @@ class YemongEnvWrapper:
         tick_rewards = tick_events @ self._event_to_component  # (B, N, K_active)
         comp_rewards += tick_rewards
         self._ep_events += tick_events
+        self._acc_event_abs += tick_events.abs().sum(dim=(0, 1))
         self._acc_zero_sum_residual += tick_rewards.sum(1).abs().sum(0)
         self._acc_running_ticks += running.sum()
 

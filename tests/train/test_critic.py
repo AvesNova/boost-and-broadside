@@ -181,3 +181,30 @@ def test_the_normaliser_state_round_trips():
     restored = ReturnNormalizer(decay=0.5, floor=1.0, device=torch.device("cpu"))
     restored.load_state_dict(normalizer.state_dict())
     assert restored.scale.item() == normalizer.scale.item()
+
+
+def test_outcome_calibration_scores_each_step_against_its_episodes_result():
+    """Steps are scored against the result their episode ends with, in the rollout."""
+    from boost_and_broadside.train.rl.critic import outcome_calibration
+
+    # Two environments, three steps. Env 0 wins at t=1; env 1 never ends.
+    probabilities = torch.tensor(
+        [
+            [[0.6, 0.1, 0.1, 0.2], [0.5, 0.0, 0.5, 0.0]],
+            [[0.8, 0.0, 0.0, 0.2], [0.5, 0.0, 0.5, 0.0]],
+            [[0.2, 0.0, 0.6, 0.2], [0.5, 0.0, 0.5, 0.0]],
+        ]
+    )
+    result = torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 0.0]])
+    terminated = torch.tensor([[False, False], [True, False], [False, False]])
+    diagnostics = outcome_calibration(probabilities, result, terminated)
+    total, count = diagnostics["outcome/realised_win"]
+    assert count.item() == 2.0, "only env 0's two steps up to its terminal one resolve"
+    assert total.item() == 2.0
+    predicted, _ = diagnostics["outcome/predicted_win"]
+    # P(win | resolved) = 0.6 / 0.8 and 0.8 / 0.8.
+    assert predicted.item() == pytest.approx(0.75 + 1.0)
+    brier, _ = diagnostics["outcome/calibration_brier"]
+    assert brier.item() == pytest.approx(0.25**2)
+    top, top_count = diagnostics["outcome/calibration_bin_9/realised"]
+    assert (top.item(), top_count.item()) == (1.0, 1.0)

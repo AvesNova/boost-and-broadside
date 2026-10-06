@@ -90,6 +90,7 @@ def _run(privileged: bool = True) -> tuple:
     )
     trainer = types.SimpleNamespace(
         cfg=types.SimpleNamespace(next_state_coef=1.0),
+        _outcome_global_k=(),
         _index_log_scale=_LOG_SCALE,
         _believed_means=lambda buf, steps: PPOTrainer._believed_means(trainer, buf, steps),
         _precompute_belief_diagnostics=lambda *args: None,

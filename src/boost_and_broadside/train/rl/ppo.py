@@ -81,6 +81,7 @@ from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
 from boost_and_broadside.train.rl.critic import (
     CriticOutput,
     ReturnNormalizer,
+    outcome_calibration,
     two_hot,
 )
 from boost_and_broadside.train.rl.elo_diagnostics import LiveEloDiagnostics
@@ -2595,6 +2596,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # Diagnostics compare forecasts against hidden *truth*, so they read the
         # privileged means as well.
         self._precompute_belief_diagnostics(buf, believed, truth)
+        if self._outcome_global_k:
+            buf.belief_diagnostics.update(
+                outcome_calibration(buf.outcome_probs, buf.outcome_result, buf.terminated)
+            )
 
     def _believed_means(self, buf: RolloutBuffer, steps: int) -> torch.Tensor:
         """``(steps, B, N, 11)`` physical state the stored observations carry."""

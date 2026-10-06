@@ -149,6 +149,18 @@ class LoggingMixin:
             residual = ep_stats["zero_sum_residual"].cpu()
             for i, name in enumerate(self._active_names):
                 metrics[f"reward/zero_sum_residual/{name}"] = residual[i].item() / running_ticks
+            # Each event's share of its level's reward magnitude. The damage
+            # level's charge-back share is the one §10.3 asks for: how much of
+            # what a hit paid is later handed back as the shield recharges.
+            magnitude = ep_stats["event_abs"].cpu()
+            level_total: dict[str, float] = {}
+            for i, name in enumerate(self.wrapper.event_names):
+                level = name.split("/", 1)[0]
+                level_total[level] = level_total.get(level, 0.0) + magnitude[i].item()
+            for i, name in enumerate(self.wrapper.event_names):
+                total = level_total[name.split("/", 1)[0]]
+                if total > 0.0:
+                    metrics[f"reward/event_share/{name}"] = magnitude[i].item() / total
         if n_eps > 0:
             n_ship_eps = n_eps * self.wrapper.num_ships
             comp_sum = ep_stats["comp_sum"].cpu()
