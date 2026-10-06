@@ -8,6 +8,15 @@ zone area per ship and field area per ship stay at their 5v5 values — see
 front lead of three or after 300 seconds; timeout uses the front's sign.
 Legacy elimination combat remains available on its smaller 60 Hz map.
 
+Training additionally draws a map scale `s` per episode (`map_scale_cap`, 4 in the
+shipped profiles): half the episodes play the reference map, the rest a map whose zone
+ring, zones, playable radius and field sizes are `s` times larger, with `ln s`
+exponential at rate 1.5 and truncated at the cap. Ship count, physics, vision and
+episode length do not change, so a scaled map is a sparser one; its purpose is to
+exercise the coarse position levels and low-frequency rotations a larger fleet's map
+would use. The scale lives per environment in `TensorState.map_scale`, and the scripted
+controller's zone support radius follows it. Evaluation always plays `s = 1`.
+
 ## Frontline shields and lives
 
 Ships carry 100 shield capacity. Enemy hits remove shields; a ship that entered a

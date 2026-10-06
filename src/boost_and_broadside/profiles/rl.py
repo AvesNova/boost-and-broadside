@@ -70,6 +70,12 @@ RL_PROFILE = ProfileSpec(
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,
     ),
+    # Map-scale randomisation (frontline-redesign-plan.md §9): half the episodes
+    # play the reference map, the rest a map up to four times its size, so the
+    # coarse position levels and low-frequency rotations a 50v50 map uses
+    # (s = 3.16 at constant density) are exercised at ten ships. Only the map
+    # changes; at ten ships a scaled map is a sparse one, not a larger fleet.
+    map_scale_cap=4.0,
     # --- Rollout shape ---
     # Preserve 3840 environments per logical update at 26 tokens.
     # Four 960-env shards fit the existing 4M-token VRAM preset.

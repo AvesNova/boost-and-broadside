@@ -18,7 +18,11 @@ from boost_and_broadside.config.schema import (
     ResolvedTrainConfig,
 )
 from boost_and_broadside.config.training import ScaleConfig, TrainConfig
-from boost_and_broadside.env.frontline import scaled_frontline_geometry
+from boost_and_broadside.env.frontline import (
+    FRONTLINE_WORLD_SIZE,
+    scaled_frontline_geometry,
+    validate_map_scale_cap,
+)
 
 
 @dataclass(frozen=True)
@@ -294,6 +298,13 @@ def validate_resolved_config(config: TrainConfig) -> None:
     scale = config.scales[0]
     if scale.num_envs < 1:
         raise ValueError(f"num_envs must be positive, got {scale.num_envs}")
+    for scale_config in config.scales:
+        frontline = scale_config.env_config.frontline
+        if frontline is None:
+            if config.map_scale_cap != 1.0:
+                raise ValueError("map_scale_cap needs a Frontline environment")
+        else:
+            validate_map_scale_cap(config.map_scale_cap, frontline, FRONTLINE_WORLD_SIZE)
     if scale.num_envs % config.num_minibatches:
         raise ValueError(
             f"num_envs={scale.num_envs} must be divisible by "

@@ -20,6 +20,7 @@ from boost_and_broadside.env.frontline import (
     clear_previous_life_attribution,
     initialize_frontline_map,
     place_ships_at_spawns,
+    validate_map_scale_cap,
 )
 from boost_and_broadside.env.physics import (
     _combat_damage_tensors,
@@ -49,6 +50,7 @@ class TensorEnv:
         env_config: EnvConfig,
         device: str | torch.device,
         collision_compile_mode: str | None = None,
+        map_scale_cap: float = 1.0,
     ) -> None:
         self.num_envs = num_envs
         self.ship_config = ship_config
@@ -75,6 +77,13 @@ class TensorEnv:
                 raise ValueError("frontline respawn_power cannot exceed ship max_power")
             if env_config.frontline.respawn_speed < ship_config.min_speed:
                 raise ValueError("frontline respawn_speed must retain steering authority")
+        # The largest map scale an episode may draw (§9). One plays the
+        # reference geometry; only training samples above it.
+        if env_config.frontline is not None:
+            validate_map_scale_cap(map_scale_cap, env_config.frontline, ship_config.world_size)
+        elif map_scale_cap != 1.0:
+            raise ValueError("map scale randomisation needs frontline mode")
+        self.map_scale_cap = float(map_scale_cap)
         self.state: TensorState | None = None
         # Accumulated over the most recent decision-level ``step``. Direct
         # physics schedulers use this to decide which newly selected commands
@@ -131,6 +140,7 @@ class TensorEnv:
             ship_is_shooting=torch.zeros((B, N), dtype=torch.bool, device=dev),
             map_center=torch.zeros((B,), dtype=torch.complex64, device=dev),
             playable_boundary_radius=torch.zeros((B,), dtype=torch.float32, device=dev),
+            map_scale=torch.ones((B,), dtype=torch.float32, device=dev),
             front_position=torch.zeros((B,), dtype=torch.long, device=dev),
             front_delta=torch.zeros((B,), dtype=torch.int8, device=dev),
             front_win_threshold=torch.full(
@@ -225,6 +235,7 @@ class TensorEnv:
                 mask,
                 self.env_config.frontline,
                 self.ship_config.world_size,
+                map_scale_cap=self.map_scale_cap,
             )
 
         # Positions — uniformly random in world
@@ -249,6 +260,7 @@ class TensorEnv:
                 playable_radius=(
                     s.playable_boundary_radius if self.env_config.frontline is not None else None
                 ),
+                scale=(s.map_scale if self.env_config.frontline is not None else None),
             )
             field_names = (
                 "field_pos",

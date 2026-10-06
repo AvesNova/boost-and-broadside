@@ -27,6 +27,7 @@ from boost_and_broadside.config import (
 from boost_and_broadside.config.live_elo import LIVE_RANDOM_ELO
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.rewards import component_weights
+from boost_and_broadside.env.wrapper import MAP_SCALE_BUCKETS, SOURCE_STAT_NAMES
 from boost_and_broadside.train.rl.elo_eval import MAX_CHECKPOINT_ANCHORS
 from boost_and_broadside.train.rl.logging import match_metrics
 from boost_and_broadside.train.rl.physical_belief import physical_means_from_state
@@ -204,6 +205,58 @@ class TestPPOSmokeTest:
         )
 
         trainer.train()
+
+    def test_training_maps_draw_a_scale_and_report_ships_in_sight_by_it(self, tmp_path):
+        """§9: the trainer's environments sample a map scale; evaluation does not."""
+        frontline = FrontlineConfig(
+            zone_radius=220.0,
+            zone_ring_radius=1200.0,
+            playable_radius=2600.0,
+            capture_seconds=6.0,
+            respawn_health=25.0,
+            respawn_power=20.0,
+            respawn_speed=30.0,
+            shield_recharge_delay=4.0,
+            shield_recharge_per_second=20.0,
+            boundary_damage_per_second=5.0,
+            boundary_damage_per_pixel_second=0.05,
+            front_win_threshold=5,
+        )
+        config = dataclasses.replace(
+            _make_train_config(
+                checkpoint_dir=str(tmp_path),
+                env_config=EnvConfig(
+                    num_ships=4,
+                    max_bullets=8,
+                    max_episode_steps=20,
+                    frontline=frontline,
+                    vision_range=1024.0,
+                    spawn_reveal=True,
+                ),
+            ),
+            map_scale_cap=4.0,
+        )
+        torch.manual_seed(5)
+        trainer = PPOTrainer(
+            train_config=config,
+            model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
+            ship_config=ShipConfig(world_size=(65536.0, 65536.0)),
+            device="cpu",
+            use_wandb=False,
+            scripted_agent=None,
+        )
+        assert trainer.wrapper.env.map_scale_cap == 4.0
+        runtime = trainer._initialize_rollout_runtime()
+        assert runtime.elo_eval.env.map_scale_cap == 1.0, "evaluation plays s = 1"
+        trainer._collect_rollout(runtime, False)
+        stats = dict(
+            zip(SOURCE_STAT_NAMES, trainer.wrapper.pop_episode_stats()["source_stats"].tolist())
+        )
+        assert stats["map_scale_sum"] >= stats["map_scale_samples"] > 0
+        buckets = sum(
+            stats[f"perception_scale_{bucket}_enemy_slots"] for bucket in MAP_SCALE_BUCKETS
+        )
+        assert buckets == stats["perception_enemy_slots"] > 0
 
     # test_encoder_works_with_non_default_n_fourier_freqs is removed because
     # n_fourier_freqs is no longer in ModelConfig.

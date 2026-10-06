@@ -245,6 +245,13 @@ class TrainConfig:
     # thing that gives the head an embedding to read.
     global_density_coef: float = 0.0
 
+    # Largest Frontline map scale a training episode may draw. Each reset plays
+    # the reference geometry with probability one half and otherwise a map whose
+    # zone ring, zones, playable radius and fields are scaled by s up to this cap
+    # (frontline-redesign-plan.md §9). One plays only the reference map;
+    # evaluation always does.
+    map_scale_cap: float = 1.0
+
     # --- Logging ---
     log_interval: int = 10  # print to terminal every N updates
 

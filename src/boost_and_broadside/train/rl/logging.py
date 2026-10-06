@@ -10,7 +10,7 @@ from queue import Empty
 import torch
 
 from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig, TrainConfig
-from boost_and_broadside.env.wrapper import SOURCE_STAT_NAMES
+from boost_and_broadside.env.wrapper import MAP_SCALE_BUCKETS, SOURCE_STAT_NAMES
 
 
 def match_metrics(match_counts: Mapping[str, tuple[int, int, int]]) -> dict[str, float]:
@@ -124,6 +124,19 @@ class LoggingMixin:
                 else 0.0
             )
             metrics["fog/reacquisitions"] = source_stats["perception_reacquisitions"].item()
+            # Ships in sight beside the map scale (§9): at ten ships a larger map
+            # is a sparser one, so per-scale metrics read against this.
+            for bucket in MAP_SCALE_BUCKETS:
+                slots = source_stats[f"perception_scale_{bucket}_enemy_slots"].item()
+                metrics[f"map_scale/enemy_slot_share/{bucket}"] = slots / enemy_slots
+                if slots > 0:
+                    metrics[f"fog/visible_fraction/scale_{bucket}"] = (
+                        source_stats[f"perception_scale_{bucket}_visible_enemy_slots"].item()
+                        / slots
+                    )
+            samples = source_stats["map_scale_samples"].item()
+            if samples > 0:
+                metrics["map_scale/mean"] = source_stats["map_scale_sum"].item() / samples
             occlusion_hist = ep_stats["occlusion_hist"].cpu()
             edges = ep_stats["occlusion_bin_seconds"].cpu()
             for index, count in enumerate(occlusion_hist):

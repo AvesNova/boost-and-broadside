@@ -64,7 +64,35 @@ SOURCE_STAT_NAMES: tuple[str, ...] = (
     "perception_hidden_age_sum",
     "perception_hidden_samples",
     "perception_reacquisitions",
+    # Ships in sight by the episode's map scale (§9): s = 1, 1 < s < 2, s >= 2.
+    "perception_scale_1_enemy_slots",
+    "perception_scale_1_visible_enemy_slots",
+    "perception_scale_1_2_enemy_slots",
+    "perception_scale_1_2_visible_enemy_slots",
+    "perception_scale_2_plus_enemy_slots",
+    "perception_scale_2_plus_visible_enemy_slots",
+    "map_scale_sum",
+    "map_scale_samples",
 )
+#: Map-scale buckets the perception counters split by: s = 1, 1 < s < 2, s >= 2.
+MAP_SCALE_BUCKETS: tuple[str, ...] = ("1", "1_2", "2_plus")
+
+
+def _scale_bucket_counts(
+    map_scale: torch.Tensor, enemy_alive: torch.Tensor, visible: torch.Tensor
+) -> list[torch.Tensor]:
+    """Enemy and visible-enemy slot counts per map-scale bucket, interleaved.
+
+    ``map_scale`` is ``(B,)``; the slot masks are ``(B, 2, N)``.
+    """
+
+    scale = map_scale.view(-1, 1, 1)
+    buckets = (scale <= 1.0, (scale > 1.0) & (scale < 2.0), scale >= 2.0)
+    counts: list[torch.Tensor] = []
+    for bucket in buckets:
+        counts.append((enemy_alive & bucket).sum())
+        counts.append((visible & bucket).sum())
+    return counts
 
 
 class YemongEnvWrapper:
@@ -104,6 +132,7 @@ class YemongEnvWrapper:
         perception_compile_mode: str | None = None,
         interactive_cuda_graph: bool = False,
         interactive_perception_compile_mode: str | None = None,
+        map_scale_cap: float = 1.0,
     ) -> None:
         self.env = TensorEnv(
             num_envs,
@@ -111,6 +140,7 @@ class YemongEnvWrapper:
             env_config,
             device,
             collision_compile_mode,
+            map_scale_cap=map_scale_cap,
         )
         self.ship_config = ship_config
         self.env_config = env_config
@@ -817,6 +847,9 @@ class YemongEnvWrapper:
                 (self._perception_hidden_age * hidden).sum(),
                 hidden.sum(),
                 reacquired.sum(),
+                *_scale_bucket_counts(state.map_scale, enemy_alive, visible),
+                state.map_scale.sum(),
+                torch.full((), state.num_envs, dtype=torch.float32, device=self.device),
             ]
         )
 

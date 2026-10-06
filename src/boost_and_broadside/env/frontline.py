@@ -35,6 +35,39 @@ _EULER_MASCHERONI = 0.5772156649015329
 # batch without importing the environment. Importers here keep working.
 __all__ = ["NUM_FRONTLINE_ZONES"]
 
+# Map-scale randomisation (frontline-redesign-plan.md §9). An episode plays the
+# reference geometry with this probability, otherwise s = exp(x) for x
+# exponential at ``MAP_SCALE_RATE``, truncated at the cap. At rate 1.5 and cap 4:
+# P(s <= 1.25) = 0.66, P(s >= 2) = 0.13, P(s >= 3.16, the 50v50 scale) = 0.03.
+MAP_SCALE_UNIT_PROBABILITY = 0.5
+MAP_SCALE_RATE = 1.5
+
+
+def validate_map_scale_cap(
+    cap: float, frontline: FrontlineConfig, world_size: tuple[float, float]
+) -> None:
+    """Refuse a cap whose largest map does not fit the torus's half-period."""
+
+    if not math.isfinite(cap) or cap < 1.0:
+        raise ValueError(f"map_scale_cap must be at least 1, got {cap}")
+    half_period = 0.5 * min(world_size)
+    if frontline.playable_radius * cap >= half_period:
+        raise ValueError(
+            f"map_scale_cap {cap} gives a {frontline.playable_radius * cap:.0f} px playable "
+            f"radius, which does not fit the {half_period:.0f} px half-period"
+        )
+
+
+def sample_map_scale(batch_size: int, cap: float, device: torch.device) -> torch.Tensor:
+    """``(B,)`` map scales: 1 with probability one half, else truncated exp(Exp(1.5))."""
+
+    unit = torch.rand((batch_size,), device=device) < MAP_SCALE_UNIT_PROBABILITY
+    # Inverse CDF of the exponential truncated to [0, ln cap].
+    mass = 1.0 - math.exp(-MAP_SCALE_RATE * math.log(cap))
+    draw = torch.rand((batch_size,), device=device)
+    exponent = -torch.log1p(-draw * mass) / MAP_SCALE_RATE
+    return torch.where(unit, 1.0, torch.exp(exponent))
+
 
 def frontline_scale(num_ships: int) -> float:
     """Linear factor that holds ship areal density at its 5v5 value.
@@ -285,11 +318,25 @@ def initialize_frontline_map(
     reset_mask: torch.Tensor,
     config: FrontlineConfig,
     world_size: tuple[float, float],
+    map_scale_cap: float = 1.0,
 ) -> None:
-    """Reset translated map-local frontline state for selected environments."""
+    """Reset translated map-local frontline state for selected environments.
+
+    With ``map_scale_cap`` above one each reset environment draws a map scale
+    and plays the reference zone ring, zone and playable radii times it; the
+    field layout reads ``state.map_scale`` afterwards. Ship count, physics,
+    vision and episode length are untouched (§9).
+    """
 
     batch_size = state.num_envs
     world_w, world_h = world_size
+    scale = (
+        sample_map_scale(batch_size, map_scale_cap, state.device)
+        if map_scale_cap > 1.0
+        else torch.ones((batch_size,), device=state.device)
+    )
+    state.map_scale = torch.where(reset_mask, scale, state.map_scale)
+    scale = state.map_scale
     map_center = torch.complex(
         torch.rand((batch_size,), device=state.device) * world_w,
         torch.rand((batch_size,), device=state.device) * world_h,
@@ -322,14 +369,16 @@ def initialize_frontline_map(
         1.0,
     )
     angles = handedness * base.unsqueeze(0) + rotation  # (B, Z)
-    offsets = torch.polar(torch.full_like(angles, config.zone_ring_radius), angles)
+    offsets = torch.polar(config.zone_ring_radius * scale.unsqueeze(1).expand_as(angles), angles)
     translated = wrap_positions(state.map_center.unsqueeze(1) + offsets, world_size)
     reset_z = reset_mask.unsqueeze(1)
     state.zone_pos = torch.where(reset_z, translated, state.zone_pos)
-    state.zone_radius = torch.where(reset_z, config.zone_radius, state.zone_radius)
+    state.zone_radius = torch.where(
+        reset_z, config.zone_radius * scale.unsqueeze(1), state.zone_radius
+    )
     state.playable_boundary_radius = torch.where(
         reset_mask,
-        config.playable_radius,
+        config.playable_radius * scale,
         state.playable_boundary_radius,
     )
     state.front_position = torch.where(reset_mask, 0, state.front_position)

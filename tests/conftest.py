@@ -72,6 +72,7 @@ def make_state(
         ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
         map_center=torch.zeros((num_envs,), dtype=torch.complex64, device=dev),
         playable_boundary_radius=torch.zeros((num_envs,), dtype=torch.float32, device=dev),
+        map_scale=torch.ones((num_envs,), dtype=torch.float32, device=dev),
         front_position=torch.zeros((num_envs,), dtype=torch.long, device=dev),
         front_delta=torch.zeros((num_envs,), dtype=torch.int8, device=dev),
         front_win_threshold=torch.zeros((num_envs,), dtype=torch.long, device=dev),

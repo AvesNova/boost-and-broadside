@@ -453,6 +453,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             collision_compile_mode=collision_compile_mode,
             include_bullets=model_config.reads_bullets,
             perception_compile_mode=collision_compile_mode,
+            map_scale_cap=train_config.map_scale_cap,
         )
         K = self.wrapper.num_active_components
         self._active_names = self.wrapper.active_names  # stable ref used throughout
@@ -817,6 +818,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 collision_compile_mode=collision_compile_mode,
                 include_bullets=model_config.reads_bullets,
                 perception_compile_mode=collision_compile_mode,
+                map_scale_cap=train_config.map_scale_cap,
             )
             aux_sample_obs = aux_w.reset()
             aux_buf = RolloutBuffer(

@@ -86,6 +86,7 @@ class ProfileSpec:
     zones_occlude: bool
     spawn_reveal: bool
     frontline: FrontlineConfig | None
+    map_scale_cap: float
     # --- Rollout shape ---
     logical_batch_tokens: int
     num_steps: int

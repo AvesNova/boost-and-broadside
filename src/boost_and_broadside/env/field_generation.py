@@ -33,6 +33,7 @@ def generate_field_layout(
     *,
     map_center: torch.Tensor | None = None,
     playable_radius: torch.Tensor | None = None,
+    scale: torch.Tensor | None = None,
     generator: torch.Generator | None = None,
 ) -> tuple[torch.Tensor, ...]:
     """Generate one fresh field layout per environment.
@@ -42,6 +43,9 @@ def generate_field_layout(
     area-uniformly inside the practical battlefield, with each complete field
     kept inside its soft boundary. No pairwise placement test is needed because
     overlaps, coincident fields, and nesting are all valid.
+
+    ``scale`` is each environment's ``(B,)`` map scale: field radii and transition
+    widths are the configured ranges times it, like the rest of the map.
     """
 
     count = env_config.num_fields
@@ -70,6 +74,9 @@ def generate_field_layout(
         device,
         generator,
     )
+    if scale is not None:
+        width = width * scale.unsqueeze(1)
+        radius = radius * scale.unsqueeze(1)
     if map_center is None:
         unit_x, unit_y = _low_discrepancy_toroid(
             batch_size,

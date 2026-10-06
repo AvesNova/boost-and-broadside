@@ -81,12 +81,13 @@ def frontline_strategy(
         state.zone_pos[:, None, :] - state.ship_pos[:, :, None], ship.world_size
     )
     zone_distance = zone_delta.abs()
+    # A configured support radius describes the reference map; it follows the
+    # episode's map scale the way the zones it stands in for do.
     support_radius = (
         2 * state.zone_radius[:, None, :]
         if zone_radius is None
-        else zone_radius
-        if not torch.is_tensor(zone_radius)
-        else zone_radius.unsqueeze(-1)
+        else (zone_radius if not torch.is_tensor(zone_radius) else zone_radius.unsqueeze(-1))
+        * state.map_scale[:, None, None]
     )
     contribution = health[:, :, None] * torch.exp(-(zone_distance / support_radius).square())
     # Sum once per team, then gather for each observer and subtract self.

@@ -974,8 +974,10 @@ slow deterministic drift is cheap because the residual baseline makes "no change
   scripted strategy (`frontline_strategy.py`, scaled once in `evaluation/agents.py`)
   read scalar radii; on a rescaled environment the behaviour-cloning teacher and the
   scripted opponent would be wrong. Both must read per-environment geometry.
-* **Range and distribution: open (§13).** One candidate: probability 0.5 at s = 1,
-  otherwise s = exp(x) with x exponential at rate 1.5, truncated to [0, ln 12]:
+* **Range and distribution: decided for the first run.** Probability 0.5 at s = 1,
+  otherwise s = exp(x) with x exponential at rate 1.5, truncated to [0, ln 4]
+  (`map_scale_cap = 4`). With truncation at ln 4, P(s ≥ 2) = 0.13 and P(s ≥ 3.16) =
+  0.03. The table below is the untruncated-at-4 candidate, truncated to [0, ln 12]:
 
   | | P |
   |---|---:|
@@ -1097,7 +1099,8 @@ for it.
    the 15° version works.
 4. **Thrust vectoring** is out of scope. If it returns, cap its rotation rate and scale
    it with applied thrust. A near-stationary turret is the abuse case to test.
-5. **Map-scale range and distribution** (§9).
+5. **Map-scale range and distribution** (§9). Cap 4 for the first run; revisit if the
+   per-scale metrics show the large maps are nearly all timeouts.
 
 ---
 

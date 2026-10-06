@@ -114,6 +114,8 @@ layout in `train/rl/ship_codes.py`, the scalar encoder as decided in
 
 ### Phase 9. Map-scale randomisation (§9)
 
+Status (2026-10-06): **done.** Deviations 34–37.
+
 * Per-environment scale `s` sampled at reset (0.5 at s = 1, else
   exp(Exponential(1.5)) truncated, cap configurable, default 4), applied through
   `scaled_frontline_geometry`.
@@ -281,6 +283,20 @@ Entries are added as the work proceeds.
     Longer delays clamp to the last bin.
 33. **The schema bump landed with Phase 8** (`categorical_codes_v21`), since Phase 8
     is where every input and head width changes. It is the one bump for Part II.
+
+34. **The cap is a training knob (`TrainConfig.map_scale_cap`), not part of
+    `EnvConfig`.** The environment config is checkpointed and reused by evaluation,
+    crossover and tournaments; on it, the distribution would follow a checkpoint into
+    every rated game. The trainer hands the cap to its own wrappers only, and every
+    other environment plays s = 1.
+35. **Truncation at ln 4 renormalises the tail**: P(s ≥ 2) = 0.13 and P(s ≥ 3.16) =
+    0.03, against the spec table's 0.17 and 0.08, which truncate at ln 12.
+36. **The scripted controller's configured zone support radius scales with s**;
+    its combat and separation radii do not, for the reason they do not scale with
+    fleet size (weapon and hull lengths).
+37. **Ships in sight are logged per scale bucket** (`fog/visible_fraction/scale_1`,
+    `_1_2`, `_2_plus`), with each bucket's share of enemy slots and `map_scale/mean`.
+    The other §10.3 per-scale series are not split yet.
 
 ### Measured (Phase 4)
 

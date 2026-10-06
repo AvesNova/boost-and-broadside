@@ -63,6 +63,9 @@ class TensorState:
     # axis and ``match_result`` is still the authoritative terminal outcome.
     map_center: torch.Tensor  # (B,) complex64 — common translated map origin
     playable_boundary_radius: torch.Tensor  # (B,) float32
+    # Per-episode map scale s: zone ring, zone and playable radii and field
+    # sizes are the reference geometry times s. One unless training samples it.
+    map_scale: torch.Tensor  # (B,) float32
     front_position: torch.Tensor  # (B,) int64 — unwrapped strategic coordinate
     front_delta: torch.Tensor  # (B,) int8 — {-1, 0, +1} this physics tick
     front_win_threshold: torch.Tensor  # (B,) int64
