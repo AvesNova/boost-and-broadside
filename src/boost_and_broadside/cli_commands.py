@@ -164,6 +164,7 @@ def _make_trainer(
         scripted_agent=StochasticScriptedAgent(resolved.ship_config, StochasticAgentConfig()),
         compile_mode=launch.execution.compile_mode,
         gradient_diagnostics=launch.execution.gradient_diagnostics,
+        keep_checkpoints=args.keep_checkpoints,
         resume_wandb_run_id=resume_wandb_run_id,
         resolved_config_document=resolved_profile_document(resolved),
         # The complete launch record, including which VRAM decision chose the

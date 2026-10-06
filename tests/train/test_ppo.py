@@ -136,6 +136,7 @@ def _make_trainer(
     schedule: TrainingSchedule | None = None,
     ship_config: ShipConfig | None = None,
     env_config: EnvConfig | None = None,
+    keep_checkpoints: int | None = 3,
     **reward_overrides,
 ) -> PPOTrainer:
     ship_config = ship_config or ShipConfig()
@@ -167,6 +168,7 @@ def _make_trainer(
         device=device,
         use_wandb=False,
         scripted_agent=scripted_agent,
+        keep_checkpoints=keep_checkpoints,
     )
 
 

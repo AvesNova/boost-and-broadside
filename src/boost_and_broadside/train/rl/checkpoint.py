@@ -29,10 +29,11 @@ from boost_and_broadside.train.rl.checkpoint_schema import (
 from boost_and_broadside.train.rl.elo_eval import EloEvaluator
 from boost_and_broadside.train.rl.match_matrix import MatchMatrix
 
-# Rolling window of full-resume (step_*.pt) and avg (avg_step_*.pt) checkpoints
-# kept per run. Ladder snapshots (ladder_step_*.pt) and named best checkpoints
+# Default rolling window of full-resume (step_*.pt) and avg (avg_step_*.pt)
+# checkpoints kept per run; ``bnb train --keep-checkpoints`` overrides it per
+# launch. Ladder snapshots (ladder_step_*.pt) and named best checkpoints
 # (best_*.pt) use separate filename families and are never subject to this cap.
-_KEEP_LAST_N_CHECKPOINTS = 3
+DEFAULT_KEEP_CHECKPOINTS = 3
 
 
 def build_policy_checkpoint_payload(
@@ -255,13 +256,15 @@ def _load_checkpoint_state(
 
 
 def _prune_checkpoint_family(
-    ckpt_dir: Path, glob_pattern: str, protected: set[str], keep_last_n: int
+    ckpt_dir: Path, glob_pattern: str, protected: set[str], keep_last_n: int | None
 ) -> None:
     """Delete files matching glob_pattern beyond the newest keep_last_n, minus protected paths.
 
-    Filenames in every pruned family embed the zero-padded global step, so
-    lexicographic sort order is chronological order.
+    ``None`` keeps every file. Filenames in every pruned family embed the
+    zero-padded global step, so lexicographic sort order is chronological order.
     """
+    if keep_last_n is None:
+        return
     candidates = sorted(ckpt_dir.glob(glob_pattern))
     kept = {str(p) for p in candidates[-keep_last_n:]} | protected
     for old_path in candidates:
@@ -650,7 +653,7 @@ class CheckpointMixin:
                 print(f"Avg checkpoint saved asynchronously: {avg_path}")
 
             # Prune each family (live step_*.pt, avg avg_step_*.pt) down to the
-            # newest _KEEP_LAST_N_CHECKPOINTS. best_*.pt and ladder_step_*.pt live
+            # newest self._keep_checkpoints. best_*.pt and ladder_step_*.pt live
             # under different filename prefixes, so neither glob below ever
             # touches them regardless of this cap. roster.kept_paths() is unioned
             # in as defense in depth for any roster entry that ever names a path
@@ -658,8 +661,9 @@ class CheckpointMixin:
             # the ladder_step_ prefix, so in practice this set never intersects
             # either glob.
             protected = self.roster.kept_paths()
-            _prune_checkpoint_family(ckpt_dir, "step_*.pt", protected, _KEEP_LAST_N_CHECKPOINTS)
-            _prune_checkpoint_family(ckpt_dir, "avg_step_*.pt", protected, _KEEP_LAST_N_CHECKPOINTS)
+            keep = self._keep_checkpoints
+            _prune_checkpoint_family(ckpt_dir, "step_*.pt", protected, keep)
+            _prune_checkpoint_family(ckpt_dir, "avg_step_*.pt", protected, keep)
 
         self._run_async_save("_active_save_thread", "standard checkpoint saving", _async_save)
 

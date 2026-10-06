@@ -77,7 +77,7 @@ from boost_and_broadside.train.rl.buffer import (
     RolloutBuffer,
     StoredRollout,
 )
-from boost_and_broadside.train.rl.checkpoint import CheckpointMixin
+from boost_and_broadside.train.rl.checkpoint import DEFAULT_KEEP_CHECKPOINTS, CheckpointMixin
 from boost_and_broadside.train.rl.critic import (
     CriticOutput,
     ReturnNormalizer,
@@ -359,6 +359,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         launch_provenance: Execution settings resolved by the installed CLI.
         gradient_diagnostics: Gradient decomposition depth and cadence. At its
             default the trainer takes no diagnostic code path at all.
+        keep_checkpoints: Newest ``step_*.pt`` (and ``avg_step_*.pt``) files kept
+            per run; ``None`` keeps every one, for runs whose checkpoints are
+            measured afterwards.
     """
 
     def __init__(
@@ -374,7 +377,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         resolved_config_document: Mapping[str, object] | None = None,
         launch_provenance: Mapping[str, object] | None = None,
         gradient_diagnostics: GradientDiagnosticsConfig = GRADIENT_DIAGNOSTICS_OFF,
+        keep_checkpoints: int | None = DEFAULT_KEEP_CHECKPOINTS,
     ) -> None:
+        if keep_checkpoints is not None and keep_checkpoints < 1:
+            raise ValueError(f"keep_checkpoints must be positive or None, got {keep_checkpoints}")
+        self._keep_checkpoints = keep_checkpoints
         self.cfg = train_config
         self.model_config = model_config
         self.ship_config = ship_config

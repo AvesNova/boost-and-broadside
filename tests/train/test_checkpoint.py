@@ -637,40 +637,60 @@ class TestCheckpointRetention:
 
     Previously ``_save_checkpoint`` kept only the single newest ``step_*.pt``
     file and a single, non-rotated ``recent_avg.pt``. This exercises the
-    replacement policy: the newest ``_KEEP_LAST_N_CHECKPOINTS`` live and avg
+    replacement policy: the newest ``DEFAULT_KEEP_CHECKPOINTS`` live and avg
     checkpoints survive, older ones in each family are pruned, and neither the
     best-model files nor the Elo ladder's own snapshots are ever touched.
     """
 
     def test_prune_keeps_only_last_n_live_checkpoints(self, tmp_path):
-        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from boost_and_broadside.train.rl.checkpoint import DEFAULT_KEEP_CHECKPOINTS
         from tests.train.test_ppo import _make_trainer
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
-        for step in range(1, _KEEP_LAST_N_CHECKPOINTS + 3):
+        for step in range(1, DEFAULT_KEEP_CHECKPOINTS + 3):
             trainer._global_step = step
             _save_checkpoint_and_join(trainer, update=step)
 
         remaining = sorted(p.name for p in tmp_path.rglob("step_*.pt"))
-        expected_steps = range(3, _KEEP_LAST_N_CHECKPOINTS + 3)
+        expected_steps = range(3, DEFAULT_KEEP_CHECKPOINTS + 3)
         assert remaining == [f"step_{s:012d}.pt" for s in expected_steps]
 
     def test_prune_keeps_only_last_n_avg_checkpoints(self, tmp_path):
-        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from boost_and_broadside.train.rl.checkpoint import DEFAULT_KEEP_CHECKPOINTS
         from tests.train.test_ppo import _make_trainer
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
         trainer._avg_update_count = 1  # avg policy is ready to be checkpointed
-        for step in range(1, _KEEP_LAST_N_CHECKPOINTS + 3):
+        for step in range(1, DEFAULT_KEEP_CHECKPOINTS + 3):
             trainer._global_step = step
             _save_checkpoint_and_join(trainer, update=step)
 
         remaining = sorted(p.name for p in tmp_path.rglob("avg_step_*.pt"))
-        expected_steps = range(3, _KEEP_LAST_N_CHECKPOINTS + 3)
+        expected_steps = range(3, DEFAULT_KEEP_CHECKPOINTS + 3)
         assert remaining == [f"avg_step_{s:012d}.pt" for s in expected_steps]
 
+    def test_the_window_is_a_launch_choice(self, tmp_path):
+        """``--keep-checkpoints``: a run whose checkpoints are measured
+        afterwards keeps every one, or a wider window than the default."""
+        from tests.train.test_ppo import _make_trainer
+
+        for keep, expected_steps in ((None, range(1, 7)), (5, range(2, 7))):
+            directory = tmp_path / str(keep)
+            trainer = _make_trainer(checkpoint_dir=str(directory), keep_checkpoints=keep)
+            for step in range(1, 7):
+                trainer._global_step = step
+                _save_checkpoint_and_join(trainer, update=step)
+            remaining = sorted(p.name for p in directory.rglob("step_*.pt"))
+            assert remaining == [f"step_{s:012d}.pt" for s in expected_steps]
+
+    def test_a_window_below_one_is_rejected(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        with pytest.raises(ValueError, match="keep_checkpoints"):
+            _make_trainer(checkpoint_dir=str(tmp_path), keep_checkpoints=0)
+
     def test_best_and_ladder_files_survive_rolling_prune(self, tmp_path):
-        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from boost_and_broadside.train.rl.checkpoint import DEFAULT_KEEP_CHECKPOINTS
         from tests.train.test_ppo import _make_trainer
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
@@ -678,7 +698,7 @@ class TestCheckpointRetention:
         trainer._active_best_thread.join(timeout=60)
         ladder_path = trainer._save_ladder_snapshot()
 
-        for step in range(1, _KEEP_LAST_N_CHECKPOINTS + 3):
+        for step in range(1, DEFAULT_KEEP_CHECKPOINTS + 3):
             trainer._global_step = step
             _save_checkpoint_and_join(trainer, update=step)
 
@@ -690,7 +710,7 @@ class TestCheckpointRetention:
         """Defense in depth: a roster "checkpoint" entry protects its path even
         though, in practice, roster entries always name ``ladder_step_*`` files
         that this glob never matches in the first place."""
-        from boost_and_broadside.train.rl.checkpoint import _KEEP_LAST_N_CHECKPOINTS
+        from boost_and_broadside.train.rl.checkpoint import DEFAULT_KEEP_CHECKPOINTS
         from tests.train.test_ppo import _make_trainer
 
         trainer = _make_trainer(checkpoint_dir=str(tmp_path))
@@ -700,12 +720,12 @@ class TestCheckpointRetention:
         protected_path.write_bytes(b"placeholder")
         trainer.roster.add_checkpoint(str(protected_path), global_step=1, update=1)
 
-        for step in range(2, _KEEP_LAST_N_CHECKPOINTS + 4):
+        for step in range(2, DEFAULT_KEEP_CHECKPOINTS + 4):
             trainer._global_step = step
             _save_checkpoint_and_join(trainer, update=step)
 
         remaining = sorted(p.name for p in ckpt_dir.glob("step_*.pt"))
-        expected_steps = [1, *range(4, _KEEP_LAST_N_CHECKPOINTS + 4)]
+        expected_steps = [1, *range(4, DEFAULT_KEEP_CHECKPOINTS + 4)]
         assert remaining == [f"step_{s:012d}.pt" for s in expected_steps]
 
     def test_save_is_skipped_while_the_previous_write_is_in_flight(self, tmp_path):

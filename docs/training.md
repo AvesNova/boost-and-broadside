@@ -661,6 +661,11 @@ does not happen. Only the resolved-config and launch blocks are optional, and bo
 provenance rather than state. Policy-only files (`best_*.pt`, `ladder_step_*.pt`) are
 consequently not resumable; `--pretrain-from` is the path that takes one.
 
+A run keeps its newest three `step_*.pt` checkpoints and prunes older ones; best and ladder
+files are never pruned. `bnb train --keep-checkpoints N` widens the window, and
+`--keep-checkpoints all` keeps every step, for runs whose checkpoints are measured
+afterwards (a gradient decomposition across a window, for instance).
+
 Environment state is deliberately *not* in that list. A resume respawns every
 environment and re-staggers truncation by writing a random `step_count`, exactly
 as a cold start does, so the first episode in most environments is a fragment:

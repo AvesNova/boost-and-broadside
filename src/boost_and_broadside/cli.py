@@ -30,6 +30,12 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _checkpoint_window(value: str) -> int | None:
+    """A positive count of step checkpoints to keep, or ``all`` (None)."""
+
+    return None if value == "all" else _positive_int(value)
+
+
 def _nonnegative_int(value: str) -> int:
     parsed = int(value)
     if parsed < 0:
@@ -326,6 +332,17 @@ COMMANDS: tuple[CommandSpec, ...] = (
                     "visible enemy, hidden enemy) and environment half, for the "
                     "trained NLL and for beta-NLL(0.5) and MSE at the same weights. "
                     "Needs --gradient-diagnostics above off."
+                ),
+            ),
+            _option(
+                "--keep-checkpoints",
+                type=_checkpoint_window,
+                default=3,
+                metavar="N|all",
+                help=(
+                    "Newest step checkpoints kept per run (default: 3), or 'all' to "
+                    "keep every one -- for runs whose checkpoints are measured "
+                    "afterwards. Best and ladder checkpoints are always kept."
                 ),
             ),
             _DEVICE,

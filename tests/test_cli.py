@@ -90,6 +90,7 @@ def test_modifier_ownership_matches_command_contract() -> None:
     assert owners["--gradient-diagnostics"] == {"train"}
     assert owners["--gradient-diagnostics-interval"] == {"train"}
     assert owners["--gradient-diagnostics-minibatches"] == {"train"}
+    assert owners["--keep-checkpoints"] == {"train"}
     assert owners["--out"] == {"capture"}
     assert owners["--target-stderr"] == {"elo-calibrate", "elo-scale"}
     assert owners["--max-batches"] == {"elo-calibrate", "elo-scale"}
@@ -845,6 +846,27 @@ def test_gradient_diagnostics_reach_the_trainer_through_the_launch(monkeypatch) 
         "minibatches": 1,
         "next_state_populations": False,
     }
+
+
+@pytest.mark.parametrize(("flag", "expected"), [(None, 3), ("all", None), ("40", 40)])
+def test_the_checkpoint_window_reaches_the_trainer(monkeypatch, flag, expected) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        cli_commands, "PPOTrainer", lambda **kwargs: captured.update(kwargs) or _StubTrainer()
+    )
+    argv = ["train", "--profile", "bc", "--no-wandb"]
+    args = _parse(argv if flag is None else [*argv, "--keep-checkpoints", flag])
+    launch = resolve_training_launch(
+        profile="bc", vram=args.vram, device="cpu", seed=0, compile_mode=None, wandb=False
+    )
+    cli_commands._make_trainer(launch, args, "cpu")
+    assert captured["keep_checkpoints"] == expected
+
+
+@pytest.mark.parametrize("flag", ["0", "-2", "some"])
+def test_a_checkpoint_window_must_be_positive_or_all(flag) -> None:
+    with pytest.raises(SystemExit):
+        _parse(["train", "--profile", "bc", "--keep-checkpoints", flag])
 
 
 def test_the_next_state_population_split_is_one_flag_away() -> None:
