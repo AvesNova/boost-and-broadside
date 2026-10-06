@@ -140,6 +140,13 @@ architecture, training, environment.
 
 ### Phase 11. PPO retune and the cold start (§7.4, §12 steps 8–9)
 
+Status (2026-10-06): **in progress.** Calibrated in three stages: BC, then the
+BC-to-RL transition and RL from a BC checkpoint, since a cloned policy's entropy,
+KL and advantage scales are the regime RL actually starts in. Loss units unified
+(deviations 38–40); BC first-guess weights set in `profiles/bc.py`. Next: a BC
+pilot (~15M steps), shares measured over a window past warmup, weights solved
+from them, one common multiplier on `train/clip_fire_rate`.
+
 * Short runs only if the 8 GB dev GPU allows; otherwise hand over with the
   reading list of §7.4. The cold-start run itself is the user's to launch.
 
@@ -305,6 +312,24 @@ Entries are added as the work proceeds.
 37. **Ships in sight are logged per scale bucket** (`fog/visible_fraction/scale_1`,
     `_1_2`, `_2_plus`), with each bucket's share of enemy slots and `map_scale/mean`.
     The other §10.3 per-scale series are not split yet.
+
+### Phase 11
+
+38. **Every loss term is in nats per token.** A weight is then an exchange rate
+    between nats of different things and does not move with fleet size; the
+    gradient-share measurement still sets it, since heads pass different gradient
+    per nat. Dividing each group by log K was rejected: most of a finer grid's
+    extra nats are a constant with no gradient, and it would make a channel's
+    weight depend on how it is cut into groups.
+39. **The critic sums its levels at per-level weights** (`component_value_weights`,
+    all one) instead of averaging them. This restores the outcome's own knob, lost
+    when `outcome_categorical_coef` was folded into the value loss. RL's
+    `value_function_coef` went 1.0 → 0.2 to keep its balance unchanged.
+40. **Next-state sums its 22 groups; density sums its 662 cells per living
+    ship-step**, both previously means. Position's nested levels add to the log
+    probability of its cell, so the sum is independent of how the code is cut.
+    RL's weights were converted to keep its balance: next-state 0.2 → 0.2/22,
+    density 1.0 → 0.015 (at ten living ships).
 
 ### Measured (Phase 4)
 

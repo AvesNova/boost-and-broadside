@@ -186,8 +186,10 @@ class TestAlignment:
 
 
 def _stats(prediction: torch.Tensor, target: torch.Tensor):
-    samples = float(prediction.shape[0] * prediction.shape[1])
-    return PPOTrainer._global_density_loss(None, prediction, target, samples)
+    # Every living ship deposits one unit, so the field's mass is the living
+    # ship-step count the trainer divides by.
+    living = target.sum().clamp(min=1.0)
+    return PPOTrainer._global_density_loss(None, prediction, target, living)
 
 
 def _loss(prediction: torch.Tensor, target: torch.Tensor) -> tuple[float, float]:
@@ -221,10 +223,22 @@ class TestLoss:
         as the head gets more certain the way a Gaussian's r/sigma^2 does."""
         target = torch.tensor([[[0.0, 1.0, 2.0, 0.5]]])
         logit = torch.tensor([[[-1.0, 0.5, 0.0, -2.0]]], requires_grad=True)
-        samples = 1.0
-        PPOTrainer._global_density_loss(None, logit, target, samples).loss.backward()
-        expected = (logit.exp() - target) / target.shape[-1]
+        living = 3.5
+        PPOTrainer._global_density_loss(None, logit, target, living).loss.backward()
+        expected = (logit.exp() - target) / living
         assert torch.allclose(logit.grad, expected, atol=1e-6)
+
+    def test_the_loss_is_summed_over_cells_and_divided_by_living_ships(self):
+        """Nats per ship token, the unit of every other term. A mean over the
+        grid's mostly empty cells would shrink the term by its size instead."""
+        target = torch.zeros(2, 3, HEX_DENSITY_DIM)
+        log_rate = -4.0
+        living = 7.0
+        stats = PPOTrainer._global_density_loss(
+            None, torch.full_like(target, log_rate), target, living
+        )
+        expected = 2 * 3 * HEX_DENSITY_DIM * math.exp(log_rate) / living
+        assert float(stats.loss) == pytest.approx(expected, rel=1e-5)
 
     def test_an_empty_cell_still_penalises_claimed_rate(self):
         """``y = 0`` contributes ``exp(l)``: the head pays for putting ships
@@ -235,17 +249,17 @@ class TestLoss:
         assert float(loud.loss) > float(quiet.loss)
 
     def test_micro_batch_contributions_sum_to_the_whole(self):
-        """The denominator is the minibatch's step-environment total, so
+        """The denominator is the minibatch's living ship-step total, so
         splitting the environments and adding the pieces is exact -- which is
         what makes gradient accumulation equivalent to one large minibatch."""
         target = torch.randint(0, 3, (4, 6, HEX_DENSITY_DIM)).float()
         prediction = torch.randn_like(target)
-        samples = float(target.shape[0] * target.shape[1])
-        whole = float(PPOTrainer._global_density_loss(None, prediction, target, samples).loss)
+        living = target.sum()
+        whole = float(PPOTrainer._global_density_loss(None, prediction, target, living).loss)
         parts = sum(
             float(
                 PPOTrainer._global_density_loss(
-                    None, prediction[:, start : start + 2], target[:, start : start + 2], samples
+                    None, prediction[:, start : start + 2], target[:, start : start + 2], living
                 ).loss
             )
             for start in (0, 2, 4)
@@ -300,16 +314,16 @@ class TestHalves:
     reading the aggregate series cannot rule out.
     """
 
-    def test_the_training_term_is_the_mean_of_the_two_halves(self):
+    def test_the_training_term_is_the_sum_of_the_two_halves(self):
         """The split is a decomposition, not a second opinion: whatever is
         logged per half has to add back to the number being optimized."""
         target = torch.randint(0, 3, (4, 3, HEX_DENSITY_DIM)).float()
         stats = _stats(torch.randn_like(target), target)
         assert float(stats.loss) == pytest.approx(
-            0.5 * (float(stats.ally_loss) + float(stats.enemy_loss)), rel=1e-6
+            float(stats.ally_loss) + float(stats.enemy_loss), rel=1e-6
         )
         assert float(stats.deviance) == pytest.approx(
-            0.5 * (float(stats.ally_deviance) + float(stats.enemy_deviance)), rel=1e-6
+            float(stats.ally_deviance) + float(stats.enemy_deviance), rel=1e-6
         )
 
     def test_each_half_scores_only_its_own_cells(self):
@@ -319,10 +333,11 @@ class TestHalves:
         prediction = torch.full_like(target, -20.0)  # rate ~0 everywhere: correct
         prediction[..., :cells] = 0.0  # rate 1 on every ally cell: wrong
 
-        stats = _stats(prediction, target)
+        stats = _stats(prediction, target)  # no living ship: the denominator floors at one
 
-        assert float(stats.ally_loss) == pytest.approx(1.0, rel=1e-5)
-        assert float(stats.enemy_loss) == pytest.approx(0.0, abs=1e-8)
+        # Rate one on each of 2 x 2 x cells ally cells, all of them empty.
+        assert float(stats.ally_loss) == pytest.approx(4.0 * cells, rel=1e-5)
+        assert float(stats.enemy_loss) == pytest.approx(0.0, abs=1e-5)
 
     def test_an_easy_half_cannot_hide_a_hard_one(self):
         """The regression this split exists to catch: a head exact on allies and
@@ -337,16 +352,16 @@ class TestHalves:
 
         assert float(stats.ally_deviance) == pytest.approx(0.0, abs=1e-5)
         assert float(stats.enemy_deviance) > 0.5
-        assert float(stats.deviance) == pytest.approx(0.5 * float(stats.enemy_deviance), rel=1e-5)
+        assert float(stats.deviance) == pytest.approx(float(stats.enemy_deviance), rel=1e-5)
 
     def test_the_halves_are_additive_across_micro_batches_too(self):
         target = torch.randint(0, 3, (4, 6, HEX_DENSITY_DIM)).float()
         prediction = torch.randn_like(target)
-        samples = float(target.shape[0] * target.shape[1])
-        whole = PPOTrainer._global_density_loss(None, prediction, target, samples)
+        living = target.sum()
+        whole = PPOTrainer._global_density_loss(None, prediction, target, living)
         parts = [
             PPOTrainer._global_density_loss(
-                None, prediction[:, start : start + 2], target[:, start : start + 2], samples
+                None, prediction[:, start : start + 2], target[:, start : start + 2], living
             )
             for start in (0, 2, 4)
         ]

@@ -240,6 +240,18 @@ COMPONENT_LAMBDAS_PER_TICK: dict[str, float] = {
     "damage": 0.90,
 }
 
+# Each level's weight inside the critic loss, relative to the others;
+# ``value_function_coef`` scales the sum. Equal until a gradient decomposition
+# says a level is starved -- the outcome, read off the global token, is the one
+# to watch.
+COMPONENT_VALUE_WEIGHTS: dict[str, float] = {
+    "outcome": 1.0,
+    "zone_capture": 1.0,
+    "zone_progress": 1.0,
+    "kill_death": 1.0,
+    "damage": 1.0,
+}
+
 
 def make_rl_schedule_spec() -> TrainingScheduleSpec:
     """The current RL schedule, as keypoint tables."""
@@ -277,7 +289,9 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         # A starting point for the retune (plan section 7.4).
         entropy_coef=hold(3e-4),
         behavior_cloning_coef=hold(2.0),
-        value_function_coef=hold(1.0),
+        # The critic loss sums its five levels rather than averaging them, so
+        # 0.2 is the old 1.0 on the mean, unchanged. Retuned in plan section 7.4.
+        value_function_coef=hold(0.2),
         sigreg_coef=hold(0.00),
         # Tier scales ride on top of the per-component weights. Three of the
         # four hold: the realised tier shares already drift the way a curriculum

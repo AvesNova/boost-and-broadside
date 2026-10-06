@@ -189,6 +189,16 @@ The total update combines:
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
 
+Every predictive term is in nats per token: a cross-entropy or likelihood summed over
+everything one token predicts, averaged over the tokens that carry a target. The critic
+sums its levels' cross-entropies, each at a weight in `component_value_weights`; the
+next-state loss sums the code's 22 groups; the density likelihood sums its cells and is
+divided by living ships. The match outcome is the one exception, a single prediction per
+environment step. A weight is then an exchange rate between nats of different things, and
+it does not change with fleet size. Nats are not gradient, though: heads pass different
+amounts of gradient to the trunk per nat, so the weights are set against measured trunk
+gradient shares (`benchmarks/gradient_decomposition.py`).
+
 Two gates key off the same signal: the score against the scripted controller — a draw
 counting half a win — taken from the evaluation battery rather than from training envs. It decays the
 behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_kl` at

@@ -111,7 +111,7 @@ def gradient_terms(
         losses:      Objective name → (T, B, N, G) per-group loss.
         masks:       (3, T, B, N) bool population masks.
         halves:      (2, B) bool environment halves.
-        denominator: The training loss's divisor: supervised tokens times groups.
+        denominator: The training loss's divisor: supervised tokens.
         coef:        The next-state loss coefficient.
 
     Returns:

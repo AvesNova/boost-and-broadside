@@ -515,7 +515,8 @@ reads that token's final embedding and predicts, for every cell of a fixed hexag
 over the playable circle
 ([`hex_density.py`](../src/boost_and_broadside/train/rl/hex_density.py)), the **ally and
 enemy ship count** there — as a Poisson log-rate, graded by Poisson negative log
-likelihood at `global_density_coef`.
+likelihood at `global_density_coef`. The likelihood is summed over cells and divided by
+living ships, so it is in nats per ship like every other loss term.
 
 Counts, not a density. Every living ship deposits exactly one unit of mass, split across
 the three cells whose centres form the triangle containing it, by barycentric weight. The

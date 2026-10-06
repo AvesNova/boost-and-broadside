@@ -235,14 +235,22 @@ class TrainConfig:
     # change training statistics — set it per GPU to fit VRAM. None = no splitting.
     microbatch_tokens: int | None = None
 
-    # --- Next-state prediction loss ---
-    next_state_coef: float = 1.0  # weight for per-step aux prediction loss; 0 to disable
+    # --- Auxiliary losses ---
+    # Every loss term is in nats per token: a cross-entropy or likelihood summed
+    # over whatever one token predicts and averaged over the tokens that carry a
+    # target. The weights are then exchange rates between nats of different
+    # things, and they do not move with fleet size.
+    #
+    # Next-state cross-entropy summed over the ship code's 22 groups, per
+    # supervised ship token; 0 to disable.
+    next_state_coef: float = 1.0
     # Cross-entropy weight for the dedicated 30-way enemy-command predictor.
     enemy_action_coef: float = 0.1
-    # MSE weight for the global token's hex ally/enemy density prediction. 0
-    # disables the head outright: it is never built, so nothing untrained enters
-    # a checkpoint. Requires ``model_config.global_token``, which is the only
-    # thing that gives the head an embedding to read.
+    # Poisson likelihood of the global token's hex ally/enemy ship-count field,
+    # summed over cells, per living ship-step. 0 disables the head outright: it
+    # is never built, so nothing untrained enters a checkpoint. Requires
+    # ``model_config.global_token``, which is the only thing that gives the head
+    # an embedding to read.
     global_density_coef: float = 0.0
 
     # Largest Frontline map scale a training episode may draw. Each reset plays
@@ -259,6 +267,10 @@ class TrainConfig:
     # Missing keys fall back to the global gamma / gae_lambda values.
     component_gammas: Mapping[str, float] = dataclasses.field(default_factory=dict)
     component_lambdas: Mapping[str, float] = dataclasses.field(default_factory=dict)
+    # Each reward level's weight inside the critic loss, which sums the levels'
+    # cross-entropies; ``value_function_coef`` scales the whole sum. Missing
+    # keys weigh one.
+    component_value_weights: Mapping[str, float] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -271,6 +283,14 @@ class TrainConfig:
             "component_lambdas",
             _FrozenFloatMapping(self.component_lambdas),
         )
+        object.__setattr__(
+            self,
+            "component_value_weights",
+            _FrozenFloatMapping(self.component_value_weights),
+        )
+        negative = {k: v for k, v in self.component_value_weights.items() if v < 0.0}
+        if negative:
+            raise ValueError(f"component_value_weights must be non-negative, got {negative}")
         if len(self.scales) == 0:
             raise ValueError("scales must contain at least one ScaleConfig")
         if self.paradigm not in ("ego_pass", "shared_pass"):

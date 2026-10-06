@@ -105,6 +105,7 @@ class ProfileSpec:
     gae_lambda_per_tick: float
     component_gammas_per_tick: Mapping[str, float]
     component_lambdas_per_tick: Mapping[str, float]
+    component_value_weights: Mapping[str, float]
 
     # --- Optimizer, advantage normaliser, budget ---
     clip_coef: float
@@ -142,6 +143,11 @@ class ProfileSpec:
             self,
             "component_lambdas_per_tick",
             MappingProxyType(dict(self.component_lambdas_per_tick)),
+        )
+        object.__setattr__(
+            self,
+            "component_value_weights",
+            MappingProxyType(dict(self.component_value_weights)),
         )
 
 

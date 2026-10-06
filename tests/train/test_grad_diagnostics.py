@@ -490,6 +490,26 @@ def test_reward_value_gradients_sum_to_the_aggregate_critic_gradient(tmp_path) -
     torch.testing.assert_close(decomposed, aggregate, rtol=_SUM_TOLERANCE, atol=_SUM_TOLERANCE)
 
 
+def test_value_level_weights_reach_the_critic_loss(tmp_path) -> None:
+    """The critic loss is a weighted sum over levels, and the weight is the one
+    the decomposition applies too: a level at weight zero sends no gradient,
+    and the weighted parts still add up to the term being trained."""
+    trainer = _prepared_trainer(tmp_path, "reward_full")
+    names = list(trainer._active_names)
+    weights = torch.ones(len(names), device=trainer._value_weight_t.device)
+    weights[0] = 3.0
+    weights[-1] = 0.0
+    trainer._value_weight_t = weights
+    accumulator = _accumulate_one_minibatch(trainer, level="reward_full")
+
+    components = [name for name in accumulator.term_names if name.startswith("value/")]
+    decomposed = _summed_gradient(accumulator, components)
+    aggregate = _summed_gradient(accumulator, ["value"])
+    torch.testing.assert_close(decomposed, aggregate, rtol=_SUM_TOLERANCE, atol=_SUM_TOLERANCE)
+    assert _summed_gradient(accumulator, [f"value/{names[-1]}"]).norm() == 0.0
+    assert _summed_gradient(accumulator, [f"value/{names[0]}"]).norm() > 0.0
+
+
 def test_per_component_clipping_would_be_a_different_objective(tmp_path) -> None:
     """Guards the test above from passing vacuously.
 

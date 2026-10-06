@@ -17,6 +17,7 @@ from boost_and_broadside.config.core import FrontlineConfig
 from boost_and_broadside.config.defaults import (
     COMPONENT_GAMMAS_PER_TICK,
     COMPONENT_LAMBDAS_PER_TICK,
+    COMPONENT_VALUE_WEIGHTS,
     ELO_EVAL,
     LIVE_REFERENCE_PROBABILITIES,
     MODEL_CONFIG,
@@ -114,22 +115,20 @@ RL_PROFILE = ProfileSpec(
     paradigm="ego_pass",
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
-    next_state_coef=0.2,
+    # Every term is in nats per token (see TrainConfig). These three carry the
+    # earlier balance over unchanged and are retuned with PPO (plan section
+    # 7.4): next-state was 0.2 on the mean over 22 code groups, now summed, and
+    # density was 1.0 on the mean over 662 hex cells, now summed per living
+    # ship -- 1.0 x 10 / 662 at ten living ships.
+    next_state_coef=0.2 / 22,
     enemy_action_coef=0.1,
-    # The global token's density field. Chosen from the Phase 7 gradient
-    # diagnostics rather than from the loss alone. The term's trunk gradient
-    # scales linearly in this weight, and at 1.0 it asks for well under a
-    # percent of the trunk's pre-clip gradient -- an order below the next-state
-    # head and two below the actor -- so it has room to grow by an order of
-    # magnitude as the head starts fitting and still not compete. The loss is a
-    # per-cell mean square whose untrained value is about 0.1, so this also puts
-    # the weighted term in the same band as the other two auxiliaries.
-    global_density_coef=1.0,
+    global_density_coef=0.015,
     # --- Discounts, per physics tick ---
     gamma_per_tick=0.99,
     gae_lambda_per_tick=0.95,
     component_gammas_per_tick=COMPONENT_GAMMAS_PER_TICK,
     component_lambdas_per_tick=COMPONENT_LAMBDAS_PER_TICK,
+    component_value_weights=COMPONENT_VALUE_WEIGHTS,
     # --- Optimizer, advantage normaliser, budget ---
     clip_coef=0.15,
     max_grad_norm=1.0,

@@ -9,8 +9,8 @@ Imitation has to happen in the environment RL continues in, so everything BC's
 objective does not require is RL's value *by construction* rather than by
 restatement.  This module is the complete list of differences:
 
-* ``objective.next_state_coef`` -- full-strength next-state prediction while
-  there is a dense supervised signal to learn the trunk from.
+* the auxiliary weights -- set for this profile's own gradient balance, which
+  has no policy gradient in it (see the balance block below).
 * ``optimizer.total_timesteps`` -- BC owns its budget and stops when imitation
   saturates, not when RL's curriculum ends.
 * five schedule entries, each commented below.
@@ -34,17 +34,13 @@ BC_SCHEDULE_SPEC = replace(
     # No policy gradient: the scripted controller supplies supervised action
     # targets and never takes a side in the rollout.
     policy_gradient_coef=hold(0.0),
-    # In BC this is the policy head's only learning signal, deliberately
-    # balanced one-to-one against the next-state auxiliary BC also weights at
-    # 1.0.  RL's 2.0 is the strength of an *auxiliary* imitation term carried
-    # alongside a live policy gradient.
+    # In BC this is the policy head's only learning signal and the anchor the
+    # balance below is set against. RL's 2.0 is the strength of an *auxiliary*
+    # imitation term carried alongside a live policy gradient.
     behavior_cloning_coef=hold(0.042),
-    # 18.9 looks large and is not: the value loss is a Huber on normalized
-    # returns whose raw value is ~0.04, so the weighted term lands near 0.8 --
-    # beside behaviour cloning's. The number is large because the value head
-    # was absorbing almost all of its own gradient and passing almost none to
-    # the trunk, which is the thing being corrected.
-    value_function_coef=hold(0.38),
+    # Per reward level: the critic sums its five levels' cross-entropies, each
+    # at weight one (COMPONENT_VALUE_WEIGHTS).
+    value_function_coef=hold(0.007),
     # League opposition disabled: no roster opponent plays a BC rollout.  The
     # Elo evaluator still runs -- BC's own scripted win rate is what decays the
     # cloning weight -- and it rates against the same derived rungs RL uses.
@@ -59,33 +55,44 @@ BC_PROFILE = replace(
     RL_PROFILE,
     name="bc",
     schedule_spec=BC_SCHEDULE_SPEC,
-    # --- Gradient-share balance, set from a measured decomposition ----------
-    # Coefficients chosen so each term takes a target share of the trunk's
-    # pre-clip gradient, from `benchmarks/gradient_decomposition.py` on the
-    # 6.4M-step pilot (docs/internal/grad-decomposition-pilot-sep2026.json).
-    # The gradient of `c * L` is exactly `c * grad L`, so one measurement gives
-    # every coefficient at once:  c_new = c_old * (target share / measured) * G.
+    # --- Gradient-share balance ----------------------------------------------
+    # Every term is in nats per token, so each weight is an exchange rate
+    # between nats of different things. The weights are chosen so each term
+    # takes a target share of the trunk's pre-clip gradient, measured with
+    # `benchmarks/gradient_decomposition.py`. The gradient of `c * L` is
+    # exactly `c * grad L`, so one measurement gives every weight at once:
+    #     c_new = c_old * target share / measured share
+    # then one common multiplier sets the total pre-clip norm near 0.5, so
+    # `train/clip_fire_rate` lands at 0.1-0.2.
     #
-    # Targets: bc 0.30, value 0.25, next_state 0.15, enemy_action 0.10,
-    # outcome 0.08, density 0.07. The objective takes the plurality; value gets
-    # a real share because BC shapes the trunk for *action*-relevant features
-    # and the critic needs *outcome*-relevant ones, which nothing else supplies
-    # -- run 748's explained variance plateaued at 0.574 with value holding
-    # 0.001 of the trunk. Regularizers are left out of share-targeting: their
-    # scale is meaningful in the nats they live in.
+    # Targets: bc 0.30, value 0.30 (about 0.06 per level), next_state 0.20,
+    # enemy_action 0.12, density 0.08. The objective takes the plurality.
+    # Value gets a real share because RL inherits this critic, and BC shapes
+    # the trunk for *action*-relevant features where the critic needs
+    # *outcome*-relevant ones -- run 748's explained variance plateaued at
+    # 0.574 with value holding 0.001 of the trunk. Next-state rose from 0.15
+    # because hidden-ship beliefs are now built from its outputs (plan section
+    # 8.3), so its quality is an input's quality. Regularizers are left out:
+    # their scale is meaningful in the nats they live in.
     #
-    # Second set, from run 750's logged per-term norms (median of four points,
-    # 7-15M steps; each swings 2-5x per batch). Aim: typical total pre-clip norm
-    # ~0.5 so `train/clip_fire_rate` lands at 0.1-0.2. The first set missed by
-    # ~30x (total ~11, clip firing every step) because the relative sizes of the
-    # terms drift 10-300x during training; a static set is only a starting
-    # point. next_state is the least reliable: it was measured on the Gaussian
-    # head that the categorical code replaced, and needs re-measuring (§8.2).
-    # Retune with one common multiplier on clip fire rate, then re-measure the
-    # shares.
-    next_state_coef=0.17,
-    enemy_action_coef=0.057,
-    global_density_coef=2.0,
+    # These are first guesses, before any measurement on this architecture:
+    # * enemy_action and density keep run 750's measurement (their losses and
+    #   heads did not change), rescaled to the new shares and units.
+    # * value: each level is a per-token categorical cross-entropy like BC's,
+    #   so 0.042 x 0.06 / 0.30 = 0.008; the old outcome head gave 0.0083 for
+    #   0.08, i.e. 0.006. Split the difference.
+    # * next_state: 0.042 x 0.20 / 0.30 = 0.028 per nat of one softmax. A sum
+    #   of 22 partly correlated groups pushes between sqrt(22)x (orthogonal)
+    #   and 22x (aligned) one group's gradient; take ~12x, giving 0.0023. The
+    #   least certain of the
+    #   five -- plausible within 0.001-0.005.
+    # Shares drift by design: BC's teacher targets are soft, so its gradient
+    # falls toward zero as imitation converges, while value and next-state
+    # keep a noise floor. Measure in one window, after the 6M warmup and once
+    # next-state's zero-initialised residual has stopped growing its share.
+    next_state_coef=0.0023,
+    enemy_action_coef=0.07,
+    global_density_coef=0.03,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now

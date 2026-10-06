@@ -881,6 +881,18 @@ class TestAuxPredictionMetrics:
             assert f"belief/{visibility}/reckon_position_px" in metrics
         assert "belief/hidden_age_0.5_1s/health" in metrics
 
+    def test_the_next_state_loss_is_the_sum_of_its_groups(self, tmp_path):
+        """Nats per ship token for the whole state, like every other term. A
+        mean over groups would make the weight depend on how the code is cut:
+        position's nine nested levels add up to the log probability of a cell."""
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer.train()
+        metrics = trainer._update_epochs(
+            all_buffers=[trainer.buffer, *trainer.aux_buffers], precomputed=False
+        )
+        per_group = sum(metrics[f"next_state/{name}"] for name in CODE_GROUP_NAMES)
+        assert metrics["loss/next_state_cont"] == pytest.approx(per_group, rel=1e-3)
+
 
 class TestBeliefDiagnosticAlignment:
     """Which instant each tensor in the belief diagnostic describes.

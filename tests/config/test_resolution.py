@@ -85,11 +85,25 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         # useful part of the run at roughly teacher parity -- which is exactly
         # the policy the pretraining exists to produce.
         "bc_winrate_target",
-        # Five entries -- learning_rate, policy_gradient_coef,
-        # behavior_cloning_coef, league_fraction, target_kl -- each commented at
-        # the point of override in profiles/bc.py.
+        # Six entries -- learning_rate, policy_gradient_coef,
+        # behavior_cloning_coef, value_function_coef, league_fraction,
+        # target_kl -- each commented at the point of override in
+        # profiles/bc.py.
         "schedule",
     }
+
+
+def test_value_weights_name_every_reward_level_and_reach_the_train_config() -> None:
+    """A misspelled level would silently fall back to weight one, so the
+    profile has to name exactly the levels the rewards define."""
+    from boost_and_broadside.env.rewards import REWARD_COMPONENT_NAMES
+
+    for name, profile in PROFILES.items():
+        assert set(profile.component_value_weights) == set(REWARD_COMPONENT_NAMES), name
+    resolved = resolve_profile(PROFILES["rl"]).train_config
+    assert dict(resolved.component_value_weights) == dict(PROFILES["rl"].component_value_weights)
+    with pytest.raises(ValueError, match="component_value_weights"):
+        replace(resolved, component_value_weights={"outcome": -1.0})
 
 
 def test_token_and_discount_derivations_are_named_and_exact() -> None:

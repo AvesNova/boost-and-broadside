@@ -139,7 +139,7 @@ from boost_and_broadside.train.rl.physical_belief import (
 from boost_and_broadside.train.rl.physical_deltas import PHYSICAL_DELTA_SCALES
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
-from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_DIM, CODE_GROUP_NAMES
+from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_NAMES
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
 # ------------------------------------------------------------------
@@ -476,6 +476,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         self._lambda_t = _build_component_tensor(
             train_config.gae_lambda, train_config.component_lambdas, self._active_names, device
+        )
+        # Each level's weight inside the critic loss, a sum of per-level
+        # cross-entropies. A level the mapping leaves out weighs one.
+        self._value_weight_t = _build_component_tensor(
+            1.0, train_config.component_value_weights, self._active_names, device
         )
 
         N = train_config.scales[0].env_config.num_ships
@@ -1781,11 +1786,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ].bool()
                 ).sum()
         return {
-            "density_sum": (
-                float(sum(chunk.alive.shape[0] * chunk.alive.shape[1] for chunk in chunks))
-                if is_primary and self.cfg.global_density_coef > 0.0
-                else 1.0
-            ),
             "env_step_sum": float(
                 sum(chunk.alive.shape[0] * chunk.alive.shape[1] for chunk in chunks)
             ),
@@ -1858,7 +1858,6 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag entries are additive contributions to the minibatch value.
         """
         cfg = self.cfg
-        K = self.buffer.num_components
 
         mb_obs = batch.obs
         mb_actions = batch.actions
@@ -1933,8 +1932,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         pg_loss = (torch.max(pg_loss1, pg_loss2) * pg_f).sum() / pg_sum
 
         # ---- Value loss: cross-entropy against the categorical return -------
+        # Summed over levels, each at its own weight, so every level is in nats
+        # per token like the other terms and none is diluted by how many levels
+        # there are.
         value_per_level = self._critic_losses(critic, batch, alive_f, denoms)  # (K,)
-        vf_loss = value_per_level.sum() / K
+        vf_loss = (self._value_weight_t * value_per_level).sum()
 
         # ---- Entropy bonus -----------------------------------------------
         ent_loss = -(entropy * actor_f).sum() / actor_sum
@@ -2004,10 +2006,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             # distribution (§8.2).
             target = self.ship_codec.sharp(mb_ns_labels.float())  # (T, B_mb, N, 469)
             per_group = self.ship_codec.cross_entropy(pred_next, target)  # (T, B_mb, N, G)
-            G = CODE_GROUP_DIM
 
+            # Summed over the groups: nats per supervised token for the whole
+            # ship state. Position's nested levels add up to the log
+            # probability of its cell, so the sum does not depend on how a
+            # channel is cut into groups, and a mean over groups would.
             if self.cfg.next_state_coef > 0.0:
-                next_state_cont_loss = (per_group * ns_mask_f.unsqueeze(-1)).sum() / (ns_sum * G)
+                next_state_cont_loss = (per_group * ns_mask_f.unsqueeze(-1)).sum() / ns_sum
                 next_state_loss = next_state_cont_loss
 
             # Allies, visible enemies, and hidden enemies carry targets that mean
@@ -2032,7 +2037,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     {"ce": per_group},
                     populations,
                     environment_halves(populations.shape[2], populations.device),
-                    ns_sum * G,
+                    ns_sum,
                     self.cfg.next_state_coef,
                 )
 
@@ -2125,7 +2130,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         density = _DensityStats.zeros(self._zero_tensor)
         if is_primary and self.cfg.global_density_coef > 0.0:
             density = self._global_density_loss(
-                density_pred, batch.density_targets, denoms["density_sum"]
+                density_pred, batch.density_targets, denoms["mask_sum"]
             )
         density_loss = density.loss
 
@@ -2170,9 +2175,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     )
                 )
             if self._grad_diag.decomposes_value_by_reward:
-                terms.update(
-                    self._reward_value_terms(value_per_level=value_per_level, num_components=K)
-                )
+                terms.update(self._reward_value_terms(value_per_level=value_per_level))
             terms.update(ns_population_terms)
             grad_terms.accumulate(terms, scale=grad_scale)
 
@@ -2288,7 +2291,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self,
         prediction: torch.Tensor | None,
         target: torch.Tensor | None,
-        density_sum: float,
+        living_sum: torch.Tensor,
     ) -> "_DensityStats":
         """Poisson negative log likelihood of the hex ship-count field.
 
@@ -2306,10 +2309,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ``r / sigma^2`` is what concentrates gradient on whatever it already
         predicts best, and this form cannot.
 
-        Averaged over cells and summed over steps and environments, then
-        divided by the minibatch's total step-environment count, so a
-        micro-batch's contribution is additive exactly as every other
-        masked-mean term is.
+        Summed over cells, steps and environments, then divided by the
+        minibatch's living ship-steps: nats per ship token, the unit of every
+        other term. The field is the ships' locations, one unit each, so the
+        sum splits into a Poisson term on the total count plus the count times
+        the cross-entropy of where they are. A mean over cells would instead
+        shrink the term by the grid's mostly empty size. As a ratio of sums, a
+        micro-batch's contribution is additive and a step with no living ship
+        on a side still trains its rates toward zero.
 
         Every step has a target -- the field is a property of the state the
         observation was built from, not of a transition -- so there is nothing
@@ -2322,15 +2329,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             A Poisson likelihood has no natural zero: its value depends on the
             counts as well as on the fit, so the bare number says nothing about
             how good the head is. The deviance subtracts the likelihood of a
-            perfect predictor (``mu_c = y_c``), leaving excess nats per cell
+            perfect predictor (``mu_c = y_c``), leaving excess nats per ship
             that are zero when the head is exact and positive otherwise. That
             is the series to read; the loss is what is optimized.
 
             The halves are reported apart because they are not the same
             problem. The observer sees every ally, so that field is a
             restatement of what it already knows; the enemy field is mostly
-            belief. One mean over all ``2C`` cells lets the easy half carry the
-            hard one.
+            belief. One total over both lets the easy half carry the hard one.
+            Each half shares the total's denominator, so the two add up to it.
 
         Raises:
             ValueError: If the head or the target is missing while the
@@ -2359,19 +2366,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         cells = counts.shape[-1] // 2
 
         def halves(values: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-            """Per-half cell means, summed over steps and envs and normalized."""
-            ally = values[..., :cells].mean(-1).sum() / density_sum
-            enemy = values[..., cells:].mean(-1).sum() / density_sum
+            """Per-half totals over cells, steps and envs, per living ship-step."""
+            ally = values[..., :cells].sum() / living_sum
+            enemy = values[..., cells:].sum() / living_sum
             return ally, enemy
 
         ally_loss, enemy_loss = halves(per_cell)
         with torch.no_grad():
             ally_floor, enemy_floor = halves(saturated)
-        # The mean over 2C equally weighted cells is the mean of the two half
-        # means, so the training term stays a plain mean over the field.
         return _DensityStats(
-            loss=0.5 * (ally_loss + enemy_loss),
-            deviance=0.5 * (ally_loss + enemy_loss).detach() - 0.5 * (ally_floor + enemy_floor),
+            loss=ally_loss + enemy_loss,
+            deviance=(ally_loss + enemy_loss).detach() - (ally_floor + enemy_floor),
             ally_loss=ally_loss,
             enemy_loss=enemy_loss,
             ally_deviance=ally_loss.detach() - ally_floor,
@@ -2476,23 +2481,20 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if self.wrapper.active_components[index].weight != 0.0
         }
 
-    def _reward_value_terms(
-        self, *, value_per_level: torch.Tensor, num_components: int
-    ) -> dict[str, torch.Tensor]:
+    def _reward_value_terms(self, *, value_per_level: torch.Tensor) -> dict[str, torch.Tensor]:
         """Split this micro-batch's critic loss across reward levels.
 
-        The critic objective is already a sum of independent per-level
+        The critic objective is already a weighted sum of independent per-level
         cross-entropies, so this is the existing loss regrouped rather than a
         second objective: the levels sum back to ``vf_loss`` by construction.
 
         Args:
             value_per_level: (K,) each level's cross-entropy.
-            num_components:  K — the critic's own averaging divisor.
 
         Returns:
             Term name → weighted scalar loss, one per active level.
         """
-        per_component = value_per_level / num_components  # (K,)
+        per_component = self._value_weight_t * value_per_level  # (K,)
         coefficient = self._schedule_state.value_function_coef
         return {
             f"value/{name}": coefficient * per_component[index]
