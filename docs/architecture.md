@@ -26,7 +26,7 @@ FeatureCoordinator → encoder MLP            bullet encoder
  → temporal Griffin/RG-LRU ×T] × blocks
     ↓
 ship tokens only
-    ├── joint 42-command action distribution (per ship)
+    ├── joint 30-command action distribution (per ship)
     ├── decomposed value estimates (per ship/component)
     └── next-state predictions (per ship)
 ```
@@ -93,7 +93,7 @@ channel to:
 | currently visible | scalar |
 | belief token valid | scalar, attention and composition |
 | time since observation | symlog scalar |
-| pending joint command | 42-way probability vector |
+| pending joint command | 30-way probability vector |
 | radius | shared ship/field scalar divided by half the shorter world dimension |
 | field width | normalized scalar |
 | field target log index | normalized physical scalar |
@@ -326,11 +326,11 @@ equivalence, attention masking, dtype behavior, and gradient checkpointing.
 ## Per-ship action head
 
 The action head emits one categorical distribution over the Cartesian product of power,
-turn, and shoot: `3 * 7 * 2 = 42` logits per ship. A sampled joint ID is decoded to the
+turn, and shoot: `3 * 5 * 2 = 30` logits per ship. A sampled joint ID is decoded to the
 compact `(power, turn, shoot)` triple consumed by physics. PPO log probability and entropy
 belong to this joint distribution, so the policy may model correlations between factors.
 
-Pending action is also represented as one 42-way vector per ship. Allied commands are exact
+Pending action is also represented as one 30-way vector per ship. Allied commands are exact
 one-hot vectors. Ordinary enemy slots carry the dedicated enemy-action head's prior
 prediction, whether or not the ship is in sight, so physical visibility is not an
 action-information side channel; initial spawn and respawn override both teams with the exact

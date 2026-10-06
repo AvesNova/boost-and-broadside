@@ -124,6 +124,14 @@ Status (2026-10-06): **done.** Deviations 34–37.
 
 ### Phase 10. Schema bump, diagnostics, docs
 
+Status (2026-10-06): **done.** The schema bump landed with Phase 8 (deviation 33).
+The per-head zero-sum residual was already logged (Phase 6). Added: every event's share
+of its level's reward magnitude (`reward/event_share/*`, the charge-back's among them),
+outcome calibration (`outcome/calibration_*`, Brier score and a ten-bin reliability
+diagram of `P(win | resolved)`), and the per-group next-state cross-entropy by
+population beside the zero-residual baseline (Phase 8). Reader docs updated:
+architecture, training, environment.
+
 * One checkpoint-schema bump for Part II.
 * §10.3 diagnostics that are cheap to add: per-head zero-sum residual,
   charge-back share, outcome calibration, per-level position cross-entropy

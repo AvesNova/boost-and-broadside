@@ -213,6 +213,13 @@ subtracted and no per-minibatch standardisation. The level weights therefore rea
 policy exactly as set, and splitting or merging events inside a level cannot change its
 gradient share. `return_normalizer/*` logs the percentiles and the scale.
 
+The outcome head's calibration is logged from every rollout: each transition whose episode
+ends inside the rollout is scored against that episode's result, predicting
+`P(win | resolved) = P(win) / (1 − P(unresolved))`. `outcome/calibration_brier` is the
+Brier score, `outcome/predicted_win` and `outcome/realised_win` the two means, and
+`outcome/calibration_bin_<b>/{predicted,realised}` a ten-bin reliability diagram whose two
+series agree when the head is calibrated.
+
 ## Frontline reward accounting and curriculum
 
 The default RL and BC environments are 5v5 with opaque zones and shields. `health`
@@ -254,6 +261,11 @@ completing tick and half by per-zone ledgers of the meter movement each ship was
 present (attackers) or absent (defenders) for. Progress pays the favoured side's ships
 inside the zone and charges the other side's ships outside it.
 
+Each event is logged as its per-ship-episode sum (`episode/event/<level>/<event>`) and as
+its share of its level's reward magnitude (`reward/event_share/<level>/<event>`, per-tick
+absolute values summed). `reward/event_share/damage/charge_back` is how much of what hits
+paid is later handed back as shields recharge.
+
 Advantages are mixed across a team only through `team_spirit` (OpenAI Five's): a ship's
 advantage plus `s` times its living teammates' mean, per level. The default is zero,
 pure per-ship credit.
@@ -264,7 +276,7 @@ by 300M, and holds 1:1 through the remaining 200M of the default 500M-step run.
 Restarting from a checkpoint uses the restored global step. Custom shortened runs should
 move these keypoints if they need the complete curriculum.
 
-Respawn transitions are excluded from next-state labels. Recurrent match memory
+Respawn transitions are excluded from next-state targets. Recurrent match memory
 persists across lives; episode resets clear it. Hidden shield-depleted enemies remain
 believed alive, because a predicted zero shield is not evidence of death.
 
@@ -632,7 +644,7 @@ differently is expected, and so is resuming with a deliberately changed hyperpar
 
 Resuming is stricter than reloading a policy. `load_checkpoint` requires every field a full
 payload writes and refuses one that lacks any of them, naming it. A resume restores the
-complete training state (weights, optimizer, both scalers, the averaging accumulator, the
+complete training state (weights, optimizer, the return normaliser, the averaging accumulator, the
 live rating and its running average, the milestone grid, and the evaluation windows) or it
 does not happen. Only the resolved-config and launch blocks are optional, and both are
 provenance rather than state. Policy-only files (`best_*.pt`, `ladder_step_*.pt`) are
@@ -795,9 +807,9 @@ cheap histogram-cadence probe stands down rather than measuring it twice.
 
 Any level above `off` costs the compiled update for the *whole* run — the eager switch
 reads `enabled`, not the interval — so raising the cadence does not buy the throughput
-back, and the default is `off`. Nothing is lost by deferring the measurement instead. Both
-scalers ride in the checkpoint, so resuming one and running a handful of updates with
-diagnostics on normalizes exactly as training did.
+back, and the default is `off`. Nothing is lost by deferring the measurement instead. The
+return normaliser rides in the checkpoint, so resuming one and running a handful of updates
+with diagnostics on normalizes exactly as training did.
 
 [`benchmarks/gradient_decomposition.py`](../benchmarks/gradient_decomposition.py) is that
 procedure. It resumes a run's latest resumable checkpoint, runs a few ordinary PPO updates
@@ -870,7 +882,7 @@ Training behavior is covered across:
   that micro-batch accumulation matches the unsplit minibatch, and that measuring leaves the
   applied gradient bit-identical;
 - [`test_buffer.py`](../tests/train/test_buffer.py) for recurrent storage, GAE, precision,
-  sharding, and scalers;
+  and sharding;
 - [`test_roster.py`](../tests/train/test_roster.py) and
   [`test_elo_eval.py`](../tests/train/test_elo_eval.py) for opponent/rating behavior;
 - [`test_checkpoint.py`](../tests/train/test_checkpoint.py) for save/resume state and
@@ -881,3 +893,7 @@ Training behavior is covered across:
   assignment in the shared match loop;
 - [`test_bradley_terry.py`](../tests/train/test_bradley_terry.py) for calibrated fitting and
   uncertainty.
+- [`test_ship_codes.py`](../tests/train/test_ship_codes.py) and
+  [`test_categorical_codes.py`](../tests/train/test_categorical_codes.py) for the
+  categorical codes' round trip, including sigma 0 and the scalar range edges;
+- [`test_map_scale.py`](../tests/env/test_map_scale.py) for the per-episode map scale.
