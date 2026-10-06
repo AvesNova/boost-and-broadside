@@ -81,9 +81,24 @@ def test_compute_is_the_weighted_sum_of_the_events():
     state = _duel_state()
     state.ship_combat_damage[0, 2] = 10.0
     state.damage_matrix[0, 0, 2] = 10.0
-    component = DamageReward(weight=0.2, payout_ratio=1.5)
+    component = DamageReward(weight=0.2, payout_ratio=1.5, max_health=1.0)
     expected = 0.2 * _events(component, state).sum(-1)
     assert torch.allclose(component.compute(state, None, state, DONE)[0], expected)
+
+
+def test_damage_is_priced_per_full_shield():
+    """``damage_weight`` is the price of emptying a shield, beside a death's
+    price. The physics reports health points; priced per point, a full shield
+    cost ``max_health`` times its weight and damage set the whole return spread."""
+    ship = ShipConfig()
+    damage = next(c for c in build_reward_components(REWARDS, ship) if isinstance(c, DamageReward))
+    damage.payout_ratio = 1.0
+    state = _duel_state()
+    state.ship_combat_damage[0, 2] = ship.max_health
+    state.damage_matrix[0, 0, 2] = ship.max_health
+    reward = damage.compute(state, None, state, DONE)[0]
+    assert float(reward[2]) == pytest.approx(-REWARDS.damage_weight)
+    assert float(reward[0]) == pytest.approx(REWARDS.damage_weight)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +136,7 @@ def test_an_enemy_hit_charges_the_target_and_pays_the_shooter_the_ratio():
     state = _duel_state()
     state.ship_combat_damage[0, 2] = 10.0
     state.damage_matrix[0, 0, 2] = 10.0
-    component = DamageReward(1.0, payout_ratio=1.5)
+    component = DamageReward(1.0, payout_ratio=1.5, max_health=1.0)
     events = _events(component, state)
     assert events[2, _column(component, "taken")] == -10.0
     assert events[0, _column(component, "dealt")] == 15.0
@@ -132,7 +147,7 @@ def test_simultaneous_hits_share_only_the_applied_damage():
     state.ship_combat_damage[0, 2] = 6.0  # shield had 6 left of 10 + 10 incoming
     state.damage_matrix[0, 0, 2] = 10.0
     state.damage_matrix[0, 1, 2] = 10.0
-    component = DamageReward(1.0, payout_ratio=1.0)
+    component = DamageReward(1.0, payout_ratio=1.0, max_health=1.0)
     dealt = _events(component, state)[:, _column(component, "dealt")]
     assert dealt.tolist() == pytest.approx([3.0, 3.0, 0.0, 0.0])
 
@@ -141,7 +156,7 @@ def test_friendly_fire_blames_the_shooter_and_pays_the_other_team_twice():
     state = _duel_state()
     state.ship_combat_damage[0, 1] = 10.0
     state.damage_matrix[0, 0, 1] = 10.0
-    component = DamageReward(1.0, payout_ratio=1.5)
+    component = DamageReward(1.0, payout_ratio=1.5, max_health=1.0)
     events = _events(component, state)
     assert events[0, _column(component, "friendly_fire")] == -15.0
     assert events[2:, _column(component, "unforced")].tolist() == [15.0, 15.0]
@@ -150,7 +165,7 @@ def test_friendly_fire_blames_the_shooter_and_pays_the_other_team_twice():
 def test_boundary_damage_pays_the_opposing_team():
     state = _duel_state()
     state.ship_boundary_damage[0, 3] = 4.0
-    component = DamageReward(1.0, payout_ratio=1.5)
+    component = DamageReward(1.0, payout_ratio=1.5, max_health=1.0)
     events = _events(component, state)
     assert events[3, _column(component, "taken")] == -4.0
     assert events[:2, _column(component, "unforced")].tolist() == [3.0, 3.0]
@@ -160,7 +175,7 @@ def test_recharge_pays_the_ship_and_charges_back_its_attacker():
     state = _duel_state()
     state.ship_shield_recharge[0, 2] = 5.0
     state.recharge_matrix[0, 0, 2] = 5.0
-    component = DamageReward(1.0, payout_ratio=2.0)
+    component = DamageReward(1.0, payout_ratio=2.0, max_health=1.0)
     events = _events(component, state)
     assert events[2, _column(component, "recharge")] == 5.0
     assert events[0, _column(component, "charge_back")] == -10.0
@@ -170,7 +185,7 @@ def test_recharge_of_damage_nobody_caused_charges_the_opposing_team():
     state = _duel_state()
     state.ship_shield_recharge[0, 2] = 4.0
     state.ship_unattributed_recharge[0, 2] = 4.0
-    component = DamageReward(1.0, payout_ratio=1.0)
+    component = DamageReward(1.0, payout_ratio=1.0, max_health=1.0)
     unforced = _events(component, state)[:, _column(component, "unforced")]
     assert unforced.tolist() == [-2.0, -2.0, 0.0, 0.0]
 

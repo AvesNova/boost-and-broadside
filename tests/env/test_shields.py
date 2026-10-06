@@ -47,7 +47,7 @@ def test_simultaneous_overkill_breaks_shield_but_next_tick_kills():
     hit(e, (5, 6, 7))
     assert e.state.ship_health[0, 0] == 0
     assert not e.state.ship_combat_death[0, 0]
-    damage = DamageReward(1.0, payout_ratio=1.0)
+    damage = DamageReward(1.0, payout_ratio=1.0, max_health=1.0)
     dealt = damage.events(e.state, None, e.state, None)[..., damage.event_names.index("dealt")]
     assert dealt.sum() == 15
     tick(e)
@@ -98,7 +98,7 @@ def test_delay_recharge_clamp_and_zero_sum_reward():
     s.ship_shield_delay.zero_()
     tick(e)
     assert torch.all(s.ship_health == 100)
-    r = DamageReward(1.0, payout_ratio=1.0).compute(s, None, s, None)
+    r = DamageReward(1.0, payout_ratio=1.0, max_health=1.0).compute(s, None, s, None)
     assert r.sum().abs() < 1e-5
     tick(e)
     assert s.ship_shield_recharge.sum() == 0
@@ -170,7 +170,9 @@ def test_recovery_is_zero_sum_even_with_unequal_teams():
     e.state.ship_team_id[0, 4] = 1
     e.state.ship_shield_recharge[0, 0] = 3
     e.state.ship_unattributed_recharge[0, 0] = 3
-    reward = DamageReward(1.0, payout_ratio=1.0).compute(e.state, None, e.state, None)
+    reward = DamageReward(1.0, payout_ratio=1.0, max_health=1.0).compute(
+        e.state, None, e.state, None
+    )
     assert reward[0, 0] == 3
     assert reward.sum().abs() < 1e-6
 

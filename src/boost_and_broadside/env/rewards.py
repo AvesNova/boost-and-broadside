@@ -288,6 +288,11 @@ class KillDeathReward(RewardComponent):
 class DamageReward(RewardComponent):
     """Damage taken and dealt, shield recharge, and its charge-back.
 
+    Events are counted in full shields: the physics reports health points, and
+    they are divided by ``max_health`` here, so ``damage_weight`` is the price of
+    emptying a shield. Priced per point, a full shield cost a hundred times its
+    weight -- 27 wins at 0.274 -- and damage set the whole return spread.
+
     Every applied unit of damage charges the ship that took it 1, from any
     source; the boundary is the reason it covers more than combat. Damage dealt
     to an enemy pays the shooter ``ratio``, shared among simultaneous hits by
@@ -300,6 +305,10 @@ class DamageReward(RewardComponent):
 
     name = "damage"
     event_names = ("taken", "dealt", "friendly_fire", "recharge", "charge_back", "unforced")
+
+    def __init__(self, weight: float, payout_ratio: float = 1.0, *, max_health: float) -> None:
+        super().__init__(weight, payout_ratio)
+        self.max_health = max_health
 
     def events(self, prev_state, actions, next_state, dones):
         del prev_state, actions, dones
@@ -326,7 +335,8 @@ class DamageReward(RewardComponent):
             - ratio * next_state.ship_unattributed_recharge
         )
         unforced = enemy_team_share(opposing, next_state)
-        return torch.stack([taken, dealt, friendly_fire, recharge, back_direct, unforced], dim=-1)
+        events = torch.stack([taken, dealt, friendly_fire, recharge, back_direct, unforced], dim=-1)
+        return events / self.max_health
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +396,7 @@ def build_reward_components(
         ZoneCaptureReward(w["zone_capture"], r["zone_capture"]),
         ZoneProgressReward(w["zone_progress"], r["zone_progress"], ship_config.world_size),
         KillDeathReward(w["kill_death"], r["kill_death"]),
-        DamageReward(w["damage"], r["damage"]),
+        DamageReward(w["damage"], r["damage"], max_health=ship_config.max_health),
     ]
 
 

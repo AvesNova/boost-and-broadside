@@ -198,7 +198,7 @@ LIVE_REFERENCE_PROBABILITIES: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7,
 REWARDS = RewardConfig(
     # The levels carry the previous Frontline tier balance forward as a starting
     # point: a win is the unit, a completed capture and a full meter of progress
-    # are each worth two, a death 0.283 and a unit of shield 0.274 of one.
+    # are each worth two, a death 0.283 and emptying a full shield 0.274 of one.
     win_weight=1.0,
     zone_capture_weight=2.0,
     zone_progress_weight=2.0,

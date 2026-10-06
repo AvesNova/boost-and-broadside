@@ -259,8 +259,9 @@ level summed over both teams is zero on every tick; `reward/zero_sum_residual/*`
 logs the realised sum and [`test_rewards.py`](../tests/env/test_rewards.py) checks it
 on scripted play.
 
-Damage is priced in applied shield, shared among simultaneous hits by applied
-damage. An outstanding-damage ledger per attacker and target grows with every applied
+Damage is priced in applied shield, counted in full shields: emptying one costs
+`damage_weight` (0.274), beside a death's 0.283. It is shared among simultaneous hits by
+applied damage. An outstanding-damage ledger per attacker and target grows with every applied
 hit and shrinks pro rata as the target recharges; recharge pays the recovering ship and
 reverses, through that ledger, exactly the payment the recovered damage earned (the
 charge-back). A death charges the dying ship one and shares the kill half by the raw

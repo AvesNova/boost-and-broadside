@@ -474,12 +474,16 @@ class ModelConfig:
     grad_checkpoint: bool = False
     # Categorical critic support: each per-ship reward level is read off
     # ``value_bins`` logits over ``symexp(linspace(-L, L, value_bins))`` with
-    # ``L = value_symlog_limit``. 51 bins over +-5 symlog units (+-147 raw, in
-    # win units) is a 0.2 spacing; DreamerV3's 255 over +-20 would put the
-    # first bins at +-1.2 and +-4.0 raw at this count, far too coarse for these
-    # returns.
+    # ``L = value_symlog_limit``, sized to the largest measured |return| with
+    # margin (plan section 7.1). Exact discounted returns over 64 x 14,000
+    # steps of scripted Frontline play at the opening 2:1 payout ratios: the
+    # largest is 4.55 (zone capture), and every level's median |return| is
+    # 0.02-0.13. L = 2 covers +-6.4 raw at a 0.08 spacing, so the first bins
+    # sit at 0.08, 0.17 and 0.27. The earlier +-5 (+-147 raw) used ~17 of the
+    # 51 bins and put every median between 0 and its first bin at 0.22.
+    # DreamerV3's 255 over +-20 would be coarser still at this count.
     value_bins: int = 51
-    value_symlog_limit: float = 5.0
+    value_symlog_limit: float = 2.0
 
     @property
     def n_hidden_layers(self) -> int:
@@ -560,7 +564,7 @@ class RewardConfig:
     zone_capture_weight: float  # per completed capture, split by who held it
     zone_progress_weight: float  # per full meter of movement, split by presence
     death_weight: float  # U: charged to a dying ship, paid to whoever caused it
-    damage_weight: float  # V: per unit of shield, charged and paid the same way
+    damage_weight: float  # V: per full shield (max_health points), charged and paid the same way
 
     # The deliberate exceptions to the balance rule, one per level that has a
     # causing side. Priced evenly, an even trade is worth nothing, and a policy

@@ -543,7 +543,9 @@ def test_per_component_clipping_would_be_a_different_objective(tmp_path) -> None
     shared_branch = -(advantage_k * shared.unsqueeze(-1)).sum()
     per_component_branch = -(advantage_k * independent).sum()
     torch.testing.assert_close(shared_branch, true_objective, rtol=1e-4, atol=1e-4)
-    assert not torch.isclose(per_component_branch, true_objective, rtol=0.1, atol=0.1)
+    # Relative: the advantages are in win units, so their scale follows the
+    # reward balance and an absolute tolerance would drift with it.
+    assert not torch.isclose(per_component_branch, true_objective, rtol=0.1, atol=1e-6)
 
 
 # ----------------------------------------------------------------------
