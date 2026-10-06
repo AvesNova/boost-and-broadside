@@ -146,11 +146,16 @@ KL and advantage scales are the regime RL actually starts in. Loss units unified
 (deviations 38–40). BC pilot 754 (`bc-pilot-754-oct2026.json`) solved the bc,
 next-state, enemy-action and density weights, and found damage priced per health
 point (deviation 41) and the critic's bins far wider than its returns
-(deviation 42). Pilot 755 (`bc-pilot-755-oct2026.json`, 10.3–19.7M steps) solved
-all five weights: bc 0.017, value 0.18 per level, next-state 0.0021, enemy action
-0.055, density 0.020. No common multiplier: Adam divides out a common scale and the
-global clip stays a spike guard. Open: the outcome level still draws ~1e-5 of the
-trunk gradient and its explained variance sits near 0.35.
+(deviation 42). Pilot 755 (`bc-pilot-755-oct2026.json`, 10.3–19.7M steps) measured
+the shares of its weights: bc 0.45, next-state 0.28, enemy action 0.14, density 0.10,
+value 0.01. Check run 756 (`bc-check-756-oct2026.json`) solved value up to a 0.30
+share and was rejected: live Elo 530 against 913 at 19.7M, BC KL 0.88 against 0.49,
+next-state worse in every population, for a small and mixed critic gain; ~85% of that
+value gradient was the damage level's. **BC runs at 755's weights** (bc 0.025, value
+0.007 per level, next-state 0.0030, enemy action 0.063, density 0.024). No common
+multiplier: Adam divides out a common scale and the global clip stays a spike guard.
+Open for RL: the outcome level draws ~1e-3 of the damage level's trunk gradient and
+its explained variance sits at 0.35–0.46. Next: the 500M BC run.
 
 * Short runs only if the 8 GB dev GPU allows; otherwise hand over with the
   reading list of §7.4. The cold-start run itself is the user's to launch.

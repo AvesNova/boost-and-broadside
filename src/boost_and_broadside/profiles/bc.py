@@ -37,10 +37,10 @@ BC_SCHEDULE_SPEC = replace(
     # In BC this is the policy head's only learning signal. RL's 2.0 is the
     # strength of an *auxiliary* imitation term carried alongside a live policy
     # gradient. Set by the gradient-share balance in BC_PROFILE.
-    behavior_cloning_coef=hold(0.017),
+    behavior_cloning_coef=hold(0.025),
     # Per reward level: the critic sums its five levels' cross-entropies, each
     # at weight one (COMPONENT_VALUE_WEIGHTS). Set by the balance in BC_PROFILE.
-    value_function_coef=hold(0.18),
+    value_function_coef=hold(0.007),
     # League opposition disabled: no roster opponent plays a BC rollout.  The
     # Elo evaluator still runs -- BC's own scripted win rate is what decays the
     # cloning weight -- and it rates against the same derived rungs RL uses.
@@ -57,48 +57,46 @@ BC_PROFILE = replace(
     schedule_spec=BC_SCHEDULE_SPEC,
     # --- Gradient-share balance ----------------------------------------------
     # Every term is in nats per token, so each weight is an exchange rate
-    # between nats of different things. The weights are chosen so each term
-    # takes a target share of the trunk's pre-clip gradient, measured with
-    # `benchmarks/gradient_decomposition.py`. The gradient of `c * L` is
-    # exactly `c * grad L`, so one measurement gives every weight at once:
+    # between nats of different things. A term's share of the trunk's pre-clip
+    # gradient is measured with `benchmarks/gradient_decomposition.py`; the
+    # gradient of `c * L` is exactly `c * grad L`, so one measurement gives
+    # every weight for a chosen set of shares:
     #     c_new = c_old * target share / measured share
     # Only the ratios matter: Adam divides out a common scale, and the global
-    # clip (max_grad_norm 1.0, several times the ~0.2 typical norm) is a spike
-    # guard, not a target.
+    # clip (max_grad_norm 1.0, several times the typical norm) is a spike guard,
+    # not a target.
     #
-    # Targets: bc 0.30, value 0.30 (about 0.06 per level), next_state 0.20,
-    # enemy_action 0.12, density 0.08. The objective takes the plurality.
-    # Value gets a real share because RL inherits this critic, and BC shapes
-    # the trunk for *action*-relevant features where the critic needs
-    # *outcome*-relevant ones -- run 748's explained variance plateaued at
-    # 0.574 with value holding 0.001 of the trunk. Next-state rose from 0.15
-    # because hidden-ship beliefs are now built from its outputs (plan section
-    # 8.3), so its quality is an input's quality. Regularizers are left out:
-    # their scale is meaningful in the nats they live in.
+    # The shares this profile runs at, measured on pilot 755 over 10.3-19.7M
+    # steps (docs/internal/bc-pilot-755-oct2026.json):
+    #     bc 0.45, next_state 0.28, enemy_action 0.14, density 0.10, value 0.01
+    # Cloning takes the plurality and next-state the next share: hidden-ship
+    # beliefs are built from its outputs (plan section 8.3), so its quality is
+    # an input's quality.
     #
-    # Two pilots, each solved from the median share over checkpoints past the
-    # warmup:
-    # * 754 (docs/internal/bc-pilot-754-oct2026.json), 13.8-14.7M steps, from
-    #   first guesses bc 0.042, value 0.007, next_state 0.0023, enemy_action
-    #   0.07, density 0.03. It priced damage per health point, so value was not
-    #   solved from it.
-    # * 755 (docs/internal/bc-pilot-755-oct2026.json), 10.3-19.7M steps, from
-    #   bc 0.025, value 0.007, next_state 0.0030, enemy_action 0.063, density
-    #   0.024. Measured: bc 0.45, value 0.012, next_state 0.28, enemy_action
-    #   0.14, density 0.10. With damage fixed, value had lost the gradient the
-    #   mispricing gave it.
-    # Inside value the outcome still draws next to nothing of the trunk
-    # (~1e-5 against 3e-3 to 1e-2 for each per-ship level), and its
-    # explained variance sits near 0.35. Its per-level weight is the knob if
-    # the next run shows the same.
+    # Value stays near zero on the trunk, by measurement rather than intent. The
+    # check run 756 (docs/internal/bc-check-756-oct2026.json) solved value up to
+    # a 0.30 share, and at 19.7M steps against 755: live Elo 530 vs 913, BC KL
+    # 0.88 vs 0.49, hidden-enemy next-state cross-entropy 2.38 vs 1.90, for
+    # explained variance that moved both ways (zone capture 0.92 vs 0.84,
+    # kill/death 0.61 vs 0.85). About 85% of that value gradient was the damage
+    # level's: the noisiest returns, pushed into features cloning and
+    # next-state use. The critic's heads learn their own levels well without
+    # the trunk (0.80-0.93 explained variance per ship level on 755), and RL is
+    # where the critic is trained in earnest.
+    #
+    # The outcome level draws next to nothing of the trunk in every run (~1e-3
+    # of the damage level's) and its explained variance sits at 0.35-0.46.
+    # A mirrored self-play match may simply be unpredictable until late; the
+    # per-level weight in COMPONENT_VALUE_WEIGHTS is the knob if RL shows
+    # otherwise.
     #
     # Shares drift by design: BC's teacher targets are soft, so its gradient
     # falls toward zero as imitation converges, while value and next-state
     # keep a noise floor. Measure in one window, after the 6M warmup and once
     # next-state's zero-initialised residual has stopped growing its share.
-    next_state_coef=0.0021,
-    enemy_action_coef=0.055,
-    global_density_coef=0.020,
+    next_state_coef=0.0030,
+    enemy_action_coef=0.063,
+    global_density_coef=0.024,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now
