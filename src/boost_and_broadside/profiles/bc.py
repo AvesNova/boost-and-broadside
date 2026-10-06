@@ -34,12 +34,13 @@ BC_SCHEDULE_SPEC = replace(
     # No policy gradient: the scripted controller supplies supervised action
     # targets and never takes a side in the rollout.
     policy_gradient_coef=hold(0.0),
-    # In BC this is the policy head's only learning signal and the anchor the
-    # balance below is set against. RL's 2.0 is the strength of an *auxiliary*
-    # imitation term carried alongside a live policy gradient.
-    behavior_cloning_coef=hold(0.042),
+    # In BC this is the policy head's only learning signal. RL's 2.0 is the
+    # strength of an *auxiliary* imitation term carried alongside a live policy
+    # gradient. Set by the gradient-share balance in BC_PROFILE.
+    behavior_cloning_coef=hold(0.025),
     # Per reward level: the critic sums its five levels' cross-entropies, each
-    # at weight one (COMPONENT_VALUE_WEIGHTS).
+    # at weight one (COMPONENT_VALUE_WEIGHTS). Still the first guess; see the
+    # balance block in BC_PROFILE.
     value_function_coef=hold(0.007),
     # League opposition disabled: no roster opponent plays a BC rollout.  The
     # Elo evaluator still runs -- BC's own scripted win rate is what decays the
@@ -75,24 +76,24 @@ BC_PROFILE = replace(
     # 8.3), so its quality is an input's quality. Regularizers are left out:
     # their scale is meaningful in the nats they live in.
     #
-    # These are first guesses, before any measurement on this architecture:
-    # * enemy_action and density keep run 750's measurement (their losses and
-    #   heads did not change), rescaled to the new shares and units.
-    # * value: each level is a per-token categorical cross-entropy like BC's,
-    #   so 0.042 x 0.06 / 0.30 = 0.008; the old outcome head gave 0.0083 for
-    #   0.08, i.e. 0.006. Split the difference.
-    # * next_state: 0.042 x 0.20 / 0.30 = 0.028 per nat of one softmax. A sum
-    #   of 22 partly correlated groups pushes between sqrt(22)x (orthogonal)
-    #   and 22x (aligned) one group's gradient; take ~12x, giving 0.0023. The
-    #   least certain of the
-    #   five -- plausible within 0.001-0.005.
+    # Measured on pilot 754 (docs/internal/bc-pilot-754-oct2026.json): the
+    # median share over three checkpoints at 13.8-14.7M steps, from first
+    # guesses of bc 0.042, next_state 0.0023, enemy_action 0.07, density 0.03:
+    #     bc 0.51, next_state 0.15, enemy_action 0.13, density 0.10
+    # solved term by term with the formula above. Value is not solved yet: the
+    # pilot priced damage per health point, which put 96% of the critic's trunk
+    # gradient on damage and left the outcome head at uniform, so its share
+    # (0.105) measured a critic that no longer exists. It is re-measured on the
+    # next pilot along with the common multiplier -- the pre-clip norm sat near
+    # 0.2 and clipping never fired.
+    #
     # Shares drift by design: BC's teacher targets are soft, so its gradient
     # falls toward zero as imitation converges, while value and next-state
     # keep a noise floor. Measure in one window, after the 6M warmup and once
     # next-state's zero-initialised residual has stopped growing its share.
-    next_state_coef=0.0023,
-    enemy_action_coef=0.07,
-    global_density_coef=0.03,
+    next_state_coef=0.0030,
+    enemy_action_coef=0.063,
+    global_density_coef=0.024,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now

@@ -143,9 +143,11 @@ architecture, training, environment.
 Status (2026-10-06): **in progress.** Calibrated in three stages: BC, then the
 BC-to-RL transition and RL from a BC checkpoint, since a cloned policy's entropy,
 KL and advantage scales are the regime RL actually starts in. Loss units unified
-(deviations 38–40); BC first-guess weights set in `profiles/bc.py`. Next: a BC
-pilot (~15M steps), shares measured over a window past warmup, weights solved
-from them, one common multiplier on `train/clip_fire_rate`.
+(deviations 38–40). BC pilot 754 (`bc-pilot-754-oct2026.json`) solved the bc,
+next-state, enemy-action and density weights, and found damage priced per health
+point (deviation 41) and the critic's bins far wider than its returns
+(deviation 42). Next: a second pilot to solve value's weight and the common
+multiplier on `train/clip_fire_rate`.
 
 * Short runs only if the 8 GB dev GPU allows; otherwise hand over with the
   reading list of §7.4. The cold-start run itself is the user's to launch.
@@ -330,6 +332,20 @@ Entries are added as the work proceeds.
     probability of its cell, so the sum is independent of how the code is cut.
     RL's weights were converted to keep its balance: next-state 0.2 → 0.2/22,
     density 1.0 → 0.015 (at ten living ships).
+41. **Damage events are counted in full shields** (divided by `max_health`). §6.4
+    prices damage at `V` per unit and §6.3 carries `V = 0.274` over, but the
+    physics reports health points, so a full shield cost 27 wins. The old
+    per-component advantage scaler hid it. BC pilot 754 measured damage's
+    advantage spread at 2.16 against ≤ 0.08 for every other level, the return
+    normaliser's scale at 6.3, and 96% of the critic's trunk gradient on damage
+    with the outcome head still at uniform. 0.274 per full shield sits beside
+    a death's 0.283, which is the balance the plan describes.
+42. **The critic's bins span ±2 symlog units (±6.4 raw), not ±5.** §7.1 sizes
+    the range to the largest measured return with margin; measured after the
+    damage fix on scripted play, that is 4.55 (zone capture), with every level's
+    median |return| at 0.02–0.13. At ±5 the first bins sat at 0, ±0.22 and only
+    ~17 of 51 were in use. One shared range: per-head ranges would buy about 2×
+    resolution on damage for a per-head support in the buffer and the head.
 
 ### Measured (Phase 4)
 
