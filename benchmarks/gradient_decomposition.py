@@ -41,6 +41,16 @@ SUMMARY_SCOPE = "trunk_top_level"
 # auxiliary spending part of the same clipped step. Reported as the reference
 # column of the summary, and skipped when a profile does not train it.
 REFERENCE_TERM = "bc"
+# The training metrics this instrument reads; everything else an update logs is
+# dropped.
+_DIAGNOSTIC_PREFIXES = (
+    "grad_norm/",
+    "grad_share/",
+    "grad_cos/",
+    "grad_diag/",
+    "grad_half_cos/",
+    "grad_signal_fraction/",
+)
 
 
 def _run_profile(run: str, checkpoint_dir: Path) -> str | None:
@@ -66,31 +76,42 @@ def _resume_path(subject: str, checkpoint_dir: Path) -> Path:
     return select_latest_resumable_checkpoint(resolve_exact_run(subject, checkpoint_dir)).path
 
 
-def _summarize(records: dict[str, float]) -> dict[str, dict[str, float]]:
+def _summarize(
+    records: dict[str, float], scope: str = SUMMARY_SCOPE
+) -> dict[str, dict[str, float]]:
     """Per-term trunk statistics, keyed by term, from one update's flat records.
 
     ``scope_metric_records`` publishes ``grad_norm/<scope>/<term>``,
     ``grad_share/<scope>/<term>`` and ``grad_cos/<scope>/<a>__<b>``. This inverts
-    that flattening for the trunk scope alone and attaches each term's cosine
-    with :data:`REFERENCE_TERM`, which is the number that says whether an
-    auxiliary is pulling the trunk with the objective or against it.
+    that flattening for one scope and attaches each term's cosine with
+    :data:`REFERENCE_TERM`, which is the number that says whether an auxiliary
+    is pulling the trunk with the objective or against it, and its agreement
+    between the two halves of the minibatch, which says whether the gradient is
+    signal or sampling noise.
     """
 
-    prefix = f"grad_norm/{SUMMARY_SCOPE}/"
+    prefix = f"grad_norm/{scope}/"
     terms = sorted(key.removeprefix(prefix) for key in records if key.startswith(prefix))
     summary: dict[str, dict[str, float]] = {}
     for term in terms:
         entry = {
-            "trunk_norm": records[f"grad_norm/{SUMMARY_SCOPE}/{term}"],
-            "trunk_share": records[f"grad_share/{SUMMARY_SCOPE}/{term}"],
+            "trunk_norm": records[f"grad_norm/{scope}/{term}"],
+            "trunk_share": records[f"grad_share/{scope}/{term}"],
         }
-        whole = records.get(f"grad_norm/top_level/{term}")
+        whole = records.get(f"grad_norm/{scope.removeprefix('trunk_')}/{term}")
         if whole is not None:
             entry["whole_model_norm"] = whole
+        for key, name in (
+            ("grad_half_cos", "half_cos"),
+            ("grad_signal_fraction", "signal_fraction"),
+        ):
+            value = records.get(f"{key}/{scope}/{term}")
+            if value is not None:
+                entry[name] = value
         if term != REFERENCE_TERM:
             # Emitted under whichever ordering the accumulator saw the pair in.
             for left, right in ((term, REFERENCE_TERM), (REFERENCE_TERM, term)):
-                cosine = records.get(f"grad_cos/{SUMMARY_SCOPE}/{left}__{right}")
+                cosine = records.get(f"grad_cos/{scope}/{left}__{right}")
                 if cosine is not None:
                     entry[f"trunk_cos_with_{REFERENCE_TERM}"] = cosine
                     break
@@ -114,15 +135,22 @@ def _mean_records(per_update: list[dict[str, float]]) -> dict[str, float]:
 def _format_table(summary: dict[str, dict[str, float]]) -> str:
     """The summary as a fixed-width table, most demanding term first."""
 
+    def cell(value: float | None, spec: str) -> str:
+        return "--" if value is None else format(value, spec)
+
     order = sorted(summary, key=lambda term: -summary[term]["trunk_share"])
-    header = f"{'term':<14}{'trunk norm':>14}{'share':>9}{f'cos({REFERENCE_TERM})':>12}"
+    header = (
+        f"{'term':<14}{'trunk norm':>14}{'share':>9}{f'cos({REFERENCE_TERM})':>12}"
+        f"{'half cos':>10}{'signal':>9}"
+    )
     lines = [header, "-" * len(header)]
     for term in order:
         entry = summary[term]
-        cosine = entry.get(f"trunk_cos_with_{REFERENCE_TERM}")
         lines.append(
             f"{term:<14}{entry['trunk_norm']:>14.4g}{entry['trunk_share']:>9.3f}"
-            f"{'--' if cosine is None else f'{cosine:+.3f}':>12}"
+            f"{cell(entry.get(f'trunk_cos_with_{REFERENCE_TERM}'), '+.3f'):>12}"
+            f"{cell(entry.get('half_cos'), '+.3f'):>10}"
+            f"{cell(entry.get('signal_fraction'), '.3f'):>9}"
         )
     return "\n".join(lines)
 
@@ -242,7 +270,7 @@ def main() -> None:
         records = {
             key: float(value)
             for key, value in metrics.items()
-            if key.startswith(("grad_norm/", "grad_share/", "grad_cos/", "grad_diag/"))
+            if key.startswith(_DIAGNOSTIC_PREFIXES)
             and isinstance(value, (int, float))
             and math.isfinite(float(value))
         }
@@ -257,6 +285,8 @@ def main() -> None:
 
     mean = _mean_records(per_update)
     summary = _summarize(mean)
+    reward_value = _summarize(mean, "trunk_reward_value")
+    reward_policy = _summarize(mean, "trunk_reward_policy")
     result = {
         "run": args.run,
         "profile": profile,
@@ -271,6 +301,8 @@ def main() -> None:
         "scope": SUMMARY_SCOPE,
         "reference_term": REFERENCE_TERM,
         "summary": summary,
+        "reward_value_summary": reward_value,
+        "reward_policy_summary": reward_policy,
         "pre_clip_gradient_norm": mean.get("train/gradient_norm"),
         "max_grad_norm": resolved.train_config.max_grad_norm,
         "mean_records": mean,
@@ -279,6 +311,11 @@ def main() -> None:
     print()
     print(f"{args.run} @ {resumed_step:,} steps -- {SUMMARY_SCOPE}, mean of {args.updates} updates")
     print(_format_table(summary))
+    for title, table in (("critic by level", reward_value), ("policy by level", reward_policy)):
+        if table:
+            print()
+            print(title)
+            print(_format_table(table))
     print()
     print(
         f"pre-clip total gradient norm {result['pre_clip_gradient_norm']:.4g}"

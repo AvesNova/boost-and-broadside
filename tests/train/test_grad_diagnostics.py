@@ -159,6 +159,67 @@ def test_summed_cosine_is_not_the_mean_of_microbatch_cosines() -> None:
     assert combined != pytest.approx(mean_of_parts, abs=1e-9)
 
 
+def _linear_accumulator(width: int) -> tuple[torch.nn.Linear, TermGradientAccumulator]:
+    torch.manual_seed(0)
+    model = torch.nn.Linear(width, 1, bias=False)
+    params = list(model.parameters())
+    return model, TermGradientAccumulator(params, [True] * len(params))
+
+
+def test_a_gradient_every_game_shares_reads_as_pure_signal() -> None:
+    model, accumulator = _linear_accumulator(64)
+    x = torch.randn(1, 64)
+    for _ in range(6):
+        accumulator.accumulate({"signal": model(x).sum()})
+    agreement = accumulator.half_agreement(["signal"], trunk=True)["signal"]
+    assert agreement.cosine == pytest.approx(1.0, abs=1e-5)
+    assert agreement.signal_fraction == pytest.approx(1.0, abs=1e-5)
+
+
+def test_a_zero_mean_gradient_reads_as_noise() -> None:
+    """Independent games whose gradients average to nothing agree on nothing."""
+    model, accumulator = _linear_accumulator(256)
+    generator = torch.Generator().manual_seed(1)
+    for _ in range(40):
+        accumulator.accumulate({"noise": model(torch.randn(4, 256, generator=generator)).sum()})
+    agreement = accumulator.half_agreement(["noise"], trunk=True)["noise"]
+    # Two independent 256-d directions: cos ~ N(0, 1/256).
+    assert abs(agreement.cosine) < 0.25
+    assert abs(agreement.signal_fraction) < 0.25
+
+
+def test_the_signal_fraction_recovers_a_known_mixture() -> None:
+    """E||s||^2 / E||S||^2 for a shared mean plus per-micro-batch noise."""
+    model, accumulator = _linear_accumulator(4096)
+    generator = torch.Generator().manual_seed(2)
+    mean = torch.randn(1, 4096, generator=generator)
+    microbatches = 8
+    for _ in range(microbatches):
+        noise = torch.randn(1, 4096, generator=generator)
+        accumulator.accumulate({"mixed": model(mean + noise).sum()})
+    # Sum of 8 micro-batches: ||8 m||^2 = 64 d against noise 8 d.
+    expected = 64.0 / (64.0 + 8.0)
+    agreement = accumulator.half_agreement(["mixed"], trunk=True)["mixed"]
+    assert agreement.signal_fraction == pytest.approx(expected, abs=0.05)
+
+
+def test_one_microbatch_has_no_halves_to_compare() -> None:
+    model, accumulator = _linear_accumulator(8)
+    accumulator.accumulate({"only": model(torch.randn(2, 8)).sum()})
+    assert accumulator.half_agreement(["only"], trunk=True) == {}
+
+
+def test_half_agreement_does_not_change_the_accumulated_sum() -> None:
+    model, accumulator = _linear_accumulator(8)
+    batch = torch.randn(6, 8)
+    for row in batch.split(2):
+        accumulator.accumulate({"term": model(row).sum()})
+    before = accumulator.statistics(["term"], trunk=True).norms["term"]
+    accumulator.half_agreement(["term"], trunk=True)
+    assert accumulator.statistics(["term"], trunk=True).norms["term"] == before
+    assert before == pytest.approx(float(batch.sum(0).norm()), rel=1e-6)
+
+
 def test_scope_statistics_of_no_terms_is_empty_rather_than_undefined() -> None:
     stats = scope_statistics([], torch.zeros(0, 0))
     assert stats.norms == {} and stats.cosines == {}
@@ -362,6 +423,29 @@ def test_the_diagnostic_reports_how_it_was_measured(tmp_path) -> None:
     assert metrics["grad_diag/terms"] >= 1.0
     assert metrics["grad_diag/seconds"] > 0.0
     assert metrics["grad_diag/level"] == float(GRADIENT_DIAGNOSTICS_LEVELS.index("top_level"))
+
+
+def test_signal_and_noise_are_published_beside_every_measured_term(tmp_path) -> None:
+    trainer = _diagnostic_trainer(tmp_path, "reward_full")
+    # One environment per micro-batch, so every minibatch has halves to compare.
+    trainer.cfg = dataclasses.replace(trainer.cfg, microbatch_tokens=1)
+    metrics = _one_update(trainer, update=1)
+    assert metrics["grad_diag/microbatches"] >= 2.0
+    for key in ("grad_half_cos", "grad_signal_fraction"):
+        for scope, term in (
+            ("trunk_top_level", "value"),
+            ("top_level", "value"),
+            ("trunk_reward_value", trainer._active_names[0]),
+        ):
+            assert math.isfinite(metrics[f"{key}/{scope}/{term}"])
+
+
+def test_a_single_microbatch_publishes_no_signal_estimate(tmp_path) -> None:
+    trainer = _diagnostic_trainer(tmp_path, "top_level")
+    trainer.cfg = dataclasses.replace(trainer.cfg, microbatch_tokens=None)
+    metrics = _one_update(trainer, update=1)
+    assert metrics["grad_diag/microbatches"] == 1.0
+    assert not any(key.startswith("grad_half_cos/") for key in metrics)
 
 
 def test_the_cadence_decides_which_updates_are_measured(tmp_path) -> None:

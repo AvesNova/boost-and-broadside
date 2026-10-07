@@ -785,6 +785,14 @@ direction the step follows.
 - `grad_diag/total_norm/<group>` — the norm of the combined gradient, and
   `grad_diag/agreement/<group>` that over the summed norms. Agreement near 1 means the terms
   point the same way; near 0 means the group is largely cancelling itself out.
+- `grad_half_cos/<group>/<term>` — whether the term's gradient is signal or sampling noise.
+  Micro-batches split a minibatch by environment, so alternating them into two halves gives
+  two independent estimates of the same expected gradient from disjoint games. Near 1 the
+  halves agree (signal); near 0 the term is pushing in a different direction every batch.
+- `grad_signal_fraction/<group>/<term>` — `4<A, B> / ||A + B||²`, the share of the
+  minibatch gradient's squared norm that would survive averaging over infinitely many games.
+  It is an unbiased estimate, not a bounded one, so average it over minibatches. Both need
+  at least two micro-batches per minibatch and are omitted otherwise.
 
 Groups are `top_level`, `reward_policy`, and `reward_value`, each also reported over the
 shared trunk under a `trunk_` prefix. The trunk scope is the informative one for cosines

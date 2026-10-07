@@ -21,10 +21,24 @@ Every statistic for one group of terms comes from a single Gram matrix
 cosines, and the full sum gives ``||sum_i g_i||`` without ever materializing the
 summed vector. Gradients are never flattened into one large tensor — they are
 held and reduced per parameter.
+
+A norm cannot say whether a term is *signal* or *noise*: a term whose per-token
+gradients point every which way still leaves a minibatch sum of some length.
+Micro-batches split a minibatch by environment, so alternating them into two
+halves gives two independent estimates of the same expected gradient ``s`` from
+disjoint games. With ``A = s/2 + n_A`` and ``B = s/2 + n_B``,
+
+    cos(A, B)              -> 1 for pure signal, 0 for pure noise
+    signal_fraction = 4<A, B> / ||A + B||^2  ~=  ||s||^2 / E||A + B||^2
+
+the second being the share of the minibatch gradient's squared norm that would
+survive averaging over infinitely many games. It costs no extra backward pass:
+one more running sum per term.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -34,6 +48,22 @@ import torch
 # reads as zero rather than NaN, which is the honest answer: it did not move the
 # parameters.
 _EPS = 1e-12
+
+
+@dataclass(frozen=True)
+class HalfAgreement:
+    """How consistently one term's gradient reproduces across disjoint games.
+
+    Attributes:
+        cosine:          Cosine between the two halves' accumulated gradients.
+        signal_fraction: Estimated share of the minibatch gradient's squared norm
+                         that is expected gradient rather than sampling noise.
+                         Unbiased rather than bounded: a noisy minibatch can read
+                         slightly below zero or above one, so average it.
+    """
+
+    cosine: float
+    signal_fraction: float
 
 
 @dataclass(frozen=True)
@@ -77,6 +107,10 @@ class TermGradientAccumulator:
         # Term name → per-parameter fp32 gradient sums, aligned with _params.
         # None entries are parameters the term does not reach.
         self._sums: dict[str, list[torch.Tensor | None]] = {}
+        # The same sums over the even-numbered micro-batches only: half A. Half
+        # B is the difference, so it needs no storage of its own.
+        self._half_sums: dict[str, list[torch.Tensor | None]] = {}
+        self._half_microbatches = [0, 0]  # micro-batches in halves A and B
         self._order: list[str] = []
         self._microbatches = 0
 
@@ -115,26 +149,28 @@ class TermGradientAccumulator:
                 retain_graph=True,
                 allow_unused=True,
             )
-            self._add(name, grads)
+            if name not in self._sums:
+                self._order.append(name)
+                self._sums[name] = [None] * len(self._params)
+                self._half_sums[name] = [None] * len(self._params)
+            _fold(self._sums[name], grads)
+            if self._microbatches % 2 == 0:
+                _fold(self._half_sums[name], grads)
+        self._half_microbatches[self._microbatches % 2] += 1
         self._microbatches += 1
 
-    def _add(self, name: str, grads: Sequence[torch.Tensor | None]) -> None:
-        """Fold one gradient tuple into the running fp32 sum for ``name``."""
-        slot = self._sums.get(name)
-        if slot is None:
-            self._order.append(name)
-            self._sums[name] = [None if g is None else g.detach().float() for g in grads]
-            return
-        for index, grad in enumerate(grads):
-            if grad is None:
-                continue
-            existing = slot[index]
-            slot[index] = grad.detach().float() if existing is None else existing + grad.float()
-
-    def _dot(self, left: str, right: str, trunk: bool) -> torch.Tensor:
+    def _dot(
+        self,
+        left: str,
+        right: str,
+        trunk: bool,
+        *,
+        left_sums: Mapping[str, list[torch.Tensor | None]] | None = None,
+        right_sums: Mapping[str, list[torch.Tensor | None]] | None = None,
+    ) -> torch.Tensor:
         """Inner product of two accumulated gradients over the selected scope."""
-        left_grads = self._sums[left]
-        right_grads = self._sums[right]
+        left_grads = (self._sums if left_sums is None else left_sums)[left]
+        right_grads = (self._sums if right_sums is None else right_sums)[right]
         total: torch.Tensor | None = None
         for index, (a, b) in enumerate(zip(left_grads, right_grads, strict=True)):
             if a is None or b is None:
@@ -181,6 +217,65 @@ class TermGradientAccumulator:
             The group's statistics, already transferred off the device.
         """
         return scope_statistics(names, self.gram(names, trunk=trunk))
+
+    def half_agreement(self, names: Sequence[str], *, trunk: bool) -> dict[str, HalfAgreement]:
+        """Each term's agreement between the two halves of the minibatch.
+
+        Empty when the minibatch had a single micro-batch, since there is then
+        nothing to compare. With an odd count the halves differ by one
+        micro-batch; the signal estimate rescales for it, assuming micro-batches
+        of near-equal size (the buffer splits environments near-evenly).
+
+        Args:
+            names: Terms to measure; every name must have been accumulated.
+            trunk: Restrict to shared-trunk parameters.
+
+        Returns:
+            Term name → its half agreement.
+        """
+        count_a, count_b = self._half_microbatches
+        if count_a == 0 or count_b == 0:
+            return {}
+        total = count_a + count_b
+        result: dict[str, HalfAgreement] = {}
+        for name in names:
+            half = {name: self._half_sums[name]}
+            aa = float(self._dot(name, name, trunk, left_sums=half, right_sums=half))
+            a_sum = float(self._dot(name, name, trunk, left_sums=half))
+            ss = float(self._dot(name, name, trunk))
+            ab = a_sum - aa  # <A, S - A>
+            bb = ss - 2.0 * a_sum + aa  # ||S - A||^2
+            cosine = ab / (math.sqrt(max(aa, 0.0) * max(bb, 0.0)) + _EPS)
+            # E<A, B> = (count_a / total)(count_b / total) ||s||^2.
+            signal = ab * total * total / (count_a * count_b)
+            result[name] = HalfAgreement(cosine=cosine, signal_fraction=signal / (ss + _EPS))
+        return result
+
+
+def _fold(slot: list[torch.Tensor | None], grads: Sequence[torch.Tensor | None]) -> None:
+    """Add one gradient tuple into a running fp32 per-parameter sum, in place."""
+    for index, grad in enumerate(grads):
+        if grad is None:
+            continue
+        existing = slot[index]
+        slot[index] = grad.detach().float() if existing is None else existing + grad.float()
+
+
+def half_agreement_records(group: str, agreement: Mapping[str, HalfAgreement]) -> dict[str, float]:
+    """Flatten one group's half agreement into logger keys.
+
+    Args:
+        group: Metric-namespace segment, as in :func:`scope_metric_records`.
+        agreement: Term name → its half agreement.
+
+    Returns:
+        Metric name → value.
+    """
+    records: dict[str, float] = {}
+    for name, value in agreement.items():
+        records[f"grad_half_cos/{group}/{name}"] = value.cosine
+        records[f"grad_signal_fraction/{group}/{name}"] = value.signal_fraction
+    return records
 
 
 def scope_statistics(names: Sequence[str], gram: torch.Tensor) -> ScopeStatistics:
@@ -239,8 +334,10 @@ def scope_metric_records(group: str, stats: ScopeStatistics) -> dict[str, float]
 
 
 __all__ = [
+    "HalfAgreement",
     "ScopeStatistics",
     "TermGradientAccumulator",
+    "half_agreement_records",
     "scope_metric_records",
     "scope_statistics",
 ]

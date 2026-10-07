@@ -93,6 +93,7 @@ from boost_and_broadside.train.rl.features import (
 )
 from boost_and_broadside.train.rl.grad_diagnostics import (
     TermGradientAccumulator,
+    half_agreement_records,
     scope_metric_records,
     scope_statistics,
 )
@@ -2783,6 +2784,19 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 statistics = scope_statistics(display, accumulator.gram(names, trunk=trunk))
                 prefix = f"trunk_{group}" if trunk else group
                 records.update(scope_metric_records(prefix, statistics))
+                # Signal against noise: does each term's gradient reproduce
+                # across the two disjoint halves of the minibatch's games?
+                agreement = accumulator.half_agreement(names, trunk=trunk)
+                records.update(
+                    half_agreement_records(
+                        prefix,
+                        {
+                            shown: agreement[name]
+                            for name, shown in zip(names, display, strict=True)
+                            if name in agreement
+                        },
+                    )
+                )
 
         records.update(self._actor_critic_split(accumulator))
         records.update(next_state_gradient_records(accumulator))
