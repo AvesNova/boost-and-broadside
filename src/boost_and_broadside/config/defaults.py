@@ -204,13 +204,12 @@ REWARDS = RewardConfig(
     zone_progress_weight=2.0,
     death_weight=0.283,
     damage_weight=0.274,
-    # Offensive premium: the causing side is paid twice the charge until the
-    # schedule's offensive bias anneals every ratio to 1:1 for the zero-sum
-    # phase. The premium exists because priced evenly an even trade is worth
-    # nothing, and a policy that cannot reliably win it declines it.
-    kill_payout_ratio=2.0,
-    damage_payout_ratio=2.0,
-    capture_payout_ratio=2.0,
+    # Zero-sum from the first step: every payout ratio stays at RewardConfig's
+    # 1:1 and the schedule carries no offensive premium. The 2:1 premium and its
+    # 50M-300M taper were dropped in Phase 11 to keep the critic's targets fixed
+    # for the whole run, warm start included. A BC critic then learns exactly the
+    # returns RL begins with. The mechanism remains (`offensive_bias`,
+    # `*_payout_ratio`) if a premium is ever worth testing again.
 )
 
 # Per-level discount and GAE lambda, per 30 Hz tick (one decision). A horizon is
@@ -302,7 +301,6 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         outcome_scale=hold(1.0),
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
-        offensive_bias=((0, 1.0, "hold"), (50_000_000, 1.0, "linear"), (300_000_000, 0.0, "hold")),
         league_fraction=hold(0.5),
         # Every update.  A save costs ~48 ms of blocking device-to-host copy
         # against an update measured in minutes, and the writer already skips

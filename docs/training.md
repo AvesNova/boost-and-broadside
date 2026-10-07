@@ -281,11 +281,11 @@ Advantages are mixed across a team only through `team_spirit` (OpenAI Five's): a
 advantage plus `s` times its living teammates' mean, per level. The default is zero,
 pure per-ship credit.
 
-The kill, damage and capture payout ratios start at 2:1. The schedule's
-`offensive_bias` retains this premium through 50M steps, decreases it linearly to zero
-by 300M, and holds 1:1 through the remaining 200M of the default 500M-step run.
-Restarting from a checkpoint uses the restored global step. Custom shortened runs should
-move these keypoints if they need the complete curriculum.
+Every profile is zero-sum from the first step: the kill, damage and capture payout
+ratios are 1:1, so each level's reward is a fixed function of the game and the critic's
+targets never move during a run or across a BC warm start. An offensive premium remains
+available -- a payout ratio above 1, annealed toward 1 by the schedule's `offensive_bias`
+-- but no profile uses one.
 
 Respawn transitions are excluded from next-state targets. Recurrent match memory
 persists across lives; episode resets clear it. Hidden shield-depleted enemies remain

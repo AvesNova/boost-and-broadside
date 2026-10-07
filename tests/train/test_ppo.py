@@ -1986,9 +1986,15 @@ def test_offensive_schedule_updates_primary_and_auxiliary_rewards(tmp_path):
 
     from boost_and_broadside.config.defaults import make_rl_schedule_spec
 
+    # The default profiles are zero-sum throughout, so the taper under test is
+    # stated here: the premium held to 50M and gone by 300M.
+    spec = dataclasses.replace(
+        make_rl_schedule_spec(),
+        offensive_bias=((0, 1.0, "hold"), (50_000_000, 1.0, "linear"), (300_000_000, 0.0, "hold")),
+    )
     trainer = _make_trainer(
         checkpoint_dir=str(tmp_path),
-        schedule=make_rl_schedule_spec().compile(),
+        schedule=spec.compile(),
         kill_payout_ratio=2.0,
         damage_payout_ratio=2.0,
         capture_payout_ratio=2.0,

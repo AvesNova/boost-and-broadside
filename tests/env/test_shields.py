@@ -153,16 +153,16 @@ def test_initial_depletion_matches_respawn_and_masked_reset():
     )
 
 
-def test_curriculum_has_a_long_final_zero_sum_phase():
+@pytest.mark.parametrize("name", ["rl", "bc"])
+def test_training_is_zero_sum_from_the_first_step(name):
+    from boost_and_broadside.env.rewards import component_payout_ratios
     from boost_and_broadside.profiles import PROFILES
 
-    schedule = PROFILES["rl"].schedule_spec.compile()
-    assert schedule.offensive_bias(0) == 1
-    assert schedule.offensive_bias(50_000_000) == 1
-    assert schedule.offensive_bias(175_000_000) == pytest.approx(0.5)
-    for step in (300_000_000, 400_000_000, 500_000_000):
-        assert schedule.offensive_bias(step) == 0
-    assert PROFILES["rl"].total_timesteps - 300_000_000 >= 200_000_000
+    profile = PROFILES[name]
+    schedule = profile.schedule_spec.compile()
+    for step in (0, 50_000_000, 175_000_000, profile.total_timesteps):
+        ratios = component_payout_ratios(profile.rewards, schedule.offensive_bias(step))
+        assert all(ratio == 1.0 for ratio in ratios.values())
 
 
 def test_recovery_is_zero_sum_even_with_unequal_teams():
