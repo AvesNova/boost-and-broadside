@@ -837,8 +837,10 @@ with diagnostics on normalizes exactly as training did.
 
 [`benchmarks/gradient_decomposition.py`](../benchmarks/gradient_decomposition.py) is that
 procedure. It resumes a run's latest resumable checkpoint, runs a few ordinary PPO updates
-with diagnostics on, and reports the per-term trunk norms, shares and cosines averaged
-across them.
+with diagnostics on, and reports the per-term trunk norms, shares, cosines and half
+agreement averaged across them. `--pretrain` loads the checkpoint as `bnb train
+--pretrain-from` would instead -- weights and return normaliser at step 0, fresh optimizer --
+so `--profile rl --pretrain` measures a warm start's first updates from a BC checkpoint.
 
 ```
 uv run --no-sync python benchmarks/gradient_decomposition.py --run pious-butterfly-748

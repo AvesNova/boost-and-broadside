@@ -194,6 +194,16 @@ def main() -> None:
     parser.add_argument("--microbatch-tokens", type=int, default=None)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--checkpoint-dir", type=Path, default=Path("checkpoints"))
+    parser.add_argument(
+        "--pretrain",
+        action="store_true",
+        help=(
+            "Load the checkpoint as `bnb train --pretrain-from` does -- weights and "
+            "return normaliser only, at step 0 with a fresh optimizer -- instead of "
+            "resuming it. Measures a warm start under --profile as its first update "
+            "would see it."
+        ),
+    )
     args = parser.parse_args()
 
     import torch
@@ -243,13 +253,17 @@ def main() -> None:
         compile_mode=launch.execution.compile_mode,
         gradient_diagnostics=diagnostics,
     )
-    trainer.load_checkpoint(str(checkpoint))
+    if args.pretrain:
+        trainer.load_pretrained_weights(str(checkpoint))
+    else:
+        trainer.load_checkpoint(str(checkpoint))
     resumed_step = trainer._global_step
 
     # The ordinary update path, minus everything that would mutate the run:
     # no _maybe_save_checkpoint, no _refresh_training_schedule, no ladder
     # advance, no logging. The schedule is whatever the checkpoint restored, so
-    # each coefficient is the one training was applying at `resumed_step`.
+    # each coefficient is the one training was applying at `resumed_step` --
+    # step 0 under --pretrain, as a warm start's first update.
     runtime = trainer._initialize_rollout_runtime()
     trainer._train_start_time = time.time()
     trainer._perf_mark_time = trainer._train_start_time
@@ -292,6 +306,7 @@ def main() -> None:
         "profile": profile,
         "checkpoint": str(checkpoint),
         "resumed_global_step": resumed_step,
+        "pretrain": args.pretrain,
         "device": torch.cuda.get_device_name(args.device) if args.device == "cuda" else "cpu",
         "torch": torch.__version__,
         "compile_mode": args.compile_mode,
