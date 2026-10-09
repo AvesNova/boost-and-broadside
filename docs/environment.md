@@ -41,7 +41,7 @@ Respawns preserve slot identity, clear previous-life damage attribution on the n
 tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
 zero shields no longer implies death. Checkpoints from before the
-`categorical_codes_v21` observation/feature contract are incompatible.
+`categorical_codes_v22` observation/feature contract are incompatible.
 
 ## Tensorized simulation
 
@@ -306,8 +306,9 @@ field evaluation.
 The configured muzzle speed is a proper speed relative to the firing ship: it is divided
 by the local index before adding ship velocity and spread. Projectiles continuously
 refract, experience quadratic drag, wrap, and expire through a fixed per-ship ring buffer.
-The production pool uses ten slots, sufficient for the default one-second lifetime and
-0.1-second cooldown without overwriting a live projectile.
+The production pool uses ten slots: at 30 Hz a one-second projectile moves 29 times and
+launches are at least the three-tick (0.1-second) cooldown apart, so ten slots are exactly
+enough without overwriting a live projectile.
 
 Projectiles are also observable by the policy. `observation_from_state(...,
 include_bullets=True)` flattens the per-ship ring buffers into one `(B, N*K, ...)` axis
@@ -327,6 +328,34 @@ Cyan/blue means lower/faster
 index; violet means higher/slower index, with stronger levels brighter and more saturated.
 Fields use uniform thin outlines. Alpha-blended annuli make
 partial and coincident overlaps visible while nominal contours stay individually legible.
+
+### Ghost bullets and shot labels
+
+With `EnvConfig.shot_labels` on (set whenever a shot-head coefficient is above zero), the
+same slots also carry *ghost* bullets that supervise the policy's
+[counterfactual shot heads](architecture.md#counterfactual-shot-heads)
+([`shot_labels.py`](../src/boost_and_broadside/env/shot_labels.py)). Every living ship
+that does not fire launches a ghost whenever its own ghost cooldown allows: the real
+launch state, spread draw and physics, but no damage, no power, no `ship_is_shooting`, no
+firing reveal, and never rendered or observed. A real shot resets both cooldowns, and one
+fired inside a ghost's cooldown takes over that ghost's slot, discarding its example.
+
+`bullet_active` keeps its gameplay meaning (a real bullet that can still hit), so every
+reader of it is unchanged; `bullet_flying` is the label flight. Every launched bullet flies
+its whole lifetime through any hit, and its slot records two snapshots at launch-drawn ages,
+its first hit (from the same swept distances that decide gameplay hits) or else its closest
+pass to any other living ship, and the snapshot there. A snapshot is the displacement and
+velocity in the launch attitude's frame, plus the local index. When the lifetime runs out
+the record is emitted as the ship's example, always 29 ticks after launch, which is what
+lets the trainer file it under the launch decision with a fixed offset. A reset clears
+flights without emitting, so a shot cut short by the end of its episode is dropped.
+
+With labels on, launches reclaim slots rather than following the ring cursor: a free slot,
+else the oldest spent flight (a ghost or a real bullet that already hit), else the oldest
+live bullet. A same-tick Frontline respawn clears the firing cooldown and can compress
+launches; a ghost then gives way rather than displace a live real bullet, so gameplay is
+bit-identical with labels on or off. Ghost ages are drawn from their own generator for the
+same reason. Evaluation environments never run ghosts.
 
 ## Historical field cost (before the shield overhaul)
 
@@ -361,6 +390,9 @@ them with `benchmarks/field_throughput.py`.
 - [`test_bullet_fields.py`](../tests/env/test_bullet_fields.py): selectable projectile
   integrators, refraction/TIR, proper-speed conservation, and
   high-resolution trajectory comparisons;
+- [`test_shot_labels.py`](../tests/env/test_shot_labels.py): ghost and real hits, near
+  misses, scheduled snapshots, replacement, slot reclamation, emission timing, reset
+  discards, the `is_shooting` channel, and bit-identical gameplay with labels on or off;
 - [`test_perception.py`](../tests/env/test_perception.py): the four sight rules —
   team sharing, opaque-core occlusion in both directions, the circular range, and the
   firing reveal — plus optional zone occlusion and declared projectile perception;
