@@ -244,6 +244,12 @@ class TrainConfig:
     # a checkpoint. Requires ``model_config.global_token``, which is the only
     # thing that gives the head an embedding to read.
     global_density_coef: float = 0.0
+    # Cross-entropy weights for the counterfactual shot heads (env/shot_labels.py,
+    # train/rl/shot_codes.py): bullet state at queried ages, and the whole-shot
+    # outcome. Either above zero builds the heads and turns the environment's
+    # ghost bullets and shot labels on; both zero leaves no trace of either.
+    shot_trajectory_coef: float = 0.0
+    shot_outcome_coef: float = 0.0
 
     # Largest Frontline map scale a training episode may draw. Each reset plays
     # the reference geometry with probability one half and otherwise a map whose

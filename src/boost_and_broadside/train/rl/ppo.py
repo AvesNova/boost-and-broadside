@@ -62,6 +62,7 @@ from boost_and_broadside.env.rewards import (
     component_payout_ratios,
     component_weights,
 )
+from boost_and_broadside.env.shot_labels import shot_label_delay
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
@@ -140,6 +141,16 @@ from boost_and_broadside.train.rl.physical_deltas import PHYSICAL_DELTA_SCALES
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
 from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_DIM, CODE_GROUP_NAMES
+from boost_and_broadside.train.rl.shot_codes import (
+    ALLY_HIT,
+    CLEAR_MISS,
+    ENEMY_HIT,
+    SHOT_LABEL_DIM,
+    TRAJECTORY_GROUPS,
+    TRAJECTORY_PART_NAMES,
+    ShotCodec,
+    ShotTargets,
+)
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
 # ------------------------------------------------------------------
@@ -480,6 +491,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
+        # The counterfactual shot heads train on labels only the environment's
+        # ghost bullets produce, so one without the other is a configuration bug.
+        self._predict_shots = (
+            train_config.shot_trajectory_coef > 0.0 or train_config.shot_outcome_coef > 0.0
+        )
+        if self._predict_shots != train_config.scales[0].env_config.shot_labels:
+            raise ValueError(
+                "shot heads need EnvConfig.shot_labels and shot labels need a shot "
+                "coefficient: set both or neither"
+            )
         self._policy_module = build_policy(
             model_config,
             ship_config,
@@ -487,6 +508,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_ships=N,
             global_value_k=self._global_value_k,
             predict_density=train_config.global_density_coef > 0.0,
+            predict_shots=self._predict_shots,
         ).to(self.device)
         self.sigreg = SIGReg(d_model=model_config.d_model, num_proj=64).to(self.device)
         # Captured before compiling. Two things re-traverse a micro-batch's
@@ -567,7 +589,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             uncertainty_dim=PHYSICAL_UNCERTAINTY_DIM,
             density_dim=HEX_DENSITY_DIM if train_config.global_density_coef > 0.0 else 0,
             store_expert_probs=self._stores_bc_targets,
+            shot_label_dim=SHOT_LABEL_DIM if self._predict_shots else 0,
+            shot_label_delay=shot_label_delay(ship_config) if self._predict_shots else 0,
         )
+        self.shot_codec = self._policy_module.shot_codec
 
         # OpenAI Five's team spirit per active level: how much of the mean
         # teammate advantage each ship's own advantage absorbs. Zero is pure
@@ -628,6 +653,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             num_ships=N,
             global_value_k=self._global_value_k,
             predict_density=train_config.global_density_coef > 0.0,
+            predict_shots=self._predict_shots,
         ).to(self.device)
         self.avg_policy = compile_policy(self._avg_policy_module, compile_mode)
         self._avg_policy_module.load_state_dict(self._policy_module.state_dict())
@@ -813,7 +839,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_w = YemongEnvWrapper(
                 num_envs=sc.num_envs,
                 ship_config=ship_config,
-                env_config=sc.env_config,
+                # Auxiliary scales store no shot labels; skip their ghosts.
+                env_config=dataclasses.replace(sc.env_config, shot_labels=False),
                 rewards=train_config.rewards,
                 device=device,
                 collision_compile_mode=collision_compile_mode,
@@ -1733,6 +1760,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         enemy_action_sum = _z.clone()
         persistence_sum = _z.clone()
         ns_visible_sum = _z.clone()
+        shot_sum = _z.clone()
         numel = 0
         need_bc = is_primary and self._behavior_cloning_coef > 0.0
         need_ns = is_primary and self.cfg.next_state_coef > 0.0
@@ -1762,6 +1790,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             if need_bc:
                 bc_valid = mb_expert_probs.sum(-1) > 0
                 bc_sum += (bc_valid & mb_actor_mask & mb_alive).sum()
+            if chunk.shot_labels is not None:
+                shot_sum += ((chunk.shot_labels[..., 0] > 0.5) & chunk.observer_side).sum()
             if need_ns:
                 belief_valid = chunk.obs[ObsKey.BELIEF_VALID][
                     : mb_alive.shape[0], :, : self.buffer.num_ships
@@ -1798,6 +1828,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "ns_hidden_sum": (ns_sum - ns_visible_sum).clamp(min=1.0).to(self.device),
             "enemy_action_sum": enemy_action_sum.clamp(min=1.0).to(self.device),
             "persistence_sum": persistence_sum.clamp(min=1.0).to(self.device),
+            "shot_sum": shot_sum.clamp(min=1.0).to(self.device),
             "numel": float(numel),
             "return_scale": buf.return_scale,
         }
@@ -1885,17 +1916,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # can attend to field tokens; mb_alive is ships-only and used for loss masking.
         alive_mask_full = curr_mb_obs[ObsKey.BELIEF_VALID].bool()  # (T, B_mb, N+M)
         evaluate = evaluate_actions or self._update_evaluate_actions()
+        # Shot targets are built before the forward: their queried ages are an
+        # input to the trajectory head.
+        shot_targets = (
+            self.shot_codec.targets(batch.shot_labels)
+            if self.shot_codec is not None and batch.shot_labels is not None
+            else None
+        )
+        shot_kwargs = {} if shot_targets is None else {"shot_ages": shot_targets.ages}
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            (
-                logprob,
-                entropy,
-                critic,
-                policy_logits,
-                z,
-                pred_next,
-                enemy_action_logits,
-                density_pred,
-            ) = evaluate(
+            outputs = evaluate(
                 obs=curr_mb_obs,
                 actions=mb_actions.long(),
                 initial_hidden=mb_hidden,
@@ -1904,7 +1934,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 return_encoder_output=need_sigreg,
                 return_enemy_action=True,
                 return_density=True,
+                **shot_kwargs,
             )
+        (
+            logprob,
+            entropy,
+            critic,
+            policy_logits,
+            z,
+            pred_next,
+            enemy_action_logits,
+            density_pred,
+        ) = outputs[:8]
+        shot_trajectory_logits, shot_outcome_logits = (
+            outputs[8:] if shot_targets is not None else (None, None)
+        )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
         alive_k = alive_f.unsqueeze(-1)  # (T, B_mb, N, 1)
@@ -2129,6 +2173,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             )
         density_loss = density.loss
 
+        # ---- Counterfactual shot prediction (primary scale only) -------------
+        shot = self._shot_losses(
+            shot_trajectory_logits,
+            shot_outcome_logits,
+            shot_targets,
+            batch.observer_side,
+            denoms["shot_sum"],
+        )
+
         loss = (
             self._policy_gradient_coef * pg_loss
             + self._schedule_state.value_function_coef * vf_loss
@@ -2138,6 +2191,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             + self._schedule_state.sigreg_coef * sigreg_loss
             + self.cfg.next_state_coef * next_state_loss
             + self.cfg.global_density_coef * density_loss
+            + self.cfg.shot_trajectory_coef * shot["trajectory"]
+            + self.cfg.shot_outcome_coef * shot["outcome"]
         )
 
         diag: dict = dict(diag_outcome)
@@ -2157,6 +2212,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 "sigreg": self._schedule_state.sigreg_coef * sigreg_loss,
                 "next_state": self.cfg.next_state_coef * next_state_loss,
                 "density": self.cfg.global_density_coef * density_loss,
+                "shot_trajectory": self.cfg.shot_trajectory_coef * shot["trajectory"],
+                "shot_outcome": self.cfg.shot_outcome_coef * shot["outcome"],
             }
             if self._grad_diag.decomposes_policy_by_reward:
                 terms.update(
@@ -2206,6 +2263,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["sigreg_loss"] = sigreg_loss.detach()
             diag["next_state_loss"] = next_state_loss.detach()
             diag["density_loss"] = density.loss.detach()
+            for name, value in shot.items():
+                diag[f"shot_{name}"] = value.detach()
             diag["density_deviance"] = density.deviance
             diag["density_ally_loss"] = density.ally_loss.detach()
             diag["density_enemy_loss"] = density.enemy_loss.detach()
@@ -2283,6 +2342,63 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 diag["logprob_flat"] = logprob.detach().float().reshape(-1)
 
         return loss, diag
+
+    def _shot_losses(
+        self,
+        trajectory_logits: torch.Tensor | None,
+        outcome_logits: torch.Tensor | None,
+        targets: ShotTargets | None,
+        observer_side: torch.Tensor,
+        shot_sum: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Masked cross-entropies of the two shot heads, and their diagnostics.
+
+        Supervised on the observer's own ships only: theirs is the observation
+        that carried the exact command applied at launch. An enemy token holds a
+        forecast of it, and what its shot would do is another question.
+
+        Returns ``trajectory`` and ``outcome`` (the weighted terms, with
+        gradient), the trajectory loss split by channel, and the realized and
+        predicted outcome rates -- every entry additive across micro-batches.
+        The trajectory loss is per softmax group and per query, so its scale
+        does not move with the code's layout.
+        """
+        names = (
+            "trajectory",
+            "outcome",
+            *(f"trajectory_{name}" for name in TRAJECTORY_PART_NAMES),
+            "enemy_hit_rate",
+            "enemy_hit_predicted",
+            "ally_hit_rate",
+            "ally_hit_predicted",
+            "clear_miss_rate",
+            "clear_miss_predicted",
+        )
+        if targets is None or trajectory_logits is None or outcome_logits is None:
+            return {name: self._zero_tensor for name in names}
+        supervised = (targets.valid & observer_side).float()  # (T, B, N)
+        parts = ShotCodec.trajectory_cross_entropy(trajectory_logits, targets.trajectory)
+        per_example = parts.sum(-1).mean(-1) / TRAJECTORY_GROUPS  # (T, B, N)
+        losses = {
+            "trajectory": (per_example * supervised).sum() / shot_sum,
+            "outcome": (
+                ShotCodec.outcome_cross_entropy(outcome_logits, targets.outcome) * supervised
+            ).sum()
+            / shot_sum,
+        }
+        with torch.no_grad():
+            part_means = (parts.mean(-2) * supervised.unsqueeze(-1)).sum((0, 1, 2)) / shot_sum
+            for index, name in enumerate(TRAJECTORY_PART_NAMES):
+                losses[f"trajectory_{name}"] = part_means[index]
+            predicted = F.softmax(outcome_logits.float(), dim=-1)
+            for name, index in (
+                ("enemy_hit", ENEMY_HIT),
+                ("ally_hit", ALLY_HIT),
+                ("clear_miss", CLEAR_MISS),
+            ):
+                losses[f"{name}_rate"] = (targets.outcome[..., index] * supervised).sum() / shot_sum
+                losses[f"{name}_predicted"] = (predicted[..., index] * supervised).sum() / shot_sum
+        return losses
 
     def _global_density_loss(
         self,
@@ -2923,6 +3039,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "loss/next_state": [],
             "loss/next_state_cont": [],
             "loss/global_density": [],
+            # Counterfactual shot heads: the two weighted terms, the trajectory
+            # loss by channel, and realized against predicted outcome rates --
+            # the head's calibration on the shots it was trained on.
+            "loss/shot_trajectory": [],
+            "loss/shot_outcome": [],
+            "shot/trajectory_displacement": [],
+            "shot/trajectory_direction": [],
+            "shot/trajectory_speed": [],
+            "shot/trajectory_local_log_index": [],
+            "shot/enemy_hit_rate": [],
+            "shot/enemy_hit_predicted": [],
+            "shot/ally_hit_rate": [],
+            "shot/ally_hit_predicted": [],
+            "shot/clear_miss_rate": [],
+            "shot/clear_miss_predicted": [],
             # Excess nats per cell over a perfect predictor. A Poisson
             # likelihood has no natural zero, so this is the series that says
             # how good the head is; the loss is what is optimized.
@@ -2950,6 +3081,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "loss_proxy/sigreg": [],
             "loss_proxy/next_state": [],
             "loss_proxy/global_density": [],
+            "loss_proxy/shot_trajectory": [],
+            "loss_proxy/shot_outcome": [],
             "loss_proxy/enemy_action": [],
             "policy/kl": [],
             "policy/clip_fraction": [],
@@ -3072,6 +3205,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("density_enemy", "density_enemy_loss"),
                     ("density_ally_deviance", "density_ally_deviance"),
                     ("density_enemy_deviance", "density_enemy_deviance"),
+                    ("shot_trajectory", "shot_trajectory"),
+                    ("shot_outcome", "shot_outcome"),
+                    ("shot_trajectory_displacement", "shot_trajectory_displacement"),
+                    ("shot_trajectory_direction", "shot_trajectory_direction"),
+                    ("shot_trajectory_speed", "shot_trajectory_speed"),
+                    ("shot_trajectory_local_log_index", "shot_trajectory_local_log_index"),
+                    ("shot_enemy_hit_rate", "shot_enemy_hit_rate"),
+                    ("shot_enemy_hit_predicted", "shot_enemy_hit_predicted"),
+                    ("shot_ally_hit_rate", "shot_ally_hit_rate"),
+                    ("shot_ally_hit_predicted", "shot_ally_hit_predicted"),
+                    ("shot_clear_miss_rate", "shot_clear_miss_rate"),
+                    ("shot_clear_miss_predicted", "shot_clear_miss_predicted"),
                     ("bc_kl", "bc_kl"),
                     ("scripted_entropy", "scripted_entropy"),
                     ("kl", "approx_kl"),
@@ -3128,6 +3273,18 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     ("loss/global_density_enemy", "density_enemy"),
                     ("global_density/ally_deviance", "density_ally_deviance"),
                     ("global_density/enemy_deviance", "density_enemy_deviance"),
+                    ("loss/shot_trajectory", "shot_trajectory"),
+                    ("loss/shot_outcome", "shot_outcome"),
+                    ("shot/trajectory_displacement", "shot_trajectory_displacement"),
+                    ("shot/trajectory_direction", "shot_trajectory_direction"),
+                    ("shot/trajectory_speed", "shot_trajectory_speed"),
+                    ("shot/trajectory_local_log_index", "shot_trajectory_local_log_index"),
+                    ("shot/enemy_hit_rate", "shot_enemy_hit_rate"),
+                    ("shot/enemy_hit_predicted", "shot_enemy_hit_predicted"),
+                    ("shot/ally_hit_rate", "shot_ally_hit_rate"),
+                    ("shot/ally_hit_predicted", "shot_ally_hit_predicted"),
+                    ("shot/clear_miss_rate", "shot_clear_miss_rate"),
+                    ("shot/clear_miss_predicted", "shot_clear_miss_predicted"),
                     ("policy/kl", "kl"),
                     ("policy/clip_fraction", "clip"),
                     ("policy/ratio_mean", "ratio_mean"),
@@ -3296,6 +3453,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 )
                 accum_scalar["loss_proxy/global_density"].append(
                     self.cfg.global_density_coef * scalar_accum_step["density"]
+                )
+                accum_scalar["loss_proxy/shot_trajectory"].append(
+                    self.cfg.shot_trajectory_coef * scalar_accum_step["shot_trajectory"]
+                )
+                accum_scalar["loss_proxy/shot_outcome"].append(
+                    self.cfg.shot_outcome_coef * scalar_accum_step["shot_outcome"]
                 )
                 accum_scalar["loss_proxy/enemy_action"].append(
                     self.cfg.enemy_action_coef * scalar_accum_step["enemy_action"]

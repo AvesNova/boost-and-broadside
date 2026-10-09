@@ -467,6 +467,7 @@ def resolve_profile(
         zones_occlude=profile.zones_occlude,
         spawn_reveal=profile.spawn_reveal,
         frontline=scaled_frontline,
+        shot_labels=profile.shot_trajectory_coef > 0.0 or profile.shot_outcome_coef > 0.0,
     )
     action_repeat = profile.action_repeat
     component_gammas = {

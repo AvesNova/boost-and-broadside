@@ -53,6 +53,10 @@ class MicroBatch(NamedTuple):
     # that never trains the global density head. Deliberately outside ``obs``,
     # like ``privileged_means``: no policy input path can reach it by key.
     density_targets: torch.Tensor | None = None
+    # (T, B, N, SHOT_LABEL_DIM) completed shot examples filed under their launch
+    # decision, validity first (train/rl/shot_codes.py), or None without shot
+    # heads. Outside ``obs`` for ``privileged_means``' reason: it is the future.
+    shot_labels: torch.Tensor | None = None
 
     def pin_memory(self) -> "MicroBatch":
         """Copy one CPU micro-batch into page-locked transfer memory.
@@ -86,6 +90,7 @@ class MicroBatch(NamedTuple):
             density_targets=(
                 self.density_targets.pin_memory() if self.density_targets is not None else None
             ),
+            shot_labels=self.shot_labels.pin_memory() if self.shot_labels is not None else None,
         )
 
     def to(self, device: torch.device, non_blocking: bool = False) -> "MicroBatch":
@@ -127,6 +132,11 @@ class MicroBatch(NamedTuple):
             density_targets=(
                 self.density_targets.to(device=device, non_blocking=non_blocking)
                 if self.density_targets is not None
+                else None
+            ),
+            shot_labels=(
+                self.shot_labels.to(device=device, non_blocking=non_blocking)
+                if self.shot_labels is not None
                 else None
             ),
         )
@@ -187,6 +197,7 @@ class MicroBatch(NamedTuple):
             density_targets=(
                 self.density_targets[:, start:end] if self.density_targets is not None else None
             ),
+            shot_labels=self.shot_labels[:, start:end] if self.shot_labels is not None else None,
         )
 
     def split_envs(self, num_chunks: int) -> list["MicroBatch"]:
@@ -300,6 +311,8 @@ class RolloutBuffer:
         uncertainty_dim: int = 0,
         density_dim: int = 0,
         store_expert_probs: bool = True,
+        shot_label_dim: int = 0,
+        shot_label_delay: int = 0,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
@@ -425,6 +438,17 @@ class RolloutBuffer:
             if density_dim > 0
             else None
         )
+        # Completed shot examples, ``(T, B, N, shot_label_dim)``, validity first.
+        # The environment emits an example exactly ``shot_label_delay`` decisions
+        # after its launch, so the row it belongs to is a fixed offset back and
+        # filing it is a slice, never a scatter. The last ``shot_label_delay``
+        # rows of every rollout complete only in the next one and stay invalid.
+        self.shot_label_delay = shot_label_delay
+        self.shot_labels: torch.Tensor | None = (
+            torch.zeros((T, B, N, shot_label_dim), device=device, dtype=torch.float32)
+            if shot_label_dim > 0
+            else None
+        )
         # The behaviour policy's next-state forecasts, decoded to moments
         # (T, B, N, 25), for the belief diagnostics.
         self.rollout_predictions: torch.Tensor | None = (
@@ -464,6 +488,8 @@ class RolloutBuffer:
         self.expert_probs.zero_()  # only filled for scripted-group envs; rest must be zero
         self.terminated.zero_()
         self.transition_contiguous.fill_(True)
+        if self.shot_labels is not None:
+            self.shot_labels[..., 0].zero_()
         self.belief_diagnostics = {}
         # obs[T] slot is overwritten by store_final_obs() — no need to zero it
 
@@ -568,6 +594,25 @@ class RolloutBuffer:
             self.density_targets[t].copy_(density_target)
 
         self.ptr += 1
+
+    def add_shot_examples(self, example: torch.Tensor, valid: torch.Tensor) -> None:
+        """File the shot examples the step just added completed.
+
+        Call right after :meth:`add`. An example completing on this step belongs
+        to the decision ``shot_label_delay`` steps back; one whose launch fell in
+        the previous rollout has no row here and is dropped.
+
+        Args:
+            example: ``(B, N, EXAMPLE_DIM)`` the environment's per-ship example.
+            valid:   ``(B, N)`` bool, whether the ship completed one this step.
+        """
+        if self.shot_labels is None:
+            return
+        row = self.ptr - 1 - self.shot_label_delay
+        if row < 0:
+            return
+        self.shot_labels[row, ..., 0] = valid.float()
+        self.shot_labels[row, ..., 1:] = example
 
     def store_final_obs(
         self,
@@ -754,6 +799,9 @@ class RolloutBuffer:
                             if self.density_targets is not None
                             else None
                         ),
+                        shot_labels=(
+                            self.shot_labels[:, idx] if self.shot_labels is not None else None
+                        ),
                     )
                 )
             yield chunks
@@ -813,6 +861,11 @@ class StoredRollout:
         self.density_targets = (
             source.density_targets.detach().to(device="cpu", copy=True)
             if source.density_targets is not None
+            else None
+        )
+        self.shot_labels = (
+            source.shot_labels.detach().to(device="cpu", copy=True)
+            if source.shot_labels is not None
             else None
         )
         self.belief_diagnostics = {
@@ -913,6 +966,9 @@ class StoredRollout:
                         self.density_targets[:, indices]
                         if self.density_targets is not None
                         else None
+                    ),
+                    shot_labels=(
+                        self.shot_labels[:, indices] if self.shot_labels is not None else None
                     ),
                 )
             ]

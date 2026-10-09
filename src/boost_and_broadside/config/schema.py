@@ -131,6 +131,9 @@ class ProfileSpec:
     # --- Machine sizing, excluded from the profile fingerprint ---
     launch: LaunchSizingSpec = field(default_factory=LaunchSizingSpec)
     single_team: bool = False
+    # Counterfactual shot heads; either above zero turns shot labels on.
+    shot_trajectory_coef: float = 0.0
+    shot_outcome_coef: float = 0.0
 
     def __post_init__(self) -> None:
         object.__setattr__(

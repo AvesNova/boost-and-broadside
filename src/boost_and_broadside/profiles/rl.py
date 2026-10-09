@@ -125,6 +125,11 @@ RL_PROFILE = ProfileSpec(
     # per-cell mean square whose untrained value is about 0.1, so this also puts
     # the weighted term in the same band as the other two auxiliaries.
     global_density_coef=1.0,
+    # Counterfactual shot heads (env/shot_labels.py). NOT CALIBRATED: 0.1 is a
+    # placeholder pending the auxiliary-weight balancing done elsewhere, not a
+    # measured choice. Read the gradient diagnostics before trusting it.
+    shot_trajectory_coef=0.1,
+    shot_outcome_coef=0.1,
     # --- Discounts, per physics tick ---
     gamma_per_tick=0.99,
     gae_lambda_per_tick=0.95,
