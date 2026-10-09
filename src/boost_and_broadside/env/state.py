@@ -104,6 +104,23 @@ class TensorState:
     # Ring-buffer write cursor
     bullet_cursor: torch.Tensor  # (B, N) int64
 
+    # Counterfactual shot labels (env/shot_labels.py). ``bullet_active`` stays
+    # the gameplay flag -- a real bullet that can still hit -- so every reader of
+    # it is untouched. ``bullet_flying`` is the label flight: every launched
+    # bullet, real or ghost, for its whole lifetime, through any hit. A ghost is
+    # flying and never active; a real bullet that hit is flying and no longer
+    # active. Without shot labels the record axes are zero-width.
+    ship_ghost_cooldown: torch.Tensor  # (B, N) float32 — seconds until next ghost
+    bullet_flying: torch.Tensor  # (B, N, K) bool
+    bullet_age: torch.Tensor  # (B, N, K) int32 — ticks moved since launch
+    # Per-slot label bookkeeping, laid out by env/shot_labels.py. Updated in
+    # place like ``damage_matrix``: nothing snapshots it.
+    bullet_shot_record: torch.Tensor  # (B, N, K, R) float32
+    # Per-tick output: the example whose bullet expired this tick, at most one
+    # per ship, and whether there was one.
+    shot_example: torch.Tensor  # (B, N, E) float32
+    shot_example_valid: torch.Tensor  # (B, N) bool
+
     # Per-step and per-life damage attribution (shooter × target)
     damage_matrix: torch.Tensor  # (B, N, N) float32  — raw impact this step; zeroed each step
     # Outstanding *applied* damage by attacker: grows with every applied hit,

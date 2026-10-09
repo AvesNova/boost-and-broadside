@@ -44,7 +44,7 @@ draw and is rated normally.
 """
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import torch
@@ -230,7 +230,8 @@ class EloEvaluator:
         self.env = TensorEnv(
             self.batch_size,
             ship_config,
-            env_config,
+            # Shot labels supervise the training rollout only.
+            replace(env_config, shot_labels=False),
             device,
         )
         self.env.reset()

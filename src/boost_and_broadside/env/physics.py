@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import EPS, ShootActions
+from boost_and_broadside.env import shot_labels
 from boost_and_broadside.env.field_physics import FieldEvaluation, evaluate_fields
 from boost_and_broadside.env.state import TensorState
 
@@ -574,19 +575,33 @@ def _update_kinematics(
 
 
 def _handle_shooting(
-    state: TensorState, shoot_action: torch.Tensor, config: ShipConfig
+    state: TensorState,
+    shoot_action: torch.Tensor,
+    config: ShipConfig,
+    shot_generator: torch.Generator | None = None,
 ) -> TensorState:
     """Manage cooldowns and spawn bullets for ships that fire.
 
     Fully branchless: bullet spawns are written through a one-hot mask on the
     ring-buffer cursor instead of dynamic indexing, so no host-device sync occurs
     (this runs every step of every rollout).
+
+    With a ``shot_generator`` (shot labels on) a living ship that does not fire
+    launches a ghost whenever its ghost cooldown allows; see env/shot_labels.py.
+    A ghost shares the real launch's state and noise draw, is never active, and
+    leaves power, the firing cooldown and ``ship_is_shooting`` alone. A real
+    shot inside a ghost's cooldown takes over that ghost's slot, which keeps
+    every launch one cooldown apart, and every other launch reclaims a slot
+    instead of following the ring cursor.
     """
     if state.max_bullets == 0:
         state.ship_is_shooting = torch.zeros_like(state.ship_is_shooting)
         return state
 
     state.ship_cooldown = (state.ship_cooldown - config.dt).clamp(min=0.0)
+    labels = shot_generator is not None
+    if labels:
+        state.ship_ghost_cooldown = (state.ship_ghost_cooldown - config.dt).clamp(min=0.0)
 
     can_shoot = (
         (shoot_action == ShootActions.SHOOT)
@@ -606,7 +621,42 @@ def _handle_shooting(
     )
 
     K = state.max_bullets
-    slot_onehot = F.one_hot(state.bullet_cursor, K).bool() & can_shoot.unsqueeze(-1)  # (B, N, K)
+    if labels:
+        flying = state.bullet_flying
+        spent = flying & ~state.bullet_active  # a ghost, or a real bullet that hit
+        # The most recent flight. While the ghost cooldown runs and a real shot
+        # is possible, it is the ghost that started the cooldown -- unless a
+        # respawn cleared the firing cooldown early, when it may be the real
+        # shot itself and must not be replaced.
+        latest = torch.where(flying, state.bullet_age, torch.iinfo(torch.int32).max).argmin(-1)
+        latest_spent = spent.gather(-1, latest.unsqueeze(-1)).squeeze(-1)
+        replaces_ghost = can_shoot & (state.ship_ghost_cooldown > 0) & latest_spent
+        # A ghost never displaces a live real bullet: with every slot live it
+        # waits for one to free up.
+        ghost = (
+            ~can_shoot
+            & (state.ship_ghost_cooldown <= 0)
+            & state.ship_alive
+            & (~state.bullet_active).any(-1)
+        )
+        launch = can_shoot | ghost
+        state.ship_ghost_cooldown = torch.where(
+            launch, config.firing_cooldown, state.ship_ghost_cooldown
+        )
+        # Otherwise reclaim: a free slot, else the oldest spent flight (only a
+        # label is lost), else the oldest live bullet -- the one the plain ring
+        # would have overwritten, so gameplay never depends on the ghosts.
+        # Launches a cooldown apart always leave a free slot; a same-tick
+        # respawn can briefly compress them.
+        rank = torch.where(~flying, 2, torch.where(spent, 1, 0))
+        reclaimed = (rank * (shot_labels.MAX_AGE_KEY + 1) + state.bullet_age).argmax(-1)
+        slot = torch.where(replaces_ghost, latest, reclaimed)
+        advances_cursor = torch.zeros_like(launch)  # the ring cursor is unused
+    else:
+        launch = can_shoot
+        slot = state.bullet_cursor
+        advances_cursor = can_shoot
+    slot_onehot = F.one_hot(slot, K).bool() & launch.unsqueeze(-1)  # (B, N, K)
 
     # bullet_speed is a proper muzzle speed, just like configured ship speeds.
     # Dividing by local n avoids creating energy when firing inside a medium.
@@ -621,7 +671,9 @@ def _handle_shooting(
     state.bullet_pos = torch.where(slot_onehot, state.ship_pos.unsqueeze(-1), state.bullet_pos)
     state.bullet_vel = torch.where(slot_onehot, spawn_vel.unsqueeze(-1), state.bullet_vel)
     state.bullet_time = torch.where(slot_onehot, config.bullet_lifetime, state.bullet_time)
-    state.bullet_active = state.bullet_active | slot_onehot
+    # A launched slot is active exactly when it is real; without labels every
+    # launch is real and this is the plain union.
+    state.bullet_active = torch.where(slot_onehot, can_shoot.unsqueeze(-1), state.bullet_active)
     state.bullet_local_index = torch.where(
         slot_onehot,
         state.ship_local_index.unsqueeze(-1),
@@ -632,7 +684,11 @@ def _handle_shooting(
         state.ship_field_gradient.unsqueeze(-1),
         state.bullet_field_gradient,
     )
-    state.bullet_cursor = torch.where(can_shoot, (state.bullet_cursor + 1) % K, state.bullet_cursor)
+    state.bullet_cursor = torch.where(
+        advances_cursor, (state.bullet_cursor + 1) % K, state.bullet_cursor
+    )
+    if labels:
+        shot_labels.record_launch(state, slot_onehot, config, shot_generator)
 
     return state
 
@@ -642,20 +698,26 @@ def _handle_shooting(
 # ---------------------------------------------------------------------------
 
 
-def update_ships(state: TensorState, actions: torch.Tensor, config: ShipConfig) -> TensorState:
+def update_ships(
+    state: TensorState,
+    actions: torch.Tensor,
+    config: ShipConfig,
+    shot_generator: torch.Generator | None = None,
+) -> TensorState:
     """Apply one physics timestep: kinematics + shooting.
 
     Args:
         state: Current environment state (mutated in-place).
         actions: (B, N, 3) int tensor — [power_action, turn_action, shoot_action].
         config: Physics configuration.
+        shot_generator: The shot-label random stream; ``None`` launches no ghosts.
 
     Returns:
         The mutated state.
     """
     tables = action_tables(config, state.device)
     state = _update_kinematics(state, actions, config, tables)
-    state = _handle_shooting(state, actions[..., 2].long(), config)
+    state = _handle_shooting(state, actions[..., 2].long(), config, shot_generator)
     return state
 
 
@@ -742,12 +804,15 @@ def resolve_collisions(
     combat_damage_fn: Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor]] | None = None,
     trajectory: BulletTrajectory | None = None,
     frontline=None,
+    combat_proximity_fn: Callable[..., tuple[torch.Tensor, ...]] | None = None,
 ) -> tuple[TensorState, torch.Tensor]:
     """Detect bullet-ship collisions, apply damage, and check game-over.
 
     Args:
         state: Current state (mutated in-place).
         config: Physics configuration.
+        combat_proximity_fn: Optional compiled
+            :func:`_combat_damage_and_proximity_tensors`, used with shot labels.
 
     Returns:
         (state, dones) where dones is a (B,) bool tensor.
@@ -758,38 +823,31 @@ def resolve_collisions(
         combat_damage_fn,
         trajectory,
         frontline,
+        combat_proximity_fn,
     )
     dones = _check_game_over(state)
     return state, dones
 
 
-def _combat_damage_tensors(
+def _swept_dist_sq(
     ship_pos: torch.Tensor,
-    ship_attitude: torch.Tensor,
-    ship_alive: torch.Tensor,
     bullet_start_pos: torch.Tensor,
     bullet_midpoint_pos: torch.Tensor,
     bullet_pos: torch.Tensor,
-    bullet_vel: torch.Tensor,
-    bullet_active: torch.Tensor,
-    bullet_damage: float,
-    collision_radius: float,
-    bullet_min_damage_frac: float,
     world_size: tuple[float, float],
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Pure dense bullet-target kernel, suitable for ``torch.compile``."""
+) -> torch.Tensor:
+    """Least squared distance from every ship to every slot's two swept segments.
 
+    Returns:
+        ``(B, N*K, N)`` over flat bullets then target ships, toroidal.
+    """
     batch_size, num_ships = ship_pos.shape
-    num_bullets = bullet_pos.shape[2]
-    device = ship_pos.device
+    num_flat_bullets = num_ships * bullet_pos.shape[2]
     world_w, world_h = world_size
-    num_flat_bullets = num_ships * num_bullets
 
-    flat_bullet_active = bullet_active.view(batch_size, num_flat_bullets)
     flat_bullet_start = bullet_start_pos.view(batch_size, num_flat_bullets)
     flat_bullet_midpoint = bullet_midpoint_pos.view(batch_size, num_flat_bullets)
     flat_bullet_pos = bullet_pos.view(batch_size, num_flat_bullets)
-    flat_bullet_vel = bullet_vel.view(batch_size, num_flat_bullets)
 
     def segment_dist_sq(start: torch.Tensor, end: torch.Tensor) -> torch.Tensor:
         delta_r = (end.real - start.real + world_w / 2) % world_w - world_w / 2
@@ -809,11 +867,33 @@ def _combat_damage_tensors(
 
     first_dist_sq = segment_dist_sq(flat_bullet_start, flat_bullet_midpoint)
     second_dist_sq = segment_dist_sq(flat_bullet_midpoint, flat_bullet_pos)
-    dist_sq = torch.minimum(first_dist_sq, second_dist_sq)
+    return torch.minimum(first_dist_sq, second_dist_sq)
 
-    owner_idx = torch.arange(num_flat_bullets, device=device) // num_bullets
+
+def _not_own_bullet(num_ships: int, num_bullets: int, device: torch.device) -> torch.Tensor:
+    """``(N*K, N)``: the flat bullet was not fired by the target ship."""
+    owner_idx = torch.arange(num_ships * num_bullets, device=device) // num_bullets
     target_idx = torch.arange(num_ships, device=device)
-    not_own_bullet = owner_idx.unsqueeze(1) != target_idx.unsqueeze(0)
+    return owner_idx.unsqueeze(1) != target_idx.unsqueeze(0)
+
+
+def _damage_from_dist_sq(
+    dist_sq: torch.Tensor,
+    ship_attitude: torch.Tensor,
+    ship_alive: torch.Tensor,
+    bullet_vel: torch.Tensor,
+    bullet_active: torch.Tensor,
+    bullet_damage: float,
+    collision_radius: float,
+    bullet_min_damage_frac: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Gameplay hits, damage and surviving bullets from the swept distances."""
+    batch_size, num_ships, num_bullets = bullet_active.shape
+    num_flat_bullets = num_ships * num_bullets
+    flat_bullet_active = bullet_active.view(batch_size, num_flat_bullets)
+    flat_bullet_vel = bullet_vel.view(batch_size, num_flat_bullets)
+
+    not_own_bullet = _not_own_bullet(num_ships, num_bullets, dist_sq.device)
     valid_hit = (
         (dist_sq < collision_radius**2)
         & ship_alive.unsqueeze(1)
@@ -841,12 +921,92 @@ def _combat_damage_tensors(
     return total_damage, per_shooter, next_bullet_active
 
 
+def _combat_damage_tensors(
+    ship_pos: torch.Tensor,
+    ship_attitude: torch.Tensor,
+    ship_alive: torch.Tensor,
+    bullet_start_pos: torch.Tensor,
+    bullet_midpoint_pos: torch.Tensor,
+    bullet_pos: torch.Tensor,
+    bullet_vel: torch.Tensor,
+    bullet_active: torch.Tensor,
+    bullet_damage: float,
+    collision_radius: float,
+    bullet_min_damage_frac: float,
+    world_size: tuple[float, float],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Pure dense bullet-target kernel, suitable for ``torch.compile``."""
+    dist_sq = _swept_dist_sq(
+        ship_pos, bullet_start_pos, bullet_midpoint_pos, bullet_pos, world_size
+    )
+    return _damage_from_dist_sq(
+        dist_sq,
+        ship_attitude,
+        ship_alive,
+        bullet_vel,
+        bullet_active,
+        bullet_damage,
+        collision_radius,
+        bullet_min_damage_frac,
+    )
+
+
+def _combat_damage_and_proximity_tensors(
+    ship_pos: torch.Tensor,
+    ship_attitude: torch.Tensor,
+    ship_alive: torch.Tensor,
+    bullet_start_pos: torch.Tensor,
+    bullet_midpoint_pos: torch.Tensor,
+    bullet_pos: torch.Tensor,
+    bullet_vel: torch.Tensor,
+    bullet_active: torch.Tensor,
+    bullet_damage: float,
+    collision_radius: float,
+    bullet_min_damage_frac: float,
+    world_size: tuple[float, float],
+    ship_team_id: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """:func:`_combat_damage_tensors` plus every slot's nearest enemy and ally.
+
+    The shot labels' encounters come from the very distances that decide
+    gameplay hits, computed once. Returns the three gameplay outputs, then
+    ``(B, N, K)`` least squared swept distances to a living enemy and to a
+    living ally of each slot's shooter, regardless of whether the slot is
+    active (``NO_ENCOUNTER_DSQ`` when there is none).
+    """
+    batch_size, num_ships, num_bullets = bullet_active.shape
+    dist_sq = _swept_dist_sq(
+        ship_pos, bullet_start_pos, bullet_midpoint_pos, bullet_pos, world_size
+    )
+    gameplay = _damage_from_dist_sq(
+        dist_sq,
+        ship_attitude,
+        ship_alive,
+        bullet_vel,
+        bullet_active,
+        bullet_damage,
+        collision_radius,
+        bullet_min_damage_frac,
+    )
+    shooter_team = ship_team_id.repeat_interleave(num_bullets, dim=1)  # (B, N*K)
+    same_team = shooter_team.unsqueeze(2) == ship_team_id.unsqueeze(1)  # (B, N*K, N)
+    target = ship_alive.unsqueeze(1) & _not_own_bullet(
+        num_ships, num_bullets, dist_sq.device
+    ).unsqueeze(0)
+    far = torch.full_like(dist_sq, shot_labels.NO_ENCOUNTER_DSQ)
+    enemy = torch.where(target & ~same_team, dist_sq, far).amin(dim=2)
+    ally = torch.where(target & same_team, dist_sq, far).amin(dim=2)
+    shape = (batch_size, num_ships, num_bullets)
+    return (*gameplay, enemy.view(shape), ally.view(shape))
+
+
 def _apply_combat_damage(
     state: TensorState,
     config: ShipConfig,
     combat_damage_fn: Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor]] | None = None,
     trajectory: BulletTrajectory | None = None,
     frontline=None,
+    combat_proximity_fn: Callable[..., tuple[torch.Tensor, ...]] | None = None,
 ) -> TensorState:
     """Apply vectorized bullet damage and attribution to mutable state.
 
@@ -857,6 +1017,9 @@ def _apply_combat_damage(
 
     Also fills state.damage_matrix (B, N_shooter, N_target) for this step and
     accumulates into state.cumulative_damage_matrix for episode-level attribution.
+
+    With shot labels on (a non-empty ``bullet_shot_record``) the same distance
+    pass also feeds every flying slot's encounter record.
     """
     num_bullets = state.max_bullets
 
@@ -871,8 +1034,7 @@ def _apply_combat_damage(
     if trajectory is None:
         trajectory = BulletTrajectory(state.bullet_pos, state.bullet_pos)
 
-    damage_fn = combat_damage_fn or _combat_damage_tensors
-    total_damage, per_shooter, next_bullet_active = damage_fn(
+    kernel_args = (
         state.ship_pos,
         state.ship_attitude,
         state.ship_alive,
@@ -886,6 +1048,15 @@ def _apply_combat_damage(
         config.bullet_min_damage_frac,
         config.world_size,
     )
+    if state.bullet_shot_record.shape[-1] > 0:
+        proximity_fn = combat_proximity_fn or _combat_damage_and_proximity_tensors
+        total_damage, per_shooter, next_bullet_active, enemy_dsq, ally_dsq = proximity_fn(
+            *kernel_args, state.ship_team_id
+        )
+        shot_labels.record_encounters(state, enemy_dsq, ally_dsq, config)
+    else:
+        damage_fn = combat_damage_fn or _combat_damage_tensors
+        total_damage, per_shooter, next_bullet_active = damage_fn(*kernel_args)
     if frontline is not None:
         from boost_and_broadside.env.frontline import friendly_spawn_mask
 

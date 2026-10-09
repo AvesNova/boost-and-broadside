@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, MatchResult, ShipConfig
+from boost_and_broadside.env import shot_labels
 from boost_and_broadside.env.field_generation import generate_field_layout
 from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.frontline import (
@@ -23,6 +24,7 @@ from boost_and_broadside.env.frontline import (
     validate_map_scale_cap,
 )
 from boost_and_broadside.env.physics import (
+    _combat_damage_and_proximity_tensors,
     _combat_damage_tensors,
     advance_bullets,
     resolve_collisions,
@@ -56,11 +58,20 @@ class TensorEnv:
         self.ship_config = ship_config
         self.env_config = env_config
         self.device = torch.device(device)
+        compile_collisions = collision_compile_mode is not None and self.device.type == "cuda"
         self._combat_damage_fn = (
             torch.compile(_combat_damage_tensors, mode=collision_compile_mode)
-            if collision_compile_mode is not None and self.device.type == "cuda"
+            if compile_collisions
             else None
         )
+        self._combat_proximity_fn = (
+            torch.compile(_combat_damage_and_proximity_tensors, mode=collision_compile_mode)
+            if compile_collisions and env_config.shot_labels
+            else None
+        )
+        # Shot labels draw their ages from their own stream, so turning them on
+        # leaves every gameplay random draw exactly where it was.
+        self._shot_generator: torch.Generator | None = None
         if env_config.frontline is not None:
             if tuple(ship_config.world_size) != FRONTLINE_WORLD_SIZE:
                 raise ValueError(
@@ -108,6 +119,10 @@ class TensorEnv:
         """
         if seed is not None:
             torch.manual_seed(seed)
+        if self.env_config.shot_labels:
+            # Seeded from the run's seed without drawing from the global stream.
+            self._shot_generator = torch.Generator(device=self.device)
+            self._shot_generator.manual_seed(torch.initial_seed() ^ 0x5407_1ABE)
         self._allocate_state()
         mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
         self.reset_envs(mask, options)
@@ -120,6 +135,8 @@ class TensorEnv:
         K = self.env_config.max_bullets
         M = self.env_config.num_fields
         Z = NUM_FRONTLINE_ZONES if self.env_config.frontline is not None else 0
+        R = shot_labels.RECORD_DIM if self.env_config.shot_labels else 0
+        E = shot_labels.EXAMPLE_DIM if self.env_config.shot_labels else 0
         dev = self.device
 
         self.state = TensorState(
@@ -175,6 +192,12 @@ class TensorEnv:
             bullet_local_index=torch.ones((B, N, K), dtype=torch.float32, device=dev),
             bullet_field_gradient=torch.zeros((B, N, K), dtype=torch.complex64, device=dev),
             bullet_cursor=torch.zeros((B, N), dtype=torch.long, device=dev),
+            ship_ghost_cooldown=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            bullet_flying=torch.zeros((B, N, K), dtype=torch.bool, device=dev),
+            bullet_age=torch.zeros((B, N, K), dtype=torch.int32, device=dev),
+            bullet_shot_record=torch.zeros((B, N, K, R), dtype=torch.float32, device=dev),
+            shot_example=torch.zeros((B, N, E), dtype=torch.float32, device=dev),
+            shot_example_valid=torch.zeros((B, N), dtype=torch.bool, device=dev),
             damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
             cumulative_damage_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
             recharge_matrix=torch.zeros((B, N, N), dtype=torch.float32, device=dev),
@@ -353,6 +376,10 @@ class TensorEnv:
         s.bullet_local_index = torch.where(m3, 1.0, s.bullet_local_index)
         s.bullet_field_gradient = torch.where(m3, 0.0, s.bullet_field_gradient)
         s.bullet_cursor = torch.where(m, 0, s.bullet_cursor)
+        # A cleared flight never expires, so it never emits: an example cut
+        # short by the end of its episode is simply dropped.
+        s.bullet_flying = s.bullet_flying & ~m3
+        s.ship_ghost_cooldown = torch.where(m, 0.0, s.ship_ghost_cooldown)
 
         # Clear damage and capture attribution
         s.cumulative_damage_matrix = torch.where(m3, 0.0, s.cumulative_damage_matrix)
@@ -479,19 +506,22 @@ class TensorEnv:
             )
 
         self.state.prev_action = actions.float()
-        self.state = update_ships(self.state, actions, self.ship_config)
+        self.state = update_ships(self.state, actions, self.ship_config, self._shot_generator)
         bullet_trajectory = None
         if self.env_config.max_bullets > 0:
             self.state, bullet_trajectory = advance_bullets(
                 self.state,
                 self.ship_config,
             )
+            if self.env_config.shot_labels:
+                shot_labels.advance(self.state, self.ship_config)
         self.state, dones = resolve_collisions(
             self.state,
             self.ship_config,
             self._combat_damage_fn,
             bullet_trajectory,
             self.env_config.frontline,
+            self._combat_proximity_fn,
         )
 
         if self.env_config.frontline is not None:
