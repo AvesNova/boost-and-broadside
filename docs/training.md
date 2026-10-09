@@ -39,10 +39,12 @@ evaluation, logging, and checkpoints.
 
 ### Decision rate
 
-Physics always runs at `ShipConfig.dt` = 1/60 s. `EnvConfig.action_repeat` sets how many
-of those ticks each chosen action is held for, so collision and projectile integration
-are unaffected and only the rate at which the policy may change its mind moves. The
-primary profile holds for 2 ticks, giving **30 Hz decisions**.
+Physics always runs at `ShipConfig.dt`. `EnvConfig.action_repeat` sets how many of those
+ticks each chosen action is held for, so collision and projectile integration are
+unaffected and only the rate at which the policy may change its mind moves. The Frontline
+contract sets `dt` to 1/30 s and the primary profile holds each action for one tick, giving
+**30 Hz decisions**. The measurements below were taken when physics ran at 60 Hz with a
+two-tick hold, the same decision rate.
 
 That rate is set by the plant, not by the renderer:
 
@@ -185,6 +187,13 @@ The total update combines:
 - global ally/enemy density on a fixed hex grid, predicted from the global token against
   privileged truth (`global_density_coef`; see
   [architecture](architecture.md#global-density-head));
+- counterfactual shot prediction from ghost and real bullets: bullet state at queried ages
+  and the whole-shot outcome (`shot_trajectory_coef`, `shot_outcome_coef`; see
+  [architecture](architecture.md#counterfactual-shot-heads)). A shot's label completes 29
+  decisions after its launch and is filed under the launch row, so the last 29 rows of every
+  rollout carry none -- about 23% of a 128-step rollout, dropped rather than carried over. The
+  reference weights of 0.1 are placeholders, not calibrated. `shot/*` logs the trajectory
+  loss by channel and realized against predicted enemy-hit, ally-hit and clear-miss rates;
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
@@ -226,7 +235,7 @@ The default RL and BC environments are 5v5 with opaque zones and shields. `healt
 is the retained resource channel name; it carries shield level in Frontline.
 `shield_delay` is observed and predicted. Every predicted ship channel enters the encoder
 as a categorical code and the next-state head predicts the same code. Checkpoints use
-`categorical_codes_v21`; older weights require retraining.
+`categorical_codes_v22`; older weights require retraining.
 
 Rewards are grouped into five levels, each read by one critic head
 ([`env/rewards.py`](../src/boost_and_broadside/env/rewards.py)):
@@ -616,8 +625,9 @@ Three compatibility rules follow from that:
   them, belief validity, and observation age are part of the learned input contract. Radius is shared across object types and
   normalized by half the shorter world dimension; ship-local `grad(n)` remains explicit and
   reads zero for a remembered ship. Payloads carry
-  `observation_schema=categorical_codes_v21`. Successful firing globally
-  reveals the shooter for the current sample, which is also a learned-input semantic.
+  `observation_schema=categorical_codes_v22`. Successful firing globally
+  reveals the shooter for the current sample, and the `is_shooting` ship channel says a
+  real shot left on the last tick; both are learned-input semantics.
   Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.
 - **Physics constants.** Eleven `ShipConfig` fields set the encoders' normalizers, so

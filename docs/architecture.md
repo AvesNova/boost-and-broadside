@@ -28,7 +28,8 @@ FeatureCoordinator → encoder MLP            bullet encoder
 ship tokens only
     ├── joint 30-command action distribution (per ship)
     ├── decomposed value estimates (per ship/component)
-    └── next-state predictions (per ship)
+    ├── next-state predictions (per ship)
+    └── counterfactual shot trajectory and outcome (per ship, training only)
 ```
 
 For a batch `B`, `N` ships, `M` fields, and embedding width `D`, the shared trunk works
@@ -553,6 +554,38 @@ target is stored outside the observation so no input path can reach it by key. B
 loss the trainer logs the **deviance** — the excess nats over a predictor that matched
 every count exactly — which is zero for a perfect head, and the ally and enemy halves
 separately, because the observer sees every ally and the enemy field is mostly belief.
+
+## Counterfactual shot heads
+
+Two heads read a ship's latent on the decision whose observation carried the command
+applied when a bullet launched, real or [ghost](environment.md#ghost-bullets-and-shot-labels),
+and say what that shot does
+([`ShotHeads`](../src/boost_and_broadside/models/yemong/policy.py),
+[`shot_codes.py`](../src/boost_and_broadside/train/rl/shot_codes.py)). Neither re-enters
+the policy's input. They exist because nothing else supervises where a bullet goes once it
+is fired: the next-state head sees one tick of a ship's own index, while a bullet crosses
+interfaces and bends inside fields for a second.
+
+The **trajectory head** is queried at bullet ages `a` (whole ticks, 0 to 29):
+`[h; phi(a)] -> Linear -> RMSNorm -> GELU -> logits`, with `phi` the normalized age and four
+Fourier harmonics. The Linear is split into its latent and age halves so the latent's half
+runs once per ship-step for every query. It predicts, in the launch attitude's frame, the
+displacement as the ship position code (eight nested bilinear levels on a torus 2.5 times
+the farthest flight), the travel direction as a five-level circular code, the world speed as
+a two-hot, and the local log index as the ship code's two-hot, each by per-group
+cross-entropy. Each completed shot carries two queries: a uniform age, and the encounter --
+the first hit or the closest pass of a near miss -- or another uniform age for a clear miss.
+
+The **outcome head** reads the latent alone and predicts one softmax over enemy hit, ally
+hit, eight near-miss bins on each side, and clear miss. Hits are hard. A miss is placed at
+its closest pass on the side it passed closest to, as an HL-Gauss spread (0.75 bin) over
+bins evenly spaced in log distance from the collision radius to six radii; clear miss is
+the next bin on that axis, so a pass just inside it shares mass with clear miss and
+anything farther is clear miss alone. No head is ever asked how far a bad miss was.
+
+Only the observer's own ships are supervised: theirs is the observation that carried the
+exact command at launch. Both heads exist only when `shot_trajectory_coef` or
+`shot_outcome_coef` is above zero, and a reload reads their presence off the weights.
 
 ## Why team size can change
 
