@@ -118,6 +118,8 @@ class Accessor:
                 val = torch.full_like(team_id, 5)
             elif self.key in {ObsKey.VISIBLE, ObsKey.BELIEF_VALID}:
                 val = obs[ObsKey.ALIVE]
+            elif self.key == ObsKey.IS_SHOOTING:
+                val = torch.zeros_like(obs[ObsKey.ALIVE])
             elif self.key in {ObsKey.TIME_SINCE_OBSERVATION, ObsKey.SHIELD_DELAY}:
                 val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
             elif self.key == ObsKey.BELIEF_UNCERTAINTY:
@@ -634,6 +636,7 @@ class FeatureCoordinator:
                 ObsKey.TEAM_ID: torch.zeros((1, 1), dtype=torch.long),
                 ObsKey.ALIVE: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.VISIBLE: torch.zeros((1, 1), dtype=torch.bool),
+                ObsKey.IS_SHOOTING: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.BELIEF_VALID: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((1, 1, 1)),
                 ObsKey.RADIUS: torch.zeros((1, 1, 1)),
@@ -741,6 +744,7 @@ def build_standard_coordinator(
         Feature("team_id", Accessor(ObsKey.TEAM_ID), OneHot(3)),
         Feature("alive", Accessor(ObsKey.ALIVE), Identity()),
         Feature("visible", Accessor(ObsKey.VISIBLE), Identity(), scope=FeatureScope.SHIP),
+        Feature("is_shooting", Accessor(ObsKey.IS_SHOOTING), Identity(), scope=FeatureScope.SHIP),
         Feature(
             "time_since_observation",
             Accessor(ObsKey.TIME_SINCE_OBSERVATION),

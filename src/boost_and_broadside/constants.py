@@ -9,8 +9,10 @@ from enum import IntEnum
 EPS: float = 1e-6  # division safety guard for direction/speed normalization
 
 # One-second projectiles fired at the default 0.1-second cooldown need at most
-# nine simultaneously live slots at 60 Hz. Ten retains one safety slot while
-# avoiding the dense physics/collision cost of the previous 20-slot pools.
+# nine simultaneously live slots at 60 Hz and exactly ten at the 30 Hz Frontline
+# rate, where a bullet moves 29 times and launches are three ticks apart. Shot
+# labels' ghost bullets keep every slot busy, so at 30 Hz there is no spare.
+# Ten avoids the dense physics/collision cost of the previous 20-slot pools.
 DEFAULT_MAX_BULLETS_PER_SHIP: int = 10
 
 

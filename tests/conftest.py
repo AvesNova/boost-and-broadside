@@ -108,6 +108,14 @@ def make_state(
             (num_envs, max_ships, max_bullets), dtype=torch.complex64, device=dev
         ),
         bullet_cursor=torch.zeros((num_envs, max_ships), dtype=torch.long, device=dev),
+        ship_ghost_cooldown=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        bullet_flying=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.bool, device=dev),
+        bullet_age=torch.zeros((num_envs, max_ships, max_bullets), dtype=torch.int32, device=dev),
+        bullet_shot_record=torch.zeros(
+            (num_envs, max_ships, max_bullets, 0), dtype=torch.float32, device=dev
+        ),
+        shot_example=torch.zeros((num_envs, max_ships, 0), dtype=torch.float32, device=dev),
+        shot_example_valid=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
         damage_matrix=torch.zeros(
             (num_envs, max_ships, max_ships), dtype=torch.float32, device=dev
         ),

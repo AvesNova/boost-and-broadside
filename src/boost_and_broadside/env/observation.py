@@ -35,6 +35,7 @@ class ObsKey(StrEnum):
     TEAM_ID = "team_id"
     ALIVE = "alive"
     VISIBLE = "visible"
+    IS_SHOOTING = "is_shooting"
     BELIEF_VALID = "belief_valid"
     BELIEF_UNCERTAINTY = "belief_uncertainty"
     TIME_SINCE_OBSERVATION = "time_since_observation"
@@ -98,6 +99,7 @@ _TOKEN_LAST_KEYS = frozenset(
         ObsKey.TEAM_ID,
         ObsKey.ALIVE,
         ObsKey.VISIBLE,
+        ObsKey.IS_SHOOTING,
         ObsKey.BELIEF_VALID,
         ObsKey.OBJECT_TYPE,
         ObsKey.ZONE_ROLE,
@@ -147,6 +149,8 @@ class YemongObservation:
             return self.data[ObsKey.ALIVE]
         if resolved == ObsKey.BELIEF_VALID:
             return self.data[ObsKey.ALIVE]
+        if resolved == ObsKey.IS_SHOOTING:
+            return torch.zeros_like(self.data[ObsKey.ALIVE])
         if resolved == ObsKey.TIME_SINCE_OBSERVATION:
             return torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
         if resolved == ObsKey.OBJECT_TYPE:
@@ -1049,6 +1053,16 @@ def observation_from_state(
             ),
             ObsKey.ALIVE: torch.cat([observed_alive, object_alive], dim=1),
             ObsKey.VISIBLE: torch.cat([visible_ships, object_alive], dim=1),
+            # A real shot fired on the last tick. Firing reveals the shooter to
+            # both teams, so this is truth wherever it can be set; ghosts never
+            # set it. Map objects never fire.
+            ObsKey.IS_SHOOTING: torch.cat(
+                [
+                    from_truth & state.ship_is_shooting & state.ship_alive,
+                    torch.zeros_like(object_alive),
+                ],
+                dim=1,
+            ),
             # Sticky: a ship seen once remains a token this observer may reason
             # about, whether or not it is in sight now.
             ObsKey.BELIEF_VALID: torch.cat([known, object_alive], dim=1),

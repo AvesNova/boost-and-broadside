@@ -10,7 +10,7 @@ import torch
 
 from boost_and_broadside.train.rl.ship_codes import SHIP_CODE_DIM
 
-OBSERVATION_SCHEMA = "categorical_codes_v21"
+OBSERVATION_SCHEMA = "categorical_codes_v22"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics of the attitude axis of rotary spatial attention. Defined here,
 # beside the position count, because the rotation and the bullets' Fourier
@@ -43,7 +43,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 21,
+        "version": 22,
         # Every mode presents one global/game token directly after the ships,
         # carrying a categorical game-mode one-hot, the match clock and (in
         # Frontline) the front. Whether the policy promotes it to a recurrent
@@ -52,6 +52,8 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         "field_composition": "bounded_union_log_blend",
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
+        "is_shooting": "real_shot_last_tick_ship_channel",
+        "shot_auxiliary": "counterfactual_ghost_trajectory_and_outcome_heads",
         "spawn_reveal": "visible_to_both_teams_for_the_spawn_decision",
         "hidden_tokens": "recursive_physical_belief_plus_age",
         # There is no substitution any more. The belief stores the same eleven
@@ -113,6 +115,12 @@ def load_checkpoint_payload(
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
+
+    v22 adds the ``is_shooting`` ship channel -- a real shot fired on the last
+    tick -- and the counterfactual shot heads (``env/shot_labels.py``): a
+    trajectory head queried at bullet ages and a whole-shot outcome head. The
+    encoder input width changes and the policy gains parameters, so no v21
+    checkpoint can load.
 
     v21 is the learning redesign's one bump (``frontline-redesign-plan.md`` Part
     II). Ship state enters the encoder as categorical codes instead of Fourier
