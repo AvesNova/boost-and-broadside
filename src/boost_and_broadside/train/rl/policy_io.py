@@ -87,6 +87,8 @@ class PolicyBundle:
     # Whether these weights carry the global density head. Recorded so a reload
     # rebuilds the same architecture rather than a headless one.
     predict_density: bool = False
+    # Likewise for the counterfactual shot heads.
+    predict_shots: bool = False
     global_step: int | None = None
     update: int | None = None
     # "ego_pass" | "shared_pass" — which perspectives these weights ever acted
@@ -226,6 +228,7 @@ def build_policy(
     num_ships: int,
     global_value_k: tuple[int, ...],
     predict_density: bool = False,
+    predict_shots: bool = False,
 ) -> YemongPolicy:
     """Construct a policy with the feature pipelines its config implies.
 
@@ -253,6 +256,7 @@ def build_policy(
         ),
         predict_density=predict_density,
         ship_config=ship_config,
+        predict_shots=predict_shots,
     )
 
 
@@ -404,6 +408,9 @@ def load_policy_bundle(
     checkpoint_predicts_density = isinstance(stored_weights, Mapping) and any(
         str(key).startswith("density_head.") for key in stored_weights
     )
+    checkpoint_predicts_shots = isinstance(stored_weights, Mapping) and any(
+        str(key).startswith("shot_heads.") for key in stored_weights
+    )
     policy = build_policy(
         checkpoint_model_config,
         checkpoint_ship_config,
@@ -411,6 +418,7 @@ def load_policy_bundle(
         num_ships=num_ships,
         global_value_k=checkpoint_global_value_k,
         predict_density=checkpoint_predicts_density,
+        predict_shots=checkpoint_predicts_shots,
     )
     policy_state = checkpoint["policy_state_dict"]
     if not isinstance(policy_state, Mapping):
@@ -440,6 +448,7 @@ def load_policy_bundle(
         num_value_components=num_value_components,
         global_value_k=checkpoint_global_value_k,
         predict_density=checkpoint_predicts_density,
+        predict_shots=checkpoint_predicts_shots,
         global_step=checkpoint.get("global_step"),
         update=checkpoint.get("update"),
         paradigm=_resolve_paradigm(checkpoint),

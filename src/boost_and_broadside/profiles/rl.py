@@ -123,6 +123,11 @@ RL_PROFILE = ProfileSpec(
     next_state_coef=0.2 / 22,
     enemy_action_coef=0.1,
     global_density_coef=0.015,
+    # Counterfactual shot heads (env/shot_labels.py). NOT CALIBRATED: 0.1 is a
+    # placeholder pending the auxiliary-weight balancing done elsewhere, not a
+    # measured choice. Read the gradient diagnostics before trusting it.
+    shot_trajectory_coef=0.1,
+    shot_outcome_coef=0.1,
     # --- Discounts, per physics tick ---
     gamma_per_tick=0.99,
     gae_lambda_per_tick=0.95,

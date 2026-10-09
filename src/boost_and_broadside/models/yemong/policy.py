@@ -81,6 +81,12 @@ from boost_and_broadside.train.rl.critic import (
 from boost_and_broadside.train.rl.features import FeatureCoordinator
 from boost_and_broadside.train.rl.hex_density import HEX_DENSITY_DIM
 from boost_and_broadside.train.rl.ship_codes import SHIP_CODE_DIM, ShipStateCodec
+from boost_and_broadside.train.rl.shot_codes import (
+    OUTCOME_CLASSES,
+    TRAJECTORY_DIM,
+    ShotCodec,
+    shot_time_features,
+)
 
 
 class NextStateHead(nn.Module):
@@ -107,6 +113,55 @@ class NextStateHead(nn.Module):
     def forward(self, x: torch.Tensor, code: torch.Tensor) -> torch.Tensor:
         """Args: x (..., D), code (..., code_dim). Returns float32 logits (..., code_dim)."""
         return ShipStateCodec.baseline(code.float()) + self.net(x).float()
+
+
+class ShotHeads(nn.Module):
+    """Counterfactual shot prediction from a ship's launch-decision latent.
+
+    Trained only on shots, real or ghost, launched on the decision whose
+    observation carried the applied action (``env/shot_labels.py``); never read
+    by the policy.
+
+    The trajectory head is queried at bullet ages: ``[h; phi(age)] -> Linear ->
+    RMSNorm -> GELU -> logits``, with ``phi`` the normalized age and a small
+    Fourier basis. The first Linear is split into its latent and age parts, so
+    the latent's share is computed once per ship-step and broadcast over the
+    queries -- the same function as concatenating, for less work. The outcome
+    head reads the latent alone.
+
+    Args:
+        d_model: Token embedding dimension D.
+        max_age: The oldest queried age, which normalizes ``phi``.
+    """
+
+    HARMONICS = 4
+
+    def __init__(self, d_model: int, max_age: int) -> None:
+        super().__init__()
+        self.max_age = max_age
+        self.latent = nn.Linear(d_model, d_model)
+        self.age = nn.Linear(1 + 2 * self.HARMONICS, d_model, bias=False)
+        self.trajectory_out = nn.Sequential(
+            nn.RMSNorm(d_model),
+            nn.GELU(),
+            nn.Linear(d_model, TRAJECTORY_DIM),
+        )
+        self.outcome_net = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.RMSNorm(d_model),
+            nn.GELU(),
+            nn.Linear(d_model, OUTCOME_CLASSES),
+        )
+
+    def trajectory(self, x: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
+        """Args: x (..., D), ages (..., Q). Returns float32 logits (..., Q, TRAJECTORY_DIM)."""
+        phi = shot_time_features(ages, self.max_age, self.HARMONICS).to(x.dtype)
+        hidden = self.latent(x).unsqueeze(-2) + self.age(phi)  # (..., Q, D)
+        return self.trajectory_out(hidden).float()
+
+    def outcome(self, x: torch.Tensor) -> torch.Tensor:
+        """Args: x (..., D). Returns float32 logits (..., OUTCOME_CLASSES)."""
+        return self.outcome_net(x).float()
 
 
 class GlobalDensityHead(nn.Module):
@@ -227,6 +282,7 @@ class YemongPolicy(nn.Module):
         bullet_coordinator: FeatureCoordinator | None = None,
         predict_density: bool = False,
         ship_config: ShipConfig | None = None,
+        predict_shots: bool = False,
     ) -> None:
         super().__init__()
         D = model_config.d_model
@@ -362,6 +418,18 @@ class YemongPolicy(nn.Module):
             nn.init.constant_(final.bias, self.density_head.init_log_rate)
         if self.value_head_global is not None:
             _init_head_orthogonal(self.value_head_global.net)
+        # Counterfactual shot heads, built only when something trains them, for
+        # the density head's reason.
+        if predict_shots and ship_config is None:
+            raise ValueError("the shot heads size their codes from the ship config")
+        self.shot_codec = ShotCodec.from_ship_config(ship_config) if predict_shots else None
+        self.shot_heads = ShotHeads(D, self.shot_codec.max_age) if predict_shots else None
+        if self.shot_heads is not None:
+            nn.init.orthogonal_(self.shot_heads.latent.weight, gain=math.sqrt(2))
+            nn.init.zeros_(self.shot_heads.latent.bias)
+            nn.init.orthogonal_(self.shot_heads.trajectory_out[-1].weight, gain=0.01)
+            nn.init.zeros_(self.shot_heads.trajectory_out[-1].bias)
+            _init_head_orthogonal(self.shot_heads.outcome_net)
         # The residual starts at exactly zero: "nothing changes" (§8.2).
         final = [m for m in self.next_state_head.net if isinstance(m, nn.Linear)][-1]
         nn.init.zeros_(final.weight)
@@ -678,6 +746,7 @@ class YemongPolicy(nn.Module):
         return_encoder_output: bool = False,
         return_enemy_action: bool = False,
         return_density: bool = False,
+        shot_ages: torch.Tensor | None = None,
     ) -> tuple:
         """Re-evaluate actions over a full rollout for PPO update.
 
@@ -711,6 +780,9 @@ class YemongPolicy(nn.Module):
             pred_next:  (T, B, N, 469) float — next-state code logits (with grad).
             density:    optional (T, B, 2C) float — global ally/enemy density
                         prediction, or None when this policy has no density head.
+            shot_trajectory, shot_outcome: with ``shot_ages`` (T, B, N, Q), the
+                        trajectory logits (T, B, N, Q, TRAJECTORY_DIM) at those
+                        bullet ages and the outcome logits (T, B, N, 19).
         """
         T, B, N = actions.shape[:3]  # N = num_ships (actions only for ships)
         Q = self.num_recurrent_tokens  # N+G
@@ -809,6 +881,14 @@ class YemongPolicy(nn.Module):
                 else self.density_head(x[:, :, N, :])  # (T, B, 2C)
             )
             base = (*base, density)
+        if shot_ages is not None:
+            if self.shot_heads is None:
+                raise ValueError("shot_ages given but this policy has no shot heads")
+            base = (
+                *base,
+                self.shot_heads.trajectory(x_ships, shot_ages),
+                self.shot_heads.outcome(x_ships),
+            )
         return base
 
 
