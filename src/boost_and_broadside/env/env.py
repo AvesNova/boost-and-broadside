@@ -214,6 +214,7 @@ class TensorEnv:
             ship_boundary_damage=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_boundary_death=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_respawned=torch.zeros((B, N), dtype=torch.bool, device=dev),
+            ship_respawn_ticks=torch.zeros((B, N), dtype=torch.int32, device=dev),
             ship_spawned=torch.zeros((B, N), dtype=torch.bool, device=dev),
         )
 
@@ -399,6 +400,7 @@ class TensorEnv:
         s.ship_boundary_damage = torch.where(m, 0.0, s.ship_boundary_damage)
         s.ship_boundary_death &= ~m
         s.ship_respawned &= ~m
+        s.ship_respawn_ticks = torch.where(m, 0, s.ship_respawn_ticks)
         s.ship_spawned |= m
 
     # ------------------------------------------------------------------
@@ -506,7 +508,16 @@ class TensorEnv:
             )
 
         self.state.prev_action = actions.float()
+        # A Frontline ship waiting to respawn stays where it died. Dead ships
+        # still integrate (their neutral command is a coast), so pin them back.
+        # Elimination combat keeps its historical drifting wrecks.
+        parked = ~self.state.ship_alive if self.env_config.frontline is not None else None
+        parked_pos = self.state.ship_pos
+        parked_vel = self.state.ship_vel
         self.state = update_ships(self.state, actions, self.ship_config, self._shot_generator)
+        if parked is not None:
+            self.state.ship_pos = torch.where(parked, parked_pos, self.state.ship_pos)
+            self.state.ship_vel = torch.where(parked, parked_vel, self.state.ship_vel)
         bullet_trajectory = None
         if self.env_config.max_bullets > 0:
             self.state, bullet_trajectory = advance_bullets(

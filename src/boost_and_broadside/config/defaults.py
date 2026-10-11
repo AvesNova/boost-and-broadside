@@ -96,6 +96,9 @@ MODEL_CONFIG = ModelConfig(
     # returns proportions and cannot report cardinality, so without these two
     # scalars nothing in the observation says how crowded a neighbourhood is.
     local_presence=True,
+    # Seconds until each downed ship respawns, so the policy can time an attack
+    # against an enemy that is down rather than counting it out from memory.
+    respawn_countdown=True,
     # Shared pairwise bias on spatial attention scores from proximity, ego-frame
     # bearing and range rate. Zero-initialised, so it starts as the identity and
     # earns its contribution.

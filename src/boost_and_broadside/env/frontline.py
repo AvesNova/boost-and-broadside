@@ -138,6 +138,7 @@ FRONTLINE_RULE_FIELDS = (
     "respawn_health",
     "respawn_power",
     "respawn_speed",
+    "respawn_delay",
     "shield_recharge_delay",
     "shield_recharge_per_second",
     "boundary_damage_per_second",
@@ -699,7 +700,7 @@ def apply_frontline_tick(
     config: FrontlineConfig,
     ship_config: ShipConfig,
 ) -> torch.Tensor:
-    """Apply objectives, hazards, victory, and immediate same-slot respawn."""
+    """Apply objectives, hazards, victory, and same-slot respawn after ``respawn_delay``."""
 
     state.front_delta.zero_()
     state.team0_captured.zero_()
@@ -742,10 +743,43 @@ def apply_frontline_tick(
     state.ship_shield_recharge = recharge
     _attribute_recharge(state, recharge, ship_config)
     state.ship_health = state.ship_health + recharge
-    respawned = state.ship_combat_death | state.ship_boundary_death
+    respawned = _advance_respawn_countdown(state, config, ship_config)
     state.ship_respawned.copy_(respawned)
     place_ships_at_spawns(state, respawned, ship_config, config)
     return state.match_result != int(MatchResult.ONGOING)
+
+
+def respawn_delay_ticks(config: FrontlineConfig, ship_config: ShipConfig) -> int:
+    """``respawn_delay`` in whole physics ticks, rounded to the nearest."""
+
+    return round(config.respawn_delay / ship_config.dt)
+
+
+def _advance_respawn_countdown(
+    state: TensorState, config: FrontlineConfig, ship_config: ShipConfig
+) -> torch.Tensor:
+    """Start the wait of every ship that died this tick and count the rest down.
+
+    A ship that died this tick starts a full wait; one already waiting loses a
+    tick. Whatever reaches zero respawns now, so a zero delay respawns on the
+    tick of death exactly as before. A waiting ship is parked where it died:
+    stopped, and held there by ``TensorEnv.tick``.
+
+    Returns:
+        (B, N) bool — the ships to place at their spawn this tick.
+    """
+    died = state.ship_combat_death | state.ship_boundary_death
+    waiting = state.ship_respawn_ticks > 0
+    ticks = torch.where(
+        died,
+        respawn_delay_ticks(config, ship_config),
+        state.ship_respawn_ticks - waiting.to(state.ship_respawn_ticks.dtype),
+    )
+    state.ship_respawn_ticks = ticks.to(state.ship_respawn_ticks.dtype)
+    # The flight model's own stall floor, so a parked ship is an ordinary state.
+    state.ship_vel = torch.where(died, EPS * state.ship_attitude, state.ship_vel)
+    state.ship_ang_vel = torch.where(died, 0.0, state.ship_ang_vel)
+    return (died | waiting) & (ticks <= 0)
 
 
 def apply_timeout_result(state: TensorState, timed_out: torch.Tensor) -> None:
