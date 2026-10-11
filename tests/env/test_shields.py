@@ -21,7 +21,11 @@ from boost_and_broadside.modes.interactive import PLAY_ENV_CONFIG
 
 def env():
     ship = replace(frontline_ship_config(SHIP_CONFIG), bullet_min_damage_frac=1.0)
-    result = TensorEnv(1, ship, replace(PLAY_ENV_CONFIG, num_fields=0), "cpu")
+    # Instant respawn: these tests read the death and the respawn on one tick.
+    # The respawn wait itself is covered in test_respawn_delay.py.
+    frontline = replace(PLAY_ENV_CONFIG.frontline, respawn_delay=0.0)
+    config = replace(PLAY_ENV_CONFIG, num_fields=0, frontline=frontline)
+    result = TensorEnv(1, ship, config, "cpu")
     result.reset(seed=4)
     result.state.ship_team_id[:] = torch.tensor([[0] * 5 + [1] * 5])
     result.state.ship_pos[:] = result.state.map_center[:, None] + torch.arange(10) * 100
