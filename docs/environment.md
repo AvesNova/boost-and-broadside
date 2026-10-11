@@ -33,7 +33,9 @@ on the same tick. The timer is an observed, predicted ship channel.
 A destroyed ship is down for `respawn_delay` seconds (8 in the shipped profile; 0
 is the original instant respawn). While down it is parked where it died, takes no
 actions, counts toward no zone, cannot be hit, and is public to both teams, with the
-time left in the `respawn_time` observation channel. It re-enters at its team's spawn
+time left in the `respawn_time` observation channel, encoded as the
+normalized time plus a four-harmonic Fourier basis. It stays an ordinary token: attention
+carries no key mask, so the fused flash kernel is unaffected. It re-enters at its team's spawn
 as of the moment the wait ends, so a ship lost in a capture fight comes back from the
 post-capture spawn rather than the one beside the zone it just lost.
 
@@ -50,7 +52,7 @@ tick a ship spends down. A downed ship stays in the critic's loss, since its tea
 rewards keep reaching it, and out of the policy and next-state losses. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
 zero shields no longer implies death. Checkpoints from before the
-`categorical_codes_v21` observation/feature contract are incompatible.
+`categorical_codes_v22` observation/feature contract are incompatible.
 
 ## Tensorized simulation
 

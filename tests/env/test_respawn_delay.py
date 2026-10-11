@@ -26,7 +26,12 @@ from boost_and_broadside.env.frontline import (
 from boost_and_broadside.env.observation import ObsKey
 from boost_and_broadside.env.perception import team_visibility_from_state
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
-from boost_and_broadside.train.rl.features import build_standard_coordinator
+from boost_and_broadside.train.rl.features import (
+    RESPAWN_TIME_HARMONICS,
+    RESPAWN_TIME_HORIZON,
+    build_standard_coordinator,
+    respawn_time_features,
+)
 from boost_and_broadside.train.rl.ppo import valued_ships
 
 _FRONTLINE = FrontlineConfig(
@@ -213,8 +218,18 @@ def test_a_config_recorded_before_the_delay_means_immediate_respawn() -> None:
     assert config.frontline.respawn_delay == 0.0
 
 
-def test_the_countdown_is_one_more_ship_channel_only_when_asked_for() -> None:
-    plain = build_standard_coordinator(_SHIP)
-    counted = build_standard_coordinator(_SHIP, respawn_countdown=True)
-    assert "respawn_time" not in [feature.name for feature in plain.features]
-    assert counted.total_input_dimension == plain.total_input_dimension + 1
+def test_the_encoder_reads_the_wait_as_a_normalized_time_and_fourier_basis() -> None:
+    coordinator = build_standard_coordinator(_SHIP)
+    (feature,) = [f for f in coordinator.features if f.name == "respawn_time"]
+    width = 1 + 2 * RESPAWN_TIME_HARMONICS
+    seconds = torch.tensor([[[0.0], [4.0], [RESPAWN_TIME_HORIZON]]])
+    encoded = feature.input_encoder(seconds)
+    assert encoded.shape == (1, 3, width)
+    assert torch.equal(encoded, respawn_time_features(seconds[..., 0]))
+    living, waiting, horizon = encoded[0]
+    assert living[0] == 0 and torch.allclose(living[1 + RESPAWN_TIME_HARMONICS :], torch.ones(4))
+    assert torch.allclose(waiting[0], torch.tensor(0.25))
+    assert torch.allclose(horizon[0], torch.tensor(1.0))
+    # The linear term is what tells the ends of the period apart.
+    assert torch.allclose(horizon[1:], living[1:], atol=1e-5)
+    assert not torch.allclose(waiting[1:], living[1:])

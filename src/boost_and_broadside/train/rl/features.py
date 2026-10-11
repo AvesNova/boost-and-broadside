@@ -298,6 +298,39 @@ class Fourier(Transform):
         return torch.cat(results, dim=-1)
 
 
+#: Seconds that ``respawn_time`` is normalized by. Twice the shipped
+#: ``respawn_delay``, so the linear term stays inside [0, 1] with room to raise it.
+RESPAWN_TIME_HORIZON = 16.0
+#: Harmonics of the respawn-time Fourier basis, the shot heads' age count.
+RESPAWN_TIME_HARMONICS = 4
+
+
+def respawn_time_features(seconds: torch.Tensor) -> torch.Tensor:
+    """``(..., 1 + 2 * RESPAWN_TIME_HARMONICS)`` from ``(...)`` seconds left.
+
+    The normalized time and ``sin``/``cos`` of ``2 pi k t / H`` for ``k`` in
+    ``1..RESPAWN_TIME_HARMONICS``: the linear term orders the wait end to end,
+    the harmonics resolve it to about a second, which a single scalar through
+    one linear projection does not. A living ship reads ``[0, 0.., 1..]``.
+    """
+    normalized = seconds.float() / RESPAWN_TIME_HORIZON
+    k = torch.arange(1, RESPAWN_TIME_HARMONICS + 1, device=seconds.device, dtype=normalized.dtype)
+    angle = 2.0 * math.pi * normalized.unsqueeze(-1) * k
+    return torch.cat([normalized.unsqueeze(-1), angle.sin(), angle.cos()], dim=-1)
+
+
+class RespawnTime(Transform):
+    """Seconds until a downed ship respawns, as :func:`respawn_time_features`."""
+
+    def out_dim(self, in_dim: int) -> int:
+        return in_dim * (1 + 2 * RESPAWN_TIME_HARMONICS)
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 2:
+            x = x.unsqueeze(-1)
+        return respawn_time_features(x).flatten(-2)
+
+
 class SymlogVelocity(Transform):
     """Map 2D velocity to (vx_norm, vy_norm) where ‖output‖ = symlog(speed).
 
@@ -726,7 +759,7 @@ class FeatureCoordinator:
 
 
 def build_standard_coordinator(
-    ship_config: ShipConfig, *, local_presence: bool = False, respawn_countdown: bool = False
+    ship_config: ShipConfig, *, local_presence: bool = False
 ) -> FeatureCoordinator:
     """Standard feature pipeline matching the current game's physics.
 
@@ -750,6 +783,12 @@ def build_standard_coordinator(
             "time_since_observation",
             Accessor(ObsKey.TIME_SINCE_OBSERVATION),
             Symlog(),
+            scope=FeatureScope.SHIP,
+        ),
+        Feature(
+            "respawn_time",
+            Accessor(ObsKey.RESPAWN_TIME),
+            RespawnTime(),
             scope=FeatureScope.SHIP,
         ),
         Feature("object_type", Accessor(ObsKey.OBJECT_TYPE), OneHot(4)),
@@ -839,15 +878,6 @@ def build_standard_coordinator(
 
     if local_presence:
         features.append(LocalPresenceFeature(ship_config))
-    if respawn_countdown:
-        features.append(
-            Feature(
-                "respawn_time",
-                Accessor(ObsKey.RESPAWN_TIME),
-                Symlog(),
-                scope=FeatureScope.SHIP,
-            )
-        )
 
     return FeatureCoordinator(features, ship_codec=codec, index_log_scale=index_log_scale)
 

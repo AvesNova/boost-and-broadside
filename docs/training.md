@@ -226,7 +226,7 @@ The default RL and BC environments are 5v5 with opaque zones and shields. `healt
 is the retained resource channel name; it carries shield level in Frontline.
 `shield_delay` is observed and predicted. Every predicted ship channel enters the encoder
 as a categorical code and the next-state head predicts the same code. Checkpoints use
-`categorical_codes_v21`; older weights require retraining.
+`categorical_codes_v22`; older weights require retraining.
 
 Rewards are grouped into five levels, each read by one critic head
 ([`env/rewards.py`](../src/boost_and_broadside/env/rewards.py)):
@@ -616,7 +616,7 @@ Three compatibility rules follow from that:
   them, belief validity, and observation age are part of the learned input contract. Radius is shared across object types and
   normalized by half the shorter world dimension; ship-local `grad(n)` remains explicit and
   reads zero for a remembered ship. Payloads carry
-  `observation_schema=categorical_codes_v21`. Successful firing globally
+  `observation_schema=categorical_codes_v22`. Successful firing globally
   reveals the shooter for the current sample, which is also a learned-input semantic.
   Earlier schemas have no
   faithful weight-only migration, so they are rejected and retraining is required.

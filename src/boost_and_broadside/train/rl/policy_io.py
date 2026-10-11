@@ -244,11 +244,7 @@ def build_policy(
     """
     return YemongPolicy(
         model_config,
-        build_standard_coordinator(
-            ship_config,
-            local_presence=model_config.local_presence,
-            respawn_countdown=model_config.respawn_countdown,
-        ),
+        build_standard_coordinator(ship_config, local_presence=model_config.local_presence),
         num_value_components=num_value_components,
         num_ships=num_ships,
         global_value_k=tuple(global_value_k),

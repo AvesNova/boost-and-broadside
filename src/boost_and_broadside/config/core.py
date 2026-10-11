@@ -473,11 +473,6 @@ class ModelConfig:
     # is. Lives on ModelConfig rather than in the environment because it widens
     # the encoder's input projection -- it is part of what the weights mean.
     local_presence: bool = False
-    # One extra ship-token scalar: seconds until a downed Frontline ship
-    # respawns (``FrontlineConfig.respawn_delay``). Without it a policy has only
-    # its own memory of when a slot died. Here, not on the environment, for the
-    # same reason as ``local_presence``: it widens the encoder's input.
-    respawn_countdown: bool = False
     # Add a shared pairwise bias to spatial attention scores, computed from
     # proximity, ego-frame bearing and range rate by one linear map per sublayer.
     # Zero-initialised, so enabling it does not by itself change the function.
