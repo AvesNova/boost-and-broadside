@@ -426,7 +426,7 @@ class YemongEnvWrapper:
         comp_rewards = torch.zeros(B, N, K, device=self.device, dtype=torch.float32)
         dones = torch.zeros(B, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
-        transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        transition_contiguous = self._lifecycle_contiguous_start()
         actuator_contiguous = self.env.state.ship_alive.clone()
         # A new decision: whatever spawned during the last one has been
         # observed, so the latch starts empty and re-fills below.
@@ -442,7 +442,7 @@ class YemongEnvWrapper:
             tick_dones, tick_truncated = self._physics_tick(
                 held_actions, comp_rewards, running, unlimited_resources
             )
-            transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            transition_contiguous &= self._lifecycle_contiguous_tick(running)
             actuator_contiguous &= self.env.state.ship_alive & ~self.env.state.ship_respawned
             self.env.state.ship_spawned |= self.env.state.ship_respawned & running.unsqueeze(1)
             ended_this_tick = (tick_dones | tick_truncated) & running
@@ -511,7 +511,7 @@ class YemongEnvWrapper:
         B, N = self.env.state.ship_health.shape
         dones = torch.zeros(B, dtype=torch.bool, device=self.device)
         truncated = torch.zeros(B, dtype=torch.bool, device=self.device)
-        transition_contiguous = torch.ones((B, N), dtype=torch.bool, device=self.device)
+        transition_contiguous = self._lifecycle_contiguous_start()
         actuator_contiguous = self.env.state.ship_alive.clone()
         # A new decision: whatever spawned during the last one has been
         # observed, so the latch starts empty and re-fills below.
@@ -526,7 +526,7 @@ class YemongEnvWrapper:
             # action, while allowing the physics engine to finish its ticks.
             running = ~(dones | truncated)
             tick_dones, tick_truncated = self._interactive_tick(held_actions, unlimited_resources)
-            transition_contiguous &= ~(self.env.state.ship_respawned & running.unsqueeze(1))
+            transition_contiguous &= self._lifecycle_contiguous_tick(running)
             actuator_contiguous &= self.env.state.ship_alive & ~self.env.state.ship_respawned
             self.env.state.ship_spawned |= self.env.state.ship_respawned & running.unsqueeze(1)
             ended_this_tick = (tick_dones | tick_truncated) & running
@@ -591,6 +591,33 @@ class YemongEnvWrapper:
         if self._captured_tick is None:
             self._captured_tick = CapturedTick(self.env, actions)
         return self._captured_tick.replay(actions)
+
+    def _lifecycle_contiguous_start(self) -> torch.Tensor:
+        """``(B, N)`` transition continuity before the first tick of a decision.
+
+        A Frontline slot that starts the decision down is not a ship whose next
+        state anything should predict: it waits out ``respawn_delay`` and then
+        teleports. Elimination combat keeps supervising its wrecks, as before.
+        """
+        state = self.env.state
+        if self.env_config.frontline is None:
+            return torch.ones_like(state.ship_alive)
+        return state.ship_alive.clone()
+
+    def _lifecycle_contiguous_tick(self, running: torch.Tensor) -> torch.Tensor:
+        """``(B, N)`` slots whose transition survived this tick of the hold.
+
+        A respawn teleport breaks a transition everywhere; in Frontline so does
+        ending the tick down, which is what excludes the death itself and the
+        whole wait from next-state supervision. Envs that already finished
+        earlier in the hold are not read, so they are left alone.
+        """
+        state = self.env.state
+        running_n = running.unsqueeze(1)
+        kept = ~(state.ship_respawned & running_n)
+        if self.env_config.frontline is not None:
+            kept &= state.ship_alive | ~running_n
+        return kept
 
     def _physics_tick(
         self,

@@ -69,6 +69,12 @@ RL_PROFILE = ProfileSpec(
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,
+        # Long enough that the ships lost in a capture fight (5.5-10 s at a
+        # lead of three down to one) are still down when the zone flips, so they
+        # re-enter at the post-capture spawn, two zones from the point they
+        # lost, instead of flying back from the old one next door and arriving
+        # ahead of the attackers' own reinforcements.
+        respawn_delay=8.0,
     ),
     # Map-scale randomisation (frontline-redesign-plan.md §9): half the episodes
     # play the reference map, the rest a map up to four times its size, so the

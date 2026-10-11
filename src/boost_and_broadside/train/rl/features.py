@@ -118,7 +118,11 @@ class Accessor:
                 val = torch.full_like(team_id, 5)
             elif self.key in {ObsKey.VISIBLE, ObsKey.BELIEF_VALID}:
                 val = obs[ObsKey.ALIVE]
-            elif self.key in {ObsKey.TIME_SINCE_OBSERVATION, ObsKey.SHIELD_DELAY}:
+            elif self.key in {
+                ObsKey.TIME_SINCE_OBSERVATION,
+                ObsKey.SHIELD_DELAY,
+                ObsKey.RESPAWN_TIME,
+            }:
                 val = torch.zeros((*team_id.shape, 1), dtype=torch.float32, device=team_id.device)
             elif self.key == ObsKey.BELIEF_UNCERTAINTY:
                 # Only a BeliefTracker fills this; a caller without one has
@@ -636,6 +640,7 @@ class FeatureCoordinator:
                 ObsKey.VISIBLE: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.BELIEF_VALID: torch.zeros((1, 1), dtype=torch.bool),
                 ObsKey.TIME_SINCE_OBSERVATION: torch.zeros((1, 1, 1)),
+                ObsKey.RESPAWN_TIME: torch.zeros((1, 1, 1)),
                 ObsKey.RADIUS: torch.zeros((1, 1, 1)),
                 ObsKey.PREVIOUS_ACTION: torch.zeros((1, 1, NUM_JOINT_ACTIONS), dtype=torch.float32),
                 ObsKey.LOCAL_LOG_INDEX: torch.zeros((1, 1, 1)),
@@ -721,7 +726,7 @@ class FeatureCoordinator:
 
 
 def build_standard_coordinator(
-    ship_config: ShipConfig, *, local_presence: bool = False
+    ship_config: ShipConfig, *, local_presence: bool = False, respawn_countdown: bool = False
 ) -> FeatureCoordinator:
     """Standard feature pipeline matching the current game's physics.
 
@@ -834,6 +839,15 @@ def build_standard_coordinator(
 
     if local_presence:
         features.append(LocalPresenceFeature(ship_config))
+    if respawn_countdown:
+        features.append(
+            Feature(
+                "respawn_time",
+                Accessor(ObsKey.RESPAWN_TIME),
+                Symlog(),
+                scope=FeatureScope.SHIP,
+            )
+        )
 
     return FeatureCoordinator(features, ship_codec=codec, index_log_scale=index_log_scale)
 

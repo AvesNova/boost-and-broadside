@@ -134,6 +134,9 @@ class TensorState:
     ship_boundary_damage: torch.Tensor  # (B, N) float32 — soft-boundary loss
     ship_boundary_death: torch.Tensor  # (B, N) bool
     ship_respawned: torch.Tensor  # (B, N) bool — death -> spawn teleport this tick
+    # Frontline physics ticks a destroyed ship still waits before it respawns.
+    # Nonzero exactly while a slot is down; zero for every living ship.
+    ship_respawn_ticks: torch.Tensor  # (B, N) int32
     # Latched for the whole decision, not one tick: a ship that spawned on any
     # tick of a held action must still be revealed by the observation built
     # after the last one. Cleared when the next decision starts.
