@@ -49,6 +49,8 @@ FEATURE_SHIP_CONFIG_FIELDS = (
     "field_index_step",
     "bullet_lifetime",
     "collision_radius",
+    # Converts the respawn countdown from ticks to the seconds the encoder reads.
+    "dt",
 )
 
 
