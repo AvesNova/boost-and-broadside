@@ -208,6 +208,21 @@ _TIER: dict[str, str] = {
 }
 
 
+def valued_ships(obs: YemongObservation, alive: torch.Tensor) -> torch.Tensor:
+    """``(T, B, N)`` slots the critic is trained on: alive, or waiting to respawn.
+
+    A downed Frontline ship takes no action and has no next state to predict,
+    but it is still in the match and its team's rewards keep reaching it, so
+    its value stays supervised. ``obs`` may carry one more step than ``alive``
+    (the bootstrap observation); only the first ``T`` are read.
+    """
+    if ObsKey.RESPAWN_TIME not in obs:
+        return alive
+    steps, ships = alive.shape[0], alive.shape[-1]
+    waiting = obs[ObsKey.RESPAWN_TIME][:steps, ..., :ships, 0] > 0
+    return alive | waiting
+
+
 @dataclasses.dataclass
 class _ResolvedSchedule:
     """Training schedule evaluated at a single global step.
@@ -1818,7 +1833,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """
         source_device = chunks[0].alive.device
         _z = torch.zeros((), device=source_device)
-        alive_sum = _z.clone()
+        value_sum = _z.clone()
         actor_sum = _z.clone()
         pg_sum = _z.clone()
         bc_sum = _z.clone()
@@ -1836,7 +1851,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             mb_decision_committed = chunk.decision_committed
             mb_expert_probs = chunk.expert_probs
             mb_terminated = chunk.terminated
-            alive_sum += mb_alive.sum()
+            value_sum += valued_ships(chunk.obs, mb_alive).sum()
             if self.cfg.enemy_action_coef > 0.0:
                 team_id = chunk.obs[ObsKey.TEAM_ID][: mb_alive.shape[0], :, : self.buffer.num_ships]
                 enemy_action_sum += ((team_id == 1) & mb_alive & mb_decision_committed).sum()
@@ -1890,7 +1905,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "env_step_sum": float(
                 sum(chunk.alive.shape[0] * chunk.alive.shape[1] for chunk in chunks)
             ),
-            "mask_sum": alive_sum.clamp(min=1.0).to(self.device),
+            "mask_sum": value_sum.clamp(min=1.0).to(self.device),
             "actor_sum": actor_sum.clamp(min=1.0).to(self.device),
             "pg_sum": pg_sum.clamp(min=1.0).to(self.device),
             "bc_sum": bc_sum.clamp(min=1.0).to(self.device),
@@ -2021,7 +2036,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
 
         alive_f = mb_alive.float()  # (T, B_mb, N)
-        alive_k = alive_f.unsqueeze(-1)  # (T, B_mb, N, 1)
+        # The critic values every slot still in the match, including one
+        # waiting to respawn: its team's rewards keep arriving while it is down.
+        valued_k = valued_ships(curr_mb_obs, mb_alive).float().unsqueeze(-1)  # (T, B_mb, N, 1)
         mask_sum = denoms["mask_sum"]
 
         actor_f = (mb_actor_mask & mb_alive).float()  # (T, B_mb, N)
@@ -2049,8 +2066,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # ---- Value loss: cross-entropy against the categorical return -------
         # Summed over levels, each at its own weight, so every level is in nats
         # per token like the other terms and none is diluted by how many levels
-        # there are.
-        value_per_level = self._critic_losses(critic, batch, alive_f, denoms)  # (K,)
+        # there are. A downed ship stays valued: its team's rewards reach it.
+        value_per_level = self._critic_losses(critic, batch, valued_k.squeeze(-1), denoms)  # (K,)
         vf_loss = (self._value_weight_t * value_per_level).sum()
 
         # ---- Entropy bonus -----------------------------------------------
@@ -2410,13 +2427,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 )  # (T, B_mb, N, K)
                 residuals_k = mb_returns - pred_k  # (T, B_mb, N, K)
                 diag["value_loss_k"] = value_per_level.detach()  # (K,)
-                diag["ret_mean_k"] = (mb_returns * alive_k).sum((0, 1, 2)) / mask_sum
-                diag["ret_sq_k"] = (mb_returns.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
-                diag["res_mean_k"] = (residuals_k * alive_k).sum((0, 1, 2)) / mask_sum
-                diag["res_sq_k"] = (residuals_k.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
-                diag["pred_mean_k"] = (pred_k * alive_k).sum((0, 1, 2)) / mask_sum
+                diag["ret_mean_k"] = (mb_returns * valued_k).sum((0, 1, 2)) / mask_sum
+                diag["ret_sq_k"] = (mb_returns.pow(2) * valued_k).sum((0, 1, 2)) / mask_sum
+                diag["res_mean_k"] = (residuals_k * valued_k).sum((0, 1, 2)) / mask_sum
+                diag["res_sq_k"] = (residuals_k.pow(2) * valued_k).sum((0, 1, 2)) / mask_sum
+                diag["pred_mean_k"] = (pred_k * valued_k).sum((0, 1, 2)) / mask_sum
                 # Per-component advantage second moment — raw, unweighted, un-aggregated
-                diag["adv_sq_k"] = (mb_advantages.pow(2) * alive_k).sum((0, 1, 2)) / mask_sum
+                diag["adv_sq_k"] = (mb_advantages.pow(2) * valued_k).sum((0, 1, 2)) / mask_sum
                 diag["alive_flat"] = mb_alive.reshape(-1).bool()
                 diag["mb_returns"] = mb_returns
                 diag["logprob_flat"] = logprob.detach().float().reshape(-1)
@@ -2589,13 +2606,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         self,
         critic: CriticOutput,
         batch: MicroBatch,
-        alive_f: torch.Tensor,
+        valued_f: torch.Tensor,
         denoms: dict,
     ) -> torch.Tensor:
         """Each level's cross-entropy against its categorical target.
 
         Per-ship levels: the realised lambda-return two-hot over the value bins,
-        averaged over living ships. The outcome: its categorical lambda-return
+        averaged over ships still in the match -- alive or waiting to respawn
+        (:func:`valued_ships`). The outcome: its categorical lambda-return
         (``train/rl/critic.outcome_targets``), averaged over environment-steps.
         Both denominators are minibatch totals, so micro-batches add exactly.
 
@@ -2603,14 +2621,14 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             (K,) loss per level, in active-level order.
         """
         K = batch.returns.shape[-1]
-        losses: list[torch.Tensor] = [alive_f.new_zeros(())] * K
+        losses: list[torch.Tensor] = [valued_f.new_zeros(())] * K
         local_k = self._policy_module._local_value_k
         if local_k:
             support = self._policy_module.value_support
             targets = two_hot(batch.returns[..., list(local_k)].float(), support)
             log_p = F.log_softmax(critic.local_logits.float(), dim=-1)  # (T, B, N, K_l, n)
             cross_entropy = -(targets * log_p).sum(-1)  # (T, B, N, K_l)
-            per_level = (cross_entropy * alive_f.unsqueeze(-1)).sum((0, 1, 2)) / denoms["mask_sum"]
+            per_level = (cross_entropy * valued_f.unsqueeze(-1)).sum((0, 1, 2)) / denoms["mask_sum"]
             for position, k in enumerate(local_k):
                 losses[k] = per_level[position]
         if self._outcome_global_k:

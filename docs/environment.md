@@ -30,7 +30,14 @@ Damage resets a five-second recharge delay. After that undamaged interval, shiel
 recover at 15 units/second anywhere, capped at 100. A hit and recharge never pay out
 on the same tick. The timer is an observed, predicted ship channel.
 
-Initial placement and instant respawns use 15 shields, 40 power and 30 px/s proper
+A destroyed ship is down for `respawn_delay` seconds (8 in the shipped profile; 0
+is the original instant respawn). While down it is parked where it died, takes no
+actions, counts toward no zone, cannot be hit, and is public to both teams, with the
+time left in the `respawn_time` observation channel. It re-enters at its team's spawn
+as of the moment the wait ends, so a ship lost in a capture fight comes back from the
+post-capture spawn rather than the one beside the zone it just lost.
+
+Initial placement and respawns use 15 shields, 40 power and 30 px/s proper
 speed, facing the enemy defense, with the full recharge delay. This avoids a special
 full-resource opening and leaves enough power and steering speed to act immediately.
 Ships inside their current friendly spawn are invulnerable. Spawn membership is
@@ -38,7 +45,9 @@ sampled after movement at collision time; a zone-role change takes effect for th
 collision tick. Spawn offers protection, not a special healing rate.
 
 Respawns preserve slot identity, clear previous-life damage attribution on the next
-tick, and mark the transition discontinuous for auxiliary prediction. Recurrent match
+tick, and mark the transition discontinuous for auxiliary prediction; so does every
+tick a ship spends down. A downed ship stays in the critic's loss, since its team's
+rewards keep reaching it, and out of the policy and next-state losses. Recurrent match
 memory persists. Unseen enemies with zero predicted shields remain valid beliefs;
 zero shields no longer implies death. Checkpoints from before the
 `categorical_codes_v22` observation/feature contract are incompatible.

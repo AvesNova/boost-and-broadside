@@ -62,6 +62,15 @@ class FrontlineConfig:
     boundary_damage_per_second: float
     boundary_damage_per_pixel_second: float
     front_win_threshold: int
+    # Seconds a destroyed ship waits before it re-enters at its team's spawn.
+    # The spawn is read when the wait ends, not at death, so a ship killed
+    # during a capture fight reappears wherever the front has since moved it.
+    # Without a wait, the losing side of a capture is already flying back from
+    # its old spawn -- next to the zone it just lost -- by the time the zone
+    # flips. Zero is the original immediate respawn; it is also what a config
+    # recorded before this field existed means, which is the only reason this
+    # field, unlike the rest, has a default.
+    respawn_delay: float = 0.0
 
     def __post_init__(self) -> None:
         positive = (
@@ -82,6 +91,7 @@ class FrontlineConfig:
         non_negative = (
             "boundary_damage_per_second",
             "boundary_damage_per_pixel_second",
+            "respawn_delay",
         )
         for name in non_negative:
             value = getattr(self, name)
@@ -474,6 +484,11 @@ class ModelConfig:
     # is. Lives on ModelConfig rather than in the environment because it widens
     # the encoder's input projection -- it is part of what the weights mean.
     local_presence: bool = False
+    # One extra ship-token scalar: seconds until a downed Frontline ship
+    # respawns (``FrontlineConfig.respawn_delay``). Without it a policy has only
+    # its own memory of when a slot died. Here, not on the environment, for the
+    # same reason as ``local_presence``: it widens the encoder's input.
+    respawn_countdown: bool = False
     # Add a shared pairwise bias to spatial attention scores, computed from
     # proximity, ego-frame bearing and range rate by one linear map per sublayer.
     # Zero-initialised, so enabling it does not by itself change the function.

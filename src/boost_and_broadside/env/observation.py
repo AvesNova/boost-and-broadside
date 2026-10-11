@@ -39,6 +39,7 @@ class ObsKey(StrEnum):
     BELIEF_VALID = "belief_valid"
     BELIEF_UNCERTAINTY = "belief_uncertainty"
     TIME_SINCE_OBSERVATION = "time_since_observation"
+    RESPAWN_TIME = "respawn_time"
     OBJECT_TYPE = "object_type"
     RADIUS = "radius"
     PREVIOUS_ACTION = "previous_action"
@@ -898,6 +899,12 @@ def observation_from_state(
     )
 
     observed_alive = ship.alive
+    # Seconds until a downed Frontline ship re-enters. Perception makes every
+    # waiting ship public, so truth is legal wherever it is nonzero; the
+    # ``from_truth`` gate only keeps the rule local to this module.
+    respawn_time = (state.ship_respawn_ticks.float() * ship_config.dt).unsqueeze(-1)
+    if not omniscient:
+        respawn_time = torch.where(from_truth.unsqueeze(-1), respawn_time, 0.0)
 
     batch = state.num_envs
     num_fields = state.num_fields
@@ -1079,6 +1086,7 @@ def observation_from_state(
                 ],
                 dim=1,
             ),
+            ObsKey.RESPAWN_TIME: torch.cat([respawn_time, object_zero_scalar], dim=1),
             ObsKey.OBJECT_TYPE: torch.cat([ship_type, object_type], dim=1),
             ObsKey.ZONE_ROLE: torch.cat([ship_no_zone, object_zone_role], dim=1),
             ObsKey.PREVIOUS_ACTION: torch.cat([ship_prev_action, object_prev_action], dim=1),

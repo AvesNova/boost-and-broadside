@@ -132,6 +132,7 @@ def make_state(
         ship_boundary_damage=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
         ship_boundary_death=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
         ship_respawned=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
+        ship_respawn_ticks=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=dev),
         ship_spawned=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),
     )
 

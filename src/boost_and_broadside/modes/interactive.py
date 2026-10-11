@@ -83,6 +83,7 @@ PLAY_ENV_CONFIG = EnvConfig(
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,
+        respawn_delay=8.0,
     ),
 )
 

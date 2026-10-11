@@ -164,9 +164,15 @@ def team_visibility_from_state(
     batch, num_ships = state.ship_pos.shape
     device = state.device
     target_alive = state.ship_alive.unsqueeze(1)
+    # A Frontline ship waiting to respawn is public to both teams, the way a
+    # kill feed is. It cannot be seen -- it is not in the world -- but without
+    # this an enemy that dies out of sight is remembered as alive, and the
+    # numbers advantage the wait creates would be invisible to the side that
+    # has it. Its token reads the parked wreck and the time left.
+    waiting = (state.ship_respawn_ticks > 0).unsqueeze(1)
     if env_config.vision_range is None:
         observer = target_alive.expand(batch, num_ships, num_ships)
-        team_ship = state.ship_alive[:, None, :].expand(batch, 2, num_ships)
+        team_ship = (state.ship_alive[:, None, :] | waiting).expand(batch, 2, num_ships)
         bullet = (
             state.bullet_active[:, None, :, :].expand(batch, 2, num_ships, state.max_bullets)
             if perceive_bullets
@@ -209,6 +215,8 @@ def team_visibility_from_state(
         team_ship[:, team] |= allies
         range_team_ship[:, team] |= allies
         los_team_ship[:, team] |= allies
+
+    team_ship = team_ship | waiting
 
     if env_config.spawn_reveal:
         # A ship entering the world is visible to both teams for that one
