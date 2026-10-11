@@ -10,7 +10,7 @@ import torch
 
 from boost_and_broadside.train.rl.ship_codes import SHIP_CODE_DIM
 
-OBSERVATION_SCHEMA = "categorical_codes_v22"
+OBSERVATION_SCHEMA = "categorical_codes_v23"
 POSITION_FINEST_PERIOD = 128.0
 # Harmonics of the attitude axis of rotary spatial attention. Defined here,
 # beside the position count, because the rotation and the bullets' Fourier
@@ -43,7 +43,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         ship_config["world_size"] if isinstance(ship_config, Mapping) else ship_config.world_size
     )
     return {
-        "version": 22,
+        "version": 23,
         # Every mode presents one global/game token directly after the ships,
         # carrying a categorical game-mode one-hot, the match clock and (in
         # Frontline) the front. Whether the policy promotes it to a recurrent
@@ -55,6 +55,10 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         "is_shooting": "real_shot_last_tick_ship_channel",
         "shot_auxiliary": "counterfactual_ghost_trajectory_and_outcome_heads",
         "spawn_reveal": "visible_to_both_teams_for_the_spawn_decision",
+        # A Frontline ship waiting out ``respawn_delay`` stays an ordinary,
+        # unmasked token, public to both teams, with the time left as a ship
+        # channel: normalized, plus a small Fourier basis.
+        "respawn_wait": "public_downed_token_time_left_normalized_plus_fourier",
         "hidden_tokens": "recursive_physical_belief_plus_age",
         # There is no substitution any more. The belief stores the same eleven
         # physical quantities truth does, so composing a legal view selects
@@ -115,6 +119,11 @@ def load_checkpoint_payload(
 
 def require_observation_schema(checkpoint: Mapping[str, Any], path: str | None = None) -> None:
     """Reject weights whose encoder uses a different observation contract.
+
+    v23 adds the ``respawn_time`` ship channel: seconds until a downed Frontline
+    ship re-enters, as its normalized value and a small Fourier basis
+    (``train/rl/features.respawn_time_features``). The encoder input width
+    changes, so no v22 checkpoint can load.
 
     v22 adds the ``is_shooting`` ship channel -- a real shot fired on the last
     tick -- and the counterfactual shot heads (``env/shot_labels.py``): a
