@@ -137,3 +137,6 @@ a per-type first projection (`encoder_split`) and a shared second projection.
   belief mean. Recommendation: rotary uses 40 of the 64 spatial head dimensions; zero
   the rotated 40 for a masked token so attention to it uses only the 24 unrotated
   (content) dimensions.
+- **Decided:** a visible flag always; masked categoricals are **uniform** for now
+  (belief stays in the port). Griffin-only memory is post-transition work; the adapter
+  and model code should make swapping the masking/memory scheme cheap.
