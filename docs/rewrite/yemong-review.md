@@ -238,3 +238,15 @@ a per-type first projection (`encoder_split`) and a shared second projection.
   Longer rollouts cost activation memory (rematerialization and fewer parallel envs)
   and staleness of the stored start-of-rollout state; to be settled in the training
   review.
+- **Refinement (what truncation really limits):** the network can *use* memory from
+  before the rollout (the carried state is read with gradients), and a keep/accumulate
+  rule learned inside the window keeps running for the whole match at inference
+  (recurrences length-generalize). Facts that are re-observed often (enemy team
+  composition) are learnable as running accumulations from short windows. What
+  truncation blocks is learning to *write* a one-shot fact whose payoff comes more than
+  one rollout later. Dreamer 4 reportedly alternates long and short training batches
+  for long context (secondary summaries; a transformer world model, so only an
+  analogy). Existing measurement (`docs/engineering/rl-throughput.md`, "Shorter
+  rollouts for speed"): at a fixed token budget, update cost per token is flat from
+  T=32 to T=256, so longer rollouts with fewer environments are nearly free in
+  compute; the trade is fewer independent environments per update.
