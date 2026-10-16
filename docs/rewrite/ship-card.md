@@ -24,9 +24,10 @@ reverse = -boost tie and the global shape rules below.
 | `onset_time` | straight to 90% of a commanded slip | roll rate |
 | `stall_speed` | below this, no lift | stall speed |
 
-Open: the current ship has `stall_speed = 1` (effectively off) and `fade_speed = 35`,
-so the low-speed limit players actually feel is the fade speed. Consider making the
-per-type handle a "min control speed" (fade) and making stall speed global or derived.
+`stall_speed` on the card means **the speed below which a ship can no longer be
+controlled** (today that role is played by `fade_speed`, 35 m/s). The current
+`min_speed = 1` is only a numerical floor against divide-by-small-number problems; it
+becomes a global internal constant, not a design handle.
 
 ## Flight: global shape rules (shared by every ship)
 
@@ -35,7 +36,7 @@ per-type handle a "min control speed" (fade) and making stall speed global or de
   `slip_command` today; make it explicit).
 - Normal-slip drag tied to stall drag by one induced-drag relation (curve shape
   unchanged).
-- Slip fade speed as a fixed multiple of stall speed (see the open note above).
+- Slip fade behavior tied to the stall (control-loss) speed by a fixed rule.
 - Stall angle (gun offset in a sharp turn).
 - Nose slew rate derived from onset time by a fixed ratio.
 
@@ -113,3 +114,18 @@ Sources:
 - https://www.digitalcombatsimulator.com/upload/iblock/aa2/DCS-P-51D_Flight_Manual_EN.pdf
 - https://military-history.fandom.com/wiki/Gun_harmonisation
 - https://www.gt40s.com/threads/p-51d.35582/latest
+
+## What-if: ship radius and gun range divided by 3 and by 10
+
+Everything else unchanged (bullet speed 500 m/s with the same drag, top speed 136 m/s,
+min turn radius 37 m, sustained circle 3.16 s, fire rate 10/s).
+
+| Scale | Ship radius | Gun range | radius / min turn radius | range / min turn radius | Bullet flight time | Target turns during flight | Lead (ship radii) | Shots per head-on pass |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| today | 10 m | 421 m | 0.27 | 11.4 | 1.00 s | 114 deg | 13.6 | 15.5 |
+| / 3 | 3.3 m | 140 m | 0.09 | 3.8 | 0.30 s | 34 deg | 12.1 | 5.2 |
+| / 10 | 1.0 m | 42 m | 0.027 | 1.1 | 0.086 s | 10 deg | 11.6 | 1.6 |
+| P-51D | 5.6 m | 250 m | 0.024 | 1.1 | 0.28 s | 5 deg | 9.8 | ~48 rounds |
+
+Only ratios matter: shrinking ships and guns by 10 is the same game as growing speeds,
+turn radii, zones, fields and the map by 10.

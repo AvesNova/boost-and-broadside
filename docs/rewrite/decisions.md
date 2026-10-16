@@ -307,7 +307,7 @@ Coupling found in the current code that blocks goal B:
    - Agreed refinements: roll is one handle (`onset_time`; nose slew derived from it by
      a global ratio). Turn handles are **min turn radius, sustained circle time and
      corner speed** (instantaneous circle time and max turn rate are derived). That
-     leaves 10 per-type flight handles, verified full rank. Full card and the
+     leaves 10 per-type flight handles, verified full rank. `stall_speed` means the control-loss speed; `min_speed = 1` is only a numerical floor. Full card and the
      P-51D similarity-ratio comparison: `docs/rewrite/ship-card.md`.
    - **Units (decided):** "px" becomes a world length unit "m", with a render scale
      (pixels per m). Seconds stay seconds. Real aircraft are compared through
