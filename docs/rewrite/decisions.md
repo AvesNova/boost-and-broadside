@@ -271,6 +271,31 @@ Coupling found in the current code that blocks goal B:
   - Validity constraints are explicit, so random ship designs can be sampled valid by
     construction.
 
+### Turn commands (finding and candidate change)
+
+- **Finding:** the intended meaning of the turn levels was "normal = stick position for
+  the max sustained-rate turn, sharp = stick position for the sustained min-radius
+  turn." The code does something else: `slip_command` asks for a fixed lift level.
+  Sharp is max lift capped by the g-limit, an instantaneous turn that bleeds energy.
+  Normal is a fixed lower lift (`normal_lift_coeff`), capped at a hard-coded
+  `0.5 * max_lateral_accel`. Neither adapts to hold speed. The card's "sustained" rates
+  are closed-form results of those fixed commands, not commands.
+- **Candidate change (after parity, it changes gameplay):** intent-based turn levels.
+  - *Sustained:* the tightest turn that holds speed at the current throttle (lift
+    chosen so drag equals thrust; the drag curve is quadratic in `x^2`, so the inverse
+    is closed form). At a fixed speed the max-rate and min-radius energy-neutral turns
+    are the same command (radius = 1 / C_L); they differ only by the speed flown,
+    which the throttle already controls. Needs a floor (a gentle minimum turn), since
+    at terminal speed the energy-neutral turn is zero and pressing "turn" would do
+    nothing.
+  - *Max:* max lift capped by the g-limit (today's sharp).
+  - *Optional third, post-stall:* nose beyond the stall angle; lift collapses, drag
+    rises, guns point further off the flight path (snap shot / brake). The lift and
+    drag curves already define this region; the nose is currently bounded at the stall
+    angle, and the g-limit must still hold.
+  - Action space grows from 5 to 7 turn actions (joint 30 -> 42) if the third is added.
+  - Would remove the normal-turn lift fraction and the 0.5 lateral cap as parameters.
+
 ### Presentation
 
 - Polished graphics, spectator mode, dev spectator mode (privileged truth plus agent
