@@ -271,30 +271,39 @@ Coupling found in the current code that blocks goal B:
   - Validity constraints are explicit, so random ship designs can be sampled valid by
     construction.
 
-### Turn commands (finding and candidate change)
+### Turn commands: datum design
 
-- **Finding:** the intended meaning of the turn levels was "normal = stick position for
-  the max sustained-rate turn, sharp = stick position for the sustained min-radius
-  turn." The code does something else: `slip_command` asks for a fixed lift level.
-  Sharp is max lift capped by the g-limit, an instantaneous turn that bleeds energy.
-  Normal is a fixed lower lift (`normal_lift_coeff`), capped at a hard-coded
-  `0.5 * max_lateral_accel`. Neither adapts to hold speed. The card's "sustained" rates
-  are closed-form results of those fixed commands, not commands.
-- **Candidate change (after parity, it changes gameplay):** intent-based turn levels.
-  - *Sustained:* the tightest turn that holds speed at the current throttle (lift
-    chosen so drag equals thrust; the drag curve is quadratic in `x^2`, so the inverse
-    is closed form). At a fixed speed the max-rate and min-radius energy-neutral turns
-    are the same command (radius = 1 / C_L); they differ only by the speed flown,
-    which the throttle already controls. Needs a floor (a gentle minimum turn), since
-    at terminal speed the energy-neutral turn is zero and pressing "turn" would do
-    nothing.
-  - *Max:* max lift capped by the g-limit (today's sharp).
-  - *Optional third, post-stall:* nose beyond the stall angle; lift collapses, drag
-    rises, guns point further off the flight path (snap shot / brake). The lift and
-    drag curves already define this region; the nose is currently bounded at the stall
-    angle, and the g-limit must still hold.
-  - Action space grows from 5 to 7 turn actions (joint 30 -> 42) if the third is added.
-  - Would remove the normal-turn lift fraction and the 0.5 lateral cap as parameters.
+- **Intent (clarified by the author):** each turn level is a fixed command whose
+  equilibrium speed is a datum. Held at its datum speed the ship neither gains nor
+  loses speed; faster, it bleeds speed; slower, it gains speed. Normal's datum is the
+  max sustained-rate turn; sharp's datum is the min sustained-radius turn.
+- **This matches the current mechanism.** Each level asks for a fixed lift; thrust (or
+  regenerated power) is fixed while drag grows with speed, so each level has one
+  stable equilibrium speed.
+- **Sharp already meets the intent.** Max lift is the min radius at any speed below
+  corner, and its equilibrium (74 m/s boosting, 40 m/s coasting) is below corner
+  speed (100 m/s).
+- **Normal does not, today** (computed from the shipped config):
+  - Boosting (sustained by regeneration): best sustained rate is ~128 deg/s at slip
+    fraction ~0.67 and ~92 m/s. Normal's datum gives ~102 deg/s at ~119 m/s, and the
+    sharp datum (114 deg/s) beats it.
+  - Coasting (thrust-limited): best is ~79 deg/s at slip fraction ~0.55. Normal gives
+    ~70 deg/s.
+  - At normal's boosting datum speed the hard-coded half-g cap (active above ~95 m/s)
+    is already limiting it, so the closed-form numbers are off there too.
+- **Wrinkle:** the max-rate lift depends on throttle. Boosting is power-limited
+  (speed ~ C_D^-1/3, optimum maximizes C_L^3 / C_D); coasting is thrust-limited
+  (speed ~ C_D^-1/2, optimum maximizes C_L^2 / C_D). One fixed normal lift cannot be
+  the datum for both: pick one throttle (boost, like WW2 turn times at combat power),
+  or let the normal lift depend on throttle.
+- **Consequence for parameters:** normal lift becomes *derived* (the optimum on the
+  drag curve), not a free parameter or a global ratio. The half-g cap should go or be
+  set by rule. The drag curve shape still needs one parameter, and it must keep the
+  optimum strictly inside the stall angle (otherwise normal = sharp).
+- **Max deflection (third level):** within the stall angle, sharp already is max
+  deflection. A third level only means something past the stall angle (snap shot /
+  brake, always bleeding energy, no datum). Optional, after parity.
+- Making normal the true max-rate datum is a gameplay retune, so it comes after parity.
 
 ### Presentation
 
