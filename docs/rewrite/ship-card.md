@@ -129,3 +129,25 @@ min turn radius 37 m, sustained circle 3.16 s, fire rate 10/s).
 
 Only ratios matter: shrinking ships and guns by 10 is the same game as growing speeds,
 turn radii, zones, fields and the map by 10.
+
+## Proposal: halve ship size and gun range, double the other lengths
+
+Speeds unchanged (top 136 m/s, corner 100 m/s, bullet 500 m/s with the same drag).
+Doubling lengths at the same speeds doubles every turn time: corner speed is
+unchanged while radius and lateral acceleration scale together.
+
+| | Today | Proposal | P-51D |
+|---|---:|---:|---:|
+| Ship radius / min turn radius | 0.27 | 0.068 | 0.024 |
+| Gun range / min turn radius | 11.4 | 2.8 | 1.1 |
+| Gun range / ship radius | 42 | 42 | 44 |
+| Instantaneous circle | 2.3 s | 4.6 s | ~11 s |
+| Sustained circle | 3.2 s | 6.3 s | ~20 s |
+| Bullet flight time to range | 1.00 s | 0.46 s | 0.28 s |
+| Target turns during bullet flight | 114 deg | 26 deg | 5 deg |
+| Lead (ship radii) | 13.6 | 12.5 | 9.8 |
+| Shots per head-on pass (10/s) | 15.5 | 7.7 | ~48 rounds |
+| Min turn radius / top speed | 0.27 s | 0.54 s | 1.18 s |
+
+If speeds were doubled too ("double everything else"), the geometry would match the
+proposal but every turn time would stay as fast as today.
