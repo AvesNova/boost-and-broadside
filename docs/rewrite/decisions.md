@@ -321,6 +321,18 @@ Coupling found in the current code that blocks goal B:
   levels; three levels = gentle (aiming), max sustained rate (normal, compromise lift),
   min radius (sharp, max lift). Post-stall stays an experiment. Joint action space
   becomes 3 x 7 x 2 = 42.
+- **Proposal under discussion: stick thirds.** Three levels per side at 1/3, 2/3 and
+  3/3 of the stall angle (constant stick, throttle-independent). On the shipped ship:
+  - 1/3 is today's normal turn (slip fraction 0.331): r 67 m, 102 deg/s at its boost
+    datum (119 m/s).
+  - 2/3 lands on the boost max-sustained-rate optimum (127.7 deg/s at 93 m/s; 97.8%
+    of the coast optimum): r 42 m.
+  - 3/3 is today's sharp turn: r 37 m, 114 deg/s at its boost datum (74 m/s).
+  - Thirds of *lift* instead would put the levels at slip 0.18 / 0.42 / 1.0
+    (r 111 / 56 / 37 m) and miss the max-rate point.
+  - For other ship types the max-rate point need not sit at 2/3. Option: make it a
+    design rule ("max sustained rate at 2/3 stick") that fixes the drag-curve shape
+    parameter, removing the last free shape constant.
 - Making normal the true max-rate datum is a gameplay retune, so it comes after parity.
 
 ### Presentation
