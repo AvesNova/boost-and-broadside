@@ -122,3 +122,18 @@ a per-type first projection (`encoder_split`) and a shared second projection.
 - **Time since last seen** is a feature, Fourier-encoded like the other time features.
 - Consequence to settle: rotary encoding has no position for a masked token, so a
   hidden token's rotation should be the identity (no geometry).
+- **Full truth plus masks as the observation:** rejected (recommendation). It leaks
+  hidden information to any model that ignores or mishandles the mask, silently inflates
+  results on a masking bug, and makes a leaderboard unenforceable. The env applies the
+  masks; truth reaches only learners, as privileged labels.
+- **Masked categorical: zeros plus a visible flag vs uniform.** Zeros plus a flag is the
+  standard missing-value pattern and is exactly a learned mask embedding (the flag's
+  input column). Uniform is only better when uncertainty is graded (belief smoothing),
+  where it is the limit of infinite spread. Recommendation: zeros plus flag if memory
+  moves into Griffin; uniform if belief smoothing stays. Adapter choice, not contract.
+- **Identity rotation is not "no geometry":** it equals rotating by position (0, 0)
+  and heading 0, so a hidden token would look like it sits at the torus origin (a random
+  spot relative to the randomly translated map). Today a hidden enemy is rotated by its
+  belief mean. Recommendation: rotary uses 40 of the 64 spatial head dimensions; zero
+  the rotated 40 for a masked token so attention to it uses only the 24 unrotated
+  (content) dimensions.
