@@ -250,6 +250,27 @@ Coupling found in the current code that blocks goal B:
   ship-type balance, sensitivity studies), so training speed is unaffected by
   construction.
 
+### Tuning and ship design workflow
+
+- **Port today's values first**, so differential tests against the old physics
+  compare like for like. Retuning comes after parity.
+- **First planned retune:** halve ship size and gun range, double the other lengths,
+  keep speeds (turns 2x slower, gun range ~2.8 turn radii instead of ~11). Numbers in
+  `ship-card.md`.
+- **Design so rescaling, new ship ideas and training-time randomization are easy**
+  (built in from the start, implemented later as needed):
+  - Every dimensional config value declares its physical dimension (length, time,
+    speed, acceleration, rate, ...), so a similarity rescale (`L`, `T`) is one function
+    over the whole config, covering zones, fields, map scale, vision, presence kernel,
+    spawn values and bullet drag as well as the ship card.
+  - The ship card (high-level handles) is the source of truth; low-level constants are
+    always solved, never hand-edited.
+  - Per-ship physics and combat parameters are traced arrays in state, not static
+    config, so ship types can be mixed in a match, changed without recompiling, and
+    sampled per episode.
+  - Validity constraints are explicit, so random ship designs can be sampled valid by
+    construction.
+
 ### Presentation
 
 - Polished graphics, spectator mode, dev spectator mode (privileged truth plus agent
@@ -289,35 +310,14 @@ Coupling found in the current code that blocks goal B:
 
 ## Tabled (deliberately deferred)
 
-1. **Remaining game-scope questions** (features themselves are decided above):
-   - **Flight parameterization proposal (not yet agreed; being reviewed against what
-     WW2 fighter pilots and designers compared between planes):** 15 free constants after the
-     reverse tie. Split them into global "shape" rules shared by every ship and
-     per-type "scale" handles:
-     - *Global shape rules (4):* normal-turn lift as a fixed fraction of max lift;
-       normal-slip drag tied to stall drag by one induced-drag relation (drag rise
-       proportional to lift squared at the two curve points, so the current
-       `C_D0 + b x^2 + c x^4` curve is unchanged); slip fade speed as a fixed
-       multiple of stall speed; stall angle (gun offset). Also make the hard-coded
-       normal-turn lateral fraction (`0.5 * max_lateral_accel` in `slip_command`) an
-       explicit config value.
-     - *Per-type handles (11, verified full rank on the remaining 11 constants):*
-       cruise_speed, top_speed, boost_accel, recharge_time, tank_speed, sharp_radius,
-       max_turn_rate, sharp_sustained_rate, onset_time, nose_slew_rate, stall_speed.
-   - Agreed refinements: roll is one handle (`onset_time`; nose slew derived from it by
-     a global ratio). Turn handles are **min turn radius, sustained circle time and
-     corner speed** (instantaneous circle time and max turn rate are derived). That
-     leaves 10 per-type flight handles, verified full rank. `stall_speed` means the control-loss speed; `min_speed = 1` is only a numerical floor. Full card and the
-     P-51D similarity-ratio comparison: `docs/rewrite/ship-card.md`.
-   - **Units (decided):** "px" becomes a world length unit "m", with a render scale
-     (pixels per m). Seconds stay seconds. Real aircraft are compared through
-     dimensionless ratios, which are shown on the ship card.
-   - **Validity constraints** to check (and later, to sample under for randomization):
-     sharp radius < normal radius; zero-slip < normal-slip < stall drag (already
-     validated in `ShipConfig`); base < boost thrust; cruise < top < unlimited top
-     speed; stall < fade < corner < top speed; sustained turn rates < max turn rate;
-     stall angle in (0, 90 deg). Proposed approach: parameterize by positive log-gaps
-     (e.g. `log(top / cruise) > 0`) so every sample is valid by construction.
+1. **Remaining flight-parameterization questions** (the card itself is in
+   `docs/rewrite/ship-card.md`):
+   - Confirm the global shape rules: normal-turn lift fraction, normal-turn lateral
+     fraction (today a hard-coded 0.5), induced-drag tie between normal-slip and stall
+     drag, fade behavior tied to the control-loss speed, stall angle, nose slew
+     derived from onset.
+   - Confirm the validity constraints and the log-gap parameterization for sampling.
+   - Pick the similarity-ratio suite shown on the card (current draft: 10 ratios).
 2. **Concrete contracts:** observation schema, action schema (keep the 30-way joint
    command?), decision rate and action repeat, event list, trajectory/label format,
    and versioning rules.
