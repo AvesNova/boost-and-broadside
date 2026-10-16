@@ -110,3 +110,15 @@ a per-type first projection (`encoder_split`) and a shared second projection.
 - **Categorical codes and belief smoothing:** one model's choice, not a contract. The
   author is unsure about the current belief system and wants to experiment later with
   letting the Griffin layers handle memory alone.
+- **Per-team differences in the raw observation** are not only team IDs: also
+  visibility (which enemy slots are masked), private pending actions (own exact, enemy
+  unknown) and time since seen. Map tokens and visible ships' physical values are
+  identical across teams. Sharing preprocessing between teams is an optimization inside
+  an agent that accepts stacked observers, not part of the contract; measure before
+  designing for it (the trunk, which cannot be shared, dominates cost).
+- **Masked (unseen) values:** the raw observation carries a mask; a model's adapter
+  represents a masked categorical as a **uniform distribution over its categories**
+  (author's choice for Yemong). Keep an explicit visible flag as well.
+- **Time since last seen** is a feature, Fourier-encoded like the other time features.
+- Consequence to settle: rotary encoding has no position for a masked token, so a
+  hidden token's rotation should be the identity (no geometry).
