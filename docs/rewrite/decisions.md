@@ -305,12 +305,13 @@ Coupling found in the current code that blocks goal B:
        cruise_speed, top_speed, boost_accel, recharge_time, tank_speed, sharp_radius,
        max_turn_rate, sharp_sustained_rate, onset_time, nose_slew_rate, stall_speed.
    - Agreed refinements: roll is one handle (`onset_time`; nose slew derived from it by
-     a global ratio), leaving 10 per-type flight handles. Turn handles are expressed as
-     **min turn radius** and **circle times in seconds** (instantaneous 360 at corner
-     speed, and sustained 360); corner speed is shown as derived (`2 pi r / t`).
-   - Units: proposal to replace "px" with a named world length unit ("m") plus a
-     render scale (pixels per m), keep real seconds, and compare with real aircraft
-     through dimensionless ratios rather than absolute values. Not yet agreed.
+     a global ratio). Turn handles are **min turn radius, sustained circle time and
+     corner speed** (instantaneous circle time and max turn rate are derived). That
+     leaves 10 per-type flight handles, verified full rank. Full card and the
+     P-51D similarity-ratio comparison: `docs/rewrite/ship-card.md`.
+   - **Units (decided):** "px" becomes a world length unit "m", with a render scale
+     (pixels per m). Seconds stay seconds. Real aircraft are compared through
+     dimensionless ratios, which are shown on the ship card.
    - **Validity constraints** to check (and later, to sample under for randomization):
      sharp radius < normal radius; zero-slip < normal-slip < stall drag (already
      validated in `ShipConfig`); base < boost thrust; cruise < top < unlimited top
