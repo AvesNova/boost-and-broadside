@@ -31,14 +31,22 @@ becomes a global internal constant, not a design handle.
 
 ## Flight: global shape rules (shared by every ship)
 
-- Normal-turn lift as a fixed fraction of max lift.
-- Normal-turn lateral cap as a fraction of `max_lateral_accel` (hard-coded 0.5 in
-  `slip_command` today; make it explicit).
-- Normal-slip drag tied to stall drag by one induced-drag relation (curve shape
-  unchanged).
+- **Turn levels are stick thirds:** 1/3, 2/3 and 3/3 of the stall angle, constant
+  stick, the same for every throttle. 1/3 is today's normal turn, 3/3 today's sharp
+  turn, 2/3 is new.
+- **Design rule: max sustained rate (boosting) sits at 2/3 stick.** This fixes the
+  drag curve's shape parameter, so the normal-slip drag point is derived rather than
+  set. The shipped ship already satisfies it (optimum at slip fraction ~0.67).
+- **Per-level lateral caps** as explicit config (fractions of `max_lateral_accel`).
+  Defaults preserve today's behavior: 0.5 for 1/3 (the cap hard-coded in
+  `slip_command` today), 1.0 for 2/3 and 3/3. Revisit after parity.
 - Slip fade behavior tied to the stall (control-loss) speed by a fixed rule.
-- Stall angle (gun offset in a sharp turn).
+- Stall angle (gun offset in a sharp turn); first candidate to promote to a per-type
+  handle.
 - Nose slew rate derived from onset time by a fixed ratio.
+
+All of these are defaults on the card; the engine treats every flight constant as a
+per-ship array, so any rule can be promoted to a per-type handle later.
 
 ## Flight: derived and shown
 

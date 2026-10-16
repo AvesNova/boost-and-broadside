@@ -271,6 +271,21 @@ Coupling found in the current code that blocks goal B:
   - Validity constraints are explicit, so random ship designs can be sampled valid by
     construction.
 
+### Turn levels (decided)
+
+- **Three levels per side, stick thirds:** 1/3, 2/3 and 3/3 of the stall angle,
+  constant stick (constant lift coefficient), throttle-independent. **All three are
+  in the port.** 1/3 and 3/3 reproduce today's normal and sharp turns, so differential
+  tests against the old physics still apply to them; 2/3 is new.
+- **Design rule:** every ship's max sustained rate (boosting) sits at 2/3 stick. This
+  fixes the drag curve's shape parameter. The shipped ship already satisfies it.
+- Turn actions go from 5 to 7 per decision (straight + 3 levels x 2 sides); the joint
+  command goes from 30 to 42.
+- Per-level lateral caps become explicit config, defaulting to today's behavior (0.5
+  for 1/3, 1.0 for 2/3 and 3/3).
+- Constant g was rejected (its slow-side equilibrium is unstable). A throttle-dependent
+  datum was rejected (under 1% gain). Post-stall remains a later experiment.
+
 ### Turn commands: datum design
 
 - **Intent (clarified by the author):** each turn level is a fixed command whose
@@ -376,10 +391,9 @@ Coupling found in the current code that blocks goal B:
 
 1. **Remaining flight-parameterization questions** (the card itself is in
    `docs/rewrite/ship-card.md`):
-   - Confirm the global shape rules: normal-turn lift fraction, normal-turn lateral
-     fraction (today a hard-coded 0.5), induced-drag tie between normal-slip and stall
-     drag, fade behavior tied to the control-loss speed, stall angle, nose slew
-     derived from onset.
+   - Confirm the remaining global shape rules: fade behavior tied to the control-loss
+     speed, stall angle, nose slew derived from onset. (Turn-level rules are decided:
+     see Turn levels.)
    - Confirm the validity constraints and the log-gap parameterization for sampling.
    - Pick the similarity-ratio suite shown on the card (current draft: 10 ratios).
 2. **Concrete contracts:** observation schema, action schema (keep the 30-way joint
