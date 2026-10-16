@@ -353,14 +353,22 @@ Coupling found in the current code that blocks goal B:
     parameter, removing the last free shape constant.
 - Making normal the true max-rate datum is a gameplay retune, so it comes after parity.
 
-### Physics changes land in the current env first (proposed)
+### Physics changes land in the current env first (planned, not started)
 
-The flight changes decided here (stick-thirds turn levels, single g-limit, 2/3
-max-rate drag rule, dynamic-pressure two-speed fade, reversal-time handle) would be
-implemented in the current PyTorch env (physics, handling solver, action tables) before
-the port, so the JAX port is a pure translation with one-to-one physics tests against
-an env that already has the final semantics. Scope: physics and handling only; the old
-training stack is not retrained or extended. Awaiting go-ahead.
+- The flight changes decided here (stick-thirds turn levels, single g-limit, 2/3
+  max-rate drag rule, dynamic-pressure two-speed fade, reversal-time handle) are
+  implemented in the current PyTorch env (physics, handling solver, action tables)
+  before the port. The JAX port is then a pure translation with one-to-one physics
+  tests against an env that already has the final semantics.
+- Scope: physics, handling solver, action tables, physics tests and flight-envelope
+  benchmarks. No backward compatibility: old checkpoints, the old training stack and
+  old action layouts may break. No retraining.
+- Base: the current working branch, `feat/counterfactual-shot-labels` (not `main`,
+  which is behind). `jax-rewrite/design` is that branch plus `docs/rewrite/` only.
+- Proposed order, one reviewable step each: (1) stick thirds + single g-limit;
+  (2) dynamic-pressure two-speed fade; (3) handling solver: 2/3 drag rule, reversal
+  time; (4) re-measure with the flight-envelope harness and update the ship card.
+- Status: planning only. No implementation until the author says so.
 
 ### Presentation
 
@@ -382,10 +390,11 @@ training stack is not retrained or extended. Awaiting go-ahead.
 - **Design branch:** `jax-rewrite/design` holds the old code plus `docs/rewrite/`, so
   design discussions have full context. Specs and contracts are drafted here.
 - **Option 3:** same repo, fresh start on a branch.
-  - Tag the current state (proposed tag: `v1-torch-final`).
+  - Tag the current state (proposed tag: `v1-torch-final`) on the working branch
+    (`feat/counterfactual-shot-labels`, after the physics-first changes), not `main`.
   - Start a `v2` branch with the old tree removed.
-  - Merge to `main` once v2 is playable, so the public README keeps showing working
-    results meanwhile.
+  - Merge to `main` once v2 is playable. Note: `main` is behind the working branch
+    today.
   - The old code stays reachable via the tag / a `git worktree`, granted per milestone.
 - Move checkpoints and artifacts out of git (wandb artifacts or the Hugging Face Hub).
 - The top-level layout should mirror the seams: contracts/types, env (physics, rules,
