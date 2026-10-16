@@ -303,6 +303,24 @@ Coupling found in the current code that blocks goal B:
 - **Max deflection (third level):** within the stall angle, sharp already is max
   deflection. A third level only means something past the stall angle (snap shot /
   brake, always bleeding energy, no datum). Optional, after parity.
+- **Analysis of the options (shipped config):**
+  - *Constant stick vs constant lift:* in this model the lift coefficient depends only
+    on the slip, so constant stick offset and constant lift coefficient are the same
+    command. The real alternative is constant lift *force* (constant g). Constant g
+    has a drag minimum (~100 m/s at half g, ~130 m/s at full g); below it, holding the
+    turn loses speed ever faster (the "back side of the power curve"), so its slow-side
+    equilibrium is unstable and makes a bad datum. Constant stick gives one stable
+    datum, a fixed radius below corner and the g-limit above it, which is how real
+    fighters behave.
+  - *Throttle-dependent datum:* a single normal lift at slip fraction ~0.61 is within
+    ~0.6% of the best sustained rate both boosting (127.0 of 127.7 deg/s) and coasting
+    (78.7 of 79.2 deg/s). Throttle dependence buys under 1%.
+  - *"Max possible lift" as a third level:* that is already sharp (max lift, g-capped).
+    Distinct third levels are a gentle aiming turn, or post-stall (max stick offset).
+- **Recommendation (pending the author's choice):** constant stick; throttle-independent
+  levels; three levels = gentle (aiming), max sustained rate (normal, compromise lift),
+  min radius (sharp, max lift). Post-stall stays an experiment. Joint action space
+  becomes 3 x 7 x 2 = 42.
 - Making normal the true max-rate datum is a gameplay retune, so it comes after parity.
 
 ### Presentation
