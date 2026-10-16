@@ -228,8 +228,8 @@ Coupling found in the current code that blocks goal B:
 - **Health model everywhere:** shields plus one exposed-core hit. A hit on a ship that
   entered the tick with zero shields kills it. There is no other health pool
   (`ShipConfig.max_health` goes away).
-- **Lives are a configurable rule:** unlimited for Frontline, no respawns for team
-  deathmatch.
+- **Lives are a configurable rule:** unlimited for Frontline, king of the hill and
+  capital ship; no respawns for team deathmatch.
 - **Map:** keep a bounded playable arena at a random translation on a large torus (the
   torus exists for the network: translation invariance and uniform location codes). At
   inference, map scale follows ship count (a target density). During training, map
@@ -290,8 +290,8 @@ Coupling found in the current code that blocks goal B:
 ## Tabled (deliberately deferred)
 
 1. **Remaining game-scope questions** (features themselves are decided above):
-   - Lives defaults for king of the hill and capital ship.
-   - **Flight parameterization proposal (not yet agreed):** 15 free constants after the
+   - **Flight parameterization proposal (not yet agreed; being reviewed against what
+     WW2 fighter pilots and designers compared between planes):** 15 free constants after the
      reverse tie. Split them into global "shape" rules shared by every ship and
      per-type "scale" handles:
      - *Global shape rules (4):* normal-turn lift as a fixed fraction of max lift;
