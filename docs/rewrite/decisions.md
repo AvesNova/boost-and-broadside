@@ -333,6 +333,13 @@ Coupling found in the current code that blocks goal B:
    decision.
 6. **JAX library deep dive:** NN library (Flax NNX vs Linen vs Equinox), optax,
    checkpointing (Orbax vs plain pytree save).
+8. **In-depth review of the current Yemong model and training.** Walk through the
+   policy architecture (encoder, spatial attention, Griffin recurrence, heads,
+   belief, categorical codes) and the training stack (PPO, critic, auxiliary losses,
+   BC, opponents, rating, rollout and update loop) piece by piece, so the author
+   understands everything and incorrect or hidden assumptions surface before the new
+   model and learner contracts are written. Review the code itself, not just the
+   docs, since many docs are stale.
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 
