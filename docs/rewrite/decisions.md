@@ -214,8 +214,26 @@ Coupling found in the current code that blocks goal B:
   `config/handling.py`. In JAX the constants become per-ship arrays in state, indexed
   by type.
 - **Launch with one type**, possibly a second just to prove heterogeneity works.
-- **Ship parameters appear in the observation.** Open: whether enemy ship parameters
-  are hidden, with a head to predict them.
+- **Per-type, not global:** head-on damage fraction and shield recharge delay can
+  differ between ships (in addition to the other combat parameters).
+- **Reverse is the exact opposite of boost** (`reverse_thrust = -boost_thrust`). Power is
+  an energy store (`E = 0.5 n^2 |v|^2 + power_speed_constant * power`): boost trades
+  stored energy for speed and reverse trades speed back into storage, like pitching a
+  plane down and up. This removes one free flight constant (16 -> 15).
+- **Ship parameters are observable** for all ships, as tuned per type. Idea for later
+  (a good prior, not v1): hide enemy parameters and have the agent infer them from
+  observed motion, which would need real physical understanding.
+- **Parameter randomization during training comes later**, and needs validity checks
+  on the free parameters first (see the constraint notes under Tabled).
+- **Health model everywhere:** shields plus one exposed-core hit. A hit on a ship that
+  entered the tick with zero shields kills it. There is no other health pool
+  (`ShipConfig.max_health` goes away).
+- **Lives are a configurable rule:** unlimited for Frontline, no respawns for team
+  deathmatch.
+- **Map:** keep a bounded playable arena at a random translation on a large torus (the
+  torus exists for the network: translation invariance and uniform location codes). At
+  inference, map scale follows ship count (a target density). During training, map
+  scale is randomized across the full range, or the coarse position levels go unused.
 - **Inventory (fact, from the current code):** the flight model has **16 free
   constants** (`handling.PARAMETERS`; `max_power` is a gauge freedom and held fixed).
   `handling.quantities()` defines 23 closed-form handling quantities of rank 16, so
@@ -223,7 +241,7 @@ Coupling found in the current code that blocks goal B:
   cruise_speed, top_speed, boost_accel, reverse_decel, recharge_time, tank_speed,
   sharp_radius, normal_radius, sharp_sustained_rate, normal_sustained_rate,
   max_turn_rate, onset_time, nose_slew_rate, sharp_gun_offset, fade_speed,
-  stall_speed. Combat parameters (collision radius, shield/health capacity, recharge,
+  stall_speed. Combat parameters (collision radius, shield capacity, recharge rate and delay,
   bullet speed, damage, energy cost, cooldown, lifetime, spread, drag, head-on damage
   fraction) are separate from this set.
 - **Differentiable physics as far as it is cheap.** Write the continuous flight model
@@ -272,16 +290,26 @@ Coupling found in the current code that blocks goal B:
 ## Tabled (deliberately deferred)
 
 1. **Remaining game-scope questions** (features themselves are decided above):
-   - Map: torus vs bounded, fixed vs per-episode map scale. Today Frontline is a bounded
-     playable disk placed at a random translation on a 65536x65536 torus, with a
-     per-episode map scale. The torus gives translation invariance and uniform location
-     codes; the scale keeps density sane when ship count grows 10x.
-   - Which handling targets designers set per ship type vs which stay global, and the
-     per-type combat parameters.
-   - Whether enemy ship parameters are public or hidden (with a prediction head).
-   - Limited lives (a respawn stock) as a mode option, or unlimited respawns only.
-   - Health vs shields: the current Frontline rules use shields plus a depleted state,
-     and `ShipConfig.max_health` also exists. Confirm whether these are one concept.
+   - Lives defaults for king of the hill and capital ship.
+   - **Flight parameterization proposal (not yet agreed):** 15 free constants after the
+     reverse tie. Split them into global "shape" rules shared by every ship and
+     per-type "scale" handles:
+     - *Global shape rules (4):* normal-turn lift as a fixed fraction of max lift;
+       normal-slip drag tied to stall drag by one induced-drag relation (drag rise
+       proportional to lift squared at the two curve points, so the current
+       `C_D0 + b x^2 + c x^4` curve is unchanged); slip fade speed as a fixed
+       multiple of stall speed; stall angle (gun offset). Also make the hard-coded
+       normal-turn lateral fraction (`0.5 * max_lateral_accel` in `slip_command`) an
+       explicit config value.
+     - *Per-type handles (11, verified full rank on the remaining 11 constants):*
+       cruise_speed, top_speed, boost_accel, recharge_time, tank_speed, sharp_radius,
+       max_turn_rate, sharp_sustained_rate, onset_time, nose_slew_rate, stall_speed.
+   - **Validity constraints** to check (and later, to sample under for randomization):
+     sharp radius < normal radius; zero-slip < normal-slip < stall drag (already
+     validated in `ShipConfig`); base < boost thrust; cruise < top < unlimited top
+     speed; stall < fade < corner < top speed; sustained turn rates < max turn rate;
+     stall angle in (0, 90 deg). Proposed approach: parameterize by positive log-gaps
+     (e.g. `log(top / cruise) > 0`) so every sample is valid by construction.
 2. **Concrete contracts:** observation schema, action schema (keep the 30-way joint
    command?), decision rate and action repeat, event list, trajectory/label format,
    and versioning rules.
