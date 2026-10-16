@@ -134,9 +134,90 @@ a per-type first projection (`encoder_split`) and a shared second projection.
 - **Identity rotation is not "no geometry":** it equals rotating by position (0, 0)
   and heading 0, so a hidden token would look like it sits at the torus origin (a random
   spot relative to the randomly translated map). Today a hidden enemy is rotated by its
-  belief mean. Recommendation: rotary uses 40 of the 64 spatial head dimensions; zero
-  the rotated 40 for a masked token so attention to it uses only the 24 unrotated
-  (content) dimensions.
+  belief mean. Recommendation: zero the rotated dimensions for a masked token so
+  attention to it uses only the unrotated (content) dimensions. (Correction, see part
+  2: on the 65,536 m Frontline torus rotary uses 48 of the 64 dimensions, leaving 16
+  unrotated, not 40 and 24.)
 - **Decided:** a visible flag always; masked categoricals are **uniform** for now
   (belief stays in the port). Griffin-only memory is post-transition work; the adapter
   and model code should make swapping the masking/memory scheme cheap.
+
+## Part 2: trunk internals (rotary geometry, Griffin memory, resets)
+
+### Rotary geometry (`models/yemong/rope.py`)
+
+- Q and K of every spatial layer are rotated by world x, world y and attitude. Each
+  frequency pair adds `cos(phase + w * (x_query - x_key))` to the score, so relative
+  displacement enters attention directly.
+- Frequencies are base-2 harmonics of the world period, chosen so the finest period is
+  at most 128 m (`POSITION_FINEST_PERIOD`), plus 4 attitude harmonics. Exactly
+  periodic over the torus, so wrapping is seamless.
+- On the 65,536 m Frontline torus that is **10 frequencies per axis + 4 attitude = 24
+  pairs = 48 of the 64 head dimensions**, leaving 16 unrotated. (Docs and config
+  comments say 16,384 m / 8 frequencies / 40 dimensions: stale.)
+- Tokens without a heading (fields, zones, global token, bullets) use attitude angle 0,
+  so their attitude block is not rotated: map objects get an absolute-heading term
+  rather than a relative one.
+- Rotary and the encoder's position features share one frequency definition
+  (`base2_frequencies`) so they cannot disagree.
+
+### Griffin temporal block (`models/yemong/griffin.py`)
+
+- Per token (ships and the global token), per temporal sublayer:
+  `norm -> linear1 -> causal depthwise conv (4 taps) -> RG-LRU`, gated by
+  `GELU(linear2)`, `-> linear_out`, residual, then a SwiGLU FFN with residual.
+- RG-LRU: `a_t = sigmoid(L)^(8 r_t)`, `h_t = a_t h_{t-1} + sqrt(1 - a_t^2) (i_t x_t)`,
+  with learned per-channel `L` and input-dependent recurrence and input gates (as in
+  the Griffin paper).
+- Hidden state per token per temporal sublayer: RG-LRU state (128) plus the conv buffer
+  (3 x 128), packed into one tensor.
+- Rollout runs one step at a time; the update re-runs the whole rollout with a parallel
+  scan (Hillis-Steele, O(T log T) work) from the hidden state stored at the rollout's
+  start (truncated backprop at the 128-step rollout boundary).
+- Map tokens never enter the temporal path in the shipped config (`kv_memory`).
+
+### Resets
+
+- Episode end: during rollout the trainer zeroes the whole hidden state (RG-LRU and
+  conv buffer) of finished environments; in the update, `done_mask` zeroes the decay
+  at the next step and masks conv taps across the boundary, so both paths agree.
+- **Respawn does not reset memory:** a ship's slot keeps its recurrent state through
+  death and respawn ("match memory persists").
+- The global token is recurrent exactly like a ship.
+
+### Hidden assumptions
+
+1. **Initial memory horizon is short.** `L` is initialized `linspace(0, 4)`, so
+   `sigmoid(L)` spans ~0.5 to ~0.98. With the recurrence gate fully open the per-step
+   decay is `sigmoid(L)^8`: at most ~0.85, a time constant of ~6-7 decisions (~0.2 s
+   at 30 Hz). Longer memory requires the gate to close. The Griffin paper initializes
+   `a^c` in [0.9, 0.999]. Relevant if Griffin is to take over memory from the belief
+   system later.
+2. **Slot identity is memory identity.** Memory is per token slot, so it relies on a
+   ship keeping the same slot for the whole match (it does today).
+3. **Truncated backprop at 128 steps** (~4.3 s): gradients never cross a rollout
+   boundary, so credit for anything longer must come through the critic.
+4. **Rotary resolution is set by the torus, not the arena:** the finest period is 128 m
+   regardless of map scale (a 10 m ship spans ~28 deg of the finest phase). Fine
+   geometry below that relies on the content dimensions (position code).
+
+### Findings (stale or dead)
+
+- Rotary dimension count in docs/config comments (40 dims, 16,384 m) is stale for the
+  65,536 m Frontline world (48 dims).
+- `forward_nonrecurrent` and the `field_sub` adapters exist only for
+  `map_read_mode="full_attention"`, which the shipped config does not use.
+- `YemongBlock` docstring says it uses `n_heads` (it does not).
+- The Hillis-Steele scan is work-inefficient; in JAX this becomes
+  `lax.associative_scan` for free.
+
+### Questions for the author
+
+1. Should respawn reset a ship's memory, or should memory persist through death (as
+   now)?
+2. Is ~4.3 s truncated backprop (128-step rollouts) enough, given the goal of longer
+   rollouts? (Training-side question; flagged here because memory length depends on it.)
+3. Keep the RG-LRU initialization as is, or move toward the Griffin paper's
+   long-memory initialization (likely needed for Griffin-only memory later)?
+4. Keep map tokens as K/V-only memory (no temporal path), and drop the full-attention
+   variant and its adapters from v2?
