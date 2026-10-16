@@ -281,8 +281,11 @@ Coupling found in the current code that blocks goal B:
   fixes the drag curve's shape parameter. The shipped ship already satisfies it.
 - Turn actions go from 5 to 7 per decision (straight + 3 levels x 2 sides); the joint
   command goes from 30 to 42.
-- Per-level lateral caps become explicit config, defaulting to today's behavior (0.5
-  for 1/3, 1.0 for 2/3 and 3/3).
+- **One g-limit for all levels**, like a real plane. The hard-coded half-g cap on
+  today's normal turn (`0.5 * max_lateral_accel` in `slip_command`) is removed. Parity
+  impact: the 1/3 level matches the old normal turn only below ~95 m/s; above that it
+  now turns tighter, reaching the full g-limit at ~135 m/s (about top speed).
+  Differential tests for that level must stay below ~95 m/s or expect the difference.
 - Constant g was rejected (its slow-side equilibrium is unstable). A throttle-dependent
   datum was rejected (under 1% gain). Post-stall remains a later experiment.
 

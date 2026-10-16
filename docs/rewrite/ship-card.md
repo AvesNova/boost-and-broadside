@@ -37,9 +37,8 @@ becomes a global internal constant, not a design handle.
 - **Design rule: max sustained rate (boosting) sits at 2/3 stick.** This fixes the
   drag curve's shape parameter, so the normal-slip drag point is derived rather than
   set. The shipped ship already satisfies it (optimum at slip fraction ~0.67).
-- **Per-level lateral caps** as explicit config (fractions of `max_lateral_accel`).
-  Defaults preserve today's behavior: 0.5 for 1/3 (the cap hard-coded in
-  `slip_command` today), 1.0 for 2/3 and 3/3. Revisit after parity.
+- **One g-limit for every turn level** (`max_lateral_accel`), like a real plane. The
+  hard-coded half-g cap on today's normal turn is removed.
 - Slip fade behavior tied to the stall (control-loss) speed by a fixed rule.
 - Stall angle (gun offset in a sharp turn); first candidate to promote to a per-type
   handle.
