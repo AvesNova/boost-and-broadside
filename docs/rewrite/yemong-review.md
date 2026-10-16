@@ -221,3 +221,20 @@ a per-type first projection (`encoder_split`) and a shared second projection.
    long-memory initialization (likely needed for Griffin-only memory later)?
 4. Keep map tokens as K/V-only memory (no temporal path), and drop the full-attention
    variant and its adapters from v2?
+
+### Outcomes (author, part 2)
+
+- **Memory goal:** Griffin should remember everything from "that ship just ducked behind
+  a field" (seconds) to "this team has played 3 attackers and 2 defenders since the
+  start" (minutes; a Frontline match is up to 9,000 decisions = 5 min).
+- **Respawn keeps memory** (as today).
+- **RG-LRU init:** move to a long-memory initialization (Griffin-paper style).
+- **Map tokens:** K/V-only memory; drop the full-attention variant and its adapters.
+- **Slot identity = memory identity:** fine, with a test.
+- **Backprop length:** truncated backprop already equals the rollout length (128
+  decisions, ~4.3 s, ~1.4% of a match). Memory state is carried forward across
+  rollouts, but the gradient only teaches retention that pays off within one rollout,
+  so minute-scale memory needs much longer rollouts (and the critic) to be learned.
+  Longer rollouts cost activation memory (rematerialization and fewer parallel envs)
+  and staleness of the stored start-of-rollout state; to be settled in the training
+  review.
