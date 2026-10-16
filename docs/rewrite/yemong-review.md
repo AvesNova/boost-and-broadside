@@ -250,3 +250,6 @@ a per-type first projection (`encoder_split`) and a shared second projection.
   rollouts for speed"): at a fixed token budget, update cost per token is flat from
   T=32 to T=256, so longer rollouts with fewer environments are nearly free in
   compute; the trade is fewer independent environments per update.
+- **Decided:** a single rollout length in the initial implementation. Design so that
+  later adding multiple rollout/env-count variants (preferred form: separate env pools,
+  each with its own compiled update, alternated by the Python loop) is not painful.
