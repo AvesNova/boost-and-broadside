@@ -353,6 +353,15 @@ Coupling found in the current code that blocks goal B:
     parameter, removing the last free shape constant.
 - Making normal the true max-rate datum is a gameplay retune, so it comes after parity.
 
+### Physics changes land in the current env first (proposed)
+
+The flight changes decided here (stick-thirds turn levels, single g-limit, 2/3
+max-rate drag rule, dynamic-pressure two-speed fade, reversal-time handle) would be
+implemented in the current PyTorch env (physics, handling solver, action tables) before
+the port, so the JAX port is a pure translation with one-to-one physics tests against
+an env that already has the final semantics. Scope: physics and handling only; the old
+training stack is not retrained or extended. Awaiting go-ahead.
+
 ### Presentation
 
 - Polished graphics, spectator mode, dev spectator mode (privileged truth plus agent
@@ -398,23 +407,20 @@ Coupling found in the current code that blocks goal B:
      promote to a per-type handle. It does not change radius, rates, drag or datums;
      it sets the gun offset in a turn (5 / 10 / 15 deg at stick thirds) and how far
      the nose travels in a reversal.
-   - **Low-speed control (decided form, values pending):** two speeds. Full control
-     above `full_control_speed`, none at `stall_speed`, faded in between. `min_speed`
-     stays a global numerical floor. `(stall 0, full 35)` reproduces today exactly, so
-     the port keeps parity. P-51-like retune: stall ~0.22 x top speed (~30 m/s) and full
-     control ~1.3 x stall (~39 m/s); P-51 stall/top ~0.22 and stall/corner ~0.32 vs
-     ours ~0.30 at 30 m/s. Open: fade shape (linear in speed, or in dynamic pressure
-     ~ v^2 like real control authority).
-   - **Nose response (proposal):** make the slew limit (roll / reversal) the per-type
-     handle and the spring frequency a shared default, instead of the reverse. WW2
-     fighters differed most in roll rate (at ~250 mph roughly: Fw 190 ~150-160 deg/s,
-     P-47 ~85-100, P-51 ~90, Bf 109 ~75-80, Spitfire V ~40-65; forum citations of
-     NACA 868 / RAE, approximate). Today: onset 0.167 s and reversal 0.233 s (reversal
-     / onset 1.4); P-51 estimate: establish a hard turn ~0.9 s and reverse ~1.8 s
-     (ratio 2.0, roll-rate limited). Relative to the sustained circle, ours is already
-     WW2-like (onset 0.053 vs 0.044, reversal 0.074 vs 0.089). Today's values (25 rad/s,
-     150 deg/s) are preserved for parity either way. Later idea: speed-dependent roll
-     rate (real roll rate peaks at mid speed).
+   - **Low-speed control (decided):** two speeds, `stall_speed` (no control) and
+     `full_control_speed` (full control), faded by **dynamic pressure**:
+     `clamp((u^2 - stall^2) / (full^2 - stall^2), 0, 1)`. `min_speed` stays a global
+     numerical floor. Retune target from the P-51 comparison: stall ~0.22 x top speed
+     (~30 m/s), full control ~1.3 x stall (~39 m/s). Note: no setting reproduces
+     today's linear fade exactly.
+   - **Nose response (decided):** per-type handle is **reversal time** (the roll-rate
+     analog), which sets the slew limit (`max_slip_rate`); the card defines it as
+     `2 * stall_angle / max_slip_rate` and shows the simulated value. The spring
+     frequency (onset) becomes a shared, defaulted parameter that a ship may override.
+     WW2 basis: fighters differed most in roll rate (at ~250 mph roughly Fw 190
+     ~150-160 deg/s, P-47 ~85-100, P-51 ~90, Bf 109 ~75-80, Spitfire V ~40-65; forum
+     citations of NACA 868 / RAE, approximate). Today: onset 0.167 s, reversal 0.233 s
+     simulated (0.20 s by the card definition). Later idea: speed-dependent roll rate.
    - Confirm the validity constraints and the log-gap parameterization for sampling.
    - Pick the similarity-ratio suite shown on the card (current draft: 10 ratios).
 2. **Concrete contracts:** observation schema, action schema (keep the 30-way joint
