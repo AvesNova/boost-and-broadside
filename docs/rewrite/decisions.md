@@ -126,8 +126,8 @@ Coupling found in the current code that blocks goal B:
   code).
 - **Modes are compositions of rule components** (zone set, capture rule, win
   condition, respawn rules), not separate code paths.
-- **Open:** whether one model should play all modes. If yes, the observation must carry
-  the objective (zone roles and owners, capture progress, scores, time remaining).
+- Because one agent may play every mode, the observation carries the objective (zone
+  roles and owners, capture progress, scores, time remaining) on the global token.
 
 ### Training
 
@@ -190,13 +190,42 @@ Coupling found in the current code that blocks goal B:
   unless a specific need reappears. A frozen config serialized with each checkpoint and
   logged to wandb covers most of it.
 
+### Game scope (v1)
+
+- **Principle: the sim is not redesigned.** Change it only to make it functional, JAX
+  and configurable.
+- **Kept:** refractive fields; the current perception paradigm; the slip model, g-limit
+  and nose dynamics (all made configurable); shields, health and power; respawn delay
+  and spawn location rules.
+- **Ghost bullets and counterfactual shot labels are training-only**, plus diagnostics
+  of trained models (e.g. showing where a real bullet went against where a ship
+  predicted it would go).
+- **Rules live on the global token.** Respawn rules, mode and other game rules are
+  observed through the global/boundary token.
+- **Both single-mode and all-modes agents must be supported.** Training one agent for
+  one mode and one agent for every mode are both first-class options.
+
 ### Physics
 
-- **Ship types:** different ships with different pros and cons in the same match. Low-
-  level flight constants are derived from high-level handling targets (cruise speed,
-  max sustained speed, min turn radius, max sustained turn rate, ...). The log-linear
-  solver already exists in `config/handling.py`. In JAX the constants become per-ship
-  arrays in state, indexed by type.
+- **Ship types:** different ships with different pros and cons in the same match.
+  Types can differ in both flight physics and game parameters (e.g. a fast, nimble
+  ship with very low health and high damage). Low-level flight constants are derived
+  from high-level handling targets. The log-linear solver already exists in
+  `config/handling.py`. In JAX the constants become per-ship arrays in state, indexed
+  by type.
+- **Launch with one type**, possibly a second just to prove heterogeneity works.
+- **Ship parameters appear in the observation.** Open: whether enemy ship parameters
+  are hidden, with a head to predict them.
+- **Inventory (fact, from the current code):** the flight model has **16 free
+  constants** (`handling.PARAMETERS`; `max_power` is a gauge freedom and held fixed).
+  `handling.quantities()` defines 23 closed-form handling quantities of rank 16, so
+  exactly 16 independent targets pin a ship's flight. One full-rank set (verified):
+  cruise_speed, top_speed, boost_accel, reverse_decel, recharge_time, tank_speed,
+  sharp_radius, normal_radius, sharp_sustained_rate, normal_sustained_rate,
+  max_turn_rate, onset_time, nose_slew_rate, sharp_gun_offset, fade_speed,
+  stall_speed. Combat parameters (collision radius, shield/health capacity, recharge,
+  bullet speed, damage, energy cost, cooldown, lifetime, spread, drag, head-on damage
+  fraction) are separate from this set.
 - **Differentiable physics as far as it is cheap.** Write the continuous flight model
   in naturally smooth forms (use `jnp.where`-safe patterns). Never soften a game rule
   (e.g. bullet hits) for gradients. Use gradients offline only (handling calibration,
@@ -220,6 +249,8 @@ Coupling found in the current code that blocks goal B:
 
 ### Repository
 
+- **Design branch:** `jax-rewrite/design` holds the old code plus `docs/rewrite/`, so
+  design discussions have full context. Specs and contracts are drafted here.
 - **Option 3:** same repo, fresh start on a branch.
   - Tag the current state (proposed tag: `v1-torch-final`).
   - Start a `v2` branch with the old tree removed.
@@ -240,10 +271,17 @@ Coupling found in the current code that blocks goal B:
 
 ## Tabled (deliberately deferred)
 
-1. **Game scope for v1:** which current features survive (refractive fields, fog and
-   perception, Frontline zones, respawn, ghost bullets, slip model, ...), and ship-type
-   details (which handling parameters, how many types, what the model sees about type).
-   Expectation: most will stay, but each gets reviewed one by one.
+1. **Remaining game-scope questions** (features themselves are decided above):
+   - Map: torus vs bounded, fixed vs per-episode map scale. Today Frontline is a bounded
+     playable disk placed at a random translation on a 65536x65536 torus, with a
+     per-episode map scale. The torus gives translation invariance and uniform location
+     codes; the scale keeps density sane when ship count grows 10x.
+   - Which handling targets designers set per ship type vs which stay global, and the
+     per-type combat parameters.
+   - Whether enemy ship parameters are public or hidden (with a prediction head).
+   - Limited lives (a respawn stock) as a mode option, or unlimited respawns only.
+   - Health vs shields: the current Frontline rules use shields plus a depleted state,
+     and `ShipConfig.max_health` also exists. Confirm whether these are one concept.
 2. **Concrete contracts:** observation schema, action schema (keep the 30-way joint
    command?), decision rate and action repeat, event list, trajectory/label format,
    and versioning rules.
@@ -259,7 +297,8 @@ Coupling found in the current code that blocks goal B:
    decision.
 6. **JAX library deep dive:** NN library (Flax NNX vs Linen vs Equinox), optax,
    checkpointing (Orbax vs plain pytree save).
-7. **One model for all modes, or one per mode** (see Game modes).
+7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
+   scope).
 
 ## Next steps
 
