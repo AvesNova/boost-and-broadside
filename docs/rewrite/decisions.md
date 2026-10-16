@@ -107,6 +107,16 @@ Coupling found in the current code that blocks goal B:
   (a human agent is a pure function of an input array the shell fills from the
   keyboard each frame).
 
+### Raw observation (from the Yemong review, part 1)
+
+- The env emits a **raw, team-canonicalized observation** (self = team 0). A
+  model-owned adapter inside the agent builds the model's input; nothing model-specific
+  (codes, belief composition, feature transforms) lives in the env or the runtime.
+- Raw observation includes bullets even though Yemong does not read them.
+- Categorical token type (ship, field, zone, super token) separate from a categorical
+  team (two teams for now). Game mode categorical.
+- Absolute world positions (models add rotary or other encodings themselves).
+
 ### Generality
 
 - **N teams from the start.** Fixed max ships per env with an active mask; team is an
@@ -454,6 +464,11 @@ Coupling found in the current code that blocks goal B:
    understands everything and incorrect or hidden assumptions surface before the new
    model and learner contracts are written. Review the code itself, not just the
    docs, since many docs are stale.
+9. **Ship type and ship-card parameters in the observation:** how ship types and their
+   (observable) parameters are presented in the raw observation and to models.
+10. **Hidden-entity convention in the raw observation:** what an unseen enemy's slot
+    contains (mask only, or last-seen values and time since seen), given that belief
+    moves into models and may be replaced by Griffin memory.
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 

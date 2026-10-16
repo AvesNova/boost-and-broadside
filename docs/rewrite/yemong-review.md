@@ -92,3 +92,21 @@ a per-type first projection (`encoder_split`) and a shared second projection.
    delay, score/time limits) as observed values, so one agent can play every mode?
 4. Absolute positions plus rotary vs. ego-centric inputs: keep absolute (with map-scale
    randomization), or is relative geometry something to revisit?
+
+### Outcomes (author, part 1)
+
+- **Bullets:** not observed by Yemong, but present in the raw observation so other
+  models can use them.
+- **Teams:** a categorical feature, two teams for now; every agent sees itself as team
+  0. **Token type is a separate categorical:** ship, field, zone, super (global) token.
+- **Game mode:** categorical for now.
+- **Action space:** 42-way joint command (stick thirds) accepted.
+- **Positions:** keep absolute positions plus rotary encoding (with map-scale
+  randomization). Relative inputs conflict with count-agnostic models.
+- **Ship type / ship-card parameters in the observation:** added to the open list.
+- **Raw observation vs model input:** the env emits a raw observation only; a
+  model-owned adapter (part of the agent) turns it into the model's input (e.g. the
+  Yemong categorical codes). Encoding travels with the model's weights.
+- **Categorical codes and belief smoothing:** one model's choice, not a contract. The
+  author is unsure about the current belief system and wants to experiment later with
+  letting the Griffin layers handle memory alone.
