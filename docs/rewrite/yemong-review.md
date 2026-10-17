@@ -1064,3 +1064,43 @@ be label smoothing toward uniform and would add `epsilon x 331` phantom ships to
 count term, so it would have to be tiny to be harmless and then does nothing. The
 only care point is the diagnostics: `y log y` at y = 0 is taken as 0 (as today). Log
 the min and max logit as health metrics.
+
+### 3e follow-up 2: disc layout and buffer width
+
+**Decided:** the hex outline is not essential; use the 331 cells as efficiently as
+possible.
+
+**Correction.** The earlier table measured the buffer to the last row of cell
+*centres*. A sampled Gaussian's effective edge is about half a row further out, so
+the "1.33 spacings, 0.64%" row is really about a 2.5 sigma buffer, not 1.77 sigma.
+Below, buffers are labelled by worst-case rim spill, with the equivalent 1D sigma
+(spill = 1 - Phi(b)).
+
+**331-cell disc.** The 331 lattice points nearest the centre: every point within
+9.17 spacings (313) plus 18 of the 24 at 9.54, chosen 6-fold symmetric. Compared with
+the 10-ring hexagon (spacing at the 5v5 playable radius of 2600 m; rim bias is the
+worst-direction position error of a ship on the rim after renormalization):
+
+| Worst rim spill (~buffer) | Hex: R, spacing | Disc: R, spacing | Rim bias (disc) |
+|---|---|---|---|
+| 16% (~1 sigma) | 8.39 sp, 310 m | 8.57 sp, 303 m | 0.22 sp, 67 m |
+| 6.7% (~1.5 sigma) | 8.03 sp, 324 m | 8.20 sp, 317 m | 0.11 sp, 34 m |
+| 2.3% (~2 sigma) | 7.68 sp, 338 m | 7.83 sp, 332 m | 0.042 sp, 14 m |
+| 0.64% (~2.5 sigma) | 7.33 sp, 355 m | 7.47 sp, 348 m | 0.014 sp, 5 m |
+| 0.04% (1D rule, ~3.3 sigma) | 6.71 sp, 388 m | 6.83 sp, 381 m | 0.001 sp, ~0 m |
+
+- The disc gains only ~2% in radius over the hexagon: a hexagon's flat sides are dense
+  lattice rows, while a disc's edge is stepped. Still the better layout, and the hex
+  outline is not needed.
+- Spill only matters at the rim, and renormalization already makes every ship count
+  exactly one. Its real cost is the inward position bias for rim ships (last column);
+  interior ships are unaffected. Ships sit at the rim rarely (the boundary damages
+  them).
+- The 2 sigma row matches the 1D table's 1-padding-bin row (2.3% spill, ~0.02-0.04
+  bins bias).
+
+**Cell order:** by distance from the centre, then by angle from +x counter-clockwise
+(replaces ring order).
+
+**Pending author choice:** buffer width (recommendation: ~2 sigma, 2.3% spill,
+332 m at 5v5, 14 m rim bias).
