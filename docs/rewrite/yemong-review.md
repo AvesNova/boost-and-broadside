@@ -1099,6 +1099,8 @@ worst-direction position error of a ship on the rim after renormalization):
 - The 2 sigma row matches the 1D table's 1-padding-bin row (2.3% spill, ~0.02-0.04
   bins bias).
 
+Figure: `figures/density-grid-layouts.png` (script `figures/density_grid_layouts.py`).
+
 **Cell order:** by distance from the centre, then by angle from +x counter-clockwise
 (replaces ring order).
 
