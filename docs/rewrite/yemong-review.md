@@ -1014,5 +1014,53 @@ stored truth, a horizon is just indexing truth at t+k with the usual end-of-epis
 and end-of-rollout masks (like shot labels). Proposal: config `density_horizon`,
 default 0 (now).
 
-**Pending author confirmation:** HL-Gauss sigma 0.75 on the disc grid with
-renormalization; horizon option default 0.
+**Pending author confirmation:** horizon option default 0.
+
+### 3e follow-up (author): HL-Gauss, cell count, coverage, empty cells
+
+**Decided**
+- **HL-Gauss for the density target**, sigma = 0.75 cell spacings, Poisson head
+  unchanged (targets are soft counts).
+- **Cell count stays 331** (10 hex rings). The disc grid proposal (475 cells) is void.
+- **Every point of the playable circle lies inside the grid, with a buffer beyond it.**
+
+**Why 2 sigma was suggested, and why it was the wrong rule.** It was a tail argument:
+a ship 2 sigma inside a straight grid edge spills 1 - Phi(2) = 2.3% of its Gaussian
+off the grid, small enough to renormalize away. But 3c already set the padding rule
+for the 1D codes: **2 padding bins** (= 2.67 sigma at 0.75, spill 0.04%). The 2D grid
+should follow the same rule: a buffer of 2 cell spacings beyond the playable radius.
+
+**Fitting the circle into a fixed 331-cell hexagon.** The hexagon of cell centres has
+circumradius 10 spacings but inradius only 8.66 (along its flat sides), so with a
+2-spacing buffer the playable radius must be **6.66 spacings**. Worst-case spill for
+a ship on the rim (any direction), sigma 0.75 sampled at centres:
+
+| Playable radius (spacings) | Buffer at the flat side | Worst rim spill |
+|---:|---:|---:|
+| 10 (today) | -1.34 spacings (circle sticks out) | 90% |
+| 8.66 | 0 | 27% |
+| 8.0 | 0.66 | 6.1% |
+| 7.33 | 1.33 | 0.64% |
+| **6.66** | **2.0 (2.67 sigma)** | **0.03%** |
+| 6.0 | 2.66 | 7e-6 |
+
+Each in-area ship's weights are still renormalized over the grid, so it counts as
+exactly one; at 6.66 the correction is 0.03%.
+
+**Cost: coarser cells.** Spacing becomes R / 6.66: 390 m at 5v5 (today 260 m), 1235 m
+at 50v50. Two ships read as two from 1.7 spacings, 660 m at 5v5. 163 of the 331 cells
+have centres inside the circle; the rest are buffer and hexagon corners. If the
+hexagonal shape is not essential, 331 cells arranged as a disc reach a playable
+radius of about 7.5 spacings with the same buffer (about 345 m at 5v5); this needs a
+cell order other than rings and is only noted as an option.
+
+**Empty cells: no floor needed.** The Poisson loss never takes the log of the target,
+so a zero target is not a minus-infinity target: an empty cell's loss is just its
+predicted rate, minimized as the logit goes down, with gradient equal to the (tiny)
+rate. In practice the logit of a never-hit cell falls until its gradient reaches
+Adam's epsilon scale and then stops (roughly -15 to -25), with no NaN; any cell
+inside the circle regularly receives Gaussian tail mass anyway. A floor epsilon would
+be label smoothing toward uniform and would add `epsilon x 331` phantom ships to the
+count term, so it would have to be tiny to be harmless and then does nothing. The
+only care point is the diagnostics: `y log y` at y = 0 is taken as 0 (as today). Log
+the min and max logit as health metrics.
