@@ -340,7 +340,8 @@ coefficients are from `profiles/rl.py`.
   XLA fuses it into the same step). A cleaner semantics also becomes possible: a
   shadow shot for every eligible decision whether or not the ship really fired, so
   the label always means "what if I shot now".
-- Recommendation: separate module.
+- Recommendation: separate module. **Overruled (author, decided):** keep one bullet
+  operation in the shared buffer (see below).
 
 ### Deep dive 3a: action head
 
@@ -365,3 +366,24 @@ coefficients are from `profiles/rl.py`.
 - **Hidden assumptions:** (1) joint categorical size grows multiplicatively with action
   factors (fine at 42); (2) BC's independent-factor teacher; (3) entropy and policy
   gradient use different masks.
+
+### Outcomes (author, 3a)
+
+- **Bullets stay one operation (decided).** With static tensor sizes every slot is
+  transported every tick anyway, so ghosts are essentially free. Checked against the
+  code: it takes **two** flags, which already exist. `bullet_active` = can still hit
+  (gameplay; a real bullet before it hits). `bullet_flying` = tracked for labels (every
+  launched bullet, real or ghost, for its whole lifetime, through any hit). A ghost is
+  flying and never active. Every gameplay reader (hits, damage, rendering, the raw
+  observation's bullets) must read `active` only, so ghosts never leak.
+- **Entropy mask = policy-gradient mask (decided; today's difference is a bug):** exclude
+  non-committed decisions from entropy (and BC) too.
+- **BC is plain cross-entropy over the 42 joint categories (decided)** against a 42-way
+  distribution the scripted agent emits. How the scripted agent builds it (e.g. a
+  product of its factor choices) is the scripted agent's business, not the loss's.
+- **PPO assessment:** standard core (clipped surrogate, per-agent ratios with shared
+  weights as in MAPPO, GAE, target-KL early stopping, no value clipping, which matches
+  the "What matters in on-policy RL" findings). Non-standard but principled
+  DreamerV3 borrowings: two-hot categorical critic and percentile return
+  normalization without per-minibatch standardization. Shipped: clip 0.15, gamma
+  0.99 and lambda 0.95 per tick with per-level gammas, 32 minibatches.
