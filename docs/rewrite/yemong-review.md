@@ -387,3 +387,58 @@ coefficients are from `profiles/rl.py`.
   DreamerV3 borrowings: two-hot categorical critic and percentile return
   normalization without per-minibatch standardization. Shipped: clip 0.15, gamma
   0.99 and lambda 0.95 per tick with per-level gammas, 32 minibatches.
+
+### Deep dive 3b: enemy-action head
+
+**What it predicts.** For every enemy ship token, a 30-way distribution over the
+command that enemy chose at this same decision (`D_t`). Architecture identical to the
+action head (`Linear 128 -> 256, RMSNorm, GELU, Linear 256 -> 30`, gain-0.01 init).
+
+**Timing.** The runtime applies last decision's command (`U_t = Q_t`) and the command
+chosen now becomes next decision's pending command (`Q_{t+1} = D_t`). So when the
+observation at t+1 is built, the enemy's pending command has not yet moved its ship:
+the head is predicting the enemy's **next move** ("intent"), not explaining motion
+already visible.
+
+**Target and loss.** Cross-entropy against the enemy's actual committed command (a
+privileged label: the learner knows every ship's real action). Mask: enemy team in the
+observer's canonical frame, alive, decision committed. **Visibility is not required**:
+hidden enemies are in the loss. Coefficient 0.1, applied on every training scale.
+Diagnostics log probability of the realized command, entropy, Brier score, accuracy,
+and a "persistence" baseline (enemy repeats its previous command).
+
+**How it feeds the next observation** (`train/rl/belief.py`, `write_pending_action_view`):
+- `advance` stores `softmax(enemy logits)` as each enemy slot's action belief.
+- At the next decision, the pending-action channel (30-wide, per ship token) is:
+  allies = exact one-hot of their real pending command; a ship revealed on spawn =
+  exact null command; every other enemy = the stored prediction, **whether visible or
+  not** (enemy commands are private even when the ship is in sight); a slot never
+  observed = uniform.
+- In `ego_pass`, each perspective keeps its own belief store and its own predictions;
+  only the team-0 perspective's predictions are in the loss (shared weights train both).
+
+**Hidden assumptions**
+1. **It models the training opponent mix.** Labels come from whoever controls the enemy:
+   the self-play copy, a league checkpoint or the scripted agent. Against a human it
+   predicts as if the human were drawn from that mix.
+2. **Hidden enemies are trained on** (noisy, high-entropy targets).
+3. **One-decision latency semantics depend on action repeat 1** (shipped). With action
+   repeat > 1 "pending command" means something different.
+4. **Prediction becomes input:** a soft distribution for enemies sits in the same
+   channel as hard one-hots for allies; the model separates them by team.
+5. **Sized to the action space** (30, becomes 42).
+
+**Findings**
+- The pending-action observation key is still named `previous_action`
+  (`ObsKey.PREVIOUS_ACTION`) although it means "the command physics consumes next".
+
+**Fit with the new contract.** Raw observation: allies' pending commands exact, enemy
+pending commands masked. The Yemong adapter fills masked enemy commands from the
+model's own previous prediction, which lives in the agent's carry (the belief store).
+Nothing about enemy intent remains in the env or runtime.
+
+**Questions**
+1. Keep hidden enemies in this loss, or train only on visible enemies?
+2. Keep feeding the prediction back as input (current), or only use it as an auxiliary
+   training signal?
+3. Rename `previous_action` to `pending_action` everywhere in v2 (assumed yes)?
