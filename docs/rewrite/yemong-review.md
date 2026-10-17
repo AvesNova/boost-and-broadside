@@ -636,3 +636,7 @@ transformed space, and inverts the *expectation* (`h^-1(E[h(G)])`).
   that `sum_i HL(mu)_i v_i = symexp(mu)` for every target mean. Recommendation: symlog
   -> Gaussian -> bin, read out with calibrated bin values. It keeps HL-Gauss's benefits
   and two-hot's exactness, at the cost of a precomputed table.
+- **Decided:** critic uses symlog -> Gaussian (0.75 bins) -> bin with **calibrated bin
+  values**; the velocity code (log-compressed bins) also uses calibrated bin values.
+- Still open from 3c: unimodal belief (assumed accepted), code ranges with ship types,
+  and whether the next-state loss covers allies and visible enemies.
