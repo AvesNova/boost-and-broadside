@@ -1140,4 +1140,6 @@ cells but leaves part of the playable circle uncovered.
 The output width is 2 x cells (ally, enemy): 626 at 313, 734 at 367, 878 at 439,
 all negligible next to the trunk.
 
-**Pending author choice:** cell count (313, 367 or 439) and buffer width.
+**Decided (author):** a full disc of **367 cells** (every lattice point within 10
+spacings) with a **2 sigma buffer** (2.3% worst rim spill): playable radius 8.44
+spacings, 308 m cells at 5v5, renormalized so each in-area ship counts one.
