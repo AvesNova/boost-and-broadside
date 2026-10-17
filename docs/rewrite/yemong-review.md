@@ -282,7 +282,11 @@ coefficients are from `profiles/rl.py`.
    level (5 levels: outcome, captures, capture progress, kills/deaths, damage). A
    different reward decomposition changes the model's heads, so the agent and the
    reward function are coupled through K.
-3. **The outcome head assumes two teams** (win/tie/loss for the observer).
+3. **Correction:** the win/tie/loss/unresolved classes do not assume two teams. The
+   two-team assumption is in how the estimate is used: the trainer signs one outcome
+   estimate per environment for every ship (`_ship_values`: `sign = +1` on the
+   observer's team, `-1` otherwise), i.e. "their win is my loss", which holds only for
+   two teams.
 4. **The density head is Frontline-specific:** a fixed hex grid over the playable
    circle, scaled per environment.
 5. **Ghost bullets live inside gameplay.** Counterfactual shot labels come from ghost
@@ -310,3 +314,54 @@ coefficients are from `profiles/rl.py`.
    or keep it Frontline-only?
 4. Keep one critic head per reward level (agent's value heads sized by the reward
    function), or a single scalar or summed critic for simpler models?
+
+### Outcomes (author, part 3)
+
+- Auxiliary weights are calibrated on another branch (not visible here).
+- **All heads go into the port.**
+- **Density head:** centered on the super token, radius set by the local map size (so it
+  generalizes beyond the Frontline circle).
+- **Critic:** keep the 5-level critic; make a single critic easy to try (agent value
+  outputs sized by the reward function's level count).
+- **Ghost bullets:** trade-offs written below; author to decide.
+- **Depth:** go into more depth on every component (head-by-head from here on).
+
+### Ghost bullets: shared buffer vs separate label module
+
+- *Shared ring buffer (today):* one bullet transport and collision pass serves both
+  real and ghost bullets, labels use exactly the gameplay hit code, no extra memory.
+  But gameplay state carries training-only data, slot-reclaim rules are needed so
+  ghosts never displace real bullets, and labels cannot be switched off without
+  touching the bullet logic.
+- *Separate label module:* its own small bullet array advanced by the same pure
+  transport and swept-hit functions, run only by the training collector. Gameplay
+  state is pure gameplay, labels are optional and independently sized, easy to test.
+  Cost: a second bullet pass (bullets were ~8.6% of wall clock in the PyTorch profile;
+  XLA fuses it into the same step). A cleaner semantics also becomes possible: a
+  shadow shot for every eligible decision whether or not the ship really fired, so
+  the label always means "what if I shot now".
+- Recommendation: separate module.
+
+### Deep dive 3a: action head
+
+- **Distribution:** one categorical over the joint command, `power (3) x turn (5) x
+  shoot (2) = 30` today, 42 with stick thirds. Sampled from the full joint (no
+  factorization), no temperature.
+- **Architecture:** `Linear(128 -> 256) -> RMSNorm -> GELU -> Linear(256 -> 30)`;
+  orthogonal init, last layer gain 0.01 (near-uniform initial policy).
+- **Ratio:** per ship (each ship's own joint action probability), not a joint team
+  ratio. Shared weights across ships (MAPPO-style).
+- **PPO loss:** clipped surrogate (clip 0.15), no value clipping. Advantages are the
+  sum of the level advantages divided by the EMA 5th-95th percentile return spread
+  (floored at one win), with no mean subtraction and no per-minibatch standardization.
+- **Masks:** policy gradient counts ships that are the learner's (actor mask), alive,
+  and whose decision was committed (a decision cancelled by death or respawn does not
+  count). Entropy counts actor and alive (not the commit flag).
+- **Entropy:** of the full 30-way joint distribution.
+- **BC:** the scripted agent supplies three factor marginals (power, turn, shoot);
+  the teacher is their outer product, so BC assumes the scripted policy's factors are
+  independent. Loss is cross-entropy between that product and the policy's joint
+  log-probabilities.
+- **Hidden assumptions:** (1) joint categorical size grows multiplicatively with action
+  factors (fine at 42); (2) BC's independent-factor teacher; (3) entropy and policy
+  gradient use different masks.
