@@ -457,3 +457,86 @@ experience is generated and then not learned from.
 - **Port as is:** keep hidden enemies in the loss and keep feeding the prediction back as
   input. Both are candidates for later experiments.
 - **Rename** `previous_action` to `pending_action` in v2.
+
+### Deep dive 3c: next-state head and belief
+
+**What it predicts.** For every ship token, next decision's full physical state as the
+469-wide categorical code: 22 softmax groups (position 9 nested levels of 3x3;
+velocity 3 projections x 81; attitude 4 levels x 4; angular velocity 41; shield delay,
+health (= shields), power, local log index 21 each; cooldown 4).
+
+**Residual form.** `logits = log(input_code + 0.001) + f(h)`, with `f`'s last layer
+initialized to zero. At init the head predicts "nothing changes": the next code equals
+the code it read. Learning dynamics is learning the residual.
+
+**Target** (`_precompute_ns_labels`): the **exact (sharp) code of the true physical
+state one decision later**, from privileged truth, for every ship: allies, visible
+enemies and hidden enemies. Absolute, not a delta from the belief (a delta target
+let belief error persist unseen; the docstring says that ended an earlier run).
+
+**Loss.** Per-group cross-entropy, averaged over groups. Mask: the slot has been seen
+at least once (`belief_valid`), the episode did not terminate, and the transition is
+contiguous (no death, downtime or respawn in between). Primary training scale only.
+Coefficient 0.2. Logged per group, split visible vs hidden, and against the
+"nothing changes" baseline, per population (allies, visible enemies, hidden enemies).
+
+**Why uncertainty grows without being programmed.** Cross-entropy is a proper scoring
+rule: for a hidden enemy the best prediction is the *distribution* of where it could
+be, given what the model knows. So the forecast widens on its own the longer a ship
+stays hidden; the decoder turns that width into spreads.
+
+**Decode to belief** (`decode_logits`, `physical_belief.py`): the head's code is
+turned back into **moments**: 11 physical means (position, velocity, attitude,
+angular velocity, shield delay, health, power, cooldown, local log index) and 14
+spreads (one position sigma, full 2x2 velocity covariance, one sigma each for attitude,
+angular velocity and the four scalars, and a cooldown residual distribution). The
+baseline floor is removed first so a zero residual round-trips exactly.
+
+**Belief update each decision** (`belief.py`):
+1. `observe`: visible ships overwrite the belief with truth and zero spread; a ship
+   that just spawned is revealed to both teams and seeds its slot; never-seen slots stay
+   invalid (zeros, uniform pending action); `time since observation` counts up while
+   hidden.
+2. Composition: each slot takes truth if visible, else belief, else nothing; the
+   encoder rebuilds the code from those moments and spreads (smoothed code for hidden
+   ships).
+3. `advance`: after the forward pass, the decoded forecast **replaces** every valid
+   slot's belief outright (visible slots get overwritten by truth again next
+   `observe`). Non-finite predictions are counted and zeroed.
+4. The rollout buffer stores moments, not codes.
+
+**Hidden assumptions**
+1. **Belief is unimodal per channel.** A forecast that is genuinely two-peaked ("it
+   broke left or right behind that field") is collapsed to one mean and a wide spread:
+   a believed position *between* the two possibilities.
+2. **Channels are independent** except the velocity covariance; position uncertainty is
+   isotropic (one sigma).
+3. **Only hidden-enemy forecasts are used**; ally and visible-enemy forecasts are
+   training signal only (overwritten by truth next decision).
+4. **Code ranges come from the single ship config:** health 0 to `max_health`, power 0
+   to `max_power`, angular velocity from the g-limit, slew limit and lowest field
+   index, cooldown from `firing_cooldown`. With several ship types these ranges must
+   cover every type (or the code becomes per-type).
+5. **The codec round trip needs float32** (bf16 matmuls elsewhere).
+6. **Feedback without gradient:** forecast at t becomes input at t+1; stored
+   observations mean no gradient flows through the loop, and long-hidden ships compound
+   forecast error (the docs record a failure, run 734, from an earlier delta target).
+
+**Findings**
+- `BeliefTracker.source` still says "instant respawn means a remembered ship is always
+  alive"; respawn now has a delay, though a downed ship is public to both teams, so the
+  belief is still not fooled.
+- Names from an earlier delta-based design survive (`physical_deltas`,
+  `PHYSICAL_DELTA_SCALES`, used for scales and a leak threshold).
+
+**Fit with the new contract.** The belief store (means, spreads, action belief, age,
+valid) is the Yemong agent's carry; `observe` and composition are the adapter;
+`advance` is the end of the agent's step. The env provides the raw masked observation;
+the learner provides privileged next-state truth as a label.
+
+**Questions**
+1. Accept the unimodal moment belief for the port (assumed yes, since belief stays as
+   is)?
+2. With ship types: one code range covering every type, or per-type ranges?
+3. Keep training the head on allies and visible enemies (pure dynamics learning), or
+   restrict it to slots whose forecast is actually used?
