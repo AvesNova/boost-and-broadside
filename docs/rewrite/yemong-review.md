@@ -715,3 +715,92 @@ return scale belong to the learner.
    correctly? (Cheap in JAX: the step can return both.)
 3. Keep team spirit (all zeros today) as a mechanism?
 4. Per-level gamma/lambda as reward-function config (assumed yes).
+
+### Outcomes (author, 3d)
+
+- Reward weights, non-zero-sum payouts and return-scale details: **tabled** (already
+  changed on an inaccessible branch: recalibrated weights, simple zero-sum).
+- **Shared actor/critic trunk: decided** (fewer parameters, the value loss is a good
+  prior for the trunk, and privileged critic inputs are not wanted).
+- **Time limit as termination: decided and correct.** The time limit is a real game rule
+  and `time_remaining` is observed on the global token, so the episode genuinely ends
+  there (Pardo et al. 2018, "Time Limits in Reinforcement Learning": bootstrap through a
+  limit only when it is artificial and unobserved). Not a bug.
+- Per-level gamma/lambda live in the reward-function config: decided.
+
+### Team spirit (explained)
+
+From OpenAI Five. Per level k, a ship's advantage becomes
+`own_adv + s_k x mean(advantage of living teammates)`. `s = 0`: each ship is credited
+only for events it caused or suffered (low variance, can encourage selfish play such as
+kill-stealing or ignoring a teammate under attack). `s = 1`: every ship is equally
+credited for the whole team's events (cooperative, but noisy: a ship's own action
+explains little of the team total). OpenAI Five annealed it from ~0.3 toward 1 over
+training. Here it is 0 on every level; the outcome level is already shared by
+construction. It is a cheap mixing matrix in the learner; keeping it as config
+(default 0) costs little.
+
+### Gamma, and why it depends on rollout length (explained)
+
+- The return is `G_t = r_t + gamma r_{t+1} + gamma^2 r_{t+2} + ...`. Gamma < 1 makes a
+  reward k steps away worth `gamma^k`, so the agent effectively looks
+  `1 / (1 - gamma)` steps ahead. It makes long sums finite and trades bias for
+  variance: a short horizon is easier to learn but myopic.
+- Rewards beyond the rollout's end are not observed; the critic's own estimate of the
+  last state stands in for them (bootstrapping). Inside a rollout, lambda blends
+  n-step returns (lambda 0.97 leans on real rewards for roughly 30 steps before the
+  estimate).
+- A match outcome 8,600 decisions away reaches early states only through a chain of
+  bootstraps, one per rollout: ~67 links at 128 steps. Each link copies the critic's
+  current error into the next target. With gamma = 1 nothing shrinks those errors along
+  the chain, so they accumulate and the critic can drift (run 737). With gamma < 1,
+  each link is multiplied by `gamma^128` (0.9997^128 ~ 0.96), which damps the chain.
+- Longer rollouts mean fewer links (1,024 steps: ~8), so less accumulated error and room
+  for gamma closer to 1. Gamma also changes the objective: at 0.9997 a win 3,300
+  decisions away is worth ~0.37 of an immediate one, a mild preference for winning
+  sooner.
+
+### Reward function: draft specification
+
+- **Env emits events, not rewards.** Per decision step, fixed-shape arrays accumulated
+  over the decision's physics ticks:
+  - `damage[i, j]`: shield damage ship i dealt ship j (j may be a zone in damage-capture
+    modes: `zone_damage[i, z]`).
+  - `death[j]` with a cause (enemy, friendly fire, boundary) and the damage ledger
+    needed for kill credit.
+  - `capture_progress[z, team]` deltas and `presence[z, i]`; `captured[z, team]`.
+  - `outcome[team]` (win / tie / loss) and the terminal reason (score, elimination,
+    capture, time limit) on the final step.
+  - Lifecycle: `alive`, `downed`, `respawned` per ship; `terminated`.
+- **Reward function:** pure `(events, reward_config) -> rewards[N, K]` per ship per
+  level in win units, plus `outcome[team]`. Config holds level names, weights,
+  attribution rules (who is credited for damage, kills and captures), per-level gamma
+  and lambda, and whether it is zero-sum.
+- **The game mode defines winning; the reward function defines the learning signal.**
+  The leaderboard uses outcomes only.
+- **Rules, enforced by tests:** zero-sum per level when configured (sum over teams is
+  0 each step); rewards depend only on events (never on hidden state), so the reward
+  function changes without touching the env; deterministic; outcome per team
+  (ready for more than two teams).
+- **Single critic:** a reward config with K = 1 summing all levels. That forces one
+  gamma for everything (a real modeling choice, not just a size change).
+- Today's code computes rewards from `(prev_state, next_state)` (`env/rewards.py`,
+  reading ledgers such as `damage_matrix` and capture ledgers); kill credit is split
+  half by damage share and half by the final tick's impact. Those attribution rules
+  move into the reward function.
+
+### Naming proposal (to remove "agent" ambiguity)
+
+| Term | Meaning |
+|---|---|
+| **Ship** | One body in the simulation (a slot index). |
+| **Team** | A side; ships share a team id. |
+| **Controller** | Anything that picks actions for a set of ships: an NN policy, the scripted controller, random, a human. One controller usually drives a whole team. |
+| **Lineup** | The assignment of controllers to ships for a match (data, so "human flies ship 3, NN flies the rest" is just a lineup). |
+| **View** | One team's canonical observation (self = team 0). |
+| **Carry** | A controller's recurrent state for one view (Griffin state, belief store). |
+| **Model / params / checkpoint** | Architecture / weights / saved params plus config. |
+| **Learner** | A training algorithm (PPO, BC). |
+| **Match**, **decision step**, **tick** | An episode; one controller decision; one physics step. |
+
+"Agent" is avoided in code, except in the JaxMARL adapter where an agent is a team.

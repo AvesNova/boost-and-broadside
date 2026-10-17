@@ -472,6 +472,13 @@ Coupling found in the current code that blocks goal B:
 11. **Human input timing:** humans may act more often than the decision rate; define how
     their inputs map onto decision steps (for other agents' pending-action views and
     for training labels if human games are ever learned from).
+12. **Unfinished from the Yemong review 3c:** single-peaked (unimodal) belief (assumed
+    accepted for the port); code ranges with several ship types (one range covering all
+    types, or per-type); whether the next-state loss keeps covering allies and visible
+    enemies.
+13. **Reward weights, zero-sum and the return-scale details:** changed on a branch not
+    visible here (recalibrated weights, simple zero-sum env). Revisit with access.
+14. **Naming convention** for ship / team / controller / model (see the review, 3d).
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 
