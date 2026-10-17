@@ -1106,3 +1106,38 @@ Figure: `figures/density-grid-layouts.png` (script `figures/density_grid_layouts
 
 **Pending author choice:** buffer width (recommendation: ~2 sigma, 2.3% spill,
 332 m at 5v5, 14 m rim bias).
+
+### 3e follow-up 3: natural disc sizes
+
+**The disc analogue of a full hexagon is a full disc:** every lattice point within some
+radius. Such a set has the lattice's full symmetry (6 rotations, 6 mirrors), as a
+full hexagon does. Its sizes are the cumulative shell counts of the triangular
+lattice (1, 7, 13, 19, 31, 37, 43, 55, 61, 73, ...); there is no closed formula
+(it is the Gauss circle problem on this lattice), so they are tabulated. 331 is not
+one: the 331 disc above used a partial shell (rotations only, no mirrors).
+
+Among full discs, some are rounder than their neighbours. Measure: **area
+efficiency**, the share of the cells' area inside the playable circle at a 2 sigma
+buffer (2.3% worst spill). It rises slowly with size (the buffer is a thinner shell
+of a bigger disc) with local peaks:
+
+| Cells | Outer radius (sp) | Playable R (sp) | Spacing at 5v5 | Efficiency | Note |
+|---:|---:|---:|---:|---:|---|
+| 301 | 9.000 | 7.45 | 349 m | 0.670 | |
+| **313** | 9.165 | 7.68 | 339 m | **0.684** | local peak; nearest full disc to 331 |
+| 337 | 9.539 | 7.90 | 329 m | 0.672 | |
+| 349 / 361 | 9.644 / 9.849 | 8.13 / 8.27 | 320 / 314 m | 0.687 | |
+| **367** | 10.000 | 8.44 | 308 m | **0.704** | local peak; one more layer |
+| 385 | 10.392 | 8.68 | 300 m | 0.709 | local peak |
+| **439** | 11.000 | 9.41 | 276 m | **0.732** | local peak; two more layers |
+| 475 | 11.358 | 9.79 | 266 m | 0.732 | |
+| 511 | 11.790 | 10.27 | 253 m | 0.749 | |
+
+Figure: `figures/density-disc-sizes.png` (331 partial, 313, 367, 439; script
+`figures/density_disc_sizes.py`). For reference, today's 331-cell hexagon has 260 m
+cells but leaves part of the playable circle uncovered.
+
+The output width is 2 x cells (ally, enemy): 626 at 313, 734 at 367, 878 at 439,
+all negligible next to the trunk.
+
+**Pending author choice:** cell count (313, 367 or 439) and buffer width.
