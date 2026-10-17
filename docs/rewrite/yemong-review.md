@@ -540,3 +540,65 @@ the learner provides privileged next-state truth as a label.
 2. With ship types: one code range covering every type, or per-type ranges?
 3. Keep training the head on allies and visible enemies (pure dynamics learning), or
    restrict it to slots whose forecast is actually used?
+
+### Discussion: HL-Gauss for codes, targets and the critic (author's proposal)
+
+Proposal: every categorical code (observation inputs, next-state targets, value
+targets) is an HL-Gauss histogram (Gaussian CDF integrated over each bin). Observed
+values use sigma = 0.75 bins; beliefs use wider sigma. Padding bins keep means
+consistent at range edges. KL is the quality metric.
+
+**Today's codes** (`categorical_codes.py`): a two-hot of the mean convolved with a
+discrete Gaussian of the belief's sigma; edge spill is folded into the end bin and a
+closed-form correction step restores the moments (approximate when the end bins hold
+most of the mass). Truth is the sigma-0 two-hot.
+
+**Measured (unit bins, numerical check):**
+
+| sigma (bins) | max mean bias over all offsets | max variance error vs sigma^2 + 1/12 |
+|---|---|---|
+| 0.5 | 2.3e-3 bins | 7.9e-3 |
+| 0.75 | 4.8e-6 bins | 3.5e-5 |
+| 1.0 | 8.5e-10 bins | 1.1e-8 |
+
+Value exactly on the last real bin, sigma 0.75, spill folded into the last padding bin:
+
+| padding bins | spill | mean bias |
+|---|---|---|
+| 0 | 25% | -0.28 bins |
+| 1 | 2.3% | -0.023 bins |
+| 2 | 0.04% | ~0 |
+| 3 | 1.5e-6 | ~0 |
+
+**Assessment: adopt, with these details.**
+1. *Shift invariance is the real win.* A two-hot's shape (and its own variance,
+   0 to 0.25 bins^2) depends on where the value sits between bins, so an observed ship
+   looks different to the network depending on offset, and differs in kind from a
+   smoothed belief. HL-Gauss at 0.75 has the same shape at every offset (errors ~1e-5)
+   and truth and belief differ only in width.
+2. *One definition everywhere:* a code is a Gaussian (mean, sigma) in physical units
+   projected onto the bins, with an observation floor `sigma_obs = 0.75 x bin width`.
+3. *Round-trip corrections or beliefs inflate.* Encode with total width
+   `sqrt(sigma_belief^2 + sigma_obs^2)`; decode with
+   `sigma_belief^2 = var_histogram - 1/12 bin^2 (Sheppard) - sigma_obs^2`, floored at 0.
+   Otherwise every forecast/re-encode cycle adds width, and a hidden ship's belief
+   spreads even when the head predicts "nothing changes".
+4. *Padding:* 2 bins suffices for observed values; a belief of width sigma needs about
+   3 sigma of padding, or the excess is folded (with a known inward bias), or belief
+   width is capped. Circular channels (attitude, torus position levels) use a wrapped
+   Gaussian and need no padding.
+5. *Nested position levels* (3 colours per axis per level): the Gaussian projected onto
+   coarse levels is nearly one-hot; `sigma_obs` should be set from the finest level's
+   cell (~3.3 m), not per level.
+6. *Critic caveat:* value bins are symlog-spaced. HL-Gauss in symlog space with sigma
+   0.15 (0.75 x 0.2) makes the raw-space expectation biased by about `exp(sigma^2/2)`,
+   ~1.1% too large in magnitude for large returns (convexity of symexp). Two-hot today is
+   exact in raw units. Options: accept and measure; HL-Gauss in raw units with a
+   local-bin-width sigma; or keep two-hot for the critic only.
+7. *KL as the metric:* `KL = CE - H(target)`: identical gradients to cross-entropy, but
+   zero means perfect and it stays comparable when target width varies (observed vs
+   hidden). Train with cross-entropy, report KL (and KL of the "nothing changes"
+   baseline).
+8. *Tests:* encode -> decode -> encode stability, zero-residual belief stationarity, and
+   edge behavior at full shields, empty cooldown and full power (all very common
+   states).
