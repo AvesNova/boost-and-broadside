@@ -1004,8 +1004,9 @@ it contributes exactly one. That is the 2D version of the padding bins in 3c.
 normalize, sum over ships. One einsum-sized computation per sample (10 ships x 475
 cells), static shapes, deterministic.
 
-**Present vs next step.** A decision step is 1/60 s; at top speed a ship moves 2.3 m,
-under 1% of a 260 m cell, so the field at t+1 is the field at t to any precision
+**Present vs next step.** A decision step is 1/30 s (Frontline runs physics and
+decisions at 30 Hz; corrected from 1/60); at top speed a ship moves 4.5 m, under 2% of
+a 308 m cell (about 68 steps to cross one), so the field at t+1 is the field at t to any precision
 that matters, and a t+1 target adds nothing but deaths and respawns in that step.
 Consistency with the next-state head is about form (both are privileged targets
 built by the learner), not horizon. A forecast worth having is seconds ahead (a
@@ -1144,3 +1145,97 @@ all negligible next to the trunk.
 **Decided (author):** a full disc of **367 cells** (every lattice point within 10
 spacings) with a **2 sigma buffer** (2.3% worst rim spill): playable radius 8.44
 spacings, 308 m cells at 5v5, renormalized so each in-area ship counts one.
+
+### Deep dive 3f: counterfactual shot heads
+
+**Question they answer.** "If this ship fired now, where would the bullet go, and what
+would it hit?" Two heads on each own-ship token; never read by the policy.
+
+**Where the labels come from** (`env/shot_labels.py`, `env/physics.py`). Every living
+ship that does not fire a real bullet launches a **ghost** whenever its ghost cooldown
+(= firing cooldown, 0.1 s = 3 decisions) allows. A ghost has the real bullet's launch
+state, spread and physics but no damage, power cost, visibility or rendering. With a
+1 s lifetime and launches 0.1 s apart, each ship always has about 10 flights in the
+air, which is why `max_bullets` is 10. Every flight (real or ghost) flies its whole
+lifetime, through any hit (`bullet_flying` vs `bullet_active`), and records:
+- snapshots at two launch-drawn ages (uniform in [0, lifetime]);
+- its first hit (same swept distances as gameplay), with the hit ship's side
+  relative to the shooter; or else its closest pass to any living ship and that
+  ship's side;
+- the snapshot at that encounter.
+A snapshot is displacement from the launch point and velocity, both in the launch
+attitude's frame, plus the local refractive index. On expiry (29 ticks at 30 Hz) the
+record becomes the ship's example and is filed under the launch decision's row.
+Examples cut by a reset never emit. Friendly fire exists (hence ally hits).
+
+**Heads** (`ShotHeads`, `train/rl/shot_codes.py`).
+- *Trajectory:* queried at 2 ages per shot (the uniform age; and the encounter age
+  for a hit or near miss, else a second uniform age). Input `latent(h) + age(phi)`,
+  phi = normalized age plus 4 Fourier harmonics; output a 154-wide code:
+  displacement (nested position code, 8 levels x 9 colours, on a torus 2.5 reaches
+  wide so no flight wraps), travel direction (circular, 5 levels x 4), world speed
+  (two-hot, 41 bins), local log index (two-hot, 21). Cross-entropy per group,
+  averaged.
+- *Outcome:* one 19-way softmax: enemy hit, ally hit, 8 enemy near-miss bins, 8 ally
+  near-miss bins, clear miss. Near misses are placed by closest-pass log distance,
+  1 to 6 collision radii, HL-Gauss sigma 0.75 bins; clear miss is the next bin on that
+  axis (centre ~78 m), shared by both sides. Hits are one-hot.
+- Loss masked to valid examples on the observer's own ships (team 0); coefficients
+  0.1 and 0.1, documented as uncalibrated placeholders. Diagnostics: per-channel
+  trajectory CE, realized vs predicted enemy-hit, ally-hit and clear-miss rates.
+
+**Coverage.** A ship gets a label at most every 3rd decision (one launch per firing
+cooldown), and the last 29 rows of every 128-step rollout get none (their shots
+finish in the next rollout): about 1/3 x 77% = **~26% of own-ship rows** carry a label.
+
+**Hidden assumptions**
+1. **Real shots and ghosts mean the same thing** only while nobody reacts to bullets.
+   Yemong does not observe bullets, so in self-play they are equivalent; a scripted
+   agent or human that sees and dodges real bullets makes real-shot outcomes differ
+   from ghost outcomes (ghosts are invisible).
+2. **One global collision radius** for hits and the near-miss scale. The ship card
+   makes collision radius a per-type handle.
+3. **One ship config sizes every code** (reach, speed, index span). Per-type bullet
+   speed, range and spread need ranges covering every type (ties to the open 3c
+   question on per-type code ranges).
+4. **Two sides** in the outcome (enemy/ally), which matches the 3e decision
+   (ally vs enemy in every mode).
+5. **Labels exist only at launch ticks**, phase-locked to the cooldown; the head is
+   asked "what if I fired now" at every row but trained on about a third of them.
+6. **Damage is not in the outcome:** a hit is a hit, whatever the head-on fraction,
+   shield state or `bullet_min_damage_frac`.
+
+**Findings**
+- The env carries training-only machinery inside gameplay: ghost cooldown,
+  `bullet_flying`, per-slot records, slot-reclaim ranking, a separate shot RNG
+  stream. It is careful (ghosts never displace a live real bullet) but it is the
+  largest piece of training code living in the game.
+- Trajectory codes are two-hot / sharp; 3c decided HL-Gauss for all categorical
+  codes.
+- Coefficients uncalibrated (tabled item 13).
+
+**Port design: where should the labels come from?** Earlier (3, ghost bullets) the
+choice was between the shared env buffer (decided) and a separate env label module.
+Since then 3e decided that privileged targets are **built by the learner from stored
+truth**, which opens a third option:
+
+| | Env ghosts (today, decided) | Learner-side simulation (new option) |
+|---|---|---|
+| What runs | ghosts in the gameplay bullet buffer | the learner re-flies a shot from each stored launch state with the same pure transport and swept-hit functions, against stored ship positions for the next 29 steps |
+| Labels per ship | 1 per 3 decisions | **every decision** (any number of shots per row) |
+| Env | ghost cooldown, flying flag, records, reclaim rules, label RNG | **pure gameplay**, plain ring buffer |
+| Bullet functions | one copy | still one copy (the same pure functions, called from two places) |
+| Fields | live | static per episode, stored once per episode |
+| Cost | ~free in a static-shape env (all slots simulated anyway) | T x B x N x 29 bullet steps x N ships per update: ~1.5e9 at 128 x 4096 x 10, small on GPU |
+| End of rollout | last 29 rows unlabeled | same (needs 29 steps of future truth) |
+| Real vs ghost | mixed | all shots are counterfactual and invisible (assumption 1 disappears) |
+| Diagnostics (real bullet vs prediction) | from the records | the same function on a played match |
+
+**Questions**
+1. Keep env ghosts (decided earlier), or move label generation to the learner?
+2. Port the trajectory codes to HL-Gauss (assumed yes, per 3c)?
+3. Per-type collision radius: hit test against each target's own radius, and
+   near-miss distance in units of the target's radius (proposal)?
+4. Accept the end-of-rollout loss (23% at 128 steps) for the single-rollout-length
+   port?
+5. Leave damage out of the outcome for now?
