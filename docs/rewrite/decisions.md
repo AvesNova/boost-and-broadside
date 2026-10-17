@@ -469,6 +469,9 @@ Coupling found in the current code that blocks goal B:
 10. **Hidden-entity convention in the raw observation:** what an unseen enemy's slot
     contains (mask only, or last-seen values and time since seen), given that belief
     moves into models and may be replaced by Griffin memory.
+11. **Human input timing:** humans may act more often than the decision rate; define how
+    their inputs map onto decision steps (for other agents' pending-action views and
+    for training labels if human games are ever learned from).
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 

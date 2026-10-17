@@ -447,3 +447,13 @@ Nothing about enemy intent remains in the env or runtime.
 values and next-state predictions are stored from the team-0 half only, and only
 team-0 ships enter the policy gradient. In self-play, the team-1 half of the
 experience is generated and then not learned from.
+
+### Outcomes (author, 3b)
+
+- **Action repeat is a physics-engine detail.** The head predicts agents' *decisions*,
+  one per decision step, regardless of how many physics ticks a decision spans.
+- Humans may act more often than the decision rate. Open for the timing contract: how a
+  human's inputs map onto decision steps for other agents' observations and labels.
+- **Port as is:** keep hidden enemies in the loss and keep feeding the prediction back as
+  input. Both are candidates for later experiments.
+- **Rename** `previous_action` to `pending_action` in v2.
