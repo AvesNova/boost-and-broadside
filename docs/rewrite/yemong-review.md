@@ -1014,7 +1014,8 @@ stored truth, a horizon is just indexing truth at t+k with the usual end-of-epis
 and end-of-rollout masks (like shot labels). Proposal: config `density_horizon`,
 default 0 (now).
 
-**Pending author confirmation:** horizon option default 0.
+**Decided (author):** horizon k = 0 (the present). The learner takes k as a parameter so a
+forecast can be tried later; k > 0 costs the last k rows of each rollout.
 
 ### 3e follow-up (author): HL-Gauss, cell count, coverage, empty cells
 

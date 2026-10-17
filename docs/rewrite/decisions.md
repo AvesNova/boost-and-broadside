@@ -492,7 +492,9 @@ including the HL-Gauss, critic, reward-function and naming discussions).
 - [x] Flight parameterization (only constraints and the ratio suite left to confirm).
 - [x] Yemong review part 1 (inputs), part 2 (trunk), part 3a-3d (action, enemy-action,
       next-state/belief, critic).
-- [ ] Yemong review 3e: hex density head; 3f: counterfactual shot heads.
+- [x] Yemong review 3e: hex density head (decided: HL-Gauss, 367-cell disc, 2 sigma buffer,
+      Poisson head, no clamp, ally/enemy, learner-built targets, k = 0).
+- [ ] Yemong review 3f: counterfactual shot heads.
 - [ ] Confirm naming convention (draft in the review, 3d) and team spirit (keep as
       config, default 0?).
 - [ ] Training review: rollout loop (`ego_pass`, team-1 experience not learned from),
