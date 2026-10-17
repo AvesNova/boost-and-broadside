@@ -602,3 +602,37 @@ Value exactly on the last real bin, sigma 0.75, spill folded into the last paddi
 8. *Tests:* encode -> decode -> encode stability, zero-residual belief stationarity, and
    edge behavior at full shields, empty cooldown and full power (all very common
    states).
+
+### Outcomes (author, HL-Gauss) and critic analysis
+
+- **Decided: HL-Gauss codes go into the port** (a simplification). Round-trip
+  corrections (quadrature floor + Sheppard) confirmed. Circular channels unpadded;
+  padding amount is a middle ground to tune (exact means matter less as uncertainty
+  grows). Nested position sigma from the finest cell. Train with cross-entropy, report
+  KL. Round-trip, stationarity and edge tests required.
+
+**Critic: literature.** Imani & White (2018) introduced the histogram loss with a
+Gaussian target (HL-Gauss). Farebrother et al. (2024, "Stop Regressing") found
+HL-Gauss with sigma = 0.75 bin widths beats two-hot and regression for value
+learning (uniform bins on a fixed range). DreamerV3 uses two-hot on symexp-spaced bins,
+expectation in raw units. MuZero applies an invertible squashing transform, two-hot in
+transformed space, and inverts the *expectation* (`h^-1(E[h(G)])`).
+
+**The two orders** (51 bins over +/-5 symlog):
+- *Gaussian in raw units, then bin on symlog edges:* fixed raw sigma spreads over many
+  fine bins near zero and collapses into one coarse bin at large returns, losing the
+  same-shape-everywhere property unless sigma scales with local bin width, which is
+  the second option in disguise.
+- *Symlog, then Gaussian (sigma 0.75 bins), then bin:* same shape everywhere in
+  symlog space. Three ways to read a value back (numerical check):
+
+| read-out | single return, round trip | mixture of returns 1 and 9 (true mean 5) |
+|---|---|---|
+| raw expectation, bin values `symexp(centre)` | up to 1.6% too large (`|G|>5`), 0.026 abs near 0 | 5.078 |
+| `symexp(E_symlog)` (MuZero style) | exact to 6e-4 | **3.472** (biased toward the geometric mean) |
+| raw expectation, **calibrated bin values** | exact to 2e-4 relative | **5.000** |
+
+  Calibrated bin values: one fixed per-bin table `v`, solved once by least squares so
+  that `sum_i HL(mu)_i v_i = symexp(mu)` for every target mean. Recommendation: symlog
+  -> Gaussian -> bin, read out with calibrated bin values. It keeps HL-Gauss's benefits
+  and two-hot's exactness, at the cost of a precomputed table.
