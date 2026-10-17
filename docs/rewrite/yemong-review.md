@@ -877,7 +877,7 @@ target**; its numbers describe the old target.
 **Hidden assumptions**
 1. **Frontline only.** Centre and unit come from `map_center` and
    `playable_boundary_radius`, both zero outside Frontline, where the target is
-   meaningless (the code guards the division and emits garbage-free zeros).
+   meaningless (the code only guards the division against NaN).
 2. **Two teams.** Ally/enemy halves; the opening log-rate divides the fleet by two;
    the observer is hard-coded to team 0 (tied to the `ego_pass` finding: team 1's
    view is never a training example).
