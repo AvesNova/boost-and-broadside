@@ -835,3 +835,107 @@ Z zones, T teams; all static):
   maximum Z (and T) across those modes with an active mask; a mode without zones has
   all-zero zone blocks.
 - *Cost:* the largest blocks are `(N, N)`: 4,096 entries at 64 ships, negligible.
+
+### Deep dive 3e: hex density head
+
+**What it predicts.** Where every living ship is *now*, as a field over a fixed hex
+grid: every cell's ally count, then every cell's enemy count (`HEX_DENSITY_DIM` = 2 x
+331 = 662). Read from the global token's final embedding only; no ship head reads it
+and nothing it predicts re-enters the input. Head: `Linear D -> 2D, RMSNorm, GELU,
+Linear 2D -> 662`, orthogonal init, output bias set to the true mean log-rate
+(`log(ships per side / 331)`, -4.19 at 5v5).
+
+**Grid** (`train/rl/hex_density.py`). 10 concentric hex rings around a centre cell
+(331 cells), stored in units of the playable radius and scaled per environment, so
+every map size has the same cells. Centre = `map_center`, unit = playable radius; the
+outer ring's corners sit on the boundary. Fixed cell order (ring by ring, from +x,
+counter-clockwise). Spacing: 260 m at 5v5, 368 m at 10v10, 581 m at 25v25, 822 m at
+50v50 (density-preserving maps).
+
+**Target.** Each living ship deposits exactly one unit, split across the three cell
+centres forming its triangle by barycentric weight (the 2D analogue of two-hot:
+lossless, no kernel, continuous). The lattice is treated as infinite and off-grid
+vertices are dropped, so a ship leaving the circle fades out continuously (gone by
+~1.10 radii). Counts all living ships, seen or not (privileged). Observer is always
+team 0. Computed on device from pre-step truth each rollout step, stored as a
+`(T, B, 662)` buffer tensor.
+
+**Loss.** Poisson NLL on log-rates, `sum_c exp(l_c) - y_c l_c`, averaged over cells
+and normalized by step-environment count; no mask (every step has a field). Gradient
+`exp(l) - y` is bounded. Log-rate clamped to [-20, 2]. Diagnostics: loss and
+**deviance** (loss minus the saturated model's), ally and enemy halves apart.
+Coefficient 1.0 (RL), 2.0 (BC); primary scale only.
+
+**History.** Until 2026-09-30 the target was a Gaussian-smoothed field (500 m kernel)
+with an MSE loss. The audit (`docs/internal/density-audit-sep2026.md`) found the head
+doing real work (R^2 0.925 ally / 0.908 enemy against a 0.167 visible-only baseline,
+error growing with hidden enemies beyond the frame-difficulty drift) but the kernel so
+wide that two ships read as one until ~2000 m apart. The target was then replaced by
+barycentric counts and the Poisson head. **The audit has not been re-run on the count
+target**; its numbers describe the old target.
+
+**Hidden assumptions**
+1. **Frontline only.** Centre and unit come from `map_center` and
+   `playable_boundary_radius`, both zero outside Frontline, where the target is
+   meaningless (the code guards the division and emits garbage-free zeros).
+2. **Two teams.** Ally/enemy halves; the opening log-rate divides the fleet by two;
+   the observer is hard-coded to team 0 (tied to the `ego_pass` finding: team 1's
+   view is never a training example).
+3. **World-frame grid.** Cells are absolute (map axes), consistent with the absolute
+   positions plus rotary decided in part 1. Nothing rotates with a team's attack
+   direction.
+4. **A fixed resolution in map units, not metres.** Larger maps get coarser cells; the
+   field is "where, relative to the map", by design.
+5. **"Now", not future.** A nowcast: for allies a restatement of input, for enemies
+   belief. It does not ask the token to forecast fleet movement.
+
+**Findings**
+- **Clamp at log-rate 2 caps a cell at 7.4 ships and kills the gradient above it.**
+  Harmless at the 5v5 primary scale (at most 5 per side), wrong at 10v10 and beyond,
+  where a formation can put more ships in one 400-800 m triangle. If the logit ever
+  drifts above 2 the clamp also zeroes its gradient, so it cannot come back down. The
+  comment's "e2 cells hold every ship in the game" is false above 5v5. In the port:
+  clamp only against float overflow (e.g. 15), or clamp at `log(max ships per side)`
+  plus margin with a straight-through gradient.
+- **Stale comments:** `config/training.py` calls the coefficient an "MSE weight";
+  `profiles/rl.py` justifies 1.0 from "a per-cell mean square whose untrained value is
+  about 0.1". Both describe the old target. The 1.0 was committed after the Poisson
+  switch but its rationale was not re-derived; BC's 2.0 came from run 750's gradient
+  norms (target version unclear). Falls under tabled item 13 (weights).
+- 62% of cells (rings 7-10) carried 14% of the old target's variance; play
+  concentrates near the front. Not a bug, a capacity note.
+- The audit's "re-run before trusting the numbers" is still open.
+
+**Port design (proposal)**
+1. **Grid placement from the super token.** Every mode gives the super token a
+   position and a radius (already decided: centre on the super token, radius from the
+   local map size). Frontline: map centre, playable radius (as today).
+   **Torus modes without a boundary (TDM):** centre at the super token, radius = half
+   the torus diagonal. Minimum-image deltas already fold every ship into the square
+   around the centre, so the circle covers the whole torus exactly once; 36% of cells
+   (outside the square) never receive mass. One code path, no wrapping grid.
+2. **Teams as relative channels.** One field per team in relative order (own team
+   first, then the others), static `T_max`, absent teams masked out of the loss. With
+   two teams this is exactly today's ally/enemy layout; in FFA it keeps teams apart
+   instead of lumping all enemies. Opening log-rate from each team's configured fleet
+   size.
+3. **Targets derived in the learner, not stored.** The privileged-labels type already
+   carries true positions, alive and team per ship; the learner builds the field
+   inside the loss. Removes the 662-wide buffer tensor and lets the grid change
+   without re-collecting. Each team's view gets its own target once the `ego_pass`
+   issue is fixed.
+4. **Static and deterministic in JAX.** N ships x 3 vertices, off-grid vertices sent
+   to a trash bin, built with a one-hot contraction or `.at[].add`; fixed shapes, no
+   branching. Rings fixed (10) in config; cell order defined by the port (no
+   backwards compatibility needed).
+5. **Clamp fixed** as in the finding above.
+6. **Diagnostics:** fraction of deviance explained (Poisson R^2 analog,
+   `1 - D_model / D_null` with an EMA per-cell mean as the null) per team channel, and
+   the enemy channel split by number of hidden enemies (the audit's belief test, live).
+
+**Questions**
+1. Torus placement: half-diagonal circle (proposal) or a wrapping hex grid that tiles
+   the torus?
+2. Teams: relative per-team channels (proposal) or keep ally/enemy only?
+3. Targets built in the learner from privileged truth (proposal)?
+4. Keep the target a nowcast, or add a forecast (field at t+k) later as an option?
