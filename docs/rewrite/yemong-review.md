@@ -442,3 +442,8 @@ Nothing about enemy intent remains in the env or runtime.
 2. Keep feeding the prediction back as input (current), or only use it as an auxiliary
    training signal?
 3. Rename `previous_action` to `pending_action` everywhere in v2 (assumed yes)?
+
+**Noted for the training review:** in `ego_pass` both perspectives act, but log-probs,
+values and next-state predictions are stored from the team-0 half only, and only
+team-0 ships enter the policy gradient. In self-play, the team-1 half of the
+experience is generated and then not learned from.
