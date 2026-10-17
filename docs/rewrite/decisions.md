@@ -482,9 +482,23 @@ Coupling found in the current code that blocks goal B:
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 
-## Next steps
+## Next steps (resume point)
 
-- [ ] Set up the repo per option 3: tag `v1-torch-final`, create the `v2` branch.
-- [ ] Then work through the tabled items, starting with game scope (1) and contracts
-      (2), which most other items depend on, plus the agent workflow (5) before any
-      code is written.
+Design discussion is on branch `jax-rewrite/design`. Documents:
+`docs/rewrite/decisions.md` (this file), `docs/rewrite/ship-card.md`,
+`docs/rewrite/yemong-review.md` (the model and training review, parts 1-3 so far,
+including the HL-Gauss, critic, reward-function and naming discussions).
+
+- [x] Flight parameterization (only constraints and the ratio suite left to confirm).
+- [x] Yemong review part 1 (inputs), part 2 (trunk), part 3a-3d (action, enemy-action,
+      next-state/belief, critic).
+- [ ] Yemong review 3e: hex density head; 3f: counterfactual shot heads.
+- [ ] Confirm naming convention (draft in the review, 3d) and team spirit (keep as
+      config, default 0?).
+- [ ] Training review: rollout loop (`ego_pass`, team-1 experience not learned from),
+      opponents/league, BC, PPO update mechanics, scales, evaluation.
+- [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
+- [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
+      interface, versioning), agent workflow, then the remaining tabled items.
+- [ ] Physics-first changes in the PyTorch env (planned, not started).
+- [ ] Repo setup (option 3), after the physics-first changes.
