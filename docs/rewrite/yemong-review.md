@@ -640,3 +640,78 @@ transformed space, and inverts the *expectation* (`h^-1(E[h(G)])`).
   values**; the velocity code (log-compressed bins) also uses calibrated bin values.
 - Still open from 3c: unimodal belief (assumed accepted), code ranges with ship types,
   and whether the next-state loss covers allies and visible enemies.
+
+### Deep dive 3d: critic (value heads, GAE, advantage)
+
+**Reward levels** (`RewardConfig`, shipped weights in win units): outcome 1.0, zone
+capture 2.0, zone progress 2.0, kill/death 0.283, damage 0.274. Each event charges the
+side it happens to and pays the causing side `payout_ratio x weight`; payout ratios are
+2.0 for kills, damage and captures (not zero-sum: an even trade is net positive), and a
+step-based "offensive bias" schedule anneals them to 1 between 50M and 300M steps. Team
+spirit defaults to 0 on every level (pure per-ship credit).
+
+**Heads.**
+- *Per-ship levels* (capture, progress, kill/death, damage): one head, 4 x 51 logits per
+  ship over symlog-spaced bins (+/-5 symlog, +/-147 raw), value = expectation in raw
+  units.
+- *Outcome:* 4 classes off the global token, one per environment; value
+  `P(win) - P(loss)`, signed per ship by team (the two-team assumption).
+
+**Discounts** (per decision, 30 Hz), horizons `1/(1-gamma)`:
+
+| level | gamma | lambda | horizon |
+|---|---|---|---|
+| outcome | 0.9997 | 0.97 | ~3,300 decisions (~110 s) |
+| zone capture | 0.999 | 0.97 | ~1,000 |
+| zone progress | 0.995 | 0.95 | ~200 |
+| kill/death | 0.995 | 0.95 | ~200 |
+| damage | 0.991 | 0.90 | ~110 |
+
+The outcome gamma is not 1 on purpose: a 128-step rollout in an ~8,600-step episode
+bootstraps ~67 times before a terminal, and at gamma 1 errors compounded (run 737: win
+explained variance fell from 0.994 to 0.42). The categorical outcome target models the
+discount as mass leaking into "unresolved".
+
+**GAE** (`buffer.compute_gae`): per level, vectorized over the 5 levels, using
+rollout-time values. **Truncation is treated as termination** (no bootstrap at the
+time limit), because the wrapper auto-resets before returning the observation; the
+docstring estimates ~2% of episodes hit the limit.
+
+**Targets and loss** (`_critic_losses`): per-ship levels: cross-entropy vs the two-hot
+of the lambda-return (becomes HL-Gauss + calibrated values, decided), over ships alive
+**or waiting to respawn** (a downed ship still receives its team's rewards). Outcome:
+cross-entropy vs the categorical lambda-return, per environment-step. `vf_loss` = mean
+over the 5 levels; coefficient on the schedule.
+
+**Advantage path** (`_precompute_lambda_aggregates`): per level, `adv_i + s_k x mean of
+living teammates' adv` (team spirit), summed over levels (weights are already in the
+rewards), divided by the return scale `max(1 win, EMA(p95) - EMA(p5))` of the summed
+returns of committed, alive actors (EMA decay 0.99, updated from the primary scale only,
+applied to all scales). No mean subtraction.
+
+**Hidden assumptions**
+1. **Actor and critic share the whole trunk** (only the heads differ). Standard, but the
+   value loss shapes the policy's representation; there are gradient diagnostics for
+   the actor/critic split because of this.
+2. **Truncation = termination** for GAE (slightly pessimistic at the time limit).
+3. **Outcome gamma is tied to rollout length** (bootstrap hop count); longer rollouts
+   would let it move toward 1.
+4. **Two-team zero-sum sign flip** for the outcome (already noted).
+5. **The return scale is learned from the primary scale only** and applied to every
+   training scale.
+6. **Non-zero-sum payouts** (ratio 2) are a deliberate offensive bias, scheduled off by
+   300M steps.
+7. **Critic levels are averaged equally** in `vf_loss` regardless of reward weight
+   (a cross-entropy per level has a comparable scale, so this is reasonable).
+
+**Fit with the new contract.** Reward function: `events -> (rewards per ship per level,
+outcome per team)`, with K and the per-level gamma/lambda as part of its config. The
+agent's critic outputs K values (K = 1 for a single critic). GAE, team spirit and the
+return scale belong to the learner.
+
+**Questions**
+1. Keep the shared actor/critic trunk, or make a separate critic trunk an option?
+2. Truncation: store the pre-reset final observation so time-limit episodes bootstrap
+   correctly? (Cheap in JAX: the step can return both.)
+3. Keep team spirit (all zeros today) as a mechanism?
+4. Per-level gamma/lambda as reward-function config (assumed yes).
