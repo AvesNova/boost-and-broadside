@@ -939,3 +939,80 @@ target**; its numbers describe the old target.
 2. Teams: relative per-team channels (proposal) or keep ally/enemy only?
 3. Targets built in the learner from privileged truth (proposal)?
 4. Keep the target a nowcast, or add a forecast (field at t+k) later as an option?
+
+### Outcomes (author, 3e) and follow-up analysis
+
+**Decided**
+- **Every mode has a map centre and a playable radius**; there are no unbounded
+  (torus-only) modes. The grid is placed by the super token's centre and the playable
+  radius in every mode. (The world itself stays a large torus for translation
+  invariance, so deltas keep the minimum image.) The half-diagonal proposal is void.
+- **Ally vs enemy only.** An enemy is an enemy whatever its team; two channels in
+  every mode, FFA included.
+- **A ship outside the playable area appears in no cell.** Hard cut at the boundary
+  (the boundary is a game rule), replacing today's fade-out across the rim.
+- **No clamp on the log-rate** (see below).
+- **Targets built in the learner** from stored privileged truth (the alternative is
+  today's: build the field during the rollout and store it).
+
+**Poisson NLL is cross-entropy plus a count term (exact identity).** With per-cell
+rates `lambda_c = exp(l_c)`, totals `N = sum y_c`, `Lambda = sum lambda_c`:
+
+    sum_c [lambda_c - y_c log lambda_c]
+      = [Lambda - N log Lambda]                       (Poisson NLL of the total count)
+      + N * CE(y / N, softmax(l))                     (cross-entropy of the shape)
+
+The shape term is exactly a softmax cross-entropy over cells, weighted by the ship
+count; the count term learns the total, unbounded. Gradient per logit
+`lambda_c - y_c`, the same form as softmax CE. When a side has no living ships only
+the count term acts and drives the rate to zero. Verified numerically. Reporting,
+matching the other heads ("KL reported, CE trained"): the shape KL and the count
+deviance; their N-weighted sum is the Poisson deviance logged today.
+
+**Clamp.** Not needed. The loss is computed in float32; `exp` overflows only above
+88, which only a diverged run reaches (and then NaN is the right signal). Empty cells
+drift slowly toward large negative logits with vanishing gradient, which is harmless.
+Large overshoots get a large gradient, which global norm clipping bounds. Any clamp
+zeroes the gradient beyond it, which is worse than no clamp.
+
+**HL-Gauss on the grid (author's proposal).** The 2D analogue of the 1D codes: each
+ship spreads one unit as an isotropic Gaussian with sigma = 0.75 cell spacings,
+sampled at cell centres and normalized per ship; the field is the sum over ships.
+Barycentric weights are the 2D two-hot, and 3c chose HL-Gauss over two-hot for every
+other categorical target, so this makes the family consistent. Measured on the
+lattice (spacing = playable radius / 10, as today):
+
+| Target | Cells a ship touches (>10% of peak) | Two ships read as two at | Position bias (interior) |
+|---|---:|---:|---:|
+| Old Gaussian (removed Sept 30) | ~85 | ~8 spacings | n/a |
+| Barycentric (today) | 3 | ~1-2 spacings | 0 |
+| HL-Gauss, sigma 0.75 spacing | ~10 | 1.7 spacings | 0 (below 1e-4 spacing) |
+
+So HL-Gauss at 0.75 keeps nearly all of barycentric's resolution (1.7 vs 1-2
+spacings, 440 m at 5v5) while giving every cell a smooth, ordinal-aware target. The
+Poisson head is unchanged: the targets are still soft counts summing to the living
+ship count.
+
+*Edge handling.* Today's grid (hexagon of 10 rings) does not cover the playable
+circle: 17% of the circle's area lies outside the hexagon of cell centres, and a ship
+there loses the weight of its missing vertices (inside the playable area). Proposal:
+cells = every lattice point within `R + 2 sigma` of the centre (a disc, 475 cells at
+10 spacings per radius), each in-area ship's weights renormalized over those cells so
+it contributes exactly one. That is the 2D version of the padding bins in 3c.
+
+*JAX.* Dense, no scatter: `exp(-|p_i - c_j|^2 / 2 sigma^2)` over ships x cells, mask,
+normalize, sum over ships. One einsum-sized computation per sample (10 ships x 475
+cells), static shapes, deterministic.
+
+**Present vs next step.** A decision step is 1/60 s; at top speed a ship moves 2.3 m,
+under 1% of a 260 m cell, so the field at t+1 is the field at t to any precision
+that matters, and a t+1 target adds nothing but deaths and respawns in that step.
+Consistency with the next-state head is about form (both are privileged targets
+built by the learner), not horizon. A forecast worth having is seconds ahead (a
+cell's width at top speed is ~2 s). Since targets are built in the learner from
+stored truth, a horizon is just indexing truth at t+k with the usual end-of-episode
+and end-of-rollout masks (like shot labels). Proposal: config `density_horizon`,
+default 0 (now).
+
+**Pending author confirmation:** HL-Gauss sigma 0.75 on the disc grid with
+renormalization; horizon option default 0.
