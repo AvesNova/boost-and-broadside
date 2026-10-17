@@ -804,3 +804,34 @@ construction. It is a cheap mixing matrix in the learner; keeping it as config
 | **Match**, **decision step**, **tick** | An episode; one controller decision; one physics step. |
 
 "Agent" is avoided in code, except in the JaxMARL adapter where an agent is a team.
+
+### Reward function: revisions (author)
+
+- **Capture by damage and capture by presence are one level** (zone progress): same
+  meaning, same distance from the true objective.
+- **Events are grouped by level.** One fixed-shape block per level; each level's reward
+  is a pure function of its own block. Levels: outcome, zone capture, zone progress,
+  deaths, damage.
+- **Everything is fixed-shape and dense** (GPU-graph friendly): no variable-length event
+  lists, no data-dependent branching; modes and options differ by masks and zeros.
+
+Draft blocks per decision step (accumulated over the decision's physics ticks; N ships,
+Z zones, T teams; all static):
+
+| Level | Block | Shapes |
+|---|---|---|
+| Outcome | result per team (win/tie/loss one-hot), terminal reason, terminated flag | `(T, 3)`, `()`, `()` |
+| Zone capture | captures completed per zone and team; credit per ship | `(Z, T)`, `(Z, N)` |
+| Zone progress | meter change per zone and team; contribution per ship (presence weight in presence mode, damage dealt to the zone in damage mode) | `(Z, T)`, `(Z, N)` |
+| Deaths | died this step, cause (enemy / friendly / boundary), kill credit share per attacker | `(N,)`, `(N,)`, `(N, N)` |
+| Damage | shield damage dealt, attacker x target | `(N, N)` |
+
+- *Unified progress:* in both capture modes the progress delta is credited to ships in
+  proportion to their contribution; only how contribution is measured differs.
+- *Self-contained blocks:* attribution data a level needs travels in its own block
+  (kill credit shares are computed by the env at death time), so no level reads another
+  level's block.
+- *One model across modes:* if a training batch mixes modes, every block uses the
+  maximum Z (and T) across those modes with an active mask; a mode without zones has
+  all-zero zone blocks.
+- *Cost:* the largest blocks are `(N, N)`: 4,096 entries at 64 ships, negligible.
