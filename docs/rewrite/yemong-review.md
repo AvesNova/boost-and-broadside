@@ -1541,3 +1541,74 @@ An entry 200 points away gets 0.37 of a peer's weight, 600 points away 0.05.
 5. Keep the semi-random rungs (derived from the main scripted agent, so compatible
    with "only the main scripted agent survives")?
 6. Keep the drain (no mid-episode opponent swaps)?
+
+### Outcomes (author, 4b) and expansions
+
+**Decided**
+- **All live rating updates come from experience already being collected** (league
+  games in training envs). The dedicated evaluator is removed.
+- **One pool for every opponent kind:** scripted, semi-random rungs, averaged policy,
+  checkpoints, and possibly self. Hard PFSP `(1-p)^2` rejected: at the start it would
+  put almost all weight on the scripted agent, which wins every game.
+- **Keep the averaged policy** as a pool entry.
+- **Keep the semi-random rungs** (they track early progress).
+
+**2. Are Elo milestones needed during training?** Probably not.
+- *What live games measure:* only live-vs-entry results. Checkpoint ratings still
+  follow, because a snapshot *is* the live policy at the moment it is taken: it
+  starts at the live rating of that moment, and later live-vs-snapshot games refine
+  it. Every entry is linked to every other through the live player's trajectory.
+- *Estimator:* a periodic joint fit (Bradley-Terry over a recent window of games,
+  with the live player as one rating per update or per few updates, stationary
+  entries pinned at the gauge) instead of online Elo chains, which drift. The full
+  history fit after training gives the calibrated ladder and leaderboard.
+- *Data needed:* standard error of a rating at even odds is about 347/sqrt(n) Elo:
+  25 games ±69, 50 ±49, 100 ±35, 400 ±17. Today's league envs finish ~27 rated games
+  per update; a faster JAX env with more envs multiplies that.
+- *Snapshot trigger:* every N updates (time-based), independent of the gauge. Older
+  snapshots thinned (e.g. keep the newest K plus a geometrically spaced history) so
+  the pool stays bounded; only S are loaded at once anyway.
+- Milestones (fixed-height ladder rungs) become a post-training analysis choice.
+
+**3. One pool: the sampling weight.**
+- *Proximity today:* `exp(-|d|/200)`. *PFSP variance* `p(1-p)` from the rating gap is
+  almost the same curve (gap 200: 0.73 vs 0.37 of peak; 400: 0.33 vs 0.14; 600: 0.12 vs
+  0.05): `p(1-p)` is slightly wider. Both give the right early curriculum: at the
+  start the live policy sits near 0, so the low rungs (0.2 at 200, 0.3 at 300)
+  dominate, not scripted at 1000.
+- *Proposal:* `w = p(1-p)` (the information weight: games near even odds carry the
+  most rating information and the most learning signal), optionally skewed toward
+  slightly stronger opponents (`p^a (1-p)^b`, b > a), plus a small uniform floor so
+  every entry keeps getting some games (keeps ratings identified, guards against
+  forgetting old counters).
+- *Self in the pool:* self is always at gap 0, so any proximity weight gives it the
+  maximum. Its share should be a fixed fraction rather than a weight. It is also a
+  different kind of env (both views train). Proposal: self-play share fixed in config,
+  the pool weights decide everything else.
+
+**6. Slots, fusion and swaps: the options.**
+
+*A. How league opponents are computed (static shapes):*
+
+| Option | How | Pros | Cons |
+|---|---|---|---|
+| A1 Fused NN + scripted everywhere | Opponent params stacked `[S, ...]`, one vmapped forward over all league envs; scripted actions also computed for all league envs; each slot's kind selects which action is used | One pool for real: any slot can hold any kind; simplest static shapes; few ops | Waste: NN forward on scripted/rung slots, scripted on NN slots. If BC needs scripted targets on every env anyway (4c), the scripted half is free |
+| A2 Static loop over slots, `lax.cond` on kind | Python-unrolled loop of S small forwards; each slot runs only its kind | No waste if the conditional skips the untaken branch | S times the ops; whether the GPU conditional skips cleanly must be profiled |
+| A3 Separate blocks per kind | Fixed env block for NN slots, another for scripted/rungs | No waste | Kind shares fixed by block sizes: not one pool |
+
+Per-env parameter gathering (any opponent in any env) is ruled out: it copies the
+parameters per env.
+
+*B. How an opponent changes:*
+
+| Option | How | Pros | Cons |
+|---|---|---|---|
+| B1 Drain (today) | New entry applies to each env at its own episode end; the draining slot runs both generations, per-env select | No mid-episode change; ratings clean | Extra generation costs ~1/S; a drain lasts up to an episode (5 min, ~18 updates) |
+| B2 Swap mid-episode at an update boundary | Replace slot params, reset the opponent's carry and belief | Simplest | Opponent changes personality mid-match; those games must be dropped from ratings; with 5-minute episodes swaps must be rare, which lowers diversity |
+| B3 Synchronized episodes per slot | All envs in a slot start together; slots staggered; early finishers idle until the slot's boundary | Exact, no generations | Idle compute on early wins; episode phase correlated within a slot |
+
+*Diversity:* with fused params, more slots cost only parameter memory (the total
+league env count is fixed), so S can be 16-32 instead of 4 if the model is small.
+
+*Proposal:* A1 + B1, S around 16, self-play as its own fixed-share block. Revisit A2
+if profiling shows the wasted forwards matter.
