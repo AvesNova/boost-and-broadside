@@ -1660,3 +1660,64 @@ if profiling shows the wasted forwards matter.
 - **Slots: A1 (fused NN opponents, scripted computed for league envs) + B1 (drain),**
   slot count from a minimum envs-per-slot width. To be **revisited after
   implementation** with profiles.
+
+### Deep dive 4c: behaviour cloning
+
+**Teacher** (`agents/stochastic_scripted.py`, `frontline_strategy.py`): the stochastic
+scripted controller. Memoryless; reads true state of its own team and of enemies its
+team can see (fog respected, no belief). Emits per-factor marginals (power 3, turn 5,
+shoot 2) or their joint (30); per-env persona parameters. BC's target is the joint
+built as the product of the marginals.
+
+**BC run** (`profiles/bc.py`, an overlay on the RL profile):
+- No policy gradient, no league. **The student acts** in both teams (self-play) and the
+  teacher labels the visited states: on-policy imitation (DAgger with the student's
+  own state distribution, no teacher roll-in).
+- Trains alongside: critic (on the student's self-play returns), next-state, density
+  and the other heads; coefficients set from measured gradient shares.
+- Learning rate warm-up to 3e-4, then held; target KL off; stops by reading a plateau
+  in `loss/behavioral_cloning_kl` (500M budget as an upper bound).
+- Entropy bonus stays on while BC trains the actor (the entropy coefficient drops to
+  zero only when nothing trains the actor).
+
+**BC inside RL:** an auxiliary CE to the same teacher, coefficient 2.0, decaying
+linearly with the scripted win rate to zero at 0.45 (500-game window). The averaged
+policy starts accumulating once that cutoff holds. Scripted targets are computed for
+every env every step while the term is active.
+
+**Already decided:** BC and RL separate; plain CE over the 42 joint categories against
+a 42-way teacher distribution; BC uses the same mask as the policy gradient
+(committed decisions only); no Elo or win-rate schedules; train every learner view.
+
+**Findings**
+1. **The teacher does not know the new action space.** It chooses among 5 turn options;
+   the port has 3 stick levels per side (1/3, 2/3, 3/3). Unless the scripted agent is
+   updated, the teacher puts zero mass on the 2/3 level, and BC teaches the policy to
+   avoid exactly the level the design rule makes the best sustained turn.
+2. **The RL-side BC term is gated on scripted win rate**, which no longer exists. It
+   needs a replacement or removal.
+3. **CE to a stochastic teacher already matches the teacher's entropy.** An entropy
+   bonus in a pure BC run only pushes the student to be *more* random than the
+   teacher; it is not needed for stability there.
+4. **BC rollouts are pure self-play**, so BC produces no rating data, and the student
+   never meets the teacher as an opponent.
+5. With both views trained, BC data per env step doubles (the teacher labels all
+   ships anyway).
+
+**Options for RL after BC**
+
+| Option | What | Pros | Cons |
+|---|---|---|---|
+| R0 Pure RL from BC weights | No imitation term | Simplest; no teacher cost | The policy can drift far from the clone early, when the critic is still weak |
+| R1 CE to the scripted teacher, step-based decay | Today's term, decayed on a fixed step schedule | Familiar | Pulls toward a weak teacher; needs scripted on every learner env while active; the decay length is a guess |
+| R2 KL to the frozen BC policy, step-based decay | AlphaStar-style: regularize toward the supervised policy | Pulls toward the clone (which may already beat the teacher), not the teacher; the frozen policy is just another opponent-style forward | Extra forward per learner env while active; decay length still a guess |
+
+**Questions**
+1. Update the scripted agent to the 42-way action space, using the 2/3 level (it must be
+   ported to JAX anyway)?
+2. RL after BC: R0, R1 or R2 (proposal R2, decayed to zero on a step schedule, R0 by
+   setting the weight to zero)?
+3. Let BC rollouts use the opponent pool (scripted and rungs), so BC produces ratings
+   for free and the student also learns states where it faces the teacher?
+4. No entropy bonus in BC runs?
+5. BC stop: read the KL plateau by hand (today), or a fixed budget?
