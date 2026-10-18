@@ -1248,3 +1248,80 @@ truth**, which opens a third option:
 - **Tabled pending proper benchmarks** (decisions.md, tabled item 15). Label source,
   codes, per-type radius, end-of-rollout loss and damage in the outcome are all open
   until they can be measured. Port the heads as they are in the meantime.
+
+## Part 4: training
+
+### Deep dive 4a: rollout loop and `ego_pass`
+
+**Shape of one decision step** (`train/rl/ppo.py` `_collect_rollout`,
+`train/rl/opponents.py` `_collect_primary_step`):
+1. Read pre-step truth (team ids, privileged means, density target).
+2. Scripted agent computes BC targets (and scripted-opponent actions).
+3. **Env step and network forward run concurrently** on two CUDA streams. Possible
+   because of one-decision latency: the env applies the pending command chosen last
+   decision while the network chooses the next one.
+4. Network (`ego_pass`): one batched 2B forward over team 0's raw view and team 1's
+   flipped view (both "self = team 0"), with separate recurrent states and belief
+   trackers per view. League slots get one extra forward each.
+5. Actions merged: team 0 from view 0, team 1 from view 1, then league slots
+   override team 1 in their envs.
+6. Buffer stores **view 0 only**: obs, logprob, values, predictions, density
+   target, shot labels; hidden and belief reset on done; next view composed.
+7. Bookkeeping: staggered truncation at start (random `step_count`, first fragment
+   uncounted), `rollouts_per_update` shards moved to host memory, GAE per shard.
+
+**Which ships each loss sees** (all from the single stored view 0):
+
+| Loss | Ships |
+|---|---|
+| Actor (PPO), BC, entropy | team 0 only (`actor_mask = team_id == 0`) |
+| Critic | all living ships, both teams, valued from team 0's view (outcome column sign-flipped for team 1) |
+| Next-state | every ship with a valid belief (allies and enemies) |
+| Enemy action | team 1 ships |
+| Density, shots | team 0 as observer |
+
+**Findings**
+1. **Team 1's view is computed every step and never trained on.** In self-play envs
+   its actions come from the same live weights, so they are on-policy samples, but
+   no logprob, value or observation is stored for them. The second forward is paid
+   in the rollout; the learning is not had.
+   *Nuance:* training on it is not free data. Learner cost per sample is the same, so
+   storing both views doubles learner work per env step. What it saves is env steps
+   (and the already-paid team 1 forward) per learning sample, and the two views of one
+   match are correlated (zero-sum outcome, mirrored advantages). With a fast JAX env
+   the gain is smaller than "half the experience is wasted" suggests, but it removes
+   the asymmetry: today the critic learns team 1's value only from team 0's view,
+   and team 1's view never shapes the actor.
+2. **Two paradigms.** `shared_pass` (one pass on the raw view, both teams act from
+   it, all ships train) exists alongside `ego_pass`, is incompatible with finite
+   vision, and doubles the code paths (opponent team flags, mask logic). The
+   shipped profile uses `ego_pass`.
+3. **Multi-scale machinery is unused by the shipped profile.** `scales` supports
+   auxiliary scales (other ship counts, own buffers, pure self-play, no density or
+   shot labels); `profiles/rl.py` has one scale.
+4. **Views are hard-coded as two** (`DualBeliefTracker`, `hidden_t1`, `action_t1`,
+   `flip_team_obs`), and "opponent = team 1".
+5. Belief trackers live in the trainer, outside the model (already decided: belief
+   moves into the model's carry).
+
+**Port design (proposal)**
+- **A match produces one view per team; the lineup says which views belong to the
+  learner.** The learner trains on every view its model controls: both views in a
+  self-play match, one in a league or scripted match. N-team ready, and it replaces
+  `ego_pass` / `shared_pass` / team flipping with one rule. Views are always
+  canonical (self = team 0); the model never sees another team's view.
+- **Static shapes via env pools.** Each pool has fixed counts (envs, ships, learner
+  views per env); e.g. a self-play pool (2 learner views per env) and a league pool
+  (1 learner view, opponent params per slot). Pools are concatenated along the
+  batch axis for the learner. This is the same mechanism as the tabled
+  "separate pools with variant rollout lengths", and it subsumes multi-scale
+  training (a pool with a different ship count is another compiled variant).
+- **One jitted step = env step + all controllers' forwards**, scanned over the
+  rollout; the one-decision latency gives the same overlap XLA can schedule.
+- Keep staggered truncation and uncounted seed fragments.
+
+**Questions**
+1. Train on every learner-controlled view (both teams in self-play)?
+2. Drop `shared_pass`?
+3. Env pools as the single mechanism for self-play vs league envs and for multiple
+   ship counts (multi-scale)? Or drop multi-scale for the port since it is unused?
