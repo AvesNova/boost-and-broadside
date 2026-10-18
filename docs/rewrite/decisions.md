@@ -472,10 +472,10 @@ Coupling found in the current code that blocks goal B:
 11. **Human input timing:** humans may act more often than the decision rate; define how
     their inputs map onto decision steps (for other agents' pending-action views and
     for training labels if human games are ever learned from).
-12. **Unfinished from the Yemong review 3c:** single-peaked (unimodal) belief (assumed
-    accepted for the port); code ranges with several ship types (one range covering all
-    types, or per-type); whether the next-state loss keeps covering allies and visible
-    enemies.
+12. ~~Unfinished from the Yemong review 3c~~: decided. Single-peak belief for the port;
+    codes in absolute units with global maximums from the design envelope (arbitrary
+    parameters within reason); next-state loss on allies, visible and hidden enemies,
+    averaged per population.
 13. **Reward weights, zero-sum and the return-scale details:** changed on a branch not
     visible here (recalibrated weights, simple zero-sum env). Revisit with access.
 14. ~~Naming convention~~: decided (ship, team, controller, lineup, view, carry, model /
@@ -508,8 +508,10 @@ including the HL-Gauss, critic, reward-function and naming discussions).
 - [x] Yemong review 3f: counterfactual shot heads (reviewed; design tabled as item 15
       pending benchmarks).
 - [x] Naming convention confirmed; team spirit kept as config, default 0.
-- [ ] Training review: rollout loop (`ego_pass`, team-1 experience not learned from),
-      opponents/league, BC, PPO update mechanics, scales, evaluation.
+- [x] Training review 4a: rollout loop (decided: train every learner view, drop
+      `shared_pass`, drop multi-scale, env pools, env step and forward in parallel).
+- [ ] Training review 4b: opponents and league; then BC, PPO update mechanics,
+      evaluation.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.

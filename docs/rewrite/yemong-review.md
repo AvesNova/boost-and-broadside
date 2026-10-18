@@ -1442,3 +1442,13 @@ be multimodal (per softmax group). The collapse happens in the decode: forecast 
 - *Proposal:* keep all three populations, normalize the loss **per population**
   (mean within allies, visible enemies, hidden enemies, then a weighted sum), and keep
   the per-population diagnostics already logged.
+
+**Outcomes (author, 3c leftovers)**
+- **Single-peak (moment) belief** in the port. Direct code feedback and other belief
+  experiments are post-port.
+- **Code ranges: absolute units with global maximums for every channel**, resources
+  included (not fractions of a type's maximum). Ranges come from the design envelope
+  (ship-card validity bounds), so the model can handle arbitrary parameters within
+  reason, which is the long-term goal.
+- **Next-state loss keeps all three populations** (allies, visible enemies, hidden
+  enemies), each averaged within its population before a weighted sum.
