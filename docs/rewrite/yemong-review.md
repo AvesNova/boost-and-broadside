@@ -1390,3 +1390,55 @@ hidden enemies should have lower-error advantages, which is the critic's whole j
 **Recommendation:** design the seam for it from the start (the critic reads the view's
 features plus an optional privileged summary; values computed in the learner), ship
 the port with the privileged branch **off**, and A/B it with the benchmarks.
+
+**Author:** the privileged pass could reuse the same trunk. **Tabled until after the port**
+(decisions.md, tabled item 16).
+
+*Same trunk, fog-free input (author's variant):* no new module, and the trunk's
+features are already learned. But the trunk is recurrent, so the fog-free pass needs
+its own Griffin carry per match, run over the whole rollout: a full second trunk pass
+(forward for GAE, forward and backward for the critic loss) rather than a small
+feedforward encoder. The shared weights also see an input distribution the actor never
+sees at inference (everything visible), and the value gradient through the fog-free
+pass shapes the weights the actor uses. Both are measurable; neither rules it out.
+
+### 3c revisited: the three unfinished points
+
+**1. Unimodal belief.** The head already outputs a full categorical forecast that can
+be multimodal (per softmax group). The collapse happens in the decode: forecast code
+-> moments (mean, spread) -> re-encoded Gaussian code for the hidden ship's input.
+- *Alternative:* feed the forecast code itself back as the hidden ship's input code
+  (same format as an observed HL-Gauss code, just wider). Keeps multimodality at every
+  level of the nested position code (two coarse cells stay two peaks), and needs no
+  moment round trip (the quadrature/Sheppard corrections exist only for that trip).
+- *Limits either way:* softmax groups are independent marginals, so cross-channel
+  structure (went left <-> velocity left) is lost in both designs.
+- *Risks:* the residual head becomes a repeated multiplicative update
+  (`log p_t + f`) over a long hidden stretch, with no gradient through the loop;
+  sharpening or drift must be watched. Carry grows from ~25 moments to 469 code
+  values per slot (small).
+- *Proposal:* port the moment belief as is; direct code feedback is a post-port
+  experiment.
+
+**2. Code ranges with several ship types.**
+- *Resource channels* (health/shield, power, cooldown, shield delay): code the
+  **fraction of the type's maximum**. Full resolution for every type, ranges never
+  change when types are added or randomized. Needs the type's parameters in the
+  observation (tabled item 9); if enemy types can be hidden, a fraction of an unknown
+  maximum is ambiguous, which is a game-design question for item 9.
+- *Kinematic channels* (position, velocity, attitude, angular velocity, local index):
+  **world units, one global range** set from the ship card's validity bounds (the
+  design envelope), not from the current fleet, so randomized types always fit.
+- *Proposal:* that split.
+
+**3. Next-state loss on allies and visible enemies.**
+- *Visible-enemy forecasts are used:* `advance` replaces every valid slot's belief
+  with the forecast, so on the decision an enemy disappears its belief is the forecast
+  made while it was visible. Training on visible enemies is training exactly the
+  forecast that seeds every hidden stretch. Keep.
+- *Allies:* their next state follows from their known pending command; clean,
+  always-available labels that teach the head the dynamics. Cost: they dominate the
+  loss by count and are easy, which can crowd out the hidden-enemy signal.
+- *Proposal:* keep all three populations, normalize the loss **per population**
+  (mean within allies, visible enemies, hidden enemies, then a weighted sum), and keep
+  the per-population diagnostics already logged.

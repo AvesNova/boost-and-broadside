@@ -486,6 +486,10 @@ Coupling found in the current code that blocks goal B:
     truth (labels every decision, pure env); HL-Gauss trajectory codes; per-type
     collision radius in hits and near-miss scale; end-of-rollout label loss (23% at 128
     steps); damage in the outcome. Port the heads as they are until benchmarked.
+16. **Privileged (fog-free) critic, after the port:** V(h, s) design (view features plus a
+    fog-free summary), either a feedforward encoder or the same trunk on fog-free input
+    (needs its own carry: a full second trunk pass). Values computed in the learner.
+    See the review, 4a discussion.
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 
