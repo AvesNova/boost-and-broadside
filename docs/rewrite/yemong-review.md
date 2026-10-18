@@ -1325,3 +1325,68 @@ truth**, which opens a third option:
 2. Drop `shared_pass`?
 3. Env pools as the single mechanism for self-play vs league envs and for multiple
    ship counts (multi-scale)? Or drop multi-scale for the port since it is unused?
+
+### Outcomes (author, 4a)
+
+- **Train on every view the learner controls** (both teams in self-play, one view in
+  league or scripted matches). The lineup decides.
+- **Drop `shared_pass`.** Views are always canonical (self = team 0).
+- **Drop multi-scale** training. Env pools remain the mechanism for self-play vs league
+  envs.
+- **Requirement: the env step and the network forward still run in parallel.** The
+  one-decision latency makes them independent within a step (the env applies last
+  decision's command while the network picks the next). In JAX, inside one jitted scan
+  step the two have no data dependence, so XLA may overlap them, but that is not
+  guaranteed; overlap must be verified with a profile, and if XLA serializes them the
+  fallback is explicit pipelining (the scan carries the in-flight action; or env and
+  model as two jitted programs dispatched asynchronously).
+
+### Discussion: a privileged (fog-free) critic
+
+**Idea (author):** a second forward without fog of war, used only for the value
+functions.
+
+**Literature.**
+- *Asymmetric actor-critic* (Pinto et al. 2018): critic sees full state, actor sees
+  observations; standard in sim-to-real.
+- *Centralized critics in MARL* (MAPPO, Yu et al. 2022): value from global state,
+  policy decentralized; strong results on SMAC and others.
+- *AlphaStar* (Vinyals et al. 2019): the value function also saw the opponent's
+  information.
+- **Caveat (Baisero & Amato 2022, "Unbiased Asymmetric RL under Partial
+  Observability"):** a critic of the state alone, V(s), gives a *biased* policy
+  gradient in a POMDP; the unbiased form is V(h, s), the agent's history *and* the
+  state. Lyu et al. (2021, 2023) also show centralized critics are not uniformly
+  better (bias/variance trade-offs). So the privileged branch should be added to the
+  agent's own features, not replace them.
+
+**Why it could pay here.** Fog hides ~40% of enemies (visible fraction ~0.58), and
+the outcome and capture levels depend on where they are. Explained variance has
+plateaued around 0.5-0.57 in recent runs (profile comments). A critic that knows the
+hidden enemies should have lower-error advantages, which is the critic's whole job.
+
+**Design that fits what is decided.**
+- **V(h, s):** each value head reads the view's own final token (history, through the
+  shared trunk, gradient flowing as today) concatenated with a privileged summary.
+- **The privileged branch is feedforward:** full state is Markov for the physics, so
+  it needs no Griffin memory; one spatial-attention encoder over unfogged ship, zone
+  and field tokens. Much cheaper than a second trunk pass.
+- **One privileged pass per match, shared by all views:** the state is the same for
+  both teams; each view reads it in its own canonical frame (team relabel only).
+- **Learner-only.** Privileged data is already a learner-only type, so values move out
+  of the rollout: the rollout stores actions and logprobs; the learner runs one
+  pre-pass for values and GAE. The rollout gets cheaper; the controller seam
+  (`step` returns actions only) gets simpler.
+- **Not at inference:** humans and evaluation never need the critic.
+
+**Costs and risks.**
+- One extra feedforward pass per match in the learner (forward for GAE, forward and
+  backward for the critic loss).
+- The critic can lean on the privileged branch and stop shaping the trunk; the
+  history part keeps a gradient path, but the trunk's value-driven shaping may weaken.
+  Measurable (gradient-share diagnostics already exist).
+- The opponent's memory (its carry) is still hidden; full state is not everything.
+
+**Recommendation:** design the seam for it from the start (the critic reads the view's
+features plus an optional privileged summary; values computed in the learner), ship
+the port with the privileged branch **off**, and A/B it with the benchmarks.
