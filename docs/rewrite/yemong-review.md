@@ -805,6 +805,9 @@ construction. It is a cheap mixing matrix in the learner; keeping it as config
 
 "Agent" is avoided in code, except in the JaxMARL adapter where an agent is a team.
 
+**Decided (author):** naming convention as above. Team spirit stays as a config option,
+default 0.
+
 ### Reward function: revisions (author)
 
 - **Capture by damage and capture by presence are one level** (zone progress): same

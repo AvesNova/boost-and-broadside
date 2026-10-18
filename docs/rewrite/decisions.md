@@ -478,7 +478,9 @@ Coupling found in the current code that blocks goal B:
     enemies.
 13. **Reward weights, zero-sum and the return-scale details:** changed on a branch not
     visible here (recalibrated weights, simple zero-sum env). Revisit with access.
-14. **Naming convention** for ship / team / controller / model (see the review, 3d).
+14. ~~Naming convention~~: decided (ship, team, controller, lineup, view, carry, model /
+    params / checkpoint, learner, match / decision step / tick; "agent" only in the JaxMARL
+    adapter, where an agent is a team). See the review, 3d.
 15. **Counterfactual shot labels (review 3f), pending benchmarks:** env ghosts in the
     shared bullet buffer (current decision) vs learner-side re-simulation from stored
     truth (labels every decision, pure env); HL-Gauss trajectory codes; per-type
@@ -501,8 +503,7 @@ including the HL-Gauss, critic, reward-function and naming discussions).
       Poisson head, no clamp, ally/enemy, learner-built targets, k = 0).
 - [x] Yemong review 3f: counterfactual shot heads (reviewed; design tabled as item 15
       pending benchmarks).
-- [ ] Confirm naming convention (draft in the review, 3d) and team spirit (keep as
-      config, default 0?).
+- [x] Naming convention confirmed; team spirit kept as config, default 0.
 - [ ] Training review: rollout loop (`ego_pass`, team-1 experience not learned from),
       opponents/league, BC, PPO update mechanics, scales, evaluation.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
