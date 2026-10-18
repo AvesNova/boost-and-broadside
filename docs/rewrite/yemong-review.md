@@ -1452,3 +1452,92 @@ be multimodal (per softmax group). The collapse happens in the decode: forecast 
   reason, which is the long-term goal.
 - **Next-state loss keeps all three populations** (allies, visible enemies, hidden
   enemies), each averaged within its population before a weighted sum.
+
+### Deep dive 4b: opponents and the league
+
+**Players** (`train/rl/roster.py`):
+- *Live policy* (self-play envs: both teams).
+- *League entries:* frozen checkpoints, the averaged policy, the scripted agent and
+  semi-random rungs (scripted action with probability p per decision, else uniform;
+  default rungs between 0 and 1). The uniform random agent is a rating anchor only,
+  never sampled (it shares the live policy's starting rating and would flood the early
+  league).
+- *Averaged policy:* uniform running mean of the weights of every policy since the
+  BC gate first fired (SWA-style weight average, not an ensemble).
+
+**Layout** (`opponents.py`): the last `league_fraction` of the env batch (0.5) is the
+league block, split into `league_slots` (4) contiguous slots, each one opponent.
+Team 1 is the opponent. Each policy slot costs one extra forward (its own carry and
+belief); scripted slots share one scripted call.
+
+**Replacement.** Once per rollout shard, one slot (round robin) gets a freshly
+sampled opponent. The swap **drains**: each env moves to the new opponent only when
+its own episode ends, so no opponent changes mid-episode; at most one slot drains at
+a time, so forwards are bounded by slots + 1 generations. With 9,000-step episodes
+(5 minutes at 30 Hz) and 512 steps per update per env, a drain takes up to ~18
+updates.
+
+**Sampling:** `w = exp(-|elo_i - live_elo| / 200)` over usable entries (or uniform).
+An entry 200 points away gets 0.37 of a peer's weight, 600 points away 0.05.
+
+**Ratings today** (`elo_eval.py`, `config/live_elo.py`):
+- A *defined* live gauge: random 0, scripted 1000, rung p at 1000 p. Not calibrated;
+  `bnb elo-calibrate` (Bradley-Terry over recorded match counts) owns published
+  numbers.
+- A **dedicated evaluator**: 5 matchup slices x 1,024 envs (live vs anchors, live vs
+  floating checkpoint, live vs scripted, live vs avg, floating vs anchors), stepping
+  every rollout step, online Elo with K = 4, information-weighted anchor assignment.
+  That is 5,120 eval envs against 960 training envs per shard, about 14.6 rated games
+  per update, and tens of seconds per update (measured 44 s at interval 1 on a 4070
+  laptop before the cadence change).
+- *Milestones:* when live Elo crosses the next multiple of 200 (absolute grid), the
+  live policy is snapshotted as the new floating checkpoint (rated by the evaluator),
+  and the previous floating one is frozen (after at least 1,000 games).
+- *Gates on live Elo / win rate:* opponent sampling, milestone snapshots, the BC
+  decay, a high-win-rate trust-region tightening, and when the averaged policy starts.
+
+**Findings**
+1. **The evaluator is a large, separate cost**, and slow: rated games come from
+   5-minute episodes. The league envs already play rated opponents: about 960 x 512
+   / 9,000 ≈ 55 episodes per update, half of them league games (~27), more than the
+   evaluator's 14.6, at no extra cost. (Decided earlier: live pseudo-Elo from natural
+   training games plus periodic batches; this confirms it removes the evaluator.)
+2. **Many controls hang on a slow, noisy signal** (BC decay, trust region, avg start,
+   milestones, sampling). Decided earlier: no Elo-based schedules. That leaves
+   ratings steering only opponent sampling and the leaderboard.
+3. **Snapshots only on Elo milestones:** if live Elo stalls or is noisy, the league
+   either stops getting new opponents or gets spurious ones. Time-based snapshots
+   (AlphaStar-style, every N updates) decouple the league from the gauge.
+4. **Low opponent diversity per batch:** 4 opponents, swapped slowly (one slot per
+   shard, draining over minutes of game time).
+5. **The league is team 1** (two-team, ego_pass) and slot layout is a Python object
+   graph with host-side checks per shard.
+
+**Port design (proposal)**
+- **Lineups and pools.** A league pool of `S` slots, each a contiguous block of envs
+  with one opponent parameter set; opponents' params stacked `[S+1, ...]` and the
+  forward vmapped over the param axis (one compiled forward for all NN opponents; all
+  league checkpoints share the live architecture within a run, since there is no
+  backwards compatibility). A scripted pool separate (different function, no params).
+- **Drain kept:** `S + 1` param sets, each env carries its generation index; the
+  draining slot runs both generations over its block (cost (S+1)/S). No mid-episode
+  opponent change.
+- **Sampling in-graph** from a rating vector with a `fold_in` key (deterministic, as
+  decided).
+- **Ratings from natural games:** live-vs-league results update the live rating
+  against fixed opponent ratings; a new snapshot starts at the live rating;
+  periodic offline batches (checkpoint vs checkpoint, Bradley-Terry) refine the
+  ladder and feed the leaderboard.
+- Fixed `league_fraction` (no schedule).
+
+**Questions**
+1. Remove the dedicated evaluator in favour of natural league games plus periodic
+   batches (confirming the earlier decision)?
+2. Snapshot trigger: fixed interval (proposal) or Elo milestones?
+3. Sampling weight: Elo proximity (today) or PFSP on predicted win probability
+   (`p(1-p)` is close to today's; "hard" `(1-p)^2` focuses on opponents the live
+   policy loses to)?
+4. Keep the averaged policy as a league opponent?
+5. Keep the semi-random rungs (derived from the main scripted agent, so compatible
+   with "only the main scripted agent survives")?
+6. Keep the drain (no mid-episode opponent swaps)?
