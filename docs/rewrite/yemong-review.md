@@ -1754,3 +1754,79 @@ an entropy bonus would only push it above that. Two refinements:
 - A teacher knob shapes it: a temperature on the teacher's logits, or a mix with
   uniform (`(1 - eps) teacher + eps uniform`, the same construction as the semi-random
   rungs). Set it so the clone starts RL at the entropy we want.
+
+### Deep dive 4d: PPO update mechanics
+
+**Batch geometry** (shipped RL profile): logical batch 12.78M tokens = 3,840 envs x
+128 steps x 26 tokens, collected as 4 shards of 960 envs and staged in host memory.
+32 minibatches of 120 envs (whole 128-step sequences, so recurrence is replayed from
+each sequence's stored initial carry), 4 epochs: 128 optimizer steps per update.
+Micro-batches split each minibatch for VRAM with exact gradient accumulation (loss
+denominators summed over the minibatch first).
+
+**Objective.** Clipped surrogate (clip 0.15) on per-ship ratios, masked to committed
+decisions; one advantage per ship (levels mixed and summed), divided by the
+DreamerV3 return scale (EMA of the 5th-95th percentile spread, decay 0.99, floor one
+win), no mean subtraction, no per-minibatch standardisation. Value: per-level
+categorical cross-entropy averaged over levels, coefficient 1.0, no value clipping.
+Entropy coefficient 3e-4. Plus the auxiliary heads (next-state 0.2, enemy action 0.1,
+density 1.0, shots 0.1 each), BC (schedule) and SIGReg (coefficient 0, off).
+
+**Optimizer.** Adam, eps 1e-8 (deliberately not 1e-5: measured, 1e-5 dominated the
+denominator for much of the network), no weight decay. Learning rate: linear warm-up
+1e-7 to 3e-4 over 5M steps, hold to 100M, exponential to 1.5e-4 at 500M, hold.
+Global gradient-norm clip 1.0. Non-finite gradients are scrubbed to zero before the
+step (one bad micro-batch becomes a no-op instead of poisoning Adam's moments).
+
+**Trust region.** Approximate KL averaged over each epoch; if it exceeds `target_kl`
+(0.1) the remaining epochs are skipped. A win-rate gate tightens it to 0.02 once the
+scripted win rate passes 0.8.
+
+**Diagnostics.** Per-term gradient decomposition (each weighted loss differentiated
+separately), actor/critic gradient split (two extra backward passes), clip fire rate,
+explained variance per level, run at a fixed cadence and eagerly (not compiled).
+
+**Findings**
+1. **The win-rate trust-region gate goes** with the other win-rate gates (decided).
+   `target_kl` 0.1 alone is loose: with 4 epochs it rarely binds unless the policy
+   lurches. Whether a constant or a step schedule is right is a tuning question.
+2. **The gradient clip fires on every step.** The logs recorded it firing on every
+   step of run 748, with norms around 100x the limit. With Adam, a constant rescale
+   cancels; a varying one reweights minibatches against each other (each step's
+   gradient is normalised to norm 1). It is acting as a per-step normaliser, not a
+   spike catcher, which also makes the loss coefficients' absolute scale nearly
+   irrelevant and their relative scale the only thing that matters.
+3. **Stale initial carries:** each sequence replays from the carry recorded at
+   collection time, computed by older parameters (by 1-4 epochs and the shard lag).
+   Standard for recurrent PPO and fine at these sizes; R2D2-style burn-in is the known
+   fix if it ever matters.
+4. **Host staging exists for the 8 GB laptop.** The full logical batch does not fit on
+   device, so shards live in pinned host memory and stream back per minibatch.
+5. **The KL early stop syncs to the host once per epoch**, which is cheap and fits the
+   decided thin-Python-loop design.
+6. **SIGReg** (an encoder regulariser) is wired but off (coefficient 0).
+7. **NaN scrubbing hides the cause** of non-finite gradients; it is counted, which
+   is the right minimum.
+
+**Port design (proposal)**
+- **One jitted epoch** (scan over minibatches, inner scan over micro-batches for
+  gradient accumulation); a thin Python loop over epochs that reads the KL and stops.
+  Buffer donated; `memory_analysis()` sizes micro-batches.
+- **On-device buffer by default;** on small GPUs shrink envs or rollout length rather
+  than stream from host. JAX can place arrays in pinned host memory, but it adds
+  complexity; revisit only if the laptop target needs the full batch.
+- **optax chain:** global-norm clip, Adam (eps 1e-8), learning-rate schedule, and
+  `apply_if_finite` (skip the step and count it, instead of scrubbing).
+- **Fixed `target_kl`**, no gates.
+- **Diagnostics as separately jitted functions** on the same batch at a fixed cadence
+  (per-term grads via one `jax.grad` per term, or `jax.vjp` with stacked cotangents).
+- Drop SIGReg unless it has a planned use.
+
+**Questions**
+1. Clip: keep 1.0 as a de facto per-step normaliser, or retune coefficients so the clip
+   fires rarely (10-20%, the target named in the BC profile comments) and acts only on
+   spikes?
+2. Entropy: fixed coefficient (today 3e-4), or an adaptive coefficient that holds a
+   target entropy (SAC-style), consistent with setting entropy through BC targets?
+3. On-device buffer only (shrink the batch on small GPUs), or keep host staging?
+4. Drop SIGReg?
