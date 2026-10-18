@@ -1612,3 +1612,41 @@ league env count is fixed), so S can be 16-32 instead of 4 if the model is small
 
 *Proposal:* A1 + B1, S around 16, self-play as its own fixed-share block. Revisit A2
 if profiling shows the wasted forwards matter.
+
+**Follow-up: model size, slot count, weight noise**
+- *Model size:* about 2M parameters (1.95M recorded in
+  `docs/internal/frontline-overhaul-progress.md` for the K/V trunk; the heads added
+  since put it around 2-3M). About 8-12 MB per parameter set in float32, so 16
+  stacked opponents are ~130-190 MB and 32 are ~260-380 MB. Opponent compute scales
+  with league envs, not with the slot count.
+- *Slot count:* the earlier "16" was a judgement, not derived. What actually bounds it
+  is envs per slot. With league envs E and S slots, each slot has E/S envs and finishes
+  `(E/S) x 512 / 9000` games per update (5-minute episodes):
+
+  | League envs | Slots | Envs per slot | Games per slot per update |
+  |---:|---:|---:|---:|
+  | 480 (today) | 4 | 120 | 6.8 |
+  | 480 | 8 | 60 | 3.4 |
+  | 480 | 16 | 30 | 1.7 |
+  | 2,048 | 16 | 128 | 7.3 |
+  | 4,096 | 32 | 128 | 7.3 |
+
+  Rule: set a minimum envs per slot (e.g. ~100 to 128, for batched-GEMM efficiency
+  and a few finished games per slot per update) and let `S = E / min_width`. The
+  count follows the JAX env budget, which is not known yet.
+- *Noise in `p(1-p)`:* a rating error of ±50 Elo moves the weight by:
+
+  | Gap | `p(1-p)` (range at ±50) | `exp(-gap/200)` (range at ±50) |
+  |---:|---|---|
+  | 0 | 1.00 (0.98-1.00) | 1.00 (0.78-1.00) |
+  | 100 | 0.92 (0.83-0.98) | 0.61 (0.47-0.78) |
+  | 200 | 0.73 (0.62-0.83) | 0.37 (0.29-0.47) |
+  | 400 | 0.33 (0.26-0.42) | 0.14 (0.11-0.17) |
+
+  `p(1-p)` is flat at the peak, so it is *less* sensitive to rating noise than
+  today's weight near even odds. Weights only choose opponents; they enter no
+  gradient. Instability would come from abrupt shifts in the opponent mix, which are
+  already low-pass filtered: slots refresh one at a time and drain over an episode.
+  Further dampers if needed: ratings from a windowed joint fit (not single games), a
+  flattening exponent `(p(1-p))^beta` with beta < 1, the uniform floor, and a cap on
+  any one entry's share.
