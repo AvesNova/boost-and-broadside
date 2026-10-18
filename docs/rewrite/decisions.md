@@ -510,8 +510,11 @@ including the HL-Gauss, critic, reward-function and naming discussions).
 - [x] Naming convention confirmed; team spirit kept as config, default 0.
 - [x] Training review 4a: rollout loop (decided: train every learner view, drop
       `shared_pass`, drop multi-scale, env pools, env step and forward in parallel).
-- [ ] Training review 4b: opponents and league; then BC, PPO update mechanics,
-      evaluation.
+- [x] Training review 4b: opponents and league (decided: no dedicated evaluator, ratings
+      from live league games via periodic joint fit, time-based snapshots, milestones only
+      after training, one pool with p(1-p) + uniform floor, self-play fixed share, avg and
+      rungs kept, A1 + B1 slots revisited after implementation, periodic diagnostics).
+- [ ] Training review 4c: BC; then PPO update mechanics, evaluation.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.

@@ -1650,3 +1650,13 @@ if profiling shows the wasted forwards matter.
   Further dampers if needed: ratings from a windowed joint fit (not single games), a
   flattening exponent `(p(1-p))^beta` with beta < 1, the uniform floor, and a cap on
   any one entry's share.
+
+**Decided (author, 4b follow-up)**
+- **Snapshots every N updates; Elo milestones only after training.** Ratings during
+  training come from a periodic joint fit over live league games.
+- **Periodic diagnostic steps stay** during training (gradient norms, gradient
+  decomposition and similar), on their own fixed cadence.
+- **Sampling weight `p(1-p)` with a uniform floor; self-play is a fixed share.**
+- **Slots: A1 (fused NN opponents, scripted computed for league envs) + B1 (drain),**
+  slot count from a minimum envs-per-slot width. To be **revisited after
+  implementation** with profiles.
