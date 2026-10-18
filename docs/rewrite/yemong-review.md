@@ -1912,3 +1912,62 @@ or drifts in practice.
 **Decided (author, 4d questions):** wide envs with streaming as described; burn-in
 diagnostic added to the post-implementation TODO (decisions.md), no burn-in until it
 shows a problem; non-finite handling as described; entropy E1 (fixed coefficient).
+
+### Deep dive 4e: evaluation
+
+**What exists after training** (`modes/`, `evaluation/`, `train/rl/bradley_terry.py`):
+- `elo-calibrate`: an adaptive tournament among the run's stationary players (frozen
+  checkpoints, scripted, rungs, random) until every rating reaches a target standard
+  error; games allocated per batch by A-optimal value (Fisher information), each pair
+  split evenly across team roles so side advantage cancels. Then each update's stored
+  live and averaged-policy match record is replayed against those now-known ratings
+  to give a calibrated training curve.
+- Bradley-Terry by maximum likelihood (MM iteration), draws scored as half a win
+  (no draw model: measured draws track absolute level, not rating gap, which
+  Davidson / Rao-Kupper cannot express). Reported ratings shifted so scripted reads
+  1000.
+- `elo-scale`: the same tournament per fleet size (1v1 to 64v64). `semi-random`:
+  measures the rung ladder per profile.
+- Artifacts persist the raw win/tie matrices, so any refit (`--from-artifact`) needs
+  no replay; figures are rendered from artifacts, never during the run.
+- Policies are sampled stochastically in evaluation, as in training.
+- Non-rating diagnostics: next-state evaluation, belief and density audits, feature
+  statistics, noise calibration.
+
+**How it fits the decisions so far.** The in-training record changes shape but not
+kind: per update, live-vs-entry W/T/L counts from league games (instead of from a
+dedicated evaluator). That is exactly what `elo-calibrate` already replays. Time-based
+snapshots replace milestone checkpoints as the stationary set; fixed-height
+milestones, if wanted, are picked from the calibrated curve afterwards.
+
+**Findings**
+1. The offline tooling is sound and is the right backbone (MLE, information-based
+   allocation, role-balanced pairs, persisted raw matrices). Little to change beyond
+   the port.
+2. **Ratings are only comparable within one game definition:** physics, rules, mode,
+   fleet size and observation contract. `elo-scale` already treats fleet size as a
+   separate tournament; modes and game versions need the same treatment.
+3. There is no leaderboard yet (goal B).
+
+**Port design (proposal)**
+- **Keep the offline pipeline** (BT, A-optimal allocation, role balance, half-win
+  draws, artifacts with raw matrices), ported onto the JAX match engine: a tournament
+  batch is a set of env pools with stacked controller params, like league slots.
+- **In-training record:** per update, live (and averaged) vs entry W/T/L counts with
+  the entry's id, written alongside the checkpoint; the periodic in-run joint fit
+  (4b) reads the same records.
+- **Leaderboard** keyed by *(game version, mode, fleet size)*. Anchors: scripted
+  pinned at 1000 plus the rungs, in every key. An entry is any controller behind the
+  controller interface (a Yemong checkpoint, another model, scripted variants;
+  humans later). Adding an entry runs an adaptive batch against the existing field
+  and refits from all persisted matrices. A game-version bump starts new keys rather
+  than mixing results.
+- **Diagnostics cadence:** one fixed interval (today `histogram_interval` = 10
+  updates) for gradient decomposition, actor/critic split, histograms and the
+  post-implementation checks (carry staleness); each a separately jitted function on
+  the current batch.
+
+**Questions**
+1. Keep the offline calibration pipeline as the evaluation backbone?
+2. Leaderboard keyed by game version x mode x fleet size, scripted anchored at 1000?
+3. Diagnostics every 10 updates as the default cadence?
