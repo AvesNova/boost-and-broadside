@@ -1830,3 +1830,81 @@ explained variance per level, run at a fixed cadence and eagerly (not compiled).
    target entropy (SAC-style), consistent with setting entropy through BC targets?
 3. On-device buffer only (shrink the batch on small GPUs), or keep host staging?
 4. Drop SIGReg?
+
+### Outcomes (author, 4d) and expansions
+
+**Decided / tabled**
+- **Clip and loss-weight retuning: tabled** (done on another branch, item 13's
+  territory).
+- **SIGReg dropped.**
+- **Non-finite gradients are dealt with, not hidden** (below).
+- **Keep a host buffer; never shrink envs or rollout length to fit VRAM** (small
+  batches measurably hurt peak ratings).
+
+**Sharding: today's shards are already along time.** The 4 shards are the *same* 960
+envs playing 4 consecutive 128-step rollouts (3,194,880 tokens / (128 x 26) = 960;
+12,779,520 / 3,194,880 = 4). Each shard runs GAE on device with its own bootstrap,
+then is copied **synchronously** to pageable host memory before the next shard starts.
+960 is set by the device buffer that holds one shard.
+
+**The author's proposal: wide envs, stream steps out as they are produced.** E.g.
+3,840 envs x 128 steps (same tokens per update), streamed to host in chunks of n steps
+while the next n are collected. Sound; it buys a 4x wider env batch (better GPU
+utilisation per step) and 128 instead of 512 sequential steps per update. The points
+to get right:
+1. *GAE runs backward through time*, so it cannot finish per chunk. Keep the small
+   per-step arrays on device for the whole rollout (rewards, values, dones, actions,
+   logprobs, masks: ~100 MB at 3,840 x 128 x 10 ships x 5 levels in float32) and stream
+   only the observations, which are the bulk. GAE and the return scale then run on
+   device after the rollout as today.
+2. *Minibatches need whole 128-step sequences for a subset of envs*, so the host buffer
+   must be laid out (or gathered) per minibatch; the learner prefetches minibatch k+1
+   host->device while it trains on k (double buffering).
+3. *Bandwidth is not the bottleneck:* at 0.5-2 KB per token, 12.8M tokens is 6-25 GB
+   per epoch; PCIe at ~12-25 GB/s moves that in 0.3-2 s against an epoch measured at
+   ~19 s today. Host RAM must hold one update (6-25 GB).
+4. *JAX mechanics:* transfers dispatch asynchronously; device->host via
+   `copy_to_host_async` or a background thread, host->device via `device_put` one
+   minibatch ahead; pinned host memory (`memory_kind="pinned_host"`) is an
+   optimisation, not a requirement. Values are identical, so determinism is unaffected.
+5. *One code path:* residency is a config (`device` on large GPUs, `host` streaming on
+   small ones).
+
+**Burn-in (explained).** A training sequence restarts from the recurrent carry stored
+when it was collected. The parameters have since changed (by the epochs so far), so
+the carry the *current* network would have built for the same history differs from
+the stored one: a "stale" carry. R2D2 (Kapturowski et al. 2019) found this hurts
+recurrent replay and added **burn-in**: replay the first k steps of each sequence
+without gradient to let the carry adjust under current parameters, and train only on
+the rest. For PPO the staleness is small (all shards share the collection parameters,
+and the trust region bounds how far they move within an update), so it is likely
+minor here. *How to know:* for a sample of sequences, run the current network from (a)
+the stored carry and (b) a carry rebuilt under current parameters from k steps
+earlier (or the episode start), then plot the policy KL and value difference between
+(a) and (b) against the step index. Large and slowly decaying = burn-in would help;
+near zero = it does not matter. Cheap enough to run at the diagnostic cadence.
+
+**Non-finite gradients: dealt with, not hidden.**
+- *Detect:* check every loss term for finiteness (cheap, already computed) and the
+  gradient norm; per-term finiteness says which head produced it.
+- *On detection:* skip the step (`optax.apply_if_finite` semantics), count it, and
+  **dump** the micro-batch, parameters, optimizer state and RNG keys so the step
+  replays offline (decided earlier: replay the last updates to reproduce crashes).
+  Abort the run if skips exceed a budget (e.g. N in M updates).
+- *Debug:* replay with `jax_debug_nans`, which re-runs op by op and reports the
+  first operation that produced the NaN.
+- *Prevent:* losses in float32; safe forms for sqrt, log, division and norms at zero
+  (the `where` double-guard pattern for gradients).
+
+**Entropy: the options.**
+
+| Option | How | Pros | Cons |
+|---|---|---|---|
+| E1 Fixed coefficient (today, 3e-4) | Bonus `eta x H`; advantages divided by the DreamerV3 return scale | The pairing DreamerV3 tested: with return normalisation and a floor, one fixed eta worked across domains; simple | Effective pressure drifts as the return scale and advantage mix change; no direct control of entropy |
+| E2 Adaptive coefficient to a target entropy | SAC-style: `log eta` updated by `H_target - H` each update | Holds average entropy where we want it; consistent with choosing the start entropy through BC targets | Needs a target (max for 42 actions is ln 42 = 3.74 nats); constrains the average only, so it can force randomness where the policy should be decisive; can fight learning if set high |
+| E3 Target schedule | E2 with a target that decreases over training | Explicit exploration-to-exploitation curve | One more schedule to choose |
+| E4 No bonus | Rely on BC's starting entropy and PPO | Nothing to tune | Self-play policies can collapse early |
+
+*Proposal:* keep E1 (it is the tested DreamerV3 pairing with this normaliser) and
+log entropy against the BC starting entropy; add E2 as an option if entropy collapses
+or drifts in practice.
