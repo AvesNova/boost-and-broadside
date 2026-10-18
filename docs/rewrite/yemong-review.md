@@ -1908,3 +1908,7 @@ near zero = it does not matter. Cheap enough to run at the diagnostic cadence.
 *Proposal:* keep E1 (it is the tested DreamerV3 pairing with this normaliser) and
 log entropy against the BC starting entropy; add E2 as an option if entropy collapses
 or drifts in practice.
+
+**Decided (author, 4d questions):** wide envs with streaming as described; burn-in
+diagnostic added to the post-implementation TODO (decisions.md), no burn-in until it
+shows a problem; non-finite handling as described; entropy E1 (fixed coefficient).

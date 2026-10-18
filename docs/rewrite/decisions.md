@@ -493,6 +493,19 @@ Coupling found in the current code that blocks goal B:
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 
+## Post-implementation TODO
+
+Checks and revisits deliberately deferred until the JAX port runs.
+
+- [ ] Carry-staleness diagnostic (burn-in check, review 4d): policy KL and value gap
+      between stored and rebuilt carries against step index.
+- [ ] League slots: revisit fused opponents + drain (A1 + B1) and the slot count with
+      profiles (review 4b).
+- [ ] Verify the env step and network forward overlap in the profile (review 4a).
+- [ ] Shot-label design benchmarks (tabled item 15).
+- [ ] Privileged critic experiment (tabled item 16).
+- [ ] Belief experiments, e.g. direct code feedback (review 3c).
+
 ## Next steps (resume point)
 
 Design discussion is on branch `jax-rewrite/design`. Documents:
@@ -517,7 +530,13 @@ including the HL-Gauss, critic, reward-function and naming discussions).
 - [x] Training review 4c: BC (decided: scripted agent in JAX with 42 actions, BC alone then
       natural RL from BC weights, BC rollouts use the pool, entropy through teacher targets,
       no fixed BC cutoff yet).
-- [ ] Training review 4d: PPO update mechanics; then evaluation.
+- [x] Training review 4d: PPO update mechanics (decided: wide envs with observation chunks
+      streamed to host while the next chunk collects, small per-step arrays and GAE on
+      device, buffer residency as config; non-finite steps skipped, counted, dumped for
+      replay, abort on a budget; entropy E1 fixed coefficient; SIGReg dropped; clip and
+      weight retuning tabled to the other branch).
+- [ ] Evaluation: what is left after 4b (leaderboard, offline Bradley-Terry fit,
+      diagnostics cadence).
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.
