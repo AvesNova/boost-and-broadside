@@ -1666,7 +1666,7 @@ if profiling shows the wasted forwards matter.
 **Teacher** (`agents/stochastic_scripted.py`, `frontline_strategy.py`): the stochastic
 scripted controller. Memoryless; reads true state of its own team and of enemies its
 team can see (fog respected, no belief). Emits per-factor marginals (power 3, turn 5,
-shoot 2) or their joint (30); per-env persona parameters. BC's target is the joint
+shoot 2) or their joint (30); one configuration for every env in training. BC's target is the joint
 built as the product of the marginals.
 
 **BC run** (`profiles/bc.py`, an overlay on the RL profile):
@@ -1743,9 +1743,14 @@ a 42-way teacher distribution; BC uses the same mask as the policy gradient
 toward the teacher's distribution, so the clone's entropy is set by the teacher, and
 an entropy bonus would only push it above that. Two refinements:
 - The student's entropy settles at `H(teacher action | what the student knows)`, which
-  is at least the teacher's own entropy: the student cannot see the teacher's per-env
-  persona parameters, so it predicts a mixture over personas. Measure both (logged
-  today as the BC KL and the scripted entropy).
+  is at least the teacher's own entropy. **Correction:** training uses one teacher
+  configuration (`StochasticAgentConfig()` defaults) for every env; the per-env
+  configurations (`BatchedFrontlineScriptedAgent`) exist only in the tournament's
+  configuration search. The teacher is memoryless and reads visible truth the student
+  also sees, so a capable student can match the teacher's entropy closely; any excess
+  comes from what the student cannot reconstruct. Measure both (logged today as the BC
+  KL and the scripted entropy).
+- `StochasticAgentConfig.prob_offset` (0.1) is defined but never read: dead config.
 - A teacher knob shapes it: a temperature on the teacher's logits, or a mix with
   uniform (`(1 - eps) teacher + eps uniform`, the same construction as the semi-random
   rungs). Set it so the clone starts RL at the entropy we want.
