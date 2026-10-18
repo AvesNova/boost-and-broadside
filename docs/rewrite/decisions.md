@@ -479,6 +479,11 @@ Coupling found in the current code that blocks goal B:
 13. **Reward weights, zero-sum and the return-scale details:** changed on a branch not
     visible here (recalibrated weights, simple zero-sum env). Revisit with access.
 14. **Naming convention** for ship / team / controller / model (see the review, 3d).
+15. **Counterfactual shot labels (review 3f), pending benchmarks:** env ghosts in the
+    shared bullet buffer (current decision) vs learner-side re-simulation from stored
+    truth (labels every decision, pure env); HL-Gauss trajectory codes; per-type
+    collision radius in hits and near-miss scale; end-of-rollout label loss (23% at 128
+    steps); damage in the outcome. Port the heads as they are until benchmarked.
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 
@@ -494,7 +499,8 @@ including the HL-Gauss, critic, reward-function and naming discussions).
       next-state/belief, critic).
 - [x] Yemong review 3e: hex density head (decided: HL-Gauss, 367-cell disc, 2 sigma buffer,
       Poisson head, no clamp, ally/enemy, learner-built targets, k = 0).
-- [ ] Yemong review 3f: counterfactual shot heads.
+- [x] Yemong review 3f: counterfactual shot heads (reviewed; design tabled as item 15
+      pending benchmarks).
 - [ ] Confirm naming convention (draft in the review, 3d) and team spirit (keep as
       config, default 0?).
 - [ ] Training review: rollout loop (`ego_pass`, team-1 experience not learned from),

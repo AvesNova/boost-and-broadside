@@ -1239,3 +1239,9 @@ truth**, which opens a third option:
 4. Accept the end-of-rollout loss (23% at 128 steps) for the single-rollout-length
    port?
 5. Leave damage out of the outcome for now?
+
+### Outcomes (author, 3f)
+
+- **Tabled pending proper benchmarks** (decisions.md, tabled item 15). Label source,
+  codes, per-type radius, end-of-rollout loss and damage in the outcome are all open
+  until they can be measured. Port the heads as they are in the meantime.
