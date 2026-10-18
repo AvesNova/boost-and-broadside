@@ -1721,3 +1721,31 @@ a 42-way teacher distribution; BC uses the same mask as the policy gradient
    for free and the student also learns states where it faces the teacher?
 4. No entropy bonus in BC runs?
 5. BC stop: read the KL plateau by hand (today), or a fixed budget?
+
+### Outcomes (author, 4c)
+
+- **Scripted agent rewritten in JAX** for the 42-way action space (uses all three stick
+  levels). One pure function of state and team visibility serves as league opponent,
+  semi-random rungs and BC teacher.
+- **No joint BC + RL paradigm.** BC runs alone; RL starts from BC weights with no
+  imitation term ("natural" first). A KL term toward the frozen BC policy at the start
+  of RL is the fallback only if natural RL proves unstable. The averaged policy then
+  starts with RL (it no longer waits for a BC cutoff).
+- **BC rollouts use the opponent pool** (scripted, rungs; the student plays the learner
+  views, the teacher labels them). Ratings come for free during BC, and BC and RL
+  share one rollout structure.
+- **Entropy through the targets, not a bonus.** No entropy bonus in BC; the teacher's
+  distribution is shaped to the entropy we want the clone to start RL with (see below).
+- **BC stop: no fixed cutoff** until there is calibrated experience. Stopped by hand on
+  the KL plateau, with the pool ratings as a second signal.
+
+**Entropy via the targets.** Cross-entropy to a stochastic teacher drives the student
+toward the teacher's distribution, so the clone's entropy is set by the teacher, and
+an entropy bonus would only push it above that. Two refinements:
+- The student's entropy settles at `H(teacher action | what the student knows)`, which
+  is at least the teacher's own entropy: the student cannot see the teacher's per-env
+  persona parameters, so it predicts a mixture over personas. Measure both (logged
+  today as the BC KL and the scripted entropy).
+- A teacher knob shapes it: a temperature on the teacher's logits, or a mix with
+  uniform (`(1 - eps) teacher + eps uniform`, the same construction as the semi-random
+  rungs). Set it so the clone starts RL at the entropy we want.
