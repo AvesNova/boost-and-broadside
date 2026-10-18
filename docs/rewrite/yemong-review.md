@@ -1971,3 +1971,18 @@ milestones, if wanted, are picked from the calibrated curve afterwards.
 1. Keep the offline calibration pipeline as the evaluation backbone?
 2. Leaderboard keyed by game version x mode x fleet size, scripted anchored at 1000?
 3. Diagnostics every 10 updates as the default cadence?
+
+### Outcomes (author, 4e)
+
+- **Evaluation pipeline kept, ported where it touches torch.** Framework-free and kept
+  as is: the Bradley-Terry fit and A-optimal allocation (`bradley_terry.py`, numpy),
+  `elo_calibrate.py` orchestration, `elo_calibrate_history.py`, `figures.py`,
+  `run_catalog.py`, `subjects.py`, `sizes.py`, the artifact store. Torch-bound, rewritten
+  on the JAX match engine: `evaluation/{tournament,match,agents,environment,next_state}.py`,
+  `modes/{elo_scale,semi_random_tournament,capture,crossover,feature_stats,
+  noise_calibration,ar_report,interactive}.py`, and `artifacts/provenance.py` (one torch
+  import to check).
+- **Leaderboard keyed by game version x mode x fleet size**, scripted anchored at 1000.
+- **Diagnostics every 10 updates** by default.
+- **Diagnostics audit** requested: drop, add, rename, rearrange. Inventory and first
+  verdicts in `docs/rewrite/diagnostics.md`.
