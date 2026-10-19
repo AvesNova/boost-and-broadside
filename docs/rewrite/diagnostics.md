@@ -38,3 +38,38 @@ carry-staleness check (post-implementation TODO); per-view win rate and actor
 share; pool composition and per-entry game counts (4b); HL-Gauss support use for
 every code; density deviance explained (3e); timing breakdown including stream
 stalls (4d); league drain progress.
+
+## Group 1: histograms
+
+**What exists** (`ppo.py` `_update_epochs`, logged by `logging.py`): every
+`histogram_interval` (10) updates, from the **last primary minibatch of the last
+epoch** (1/32 of the batch), alive ships only:
+- `hist/logprob`: log-probability of the taken action under the current policy.
+- `hist/returns/{level}`: the lambda-return targets per reward level (one W&B
+  histogram per level).
+The same interval also gates the actor/critic gradient-split measurement
+(`measure_split = record_histograms and not diagnose_update`), an unrelated
+coupling.
+
+**Assessment**
+- `hist/logprob`: its mean is (minus) the entropy already logged per factor. What a
+  histogram adds is shape, e.g. many near-certain decisions plus a random tail. That is
+  better read as scalars: per-decision entropy quantiles (p10, p50, p90) and the share
+  of near-deterministic decisions (max probability > 0.9). Scalars plot as lines over
+  training; histograms in W&B are hard to compare across time. **Proposal: drop,
+  replace with entropy quantiles.**
+- `hist/returns/{level}`: what matters for the categorical critic is whether targets
+  fit the code's range and how spread they are per level. **Proposal: replace with
+  scalars:** return p5/p50/p95 per level (the summed return's p5/p95 is already logged
+  by the normaliser) and HL-Gauss support use per level (share of target mass in the
+  padding bins or clipped at the edge).
+- Raw arrays for offline plots: optional dump of the sampled minibatch's returns,
+  advantages and log-probabilities to the run's artifact folder at a low cadence (for
+  example every 100 updates), not to W&B.
+- **Decouple** the actor/critic split from the histogram flag; everything diagnostic
+  runs on the one diagnostics cadence (10 updates).
+
+**Candidate addition: action usage.** Share of each action factor (power 3, turn 7,
+shoot 2: 12 scalars) among committed learner decisions, every update (cheap: a
+count). It is the direct check that the new 2/3 stick level is used at all, and it
+shows drift in style (boost share, shooting rate) over training.
