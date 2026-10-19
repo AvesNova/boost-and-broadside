@@ -151,6 +151,52 @@ with the author.**
 | J2 | Drain progress | Are retiring entries leaving cleanly? | decided (candidate) | U |
 | J3 | Entropy of the opponent-sampling distribution | Is sampling collapsing onto a few entries (the p(1-p) noise concern)? | missing | U |
 
+### Checklist outcomes (author)
+
+1. Adopt every missing and partial entry; T entries become tests, not plots.
+2. H1 replays: state trajectories of one env from the existing pool every N updates,
+   readable by the current viewer.
+3. G4 per mode: short list only (win rate, rating, episode end reasons).
+4. Open: warning triggers and a live dashboard (proposal below).
+
+### Proposal: warning triggers and a watch dashboard
+
+**Feasible, and cheap.** Every scalar is already on the host after the one readback
+per update, so rules run in Python on numbers we already have: no extra sync, no
+device work. Rule state (running means, peaks, cooldowns) is a few floats, saved in
+the checkpoint so resume does not re-arm everything.
+
+**Rule kinds**
+- *Invariant:* the value has a known correct range, no calibration needed (skipped
+  step, recompile after warm-up, C4 mismatch above ~0, memory above 90% of budget,
+  support clipping).
+- *Anomaly:* compared with the run's own history: z-score against an EMA mean and
+  variance, or a drop from the running peak. No absolute threshold to choose before
+  we have calibrated runs.
+- *Trend:* a slope over a window (parameter norm growth, dormant share rising,
+  reward rising while rating is flat).
+
+**Severity**
+- *Alert:* flag plus `wandb.alert` (email/Slack through W&B), rate-limited per rule.
+- *Warning:* flag only, visible on the dashboard.
+
+**Against alert fatigue:** warm-up suppression (no rule fires in the first N
+updates), hysteresis (must hold k consecutive updates), per-rule cooldown, few
+alert-level rules. Thresholds get tuned after the first runs (post-implementation
+TODO).
+
+**Outputs**
+- `alerts/{rule}`: 0/1 per update, so a flag lines up in time with its plot.
+- `alerts/active`: count of active flags, the one number to glance at.
+- A W&B table of fired events (update, rule, value, threshold, which plot to open).
+
+**Dashboard:** defined in code (W&B's `wandb-workspaces` package) and versioned in
+the repo, so every run opens with the same layout. Sections, top to bottom:
+Alerts; Strength (rating and SE, pool scores); Health (throughput, time breakdown,
+skipped steps, recompiles, memory); Policy (entropy, KL, clip, C4); Value (EV, bias,
+support use); then every other group in collapsed sections. Fallback if that
+package's API proves unstable: a saved workspace made once by hand.
+
 ## Group 1: histograms
 
 **What exists** (`ppo.py` `_update_epochs`, logged by `logging.py`): every
