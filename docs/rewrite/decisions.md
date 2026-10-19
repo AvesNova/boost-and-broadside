@@ -538,10 +538,11 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
 - [x] Evaluation 4e (decided: offline BT pipeline kept, torch parts rewritten on the JAX
       match engine; leaderboard keyed by game version x mode x fleet size, scripted at
       1000; diagnostics every 10 updates).
-- [ ] **Diagnostics audit (in progress, `docs/rewrite/diagnostics.md`):** next step is a
-      generic checklist of diagnostics any BC/RL project needs, then audit today's
-      groups against it with the lens "purpose / what it diagnoses". Rule: avoid host
-      syncs. Group 1 (histograms) drafted, its three questions still open.
+- [ ] **Diagnostics audit (in progress, `docs/rewrite/diagnostics.md`):** generic BC/RL
+      checklist drafted (sections A-J, status and cost per entry), awaiting the
+      author's review of the missing items; then audit today's groups against it with
+      the lens "purpose / what it diagnoses". Rule: avoid host syncs. Group 1
+      (histograms) drafted, its three questions still open.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.

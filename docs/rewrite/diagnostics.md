@@ -39,6 +39,118 @@ share; pool composition and per-entry game counts (4b); HL-Gauss support use for
 every code; density deviance explained (3e); timing breakdown including stream
 stalls (4d); league drain progress.
 
+## Generic checklist (BC and RL)
+
+What any BC or RL project needs, independent of today's metrics. Each entry names the
+question it answers. **Status:** have (passes), partial, missing, decided (already
+settled in an earlier part). **Cost:** U = per update, on device, read back with the
+update's one sync; C = diagnostics cadence (10 updates); T = a test, not a plot;
+O = offline or low cadence, off the critical path. Status: **proposed, to go through
+with the author.**
+
+### A. Run health and throughput
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| A1 | Skipped (non-finite) steps: count, offending term, dump path | Is the run numerically sound, and where did it break? | partial (`train/nonfinite_grad_fraction`; 4d decided count + dump) | U |
+| A2 | Env steps/s, tokens/s | Is the run as fast as it should be? | have | U |
+| A3 | Time breakdown: rollout, learner, stream stall, logging | Where does wall clock go; is the stream keeping up? | missing (candidate) | U |
+| A4 | Device memory: compiled peak vs budget | How close are we to OOM; did a change grow memory? | missing (`vram_probe` is a separate tool) | free, at compile |
+| A5 | Recompile count after warm-up | Did a shape or Python value leak into a trace and silently recompile? | missing (JAX-specific) | U, host counter |
+| A6 | Host syncs per update | Did someone add a sync on the hot path? | missing | T |
+| A7 | Progress counters | Where are we in the run? | have | U |
+| A8 | Same seed gives bitwise-same first updates | Is the run reproducible, so A/B results mean something? | missing | T |
+| A9 | Checkpoint round trip: resume equals uninterrupted | Does resuming change the run (lost optimizer state, keys, pool)? | missing | T |
+
+### B. Optimisation
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| B1 | Loss per term, raw and weighted | Is each objective going down, and which one dominates? | have | U |
+| B2 | Global grad norm (pre-clip), clip fire rate | Are gradients exploding or always clipped? | have | U |
+| B3 | Per-term gradient norms, shares, conflicts | Which term drives the trunk; do terms fight? | have (`grad_*`) | C |
+| B4 | Parameter norm per module | Are weights growing without bound (a known cause of lost plasticity)? | missing | U |
+| B5 | Update-to-parameter ratio per module, ‖Δθ‖/‖θ‖ | Is the effective step size sane per layer; is a module frozen or too hot? | missing | U |
+| B6 | Dormant-unit share and activation RMS per block | Are units dying or saturating over a long run (plasticity loss)? | missing | C |
+| B7 | Schedule values | What were LR, entropy coefficient etc. at this point? | have | U |
+
+### C. Data and inputs
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| C1 | Observation feature ranges: mean, std, share at clip limits, per feature | Are inputs in range; did a physics or encoding change break normalisation? | missing | C |
+| C2 | Reward per term: scale and share | Which reward term drives learning; is one term swamping the rest? | have (`reward/event_share`, `episode/reward_*`) | U |
+| C3 | Episode end reasons: win, loss, draw, time limit | Are games decided or timing out; is bootstrapping at truncation exercised? | partial (no time-limit share) | U |
+| C4 | Behaviour vs learner mismatch: KL and ratio between stored and recomputed log-probs, first minibatch of epoch 0, before any step | Does the learner see the same policy that acted (stale carry, dtype, feature drift)? Should be ~0. | missing (ratio is only averaged over all epochs); subsumes the carry-staleness TODO | U |
+| C5 | Sample composition: learner tokens per view, mode, opponent kind | Is the batch made of what we think it is? | partial (pool shares decided, 4b) | U |
+| C6 | Label validity: share of valid targets per auxiliary head | Are delayed labels (shots, 29 ticks) and rollout-edge masks leaving enough data? | partial (`seat/*` only) | U |
+
+### D. Policy
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| D1 | Entropy per factor and joint | Is exploration collapsing or stuck high? | partial (joint missing) | U |
+| D2 | Entropy quantiles, near-certain share | Is the policy decisive in some states and random in others? | missing (group 1 proposal) | U |
+| D3 | Action usage per factor | Are all actions used (new stick level); is the style drifting? | missing (group 1 proposal) | U |
+| D4 | Action switch rate (own action changes step to step) | Is the policy jittery? Bears on goal A (fun, human-like opponents). | missing | U |
+| D5 | KL, clip fraction, ratio, epochs completed | Is each update the size we intend? | have | U |
+| D6 | Advantage mean, std, share clipped by the normaliser | Is the actor's learning signal well scaled? | partial (std only) | U |
+
+### E. Value
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| E1 | Explained variance per level | Does the critic predict returns better than a constant? | have | U |
+| E2 | Value bias per level, mean(prediction − target) | Is the critic systematically over- or under-estimating? | partial (both means logged, not the difference) | U |
+| E3 | Support use per code (mass in padding bins or clipped) | Do targets fit the categorical range? | missing (candidate) | U |
+| E4 | Outcome calibration | Are win probabilities honest? | have | U |
+| E5 | Return normaliser scale | Is the normaliser stable? | have | U |
+
+### F. Auxiliary heads and representation
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| F1 | Each auxiliary head vs its trivial baseline | Does the head learn anything beyond persistence or a prior? | have for next state and enemy action; decided for density (3e); partial for shots | U |
+| F2 | Effective rank of trunk features | Is the representation collapsing? With SIGReg dropped, nothing else watches this. | missing | C |
+| F3 | Belief error, visible vs hidden | Does the model track what it cannot see? | have | U |
+
+### G. Performance
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| G1 | Live rating with standard error | Is the agent getting stronger, and how sure are we? | decided (4b, joint fit) | U |
+| G2 | Score per pool entry kind | Against whom is it improving or losing? | decided (4b) | U |
+| G3 | Score vs past checkpoints over time | Is it forgetting how to beat old strategies (cycling)? | partial (match records exist; no plot) | C |
+| G4 | Performance per game mode and map | Does one mode lag or regress? | missing | U |
+| G5 | Reward trend vs rating trend | Is reward rising without strength rising (reward hacking)? | derived from G1 and C2 | — |
+| G6 | Seed variance | Is a difference between runs real? | process (two seeds for decisions) | O |
+
+### H. Behaviour
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| H1 | Replays: recorded games at low cadence, viewable | What does the agent actually do? Most exploits and bugs are found by watching. | missing | O |
+| H2 | Game analytics (fog, physics, frontline) | How is the game being played in aggregate? | have | U |
+| H3 | Degenerate-strategy detectors (edge camping, never shooting, ...) | Has it found a cheap exploit? | partial (via H2) | U |
+
+### I. BC phase (BC is its own phase in the rewrite, 4c)
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| I1 | Train and held-out loss, and their gap | Is the student learning the teacher, and overfitting? | missing | U |
+| I2 | Top-1 agreement with the teacher per factor | How often does the student pick the teacher's action? | missing | U |
+| I3 | Student entropy vs target entropy | Does the student match the entropy we shaped the targets to (4c)? | missing | U |
+| I4 | Loss on the student's own states vs teacher-driven states | Is compounding error (covariate shift) present; is the DAgger mix right? | missing | U |
+| I5 | Closed-loop score vs the teacher | Does imitation translate into play? | partial (old BC win-rate logic) | C |
+
+### J. League
+
+| ID | Diagnostic | Question it answers | Status | Cost |
+|---|---|---|---|---|
+| J1 | Pool composition and games per entry | Who is in the pool and how often each is played? | decided (4b) | U |
+| J2 | Drain progress | Are retiring entries leaving cleanly? | decided (candidate) | U |
+| J3 | Entropy of the opponent-sampling distribution | Is sampling collapsing onto a few entries (the p(1-p) noise concern)? | missing | U |
+
 ## Group 1: histograms
 
 **What exists** (`ppo.py` `_update_epochs`, logged by `logging.py`): every
