@@ -510,8 +510,8 @@ Checks and revisits deliberately deferred until the JAX port runs.
 
 Design discussion is on branch `jax-rewrite/design`. Documents:
 `docs/rewrite/decisions.md` (this file), `docs/rewrite/ship-card.md`,
-`docs/rewrite/yemong-review.md` (the model and training review, parts 1-3 so far,
-including the HL-Gauss, critic, reward-function and naming discussions).
+`docs/rewrite/yemong-review.md` (the model and training review: parts 1-3 model,
+part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
 
 - [x] Flight parameterization (only constraints and the ratio suite left to confirm).
 - [x] Yemong review part 1 (inputs), part 2 (trunk), part 3a-3d (action, enemy-action,
@@ -535,8 +535,13 @@ including the HL-Gauss, critic, reward-function and naming discussions).
       device, buffer residency as config; non-finite steps skipped, counted, dumped for
       replay, abort on a budget; entropy E1 fixed coefficient; SIGReg dropped; clip and
       weight retuning tabled to the other branch).
-- [ ] Evaluation: what is left after 4b (leaderboard, offline Bradley-Terry fit,
-      diagnostics cadence).
+- [x] Evaluation 4e (decided: offline BT pipeline kept, torch parts rewritten on the JAX
+      match engine; leaderboard keyed by game version x mode x fleet size, scripted at
+      1000; diagnostics every 10 updates).
+- [ ] **Diagnostics audit (in progress, `docs/rewrite/diagnostics.md`):** next step is a
+      generic checklist of diagnostics any BC/RL project needs, then audit today's
+      groups against it with the lens "purpose / what it diagnoses". Rule: avoid host
+      syncs. Group 1 (histograms) drafted, its three questions still open.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.

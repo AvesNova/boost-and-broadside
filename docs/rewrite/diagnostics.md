@@ -73,3 +73,22 @@ coupling.
 shoot 2: 12 scalars) among committed learner decisions, every update (cheap: a
 count). It is the direct check that the new 2/3 stick level is used at all, and it
 shows drift in style (boost share, shooting rate) over training.
+
+## Rules and method (author)
+
+- **Avoid host syncs.** Metrics stay on device through the rollout and the update and
+  are read back once per update (or once per diagnostic cadence). No per-step or
+  per-minibatch `.item()`; the per-epoch KL read for early stopping is the one
+  deliberate exception.
+- **Cost context** (`docs/engineering/rl-throughput.md`): histograms, scalar metrics,
+  logging, schedule, checkpoints, GAE and labels total 1.7 s per update (1.1%). The
+  actor/critic split costs one forward and two backwards on one micro-batch per
+  cadence. The full gradient decomposition costs up to 17 traversals and forces an
+  eager update (in JAX: a separately jitted function at the cadence only). The
+  dedicated evaluator was 53.9 s per update, ~35% of wall clock (removed, 4b).
+- **Lens for every plot:** what is its purpose, and what failure or question does it
+  diagnose? A series with no answer is dropped.
+- **Order:** first a generic checklist of diagnostics any BC or RL project needs
+  (finds what we already have, which passes automatically, and what is missing);
+  then the audit of today's groups against it. Group 1 (histograms) above is
+  provisional until then.
