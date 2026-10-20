@@ -529,3 +529,48 @@ Net: about 9G + 9 series become 3G + 10, with the question answered directly.
   `returns/{level}` at spirit 0); no question answered (`ratio_mean`, surrogate,
   `loss/total`, `loss_proxy/*`); `value_pred_mean` answers neither the bias question
   (`value_bias`) nor the drift question (`return_mean`).
+
+**Outcomes (author):** the three mixtures dropped (no fixed-weight headline); `gain` per
+population and group plus `kl` per population replace head and baseline; 
+`supervised_share` added.
+
+## Group 8: `belief/*`
+
+**What exists** (`ppo.py` `_precompute_belief_diagnostics`, once per update from the
+rollout's stored forecasts against privileged truth, enemies only):
+- 14 error names: absolute error per physical channel (position px, velocity px/s,
+  attitude rad, angular velocity, shield delay s, health, power, cooldown s, local log
+  index), `position_beyond_legal_frac` (share beyond 10 calibrated position scales,
+  25 px), and baselines: persistence (position, velocity) and dead reckoning (position).
+- 10 slices: `visible`, `hidden`, and hidden by age: 0-0.1, 0.1-0.5, 0.5-1, 1-2, 2-5,
+  5-10, 10-30, 30+ s.
+- 140 series.
+
+**Purpose:** the next-state gains (group 7) say in nats whether the head beats
+"nothing changes". This group says it in physical units against the strongest cheap
+baseline (dead reckoning), and how fast tracking degrades the longer an enemy stays
+hidden. Neither question is answered elsewhere. Keep the group.
+
+**Assessment**
+- **The `hidden` aggregate is misleading:** a mixture over ages whose proportions follow
+  play style. If the agent learns to keep enemies hidden longer, it rises with no change
+  in the belief. Same case as group 7: **drop it**; the age buckets are the answer.
+- **Age buckets for every channel (112 series):** the age curve is about drift.
+  Position and velocity drift; the resource channels evolve almost deterministically
+  (regeneration, cooldown ticks) and their error is small and flat. **Proposal:** age
+  buckets only for position, velocity, the baselines and `beyond_legal` (6 x 8 = 48);
+  the other seven channels once over all hidden enemies (7). Purpose of the
+  all-hidden form there: "is the resource belief broken", not a curve.
+- **Visible slice:** keep all 14. `position_beyond_legal_frac` on visible enemies is a
+  bug detector: on a trained head it should be about 0, and a non-zero value means a
+  belief lifecycle leak (the comment says so). **Add a warning rule:** visible
+  beyond-legal share above ~0 after warm-up.
+- **Add token share per age bucket** (`belief/hidden_share/{bucket}`, 8 series): says
+  which buckets rest on few tokens and so are noisy, and shows the age distribution the
+  buckets sample. (Overlaps `fog/` hidden-age stats; check in that group.)
+- **Torus wrap in the position error:** the error wraps around the world size. No mode
+  is toroidal (3e), so the port drops the wrap.
+- Source: the forecasts are the behaviour policy's (one update stale). State it in the
+  description; no change.
+
+Net: 140 series become 14 + 48 + 7 + 8 = 77, plus one warning rule.
