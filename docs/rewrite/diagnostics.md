@@ -263,6 +263,10 @@ shows drift in style (boost share, shooting rate) over training.
   Current justified cases: the return normaliser's p5/p95/scale (the EMA state is the
   value the update actually divides by) and the live rating (a fit, not a smoothing).
   Trigger rules keep EMAs as internal state; those are not logged.
+- **"Derivable" is not a reason to drop** (author). A derived series can serve its own
+  purpose (a headline, a direct answer). A series is dropped only when it is an
+  identical duplicate, answers no question that a kept series answers better, or is
+  misleading (for example a mixture whose proportions drift and so reads as learning).
 - **Order:** first a generic checklist of diagnostics any BC or RL project needs
   (finds what we already have, which passes automatically, and what is missing);
   then the audit of today's groups against it. Group 1 (histograms) above is
@@ -512,3 +516,16 @@ enemies) better than "nothing changes", per population and per code group?
 - Prefix: everything under `next_state/`.
 
 Net: about 9G + 9 series become 3G + 10, with the question answered directly.
+
+**Reasoning restated (author: "derivable" alone is not a reason):**
+- `next_state_hidden/{group}`: identical duplicate of the enemy_hidden population.
+- `next_state/{group}`: misleading. Its population mix drifts with the fog, so it moves
+  without learning; and after 3c it is not the optimised objective (a weighted sum of
+  per-population means). The training loss stays as `next_state/loss` (group 3).
+- `next_state_visible/{group}`: its purpose (one dynamics headline) is served by the
+  ally and enemy_visible gains; the token-weighted pooling drifts with the visible
+  share. If a single headline is wanted, a fixed-weight mean of those two gains.
+- Earlier drops re-checked: identical duplicates (`returns/scale`, `overview/*`,
+  `returns/{level}` at spirit 0); no question answered (`ratio_mean`, surrogate,
+  `loss/total`, `loss_proxy/*`); `value_pred_mean` answers neither the bias question
+  (`value_bias`) nor the drift question (`return_mean`).
