@@ -493,6 +493,20 @@ Coupling found in the current code that blocks goal B:
 7. ~~One model for all modes, or one per mode~~: decided, both supported (see Game
    scope).
 
+## Units (decided)
+
+- **World units are metres.** Every quantity in the simulation, the contracts, the
+  model's physical codes, configs and diagnostics is in SI-style units: m, m/s, m/s^2,
+  rad, rad/s, s. "px" in today's code is a legacy name for a world unit (1 px = 1 m
+  numerically, so no value changes).
+- **Pixels exist only in the renderer**, inside its camera transform (world metres to
+  screen pixels, with zoom, window size and fullscreen as camera parameters; today's
+  renderer already has such a scale). Nothing outside the renderer may depend on screen
+  size.
+- Renames in the port, for example `position_px` -> `position_m`,
+  `velocity_px_s` -> `velocity_m_s`, `boundary_damage_per_pixel_second` ->
+  `boundary_damage_per_m_s`, "px/s" in config comments -> "m/s".
+
 ## Post-implementation TODO
 
 Checks and revisits deliberately deferred until the JAX port runs.

@@ -605,3 +605,7 @@ Net: 140 series become 14 + 48 + 7 + 8 = 77, plus one warning rule.
    - Token share per age bucket: one panel, stacked area.
    This naming and panel rule applies to every coupled group (next-state gain
    population x group, outcome skill by bucket, action usage), not only belief.
+
+**Units (author):** "px" is a legacy name for a world unit; everything outside the
+renderer is in metres (decisions.md, Units). Belief series become `position_m`,
+`velocity_m_s`, `reckon_position_m`, and so on.
