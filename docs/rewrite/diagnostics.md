@@ -472,3 +472,43 @@ below. Smoothing is display-side only.)
 **Outcomes (author):** ledger as exact running sums with the buckets above; `ece`
 plus a reliability table at the diagnostic cadence replace the 20 bin series;
 `outcome/kl` and `outcome/bias` adopted.
+
+## Group 7: next state
+
+**What exists** (`ppo.py`, `next_state_populations.py`). G = number of code groups
+(position levels, 3 velocity, attitude levels, angular velocity, shield delay, health,
+power, local log index, cooldown):
+- `next_state/{group}`: CE per code group over all supervised tokens (G series).
+- `next_state_visible/{group}`, `next_state_hidden/{group}`: the same split by sight
+  (2G).
+- `next_state_ce/{population}/{group}` and `next_state_baseline_ce/{population}/{group}`
+  for ally, enemy_visible, enemy_hidden: the head and the "nothing changes" baseline
+  (6G).
+- `next_state_population/{population}/{token_share, ce, baseline_ce}` (9).
+- Gradient split by population and environment half: belongs to `grad/` (later group).
+
+About 9G + 9 series, all from sums already accumulated on device.
+
+**Purpose:** is the head learning dynamics (allies, visible enemies) and belief (hidden
+enemies) better than "nothing changes", per population and per code group?
+
+**Assessment**
+- `next_state/`, `next_state_visible/`, `next_state_hidden/` are all derivable from the
+  population table: hidden is exactly enemy_hidden (allies are always visible), visible
+  is ally plus enemy_visible weighted by token share, the aggregate is all three. They
+  are mixtures whose proportions move with the fog, which is why the population split
+  was added. **Drop all three (3G series).**
+- CE and baseline CE as separate series: the question is the gap. Both are CEs against
+  the same HL-Gauss target, so their difference cancels the target's entropy and is in
+  pure nats. **Replace** with `next_state/gain/{population}/{group}` = baseline CE - CE
+  (nats per token the head beats "nothing changes" by; below 0 means it is worse than
+  copying its input), and per population `next_state/gain/{population}` (mean over
+  groups) and `next_state/kl/{population}` (CE minus target entropy, as for the other
+  codes: how far from perfect).
+- `token_share/{population}`: keep (what the batch teaches; under 3c's per-population
+  averaging it also says how noisy each population's mean is).
+- **Add (C6):** `next_state/supervised_share`, share of alive tokens with a valid
+  next-state label (rollout edge and death masks).
+- Prefix: everything under `next_state/`.
+
+Net: about 9G + 9 series become 3G + 10, with the question answered directly.
