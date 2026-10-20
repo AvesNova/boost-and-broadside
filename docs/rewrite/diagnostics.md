@@ -263,6 +263,11 @@ shows drift in style (boost share, shooting rate) over training.
   Current justified cases: the return normaliser's p5/p95/scale (the EMA state is the
   value the update actually divides by) and the live rating (a fit, not a smoothing).
   Trigger rules keep EMAs as internal state; those are not logged.
+- **No expected-behaviour assumptions** (author). A diagnostic is never pruned
+  because the quantity "should" be flat or zero; that is what it must be able to refute.
+- **Coupled series: name quantity first** (`{group}/{quantity}/{slice}`) and consolidate
+  in the dashboard (one panel per quantity, slices as lines), not by dropping series.
+  Report-only views (heatmaps over training time) are built offline.
 - **"Derivable" is not a reason to drop** (author). A derived series can serve its own
   purpose (a headline, a direct answer). A series is dropped only when it is an
   identical duplicate, answers no question that a kept series answers better, or is
@@ -568,9 +573,35 @@ hidden. Neither question is answered elsewhere. Keep the group.
 - **Add token share per age bucket** (`belief/hidden_share/{bucket}`, 8 series): says
   which buckets rest on few tokens and so are noisy, and shows the age distribution the
   buckets sample. (Overlaps `fog/` hidden-age stats; check in that group.)
-- **Torus wrap in the position error:** the error wraps around the world size. No mode
-  is toroidal (3e), so the port drops the wrap.
+- ~~Torus wrap in the position error: drop it.~~ **Correction (author):** the world is
+  always a torus; map centres are random and the playable area can straddle a seam,
+  especially on large maps. The minimum-image error stays (as 3e already recorded:
+  "deltas keep the minimum image"). My mistake: I conflated "no torus-only modes" with
+  "no torus".
 - Source: the forecasts are the behaviour policy's (one update stale). State it in the
   description; no change.
 
 Net: 140 series become 14 + 48 + 7 + 8 = 77, plus one warning rule.
+
+**Revision (author):**
+1. **Torus:** minimum-image error kept (correction above).
+2. **No expected-behaviour assumptions in diagnostics:** "health should be flat with age"
+   is exactly what a diagnostic must be able to refute. All 14 errors keep all age
+   buckets. Rule added to the method.
+3. **Consolidation by plot type, not by dropping.** The coupling is a layout problem:
+   - **Log flat raw scalars** (needed by trigger rules and post-processing), but name
+     them **quantity first**: `belief/{quantity}/{slice}` (for example
+     `belief/position_px/age_2_5s`, `belief/position_px/visible`, baselines as
+     `belief/reckon_position_px/{slice}`). Today it is `belief/{slice}/{quantity}`.
+   - **One dashboard panel per quantity**, every slice as a line: visible plus the 8
+     age buckets on a sequential colour ramp (light = young, dark = old), log y.
+     Position and velocity panels overlay their baselines dashed. 14 panels instead of
+     140 charts; each answers "how does this error grow with age, and is it improving".
+   - The `hidden` all-ages aggregate: dropped (misleading mixture, as group 7). With
+     the slices in one panel nothing is lost.
+   - **Age x training-time heatmaps** (one per quantity: x = update, y = age bucket,
+     colour = error) for reports, built in post-processing by the repo's offline
+     figure set (`charts/`), not logged.
+   - Token share per age bucket: one panel, stacked area.
+   This naming and panel rule applies to every coupled group (next-state gain
+   population x group, outcome skill by bucket, action usage), not only belief.
