@@ -552,11 +552,15 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
 - [x] Evaluation 4e (decided: offline BT pipeline kept, torch parts rewritten on the JAX
       match engine; leaderboard keyed by game version x mode x fleet size, scripted at
       1000; diagnostics every 10 updates).
-- [ ] **Diagnostics audit (in progress, `docs/rewrite/diagnostics.md`):** generic BC/RL
-      checklist drafted (sections A-J, status and cost per entry), awaiting the
-      author's review of the missing items; then audit today's groups against it with
-      the lens "purpose / what it diagnoses". Rule: avoid host syncs. Group 1
-      (histograms) drafted, its three questions still open.
+- [ ] **Diagnostics audit (paused, `docs/rewrite/diagnostics.md`):** generic BC/RL
+      checklist adopted; trigger rules and dashboard design adopted; method rules
+      recorded (avoid syncs, raw values only, no expected-behaviour pruning,
+      "derivable" is not a drop reason, quantity-first naming). Groups 1-8 decided.
+      **Group 9 (`enemy_action/`) proposed, four questions unanswered.** Remaining:
+      `global_density/`, `shot/`, `episode/`, `fog/`, `physics/`+`frontline/`+`map_scale/`,
+      `reward/`, `seat/`, `schedule/`, `train/`+`counters/`, `grad_*`, evaluator names;
+      then new checklist items without a group, final trigger rules, dashboard layout.
+      Author chose to switch topics here (next topic not yet chosen).
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.
