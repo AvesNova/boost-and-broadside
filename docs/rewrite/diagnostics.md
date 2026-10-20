@@ -344,11 +344,65 @@ minibatch of every epoch, alive learner ships only:
   entropies minus joint entropy (>= 0; the total correlation). It says whether the
   policy coordinates its factors (for example "boost only while turning") instead of
   choosing each independently. Free.
-- `policy/{level}`: drop, same reason as `loss/policy_gradient` (normalised advantages
-  make the surrogate hover near zero). Which reward level drives the actor is answered
-  by the per-level gradient decomposition (B3, `grad/`).
+- `policy/{level}`: ~~drop~~ **correction (group 5 audit):** these are not logged
+  scalars. They are the term names of the per-level gradient decomposition
+  (`_reward_policy_terms`, grouped as `reward_policy`), so they only appear inside the
+  `grad_*` series, which is exactly the B3 view. Nothing to drop; they move with the
+  decomposition under `grad/`. The same holds for `value/{level}`.
 - Move `train/epochs_completed` here as `policy/epochs_completed`: it is the result of
   the update-size control.
 - Adopted checklist entries that land in this group: D2 (`policy/entropy_p10/p50/p90`,
   `policy/near_certain_share`), D3 (`policy/usage/{factor}/{option}`), D4
   (`policy/switch_rate` per factor, computed in the rollout).
+
+**Outcomes (author):** all four accepted (KL split, `far_ratio_share` replaces
+`ratio_max`, `ratio_mean` dropped, joint entropy and `factor_coupling` added,
+`epochs_completed` moved). The `policy/{level}` item is corrected above.
+
+## Group 5: critic, returns, normaliser
+
+**What exists**
+- `critic/explained_variance/{level}`: from the **last epoch** only (`ev_epoch` resets
+  each epoch), so the critic has already fitted these targets for 3 epochs.
+- `critic/value_loss/{level}`: the HL-Gauss cross-entropy per level (includes the
+  target's own entropy, so its floor is not zero).
+- `critic/return_mean/{level}`, `critic/value_pred_mean/{level}`.
+- `critic/outcome_cross_entropy`: the outcome head.
+- `returns/{level}` (`returns/component`): team-mixed return mean per level, from GAE.
+- `returns/advantage_std/{level}`: RMS of the per-level advantage (no mean removed).
+- `returns/aggregate`, `returns/aggregate_std`: mean and std of the summed return.
+- `returns/scale`: snapshot of the normaliser's scale.
+- `return_normalizer/{p5,p95,scale,floor_bound}`: the DreamerV3 normaliser; `floor_bound`
+  is 1 while the p95-p5 spread is under the floor (one win).
+- `value/{level}`: not logged; gradient-decomposition term names (see group 4).
+
+**Assessment**
+- **Explained variance, measure it before fitting.** Last-epoch EV is in-sample and
+  flatters the critic. **Proposal:** `critic/ev/{level}` from epoch 0 (each minibatch
+  before its step: the critic has not trained on these returns, an honest predictive
+  score) and `critic/ev_fit/{level}` from the last epoch. The gap is how much the critic
+  fits this batch beyond what generalises. Both come from moments already accumulated.
+- **Value loss -> KL.** Report `critic/value_kl/{level}` (CE minus target entropy, zero at
+  a perfect fit), as decided for HL-Gauss codes. CE stays the trained quantity.
+- **Value bias (E2):** replace the two means with `critic/value_bias/{level}` =
+  mean(prediction - return target). Keep `critic/return_mean/{level}` (reward drift per
+  level); drop `critic/value_pred_mean` (it is return mean plus bias).
+- **Support use (E3):** add `critic/support_clip/{level}`, share of target mass in the
+  padding bins or clipped at the edge.
+- `returns/{level}`: drop. With team spirit 0 (decided) the mixing is the identity, so it
+  equals `critic/return_mean/{level}` up to the mask.
+- `returns/scale`: drop, duplicate of `return_normalizer/scale`.
+- `returns/aggregate`, `returns/aggregate_std`: drop. The normaliser's p5/p95 already
+  describe the summed return's spread, and its drift shows per level in `return_mean`.
+- **Advantages (D6).** Per-level RMS is not what the actor sees: it sees the summed,
+  normalised advantage. **Proposal:** `returns/adv_rms` (RMS of the normalised aggregate
+  advantage: the actor's signal strength against the entropy bonus) and
+  `returns/adv_mean` (should be near 0; a drift means value bias reaches the actor).
+  Drop the per-level RMS. "Share clipped by the normaliser" from the checklist does not
+  apply: the DreamerV3 normaliser divides, it does not clip; D6 is amended.
+- Normaliser: keep `p5`, `p95`, `scale`, `floor_bound` (`floor_bound` says advantages
+  are not being amplified while returns barely spread).
+- `critic/outcome_cross_entropy`: move to the `outcome/` group (next).
+- Prefixes: `critic/` for the value function, `returns/` for targets, advantages and the
+  normaliser (merging `return_normalizer/` into it).
+- Return percentiles per level (adopted in group 1, p5/p50/p95): under `returns/`.
