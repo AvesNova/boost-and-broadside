@@ -257,6 +257,12 @@ shows drift in style (boost share, shooting rate) over training.
   dedicated evaluator was 53.9 s per update, ~35% of wall clock (removed, 4b).
 - **Lens for every plot:** what is its purpose, and what failure or question does it
   diagnose? A series with no answer is dropped.
+- **Log raw values, never pre-smoothed** (author). Smoothing is for display (W&B's
+  built-in smoothing) or post-processing. A logged value may come from an EMA only when
+  that EMA is itself the quantity being reported, with the justification written down.
+  Current justified cases: the return normaliser's p5/p95/scale (the EMA state is the
+  value the update actually divides by) and the live rating (a fit, not a smoothing).
+  Trigger rules keep EMAs as internal state; those are not logged.
 - **Order:** first a generic checklist of diagnostics any BC or RL project needs
   (finds what we already have, which passes automatically, and what is missing);
   then the audit of today's groups against it. Group 1 (histograms) above is
@@ -460,4 +466,9 @@ ECE, each env also keeps n and sum p per probability bin (10 bins).
 - Sampling density is not the limit: predictions 33 ms apart are nearly identical, so
   the information comes from the number of finished games (about 55 per update if
   games run long). Numbers are read per update but are meaningful smoothed over the
-  diagnostic cadence; the dashboard plots them smoothed.
+  diagnostic cadence. (Superseded wording: nothing is logged smoothed; see the rule
+below. Smoothing is display-side only.)
+
+**Outcomes (author):** ledger as exact running sums with the buckets above; `ece`
+plus a reliability table at the diagnostic cadence replace the 20 bin series;
+`outcome/kl` and `outcome/bias` adopted.
