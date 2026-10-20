@@ -266,7 +266,7 @@ shows drift in style (boost share, shooting rate) over training.
 entries: `hist/logprob` dropped for D2 (entropy quantiles, near-certain share);
 `hist/returns/{level}` dropped for per-level return p5/p50/p95 plus E3 (support use);
 D3 adds action usage. Decoupling the actor/critic split from the histogram flag stands.
-Open: the optional raw dump (proposed yes).
+Raw dump: **dropped** (author); the 4d skipped-step dump covers the case that needs raw data.
 
 ## Group 2: `overview/*`
 
@@ -308,3 +308,47 @@ raw (`loss/*`) and times its coefficient (`loss_proxy/*`), averaged over the upd
 
 Net: the `loss/` and `loss_proxy/` prefixes disappear; per-head losses move into their
 head groups; the value loss stays per level under `critic/`.
+
+**Outcomes (author):** group 2 dropped. Group 3 as proposed, aggregates dropped too
+(`loss/total`, `loss/value`, `loss/policy_gradient`, `loss/entropy`; free to log, but
+none answers a question its parts do not answer better).
+
+## Group 4: `policy/*`
+
+**What exists** (`ppo.py` `_loss_and_diag`, `_update_epochs`), each a mean over every
+minibatch of every epoch, alive learner ships only:
+- `policy/kl`: k3 estimator of KL(behaviour || current), measured before each
+  minibatch's step. The per-epoch mean also drives the `target_kl` early stop (the one
+  `.item()` sync, kept).
+- `policy/clip_fraction`: share with |ratio - 1| > clip.
+- `policy/ratio_mean`, `policy/ratio_max`.
+- `policy/entropy_{power,turn,shoot}`: entropies of the marginals of the joint 42-way
+  softmax (diagnostic only; the objective uses the joint entropy, which is not logged).
+- `policy/{level}`: coefficient times the clipped surrogate per reward level.
+
+**Assessment**
+- `policy/kl` mixes two different things: the first minibatch of epoch 0 is the
+  behaviour-vs-learner mismatch (C4, should be ~0), later ones measure drift during the
+  update. **Proposal: split** into `policy/kl_first` (first minibatch, before any step:
+  C4) and `policy/kl` (mean over the last epoch: how far this update moved, the number
+  `target_kl` is about). Both are already computed; no extra cost.
+- `policy/clip_fraction`: keep (update size, standard).
+- `policy/ratio_mean`: drop. Sampling under the behaviour policy makes E[ratio] = 1 by
+  construction; a deviation is a weak mismatch signal that C4 measures directly.
+- `policy/ratio_max`: replace. One maximum over 12.78M tokens is set by the rarest
+  low-probability action and is noise. Proposed: `policy/far_ratio_share`, share with
+  |ratio - 1| > 2 x clip (tokens pushed well past the clip, the tail that matters).
+  A mask and a mean, no sort.
+- `policy/entropy_{power,turn,shoot}`: keep. **Add** `policy/entropy` (joint, D1;
+  already computed for the loss) and `policy/factor_coupling` = sum of marginal
+  entropies minus joint entropy (>= 0; the total correlation). It says whether the
+  policy coordinates its factors (for example "boost only while turning") instead of
+  choosing each independently. Free.
+- `policy/{level}`: drop, same reason as `loss/policy_gradient` (normalised advantages
+  make the surrogate hover near zero). Which reward level drives the actor is answered
+  by the per-level gradient decomposition (B3, `grad/`).
+- Move `train/epochs_completed` here as `policy/epochs_completed`: it is the result of
+  the update-size control.
+- Adopted checklist entries that land in this group: D2 (`policy/entropy_p10/p50/p90`,
+  `policy/near_certain_share`), D3 (`policy/usage/{factor}/{option}`), D4
+  (`policy/switch_rate` per factor, computed in the rollout).
