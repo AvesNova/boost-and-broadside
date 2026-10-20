@@ -609,3 +609,50 @@ Net: 140 series become 14 + 48 + 7 + 8 = 77, plus one warning rule.
 **Units (author):** "px" is a legacy name for a world unit; everything outside the
 renderer is in metres (decisions.md, Units). Belief series become `position_m`,
 `velocity_m_s`, `reckon_position_m`, and so on.
+
+**Outcomes (author, group 8):** quantity-first naming and one panel per quantity,
+here and as the general rule; offline heatmaps later; no visible-leak warning rule and
+no per-bucket token share.
+
+## Group 9: `enemy_action/*`
+
+**What exists** (`ppo.py`, the enemy-action head: the enemy's committed joint command,
+42-way, privileged label; its output becomes the pending-action belief in the next
+observation). Over enemy tokens, alive and committed:
+- `loss/enemy_action` (moving to `enemy_action/loss`, group 3).
+- `realized_probability` (mean probability on the true action), `entropy`, `brier`,
+  `accuracy` (top-1).
+- `persistence_accuracy`: share of enemy decisions equal to the previous one.
+- `persistence_cross_entropy`: CE of a "repeat the last action" predictor with a fixed
+  0.99 on repeat and the rest spread over the other 41.
+- `uniform_*`: constants, dropped earlier.
+
+**Purpose:** does the head predict what enemies are doing better than the cheap
+alternatives, and is the belief it writes into the next observation honest?
+
+**Assessment**
+- **The persistence baseline is set by an arbitrary constant.** With 0.99 hard-coded,
+  "beats persistence" depends on that number. **Replace** with the best persistence
+  predictor for this batch: repeat with probability r (the measured repeat rate, which
+  `persistence_accuracy` already is), else uniform over the other 41. Its CE is
+  -r ln r - (1 - r) ln((1 - r)/41), from one count. **Add** a second baseline, the
+  batch's action marginal (always predict the empirical action frequencies): its CE is
+  the entropy of the action histogram, also one count per action.
+- **Gain, as in group 7:** `enemy_action/gain/{baseline}` = baseline CE - CE, nats per
+  token the head beats repeat and marginal by.
+- **Visible vs hidden enemies: the same mixture problem as groups 7 and 8.** Predicting
+  a visible enemy's next command and a hidden one's are different tasks, and the mix
+  drifts with the fog. **Proposal:** every series sliced by `visible` / `hidden`
+  (quantity first: `enemy_action/{quantity}/{slice}`).
+- **Calibration of the belief:** the head's distribution is fed back as an input, so
+  over- or under-confidence matters directly. **Replace `brier` and
+  `realized_probability`** (proper-score views of what CE already measures) with
+  `enemy_action/confidence` (mean top probability) beside `accuracy`: confidence above
+  accuracy means overconfident.
+- `entropy`: keep (how sharp the belief the model receives is).
+- **Per factor:** CE of the marginals for power, turn and shoot, like the policy's
+  marginals: which part of the enemy's command is predictable (shooting may be easy,
+  turning hard). Free from the joint.
+- **Optional slice by opponent kind** (self-play, checkpoint, average, scripted,
+  semi-scripted): modelling the scripted agent and modelling itself are different
+  tasks. Uses the per-env opponent id the league already keeps.
