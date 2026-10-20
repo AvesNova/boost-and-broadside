@@ -446,3 +446,18 @@ win probabilities honest?" is unanswered for 98% of the game.
   diagnostic cadence, for drilling in when `ece` moves.
 - **Loss:** `outcome/kl` (cross-entropy minus target entropy), as for the value codes.
 - Games that never resolve within the ledger (time limit) score as a tie, as today.
+
+**Revision (author asked "why 150 steps, why not all?"):** 150 was arbitrary (sized to
+the smallest bucket). Better: score **every step**, exactly, with running sums.
+Brier for a binary result w is (p - w)^2 = p^2 - 2pw + w (w is 0 or 1), so each env
+only needs, per 1-second block of elapsed time (30 steps), the sums n, sum p, sum p^2.
+At episode end the result w turns each block's sums into its Brier sum, and the block
+is assigned to its time-to-end bucket (boundary error under 1 s). For the whole-game
+ECE, each env also keeps n and sum p per probability bin (10 bins).
+- Memory: 300 blocks x 3 floats x 3,840 envs = 3.5M floats, about 14 MB, plus 20 floats
+  per env for ECE. Storing every raw prediction instead would be about 69 MB in bf16
+  and gives nothing the sums do not.
+- Sampling density is not the limit: predictions 33 ms apart are nearly identical, so
+  the information comes from the number of finished games (about 55 per update if
+  games run long). Numbers are read per update but are meaningful smoothed over the
+  diagnostic cadence; the dashboard plots them smoothed.
