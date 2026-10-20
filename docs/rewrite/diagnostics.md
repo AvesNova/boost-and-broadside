@@ -197,6 +197,17 @@ skipped steps, recompiles, memory); Policy (entropy, KL, clip, C4); Value (EV, b
 support use); then every other group in collapsed sections. Fallback if that
 package's API proves unstable: a saved workspace made once by hand.
 
+### Trigger and dashboard outcomes (author)
+
+1. Design and starting rule list adopted (rules as listed in chat: alerts for skipped
+   step, recompile, memory over 90%, C4 mismatch, throughput below 50% of its EMA,
+   rating more than 2 SE below peak; warnings for entropy collapse, EV below 0,
+   support clipping over 1%, feature rank 30% below peak, update ratio out of band,
+   dormant share rising, observation clip share over 1%, low label validity, low
+   sampling entropy, reward up while rating flat).
+2. Delivery: dashboard only for now; no `wandb.alert`.
+3. Only the skipped-step rule acts (checkpoint plus batch dump, 4d); the rest report.
+
 ## Group 1: histograms
 
 **What exists** (`ppo.py` `_update_epochs`, logged by `logging.py`): every
@@ -250,3 +261,50 @@ shows drift in style (boost share, shooting rate) over training.
   (finds what we already have, which passes automatically, and what is missing);
   then the audit of today's groups against it. Group 1 (histograms) above is
   provisional until then.
+
+**Status after the checklist:** the three questions are answered by adopted checklist
+entries: `hist/logprob` dropped for D2 (entropy quantiles, near-certain share);
+`hist/returns/{level}` dropped for per-level return p5/p50/p95 plus E3 (support use);
+D3 adds action usage. Decoupling the actor/critic split from the histogram flag stands.
+Open: the optional raw dump (proposed yes).
+
+## Group 2: `overview/*`
+
+**What exists** (`logging.py`): 16 copies of other series under one prefix, plus a
+mean of explained variance across levels, so one W&B section shows the headline plots.
+
+**Purpose:** a curated first screen. The dashboard defined in code now does that job
+by referencing the original series. **Proposal: drop the prefix entirely.** The
+cross-level EV mean also goes: levels have different scales and the dashboard shows
+them per level.
+
+## Group 3: `loss/*` and `loss_proxy/*`
+
+**What exists** (`ppo.py` `_update_epochs`): minibatch means of every loss term,
+raw (`loss/*`) and times its coefficient (`loss_proxy/*`), averaged over the update.
+
+**Assessment, term by term**
+- `loss/total`: a sum of incommensurable terms; no failure shows here first (non-finite
+  values are A1, spikes are visible in the terms). Drop.
+- `loss/policy_gradient`: the PPO surrogate with normalised advantages averages near
+  zero whatever happens; its trend does not mean learning. The update-size signals
+  (KL, clip fraction, ratio) are the diagnostics. Drop.
+- `loss/entropy`: equal to minus the entropy already in `policy/`. Drop.
+- `loss/value`: equal to the sum of `critic/value_loss` per level. Drop here, keep per
+  level under `critic/`.
+- BC terms (`behavioral_cloning`, `behavioral_cloning_kl`, `scripted_entropy`): gone
+  with the joint paradigm (4c); the BC phase has I1-I4.
+- `sigreg`, `next_state_cont`: dropped earlier.
+- Auxiliary terms (next state, enemy action, density, shot trajectory, shot outcome):
+  real supervised learning curves, keep. **Proposal: move each into its head's own
+  group next to its baseline** (`next_state/loss`, `enemy_action/loss`,
+  `density/loss`, `shot/loss_trajectory`, ...), so a head's loss and the number that
+  says whether it is good are on one panel.
+- `loss_proxy/*` (coefficient times loss): meant to say which term dominates, but the
+  size of a loss says little about the size of its gradient (a 3-nat CE can have a
+  flat gradient). The gradient shares (B3) answer that question directly, at the
+  diagnostic cadence. **Proposal: drop the prefix.** The renaming to
+  `loss_weighted/*` from the first verdict lapses.
+
+Net: the `loss/` and `loss_proxy/` prefixes disappear; per-head losses move into their
+head groups; the value loss stays per level under `critic/`.
