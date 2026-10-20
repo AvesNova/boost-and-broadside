@@ -406,3 +406,43 @@ minibatch of every epoch, alive learner ships only:
 - Prefixes: `critic/` for the value function, `returns/` for targets, advantages and the
   normaliser (merging `return_normalizer/` into it).
 - Return percentiles per level (adopted in group 1, p5/p50/p95): under `returns/`.
+
+**Outcomes (author):** all accepted (epoch-0 EV plus `ev_fit`, `value_kl`, `value_bias`
+with `return_mean`, the advantage aggregate, normaliser merged into `returns/`), with
+one amendment: **team spirit may not stay at zero.** `returns/{level}` is then the
+team-mixed return the actor is credited with, which differs from the critic's own
+return. Kept as `returns/mixed/{level}`, logged only for levels whose team spirit is
+non-zero (a static config check at trace time: no cost while spirit is zero).
+
+## Group 6: `outcome/*`
+
+**What exists** (`critic.py` `outcome_calibration`, the 4-class outcome head: win,
+loss, tie, unresolved; targets are categorical lambda-returns):
+- `outcome/calibration_brier`, `outcome/predicted_win`, `outcome/realised_win`.
+- `outcome/calibration_bin_{0..9}/{predicted,realised}`: a 10-bin reliability diagram
+  as 20 line series.
+- `critic/outcome_cross_entropy` (moved here in group 5).
+
+**Finding: the calibration only sees the last seconds of each game.** A transition is
+scored only if its episode ends **inside the same rollout**. A rollout is 128 decisions
+(about 4.3 s at 30 Hz); a game is up to 9,000 (5 min). So every number above measures
+the last ~4 s before the end, where the winner is nearly obvious. The question "are
+win probabilities honest?" is unanswered for 98% of the game.
+
+**Proposals**
+- **Prediction ledger, on device.** Per env, a fixed ring of slots: every 150 steps
+  (5 s) store P(win | resolved) and the elapsed time. At episode end, score every
+  filled slot against the result and add into a fixed table on device (time-to-end
+  bucket x calibration bin: sums and counts). 60 slots per env, static shapes, no sync;
+  read with the update's one readback. Gives:
+  - `outcome/brier_skill/{bucket}`: Brier skill score (1 - Brier / Brier of the
+    base rate) per time-to-end bucket (for example 0-5 s, 5-15 s, 15-30 s, 30-60 s,
+    1-2 min, 2+ min). Raw Brier depends on the win rate; the skill score does not.
+    The curve says how early the critic knows who will win.
+  - `outcome/ece`: expected calibration error over the whole game, one scalar for the
+    question "are the probabilities honest?".
+  - `outcome/bias`: mean predicted minus realised win (replaces the two means).
+- **Reliability bins:** drop the 20 line series; log the table as one W&B table at the
+  diagnostic cadence, for drilling in when `ece` moves.
+- **Loss:** `outcome/kl` (cross-entropy minus target entropy), as for the value codes.
+- Games that never resolve within the ledger (time limit) score as a tie, as today.
