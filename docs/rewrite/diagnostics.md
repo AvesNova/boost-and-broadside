@@ -798,3 +798,30 @@ long, how much team vision helps; context for the memory diagnostics (group 8).
   one panel.
 - Batch-size independent: `fog/reacquisitions_per_slot_min` (per enemy slot per minute)
   and `fog/occlusion_share/{bucket}` (histogram as shares).
+
+## Group 14: `physics/` + `frontline/` + `map_scale/`
+
+**What exists** (`logging.py`, wrapper source stats, mostly per live ship-step):
+`physics/{combat,boundary}_damage_per_live_ship_step`,
+`physics/{combat,boundary}_deaths_per_million_live_ship_steps`,
+`physics/nonambient_live_ship_fraction` (local refractive index != 1, i.e. inside a
+field), `physics/mean_power`, `physics/mean_speed`, `physics/out_of_power_fraction`;
+`frontline/shield_recharge_per_live_ship_step`,
+`frontline/respawns_per_million_live_ship_steps`, `frontline/front_advances` (raw sum of
+|front delta|), `frontline/simultaneous_captures` (raw count); `map_scale/mean`,
+`map_scale/enemy_slot_share/{1, 1_2, 2_plus}`.
+
+**Purpose:** game analytics (H2) and degenerate-strategy detection (H3: boundary
+camping, never shooting, power starvation).
+
+**Outcomes (author, 2026-10-21):**
+- Readable units, batch-size independent: `physics/damage_per_ship_s/{combat,
+  boundary}`, `physics/deaths_per_ship_min/{combat, boundary}`, `physics/speed_m_s`,
+  `physics/power_mean`, `physics/out_of_power_share`, `physics/in_field_share`.
+- `frontline/front_speed_m_s` (mean |front speed| over running env-time) replaces the
+  raw summed distance; `frontline/simultaneous_captures_per_env_min` replaces the raw
+  count; `frontline/shield_recharge_per_ship_s` kept.
+- Dropped respawns: in Frontline every death respawns, so it repeats the death rates.
+- `map_scale/mean` and `map_scale/slot_share/{1, 1_2, 2_plus}` kept (C5: the batch has
+  the map-scale mix the config asks for).
+- 15 series.
