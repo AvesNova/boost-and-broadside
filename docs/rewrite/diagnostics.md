@@ -774,3 +774,27 @@ reward term pays.
 - **Add** `episode/count`: finished games per update, the sample size behind every
   series here.
 - About 13 series plus one per reward level and one per event.
+
+## Group 13: `fog/`
+
+**What exists** (`logging.py`, perception stats per update): `visible_fraction`,
+`range_only_visible_fraction`, `field_occluded_fraction_of_in_range`,
+`never_seen_fraction`, `individual_visible_fraction`, `team_shared_gain`,
+`mean_hidden_age_steps`, `reacquisitions` (raw count), `visible_fraction/scale_{bucket}`,
+`occlusion_duration_le_{edge}` (raw counts).
+
+**Purpose:** game analytics (H2): how much is hidden, why (range or fields), for how
+long, how much team vision helps; context for the memory diagnostics (group 8).
+
+**Outcomes (author, 2026-10-21):**
+- Computed over **fogged envs only**, plus `fog/fogged_env_share` (mixed fog decision:
+  fog-free envs would make every share drift with the fogged share).
+- `fog/never_seen_share` kept as an **invariant**: must be 0 (every ship is revealed at
+  spawn); alert trigger above 0.
+- Kept, renamed (share, seconds): `fog/visible_share/{all, scale_{bucket}}`,
+  `fog/range_visible_share`, `fog/field_occluded_share`, `fog/individual_visible_share`,
+  `fog/mean_hidden_age_s`.
+- Dropped `team_shared_gain`: exactly the gap between the team and individual lines in
+  one panel.
+- Batch-size independent: `fog/reacquisitions_per_slot_min` (per enemy slot per minute)
+  and `fog/occlusion_share/{bucket}` (histogram as shares).
