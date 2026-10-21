@@ -410,17 +410,28 @@ Coupling found in the current code that blocks goal B:
   feedback, far less code and carry. Losses: a hidden ship's position becomes implicit
   in the recurrent state instead of explicit; hidden ships lose geometry in attention
   (rotary encoding, relation bias); memory length must be learned.
-- **Open: geometry for hidden tokens in rotary attention.** The identity rotation
-  means "at world (0, 0)", not "no position". Candidates:
-  - mask: zero the rotated Q/K dimensions and the relation bias for hidden tokens, plus
-    one attention head without rotary encoding;
-  - **uncertainty-damped rotary:** rotate by an estimated position `mu` and scale each
-    frequency pair by `exp(-w^2 sigma^2 / 2)`, the exact expectation of the score term
-    under a Gaussian position (wrapped normal for attitude); relation bias has closed
-    forms too. sigma = 0 is ordinary rotary, sigma -> infinity is masking;
-  - sources for (mu, sigma): last step's absolute next-state forecast (author's
-    question, under discussion); an in-step readout after block 1, used by block 2
-    (no loop, differentiable); dead reckoning from last-seen state (parameter-free).
+- **Geometry for hidden tokens: uncertainty-damped rotary from last step's forecast
+  (decided).** The identity rotation means "at world (0, 0)", not "no position", so it
+  is not used. Instead:
+  - mu and sigma for a hidden ship's position and attitude come from the previous
+    step's absolute next-state forecast (decoded moments, with the target smoothing
+    sigma_obs and Sheppard's term subtracted, floored at 0);
+  - each rotary frequency pair is scaled by `exp(-w^2 sigma^2 / 2)` (exact expectation
+    of the score term under a Gaussian position; wrapped normal for attitude). sigma = 0
+    is ordinary rotary, large sigma keeps only coarse geometry;
+  - the relation bias uses the same (mu, sigma) with closed-form expectations;
+  - carry and rollout buffer hold mu and sigma per enemy slot (~5 numbers); no gradient
+    through this loop (the update uses the stored values). It is a mild loop: the
+    forecast shapes only attention geometry, memory stays in Griffin, the next forecast
+    is absolute and trained against truth every step;
+  - source is a config choice: `forecast` (default), `mask` (infinite sigma: zero the
+    rotated dims and relation bias), `readout` (in-step readout after block 1 used by
+    block 2; post-port experiment). Dead reckoning from last-seen state is a cheap
+    baseline for the comparison;
+  - diagnostic: calibration of the forecast sigma for hidden ships against true error.
+  - **Invariant (author):** there are no never-seen ships (every ship is revealed to both
+    teams when it spawns), and none are planned. Test it; if it ever changes, `mask` is
+    the fallback for such slots.
   - Items made moot or changed, to be swept: belief codes and their round-trip tests,
     carry contents, the `belief/` and `enemy_action/` diagnostics groups, tabled item 10
     (hidden tokens carry mask, visible flag and time since seen).
