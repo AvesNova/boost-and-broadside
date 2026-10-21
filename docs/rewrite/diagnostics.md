@@ -539,6 +539,14 @@ Net: about 9G + 9 series become 3G + 10, with the question answered directly.
 population and group plus `kl` per population replace head and baseline; 
 `supervised_share` added.
 
+**Update after "Memory and belief" (2026-10-21, decisions.md):** the head now has two
+outputs, residual (allies, visible enemies) and absolute (all three populations), so
+every series gains an output slice, e.g. `next_state/kl/{population}/{output}` (one
+panel per quantity, populations and outputs as lines). Hidden ships no longer have an
+input code, so their "nothing changes" baseline is undefined: open question (candidate:
+KL only for hidden ships here, physical-unit comparison against dead reckoning in group
+8). Token share stays; it is also the input to the tempered weights (alpha = 0.5).
+
 ## Group 8: `belief/*`
 
 **What exists** (`ppo.py` `_precompute_belief_diagnostics`, once per update from the
@@ -614,6 +622,13 @@ renderer is in metres (decisions.md, Units). Belief series become `position_m`,
 here and as the general rule; offline heatmaps later; no visible-leak warning rule and
 no per-bucket token share.
 
+**Update after "Memory and belief" (2026-10-21, decisions.md):** there is no belief
+store; the group measures the **absolute output's** forecast (decoded mean), which is
+also what sets damped rotary geometry for hidden ships. Slices, baselines and naming are
+unchanged. **Add** the decided sigma calibration: per quantity and slice, the mean of
+(error / sigma)^2 (1 when calibrated) and the share of errors within 1 and 2 sigma.
+Group name `belief/` kept (it is the model's belief, now a readout).
+
 ## Group 9: `enemy_action/*`
 
 **What exists** (`ppo.py`, the enemy-action head: the enemy's committed joint command,
@@ -629,6 +644,11 @@ observation). Over enemy tokens, alive and committed:
 
 **Purpose:** does the head predict what enemies are doing better than the cheap
 alternatives, and is the belief it writes into the next observation honest?
+
+**Update after "Memory and belief" (2026-10-21, decisions.md):** the prediction is no
+longer written into the next observation; the head is an auxiliary loss only. The
+second half of the purpose, and the calibration argument below ("fed back as an input"),
+lose their main motivation. The four questions stay open for when the audit resumes.
 
 **Assessment**
 - **The persistence baseline is set by an arbitrary constant.** With 0.99 hard-coded,

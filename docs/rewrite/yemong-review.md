@@ -144,6 +144,9 @@ a per-type first projection (`encoder_split`) and a shared second projection.
 - **Decided:** a visible flag always; masked categoricals are **uniform** for now
   (belief stays in the port). Griffin-only memory is post-transition work; the adapter
   and model code should make swapping the masking/memory scheme cheap.
+  **Superseded (2026-10-21, decisions.md "Memory and belief"):** Griffin-only memory is now the port design, so
+  "belief stays" no longer holds: the uniform-vs-zeros choice is reopened. Hidden
+  tokens are rotated by last step's forecast with uncertainty damping, not masked.
 
 ## Part 2: trunk internals (rotary geometry, Griffin memory, resets)
 
@@ -275,7 +278,9 @@ coefficients are from `profiles/rl.py`.
 
 ### Hidden assumptions
 
-1. **Two "auxiliary" heads are load-bearing at inference.** The next-state and
+1. **Superseded (2026-10-21, decisions.md "Memory and belief"):** both loops are removed in the port; the two heads are auxiliary
+   only (the next-state forecast still sets damped rotary geometry for hidden ships).
+   **Two "auxiliary" heads are load-bearing at inference.** The next-state and
    enemy-action predictions become the next observation for hidden enemies (belief).
    The model's input at t+1 depends on its own output at t. Stored rollout
    observations mean no gradient flows through that loop, and errors compound for
@@ -309,7 +314,8 @@ coefficients are from `profiles/rl.py`.
 ### Questions for the author
 
 1. Which auxiliary heads go into the port? Next-state and enemy-action are required
-   while belief stays; density and the two shot heads are optional.
+   while belief stays; density and the two shot heads are optional. (**Superseded (2026-10-21, decisions.md "Memory and belief"):**
+   no belief; next-state is needed for hidden-ship rotary geometry.)
 2. Ghost bullets: move counterfactual-label generation out of the gameplay bullet
    buffer into a separate privileged-label module (same physics function, its own
    buffer), so gameplay and training labels cannot interfere?
@@ -457,11 +463,19 @@ experience is generated and then not learned from.
   one per decision step, regardless of how many physics ticks a decision spans.
 - Humans may act more often than the decision rate. Open for the timing contract: how a
   human's inputs map onto decision steps for other agents' observations and labels.
+- **Superseded (2026-10-21, decisions.md "Memory and belief"):** the prediction is no longer fed back; the head stays as an
+  auxiliary loss and the enemy pending-action input stays masked.
 - **Port as is:** keep hidden enemies in the loss and keep feeding the prediction back as
   input. Both are candidates for later experiments.
 - **Rename** `previous_action` to `pending_action` in v2.
 
 ### Deep dive 3c: next-state head and belief
+
+**Superseded (2026-10-21, decisions.md "Memory and belief"):** the belief loop below (decode, observe, compose, advance) is not
+ported. The head stays with two outputs (residual for allies and visible enemies,
+absolute for everyone), tempered population weights, and its absolute forecast's mean
+and sigma set damped rotary geometry for hidden ships. This section describes today's
+code.
 
 **What it predicts.** For every ship token, next decision's full physical state as the
 469-wide categorical code: 22 softmax groups (position 9 nested levels of 3x3;
@@ -608,6 +622,9 @@ Value exactly on the last real bin, sigma 0.75, spill folded into the last paddi
 
 ### Outcomes (author, HL-Gauss) and critic analysis
 
+- **Superseded (2026-10-21, decisions.md "Memory and belief"):** no belief is encoded into inputs, so the encode-side
+  quadrature width and wide-belief padding are moot; decode corrections stay (forecast
+  sigma); round-trip and stationarity tests become "a sharp target decodes to sigma ~0".
 - **Decided: HL-Gauss codes go into the port** (a simplification). Round-trip
   corrections (quadrature floor + Sheppard) confirmed. Circular channels unpadded;
   padding amount is a middle ground to tune (exact means matter less as uncertainty
@@ -801,7 +818,7 @@ construction. It is a cheap mixing matrix in the learner; keeping it as config
 | **Controller** | Anything that picks actions for a set of ships: an NN policy, the scripted controller, random, a human. One controller usually drives a whole team. |
 | **Lineup** | The assignment of controllers to ships for a match (data, so "human flies ship 3, NN flies the rest" is just a lineup). |
 | **View** | One team's canonical observation (self = team 0). |
-| **Carry** | A controller's recurrent state for one view (Griffin state, belief store). |
+| **Carry** | A controller's recurrent state for one view (Griffin state, belief store; in the port, Griffin state plus last forecast mean and sigma per enemy slot). |
 | **Model / params / checkpoint** | Architecture / weights / saved params plus config. |
 | **Learner** | A training algorithm (PPO, BC). |
 | **Match**, **decision step**, **tick** | An episode; one controller decision; one physics step. |
@@ -1265,7 +1282,8 @@ truth**, which opens a third option:
    decision while the network chooses the next one.
 4. Network (`ego_pass`): one batched 2B forward over team 0's raw view and team 1's
    flipped view (both "self = team 0"), with separate recurrent states and belief
-   trackers per view. League slots get one extra forward each.
+   trackers per view. League slots get one extra forward each. (Port: no belief
+   trackers; each view's carry is its own.)
 5. Actions merged: team 0 from view 0, team 1 from view 1, then league slots
    override team 1 in their envs.
 6. Buffer stores **view 0 only**: obs, logprob, values, predictions, density
@@ -1279,7 +1297,7 @@ truth**, which opens a third option:
 |---|---|
 | Actor (PPO), BC, entropy | team 0 only (`actor_mask = team_id == 0`) |
 | Critic | all living ships, both teams, valued from team 0's view (outcome column sign-flipped for team 1) |
-| Next-state | every ship with a valid belief (allies and enemies) |
+| Next-state | every ship with a valid belief (allies and enemies); port: alive, non-terminal, contiguous transitions (all ships are seen at spawn) |
 | Enemy action | team 1 ships |
 | Density, shots | team 0 as observer |
 
@@ -1447,7 +1465,8 @@ be multimodal (per softmax group). The collapse happens in the decode: forecast 
   the per-population diagnostics already logged.
 
 **Outcomes (author, 3c leftovers)**
-- **Single-peak (moment) belief** in the port. Direct code feedback and other belief
+- ~~**Single-peak (moment) belief** in the port.~~ **Superseded (2026-10-21, decisions.md "Memory and belief"):** no belief loop.
+  Direct code feedback and other belief
   experiments are post-port.
 - **Code ranges: absolute units with global maximums for every channel**, resources
   included (not fractions of a type's maximum). Ranges come from the design envelope

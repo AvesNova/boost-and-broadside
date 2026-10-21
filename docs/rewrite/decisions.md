@@ -39,7 +39,8 @@ Coupling found in the current code that blocks goal B:
 
 - The env wrapper is `YemongEnvWrapper` and returns a `YemongObservation`.
 - Observation composition depends on the policy's belief store, which is fed by the
-  next-state head's forecast (env -> obs -> model -> forecast -> obs loop).
+  next-state head's forecast (env -> obs -> model -> forecast -> obs loop). (The port
+  removes this loop; see "Memory and belief".)
 - `ppo.py` trains Yemong-specific heads (decomposed value, categorical critic,
   next-state codes, hex density, counterfactual shots) and calls Yemong-specific
   `evaluate_actions` flags.
@@ -84,13 +85,16 @@ Coupling found in the current code that blocks goal B:
     `unroll(params, carry0, obs_seq, key)` for training re-evaluation.
   - Generic conformance test for every agent: `unroll == scan(step)`.
   - **Belief in all forms is carried by the model.** Recurrent state and next-state
-    belief live in the carry.
+    belief live in the carry. (Yemong in the port: Griffin state plus, per enemy slot,
+    the previous step's forecast mean and sigma for position and attitude, used only
+    for damped rotary geometry; see "Memory and belief".)
   - **Feature encoding belongs to the model.** The env provides raw physical
     quantities.
   - Resets and respawns arrive as lifecycle flags in the observation; the agent
     decides what they mean for its carry.
   - Optional `outputs["inspect"]` exposes internals (such as belief) for the dev
-    spectator without the runtime knowing their structure.
+    spectator without the runtime knowing their structure. (Yemong: the next-state
+    forecasts, residual for visible ships and absolute for hidden ones.)
 - **Learner.** Consumes trajectories and owns optimizer state. PPO requires only
   log-prob, entropy and value from an agent. Model-specific auxiliary heads plug in as
   `agent.aux_loss(params, batch, outputs)`. An agent that does not fit PPO comes paired
@@ -432,9 +436,34 @@ Coupling found in the current code that blocks goal B:
   - **Invariant (author):** there are no never-seen ships (every ship is revealed to both
     teams when it spawns), and none are planned. Test it; if it ever changes, `mask` is
     the fallback for such slots.
-  - Items made moot or changed, to be swept: belief codes and their round-trip tests,
-    carry contents, the `belief/` and `enemy_action/` diagnostics groups, tabled item 10
-    (hidden tokens carry mask, visible flag and time since seen).
+- **Sweep of consequences (2026-10-21).** Notes added in `yemong-review.md`
+  (parts 1, 3, 3b, 3c, HL-Gauss outcomes, 3c revisited, 4a, naming) and
+  `diagnostics.md` (groups 7, 8, 9); tabled items 10 and 12 and the agent contract
+  updated. What changed:
+  - *HL-Gauss codes:* observed-value encoding (sigma_obs = 0.75 bins, 2 padding bins,
+    circular channels unpadded) unchanged. No belief is encoded into inputs any more,
+    so the encode-side quadrature width and the wide-belief padding are moot. The
+    decode-side correction stays (forecast moments for the rotary sigma). Tests:
+    encode -> decode -> encode stability and zero-residual stationarity are replaced by
+    "a sharp target decodes to its mean with sigma ~0"; edge tests stay.
+  - *Carry:* Griffin state (RG-LRU plus conv buffer per temporal sublayer) plus the
+    previous forecast's mean and sigma for position and attitude per enemy slot. No
+    belief store, no action belief, no validity flags.
+  - *Enemy pending action:* masked in the raw observation and no longer filled from
+    the head; the enemy-action head stays as an auxiliary loss.
+  - *Next-state supervision mask:* "has a valid belief" becomes "alive, not terminal,
+    contiguous transition" (every ship is seen at spawn).
+  - *Diagnostics:* group 7 gains an output slice (residual, absolute) and needs a
+    hidden-ship baseline; group 8 now measures the absolute forecast and gains the
+    sigma calibration diagnostic; group 9 loses its feedback motivation (its four
+    questions remain open).
+- **Reopened by the sweep (open):**
+  - *Masked categorical encoding:* part 1 decided "uniform for now" explicitly because
+    belief stayed; its recommendation was zeros plus the visible flag once memory moves
+    into Griffin, which it now has.
+  - *Hidden-ship baseline for next-state gain:* "nothing changes" is undefined for a
+    masked input. Candidate: report only KL for hidden ships in group 7 and leave the
+    physical-unit comparison to dead reckoning in group 8.
 
 ### Physics changes land in the current env first (planned, not started)
 
@@ -559,10 +588,17 @@ Coupling found in the current code that blocks goal B:
 10. **Hidden-entity convention in the raw observation:** what an unseen enemy's slot
     contains (mask only, or last-seen values and time since seen), given that belief
     moves into models and may be replaced by Griffin memory.
+    *Update 2026-10-21:* Yemong no longer needs last-seen values (Griffin-only memory;
+    "Memory and belief"). Already decided in part 1: a mask, a visible flag always, and
+    time since last seen as a feature; every ship is revealed at spawn, so there are no
+    never-seen slots. Left for contracts (item 2): whether the raw observation carries
+    last-seen values at all (lean: no; models remember for themselves; the dead-reckoning
+    baseline can be computed from stored observations by diagnostics).
 11. **Human input timing:** humans may act more often than the decision rate; define how
     their inputs map onto decision steps (for other agents' pending-action views and
     for training labels if human games are ever learned from).
-12. ~~Unfinished from the Yemong review 3c~~: decided. Single-peak belief for the port;
+12. ~~Unfinished from the Yemong review 3c~~: decided. ~~Single-peak belief for the port;~~
+    (superseded 2026-10-21: no belief loop, see "Memory and belief");
     codes in absolute units with global maximums from the design envelope (arbitrary
     parameters within reason); next-state loss on allies, visible and hidden enemies,
     averaged per population.
@@ -656,6 +692,10 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       Author chose to switch topics here (next topic not yet chosen).
 - [ ] JAX library choice (tabled item 6): discussed, re-tabled by the author; findings
       recorded under item 6.
+- [x] Memory and belief redesign (2026-10-21): Griffin-only memory, dual-output
+      next-state head, tempered weights, damped rotary from last step's forecast, mixed
+      fog; consequences swept through the docs. Two points reopened: masked categorical
+      encoding (uniform vs zeros plus flag) and the hidden-ship next-state baseline.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.
