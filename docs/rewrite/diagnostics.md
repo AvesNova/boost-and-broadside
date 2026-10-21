@@ -697,3 +697,32 @@ lose their main motivation. The four questions stay open for when the audit resu
 - Group 8: the hidden-age slices measure the absolute output (the one that sets rotary
   geometry); the `visible` slice logs both outputs, so the comparison is also in metres.
 - Gradient share per output (how much each output moves the trunk): `grad_*` group.
+
+## Group 10: `global_density/`
+
+**What exists** (`ppo.py` `_global_density_loss`; the hex density head of 3e, Poisson
+log-rate per hex cell for allies and enemies, target the true soft counts, privileged):
+`loss/global_density`, `loss/global_density_{ally,enemy}`, `global_density/deviance`,
+`global_density/{ally,enemy}_deviance`, `loss_proxy/global_density` (dropped in group 3).
+Decided in 3e but not built: fraction of deviance explained per team (EMA per-cell null)
+and the enemy channel split by number of hidden enemies.
+
+**Purpose:** ally field = sanity check (allies are always visible); enemy field = how
+well the model knows the enemy fleet's layout, hidden ships included (with Griffin-only
+memory, a direct readout of what memory holds).
+
+**Outcomes (author, 2026-10-21):** kept minimal (a first, larger proposal was judged
+overcomplicated).
+- `global_density/loss`: the optimised objective.
+- `global_density/deviance/{ally, enemy}`: excess nats per cell over a perfect
+  predictor (0 = exact). A Poisson loss has no natural zero, so the per-team losses are
+  dropped; the combined deviance is dropped (the per-team lines answer it better).
+- `global_density/r2/{ally, enemy}`: fraction of deviance explained,
+  `1 - D_model / D_null`, with D_null the deviance of the batch's per-cell mean count
+  (1 perfect, 0 no better than the average, below 0 worse). Comparable across modes,
+  maps and fleet sizes, unlike raw deviance. The null is the batch mean, not 3e's EMA:
+  exact, stateless, no smoothing.
+- Not built: the enemy split by hidden ships (group 8 already measures hidden tracking
+  by age); can return as a targeted check.
+- Panels: one for deviance, one for R2, ally and enemy as lines. 5 series.
+
