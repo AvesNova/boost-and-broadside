@@ -383,15 +383,19 @@ Coupling found in the current code that blocks goal B:
   visible ones.
 - **Next-state head outputs both forms, to see which trains better:** a shared head
   body with two output layers, residual (`log(input_code + eps) + f_res(h)`) and absolute
-  (`f_abs(h)`), each applied to every ship and each trained with the same per-population
-  cross-entropy (details in the open points below).
+  (`f_abs(h)`). **Hidden ships are masked from the residual output** (author): the
+  residual output trains on allies and visible enemies only; the absolute output trains
+  on all three populations. Comparison: residual vs absolute on allies and visible
+  enemies; hidden ships use the absolute output (this is option A when read as
+  residual-for-visible, absolute-for-hidden, which is also what dev spectator shows).
 - Precedent noted: Dreamer's RSSM uses separate posterior (observed) and prior (blind)
   networks and decodes observations absolutely from a bf16 latent; it never predicts
   occluded objects (no privileged labels), which we can.
 - **Open (proposed, not yet answered):**
-  - Dual-output weighting: each output at half the next-state coefficient (total
-    unchanged) and both feeding the trunk; a config option to stop the gradient of
-    either output into the trunk for clean A/B runs.
+  - Dual-output weighting: per population the weights sum to that population's
+    existing weight (allies and visible enemies: 0.5 residual + 0.5 absolute; hidden
+    enemies: 1.0 absolute), both outputs feeding the trunk; a config option to stop the
+    gradient of either output into the trunk for clean A/B runs.
   - Hidden tokens in rotary attention: the identity rotation means "at world (0, 0)",
     not "no position". Proposal: zero the rotated Q/K dimensions (and the relation bias)
     for hidden tokens and add one attention head without rotary encoding.
