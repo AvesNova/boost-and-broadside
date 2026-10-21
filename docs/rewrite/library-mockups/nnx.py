@@ -60,7 +60,9 @@ class GriffinTemporalBlock(nnx.Module):
 
 
 # Usage. Eager: block = GriffinTemporalBlock(d, rngs=nnx.Rngs(0)); y, carry = block(x, carry, first)
-# Pure (what jit, vmap over league slots and optax want): split once, merge inside.
+# Pure: in flax 0.12.10 a module is itself a pytree, so jax.jit / grad / vmap and optax
+# take it directly (checked; in-place mutation inside jax.jit is dropped, which this
+# block never does). split / merge is the older route to the same pure state:
 #   graphdef, state = nnx.split(block)
 #   def apply(state, x, carry, first): return nnx.merge(graphdef, state)(x, carry, first)
 def to_plain(state):
