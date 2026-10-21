@@ -391,19 +391,36 @@ Coupling found in the current code that blocks goal B:
 - Precedent noted: Dreamer's RSSM uses separate posterior (observed) and prior (blind)
   networks and decodes observations absolutely from a bf16 latent; it never predicts
   occluded objects (no privileged labels), which we can.
-- **Open (proposed, not yet answered):**
-  - Dual-output weighting: per population the weights sum to that population's
-    existing weight (allies and visible enemies: 0.5 residual + 0.5 absolute; hidden
-    enemies: 1.0 absolute), both outputs feeding the trunk; a config option to stop the
-    gradient of either output into the trunk for clean A/B runs.
-  - Hidden tokens in rotary attention: the identity rotation means "at world (0, 0)",
-    not "no position". Proposal: zero the rotated Q/K dimensions (and the relation bias)
-    for hidden tokens and add one attention head without rotary encoding.
-  - Griffin decay initialization: adopt the paper's `a^c` in [0.9, 0.999] (today's
-    initial time constant is ~0.2 s with the gate open).
-  - Random occlusion as an optional augmentation knob, off by default; no input noise.
-  - Fog: mixed fog-free and fogged envs with a fog flag in the observation; the fogged
-    share optionally a step-based schedule; fog is a mode attribute for ratings.
+- **Next-state population weighting: tempered, `weight_p ∝ count_p^alpha`, alpha = 0.5
+  (config).** alpha = 1 is today's per-token average, alpha = 0 equal weight per
+  population. Per-token amplification of a rare population grows as `1/sqrt(share)`
+  instead of `1/share`; an empty population drops out and the rest renormalize. Within a
+  population the two outputs split its weight equally (hidden enemies: absolute only).
+  Tune alpha with the existing population gradient decomposition (coherent vs noise via
+  environment halves). Both outputs feed the trunk; a config option stops either
+  output's gradient into the trunk for clean A/B runs.
+- **Griffin decay initialization: the paper's**, per-step decay `a^c` in [0.9, 0.999]
+  (today's initial time constant is ~0.2 s with the gate open), since Griffin now
+  carries all memory.
+- **Fog: mixed fog-free and fogged envs**, with a fog flag in the observation; the fogged
+  share optionally a step-based schedule; fog is a mode attribute for ratings.
+- **Random occlusion augmentation:** post-implementation TODO (not in the port).
+- **Critical comparison with the current belief loop (recorded for the post-port
+  comparison run).** Gains: one memory, 128 steps of gradient into memory, no compounding
+  feedback, far less code and carry. Losses: a hidden ship's position becomes implicit
+  in the recurrent state instead of explicit; hidden ships lose geometry in attention
+  (rotary encoding, relation bias); memory length must be learned.
+- **Open: geometry for hidden tokens in rotary attention.** The identity rotation
+  means "at world (0, 0)", not "no position". Candidates:
+  - mask: zero the rotated Q/K dimensions and the relation bias for hidden tokens, plus
+    one attention head without rotary encoding;
+  - **uncertainty-damped rotary:** rotate by an estimated position `mu` and scale each
+    frequency pair by `exp(-w^2 sigma^2 / 2)`, the exact expectation of the score term
+    under a Gaussian position (wrapped normal for attitude); relation bias has closed
+    forms too. sigma = 0 is ordinary rotary, sigma -> infinity is masking;
+  - sources for (mu, sigma): last step's absolute next-state forecast (author's
+    question, under discussion); an in-step readout after block 1, used by block 2
+    (no loop, differentiable); dead reckoning from last-seen state (parameter-free).
   - Items made moot or changed, to be swept: belief codes and their round-trip tests,
     carry contents, the `belief/` and `enemy_action/` diagnostics groups, tabled item 10
     (hidden tokens carry mask, visible flag and time since seen).
@@ -580,7 +597,10 @@ Checks and revisits deliberately deferred until the JAX port runs.
 - [ ] Verify the env step and network forward overlap in the profile (review 4a).
 - [ ] Shot-label design benchmarks (tabled item 15).
 - [ ] Privileged critic experiment (tabled item 16).
-- [ ] Belief experiments, e.g. direct code feedback (review 3c).
+- [ ] Belief experiments, e.g. direct code feedback (review 3c). Note: the belief loop
+      is removed in the port (Griffin-only memory); compare against it after the port.
+- [ ] Random occlusion augmentation (randomly hide visible enemies for a few steps) as an
+      optional knob, if hidden-ship learning looks data-starved.
 
 ## Next steps (resume point)
 
