@@ -747,3 +747,30 @@ rates right?
 - **Add** `shot/supervised_share`: share of own-ship rows with a valid shot label
   (checklist C6; the end-of-rollout label loss, ~23%, is part of the item 15 benchmarks).
 - 13 series.
+
+## Group 12: `episode/`
+
+**What exists** (`logging.py`, finished episodes, ~55 games per update):
+`reward_{mean,min,max}` per ship-episode, `reward_{level}`, `event/{name}`,
+`length_mean`, `lifespan_mean` (steps), `win_rate` (per ship-episode, self-play and
+league pooled), `team0_win_rate`, `team1_win_rate`, `draw_rate`, and `alive_fraction`
+(`ppo.py`, share of ship-steps alive in the batch). In Frontline a timed-out match is
+awarded by front position (`apply_timeout_result`).
+
+**Purpose:** how games go in aggregate: length, how they end, what happens, what each
+reward term pays.
+
+**Outcomes (author, 2026-10-21):**
+- Kept (seconds per the units rule): `episode/length_s`, `episode/lifespan_s`,
+  `episode/reward_mean`, `episode/reward_{level}`, `episode/event/{name}`,
+  `episode/alive_share`, and `episode/reward_{min,max}` (only catch for a single
+  ship's reward exploding).
+- `episode/result/{team0, team1, draw}`: side-balance check (spawn or map bias in
+  self-play), not performance (G1, G2).
+- Dropped `episode/win_rate`: pools self-play and league, so it moves with the opponent
+  mix, not skill.
+- **Add** `episode/end/{decided, timeout}` (checklist C3): timed-out Frontline games are
+  adjudicated and look decided in the results otherwise.
+- **Add** `episode/count`: finished games per update, the sample size behind every
+  series here.
+- About 13 series plus one per reward level and one per event.
