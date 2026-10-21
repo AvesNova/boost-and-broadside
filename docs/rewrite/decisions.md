@@ -457,13 +457,12 @@ Coupling found in the current code that blocks goal B:
     hidden-ship baseline; group 8 now measures the absolute forecast and gains the
     sigma calibration diagnostic; group 9 loses its feedback motivation (its four
     questions remain open).
-- **Reopened by the sweep (open):**
-  - *Masked categorical encoding:* part 1 decided "uniform for now" explicitly because
-    belief stayed; its recommendation was zeros plus the visible flag once memory moves
-    into Griffin, which it now has.
-  - *Hidden-ship baseline for next-state gain:* "nothing changes" is undefined for a
-    masked input. Candidate: report only KL for hidden ships in group 7 and leave the
-    physical-unit comparison to dead reckoning in group 8.
+- **Reopened by the sweep, then decided (author, 2026-10-21):**
+  - *Masked categorical encoding: zeros plus the visible flag* (replaces part 1's
+    "uniform for now", which assumed belief stayed). Equally expressive with the flag;
+    the standard missing-value pattern; implies no graded uncertainty.
+  - *Hidden-ship next-state baseline:* group 7 reports only KL for hidden ships; the
+    physical-unit comparison against dead reckoning lives in group 8.
 
 ### Physics changes land in the current env first (planned, not started)
 
@@ -694,8 +693,8 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       recorded under item 6.
 - [x] Memory and belief redesign (2026-10-21): Griffin-only memory, dual-output
       next-state head, tempered weights, damped rotary from last step's forecast, mixed
-      fog; consequences swept through the docs. Two points reopened: masked categorical
-      encoding (uniform vs zeros plus flag) and the hidden-ship next-state baseline.
+      fog; consequences swept through the docs. Reopened points decided: masked values
+      are zeros plus the visible flag; hidden ships report KL only in group 7.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.

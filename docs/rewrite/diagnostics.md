@@ -543,9 +543,9 @@ population and group plus `kl` per population replace head and baseline;
 outputs, residual (allies, visible enemies) and absolute (all three populations), so
 every series gains an output slice, e.g. `next_state/kl/{population}/{output}` (one
 panel per quantity, populations and outputs as lines). Hidden ships no longer have an
-input code, so their "nothing changes" baseline is undefined: open question (candidate:
-KL only for hidden ships here, physical-unit comparison against dead reckoning in group
-8). Token share stays; it is also the input to the tempered weights (alpha = 0.5).
+input code, so their "nothing changes" baseline is undefined. **Decided (author):** KL
+only for hidden ships here; the physical-unit comparison against dead reckoning lives in
+group 8. Token share stays; it is also the input to the tempered weights (alpha = 0.5).
 
 ## Group 8: `belief/*`
 

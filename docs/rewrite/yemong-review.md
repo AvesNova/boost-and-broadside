@@ -145,7 +145,7 @@ a per-type first projection (`encoder_split`) and a shared second projection.
   (belief stays in the port). Griffin-only memory is post-transition work; the adapter
   and model code should make swapping the masking/memory scheme cheap.
   **Superseded (2026-10-21, decisions.md "Memory and belief"):** Griffin-only memory is now the port design, so
-  "belief stays" no longer holds: the uniform-vs-zeros choice is reopened. Hidden
+  "belief stays" no longer holds. **Decided (author): zeros plus the visible flag.** Hidden
   tokens are rotated by last step's forecast with uncertainty damping, not masked.
 
 ## Part 2: trunk internals (rotary geometry, Griffin memory, resets)
