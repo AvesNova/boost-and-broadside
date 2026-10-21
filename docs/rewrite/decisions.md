@@ -455,8 +455,25 @@ Coupling found in the current code that blocks goal B:
    code, keeping testing/benchmark effort proportionate. Key constraint from the author:
    no silent changes to the codebase; work step by step without babysitting every
    decision.
-6. **JAX library deep dive:** NN library (Flax NNX vs Linen vs Equinox), optax,
-   checkpointing (Orbax vs plain pytree save).
+6. **JAX library deep dive (discussed 2026-10-21, re-tabled by the author):** NN
+   library (Flax NNX vs Linen vs Equinox), optax, checkpointing (Orbax vs plain pytree
+   save). Findings so far:
+   - Versions checked 2026-10-20: jax 0.12.0, flax 0.12.10, equinox 0.13.8, optax 0.2.8,
+     orbax-checkpoint 0.12.7. NNX API still changing in 2026 (deprecations and renames in
+     0.12.1, 0.12.7, 0.12.8; tree mode added in 0.12.5-0.12.6); pin versions.
+   - Mockups of the Griffin temporal block in plain JAX, Linen, NNX and Equinox:
+     `docs/rewrite/library-mockups/` (all four agree numerically, rollout equals
+     sequence, stacked league slots, grad + optax, export).
+   - In flax 0.12.10 NNX modules are pytrees: plain `jax.jit`/`grad`/`vmap` and optax take
+     them directly (no split/merge needed); in-module mutation inside plain `jax.jit` is
+     dropped (Yemong has none).
+   - `jax.export` serialization needs params in plain containers; native NNX and Equinox
+     params fail until converted.
+   - Proposed, not decided: rule A (models are pure functions over an opaque params
+     pytree; "any model" means any architecture, one library for all our models) and
+     rule B (plain dicts only when saving and exporting); optax; Orbax vs plain
+     safetensors + JSON checkpoints; `jaxtyping`. Assistant's last lean: NNX with plain
+     JAX transforms, pinned.
 8. **In-depth review of the current Yemong model and training.** Walk through the
    policy architecture (encoder, spatial attention, Griffin recurrence, heads,
    belief, categorical codes) and the training stack (PPO, critic, auxiliary losses,
@@ -561,6 +578,8 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       `reward/`, `seat/`, `schedule/`, `train/`+`counters/`, `grad_*`, evaluator names;
       then new checklist items without a group, final trigger rules, dashboard layout.
       Author chose to switch topics here (next topic not yet chosen).
+- [ ] JAX library choice (tabled item 6): discussed, re-tabled by the author; findings
+      recorded under item 6.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.
