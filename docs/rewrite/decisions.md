@@ -543,9 +543,10 @@ Coupling found in the current code that blocks goal B:
      simulated (0.20 s by the card definition). Later idea: speed-dependent roll rate.
    - Confirm the validity constraints and the log-gap parameterization for sampling.
    - Pick the similarity-ratio suite shown on the card (current draft: 10 ratios).
-2. **Concrete contracts:** observation schema, action schema (keep the 30-way joint
-   command?), decision rate and action repeat, event list, trajectory/label format,
-   and versioning rules.
+2. **Concrete contracts:** observation schema, action schema (42-way joint command,
+   accepted in review part 1; this item used to ask "keep the 30-way joint command?"),
+   decision rate and action repeat, event list, trajectory/label format, and versioning
+   rules.
 3. **Leaderboard and model exchange:** submission format (exported `act` via
    `jax.export`?), rating method, fixed baselines, how a submission pins a mode version.
    Needs real thought.
