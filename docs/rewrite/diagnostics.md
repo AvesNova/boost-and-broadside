@@ -726,3 +726,24 @@ overcomplicated).
   by age); can return as a targeted check.
 - Panels: one for deviance, one for R2, ally and enemy as lines. 5 series.
 
+
+## Group 11: `shot/`
+
+**What exists** (`ppo.py` `_shot_losses`; the counterfactual shot heads of 3f, ported
+as they are until the item 15 benchmarks): `loss/shot_{trajectory, outcome}`, trajectory
+CE per part (displacement, direction, speed, local log index), and realized vs
+predicted rates for enemy hit, ally hit and clear miss. 12 series.
+
+**Purpose:** does the head learn where shots go and what they hit, and are its hit
+rates right?
+
+**Outcomes (author, 2026-10-21):**
+- `shot/loss/{trajectory, outcome}` (group 3 move).
+- `shot/trajectory_kl/{displacement, direction, speed, index}`: KL replaces CE (CE
+  includes the target's entropy and has no zero; KL is 0 when perfect).
+- `shot/{enemy_hit, ally_hit, clear_miss}_rate/{realized, predicted}`: three panels, two
+  lines each; the gap is calibration. The realized enemy-hit rate doubles as the
+  policy's accuracy, logged nowhere else.
+- **Add** `shot/supervised_share`: share of own-ship rows with a valid shot label
+  (checklist C6; the end-of-rollout label loss, ~23%, is part of the item 15 benchmarks).
+- 13 series.
