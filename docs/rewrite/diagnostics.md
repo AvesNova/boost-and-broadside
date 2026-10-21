@@ -676,3 +676,24 @@ lose their main motivation. The four questions stay open for when the audit resu
 - **Optional slice by opponent kind** (self-play, checkpoint, average, scripted,
   semi-scripted): modelling the scripted agent and modelling itself are different
   tasks. Uses the per-env opponent id the league already keeps.
+
+**Outcomes (author, group 9, 2026-10-21, after the feedback loop was removed):**
+1. Baselines from the batch replace the hard-coded 0.99: optimal repeat-rate
+   persistence, CE = -r ln r - (1 - r) ln((1 - r)/41), and the batch action marginal
+   (entropy of the action histogram); `enemy_action/gain/{repeat, marginal}` in nats.
+2. Every series sliced `visible` / `hidden`, quantity first.
+3. Calibration dropped: no consumer of the probabilities any more and CE already
+   scores it. `brier` and `realized_probability` dropped (restate CE); `accuracy` and
+   `entropy` kept; no confidence series.
+4. Per-factor CE (power, turn, shoot marginals of the joint) added; opponent-kind slice
+   (self-play, checkpoint, average, scripted) on gains and accuracy only.
+5. Whether the head earns its cost as an auxiliary loss is a gradient question for the
+   `grad_*` group.
+
+**Residual vs absolute logging (author's question, decided):** separate, as a slice.
+- Group 7: `next_state/{kl, gain}/{population}/{output}`, output in {residual,
+  absolute}; residual exists only for ally and enemy_visible. The "nothing changes"
+  baseline is the same for both outputs, so the gains compare directly.
+- Group 8: the hidden-age slices measure the absolute output (the one that sets rotary
+  geometry); the `visible` slice logs both outputs, so the comparison is also in metres.
+- Gradient share per output (how much each output moves the trunk): `grad_*` group.
