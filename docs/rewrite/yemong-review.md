@@ -122,6 +122,9 @@ a per-type first projection (`encoder_split`) and a shared second projection.
 - **Time since last seen** is a feature, Fourier-encoded like the other time features.
 - Consequence to settle: rotary encoding has no position for a masked token, so a
   hidden token's rotation should be the identity (no geometry).
+  ~~Identity means no geometry~~ **Correction (2026-10-21):** the identity rotation is
+  the rotation of a token at world (0, 0), not "no position"; it adds a spurious
+  `cos(phase + w x_query)` term. See decisions.md, "Memory and belief".
 - **Full truth plus masks as the observation:** rejected (recommendation). It leaks
   hidden information to any model that ignores or mishandles the mask, silently inflates
   results on a masking bug, and makes a leaderboard unenforceable. The env applies the

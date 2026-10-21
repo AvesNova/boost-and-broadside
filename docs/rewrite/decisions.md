@@ -363,6 +363,47 @@ Coupling found in the current code that blocks goal B:
     parameter, removing the last free shape constant.
 - Making normal the true max-rate datum is a gameplay retune, so it comes after parity.
 
+### Memory and belief (decided 2026-10-21; supersedes parts of review 3b and 3c)
+
+- **One kind of memory: Griffin recurrence only.** Both feedback loops are removed:
+  the next-state forecast is no longer decoded into a belief and fed back as hidden
+  ships' input, and the enemy-action prediction is no longer fed back as enemies'
+  pending-action input. Supersedes "port the single-peak (moment) belief" (3c) and
+  "keep feeding the enemy-action prediction back" (3b). Reasons: Griffin already keeps
+  per-ship memory per token slot; the loop had no gradient (stored inputs) and could
+  compound its own errors (run 734); it removes the decode, re-encode and round-trip
+  corrections and most of the carry.
+- **Not adopted:** a differentiable belief loop. One step costs about 2x the trunk in
+  the update (two passes, both parallel over time), N steps about (N+1)x, all 128 steps
+  a sequential update; Griffin gets 128 steps of gradient through memory at 1x because
+  its recurrence is linear.
+- **Next-state head stays**, as an auxiliary loss only (and for dev spectator display).
+  Without feedback, a hidden ship's input code is constant, so a residual head
+  (`log(input_code) + f(h)`) is absolute for hidden ships and a small correction for
+  visible ones.
+- **Next-state head outputs both forms, to see which trains better:** a shared head
+  body with two output layers, residual (`log(input_code + eps) + f_res(h)`) and absolute
+  (`f_abs(h)`), each applied to every ship and each trained with the same per-population
+  cross-entropy (details in the open points below).
+- Precedent noted: Dreamer's RSSM uses separate posterior (observed) and prior (blind)
+  networks and decodes observations absolutely from a bf16 latent; it never predicts
+  occluded objects (no privileged labels), which we can.
+- **Open (proposed, not yet answered):**
+  - Dual-output weighting: each output at half the next-state coefficient (total
+    unchanged) and both feeding the trunk; a config option to stop the gradient of
+    either output into the trunk for clean A/B runs.
+  - Hidden tokens in rotary attention: the identity rotation means "at world (0, 0)",
+    not "no position". Proposal: zero the rotated Q/K dimensions (and the relation bias)
+    for hidden tokens and add one attention head without rotary encoding.
+  - Griffin decay initialization: adopt the paper's `a^c` in [0.9, 0.999] (today's
+    initial time constant is ~0.2 s with the gate open).
+  - Random occlusion as an optional augmentation knob, off by default; no input noise.
+  - Fog: mixed fog-free and fogged envs with a fog flag in the observation; the fogged
+    share optionally a step-based schedule; fog is a mode attribute for ratings.
+  - Items made moot or changed, to be swept: belief codes and their round-trip tests,
+    carry contents, the `belief/` and `enemy_action/` diagnostics groups, tabled item 10
+    (hidden tokens carry mask, visible flag and time since seen).
+
 ### Physics changes land in the current env first (planned, not started)
 
 - The flight changes decided here (stick-thirds turn levels, single g-limit, 2/3
