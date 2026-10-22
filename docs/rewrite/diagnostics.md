@@ -960,3 +960,33 @@ checkpoint), `elo_diag/*` (14 old-ladder health checks), `matches/{label}/*`.
   G3 (forgetting) from that table and the full-history fit after training.
 - Calibrated Elo is the offline post-training pipeline (4e): artifacts, not live series.
 - About 15 series plus the table plus one rating per mode.
+
+## Checklist items without a group (outcomes, author, 2026-10-22)
+
+1. **A6, A8, A9 become tests** (testing strategy, tabled item 4): no host syncs in the
+   jitted update (`jax.transfer_guard("disallow")`); same seed gives bitwise-identical
+   first N updates; resume equals uninterrupted.
+2. **`repr/` (B6, F2)**, every 10 updates on ~4,096 sampled tokens:
+   `repr/dormant_share/{block}` (mean |activation| below 10% of the layer mean, ReDo
+   style), `repr/activation_rms/{block}`, `repr/effective_rank/{block}` (exp of the
+   entropy of normalised singular values; no threshold; watches collapse now that SIGReg
+   is dropped).
+3. **`input/` (C1)**, raw observation features before the adapter:
+   - `input/envelope_violation_share/{feature}`: share of values outside the feature's
+     real (design-envelope) range. **Correction (author):** codes have buffer bins
+     beyond the range (HL-Gauss padding: 2 bins for observed values; 2 sigma where a
+     width is involved, as for density), so values near the edge are not squashed. The
+     buffer exists for the kernel's spill at the edge, not for values beyond the range:
+     a value outside the envelope breaks the design-envelope assumption and, past the
+     buffer, folds into the last bin. This series detects that.
+   - `input/nonfinite_count`: invariant, alert above 0.
+   - One series per raw feature (~15); no per-feature mean/std.
+4. **C5:** `batch/token_share/{mode}` and `batch/token_share/{opponent_kind}` (learner
+   tokens, not games; self-play trains both views). Map scale (group 14), fogged share
+   (13) and pool game share (20) cover the rest.
+5. **C6:** `enemy_action/supervised_share` (next-state and shots have theirs; density is
+   always valid).
+6. **`bc/` (I1-I5)** for the BC learner (4c): `bc/loss/{train, heldout}` (I1),
+   `bc/agreement/{power, turn, shoot, joint}` (I2), `bc/entropy/{student, target}` (I3),
+   `bc/loss/{own_states, teacher_states}` (I4), student rating vs scripted from `rating/`
+   (I5).
