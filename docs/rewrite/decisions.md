@@ -481,6 +481,49 @@ Coupling found in the current code that blocks goal B:
 - A value beyond the padded range still folds into the last bin; E3 (`critic/support_clip`)
   and `input/envelope_violation_share` measure that.
 
+### Contracts (tabled item 2, in progress from 2026-10-22)
+
+Order: (1) timing, (2) agent interface, (3) action schema, (4) raw observation (items 9
+and 10), (5) events, (6) trajectory and labels, (7) versioning.
+
+#### Part 1: timing (decided 2026-10-22)
+
+- **Today (checked):** physics and decisions both run at 30 Hz. `ShipConfig.dt` defaults to
+  1/60, but `frontline_ship_config` sets `dt = 1/30` and the RL profile uses
+  `action_repeat = 1`. Discounts are per 30 Hz step: gamma 0.99, lambda 0.95.
+- **Physics tick: fixed 60 Hz** (not configurable). This is a physics change from today's
+  30 Hz and goes into the physics-first work.
+- **Decision rate: 30 Hz by default** (repeat 2), set by one config value. The rate must
+  divide 60 Hz (60/30/20/15/12/10). A 20 Hz agent is a planned experiment. Agents are
+  retrained per rate.
+- **Step semantics:** a decision step is `repeat` physics ticks; the action is held for
+  every tick, events are summed over the step, the observation is taken after the last
+  tick.
+- **One clock per match:** every controller, humans included, decides on the same steps.
+  The shell keeps the latest input state each frame and the human agent reads it once
+  per decision step. This resolves tabled item 11.
+- **How settings are expressed (one-change rule):**
+  - *Step-native* (integers, often shapes): rollout length (power of 2, 128), minibatch
+    and BPTT chunk sizes, conv kernel width, buffer sizes, the repeat. Stay in steps;
+    unchanged by the rate (128 steps covers 4.3 s at 30 Hz, 6.4 s at 20 Hz).
+  - *Time-native* (game rules): game length, capture time, respawn delay, bullet
+    lifetime, cooldown. Written in seconds and converted at resolve time. **Each must be
+    an exact multiple of the decision period**, or the config fails (no silent
+    rounding), so every rule event lands on a decision step. Cooldown therefore aligns
+    with the decision period (0.1 s = 3 steps at 30 Hz; it would have to become a
+    multiple of 0.05 s for 20 Hz, e.g. 0.1 s = 2 steps).
+  - *Continuous:* gamma and lambda are horizons, converted per step as
+    `exp(-dt / tau)`. Defaults keep today's behaviour at 30 Hz: tau_gamma ~ 3.3 s
+    (gamma 0.99), tau_lambda ~ 0.65 s (lambda 0.95).
+  - Griffin decay init stays at the paper's default (`a^c` in [0.9, 0.999] per step),
+    not converted; its memory timescales shift with the rate, which retraining absorbs.
+  - Not auto-scaled; retune on a large rate change: entropy coefficient, PPO KL and clip
+    ranges, learning rate.
+- **Decision period not in the observation** while every run uses a single fixed rate.
+  Add it to the global token if mixed-rate training is ever wanted.
+- Consequence for tabled item 15: counterfactual shot labels need `action_repeat == 1`
+  today; their contract is redefined per decision step (repeat 2).
+
 ### Physics changes land in the current env first (planned, not started)
 
 - The flight changes decided here (stick-thirds turn levels, single g-limit, 2/3
@@ -496,6 +539,9 @@ Coupling found in the current code that blocks goal B:
 - Proposed order, one reviewable step each: (1) stick thirds + single g-limit;
   (2) dynamic-pressure two-speed fade; (3) handling solver: 2/3 drag rule, reversal
   time; (4) re-measure with the flight-envelope harness and update the ship card.
+- Added 2026-10-22 (contracts, timing): physics tick from 30 Hz to 60 Hz (`dt = 1/60`)
+  with decisions at 30 Hz (repeat 2); time-native rule values must be multiples of the
+  decision period.
 - Status: planning only. No implementation until the author says so.
 
 ### Presentation
@@ -611,7 +657,8 @@ Coupling found in the current code that blocks goal B:
     never-seen slots. Left for contracts (item 2): whether the raw observation carries
     last-seen values at all (lean: no; models remember for themselves; the dead-reckoning
     baseline can be computed from stored observations by diagnostics).
-11. **Human input timing:** humans may act more often than the decision rate; define how
+11. ~~**Human input timing:**~~ decided 2026-10-22 (contracts, timing: one clock per
+    match; the human agent reads the latest input once per decision step). Humans may act more often than the decision rate; define how
     their inputs map onto decision steps (for other agents' pending-action views and
     for training labels if human games are ever learned from).
 12. ~~Unfinished from the Yemong review 3c~~: decided. ~~Single-peak belief for the port;~~
@@ -629,6 +676,8 @@ Coupling found in the current code that blocks goal B:
     truth (labels every decision, pure env); HL-Gauss trajectory codes; per-type
     collision radius in hits and near-miss scale; end-of-rollout label loss (23% at 128
     steps); damage in the outcome. Port the heads as they are until benchmarked.
+    Added 2026-10-22: labels must be defined per decision step (2 physics ticks at the
+    decided 60 Hz physics / 30 Hz decisions); today they require `action_repeat == 1`.
 16. **Privileged (fog-free) critic, after the port:** V(h, s) design (view features plus a
     fog-free summary), either a feedforward encoder or the same trunk on fog-free input
     (needs its own carry: a full second trunk pass). Values computed in the learner.
@@ -719,7 +768,7 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       losses via `agent.aux_loss`, masked values as zeros plus visible flag, enemy
       pending action masked, whether the raw observation carries last-seen values (lean
       no), fog flag in the observation, 42-way joint action, code padding rule.
-- [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
-      interface, versioning), agent workflow, then the remaining tabled items.
+      Progress: part 1 timing [x] (2026-10-22); next part 2, agent interface.
+- [ ] Then: agent workflow, then the remaining tabled items.
 - [ ] Physics-first changes in the PyTorch env (planned, not started).
 - [ ] Repo setup (option 3), after the physics-first changes.
