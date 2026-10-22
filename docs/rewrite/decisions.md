@@ -763,6 +763,26 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     2.8 g / 2.2 g along the path vs at most 1 g, drag per metre 2.7x, engine accel ~2.4x
     (balancing to the same speeds), bullet range 3 km vs ~0.3-0.7 km, collision radius 61
     m vs a 5.6 m half-span, firing cooldown 0.41 s vs ~80 rounds/s for six guns.
+  - *v5 retune (2026-10-22, `flight5.py`, `v5_bench.py`; x/y only, velocity stored as
+    speed and angle of attack).* **Author: ship mass 1 kg; an engine with constant power
+    split between thrust and charging the energy store; retune energy, power, bullets and
+    hitbox roughly toward a P-51 at game scale; the fire rate must be a multiple of the
+    decision rate.** Proposed values (game units, SI): g 27 m/s^2; C_Lmax 0.027 1/m (stall
+    31.6 m/s); a_max 216 m/s^2 = 8 g (corner 89 m/s); cd0 2.9e-4 1/m; k_ind 3.8; engine
+    400 W = 320 W thrust (force P/u, capped at 10 N) + 80 W store; store 10 kJ (370 m game
+    altitude, ~2.2 km real); dive/climb exchange k_x 0.1 (~1 g at full push). Bullets (not
+    in the flight prototype): 600 m/s (real ~890), lifetime 0.4 s = 12 decisions (240 m,
+    ~1.5 km real), one volley per decision (30/s, each ~11 real rounds), hitbox radius 3 m
+    (~3x the scaled half-span of 0.92 m), 12 bullet slots per ship.
+    - Feel (real-scale in brackets): cruise 105 m/s (156); coast full-stick sustained 59
+      m/s, 75 deg/s (87 m/s, 18.4 deg/s; P-51 ~18); store charge as climb 3 m/s (4.4 m/s;
+      P-51 16.3); full dive from a full store peaks at 118 m/s (175; P-51 dive limit ~225);
+      zoom climb from 150 m/s stores 7.3 kJ before 46 m/s. Stall from 25 m/s recovers to
+      40 m/s in 2.3 s (9.4 s real) even with an empty store (static thrust 10 N): stall is
+      still forgiving.
+    - Accuracy 30 / 60 / 120 Hz: 0.024 / 0.006 / 0.002 m (no fields), 0.22 / 0.06 / 0.016
+      m (fields); energy drift with drag and engine off 6e-7. Cost (JAX CPU, noisy ~20%):
+      12-15 ms per step vs today's 7.9.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
