@@ -747,6 +747,22 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       with an empty store, engine alone reaches 41 m/s in 3 s; a full-stick turn at 45 m/s
       does not spiral down. With today's regen there is no low-and-slow trap; making stall
       bite needs less regen or a larger g_hold or k.
+  - **Decided (author, 2026-10-22):** continue with x/y only for now; store state in
+    whatever form is fastest. Use SI terminology. Regen and the store size are arbitrary
+    for now.
+  - *SI and P-51D scale (2026-10-22, `p51_scale.py`).* The game is in metres and seconds,
+    per unit mass: forces N/kg (= m/s^2), the "power" store is specific energy (J/kg,
+    20,000 J/kg max = psc x 100), regen is specific power (2,000 W/kg). Taking the game's
+    level-hold lift (27 m/s^2) as 1 g and the minimum level speed (31.6 m/s) as the
+    P-51D's estimated stall (47 m/s, C_Lmax ~1.5 assumed) gives speed x1.48, acceleration
+    x0.363, **time x4.1, length x6.1**: the game runs ~4x faster and is ~6x smaller.
+    Scaled game vs P-51D (approximate references, several from forums): cruise 157 vs 162
+    m/s; corner 149 vs ~134 m/s; max lateral 10 g vs 8 g; instantaneous turn 32 vs ~34
+    deg/s; sustained turn 18 vs ~18 deg/s; corner radius 269 vs ~231 m; lift per metre
+    4.4e-3 vs 4.5e-3. Far off: regen as climb 110 vs 16 m/s (~7x), dive/climb exchange
+    2.8 g / 2.2 g along the path vs at most 1 g, drag per metre 2.7x, engine accel ~2.4x
+    (balancing to the same speeds), bullet range 3 km vs ~0.3-0.7 km, collision radius 61
+    m vs a 5.6 m half-span, firing cooldown 0.41 s vs ~80 rounds/s for six guns.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
