@@ -586,6 +586,32 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     Discussed: complex and real pairs are the same arithmetic (XLA lowers complex to real
     ops); 2D PGA motors unify rotation and translation but cost more per operation, have
     no mature JAX library and gain nothing for point/circle bodies on a torus.
+  - *PGA (2026-10-22, `pga.py`, `pga_derive.py`, `repr_bench2.py`):* hand-expanded 2D PGA
+    motor helpers (rotor, translator, product, apply to point/direction, normalize) in the
+    same struct-of-arrays style. JAX CPU, min of 15: complex64 698, real pairs 555, PGA
+    596, PGA with composed motors 585, 2x2 matrices 2194 us/step; all agree to 0.02 m.
+  - *Integrator benchmark (2026-10-22, `integrators.py`, `integ_bench.py`, `integ_time.py`;
+    real env physics, CPU torch, 1280 ships, random stick held 0.1 s, 3 s, reference =
+    symmetric split at 3840 Hz).* Mean position error at 3 s, 30 / 60 Hz:
+    - No fields: today 7.0 / 3.2; symmetric split 3.8 / 1.8; + K=2 2.8 / 1.4; + K=4 2.5 /
+      1.2; exact combined flow (closed-form speed, Gauss quadrature, power events, regen in
+      the flow) K=1 6.4 / 2.9, K=2 2.9 / 1.4, K=4 1.4 / 0.8; with midpoint slip K=2 2.4 /
+      1.2, K=4 1.2 / 0.7.
+    - Fields on (10 fields, 37% of ship-ticks inside one): today 8.8 / 4.2; today with
+      midpoint field integrator 8.0 / 3.7; symmetric split 5.0 / 2.4; + K=2 3.9 / 2.0;
+      exact flow K=2 (midpoint slip) 2.9 / 1.5.
+    - Every method stays first order, even with the nose rate limit removed: the limit is
+      the nose model itself (slip held per piece, arrival snap, speed-dependent command,
+      lift kink), not the force integration. The exact flow is only as good as its number
+      of nose pieces.
+    - Energy (drag and regen off, fields on): every split scheme conserves the generalized
+      energy to float32 round-off (|dE|/E ~ 1e-6 after 3 s). The exact flow needs a
+      small-drag series (it divides by the drag coefficient; NaN at zero drag here).
+    - Cost (CPU eager torch, 10,240 ships, per tick): today 12.6 ms, split 26, split K=2 38,
+      exact flow K=1 180, K=2 361; whole env tick 181 ms with fields. Eager CPU counts
+      every op as a memory pass; in a fused JAX kernel the per-ship arithmetic is small
+      next to pairwise collisions and fields. The exact flow as written does ~2,000
+      transcendentals per ship-tick (40 bisection steps; Newton would cut this).
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
     optional K force substeps; event-exact power cutoff; re-measure with fields (Frontline
     uses the first-order `two_step` field integrator with 1 substep).
