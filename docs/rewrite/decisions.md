@@ -724,6 +724,29 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       velocity as (speed, angle of attack) **7.2 / 9.2**; PGA motor + (speed, angle of
       attack) **7.3 / 9.7**; heading angle + (speed, angle of attack) 10.7 / 11.4; heading
       (cos, sin) + cartesian velocity 17.2 / 16.0. Today's model (no fields) 7.9.
+  - **Decided (author, 2026-10-22):** engine thrust along the nose; dive and climb along
+    the flight path; one lift vector shared by turning and climbing/diving, coupled
+    (p = 2, no knob); symmetric elevator (any direction), asymmetry only from energy.
+  - *v4 prototype (2026-10-22, `flight4.py` shared scalar physics, `ship_xy.py` complex
+    paradigm, `ship_pga.py` PGA paradigm: motor pose, body twist bivector, rotor and motor
+    sandwiches, motor exponential; `v4_bench.py`, `v4_check.py`).* Controls: stick sets the
+    lateral lift fraction; coast holds level, boost pushes, reverse pulls; the commanded
+    vector is scaled into the budget along its direction. Holding level costs `g_hold`
+    (assumed 27 = 10% of a_max, flagged); exchange `a_x = k (g_hold - L_vert)` with k =
+    0.3; engine 8 m/s^2 along the nose, free; induced drag on the whole lift vector.
+    - Agreement x/y vs PGA 1e-10 (no fields) / 8e-10 m (fields). Accuracy 30 / 60 / 120
+      Hz: 0.039 / 0.010 / 0.003 m without fields; 0.39 / 0.14 / 0.04 m with fields.
+      Energy drift (drag, regen, engine off): 4e-6 / 7e-6.
+    - Cost (JAX CPU, 40,960 ships): x/y 12.5-14.1 ms, PGA 12.8-14.5 ms (within noise of
+      each other); today's model 7.9 ms. About 3 ms is the atan2 for the angle of attack
+      (removed by storing velocity as speed and angle, as in v3).
+    - Feel (single ship, no fields): level-flight minimum speed 31.6 m/s; cruise (coast)
+      106 m/s; coast full stick settles at 56 m/s, 72 deg/s; boost straight 128 m/s (store
+      empty); reverse straight 46 m/s (store full). Stall from 25 m/s recovers to 40 m/s in
+      2.7 s, and the store still gains (regen 10/s outweighs the gravity sink of ~0.4/s);
+      with an empty store, engine alone reaches 41 m/s in 3 s; a full-stick turn at 45 m/s
+      does not spiral down. With today's regen there is no low-and-slow trap; making stall
+      bite needs less regen or a larger g_hold or k.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
