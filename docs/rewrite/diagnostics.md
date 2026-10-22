@@ -938,3 +938,25 @@ contribute consistent gradient or noise.
   `train/time_s/grad_diag`.
 - All cosine pairs logged; dashboard shows curated pairs (policy vs each auxiliary term,
   policy vs value), about 6 panels.
+
+## Group 20: evaluator names -> `rating/` + `pool/`
+
+**What exists** (~60 series, all from the removed dedicated evaluator): `eval/score_vs_*`,
+`ladder/*`, `two_stage/*`, `live_elo/*` (online Elo chains), `calibrated_elo/*` (one per
+checkpoint), `elo_diag/*` (14 old-ladder health checks), `matches/{label}/*`.
+
+**Purpose:** G1 (stronger, how sure), G2 (against whom), J1-J3 (pool health).
+
+**Outcomes (author, 2026-10-22):** all dropped; the new system's outputs logged.
+- G1, from the joint fit every 10 updates: `rating/live`, `rating/live_stderr`,
+  `rating/avg`, `rating/avg_stderr`, `rating/window_games` (sample size; ~347/sqrt(n) Elo
+  at even odds); with several modes `rating/live/{mode}` (G4).
+- G2: `pool/score/{scripted, rung, avg, checkpoint}` over the window, per kind (entries
+  come and go, so per-entry series would fragment).
+- J1: `pool/game_share/{kind}`, `pool/size`. J3: `pool/sampling_entropy` (normalised
+  0-1). J2: `pool/draining_share`, only if the drain design (B1) survives the
+  post-implementation slot review.
+- Per-entry detail: a W&B table (rating +- stderr, games) at the diagnostic cadence;
+  G3 (forgetting) from that table and the full-history fit after training.
+- Calibrated Elo is the offline post-training pipeline (4e): artifacts, not live series.
+- About 15 series plus the table plus one rating per mode.
