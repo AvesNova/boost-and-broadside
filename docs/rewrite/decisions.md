@@ -542,6 +542,27 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
 - Added 2026-10-22 (contracts, timing): physics tick from 30 Hz to 60 Hz (`dt = 1/60`)
   with decisions at 30 Hz (repeat 2); time-native rule values must be multiples of the
   decision period.
+- **Tick-rate accuracy findings (2026-10-22, not decided).** Scripts in
+  `docs/rewrite/physics-checks/`.
+  - Today's tick is 30 Hz. The flight update splits forces into two half-steps around
+    transport inside one tick (operator splitting); actions, launches, cooldowns,
+    collisions and events still happen once per tick.
+  - *Flight* (real env physics, no fields, random stick held 0.1 s, against 960 Hz): mean
+    position error after 3 s is 11.0 / 7.0 / 3.0 / 1.3 m at 20 / 30 / 60 / 120 Hz (p99
+    42 / 25 / 13 / 6 m); heading 3.9 / 2.5 / 1.1 / 0.5 deg. First order (halves with dt).
+    Using mid-tick slip for lift and drag helps only ~10%, so the main source is
+    elsewhere (not yet found).
+  - *Bullet hits:* the swept test sweeps the bullet (start, midpoint, end) but uses the
+    target's end-of-tick position. For shots with true closest approach uniform in
+    0-20 m (radius 10), hit/miss is wrong for 10.9 / 7.4 / 3.7 / 1.8 % at 20 / 30 / 60 /
+    120 Hz (mean distance error 1.9 / 1.4 / 0.7 / 0.4 m). Sweeping the *relative* motion
+    (both ends of both bodies, same cost) cuts this to 0.08 / 0.04 / 0.01 / 0.01 %.
+  - *Shot-label encounters:* the encounter age is the tick index and the encounter
+    snapshot is the bullet's end-of-tick state, up to one tick of bullet travel past the
+    contact point (17-23 m at 30 Hz). The swept test's segment parameter gives the exact
+    sub-tick time and location for free.
+  - Proposed (pending the author): relative swept collisions; encounter time and location
+    from the swept parameter.
 - Status: planning only. No implementation until the author says so.
 
 ### Presentation
