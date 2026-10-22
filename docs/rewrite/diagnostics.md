@@ -1018,3 +1018,37 @@ checkpoint), `elo_diag/*` (14 old-ladder health checks), `matches/{label}/*`.
    `bc/agreement/{power, turn, shoot, joint}` (I2), `bc/entropy/{student, target}` (I3),
    `bc/loss/{own_states, teacher_states}` (I4), student rating vs scripted from `rating/`
    (I5).
+
+## Dashboard layout (author, 2026-10-22)
+
+Three views; a panel may appear in more than one. Panels are one quantity each, slices
+as lines; x-axis `counters/env_steps` by default (switchable to updates or hours).
+Views 1 and 2 are defined in code (`wandb-workspaces`, versioned in the repo; fallback a
+saved workspace made by hand).
+
+**1. Headline: one screen, 12 panels (3 x 4).**
+
+| | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| Is it winning? | `alerts/active` | `rating/live` +- stderr with `rating/avg` | `pool/score/{kind}` | `episode/end/{decided, timeout}` |
+| Is it learning? | joint policy entropy | KL and clip fraction | explained variance per level | grad norm and clip fire rate |
+| Is it healthy? | `train/env_steps_per_s` | next-state KL per population | belief position error by hidden age | effective rank per block |
+
+Row 3 also covers the risks of the memory redesign (hidden tracking, auxiliary signal,
+representation collapse).
+
+**2. Curated: ~141 panels.** Open sections (26): Alerts 2 (`alerts/active`, fired-events
+table), Strength 5, Health 6, Policy 6, Value 4, Learning signal 3 (trunk gradient
+shares, curated trunk cosines, coherent fraction per term). Collapsed sections (~115):
+Policy detail 4, Value detail 10, Auxiliary heads 37 (next state 6, belief 16, enemy
+action 6, density 3, shots 6), Representation 3, Inputs and batch 4, Episode and reward
+18, Fog 8, Physics / frontline / map scale 11, Gradient detail 12, Schedules 1-7,
+Counters 5. Each collapsed section opens on its headline panel. BC runs: a `bc/` section
+(5), open by default there.
+
+**3. Everything:** W&B's automatic workspace, grouped by prefix. Quantity-first naming
+(`{group}/{quantity}/...`) makes the prefix groups readable; new series appear with no
+layout edits.
+
+**The diagnostics audit is complete** (groups 1-20, checklist items without a group,
+trigger rules, dashboard).
