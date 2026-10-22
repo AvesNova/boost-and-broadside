@@ -637,6 +637,31 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     - **Decided (author, 2026-10-22): soft limits** on power (fade over a band at empty and
       full) and on the g limit (smooth min with the stall cap). The nose redesign itself is
       still open.
+  - *2D rigid-body prototype (2026-10-22, `rigid2d.py`, `rigid2d_bench.py`,
+    `rigid2d_cost.py`, `today_jax.py`; JAX, no fields, 2048 ships, random stick and power
+    held 0.1 s, 2 s, reference = screw scheme at 3840 Hz float64).* The nose is a rigid
+    body in the plane: `r' = w(u)^2 (alpha_cmd - alpha) - 2 zeta w(u) alpha'`, `w(u)` =
+    12.3 rad/s x u / u_corner, zeta 0.7; stick levels ask for a lift fraction, a soft g
+    limit caps it, alpha_cmd inverts today's lift curve; drag polar `C_D0 + k C_L^2`;
+    thrust along the nose; soft power limits; no roll axis.
+    - Integrators: (a) x/y split (exact nose step with the path frozen, then path
+      forces with the nose frozen): 7.1 / 4.5 / 2.5 m at 30 / 60 / 120 Hz; the nose and
+      the path are stiffly coupled, so splitting them is poor. (b) screw scheme (RK2 kick
+      of the body-frame twist: nose rate and body velocity together; then an exact screw
+      motion of the pose; then the second kick), written in x/y and in 2D PGA: identical
+      results (3e-11 m apart), **0.055 / 0.009 / 0.002 m**, heading 0.11 deg at 30 Hz.
+      About 70x more accurate than today at 30 Hz and better than second order.
+    - Energy (drag and regen off, 30 Hz): 1e-4 for the screw scheme (the RK2 kick is not
+      exactly work-free for lift; fixable), 2e-3 for the split.
+    - Cost (JAX CPU, f32, 40,960 ships, per step, after replacing a pow and a cos):
+      screw in x/y **6.8 ms**, screw in PGA 9.4 ms (extracting, wrapping and rebuilding the
+      motor each step), split x/y 13.4 ms, **today's model ported to JAX 7.6 ms**.
+    - Feel (constant speed, full stick): corner speed 100 m/s; turn rate 62 / 92 / 130 /
+      109 / 86 deg/s and radius 37 / 37 / 44 / 74 / 120 m at 40 / 60 / 100 / 140 / 180
+      m/s; reversal (90%) 0.54 / 0.36 / 0.21 / 0.15 / 0.12 s (0.21 s at corner speed,
+      today's value); overshoot 4.6% (a brief accelerated stall at low speed).
+    - Bug found while testing: an angle-wrap error in the first x/y version (fixed); PGA
+      sign conventions also needed a cross-check earlier.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
