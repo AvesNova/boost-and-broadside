@@ -843,3 +843,18 @@ it across levels (in zero-sum self-play each level's mean is ~0 whatever its sca
   across levels (the cross-level half of C2).
 - `reward/zero_sum_residual/{level}` kept, units reward per env-second; revisit with
   tabled item 13.
+
+## Group 16: `seat/`
+
+**What exists** (`ppo.py` `_seat_symmetry_metrics`, host syncs every update):
+`seat/own_pending_invalid` (own pending action not an exact one-hot) and
+`seat/enemy_pending_invalid` (enemy pending action not a valid distribution; that was
+the fed-back enemy-action belief).
+
+**Outcomes (author, 2026-10-22):** group dropped.
+- The enemy check has nothing to validate (enemy pending action is masked: zeros plus
+  the visible flag); the own check is a deterministic adapter property.
+- Replaced by an **adapter test**: own pending action exactly one-hot, enemy pending
+  action masked, in both teams' views (with the per-view conformance tests).
+- Runtime input sanity across all features is checklist C1 (to assign with the
+  checklist items without a group).
