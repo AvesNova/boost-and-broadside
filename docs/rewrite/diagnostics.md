@@ -906,3 +906,35 @@ for the adopted checklist items A1, A3, A4, A5, B4, B5.
 - `train/epochs_completed` kept; `train/global_step` dropped (identical to
   `counters/env_steps`); all five counters kept plus skipped steps and recompiles.
 - About 17 series plus two per module.
+
+## Group 19: `grad_*` -> `grad/`
+
+**What exists** (`grad_diagnostics.py`, `next_state_populations.py`, `ppo.py`, every 10
+updates): per-term gradients accumulated over one optimizer minibatch, compared through
+one Gram matrix; term groups top-level, policy per reward level, value per reward level;
+scopes whole model and trunk; `grad_norm/`, `grad_share/`, `grad_cos/` (all pairs),
+`grad_diag/{total_norm, agreement}`; next-state population coherence from environment
+halves (`grad_halves_cos`, `grad_coherent_{norm, fraction, share}`); actor/critic split
+every update; meta `grad_diag/{microbatches, terms, seconds, level}`.
+
+**Purpose (B3):** which terms move the trunk, do terms fight, does each auxiliary head
+contribute consistent gradient or noise.
+
+**Outcomes (author, 2026-10-22):**
+- One prefix, quantity first: `grad/{norm, share, cos, agreement}/{scope}/...`.
+- Cosines in the trunk scope only (whole-model cosines are pulled to 0 by disjoint head
+  parameters).
+- Norms and shares in both scopes (whole model: share of the clipped step; trunk: who
+  drives the representation). `agreement` kept per group. `total_norm` dropped (whole
+  model = `train/grad_norm`).
+- **Environment-halves coherence extended to every top-level term:**
+  `grad/coherent_fraction/{term}` (answers whether enemy-action, density and shot
+  heads earn their cost; doubles accumulation at the diagnostic cadence only).
+- Next-state populations: `coherent_fraction` and `coherent_share` kept (alpha tuning);
+  `halves_cos` and `coherent_norm` dropped.
+- New terms: next-state residual and absolute outputs are separate terms.
+- Actor/critic split every update: `grad/actor_share` plus the two norms.
+- Meta dropped (`microbatches`, `terms`, `level` are config); `seconds` ->
+  `train/time_s/grad_diag`.
+- All cosine pairs logged; dashboard shows curated pairs (policy vs each auxiliary term,
+  policy vs value), about 6 panels.
