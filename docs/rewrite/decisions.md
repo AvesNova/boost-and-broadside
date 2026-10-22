@@ -493,6 +493,10 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
   `action_repeat = 1`. Discounts are per 30 Hz step: gamma 0.99, lambda 0.95.
 - **Physics tick: fixed 60 Hz** (not configurable). This is a physics change from today's
   30 Hz and goes into the physics-first work.
+  **Superseded (author, 2026-10-22):** with the new flight model (rigid-body nose,
+  exponential kick, exact arc; ~100x more accurate per step) the physics tick equals the
+  decision tick (repeat 1): 30 Hz now, 20 Hz for a 20 Hz agent. Time-native rule values
+  are multiples of the decision period, as before.
 - **Decision rate: 30 Hz by default** (repeat 2), set by one config value. The rate must
   divide 60 Hz (60/30/20/15/12/10). A 20 Hz agent is a planned experiment. Agents are
   retrained per rate.
