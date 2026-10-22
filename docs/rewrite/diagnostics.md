@@ -879,3 +879,30 @@ them; catches resume bugs (a wrongly restored step makes a schedule jump).
   Dropped: policy-gradient and BC coefficients, `bc_decay_factor`,
   `bc_cutoff_streak`, `scripted_win_rate` (mechanisms removed).
 - A new schedule appears on the dashboard with no logging code.
+
+## Group 18: `train/` + `counters/`
+
+**What exists:** `train/{global_step, sps, ship_tokens_per_sec, log_period_seconds,
+gradient_norm, clip_fire_rate, nonfinite_grad_fraction, grad_norm_actor,
+grad_norm_critic, actor_grad_share, epochs_completed}`;
+`counters/{env_steps, ship_tokens, updates, grad_tokens, train_hours}`.
+
+**Purpose:** is the run healthy, fast and numerically sound; where are we in it. Home
+for the adopted checklist items A1, A3, A4, A5, B4, B5.
+
+**Outcomes (author, 2026-10-22):**
+- A2: `train/env_steps_per_s`, `train/ship_tokens_per_s`.
+- A3: `train/time_s/{rollout, learner, stream_stall, logging, checkpoint, update}`
+  replaces `log_period_seconds` (stream stall = learner waiting on host chunks, 4d).
+- A1: `train/skipped_steps` per update and `counters/skipped_steps` replace
+  `nonfinite_grad_fraction`; offending term and dump path go to the fired-events table.
+- A4: `train/compiled_peak_gb`, `train/memory_budget_gb`, logged at compile time from
+  XLA memory analysis.
+- A5: `counters/recompiles` after warm-up; any increase is an alert.
+- B2: `train/grad_norm` (pre-clip), `train/clip_fire_rate`.
+- `grad_norm_actor`, `grad_norm_critic`, `actor_grad_share` move to `grad/` (B3).
+- B4, B5: `train/param_norm/{module}`, `train/update_ratio/{module}` (||dtheta|| /
+  ||theta||), one panel each, modules (encoder, each block, each head) as lines.
+- `train/epochs_completed` kept; `train/global_step` dropped (identical to
+  `counters/env_steps`); all five counters kept plus skipped steps and recompiles.
+- About 17 series plus two per module.
