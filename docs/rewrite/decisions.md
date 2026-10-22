@@ -561,8 +561,29 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     snapshot is the bullet's end-of-tick state, up to one tick of bullet travel past the
     contact point (17-23 m at 30 Hz). The swept test's segment parameter gives the exact
     sub-tick time and location for free.
-  - Proposed (pending the author): relative swept collisions; encounter time and location
-    from the swept parameter.
+  - **Decided (author, 2026-10-22):** relative swept collision test (sweep bullet minus
+    ship, both bodies' start and end). Record the closest-approach time and position from
+    the swept parameter (free: the test already computes it).
+  - *Error source (2026-10-22, `variants.py`, `flight_var.py`, `flight_sub.py`):* the
+    nose. Making the nose instant cuts 30 Hz error 7.0 -> 2.4 m; turn-only schedules carry
+    most of the error. The nose is stepped once per tick (exact linear step, then a rate
+    clamp) and its end-of-tick slip is held for the whole tick; the force order is also
+    not symmetric (thrust, drag, lift | drift | thrust, drag, lift).
+  - Restructuring as symmetric Strang splitting (nose + forces over each half tick, the
+    second half mirrored, one drift) at no extra cost: 7.0 -> 3.7 m at 30 Hz (60 Hz: 2.9
+    -> 1.7 m), close to today's 60 Hz. Substepping the per-ship forces K times inside each
+    half (elementwise, no pairwise work, fields untouched): 2.8 m (K=2), 2.5 m (K=4). Still
+    first order; the rest is likely discontinuities (power running out mid-tick, passive
+    regen added once per tick, stall switching, command evaluated at start-of-tick
+    speed).
+  - *Energy:* already exact by construction. Drag is an exact decay, lift an exact
+    work-free rotation, thrust exchanges exact work with power, and field transport
+    projects onto constant proper speed. The error is in trajectory phase, not energy.
+    Proposed: a per-tick energy-budget test (change = thrust work - drag loss + regen, to
+    round-off).
+  - Proposed (pending the author): symmetric splitting with the nose stepped per half;
+    optional K force substeps; event-exact power cutoff; re-measure with fields (Frontline
+    uses the first-order `two_step` field integrator with 1 substep).
 - Status: planning only. No implementation until the author says so.
 
 ### Presentation
