@@ -612,6 +612,30 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       every op as a memory pass; in a fused JAX kernel the per-ship arithmetic is small
       next to pairwise collisions and fields. The exact flow as written does ~2,000
       transcendentals per ship-tick (40 bisection steps; Newton would cut this).
+  - *Integrator-friendly flight design (2026-10-22, `nose_alt.py`; each model against its
+    own 3840 Hz reference).* Three first-order sources found: the nose (rate clamp,
+    arrival snap, slip held per piece), the turn command depending on speed through the
+    lift cap (evaluated once per piece), and hard power limits (empty store, full store
+    on reverse, regen once per tick). Removing the lift cap alone: 1.1 / 0.45 / 0.14 m at
+    30 / 60 / 120 Hz.
+    - Smoother nose alone (linear ramp at the slip-rate limit, or a tanh soft rate limit)
+      stays first order (tanh 3.4 / 1.5 / 0.6 m).
+    - **g-command design** (all three made smooth): the stick commands a lateral-g
+      fraction q (sharp 1, normal 0.5) that follows the command through a tanh soft rate
+      limit (same full-swing reversal time, small-signal time constant 0.08 s); lateral
+      acceleration = smooth min of q x max_lateral_accel and the stall cap C_Lmax u^2;
+      slip (gun offset, drag) derived algebraically from the lift curve; thrust fades
+      over the last 2% of the power store (and reverse recovery over the top 2%); regen
+      inside each half step. Symmetric split, no fields: 0.53 / 0.20 / 0.07 m (K=1), 0.21
+      / 0.07 / 0.05 m (K=2), heading 0.06 deg at 30 Hz; about second order. With 10
+      fields: 0.54 / 0.20 / 0.07 m (K=1). Energy with drag and regen off: 5e-7.
+      Cost (CPU eager): 24.6 ms per tick (K=1) vs today 9.6 and split 17.4.
+    - Gameplay changes to check: slip follows speed instantly (no lag on speed changes);
+      soft stall cap near corner speed; boost fades in the last 2% of power; the
+      slow-speed command fade is not modelled; handling numbers need re-solving (drag loss
+      in the test was ~9% vs ~2% today with the same coefficients).
+  - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
+    each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
     optional K force substeps; event-exact power cutoff; re-measure with fields (Frontline
     uses the first-order `two_step` field integrator with 1 substep).
