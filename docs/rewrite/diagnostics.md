@@ -858,3 +858,24 @@ the fed-back enemy-action belief).
   action masked, in both teams' views (with the per-view conformance tests).
 - Runtime input sanity across all features is checklist C1 (to assign with the
   checklist items without a group).
+
+## Group 17: `schedule/`
+
+**What exists** (`ppo.py` `_refresh_training_schedule`, 12 series): learning rate,
+entropy coefficient, policy-gradient and BC coefficients, `bc_decay_factor`,
+`bc_cutoff_streak`, `scripted_win_rate`, `target_kl`, reward tier scales
+(`outcome_scale`, `kill_death_scale`, `damage_scale`) and `offensive_bias`.
+
+**Purpose:** see hyperparameters as they are at each update, to read effects against
+them; catches resume bugs (a wrongly restored step makes a schedule jump).
+
+**Outcomes (author, 2026-10-22):** a generic rule replaces the hand-kept list.
+- `schedule/{name}` is logged for **every hyperparameter the config defines as a
+  schedule** (a function of step count, the only kind allowed) and nothing else;
+  constants live in the run config saved with each checkpoint.
+- Today: learning rate; if configured as schedules, the reward tier scales and
+  `offensive_bias` (item 13), the optional KL-to-BC coefficient (4c) and the optional
+  fogged-env share. Not logged: entropy coefficient and `target_kl` (constants).
+  Dropped: policy-gradient and BC coefficients, `bc_decay_factor`,
+  `bc_cutoff_streak`, `scripted_win_rate` (mechanisms removed).
+- A new schedule appears on the dashboard with no logging code.
