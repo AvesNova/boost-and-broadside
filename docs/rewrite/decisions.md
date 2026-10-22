@@ -581,6 +581,11 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     projects onto constant proper speed. The error is in trajectory phase, not energy.
     Proposed: a per-tick energy-budget test (change = thrust work - drag loss + regen, to
     round-off).
+  - *Representation (2026-10-22, `repr_bench.py`, JAX CPU, 40,960 ships, indicative
+    only):* complex64 716 us/step, separate real x/y arrays 627, 2x2 matrices 2525.
+    Discussed: complex and real pairs are the same arithmetic (XLA lowers complex to real
+    ops); 2D PGA motors unify rotation and translation but cost more per operation, have
+    no mature JAX library and gain nothing for point/circle bodies on a torus.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
     optional K force substeps; event-exact power cutoff; re-measure with fields (Frontline
     uses the first-order `two_step` field integrator with 1 substep).
@@ -720,6 +725,16 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     steps); damage in the outcome. Port the heads as they are until benchmarked.
     Added 2026-10-22: labels must be defined per decision step (2 physics ticks at the
     decided 60 Hz physics / 30 Hz decisions); today they require `action_repeat == 1`.
+    **Decided (author, 2026-10-22): learner-side re-simulation.** No ghosts in the env
+    (pure gameplay, plain bullet ring buffer). The learner re-flies a counterfactual shot
+    from every stored decision with the same pure bullet functions, against stored ship
+    states (interpolated between decisions, using stored velocities), with the relative
+    swept test. Exact closest-approach time and position; sample times continuous (exact
+    closed-form drag flight without fields, interpolation through start/mid/end with
+    fields). About 3x today's label coverage; estimated cost well under 1% of an update
+    (~1.6e9 swept tests and field evaluations per 128 x 4096 x 10 update vs ~1e14 model
+    flops). Still open from this item: HL-Gauss trajectory codes, per-type radius,
+    end-of-rollout loss, damage in the outcome.
 16. **Privileged (fog-free) critic, after the port:** V(h, s) design (view features plus a
     fog-free summary), either a feedforward encoder or the same trunk on fog-free input
     (needs its own carry: a full second trunk pass). Values computed in the learner.
