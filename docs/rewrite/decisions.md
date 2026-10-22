@@ -713,6 +713,12 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       fog; consequences swept through the docs. Reopened points decided: masked values
       are zeros plus the visible flag; hidden ships report KL only in group 7.
 - [ ] Revisit review parts 1-2 at the deeper level used from part 3 on.
+- [ ] **Next (author, 2026-10-22): contracts** (tabled item 2, absorbing 9, 10, 11).
+      Inputs from the memory redesign: opaque carry with `init_carry` per model (Yemong:
+      Griffin state plus last forecast mean/sigma per enemy slot), optional auxiliary
+      losses via `agent.aux_loss`, masked values as zeros plus visible flag, enemy
+      pending action masked, whether the raw observation carries last-seen values (lean
+      no), fog flag in the observation, 42-way joint action, code padding rule.
 - [ ] Then: contracts (observation, action, timing, events, trajectory/labels, agent
       interface, versioning), agent workflow, then the remaining tabled items.
 - [ ] Physics-first changes in the PyTorch env (planned, not started).
