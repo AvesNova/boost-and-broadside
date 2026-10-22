@@ -825,3 +825,21 @@ camping, never shooting, power starvation).
 - `map_scale/mean` and `map_scale/slot_share/{1, 1_2, 2_plus}` kept (C5: the batch has
   the map-scale mix the config asks for).
 - 15 series.
+
+## Group 15: `reward/`
+
+**What exists** (`logging.py`, over all running ticks): `reward/event_share/{event}`
+(each event's share of its level's absolute reward) and
+`reward/zero_sum_residual/{level}` (per-tick |sum over ships| of a level's reward; 0 when
+zero-sum, positive by design under the offensive premium).
+
+**Purpose:** checklist C2: which reward term drives learning; is one swamping the rest?
+`event_share` answers it within a level only, and `episode/reward_{level}` cannot answer
+it across levels (in zero-sum self-play each level's mean is ~0 whatever its scale).
+
+**Outcomes (author, 2026-10-22):**
+- `reward/event_share/{event}` kept.
+- **Add** `reward/level_share/{level}`: each level's share of total absolute reward
+  across levels (the cross-level half of C2).
+- `reward/zero_sum_residual/{level}` kept, units reward per env-second; revisit with
+  tabled item 13.
