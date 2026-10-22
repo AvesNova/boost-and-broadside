@@ -628,7 +628,8 @@ Value exactly on the last real bin, sigma 0.75, spill folded into the last paddi
 - **Decided: HL-Gauss codes go into the port** (a simplification). Round-trip
   corrections (quadrature floor + Sheppard) confirmed. Circular channels unpadded;
   padding amount is a middle ground to tune (exact means matter less as uncertainty
-  grows). Nested position sigma from the finest cell. Train with cross-entropy, report
+  grows). **Update 2026-10-22:** 2 padding bins per side for every ordered code,
+  critic included (decisions.md, "Code padding rule"). Nested position sigma from the finest cell. Train with cross-entropy, report
   KL. Round-trip, stationarity and edge tests required.
 
 **Critic: literature.** Imani & White (2018) introduced the histogram loss with a

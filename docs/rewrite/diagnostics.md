@@ -208,6 +208,33 @@ package's API proves unstable: a saved workspace made once by hand.
 2. Delivery: dashboard only for now; no `wandb.alert`.
 3. Only the skipped-step rule acts (checkpoint plus batch dump, 4d); the rest report.
 
+### Final trigger rules (author, 2026-10-22)
+
+All rules show on the dashboard only; only the skipped-step rule acts. Warm-up
+suppression, hysteresis, cooldowns; thresholds are placeholders tuned after the first
+runs; rule state in the checkpoint.
+
+**Alerts:** skipped step (`train/skipped_steps` > 0; acts: checkpoint plus batch dump);
+recompile (`counters/recompiles` rises after warm-up); memory (`compiled_peak_gb` > 90%
+of budget); C4 mismatch (first-minibatch behaviour-vs-learner KL above ~0); non-finite
+input (`input/nonfinite_count` > 0); never-seen ship (`fog/never_seen_share` > 0);
+throughput (`env_steps_per_s` < 50% of its running mean); rating drop (`rating/live` more
+than 2 stderr below its peak).
+
+**Warnings:** entropy collapse (anomaly); critic useless (explained variance < 0 for any
+level); support clipping (> 1%, E3); envelope violation (any
+`input/envelope_violation_share` > 1%; replaces "observation clip share"); representation
+collapse (effective rank 30% below peak); dormant units (rising trend); update ratio out
+of band (any module); label validity (any `supervised_share` < 50% of its run level);
+sampling collapse (`pool/sampling_entropy` low); reward hacking (reward rising while
+rating flat, G5); head worse than trivial (next-state gain < 0 for allies or visible
+enemies, enemy-action gain vs repeat < 0, density R2 < 0); sigma miscalibrated (belief
+mean (error/sigma)^2 outside [0.5, 2]); side imbalance (self-play team 0 vs team 1 win
+shares differ by more than 3 binomial SE).
+
+**Not rules:** reward level shares and timeout share (would assume an expected game);
+per-term coherent fraction (design information, not an alarm).
+
 ## Group 1: histograms
 
 **What exists** (`ppo.py` `_update_epochs`, logged by `logging.py`): every
@@ -974,8 +1001,9 @@ checkpoint), `elo_diag/*` (14 old-ladder health checks), `matches/{label}/*`.
 3. **`input/` (C1)**, raw observation features before the adapter:
    - `input/envelope_violation_share/{feature}`: share of values outside the feature's
      real (design-envelope) range. **Correction (author):** codes have buffer bins
-     beyond the range (HL-Gauss padding: 2 bins for observed values; 2 sigma where a
-     width is involved, as for density), so values near the edge are not squashed. The
+     beyond the range (decisions.md "Code padding rule": circular codes none, density
+     grid 2 sigma, every other ordered code 2 bins), so values near the edge are not
+     squashed. The
      buffer exists for the kernel's spill at the edge, not for values beyond the range:
      a value outside the envelope breaks the design-envelope assumption and, past the
      buffer, folds into the last bin. This series detects that.

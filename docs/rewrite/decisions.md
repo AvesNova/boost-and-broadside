@@ -440,8 +440,9 @@ Coupling found in the current code that blocks goal B:
   (parts 1, 3, 3b, 3c, HL-Gauss outcomes, 3c revisited, 4a, naming) and
   `diagnostics.md` (groups 7, 8, 9); tabled items 10 and 12 and the agent contract
   updated. What changed:
-  - *HL-Gauss codes:* observed-value encoding (sigma_obs = 0.75 bins, 2 padding bins,
-    circular channels unpadded) unchanged. No belief is encoded into inputs any more,
+  - *HL-Gauss codes:* observed-value encoding (sigma_obs = 0.75 bins; padding per the
+    rule below, which was only a recommendation when this note was first written)
+    unchanged. No belief is encoded into inputs any more,
     so the encode-side quadrature width and the wide-belief padding are moot. The
     decode-side correction stays (forecast moments for the rotary sigma). Tests:
     encode -> decode -> encode stability and zero-residual stationarity are replaced by
@@ -463,6 +464,22 @@ Coupling found in the current code that blocks goal B:
     the standard missing-value pattern; implies no graded uncertainty.
   - *Hidden-ship next-state baseline:* group 7 reports only KL for hidden ships; the
     physical-unit comparison against dead reckoning lives in group 8.
+
+### Code padding rule (decided 2026-10-22)
+
+- **Circular codes: no padding** (wrapped Gaussian): attitude, the torus position
+  levels, the shot head's travel direction and its displacement code (own torus).
+  Recorded in review 3c.
+- **Density hex grid: 2 sigma buffer** (367-cell disc, 2.3% worst rim spill). Recorded
+  in review 3e.
+- **Every other ordered HL-Gauss code: 2 padding bins** per side (2.67 sigma at
+  sigma = 0.75 bins, 0.04% spill): observation input codes, next-state targets (same
+  codes), shot speed and local-index codes, and **the critic's value bins** (51 symlog
+  bins over +/-5, plus 2 per side). Review 3c had recommended 2 bins but left the
+  amount "to tune"; now decided.
+- Unordered categoricals (actions, outcome classes): no edge, padding does not apply.
+- A value beyond the padded range still folds into the last bin; E3 (`critic/support_clip`)
+  and `input/envelope_violation_share` measure that.
 
 ### Physics changes land in the current env first (planned, not started)
 
