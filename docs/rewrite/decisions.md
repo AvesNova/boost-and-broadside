@@ -662,6 +662,19 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       today's value); overshoot 4.6% (a brief accelerated stall at low speed).
     - Bug found while testing: an angle-wrap error in the first x/y version (fixed); PGA
       sign conventions also needed a cross-check earlier.
+    - *Wrap (2026-10-22, `wrap_cost.py`, per step, 40,960 ships):* the earlier PGA wrap was
+      a naive extract-and-rebuild. Wrapping by composing a translator, `M' = T(-kW) M`,
+      changes only the translation components (a few multiply-adds; checked). Without
+      wrap / with wrap: today (JAX port) 7.7 / 8.8 ms; rigid body x/y 6.5 / 6.7 ms;
+      rigid body PGA 7.4 / 9.3 ms naive, **7.2 ms with the translator wrap**. PGA and x/y
+      are within ~10%.
+  - *Map origin (author's idea, 2026-10-22, not decided):* today the map centre is
+    already drawn uniformly on the torus per episode (`frontline.py`, plus random
+    orientation and handedness). Proposal: run physics in a map-local frame (centre at 0)
+    and add the per-episode offset only when building observations, so models still see
+    uniform absolute positions while physics keeps small coordinates (float32 spacing
+    0.5 mm at 4 km vs 7.8 mm at 65 km) and, if the torus is never gameplay, drops wrapping
+    and minimum-image arithmetic (including in pairwise collisions and visibility).
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
