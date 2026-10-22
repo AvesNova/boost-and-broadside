@@ -707,6 +707,23 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       fields) 7.9 ms: the exponential kick costs ~1.6x on CPU (both cos and cosh branches
       evaluated, an atan2 and a sqrt per kick). Possible trim: keep the body velocity in
       polar form (speed, alpha) as state, removing the atan2 and sqrt.
+  - *Rigid body v3 (2026-10-22, `rigid2d_v3.py`, `v3_bench.py`, `climb_table.py`).*
+    - **Author: boost and reverse stand for diving and climbing in gravity** (the power
+      store is altitude; today's code mostly did this). Reverse must not work when
+      stalled, like turning near stall. Prototype: thrust acts along the flight path
+      (velocity) rather than the nose (switch `THRUST_ALONG`); reverse (climb) draws on
+      the same lift budget `L(u) = softmin(C_Lmax u^2, a_max)` as turning, turn first:
+      `climb <= softmin(|T_rev|, L sqrt(1 - (a_lat/L)^2))`. Replaces the 10-30 m/s reverse
+      fade. Induced drag from climb lift is an option (`CLIMB_DRAG`, off).
+      Climb available (m/s^2, reverse 80) straight / 2/3 stick / full stick: 10 m/s 2.7 /
+      2.0 / 0; 30 m/s 24 / 18 / 0; 60 m/s 73 / 63 / 0; 100 m/s 80 / 78 / 0; 180 m/s 80 /
+      36 / 0. A full-stick turn uses the whole budget, so no climb while turning hard.
+    - **Storage variants, same physics** (agree to 1e-10 m, same accuracy: 0.084 / 0.021
+      / 0.005 m without fields, 0.356 / 0.081 / 0.021 m with fields at 30 / 60 / 120 Hz).
+      Cost (JAX CPU, 40,960 ships, ms per step, 0 / 10 fields): heading (cos, sin) +
+      velocity as (speed, angle of attack) **7.2 / 9.2**; PGA motor + (speed, angle of
+      attack) **7.3 / 9.7**; heading angle + (speed, angle of attack) 10.7 / 11.4; heading
+      (cos, sin) + cartesian velocity 17.2 / 16.0. Today's model (no fields) 7.9.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
