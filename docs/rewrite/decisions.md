@@ -783,6 +783,17 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     - Accuracy 30 / 60 / 120 Hz: 0.024 / 0.006 / 0.002 m (no fields), 0.22 / 0.06 / 0.016
       m (fields); energy drift with drag and engine off 6e-7. Cost (JAX CPU, noisy ~20%):
       12-15 ms per step vs today's 7.9.
+  - *Cost of the v5 step (2026-10-22, `opcount.py`, `flight5_fast.py`, `v5f_bench.py`).*
+    Expensive operations per step (divisions, square roots, trig, exp): today 37, v5 204.
+    Optimized v5 (reciprocals, one lift split and thrust per half kick, polynomial 2x2
+    exponential, small-angle series; same accuracy to 3 digits): 74. JAX CPU, 40,960 ships:
+    today 7.9 ms; v5 15.3 / 12.8 ms (0 / 10 fields); optimized 13.5 / 10.9 ms (field
+    evaluation alone 2.0 ms). On CPU the time follows total arithmetic more than the
+    expensive operations. Per-ship work is a few hundred flops; on a GPU the step is
+    bound by memory traffic and pairwise work (collisions, visibility, fields), not this.
+    Accuracy per cost: today at 30 Hz has ~3.9 m error after 2 s; the new step 0.024 m.
+    Physics at the decision rate (30 Hz, repeat 1) with the new step is ~100x more
+    accurate than today's at 60 Hz, at less total cost than the decided 60 Hz tick.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
