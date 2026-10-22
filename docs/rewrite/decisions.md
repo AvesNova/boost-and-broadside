@@ -798,6 +798,28 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     Accuracy per cost: today at 30 Hz has ~3.9 m error after 2 s; the new step 0.024 m.
     Physics at the decision rate (30 Hz, repeat 1) with the new step is ~100x more
     accurate than today's at 60 Hz, at less total cost than the decided 60 Hz tick.
+  - *v6 memoryless pitch (2026-10-22, `flight6.py`, `v6_sweep.py`, `v6_fire.py`; author
+    asked to prototype it and try values; shooting must cost more than passive gain, no
+    shooting forever).* All engine power is thrust along the nose; coast / boost / reverse
+    select a flight-path pitch (+gamma0 / -gamma_max / +gamma_max, gamma_max 30 deg);
+    gravity along the path trades speed with the store (dE/dt = m g u sin gamma); pitch is
+    scaled by the lift left after turning and forced down when lift cannot hold it; the
+    store's ends fade the pitch (ceiling, floor). Drag set so coasting cruises at 105 m/s;
+    static thrust P / 40 m/s. One bullet per step (30/s). Results at the 30 Hz tick:
+    | engine W / neutral deg / store kJ | 400/3/10 | 800/3/10 | 1200/3/10 | 1200/6/10 | 1600/5/10 | 1600/5/6 |
+    |---|---|---|---|---|---|---|
+    | coast: fill from empty (s game) | 66 | 66 | 66 | 33 | 40 | 24 |
+    | top level speed when full (m/s) | 124 | 113 | 110 | 116 | 111 | 111 |
+    | climb (reverse): fill from empty (s), at speed | 20 at 29 | 10.5 at 65 | 9.3 at 74 | 9.0 at 77 | 8.6 at 82 | 4.9 at 87 |
+    | dive (boost) from full: peak (m/s) | 170 | 156 | 146 | 152 | 141 | 136 |
+    | coast full stick: speed, turn, store | 63, 80 deg/s, -102 W | 73, 91, -114 | 80, 96, -123 | 81, 97, -73 | 86, 98, -94 | 86, 98, -94 |
+    | stall 25 -> 40 m/s (s) | 1.9 | 0.9 | 0.6 | 0.6 | 0.4 | 0.4 |
+    Firing: a bullet cost set above the *neutral* charge still allows endless fire while
+    climbing (climb charges 4-8x faster than neutral). Set above the *best climb* instead
+    (1.5 x 1,350 W / 30 = 67 J per bullet), continuous fire from a full 10 kJ store lasts
+    5.6 s coasting (167 bullets), 11 s climbing (329, speed falls to 77 m/s), 2.7 s diving
+    (81), 4.7 s in a hard turn (140). A weak engine (400 W) cannot hold a 30 deg climb and
+    slows to near stall.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
