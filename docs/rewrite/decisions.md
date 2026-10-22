@@ -634,6 +634,9 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       soft stall cap near corner speed; boost fades in the last 2% of power; the
       slow-speed command fade is not modelled; handling numbers need re-solving (drag loss
       in the test was ~9% vs ~2% today with the same coefficients).
+    - **Decided (author, 2026-10-22): soft limits** on power (fade over a band at empty and
+      full) and on the g limit (smooth min with the stall cap). The nose redesign itself is
+      still open.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
