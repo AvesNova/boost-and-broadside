@@ -668,13 +668,45 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       wrap / with wrap: today (JAX port) 7.7 / 8.8 ms; rigid body x/y 6.5 / 6.7 ms;
       rigid body PGA 7.4 / 9.3 ms naive, **7.2 ms with the translator wrap**. PGA and x/y
       are within ~10%.
-  - *Map origin (author's idea, 2026-10-22, not decided):* today the map centre is
+  - **Decided (author, 2026-10-22): no wrapping in gameplay.** Physics runs in a
+    map-local frame (map centre at 0) with no wrap or minimum-image arithmetic; the
+    per-episode random offset (and orientation, handedness) is applied only when building
+    observations, so models still see uniform absolute positions. Contracts part 4 states
+    how positions are reported.
+  - *Map origin (author's idea, 2026-10-22; decided above):* today the map centre is
     already drawn uniformly on the torus per episode (`frontline.py`, plus random
     orientation and handedness). Proposal: run physics in a map-local frame (centre at 0)
     and add the per-episode offset only when building observations, so models still see
     uniform absolute positions while physics keeps small coordinates (float32 spacing
     0.5 mm at 4 km vs 7.8 mm at 65 km) and, if the torus is never gameplay, drops wrapping
     and minimum-image arithmetic (including in pairwise collisions and visibility).
+  - *Rigid body v2 with fields (2026-10-22, `rigid2d_v2.py`, `rigid2d_v2_bench.py`,
+    `v2_cost.py`).* Clean rewrite: forces computed in the body frame (no world round
+    trips), identical math in x/y and PGA (agree to 1e-9 m).
+    - **Fields fit as curved space:** n(x) gives the metric n^2 I. The ship flies the
+      unchanged flight model in proper time (d tau = dt/n) with proper velocity w = n v
+      (this is exactly today's model: thrust / n^2, lift and drag on world speed, nose
+      frequency / n); the field adds only geodesic bending of w at rate
+      `|v| (v_hat x grad ln n)`, which keeps |w| (generalized energy) fixed. In the
+      kick it is one extra rotation rate; the drift uses n at the step midpoint from
+      `ln n + 1/2 grad ln n . displacement` (free). One field evaluation per step.
+    - **Exponential kick:** the fast nose / angle-of-attack oscillator is solved exactly
+      (closed-form 2x2 step, lift slope linearized, coefficients at the predicted
+      midpoint speed); the velocity direction is set exactly so lift and bending do no
+      work; speed and power by RK2. Needed because the RK2 kick goes unstable when the
+      nose frequency per step is large (high proper speed in a low-index region).
+    - Design rule added: reverse thrust fades out smoothly between 30 and 10 m/s (today
+      disables it below `min_speed`); without it a ship can reverse to zero speed, where
+      its direction is undefined.
+    - Accuracy (2 s, 2048 ships, 24 fields, 27% of ships ending inside one), 30 / 60 /
+      120 Hz: no fields 0.087 / 0.022 / 0.005 m, heading 0.03 deg at 30 Hz; with fields
+      0.36 / 0.08 / 0.02 m (p99 4.5 m at 30 Hz, near-grazing refraction). Second order.
+      Energy (drag and regen off, 30 Hz): 7e-6 without fields, 2e-5 with fields.
+    - Cost (JAX CPU, f32, 40,960 ships): x/y 12.5 ms, PGA 12.9 ms without fields; 12.9
+      / 13.6 ms with 10 fields (PGA within 3-5% of x/y). Today's model (JAX port, no
+      fields) 7.9 ms: the exponential kick costs ~1.6x on CPU (both cos and cosh branches
+      evaluated, an atan2 and a sqrt per kick). Possible trim: keep the body velocity in
+      polar form (speed, alpha) as state, removing the atan2 and sqrt.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
