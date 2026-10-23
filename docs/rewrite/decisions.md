@@ -230,7 +230,9 @@ Coupling found in the current code that blocks goal B:
 - **Launch with one type**, possibly a second just to prove heterogeneity works.
 - **Per-type, not global:** head-on damage fraction and shield recharge delay can
   differ between ships (in addition to the other combat parameters).
-- **Reverse is the exact opposite of boost** (`reverse_thrust = -boost_thrust`). Power is
+- *Superseded 2026-10-23 by `flight-model.md` (boost/reverse are dive/climb energy
+  exchange commands; the engine is separate, constant power, along the nose; the store
+  is in J).* **Reverse is the exact opposite of boost** (`reverse_thrust = -boost_thrust`). Power is
   an energy store (`E = 0.5 n^2 |v|^2 + power_speed_constant * power`): boost trades
   stored energy for speed and reverse trades speed back into storage, like pitching a
   plane down and up. This removes one free flight constant (16 -> 15).
@@ -248,8 +250,9 @@ Coupling found in the current code that blocks goal B:
   torus exists for the network: translation invariance and uniform location codes). At
   inference, map scale follows ship count (a target density). During training, map
   scale is randomized across the full range, or the coarse position levels go unused.
-- **Inventory (fact, from the current code):** the flight model has **16 free
-  constants** (`handling.PARAMETERS`; `max_power` is a gauge freedom and held fixed).
+- *Superseded 2026-10-23 for the new model (new parameters listed in
+  `flight-model.md`, Open 2).* **Inventory (fact, from the current code):** the flight
+  model has **16 free constants** (`handling.PARAMETERS`; `max_power` is a gauge freedom and held fixed).
   `handling.quantities()` defines 23 closed-form handling quantities of rank 16, so
   exactly 16 independent targets pin a ship's flight. One full-rank set (verified):
   cruise_speed, top_speed, boost_accel, reverse_decel, recharge_time, tank_speed,
@@ -286,6 +289,9 @@ Coupling found in the current code that blocks goal B:
     construction.
 
 ### Turn levels (decided)
+
+*Under review 2026-10-23:* the new flight model's prototype uses thirds of the lift
+budget, not of the stall angle; see `flight-model.md`, Open 1.
 
 - **Three levels per side, stick thirds:** 1/3, 2/3 and 3/3 of the stall angle,
   constant stick (constant lift coefficient), throttle-independent. **All three are
@@ -530,19 +536,32 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
 
 ### Physics changes land in the current env first (planned, not started)
 
-- The flight changes decided here (stick-thirds turn levels, single g-limit, 2/3
-  max-rate drag rule, dynamic-pressure two-speed fade, reversal-time handle) are
-  implemented in the current PyTorch env (physics, handling solver, action tables)
-  before the port. The JAX port is then a pure translation with one-to-one physics
-  tests against an env that already has the final semantics.
-- Scope: physics, handling solver, action tables, physics tests and flight-envelope
-  benchmarks. No backward compatibility: old checkpoints, the old training stack and
-  old action layouts may break. No retraining.
-- Base: the current working branch, `feat/counterfactual-shot-labels` (not `main`,
-  which is behind). `jax-rewrite/design` is that branch plus `docs/rewrite/` only.
-- Proposed order, one reviewable step each: (1) stick thirds + single g-limit;
-  (2) dynamic-pressure two-speed fade; (3) handling solver: 2/3 drag rule, reversal
-  time; (4) re-measure with the flight-envelope harness and update the ship card.
+**Updated 2026-10-23: the new flight model replaces the earlier change list.** The
+specification is `docs/rewrite/flight-model.md` (prototype `physics-checks/flight8.py`,
+checks `final_check.py`). Author: induced drag x3 adopted; fold the model into this plan.
+
+- Scope: implement the proposed flight model in the current PyTorch env (physics,
+  actions, energy store in J, exchange commands, engine, lift budget, rigid-body nose,
+  exponential-kick integrator at the decision tick, curved-space fields, relative swept
+  hits, learner-side shot labels, bullet cost), then the handling solver and ship card.
+  No backward compatibility: old checkpoints, the old training stack's assumptions and
+  old action layouts may break. No retraining in this step.
+- Base: `feat/counterfactual-shot-labels` (not `main`). `jax-rewrite/design` is that
+  branch plus `docs/rewrite/` only.
+- Proposed order, one reviewable step each: (1) state and units (1 kg ship, energy store
+  in J, map-local frame without wrap, physics tick = decision tick); (2) flight model and
+  integrator (lift budget, nose, engine, exchange, drag), checked against the prototype;
+  (3) fields as curved space, with the env's union composition; (4) bullets: relative
+  swept hits, cost per bullet, proposed ballistics; shot labels re-simulated by the
+  learner; (5) handling solver and ship card rewritten for the new parameters; (6)
+  re-measure with the flight-envelope harness.
+- Open before step 2: the turn-level definition (flight-model.md, Open 1). Open for the
+  plan: implement in PyTorch first (as decided earlier) or directly in JAX with the
+  prototype checks as the specification (flight-model.md, Open 5).
+- Status: planning only. No implementation until the author says so.
+- *Superseded list (2026-10-22, kept for history):* stick thirds + single g-limit;
+  dynamic-pressure two-speed fade; handling solver 2/3 drag rule and reversal time;
+  re-measure. Earlier text follows.
 - Added 2026-10-22 (contracts, timing): physics tick from 30 Hz to 60 Hz (`dt = 1/60`)
   with decisions at 30 Hz (repeat 2); time-native rule values must be multiples of the
   decision period.
@@ -972,7 +991,11 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
 ## Tabled (deliberately deferred)
 
 1. **Remaining flight-parameterization questions** (the card itself is in
-   `docs/rewrite/ship-card.md`):
+   `docs/rewrite/ship-card.md`). *Superseded 2026-10-23 in large part by the new flight
+   model (`flight-model.md`): stall speed now follows from g and C_Lmax; the nose is a
+   rigid body (frequency and damping, no slew limit); low-speed control comes from lift
+   ∝ u² and the forced sink, not a separate fade. The card is rewritten in the
+   physics-first plan, step 5.*
    - **Stall angle (decided):** shared default (15 deg today), first candidate to
      promote to a per-type handle. It does not change radius, rates, drag or datums;
      it sets the gun offset in a turn (5 / 10 / 15 deg at stick thirds) and how far
@@ -1167,5 +1190,7 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       no), fog flag in the observation, 42-way joint action, code padding rule.
       Progress: part 1 timing [x] (2026-10-22); next part 2, agent interface.
 - [ ] Then: agent workflow, then the remaining tabled items.
-- [ ] Physics-first changes in the PyTorch env (planned, not started).
+- [x] Flight model redesign (2026-10-22/23): `docs/rewrite/flight-model.md`.
+- [ ] Physics-first changes in the PyTorch env (planned, not started; plan updated
+      2026-10-23 for the new flight model).
 - [ ] Repo setup (option 3), after the physics-first changes.

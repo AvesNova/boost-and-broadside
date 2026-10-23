@@ -3,6 +3,10 @@
 What defines a ship type, what is derived and shown, and how a design compares with a
 real fighter. Status: **draft under discussion**; see `decisions.md` for what is agreed.
 
+*Note 2026-10-23: the flight handles below describe the old model. The new flight model
+(`flight-model.md`) changes them; the card is rewritten in the physics-first plan
+(step 5).*
+
 Units: lengths in **m** (the world unit, formerly "px"; rendering applies a pixels-per-m
 scale), time in **s**, angles in **deg**.
 
