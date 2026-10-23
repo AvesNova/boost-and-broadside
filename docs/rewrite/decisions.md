@@ -290,8 +290,15 @@ Coupling found in the current code that blocks goal B:
 
 ### Turn levels (decided)
 
-*Under review 2026-10-23:* the new flight model's prototype uses thirds of the lift
-budget, not of the stall angle; see `flight-model.md`, Open 1.
+**Decided 2026-10-23 (supersedes the stick-thirds rule and the 2/3 design rule below):**
+in the new flight model (`flight-model.md`) the three levels per side are fixed fractions
+of the plane's own **max lift coefficient: 0.4, 0.75 and 1.0**, the same for every ship
+type. Below the g limit each level flies a fixed multiple of the plane's minimum radius
+(2.5x, 1.33x, 1x); 0.75 is within 3-6% of each tested plane's best boosting sustained
+rate (ours, P-51D, Spitfire IX). Tested: lift thirds, stall-angle thirds, energy-neutral
+(degenerate) and a coefficient sweep; see the physics-first findings. A turn's energy
+cost comes from **kinetic energy** (speed), not the store (decided 2026-10-23); a
+descending turn is flown by boosting while turning. The superseded rule follows.
 
 - **Three levels per side, stick thirds:** 1/3, 2/3 and 3/3 of the stall angle,
   constant stick (constant lift coefficient), throttle-independent. **All three are
@@ -1052,6 +1059,20 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     - Best boosting rate (unlimited store): P-51 at C_L 0.85-0.9 (116 deg/s; 112 at 0.75),
       Spitfire 0.8-0.9 (136; 132 at 0.75), ours 0.7-0.8 (89). Fixed 0.75 is within 3-4% of
       each plane's best, and the radius ratio rule (min radius / C_L) still holds.
+  - *Handling solver prototype (author, 2026-10-23: performance inputs -> ship parameters,
+    mostly linear algebra). `solver.py`.* Stage 1, closed form: C_Lmax = g / stall^2,
+    a_max = C_Lmax corner^2, a0 = charge power / cruise. Then one 3x3 linear solve for
+    engine power P, C_D0 and k from three steady force balances, each linear in (P, C_D0,
+    k) with thrust taken as P/u: cruise (coast, charging: = a0), top speed (coast, store
+    full: = 0) and the full-stick sustained coast turn (its speed from (C_Lmax u^2)^2 - g^2
+    = w^2 u^2). Stage 2: Gauss-Newton on the simulator-measured cruise, top and turn rate
+    (finite-difference Jacobian in log parameters) corrects what stage 1 leaves out (soft
+    thrust and lift caps, thrust along the nose at an angle of attack).
+    - Recovering our ship from its measured stats (cruise 103.7, top 116.8, turn 69.9 deg/s,
+      charge 311 W, static 20 N): stage 1 gives P 1147 W, C_D0 6.73e-4, k 12.1 (within 5%);
+      one stage-2 step gives 1197 / 6.95e-4 / 11.39 (true 1200 / 6.96e-4 / 11.4), all stats
+      within 0.1%. A new design (stall 36, corner 100, cruise 115, top 128, turn 60 deg/s):
+      stage 1 lands at 113 / 127 / 56 deg/s, one step hits 114.8 / 127.9 / 60.1.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;

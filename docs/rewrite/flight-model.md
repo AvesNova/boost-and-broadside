@@ -22,8 +22,11 @@ evaluation).
 
 ## Controls (42 joint actions, unchanged count)
 
-- **Stick (7 levels):** straight, or 1/3, 2/3, 3/3 to either side. A level asks for that
-  fraction of the lift budget sideways (see "Open: turn-level definition").
+- **Stick (7 levels):** straight, or one of three levels to either side. A level asks for a
+  fixed fraction of the ship's max lift coefficient sideways: **0.4, 0.75, 1.0** (decided;
+  the same for every ship type), capped by the g limit. Below corner speed each level flies
+  a fixed multiple of the minimum radius (2.5x, 1.33x, 1x). A turn's induced drag is paid
+  from speed (kinetic energy), not the store (decided).
 - **Power (3):** coast, boost, reverse. These are not thrust settings: each commands an
   **energy exchange** along the flight path (no implied pitch angle): coast +a0 = 3 m/s²
   (a small climb that charges E), reverse +27 m/s² (full climb), boost -27 m/s² (full
@@ -94,8 +97,8 @@ Half kick | drift | field evaluation | half kick.
 | Store fill from empty, coasting | - | 31 s | - |
 | Hold reverse (unlimited store) | - | 83 m/s after 1 s, 50 after 3 s, settles ~27 m/s banking 357 W | - |
 | Continuous fire from a full store | - | coasting 18 s, climbing 40 s, diving 2.2 s, hard turn 11 s | - |
-| Turn levels (coast datum) | 1/3: 81 m/s r 67; 3/3: 39 m/s r 35 | 1/3: 87 m/s, 44 deg/s, r 113; 2/3: 58, 61, r 54; 3/3: 47, 70, r 39 | - |
-| Gun offset at the datum | 5 / 10 / 15 deg | 2.7 / 6.3 / 10.3 deg | - |
+| Turn levels (coast datum) | 1/3: 81 m/s r 67; 3/3: 39 m/s r 35 | 0.4: 79 m/s, 50 deg/s, r 91; 0.75: 52, 63, r 48; 1.0: 47, 70, r 39 | 0.4: 80, 50, r 91; 0.75: 55, 66, r 48; 1.0: 51, 76, r 39 |
+| Gun offset at the datum | 5 / 10 / 15 deg | 2.7 / 6.3 / 10.3 deg (measured with lift thirds; re-measure) | - |
 
 Accuracy (mean position error after 2 s of random inputs): 0.25 / 0.064 / 0.017 m at
 30 / 60 / 120 Hz without fields, 0.66 / 0.15 / 0.04 m with fields (today's model: ~3.9 m
@@ -105,13 +108,8 @@ fields). Cost (JAX CPU, 40,960 ships, per tick): 5-6 ms vs today's 4.8 ms in the
 
 ## Open
 
-1. **Turn-level definition.** The prototype's stick levels are thirds of the *lift
-   budget* (1/3, 2/3, 1 of max lift; constant g above corner speed). The decided design
-   was thirds of the *stall angle* (constant stick; lift fractions 0.56 / 0.89 / 1.0),
-   with the rule "max sustained rate at 2/3 stick". In the prototype every level has one
-   stable datum (checked from both sides), but max sustained rate is at full stick, the
-   1/3 turn is much gentler (r 113 m vs today's 67) and gun offsets are smaller. Decide:
-   restore stall-angle thirds, or keep lift thirds.
+1. *Decided 2026-10-23:* turn levels are lift-coefficient fractions 0.4 / 0.75 / 1.0
+   (see Controls); turn energy comes from speed.
 2. **Ship card and handling solver.** The handles change (see "Superseded"). New
    per-type parameters: C_Lmax (sets stall with g and the min radius), a_max (corner),
    C_D0 and k (drag), engine power and static thrust, a0 / climb / dive rates, store size,
