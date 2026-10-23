@@ -943,6 +943,36 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     sustained (70 deg/s at 49 m/s). Sustained curve, P-51 vs ours x3 (analytic, deg/s):
     35 m/s 31/31, 45 61/61, 50 69/61, 55 65/60, 65 57/57, 75 49/52, 85 40/45, 95 28/38,
     105 1/28 (ours keeps more at high speed: higher top speed).
+  - *Tests before deciding (author, 2026-10-23: test, don't decide first; `flight9.py`,
+    `v9_levels.py`, `v9_bleed.py`, `v9_gravity.py`, `v9_gravity2.py`; final config).*
+    - **Turn levels.** Coast datum (same from 50 and 120 m/s), rate, radius, gun offset;
+      boost datum with an unlimited store:
+      lift thirds: 1/3 87 m/s, 44 deg/s, r 113, 2.7 deg (boost runs away to 207 m/s);
+      2/3 58, 61, r 54, 6.3 deg (boost 89 deg/s at 87); 3/3 47, 70, r 39, 10.3 deg (boost
+      85 at 57). Stall-angle thirds: 1/3 66 m/s, 58 deg/s, r 65, 5.0 deg (boost 85 at
+      98); 2/3 47, 65, r 41, 9.2 deg (boost **87 at 62, the best: the "max sustained at
+      2/3" rule holds**); 3/3 as above. Instantaneous peak by start speed 40 / 60 / 90 /
+      120 / 140 m/s: stall-angle 1/3 41 / 54 / 75 / 95 / 95 (a hard turn at high speed,
+      constant lift coefficient), lift 1/3 25 / 34 / 44 / 36 / 31. Full stick stops at
+      10.3 deg because part of the lift holds level.
+    - **Turn bleed source** (full stick from 90 m/s, store full): from speed: 62 / 49 / 47
+      m/s at 1 / 3 / 6 s, store untouched, 3.0 kJ total lost by 3 s, 80 deg/s; half each:
+      75 / 63 / 60 m/s, store 5.7 / 3.0 kJ, 6.4 kJ lost, 102 deg/s; from the store: 96 /
+      66 / 47 m/s, store empty by 3 s, 11.9 kJ lost, 119 deg/s. Paying from the store keeps
+      the ship fast, where drag is higher, so it burns ~4x the energy: it is a descending
+      turn. Boost + turn already gives that choice explicitly.
+    - **Climb/dive vs a 3D point mass in gravity** (u' = T - D - g sin gamma, gamma' =
+      (L_v - g cos gamma)/u, h' = u sin gamma, horizontal speed u cos gamma; a pilot law
+      tracks the commanded angle with the lift budget). The energy law matches exactly
+      (coast at 6 deg agrees to <0.3 m/s). Differences: (1) a = g means a vertical climb or
+      dive, yet the model kept full horizontal speed; (2) holding a climb needs g cos
+      gamma, not g; (3) horizontal turn rate is lateral lift / (u cos gamma); (4) the
+      commanded angle is reached instantly, while a real pull-up or push-over takes time
+      and costs induced drag. Adding (1)-(3) with sin gamma = a/g and a 60 deg cap fixes
+      horizontal distance (30 deg climb 240 vs ref 240 m; 60 deg climb 121 vs 130; 60 deg
+      dive 157 vs 158). (4) remains: after 3 s of a full 60 deg climb from 105 m/s, the
+      reference is at 54 m/s with +0.2 kJ total, the model at 62 m/s with +2.1 kJ (the
+      reference's 8 g pull-up spends ~1.5 kJ in induced drag).
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
