@@ -1086,6 +1086,18 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     altitude and supercharger performance (the store stands in for altitude), roll rate
     and stick forces at speed, compressibility (Mach) dive limits, fuel and range, stall
     character, visibility; armament and toughness belong on the combat card.
+  - *Per-plane static thrust and bullet cost (author, 2026-10-23: why the same static
+    thrust? Stores can differ too).* The converted planes had our ship's placeholder
+    static-thrust ratio and bullet cost and the default 10 kJ store; nothing tied them to
+    the plane. Now `planes.py` derives static thrust by momentum theory, T = (FM^2 P^2 2 rho
+    A)^(1/3) with figure of merit 0.75 and the real propeller diameter (P-51D 3.40 m: 26.4
+    kN, 0.61 g; Spitfire IX 3.27 m: 25.2 kN, 0.76 g; game 16.4 and 20.4 N), and bullet cost
+    by the decided rule (P-51 13.3 J, Spitfire 17.0, ours 29.1). Best climb now matches the
+    flight tests (game 12.3 vs 12.4 and 15.8 vs 15.9 m/s, at 43 and 35 m/s, i.e. the real
+    140 / 116 mph best-climb speeds). Coast full-stick turn rises to P-51 80 deg/s, Spitfire
+    103 (real best sustained turn scaled: 76 and 99). Levels 0.4 / 0.75 / 1.0: P-51 51 / 69
+    / 80 deg/s, Spitfire 66 / 91 / 103. Store size is still the shared 10 kJ (about 2,250 m
+    / 7,400 ft of real altitude per plane); options pending the author.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
