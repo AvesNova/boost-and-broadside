@@ -1004,6 +1004,16 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     47, 66, r 41, 9.3 | 87 at 62 | 119, 61. 1.0: 47, 70, r 39, 10.3 | 85 at 57 | 124, 59.
     Best boosting sustained rate at 0.7-0.8. Candidate sets (with 1.0 for full stick):
     0.33 / 0.67, 0.4 / 0.75, 0.3 / 0.6, 0.5 / 0.8.
+  - *Where max rate and min radius occur (2026-10-23, `rate_vs_radius.py`; level turns).*
+    Instantaneous (lift-limited): both at corner speed and full stick, for the P-51 model
+    and ours alike (137 deg/s, r 37 m at 89 m/s). Sustained while coasting (thrust =
+    drag): also at one point, full stick near the stall boundary: P-51 model 70 deg/s,
+    r 41 m at 49 m/s (C_L 1.0); ours 62 deg/s, r 42 m at 46 m/s (C_L 0.98). The points
+    separate only when there is spare power: boosting with an unlimited store, our best
+    rate is at C_L 0.7-0.8 (89 deg/s at 71-82 m/s) while the min radius stays at full
+    stick (39 m at 57 m/s). Caveat: the P-51 energy-maneuverability model gives 12 deg/s
+    real at 113 m/s against the forum's ~18 deg/s there, so its power or induced drag may
+    be off.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
