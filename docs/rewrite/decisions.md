@@ -19,6 +19,17 @@ Last updated: 2026-10-16.
   rollouts, large parallel batches. CPU only for exceptions like streaming experience to
   host RAM.
 
+**Framing (decided 2026-10-23, author):**
+- **Arcade combat with a WW2 feel**, in a 2D sky (not space: there is drag and lift).
+  Arcade features (shield, energy and bullet regeneration, faster recharge) are there for
+  fun and are tuned freely; flight realism is kept where it creates WW2 decisions (energy
+  vs angles, corner speed, stall, dive and zoom), not for its own sake.
+- **For both humans and agents.** If either fails, the game fails: mechanics must be
+  readable to a human player and learnable and cheap for agents.
+- **This is a rewrite using the lessons learned, not a port.** Supersedes "the sim is not
+  redesigned" (Game scope v1) and the port-first framing; parity with the old sim is no
+  longer a goal.
+
 Additional motivations: a functional style (easier to reason about and to compile), and
 a chance to cut accumulated weight and make the codebase cohesive.
 
@@ -206,7 +217,7 @@ Coupling found in the current code that blocks goal B:
 
 ### Game scope (v1)
 
-- **Principle: the sim is not redesigned.** Change it only to make it functional, JAX
+- *Superseded 2026-10-23 (rewrite, not port; see Goals, Framing).* **Principle: the sim is not redesigned.** Change it only to make it functional, JAX
   and configurable.
 - **Kept:** refractive fields; the current perception paradigm; the slip model, g-limit
   and nose dynamics (all made configurable); shields, health and power; respawn delay
