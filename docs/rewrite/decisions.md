@@ -1139,6 +1139,13 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
       The earlier "sustained full-stick coast" figures (ours 70, P-51 76 / 80, Spitfire 90 /
       103) are therefore slightly descending turns, not level ones; the real-plane values
       they were compared with are level. Pending the author.
+    - Decided (author, 2026-10-23): the store tops out slowly (asymptotic coast charge);
+      the last percent comes from climbing. Static-thrust scaling: undecided. On the full-
+      stick sink the author expected turns to always be paid from speed unless diving; the
+      sink is the separate "lift cannot hold g" rule (a forced dive, store -> speed), not
+      turn drag. Proposed: vertical lift first, turns get what is left, forced sink only
+      below stall. Also under discussion: a density-like altitude model (all aerodynamics
+      scale with an air density that falls as the store fills).
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
