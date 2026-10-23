@@ -894,6 +894,22 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     | p 16, nose x2, 9 g | 134 | 0.13 | 103 @ 69, r 38 | 0.200 / 0.051 / 0.013 |
     P-51 at game scale ~137 deg/s. The sharper limit costs accuracy (still second order and
     ~20x better than today's ~4 m).
+  - *Turn curves vs a P-51 model (2026-10-23, `turn_curves.py`).* Both are the same
+    physics family (point mass: lift-limited turn rising with speed up to the g limit, then
+    falling as 1/speed; power-limited thrust; parasitic + induced drag). P-51D sea-level
+    energy-maneuverability model (m 4,500 kg, S 21.8, C_Lmax 1.5, C_D0 0.0163, k 0.068,
+    1,490 hp x 0.8, 8 g) in game units: stall 31.6, corner 89.4 m/s.
+    - Instantaneous curve: ours (p 16, 8 g) matches the P-51 at every speed (31 / 61 / 80 /
+      98 / 114 / 129 / 131-136 / 117 / 107 / 98 deg/s at 35 / 45 / 55 / 65 / 75 / 85 /
+      90 / 105 / 115 / 125 m/s); p 4 loses up to ~16% around the corner.
+    - Sustained curve: matches below ~50 m/s, then ours is far higher (93 vs 49 deg/s at
+      75 m/s; 48 vs 1 at 105). Best sustained: P-51 70 deg/s at 49 m/s (real 17 deg/s at
+      73 m/s, consistent with the forum ~18); ours 101 deg/s at 67 m/s. Cause: our excess
+      power is ~2.7x the P-51's (the faster climb the author asked for), and sustained
+      turn and climb both draw on excess power. A larger induced-drag factor would lower
+      sustained turn while barely changing the straight-line climb.
+    - Not modelled: altitude (one air density), compressibility, the P-51's own pitch
+      dynamics; our energy store replaces vertical flight.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
