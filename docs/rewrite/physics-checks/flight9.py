@@ -99,10 +99,20 @@ def flight_setting(sh, stick, pmode, u, u_inv, E):
         smax = math.sin(sh.gamma_max)
         a_c = sh.g * jnp.clip(a_c / sh.g, -smax, smax)
     L = softmin_p(sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
-    if sh.levels == "stick":
-        x = jnp.abs(stick)
+    x = jnp.abs(stick)
+    if sh.levels in ("stick", "angle"):
         f = 2.0 * x - x * x                                   # lift fraction at x of the stall angle
         lat_c = jnp.sign(stick) * softmin_p(f * sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
+    elif sh.levels == "cl":                                   # lift-coefficient thirds: fixed radius below the g limit
+        lat_c = jnp.sign(stick) * softmin_p(x * sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
+    elif sh.levels == "neutral":                              # 1/3 angle thirds, 2/3 energy-neutral, 3/3 max
+        f1 = 2.0 * x - x * x
+        angle = softmin_p(f1 * sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
+        T = softmin4(sh.power * u_inv, 1.0 / sh.f_static) / sh.mass
+        spare = (T - sh.cd0 * u * u - sh.a0) * u * u / sh.k_ind - sh.g * sh.g
+        neutral = jnp.minimum(jnp.sqrt(jnp.maximum(spare, 0.0)), L)
+        mid = jnp.abs(x - 2.0 / 3.0) < 1e-3
+        lat_c = jnp.sign(stick) * jnp.where(mid, neutral, jnp.where(x > 0.9, L, angle))
     else:
         lat_c = stick * L
     vert_c = sh.g * jnp.sqrt(1.0 - (a_c / sh.g) ** 2) if sh.geom else sh.g + 0.0 * u

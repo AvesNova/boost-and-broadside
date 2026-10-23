@@ -973,6 +973,26 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
       dive 157 vs 158). (4) remains: after 3 s of a full 60 deg climb from 105 m/s, the
       reference is at 54 m/s with +0.2 kJ total, the model at 62 m/s with +2.1 kJ (the
       reference's 8 g pull-up spends ~1.5 kJ in induced drag).
+  - **Decided (author, 2026-10-23): no pitch angle.** Climb and dive stay pure energy
+    exchange; only the energy law must match flight in gravity, and it does (checked
+    against the 3D point mass). The climb-geometry variant (`geom` in `flight9.py`) is
+    not adopted.
+  - *Turn levels, four options (2026-10-23, `v9_levels2.py`).* Coast datum (stable from 50
+    and 120 m/s unless noted), rate, radius, gun offset; boost datum (unlimited store);
+    from 120 m/s: peak rate and speed after 2 s.
+    - Lift thirds (fraction of the lift budget): 1/3 87 m/s, 44 deg/s, r 113, 2.7 deg;
+      boost 20 deg/s at 206 m/s; from 120: 36 deg/s, 107 m/s. 2/3 58, 61, r 54, 6.3; boost
+      89 at 87; from 120: 76, 81. 3/3 47, 70, r 39, 10.3; boost 85 at 57; from 120: 118, 59.
+    - Angle thirds (stall angle; lift coefficient 0.56 / 0.89 / 1): 1/3 66, 58, r 65, 5.0;
+      boost 85 at 98; from 120: 95, 80. 2/3 47, 65, r 41, 9.2; boost 87 at 62 (best);
+      from 120: 117, 61. 3/3 as above.
+    - Coefficient thirds (lift coefficient 1/3, 2/3, 1: fixed radius below the g limit):
+      1/3 86, 45, r 110, 2.8; boost 67 at 131; from 120: 60, 98. 2/3 58, 61, r 54, 6.3;
+      boost 89 at 85; from 120: 104, 72. 3/3 as above. Same as lift thirds below corner
+      speed; differs only above it (the g limit caps each level separately).
+    - Energy-neutral middle (2/3 = hardest turn that keeps the current speed): degenerate.
+      Above cruise there is no spare thrust, so it flies straight, accelerates to top speed
+      and never turns. Dropped.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
