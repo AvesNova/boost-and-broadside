@@ -848,6 +848,19 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     reverse: 63-64 m/s, +802 W; alternating 0.5 s reverse / 0.5 s coast: +774 W (blend),
     +799 W (no blend). So "no shooting forever" still needs continuous fire to drain more
     than the maximum excess power (or stall to dissipate energy, which alternation avoids).
+  - *Follow-up (author, 2026-10-23).* Net positive energy gain is intended unless the ship
+    is too fast or shooting. v7 (with its near-stall blend) is the natural behaviour:
+    holding reverse decelerates monotonically to the stall speed (31 m/s) and settles there
+    (the earlier "best-climb autopilot" reading came from runs that ended while still
+    decelerating). The no-blend variant's settling at 63 m/s was an artifact (the soft
+    budget makes the hold fraction 0.999, flipping a threshold); dropped. No extra
+    parameters are needed: the bullet cost (which exists anyway) is set above the maximum
+    excess power. Best climb speed (max excess power) for the 1200 W engine: 62 m/s = 2.0x
+    stall, 804 W, 30 m/s of game climb (real-scale 92 m/s and 44 m/s; P-51 best climb is
+    also well above stall, at a lower rate). Excess power: 517 W at 32, 758 at 50, 804 at
+    62, 751 at 75, 576 at 90, 285 at 105, ~0 at 116 m/s. Holding reverse banks only the
+    stall-speed excess (~520 W); flying best climb (e.g. alternating coast and reverse)
+    banks ~800 W, which rewards skill.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
