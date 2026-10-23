@@ -60,6 +60,8 @@ class Ship:
     p_min: float = 0.0            # W at a full store
     e_knee: float = 0.5           # fraction of the store where power starts to fall
     e_mid: bool = False           # evaluate the frozen settings at the predicted mid-kick store
+    charge_scale: bool = False    # coast charge scales with the engine's spare power (holds cruise)
+    static_scale: bool = False    # static thrust scales as (power / full power)^(2/3)
     w_c: float = 12.3 * math.sqrt(216.0 / 270.0)
     zeta: float = 0.7
     w_floor: float = 1.0
@@ -96,21 +98,33 @@ def softmin_p(a, b_inv, k):
     return a * jax.lax.rsqrt(y)
 
 
-def engine_power(sh, E):
-    """Engine power vs the store (altitude analog): flat to the knee, then falls to p_min at full."""
+def power_fall(sh, E):
+    """0 below the knee, 1 at a full store."""
     if sh.pcurve == "none":
-        return sh.power + 0.0 * E
+        return 0.0 * E
     t = jnp.clip((E / sh.e_max - sh.e_knee) / (1.0 - sh.e_knee), 0.0, 1.0)
     if sh.pcurve == "smooth":
         t = t * t * (3.0 - 2.0 * t)
     elif sh.pcurve == "smooth2":
         t = t * t * t * (10.0 - t * (15.0 - 6.0 * t))
-    return sh.power - (sh.power - sh.p_min) * t
+    return t
+
+
+def engine_power(sh, E):
+    """Engine power vs the store (altitude analog): flat to the knee, then falls to p_min at full."""
+    return sh.power - (sh.power - sh.p_min) * power_fall(sh, E)
+
+
+def engine_thrust(sh, E, u_inv):
+    P = engine_power(sh, E)
+    fs = sh.f_static * (P / sh.power) ** (2.0 / 3.0) if sh.static_scale else sh.f_static
+    return softmin4(P * u_inv, 1.0 / fs) / sh.mass
 
 
 def flight_setting(sh, stick, pmode, u, u_inv, E):
     """Lateral lift, exchange acceleration a_x (+ climb), vertical lift, thrust: frozen per half kick."""
-    a_c = jnp.where(pmode == 0.0, sh.a0, jnp.where(pmode > 0, sh.a_climb, -sh.a_dive))
+    a0 = sh.a0 * (1.0 - power_fall(sh, E)) if sh.charge_scale else sh.a0
+    a_c = jnp.where(pmode == 0.0, a0, jnp.where(pmode > 0, sh.a_climb, -sh.a_dive))
     if sh.geom:
         smax = math.sin(sh.gamma_max)
         a_c = sh.g * jnp.clip(a_c / sh.g, -smax, smax)
@@ -141,7 +155,7 @@ def flight_setting(sh, stick, pmode, u, u_inv, E):
     a = a_c * authority * held - (1.0 - held) * sh.a_dive
     inv_band = 1.0 / (sh.band * sh.e_max)
     a = a * jnp.where(a > 0, jnp.clip((sh.e_max - E) * inv_band, 0.0, 1.0), jnp.clip(E * inv_band, 0.0, 1.0))
-    thrust = softmin4(engine_power(sh, E) * u_inv, 1.0 / sh.f_static) / sh.mass
+    thrust = engine_thrust(sh, E, u_inv)
     cg = jnp.sqrt(jnp.clip(1.0 - (a / sh.g) ** 2, 0.04, 1.0)) if sh.geom else 1.0 + 0.0 * u
     return lat, a, vert, thrust, cg
 

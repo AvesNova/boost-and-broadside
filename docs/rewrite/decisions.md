@@ -1120,6 +1120,25 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
       low speed the static-thrust cap binds, not the power. Coasting just below full dips to
       93 m/s, then returns to 104 when the store is full and charging stops.
     - Decided (author, 2026-10-23): smoothstep curve; the knee is a per-ship design input.
+    - Decided (author, 2026-10-23): the coast charge scales with the spare power, a0 (1 -
+      fall(E)), so coasting holds cruise all the way up. `v10_charge.py` (flight9 options
+      `charge_scale`, `static_scale`). Fill from empty: 50 / 75 / 90% at 16 / 26 / 47 s
+      (fixed charge: 16 / 24 / 29), speed 103.3-103.9 m/s throughout; the top is approached
+      asymptotically (97% after 120 s; smoothstep's flat top makes the charge ~ (1 -
+      fill)^2), so the last few percent come only from climbing (reverse). Fixed-store
+      performance (0% / 75% / 100%): top 117 / 111 / 104 m/s; 0.4 and 0.75 coast turns 50
+      / 47 / 44 and 63 / 61 / 58 deg/s; best climb 27.0 / 23.6 / 19.6 m/s. Static thrust
+      scaled as (P/P_full)^(2/3) (20 -> 16 N at full): 0.75 turn 54 instead of 58 and best
+      climb 17.5 instead of 19.6 at a full store.
+    - Finding: **the 1.0 stick level is always a descending turn.** The level sets the
+      *lateral* lift to the whole budget, so the coupled lift vector cannot also hold g and
+      the forced sink pays from the store (our ship at 48 m/s: held 92% of g, about 100-130
+      W from the store, e.g. 100% -> 61% in 30 s). This is why power and static thrust
+      barely move the full-stick rate (71 deg/s), why the C_L sweep jumps from 0.9 to 1.0
+      (66 -> 70 deg/s at the same 47 m/s) and why measuring it from an empty store gives 67.
+      The earlier "sustained full-stick coast" figures (ours 70, P-51 76 / 80, Spitfire 90 /
+      103) are therefore slightly descending turns, not level ones; the real-plane values
+      they were compared with are level. Pending the author.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;

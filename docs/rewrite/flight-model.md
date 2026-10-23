@@ -40,7 +40,9 @@ evaluation).
   engine above its critical altitude), from P below a knee to the power that holds cruise
   at a full store (863 W for this ship: level cruise at 104 m/s with nothing going to the
   store). Shape: smoothstep from the knee to full (decided); the knee is a per-ship input.
-  The kick evaluates it at the predicted mid-kick store (keeps second order). Static thrust per kg stays below the climb rate, so reverse
+  The kick evaluates it at the predicted mid-kick store (keeps second order).
+  The coast charge a0 scales with the spare power (decided), so coasting holds cruise
+  all the way up; the store's top is approached asymptotically. Static thrust per kg stays below the climb rate, so reverse
   always slows the ship (thrust-to-weight < 1).
 - **Lift budget:** L(u) = softmin(C_Lmax u², a_max), C_Lmax = 0.027 1/m, a_max = 216 m/s²
   (8 g), soft-min exponent p = 16 (smooth but nearly hard, so the instantaneous turn curve
