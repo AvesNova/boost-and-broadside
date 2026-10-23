@@ -861,6 +861,25 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     62, 751 at 75, 576 at 90, 285 at 105, ~0 at 116 m/s. Holding reverse banks only the
     stall-speed excess (~520 W); flying best climb (e.g. alternating coast and reverse)
     banks ~800 W, which rewards skill.
+  - *Headline stats, game-scale SI (2026-10-23, `old_stats.py`, `new_stats.py`).* P-51D
+    converted with speed / 1.485, rates x 4.087, lengths / 6.07 (approximate references).
+    | | today | v7 (1200 W, 20 N, a0 3) | P-51D at game scale |
+    |---|---|---|---|
+    | stall / min level speed | none (control fades below 35 m/s) | 31.6 m/s | 31.6 (47 est.) |
+    | cruise (coast) | 100 m/s | 104 (charging), 116 store full | 109 (162 cruise) |
+    | top level speed | 136 sustained boost (store empty) | 116 | 119-131 (177-195) |
+    | dive / burst peak | 229 (boost from 160, full store) | 162 (boost from full) | ~152 (225 limit) |
+    | corner speed | 100 m/s | 89 | 90 (134, forum) |
+    | max instantaneous turn | 151 deg/s at 100 m/s (cap 155) | 98 measured (cap 115) at 89 | ~137 (33.6, 8 g at 134) |
+    | min instantaneous radius | 37 m | 37 | ~38 (231 at corner) |
+    | max sustained turn, coasting | 70 deg/s at 81 m/s (normal), r 67 | 94 deg/s at 76 m/s (full), r 46 | ~74 at 76 (18 at 113, forum) |
+    | min sustained radius, coasting | 35 m (sharp, 39 m/s) | 46 m (full stick) | ~59 (360) |
+    | sustained turn boosting / diving | 119 deg/s at 73 m/s, r 35 (power empty) | 85 deg/s at 121, r 82, while the store lasts (4.9 s) | n/a |
+    | nose response (90%) at corner | 0.07 s | 0.33 s | no sourced roll figure |
+    | best climb | n/a | 62 m/s, 30 m/s climb | ~51, 11 (76, 16.3) |
+    v7 is close to the P-51 in stall, cruise, corner, radius and sustained turn; slower to
+    respond and lower in instantaneous rate than today (8 g vs today's 10 g and its
+    near-instant nose); today's boost is a free sustained top speed that v7 does not have.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
