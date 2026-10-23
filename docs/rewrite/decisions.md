@@ -1029,6 +1029,29 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     - Best boosting (unlimited store) rate is at a plane-dependent coefficient: ours 0.7-0.8
       (89 deg/s), P-51 0.8 (114; 111 at 0.75), Spitfire 0.9 (133; 125 at 0.75). Fixed 0.75
       is within 0-6% of each plane's best.
+  - *Planes refit to author-supplied data (2026-10-23). `real_fit.py`; `planes.py` and
+    `planes_sweep.json` updated (the previous sweep is superseded).* The author supplied two
+    data sets that partly disagree. Used: the flight-test conditions from set 1 (P-51D
+    4,427 kg at 67 in Hg / 1,630 hp, 375 mph, 3,600 ft/min; Spitfire IX Merlin 66 3,398 kg
+    at +18 lb, 336 mph, 4,620 ft/min, 1,575 hp assumed at sea level), wing areas and aspect
+    ratios (both sets agree). C_Lmax from clean stall speeds: P-51 101-102 mph -> 1.47-1.52
+    (used 1.50); Spitfire 88 mph -> 1.55 (set 1's 76 mph gives 2.08, which must be flaps
+    and gear down; set 2's stated 1.38 does not match its own 88 mph stall). Oswald e fixed
+    at 0.8 for both (two test points cannot separate e from propeller efficiency: fitting
+    e gives 0.94 or 0.65 for eta 0.80 or 0.85); then C_D0 and eta fitted to top speed and
+    climb: P-51 C_D0 0.0149, eta 0.82; Spitfire C_D0 0.0191, eta 0.79 (insensitive to e in
+    0.75-0.85). Real sea-level best sustained turn at that power: P-51 18.6 deg/s at 167
+    mph, r 231 m, 360 in 19.4 s; Spitfire 24.2 deg/s at 159 mph, r 168 m, 14.9 s (set 2's
+    E-M-derived 18.2 s / 215 m and 14.8 s / 168 m agree). Set 2 calls 67 in Hg "military"
+    and lists 388 mph WEP; not used.
+    - Game ships: P-51 stall / corner 31.3 / 89 m/s, engine 417 W; Spitfire 26.6 / 75,
+      506 W. Coast datums at 0.4 / 0.75 / 1.0: P-51 80 / 55 / 51 m/s, r 91 / 48 / 39,
+      50 / 66 / 76 deg/s; Spitfire 72 / 49 / 44, r 65 / 35 / 28, 63 / 81 / 90; ours
+      unchanged. The P-51 full-stick coast (76 deg/s) now matches its real best sustained
+      turn scaled to the game (18.6 x 4.09 = 76); the Spitfire's 90 vs 99 scaled.
+    - Best boosting rate (unlimited store): P-51 at C_L 0.85-0.9 (116 deg/s; 112 at 0.75),
+      Spitfire 0.8-0.9 (136; 132 at 0.75), ours 0.7-0.8 (89). Fixed 0.75 is within 3-4% of
+      each plane's best, and the radius ratio rule (min radius / C_L) still holds.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;

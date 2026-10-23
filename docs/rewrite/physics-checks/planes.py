@@ -10,11 +10,15 @@ def from_real(m, S, CLmax, CD0, k, hp, prop=0.8, static_g=3.0 / 9.81, nmax=8.0):
                 k_ind=k * 2 * m / (RHO * S) / f, power=hp * 745.7 * prop / (m * LV * LA),
                 f_static=static_g * 9.81 / LA, a_max=nmax * 27.0)
 REAL = {
-    # P-51D: 4,500 kg, 21.8 m^2, C_Lmax 1.5, C_D0 0.0163, AR 5.84 e 0.8, 1,490 hp
-    "P-51D": from_real(4500.0, 21.8, 1.5, 0.0163, 1 / (math.pi * 0.8 * 5.84), 1490),
-    # Spitfire Mk IX: 3,400 kg (7,500 lb), 22.5 m^2 (242 sq ft), C_Lmax 1.36 and C_D0 0.021
-    # (typical values, not sourced), AR 5.61 e 0.85 (elliptical wing), 1,575 hp (Merlin 66)
-    "Spitfire IX": from_real(3400.0, 22.48, 1.36, 0.021, 1 / (math.pi * 0.85 * 5.61), 1575),
+    # Fitted to the author-supplied data (2026-10-23; see real_fit.py). Weights and powers are the
+    # flight-test conditions; C_Lmax from the clean stall speed; e fixed at 0.8; C_D0 and propeller
+    # efficiency fitted so a sea-level point mass hits the tested top speed and climb.
+    # P-51D: 4,427 kg, 21.83 m^2, stall 101-102 mph -> C_Lmax 1.50, AR 5.83, 1,630 hp (67 in Hg),
+    # 375 mph and 3,600 ft/min -> C_D0 0.0149, eta 0.82
+    "P-51D": from_real(4427.0, 21.83, 1.50, 0.0149, 1 / (math.pi * 0.8 * 5.83), 1630, prop=0.82),
+    # Spitfire IX (Merlin 66): 3,398 kg, 22.48 m^2, stall 88 mph -> C_Lmax 1.55, AR 5.61, 1,575 hp
+    # (+18 lb, sea-level value assumed), 336 mph and 4,620 ft/min -> C_D0 0.0191, eta 0.79
+    "Spitfire IX": from_real(3398.0, 22.48, 1.55, 0.0191, 1 / (math.pi * 0.8 * 5.61), 1575, prop=0.79),
 }
 def plane(name, **over):
     if name == "ours":
