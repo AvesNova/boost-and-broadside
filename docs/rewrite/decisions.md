@@ -837,6 +837,17 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       fire drains more than the maximum excess power.** At 1.2x (22-34 J per bullet), a
       full store lasts 14-22 s coasting, 38-59 s climbing, ~2.2 s diving, 8-10 s in a hard
       turn; a larger margin shortens these.
+  - *Why climbing can always fund fire (2026-10-23, `v7_stallcycle.py`).* Author's point:
+    reverse is a 1 g climb and with thrust/weight < 1 it should run to stall. Correct; v7's
+    near-stall blend (fading the climb into a sink in proportion to the lift shortfall)
+    acted as a best-climb autopilot. But total energy (kinetic + store) always changes at
+    the engine's excess power (T - D) u, whatever the path, so any way of holding speed
+    steady (the stall cycle, alternating coast and reverse, or settling) puts that power
+    into the store. Measured with an unbounded store (1200 W engine, max excess 804 W at 62
+    m/s): blend, hold reverse: settles at the stall, 31 m/s, +522 W; no blend, hold
+    reverse: 63-64 m/s, +802 W; alternating 0.5 s reverse / 0.5 s coast: +774 W (blend),
+    +799 W (no blend). So "no shooting forever" still needs continuous fire to drain more
+    than the maximum excess power (or stall to dissipate energy, which alternation avoids).
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
