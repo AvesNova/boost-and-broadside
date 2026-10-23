@@ -820,6 +820,23 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     5.6 s coasting (167 bullets), 11 s climbing (329, speed falls to 77 m/s), 2.7 s diving
     (81), 4.7 s in a hard turn (140). A weak engine (400 W) cannot hold a 30 deg climb and
     slows to near stall.
+  - *v7 commanded exchange, no implied angle (2026-10-23, `flight7.py`, `v7_sweep.py`,
+    `v7_fire.py`).* **Author: no implied pitch angle; reverse must slow the ship.** Each
+    power action commands an exchange acceleration along the path (coast +a0, reverse
+    +a_climb = 27, boost -a_dive = 27 m/s^2); dE/dt = m u a_x. Static thrust per kg (15-20
+    N) stays below a_climb, so reverse always decelerates. Lift coupling, forced sink and
+    store-end fades as in v6. Sweep (drag set for a 105 m/s cruise):
+    - Reverse from 105 m/s: 81-83 m/s after 1 s, 62-67 after 2 s; it then settles into a
+      sustained climb near the best-climb speed (~60-75 m/s) and keeps charging.
+    - Coast from empty fills 10 kJ in 31-48 s; boost from full peaks at 156-167 m/s and
+      empties in ~2.6 s; full-stick coast turn 79-87 m/s, 95-98 deg/s, store -250 to -280
+      W; stall 25 -> 40 m/s in 0.8-1.0 s.
+    - Firing: a sustained climb can always charge at the engine's **maximum excess power**
+      (557 / 804 / 847 W for 800 / 1200 / 1600 W engines, at ~60 m/s). With the bullet cost
+      tied to the coast charge, fire while climbing never runs dry. **Invariant: continuous
+      fire drains more than the maximum excess power.** At 1.2x (22-34 J per bullet), a
+      full store lasts 14-22 s coasting, 38-59 s climbing, ~2.2 s diving, 8-10 s in a hard
+      turn; a larger margin shortens these.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
