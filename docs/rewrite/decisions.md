@@ -993,6 +993,17 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     - Energy-neutral middle (2/3 = hardest turn that keeps the current speed): degenerate.
       Above cruise there is no spare thrust, so it flies straight, accelerates to top speed
       and never turns. Dropped.
+  - **Author (2026-10-23): lift-coefficient levels preferred; sweep the spacing first.**
+    *Sweep (`v9_clsweep.py`).* Each level depends only on its own coefficient; all are
+    stable (same coast datum from 50 and 130 m/s). Coefficient: coast datum, rate, radius,
+    gun offset | boost (unlimited store) rate at speed | from 120 m/s peak rate, speed
+    after 2 s: 0.2: 102 m/s, 32 deg/s, r 184, 1.6 deg | 50 at 163 | 37, 108. 0.3: 90, 42,
+    r 122, 2.5 | 64 at 137 | 54, 101. 0.4: 79, 50, r 91, 3.4 | 74 at 119 | 72, 93. 0.5: 70,
+    55, r 73, 4.4 | 81 at 104 | 88, 84. 0.6: 62, 59, r 60, 5.5 | 87 at 93 | 99, 77. 0.7: 55,
+    62, r 51, 6.8 | 89 at 82 | 107, 70. 0.8: 50, 64, r 45, 8.2 | 89 at 71 | 114, 65. 0.9:
+    47, 66, r 41, 9.3 | 87 at 62 | 119, 61. 1.0: 47, 70, r 39, 10.3 | 85 at 57 | 124, 59.
+    Best boosting sustained rate at 0.7-0.8. Candidate sets (with 1.0 for full stick):
+    0.33 / 0.67, 0.4 / 0.75, 0.3 / 0.6, 0.5 / 0.8.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
