@@ -56,6 +56,10 @@ class Ship:
     geom: bool = False            # climb geometry: horizontal speed u cos(gamma), hold lift g cos(gamma),
     gamma_max: float = math.radians(60.0)   # turn rate / cos(gamma), with sin(gamma) = a_x / g capped here
     bleed: str = "kinetic"
+    pcurve: str = "none"          # engine power vs store: "none", "kink" (flat then linear), "smooth" (smoothstep), "smooth2"
+    p_min: float = 0.0            # W at a full store
+    e_knee: float = 0.5           # fraction of the store where power starts to fall
+    e_mid: bool = False           # evaluate the frozen settings at the predicted mid-kick store
     w_c: float = 12.3 * math.sqrt(216.0 / 270.0)
     zeta: float = 0.7
     w_floor: float = 1.0
@@ -92,6 +96,18 @@ def softmin_p(a, b_inv, k):
     return a * jax.lax.rsqrt(y)
 
 
+def engine_power(sh, E):
+    """Engine power vs the store (altitude analog): flat to the knee, then falls to p_min at full."""
+    if sh.pcurve == "none":
+        return sh.power + 0.0 * E
+    t = jnp.clip((E / sh.e_max - sh.e_knee) / (1.0 - sh.e_knee), 0.0, 1.0)
+    if sh.pcurve == "smooth":
+        t = t * t * (3.0 - 2.0 * t)
+    elif sh.pcurve == "smooth2":
+        t = t * t * t * (10.0 - t * (15.0 - 6.0 * t))
+    return sh.power - (sh.power - sh.p_min) * t
+
+
 def flight_setting(sh, stick, pmode, u, u_inv, E):
     """Lateral lift, exchange acceleration a_x (+ climb), vertical lift, thrust: frozen per half kick."""
     a_c = jnp.where(pmode == 0.0, sh.a0, jnp.where(pmode > 0, sh.a_climb, -sh.a_dive))
@@ -125,7 +141,7 @@ def flight_setting(sh, stick, pmode, u, u_inv, E):
     a = a_c * authority * held - (1.0 - held) * sh.a_dive
     inv_band = 1.0 / (sh.band * sh.e_max)
     a = a * jnp.where(a > 0, jnp.clip((sh.e_max - E) * inv_band, 0.0, 1.0), jnp.clip(E * inv_band, 0.0, 1.0))
-    thrust = softmin4(sh.power * u_inv, 1.0 / sh.f_static) / sh.mass
+    thrust = softmin4(engine_power(sh, E) * u_inv, 1.0 / sh.f_static) / sh.mass
     cg = jnp.sqrt(jnp.clip(1.0 - (a / sh.g) ** 2, 0.04, 1.0)) if sh.geom else 1.0 + 0.0 * u
     return lat, a, vert, thrust, cg
 
@@ -145,10 +161,11 @@ def kick(sh, u0, alpha0, ca0, sa0, r, E, n_inv, gbx, gby, stick, pmode, shoot, h
     u0_inv = 1.0 / u0s
     _, s0, vert0, thrust0, _ = flight_setting(sh, stick, pmode, u0s, u0_inv, E)
     cl0 = lift(sh, alpha0)
-    du0, _ = rates(u0, cl0, ca0, vert0, thrust0, s0, u0_inv * u0_inv)
+    du0, dE0 = rates(u0, cl0, ca0, vert0, thrust0, s0, u0_inv * u0_inv)
     u = jnp.maximum(u0 + 0.5 * h * du0, sh.eps)
     u_inv = 1.0 / u
-    lat, s, vert, t, cg = flight_setting(sh, stick, pmode, u, u_inv, E)
+    E_mid = E + 0.5 * h * dE0 if sh.e_mid else E                 # store at mid-kick for the power curve
+    lat, s, vert, t, cg = flight_setting(sh, stick, pmode, u, u_inv, E_mid)
     cg_inv = 1.0 / cg
     omega_f = u * n_inv * (ca0 * gby + sa0 * gbx)
     theta_dot0 = (cl0 * u * u + t * sa0) * u_inv * n_inv * cg_inv + omega_f

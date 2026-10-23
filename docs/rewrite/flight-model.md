@@ -35,8 +35,11 @@ evaluation).
 
 ## Forces and rules
 
-- **Engine:** constant power P = 1200 W, all of it thrust along the nose: F = P/u, softly
-  capped at 20 N at low speed. Static thrust per kg stays below the climb rate, so reverse
+- **Engine:** power P = 1200 W, all of it thrust along the nose: F = P/u, softly
+  capped at 20 N at low speed. *Decided 2026-10-23:* power falls as the store fills (an
+  engine above its critical altitude), from P below a knee to the power that holds cruise
+  at a full store (863 W for this ship); curve shape and knee pending (smooth preferred).
+  The kick evaluates it at the predicted mid-kick store (keeps second order). Static thrust per kg stays below the climb rate, so reverse
   always slows the ship (thrust-to-weight < 1).
 - **Lift budget:** L(u) = softmin(C_Lmax u², a_max), C_Lmax = 0.027 1/m, a_max = 216 m/s²
   (8 g), soft-min exponent p = 16 (smooth but nearly hard, so the instantaneous turn curve

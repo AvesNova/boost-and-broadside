@@ -1098,6 +1098,27 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     103 (real best sustained turn scaled: 76 and 99). Levels 0.4 / 0.75 / 1.0: P-51 51 / 69
     / 80 deg/s, Spitfire 66 / 91 / 103. Store size is still the shared 10 kJ (about 2,250 m
     / 7,400 ft of real altitude per plane); options pending the author.
+  - *Engine power vs the store (author, 2026-10-23: store size is a design parameter;
+    decided option B, power falls as the store fills like an engine above its critical
+    altitude, with the minimum, at a full store, equal to the power that holds cruise;
+    asked whether a flat-then-linear curve's kink causes trouble). `v10_common.py`,
+    `v10_power.py`, `v10_power_mid.py`; `flight9.py` gained `engine_power` (curves "kink",
+    "smooth" = smoothstep, "smooth2" = smootherstep; knee at half the store) and the
+    `e_mid` option.* Our ship: p_min 863 W of 1,200 (inverting the soft static cap).
+    - Accuracy (12 s of mixed inputs crossing the knee, vs 960 Hz): with the settings
+      frozen at the half kick's starting store, every curve, kinked or smooth, drops to
+      about first order in the store (0.93 / 0.34 / 0.13 J at 30 / 60 / 120 Hz vs 0.49 /
+      0.12 / 0.03 without the curve). The cause is the frozen store, not the kink:
+      evaluating the settings at the predicted mid-kick store (E + h/2 dE, already
+      computed) restores second order for all curves (0.48 / 0.12 / 0.03 J; speed errors
+      identical to no curve). With that fix the kink is not measurable; a smooth curve is
+      still preferred (free, and keeps gradients continuous for the solver).
+    - Behaviour: fill time from empty is unchanged (16 / 29 / 32.5 s to 50 / 90 / 99%),
+      because charging is the commanded coast exchange, not engine surplus. At a full store
+      straight speed falls 117 -> 104 m/s (cruise, as intended); at 75% 111. The 0.75-stick
+      coast turn falls 63 -> 58 deg/s, but full stick barely changes (72 -> 71) because at
+      low speed the static-thrust cap binds, not the power. Coasting just below full dips to
+      93 m/s, then returns to 104 when the store is full and charging stops.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
