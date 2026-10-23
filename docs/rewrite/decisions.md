@@ -880,6 +880,20 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
     v7 is close to the P-51 in stall, cruise, corner, radius and sustained turn; slower to
     respond and lower in instantaneous rate than today (8 g vs today's 10 g and its
     near-instant nose); today's boost is a free sustained top speed that v7 does not have.
+  - *Raising the instantaneous turn rate (author, 2026-10-23; `flight8.py`, `v8_rate.py`,
+    `v8_pick.py`).* Measured on the flight path (heading minus angle of attack; an
+    earlier pass wrongly read the nose rotation rate, which overshoots while the nose
+    swings in). The peak path rate is set by the sharpness of the soft g limit (soft-min
+    exponent p = 4 / 8 / 16: 98 / 115 / 126 deg/s); the nose speed only sets how fast it
+    arrives (time to 90% 0.43 / 0.27 / 0.17 / 0.10 s at nose x1 / 1.5 / 2 / 3).
+    | | peak path | t90 | sustained coast | accuracy 30/60/120 Hz |
+    |---|---|---|---|---|
+    | v7 (p 4, nose x1, 8 g) | 98 deg/s | 0.43 s | 98 deg/s @ 85 m/s, r 50 | 0.033 / 0.009 / 0.003 m |
+    | p 16, nose x2, 8 g | 127 | 0.13 | 103 @ 69, r 38 | 0.168 / 0.043 / 0.011 |
+    | p 16, nose x2, 8.6 g | 131 | 0.13 | 103 @ 69, r 38 | 0.187 / 0.048 / 0.012 |
+    | p 16, nose x2, 9 g | 134 | 0.13 | 103 @ 69, r 38 | 0.200 / 0.051 / 0.013 |
+    P-51 at game scale ~137 deg/s. The sharper limit costs accuracy (still second order and
+    ~20x better than today's ~4 m).
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
