@@ -1014,6 +1014,21 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     stick (39 m at 57 m/s). Caveat: the P-51 energy-maneuverability model gives 12 deg/s
     real at 113 m/s against the forum's ~18 deg/s there, so its power or induced drag may
     be off.
+  - *Turn levels across plane types (author, 2026-10-23: 0.4 / 0.75 / 1.0 look good;
+    want one system that works for differently tuned planes; Spitfire as a second
+    example). `planes.py`, `planes_sweep.py` (results in `planes_sweep.json`).* P-51D and
+    Spitfire IX converted to game ships at the P-51 scale (Spitfire: 3,400 kg, 22.5 m^2,
+    1,575 hp from search results; C_Lmax 1.36 and C_D0 0.021 typical values, not
+    sourced). Game stall / corner: ours 31.6 / 89, P-51 31.6 / 89, Spitfire 28.4 / 80 m/s.
+    - Lift-coefficient levels are already normalized per plane in geometry: below the g
+      limit the radius is (min radius) / C_L, so 0.4 is always a 2.5x circle and 0.75 a
+      1.33x circle. Coast datums at 0.4 / 0.75 / 1.0: ours 79 / 52 / 47 m/s, r 91 / 48 / 39,
+      50 / 63 / 70 deg/s; P-51 76 / 53 / 50, r 92 / 49 / 40, 47 / 63 / 73; Spitfire 76 /
+      55 / 49, r 74 / 39 / 32, 59 / 79 / 90 (the Spitfire out-turns the P-51, as
+      historically).
+    - Best boosting (unlimited store) rate is at a plane-dependent coefficient: ours 0.7-0.8
+      (89 deg/s), P-51 0.8 (114; 111 at 0.75), Spitfire 0.9 (133; 125 at 0.75). Fixed 0.75
+      is within 0-6% of each plane's best.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
