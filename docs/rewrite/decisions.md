@@ -1073,6 +1073,19 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
       one stage-2 step gives 1197 / 6.95e-4 / 11.39 (true 1200 / 6.96e-4 / 11.4), all stats
       within 0.1%. A new design (stall 36, corner 100, cruise 115, top 128, turn 60 deg/s):
       stage 1 lands at 113 / 127 / 56 deg/s, one step hits 114.8 / 127.9 / 60.1.
+  - *P-51D vs Spitfire IX head to head (author, 2026-10-23: is the Spitfire strictly
+    better? `planes_stats.py`). Wants a "from real aircraft" input path in the solver
+    alongside performance targets.* Not strictly better: the P-51 has the higher top speed
+    (112 vs 100 m/s; real 375 vs 336 mph, same ratio), a much higher held-dive terminal
+    speed (322 vs 248) and better energy retention (power off, 150 m/s falls to 133 vs 124
+    in 3 s), from more mass per unit drag. The Spitfire has the turn (every level), the
+    lower stall (27 vs 31 m/s) and the climb. Level acceleration from 60 m/s is about equal.
+    Artifact: the global static-thrust rule (0.31 g) caps the Spitfire's best climb at 13.5
+    m/s against 15.9 from its real 4,620 ft/min (the P-51's 12.2 vs 12.4 is fine); the
+    real-aircraft path should derive static thrust per plane. Not expressible in the sim:
+    altitude and supercharger performance (the store stands in for altitude), roll rate
+    and stick forces at speed, compressibility (Mach) dive limits, fuel and range, stall
+    character, visibility; armament and toughness belong on the combat card.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
