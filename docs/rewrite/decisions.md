@@ -1119,6 +1119,7 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
       coast turn falls 63 -> 58 deg/s, but full stick barely changes (72 -> 71) because at
       low speed the static-thrust cap binds, not the power. Coasting just below full dips to
       93 m/s, then returns to 104 when the store is full and charging stops.
+    - Decided (author, 2026-10-23): smoothstep curve; the knee is a per-ship design input.
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;

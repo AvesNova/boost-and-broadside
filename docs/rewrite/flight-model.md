@@ -38,7 +38,8 @@ evaluation).
 - **Engine:** power P = 1200 W, all of it thrust along the nose: F = P/u, softly
   capped at 20 N at low speed. *Decided 2026-10-23:* power falls as the store fills (an
   engine above its critical altitude), from P below a knee to the power that holds cruise
-  at a full store (863 W for this ship); curve shape and knee pending (smooth preferred).
+  at a full store (863 W for this ship: level cruise at 104 m/s with nothing going to the
+  store). Shape: smoothstep from the knee to full (decided); the knee is a per-ship input.
   The kick evaluates it at the predicted mid-kick store (keeps second order). Static thrust per kg stays below the climb rate, so reverse
   always slows the ship (thrust-to-weight < 1).
 - **Lift budget:** L(u) = softmin(C_Lmax u², a_max), C_Lmax = 0.027 1/m, a_max = 216 m/s²
