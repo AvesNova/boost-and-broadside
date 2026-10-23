@@ -910,6 +910,20 @@ and 10), (5) events, (6) trajectory and labels, (7) versioning.
       sustained turn while barely changing the straight-line climb.
     - Not modelled: altitude (one air density), compressibility, the P-51's own pitch
       dynamics; our energy store replaces vertical flight.
+  - *Sustained turn by energy condition and induced drag (2026-10-23, `v8_induced.py`; v8
+    p 16, nose x2, 8 g, 1200 W).* Full stick, steady state: coast (store mid or full) 69
+    m/s, 103 deg/s, r 38 (coast climb is cut to zero by the turn; store -35 W); boost with
+    an unlimited store 83 m/s, 123 deg/s, r 38 (store -731 W); boost with an empty store
+    68 m/s, 102 deg/s; engine off, coast 36 m/s, 43 deg/s (gliding, -152 W); engine off,
+    boost 57 m/s, 82 deg/s (-602 W).
+    Induced-drag factor (cd0 re-tuned for a 105 m/s cruise), x1 / 1.5 / 2 / 3 / 4: best
+    coast sustained 103 / 91 / 82 / 70 / 61 deg/s at 69 / 61 / 55 / 47 / 42 m/s; max excess
+    804 / 784 / 765 / 728 / 692 W (best climb 29.8 / 29.0 / 28.3 / 27.0 / 25.6 m/s); top
+    speed 116-117; instantaneous peak 127 / 126 / 125 / 124 / 122 deg/s; speed lost in 1 s
+    of full stick from 95 m/s 10 / 16 / 22 / 30 / 37 m/s. x3 matches the P-51's best
+    sustained (70 deg/s at 49 m/s). Sustained curve, P-51 vs ours x3 (analytic, deg/s):
+    35 m/s 31/31, 45 61/61, 50 69/61, 55 65/60, 65 57/57, 75 49/52, 85 40/45, 95 28/38,
+    105 1/28 (ours keeps more at high speed: higher top speed).
   - *Helper size (2026-10-22, `xy.py` vs `pga.py`):* 14 vs 23 non-blank lines, 6 functions
     each; call sites are about the same length.
   - Proposed (pending the author): symmetric splitting with the nose stepped per half;
