@@ -133,3 +133,37 @@ fields). Cost (JAX CPU, 40,960 ships, per tick): 5-6 ms vs today's 4.8 ms in the
    the specification.
 6. **Observation fields** the contracts must carry: speed, angle of attack (or nose
    heading), nose rate, energy store (J), per-type parameters.
+
+### Open from the 2026-10-23 holistic step-back (not yet decided)
+
+Framing is decided (see `decisions.md`, Goals): arcade combat with a WW2 feel in a 2D sky,
+for humans and agents alike, a rewrite using the lessons learned (not a port). The author
+plans a separate session on gameplay and physics; these were open when it paused:
+
+7. **Battery story instead of altitude.** The store becomes a battery fed by the engine:
+   boost = battery -> speed, brake (today's reverse) = speed -> battery, bullets paid from
+   the battery, charge tapering near full (the slow top-out already decided). Proposed,
+   not confirmed.
+8. **Full battery behaviour:** keep "engine weakens as the store fills" (full = cruise
+   speed, discourages hoarding) or a constant engine with the surplus going to speed
+   (simpler, fits the battery story).
+9. **Gravity.** Under the battery story nothing holds 1 g, so turning would get the whole
+   lift budget and straight flight no induced drag. Author wants to keep the restriction
+   that braking near stall is weak. Options: (A) pure battery, no gravity; braking shares
+   the lift budget with turning; boost needs no lift; stall becomes soft (min radius
+   constant below corner). (B) battery plus a fixed stall margin of lift (one constant per
+   ship): turning and braking share what is left; no turn or brake below stall; no store
+   drain. Claude leans (B) to keep "slow is deadly". Proposed test: A vs B vs today on
+   turn rate against speed, braking near stall, and cruise/top after retuning.
+10. **Full-stick sink (today's model):** level 1.0 always descends, paid from the store,
+    so earlier "sustained full-stick" comparisons to real planes were descending turns.
+    Resolved by (9) in either option.
+11. **Scope pass:** go through every system (flight, combat and resources, fields,
+    observations, rules and modes, training, evaluation) and mark keep / redesign / drop
+    against three tests: WW2 feel, fun, cost (GPU, tuning, learnability). Then contracts.
+12. **Build directly in JAX** (supersedes the PyTorch-first plan, pending confirmation),
+    validating the new env (prototype checks, scripted agents) and the new training stack
+    (a standard JAX environment) separately before combining.
+13. Dropped as realism without enough feel (proposed): air-density model, supercharger
+    curves, static-thrust scaling. The real-aircraft converter and solver's simulator
+    correction stay as offline tools, deferred.
