@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,600px);gap:16px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 8px;font-size:16px}canvas{display:block}
+</style></head><body><h1>Green and pink, as ships or as fields</h1>
+<p class="sub">Panels 1–6: green / pink ship variations on light fields. Panels 7–12: green / pink as the two field colours, with other ship pairs. Fog at 60% brightness, full saturation.</p>
+<div class="grid" id="g"></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+LINEAR_BW=30;
+const LEMON='#F2DC5D',ICE='#A8D8F0';
+const mk=(lo,hi,name)=>Object.assign({},STYLES[0],{name,contourMap:1,perLevel:3,wholeLevels:1,terrace:.75,lowCol:lo,highCol:hi,
+  lowInk:'rgba('+mixHex(lo,'#1c2030',.45).join(',')+',.75)',highInk:'rgba('+mixHex(hi,'#1c2030',.45).join(',')+',.75)',minorW:1,majorW:1,
+  thin:'#'+mixHex(lo,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),thick:'#'+mixHex(hi,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),
+  coreLine:'kind',coreLineW:2.4,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,arena:'#FFFFFF',edge:'#FFFFFF',edgeR:60,damageR:100,damage:'#E4E7EC',damageHatch:'#C9CED6',outside:'#EEF0F3',
+  team:['#2E9D5B','#D6338A'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.55) saturate(1.15)'});
+
+const PEACH='#F7C49A',MINT='#7FD3B4';
+const V=[
+ ['1. Emerald / hot pink','lemon thin, ice thick',LEMON,ICE,'#1F8A4C','#E8458B'],
+ ['2. Leaf / bubblegum','ice thin, lemon thick',ICE,LEMON,'#3BAA35','#F06AA8'],
+ ['3. Forest / rose','peach thin, ice thick',PEACH,ICE,'#1E6B3C','#E0567A'],
+ ['4. Jade / fuchsia','lemon thin, ice thick',LEMON,ICE,'#2BB673','#C2188B'],
+ ['5. Lime / magenta','ice thin, peach thick',ICE,PEACH,'#6FAE1F','#D6338A'],
+ ['6. Teal-green / coral pink','lemon thin, peach thick',LEMON,PEACH,'#12937A','#F2668B'],
+ ['7. Mint / pink air','blue / vermilion ships',MINT,'#F49AC1','#2F6FD0','#F04E23'],
+ ['8. Pink / mint air','blue / vermilion ships','#F49AC1',MINT,'#2F6FD0','#F04E23'],
+ ['9. Light green / rose air','navy / amber ships','#BDE5A8','#F2B5C8','#1F3A93','#E8A200'],
+ ['10. Sage / blush air','blue / orange ships','#A9D4A6','#F4C6D0','#2F6FD0','#E07B2E'],
+ ['11. Lime / orchid air','navy / amber ships','#C8E66A','#E3A0D8','#1F3A93','#E8A200'],
+ ['12. Emerald / pink air','navy / orange ships','#3FBF8A','#F07AB0','#1F3A93','#F28C28'],
+];
+for(const [name,desc,thin,thick,a,e] of V){const S=Object.assign(mk(thin,thick,name),{team:[a,e],fogFilter:'brightness(.6) saturate(1.12)'});
+ const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${name} <span style="font-weight:400;color:#5A6272;font-size:13px">· ${desc}</span></h3>`;const cv=document.createElement('canvas');cv.width=600;cv.height=380;d.appendChild(cv);document.getElementById('g').appendChild(d);render(cv,S)}
+</script></body></html>

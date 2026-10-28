@@ -17,6 +17,7 @@ is generated from the source next to it.
 | `test-purple.png` | `test-purple.html` + `scene.js` | The topo test scene with purple and ice fields (both ways round), green / vermilion ships, fog at 60%. |
 | `colourblind-purple.png` | `colourblind.py` (on the `test-purple` scene) | The purple / ice, green / vermilion scene simulated for six colour-vision deficiencies plus achromatopsia (Machado et al. 2009), with palette swatches and CIE76 ΔE between key colours. |
 | `colourblind-greenpink.png` | `greenpink.html` + `greenpink.py` | Three green / pink team pairs on the lemon / ice scene under five colour-vision deficiencies, with ally-vs-enemy ΔE. |
+| `greenpink2.png` | `greenpink2.html` + `scene.js` | Twelve green + pink variations: six as ship colours on light fields, six as the two field colours with other ship pairs. |
 | `fogdark.png` | `fogdark.html` + `scene.js` | The lemon / ice scene with the fog darkened to six brightness levels (90% to 40%), saturation kept. |
 | `thincolours.png` | `thincolours.html` + `scene.js` | Six thin-air colours (lavender, purple, periwinkle, lemon, peach, mint) with ice thick air, fog at 60%. |
 | `styles.png` | `styles.html` + `scene.js` + `styles.js` | The same test scene in nine visual styles, as a player would see it. |
