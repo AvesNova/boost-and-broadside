@@ -33,7 +33,7 @@ const mk=(lo,hi,name)=>Object.assign({},STYLES[0],{name,contourMap:1,perLevel:3,
   lowInk:'rgba('+mixHex(lo,'#1c2030',.45).join(',')+',.75)',highInk:'rgba('+mixHex(hi,'#1c2030',.45).join(',')+',.75)',minorW:1,majorW:1,
   thin:'#'+mixHex(lo,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),thick:'#'+mixHex(hi,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),
   coreLine:'kind',coreLineW:2.4,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,arena:'#FFFFFF',edge:'#FFFFFF',edgeR:60,damageR:100,damage:'#E4E7EC',damageHatch:'#C9CED6',outside:'#EEF0F3',
-  team:['#2E9D5B','#D6338A'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.55) saturate(1.15)'});
+  team:['#2E9D5B','#D6338A'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.6) saturate(1.12)'});
 const S=mk(LEMON,ICE,'lemon-ice');render(cv,S,{truth:1});render(document.getElementById('c2'),mk(ICE,LEMON,'ice-lemon'));const c=cv.getContext('2d');
 c.font='bold 12px Inter,Arial';
 function badge(x,y,t,col){c.beginPath();c.arc(x,y,10,0,7);c.fillStyle=col;c.fill();c.fillStyle='#fff';c.textAlign='center';c.textBaseline='middle';c.fillText(t,x,y+.5)}
