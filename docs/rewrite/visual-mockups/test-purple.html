@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.row{display:flex;gap:18px;padding:0 30px 30px}canvas{border-radius:10px;border:1px solid #D5DAE1}
+ol{margin:0;padding:16px 18px 16px 40px;background:#fff;border:1px solid #D5DAE1;border-radius:10px;width:440px;font-size:13.5px;line-height:1.45}
+li{margin-bottom:4px}b.v{color:#1C7C3A}b.h{color:#B3261E}b.r{color:#8A5A00}
+</style></head><body>
+<h1>Visibility test scene — purple and ice, green and vermilion</h1>
+<p class="sub">Green team's view. Purple thin air, ice thick air (top) and the reverse (bottom); white sky; outlined ships with the shield / energy ring and trails; fog shown by darkening, colours kept fully saturated. Range 220 m circle per ally, team-shared. Fields drawn as evenly spaced index contours (linear ramp, 30 m per level); the bold line is the core edge, which blocks sight; the arena edge is a high-index field; dashed outlines are hidden enemies, drawn here only for checking.</p>
+<div class="row"><canvas id="c" width="1200" height="760"></canvas><ol>
+<li><b class="v">Visible</b>: in range, clear line of sight.</li>
+<li><b class="h">Hidden</b>: out of range of every ally.</li>
+<li><b class="h">Hidden</b>: in range of A1, but behind field F1's core (sight shadow).</li>
+<li><b class="h">Hidden</b>: inside F2's core and no ally is inside F2.</li>
+<li><b class="v">Visible</b>: inside F3's core, and ally A2 is inside the same core.</li>
+<li><b class="v">Visible</b>: in F1's see-through edge band (outside the core).</li>
+<li><b class="h">Hidden</b>: in the overlap of F4 and F5; ally A3 is inside F4 only, so F5 blocks.</li>
+<li><b class="v">Visible</b>: seen only by A4; vision is shared, so the whole team sees it.</li>
+<li><b class="r">Revealed</b>: in fog, but fired this tick (a shot reveals the shooter to both teams).</li>
+<li><b class="r">Revealed</b>: just spawned at its base (spawn reveal, one decision).</li>
+<li><b class="h">Hidden</b>: right next to A2, but A2 is inside F3's core and cannot see out.</li>
+<li>Own bullets: always visible, even through shadow and fog (A1, A4).</li>
+<li>Enemy bullets (from 9): visible only where an ally could see them; the faint ones are hidden.</li>
+<li>Ally respawning: shown at the base with a timer ring.</li>
+<li>Field states: F3 and F4 are seen into (ally inside); F1, F2, F5, F6 are opaque and lie under the fog. F5 stays opaque over F4's overlap.</li>
+<li>Terrain is always known: arena edge, fields, bases and turrets are drawn under fog.</li>
+</ol></div>
+<div class="row"><canvas id="c2" width="1200" height="760"></canvas></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+const cv=document.getElementById('c');LINEAR_BW=30;
+const PURPLE='#A88BE0',ICE='#A8D8F0';
+const mk=(lo,hi,name)=>Object.assign({},STYLES[0],{name,contourMap:1,perLevel:3,wholeLevels:1,terrace:.75,lowCol:lo,highCol:hi,
+  lowInk:'rgba('+mixHex(lo,'#1c2030',.45).join(',')+',.75)',highInk:'rgba('+mixHex(hi,'#1c2030',.45).join(',')+',.75)',minorW:1,majorW:1,
+  thin:'#'+mixHex(lo,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),thick:'#'+mixHex(hi,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),
+  coreLine:'kind',coreLineW:2.4,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,arena:'#FFFFFF',edge:'#FFFFFF',edgeR:60,damageR:100,damage:'#E4E7EC',damageHatch:'#C9CED6',outside:'#EEF0F3',
+  team:['#2E9D5B','#F04E23'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.6) saturate(1.12)'});
+const S=mk(PURPLE,ICE,'purple-ice');render(cv,S,{truth:1});render(document.getElementById('c2'),mk(ICE,PURPLE,'ice-purple'));const c=cv.getContext('2d');
+c.font='bold 12px Inter,Arial';
+function badge(x,y,t,col){c.beginPath();c.arc(x,y,10,0,7);c.fillStyle=col;c.fill();c.fillStyle='#fff';c.textAlign='center';c.textBaseline='middle';c.fillText(t,x,y+.5)}
+for(const e of ENEMIES)badge(e.x+20,e.y-18,e.n,enemyVisible(e)?(e.shoot||e.spawn?'#8A5A00':'#1C7C3A'):'#B3261E');
+badge(330,345,12,'#2A2F3A');badge(500,384,13,'#2A2F3A');badge(150,340,14,'#2A2F3A');
+c.font='bold 13px Inter,Arial';c.fillStyle='#1F7A45';c.textAlign='left';for(const a of ALLIES)c.fillText(a.id,a.x-10,a.y+26);
+c.fillStyle='#5A6272';FIELDS.forEach((f,i)=>c.fillText('F'+(i+1),(f.x0+f.x1)/2-8,Math.min(f.y0,f.y1)-f.r-6));
+</script></body></html>
