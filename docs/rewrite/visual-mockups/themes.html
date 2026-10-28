@@ -1,0 +1,64 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}h2{font-size:20px;margin:0;padding:6px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(4,320px);gap:12px;padding:0 30px 24px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:8px 12px 0;font-size:14px}.card div{padding:1px 12px 5px;font-size:11.5px;color:#5A6272;height:28px}canvas{display:block}
+.sw{display:flex;gap:4px;padding:0 12px 8px}.sw span{width:22px;height:10px;border-radius:2px}
+</style></head><body><h1>Whole-look themes</h1>
+<p class="sub">Each panel: one thin-air and one thick-air field (topo contours, bold core edge), two allies and two enemies with trails (fading line + faint inner-wingtip vortex), shield 240° on the nose and energy 120° on the tail, a burst of ally tracers. The enemy at bottom right has no shield left. Every panel is a complete look: ship colours, outlines, energy colour, trail tint, map and fields chosen together. Swatches: ally, enemy, energy, thin air, thick air, background.</p>
+<div class="grid" id="g"></div>
+<script>
+const W=320,H=200,D=Math.PI/180;
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+const rgba=(hex,a)=>{const n=parseInt(hex.slice(1),16);return `rgba(${n>>16},${n>>8&255},${n&255},${a})`};
+function mix(a,b,t){const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const A=p(a),B=p(b);return '#'+A.map((v,i)=>Math.round(v+(B[i]-v)*t).toString(16).padStart(2,'0')).join('')}
+function path(x,y,h,seq){const P=[];let dt=1/30;for(const [n,v,r] of seq)for(let i=0;i<n;i++){P.push({x,y,h,v,r});x+=v*Math.cos(h)*dt;y+=v*Math.sin(h)*dt;h+=r*D*dt}P.push({x,y,h,v:seq.at(-1)[1],r:seq.at(-1)[2]});return P}
+// ships: [path, team (0 ally, 1 enemy), shield, energy]
+const SHIPS=[[path(10,40,10*D,[[25,120,0],[20,90,-110]]),0,1,.8],[path(25,160,-25*D,[[18,110,0],[16,80,110],[8,100,0]]),0,.4,.3],
+ [path(310,110,190*D,[[22,110,0],[18,85,-120]]),1,.7,.6],[path(300,185,-170*D,[[28,95,30]]),1,0,.5]];
+const CAPS=[{x0:40,y0:120,x1:120,y1:135,r:14,thin:1,n:3},{x0:215,y0:40,x1:275,y1:25,r:16,thin:0,n:3}];
+function capPath(c,f,r){const a=Math.atan2(f.y1-f.y0,f.x1-f.x0);c.beginPath();c.arc(f.x1,f.y1,r,a-Math.PI/2,a+Math.PI/2);c.arc(f.x0,f.y0,r,a+Math.PI/2,a+3*Math.PI/2);c.closePath()}
+function field(c,f,P){const col=f.thin?P.thin:P.thick,ink=mix(col,P.ink||'#1c2030',.35);for(let k=f.n;k>=1;k--){capPath(c,f,f.r+k*7);c.fillStyle=rgba(col,.10);c.fill();c.strokeStyle=rgba(ink,.45);c.lineWidth=.8;c.stroke()}capPath(c,f,f.r);c.fillStyle=rgba(col,.45);c.fill();c.strokeStyle=ink;c.lineWidth=1.8;c.stroke()}
+function ring(c,x,y,h,s,e,P){const R=19,sh=120*D-.1,en=60*D-.1,m=h;const arc=(a0,a1,col,al)=>{if(a1<=a0)return;c.beginPath();c.arc(x,y,R,a0,a1);c.strokeStyle=rgba(col,al);c.lineWidth=2.4;c.lineCap='round';c.stroke();c.lineCap='butt'};
+ arc(m-sh,m+sh,P.shieldOf,.15);if(s>0)arc(m-sh*s,m+sh*s,P.shieldOf,1);const t=m+Math.PI;arc(t-en,t+en,P.energy,.15);if(e>0)arc(t-en*e,t+en*e,P.energy,1)}
+function ship(c,x,y,h,col,outline){c.save();c.translate(x,y);c.rotate(h+Math.PI/2);c.scale(.26,.26);c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();if(outline){c.strokeStyle=outline;c.lineWidth=8;c.stroke()}c.fillStyle=col;c.fill();c.restore()}
+function trail(c,Pt,col,vcol){const n=Pt.length;for(let i=1;i<n-3;i++){const f=i/(n-1);c.beginPath();c.moveTo(Pt[i-1].x,Pt[i-1].y);c.lineTo(Pt[i].x,Pt[i].y);c.strokeStyle=rgba(col,.7*f);c.lineWidth=1.7;c.lineCap='round';c.stroke()}
+ for(let i=1;i<n-2;i++){const p=Pt[i];if(Math.abs(p.r)*p.v<8000)continue;const d=Math.sign(p.r)*7,q=Pt[i-1];const o=(p,d)=>[p.x+d*Math.cos(p.h+Math.PI/2),p.y+d*Math.sin(p.h+Math.PI/2)];c.beginPath();c.moveTo(...o(q,d));c.lineTo(...o(p,d));c.strokeStyle=rgba(vcol,.35*(.3+.7*i/(n-1)));c.lineWidth=1.1;c.stroke()}}
+function scene(c,P){c.fillStyle=P.bg;c.fillRect(0,0,W,H);CAPS.forEach(f=>field(c,f,P));
+ for(const [Pt,team,s,e] of SHIPS){const col=team?P.enemy:P.ally;const tcol=mix(col,P.bg,P.trailMix);trail(c,Pt,tcol,mix(P.bg,P.dark?'#FFFFFF':'#2A2F3A',.45))}
+ // ally tracers toward the enemy
+ c.lineCap='round';for(let i=0;i<4;i++){const x=150+i*16,y=72+i*4.5;c.beginPath();c.moveTo(x,y);c.lineTo(x+7,y+2);c.strokeStyle=P.ally;c.lineWidth=2;c.stroke()}
+ for(const [Pt,team,s,e] of SHIPS){const L=Pt.at(-1);const P2=Object.assign({},P,{shieldOf:P.shield==='team'?(team?P.enemy:P.ally):P.shield});ring(c,L.x,L.y,L.h,s,e,P2);ship(c,L.x,L.y,L.h,team?P.enemy:P.ally,P.outline&&(team||P.outlineAll)?P.outline:null)}}
+// theme: name, idea, bg, thin, thick, ally, enemy, energy, extra
+const TH=(name,desc,bg,thin,thick,ally,enemy,energy,x={})=>Object.assign({name,desc,bg,thin,thick,ally,enemy,energy,shield:'team',trailMix:.3},x);
+const DARK={ink:'#FFFFFF',dark:1};
+const PALS=[
+ TH('1. Clean sky','light blue-grey sky, white thin air, grey thick air; gold energy','#EEF3F8','#FFFFFF','#8A9BB3','#2F6FD0','#E07B2E','#C99A00',{outline:'#2A2F3A'}),
+ TH('2. Storm front','overcast; navy vs amber; dark energy','#DDE3EA','#F7F9FB','#5F6B7A','#1F3A93','#E8A200','#2A2F3A',{outline:'#2A2F3A'}),
+ TH('3. Briefing room','paper and ink; navy vs crimson','#EFE6D2','#FAF5E8','#9C8B72','#2E4A7D','#C0392B','#3B3127',{ink:'#3B3127',outline:'#3B3127'}),
+ TH('4. Olive drab','military map; blue vs burnt orange','#C9CBB0','#ECE6C8','#5A5F3A','#1E5AA8','#E0601F','#2B2B1F',{ink:'#2B2B1F',outline:'#2B2B1F'}),
+ TH('5. Night raid','dark sky, soft thin air, black thick air; gold energy','#121A2B','#2E4466','#070B14','#4DA3FF','#FF9A3D','#F2C14E',Object.assign({outline:'#F2F4F7'},DARK)),
+ TH('6. Radar scope','phosphor green; cyan vs red blips','#04140A','#0F3A1F','#010603','#7CFFD1','#FF5A4E','#C8FF7C',Object.assign({ink:'#7CFF9E',dark:1})),
+ TH('7. Blueprint','technical drawing; white vs amber','#1B4F8C','#2C66A8','#123A6E','#FFFFFF','#FFB347','#9EE7FF',Object.assign({},DARK)),
+ TH('8. Sunset','warm sky; royal blue vs red; plum thick air','#F6C9A0','#FFE6C2','#B07A9C','#2347B8','#D7263D','#3A2E4A',{ink:'#3A2E4A',outline:'#3A2E4A'}),
+ TH('9. Arctic','ice and steel; deep teal vs red','#EEF6FA','#FFFFFF','#7F97AD','#0B6E99','#E8463A','#1E2A36',{outline:'#1E2A36'}),
+ TH('10. Desert','sand; blue vs purple','#EFE3C8','#FBF4E3','#B08A5B','#1F6FB2','#8E3B9E','#3A2A1A',{ink:'#3A2A1A'}),
+ TH('11. Mono + accent','greys everywhere; black allies, orange enemies','#F4F4F4','#FFFFFF','#A0A0A0','#1A1A1A','#FF4F00','#6A6A6A'),
+ TH('12. Neon','near-black; cyan vs pink; yellow energy','#0B0B12','#1C1C3A','#000000','#00E5FF','#FF2E88','#F5FF00',Object.assign({},DARK)),
+ TH('13. Pastel toy','soft and friendly','#FBF7F2','#D8F0F5','#E5D8F2','#4C8DF6','#FF8A5B','#6B5B95'),
+ TH('14. Relative colours','your side graphite and calm, enemies loud orange','#F6F7F9','#FFFFFF','#A3ACB9','#3A4150','#E07B2E','#8A93A3',{outline:'#2A2F3A'}),
+ TH('15. Ocean','sea-blue map; dark navy vs orange','#D6EBF2','#F0FAFD','#2E6F8E','#0A3D62','#F39C12','#0A3D62',{outline:'#0A3D62'}),
+ TH('16. Forest canopy','greens; blue vs pumpkin','#E3EDE0','#F6FBF3','#4E7A57','#2F6FD0','#D35400','#2C3E2D',{ink:'#2C3E2D'}),
+ TH('17. WW2 poster','cream, field green; blue vs red, heavy outlines','#EADBC0','#F5EAD6','#3E4A3D','#2B4C7E','#C8102E','#1B1B1B',{ink:'#1B1B1B',outline:'#1B1B1B',outlineAll:1}),
+ TH('18. Ice and fire','cool thin air, warm thick air; blue vs coral','#F3F6FA','#CFE8F7','#F2C4AE','#1C64F2','#F05252','#374151'),
+ TH('19. Dusk violet','dark violet sky; light blue vs apricot','#2D2240','#4B3B6B','#150F22','#6FA8FF','#FFB86B','#F2E3C6',Object.assign({outline:'#F2E3C6'},DARK)),
+ TH('20. High contrast','accessibility first; blue vs gold, black outlines','#FFFFFF','#E6F2FF','#6B6B6B','#0057E7','#FFB000','#000000',{outline:'#000000',outlineAll:1}),
+ TH('21. Ink wash','sumi-e paper; indigo vs crimson','#F5F1E8','#FFFFFF','#6E6A63','#1C2C4C','#B22222','#2B2B2B',{ink:'#2B2B2B'}),
+ TH('22. Cockpit','warm-black instruments; cyan vs amber','#1A1206','#3A2A10','#0A0602','#7FD6FF','#FFB347','#E8E0D0',Object.assign({ink:'#FFD27F',dark:1})),
+ TH('23. Candy','pink-white; indigo vs orange; purple energy','#FFF5FA','#E0F7FF','#F3D1E6','#3D5AFE','#FF6D00','#5E35B1'),
+ TH('24. Esports slate','dark slate; blue vs red; yellow energy, white outlines','#1E2633','#2A3647','#11161F','#3DA5FF','#FF5C5C','#FFD24D',Object.assign({outline:'#FFFFFF',outlineAll:1},DARK)),
+];
+function card(host,P){const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${P.name}</h3><div>${P.desc}</div>`;const cv=document.createElement('canvas');cv.width=W;cv.height=H;d.appendChild(cv);
+ const sw=document.createElement('div');sw.className='sw';[P.ally,P.enemy,P.energy,P.thin,P.thick,P.bg].forEach(c=>{if(!c)return;const s=document.createElement('span');s.style.background=c;s.style.outline='1px solid #D5DAE1';sw.appendChild(s)});d.appendChild(sw);document.getElementById(host).appendChild(d);scene(cv.getContext('2d'),P)}
+PALS.forEach(P=>card('g',P));
+</script></body></html>
