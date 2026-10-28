@@ -41,7 +41,7 @@ is generated from the source next to it.
 | `pairs4.png` | `pairs4.html` | Every ordered pairing of ice, lemon, mint and peach as thin and thick air, for both team pairs. |
 | `map-vis.png` | `map-vis.html` + `scene.js` | The larger example map with all 16 visibility cases placed on it; 20 m of edge band per level (40 m at the extremes, as in the current code); mint / pink air, navy / amber ships, fog at 60%. |
 | `colour-tool.html` | `colour-tool.src.html` + `scene.js` + `styles.js`, bundled by `build-tool.py` | **Interactive.** Self-contained colour playground on the example map with every visibility case: ship, field, map and fog colours and sliders, presets, copyable settings. |
-| `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
+| `map-contours.png` | `map-contours.html` | The first topographic map of the refractive index (wider, 30 m per level bands). |
 
 ## Rules the scenes follow
 
@@ -57,16 +57,13 @@ is generated from the source next to it.
   edge is a high-index field with the same slope, then a damage zone. Note: the physics today uses a
   smootherstep band, which this does not match; a linear ramp has kinks at the band ends.
 
-## Leanings from the brainstorm (not decided)
+## Current state
 
-- Shield and energy: one ring at the hitbox, shield 240° centred on the nose, energy 120° centred on
-  the tail, each shrinking toward its centre (`shields3.png`, row 3).
-- Trail: fading line plus a faint vortex on the inside wingtip during hard turns (`trails2.png`, 3).
-- Ships: the Komet / Cranked-arrow family (sharp nose, notched or swept back) reads best at small size.
-- Fields: topographic contours of the true index (`map-contours.png`); thin air teal, thick air violet.
-- Fog: terrain always known (fields, bases, turrets drawn), units hidden; sight shadows from field cores.
-- Open: whether field cores may overlap (crossing core edges), and a faint "zero" contour at the
-  outer edge of each band.
+See `../gameplay-brainstorm.md` for what the author has chosen so far and what is still open. In
+short: near-white sky; topographic field contours with the innermost line on the core edge; fog
+darkened to 60% with saturation kept; every ship outlined; shield 240° on the nose and energy 120° on
+the tail in one ring; fading trail with a faint inner-wingtip vortex; field and ship colours still
+being chosen (mint / pink air is the current favourite).
 
 ## Regenerating
 
