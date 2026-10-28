@@ -21,6 +21,7 @@ is generated from the source next to it.
 | `shields2.png` | `shields2.html` | Centred arcs: shield with 1, 2 and 3 centres, energy as one nose-centred arc (inside, outside, tinted, long), plus a shield × energy matrix. |
 | `shields3.png` | `shields3.html` | Twelve more centred-arc combinations: halves (shield nose, energy tail), shares, interleaved 3 + 3 and 6 + 6, 4, 6 and 12 centres. |
 | `exposed.png` | `exposed.html` | Twelve ways to show a ship with no shield left (next hit kills), on ally and enemy, at battle zoom and in a crowd. Base display: shield 240° on the nose, energy 120° on the tail. |
+| `trails.png` | `trails.html` | Twelve flight-trail styles on the same 2.5 s manoeuvre, each with a battle-zoom inset. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow

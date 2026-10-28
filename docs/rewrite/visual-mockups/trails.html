@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,420px);gap:14px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 0;font-size:15px}.card div{padding:2px 14px 6px;font-size:12px;color:#5A6272;height:30px}canvas{display:block}
+</style></head><body><h1>Flight trails</h1>
+<p class="sub">Same 2.5 s manoeuvre in every panel: fast straight run (180 px/s), hard left turn while bleeding speed to 90, then a gentle right turn while accelerating back to 150. Small ship bottom-right of each panel: an enemy at battle zoom with the same trail.</p>
+<div class="grid" id="g"></div>
+<script>
+const BLUE='#2F6FD0',ORANGE='#E07B2E',BG='#F6F7F9',W=420,H=210,D=Math.PI/180;
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+// simulate the manoeuvre at 30 Hz
+const P=[];{let x=0,y=0,h=-15*D,dt=1/30;for(let i=0;i<=75;i++){const t=i*dt;let v,r;
+ if(t<.8){v=180;r=0}else if(t<1.6){const u=(t-.8)/.8;v=180-90*u;r=-150}else{const u=(t-1.6)/.9;v=90+60*u;r=40}
+ P.push({x,y,h,v,r,t});x+=v*Math.cos(h)*dt;y+=v*Math.sin(h)*dt;h+=r*D*dt}}
+const xs=P.map(p=>p.x),ys=P.map(p=>p.y),mx=Math.min(...xs),Mx=Math.max(...xs),my=Math.min(...ys),My=Math.max(...ys);
+const sc=Math.min((W-90)/(Mx-mx),(H-50)/(My-my));const T=p=>[35+(p.x-mx)*sc,25+(p.y-my)*sc];
+function ship(c,x,y,h,col,s=.32){c.save();c.translate(x,y);c.rotate(h+Math.PI/2);c.scale(s,s);c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();c.fillStyle=col;c.fill();c.restore()}
+const age=i=>1-i/(P.length-1); // 1 = oldest
+const rgba=(hex,a)=>{const n=parseInt(hex.slice(1),16);return `rgba(${n>>16},${n>>8&255},${n&255},${a})`};
+function seg(c,i,col,a,w){const [x0,y0]=T(P[i-1]),[x1,y1]=T(P[i]);c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.strokeStyle=rgba(col,a);c.lineWidth=w;c.lineCap='round';c.stroke()}
+function off(p,d){const [x,y]=T(p);return [x+d*Math.cos(p.h+Math.PI/2),y+d*Math.sin(p.h+Math.PI/2)]}
+const OPTS=[
+ ['1. Fading line','thin line, opacity fades with age (today)',(c,col)=>{for(let i=1;i<P.length;i++)seg(c,i,col,.7*(1-age(i)),2)}],
+ ['2. Breadcrumbs','a dot every 0.1 s: spacing shows speed',(c,col)=>{P.forEach((p,i)=>{if(i%3)return;const [x,y]=T(p);c.beginPath();c.arc(x,y,2.2,0,7);c.fillStyle=rgba(col,.25+.65*(1-age(i)));c.fill()})}],
+ ['3. Ties','short cross-ticks every 0.1 s, like rail ties',(c,col)=>{P.forEach((p,i)=>{if(i%3)return;const a=off(p,5),b=off(p,-5);c.beginPath();c.moveTo(...a);c.lineTo(...b);c.strokeStyle=rgba(col,.25+.65*(1-age(i)));c.lineWidth=2;c.stroke()})}],
+ ['4. Tapered ribbon','wide at the ship, thin at the tail',(c,col)=>{for(let i=1;i<P.length;i++)seg(c,i,col,.25+.35*(1-age(i)),1+7*(1-age(i)))}],
+ ['5. Width = speed','line weight follows speed',(c,col)=>{for(let i=1;i<P.length;i++)seg(c,i,col,.25+.5*(1-age(i)),P[i].v/30)}],
+ ['6. Wingtip vortices','two thin lines appear only in hard turns (high g)',(c,col)=>{for(let i=1;i<P.length;i++){seg(c,i,col,.25*(1-age(i)),1.4);const g=Math.abs(P[i].r)*P[i].v;if(g>9000){for(const d of[-8,8]){const a=off(P[i-1],d),b=off(P[i],d);c.beginPath();c.moveTo(...a);c.lineTo(...b);c.strokeStyle=rgba('#7A8899',.8*(1-age(i))+.15);c.lineWidth=1.3;c.stroke()}}}}],
+ ['7. Ghost silhouettes','after-images every 0.3 s',(c,col)=>{P.forEach((p,i)=>{if(i%9||i===P.length-1)return;const [x,y]=T(p);c.globalAlpha=.12+.4*(1-age(i));ship(c,x,y,p.h,col,.26);c.globalAlpha=1})}],
+ ['8. Chevrons','small arrows along the path, every 0.1 s',(c,col)=>{P.forEach((p,i)=>{if(i%3)return;const [x,y]=T(p);c.save();c.translate(x,y);c.rotate(p.h);c.beginPath();c.moveTo(-3,-4);c.lineTo(2,0);c.lineTo(-3,4);c.strokeStyle=rgba(col,.25+.65*(1-age(i)));c.lineWidth=1.8;c.stroke();c.restore()})}],
+ ['9. Dashes = time','dash length is constant time, so dashes stretch with speed',(c,col)=>{for(let i=1;i<P.length;i++)if(Math.floor(i/3)%2===0)seg(c,i,col,.25+.6*(1-age(i)),2.4)}],
+ ['10. Twin line','two thin parallel lines (wingtips), always on',(c,col)=>{for(let i=1;i<P.length;i++)for(const d of[-6,6]){const a=off(P[i-1],d),b=off(P[i],d);c.beginPath();c.moveTo(...a);c.lineTo(...b);c.strokeStyle=rgba(col,.6*(1-age(i)));c.lineWidth=1.3;c.stroke()}}],
+ ['11. Contrail = energy','length follows the energy store (here 60%)',(c,col)=>{const n=Math.round(P.length*.6);for(let i=P.length-n;i<P.length;i++)if(i>0)seg(c,i,col,.15+.55*(1-age(i)),3)}],
+ ['12. Speed lines','short streaks behind only at high speed',(c,col)=>{for(let i=1;i<P.length;i++)seg(c,i,col,.2*(1-age(i)),1.2);P.forEach((p,i)=>{if(i%3||p.v<140)return;const a=off(p,0);const b=[a[0]-12*Math.cos(p.h),a[1]-12*Math.sin(p.h)];for(const d of[-5,5]){c.beginPath();c.moveTo(a[0]+d*Math.cos(p.h+Math.PI/2),a[1]+d*Math.sin(p.h+Math.PI/2));c.lineTo(b[0]+d*Math.cos(p.h+Math.PI/2),b[1]+d*Math.sin(p.h+Math.PI/2));c.strokeStyle=rgba(col,.5*(1-age(i))+.1);c.lineWidth=1.2;c.stroke()}})}],
+];
+for(const [name,desc,f] of OPTS){const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${name}</h3><div>${desc}</div>`;const cv=document.createElement('canvas');cv.width=W;cv.height=H;d.appendChild(cv);document.getElementById('g').appendChild(d);
+ const c=cv.getContext('2d');c.fillStyle=BG;c.fillRect(0,0,W,H);f(c,BLUE);const L=P[P.length-1],[x,y]=T(L);ship(c,x,y,L.h,BLUE);
+ // battle-zoom inset
+ c.fillStyle='#fff';c.strokeStyle='#D5DAE1';c.lineWidth=1;c.beginPath();c.roundRect(W-118,H-62,110,54,6);c.fill();c.stroke();c.save();c.translate(W-112,H-58);c.scale(.25,.25);f(c,ORANGE);ship(c,x,y,L.h,ORANGE,.32);c.restore()}
+</script></body></html>
