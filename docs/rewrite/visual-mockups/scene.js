@@ -81,7 +81,19 @@ function drawStructures(c,S){
  for(const b of BASES){c.fillStyle=S.team[b.team];c.beginPath();c.roundRect(b.x-24,b.y-24,48,48,6);c.fill();c.fillStyle=S.arena;c.beginPath();c.roundRect(b.x-10,b.y-10,20,20,3);c.fill()}
  for(const t of TURRETS){hexPath(c,t.x,t.y,12);c.fillStyle=S.team[t.team];c.fill();c.beginPath();c.arc(t.x,t.y,4,0,7);c.fillStyle=S.arena;c.fill()}
 }
-function drawUnits(c,S,opt={}){
+// newer ship look (opt-in with S.modern): outlined ships, shield/energy ring, fading trail with an inner-wingtip vortex
+const SHIELD={A1:[1,.8],A2:[.5,.6],A3:[.8,.3],A4:[.3,.9]};
+function shieldOf(id,i){if(SHIELD[id])return SHIELD[id];return [[0,.5],[.7,.4],[1,1],[.4,.2],[.9,.7],[.6,.5]][i%6]}
+function turnOf(i){return [-90,0,60,-30,110,20,-70,40,0,-100,50,80,-40,30,0][i%15]}
+function synthTrail(x,y,deg,turn,v=110){const P=[];let h=deg*Math.PI/180,px=x,py=y,dt=1/30;for(let i=0;i<45;i++){P.push({x:px,y:py,h,r:turn});h-=turn*Math.PI/180*dt;px-=v*Math.cos(h)*dt;py-=v*Math.sin(h)*dt}return P.reverse()}
+function modernShip(c,S,x,y,deg,team,se,turn,noTrail){const col=S.team[team];
+ const P=noTrail?[]:synthTrail(x,y,deg,turn),n=P.length;const tc=mixHex(col,S.arena,.3).join(',');
+ for(let i=1;i<n-3;i++){const f=i/(n-1);c.beginPath();c.moveTo(P[i-1].x,P[i-1].y);c.lineTo(P[i].x,P[i].y);c.strokeStyle=`rgba(${tc},${.7*f})`;c.lineWidth=2;c.lineCap='round';c.stroke()}
+ if(Math.abs(turn)>50)for(let i=1;i<n-2;i++){const d=Math.sign(turn)*9,p=P[i],q=P[i-1];const o=(p)=>[p.x+d*Math.cos(p.h+Math.PI/2),p.y+d*Math.sin(p.h+Math.PI/2)];c.beginPath();c.moveTo(...o(q));c.lineTo(...o(p));c.strokeStyle=`rgba(122,136,153,${.35*(.3+.7*i/(n-1))})`;c.lineWidth=1.2;c.stroke()}
+ const R=22,hd=deg*Math.PI/180,sh=120*Math.PI/180-.1,en=60*Math.PI/180-.1;const arc=(a0,a1,cc,al)=>{if(a1<=a0)return;c.beginPath();c.arc(x,y,R,a0,a1);c.strokeStyle=cc;c.globalAlpha=al;c.lineWidth=2.6;c.lineCap='round';c.stroke();c.globalAlpha=1;c.lineCap='butt'};
+ const [s,e]=se;arc(hd-sh,hd+sh,col,.15);if(s>0)arc(hd-sh*s,hd+sh*s,col,1);const t=hd+Math.PI;arc(t-en,t+en,S.energy,.15);if(e>0)arc(t-en*e,t+en*e,S.energy,1);
+ shipPath(c,x,y,deg,S.shipScale||.3);c.strokeStyle=S.outline||'#2A2F3A';c.lineWidth=2.4;c.lineJoin='round';c.stroke();c.fillStyle=col;c.fill()}
+function drawUnits(c,S,opt={}){if(S.modern)return drawModern(c,S,opt);
  const sc=S.shipScale||.3;
  // own bullets always visible
  c.lineCap='round';
@@ -95,6 +107,13 @@ function drawUnits(c,S,opt={}){
    if(e.shoot||e.spawn){for(const [rr,al] of [[18,1],[28,.45]]){c.beginPath();c.arc(e.x,e.y,rr,0,7);c.strokeStyle=S.team[1];c.globalAlpha=al;c.lineWidth=2;if(e.spawn)c.setLineDash([4,4]);c.stroke();c.setLineDash([]);c.globalAlpha=1}}}
   else if(opt.truth){shipPath(c,e.x,e.y,e.h,sc);c.setLineDash([3,3]);c.strokeStyle=S.team[1];c.lineWidth=1.3;c.stroke();c.setLineDash([])}}
 }
+function drawModern(c,S,opt){c.lineCap='round';
+ for(const [x,y] of OWN_BULLETS){c.strokeStyle=S.team[0];c.lineWidth=2.5;c.beginPath();c.moveTo(x,y);c.lineTo(x+10,y-.5);c.stroke()}
+ for(const [x,y] of ENEMY_BULLETS){const v=seenBy(x,y).length;if(v||opt.truth){c.globalAlpha=v?1:.3;c.strokeStyle=S.team[1];c.lineWidth=2.5;c.beginPath();c.moveTo(x,y);c.lineTo(x-10,y);c.stroke();c.globalAlpha=1}}
+ ALLIES.forEach((a,i)=>modernShip(c,S,a.x,a.y,a.h,0,shieldOf(a.id,i),turnOf(i)));
+ c.beginPath();c.arc(RESPAWN.x,RESPAWN.y,34,-Math.PI/2,-Math.PI/2+Math.PI*1.2);c.strokeStyle=S.team[0];c.lineWidth=3;c.stroke();
+ ENEMIES.forEach((e,i)=>{if(enemyVisible(e)){modernShip(c,S,e.x,e.y,e.h,1,shieldOf(null,i),turnOf(i+4),e.spawn);if(e.shoot||e.spawn){for(const [rr,al] of [[30,.9],[40,.4]]){c.beginPath();c.arc(e.x,e.y,rr,0,7);c.strokeStyle=S.team[1];c.globalAlpha=al;c.lineWidth=2;if(e.spawn)c.setLineDash([4,4]);c.stroke();c.setLineDash([]);c.globalAlpha=1}}}
+  else if(opt.truth){shipPath(c,e.x,e.y,e.h,S.shipScale||.3);c.setLineDash([3,3]);c.strokeStyle=S.team[1];c.lineWidth=1.3;c.stroke();c.setLineDash([])}})}
 function render(canvas,S,opt={}){const c=canvas.getContext('2d');const scale=canvas.width/SW;c.save();c.scale(scale,scale);
  const T=document.createElement('canvas');T.width=SW;T.height=SH;drawTerrain(T.getContext('2d'),S);
  const V=document.createElement('canvas');V.width=SW;V.height=SH;const v=V.getContext('2d');v.drawImage(T,0,0);v.globalCompositeOperation='destination-in';v.drawImage(mask(),0,0);
