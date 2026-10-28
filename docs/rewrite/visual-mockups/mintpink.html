@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,600px);gap:16px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 8px;font-size:16px}canvas{display:block}
+</style></head><body><h1>Ships for mint and pink air</h1>
+<p class="sub">Mint thin air, pink thick air, white sky, fog at 60%; ship pairs chosen away from green and pink.</p>
+<div class="grid" id="g"></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+LINEAR_BW=30;
+const LEMON='#F2DC5D',ICE='#A8D8F0';
+const mk=(lo,hi,name)=>Object.assign({},STYLES[0],{name,contourMap:1,perLevel:3,wholeLevels:1,terrace:.75,lowCol:lo,highCol:hi,
+  lowInk:'rgba('+mixHex(lo,'#1c2030',.45).join(',')+',.75)',highInk:'rgba('+mixHex(hi,'#1c2030',.45).join(',')+',.75)',minorW:1,majorW:1,
+  thin:'#'+mixHex(lo,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),thick:'#'+mixHex(hi,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),
+  coreLine:'kind',coreLineW:2.4,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,arena:'#FFFFFF',edge:'#FFFFFF',edgeR:60,damageR:100,damage:'#E4E7EC',damageHatch:'#C9CED6',outside:'#EEF0F3',
+  team:['#2E9D5B','#D6338A'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.55) saturate(1.15)'});
+
+const PEACH='#F7C49A',MINT='#7FD3B4';
+const PINK='#F49AC1';
+const V=[
+ ['1. Blue / vermilion','reference',MINT,PINK,'#2F6FD0','#F04E23'],
+ ['2. Navy / amber','',MINT,PINK,'#1F3A93','#E8A200'],
+ ['3. Blue / orange','',MINT,PINK,'#2F6FD0','#E07B2E'],
+ ['4. Cobalt / gold','',MINT,PINK,'#1F4FB5','#D9A400'],
+ ['5. Indigo / orange','',MINT,PINK,'#3F3A9E','#F28C28'],
+ ['6. Royal blue / yellow','',MINT,PINK,'#1E5BD8','#E6C200'],
+ ['7. Purple / orange','',MINT,PINK,'#6A3FC0','#F28C28'],
+ ['8. Violet / gold','',MINT,PINK,'#5B3FB0','#E0A800'],
+ ['9. Black / orange','',MINT,PINK,'#22262E','#F28C28'],
+ ['10. Ocean / amber','',MINT,PINK,'#0B6E99','#E8A200'],
+ ['11. Slate blue / tangerine','',MINT,PINK,'#3D5A99','#FF8C1A'],
+ ['12. Sky / red','',MINT,PINK,'#2F9BE0','#D7263D'],
+];
+for(const [name,desc,thin,thick,a,e] of V){const S=Object.assign(mk(thin,thick,name),{team:[a,e],fogFilter:'brightness(.6) saturate(1.12)'});
+ const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${name} ${desc?`<span style="font-weight:400;color:#5A6272;font-size:13px">· ${desc}</span>`:''}</h3>`;const cv=document.createElement('canvas');cv.width=600;cv.height=380;d.appendChild(cv);document.getElementById('g').appendChild(d);render(cv,S)}
+</script></body></html>
