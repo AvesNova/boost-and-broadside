@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,600px);gap:16px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 8px;font-size:16px}canvas{display:block}
+</style></head><body><h1>Fog darkness levels</h1>
+<p class="sub">Lemon thin air, ice thick air, green / magenta ships; fog darkens with full saturation. Brightness of the fogged area from 90% down to 40%.</p>
+<div class="grid" id="g"></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+LINEAR_BW=30;
+const LEMON='#F2DC5D',ICE='#A8D8F0';
+const mk=(lo,hi,name)=>Object.assign({},STYLES[0],{name,contourMap:1,perLevel:3,wholeLevels:1,terrace:.75,lowCol:lo,highCol:hi,
+  lowInk:'rgba('+mixHex(lo,'#1c2030',.45).join(',')+',.75)',highInk:'rgba('+mixHex(hi,'#1c2030',.45).join(',')+',.75)',minorW:1,majorW:1,
+  thin:'#'+mixHex(lo,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),thick:'#'+mixHex(hi,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),
+  coreLine:'kind',coreLineW:2.4,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,arena:'#FFFFFF',edge:'#FFFFFF',edgeR:60,damageR:100,damage:'#E4E7EC',damageHatch:'#C9CED6',outside:'#EEF0F3',
+  team:['#2E9D5B','#D6338A'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.55) saturate(1.15)'});
+
+const COMBOS=[['current','#2E9D5B','#D6338A'],['darkgreen','#195729','#EDABD7'],['lightgreen','#4FD46A','#A8243A']];
+for(const [id,g,p] of COMBOS){const S=Object.assign(mk(LEMON,ICE,'lemon-ice'),{team:[g,p],fogFilter:'brightness(.6) saturate(1.12)'});
+ const cv=document.createElement('canvas');cv.id=id;cv.width=600;cv.height=380;document.getElementById('g').appendChild(cv);render(cv,S)}
+</script></body></html>
