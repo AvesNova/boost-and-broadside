@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}h2{font-size:20px;margin:0;padding:6px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}canvas{margin:0 30px 24px;border-radius:10px;border:1px solid #D5DAE1;display:block}
+</style></head><body>
+<h1>Centred arcs — shields with 1, 2 and 3 centres, energy with 1</h1>
+<p class="sub">Each arc is centred on a fixed bearing and shrinks symmetrically toward it as the value drops. Shield centres: nose (1); nose and tail (2); nose, 120° and 240° (3). Energy: one arc centred on the nose.</p>
+<canvas id="a"></canvas>
+<h2>Shield × energy for the 3-centre shield with an inner energy arc</h2><canvas id="b"></canvas>
+<script>
+const BLUE='#2F6FD0',INK='#2A2F3A',BG='#F6F7F9',WARN='#D7263D',EN='#3A4150',ENL='#8FB3EA';
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+function ship(c,x,y,sc,col,rot,warn){c.save();c.translate(x,y);c.rotate(rot);c.scale(sc,sc);c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();c.fillStyle=col;c.fill();if(warn){c.strokeStyle=WARN;c.lineWidth=3/sc;c.stroke()}c.restore()}
+function arc(c,x,y,r,a0,a1,col,w,alpha=1){if(a1<=a0)return;c.beginPath();c.arc(x,y,r,a0,a1);c.strokeStyle=col;c.lineWidth=w;c.globalAlpha=alpha;c.lineCap='round';c.stroke();c.lineCap='butt';c.globalAlpha=1}
+// n arcs centred at heading + k*2pi/n, each shrinking toward its centre; gap between neighbours at full
+function centred(c,x,y,r,v,n,head,col,w,gap=.22,track=.12){const half=Math.PI/n-gap/2;for(let k=0;k<n;k++){const m=head+k*2*Math.PI/n;arc(c,x,y,r,m-half,m+half,col,w,track);if(v>0)arc(c,x,y,r,m-half*v,m+half*v,col,w)}}
+const VARS=[
+ {name:'Shield, 1 centre',desc:'nose (the arc-from-tail favourite)',sh:1},
+ {name:'Shield, 2 centres',desc:'nose and tail',sh:2},
+ {name:'Shield, 3 centres',desc:'nose, 120°, 240°',sh:3},
+ {name:'3 + energy inside',desc:'energy arc on an inner ring, graphite',sh:3,en:'in',ec:EN},
+ {name:'3 + energy outside',desc:'energy arc on an outer ring, graphite',sh:3,en:'out',ec:EN},
+ {name:'3 + energy inside, tint',desc:'inner energy arc in a light team tint',sh:3,en:'in',ec:ENL},
+ {name:'3 + energy, thin long arc',desc:'inner ring, thin line, spans up to 300°',sh:3,en:'in',ec:EN,ew:1.6,espan:300},
+];
+// shield, energy pairs so the two move independently
+const COLS=[['S 100% · E 100%',1,1],['S 75% · E 50%',.75,.5],['S 50% · E 25%',.5,.25],['S 25% · E 75%',.25,.75],['S 0% · E 50%',0,.5],['turning','S 50% · E 50%',.5,.5,'rot'],['battle zoom','full · S 25%, E 25%',0,0,'small']];
+const R=27;
+function draw(c,x,y,v,s,e,rot=0,sc=1){c.save();c.translate(x,y);c.scale(sc,sc);const head=-Math.PI/2+rot;
+ centred(c,0,0,R,s,v.sh,head,BLUE,3);
+ if(v.en){const r=v.en==='in'?R-6:R+6;const span=(v.espan||200)*Math.PI/180;arc(c,0,0,r,head-span/2,head+span/2,v.ec,v.ew||2,.12);if(e>0)arc(c,0,0,r,head-span/2*e,head+span/2*e,v.ec,v.ew||2)}
+ ship(c,0,0,.36,BLUE,rot,s===0);c.restore()}
+function grid(id,rows,cols,cell){const LW=240,CW=150,RH=96,TOP=56,W=LW+CW*cols.length+10,H=TOP+RH*rows.length+10;const cv=document.getElementById(id);cv.width=W;cv.height=H;const c=cv.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,W,H);
+ cols.forEach((col,i)=>{const x=LW+i*CW;c.font='bold 13px Inter,Arial';c.fillStyle=INK;c.fillText(col[0],x+12,24);if(typeof col[1]==='string'){c.font='12px Inter,Arial';c.fillStyle='#5A6272';c.fillText(col[1],x+12,40)}});
+ rows.forEach((row,r)=>{const y=TOP+r*RH;if(r){c.fillStyle='#EEF0F3';c.fillRect(14,y-4,W-28,1)}c.fillStyle=INK;c.font='bold 14px Inter,Arial';c.fillText(row.name,20,y+38);c.font='12px Inter,Arial';c.fillStyle='#5A6272';c.fillText(row.desc,20,y+56);
+  cols.forEach((col,i)=>{const cx=LW+i*CW+CW/2,cy=y+RH/2-4;c.fillStyle=BG;c.beginPath();c.roundRect(cx-62,cy-42,124,84,8);c.fill();cell(c,row,col,cx,cy)})})}
+grid('a',VARS,COLS,(c,v,col,x,y)=>{
+ if(col[4]==='small'){draw(c,x-28,y,v,1,1,0,.42);draw(c,x+28,y,v,.25,.25,0,.42);return}
+ if(col[4]==='rot'){draw(c,x-28,y,v,.5,.5,Math.PI*.35,.62);draw(c,x+28,y,v,.5,.5,-Math.PI*.8,.62);return}
+ draw(c,x,y,v,col[1],col[2])});
+// matrix for the 3-centre + inner energy
+const V=VARS[3],S=[1,.75,.5,.25,0],E=[1,.5,0];
+grid('b',E.map(e=>({name:'Energy '+e*100+'%',desc:''})),S.map(s=>['Shield '+s*100+'%','',s]),(c,row,col,x,y)=>{draw(c,x,y,V,col[2],parseFloat(row.name.split(' ')[1])/100)});
+</script></body></html>
