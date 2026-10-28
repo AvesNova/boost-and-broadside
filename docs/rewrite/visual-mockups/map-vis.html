@@ -1,0 +1,54 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px;max-width:2080px}
+.row{display:flex;gap:18px;padding:0 30px 30px}canvas{border-radius:10px;border:1px solid #D5DAE1}
+ol{margin:0;padding:16px 18px 16px 40px;background:#fff;border:1px solid #D5DAE1;border-radius:10px;width:440px;font-size:13.5px;line-height:1.45}
+li{margin-bottom:4px}b.v{color:#1C7C3A}b.h{color:#B3261E}b.r{color:#8A5A00}
+</style></head><body>
+<h1>Example map with every visibility case</h1>
+<p class="sub">The larger example map (13 capsule fields) with the 16 cases of the perception.py rules placed on it. Green-side view; vision 290 m per ally, team-shared. Edge bands are 20 m per level (40 m at n = 0.5 or 2, as in the current code's 40 m transition), contours every third of a level, bold line = core edge, which blocks sight. Mint thin air, pink thick air, navy / amber ships, fog at 60%. Dashed outlines are hidden enemies, shown only for checking.</p>
+<div class="row"><canvas id="c" width="1600" height="1000"></canvas><ol>
+<li><b class="v">Visible</b>: in range of A1, clear line of sight.</li>
+<li><b class="h">Hidden</b>: out of range of every ally.</li>
+<li><b class="h">Hidden</b>: in range of A1, but behind the big cloud's core (sight shadow).</li>
+<li><b class="h">Hidden</b>: inside the central cloud's core; no ally is inside it.</li>
+<li><b class="v">Visible</b>: inside the top jetstream's core, together with ally A2.</li>
+<li><b class="v">Visible</b>: in the big cloud's see-through edge band, outside its core.</li>
+<li><b class="h">Hidden</b>: where the bottom-left jetstream overlaps a cloud; A3 is inside the jetstream only, so the cloud's core blocks.</li>
+<li><b class="v">Visible</b>: seen only by A4 (out of A1's range); vision is shared.</li>
+<li><b class="r">Revealed</b>: beyond A1's range, but fired this tick.</li>
+<li><b class="r">Revealed</b>: just spawned at its base.</li>
+<li><b class="h">Hidden</b>: right next to A2, but A2 is inside the jetstream's core and cannot see out.</li>
+<li>Own bullets (A1 firing at 3): always visible, even through the shadow.</li>
+<li>Enemy bullets (from 9): visible where A1 could see them; the faint one near the shooter is out of range.</li>
+<li>Ally respawning: timer ring at the base.</li>
+<li>Field states: the top jetstream and the bottom-left jetstream are seen into (allies inside); every other core is opaque under the fog.</li>
+<li>Terrain is always known: arena edge, fields, bases and turrets are drawn under fog.</li>
+</ol></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+// the larger example map: [x0,y0,x1,y1, core radius, level]; band = LINEAR_BW * |level|
+LINEAR_BW=20;SW=1600;SH=1000;R=290;ARENA=[480,500,1120,500,420];
+FIELDS=[[560,300,600,320,90,2],[700,170,1050,140,28,-2],[700,500,830,560,110,1],[1060,420,1140,600,70,-1],[1290,300,1310,330,35,2],[330,770,560,805,40,-2],
+ [640,820,700,760,55,1],[1170,800,1210,790,80,-1],[330,430,330,530,30,1],[1120,230,1240,255,45,2],[960,320,990,310,25,-2],[880,810,990,820,40,1],[330,215,400,190,35,-1]]
+ .map(f=>({x0:f[0],y0:f[1],x1:f[2],y1:f[3],core:f[4],lv:f[5],r:f[4]+LINEAR_BW*Math.abs(f[5]),w:LINEAR_BW*Math.abs(f[5]),kind:f[5]<0?'thin':'thick'}));
+ALLIES=[{id:'A1',x:470,y:430,h:-35},{id:'A2',x:800,y:162,h:-5},{id:'A3',x:450,y:790,h:5},{id:'A4',x:300,y:640,h:20}];
+RESPAWN={x:170,y:500,t:'3 s'};
+ENEMIES=[{n:1,x:540,y:560,h:200},{n:2,x:990,y:660,h:180},{n:3,x:690,y:265,h:160},{n:4,x:760,y:530,h:150},{n:5,x:950,y:149,h:175},{n:6,x:450,y:330,h:120},
+ {n:7,x:590,y:808,h:190},{n:8,x:380,y:720,h:230},{n:9,x:440,y:125,h:84,shoot:1},{n:10,x:1385,y:500,h:180,spawn:1},{n:11,x:820,y:215,h:200}];
+BASES=[{x:170,y:500,team:0},{x:1430,y:500,team:1}];
+TURRETS=[{x:250,y:330,team:0},{x:250,y:690,team:0},{x:450,y:600,team:0},{x:1360,y:200,team:1},{x:1370,y:690,team:1},{x:1250,y:520,team:1}];
+OWN_BULLETS=[0,1,2,3,4,5,6].map(i=>{const d=26+i*28;return [470+.8*d,430-.6*d,8,-6]});
+ENEMY_BULLETS=[[441,138],[444,168],[447,198],[450,228],[453,258]].map(([x,y])=>[x,y,1,10]);
+const MINT='#7FD3B4',PINK='#F49AC1';const hex=a=>'#'+a.map(v=>v.toString(16).padStart(2,'0')).join('');
+const S=Object.assign({},STYLES[0],{name:'map-vis',contourMap:1,perLevel:3,wholeLevels:1,terrace:.75,lowCol:MINT,highCol:PINK,
+  lowInk:'rgba('+mixHex(MINT,'#1c2030',.45).join(',')+',.75)',highInk:'rgba('+mixHex(PINK,'#1c2030',.45).join(',')+',.75)',minorW:1,majorW:1,
+  thin:hex(mixHex(MINT,'#1c2030',.45)),thick:hex(mixHex(PINK,'#1c2030',.45)),coreLine:'kind',coreLineW:2.4,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,
+  arena:'#FFFFFF',edge:'#FFFFFF',edgeR:40,damageR:80,damage:'#E4E7EC',damageHatch:'#C9CED6',outside:'#EEF0F3',
+  team:['#1F3A93','#E8A200'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.6) saturate(1.12)'});
+const cv=document.getElementById('c');render(cv,S,{truth:1});const c=cv.getContext('2d');
+c.font='bold 12px Inter,Arial';
+function badge(x,y,t,col){c.beginPath();c.arc(x,y,10,0,7);c.fillStyle=col;c.fill();c.fillStyle='#fff';c.textAlign='center';c.textBaseline='middle';c.fillText(t,x,y+.5)}
+for(const e of ENEMIES)badge(e.x+22,e.y-20,e.n,enemyVisible(e)?(e.shoot||e.spawn?'#8A5A00':'#1C7C3A'):'#B3261E');
+badge(560,340,12,'#2A2F3A');badge(470,195,13,'#2A2F3A');badge(170,450,14,'#2A2F3A');
+c.font='bold 13px Inter,Arial';c.fillStyle='#1F3A93';c.textAlign='left';for(const a of ALLIES)c.fillText(a.id,a.x-10,a.y+32);
+</script></body></html>

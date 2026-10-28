@@ -1,7 +1,7 @@
 // Test scene for the perception.py rules, adapted to capsule fields.
-const SW=1200, SH=760, R=220, ARENA=[360,390,840,390,300];
+let SW=1200, SH=760, R=220, ARENA=[360,390,840,390,300];
 // fields: [x0,y0,x1,y1, outer radius, band width, kind]; opaque core = outer - band/2 (perception.py)
-const FIELDS=[
+let FIELDS=[
  [330,250,420,300,50,24,'thick',2],   // F1 casts the shadow, n=2
  [640,470,780,520,55,24,'thick',1],   // F2 no ally inside, n=1.41
  [560,180,760,140,40,24,'thin',-2],   // F3 ally inside, n=0.5
@@ -9,10 +9,10 @@ const FIELDS=[
  [450,520,500,650,45,24,'thick',2],   // F5 overlaps F4, n=2
  [820,230,930,170,35,24,'thick',1],   // F6, n=1.41
 ].map(f=>({x0:f[0],y0:f[1],x1:f[2],y1:f[3],r:f[4],w:f[5],core:f[4]-f[5]/2,kind:f[6],lv:f[7]}));
-const ALLIES=[ // alive observers
+let ALLIES=[ // alive observers
  {id:'A1',x:220,y:330,h:5},{id:'A2',x:640,y:165,h:-15},{id:'A3',x:330,y:570,h:10},{id:'A4',x:230,y:470,h:0}];
-const RESPAWN={x:150,y:390,t:'3 s'};
-const ENEMIES=[
+let RESPAWN={x:150,y:390,t:'3 s'};
+let ENEMIES=[
  {n:1, x:330,y:420,h:200},           // visible, clear line
  {n:2, x:980,y:250,h:190},           // out of range
  {n:3, x:430,y:320,h:170},           // behind F1 (shadow)
@@ -25,10 +25,10 @@ const ENEMIES=[
  {n:10,x:1010,y:390,h:180,spawn:1},  // just spawned: revealed
  {n:11,x:640,y:232,h:200},           // next to A2, who is inside a core
 ];
-const BASES=[{x:150,y:390,team:0},{x:1050,y:390,team:1}];
-const TURRETS=[{x:300,y:220,team:0},{x:300,y:650,team:0},{x:920,y:310,team:1},{x:900,y:580,team:1}];
-const OWN_BULLETS=[[262,329],[292,328],[322,327],[352,326],[382,325],[412,323],[272,470],[302,470],[332,470],[362,470]];
-const ENEMY_BULLETS=[[560,400],[520,400],[480,400],[440,400],[400,400],[360,400]];
+let BASES=[{x:150,y:390,team:0},{x:1050,y:390,team:1}];
+let TURRETS=[{x:300,y:220,team:0},{x:300,y:650,team:0},{x:920,y:310,team:1},{x:900,y:580,team:1}];
+let OWN_BULLETS=[[262,329],[292,328],[322,327],[352,326],[382,325],[412,323],[272,470],[302,470],[332,470],[362,470]];
+let ENEMY_BULLETS=[[560,400],[520,400],[480,400],[440,400],[400,400],[360,400]];
 // geometry
 function segDist(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy||1;let t=((px-ax)*dx+(py-ay)*dy)/l;t=Math.max(0,Math.min(1,t));return Math.hypot(px-ax-t*dx,py-ay-t*dy)}
 function segSeg(ax,ay,bx,by,cx,cy,dx,dy){const cr=(px,py,qx,qy,rx,ry)=>(qx-px)*(ry-py)-(qy-py)*(rx-px);
@@ -108,8 +108,8 @@ function drawUnits(c,S,opt={}){if(S.modern)return drawModern(c,S,opt);
   else if(opt.truth){shipPath(c,e.x,e.y,e.h,sc);c.setLineDash([3,3]);c.strokeStyle=S.team[1];c.lineWidth=1.3;c.stroke();c.setLineDash([])}}
 }
 function drawModern(c,S,opt){c.lineCap='round';
- for(const [x,y] of OWN_BULLETS){c.strokeStyle=S.team[0];c.lineWidth=2.5;c.beginPath();c.moveTo(x,y);c.lineTo(x+10,y-.5);c.stroke()}
- for(const [x,y] of ENEMY_BULLETS){const v=seenBy(x,y).length;if(v||opt.truth){c.globalAlpha=v?1:.3;c.strokeStyle=S.team[1];c.lineWidth=2.5;c.beginPath();c.moveTo(x,y);c.lineTo(x-10,y);c.stroke();c.globalAlpha=1}}
+ for(const [x,y,dx=10,dy=-.5] of OWN_BULLETS){c.strokeStyle=S.team[0];c.lineWidth=2.5;c.beginPath();c.moveTo(x,y);c.lineTo(x+dx,y+dy);c.stroke()}
+ for(const [x,y,dx=-10,dy=0] of ENEMY_BULLETS){const v=seenBy(x,y).length;if(v||opt.truth){c.globalAlpha=v?1:.3;c.strokeStyle=S.team[1];c.lineWidth=2.5;c.beginPath();c.moveTo(x,y);c.lineTo(x+dx,y+dy);c.stroke();c.globalAlpha=1}}
  ALLIES.forEach((a,i)=>modernShip(c,S,a.x,a.y,a.h,0,shieldOf(a.id,i),turnOf(i)));
  c.beginPath();c.arc(RESPAWN.x,RESPAWN.y,34,-Math.PI/2,-Math.PI/2+Math.PI*1.2);c.strokeStyle=S.team[0];c.lineWidth=3;c.stroke();
  ENEMIES.forEach((e,i)=>{if(enemyVisible(e)){modernShip(c,S,e.x,e.y,e.h,1,shieldOf(null,i),turnOf(i+4),e.spawn);if(e.shoot||e.spawn){for(const [rr,al] of [[30,.9],[40,.4]]){c.beginPath();c.arc(e.x,e.y,rr,0,7);c.strokeStyle=S.team[1];c.globalAlpha=al;c.lineWidth=2;if(e.spawn)c.setLineDash([4,4]);c.stroke();c.setLineDash([]);c.globalAlpha=1}}}
