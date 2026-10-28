@@ -26,6 +26,7 @@ is generated from the source next to it.
 | `palettes.png` | `palettes.html` | Sixteen colour palettes (teams, shield, energy, fields, background) on a small scene, plus eight trail-colour variants. |
 | `mapcolours.png` | `mapcolours.html` | Twenty-four background and field colour pairs (light, mono, earthy, dark) on the small scene, teams fixed, enemies outlined. |
 | `themes.png` | `themes.html` | Twenty-four whole-look themes: ship colours, outlines, energy, trail tint, map and fields chosen together, on the small scene. |
+| `whites.png` | `whites.html` | Twenty-four whole-look themes on near-white skies with green / magenta or blue / vermilion teams. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow
