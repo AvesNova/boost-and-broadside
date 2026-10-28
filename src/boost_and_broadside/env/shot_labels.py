@@ -1,46 +1,40 @@
-"""Counterfactual shot labels: what every shot did, and what a shot would have done.
+"""Counterfactual shot labels, re-simulated by the learner from stored truth.
 
-Every living ship that does not fire a real bullet launches a *ghost* whenever
-its ghost cooldown allows. A ghost has the real bullet's launch state, spread
-and physics but deals no damage, costs no power, never reveals its shooter and
-is never rendered or observed. A real shot resets both cooldowns, so launches of
-either kind are at least one firing cooldown apart, and a real shot fired while
-the ghost cooldown is still running *replaces* that ghost in its slot: the
-ghost's example is discarded. Any other launch reclaims a slot rather than
-following the ring cursor: a free one, else the oldest spent flight (a ghost, or
-a real bullet that already hit), else the oldest live bullet. With launches a
-firing cooldown apart and a lifetime of ``bullet_lifetime`` the existing
-``max_bullets`` slots always hold a free one; when a same-tick respawn
-compresses launches, a ghost gives way before any real bullet does, so gameplay
-never depends on the ghosts.
+Every decision of every living ship gets one label: what a bullet fired on that
+decision would have done. Nothing is launched in the environment. Each tick,
+the environment copies every ship's launch state (:func:`capture`) -- read
+after the tick's kinematics and before its collisions, which is both where a
+real launch reads from and what that tick's swept hit test checks bullets
+against -- and the trainer stores it per decision row with the field layout.
+After the rollout, :func:`resimulate` fires the same bullet the environment
+would (``physics.bullet_launch_velocity``), flies it with the environment's
+own transport (``physics.fly_bullets``) and tests it with its own swept
+distance (``physics._swept_dist_sq``) against the stored ships of the rows that
+follow. A shot launched on row ``t`` moves :func:`shot_label_delay` times,
+tested against rows ``t`` to ``t + delay - 1``.
 
-Each launched bullet flies its whole lifetime, through any hit (a real bullet
-that hits stops being ``bullet_active`` but keeps ``bullet_flying``). Along the
-way its slot records:
+Each shot records:
 
-- the state at two launch-drawn ages: ``tau1`` and a fallback ``tau2``,
-- its first hit, from the same swept distances that decide gameplay hits, with
-  the hit ship's side relative to the shooter, or else its closest pass to any
-  other living ship, with that ship's side,
+- the state at two drawn ages: ``tau1`` and a fallback ``tau2``,
+- its first hit, with the hit ship's side relative to the shooter, or else
+  its closest pass to any other living ship, with that ship's side,
 - the state at that encounter.
 
 A state *snapshot* is the displacement from the launch point and the velocity,
 both rotated into the launch attitude's frame, and the local refractive index.
-Age ``a`` is the bullet after ``a`` transport steps; age 0 is the launch point
-after the launch tick's ship movement.
+Age ``a`` is the bullet after ``a`` transport steps; age 0 is the launch point.
 
-When a bullet's lifetime runs out its record is emitted as the ship's example
-for that tick. That is always :func:`shot_label_delay` ticks after its launch,
-so a consumer can file it under the launch decision with a fixed offset.
-Bullets cleared by an environment reset never expire and so never emit, which
-is how examples cut short by episode termination are discarded.
+A shot is invalid when its ship is dead on the launch row, or its flight runs
+past the end of the rollout or across an episode end. Gameplay never sees any
+of this: the environment only copies state it already has.
 
-Everything is dense over all slots, fixed-shape, and free of host syncs.
+Everything is dense, fixed-shape, and free of host syncs.
 """
 
 from __future__ import annotations
 
 import functools
+from typing import NamedTuple
 
 import torch
 
@@ -56,15 +50,11 @@ ALLY = 2
 # so masked arithmetic never meets an inf.
 NO_ENCOUNTER_DSQ = 1.0e12
 
-# Above any bullet age, so a slot's rank dominates its age when the launch code
-# reclaims the oldest slot of a rank.
-MAX_AGE_KEY = 1 << 16
-
 # Snapshot channels.
 SNAP_DX, SNAP_DY, SNAP_VX, SNAP_VY, SNAP_INDEX = range(5)
 SNAPSHOT_DIM = 5
 
-# Example layout: what a slot emits on expiry.
+# Example layout: one shot's label.
 EX_TAU1 = 0
 EX_TAU_FALLBACK = 1
 EX_EVENT_TAU = 2
@@ -76,25 +66,12 @@ EX_SNAP_FALLBACK = slice(EX_SNAP1.stop, EX_SNAP1.stop + SNAPSHOT_DIM)
 EX_SNAP_EVENT = slice(EX_SNAP_FALLBACK.stop, EX_SNAP_FALLBACK.stop + SNAPSHOT_DIM)
 EXAMPLE_DIM = EX_SNAP_EVENT.stop
 
-# Record layout: the launch pose, then the example.
-_LAUNCH_POS = slice(0, 2)
-_LAUNCH_ATT = slice(2, 4)
-_EXAMPLE = 4
-RECORD_DIM = _EXAMPLE + EXAMPLE_DIM
-
-
-def _rec(index: int | slice) -> int | slice:
-    """An example index shifted to its place in the record."""
-    if isinstance(index, slice):
-        return slice(index.start + _EXAMPLE, index.stop + _EXAMPLE)
-    return index + _EXAMPLE
-
 
 def shot_label_delay(config: ShipConfig) -> int:
-    """Ticks from a bullet's launch to its expiry, which is also its last age.
+    """Transport steps in a bullet's lifetime, which is also its last age.
 
     Counted with the same float32 countdown ``advance_bullets`` runs, so the
-    offset can never disagree with the simulation by a rounding.
+    flight can never disagree with the simulation's by a rounding.
     """
     return _countdown_moves(config.bullet_lifetime, config.dt)
 
@@ -110,146 +87,216 @@ def _countdown_moves(lifetime: float, dt: float) -> int:
         moves += 1
 
 
-def _complex(pair: torch.Tensor) -> torch.Tensor:
-    return torch.complex(pair[..., 0], pair[..., 1])
+class ShotLaunchState(NamedTuple):
+    """Every ship as a bullet fired this tick would leave it, ``(..., N)`` each.
+
+    Read after a tick's kinematics and before its collisions: the state a
+    launch reads, and the one that tick's swept hit test checks bullets
+    against.
+    """
+
+    position: torch.Tensor  # complex64
+    velocity: torch.Tensor  # complex64
+    attitude: torch.Tensor  # complex64
+    local_index: torch.Tensor  # float32
+    field_gradient: torch.Tensor  # complex64
+    alive: torch.Tensor  # bool
+    team_id: torch.Tensor  # int
 
 
-def _snapshot(state: TensorState, config: ShipConfig) -> torch.Tensor:
-    """Every slot's current state in its own launch frame, ``(B, N, K, 5)``."""
+class FieldLayout(NamedTuple):
+    """An environment's fields, ``(..., M)`` each. Fixed between resets."""
+
+    field_pos: torch.Tensor  # complex64
+    field_radius: torch.Tensor
+    field_transition_width: torch.Tensor
+    field_index: torch.Tensor
+
+
+def capture(state: TensorState) -> tuple[ShotLaunchState, FieldLayout]:
+    """Copy the launch state and field layout the re-simulation needs."""
+    launch = ShotLaunchState(
+        state.ship_pos.clone(),
+        state.ship_vel.clone(),
+        state.ship_attitude.clone(),
+        state.ship_local_index.clone(),
+        state.ship_field_gradient.clone(),
+        state.ship_alive.clone(),
+        state.ship_team_id.clone(),
+    )
+    fields = FieldLayout(
+        state.field_pos.clone(),
+        state.field_radius.clone(),
+        state.field_transition_width.clone(),
+        state.field_index.clone(),
+    )
+    return launch, fields
+
+
+def _flat_snapshot(
+    position: torch.Tensor,
+    velocity: torch.Tensor,
+    local_index: torch.Tensor,
+    launch_pos: torch.Tensor,
+    frame: torch.Tensor,
+    config: ShipConfig,
+) -> torch.Tensor:
+    """``(..., 5)`` snapshot in the launch attitude's frame."""
     from boost_and_broadside.env.frontline import toroidal_displacement
 
-    record = state.bullet_shot_record
-    frame = torch.conj(_complex(record[..., _LAUNCH_ATT]))
-    displacement = (
-        toroidal_displacement(
-            state.bullet_pos - _complex(record[..., _LAUNCH_POS]), config.world_size
-        )
-        * frame
-    )
-    velocity = state.bullet_vel * frame
+    displacement = toroidal_displacement(position - launch_pos, config.world_size) * frame
+    velocity = velocity * frame
     return torch.stack(
-        [
-            displacement.real,
-            displacement.imag,
-            velocity.real,
-            velocity.imag,
-            state.bullet_local_index,
-        ],
+        [displacement.real, displacement.imag, velocity.real, velocity.imag, local_index],
         dim=-1,
     )
 
 
-def _write(record: torch.Tensor, index: int | slice, mask: torch.Tensor, value) -> None:
-    """``record[..., index] = value`` where ``mask``, in place."""
-    if isinstance(index, slice):
-        record[..., index] = torch.where(mask.unsqueeze(-1), value, record[..., index])
-    else:
-        record[..., index] = torch.where(mask, value, record[..., index])
+def launchable_rows(episode_end: torch.Tensor, delay: int) -> torch.Tensor:
+    """``(T, B)`` bool: a shot launched on this row has its whole flight here.
+
+    A shot launched on row ``t`` is tested against the ships of rows ``t`` to
+    ``t + delay - 1``, so that span must lie inside the rollout and inside one
+    episode. An episode ending on the flight's last row is fine: that row's
+    ships were read before the reset.
+    """
+    T = episode_end.shape[0]
+    ends = torch.zeros((T + 1, *episode_end.shape[1:]), device=episode_end.device)
+    ends[1:] = episode_end.float().cumsum(0)
+    rows = torch.arange(T, device=episode_end.device)
+    last = rows + delay - 1  # the flight's last row
+    in_rollout = last <= T - 1
+    last = last.clamp(max=T - 1)
+    # Episode ends on rows t .. last - 1.
+    crossed = ends[last] - ends[rows] > 0
+    return in_rollout.view(T, *([1] * (episode_end.dim() - 1))) & ~crossed
 
 
-def record_launch(
-    state: TensorState,
-    launched: torch.Tensor,
+def resimulate(
+    launch: ShotLaunchState,
+    fields: FieldLayout,
+    episode_end: torch.Tensor,
     config: ShipConfig,
-    generator: torch.Generator,
-) -> None:
-    """Start a fresh record in every slot written this tick.
+    generator: torch.Generator | None = None,
+    taus: torch.Tensor | None = None,
+    noise: torch.Tensor | None = None,
+    max_bullets_per_chunk: int = 1 << 21,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Fly one counterfactual shot from every ship on every row of a rollout.
 
-    Called after the launch has written position, velocity and index, so the
-    age-0 snapshot is the launch point. Slots not written keep their record.
+    Each shot is the bullet the ship would have fired on that row's decision:
+    the same launch, flight and swept hit test the environment runs
+    (``physics.bullet_launch_velocity``, ``physics.fly_bullets``,
+    ``physics._swept_dist_sq``), against the stored ships of the following
+    rows. A shot whose flight runs past the rollout or across an episode end,
+    or whose ship was dead on its launch row, is invalid.
 
     Args:
-        state: State whose launched slots already hold the new bullets.
-        launched: ``(B, N, K)`` bool, the slots written this tick.
+        launch: ``(T, B, N)`` launch states, one per decision row.
+        fields: ``(T, B, M)`` field layouts, one per row.
+        episode_end: ``(T, B)`` bool, the episode ended after this row.
         config: Physics configuration.
-        generator: The label stream; gameplay randomness is never drawn here.
+        generator: Stream for the spread and the queried ages.
+        taus: Optional ``(T, B, N, 2)`` queried ages in place of a draw.
+        noise: Optional ``(T, B, N)`` complex spread in place of a draw.
+        max_bullets_per_chunk: Bound on bullets flown at once.
+
+    Returns:
+        ``(T, B, N, EXAMPLE_DIM)`` examples and ``(T, B, N)`` validity.
     """
+    from boost_and_broadside.env import physics
+
+    T, B, N = launch.position.shape
+    device = launch.position.device
     delay = shot_label_delay(config)
-    record = state.bullet_shot_record
-    shape = launched.shape
-    taus = torch.randint(
-        0,
-        delay + 1,
-        (*shape, 2),
-        generator=generator,
-        device=launched.device,
-    ).to(record.dtype)
-    attitude = state.ship_attitude.unsqueeze(-1).expand(shape)
-    pos = state.bullet_pos
-    _write(record, _LAUNCH_POS, launched, torch.stack([pos.real, pos.imag], dim=-1))
-    _write(record, _LAUNCH_ATT, launched, torch.stack([attitude.real, attitude.imag], dim=-1))
-    _write(record, _rec(EX_TAU1), launched, taus[..., 0])
-    _write(record, _rec(EX_TAU_FALLBACK), launched, taus[..., 1])
-    _write(record, _rec(EX_EVENT_TAU), launched, 0.0)
-    _write(record, _rec(EX_HIT), launched, float(NO_HIT))
-    _write(record, _rec(EX_CLOSEST_DSQ), launched, NO_ENCOUNTER_DSQ)
-    _write(record, _rec(EX_CLOSEST_SIDE), launched, float(NO_HIT))
-    _write(record, _rec(EX_SNAP_EVENT), launched, 0.0)
-    state.bullet_flying = state.bullet_flying | launched
-    state.bullet_age = torch.where(launched, 0, state.bullet_age)
-    _record_scheduled_snapshots(state, launched, config)
+    if taus is None:
+        taus = torch.randint(0, delay + 1, (T, B, N, 2), generator=generator, device=device).float()
+    if noise is None:
+        spread = torch.randn((T, B, N, 2), generator=generator, device=device)
+        noise = torch.complex(spread[..., 0], spread[..., 1]) * config.bullet_spread
+    valid = launchable_rows(episode_end, delay).unsqueeze(-1) & launch.alive
+    examples = torch.zeros((T, B, N, EXAMPLE_DIM), device=device)
+    L = T - delay + 1
+    if L <= 0:
+        return examples, torch.zeros_like(valid)
 
+    chunk = max(1, max_bullets_per_chunk // (L * N))
+    radius_sq = config.collision_radius**2
+    not_self = ~torch.eye(N, dtype=torch.bool, device=device)
+    for b0 in range(0, B, chunk):
+        b1 = min(B, b0 + chunk)
 
-def _record_scheduled_snapshots(
-    state: TensorState, candidates: torch.Tensor, config: ShipConfig
-) -> None:
-    """Snapshot ``candidates`` whose age is one of their two drawn ages."""
-    record = state.bullet_shot_record
-    age = state.bullet_age.to(record.dtype)
-    at_tau1 = candidates & (age == record[..., _rec(EX_TAU1)])
-    at_fallback = candidates & (age == record[..., _rec(EX_TAU_FALLBACK)])
-    snapshot = _snapshot(state, config)
-    _write(record, _rec(EX_SNAP1), at_tau1, snapshot)
-    _write(record, _rec(EX_SNAP_FALLBACK), at_fallback, snapshot)
+        def rows(x: torch.Tensor, start: int) -> torch.Tensor:
+            return x[start : start + L, b0:b1].flatten(0, 1)
 
+        layout = FieldLayout(*(rows(f, 0) for f in fields))
+        launch_pos = rows(launch.position, 0)
+        frame = torch.conj(rows(launch.attitude, 0))
+        local_index = rows(launch.local_index, 0)
+        field_gradient = rows(launch.field_gradient, 0)
+        velocity = physics.bullet_launch_velocity(
+            rows(launch.velocity, 0), rows(launch.attitude, 0), local_index, rows(noise, 0), config
+        )
+        position = launch_pos
+        tau = rows(taus, 0)
+        tau1, tau2 = tau[..., 0], tau[..., 1]
 
-def advance(state: TensorState, config: ShipConfig) -> None:
-    """Age every flight by one transport step, emitting the ones that expired.
+        def snap() -> torch.Tensor:
+            return _flat_snapshot(position, velocity, local_index, launch_pos, frame, config)
 
-    Called right after ``advance_bullets``: a slot whose lifetime ran out this
-    tick did not move, so its record is complete and becomes its ship's
-    example. At most one slot per ship expires per tick, because launches are
-    at least a firing cooldown apart.
-    """
-    expired = state.bullet_flying & (state.bullet_time <= 0)
-    example = state.bullet_shot_record[..., _EXAMPLE:]
-    state.shot_example = torch.where(expired.unsqueeze(-1), example, 0.0).sum(dim=2)
-    state.shot_example_valid = expired.any(dim=2)
+        first = snap()
+        snap1 = torch.where((tau1 == 0).unsqueeze(-1), first, 0.0)
+        snap2 = torch.where((tau2 == 0).unsqueeze(-1), first, 0.0)
+        hit = torch.full_like(tau1, float(NO_HIT))
+        closest = torch.full_like(tau1, NO_ENCOUNTER_DSQ)
+        side_seen = torch.full_like(tau1, float(NO_HIT))
+        event_tau = torch.zeros_like(tau1)
+        snap_event = torch.zeros_like(first)
+        for age in range(1, delay + 1):
+            flight = physics.fly_bullets(
+                position, velocity, local_index, field_gradient, layout, config
+            )
+            position, velocity = flight.position, flight.velocity
+            local_index, field_gradient = flight.local_index, flight.field_gradient
+            current = snap()
+            snap1 = torch.where((tau1 == age).unsqueeze(-1), current, snap1)
+            snap2 = torch.where((tau2 == age).unsqueeze(-1), current, snap2)
 
-    state.bullet_flying = state.bullet_flying & (state.bullet_time > 0)
-    state.bullet_age = state.bullet_age + state.bullet_flying.int()
-    _record_scheduled_snapshots(state, state.bullet_flying, config)
+            ships = rows(launch.position, age - 1)
+            dsq = physics._swept_dist_sq(
+                ships,
+                flight.start.unsqueeze(-1),
+                flight.midpoint.unsqueeze(-1),
+                position.unsqueeze(-1),
+                config.world_size,
+            )  # (rows, N shooters, N targets)
+            team = rows(launch.team_id, age - 1)
+            target = rows(launch.alive, age - 1).unsqueeze(1) & not_self
+            same = team.unsqueeze(2) == team.unsqueeze(1)
+            far = torch.full_like(dsq, NO_ENCOUNTER_DSQ)
+            enemy = torch.where(target & ~same, dsq, far).amin(-1)
+            ally = torch.where(target & same, dsq, far).amin(-1)
 
+            undecided = hit == NO_HIT
+            nearest = torch.minimum(enemy, ally)
+            side = torch.where(ally < enemy, float(ALLY), float(ENEMY))
+            hits = undecided & (nearest < radius_sq)
+            event = hits | (undecided & (nearest < closest))
+            hit = torch.where(hits, side, hit)
+            closest = torch.where(event, nearest, closest)
+            side_seen = torch.where(event, side, side_seen)
+            event_tau = torch.where(event, float(age), event_tau)
+            snap_event = torch.where(event.unsqueeze(-1), current, snap_event)
 
-def record_encounters(
-    state: TensorState,
-    enemy_dsq: torch.Tensor,
-    ally_dsq: torch.Tensor,
-    config: ShipConfig,
-) -> None:
-    """Fold this tick's swept distances into every undecided flight.
-
-    The first tick within the collision radius of a living ship decides the
-    shot: that ship's side, the distance and the snapshot are latched and
-    nothing later changes them. Until then every new closest pass replaces the
-    last. A tie between sides goes to the enemy.
-
-    Args:
-        state: State after this tick's transport.
-        enemy_dsq: ``(B, N, K)`` this tick's least squared swept distance from
-            each slot to a living enemy of its shooter.
-        ally_dsq: ``(B, N, K)`` the same for the shooter's living allies.
-        config: Physics configuration.
-    """
-    record = state.bullet_shot_record
-    undecided = state.bullet_flying & (record[..., _rec(EX_HIT)] == NO_HIT)
-    nearest = torch.minimum(enemy_dsq, ally_dsq)
-    side = torch.where(ally_dsq < enemy_dsq, float(ALLY), float(ENEMY))
-    hit = undecided & (nearest < config.collision_radius**2)
-    closer = undecided & ~hit & (nearest < record[..., _rec(EX_CLOSEST_DSQ)])
-    event = hit | closer
-    _write(record, _rec(EX_HIT), hit, side)
-    _write(record, _rec(EX_CLOSEST_DSQ), event, nearest)
-    _write(record, _rec(EX_CLOSEST_SIDE), event, side)
-    _write(record, _rec(EX_EVENT_TAU), event, state.bullet_age.to(record.dtype))
-    _write(record, _rec(EX_SNAP_EVENT), event, _snapshot(state, config))
+        example = torch.cat(
+            [
+                torch.stack([tau1, tau2, event_tau, hit, closest, side_seen], dim=-1),
+                snap1,
+                snap2,
+                snap_event,
+            ],
+            dim=-1,
+        )
+        examples[:L, b0:b1] = example.view(L, b1 - b0, N, EXAMPLE_DIM)
+    examples = torch.where(valid.unsqueeze(-1), examples, 0.0)
+    return examples, valid

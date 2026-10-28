@@ -84,34 +84,49 @@ class TestTargets:
         )
 
 
-def test_buffer_files_an_example_one_delay_back_and_drops_older_launches():
-    obs_sample = {"pos": torch.zeros(2, 3, 2)}
+def test_buffer_resimulates_its_stored_launches():
     from boost_and_broadside.env.observation import YemongObservation
 
+    T, B, N = 40, 1, 2
     buffer = RolloutBuffer(
-        num_steps=40,
-        num_envs=2,
-        num_ships=3,
+        num_steps=T,
+        num_envs=B,
+        num_ships=N,
         num_components=1,
-        obs_sample=YemongObservation(data=obs_sample),
+        obs_sample=YemongObservation(data={"pos": torch.zeros(B, N, 2)}),
         gamma=torch.ones(1),
         gae_lambda=torch.ones(1),
         device=torch.device("cpu"),
         shot_label_dim=SHOT_LABEL_DIM,
-        shot_label_delay=DELAY,
+        num_fields=0,
     )
-    example = torch.arange(labels.EXAMPLE_DIM, dtype=torch.float32).expand(2, 3, -1)
-    valid = torch.tensor([[True, False, True], [False, False, True]])
-    buffer.ptr = DELAY  # the step just added was row DELAY - 1: launched last rollout
-    buffer.add_shot_examples(example, valid)
-    assert buffer.shot_labels[..., 0].sum() == 0
-    buffer.ptr = DELAY + 5
-    buffer.add_shot_examples(example, valid)
-    assert torch.equal(buffer.shot_labels[4, ..., 0].bool(), valid)
-    assert torch.equal(buffer.shot_labels[4, ..., 1:], example)
-    assert buffer.shot_labels[..., 0].sum() == valid.sum()
+    # Ship 0 faces an enemy 100 px ahead on every row; the episode ends on row 5.
+    launch = labels.ShotLaunchState(
+        position=torch.tensor([[0j, 100 + 0j]], dtype=torch.complex64),
+        velocity=torch.zeros(B, N, dtype=torch.complex64),
+        attitude=torch.ones(B, N, dtype=torch.complex64),
+        local_index=torch.ones(B, N),
+        field_gradient=torch.zeros(B, N, dtype=torch.complex64),
+        alive=torch.ones(B, N, dtype=torch.bool),
+        team_id=torch.tensor([[0, 1]], dtype=torch.int32),
+    )
+    empty = torch.zeros(B, 0)
+    fields = labels.FieldLayout(empty.to(torch.complex64), empty, empty, empty)
+    for row in range(T):
+        buffer.ptr = row + 1  # as if ``add`` had just stored this row
+        buffer.terminated[row] = row == 5
+        buffer.add_shot_launch(launch, fields)
+    buffer.resimulate_shots(dataclasses.replace(CONFIG, bullet_spread=0.0), None)
+
+    valid = buffer.shot_labels[..., 0] > 0.5  # (T, B, N)
+    rows = torch.arange(T)
+    expected = (rows > 5) & (rows <= T - DELAY)
+    assert torch.equal(valid[:, 0, 0], expected)
+    hits = buffer.shot_labels[valid[:, 0, 0], 0, 0, 1 + labels.EX_HIT]
+    assert (hits == labels.ENEMY).all()
     buffer.reset()
     assert buffer.shot_labels[..., 0].sum() == 0
+    assert not buffer.shot_launch.alive.any()
 
 
 def test_heads_answer_every_query():
@@ -170,7 +185,7 @@ def test_a_rollout_files_labels_and_an_update_trains_the_heads(tmp_path):
     trainer.train()
 
     valid = trainer.buffer.shot_labels[..., 0] > 0.5
-    completed_rows = trainer.buffer.num_steps - DELAY
+    completed_rows = trainer.buffer.num_steps - DELAY + 1
     assert valid[:completed_rows].any(), "no shot completed inside the rollout"
     assert not valid[completed_rows:].any(), "a row past the delay claimed a label"
     for name, value in trainer._policy_module.shot_heads.named_parameters():

@@ -739,13 +739,11 @@ class OpponentMixin:
             observer_side=observer_side,
             **self._outcome_step(step.network.critic, step.reward, observer_side),
         )
-        # Shots whose flight ended on this step, filed under their launch
-        # decision. Read after any reset: a reset leaves this tick's emissions,
-        # which belong to the episode that just ended, untouched.
-        self.buffer.add_shot_examples(
-            self.wrapper.env.state.shot_example[:, :num_ships],
-            self.wrapper.env.state.shot_example_valid[:, :num_ships],
-        )
+        # Where this decision's counterfactual shot leaves from, copied on its
+        # tick before any reset, for the re-simulation after the rollout.
+        env = self.wrapper.env
+        if env.shot_launch is not None and env.shot_fields is not None:
+            self.buffer.add_shot_launch(env.shot_launch, env.shot_fields)
 
         hidden, hidden_t1 = self._reset_primary_hidden(step.network, done_any, num_recurrent, slots)
         self._advance_league_replacements(slots, done_any)

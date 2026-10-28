@@ -1,4 +1,4 @@
-"""Ghost bullets and counterfactual shot labels (env/shot_labels.py)."""
+"""Counterfactual shot labels, re-simulated from stored launch states (env/shot_labels.py)."""
 
 from __future__ import annotations
 
@@ -12,11 +12,6 @@ from boost_and_broadside.config import EnvConfig, ShipConfig
 from boost_and_broadside.constants import ShootActions
 from boost_and_broadside.env import shot_labels
 from boost_and_broadside.env.env import TensorEnv
-from boost_and_broadside.env.physics import (
-    _handle_shooting,
-    advance_bullets,
-    resolve_collisions,
-)
 from boost_and_broadside.env.shot_labels import (
     ALLY,
     ENEMY,
@@ -33,71 +28,67 @@ from boost_and_broadside.env.shot_labels import (
     SNAP_DY,
     SNAP_INDEX,
     SNAP_VX,
+    FieldLayout,
+    ShotLaunchState,
+    launchable_rows,
+    resimulate,
 )
-from tests.conftest import make_state
 
 # The Frontline rate: physics and decisions at 30 Hz.
 CONFIG = replace(ShipConfig(), dt=1.0 / 30.0, bullet_spread=0.0)
 DELAY = shot_labels.shot_label_delay(CONFIG)
-COOLDOWN_TICKS = 3
 
 
 # ---------------------------------------------------------------------------
-# Hand-built scenarios: static ships, one shooter facing +x
+# Hand-built scenarios: static ships facing +x, held for a whole flight
 # ---------------------------------------------------------------------------
 
 
-def _labelled_state(positions: list[complex], teams: list[int]):
-    state = make_state(num_envs=1, max_ships=len(positions), max_bullets=10, ship_config=CONFIG)
-    n, k = len(positions), 10
-    state.bullet_shot_record = torch.zeros(1, n, k, shot_labels.RECORD_DIM)
-    state.shot_example = torch.zeros(1, n, shot_labels.EXAMPLE_DIM)
-    state.ship_pos = torch.tensor([positions], dtype=torch.complex64)
-    state.ship_team_id = torch.tensor([teams], dtype=torch.int32)
-    # Only ship 0 ever launches: the others have no ghost cooldown to spare.
-    state.ship_ghost_cooldown = torch.full((1, n), 1.0e9)
-    state.ship_ghost_cooldown[0, 0] = 0.0
-    return state
+def _static(
+    positions: list[complex],
+    teams: list[int],
+    alive: list[bool] | None = None,
+    rows: int = DELAY,
+    num_fields: int = 0,
+) -> tuple[ShotLaunchState, FieldLayout, torch.Tensor]:
+    n = len(positions)
+    alive_row = torch.tensor(alive if alive is not None else [True] * n)
+
+    def held(row: torch.Tensor) -> torch.Tensor:
+        return row.expand(rows, 1, n).clone()
+
+    launch = ShotLaunchState(
+        position=held(torch.tensor(positions, dtype=torch.complex64)),
+        velocity=held(torch.zeros(n, dtype=torch.complex64)),
+        attitude=held(torch.ones(n, dtype=torch.complex64)),
+        local_index=held(torch.ones(n)),
+        field_gradient=held(torch.zeros(n, dtype=torch.complex64)),
+        alive=held(alive_row),
+        team_id=held(torch.tensor(teams, dtype=torch.int32)),
+    )
+    fields = FieldLayout(
+        torch.zeros(rows, 1, num_fields, dtype=torch.complex64),
+        torch.zeros(rows, 1, num_fields),
+        torch.zeros(rows, 1, num_fields),
+        torch.ones(rows, 1, num_fields),
+    )
+    return launch, fields, torch.zeros(rows, 1, dtype=torch.bool)
 
 
-def _tick(state, generator, shoot: bool = False):
-    shoot_action = torch.zeros(state.ship_pos.shape, dtype=torch.long)
-    if shoot:
-        shoot_action[0, 0] = int(ShootActions.SHOOT)
-    _handle_shooting(state, shoot_action, CONFIG, generator)
-    state.ship_ghost_cooldown[0, 1:] = 1.0e9
-    state, trajectory = advance_bullets(state, CONFIG)
-    shot_labels.advance(state, CONFIG)
-    state, _ = resolve_collisions(state, CONFIG, trajectory=trajectory)
-    return state
-
-
-def _fly(state, *, shoot_first: bool = False, ticks: int = DELAY + 1):
-    """Launch from ship 0 on tick 0, then run; returns ship 0's emitted examples."""
-    generator = torch.Generator().manual_seed(0)
-    emitted = []
-    for tick in range(ticks):
-        state = _tick(state, generator, shoot=shoot_first and tick == 0)
-        # Hold every later ghost back so ship 0 has exactly one flight.
-        state.ship_ghost_cooldown[0, 0] = 1.0e9
-        if state.shot_example_valid[0, 0]:
-            emitted.append((tick, state.shot_example[0, 0].clone()))
-    return state, emitted
+def _first_shot(positions, teams, alive=None) -> torch.Tensor:
+    """Ship 0's shot from row 0."""
+    launch, fields, ends = _static(positions, teams, alive)
+    examples, valid = resimulate(launch, fields, ends, CONFIG, torch.Generator().manual_seed(0))
+    assert valid[0, 0, 0]
+    return examples[0, 0, 0]
 
 
 def test_delay_is_one_lifetime_of_moves_at_30_hz():
     assert DELAY == 29
 
 
-def test_ghost_hits_enemy_without_damaging_it():
-    state = _labelled_state([0j, 100 + 0j, 500 + 500j], [0, 1, 0])
-    state, emitted = _fly(state)
-
-    assert state.ship_health[0, 1] == CONFIG.max_health  # a ghost never damages
-    assert not state.ship_is_shooting.any()
-    assert state.ship_power[0, 0] == CONFIG.max_power  # nor costs power
-    ((tick, example),) = emitted
-    assert tick == DELAY
+def test_an_enemy_in_the_line_of_fire_is_hit():
+    example = _first_shot([0j, 100 + 0j, 500 + 500j], [0, 1, 0])
     assert example[EX_HIT] == ENEMY
     # 500 px/s at 30 Hz reaches 100 px within the sixth move.
     assert example[EX_EVENT_TAU] == 6
@@ -109,32 +100,20 @@ def test_ghost_hits_enemy_without_damaging_it():
     assert event[SNAP_INDEX] == 1.0
 
 
-def test_real_hit_damages_once_and_keeps_flying():
-    # Two enemies on the line: a real bullet damages the first and passes the
-    # second untouched, but its flight runs the whole lifetime.
-    state = _labelled_state([0j, 100 + 0j, 200 + 0j], [0, 1, 1])
-    state, emitted = _fly(state, shoot_first=True)
-
-    # Damage scales with impact angle, so only that it landed is exact.
-    assert state.ship_health[0, 1] < CONFIG.max_health
-    assert state.ship_health[0, 2] == CONFIG.max_health
-    ((tick, example),) = emitted
-    assert tick == DELAY
+def test_the_first_hit_decides_the_shot():
+    # Two enemies on the line: the shot is decided by the first one it reaches.
+    example = _first_shot([0j, 100 + 0j, 200 + 0j], [0, 1, 1])
     assert example[EX_HIT] == ENEMY
     assert example[EX_EVENT_TAU] == 6
 
 
 def test_ally_in_the_line_of_fire_is_an_ally_hit():
-    state = _labelled_state([0j, 300 + 0j, 100 + 0j], [0, 1, 0])
-    _, emitted = _fly(state)
-    ((_, example),) = emitted
+    example = _first_shot([0j, 300 + 0j, 100 + 0j], [0, 1, 0])
     assert example[EX_HIT] == ALLY
 
 
 def test_near_miss_records_closest_pass():
-    state = _labelled_state([0j, 150 + 30j, 600 + 600j], [0, 1, 0])
-    _, emitted = _fly(state)
-    ((_, example),) = emitted
+    example = _first_shot([0j, 150 + 30j, 600 + 600j], [0, 1, 0])
     assert example[EX_HIT] == NO_HIT
     assert example[EX_CLOSEST_SIDE] == ENEMY
     assert math.sqrt(example[EX_CLOSEST_DSQ]) == pytest.approx(30.0, abs=0.5)
@@ -142,18 +121,20 @@ def test_near_miss_records_closest_pass():
 
 
 def test_nothing_alive_to_pass_is_no_encounter():
-    state = _labelled_state([0j, 300 + 0j], [0, 1])
-    state.ship_alive[0, 1] = False
-    _, emitted = _fly(state)
-    ((_, example),) = emitted
+    example = _first_shot([0j, 300 + 0j], [0, 1], alive=[True, False])
     assert example[EX_HIT] == NO_HIT
     assert example[EX_CLOSEST_DSQ] == NO_ENCOUNTER_DSQ
 
 
+def test_a_dead_ship_fires_nothing():
+    launch, fields, ends = _static([0j, 100 + 0j], [0, 1], alive=[False, True])
+    examples, valid = resimulate(launch, fields, ends, CONFIG)
+    assert not valid[:, :, 0].any()
+    assert not examples[:, :, 0].any()
+
+
 def test_scheduled_snapshots_are_taken_at_their_ages():
-    state = _labelled_state([0j, 600 + 600j], [0, 1])
-    _, emitted = _fly(state)
-    ((_, example),) = emitted
+    example = _first_shot([0j, 600 + 600j], [0, 1])
     for tau_index, snap in (
         (EX_TAU1, shot_labels.EX_SNAP1),
         (EX_TAU_FALLBACK, shot_labels.EX_SNAP_FALLBACK),
@@ -169,23 +150,53 @@ def test_scheduled_snapshots_are_taken_at_their_ages():
         assert abs(example[snap][SNAP_DY]) < 1e-3
 
 
-def test_real_shot_inside_ghost_cooldown_replaces_the_ghost():
-    state = _labelled_state([0j, 600 + 600j], [0, 1])
-    generator = torch.Generator().manual_seed(0)
-    state = _tick(state, generator)  # tick 0: ghost
-    assert state.bullet_flying[0, 0].sum() == 1
-    assert not state.bullet_active[0, 0].any()
-    ghost_slot = int(state.bullet_flying[0, 0].int().argmax())
-    state = _tick(state, generator, shoot=True)  # tick 1: real, same slot
-    assert state.bullet_flying[0, 0].sum() == 1
-    assert state.bullet_active[0, 0, ghost_slot]
-    emitted = []
-    for tick in range(2, DELAY + 5):
-        state = _tick(state, generator)
-        state.ship_ghost_cooldown[0, 0] = 1.0e9
-        if state.shot_example_valid[0, 0]:
-            emitted.append(tick)
-    assert emitted == [1 + DELAY]  # only the real shot's flight completes
+def test_a_given_age_and_spread_are_used_as_given():
+    launch, fields, ends = _static([0j, 600 + 600j], [0, 1])
+    taus = torch.full((DELAY, 1, 2, 2), 10.0)
+    noise = torch.zeros((DELAY, 1, 2), dtype=torch.complex64)
+    noise[..., 0] = 30j  # straight up at 30 px/s
+    examples, _ = resimulate(launch, fields, ends, CONFIG, taus=taus, noise=noise)
+    snap = examples[0, 0, 0, shot_labels.EX_SNAP1]
+    assert examples[0, 0, 0, EX_TAU1] == 10
+    assert snap[SNAP_DY] > 0.0  # the spread carried it off the axis
+
+
+# ---------------------------------------------------------------------------
+# Which rows can launch
+# ---------------------------------------------------------------------------
+
+
+def test_a_flight_must_fit_in_the_rollout():
+    rows = launchable_rows(torch.zeros(40, 2, dtype=torch.bool), DELAY)
+    assert rows[: 40 - DELAY + 1].all()
+    assert not rows[40 - DELAY + 1 :].any()
+
+
+def test_a_flight_must_not_cross_an_episode_end():
+    ends = torch.zeros(80, 2, dtype=torch.bool)
+    ends[40, 0] = True
+    rows = launchable_rows(ends, DELAY)
+    # Rows 40 - DELAY + 2 .. 40 would read the next episode's ships; the row
+    # DELAY - 1 before the end reads its last pre-reset row and is kept.
+    crossing = torch.arange(80)
+    crossing = (crossing >= 40 - DELAY + 2) & (crossing <= 40)
+    assert not rows[crossing, 0].any()
+    assert rows[40 - DELAY + 1, 0]
+    assert rows[41, 0]
+    assert rows[: 80 - DELAY + 1, 1].all()
+
+
+def test_chunking_does_not_change_the_labels():
+    env = _env(num_fields=3)
+    launch, fields, ends = _record(env, 60)
+    taus = torch.randint(0, DELAY + 1, (*launch.position.shape, 2)).float()
+    noise = torch.zeros(launch.position.shape, dtype=torch.complex64)
+    whole = resimulate(launch, fields, ends, env.ship_config, taus=taus, noise=noise)
+    pieces = resimulate(
+        launch, fields, ends, env.ship_config, taus=taus, noise=noise, max_bullets_per_chunk=1
+    )
+    assert torch.equal(whole[0], pieces[0])
+    assert torch.equal(whole[1], pieces[1])
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +204,10 @@ def test_real_shot_inside_ghost_cooldown_replaces_the_ghost():
 # ---------------------------------------------------------------------------
 
 
-def _env(shot_labels_on: bool, num_fields: int = 3) -> TensorEnv:
+def _env(shot_labels_on: bool = True, num_fields: int = 3) -> TensorEnv:
     env = TensorEnv(
         2,
-        replace(ShipConfig(), dt=1.0 / 30.0),
+        CONFIG,
         EnvConfig(
             num_ships=6,
             max_bullets=10,
@@ -217,6 +228,71 @@ def _random_actions(generator: torch.Generator, shape) -> torch.Tensor:
     return torch.stack([power, turn, shoot], dim=-1)
 
 
+def _record(env: TensorEnv, ticks: int, seed: int = 5, trace: list | None = None):
+    """Tick ``env`` and stack its launch copies as a rollout."""
+    generator = torch.Generator().manual_seed(seed)
+    shape = env.state.ship_pos.shape
+    launches, layouts, ends = [], [], []
+    for _ in range(ticks):
+        dones, truncated = env.tick(_random_actions(generator, shape))
+        launches.append(env.shot_launch)
+        layouts.append(env.shot_fields)
+        if trace is not None:
+            trace.append(
+                {
+                    "shooting": env.state.ship_is_shooting.clone(),
+                    "damage": env.state.damage_matrix.clone(),
+                }
+            )
+        ends.append(dones | truncated)
+        env.reset_envs(dones | truncated)
+    return (
+        ShotLaunchState(*(torch.stack(x) for x in zip(*launches, strict=True))),
+        FieldLayout(*(torch.stack(x) for x in zip(*layouts, strict=True))),
+        torch.stack(ends),
+    )
+
+
+def test_resimulated_real_shots_land_every_hit_the_environment_applies():
+    env = _env(num_fields=3)
+    trace: list[dict] = []
+    launch, fields, ends = _record(env, 200, trace=trace)
+    noise = torch.zeros(launch.position.shape, dtype=torch.complex64)
+    examples, valid = resimulate(launch, fields, ends, CONFIG, noise=noise)
+    shooting = torch.stack([t["shooting"] for t in trace])  # (T, B, N)
+    damage = torch.stack([t["damage"] for t in trace])  # (T, B, N, N)
+    team = launch.team_id
+    real = valid & shooting
+    assert real.sum() > 50
+
+    # Every hit a real shot's re-simulation predicts, the environment applied
+    # on that tick to a ship of that side.
+    predicted = set()
+    for t, b, i in real.nonzero().tolist():
+        side = int(examples[t, b, i, EX_HIT])
+        if side == NO_HIT:
+            continue
+        tick = t + int(examples[t, b, i, EX_EVENT_TAU]) - 1
+        same = team[tick, b] == team[tick, b, i]
+        hit_side = same if side == ALLY else ~same
+        assert (damage[tick, b, i] > 0)[hit_side].any(), (t, b, i, side)
+        predicted.add((tick, b, i))
+    assert predicted, "no real shot hit anything"
+
+    # And every hit the environment applied comes from some predicted shot,
+    # wherever every real launch that could have made it is a labelled row.
+    checked = 0
+    for tick, b, i in (damage.sum(-1) > 0).nonzero().tolist():
+        if tick < DELAY - 1:
+            continue  # the shot may have left before row 0
+        window = slice(tick - DELAY + 1, tick + 1)
+        launched = shooting[window, b, i]
+        if valid[window, b, i][launched].all():
+            assert (tick, b, i) in predicted, (tick, b, i)
+            checked += 1
+    assert checked > 0
+
+
 GAMEPLAY_FIELDS = (
     "ship_pos",
     "ship_vel",
@@ -226,101 +302,31 @@ GAMEPLAY_FIELDS = (
     "ship_cooldown",
     "ship_alive",
     "ship_is_shooting",
+    "bullet_pos",
+    "bullet_active",
     "damage_matrix",
     "cumulative_damage_matrix",
 )
 
 
-def _real_bullets(state) -> list[list[list[complex]]]:
-    """Each ship's active bullet positions, independent of slot order."""
-    out = []
-    for env in range(state.num_envs):
-        ships = []
-        for ship in range(state.max_ships):
-            active = state.bullet_active[env, ship]
-            positions = state.bullet_pos[env, ship][active].tolist()
-            ships.append(sorted(positions, key=lambda z: (z.real, z.imag)))
-        out.append(ships)
-    return out
+def test_labels_leave_gameplay_bit_identical():
+    def run(on: bool) -> list[dict]:
+        env = _env(on)
+        generator = torch.Generator().manual_seed(5)
+        shape = env.state.ship_pos.shape
+        trace = []
+        for _ in range(150):
+            dones, truncated = env.tick(_random_actions(generator, shape))
+            env.reset_envs(dones | truncated)
+            trace.append({name: getattr(env.state, name).clone() for name in GAMEPLAY_FIELDS})
+        assert (env.shot_launch is not None) == on
+        return trace
 
-
-def _run(env: TensorEnv, ticks: int) -> list[dict]:
-    generator = torch.Generator().manual_seed(5)
-    trace = []
-    shape = env.state.ship_pos.shape
-    for _ in range(ticks):
-        dones, truncated = env.tick(_random_actions(generator, shape))
-        env.reset_envs(dones | truncated)
-        snapshot = {name: getattr(env.state, name).clone() for name in GAMEPLAY_FIELDS}
-        snapshot["bullets"] = _real_bullets(env.state)
-        trace.append(snapshot)
-    return trace
-
-
-def test_ghosts_leave_gameplay_bit_identical():
-    off = _run(_env(False), 150)
-    labelled = _env(True)
-    on = _run(labelled, 150)
+    off, on = run(False), run(True)
     for tick, (a, b) in enumerate(zip(off, on, strict=True)):
         for name in GAMEPLAY_FIELDS:
             assert torch.equal(a[name], b[name]), f"{name} differs at tick {tick}"
-        assert a["bullets"] == b["bullets"], f"real bullets differ at tick {tick}"
     assert any(t["damage_matrix"].sum() > 0 for t in on), "scenario never landed a hit"
-    ghosts = labelled.state.bullet_flying & ~labelled.state.bullet_active
-    assert ghosts.any(), "no ghost in flight"
-
-
-def test_a_slot_is_only_reused_after_expiry_or_by_its_replacement():
-    env = _env(True)
-    generator = torch.Generator().manual_seed(9)
-    shape = env.state.ship_pos.shape
-    examples = 0
-    for _ in range(4 * DELAY):
-        flying = env.state.bullet_flying.clone()
-        active = env.state.bullet_active.clone()
-        age = env.state.bullet_age.clone()
-        env.tick(_random_actions(generator, shape))
-        # A slot launched this tick ends it at age one.
-        relaunched = flying & (env.state.bullet_age == 1)
-        replaced = relaunched & ~active & (age < COOLDOWN_TICKS)
-        assert torch.equal(relaunched, replaced), "a live flight was overwritten"
-        examples += int(env.state.shot_example_valid.sum())
-    assert examples > 0
-
-
-def test_emission_is_exactly_one_delay_after_launch():
-    env = _env(True, num_fields=0)
-    generator = torch.Generator().manual_seed(3)
-    shape = env.state.ship_pos.shape
-    launch_ticks: dict[tuple[int, int, int], int] = {}
-    for tick in range(3 * DELAY):
-        env.tick(_random_actions(generator, shape))
-        launched = env.state.bullet_flying & (env.state.bullet_age == 1)
-        for key in map(tuple, launched.nonzero().tolist()):
-            launch_ticks[key] = tick
-        for env_index, ship in env.state.shot_example_valid.nonzero().tolist():
-            starts = [
-                start
-                for (e, s, _), start in launch_ticks.items()
-                if (e, s) == (env_index, ship) and start == tick - DELAY
-            ]
-            assert len(starts) == 1
-
-
-def test_reset_drops_flights_in_progress():
-    env = _env(True, num_fields=0)
-    shape = env.state.ship_pos.shape
-    idle = torch.zeros((*shape, 3), dtype=torch.long)
-    for _ in range(5):
-        env.tick(idle)
-    assert env.state.bullet_flying.any()
-    env.reset_envs(torch.ones(2, dtype=torch.bool))
-    assert not env.state.bullet_flying.any()
-    # Hold every ship's ghost back; nothing launched before the reset emits.
-    for _ in range(DELAY + 2):
-        env.state.ship_ghost_cooldown.fill_(1.0e9)
-        env.tick(idle)
-        assert not env.state.shot_example_valid.any()
 
 
 def test_labels_need_one_tick_decisions():
@@ -330,19 +336,16 @@ def test_labels_need_one_tick_decisions():
         )
 
 
-def test_is_shooting_observes_real_shots_and_never_ghosts():
+def test_is_shooting_observes_real_shots():
     from boost_and_broadside.env.observation import ObsKey, observation_from_state
 
-    env = _env(True, num_fields=0)
+    env = _env(num_fields=0)
     shape = env.state.ship_pos.shape
     idle = torch.zeros((*shape, 3), dtype=torch.long)
-    env.tick(idle)  # every ship launches a ghost
-    assert (env.state.bullet_flying & ~env.state.bullet_active).any()
+    env.tick(idle)
     obs = observation_from_state(env.state, env.ship_config)
     assert not obs[ObsKey.IS_SHOOTING].any()
 
-    for _ in range(COOLDOWN_TICKS):
-        env.tick(idle)
     shoot = idle.clone()
     shoot[0, 0, 2] = int(ShootActions.SHOOT)
     env.tick(shoot)
@@ -350,45 +353,3 @@ def test_is_shooting_observes_real_shots_and_never_ghosts():
     shooting = obs[ObsKey.IS_SHOOTING]
     assert shooting[0, 0]
     assert shooting.sum() == 1  # map tokens and idle ships never fire
-
-
-def _full_ship(live_real: int):
-    """Ship 0 with every slot flying: ``live_real`` live real bullets, the rest ghosts."""
-    state = _labelled_state([0j, 600 + 600j], [0, 1])
-    state.bullet_flying[0, 0] = True
-    state.bullet_time[0, 0] = 0.5
-    ages = torch.arange(3, 3 + 3 * 10, 3, dtype=torch.int32)
-    state.bullet_age[0, 0] = ages
-    state.bullet_active[0, 0, :live_real] = True
-    return state
-
-
-def test_a_ghost_takes_a_spent_slot_and_never_a_live_real_one():
-    state = _full_ship(live_real=9)
-    before = state.bullet_pos[0, 0].clone()
-    _handle_shooting(
-        state, torch.zeros((1, 2), dtype=torch.long), CONFIG, torch.Generator().manual_seed(0)
-    )
-    assert state.bullet_active[0, 0, :9].all()
-    assert torch.equal(state.bullet_pos[0, 0, :9], before[:9])
-    assert state.bullet_age[0, 0, 9] == 0  # the only ghost slot was relaunched
-
-
-def test_with_every_slot_live_the_ghost_waits():
-    state = _full_ship(live_real=10)
-    before = state.bullet_pos[0, 0].clone()
-    _handle_shooting(
-        state, torch.zeros((1, 2), dtype=torch.long), CONFIG, torch.Generator().manual_seed(0)
-    )
-    assert torch.equal(state.bullet_pos[0, 0], before)
-    assert state.ship_ghost_cooldown[0, 0] == 0.0  # still ready for the next tick
-
-
-def test_a_real_shot_with_every_slot_live_overwrites_the_oldest_as_the_ring_would():
-    state = _full_ship(live_real=10)
-    shoot = torch.zeros((1, 2), dtype=torch.long)
-    shoot[0, 0] = int(ShootActions.SHOOT)
-    _handle_shooting(state, shoot, CONFIG, torch.Generator().manual_seed(0))
-    oldest = 9
-    assert state.bullet_age[0, 0, oldest] == 0
-    assert (state.bullet_age[0, 0, :oldest] > 0).all()

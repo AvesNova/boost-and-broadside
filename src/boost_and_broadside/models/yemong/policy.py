@@ -118,9 +118,9 @@ class NextStateHead(nn.Module):
 class ShotHeads(nn.Module):
     """Counterfactual shot prediction from a ship's launch-decision latent.
 
-    Trained only on shots, real or ghost, launched on the decision whose
-    observation carried the applied action (``env/shot_labels.py``); never read
-    by the policy.
+    Trained on the shot each ship would fire on each decision, re-simulated
+    after the rollout from the launch state that decision's action produced
+    (``env/shot_labels.py``); never read by the policy.
 
     The trajectory head is queried at bullet ages: ``[h; phi(age)] -> Linear ->
     RMSNorm -> GELU -> logits``, with ``phi`` the normalized age and a small

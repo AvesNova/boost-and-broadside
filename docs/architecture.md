@@ -558,9 +558,8 @@ separately, because the observer sees every ally and the enemy field is mostly b
 
 ## Counterfactual shot heads
 
-Two heads read a ship's latent on the decision whose observation carried the command
-applied when a bullet launched, real or [ghost](environment.md#ghost-bullets-and-shot-labels),
-and say what that shot does
+Two heads read a ship's latent on a decision and say what a bullet fired on that decision
+would do, from labels [re-simulated](environment.md#shot-labels) after the rollout
 ([`ShotHeads`](../src/boost_and_broadside/models/yemong/policy.py),
 [`shot_codes.py`](../src/boost_and_broadside/train/rl/shot_codes.py)). Neither re-enters
 the policy's input. They exist because nothing else supervises where a bullet goes once it
@@ -574,8 +573,9 @@ runs once per ship-step for every query. It predicts, in the launch attitude's f
 displacement as the ship position code (eight nested bilinear levels on a torus 2.5 times
 the farthest flight), the travel direction as a five-level circular code, the world speed as
 a two-hot, and the local log index as the ship code's two-hot, each by per-group
-cross-entropy. Each completed shot carries two queries: a uniform age, and the encounter --
-the first hit or the closest pass of a near miss -- or another uniform age for a clear miss.
+cross-entropy summed over groups and queries (nats per shot). Each shot carries two queries:
+a uniform age, and the encounter -- the first hit or the closest pass of a near miss -- or
+another uniform age for a clear miss.
 
 The **outcome head** reads the latent alone and predicts one softmax over enemy hit, ally
 hit, eight near-miss bins on each side, and clear miss. Hits are hard. A miss is placed at
@@ -585,7 +585,7 @@ the next bin on that axis, so a pass just inside it shares mass with clear miss 
 anything farther is clear miss alone. No head is ever asked how far a bad miss was.
 
 Only the observer's own ships are supervised: theirs is the observation that carried the
-exact command at launch. Both heads exist only when `shot_trajectory_coef` or
+exact command that produced the launch state. Both heads exist only when `shot_trajectory_coef` or
 `shot_outcome_coef` is above zero, and a reload reads their presence off the weights.
 
 ## Why team size can change

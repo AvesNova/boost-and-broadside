@@ -53,7 +53,7 @@ def observation_contract(ship_config: Any) -> dict[str, Any]:
         "perception": "team_shared_range_field_core_los",
         "shot_reveal": "successful_fire_global_current_sample",
         "is_shooting": "real_shot_last_tick_ship_channel",
-        "shot_auxiliary": "counterfactual_ghost_trajectory_and_outcome_heads",
+        "shot_auxiliary": "counterfactual_resimulated_trajectory_and_outcome_heads",
         "spawn_reveal": "visible_to_both_teams_for_the_spawn_decision",
         "hidden_tokens": "recursive_physical_belief_plus_age",
         # There is no substitution any more. The belief stores the same eleven

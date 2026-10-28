@@ -254,8 +254,9 @@ class TrainConfig:
     global_density_coef: float = 0.0
     # Cross-entropy weights for the counterfactual shot heads (env/shot_labels.py,
     # train/rl/shot_codes.py): bullet state at queried ages, and the whole-shot
-    # outcome. Either above zero builds the heads and turns the environment's
-    # ghost bullets and shot labels on; both zero leaves no trace of either.
+    # outcome. Either above zero builds the heads and turns shot labels on (the
+    # environment copies launch states, the trainer re-simulates a shot from
+    # every decision); both zero leaves no trace of either.
     shot_trajectory_coef: float = 0.0
     shot_outcome_coef: float = 0.0
 

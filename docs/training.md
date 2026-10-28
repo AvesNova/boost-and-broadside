@@ -187,13 +187,15 @@ The total update combines:
 - global ally/enemy density on a fixed hex grid, predicted from the global token against
   privileged truth (`global_density_coef`; see
   [architecture](architecture.md#global-density-head));
-- counterfactual shot prediction from ghost and real bullets: bullet state at queried ages
-  and the whole-shot outcome (`shot_trajectory_coef`, `shot_outcome_coef`; see
-  [architecture](architecture.md#counterfactual-shot-heads)). A shot's label completes 29
-  decisions after its launch and is filed under the launch row, so the last 29 rows of every
-  rollout carry none -- about 23% of a 128-step rollout, dropped rather than carried over. The
-  reference weights of 0.1 are placeholders, not calibrated. `shot/*` logs the trajectory
-  loss by channel and realized against predicted enemy-hit, ally-hit and clear-miss rates;
+- counterfactual shot prediction: bullet state at queried ages and the whole-shot outcome of
+  the shot every living ship would fire on every decision (`shot_trajectory_coef`,
+  `shot_outcome_coef`; see [architecture](architecture.md#counterfactual-shot-heads)). The
+  labels are re-simulated once the rollout is complete, from launch states the environment
+  copies each tick ([environment](environment.md#shot-labels)). A shot's flight reads the 28
+  rows after its launch, so the last 28 rows of every rollout carry none -- about 22% of a
+  128-step rollout, dropped rather than carried over. Both losses are nats per shot.
+  `shot/*` logs the trajectory loss by channel and realized against predicted enemy-hit,
+  ally-hit and clear-miss rates;
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.

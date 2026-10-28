@@ -329,33 +329,35 @@ index; violet means higher/slower index, with stronger levels brighter and more 
 Fields use uniform thin outlines. Alpha-blended annuli make
 partial and coincident overlaps visible while nominal contours stay individually legible.
 
-### Ghost bullets and shot labels
+### Shot labels
 
 With `EnvConfig.shot_labels` on (set whenever a shot-head coefficient is above zero), the
-same slots also carry *ghost* bullets that supervise the policy's
-[counterfactual shot heads](architecture.md#counterfactual-shot-heads)
-([`shot_labels.py`](../src/boost_and_broadside/env/shot_labels.py)). Every living ship
-that does not fire launches a ghost whenever its own ghost cooldown allows: the real
-launch state, spread draw and physics, but no damage, no power, no `ship_is_shooting`, no
-firing reveal, and never rendered or observed. A real shot resets both cooldowns, and one
-fired inside a ghost's cooldown takes over that ghost's slot, discarding its example.
+environment supports the policy's
+[counterfactual shot heads](architecture.md#counterfactual-shot-heads) without launching
+anything. Each tick it copies every ship's launch state (position, velocity, attitude,
+local index and field gradient, alive flag and team) and the field layout, read after the
+tick's kinematics and before its collisions. That is where a real launch reads from, and
+what the tick's swept hit test checks bullets against. Gameplay never reads the copy, so
+it is bit-identical with labels on or off.
 
-`bullet_active` keeps its gameplay meaning (a real bullet that can still hit), so every
-reader of it is unchanged; `bullet_flying` is the label flight. Every launched bullet flies
-its whole lifetime through any hit, and its slot records two snapshots at launch-drawn ages,
-its first hit (from the same swept distances that decide gameplay hits) or else its closest
-pass to any other living ship, and the snapshot there. A snapshot is the displacement and
-velocity in the launch attitude's frame, plus the local index. When the lifetime runs out
-the record is emitted as the ship's example, always 29 ticks after launch, which is what
-lets the trainer file it under the launch decision with a fixed offset. A reset clears
-flights without emitting, so a shot cut short by the end of its episode is dropped.
+The trainer stores the copy per decision row and, once the rollout is complete,
+re-simulates one shot from every ship on every row
+([`shot_labels.py`](../src/boost_and_broadside/env/shot_labels.py)): the same launch
+velocity, flight and swept distance the environment uses
+(`physics.bullet_launch_velocity`, `physics.fly_bullets`, `physics._swept_dist_sq`), against
+the stored ships of the following rows. A shot moves 29 times at 30 Hz and is tested
+against rows `t` to `t + 28`. It records two snapshots at drawn ages, its first hit or
+else its closest pass to any other living ship, by side, and the snapshot there. A
+snapshot is the displacement and velocity in the launch attitude's frame, plus the local
+index. A shot is dropped when its ship is dead on the launch row, or its flight runs past
+the end of the rollout or across an episode end.
 
-With labels on, launches reclaim slots rather than following the ring cursor: a free slot,
-else the oldest spent flight (a ghost or a real bullet that already hit), else the oldest
-live bullet. A same-tick Frontline respawn clears the firing cooldown and can compress
-launches; a ghost then gives way rather than displace a live real bullet, so gameplay is
-bit-identical with labels on or off. Ghost ages are drawn from their own generator for the
-same reason. Evaluation environments never run ghosts.
+With spread at zero the re-simulation reproduces what the environment's own bullets do:
+on a Frontline rollout it matched the earlier in-environment labels bit for bit, and
+re-simulated real shots land exactly the hits the environment applies. Every living ship
+gets a label on every decision, about three times as many as one shot per firing cooldown.
+Spread and the queried ages come from the trainer's own random stream. Evaluation
+environments never copy launch states.
 
 ## Historical field cost (before the shield overhaul)
 
@@ -390,9 +392,10 @@ them with `benchmarks/field_throughput.py`.
 - [`test_bullet_fields.py`](../tests/env/test_bullet_fields.py): selectable projectile
   integrators, refraction/TIR, proper-speed conservation, and
   high-resolution trajectory comparisons;
-- [`test_shot_labels.py`](../tests/env/test_shot_labels.py): ghost and real hits, near
-  misses, scheduled snapshots, replacement, slot reclamation, emission timing, reset
-  discards, the `is_shooting` channel, and bit-identical gameplay with labels on or off;
+- [`test_shot_labels.py`](../tests/env/test_shot_labels.py): enemy and ally hits, near
+  misses, scheduled snapshots, which rows can launch, re-simulated real shots against the
+  environment's own hits, the `is_shooting` channel, and bit-identical gameplay with labels
+  on or off;
 - [`test_perception.py`](../tests/env/test_perception.py): the four sight rules —
   team sharing, opaque-core occlusion in both directions, the circular range, and the
   firing reveal — plus optional zone occlusion and declared projectile perception;

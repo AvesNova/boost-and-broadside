@@ -358,13 +358,12 @@ class EnvConfig:
     # rather than an inert token, so watch the clamp counter and the
     # age-bucketed hidden-enemy error.
     spawn_reveal: bool = False
-    # Counterfactual shot labels (env/shot_labels.py): every living ship that
-    # is not firing launches a non-damaging ghost bullet whenever its ghost
-    # cooldown allows, and every bullet, real or ghost, records its flight and
-    # its closest encounter for the auxiliary shot heads. Ghosts never touch
-    # gameplay. A completed example is emitted exactly one bullet lifetime
-    # after its launch decision, a fixed offset only while one decision is one
-    # physics tick, hence the ``action_repeat`` restriction.
+    # Counterfactual shot labels (env/shot_labels.py): every tick the
+    # environment copies each ship's launch state and the field layout, and the
+    # trainer re-simulates a shot from every decision after the rollout. Nothing
+    # is launched and gameplay is untouched. A stored row is one physics tick
+    # only while one decision is one tick, hence the ``action_repeat``
+    # restriction.
     shot_labels: bool = False
 
     def __post_init__(self) -> None:

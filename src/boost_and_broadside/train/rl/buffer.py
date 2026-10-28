@@ -17,7 +17,9 @@ from typing import NamedTuple
 
 import torch
 
+from boost_and_broadside.config import ShipConfig
 from boost_and_broadside.constants import NUM_EXPERT_MARGINALS, NUM_OUTCOME_CLASSES
+from boost_and_broadside.env import shot_labels
 from boost_and_broadside.env.observation import (
     BulletObsKey,
     ObsKey,
@@ -312,7 +314,7 @@ class RolloutBuffer:
         density_dim: int = 0,
         store_expert_probs: bool = True,
         shot_label_dim: int = 0,
-        shot_label_delay: int = 0,
+        num_fields: int = 0,
     ) -> None:
         self.num_steps = num_steps
         self.num_envs = num_envs
@@ -438,17 +440,37 @@ class RolloutBuffer:
             if density_dim > 0
             else None
         )
-        # Completed shot examples, ``(T, B, N, shot_label_dim)``, validity first.
-        # The environment emits an example exactly ``shot_label_delay`` decisions
-        # after its launch, so the row it belongs to is a fixed offset back and
-        # filing it is a slice, never a scatter. The last ``shot_label_delay``
-        # rows of every rollout complete only in the next one and stay invalid.
-        self.shot_label_delay = shot_label_delay
-        self.shot_labels: torch.Tensor | None = (
-            torch.zeros((T, B, N, shot_label_dim), device=device, dtype=torch.float32)
-            if shot_label_dim > 0
-            else None
-        )
+        # Counterfactual shot labels, ``(T, B, N, shot_label_dim)``, validity
+        # first, re-simulated once the rollout is complete
+        # (:meth:`resimulate_shots`) from every row's launch states and field
+        # layout. A row's flight needs the rows after it, so the last
+        # ``shot_label_delay - 1`` rows of every rollout stay invalid.
+        self.shot_labels: torch.Tensor | None = None
+        self.shot_launch: shot_labels.ShotLaunchState | None = None
+        self.shot_fields: shot_labels.FieldLayout | None = None
+        if shot_label_dim > 0:
+            self.shot_labels = torch.zeros(
+                (T, B, N, shot_label_dim), device=device, dtype=torch.float32
+            )
+
+            def rows(width: int, dtype: torch.dtype) -> torch.Tensor:
+                return torch.zeros((T, B, width), device=device, dtype=dtype)
+
+            self.shot_launch = shot_labels.ShotLaunchState(
+                position=rows(N, torch.complex64),
+                velocity=rows(N, torch.complex64),
+                attitude=rows(N, torch.complex64),
+                local_index=rows(N, torch.float32),
+                field_gradient=rows(N, torch.complex64),
+                alive=rows(N, torch.bool),
+                team_id=rows(N, torch.int32),
+            )
+            self.shot_fields = shot_labels.FieldLayout(
+                field_pos=rows(num_fields, torch.complex64),
+                field_radius=rows(num_fields, torch.float32),
+                field_transition_width=rows(num_fields, torch.float32),
+                field_index=rows(num_fields, torch.float32),
+            )
         # The behaviour policy's next-state forecasts, decoded to moments
         # (T, B, N, 25), for the belief diagnostics.
         self.rollout_predictions: torch.Tensor | None = (
@@ -490,6 +512,9 @@ class RolloutBuffer:
         self.transition_contiguous.fill_(True)
         if self.shot_labels is not None:
             self.shot_labels[..., 0].zero_()
+        if self.shot_launch is not None:
+            # A stale row must never pass for a living launch.
+            self.shot_launch.alive.zero_()
         self.belief_diagnostics = {}
         # obs[T] slot is overwritten by store_final_obs() — no need to zero it
 
@@ -595,24 +620,36 @@ class RolloutBuffer:
 
         self.ptr += 1
 
-    def add_shot_examples(self, example: torch.Tensor, valid: torch.Tensor) -> None:
-        """File the shot examples the step just added completed.
+    def add_shot_launch(
+        self, launch: shot_labels.ShotLaunchState, fields: shot_labels.FieldLayout
+    ) -> None:
+        """Store the launch states and field layout of the step just added.
 
-        Call right after :meth:`add`. An example completing on this step belongs
-        to the decision ``shot_label_delay`` steps back; one whose launch fell in
-        the previous rollout has no row here and is dropped.
-
-        Args:
-            example: ``(B, N, EXAMPLE_DIM)`` the environment's per-ship example.
-            valid:   ``(B, N)`` bool, whether the ship completed one this step.
+        Call right after :meth:`add`, with the environment's copy from that
+        step's tick (``TensorEnv.shot_launch`` / ``shot_fields``).
         """
-        if self.shot_labels is None:
+        if self.shot_launch is None or self.shot_fields is None:
             return
-        row = self.ptr - 1 - self.shot_label_delay
-        if row < 0:
+        row = self.ptr - 1
+        N = self.num_ships
+        for stored, value in zip(self.shot_launch, launch, strict=True):
+            stored[row].copy_(value[:, :N])
+        for stored, value in zip(self.shot_fields, fields, strict=True):
+            stored[row].copy_(value)
+
+    def resimulate_shots(self, config: ShipConfig, generator: torch.Generator | None) -> None:
+        """Fill every row's shot label from the stored launch states.
+
+        Call once the rollout is complete: a row's flight reads the ships of the
+        rows after it (env/shot_labels.py).
+        """
+        if self.shot_labels is None or self.shot_launch is None or self.shot_fields is None:
             return
-        self.shot_labels[row, ..., 0] = valid.float()
-        self.shot_labels[row, ..., 1:] = example
+        examples, valid = shot_labels.resimulate(
+            self.shot_launch, self.shot_fields, self.terminated, config, generator
+        )
+        self.shot_labels[..., 0] = valid.float()
+        self.shot_labels[..., 1:] = examples
 
     def store_final_obs(
         self,

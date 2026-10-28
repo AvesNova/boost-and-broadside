@@ -62,7 +62,6 @@ from boost_and_broadside.env.rewards import (
     component_payout_ratios,
     component_weights,
 )
-from boost_and_broadside.env.shot_labels import shot_label_delay
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.execution import CUDA_GRAPH_COMPILE_MODES
 from boost_and_broadside.run_manifest import RunStatus
@@ -141,13 +140,12 @@ from boost_and_broadside.train.rl.physical_belief import (
 from boost_and_broadside.train.rl.physical_deltas import PHYSICAL_DELTA_SCALES
 from boost_and_broadside.train.rl.policy_io import build_policy, compile_policy
 from boost_and_broadside.train.rl.roster import EloRoster, RosterEntry
-from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_DIM, CODE_GROUP_NAMES
+from boost_and_broadside.train.rl.ship_codes import CODE_GROUP_NAMES
 from boost_and_broadside.train.rl.shot_codes import (
     ALLY_HIT,
     CLEAR_MISS,
     ENEMY_HIT,
     SHOT_LABEL_DIM,
-    TRAJECTORY_GROUPS,
     TRAJECTORY_PART_NAMES,
     ShotCodec,
     ShotTargets,
@@ -504,8 +502,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         N = train_config.scales[0].env_config.num_ships
         self._compile_mode = compile_mode
-        # The counterfactual shot heads train on labels only the environment's
-        # ghost bullets produce, so one without the other is a configuration bug.
+        # The counterfactual shot heads train on labels re-simulated from launch
+        # states only a labelled environment copies, so one without the other
+        # is a configuration bug.
         self._predict_shots = (
             train_config.shot_trajectory_coef > 0.0 or train_config.shot_outcome_coef > 0.0
         )
@@ -603,9 +602,15 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             density_dim=HEX_DENSITY_DIM if train_config.global_density_coef > 0.0 else 0,
             store_expert_probs=self._stores_bc_targets,
             shot_label_dim=SHOT_LABEL_DIM if self._predict_shots else 0,
-            shot_label_delay=shot_label_delay(ship_config) if self._predict_shots else 0,
+            num_fields=train_config.scales[0].env_config.num_fields,
         )
         self.shot_codec = self._policy_module.shot_codec
+        # The re-simulated shots' spread and queried ages come from their own
+        # stream, seeded from the run's seed without drawing from the global one.
+        self._shot_generator: torch.Generator | None = None
+        if self._predict_shots:
+            self._shot_generator = torch.Generator(device=self.device)
+            self._shot_generator.manual_seed(torch.initial_seed() ^ 0x5407_1ABE)
 
         # OpenAI Five's team spirit per active level: how much of the mean
         # teammate advantage each ship's own advantage absorbs. Zero is pure
@@ -852,7 +857,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             aux_w = YemongEnvWrapper(
                 num_envs=sc.num_envs,
                 ship_config=ship_config,
-                # Auxiliary scales store no shot labels; skip their ghosts.
+                # Auxiliary scales store no shot labels; skip the launch copies.
                 env_config=dataclasses.replace(sc.env_config, shot_labels=False),
                 rewards=train_config.rewards,
                 device=device,
@@ -1336,6 +1341,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         """
         final_truth = physical_means_from_state(self.wrapper.env.state)[:, : runtime.num_ships]
         self.buffer.store_final_obs(runtime.obs, privileged_means=final_truth)
+        self.buffer.resimulate_shots(self.ship_config, self._shot_generator)
         for index, aux_buffer in enumerate(self.aux_buffers):
             aux_buffer.store_final_obs(runtime.aux_obs[index])
 
@@ -2371,8 +2377,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         Returns ``trajectory`` and ``outcome`` (the weighted terms, with
         gradient), the trajectory loss split by channel, and the realized and
         predicted outcome rates -- every entry additive across micro-batches.
-        The trajectory loss is per softmax group and per query, so its scale
-        does not move with the code's layout.
+        Both are in nats per shot, like every other term per token: the
+        trajectory loss sums its softmax groups and both queried ages, the
+        outcome is one softmax. The ``shot/trajectory_*`` diagnostics are per
+        query.
         """
         names = (
             "trajectory",
@@ -2389,7 +2397,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             return {name: self._zero_tensor for name in names}
         supervised = (targets.valid & observer_side).float()  # (T, B, N)
         parts = ShotCodec.trajectory_cross_entropy(trajectory_logits, targets.trajectory)
-        per_example = parts.sum(-1).mean(-1) / TRAJECTORY_GROUPS  # (T, B, N)
+        per_example = parts.sum((-2, -1))  # (T, B, N)
         losses = {
             "trajectory": (per_example * supervised).sum() / shot_sum,
             "outcome": (
