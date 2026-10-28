@@ -72,6 +72,8 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         "next_state_coef",
         "enemy_action_coef",
         "global_density_coef",
+        "shot_trajectory_coef",
+        "shot_outcome_coef",
         # ``total_timesteps`` is deliberately absent: BC no longer carries its own
         # budget. It used to run to 2B on the reasoning that it stops when
         # imitation saturates, but nothing self-terminates this profile any more

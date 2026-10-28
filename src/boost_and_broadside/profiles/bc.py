@@ -66,12 +66,27 @@ BC_PROFILE = replace(
     # clip (max_grad_norm 1.0, several times the typical norm) is a spike guard,
     # not a target.
     #
-    # The shares this profile runs at, measured on pilot 755 over 10.3-19.7M
-    # steps (docs/internal/bc-pilot-755-oct2026.json):
+    # The balance between the first five terms is pilot 755's, measured over
+    # 10.3-19.7M steps (docs/internal/bc-pilot-755-oct2026.json):
     #     bc 0.45, next_state 0.28, enemy_action 0.14, density 0.10, value 0.01
     # Cloning takes the plurality and next-state the next share: hidden-ship
     # beliefs are built from its outputs (plan section 8.3), so its quality is
     # an input's quality.
+    #
+    # The counterfactual shot heads take 0.12 of it, about enemy_action's
+    # share, and the other terms keep 755's ratios at 0.88 of their shares.
+    # Solved from pilot 759, which ran the 755 weights plus first guesses for
+    # the shots (docs/internal/bc-pilot-759-oct2026.json). Its median shares
+    # over 10.3-19.7M were
+    #     bc 0.43, next_state 0.20, shot_outcome 0.14, density 0.11,
+    #     enemy_action 0.07, shot_trajectory 0.04, value 0.01
+    # against targets bc 0.40, next_state 0.25, enemy_action 0.12, density
+    # 0.09, shot_trajectory 0.07, shot_outcome 0.05. The cloning and value
+    # weights are held and the others solved relative to cloning. The outcome
+    # gets the smaller shot share because its gradient is mostly sampling
+    # noise: its two half-batches agreed at a half-cosine of 0.04-0.49 and a
+    # signal fraction of -0.27-0.72, where next-state's was 0.91-0.96 -- whether
+    # one shot hits is close to a coin flip per minibatch.
     #
     # Value stays near zero on the trunk, by measurement rather than intent. The
     # check run 756 (docs/internal/bc-check-756-oct2026.json) solved value up to
@@ -94,9 +109,11 @@ BC_PROFILE = replace(
     # falls toward zero as imitation converges, while value and next-state
     # keep a noise floor. Measure in one window, after the 6M warmup and once
     # next-state's zero-initialised residual has stopped growing its share.
-    next_state_coef=0.0030,
-    enemy_action_coef=0.063,
-    global_density_coef=0.024,
+    next_state_coef=0.0041,
+    enemy_action_coef=0.11,
+    global_density_coef=0.021,
+    shot_trajectory_coef=0.0035,
+    shot_outcome_coef=0.019,
     # The only stop condition, and the same budget RL carries. With cloning held
     # at full strength there is no self-terminating gate left here -- the 2B
     # placeholder meant "runs until imitation saturates", and saturation is now
