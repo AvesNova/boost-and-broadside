@@ -40,6 +40,7 @@ is generated from the source next to it.
 | `thinair.png` | `thinair.html` | Ice, lemon, mint and peach thin air, each paired with darker thick-air colours, for both team pairs; outlined ships, white sky. |
 | `pairs4.png` | `pairs4.html` | Every ordered pairing of ice, lemon, mint and peach as thin and thick air, for both team pairs. |
 | `map-vis.png` | `map-vis.html` + `scene.js` | The larger example map with all 16 visibility cases placed on it; 20 m of edge band per level (40 m at the extremes, as in the current code); mint / pink air, navy / amber ships, fog at 60%. |
+| `colour-tool.html` | `colour-tool.src.html` + `scene.js` + `styles.js`, bundled by `build-tool.py` | **Interactive.** Self-contained colour playground on the example map with every visibility case: ship, field, map and fog colours and sliders, presets, copyable settings. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow

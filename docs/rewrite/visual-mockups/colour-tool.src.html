@@ -1,0 +1,99 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Colour Playground</title><style>
+:root{--bg:#E9ECF0;--panel:#FFFFFF;--ink:#2A2F3A;--muted:#5A6272;--line:#D5DAE1}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Inter,Helvetica,Arial,sans-serif;color:var(--ink)}
+.app{display:grid;grid-template-columns:320px 1fr;gap:16px;padding:16px;min-height:100vh}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow:auto;max-height:calc(100vh - 32px);position:sticky;top:16px}
+h1{font-size:18px;margin:0 0 4px}p.hint{margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:1.4}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px 0;font-size:13.5px}
+.row input[type=color]{width:44px;height:28px;border:1px solid var(--line);border-radius:6px;padding:0 2px;background:#fff;cursor:pointer}
+.row input[type=range]{width:150px}.row output{width:36px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+.presets{display:flex;flex-wrap:wrap;gap:6px}.presets button,.btn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink)}
+.presets button:hover,.btn:hover{border-color:#9AA3B2}
+label.chk{display:flex;gap:8px;align-items:center;font-size:13.5px;margin:5px 0}
+textarea{width:100%;height:96px;font-family:ui-monospace,Menlo,monospace;font-size:11px;border:1px solid var(--line);border-radius:8px;padding:6px;resize:vertical}
+main{min-width:0}canvas{width:100%;height:auto;display:block;border-radius:12px;border:1px solid var(--line);background:#fff}
+.status{color:var(--muted);font-size:12px;margin:6px 2px}
+@media (max-width:900px){.app{grid-template-columns:1fr}aside{position:static;max-height:none}}
+</style></head><body>
+<div class="app"><aside>
+<h1>Colour playground</h1><p class="hint">The example map with every visibility case (green-side view). Change any colour or slider; the scene redraws. Copy the settings at the bottom to share a palette.</p>
+<h2>Presets</h2><div class="presets" id="presets"></div>
+<h2>Ships</h2>
+<div class="row">Ally<input type="color" id="ally"></div>
+<div class="row">Enemy<input type="color" id="enemy"></div>
+<div class="row">Ship outline<input type="color" id="outline"></div>
+<div class="row">Energy arc<input type="color" id="energy"></div>
+<div class="row">Trail fade into sky<input type="range" id="trailMix" min="0" max="0.9" step="0.05"><output></output></div>
+<h2>Fields</h2>
+<div class="row">Thin (fast) air<input type="color" id="thin"></div>
+<div class="row">Thick (slow) air<input type="color" id="thick"></div>
+<div class="row">Fill strength<input type="range" id="terrace" min="0" max="1" step="0.05"><output></output></div>
+<div class="row">Contour darkness<input type="range" id="inkMix" min="0" max="0.9" step="0.05"><output></output></div>
+<div class="row">Core-edge width<input type="range" id="coreW" min="0" max="5" step="0.2"><output></output></div>
+<h2>Map</h2>
+<div class="row">Sky<input type="color" id="sky"></div>
+<div class="row">Outside the arena<input type="color" id="outside"></div>
+<div class="row">Damage zone hatch<input type="color" id="hatch"></div>
+<h2>Fog</h2>
+<div class="row">Brightness<input type="range" id="fogB" min="0.2" max="1" step="0.05"><output></output></div>
+<div class="row">Saturation<input type="range" id="fogS" min="0" max="1.5" step="0.05"><output></output></div>
+<div class="row">Blur<input type="range" id="fogBlur" min="0" max="4" step="0.5"><output></output></div>
+<label class="chk"><input type="checkbox" id="fogHatch"> Hatch the fog</label>
+<h2>Show</h2>
+<label class="chk"><input type="checkbox" id="truth"> Hidden enemies (dashed, for checking)</label>
+<label class="chk"><input type="checkbox" id="badges"> Case numbers</label>
+<h2>Settings</h2><textarea id="json" spellcheck="false"></textarea>
+<div style="display:flex;gap:6px;margin-top:6px"><button class="btn" id="copy">Copy</button><button class="btn" id="apply">Apply pasted</button></div>
+</aside><main><canvas id="c" width="1600" height="1000"></canvas><div class="status" id="status">Rendering…</div></main></div>
+<script>/*SCENE*/</script><script>/*STYLES*/</script><script>
+LINEAR_BW=20;SW=1600;SH=1000;R=290;ARENA=[480,500,1120,500,420];
+FIELDS=[[560,300,600,320,90,2],[700,170,1050,140,28,-2],[700,500,830,560,110,1],[1060,420,1140,600,70,-1],[1290,300,1310,330,35,2],[330,770,560,805,40,-2],
+ [640,820,700,760,55,1],[1170,800,1210,790,80,-1],[330,430,330,530,30,1],[1120,230,1240,255,45,2],[960,320,990,310,25,-2],[880,810,990,820,40,1],[330,215,400,190,35,-1]]
+ .map(f=>({x0:f[0],y0:f[1],x1:f[2],y1:f[3],core:f[4],lv:f[5],r:f[4]+LINEAR_BW*Math.abs(f[5]),w:LINEAR_BW*Math.abs(f[5]),kind:f[5]<0?'thin':'thick'}));
+ALLIES=[{id:'A1',x:470,y:430,h:-35},{id:'A2',x:800,y:162,h:-5},{id:'A3',x:450,y:790,h:5},{id:'A4',x:300,y:640,h:20}];
+RESPAWN={x:170,y:500,t:'3 s'};
+ENEMIES=[{n:1,x:540,y:560,h:200},{n:2,x:990,y:660,h:180},{n:3,x:690,y:265,h:160},{n:4,x:760,y:530,h:150},{n:5,x:950,y:149,h:175},{n:6,x:450,y:330,h:120},
+ {n:7,x:590,y:808,h:190},{n:8,x:380,y:720,h:230},{n:9,x:440,y:125,h:84,shoot:1},{n:10,x:1385,y:500,h:180,spawn:1},{n:11,x:820,y:215,h:200}];
+BASES=[{x:170,y:500,team:0},{x:1430,y:500,team:1}];
+TURRETS=[{x:250,y:330,team:0},{x:250,y:690,team:0},{x:450,y:600,team:0},{x:1360,y:200,team:1},{x:1370,y:690,team:1},{x:1250,y:520,team:1}];
+OWN_BULLETS=[0,1,2,3,4,5,6].map(i=>{const d=26+i*28;return [470+.8*d,430-.6*d,8,-6]});
+ENEMY_BULLETS=[[441,138],[444,168],[447,198],[450,228],[453,258]].map(([x,y])=>[x,y,1,10]);
+
+const BASE={ally:'#1F3A93',enemy:'#E8A200',outline:'#2A2F3A',energy:'#3A4150',trailMix:.3,thin:'#7FD3B4',thick:'#F49AC1',terrace:.75,inkMix:.45,coreW:2.4,
+ sky:'#FFFFFF',outside:'#EEF0F3',hatch:'#C9CED6',fogB:.6,fogS:1.12,fogBlur:0,fogHatch:false,truth:true,badges:true};
+const PRESETS={
+ 'Mint / pink · navy / amber':{},
+ 'Lemon / ice · green / magenta':{thin:'#F2DC5D',thick:'#A8D8F0',ally:'#2E9D5B',enemy:'#D6338A'},
+ 'Purple / ice · green / vermilion':{thin:'#A88BE0',thick:'#A8D8F0',ally:'#2E9D5B',enemy:'#F04E23'},
+ 'Ice / peach · blue / vermilion':{thin:'#A8D8F0',thick:'#F7C49A',ally:'#2F6FD0',enemy:'#F04E23'},
+ 'Pink / mint · blue / vermilion':{thin:'#F49AC1',thick:'#7FD3B4',ally:'#2F6FD0',enemy:'#F04E23'},
+ 'Mint / pink · cobalt / gold':{ally:'#1F4FB5',enemy:'#D9A400'},
+};
+let P=Object.assign({},BASE);
+const $=id=>document.getElementById(id);
+const hex=a=>'#'+a.map(v=>v.toString(16).padStart(2,'0')).join('');
+function style(){const ink=c=>mixHex(c,'#1c2030',P.inkMix);
+ return Object.assign({},STYLES[0],{name:'tool',contourMap:1,perLevel:3,wholeLevels:1,terrace:P.terrace,lowCol:P.thin,highCol:P.thick,
+  lowInk:'rgba('+ink(P.thin).join(',')+',.75)',highInk:'rgba('+ink(P.thick).join(',')+',.75)',minorW:1,majorW:1,thin:hex(ink(P.thin)),thick:hex(ink(P.thick)),
+  coreLine:P.coreW>0?'kind':null,coreLineW:P.coreW,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,arena:P.sky,edge:P.sky,edgeR:40,damageR:80,damage:P.outside,damageHatch:P.hatch,outside:P.outside,
+  team:[P.ally,P.enemy],energy:P.energy,outline:P.outline,modern:1,liftGlow:0,trailMix:P.trailMix,
+  fogFilter:`brightness(${P.fogB}) saturate(${P.fogS})`+(P.fogBlur>0?` blur(${P.fogBlur}px)`:''),
+  fogPattern:P.fogHatch?()=>mkPattern((p,s)=>{p.strokeStyle='rgba(42,47,58,.18)';p.lineWidth=1;p.beginPath();p.moveTo(-1,s+1);p.lineTo(s+1,-1);p.stroke()},9):null})}
+function draw(){const t0=performance.now();const cv=$('c'),c=cv.getContext('2d');c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,cv.width,cv.height);
+ render(cv,style(),{truth:P.truth});
+ if(P.badges){c.font='bold 12px Inter,Arial';const badge=(x,y,t,col)=>{c.beginPath();c.arc(x,y,10,0,7);c.fillStyle=col;c.fill();c.fillStyle='#fff';c.textAlign='center';c.textBaseline='middle';c.fillText(t,x,y+.5)};
+  for(const e of ENEMIES)badge(e.x+22,e.y-20,e.n,enemyVisible(e)?(e.shoot||e.spawn?'#8A5A00':'#1C7C3A'):'#B3261E');badge(560,340,12,'#2A2F3A');badge(470,195,13,'#2A2F3A');badge(170,450,14,'#2A2F3A');
+  c.font='bold 13px Inter,Arial';c.fillStyle=P.ally;c.textAlign='left';c.textBaseline='alphabetic';for(const a of ALLIES)c.fillText(a.id,a.x-10,a.y+32)}
+ $('status').textContent=`Rendered in ${Math.round(performance.now()-t0)} ms. Thin air = fast (n < 1), thick air = slow (n > 1); bold line = core edge, which blocks sight.`;
+ $('json').value=JSON.stringify(P,null,1)}
+let pending=0;function schedule(){cancelAnimationFrame(pending);pending=requestAnimationFrame(()=>setTimeout(draw,0))}
+const KEYS=Object.keys(BASE);
+function sync(){for(const k of KEYS){const el=$(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!P[k];else el.value=P[k];const o=el.parentElement.querySelector('output');if(o)o.textContent=(+P[k]).toFixed(2)}}
+for(const k of KEYS){const el=$(k);if(!el)continue;el.addEventListener('input',()=>{P[k]=el.type==='checkbox'?el.checked:el.type==='range'?+el.value:el.value;const o=el.parentElement.querySelector('output');if(o)o.textContent=(+P[k]).toFixed(2);schedule()})}
+for(const [name,over] of Object.entries(PRESETS)){const b=document.createElement('button');b.textContent=name;b.onclick=()=>{P=Object.assign({},BASE,over);sync();schedule()};$('presets').appendChild(b)}
+$('copy').onclick=()=>{$('json').select();try{navigator.clipboard.writeText($('json').value)}catch(e){document.execCommand('copy')}};
+$('apply').onclick=()=>{try{P=Object.assign({},BASE,JSON.parse($('json').value));sync();schedule()}catch(e){$('status').textContent='Could not read those settings: '+e.message}};
+sync();setTimeout(draw,30);
+</script></body></html>

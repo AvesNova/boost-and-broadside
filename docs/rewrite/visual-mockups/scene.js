@@ -87,7 +87,7 @@ function shieldOf(id,i){if(SHIELD[id])return SHIELD[id];return [[0,.5],[.7,.4],[
 function turnOf(i){return [-90,0,60,-30,110,20,-70,40,0,-100,50,80,-40,30,0][i%15]}
 function synthTrail(x,y,deg,turn,v=110){const P=[];let h=deg*Math.PI/180,px=x,py=y,dt=1/30;for(let i=0;i<45;i++){P.push({x:px,y:py,h,r:turn});h-=turn*Math.PI/180*dt;px-=v*Math.cos(h)*dt;py-=v*Math.sin(h)*dt}return P.reverse()}
 function modernShip(c,S,x,y,deg,team,se,turn,noTrail){const col=S.team[team];
- const P=noTrail?[]:synthTrail(x,y,deg,turn),n=P.length;const tc=mixHex(col,S.arena,.3).join(',');
+ const P=noTrail?[]:synthTrail(x,y,deg,turn),n=P.length;const tc=mixHex(col,S.arena,S.trailMix??.3).join(',');
  for(let i=1;i<n-3;i++){const f=i/(n-1);c.beginPath();c.moveTo(P[i-1].x,P[i-1].y);c.lineTo(P[i].x,P[i].y);c.strokeStyle=`rgba(${tc},${.7*f})`;c.lineWidth=2;c.lineCap='round';c.stroke()}
  if(Math.abs(turn)>50)for(let i=1;i<n-2;i++){const d=Math.sign(turn)*9,p=P[i],q=P[i-1];const o=(p)=>[p.x+d*Math.cos(p.h+Math.PI/2),p.y+d*Math.sin(p.h+Math.PI/2)];c.beginPath();c.moveTo(...o(q));c.lineTo(...o(p));c.strokeStyle=`rgba(122,136,153,${.35*(.3+.7*i/(n-1))})`;c.lineWidth=1.2;c.stroke()}
  const R=22,hd=deg*Math.PI/180,sh=120*Math.PI/180-.1,en=60*Math.PI/180-.1;const arc=(a0,a1,cc,al)=>{if(a1<=a0)return;c.beginPath();c.arc(x,y,R,a0,a1);c.strokeStyle=cc;c.globalAlpha=al;c.lineWidth=2.6;c.lineCap='round';c.stroke();c.globalAlpha=1;c.lineCap='butt'};
@@ -148,10 +148,11 @@ function indexMap(S){const k=S.name;if(IMAPS[k])return IMAPS[k];const m=document
  c.putImageData(img,0,0);IMAPS[k]=m;return m}
 
 // isolines of ln n by marching squares; terraces optional
-const CMAPS={};
-function contourMap(S){const k=S.name;if(CMAPS[k])return CMAPS[k];const m=document.createElement('canvas');m.width=SW;m.height=SH;const c=m.getContext('2d');
- const g=1.5,nx=Math.ceil(SW/g)+1,ny=Math.ceil(SH/g)+1,L=new Float32Array(nx*ny),step=Math.log(Math.SQRT2)/S.perLevel;
- for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)L[j*nx+i]=(LINEAR_BW||inArena(i*g,j*g))?lnIndexAt(i*g,j*g)/step:0;
+const CMAPS={},LGRID={};
+function contourMap(S){const k=[S.name,S.lowCol,S.highCol,S.lowInk,S.highInk,S.terrace,S.arena,S.minorW].join("|");if(CMAPS[k])return CMAPS[k];const m=document.createElement('canvas');m.width=SW;m.height=SH;const c=m.getContext('2d');
+ const g=1.5,nx=Math.ceil(SW/g)+1,ny=Math.ceil(SH/g)+1,step=Math.log(Math.SQRT2)/S.perLevel;
+ const lk=`${S.perLevel}|${LINEAR_BW}|${SW}x${SH}`;let L=LGRID[lk]; // the index grid depends only on the map, not on colours
+ if(!L){L=LGRID[lk]=new Float32Array(nx*ny);for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)L[j*nx+i]=(LINEAR_BW||inArena(i*g,j*g))?lnIndexAt(i*g,j*g)/step:0}
  if(S.terrace){const img=c.createImageData(SW,SH);for(let y=0;y<SH;y++)for(let x=0;x<SW;x++){if(LINEAR_BW&&segDist(x,y,ARENA[0],ARENA[1],ARENA[2],ARENA[3])>ARENA[4]+2*LINEAR_BW)continue;const v=L[Math.round(y/g)*nx+Math.round(x/g)];const q=S.wholeLevels?Math.sign(v)*Math.floor(Math.abs(v)+.02):Math.trunc(v+Math.sign(v)*.5);if(!q)continue;
    const t=Math.min(1,Math.abs(q)/(2*S.perLevel));const col=mixHex(S.arena,q<0?S.lowCol:S.highCol,t*S.terrace);const p=4*(y*SW+x);img.data[p]=col[0];img.data[p+1]=col[1];img.data[p+2]=col[2];img.data[p+3]=255}c.putImageData(img,0,0)}
  for(let k=-2*S.perLevel;k<=2*S.perLevel;k++){if(!k)continue;const major=k%S.perLevel===0;const lev=k-Math.sign(k)*(S.wholeLevels?.02:.5);
