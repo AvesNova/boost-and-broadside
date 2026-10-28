@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}h2{font-size:20px;margin:0;padding:6px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,420px);gap:14px;padding:0 30px 24px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 0;font-size:15px}.card div{padding:2px 14px 6px;font-size:12px;color:#5A6272;height:30px}canvas{display:block}
+</style></head><body><h1>Flight trails, round 2</h1>
+<p class="sub">Same manoeuvre as before: fast run, hard left turn bleeding speed, gentle right turn accelerating. Inset: an enemy at battle zoom.</p>
+<div class="grid" id="g"></div>
+<h2>Team colours</h2><p class="sub">Ally and enemy crossing, with the fading line and the inner-wingtip vortex, over a patch of the topo map (teal thin air, violet thick air) to check the colours against the fields.</p>
+<div class="grid" id="h"></div>
+<script>
+const BG='#F6F7F9',W=420,H=210,D=Math.PI/180;
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+const P=[];{let x=0,y=0,h=-15*D,dt=1/30;for(let i=0;i<=75;i++){const t=i*dt;let v,r;
+ if(t<.8){v=180;r=0}else if(t<1.6){const u=(t-.8)/.8;v=180-90*u;r=-150}else{const u=(t-1.6)/.9;v=90+60*u;r=40}
+ P.push({x,y,h,v,r});x+=v*Math.cos(h)*dt;y+=v*Math.sin(h)*dt;h+=r*D*dt}}
+const xs=P.map(p=>p.x),ys=P.map(p=>p.y),mx=Math.min(...xs),Mx=Math.max(...xs),my=Math.min(...ys),My=Math.max(...ys);
+const sc=Math.min((W-90)/(Mx-mx),(H-50)/(My-my));
+const T0=p=>[35+(p.x-mx)*sc,25+(p.y-my)*sc];
+// enemy path: the same manoeuvre mirrored left-right
+const Q=P.map(p=>({x:-p.x,y:p.y,h:Math.PI-p.h,v:p.v,r:-p.r}));const T1=p=>[W-35-(-p.x-mx)*sc,25+(p.y-my)*sc];
+function ship(c,x,y,h,col,s=.32){c.save();c.translate(x,y);c.rotate(h+Math.PI/2);c.scale(s,s);c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();c.fillStyle=col;c.fill();c.restore()}
+const rgba=(hex,a)=>{const n=parseInt(hex.slice(1),16);return `rgba(${n>>16},${n>>8&255},${n&255},${a})`};
+const fresh=(i,n)=>i/(n-1); // 1 at the ship
+const TAILGAP=4; // samples skipped right behind the ship so the tail stays visible
+function line(c,Pt,T,col,o={}){const n=Pt.length;for(let i=1;i<n-(o.gap??TAILGAP);i++){const f=fresh(i,n);const [x0,y0]=T(Pt[i-1]),[x1,y1]=T(Pt[i]);c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.strokeStyle=rgba(col,(o.a??.7)*f);c.lineWidth=o.w?o.w(f,Pt[i]):2;c.lineCap='round';c.stroke()}}
+function off(T,p,d){const [x,y]=T(p);return [x+d*Math.cos(p.h+Math.PI/2),y+d*Math.sin(p.h+Math.PI/2)]}
+function vortex(c,Pt,T,col,o={}){const n=Pt.length;for(let i=1;i<n-2;i++){const p=Pt[i],g=Math.abs(p.r)*p.v;if(g<9000)continue;const d=Math.sign(p.r)*(o.d||9);const a=off(T,Pt[i-1],d),b=off(T,p,d);c.beginPath();c.moveTo(...a);c.lineTo(...b);c.strokeStyle=rgba(col,(o.a??.85)*(.25+.75*fresh(i,n)));c.lineWidth=o.w||1.4;c.lineCap='round';c.stroke()}}
+function diamonds(c,Pt,T,col,o={}){const n=Pt.length;const every=o.every||3;for(let i=n-1-(o.start||3);i>=0;i-=every){const p=Pt[i],f=fresh(i,n);if(o.only&&n-1-i>o.only)break;const [x,y]=T(p);const L=(o.len||7)*(o.shrink?(.4+.6*f):1),Wd=(o.wid||3.2)*(o.shrink?(.4+.6*f):1);
+ c.save();c.translate(x,y);c.rotate(p.h);c.beginPath();c.moveTo(L,0);c.lineTo(0,Wd);c.lineTo(-L,0);c.lineTo(0,-Wd);c.closePath();c.fillStyle=rgba(col,(o.a??.75)*(o.fade===false?1:f));c.fill();c.restore()}}
+const OPTS=[
+ ['1. Fading line','today, with a gap so the tail stays clear',(c,Pt,T,col)=>line(c,Pt,T,col)],
+ ['2. Thin taper','tapers from 3.5 px to 0.5, starts behind the tail',(c,Pt,T,col)=>line(c,Pt,T,col,{w:f=>.5+3*f,a:.6})],
+ ['3. Inner vortex','fading line + one vortex on the inside wingtip in hard turns',(c,Pt,T,col)=>{line(c,Pt,T,col);vortex(c,Pt,T,'#7A8899')}],
+ ['4. Inner vortex, team tint','the vortex in a light team tint instead of grey',(c,Pt,T,col)=>{line(c,Pt,T,col);vortex(c,Pt,T,col,{a:.45})}],
+ ['5. Taper + inner vortex','2 and 3 together',(c,Pt,T,col)=>{line(c,Pt,T,col,{w:f=>.5+3*f,a:.6});vortex(c,Pt,T,'#7A8899')}],
+ ['6. Mach diamonds','a diamond every 0.1 s along the whole trail; spacing = speed',(c,Pt,T,col)=>diamonds(c,Pt,T,col,{shrink:1,every:4,len:9,wid:4.5})],
+ ['7. Exhaust diamonds','a short chain of diamonds right behind the ship, then a fading line',(c,Pt,T,col)=>{line(c,Pt,T,col,{gap:12,a:.5});diamonds(c,Pt,T,col,{every:3,only:15,len:8,wid:4,a:.85,shrink:1,start:3})}],
+ ['8. Line → dashes → dots','continuous near the ship, breaking up with age',(c,Pt,T,col)=>{const n=Pt.length;for(let i=1;i<n-TAILGAP;i++){const f=fresh(i,n);if(f<.66&&f>=.33&&i%3===0)continue;if(f<.33&&i%3!==0)continue;const [x0,y0]=T(Pt[i-1]),[x1,y1]=T(Pt[i]);c.beginPath();if(f<.33){c.arc(x1,y1,1.4,0,7);c.fillStyle=rgba(col,.5);c.fill();continue}c.moveTo(x0,y0);c.lineTo(x1,y1);c.strokeStyle=rgba(col,.75*f+.15);c.lineWidth=2;c.lineCap='round';c.stroke()}}],
+ ['9. Ripples','small rings every 0.2 s that grow and fade, like a wake on water',(c,Pt,T,col)=>{const n=Pt.length;line(c,Pt,T,col,{a:.35});for(let i=n-1-6;i>=0;i-=6){const f=fresh(i,n);const [x,y]=T(Pt[i]);c.beginPath();c.arc(x,y,2+8*(1-f),0,7);c.strokeStyle=rgba(col,.55*f+.05);c.lineWidth=1.2;c.stroke()}}],
+];
+function card(host,title,desc,draw){const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${title}</h3><div>${desc}</div>`;const cv=document.createElement('canvas');cv.width=W;cv.height=H;d.appendChild(cv);document.getElementById(host).appendChild(d);draw(cv.getContext('2d'))}
+for(const [t,desc,f] of OPTS)card('g',t,desc,c=>{c.fillStyle=BG;c.fillRect(0,0,W,H);f(c,P,T0,'#2F6FD0');const L=P[P.length-1],[x,y]=T0(L);ship(c,x,y,L.h,'#2F6FD0');
+ c.fillStyle='#fff';c.strokeStyle='#D5DAE1';c.lineWidth=1;c.beginPath();c.roundRect(W-118,H-62,110,54,6);c.fill();c.stroke();c.save();c.translate(W-112,H-58);c.scale(.25,.25);f(c,P,T0,'#E07B2E');ship(c,x,y,L.h,'#E07B2E');c.restore()});
+// team colour pairs over a patch of topo contours
+const PAIRS=[['Blue / orange','current','#2F6FD0','#E07B2E'],['Blue / red','classic, but red is also the danger colour','#2F6FD0','#D7263D'],['Navy / amber','high contrast in light and value','#1F3A93','#E8A200'],
+ ['Blue / yellow','strongest colour-blind separation','#2F6FD0','#D9B300'],['Graphite / orange','own side neutral, enemy loud','#3A4150','#E07B2E'],['Green / magenta','far from both field colours?','#2E9D5B','#D6338A'],
+ ['Sky / coral','lighter, friendlier','#3E9BE6','#F06B55'],['Blue / vermilion','warm red-orange, apart from violet','#2F6FD0','#F04E23'],['Black / white-outlined orange','maximum value contrast','#22262E','#F28C28']];
+function topo(c){c.fillStyle=BG;c.fillRect(0,0,W,H);for(let k=0;k<6;k++){c.beginPath();c.ellipse(80,190,60+k*10,40+k*10,0,0,7);c.strokeStyle=k===0?'rgba(30,111,147,.9)':'rgba(30,111,147,.4)';c.lineWidth=k===0?2.2:1;c.stroke()}
+ c.beginPath();c.ellipse(80,190,60,40,0,0,7);c.fillStyle='rgba(45,159,208,.25)';c.fill();
+ for(let k=0;k<6;k++){c.beginPath();c.ellipse(360,20,50+k*10,35+k*10,0,0,7);c.strokeStyle=k===0?'rgba(74,60,130,.9)':'rgba(74,60,130,.4)';c.lineWidth=k===0?2.2:1;c.stroke()}c.beginPath();c.ellipse(360,20,50,35,0,0,7);c.fillStyle='rgba(111,93,174,.3)';c.fill()}
+for(const [t,desc,a,e] of PAIRS)card('h',t,desc,c=>{topo(c);for(const [Pt,T,col] of [[P,T0,a],[Q,T1,e]]){line(c,Pt,T,col);vortex(c,Pt,T,col,{a:.5});const L=Pt[Pt.length-1],[x,y]=T(L);if(t.startsWith('Black')&&col===e){c.save();ship(c,x,y,L.h,'#fff',.42);c.restore()}ship(c,x,y,L.h,col)}});
+</script></body></html>

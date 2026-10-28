@@ -22,6 +22,7 @@ is generated from the source next to it.
 | `shields3.png` | `shields3.html` | Twelve more centred-arc combinations: halves (shield nose, energy tail), shares, interleaved 3 + 3 and 6 + 6, 4, 6 and 12 centres. |
 | `exposed.png` | `exposed.html` | Twelve ways to show a ship with no shield left (next hit kills), on ally and enemy, at battle zoom and in a crowd. Base display: shield 240° on the nose, energy 120° on the tail. |
 | `trails.png` | `trails.html` | Twelve flight-trail styles on the same 2.5 s manoeuvre, each with a battle-zoom inset. |
+| `trails2.png` | `trails2.html` | Trails round 2: thin taper, inner-wingtip vortex, Mach diamonds, line-to-dots, ripples; and nine ally / enemy colour pairs over the topo fields. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow
