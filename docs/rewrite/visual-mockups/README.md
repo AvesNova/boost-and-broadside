@@ -15,6 +15,7 @@ is generated from the source next to it.
 | `test-topo.png` | `test-topo.html` + `scene.js` | The visibility test scene drawn with the topographic contours (linear bands, bold core edge, high-index arena edge). |
 | `test-lemon.png` | `test-lemon.html` + `scene.js` | The topo test scene with lemon and ice fields (both ways round), green / magenta outlined ships, shield / energy rings and trails. |
 | `test-purple.png` | `test-purple.html` + `scene.js` | The topo test scene with purple and ice fields (both ways round), green / vermilion ships, fog at 60%. |
+| `colourblind-purple.png` | `colourblind.py` (on the `test-purple` scene) | The purple / ice, green / vermilion scene simulated for six colour-vision deficiencies plus achromatopsia (Machado et al. 2009), with palette swatches and CIE76 ΔE between key colours. |
 | `fogdark.png` | `fogdark.html` + `scene.js` | The lemon / ice scene with the fog darkened to six brightness levels (90% to 40%), saturation kept. |
 | `thincolours.png` | `thincolours.html` + `scene.js` | Six thin-air colours (lavender, purple, periwinkle, lemon, peach, mint) with ice thick air, fog at 60%. |
 | `styles.png` | `styles.html` + `scene.js` + `styles.js` | The same test scene in nine visual styles, as a player would see it. |
