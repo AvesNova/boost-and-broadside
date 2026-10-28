@@ -23,6 +23,7 @@ is generated from the source next to it.
 | `exposed.png` | `exposed.html` | Twelve ways to show a ship with no shield left (next hit kills), on ally and enemy, at battle zoom and in a crowd. Base display: shield 240° on the nose, energy 120° on the tail. |
 | `trails.png` | `trails.html` | Twelve flight-trail styles on the same 2.5 s manoeuvre, each with a battle-zoom inset. |
 | `trails2.png` | `trails2.html` | Trails round 2: thin taper, inner-wingtip vortex, Mach diamonds, line-to-dots, ripples; and nine ally / enemy colour pairs over the topo fields. |
+| `palettes.png` | `palettes.html` | Sixteen colour palettes (teams, shield, energy, fields, background) on a small scene, plus eight trail-colour variants. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow
@@ -43,6 +44,7 @@ is generated from the source next to it.
 
 - Shield and energy: one ring at the hitbox, shield 240° centred on the nose, energy 120° centred on
   the tail, each shrinking toward its centre (`shields3.png`, row 3).
+- Trail: fading line plus a faint vortex on the inside wingtip during hard turns (`trails2.png`, 3).
 - Ships: the Komet / Cranked-arrow family (sharp nose, notched or swept back) reads best at small size.
 - Fields: topographic contours of the true index (`map-contours.png`); thin air teal, thick air violet.
 - Fog: terrain always known (fields, bases, turrets drawn), units hidden; sight shadows from field cores.
