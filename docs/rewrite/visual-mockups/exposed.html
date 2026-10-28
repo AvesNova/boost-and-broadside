@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}canvas{margin:0 30px 24px;border-radius:10px;border:1px solid #D5DAE1;display:block}
+</style></head><body>
+<h1>Shields down — showing an exposed core</h1>
+<p class="sub">Base display: shield 240° on the nose (blue, here empty), energy 120° on the tail (graphite, 50%). At zero shield the next hit kills. Each row is one way to show that, on an ally and an enemy, at battle zoom, and in a crowd where only one ship is exposed.</p>
+<canvas id="a"></canvas>
+<script>
+const BLUE='#2F6FD0',ORANGE='#E07B2E',INK='#2A2F3A',BG='#F6F7F9',RED='#D7263D',EN='#3A4150',D=Math.PI/180;
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+function shipPath(c){c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath()}
+function arc(c,r,a0,a1,col,w,alpha=1,dash){if(a1<=a0)return;c.beginPath();c.arc(0,0,r,a0,a1);c.strokeStyle=col;c.lineWidth=w;c.globalAlpha=alpha;c.setLineDash(dash||[]);c.lineCap=dash?'butt':'round';c.stroke();c.setLineDash([]);c.lineCap='butt';c.globalAlpha=1}
+const R=27,HEAD=-Math.PI/2;let ROT=0;function rotd(f){c.save();c.rotate(ROT);f();c.restore()}
+function ring(c,team,s,e,o={}){c.save();c.rotate(ROT);ring0(c,team,s,e,o);c.restore()}
+function ring0(c,team,s,e,o={}){const sh=120*D-.1,en=60*D-.1;
+ arc(c,R,HEAD-sh,HEAD+sh,o.trackCol||team,o.trackW||3,o.trackA??.12,o.trackDash);if(s>0)arc(c,R,HEAD-sh*s,HEAD+sh*s,team,3);
+ const t=HEAD+Math.PI;arc(c,R,t-en,t+en,EN,3,.12);if(e>0)arc(c,R,t-en*e,t+en*e,EN,3)}
+function ship(c,team,o={}){c.save();c.rotate(ROT);c.scale(.36,.36);shipPath(c);
+ if(o.hollow){c.fillStyle=BG;c.fill();c.strokeStyle=team;c.lineWidth=6;c.stroke()}else{c.fillStyle=o.fill||team;c.fill()}
+ if(o.outline){if(o.halo){c.strokeStyle='#fff';c.lineWidth=14;c.stroke()}c.strokeStyle=o.outline;c.lineWidth=o.ow||8;c.stroke()}c.restore()}
+const ROWS=[
+ ['1. Red outline','the current mock-up',(c,t)=>{ring(c,t,0,.5);ship(c,t,{outline:RED})}],
+ ['2. White + red outline','double outline holds on any background',(c,t)=>{ring(c,t,0,.5);ship(c,t,{outline:RED,halo:1,ow:6})}],
+ ['3. Red empty track','the missing shield arc is drawn in red',(c,t)=>{ring(c,t,0,.5,{trackCol:RED,trackA:.9,trackW:2,trackDash:[4,4]});ship(c,t)}],
+ ['4. Hollow ship','silhouette drawn as an outline only: "bare"',(c,t)=>{ring(c,t,0,.5);ship(c,t,{hollow:1})}],
+ ['5. Red hitbox circle','thin red circle at the exact hitbox',(c,t)=>{ring(c,t,0,.5);c.beginPath();c.arc(0,0,R-5,0,7);c.strokeStyle=RED;c.lineWidth=1.6;c.stroke();ship(c,t)}],
+ ['6. Target brackets','four corner brackets around the hitbox',(c,t)=>{ring(c,t,0,.5);c.strokeStyle=RED;c.lineWidth=2.2;const k=R+7,l=8;[[1,1],[1,-1],[-1,1],[-1,-1]].forEach(([sx,sy])=>{c.beginPath();c.moveTo(sx*k,sy*(k-l));c.lineTo(sx*k,sy*k);c.lineTo(sx*(k-l),sy*k);c.stroke()});ship(c,t)}],
+ ['7. Smoke trail','WW2 damaged-aircraft smoke behind the ship',(c,t)=>{rotd(()=>{for(let i=0;i<6;i++){c.beginPath();c.arc((i%2?2:-2),18+i*8,3+i*1.3,0,7);c.fillStyle=`rgba(60,60,70,${.55-i*.08})`;c.fill()}});ring(c,t,0,.5);ship(c,t)}],
+ ['8. Sparks','a few bright sparks flicking off the hull',(c,t)=>{ring(c,t,0,.5);ship(c,t);rotd(()=>{c.strokeStyle='#FFB000';c.lineWidth=2;c.lineCap='round';[[8,-4,15,-10],[-9,2,-17,-1],[3,10,9,18],[-4,-10,-9,-17]].forEach(([a,b,d,e])=>{c.beginPath();c.moveTo(a,b);c.lineTo(d,e);c.stroke()});c.lineCap='butt'})}],
+ ['9. Red glow','soft red halo behind the ship',(c,t)=>{const g=c.createRadialGradient(0,0,4,0,0,R+6);g.addColorStop(0,'rgba(215,38,61,.55)');g.addColorStop(1,'rgba(215,38,61,0)');c.fillStyle=g;c.beginPath();c.arc(0,0,R+6,0,7);c.fill();ring(c,t,0,.5);ship(c,t)}],
+ ['10. Flash (2 frames)','ship alternates team colour and white; shown split',(c,t)=>{ring(c,t,0,.5);c.save();c.rotate(ROT);c.beginPath();c.rect(-40,-40,40,80);c.rotate(-ROT);c.clip();ship(c,t);c.restore();c.save();c.rotate(ROT);c.beginPath();c.rect(0,-40,40,80);c.rotate(-ROT);c.clip();ship(c,t,{fill:'#fff',outline:t,ow:4});c.restore()}],
+ ['11. Greyed ship','team colour drains out of the silhouette',(c,t)=>{ring(c,t,0,.5);ship(c,t,{fill:'#8A919C',outline:t,ow:5})}],
+ ['12. Marker above','small red diamond floating over the ship',(c,t)=>{ring(c,t,0,.5);ship(c,t);c.fillStyle=RED;c.beginPath();c.moveTo(0,-R-14);c.lineTo(5,-R-8);c.lineTo(0,-R-2);c.lineTo(-5,-R-8);c.closePath();c.fill()}],
+];
+const COLS=[['ally','blue, exposed'],['enemy','orange, exposed'],['ally · zoom','battle zoom'],['enemy · zoom','battle zoom'],['crowd','1 exposed enemy of 6']];
+const LW=300,CW=170,RH=104,TOP=56,W=LW+CW*COLS.length+10,H=TOP+RH*ROWS.length+10;const cv=document.getElementById('a');cv.width=W;cv.height=H;const c=cv.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,W,H);
+COLS.forEach((col,i)=>{const x=LW+i*CW;c.font='bold 13px Inter,Arial';c.fillStyle=INK;c.fillText(col[0],x+12,24);c.font='12px Inter,Arial';c.fillStyle='#5A6272';c.fillText(col[1],x+12,40)});
+function at(x,y,sc,rot,f){c.save();c.translate(x,y);c.scale(sc,sc);ROT=rot;f();ROT=0;c.restore()}
+ROWS.forEach((row,r)=>{const y=TOP+r*RH;if(r){c.fillStyle='#EEF0F3';c.fillRect(14,y-4,W-28,1)}c.fillStyle=INK;c.font='bold 14px Inter,Arial';c.fillText(row[0],20,y+40);c.font='12px Inter,Arial';c.fillStyle='#5A6272';c.fillText(row[1],20,y+58);
+ COLS.forEach((col,i)=>{const cx=LW+i*CW+CW/2,cy=y+RH/2-4;c.fillStyle=BG;c.beginPath();c.roundRect(cx-74,cy-44,148,88,8);c.fill();
+  if(i===0)at(cx,cy,1,.3,()=>row[2](c,BLUE));
+  if(i===1)at(cx,cy,1,-2.2,()=>row[2](c,ORANGE));
+  if(i===2)at(cx,cy,.42,.3,()=>row[2](c,BLUE));
+  if(i===3)at(cx,cy,.42,-2.2,()=>row[2](c,ORANGE));
+  if(i===4){const P=[[-50,-22,.2,BLUE,.8,.6],[-20,14,.9,BLUE,.4,.9],[10,-26,-2.4,ORANGE,.7,.3],[40,8,-2.0,ORANGE,0,.5],[58,-24,-2.7,ORANGE,.5,.8],[-52,24,.4,BLUE,1,.2]];
+   P.forEach(([dx,dy,rot,t,s,e])=>at(cx+dx,cy+dy,.4,rot,()=>{if(s===0)row[2](c,t);else{ring(c,t,s,e);ship(c,t)}}))}})});
+</script></body></html>

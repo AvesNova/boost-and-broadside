@@ -20,6 +20,7 @@ is generated from the source next to it.
 | `shields.png` | `shields.html` | Twelve shield displays (ring at the hitbox) and eight energy displays, swept full to empty, with regeneration or boosting and battle zoom. |
 | `shields2.png` | `shields2.html` | Centred arcs: shield with 1, 2 and 3 centres, energy as one nose-centred arc (inside, outside, tinted, long), plus a shield × energy matrix. |
 | `shields3.png` | `shields3.html` | Twelve more centred-arc combinations: halves (shield nose, energy tail), shares, interleaved 3 + 3 and 6 + 6, 4, 6 and 12 centres. |
+| `exposed.png` | `exposed.html` | Twelve ways to show a ship with no shield left (next hit kills), on ally and enemy, at battle zoom and in a crowd. Base display: shield 240° on the nose, energy 120° on the tail. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow
@@ -38,6 +39,8 @@ is generated from the source next to it.
 
 ## Leanings from the brainstorm (not decided)
 
+- Shield and energy: one ring at the hitbox, shield 240° centred on the nose, energy 120° centred on
+  the tail, each shrinking toward its centre (`shields3.png`, row 3).
 - Ships: the Komet / Cranked-arrow family (sharp nose, notched or swept back) reads best at small size.
 - Fields: topographic contours of the true index (`map-contours.png`); thin air teal, thick air violet.
 - Fog: terrain always known (fields, bases, turrets drawn), units hidden; sight shadows from field cores.
