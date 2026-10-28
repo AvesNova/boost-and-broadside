@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,600px);gap:16px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 8px;font-size:16px}.ui{display:flex;gap:8px;align-items:center;padding:8px 14px 12px;font-size:12px;font-weight:700;color:#fff}.ui span{padding:4px 10px;border-radius:999px}.ui i{font-style:normal;color:#5A6272;font-weight:400}canvas{display:block}
+</style></head><body><h1>Fast air bright, slow air heavy</h1>
+<p class="sub">Brand-new set. Thin (fast) air is light and saturated; thick (slow) air is darker and desaturated, so the two read apart at a glance and in fog. Ship pairs are chosen to contrast with each other and the map, and to double as UI colours (strip under each panel). White sky, fog at 60%.</p>
+<div class="grid" id="g"></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+LINEAR_BW=30;
+const LEMON='#F2DC5D',ICE='#A8D8F0';
+const mk=(lo,hi,name)=>Object.assign({},STYLES[0],{name,contourMap:1,perLevel:3,wholeLevels:1,terrace:.75,lowCol:lo,highCol:hi,
+  lowInk:'rgba('+mixHex(lo,'#1c2030',.45).join(',')+',.75)',highInk:'rgba('+mixHex(hi,'#1c2030',.45).join(',')+',.75)',minorW:1,majorW:1,
+  thin:'#'+mixHex(lo,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),thick:'#'+mixHex(hi,'#1c2030',.45).map(v=>v.toString(16).padStart(2,'0')).join(''),
+  coreLine:'kind',coreLineW:2.4,coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,arena:'#FFFFFF',edge:'#FFFFFF',edgeR:60,damageR:100,damage:'#E4E7EC',damageHatch:'#C9CED6',outside:'#EEF0F3',
+  team:['#2E9D5B','#D6338A'],energy:'#3A4150',outline:'#2A2F3A',modern:1,liftGlow:0,fogFilter:'brightness(.55) saturate(1.15)'});
+
+const PEACH='#F7C49A',MINT='#7FD3B4';
+const V=[
+ ['1. Sky / slate','navy / amber','#6FD3F2','#6B7686','#1F3A93','#F2A900'],
+ ['2. Mint / plum-grey','blue / orange','#7FE3C0','#7A6A7E','#2563EB','#F97316'],
+ ['3. Lemon / stone','indigo / coral','#F6E05E','#8A8478','#4338CA','#F05A4F'],
+ ['4. Aqua / storm','violet / amber','#5EEAD4','#5B6B7A','#7C3AED','#F59E0B'],
+ ['5. Ice / charcoal-blue','green / magenta','#A5E3FF','#4A5566','#16A34A','#DB2777'],
+ ['6. Peach / mauve-grey','teal / rose','#FFC9A3','#7D6F7A','#0E7490','#E11D48'],
+ ['7. Lime / olive-grey','blue / magenta','#C6F06A','#6E7262','#1D4ED8','#C026D3'],
+ ['8. Pink / plum-grey','cobalt / gold','#FF9CCB','#6B5A6E','#1E40AF','#EAB308'],
+ ['9. Mint / deep slate','blue / red','#86EFAC','#475569','#2563EB','#DC2626'],
+ ['10. Sky / violet-grey','emerald / orange','#7DD3FC','#5B5470','#059669','#EA580C'],
+ ['11. Cyan, light / deep','same hue, two values; orange / purple','#67E8F9','#3E6670','#F97316','#7C3AED'],
+ ['12. Blue, light / dull','same hue, two values; green / pink','#BFE7FF','#50657A','#16A34A','#EC4899'],
+];
+for(const [name,ships,thin,thick,a,e] of V){const S=Object.assign(mk(thin,thick,name),{team:[a,e],fogFilter:'brightness(.6) saturate(1.12)'});
+ const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${name} <span style="font-weight:400;color:#5A6272;font-size:13px">· ${ships}</span></h3>`;const cv=document.createElement('canvas');cv.width=600;cv.height=380;d.appendChild(cv);
+ const ui=document.createElement('div');ui.className='ui';ui.innerHTML=`<span style="background:${a}">ALLIES 12</span><span style="background:${e}">ENEMIES 9</span><span style="background:#fff;color:${a};outline:2px solid ${a}">READY</span><i>fast</i><span style="background:${thin};color:#2A2F3A">thin</span><i>slow</i><span style="background:${thick}">thick</span>`;d.appendChild(ui);
+ document.getElementById('g').appendChild(d);render(cv,S)}
+</script></body></html>
