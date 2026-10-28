@@ -1,0 +1,63 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}h2{font-size:20px;margin:0;padding:6px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(4,320px);gap:12px;padding:0 30px 24px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:8px 12px 0;font-size:14px}.card div{padding:1px 12px 5px;font-size:11.5px;color:#5A6272;height:28px}canvas{display:block}
+.sw{display:flex;gap:4px;padding:0 12px 8px}.sw span{width:22px;height:10px;border-radius:2px}
+</style></head><body><h1>Map and field colours</h1>
+<p class="sub">Each panel: one thin-air and one thick-air field (topo contours, bold core edge), two allies and two enemies with trails (fading line + faint inner-wingtip vortex), shield 240° on the nose and energy 120° on the tail, a burst of ally tracers. The enemy at bottom right has no shield left. Teams blue / orange with outlined enemies throughout; only the background and field colours change. Swatches: ally, enemy, energy, thin air, thick air, background.</p>
+<div class="grid" id="g"></div>
+<script>
+const W=320,H=200,D=Math.PI/180;
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+const rgba=(hex,a)=>{const n=parseInt(hex.slice(1),16);return `rgba(${n>>16},${n>>8&255},${n&255},${a})`};
+function mix(a,b,t){const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const A=p(a),B=p(b);return '#'+A.map((v,i)=>Math.round(v+(B[i]-v)*t).toString(16).padStart(2,'0')).join('')}
+function path(x,y,h,seq){const P=[];let dt=1/30;for(const [n,v,r] of seq)for(let i=0;i<n;i++){P.push({x,y,h,v,r});x+=v*Math.cos(h)*dt;y+=v*Math.sin(h)*dt;h+=r*D*dt}P.push({x,y,h,v:seq.at(-1)[1],r:seq.at(-1)[2]});return P}
+// ships: [path, team (0 ally, 1 enemy), shield, energy]
+const SHIPS=[[path(10,40,10*D,[[25,120,0],[20,90,-110]]),0,1,.8],[path(25,160,-25*D,[[18,110,0],[16,80,110],[8,100,0]]),0,.4,.3],
+ [path(310,110,190*D,[[22,110,0],[18,85,-120]]),1,.7,.6],[path(300,185,-170*D,[[28,95,30]]),1,0,.5]];
+const CAPS=[{x0:40,y0:120,x1:120,y1:135,r:14,thin:1,n:3},{x0:215,y0:40,x1:275,y1:25,r:16,thin:0,n:3}];
+function capPath(c,f,r){const a=Math.atan2(f.y1-f.y0,f.x1-f.x0);c.beginPath();c.arc(f.x1,f.y1,r,a-Math.PI/2,a+Math.PI/2);c.arc(f.x0,f.y0,r,a+Math.PI/2,a+3*Math.PI/2);c.closePath()}
+function field(c,f,P){const col=f.thin?P.thin:P.thick,ink=mix(col,P.ink||'#1c2030',.35);for(let k=f.n;k>=1;k--){capPath(c,f,f.r+k*7);c.fillStyle=rgba(col,.10);c.fill();c.strokeStyle=rgba(ink,.45);c.lineWidth=.8;c.stroke()}capPath(c,f,f.r);c.fillStyle=rgba(col,.45);c.fill();c.strokeStyle=ink;c.lineWidth=1.8;c.stroke()}
+function ring(c,x,y,h,s,e,P){const R=19,sh=120*D-.1,en=60*D-.1,m=h;const arc=(a0,a1,col,al)=>{if(a1<=a0)return;c.beginPath();c.arc(x,y,R,a0,a1);c.strokeStyle=rgba(col,al);c.lineWidth=2.4;c.lineCap='round';c.stroke();c.lineCap='butt'};
+ arc(m-sh,m+sh,P.shieldOf,.15);if(s>0)arc(m-sh*s,m+sh*s,P.shieldOf,1);const t=m+Math.PI;arc(t-en,t+en,P.energy,.15);if(e>0)arc(t-en*e,t+en*e,P.energy,1)}
+function ship(c,x,y,h,col,outline){c.save();c.translate(x,y);c.rotate(h+Math.PI/2);c.scale(.26,.26);c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();if(outline){c.strokeStyle=outline;c.lineWidth=8;c.stroke()}c.fillStyle=col;c.fill();c.restore()}
+function trail(c,Pt,col,vcol){const n=Pt.length;for(let i=1;i<n-3;i++){const f=i/(n-1);c.beginPath();c.moveTo(Pt[i-1].x,Pt[i-1].y);c.lineTo(Pt[i].x,Pt[i].y);c.strokeStyle=rgba(col,.7*f);c.lineWidth=1.7;c.lineCap='round';c.stroke()}
+ for(let i=1;i<n-2;i++){const p=Pt[i];if(Math.abs(p.r)*p.v<8000)continue;const d=Math.sign(p.r)*7,q=Pt[i-1];const o=(p,d)=>[p.x+d*Math.cos(p.h+Math.PI/2),p.y+d*Math.sin(p.h+Math.PI/2)];c.beginPath();c.moveTo(...o(q,d));c.lineTo(...o(p,d));c.strokeStyle=rgba(vcol,.35*(.3+.7*i/(n-1)));c.lineWidth=1.1;c.stroke()}}
+function scene(c,P){c.fillStyle=P.bg;c.fillRect(0,0,W,H);CAPS.forEach(f=>field(c,f,P));
+ for(const [Pt,team,s,e] of SHIPS){const col=team?P.enemy:P.ally;const tcol=P.trail?P.trail(col,team):col;trail(c,Pt,tcol,P.vortex||'#7A8899')}
+ // ally tracers toward the enemy
+ c.lineCap='round';for(let i=0;i<4;i++){const x=150+i*16,y=72+i*4.5;c.beginPath();c.moveTo(x,y);c.lineTo(x+7,y+2);c.strokeStyle=P.ally;c.lineWidth=2;c.stroke()}
+ for(const [Pt,team,s,e] of SHIPS){const L=Pt.at(-1);const P2=Object.assign({},P,{shieldOf:P.shield==='team'?(team?P.enemy:P.ally):P.shield});ring(c,L.x,L.y,L.h,s,e,P2);ship(c,L.x,L.y,L.h,team?P.enemy:P.ally,P.outline&&team?P.outline:null)}}
+const L={ally:'#2F6FD0',enemy:'#E07B2E',outline:'#2A2F3A',shield:'team',energy:'#3A4150'},DK={ally:'#4DA3FF',enemy:'#FF9A3D',outline:'#F2F4F7',shield:'team',energy:'#C9D1DC',ink:'#FFFFFF',vortex:'#C9D1DC'};
+const M=(base,name,desc,bg,thin,thick,extra={})=>Object.assign({},base,{name,desc,bg,thin,thick},extra);
+const PALS=[
+ M(L,'1. Grey · teal / violet','reference','#F6F7F9','#2D9FD0','#6F5DAE'),
+ M(L,'2. Grey · cyan / magenta','saturated, high contrast','#F6F7F9','#19B5D9','#B8327A'),
+ M(L,'3. Grey · sky / slate','soft blue and blue-grey','#F6F7F9','#6BB7E8','#5B6577'),
+ M(L,'4. Cloud mono','thin air white, thick air grey on a light grey sky','#E4E8EE','#FFFFFF','#8A93A3'),
+ M(L,'5. Warm white · mint / umber','','#FAF7F0','#3BB58E','#8C6D55'),
+ M(L,'6. Sand · turquoise / brown','desert','#EFE3C8','#2BA6A0','#7A5230'),
+ M(L,'7. Pale sky · white / storm','clouds on a blue sky','#E3EEF8','#FFFFFF','#6B7486'),
+ M(L,'8. Pale green · aqua / forest','','#E6EFE3','#4FB3BF','#3E6B48'),
+ M(L,'9. Olive drab · khaki / dark olive','military map','#C9CBB0','#ECE6C8','#5A5F3A'),
+ M(L,'10. Parchment · sage / umber','briefing map','#EFE6D2','#7FA7A0','#8C7A6B'),
+ M(L,'11. Lavender · ice / plum','','#EEEAF5','#BFE3F2','#6D4C7D'),
+ M(L,'12. Mint · sky / rose','','#E8F5F0','#6EC1E4','#C06C84'),
+ M(L,'13. Mono light','thin lighter than the sky, thick darker','#E9ECF0','#FFFFFF','#9AA3B2'),
+ M(L,'14. Mono blue','same idea in blue','#DCE8F5','#F5FAFF','#7C9BC2'),
+ M(L,'15. Mono warm','same idea in warm grey','#F1E7D8','#FFFBF3','#B39B7D'),
+ M(L,'16. Arctic · white / steel','','#EEF6FA','#FFFFFF','#5E7A94'),
+ M(L,'17. Sunset · cream / plum','','#F6D2B0','#FFF1DC','#9C6A8E',{ink:'#3A2E4A'}),
+ M(L,'18. Grey · gold / navy','fields take warm and cool extremes','#F6F7F9','#E8B84A','#2F4A8A'),
+ M(DK,'19. Slate night · cyan / violet','','#1E2633','#2EC4E6','#A27BFF'),
+ M(DK,'20. Navy night · ice / indigo','','#0E1A33','#9FE3FF','#5B5BD6'),
+ M(DK,'21. Charcoal mono','thin light grey, thick near-black','#25272B','#C9CED6','#08090A'),
+ M(DK,'22. Deep teal · mint / abyss','','#0F2E2E','#5BE3B5','#041414'),
+ M(DK,'23. Desert night · sand / ink','','#2B2238','#E8C890','#120C1A'),
+ M(DK,'24. Radar · lime / black','','#0F1F14','#8BE38B','#030805'),
+];
+function card(host,P){const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${P.name}</h3><div>${P.desc}</div>`;const cv=document.createElement('canvas');cv.width=W;cv.height=H;d.appendChild(cv);
+ const sw=document.createElement('div');sw.className='sw';[P.ally,P.enemy,P.shield==='team'?null:P.shield,P.energy,P.thin,P.thick,P.bg].forEach(c=>{if(!c)return;const s=document.createElement('span');s.style.background=c;s.style.outline='1px solid #D5DAE1';sw.appendChild(s)});d.appendChild(sw);document.getElementById(host).appendChild(d);scene(cv.getContext('2d'),P)}
+PALS.forEach(P=>card('g',P));
+</script></body></html>

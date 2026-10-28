@@ -24,6 +24,7 @@ is generated from the source next to it.
 | `trails.png` | `trails.html` | Twelve flight-trail styles on the same 2.5 s manoeuvre, each with a battle-zoom inset. |
 | `trails2.png` | `trails2.html` | Trails round 2: thin taper, inner-wingtip vortex, Mach diamonds, line-to-dots, ripples; and nine ally / enemy colour pairs over the topo fields. |
 | `palettes.png` | `palettes.html` | Sixteen colour palettes (teams, shield, energy, fields, background) on a small scene, plus eight trail-colour variants. |
+| `mapcolours.png` | `mapcolours.html` | Twenty-four background and field colour pairs (light, mono, earthy, dark) on the small scene, teams fixed, enemies outlined. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow
