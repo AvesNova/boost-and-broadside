@@ -14,6 +14,7 @@ is generated from the source next to it.
 | `test.png` | `test.html` + `scene.js` | Visibility test scene: all 16 cases of the `perception.py` rules, labelled, with hidden enemies outlined. |
 | `test-topo.png` | `test-topo.html` + `scene.js` | The visibility test scene drawn with the topographic contours (linear bands, bold core edge, high-index arena edge). |
 | `test-lemon.png` | `test-lemon.html` + `scene.js` | The topo test scene with lemon and ice fields (both ways round), green / magenta outlined ships, shield / energy rings and trails. |
+| `fogdark.png` | `fogdark.html` + `scene.js` | The lemon / ice scene with the fog darkened to six brightness levels (90% to 40%), saturation kept. |
 | `styles.png` | `styles.html` + `scene.js` + `styles.js` | The same test scene in nine visual styles, as a player would see it. |
 | `index.png` | `index.html` + `scene.js` | Six ways to show each field's refractive index. |
 | `patterns.png` | `patterns.html` | Sixteen pattern families across the four index levels, under fog and at battle zoom. |
