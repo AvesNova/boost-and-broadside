@@ -17,6 +17,7 @@ is generated from the source next to it.
 | `index.png` | `index.html` + `scene.js` | Six ways to show each field's refractive index. |
 | `patterns.png` | `patterns.html` | Sixteen pattern families across the four index levels, under fog and at battle zoom. |
 | `contours.png` | `contours.html` + `scene.js` | Contour-ring variants, and true index contours on the test scene. |
+| `shields.png` | `shields.html` | Twelve shield displays (ring at the hitbox) and eight energy displays, swept full to empty, with regeneration or boosting and battle zoom. |
 | `map-contours.png` | `map-contours.html` | **Current favourite.** Example map drawn as a topographic map of the refractive index. |
 
 ## Rules the scenes follow

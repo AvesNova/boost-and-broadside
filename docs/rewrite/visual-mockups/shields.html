@@ -1,0 +1,60 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}h2{font-size:20px;margin:0;padding:6px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}canvas{margin:0 30px 24px;border-radius:10px;border:1px solid #D5DAE1;display:block}
+</style></head><body>
+<h1>Shields and energy — display options</h1>
+<p class="sub">Ships use the Arrow-Komet silhouette; the ring sits at the hitbox radius. Columns sweep the value; the last columns show regeneration and battle zoom.</p>
+<h2>Shields</h2><canvas id="s"></canvas>
+<h2>Energy (the store that plays the role of altitude)</h2><canvas id="e"></canvas>
+<script>
+const BLUE='#2F6FD0',INK='#2A2F3A',BG='#F6F7F9',WARN='#D7263D',EN='#3A4150';
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+function ship(c,x,y,sc,col,o={}){c.save();c.translate(x,y);c.rotate(o.rot||0);c.scale(sc,sc);c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();
+ if(o.fillTo!=null){c.save();c.clip();c.fillStyle=col;c.globalAlpha=.25;c.fillRect(-60,-60,120,120);c.globalAlpha=1;c.fillRect(-60,36-86*o.fillTo,120,200);c.restore();c.strokeStyle=col;c.lineWidth=2/sc;c.stroke()}
+ else{c.fillStyle=col;c.fill()}
+ if(o.outline){c.strokeStyle=o.outline;c.lineWidth=(o.ow||3)/sc;c.stroke()}c.restore()}
+const A0=-Math.PI/2; // nose up
+function arc(c,x,y,r,a0,a1,col,w,dash,alpha=1){c.beginPath();c.arc(x,y,r,a0,a1);c.strokeStyle=col;c.lineWidth=w;c.setLineDash(dash||[]);c.globalAlpha=alpha;c.stroke();c.setLineDash([]);c.globalAlpha=1}
+// ---------- shield rows: f(c,x,y,R,s,st) with s in [0,1]; st: 'regen' | undefined
+const SH=[
+ ['1. Fading ring','opacity follows shield',(c,x,y,R,s)=>{if(s>0)arc(c,x,y,R,0,7,BLUE,3,null,.15+.85*s)}],
+ ['2. Arc bar (clockwise)','drains from the nose, clockwise',(c,x,y,R,s)=>{arc(c,x,y,R,0,7,BLUE,3,null,.12);if(s>0)arc(c,x,y,R,A0,A0+2*Math.PI*s,BLUE,3)}],
+ ['3. Arc bar from the tail','shrinks symmetrically toward the nose',(c,x,y,R,s)=>{arc(c,x,y,R,0,7,BLUE,3,null,.12);if(s>0)arc(c,x,y,R,A0-Math.PI*s,A0+Math.PI*s,BLUE,3)}],
+ ['4. Segments','6 pips, each one sixth of the shield',(c,x,y,R,s)=>{const n=6,g=.18;for(let i=0;i<n;i++){const a=A0+i*2*Math.PI/n+g/2,b=A0+(i+1)*2*Math.PI/n-g/2;const f=Math.max(0,Math.min(1,s*n-i));arc(c,x,y,R,a,b,BLUE,3,null,.12);if(f>0)arc(c,x,y,R,a,a+(b-a)*f,BLUE,3)}}],
+ ['5. Solid → dashed → dotted','line style degrades with level',(c,x,y,R,s)=>{if(s<=0)return;const d=s>.75?null:s>.5?[9,4]:s>.25?[4,5]:[1.5,6];c.lineCap='round';arc(c,x,y,R,0,7,BLUE,3,d);c.lineCap='butt'}],
+ ['6. Thickness','ring thins as the shield drops',(c,x,y,R,s)=>{if(s>0)arc(c,x,y,R,0,7,BLUE,.6+5*s)}],
+ ['7. Bubble','filled disc, alpha follows shield',(c,x,y,R,s)=>{if(s>0){c.beginPath();c.arc(x,y,R,0,7);c.fillStyle=BLUE;c.globalAlpha=.22*s;c.fill();c.globalAlpha=1;arc(c,x,y,R,0,7,BLUE,1.2,null,.3+.5*s)}}],
+ ['8. Facets','hexagonal facets that drop out',(c,x,y,R,s)=>{const n=12;for(let i=0;i<n;i++){const on=i<Math.round(s*n);const a=A0+i*2*Math.PI/n,b=a+2*Math.PI/n;c.beginPath();c.moveTo(x+R*Math.cos(a),y+R*Math.sin(a));c.lineTo(x+R*Math.cos(b),y+R*Math.sin(b));c.strokeStyle=BLUE;c.lineWidth=3;c.globalAlpha=on?1:.1;c.stroke();c.globalAlpha=1}}],
+ ['9. Double ring','inner ring = first half, outer = second',(c,x,y,R,s)=>{const o=Math.max(0,Math.min(1,s*2-1)),i=Math.min(1,s*2);if(i>0)arc(c,x,y,R-4,A0,A0+2*Math.PI*i,BLUE,2);if(o>0)arc(c,x,y,R+2,A0,A0+2*Math.PI*o,BLUE,2);arc(c,x,y,R-4,0,7,BLUE,2,null,.08);arc(c,x,y,R+2,0,7,BLUE,2,null,.08)}],
+ ['10. Ticks','clock ticks around the hitbox',(c,x,y,R,s)=>{const n=16;for(let i=0;i<n;i++){const a=A0+i*2*Math.PI/n;const on=i<Math.round(s*n);c.beginPath();c.moveTo(x+(R-3)*Math.cos(a),y+(R-3)*Math.sin(a));c.lineTo(x+(R+3)*Math.cos(a),y+(R+3)*Math.sin(a));c.strokeStyle=BLUE;c.lineWidth=2;c.globalAlpha=on?1:.12;c.stroke();c.globalAlpha=1}}],
+ ['11. Exposed core warning','at 0: ship outlined in warning red',(c,x,y,R,s)=>{if(s>0)arc(c,x,y,R,A0,A0+2*Math.PI*s,BLUE,3)},'warn'],
+ ['12. Hit-direction flash','the arc facing the hit flashes, then drains',(c,x,y,R,s)=>{if(s>0)arc(c,x,y,R,0,7,BLUE,3,null,.25+.75*s);const h=-Math.PI*.15;arc(c,x,y,R+5,h-.45,h+.45,'#FFFFFF',5);arc(c,x,y,R+5,h-.45,h+.45,BLUE,2.5)}],
+];
+const SCOLS=[['100%',1],['75%',.75],['50%',.5],['25%',.25],['0% (exposed)',0],['regenerating','delay then refill',.4,'regen'],['battle zoom','50% · 0%',0,'small']];
+function sheet(id,rows,cols,draw){const LW=250,CW=150,RH=96,TOP=56,W=LW+CW*cols.length+10,H=TOP+RH*rows.length+10;const cv=document.getElementById(id);cv.width=W;cv.height=H;const c=cv.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,W,H);
+ cols.forEach((col,i)=>{const x=LW+i*CW;c.font='bold 13px Inter,Arial';c.fillStyle=INK;c.fillText(col[0],x+16,24);if(col.length>2&&typeof col[1]==='string'){c.font='12px Inter,Arial';c.fillStyle='#5A6272';c.fillText(col[1],x+16,40)}});
+ rows.forEach((row,r)=>{const y=TOP+r*RH;if(r){c.fillStyle='#EEF0F3';c.fillRect(14,y-4,W-28,1)}c.fillStyle=INK;c.font='bold 14px Inter,Arial';c.fillText(row[0],20,y+38);c.font='12px Inter,Arial';c.fillStyle='#5A6272';c.fillText(row[1],20,y+56);
+  cols.forEach((col,i)=>{const cx=LW+i*CW+CW/2,cy=y+RH/2-4;c.fillStyle=BG;c.beginPath();c.roundRect(cx-60,cy-42,120,84,8);c.fill();draw(c,row,col,cx,cy)})});}
+sheet('s',SH,SCOLS,(c,row,col,x,y)=>{const R=27;
+ if(col[3]==='small'){[[x-26,.5],[x+26,0]].forEach(([xx,s])=>{c.save();c.translate(xx,y);c.scale(.42,.42);row[2](c,0,0,R,s);ship(c,0,0,.36,BLUE,s===0&&row[3]==='warn'?{outline:WARN,ow:4}:{});c.restore()});return}
+ const s=col[3]==='regen'?col[2]:col[1];row[2](c,x,y,R,s);
+ if(col[3]==='regen'){// refill sweep marker and a small delay timer
+   arc(c,x,y,R+6,A0,A0+2*Math.PI*.7,'#9AA3B2',1.5,[2,3]);c.font='11px Inter,Arial';c.fillStyle='#5A6272';c.textAlign='center';c.fillText('+',x+R+10,y-R+4);c.textAlign='left'}
+ ship(c,x,y,.36,BLUE,s===0&&row[3]==='warn'?{outline:WARN,ow:3}:{})});
+// ---------- energy rows
+const ER=[
+ ['1. Inner arc','second, inner ring in graphite',(c,x,y,R,e)=>{arc(c,x,y,R,A0,A0+2*Math.PI*.75,BLUE,3);arc(c,x,y,R-6,0,7,EN,2,null,.1);if(e>0)arc(c,x,y,R-6,A0,A0+2*Math.PI*e,EN,2)}],
+ ['2. Split ring','left half shield, right half energy',(c,x,y,R,e)=>{arc(c,x,y,R,Math.PI/2+.12,Math.PI*1.5-.12,BLUE,3,null,.12);arc(c,x,y,R,Math.PI*1.5-.12-(Math.PI-.24)*.75,Math.PI*1.5-.12,BLUE,3);arc(c,x,y,R,-Math.PI/2+.12,Math.PI/2-.12,EN,3,null,.12);if(e>0)arc(c,x,y,R,-Math.PI/2+.12,-Math.PI/2+.12+(Math.PI-.24)*e,EN,3)}],
+ ['3. Contrail length','energy as trail: high = long, bright trail',(c,x,y,R,e)=>{arc(c,x,y,R,A0,A0+2*Math.PI*.75,BLUE,3);const L=8+48*e;const g=c.createLinearGradient(x,y+12,x,y+12+L);g.addColorStop(0,'rgba(47,111,208,.6)');g.addColorStop(1,'rgba(47,111,208,0)');c.strokeStyle=g;c.lineWidth=2+3*e;c.beginPath();c.moveTo(x,y+12);c.lineTo(x,y+12+L);c.stroke()},'trail'],
+ ['4. Altitude tape','small vertical bar beside the ship',(c,x,y,R,e)=>{arc(c,x,y,R,A0,A0+2*Math.PI*.75,BLUE,3);c.fillStyle='rgba(58,65,80,.12)';c.fillRect(x+R+8,y-20,5,40);c.fillStyle=EN;c.fillRect(x+R+8,y+20-40*e,5,40*e)}],
+ ['5. Silhouette fill','the ship fills from tail to nose',(c,x,y,R,e)=>{arc(c,x,y,R,A0,A0+2*Math.PI*.75,BLUE,3)},'fill'],
+ ['6. Engine glow','glow at the tail grows with energy',(c,x,y,R,e)=>{arc(c,x,y,R,A0,A0+2*Math.PI*.75,BLUE,3);if(e>0){const g=c.createRadialGradient(x,y+12,0,x,y+12,4+14*e);g.addColorStop(0,'rgba(255,190,80,.95)');g.addColorStop(1,'rgba(255,190,80,0)');c.fillStyle=g;c.beginPath();c.arc(x,y+12,4+14*e,0,7);c.fill()}}],
+ ['7. Halo ladder','chevrons above the ship, one per quarter',(c,x,y,R,e)=>{arc(c,x,y,R,A0,A0+2*Math.PI*.75,BLUE,3);for(let i=0;i<4;i++){const on=i<Math.round(e*4);const yy=y-R-6-i*6;c.beginPath();c.moveTo(x-6,yy+3);c.lineTo(x,yy);c.lineTo(x+6,yy+3);c.strokeStyle=EN;c.lineWidth=1.6;c.globalAlpha=on?1:.12;c.stroke();c.globalAlpha=1}}],
+ ['8. Ring thickness = energy','shield arc length, energy line weight',(c,x,y,R,e)=>{arc(c,x,y,R,0,7,BLUE,1,null,.12);arc(c,x,y,R,A0,A0+2*Math.PI*.75,BLUE,1+5*e)}],
+];
+const ECOLS=[['100%',1],['75%',.75],['50%',.5],['25%',.25],['0% (empty)',0],['boosting','mid-drain (50%)',.5,'boost'],['battle zoom','100% · 25%',0,'small']];
+sheet('e',ER,ECOLS,(c,row,col,x,y)=>{const R=27;const one=(xx,yy,e,sc)=>{c.save();c.translate(xx,yy);c.scale(sc,sc);row[2](c,0,0,R,e);ship(c,0,0,.36,BLUE,row[3]==='fill'?{fillTo:e}:{});c.restore()};
+ if(col[3]==='small'){one(x-26,y,1,.42);one(x+26,y,.25,.42);return}
+ const e=col[3]==='boost'?col[2]:col[1];one(x,y,e,1);
+});
+</script></body></html>
