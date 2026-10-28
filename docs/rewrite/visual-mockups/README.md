@@ -12,6 +12,7 @@ is generated from the source next to it.
 | `ships.png` … `ships6.png` | `ships.py` … `ships6.py` | Six rounds of 16 ship silhouettes, each at 24 px and 12 px in both team colours; from set 3 on, also 12 px at other headings. |
 | `fields.png` | `fields.html` | Field and fog options A–J: opaque looks, lifted looks (ally inside), fog treatments, sight shadows. |
 | `test.png` | `test.html` + `scene.js` | Visibility test scene: all 16 cases of the `perception.py` rules, labelled, with hidden enemies outlined. |
+| `test-topo.png` | `test-topo.html` + `scene.js` | The visibility test scene drawn with the topographic contours (linear bands, bold core edge, high-index arena edge). |
 | `styles.png` | `styles.html` + `scene.js` + `styles.js` | The same test scene in nine visual styles, as a player would see it. |
 | `index.png` | `index.html` + `scene.js` | Six ways to show each field's refractive index. |
 | `patterns.png` | `patterns.html` | Sixteen pattern families across the four index levels, under fog and at battle zoom. |

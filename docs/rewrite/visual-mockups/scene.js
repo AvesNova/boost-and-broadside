@@ -55,9 +55,9 @@ function mkPattern(fn,size=12){const p=document.createElement('canvas');p.width=
 // draw terrain (always known) for a style
 function drawTerrain(c,S){
  c.fillStyle=S.outside;c.fillRect(0,0,SW,SH);
- const A=ARENA;capPath(c,A[0],A[1],A[2],A[3],A[4]+60);c.fillStyle=S.damage;c.fill();
+ const A=ARENA;capPath(c,A[0],A[1],A[2],A[3],A[4]+(S.damageR||60));c.fillStyle=S.damage;c.fill();
  if(S.damageHatch){c.save();c.clip();c.fillStyle=c.createPattern(mkPattern((p,s)=>{p.strokeStyle=S.damageHatch;p.lineWidth=3;p.beginPath();p.moveTo(0,s);p.lineTo(s,0);p.stroke()},12),'repeat');c.fillRect(0,0,SW,SH);c.restore()}
- capPath(c,A[0],A[1],A[2],A[3],A[4]+30);c.fillStyle=S.edge;c.fill();
+ capPath(c,A[0],A[1],A[2],A[3],A[4]+(S.edgeR||30));c.fillStyle=S.edge;c.fill();
  capPath(c,A[0],A[1],A[2],A[3],A[4]);c.fillStyle=S.arena;c.fill();if(S.arenaLine){c.strokeStyle=S.arenaLine;c.lineWidth=1.5;c.stroke()}
  if(S.grid){c.save();capPath(c,A[0],A[1],A[2],A[3],A[4]);c.clip();c.strokeStyle=S.grid;c.lineWidth=1;for(let x=0;x<SW;x+=40){c.beginPath();c.moveTo(x,0);c.lineTo(x,SH);c.stroke()}for(let y=0;y<SH;y+=40){c.beginPath();c.moveTo(0,y);c.lineTo(SW,y);c.stroke()}c.restore()}
  if(S.indexMap)c.drawImage(indexMap(S),0,0);
@@ -115,8 +115,11 @@ function render(canvas,S,opt={}){const c=canvas.getContext('2d');const scale=can
  drawStructures(c,S);drawUnits(c,S,opt);c.restore()}
 
 // composed refractive index, union rule from field_physics.compose_refractive_index
-function lnIndexAt(x,y){let prod=1,wsum=0,lsum=0;for(const f of FIELDS){const d=segDist(x,y,f.x0,f.y0,f.x1,f.y1)-(f.r-f.w/2)-f.w/2;
- const z=Math.max(0,Math.min(1,.5-d/f.w));const a=z*z*z*(z*(6*z-15)+10);prod*=1-a;wsum+=a;lsum+=a*f.lv*Math.log(Math.SQRT2)}
+let LINEAR_BW=0; // 0: smootherstep bands as in the physics; >0: linear ramp, band = LINEAR_BW * |level| outward from the core
+function lnIndexAt(x,y){let prod=1,wsum=0,lsum=0;const add=(a,lv)=>{prod*=1-a;wsum+=a;lsum+=a*lv*Math.log(Math.SQRT2)};
+ for(const f of FIELDS){let a;if(LINEAR_BW){const d=segDist(x,y,f.x0,f.y0,f.x1,f.y1)-f.core;a=Math.max(0,Math.min(1,1-d/(LINEAR_BW*Math.abs(f.lv))))}
+  else{const d=segDist(x,y,f.x0,f.y0,f.x1,f.y1)-(f.r-f.w/2)-f.w/2;const z=Math.max(0,Math.min(1,.5-d/f.w));a=z*z*z*(z*(6*z-15)+10)}add(a,f.lv)}
+ if(LINEAR_BW){const de=segDist(x,y,ARENA[0],ARENA[1],ARENA[2],ARENA[3])-ARENA[4];add(Math.max(0,Math.min(1,de/(2*LINEAR_BW))),2)}
  const A=1-prod;return wsum>0?A*lsum/wsum:0}
 function mixHex(a,b,t){const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));const A=p(a),B=p(b);return A.map((v,i)=>Math.round(v+(B[i]-v)*t))}
 const IMAPS={};
@@ -129,11 +132,11 @@ function indexMap(S){const k=S.name;if(IMAPS[k])return IMAPS[k];const m=document
 const CMAPS={};
 function contourMap(S){const k=S.name;if(CMAPS[k])return CMAPS[k];const m=document.createElement('canvas');m.width=SW;m.height=SH;const c=m.getContext('2d');
  const g=1.5,nx=Math.ceil(SW/g)+1,ny=Math.ceil(SH/g)+1,L=new Float32Array(nx*ny),step=Math.log(Math.SQRT2)/S.perLevel;
- for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)L[j*nx+i]=inArena(i*g,j*g)?lnIndexAt(i*g,j*g)/step:0;
- if(S.terrace){const img=c.createImageData(SW,SH);for(let y=0;y<SH;y++)for(let x=0;x<SW;x++){const v=L[Math.round(y/g)*nx+Math.round(x/g)];const q=Math.trunc(v+Math.sign(v)*.5);if(!q)continue;
+ for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)L[j*nx+i]=(LINEAR_BW||inArena(i*g,j*g))?lnIndexAt(i*g,j*g)/step:0;
+ if(S.terrace){const img=c.createImageData(SW,SH);for(let y=0;y<SH;y++)for(let x=0;x<SW;x++){if(LINEAR_BW&&segDist(x,y,ARENA[0],ARENA[1],ARENA[2],ARENA[3])>ARENA[4]+2*LINEAR_BW)continue;const v=L[Math.round(y/g)*nx+Math.round(x/g)];const q=S.wholeLevels?Math.sign(v)*Math.floor(Math.abs(v)+.02):Math.trunc(v+Math.sign(v)*.5);if(!q)continue;
    const t=Math.min(1,Math.abs(q)/(2*S.perLevel));const col=mixHex(S.arena,q<0?S.lowCol:S.highCol,t*S.terrace);const p=4*(y*SW+x);img.data[p]=col[0];img.data[p+1]=col[1];img.data[p+2]=col[2];img.data[p+3]=255}c.putImageData(img,0,0)}
- for(let k=-2*S.perLevel;k<=2*S.perLevel;k++){if(!k)continue;const major=k%S.perLevel===0;const lev=k-Math.sign(k)*.5;
-  c.strokeStyle=lev<0?S.lowInk:S.highInk;c.lineWidth=major?S.majorW:S.minorW;if(lev<0&&S.lowDash)c.setLineDash(S.lowDash);c.beginPath();
+ for(let k=-2*S.perLevel;k<=2*S.perLevel;k++){if(!k)continue;const major=k%S.perLevel===0;const lev=k-Math.sign(k)*(S.wholeLevels?.02:.5);
+  c.strokeStyle=lev<0?S.lowInk:S.highInk;c.lineWidth=(major&&!S.wholeLevels)?S.majorW:S.minorW;if(lev<0&&S.lowDash)c.setLineDash(S.lowDash);c.beginPath();
   for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){const a=L[j*nx+i],b=L[j*nx+i+1],cc=L[(j+1)*nx+i+1],d=L[(j+1)*nx+i];
    const pts=[];const e=(p,q,x0,y0,x1,y1)=>{if((p<lev)!==(q<lev)){const t=(lev-p)/(q-p);pts.push([(x0+(x1-x0)*t)*g,(y0+(y1-y0)*t)*g])}};
    e(a,b,i,j,i+1,j);e(b,cc,i+1,j,i+1,j+1);e(d,cc,i,j+1,i+1,j+1);e(a,d,i,j,i,j+1);
