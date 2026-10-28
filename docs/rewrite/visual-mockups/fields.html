@@ -1,0 +1,86 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:28px 30px 4px} p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(4,420px);gap:14px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}
+.card h3{margin:0;padding:10px 14px 2px;font-size:16px}.card div{padding:0 14px 10px;font-size:12.5px;color:#5A6272;height:34px}
+canvas{display:block}
+</style></head><body>
+<h1>Fields and fog of war — options A to J</h1><p class="sub">Blue team's view. Flat style. Thin air = cool tint, thick air = violet. Ships use the Arrow-Komet silhouette.</p>
+<div class="grid" id="g"></div>
+<script>
+const W=420,H=300,BLUE='#2F6FD0',ORANGE='#E07B2E',BG='#F4F6F8',THIN='#6FBFD9',THICK='#8E82B8';
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+function rng(s){return()=>{s=(s*16807)%2147483647;return s/2147483647}}
+function capPath(c,f,ext=0){const[x0,y0,x1,y1,r0]=f,r=r0+ext,a=Math.atan2(y1-y0,x1-x0);c.beginPath();c.arc(x1,y1,r,a-Math.PI/2,a+Math.PI/2);c.arc(x0,y0,r,a+Math.PI/2,a+3*Math.PI/2);c.closePath()}
+function ship(c,x,y,deg,col,o={}){c.save();c.translate(x,y);c.rotate(deg*Math.PI/180);c.scale(.26,.26);c.beginPath();
+ const pts=SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b]));pts.forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();
+ if(o.ghost){c.setLineDash([8,8]);c.lineWidth=5;c.strokeStyle=col;c.globalAlpha=.8;c.stroke()}else{c.fillStyle=col;c.fill()}c.restore()}
+function turret(c,x,y,col){c.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i+Math.PI/6;c.lineTo(x+10*Math.cos(a),y+10*Math.sin(a))}c.closePath();c.fillStyle=col;c.fill();c.beginPath();c.arc(x,y,3,0,7);c.fillStyle='#fff';c.fill()}
+function pattern(kind){const p=document.createElement('canvas');p.width=p.height=12;const c=p.getContext('2d');
+ if(kind==='thin'){c.strokeStyle='rgba(40,120,150,.35)';c.lineWidth=1.5;c.beginPath();c.moveTo(0,3);c.lineTo(7,3);c.moveTo(5,9);c.lineTo(12,9);c.stroke()}
+ else{c.fillStyle='rgba(60,45,110,.35)';[[3,3],[9,9]].forEach(([x,y])=>{c.beginPath();c.arc(x,y,1.4,0,7);c.fill()})}return p}
+// style: {fill alpha, band, pattern, noise, lifted:set of field idx, glow:set}
+function drawField(c,f,kind,st,idx){const col=kind==='thin'?THIN:THICK;const lifted=st.lifted&&st.lifted.includes(idx);
+ // see-through edge band
+ for(let k=4;k>=1;k--){capPath(c,f,k*4);c.globalAlpha=.07;c.fillStyle=col;c.fill()}c.globalAlpha=1;
+ capPath(c,f);c.globalAlpha=lifted?.18:(st.alpha||.55);c.fillStyle=col;c.fill();c.globalAlpha=1;
+ if(st.pattern){c.save();capPath(c,f);c.clip();c.globalAlpha=lifted?.5:1;c.fillStyle=c.createPattern(pattern(kind),'repeat');
+   if(kind==='thin'){const a=Math.atan2(f[3]-f[1],f[2]-f[0]);c.translate(f[0],f[1]);c.rotate(a);c.fillRect(-300,-300,900,900)}else c.fillRect(0,0,W,H);c.restore()}
+ if(st.noise&&!lifted){c.save();capPath(c,f);c.clip();const r=rng(7+idx);for(let i=0;i<90;i++){c.beginPath();c.arc(f[0]+(f[2]-f[0])*r()+(r()-.5)*2*f[4],f[1]+(f[3]-f[1])*r()+(r()-.5)*2*f[4],6+r()*14,0,7);c.fillStyle=`rgba(255,255,255,${.08+r()*.12})`;c.fill()}c.restore()}
+ if(st.glow&&st.glow.includes(idx)){c.save();capPath(c,f,1);c.shadowColor=BLUE;c.shadowBlur=14;c.strokeStyle=BLUE;c.lineWidth=2.5;c.stroke();c.restore()}
+ else{capPath(c,f);c.strokeStyle=col;c.globalAlpha=.9;c.lineWidth=1.2;c.stroke();c.globalAlpha=1}}
+// geometry for line of sight
+function segDist(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy||1;let t=((px-ax)*dx+(py-ay)*dy)/l;t=Math.max(0,Math.min(1,t));return Math.hypot(px-ax-t*dx,py-ay-t*dy)}
+function segSeg(a,b,c,d){// min distance between segments ab and cd
+ const cr=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+ if(cr(a,b,c)*cr(a,b,d)<0&&cr(c,d,a)*cr(c,d,b)<0)return 0;
+ return Math.min(segDist(a[0],a[1],c[0],c[1],d[0],d[1]),segDist(b[0],b[1],c[0],c[1],d[0],d[1]),segDist(c[0],c[1],a[0],a[1],b[0],b[1]),segDist(d[0],d[1],a[0],a[1],b[0],b[1]))}
+function inside(p,f){return segDist(p[0],p[1],f[0],f[1],f[2],f[3])<f[4]}
+function los(o,p,fields){for(const f of fields){const io=inside(o,f),ip=inside(p,f);if(io&&ip)continue;if(io!==ip)return false;if(segSeg(o,p,[f[0],f[1]],[f[2],f[3]])<f[4])return false}return true}
+function seen(m,e){return m.getContext('2d').getImageData(Math.round(e[0]),Math.round(e[1]),1,1).data[3]>128}
+function visMask(allies,fields,R,soft,shadows){const m=document.createElement('canvas');m.width=W;m.height=H;const c=m.getContext('2d');const img=c.createImageData(W,H);
+ for(let y=0;y<H;y+=1)for(let x=0;x<W;x+=1){let v=0;for(const a of allies){const d=Math.hypot(x-a[0],y-a[1]);let k=soft?Math.max(0,Math.min(1,(R-d)/45)):(d<R?1:0);if(k>v&&(!shadows||los(a,[x,y],fields)))v=k}
+  const i=4*(y*W+x);img.data[i+3]=v*255}c.putImageData(img,0,0);return m}
+function panel(title,desc,draw){const card=document.createElement('div');card.className='card';card.innerHTML=`<h3>${title}</h3><div>${desc}</div>`;const cv=document.createElement('canvas');cv.width=W;cv.height=H;card.appendChild(cv);document.getElementById('g').appendChild(card);draw(cv.getContext('2d'))}
+const FA=[[140,120,290,165,40],[50,245,270,262,22]],KA=['thick','thin'];
+function terrain(c,st,fields=FA,kinds=KA){c.fillStyle=BG;c.fillRect(0,0,W,H);fields.forEach((f,i)=>drawField(c,f,kinds[i],st,i));turret(c,370,60,ORANGE);turret(c,40,40,BLUE)}
+// --- field look panels
+panel('A. Frosted slab','Opaque: flat tint by type; the see-through edge band is a soft gradient.',c=>{terrain(c,{alpha:.6});ship(c,70,90,40,BLUE);ship(c,350,230,-120,ORANGE)});
+panel('B. Type by pattern','Opaque: streaks along thin air (fast lane), stipple in thick air. Colour-blind safe.',c=>{terrain(c,{alpha:.45,pattern:1});ship(c,70,90,40,BLUE);ship(c,350,230,-120,ORANGE)});
+panel('C. Cloud-like','Opaque: soft noise texture in the fill. More atmosphere, less flat.',c=>{terrain(c,{alpha:.6,noise:1});ship(c,70,90,40,BLUE);ship(c,350,230,-120,ORANGE)});
+panel('D. The lid lifts','Visible: an ally is inside the thick field, so the fill fades and the enemy inside shows.',c=>{terrain(c,{alpha:.45,pattern:1,lifted:[0]});ship(c,170,140,70,BLUE);ship(c,265,150,-110,ORANGE);ship(c,70,90,40,BLUE)});
+panel('E. Ally rim glow','Visible: the field glows in team colour — "we have eyes in here".',c=>{terrain(c,{alpha:.45,pattern:1,lifted:[0],glow:[0]});ship(c,170,140,70,BLUE);ship(c,265,150,-110,ORANGE);ship(c,70,90,40,BLUE)});
+const FF=[[120,110,230,150,42],[230,170,330,200,40],[50,255,270,265,20]],KF=['thick','thick','thin'];
+panel('F. Overlapping fields','Ally in the left field sees all of it; the overlapping neighbour stays opaque (enemy hidden inside).',c=>{c.fillStyle=BG;c.fillRect(0,0,W,H);drawField(c,FF[0],'thick',{alpha:.45,pattern:1,lifted:[0],glow:[0]},0);drawField(c,FF[1],'thick',{alpha:.6,pattern:1},1);drawField(c,FF[2],'thin',{alpha:.45,pattern:1},2);ship(c,150,125,60,BLUE);ship(c,300,190,-100,ORANGE,{ghost:1});c.font='11px Inter,Arial';c.fillStyle='#5A6272';c.fillText('hidden (ghost for the mock-up)',250,240)});
+// --- fog panels
+const FG=[[200,110,240,190,34],[60,250,250,262,18],[300,40,370,60,20]],KG=['thick','thin','thin'];
+const ALLIES=[[70,95,30],[95,225,-10]],ENEMIES=[[330,150,190],[230,50,160],[300,265,200],[150,170,-20]];
+function fogScene(c,opt){const T=document.createElement('canvas');T.width=W;T.height=H;const t=T.getContext('2d');terrain(t,{alpha:.45,pattern:1},FG,KG);
+ const V=document.createElement('canvas');V.width=W;V.height=H;const v=V.getContext('2d');v.drawImage(T,0,0);
+ const m=visMask(ALLIES,FG,175,opt.soft,opt.shadows);v.globalCompositeOperation='destination-in';v.drawImage(m,0,0);
+ c.filter='grayscale(1) brightness(0.86) contrast(0.9)';c.drawImage(T,0,0);c.filter='none';c.drawImage(V,0,0);
+ ENEMIES.forEach(e=>{if(seen(m,e))ship(c,e[0],e[1],e[2],ORANGE)});
+ if(opt.ring){ALLIES.forEach(a=>{c.beginPath();c.arc(a[0],a[1],175,0,7);c.strokeStyle='rgba(47,111,208,.35)';c.setLineDash([5,5]);c.stroke();c.setLineDash([])})}
+ ALLIES.forEach(a=>ship(c,a[0],a[1],a[2]+60,BLUE));if(opt.after)opt.after(c)}
+panel('G. Terrain known, units unknown','Outside vision the world is desaturated and dimmed; fields and turrets stay drawn, enemies vanish.',c=>fogScene(c,{ring:1}));
+panel('H. Sight shadows','Opaque fields cast shadows away from each ally: the ambush lanes are visible.',c=>fogScene(c,{shadows:1}));
+panel('I. Soft vision edge','Shadows plus a soft falloff at the edge of sight instead of a ring.',c=>fogScene(c,{shadows:1,soft:1}));
+function leaks(c){// tracer from a hidden enemy entering vision, reveal ping, last-seen marker
+ c.strokeStyle=ORANGE;c.lineWidth=2.4;c.lineCap='round';for(let i=0;i<5;i++){const x=300-i*26,y=232-i*14;c.beginPath();c.moveTo(x,y);c.lineTo(x-9,y-5);c.stroke()}
+ c.beginPath();c.arc(330,150,14,0,7);c.strokeStyle=ORANGE;c.lineWidth=2;c.stroke();c.beginPath();c.arc(330,150,24,0,7);c.globalAlpha=.4;c.stroke();c.globalAlpha=1;
+ c.font='11px Inter,Arial';c.fillStyle='#5A6272';c.fillText('shot reveals shooter',290,185);
+ c.strokeStyle='rgba(224,123,46,.7)';c.lineWidth=2;c.beginPath();c.moveTo(305,95);c.lineTo(315,105);c.moveTo(315,95);c.lineTo(305,105);c.stroke();c.fillText('last seen 4 s',282,120);
+ c.fillText('tracers out of the fog',190,262)}
+panel('J. Events leak through fog','Enemy tracers emerge from fog, a hit pings the shooter, optional last-seen marker.',c=>fogScene(c,{shadows:1,soft:1,after:leaks}));
+panel('Lean: A+B, D+E, G+H+I+J','All together: pattern-typed fields, lifted with a rim glow when an ally is inside, shadowed soft fog.',c=>{
+ const T=document.createElement('canvas');T.width=W;T.height=H;const t=T.getContext('2d');t.fillStyle=BG;t.fillRect(0,0,W,H);
+ const allies=[[70,95,30],[95,225,-10],[220,150,80]];FG.forEach((f,i)=>drawField(t,f,KG[i],{alpha:.45,pattern:1,lifted:[0],glow:[0]},i));turret(t,370,60,ORANGE);turret(t,40,40,BLUE);
+ const V=document.createElement('canvas');V.width=W;V.height=H;const v=V.getContext('2d');v.drawImage(T,0,0);const m=visMask(allies,FG,175,1,1);v.globalCompositeOperation='destination-in';v.drawImage(m,0,0);
+ c.filter='grayscale(1) brightness(0.86) contrast(0.9)';c.drawImage(T,0,0);c.filter='none';c.drawImage(V,0,0);
+ ENEMIES.concat([[215,120,200]]).forEach(e=>{if(seen(m,e))ship(c,e[0],e[1],e[2],ORANGE)});allies.forEach(a=>ship(c,a[0],a[1],a[2]+60,BLUE));leaks(c)});
+panel('Key','',c=>{c.fillStyle='#fff';c.fillRect(0,0,W,H);c.font='13px Inter,Arial';c.fillStyle='#2A2F3A';const rows=[
+ [THICK,'Thick air (slow, bends paths)'],[THIN,'Thin air (fast)']];rows.forEach(([col,t],i)=>{capPath(c,[30,30+i*40,60,30+i*40,12]);c.fillStyle=col;c.globalAlpha=.6;c.fill();c.globalAlpha=1;c.fillStyle='#2A2F3A';c.fillText(t,95,35+i*40)});
+ ship(c,45,120,90,BLUE);c.fillText('Blue (our team)',95,125);ship(c,45,160,90,ORANGE);c.fillText('Orange (enemy)',95,165);ship(c,45,200,90,ORANGE,{ghost:1});c.fillText('Hidden enemy (mock-up only, never in game)',95,205);
+ turret(c,45,240,ORANGE);c.fillStyle='#2A2F3A';c.fillText('Turret',95,245);c.fillStyle='#bbb';c.fillRect(33,262,24,16);c.fillStyle='#2A2F3A';c.fillText('Fog: desaturated, dimmed',95,275)});
+</script></body></html>

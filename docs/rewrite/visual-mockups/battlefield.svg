@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980" font-family="Inter,Helvetica,Arial,sans-serif">
+<defs>
+<pattern id="hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="12" height="12" fill="#B9BFC9"/><line x1="0" y1="0" x2="0" y2="12" stroke="#A3AAB6" stroke-width="5"/></pattern>
+<mask id="fog"><rect width="1600" height="980" fill="white"/>
+<circle cx="700" cy="420" r="190" fill="black"/>
+<circle cx="760" cy="510" r="190" fill="black"/>
+<circle cx="560" cy="480" r="170" fill="black"/>
+<circle cx="900" cy="610" r="170" fill="black"/>
+<circle cx="1010" cy="290" r="300" fill="black"/>
+<circle cx="180" cy="430" r="230" fill="black"/>
+<circle cx="430" cy="300" r="160" fill="black"/>
+<circle cx="470" cy="590" r="160" fill="black"/>
+<circle cx="330" cy="470" r="160" fill="black"/>
+</mask><clipPath id="arena"><path d="M 400 110 L 1200 110 A 320 320 0 0 1 1200 750 L 400 750 A 320 320 0 0 1 400 110 Z"/></clipPath></defs>
+<rect width="1600" height="980" fill="#E9ECF0"/>
+<g transform="translate(800 440) scale(0.82) translate(-800 -430)">
+<path d="M 400 20 L 1200 20 A 410 410 0 0 1 1200 840 L 400 840 A 410 410 0 0 1 400 20 Z" fill="url(#hatch)"/>
+<path d="M 400 65 L 1200 65 A 365 365 0 0 1 1200 795 L 400 795 A 365 365 0 0 1 400 65 Z" fill="#C7CCD5"/>
+<path d="M 400 110 L 1200 110 A 320 320 0 0 1 1200 750 L 400 750 A 320 320 0 0 1 400 110 Z" fill="#F6F7F9"/>
+<g clip-path="url(#arena)">
+<line x1="560" y1="240" x2="700" y2="320" stroke="#7D869A" stroke-opacity="0.3" stroke-width="84" stroke-linecap="round"/>
+<line x1="860" y1="170" x2="1010" y2="215" stroke="#7D869A" stroke-opacity="0.3" stroke-width="68" stroke-linecap="round"/>
+<line x1="905" y1="555" x2="1060" y2="515" stroke="#7D869A" stroke-opacity="0.3" stroke-width="104" stroke-linecap="round"/>
+<line x1="610" y1="660" x2="990" y2="700" stroke="#8CCFE3" stroke-opacity="0.45" stroke-width="56" stroke-linecap="round"/>
+<line x1="745" y1="395" x2="830" y2="370" stroke="#8CCFE3" stroke-opacity="0.45" stroke-width="88" stroke-linecap="round"/>
+<line x1="800" y1="455" x2="880" y2="480" stroke="#7D869A" stroke-opacity="0.3" stroke-width="80" stroke-linecap="round"/>
+<line x1="1260" y1="640" x2="1330" y2="560" stroke="#8CCFE3" stroke-opacity="0.45" stroke-width="72" stroke-linecap="round"/>
+<line x1="300" y1="250" x2="360" y2="220" stroke="#8CCFE3" stroke-opacity="0.45" stroke-width="60" stroke-linecap="round"/>
+</g>
+<circle cx="180" cy="430" r="170" fill="none" stroke="#2F6FD0" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="10 6"/>
+<rect x="154" y="404" width="52" height="52" rx="6" fill="#2F6FD0"/>
+<rect x="168" y="418" width="24" height="24" rx="3" fill="#F6F7F9"/>
+<circle cx="1420" cy="430" r="170" fill="none" stroke="#E07B2E" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="10 6"/>
+<rect x="1394" y="404" width="52" height="52" rx="6" fill="#E07B2E"/>
+<rect x="1408" y="418" width="24" height="24" rx="3" fill="#F6F7F9"/>
+<circle cx="430" cy="300" r="150" fill="none" stroke="#2F6FD0" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 6"/>
+<polygon points="442.1,307.0 430.0,314.0 417.9,307.0 417.9,293.0 430.0,286.0 442.1,293.0" fill="#2F6FD0"/><circle cx="430" cy="300" r="4" fill="#F6F7F9"/>
+<circle cx="470" cy="590" r="150" fill="none" stroke="#2F6FD0" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 6"/>
+<polygon points="482.1,597.0 470.0,604.0 457.9,597.0 457.9,583.0 470.0,576.0 482.1,583.0" fill="#2F6FD0"/><circle cx="470" cy="590" r="4" fill="#F6F7F9"/>
+<circle cx="330" cy="470" r="150" fill="none" stroke="#2F6FD0" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 6"/>
+<polygon points="342.1,477.0 330.0,484.0 317.9,477.0 317.9,463.0 330.0,456.0 342.1,463.0" fill="#2F6FD0"/><circle cx="330" cy="470" r="4" fill="#F6F7F9"/>
+<circle cx="1185" cy="255" r="150" fill="none" stroke="#E07B2E" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 6"/>
+<polygon points="1197.1,262.0 1185.0,269.0 1172.9,262.0 1172.9,248.0 1185.0,241.0 1197.1,248.0" fill="#E07B2E"/><circle cx="1185" cy="255" r="4" fill="#F6F7F9"/>
+<circle cx="1135" cy="565" r="150" fill="none" stroke="#E07B2E" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 6"/>
+<polygon points="1147.1,572.0 1135.0,579.0 1122.9,572.0 1122.9,558.0 1135.0,551.0 1147.1,558.0" fill="#E07B2E"/><circle cx="1135" cy="565" r="4" fill="#F6F7F9"/>
+<circle cx="1300" cy="390" r="150" fill="none" stroke="#E07B2E" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="6 6"/>
+<polygon points="1312.1,397.0 1300.0,404.0 1287.9,397.0 1287.9,383.0 1300.0,376.0 1312.1,383.0" fill="none" stroke="#E07B2E" stroke-width="2" stroke-dasharray="3 3"/>
+<path d="M 560 520 L 620 470 L 665 435 L 700 420" fill="none" stroke="#2F6FD0" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(700 420) rotate(-12) scale(1.3)" fill="#2F6FD0"/>
+<path d="M 960 330 L 910 360 L 880 400 L 862 428" fill="none" stroke="#E07B2E" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(860 432) rotate(150) scale(1.3)" fill="#E07B2E"/>
+<path d="M 640 600 L 700 560 L 740 525 L 760 510" fill="none" stroke="#2F6FD0" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(760 510) rotate(-35) scale(1.3)" fill="#2F6FD0"/>
+<line x1="758.3" y1="405.9" x2="767.1" y2="403.8" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="780.3" y1="403.3" x2="789.1" y2="401.5" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="801.4" y1="397.0" x2="810.2" y2="395.0" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="823.5" y1="395.1" x2="832.3" y2="393.4" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="845.2" y1="391.1" x2="854.0" y2="389.4" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="864.5" y1="377.1" x2="873.2" y2="374.9" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="885.5" y1="370.6" x2="894.2" y2="368.2" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M 780 700 L 840 660 L 880 625 L 900 610" fill="none" stroke="#2F6FD0" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 12 0 L 4 -5 L 0 -15 L -6 -15 L -5 -4 L -11 -3 L -11 3 L -5 4 L -6 15 L 0 15 L 4 5 Z" transform="translate(900 610) rotate(-30) scale(1.3)" fill="#2F6FD0"/>
+<path d="M 930 593 Q 1010 560 1050 575 T 1122 563" fill="none" stroke="#2F6FD0" stroke-width="1.5" stroke-dasharray="2 6" stroke-linecap="round"/>
+<circle cx="1050" cy="575" r="5" fill="#2F6FD0"/>
+<path d="M 380 520 L 440 500 L 500 490 L 560 480" fill="none" stroke="#2F6FD0" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 12 0 L 4 -5 L 0 -15 L -6 -15 L -5 -4 L -11 -3 L -11 3 L -5 4 L -6 15 L 0 15 L 4 5 Z" transform="translate(560 480) rotate(-8) scale(1.3)" fill="#2F6FD0"/>
+<path d="M 860 380 L 920 340 L 970 305 L 1010 290" fill="none" stroke="#2F6FD0" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 16 0 L -8 -4 L -5 0 L -8 4 Z" transform="translate(1010 290) rotate(-20) scale(1.3)" fill="#2F6FD0"/>
+<path d="M 1180 180 L 1120 215 L 1085 240" fill="none" stroke="#E07B2E" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(1085 240) rotate(155) scale(1.3)" fill="#E07B2E"/>
+<path d="M 1200 440 L 1150 470 L 1120 480" fill="none" stroke="#E07B2E" stroke-opacity=".35" stroke-width="2" stroke-linecap="round"/>
+<path d="M 16 0 L -8 -4 L -5 0 L -8 4 Z" transform="translate(1110 482) rotate(165) scale(1.3)" fill="#E07B2E"/>
+<path d="M 12 0 L 4 -5 L 0 -15 L -6 -15 L -5 -4 L -11 -3 L -11 3 L -5 4 L -6 15 L 0 15 L 4 5 Z" transform="translate(1290 520) rotate(190) scale(1.3)" fill="none" stroke="#E07B2E" stroke-width="1.2" stroke-dasharray="2 2" opacity=".7"/>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(1240 300) rotate(200) scale(1.3)" fill="none" stroke="#E07B2E" stroke-width="1.2" stroke-dasharray="2 2" opacity=".7"/>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(620 180) rotate(10) scale(1.3)" fill="none" stroke="#E07B2E" stroke-width="1.2" stroke-dasharray="2 2" opacity=".7"/>
+<g clip-path="url(#arena)"><rect width="1600" height="980" fill="#2B3240" fill-opacity=".16" mask="url(#fog)"/></g>
+<path d="M 400 110 L 1200 110 A 320 320 0 0 1 1200 750 L 400 750 A 320 320 0 0 1 400 110 Z" fill="none" stroke="#9AA2B0" stroke-width="1.5"/>
+</g>
+<text x="40" y="52" font-size="26" font-weight="700" fill="#2A2F3A">Boost and Broadside — battlefield layout (blue team view)</text>
+<text x="40" y="80" font-size="15" fill="#5A6272">Concept only. Positions, ranges and sizes are illustrative, not to scale.</text>
+<rect x="40" y="805" width="1520" height="150" rx="10" fill="#FFFFFF" stroke="#D5DAE1"/>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(70 835) scale(1.3)" fill="#2F6FD0"/>
+<text x="95" y="840" font-size="14" fill="#2A2F3A">Fighter</text>
+<path d="M 12 0 L 4 -5 L 0 -15 L -6 -15 L -5 -4 L -11 -3 L -11 3 L -5 4 L -6 15 L 0 15 L 4 5 Z" transform="translate(70 870) scale(1.3)" fill="#2F6FD0"/>
+<text x="95" y="875" font-size="14" fill="#2A2F3A">Bomber</text>
+<path d="M 16 0 L -8 -4 L -5 0 L -8 4 Z" transform="translate(70 905) scale(1.3)" fill="#2F6FD0"/>
+<text x="95" y="910" font-size="14" fill="#2A2F3A">Scout</text>
+<rect x="190" y="827" width="16" height="16" rx="3" fill="#2F6FD0"/>
+<text x="215" y="840" font-size="14" fill="#2A2F3A">Blue team</text>
+<rect x="190" y="862" width="16" height="16" rx="3" fill="#E07B2E"/>
+<text x="215" y="875" font-size="14" fill="#2A2F3A">Orange team</text>
+<rect x="356" y="821" width="28" height="28" rx="4" fill="#2A2F3A"/><rect x="364" y="829" width="12" height="12" rx="2" fill="#fff"/>
+<text x="398" y="840" font-size="14" fill="#2A2F3A">Base (win: destroy it)</text>
+<polygon points="379.5,875.5 370.0,881.0 360.5,875.5 360.5,864.5 370.0,859.0 379.5,864.5" fill="#2A2F3A"/>
+<text x="398" y="875" font-size="14" fill="#2A2F3A">Turret (flak)</text>
+<polygon points="379.5,910.5 370.0,916.0 360.5,910.5 360.5,899.5 370.0,894.0 379.5,899.5" fill="none" stroke="#2A2F3A" stroke-width="2" stroke-dasharray="3 3"/>
+<text x="398" y="910" font-size="14" fill="#2A2F3A">Destroyed turret</text>
+<line x1="668" y1="835" x2="692" y2="835" stroke="#7D869A" stroke-opacity=".3" stroke-width="20" stroke-linecap="round"/>
+<text x="715" y="840" font-size="14" fill="#2A2F3A">Thick air (slow, bends paths)</text>
+<line x1="668" y1="870" x2="692" y2="870" stroke="#8CCFE3" stroke-opacity=".45" stroke-width="20" stroke-linecap="round"/>
+<text x="715" y="875" font-size="14" fill="#2A2F3A">Thin air (fast)</text>
+<rect x="658" y="895" width="22" height="20" fill="#C7CCD5"/><rect x="680" y="895" width="22" height="20" fill="url(#hatch)"/>
+<text x="715" y="910" font-size="14" fill="#2A2F3A">Edge: thick air, then damage</text>
+<line x1="986" y1="833" x2="993" y2="833" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="997" y1="835" x2="1004" y2="835" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<line x1="1008" y1="837" x2="1015" y2="837" stroke="#2F6FD0" stroke-width="2.4" stroke-linecap="round"/>
+<text x="1035" y="840" font-size="14" fill="#2A2F3A">Fighter tracers (random spread)</text>
+<path d="M 984 875 Q 1000 860 1016 870" fill="none" stroke="#2F6FD0" stroke-width="1.5" stroke-dasharray="2 5"/><circle cx="1000" cy="866" r="4.5" fill="#2F6FD0"/>
+<text x="1035" y="875" font-size="14" fill="#2A2F3A">Bomber shell (locks, homes)</text>
+<circle cx="1000" cy="905" r="13" fill="none" stroke="#2A2F3A" stroke-width="1.5" stroke-dasharray="6 6"/>
+<text x="1035" y="910" font-size="14" fill="#2A2F3A">Weapon range</text>
+<rect x="1276" y="825" width="28" height="20" fill="#2B3240" fill-opacity=".16"/>
+<text x="1318" y="840" font-size="14" fill="#2A2F3A">Fog (team-shared vision)</text>
+<path d="M 13 0 L -9 -8 L -4 0 L -9 8 Z" transform="translate(1290 870) scale(1.3)" fill="none" stroke="#E07B2E" stroke-width="1.2" stroke-dasharray="2 2"/>
+<text x="1318" y="875" font-size="14" fill="#2A2F3A">Hidden enemy (not shown in game)</text>
+<path d="M 1274 905 L 1306 905" stroke="#2F6FD0" stroke-opacity=".35" stroke-width="2"/>
+<text x="1318" y="910" font-size="14" fill="#2A2F3A">Recent path</text>
+</svg>

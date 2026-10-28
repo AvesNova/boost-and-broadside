@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,600px);gap:16px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 0;font-size:16px}.card div{padding:2px 14px 8px;font-size:12.5px;color:#5A6272;min-height:32px}
+canvas{display:block}
+</style></head><body><h1>Showing each field's refractive index</h1>
+<p class="sub">Same test scene. Levels from the code: n = 0.5, 0.71 (thin air, faster) and 1.41, 2 (thick air, slower); ambient n = 1. F1 = 2, F2 = 1.41, F3 = 0.5, F4 = 0.71, F5 = 2, F6 = 1.41. Speed in a field is ×1/n.</p>
+<div class="grid" id="g"></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+const base=STYLES[0];
+const LOWS={'-2':'#2D9FD0','-1':'#9AD3E8'},HIGHS={'1':'#B9B0DC','2':'#6F5DAE'};
+const lvCol=f=>f.lv<0?LOWS[f.lv]:HIGHS[f.lv];
+const speed={'-2':'×2','-1':'×1.4','1':'×0.7','2':'×0.5'};
+function capOutline(c,f,ext,col,w){capPath(c,f.x0,f.y0,f.x1,f.y1,f.core+ext);c.strokeStyle=col;c.lineWidth=w;c.stroke()}
+function label(c,f,txt,col){const x=(f.x0+f.x1)/2,y=(f.y0+f.y1)/2;c.font='bold 18px Inter,Arial';c.textAlign='center';c.textBaseline='middle';c.lineWidth=4;c.strokeStyle='rgba(255,255,255,.85)';c.strokeText(txt,x,y);c.fillStyle=col;c.fillText(txt,x,y)}
+function densePat(kind,lv){const strong=Math.abs(lv)==2;return mkPattern((p,s)=>{if(kind==='thin'){p.strokeStyle='rgba(20,90,130,.5)';p.lineWidth=1.5;p.beginPath();
+  if(strong){p.moveTo(0,2);p.lineTo(8,2);p.moveTo(4,6);p.lineTo(12,6);p.moveTo(0,10);p.lineTo(8,10)}else{p.moveTo(0,3);p.lineTo(6,3)}p.stroke()}
+ else{p.fillStyle='rgba(55,40,105,.5)';(strong?[[2,2],[8,2],[5,6],[2,10],[8,10],[11,6]]:[[3,3],[9,9]]).forEach(([x,y])=>{p.beginPath();p.arc(x,y,1.3,0,7);p.fill()})}},12)}
+const MODES=[
+ {name:'A. Colour steps by level',desc:'Two shades each side: pale = mild, strong = extreme. Cyan thin, violet thick.',fieldColor:lvCol,pattern:null,coreAlpha:.6},
+ {name:'B. True index map',desc:'Paint the composed index per pixel (union rule): soft bands and overlaps blend exactly as the physics does. Dashed = opaque core.',indexMap:1,lowCol:'#2D9FD0',highCol:'#6F5DAE',coreAlpha:0,bandAlpha:0,liftAlpha:0,pattern:null,coreLine:null,
+   decor:(c,f)=>{capPath(c,f.x0,f.y0,f.x1,f.y1,f.core);c.setLineDash([5,4]);c.strokeStyle='rgba(40,40,60,.45)';c.lineWidth=1.2;c.stroke();c.setLineDash([])}},
+ {name:'C. Pattern density',desc:'Hue for direction, pattern density for strength: one streak vs three, sparse vs dense dots.',fieldColor:f=>f.kind==='thin'?'#6FBFD9':'#8E82B8',pattern:(k,f)=>densePat(k,f.lv),coreAlpha:.45},
+ {name:'D. Speed labels',desc:'Write the speed factor (×1/n) in the field. Unambiguous, but text at 50v50 zoom gets small.',fieldColor:lvCol,pattern:null,coreAlpha:.45,decor:(c,f,col)=>label(c,f,speed[f.lv],f.lv<0?'#1B6F94':'#4A3C82')},
+ {name:'E. Outline count',desc:'One rim = mild, double rim = extreme. Works in any colour scheme and under fog.',fieldColor:f=>f.kind==='thin'?'#6FBFD9':'#8E82B8',pattern:null,coreAlpha:.45,coreLine:null,
+   decor:(c,f,col)=>{const dk=f.kind==='thin'?'#1B6F94':'#4A3C82';capOutline(c,f,0,dk,1.6);if(Math.abs(f.lv)==2)capOutline(c,f,-5,dk,1.6)}},
+ {name:'F. Combined (lean)',desc:'True index map for the air itself, plus density pattern in the core so strength survives fog.',indexMap:1,lowCol:'#2D9FD0',highCol:'#6F5DAE',coreAlpha:0,bandAlpha:0,liftAlpha:0,coreLine:null,
+   pattern:(k,f)=>densePat(k,f.lv),decor:(c,f)=>{capPath(c,f.x0,f.y0,f.x1,f.y1,f.core);c.strokeStyle='rgba(40,40,60,.35)';c.lineWidth=1;c.stroke()}},
+];
+for(const M of MODES){const S=Object.assign({},base,M,{fogFilter:'grayscale(.55) brightness(.93)'});const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${M.name}</h3><div>${M.desc}</div>`;const cv=document.createElement('canvas');cv.width=600;cv.height=380;d.appendChild(cv);document.getElementById('g').appendChild(d);render(cv,S)}
+</script></body></html>

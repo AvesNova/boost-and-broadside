@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}canvas{margin:0 30px 30px;border-radius:10px;border:1px solid #D5DAE1;display:block}
+</style></head><body><h1>Example map — evenly spaced index contours</h1>
+<p class="sub">Every field ramps its index linearly, with band width proportional to its level (30 m per level), so contour lines are evenly spaced everywhere: an n = 2 field has twice the transition of an n = 1.41 field. Contours of the composed refractive index (union rule, linear bands). Thin lines every third of a level, all the same weight; lines sit at whole thirds of a level, so each field's innermost contour lands exactly on its core edge (bold), where the index reaches its full value and sight is blocked. Thin air teal, thick air violet; light stepped fill between lines. The arena edge is a high-index field too.</p>
+<canvas id="c" width="1600" height="1000"></canvas>
+<script>
+const W=1600,H=1000,AR=[480,500,1120,500,420];
+const BW=30; // band width per level: ln n changes at the same rate everywhere, so contours are evenly spaced
+const F=[ // x0,y0,x1,y1, core radius, level (exponent of sqrt 2); band = BW * |level|
+ [560,300,600,320,90,2],[700,170,1050,140,28,-2],[700,500,830,560,110,1],[1060,420,1140,600,70,-1],
+ [1290,300,1310,330,35,2],[330,770,560,805,40,-2],[640,820,700,760,55,1],[1170,800,1210,790,80,-1],
+ [330,430,330,530,30,1],[1120,230,1240,255,45,2],[960,320,990,310,25,-2],[880,810,990,820,40,1],[330,215,400,190,35,-1]];
+const STEP=Math.log(Math.SQRT2)/3;
+function segDist(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy||1;let t=((px-ax)*dx+(py-ay)*dy)/l;t=Math.max(0,Math.min(1,t));return Math.hypot(px-ax-t*dx,py-ay-t*dy)}
+const ss=z=>z*z*z*(z*(6*z-15)+10);
+function lnN(x,y){let prod=1,ws=0,ls=0;const add=(a,lv)=>{prod*=1-a;ws+=a;ls+=a*lv*Math.log(Math.SQRT2)};
+ for(const f of F){const w=BW*Math.abs(f[5]),d=segDist(x,y,f[0],f[1],f[2],f[3])-f[4];add(Math.max(0,Math.min(1,1-d/w)),f[5])}
+ const de=segDist(x,y,AR[0],AR[1],AR[2],AR[3])-AR[4];add(Math.max(0,Math.min(1,de/(2*BW))),2);// edge: high index outside, same slope
+ return ws>0?(1-prod)*ls/ws:0}
+const c=document.getElementById('c').getContext('2d');
+const g=2,nx=W/g+1,ny=H/g+1,L=new Float32Array(nx*ny);for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)L[j*nx+i]=lnN(i*g,j*g)/STEP;
+// stepped fill
+const BG=[246,247,249],LOW=[45,159,208],HIGH=[111,93,174];const img=c.createImageData(W,H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=L[Math.round(y/g)*nx+Math.round(x/g)];const q=Math.sign(v)*Math.floor(Math.abs(v)+.02);const t=Math.min(1,Math.abs(q)/6)*.55;const C=q<0?LOW:HIGH;const p=4*(y*W+x);
+ for(let k=0;k<3;k++)img.data[p+k]=Math.round(BG[k]+(C[k]-BG[k])*t);img.data[p+3]=255}
+c.putImageData(img,0,0);
+// contour lines
+for(let k=-6;k<=6;k++){if(!k)continue;const lev=k-Math.sign(k)*.02,major=k%3===0;c.strokeStyle=k<0?'rgba(30,111,147,.85)':'rgba(74,60,130,.85)';c.lineWidth=1;c.beginPath();
+ for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){const a=L[j*nx+i],b=L[j*nx+i+1],cc=L[(j+1)*nx+i+1],d=L[(j+1)*nx+i];const P=[];
+  const e=(p,q,x0,y0,x1,y1)=>{if((p<lev)!==(q<lev)){const t=(lev-p)/(q-p);P.push([(x0+(x1-x0)*t)*g,(y0+(y1-y0)*t)*g])}};
+  e(a,b,i,j,i+1,j);e(b,cc,i+1,j,i+1,j+1);e(d,cc,i,j+1,i+1,j+1);e(a,d,i,j,i,j+1);for(let q=0;q+1<P.length;q+=2){c.moveTo(P[q][0],P[q][1]);c.lineTo(P[q+1][0],P[q+1][1])}}
+ c.stroke();c.setLineDash([])}
+// one bold line per field: its core edge (where sight is blocked)
+for(const f of F){const a=Math.atan2(f[3]-f[1],f[2]-f[0]),r=f[4];c.beginPath();c.arc(f[2],f[3],r,a-Math.PI/2,a+Math.PI/2);c.arc(f[0],f[1],r,a+Math.PI/2,a+3*Math.PI/2);c.closePath();
+ c.strokeStyle=f[5]<0?'rgba(30,111,147,.95)':'rgba(74,60,130,.95)';c.lineWidth=2.4;c.stroke()}
+c.beginPath();c.arc(AR[2],AR[1],AR[4]+2*BW,-Math.PI/2,Math.PI/2);c.arc(AR[0],AR[1],AR[4]+2*BW,Math.PI/2,3*Math.PI/2);c.closePath();c.strokeStyle='rgba(74,60,130,.95)';c.lineWidth=2.4;c.stroke();
+// damage zone hatch beyond the edge
+c.save();c.beginPath();c.rect(0,0,W,H);const a=0;c.arc(AR[2],AR[1],AR[4]+60,-Math.PI/2,Math.PI/2);c.arc(AR[0],AR[1],AR[4]+60,Math.PI/2,3*Math.PI/2);c.closePath();c.clip('evenodd');
+c.strokeStyle='rgba(74,60,130,.25)';c.lineWidth=3;for(let k=-H;k<W;k+=14){c.beginPath();c.moveTo(k,H);c.lineTo(k+H,0);c.stroke()}c.restore();
+// structures and a few ships for scale
+const BLUE='#2F6FD0',OR='#E07B2E';
+function hex(x,y,col){c.beginPath();for(let i=0;i<6;i++){const t=Math.PI/3*i+Math.PI/6;c.lineTo(x+12*Math.cos(t),y+12*Math.sin(t))}c.closePath();c.fillStyle=col;c.fill();c.beginPath();c.arc(x,y,4,0,7);c.fillStyle='#fff';c.fill()}
+function base(x,y,col){c.fillStyle=col;c.beginPath();c.roundRect(x-26,y-26,52,52,6);c.fill();c.fillStyle='#fff';c.beginPath();c.roundRect(x-11,y-11,22,22,3);c.fill()}
+const SHIP=[[0,-50],[7,-32],[12,-8],[42,22],[40,30],[10,20],[7,34],[0,36]];
+function ship(x,y,deg,col){c.save();c.translate(x,y);c.rotate((deg+90)*Math.PI/180);c.scale(.3,.3);c.beginPath();SHIP.concat(SHIP.slice().reverse().map(([a,b])=>[-a,b])).forEach(([a,b],i)=>i?c.lineTo(a,b):c.moveTo(a,b));c.closePath();c.fillStyle=col;c.fill();c.restore()}
+base(170,500,BLUE);base(1430,500,OR);[[250,330],[250,680],[450,600]].forEach(p=>hex(...p,BLUE));[[1360,200],[1370,690],[1250,520]].forEach(p=>hex(...p,OR));
+[[400,360,10],[480,660,-20],[560,470,30],[640,190,0]].forEach(p=>ship(...p,BLUE));[[1000,250,190],[920,680,160],[1200,680,200],[1180,380,170]].forEach(p=>ship(...p,OR));
+// legend
+c.fillStyle='rgba(255,255,255,.92)';c.beginPath();c.roundRect(24,904,560,76,8);c.fill();c.font='13px Inter,Arial';
+const row=(y,dash,col,w,txt)=>{c.strokeStyle=col;c.lineWidth=w;c.setLineDash(dash);c.beginPath();c.moveTo(40,y);c.lineTo(90,y);c.stroke();c.setLineDash([]);c.fillStyle='#2A2F3A';c.fillText(txt,100,y+4)};
+row(924,[],'rgba(30,111,147,.9)',1,'thin air, every 1/3 level');row(944,[],'rgba(30,111,147,.9)',2.4,'thin air core edge (blocks sight)');
+row(964,[],'rgba(74,60,130,.9)',1,'thick air, every 1/3 level');c.save();c.translate(290,0);row(924,[],'rgba(74,60,130,.9)',2.4,'thick air core edge (blocks sight)');c.restore();
+c.fillStyle='#2A2F3A';c.fillText('Hatched: damage zone beyond the high-index edge',330,968);
+</script></body></html>

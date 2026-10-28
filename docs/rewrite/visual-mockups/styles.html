@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,600px);gap:16px;padding:0 30px 30px}
+.card{background:#fff;border:1px solid #D5DAE1;border-radius:10px;overflow:hidden}.card h3{margin:0;padding:10px 14px 0;font-size:16px}.card div{padding:2px 14px 8px;font-size:12.5px;color:#5A6272}
+canvas{display:block}
+</style></head><body><h1>Nine visual styles — same test scene, same rules</h1><p class="sub">Blue team's view. Exactly what a player would see (no hidden-enemy outlines).</p>
+<div class="grid" id="g"></div>
+<script src="scene.js"></script><script src="styles.js"></script><script>
+for(const S of STYLES){const d=document.createElement('div');d.className='card';d.innerHTML=`<h3>${S.name}</h3><div>${S.desc}</div>`;const cv=document.createElement('canvas');cv.width=600;cv.height=380;d.appendChild(cv);document.getElementById('g').appendChild(d);render(cv,S)}
+</script></body></html>

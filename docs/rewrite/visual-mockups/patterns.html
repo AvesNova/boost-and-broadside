@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#E9ECF0;font-family:Inter,Helvetica,Arial,sans-serif;color:#2A2F3A}
+h1{font-size:26px;margin:0;padding:26px 30px 2px}p.sub{margin:0 30px 14px;color:#5A6272;font-size:15px}canvas{margin:0 30px 30px;border-radius:10px;border:1px solid #D5DAE1}
+</style></head><body><h1>Pattern swatches for field strength</h1>
+<p class="sub">Each row is one pattern family. Columns: the four index levels (mild = sparse, extreme = dense), the same under fog, and shrunk to battle zoom.</p>
+<canvas id="c"></canvas>
+<script>
+const FAM=['Dots','Stipple','Dashes along axis','Lines along axis','Diagonal hatch','Cross-hatch','Grid','Waves','Rings','Plus signs','Honeycomb','Contour rings','Bold bands across','Checker','Zigzag','Dot + line'];
+const COLS=[['n = 0.5','×2 speed',-2],['n = 0.71','×1.4',-1],['n = 1.41','×0.7',1],['n = 2','×0.5',2],['under fog','n = 0.71',-1,'fog'],['under fog','n = 2',2,'fog'],['battle zoom','0.5 · 2',0,'small']];
+const LW=190,CW=170,RH=74,TOP=60,W=LW+CW*COLS.length+10,H=TOP+RH*FAM.length+10;
+const cv=document.getElementById('c');cv.width=W;cv.height=H;const c=cv.getContext('2d');
+c.fillStyle='#fff';c.fillRect(0,0,W,H);
+function cap(x,y,w,h){const r=h/2;c.beginPath();c.arc(x+w-r,y+r,r,-Math.PI/2,Math.PI/2);c.arc(x+r,y+r,r,Math.PI/2,3*Math.PI/2);c.closePath()}
+function rnd(s){return()=>{s=s*16807%2147483647;return s/2147483647}}
+function draw(f,x,y,w,h,s,ink){c.strokeStyle=ink;c.fillStyle=ink;c.lineWidth=1.4;c.lineCap='round';const X1=x+w,Y1=y+h;
+ const sp=(a,b)=>s==2?b:a;let g;
+ switch(f){
+ case 0:g=sp(12,7);for(let yy=y+3;yy<Y1;yy+=g)for(let xx=x+3+((yy-y)/g%2)*g/2;xx<X1;xx+=g){c.beginPath();c.arc(xx,yy,1.5,0,7);c.fill()}break;
+ case 1:{const r=rnd(5+s);for(let i=0;i<sp(45,130);i++){c.beginPath();c.arc(x+r()*w,y+r()*h,1.2,0,7);c.fill()}}break;
+ case 2:g=sp(12,6);for(let yy=y+3;yy<Y1;yy+=g){const o=((yy-y)/g%2)*7;for(let xx=x-o;xx<X1;xx+=14){c.beginPath();c.moveTo(xx,yy);c.lineTo(xx+8,yy);c.stroke()}}break;
+ case 3:g=sp(10,5);for(let yy=y+3;yy<Y1;yy+=g){c.beginPath();c.moveTo(x,yy);c.lineTo(X1,yy);c.stroke()}break;
+ case 4:g=sp(10,5);for(let k=-h;k<w;k+=g){c.beginPath();c.moveTo(x+k,Y1);c.lineTo(x+k+h,y);c.stroke()}break;
+ case 5:g=sp(12,7);for(let k=-h;k<w;k+=g){c.beginPath();c.moveTo(x+k,Y1);c.lineTo(x+k+h,y);c.moveTo(x+k,y);c.lineTo(x+k+h,Y1);c.stroke()}break;
+ case 6:g=sp(14,7);for(let xx=x;xx<X1;xx+=g){c.beginPath();c.moveTo(xx,y);c.lineTo(xx,Y1);c.stroke()}for(let yy=y;yy<Y1;yy+=g){c.beginPath();c.moveTo(x,yy);c.lineTo(X1,yy);c.stroke()}break;
+ case 7:g=sp(12,7);for(let yy=y+4;yy<Y1;yy+=g){c.beginPath();for(let xx=x;xx<=X1;xx+=2)c.lineTo(xx,yy+2.5*Math.sin((xx-x)/4));c.stroke()}break;
+ case 8:g=sp(16,10);for(let yy=y+5;yy<Y1;yy+=g)for(let xx=x+5+((yy-y)/g%2)*g/2;xx<X1;xx+=g){c.beginPath();c.arc(xx,yy,sp(3.5,2.6),0,7);c.stroke()}break;
+ case 9:g=sp(16,10);for(let yy=y+5;yy<Y1;yy+=g)for(let xx=x+5+((yy-y)/g%2)*g/2;xx<X1;xx+=g){const a=sp(3.5,2.6);c.beginPath();c.moveTo(xx-a,yy);c.lineTo(xx+a,yy);c.moveTo(xx,yy-a);c.lineTo(xx,yy+a);c.stroke()}break;
+ case 10:{const a=sp(8,4.5),dx=a*Math.sqrt(3);for(let row=0,yy=y;yy<Y1+a;row++,yy+=1.5*a)for(let xx=x+(row%2)*dx/2;xx<X1+dx;xx+=dx){c.beginPath();for(let i=0;i<6;i++){const t=Math.PI/3*i+Math.PI/6;c.lineTo(xx+a*Math.cos(t),yy+a*Math.sin(t))}c.closePath();c.stroke()}}break;
+ case 11:{for(let i=1;i<=sp(1,3);i++){const d=i*5;cap(x+d,y+d,w-2*d,h-2*d);c.stroke()}}break;
+ case 12:g=sp(18,9);for(let xx=x+4;xx<X1;xx+=g){c.fillRect(xx,y,sp(6,3.5),h)}break;
+ case 13:g=sp(10,5);for(let yy=y,i=0;yy<Y1;yy+=g,i++)for(let xx=x+(i%2)*g;xx<X1;xx+=2*g){c.globalAlpha=.55;c.fillRect(xx,yy,g,g);c.globalAlpha=1}break;
+ case 14:g=sp(12,7);for(let yy=y+4;yy<Y1;yy+=g){c.beginPath();for(let xx=x,i=0;xx<=X1;xx+=4,i++)c.lineTo(xx,yy+(i%2?2.5:-2.5));c.stroke()}break;
+ case 15:g=sp(12,7);for(let yy=y+4;yy<Y1;yy+=g){c.beginPath();c.moveTo(x,yy);c.lineTo(X1,yy);c.stroke();for(let xx=x+((yy-y)/g%2)*g/2;xx<X1;xx+=g){c.beginPath();c.arc(xx,yy+g/2,1.3,0,7);c.fill()}}break;
+ }}
+function swatch(f,x,y,w,h,lv){const thin=lv<0,fill=thin?'#6FBFD9':'#8E82B8',ink=thin?'rgba(20,90,130,.65)':'rgba(55,40,105,.65)';
+ for(let k=3;k>=1;k--){cap(x-k*3,y-k*3,w+k*6,h+k*6);c.globalAlpha=.07;c.fillStyle=fill;c.fill()}c.globalAlpha=1;
+ cap(x,y,w,h);c.globalAlpha=.42;c.fillStyle=fill;c.fill();c.globalAlpha=1;c.save();cap(x,y,w,h);c.clip();draw(f,x,y,w,h,Math.abs(lv),ink);c.restore();cap(x,y,w,h);c.strokeStyle=fill;c.lineWidth=1.2;c.stroke()}
+c.font='bold 13px Inter,Arial';c.fillStyle='#2A2F3A';
+COLS.forEach(([a,b],i)=>{const x=LW+i*CW;c.font='bold 13px Inter,Arial';c.fillText(a,x+12,26);c.font='12px Inter,Arial';c.fillStyle='#5A6272';c.fillText(b,x+12,44);c.fillStyle='#2A2F3A'});
+c.fillStyle='#F1F3F6';c.fillRect(LW+4*CW-6,TOP-6,2*CW,RH*FAM.length+6);
+FAM.forEach((name,r)=>{const y=TOP+r*RH;c.fillStyle='#2A2F3A';c.font='bold 14px Inter,Arial';c.fillText(`${r+1}. ${name}`,20,y+34);
+ if(r)c.fillStyle='#EEF0F3',c.fillRect(14,y-6,W-28,1);
+ COLS.forEach((col,i)=>{const x=LW+i*CW+12;
+  if(col[3]==='fog'){c.save();c.filter='grayscale(1) brightness(.93)';swatch(r,x,y+6,140,48,col[2]);c.restore()}
+  else if(col[3]==='small'){c.save();c.translate(x,y+20);c.scale(.4,.4);swatch(r,0,0,140,48,-2);c.restore();c.save();c.translate(x+70,y+20);c.scale(.4,.4);swatch(r,0,0,140,48,2);c.restore()}
+  else swatch(r,x,y+6,140,48,col[2])})});
+</script></body></html>
