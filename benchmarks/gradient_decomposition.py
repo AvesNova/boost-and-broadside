@@ -24,6 +24,18 @@ zero by that disjointness; the trunk is where the terms actually compete.
     uv run --no-sync python benchmarks/gradient_decomposition.py \
         --run pious-butterfly-748 --updates 3 --level reward_full \
         --output docs/internal/grad-decomposition-748.json
+
+Every update also reports its trust-region behaviour -- approximate KL, clip
+fraction, epochs completed against ``target_kl``, entropy -- so a candidate
+weight can be checked for how far it moves the policy, not only for its share.
+``--hold NAME=VALUE`` fixes a schedule entry for the measurement, which is how
+an arm is measured without editing a profile, and how a warm start is measured
+at its full learning rate rather than the first value of its warmup:
+
+    uv run --no-sync python benchmarks/gradient_decomposition.py \
+        --run checkpoints/warm-starts/bc-760-step_000050626560.pt --profile rl \
+        --pretrain --updates 5 --hold learning_rate=3e-4 \
+        --hold policy_gradient_coef=14 --hold entropy_coef=0.0042
 """
 
 from __future__ import annotations
@@ -43,6 +55,15 @@ SUMMARY_SCOPE = "trunk_top_level"
 REFERENCE_TERM = "bc"
 # The training metrics this instrument reads; everything else an update logs is
 # dropped.
+#: Per-update trust-region series kept alongside the gradient records.
+_TRUST_REGION_KEYS = (
+    "policy/kl",
+    "policy/clip_fraction",
+    "policy/ratio_max",
+    "train/epochs_completed",
+    "loss/entropy",
+    "critic/explained_variance",
+)
 _DIAGNOSTIC_PREFIXES = (
     "grad_norm/",
     "grad_share/",
@@ -74,6 +95,32 @@ def _resume_path(subject: str, checkpoint_dir: Path) -> Path:
     if subject.endswith(".pt"):
         return resolve_explicit_checkpoint(subject).path
     return select_latest_resumable_checkpoint(resolve_exact_run(subject, checkpoint_dir)).path
+
+
+def _held_profile(profile, holds: dict[str, float]):
+    """``profile`` with each named schedule entry held at a constant."""
+
+    from dataclasses import replace
+
+    from boost_and_broadside.config.schedule_spec import hold
+
+    if not holds:
+        return profile
+    unknown = sorted(set(holds) - set(vars(profile.schedule_spec)))
+    if unknown:
+        raise SystemExit(f"--hold names no schedule entry: {', '.join(unknown)}")
+    held = {name: hold(value) for name, value in holds.items()}
+    return replace(profile, schedule_spec=replace(profile.schedule_spec, **held))
+
+
+def _parse_holds(pairs: list[str]) -> dict[str, float]:
+    holds = {}
+    for pair in pairs:
+        name, sep, value = pair.partition("=")
+        if not sep:
+            raise SystemExit(f"--hold takes NAME=VALUE, got {pair!r}")
+        holds[name.strip()] = float(value)
+    return holds
 
 
 def _summarize(
@@ -204,15 +251,27 @@ def main() -> None:
             "would see it."
         ),
     )
+    parser.add_argument(
+        "--hold",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help=(
+            "Hold a schedule entry at a constant for the measurement, e.g. "
+            "learning_rate=3e-4 or policy_gradient_coef=14. Repeatable."
+        ),
+    )
     args = parser.parse_args()
+    holds = _parse_holds(args.hold)
 
     import torch
 
     from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
     from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
     from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
+    from boost_and_broadside.config.resolve import resolve_profile
     from boost_and_broadside.launch import resolve_training_launch
-    from boost_and_broadside.profiles import resolve_named_profile
+    from boost_and_broadside.profiles import named_profile_spec
     from boost_and_broadside.train.rl.ppo import PPOTrainer
 
     profile = args.profile or _run_profile(args.run, args.checkpoint_dir)
@@ -239,7 +298,9 @@ def main() -> None:
         num_envs=args.num_envs,
         microbatch_tokens=args.microbatch_tokens,
         report=print,
-        resolve=resolve_named_profile,
+        resolve=lambda name, launch_overrides=None, *, overrides=None: resolve_profile(
+            _held_profile(named_profile_spec(name, overrides), holds), launch_overrides
+        ),
         overrides={},
     )
     resolved = launch.resolved
@@ -294,8 +355,13 @@ def main() -> None:
             )
         records["loss/total"] = float(metrics.get("loss/total", float("nan")))
         records["train/gradient_norm"] = float(metrics.get("train/gradient_norm", float("nan")))
+        for key in _TRUST_REGION_KEYS:
+            records[key] = float(metrics.get(key, float("nan")))
         per_update.append(records)
-        print(f"update {index + 1}/{args.updates}  {time.perf_counter() - start:.1f}s")
+        print(
+            f"update {index + 1}/{args.updates}  {time.perf_counter() - start:.1f}s  "
+            + "  ".join(f"{key.split('/')[-1]}={records[key]:.4g}" for key in _TRUST_REGION_KEYS)
+        )
 
     mean = _mean_records(per_update)
     summary = _summarize(mean)
@@ -307,6 +373,8 @@ def main() -> None:
         "checkpoint": str(checkpoint),
         "resumed_global_step": resumed_step,
         "pretrain": args.pretrain,
+        "holds": holds,
+        "trust_region": [{key: record[key] for key in _TRUST_REGION_KEYS} for record in per_update],
         "device": torch.cuda.get_device_name(args.device) if args.device == "cuda" else "cpu",
         "torch": torch.__version__,
         "compile_mode": args.compile_mode,

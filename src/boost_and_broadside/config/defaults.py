@@ -264,9 +264,10 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
     """
 
     return TrainingScheduleSpec(
-        # BC's: warm up to 3e-4, then hold. The warmup also protects the fresh
-        # Adam moments a warm start begins with.
-        learning_rate=((0, 1e-7, "linear"), (6_000_000, 3e-4, "hold")),
+        # BC's 3e-4, held. The warmup only has to protect the fresh Adam moments
+        # a warm start begins with, which settle within an update or two; BC's
+        # 6M would leave a pilot's first 6M steps unreadable.
+        learning_rate=((0, 1e-7, "linear"), (1_000_000, 3e-4, "hold")),
         # At BC's actor weight (0.025) the warm start's policy gradient was 0.1%
         # of the trunk gradient, about 1/1000 of the auxiliaries, and mostly
         # sampling noise (half-batch signal fraction -0.81; kill_death alone

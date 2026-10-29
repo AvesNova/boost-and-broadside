@@ -2321,7 +2321,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["enemy_action_persistence_accuracy"] = persistence_accuracy.detach()
             diag["enemy_action_persistence_ce"] = persistence_ce.detach()
             diag["ratio_mean"] = (ratio * pg_f).sum() / pg_sum
-            diag["ratio_max"] = ratio.max()  # combine across chunks with max, not sum
+            # Over the tokens the surrogate trains, like ratio_mean: a dead ship's
+            # or another controller's ratio is not a step this update took.
+            # Combined across chunks with max, not sum.
+            diag["ratio_max"] = torch.where(pg_f > 0, ratio, 0.0).max()
 
             # Marginals are diagnostics only. The objective entropy above is the
             # joint categorical entropy; summing these would be wrong once the
