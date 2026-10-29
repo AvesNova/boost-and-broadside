@@ -666,6 +666,8 @@ class CheckpointMixin:
             ema_cpu_payload = clone_to_cpu(self._ema_checkpoint_payload(update))
 
         self._last_checkpoint_path = path
+        # Before the thread starts: the next rollout advances the step count.
+        archive = self._archive_every_steps(update)
 
         def _async_save():
             # Write to a temp file then rename atomically so .exists() only
@@ -689,7 +691,6 @@ class CheckpointMixin:
             # either glob.
             protected = self.roster.kept_paths()
             keep = self._keep_checkpoints
-            archive = self._archive_every_steps()
             for family in ("step_*.pt", "avg_step_*.pt", "ema_step_*.pt"):
                 _prune_checkpoint_family(ckpt_dir, family, protected, keep, archive)
 
@@ -722,12 +723,17 @@ class CheckpointMixin:
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()
         return payload
 
-    def _archive_every_steps(self) -> int | None:
-        """Global steps between archived checkpoints, or None when none are archived."""
-        if self._archive_checkpoints_every is None:
+    def _archive_every_steps(self, update: int) -> int | None:
+        """Global steps between archived checkpoints, or None when none are archived.
+
+        Read off the run's own step count rather than rebuilt from the config:
+        how many global steps an update advances depends on how the rollout
+        counts its teams and scales, and the step in each filename is the
+        ground truth the pruning rule is matched against.
+        """
+        if self._archive_checkpoints_every is None or update < 1:
             return None
-        steps_per_update = self.cfg.num_steps * sum(scale.num_envs for scale in self.cfg.scales)
-        return self._archive_checkpoints_every * steps_per_update
+        return self._archive_checkpoints_every * (self._global_step // update)
 
     def _ema_checkpoint_payload(self, update: int) -> dict:
         """Build a checkpoint payload with the EMA policy as ``policy_state_dict``.

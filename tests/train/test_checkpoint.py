@@ -677,6 +677,17 @@ class TestCheckpointRetention:
         kept = sorted(int(p.stem.split("_")[1]) // 100 for p in tmp_path.glob("step_*.pt"))
         assert kept == [10, 20, 24, 25]
 
+    def test_archive_interval_follows_the_runs_own_steps_per_update(self, tmp_path):
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        trainer._archive_checkpoints_every = 10
+        trainer._global_step = 7 * 491_520
+        assert trainer._archive_every_steps(7) == 10 * 491_520
+        trainer._archive_checkpoints_every = None
+        assert trainer._archive_every_steps(7) is None
+        trainer.shutdown()
+
     def test_prune_keeps_only_last_n_avg_checkpoints(self, tmp_path):
         from boost_and_broadside.train.rl.checkpoint import DEFAULT_KEEP_CHECKPOINTS
         from tests.train.test_ppo import _make_trainer
