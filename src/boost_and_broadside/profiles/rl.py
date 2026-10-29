@@ -117,10 +117,14 @@ RL_PROFILE = ProfileSpec(
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
     # Every term is in nats per token (see TrainConfig). The auxiliaries start
-    # at the calibrated BC weights (profiles/bc.py, 28d4688) and are re-solved
-    # against the policy gradient from a warm start's measured trunk shares.
+    # at the calibrated BC weights (profiles/bc.py, 28d4688), except
+    # enemy_action, which pilot 762 measured growing past the policy: by 19.7M
+    # its trunk norm had tripled from the warm start (0.14 -> 0.44) as the
+    # league made opponents stronger and more varied, taking 0.30 of the trunk
+    # to the policy's 0.25 (docs/internal/rl-pilot-762-19.7M-oct2026.json).
+    # Halved to put it back near 0.15 and the policy back in the lead.
     next_state_coef=0.0041,
-    enemy_action_coef=0.11,
+    enemy_action_coef=0.055,
     global_density_coef=0.021,
     shot_trajectory_coef=0.0035,
     shot_outcome_coef=0.019,

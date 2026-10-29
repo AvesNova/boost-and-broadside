@@ -65,15 +65,15 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         return {prefix} if left != right else set()
 
     assert {path.split(".")[0] for path in different_paths(rl, bc)} == {
-        # RL starts from BC's calibrated weights (profiles/rl.py), so today the
-        # objectives differ only in six schedule entries -- learning_rate (BC's
-        # longer warmup), policy_gradient_coef, behavior_cloning_coef,
-        # entropy_coef, league_fraction and target_kl -- each commented at the
-        # point of override in profiles/bc.py. RL's own calibration will add its
-        # auxiliary weights back to this set.
+        # RL starts from BC's calibrated weights (profiles/rl.py) and differs in
+        # enemy_action, halved after pilot 762, and in six schedule entries --
+        # learning_rate (BC's longer warmup), policy_gradient_coef,
+        # behavior_cloning_coef, entropy_coef, league_fraction and target_kl --
+        # each commented at the point of override in profiles/bc.py.
         #
         # ``bc_winrate_target`` is None in both: BC never withdraws cloning,
         # and RL has no cloning to withdraw.
+        "enemy_action_coef",
         "schedule",
     }
 
