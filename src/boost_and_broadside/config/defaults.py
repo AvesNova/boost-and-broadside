@@ -267,13 +267,19 @@ def make_rl_schedule_spec() -> TrainingScheduleSpec:
         # BC's: warm up to 3e-4, then hold. The warmup also protects the fresh
         # Adam moments a warm start begins with.
         learning_rate=((0, 1e-7, "linear"), (6_000_000, 3e-4, "hold")),
-        # Starts at BC's actor weight, the term the policy gradient replaces, and
-        # is re-solved from the warm start's measured shares.
-        policy_gradient_coef=hold(0.025),
+        # At BC's actor weight (0.025) the warm start's policy gradient was 0.1%
+        # of the trunk gradient, about 1/1000 of the auxiliaries, and mostly
+        # sampling noise (half-batch signal fraction -0.81; kill_death alone
+        # positive at 0.42). 27 puts it near 0.40 of the trunk with the
+        # auxiliaries at their ported weights -- the middle of three pilot arms
+        # (~0.25, ~0.40, ~0.60 -> 14, 27, 60), chosen by pilot rather than by an
+        # offline share, since a term that is mostly noise at the warm start
+        # has no stable share to aim at.
+        policy_gradient_coef=hold(27.0),
         # DreamerV3's actor recipe: with advantages divided by max(1, P95 - P5)
         # of the returns (return_percentile_decay below), the entropy weight is
-        # 3e-4 of the actor's. 3e-4 x 0.025.
-        entropy_coef=hold(7.5e-6),
+        # 3e-4 of the actor's. 3e-4 x 27.
+        entropy_coef=hold(0.0081),
         # No cloning of any kind: the BC checkpoint is a warm start only.
         behavior_cloning_coef=hold(0.0),
         # BC's, as a starting point.
