@@ -219,6 +219,7 @@ class TestObservationSchema:
             avg_policy_state_dict=trainer._avg_policy_module.state_dict(),
             avg_param_cumsum=list(trainer._avg_param_cumsum),
             avg_update_count=0,
+            ema_params=list(trainer._ema_params),
             update=0,
             ship_steps=0,
             grad_tokens=0,
@@ -324,9 +325,20 @@ class TestResumableCheckpointContract:
     def test_every_required_field_is_named_when_it_is_missing(self, field, tmp_path):
         payload = dict(self._production_payload(tmp_path))
         payload.pop(field)
+        if field == "ema_params":
+            payload["avg_update_count"] = 1  # the exemption below covers count 0
 
         with pytest.raises(ValueError, match=f"not a resumable training checkpoint.*{field}"):
             require_resumable_checkpoint(payload, "step_000000000042.pt")
+
+    def test_a_run_whose_averages_never_started_resumes_without_an_ema(self, tmp_path):
+        """Checkpoints from before the EMA existed carry nothing for it to restore
+        when no snapshot was ever averaged, so they still resume."""
+        payload = dict(self._production_payload(tmp_path))
+        payload.pop("ema_params")
+        payload["avg_update_count"] = 0
+
+        require_resumable_checkpoint(payload, "step_000000000042.pt")
 
     def test_optional_provenance_fields_do_not_block_a_resume(self, tmp_path):
         """A trainer built without a resolved-config document or launch record —
@@ -996,6 +1008,34 @@ class TestBestCheckpoints:
         trainer._avg_live_elo = 1000.0  # would trip the threshold if checked
         trainer._maybe_save_best_checkpoints()
         assert not (ckpt_dir / "best_avg.pt").exists()
+
+    def test_uniform_and_ema_averages_follow_their_own_rules(self, tmp_path):
+        """The first snapshot seeds both; later ones add equally to the uniform
+        mean and with weight 1 - decay to the EMA, which is checkpointed apart."""
+        from tests.train.test_ppo import _make_trainer
+
+        trainer = _make_trainer(checkpoint_dir=str(tmp_path))
+        decay = trainer.cfg.average_ema_decay
+        first = [p.detach().float().clone() for p in trainer._policy_module.parameters()]
+        trainer._update_avg_model()
+        with torch.no_grad():
+            for p in trainer._policy_module.parameters():
+                p.add_(1.0)
+        trainer._update_avg_model()
+
+        for p0, avg, ema in zip(
+            first, trainer._avg_policy_module.parameters(), trainer._ema_params
+        ):
+            torch.testing.assert_close(avg.float(), p0 + 0.5)
+            torch.testing.assert_close(ema, p0 + (1.0 - decay))
+
+        trainer._save_checkpoint(update=1)
+        trainer._active_save_thread.join(timeout=60)
+        path = Path(tmp_path) / trainer.run_name / f"ema_step_{trainer._global_step:012d}.pt"
+        saved = torch.load(path, map_location="cpu", weights_only=False)
+        for (name, _), ema in zip(trainer._avg_policy_module.named_parameters(), trainer._ema_params):
+            torch.testing.assert_close(saved["policy_state_dict"][name].float(), ema.cpu())
+        trainer.shutdown()
 
     def test_best_avg_checkpoint_holds_avg_policy_weights(self, tmp_path):
         """The previously-dead best-avg trigger now writes the avg policy's

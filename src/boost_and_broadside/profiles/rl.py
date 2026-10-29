@@ -160,6 +160,10 @@ RL_PROFILE = ProfileSpec(
     elo_eval=ELO_EVAL,
     # No cloning, so nothing for a win rate to switch off.
     bc_winrate_target=None,
+    average_ema_decay=0.95,
+    # Kept out of the league so the average is measured without changing the
+    # opponents the live policy trains against.
+    league_includes_average=False,
     # --- Persistence and logging ---
     checkpoint_dir="checkpoints",
     histogram_interval=10,

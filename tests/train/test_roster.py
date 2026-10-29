@@ -76,6 +76,15 @@ class TestSampling:
         sampled = {roster.sample(live_elo=1000.0).label for _ in range(300)}
         assert sampled == {"scripted", "avg", "ckpt_1"}
 
+    def test_an_unsampled_average_is_rated_but_never_drawn(self):
+        torch.manual_seed(0)
+        roster = _make_roster(uniform_sampling=True, sample_average=False)
+        roster.add_special("scripted", initial_elo=1000.0)
+        roster.add_special("avg", initial_elo=1000.0)
+        sampled = {roster.sample(live_elo=1000.0).label for _ in range(100)}
+        assert sampled == {"scripted"}
+        assert any(e.kind == "avg" for e in roster.entries)
+
     def test_scripted_fades_as_the_live_rating_outruns_it(self):
         """The opponent curriculum is the rating, not a schedule.
 

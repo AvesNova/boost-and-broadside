@@ -129,11 +129,18 @@ class OpponentMixin:
     """Opponent-management behavior mixed into PPOTrainer."""
 
     def _update_avg_model(self) -> None:
-        """Add the current training policy snapshot to the uniform running average."""
+        """Add the current training policy snapshot to the uniform and EMA averages."""
         first_update = self._avg_update_count == 0
         self._avg_update_count += 1
-        for cumulative, parameter in zip(self._avg_param_cumsum, self._policy_module.parameters()):
+        decay = self.cfg.average_ema_decay
+        for cumulative, ema, parameter in zip(
+            self._avg_param_cumsum, self._ema_params, self._policy_module.parameters()
+        ):
             cumulative.add_(parameter.detach().float())
+            if first_update:
+                ema.copy_(parameter.detach().float())
+            else:
+                ema.lerp_(parameter.detach().float(), 1.0 - decay)
         for avg_parameter, cumulative in zip(
             self._avg_policy_module.parameters(), self._avg_param_cumsum
         ):

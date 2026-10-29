@@ -371,7 +371,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         launch_provenance: Execution settings resolved by the installed CLI.
         gradient_diagnostics: Gradient decomposition depth and cadence. At its
             default the trainer takes no diagnostic code path at all.
-        keep_checkpoints: Newest ``step_*.pt`` (and ``avg_step_*.pt``) files kept
+        keep_checkpoints: Newest ``step_*.pt`` (and ``avg_step_*.pt``, ``ema_step_*.pt``) files kept
             per run; ``None`` keeps every one, for runs whose checkpoints are
             measured afterwards.
     """
@@ -665,7 +665,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # --- Avg-model opponent (uniform mean of all post-warmup policy snapshots) ---
         # Weights initialized as a copy of the training policy.
         # Accumulation starts when the BC aux loss decays to zero (scripted win
-        # rate reaches cfg.bc_winrate_target); once started it never stops.
+        # rate reaches cfg.bc_winrate_target), or at the first policy-gradient
+        # update when there is no such target; once started it never stops.
         self._avg_policy_module = build_policy(
             model_config,
             ship_config,
@@ -684,6 +685,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             for p in self._policy_module.parameters()
         ]
         self._avg_update_count: int = 0
+        # Exponential moving average of the same snapshots, seeded by the first.
+        self._ema_params: list[torch.Tensor] = [
+            torch.zeros(p.shape, dtype=torch.float32, device=p.device)
+            for p in self._policy_module.parameters()
+        ]
 
         # Warmup: force torch.compile to trace both policies under autocast, so
         # the graph it specializes on matches the one training actually runs.
@@ -722,6 +728,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             max_size=train_config.league_size,
             elo_temperature=train_config.elo_temperature,
             uniform_sampling=train_config.league_uniform_sampling,
+            sample_average=train_config.league_includes_average,
         )
         # Random anchor is added by EloRoster.__init__ (Elo=0, fixed) and is
         # excluded from opponent sampling. "scripted" is registered below;
@@ -1618,7 +1625,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             self._bc_cutoff_streak += 1
         else:
             self._bc_cutoff_streak = 0
-        bc_cutoff_reached = self._bc_cutoff_streak >= _BC_CUTOFF_UPDATES
+        # Without a BC target there is no in-run cloning phase to wait out: a
+        # warm start's pretraining run was the gate, so averaging starts at once.
+        bc_cutoff_reached = (
+            self.cfg.bc_winrate_target is None or self._bc_cutoff_streak >= _BC_CUTOFF_UPDATES
+        )
         metrics["schedule/bc_cutoff_streak"] = self._bc_cutoff_streak
         # No group-size gate: the average policy is rated by the evaluator in
         # every RL run, and the league draws it as an ordinary entry when one is

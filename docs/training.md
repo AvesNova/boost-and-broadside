@@ -365,8 +365,11 @@ Every opponent is an ordinary roster entry on one Elo scale:
 
 - **scripted:** a stochastic hand-built controller, also the behavior-cloning target and a
   stable evaluation benchmark;
-- **average:** a uniform running mean of eligible live-policy snapshots, joining the roster
-  at the scripted performance cutoff;
+- **average:** a uniform running mean of live-policy snapshots, one per update, joining the
+  roster at the scripted performance cutoff, or at the first update when the profile sets no
+  cutoff (a warm start's pretraining is the gate). With `league_includes_average` off it is
+  rated but never drawn, so it does not change the opponents the live policy trains
+  against;
 - **checkpoint:** frozen historical snapshots, joining at each Elo milestone.
 
 Self-play is the other half of the batch: the live weights viewed from the other team
@@ -383,10 +386,15 @@ than a choice between an opponent it beats every time and one it never beats.
 
 There is no per-opponent schedule, because the ratings already encode the curriculum. At
 step zero the scripted agent is the only entry a slot can draw, so training begins as an
-even split of self-play and scripted games. The average policy joins at the BC cutoff,
+even split of self-play and scripted games. The average policy joins when averaging starts,
 checkpoints join as milestones are crossed, and the scripted agent stops being drawn once
 the live rating leaves it behind. Ratings for the scripted and average entries are synced
 from the continuous evaluator every update, since a stale rating misdirects every draw.
+
+An exponential moving average of the same snapshots (`average_ema_decay` per update) is
+kept beside the uniform mean. It is neither rated nor drawn during training; both averages
+are written with every step checkpoint, as `avg_step_*.pt` and `ema_step_*.pt`, so either
+can be measured afterwards as an ordinary policy file.
 
 The [`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
 rather than evicting the weakest; `league_size` only bounds the GPU-resident LRU policy

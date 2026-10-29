@@ -105,10 +105,13 @@ class EloRoster:
         max_size: int = 20,
         elo_temperature: float = 200.0,
         uniform_sampling: bool = False,
+        sample_average: bool = True,
     ) -> None:
         self.max_size = max_size
         self.elo_temperature = elo_temperature
         self.uniform_sampling = uniform_sampling
+        # False keeps the running-average entry rated but never drawn.
+        self.sample_average = sample_average
         self.entries: list[RosterEntry] = []
         self._load_order: list[RosterEntry] = []  # loaded checkpoints, oldest use first
         # The random agent is the live gauge's zero, pinned rather than
@@ -350,6 +353,8 @@ class EloRoster:
         are all ordinary candidates — proximity weighting is what decides the
         opponent mix. Retired entries are skipped.
 
+        The running average is excluded too when ``sample_average`` is off.
+
         The random anchor is excluded, and that exclusion is load-bearing rather
         than incidental: the live rating starts at 0 and so does random's, so
         including it would make the early league almost entirely random play
@@ -357,7 +362,11 @@ class EloRoster:
 
         Returns None if no candidates exist.
         """
-        candidates = [e for e in self.entries if e.kind != "random" and e.usable]
+        candidates = [
+            e
+            for e in self.entries
+            if e.kind != "random" and e.usable and (self.sample_average or e.kind != "avg")
+        ]
         if not candidates:
             return None
 

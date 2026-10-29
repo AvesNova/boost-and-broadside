@@ -118,6 +118,8 @@ def _make_train_config(
             min_games_to_freeze=min_games_to_freeze,
         ),
         bc_winrate_target=0.9,
+        average_ema_decay=0.95,
+        league_includes_average=True,
         histogram_interval=10,
     )
 
@@ -1449,6 +1451,8 @@ class TestSchedulePrimitives:
                 elo_temperature=200.0,
                 elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
                 bc_winrate_target=0.9,
+                average_ema_decay=0.95,
+                league_includes_average=True,
                 histogram_interval=10,
             ),
             model_config=ModelConfig(d_model=32, n_heads=4, n_yemong_blocks=1),
@@ -1598,6 +1602,8 @@ class TestRLSmokeTest:
             league_uniform_sampling=False,
             elo_eval=EloEvalConfig(4, 4, 4.0, 1000.0, 100),
             bc_winrate_target=0.9,
+            average_ema_decay=0.95,
+            league_includes_average=True,
             histogram_interval=10,
         )
         scripted = StochasticScriptedAgent(SHIP_CONFIG, StochasticAgentConfig())

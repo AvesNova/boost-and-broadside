@@ -262,6 +262,7 @@ def build_synthetic_run(
         avg_policy_state_dict=policy.state_dict(),
         avg_param_cumsum=[torch.zeros_like(parameter) for parameter in policy.parameters()],
         avg_update_count=0,
+        ema_params=[torch.zeros_like(parameter) for parameter in policy.parameters()],
         update=0,
         ship_steps=0,
         grad_tokens=0,

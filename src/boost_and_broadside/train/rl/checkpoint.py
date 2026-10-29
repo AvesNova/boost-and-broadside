@@ -97,6 +97,7 @@ def build_training_checkpoint_payload(
     avg_policy_state_dict: Mapping[str, Any],
     avg_param_cumsum: list[torch.Tensor],
     avg_update_count: int,
+    ema_params: list[torch.Tensor],
     update: int,
     ship_steps: int,
     grad_tokens: int,
@@ -128,6 +129,7 @@ def build_training_checkpoint_payload(
         "avg_policy_state_dict": avg_policy_state_dict,
         "avg_param_cumsum": avg_param_cumsum,
         "avg_update_count": avg_update_count,
+        "ema_params": ema_params,
         "update": update,
         "ship_steps": ship_steps,
         "grad_tokens": grad_tokens,
@@ -186,6 +188,7 @@ RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
     "avg_policy_state_dict",
     "avg_param_cumsum",
     "avg_update_count",
+    "ema_params",
     "update",
     "ship_steps",
     "grad_tokens",
@@ -218,6 +221,10 @@ def require_resumable_checkpoint(checkpoint: Mapping[str, Any], path: str | None
     """
 
     missing = [field for field in RESUMABLE_CHECKPOINT_FIELDS if field not in checkpoint]
+    # The EMA arrived after runs whose averages never started; with no snapshot
+    # folded in there is nothing for it to restore, so those still resume.
+    if "ema_params" in missing and checkpoint.get("avg_update_count") == 0:
+        missing.remove("ema_params")
     if not missing:
         return
     location = f" {path!r}" if path is not None else ""
@@ -572,6 +579,7 @@ class CheckpointMixin:
             # Left on device; the clone_to_cpu walk over this payload copies it.
             avg_param_cumsum=list(self._avg_param_cumsum),
             avg_update_count=self._avg_update_count,
+            ema_params=list(self._ema_params),
             update=update,
             ship_steps=self._ship_steps,
             grad_tokens=self._grad_tokens,
@@ -636,9 +644,13 @@ class CheckpointMixin:
 
         avg_path = None
         avg_cpu_payload = None
+        ema_path = None
+        ema_cpu_payload = None
         if self._avg_update_count > 0:
             avg_path = ckpt_dir / f"avg_step_{self._global_step:012d}.pt"
             avg_cpu_payload = clone_to_cpu(self._avg_checkpoint_payload(update))
+            ema_path = ckpt_dir / f"ema_step_{self._global_step:012d}.pt"
+            ema_cpu_payload = clone_to_cpu(self._ema_checkpoint_payload(update))
 
         self._last_checkpoint_path = path
 
@@ -651,6 +663,8 @@ class CheckpointMixin:
             if avg_cpu_payload is not None and avg_path is not None:
                 write_checkpoint_payload(avg_path, avg_cpu_payload)
                 print(f"Avg checkpoint saved asynchronously: {avg_path}")
+            if ema_cpu_payload is not None and ema_path is not None:
+                write_checkpoint_payload(ema_path, ema_cpu_payload)
 
             # Prune each family (live step_*.pt, avg avg_step_*.pt) down to the
             # newest self._keep_checkpoints. best_*.pt and ladder_step_*.pt live
@@ -664,6 +678,7 @@ class CheckpointMixin:
             keep = self._keep_checkpoints
             _prune_checkpoint_family(ckpt_dir, "step_*.pt", protected, keep)
             _prune_checkpoint_family(ckpt_dir, "avg_step_*.pt", protected, keep)
+            _prune_checkpoint_family(ckpt_dir, "ema_step_*.pt", protected, keep)
 
         self._run_async_save("_active_save_thread", "standard checkpoint saving", _async_save)
 
@@ -692,6 +707,22 @@ class CheckpointMixin:
         """
         payload = self.checkpoint_payload(update)
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()
+        return payload
+
+    def _ema_checkpoint_payload(self, update: int) -> dict:
+        """Build a checkpoint payload with the EMA policy as ``policy_state_dict``.
+
+        The EMA keeps parameters only, so buffers come from the uniform average's
+        module, which shares the architecture. Fresh tensors, not views of
+        ``ema_params``, for the aliasing reason ``_avg_checkpoint_payload`` gives.
+        """
+        payload = self.checkpoint_payload(update)
+        state = dict(self._avg_policy_module.state_dict())
+        for (name, parameter), ema in zip(
+            self._avg_policy_module.named_parameters(), self._ema_params
+        ):
+            state[name] = ema.to(parameter.dtype, copy=True)
+        payload["policy_state_dict"] = state
         return payload
 
     def _checkpoint_payload_lightweight(self, update: int) -> dict:
@@ -837,6 +868,8 @@ class CheckpointMixin:
             c.to(self.device, torch.float32) for c in ckpt["avg_param_cumsum"]
         ]
         self._avg_update_count = ckpt["avg_update_count"]
+        if "ema_params" in ckpt:
+            self._ema_params = [e.to(self.device, torch.float32) for e in ckpt["ema_params"]]
         self._live_elo = ckpt["live_elo"]
         self._elo_milestone = ckpt["elo_milestone"]
         self._avg_live_elo = ckpt["avg_live_elo"]

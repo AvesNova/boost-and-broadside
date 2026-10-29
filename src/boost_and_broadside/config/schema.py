@@ -123,6 +123,8 @@ class ProfileSpec:
     league_uniform_sampling: bool
     elo_eval: EloEvalConfig
     bc_winrate_target: float | None
+    average_ema_decay: float
+    league_includes_average: bool
 
     # --- Persistence and logging ---
     checkpoint_dir: str

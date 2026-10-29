@@ -225,6 +225,14 @@ class TrainConfig:
     # ``target_kl=None`` uses in the BC profile, for the same reason: an
     # RL-specific gate that does not apply under pure supervision.
     bc_winrate_target: float | None
+    # Per-update decay of the exponential moving average kept beside the uniform
+    # running mean of the policy. Both start at the first policy-gradient update
+    # (a warm start's BC phase is the gate) and are checkpointed as
+    # avg_step_*.pt and ema_step_*.pt; 0.95 is a time constant of 20 updates.
+    average_ema_decay: float
+    # Whether the uniform average joins the league as a sampled opponent. Off,
+    # it is still rated by the evaluator but never shapes the training data.
+    league_includes_average: bool
     histogram_interval: int  # record expensive histograms every N updates
 
     # --- Gradient accumulation (memory-only, per-machine knob) ---
@@ -318,6 +326,8 @@ class TrainConfig:
             raise ValueError(
                 f"rollouts_per_update must be positive, got {self.rollouts_per_update}"
             )
+        if not 0.0 < self.average_ema_decay < 1.0:
+            raise ValueError(f"average_ema_decay must be in (0, 1), got {self.average_ema_decay}")
         if self.bc_winrate_target is not None and not 0.0 < self.bc_winrate_target <= 1.0:
             raise ValueError(
                 f"bc_winrate_target must be in (0, 1] or None, got {self.bc_winrate_target}"
