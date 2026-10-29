@@ -293,6 +293,47 @@ def test_resimulated_real_shots_land_every_hit_the_environment_applies():
     assert checked > 0
 
 
+def test_resimulated_real_shots_fly_where_the_environment_flies_them():
+    """Every age of every real shot's re-simulation is the environment's own bullet,
+    refraction and field crossings included."""
+    from boost_and_broadside.env.frontline import toroidal_displacement
+
+    env = _env(num_fields=6)
+    generator = torch.Generator().manual_seed(7)
+    shape = env.state.ship_pos.shape
+    launches, layouts, ends, slots, shooting, bullets = [], [], [], [], [], []
+    for _ in range(80):
+        slots.append(env.state.bullet_cursor.clone())
+        dones, truncated = env.tick(_random_actions(generator, shape))
+        launches.append(env.shot_launch)
+        layouts.append(env.shot_fields)
+        shooting.append(env.state.ship_is_shooting.clone())
+        bullets.append(env.state.bullet_pos.clone())
+        ends.append(dones | truncated)
+        env.reset_envs(dones | truncated)
+    launch = ShotLaunchState(*(torch.stack(x) for x in zip(*launches, strict=True)))
+    fields = FieldLayout(*(torch.stack(x) for x in zip(*layouts, strict=True)))
+    ends, slots = torch.stack(ends), torch.stack(slots)
+    shooting, bullets = torch.stack(shooting), torch.stack(bullets)
+    noise = torch.zeros(launch.position.shape, dtype=torch.complex64)
+    bent = 0
+    for age in (1, 7, 15, DELAY):
+        taus = torch.full((*launch.position.shape, 2), float(age))
+        examples, valid = resimulate(launch, fields, ends, CONFIG, taus=taus, noise=noise)
+        t, b, i = (valid & shooting).nonzero(as_tuple=True)
+        assert len(t) > 10
+        start = launch.position[t, b, i]
+        position = bullets[t + age - 1, b, i, slots[t, b, i]]
+        displacement = toroidal_displacement(position - start, CONFIG.world_size) * torch.conj(
+            launch.attitude[t, b, i]
+        )
+        snapshot = examples[t, b, i][:, shot_labels.EX_SNAP1]
+        assert torch.allclose(displacement.real, snapshot[:, SNAP_DX], atol=1e-3)
+        assert torch.allclose(displacement.imag, snapshot[:, SNAP_DY], atol=1e-3)
+        bent += int(((snapshot[:, SNAP_INDEX] - 1.0).abs() > 1e-3).sum())
+    assert bent > 0, "no shot flew through a field"
+
+
 GAMEPLAY_FIELDS = (
     "ship_pos",
     "ship_vel",
