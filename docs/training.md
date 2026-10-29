@@ -211,12 +211,14 @@ it does not change with fleet size. Nats are not gradient, though: heads pass di
 amounts of gradient to the trunk per nat, so the weights are set against measured trunk
 gradient shares (`benchmarks/gradient_decomposition.py`).
 
-Two gates key off the same signal: the score against the scripted controller — a draw
-counting half a win — taken from the evaluation battery rather than from training envs. It decays the
-behavior-cloning weight to zero at `bc_winrate_target`, and it tightens `target_kl` at
-`high_winrate_threshold`. Using one measure of "is the policy strong yet" rather than two
-also keeps the trust region independent of the Elo gauge, which would otherwise need
-re-deriving whenever the anchor or the environment moved.
+Two optional gates key off the same signal: the score against the scripted controller —
+a draw counting half a win — taken from the evaluation battery rather than from training
+envs. `bc_winrate_target` decays a behavior-cloning weight to zero, and
+`high_winrate_threshold` tightens `target_kl`. Neither profile uses them now. BC never
+withdraws cloning, and RL starts from a BC checkpoint (`--pretrain-from`) as a warm start
+only: no cloning loss, no entropy toward the teacher, and one KL trust region for the whole
+run. RL's weights start at BC's calibrated values; its entropy weight is DreamerV3's 3e-4
+of the policy-gradient weight, with advantages divided by the same return scale.
 
 Rewards, returns and advantages are raw scalars in win units; only the critic's output is
 a distribution ([`critic.py`](../src/boost_and_broadside/train/rl/critic.py)). Each
@@ -322,9 +324,9 @@ prediction, and its own budget. That list is enforced by a test rather than by
 convention, because the profile is written independently and does not inherit from
 `rl`.
 
-Evaluation still runs during BC: the score against the scripted controller is
-what decays the cloning weight to zero at `bc_winrate_target`, and the run rates on the
-same live gauge RL continues on.
+Evaluation still runs during BC and rates the run on the same live gauge RL continues on.
+Cloning never decays here (`bc_winrate_target` is unset), so a run is stopped on a plateau
+in `loss/behavioral_cloning_kl`.
 
 Once that weight reaches zero the entropy bonus goes with it. Entropy regularizes an
 objective; it is not one. With no policy gradient and no cloning term it would be the only

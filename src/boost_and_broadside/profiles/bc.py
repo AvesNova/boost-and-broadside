@@ -49,6 +49,9 @@ BC_SCHEDULE_SPEC = replace(
     # one that produced the rollout.  Under supervision that movement is the
     # objective, so the PPO stopping criterion does not apply.
     target_kl=hold(None),
+    # The entropy weight BC was calibrated with. RL's is set relative to its
+    # policy-gradient weight, which BC does not have.
+    entropy_coef=hold(3e-4),
 )
 
 BC_PROFILE = replace(

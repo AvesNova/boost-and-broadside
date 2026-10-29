@@ -22,13 +22,21 @@ def rl():
     return resolve_profile(RL_PROFILE)
 
 
-def test_cloning_never_decays_during_pretraining(bc, rl) -> None:
-    """RL withdraws the warm start as the policy outgrows it. A pretraining run
-    has nothing else training its actor, so withdrawing it stops the run early
-    at roughly teacher parity -- the point where the clone becomes worth
-    keeping."""
+def test_cloning_never_decays_during_pretraining(bc) -> None:
+    """A pretraining run has nothing else training its actor, so withdrawing
+    cloning would stop the run at roughly teacher parity -- the point where the
+    clone becomes worth keeping."""
     assert bc.train_config.bc_winrate_target is None
-    assert rl.train_config.bc_winrate_target == 0.45
+
+
+def test_rl_uses_the_bc_checkpoint_as_a_warm_start_only(rl) -> None:
+    """No cloning term of any kind in RL: no imitation loss and no win-rate
+    gate to withdraw one."""
+    schedule = rl.train_config.schedule
+    assert rl.train_config.bc_winrate_target is None
+    for step in (0, 50_000_000, 500_000_000):
+        assert schedule.behavior_cloning_coef(step) == 0.0
+        assert schedule.policy_gradient_coef(step) > 0.0
 
 
 def test_nothing_else_trains_the_actor_so_the_weight_has_to_hold(bc) -> None:

@@ -65,32 +65,14 @@ def test_bc_overlays_rl_on_exactly_the_named_objective_differences() -> None:
         return {prefix} if left != right else set()
 
     assert {path.split(".")[0] for path in different_paths(rl, bc)} == {
-        # Every auxiliary's weight is set from a measured gradient decomposition
-        # of this profile, not of RL's -- RL carries a live policy gradient, so
-        # the same target shares resolve to different coefficients there. See
-        # the balance block in profiles/bc.py.
-        "next_state_coef",
-        "enemy_action_coef",
-        "global_density_coef",
-        "shot_trajectory_coef",
-        "shot_outcome_coef",
-        # ``total_timesteps`` is deliberately absent: BC no longer carries its own
-        # budget. It used to run to 2B on the reasoning that it stops when
-        # imitation saturates, but nothing self-terminates this profile any more
-        # -- cloning does not decay, so saturation is something to read off
-        # loss/behavioral_cloning_kl rather than something the run detects. The
-        # step budget is now the only stop condition, and it is RL's.
+        # RL starts from BC's calibrated weights (profiles/rl.py), so today the
+        # objectives differ only in five schedule entries -- policy_gradient_coef,
+        # behavior_cloning_coef, entropy_coef, league_fraction and target_kl --
+        # each commented at the point of override in profiles/bc.py. RL's own
+        # calibration will add its auxiliary weights back to this set.
         #
-        # None, not a number: cloning holds at full strength for the whole run.
-        # RL's 0.45 withdraws a warm start the policy has outgrown. Here it is
-        # the only gradient reaching the actor, so decaying it would end the
-        # useful part of the run at roughly teacher parity -- which is exactly
-        # the policy the pretraining exists to produce.
-        "bc_winrate_target",
-        # Six entries -- learning_rate, policy_gradient_coef,
-        # behavior_cloning_coef, value_function_coef, league_fraction,
-        # target_kl -- each commented at the point of override in
-        # profiles/bc.py.
+        # ``bc_winrate_target`` is None in both: BC never withdraws cloning,
+        # and RL has no cloning to withdraw.
         "schedule",
     }
 

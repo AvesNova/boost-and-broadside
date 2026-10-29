@@ -253,63 +253,48 @@ COMPONENT_VALUE_WEIGHTS: dict[str, float] = {
 
 
 def make_rl_schedule_spec() -> TrainingScheduleSpec:
-    """The current RL schedule, as keypoint tables."""
+    """The RL schedule, as keypoint tables.
+
+    Ported from the calibrated BC profile (profiles/bc.py, 28d4688) and changed
+    only where RL's objective requires it; the earlier RL values were tuned for
+    a cold start, a BC-gated warm start and reward shaping that no longer
+    exist. RL starts from a BC checkpoint with no cloning term of any kind. The
+    weights below are starting points for the warm-start gradient
+    decomposition, not measured RL values.
+    """
 
     return TrainingScheduleSpec(
-        # Peak 3e-4, decaying to half of it. The last row holds, so a budget
-        # longer than 500M steps trains its tail at the floor rather than
-        # continuing to decay.
-        #
-        # 3e-4 rather than the 4.5e-4 that run 731 used, because `target_kl` is
-        # what actually bounds an update and Frontline reaches that bound in
-        # about half the passes. 731 completed a mean 3.33 epochs of four and
-        # pinned 4.0 from 12M steps on; runs 732 and 733 sit at 2.2 and 2.4. The
-        # trust region spends a fixed KL budget either way, so a smaller step
-        # does not buy less movement -- it buys the same movement in more, finer
-        # optimizer steps, which is what the critic is short of. Explained
-        # variance is the series to read: 731 reached 0.45 by 13M steps where 733
-        # was at 0.35.
-        #
-        # This is a hypothesis with a mechanism, not a measured result. Nothing
-        # here has been run at 3e-4. `train/epochs_completed` rising toward four
-        # and explained variance improving per step are what would confirm it;
-        # if epochs stay near two, the bound is the task rather than the step
-        # size and the peak should go back up rather than lower again.
-        learning_rate=(
-            (0, 1e-7, "linear"),
-            (5_000_000, 3e-4, "hold"),
-            (100_000_000, 3e-4, "exponential"),
-            (500_000_000, 1.5e-4, "hold"),
-        ),
-        policy_gradient_coef=hold(1.0),
-        # DreamerV3's actor entropy with this advantage normaliser. Advantages
-        # are now in win units with a floor of one, so a dense level's
-        # advantage can be ~0.01 and 0.005 would let the bonus dominate it.
-        # A starting point for the retune (plan section 7.4).
-        entropy_coef=hold(3e-4),
-        behavior_cloning_coef=hold(2.0),
-        # The critic loss sums its five levels rather than averaging them, so
-        # 0.2 is the old 1.0 on the mean, unchanged. Retuned in plan section 7.4.
-        value_function_coef=hold(0.2),
-        sigreg_coef=hold(0.00),
-        # Tier scales ride on top of the per-component weights. Three of the
-        # four hold: the realised tier shares already drift the way a curriculum
-        # would move them, with the outcome tier rising about 1.29x over a run
-        # and the kill/death tier falling to 0.73x as the policy stops dying in
-        # ways it can still learn from. Scheduling those would fight a trend
-        # rather than create one.
+        # BC's: warm up to 3e-4, then hold. The warmup also protects the fresh
+        # Adam moments a warm start begins with.
+        learning_rate=((0, 1e-7, "linear"), (6_000_000, 3e-4, "hold")),
+        # Starts at BC's actor weight, the term the policy gradient replaces, and
+        # is re-solved from the warm start's measured shares.
+        policy_gradient_coef=hold(0.025),
+        # DreamerV3's actor recipe: with advantages divided by max(1, P95 - P5)
+        # of the returns (return_percentile_decay below), the entropy weight is
+        # 3e-4 of the actor's. 3e-4 x 0.025.
+        entropy_coef=hold(7.5e-6),
+        # No cloning of any kind: the BC checkpoint is a warm start only.
+        behavior_cloning_coef=hold(0.0),
+        # BC's, as a starting point.
+        value_function_coef=hold(0.007),
+        sigreg_coef=hold(0.0),
         outcome_scale=hold(1.0),
         kill_death_scale=hold(1.0),
         damage_scale=hold(1.0),
+        # Half self-play, half an Elo-proximity league draw.
         league_fraction=hold(0.5),
-        # Every update.  A save costs ~48 ms of blocking device-to-host copy
-        # against an update measured in minutes, and the writer already skips
-        # itself rather than queueing when a previous save is still running, so
-        # the interval buys no throughput -- it only decides how much progress
-        # an interrupted run throws away.
+        # Every update: a save costs ~48 ms against an update measured in
+        # minutes, and the writer skips itself rather than queueing.
         checkpoint_interval=hold(1),
         num_epochs=hold(4),
-        target_kl=hold(0.1),
-        high_winrate_threshold=hold(0.8),
-        high_winrate_target_kl=hold(0.02),
+        # Standard PPO practice: the clip bounds the policy surrogate only, and
+        # approximate KL -- measured on the policy's outputs, so it includes the
+        # drift the auxiliaries cause through the shared trunk -- early-stops
+        # an update's epochs. 0.02 is a common value; the pilots read
+        # policy/kl and epochs completed against it.
+        target_kl=hold(0.02),
+        # No win-rate gate: one trust region for the whole run.
+        high_winrate_threshold=hold(None),
+        high_winrate_target_kl=hold(None),
     )

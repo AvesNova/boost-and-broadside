@@ -1,9 +1,10 @@
 """The reinforcement-learning profile.
 
-Designed to follow an explicit BC pretraining checkpoint, but also runnable
-from scratch.  The opponent mix stays half self-play and half an Elo-proximity
-league draw; roster membership, rather than a schedule phase, provides the
-curriculum.
+Designed to follow an explicit BC pretraining checkpoint as a warm start
+(``bnb train --profile rl --pretrain-from <bc checkpoint>``), with no cloning
+term of any kind; also runnable from scratch.  The opponent mix stays half
+self-play and half an Elo-proximity league draw; roster membership, rather than
+a schedule phase, provides the curriculum.
 
 There is one RL profile rather than a field-free one and a fielded one.
 ``num_fields`` is a sequence length, not an architecture: it sets the token
@@ -115,19 +116,14 @@ RL_PROFILE = ProfileSpec(
     paradigm="ego_pass",
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
-    # Every term is in nats per token (see TrainConfig). These three carry the
-    # earlier balance over unchanged and are retuned with PPO (plan section
-    # 7.4): next-state was 0.2 on the mean over 22 code groups, now summed, and
-    # density was 1.0 on the mean over 662 hex cells, now summed per living
-    # ship -- 1.0 x 10 / 662 at ten living ships.
-    next_state_coef=0.2 / 22,
-    enemy_action_coef=0.1,
-    global_density_coef=0.015,
-    # Counterfactual shot heads (env/shot_labels.py). NOT CALIBRATED: 0.1 is a
-    # placeholder pending the auxiliary-weight balancing done elsewhere, not a
-    # measured choice. Read the gradient diagnostics before trusting it.
-    shot_trajectory_coef=0.1,
-    shot_outcome_coef=0.1,
+    # Every term is in nats per token (see TrainConfig). The auxiliaries start
+    # at the calibrated BC weights (profiles/bc.py, 28d4688) and are re-solved
+    # against the policy gradient from a warm start's measured trunk shares.
+    next_state_coef=0.0041,
+    enemy_action_coef=0.11,
+    global_density_coef=0.021,
+    shot_trajectory_coef=0.0035,
+    shot_outcome_coef=0.019,
     # --- Discounts, per physics tick ---
     gamma_per_tick=0.99,
     gae_lambda_per_tick=0.95,
@@ -135,16 +131,10 @@ RL_PROFILE = ProfileSpec(
     component_lambdas_per_tick=COMPONENT_LAMBDAS_PER_TICK,
     component_value_weights=COMPONENT_VALUE_WEIGHTS,
     # --- Optimizer, advantage normaliser, budget ---
-    clip_coef=0.15,
+    # The PPO paper's clip. max_grad_norm stays a spike guard rather than a
+    # target, as in BC: it never fired there at a typical norm of ~0.25.
+    clip_coef=0.2,
     max_grad_norm=1.0,
-    # 500M rather than 1B, which is where the schedules finish rather than an
-    # arbitrary truncation: the learning rate reaches its 1.5e-4 floor at exactly
-    # 500M and holds, and the offensive bias finishes its taper at 300M. Past that the
-    # run is pure incremental self-play at fixed coefficients, and run 719's
-    # calibrated curve prices it accordingly -- 500M captures 94.4% of the 1B
-    # result, and the last 500M bought +37 Elo for 51 hours, against 0.06 h/Elo
-    # over the first 200M. Run 731 reproduced the same saturation profile under
-    # different physics and different reward weights.
     total_timesteps=500_000_000,
     # DreamerV3's return normaliser, as published: EMA decay 0.99 of the 5th
     # and 95th percentiles, floor 1. The floor is one win, so advantages are
@@ -163,7 +153,8 @@ RL_PROFILE = ProfileSpec(
     elo_temperature=200.0,
     league_uniform_sampling=False,
     elo_eval=ELO_EVAL,
-    bc_winrate_target=0.45,
+    # No cloning, so nothing for a win rate to switch off.
+    bc_winrate_target=None,
     # --- Persistence and logging ---
     checkpoint_dir="checkpoints",
     histogram_interval=10,
