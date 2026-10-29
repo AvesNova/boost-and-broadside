@@ -116,15 +116,16 @@ RL_PROFILE = ProfileSpec(
     paradigm="ego_pass",
     schedule_spec=make_rl_schedule_spec(),
     rewards=REWARDS,
-    # Every term is in nats per token (see TrainConfig). The auxiliaries start
-    # at the calibrated BC weights (profiles/bc.py, 28d4688), except
-    # enemy_action, which pilot 762 measured growing past the policy: by 19.7M
-    # its trunk norm had tripled from the warm start (0.14 -> 0.44) as the
-    # league made opponents stronger and more varied, taking 0.30 of the trunk
-    # to the policy's 0.25 (docs/internal/rl-pilot-762-19.7M-oct2026.json).
-    # Halved to put it back near 0.15 and the policy back in the lead.
+    # Every term is in nats per token (see TrainConfig). The auxiliaries are the
+    # calibrated BC weights (profiles/bc.py, 28d4688). Pilot 762 measured
+    # enemy_action growing past the policy by 19.7M (trunk norm 0.14 -> 0.44,
+    # 0.30 of the trunk to the policy's 0.25;
+    # docs/internal/rl-pilot-762-19.7M-oct2026.json), but halving it in run
+    # 763 did worse: score against scripted slid from 0.84 at 8-12M to 0.78 at
+    # 16-20M while policy entropy climbed 1.33 -> 1.55, where 762 held 1.40
+    # and reached 0.89. Kept at BC's weight.
     next_state_coef=0.0041,
-    enemy_action_coef=0.055,
+    enemy_action_coef=0.11,
     global_density_coef=0.021,
     shot_trajectory_coef=0.0035,
     shot_outcome_coef=0.019,
