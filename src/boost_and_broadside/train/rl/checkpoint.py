@@ -263,17 +263,30 @@ def _load_checkpoint_state(
 
 
 def _prune_checkpoint_family(
-    ckpt_dir: Path, glob_pattern: str, protected: set[str], keep_last_n: int | None
+    ckpt_dir: Path,
+    glob_pattern: str,
+    protected: set[str],
+    keep_last_n: int | None,
+    archive_every_steps: int | None = None,
 ) -> None:
     """Delete files matching glob_pattern beyond the newest keep_last_n, minus protected paths.
 
     ``None`` keeps every file. Filenames in every pruned family embed the
     zero-padded global step, so lexicographic sort order is chronological order.
+    A file whose step is a multiple of ``archive_every_steps`` is also kept. The
+    rule reads the filename rather than run state, so a resumed run keeps the
+    same archive.
     """
     if keep_last_n is None:
         return
     candidates = sorted(ckpt_dir.glob(glob_pattern))
     kept = {str(p) for p in candidates[-keep_last_n:]} | protected
+    if archive_every_steps is not None:
+        kept |= {
+            str(p)
+            for p in candidates
+            if int(p.stem.rsplit("_", 1)[-1]) % archive_every_steps == 0
+        }
     for old_path in candidates:
         if str(old_path) not in kept:
             old_path.unlink(missing_ok=True)
@@ -676,9 +689,9 @@ class CheckpointMixin:
             # either glob.
             protected = self.roster.kept_paths()
             keep = self._keep_checkpoints
-            _prune_checkpoint_family(ckpt_dir, "step_*.pt", protected, keep)
-            _prune_checkpoint_family(ckpt_dir, "avg_step_*.pt", protected, keep)
-            _prune_checkpoint_family(ckpt_dir, "ema_step_*.pt", protected, keep)
+            archive = self._archive_every_steps()
+            for family in ("step_*.pt", "avg_step_*.pt", "ema_step_*.pt"):
+                _prune_checkpoint_family(ckpt_dir, family, protected, keep, archive)
 
         self._run_async_save("_active_save_thread", "standard checkpoint saving", _async_save)
 
@@ -708,6 +721,13 @@ class CheckpointMixin:
         payload = self.checkpoint_payload(update)
         payload["policy_state_dict"] = self._avg_policy_module.state_dict()
         return payload
+
+    def _archive_every_steps(self) -> int | None:
+        """Global steps between archived checkpoints, or None when none are archived."""
+        if self._archive_checkpoints_every is None:
+            return None
+        steps_per_update = self.cfg.num_steps * sum(scale.num_envs for scale in self.cfg.scales)
+        return self._archive_checkpoints_every * steps_per_update
 
     def _ema_checkpoint_payload(self, update: int) -> dict:
         """Build a checkpoint payload with the EMA policy as ``policy_state_dict``.

@@ -688,6 +688,9 @@ A run keeps its newest three `step_*.pt` checkpoints and prunes older ones; best
 files are never pruned. `bnb train --keep-checkpoints N` widens the window, and
 `--keep-checkpoints all` keeps every step, for runs whose checkpoints are measured
 afterwards (a gradient decomposition across a window, for instance).
+`--archive-checkpoints-every K` keeps every K-th update's checkpoint beside the newest
+window, which is enough to measure a run's progress afterwards at a fraction of the disk.
+The same windows apply to the `avg_step_*.pt` and `ema_step_*.pt` files.
 
 Environment state is deliberately *not* in that list. A resume respawns every
 environment and re-staggers truncation by writing a random `step_count`, exactly

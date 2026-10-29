@@ -165,6 +165,7 @@ def _make_trainer(
         compile_mode=launch.execution.compile_mode,
         gradient_diagnostics=launch.execution.gradient_diagnostics,
         keep_checkpoints=args.keep_checkpoints,
+        archive_checkpoints_every=args.archive_checkpoints_every,
         resume_wandb_run_id=resume_wandb_run_id,
         resolved_config_document=resolved_profile_document(resolved),
         # The complete launch record, including which VRAM decision chose the

@@ -667,6 +667,16 @@ class TestCheckpointRetention:
         expected_steps = range(3, DEFAULT_KEEP_CHECKPOINTS + 3)
         assert remaining == [f"step_{s:012d}.pt" for s in expected_steps]
 
+    def test_prune_also_keeps_every_archived_step(self, tmp_path):
+        from boost_and_broadside.train.rl.checkpoint import _prune_checkpoint_family
+
+        for update in range(1, 26):
+            (tmp_path / f"step_{update * 100:012d}.pt").touch()
+        _prune_checkpoint_family(tmp_path, "step_*.pt", set(), 2, archive_every_steps=1000)
+
+        kept = sorted(int(p.stem.split("_")[1]) // 100 for p in tmp_path.glob("step_*.pt"))
+        assert kept == [10, 20, 24, 25]
+
     def test_prune_keeps_only_last_n_avg_checkpoints(self, tmp_path):
         from boost_and_broadside.train.rl.checkpoint import DEFAULT_KEEP_CHECKPOINTS
         from tests.train.test_ppo import _make_trainer

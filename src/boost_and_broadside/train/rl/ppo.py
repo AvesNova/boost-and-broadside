@@ -374,6 +374,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         keep_checkpoints: Newest ``step_*.pt`` (and ``avg_step_*.pt``, ``ema_step_*.pt``) files kept
             per run; ``None`` keeps every one, for runs whose checkpoints are
             measured afterwards.
+        archive_checkpoints_every: Also keep every checkpoint whose update is a
+            multiple of this, so a run can be measured afterwards at a fraction
+            of the disk ``keep_checkpoints=None`` costs.
     """
 
     def __init__(
@@ -390,10 +393,16 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         launch_provenance: Mapping[str, object] | None = None,
         gradient_diagnostics: GradientDiagnosticsConfig = GRADIENT_DIAGNOSTICS_OFF,
         keep_checkpoints: int | None = DEFAULT_KEEP_CHECKPOINTS,
+        archive_checkpoints_every: int | None = None,
     ) -> None:
         if keep_checkpoints is not None and keep_checkpoints < 1:
             raise ValueError(f"keep_checkpoints must be positive or None, got {keep_checkpoints}")
+        if archive_checkpoints_every is not None and archive_checkpoints_every < 1:
+            raise ValueError(
+                f"archive_checkpoints_every must be positive or None, got {archive_checkpoints_every}"
+            )
         self._keep_checkpoints = keep_checkpoints
+        self._archive_checkpoints_every = archive_checkpoints_every
         self.cfg = train_config
         self.model_config = model_config
         self.ship_config = ship_config

@@ -345,6 +345,17 @@ COMMANDS: tuple[CommandSpec, ...] = (
                     "afterwards. Best and ladder checkpoints are always kept."
                 ),
             ),
+            _option(
+                "--archive-checkpoints-every",
+                type=_positive_int,
+                default=None,
+                metavar="UPDATES",
+                help=(
+                    "Also keep every step checkpoint whose update is a multiple of "
+                    "this, beside the newest --keep-checkpoints: a measurable run "
+                    "at a fraction of the disk 'all' costs."
+                ),
+            ),
             _DEVICE,
             _SEED,
             _ALLOW_DRIFT,
