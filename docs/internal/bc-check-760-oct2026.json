@@ -1,0 +1,486 @@
+{
+ "run": "visionary-hill-760",
+ "note": "Check of the weights solved from pilot 759 (28d4688): the first 20M of the full BC run. Shares are trunk_top_level, 3 diagnosed updates per checkpoint. Accepted: next_state and both shot heads on target; enemy_action and density high early but near target by 19.7M; live Elo 908 at 19.7M (755: 913, 759: 941).",
+ "weights": {
+  "behavior_cloning_coef": 0.025,
+  "value_function_coef": 0.007,
+  "next_state_coef": 0.0041,
+  "enemy_action_coef": 0.11,
+  "global_density_coef": 0.021,
+  "shot_trajectory_coef": 0.0035,
+  "shot_outcome_coef": 0.019
+ },
+ "targets": {
+  "bc": 0.396,
+  "next_state": 0.246,
+  "enemy_action": 0.123,
+  "density": 0.088,
+  "shot_trajectory": 0.07,
+  "shot_outcome": 0.05
+ },
+ "median_share": {
+  "bc": 0.3577020368454344,
+  "density": 0.12093867919222802,
+  "enemy_action": 0.15976078748232309,
+  "entropy": 0.0011374892279518774,
+  "next_state": 0.251178833030272,
+  "policy": 0.0,
+  "shot_outcome": 0.05179460519459535,
+  "shot_trajectory": 0.06337303950478648,
+  "value": 0.00887359749934697
+ },
+ "checkpoints": [
+  {
+   "checkpoint": "checkpoints/pilot-snapshots/visionary-hill-760/step_000010321920.pt",
+   "summary": {
+    "bc": {
+     "trunk_norm": 0.27651508638445216,
+     "trunk_share": 0.29761708050287927,
+     "whole_model_norm": 0.28363866617373595,
+     "half_cos": 0.5576897239601099,
+     "signal_fraction": 0.6877378827086943
+    },
+    "density": {
+     "trunk_norm": 0.12217635251398214,
+     "trunk_share": 0.13175760385965518,
+     "whole_model_norm": 0.12431724147232147,
+     "half_cos": 0.5009912273135956,
+     "signal_fraction": 0.6383270282437478,
+     "trunk_cos_with_bc": -0.016731464685900654
+    },
+    "enemy_action": {
+     "trunk_norm": 0.16796329317550962,
+     "trunk_share": 0.17526051036928877,
+     "whole_model_norm": 0.22441430531637008,
+     "half_cos": 0.858711846107154,
+     "signal_fraction": 0.9094230436187747,
+     "trunk_cos_with_bc": 0.00249725678071581
+    },
+    "entropy": {
+     "trunk_norm": 0.0008217686933679218,
+     "trunk_share": 0.0008772065830673104,
+     "whole_model_norm": 0.0010631161615485966,
+     "half_cos": 0.8917324898271891,
+     "signal_fraction": 0.9394624112956377,
+     "trunk_cos_with_bc": 0.18304268532870807
+    },
+    "next_state": {
+     "trunk_norm": 0.23659864709088674,
+     "trunk_share": 0.2534814844373891,
+     "whole_model_norm": 0.24526416172532653,
+     "half_cos": 0.9330242387290579,
+     "signal_fraction": 0.9641716664714567,
+     "trunk_cos_with_bc": 0.04754189461871406
+    },
+    "policy": {
+     "trunk_norm": 0.0,
+     "trunk_share": 0.0,
+     "whole_model_norm": 0.0,
+     "half_cos": 0.0,
+     "signal_fraction": 0.0,
+     "trunk_cos_with_bc": 0.0
+    },
+    "shot_outcome": {
+     "trunk_norm": 0.06326995991245986,
+     "trunk_share": 0.067988210526136,
+     "whole_model_norm": 0.06366580595940227,
+     "half_cos": 0.5449913077521812,
+     "signal_fraction": 0.6681776063413508,
+     "trunk_cos_with_bc": 0.0173744516920201
+    },
+    "shot_trajectory": {
+     "trunk_norm": 0.06596477289389642,
+     "trunk_share": 0.07049094334170883,
+     "whole_model_norm": 0.06665161315403695,
+     "half_cos": 0.43991080027574064,
+     "signal_fraction": 0.519885195286059,
+     "trunk_cos_with_bc": 0.03146570274403521
+    },
+    "value": {
+     "trunk_norm": 0.0024107932987338493,
+     "trunk_share": 0.0025269603788046,
+     "whole_model_norm": 0.0038766088290007328,
+     "half_cos": 0.9408652226727718,
+     "signal_fraction": 0.9516969422882928,
+     "trunk_cos_with_bc": 0.16547397685842358
+    }
+   },
+   "reward_value_summary": {
+    "damage": {
+     "trunk_norm": 0.0010182024606829663,
+     "trunk_share": 0.42854186721780385,
+     "whole_model_norm": 0.00146497452180445,
+     "half_cos": 0.936175517240904,
+     "signal_fraction": 0.9457620595840809
+    },
+    "kill_death": {
+     "trunk_norm": 0.0003981495808376441,
+     "trunk_share": 0.1084879558727963,
+     "whole_model_norm": 0.0006522465704950171,
+     "half_cos": 0.9090496030146008,
+     "signal_fraction": 0.9242152136514697
+    },
+    "outcome": {
+     "trunk_norm": 4.457829034145623e-05,
+     "trunk_share": 0.015990092846259157,
+     "whole_model_norm": 0.00024094951675057764,
+     "half_cos": 0.5673906949884508,
+     "signal_fraction": 0.6178736838522119
+    },
+    "zone_capture": {
+     "trunk_norm": 0.0007936232606854495,
+     "trunk_share": 0.19062898613295787,
+     "whole_model_norm": 0.001362833315045152,
+     "half_cos": 0.9662749741485008,
+     "signal_fraction": 0.9743866958473442
+    },
+    "zone_progress": {
+     "trunk_norm": 0.0009072405873530813,
+     "trunk_share": 0.2563510975255829,
+     "whole_model_norm": 0.0025867794976859515,
+     "half_cos": 0.9582193112112148,
+     "signal_fraction": 0.9760479061325987
+    }
+   }
+  },
+  {
+   "checkpoint": "checkpoints/pilot-snapshots/visionary-hill-760/step_000013271040.pt",
+   "summary": {
+    "bc": {
+     "trunk_norm": 0.34592447405122656,
+     "trunk_share": 0.3445739767392248,
+     "whole_model_norm": 0.3523035251493263,
+     "half_cos": 0.025726923666988328,
+     "signal_fraction": -0.150705639474831
+    },
+    "density": {
+     "trunk_norm": 0.10636821830470872,
+     "trunk_share": 0.11228352520792573,
+     "whole_model_norm": 0.10822761387979907,
+     "half_cos": 0.4456399272513241,
+     "signal_fraction": 0.6047101108289116,
+     "trunk_cos_with_bc": 0.04303399822533941
+    },
+    "enemy_action": {
+     "trunk_norm": 0.1666774970576487,
+     "trunk_share": 0.1726738013082074,
+     "whole_model_norm": 0.23571672423144427,
+     "half_cos": 0.8744092321322472,
+     "signal_fraction": 0.9231200273494911,
+     "trunk_cos_with_bc": -0.13106261973812797
+    },
+    "entropy": {
+     "trunk_norm": 0.001316752561531835,
+     "trunk_share": 0.0014396452805450022,
+     "whole_model_norm": 0.0015467215755792542,
+     "half_cos": 0.9039604506853863,
+     "signal_fraction": 0.9443871736284787,
+     "trunk_cos_with_bc": 0.20203896136206112
+    },
+    "next_state": {
+     "trunk_norm": 0.22810910551209237,
+     "trunk_share": 0.24887618162315495,
+     "whole_model_norm": 0.23533087676562525,
+     "half_cos": 0.8558308392585232,
+     "signal_fraction": 0.9136374909294531,
+     "trunk_cos_with_bc": 0.03791629034480747
+    },
+    "policy": {
+     "trunk_norm": 0.0,
+     "trunk_share": 0.0,
+     "whole_model_norm": 0.0,
+     "half_cos": 0.0,
+     "signal_fraction": 0.0,
+     "trunk_cos_with_bc": 0.0
+    },
+    "shot_outcome": {
+     "trunk_norm": 0.046898069244472484,
+     "trunk_share": 0.050162249705958874,
+     "whole_model_norm": 0.04732124370513752,
+     "half_cos": 0.3197136863875734,
+     "signal_fraction": 0.44191515290709077,
+     "trunk_cos_with_bc": 0.07537514259396373
+    },
+    "shot_trajectory": {
+     "trunk_norm": 0.05841101098810706,
+     "trunk_share": 0.06485558829874445,
+     "whole_model_norm": 0.058923263237680705,
+     "half_cos": 0.24377296234057733,
+     "signal_fraction": 0.36736487516993993,
+     "trunk_cos_with_bc": -0.009798861067292509
+    },
+    "value": {
+     "trunk_norm": 0.004872848901267732,
+     "trunk_share": 0.005135031835171338,
+     "whole_model_norm": 0.007839131991545746,
+     "half_cos": 0.6200952081649242,
+     "signal_fraction": 0.6855866723100678,
+     "trunk_cos_with_bc": 0.021092758608989525
+    }
+   },
+   "reward_value_summary": {
+    "damage": {
+     "trunk_norm": 0.0013116305275064934,
+     "trunk_share": 0.18157958756732828,
+     "whole_model_norm": 0.00174598579611076,
+     "half_cos": 0.9441364123503523,
+     "signal_fraction": 0.9596214640554774
+    },
+    "kill_death": {
+     "trunk_norm": 0.0007298283231616906,
+     "trunk_share": 0.09880423505360152,
+     "whole_model_norm": 0.0010356574537015964,
+     "half_cos": 0.9511486870717496,
+     "signal_fraction": 0.9724158370472761
+    },
+    "outcome": {
+     "trunk_norm": 3.8708333741105494e-05,
+     "trunk_share": 0.005068979748176896,
+     "whole_model_norm": 0.00024509236880644386,
+     "half_cos": 0.5140240881208099,
+     "signal_fraction": 0.5786271522602727
+    },
+    "zone_capture": {
+     "trunk_norm": 0.002745569341043983,
+     "trunk_share": 0.33180309552202464,
+     "whole_model_norm": 0.00455527974514307,
+     "half_cos": 0.4866258717506926,
+     "signal_fraction": 0.45911511347477485
+    },
+    "zone_progress": {
+     "trunk_norm": 0.0029688232476770327,
+     "trunk_share": 0.3827441019755664,
+     "whole_model_norm": 0.0053453298844744895,
+     "half_cos": 0.6702829706004915,
+     "signal_fraction": 0.7394494499119767
+    }
+   }
+  },
+  {
+   "checkpoint": "checkpoints/pilot-snapshots/visionary-hill-760/step_000016711680.pt",
+   "summary": {
+    "bc": {
+     "trunk_norm": 0.41226066254746385,
+     "trunk_share": 0.3787730722841031,
+     "whole_model_norm": 0.4180896668898186,
+     "half_cos": 0.6056498432278873,
+     "signal_fraction": 0.6800639608927348
+    },
+    "density": {
+     "trunk_norm": 0.13928047674011587,
+     "trunk_share": 0.1295938331765303,
+     "whole_model_norm": 0.14113033275878092,
+     "half_cos": 0.5448658751269163,
+     "signal_fraction": 0.6875726809828909,
+     "trunk_cos_with_bc": 0.0029206548919670054
+    },
+    "enemy_action": {
+     "trunk_norm": 0.15835397856026753,
+     "trunk_share": 0.14684777365643875,
+     "whole_model_norm": 0.2082743661631297,
+     "half_cos": 0.7712490617392112,
+     "signal_fraction": 0.841271279392644,
+     "trunk_cos_with_bc": -0.07230342487005252
+    },
+    "entropy": {
+     "trunk_norm": 0.0011966049933870497,
+     "trunk_share": 0.0011183907344616566,
+     "whole_model_norm": 0.0015090988157529714,
+     "half_cos": 0.8706951480311332,
+     "signal_fraction": 0.9272973680612543,
+     "trunk_cos_with_bc": 0.12496250504776273
+    },
+    "next_state": {
+     "trunk_norm": 0.23099297730718238,
+     "trunk_share": 0.21428429868287477,
+     "whole_model_norm": 0.2398205274411719,
+     "half_cos": 0.850156852943006,
+     "signal_fraction": 0.9138696574592146,
+     "trunk_cos_with_bc": -0.025772979590424922
+    },
+    "policy": {
+     "trunk_norm": 0.0,
+     "trunk_share": 0.0,
+     "whole_model_norm": 0.0,
+     "half_cos": 0.0,
+     "signal_fraction": 0.0,
+     "trunk_cos_with_bc": 0.0
+    },
+    "shot_outcome": {
+     "trunk_norm": 0.057316906020457435,
+     "trunk_share": 0.05342696068323183,
+     "whole_model_norm": 0.0577398822382203,
+     "half_cos": 0.5284222649411187,
+     "signal_fraction": 0.6737477320812882,
+     "trunk_cos_with_bc": -0.051826027532855166
+    },
+    "shot_trajectory": {
+     "trunk_norm": 0.06286499674906632,
+     "trunk_share": 0.05859143422357802,
+     "whole_model_norm": 0.06336264460517302,
+     "half_cos": 0.25076023138981385,
+     "signal_fraction": 0.3263930733335751,
+     "trunk_cos_with_bc": -0.04610277320317219
+    },
+    "value": {
+     "trunk_norm": 0.019001329296053953,
+     "trunk_share": 0.017364236557854917,
+     "whole_model_norm": 0.020577872716122946,
+     "half_cos": 0.8792781204172714,
+     "signal_fraction": 0.8654995288969536,
+     "trunk_cos_with_bc": -0.02716816235978892
+    }
+   },
+   "reward_value_summary": {
+    "damage": {
+     "trunk_norm": 0.0035357757014604645,
+     "trunk_share": 0.15392749044781232,
+     "whole_model_norm": 0.004415874788941319,
+     "half_cos": 0.9355312332773411,
+     "signal_fraction": 0.9641175665740759
+    },
+    "kill_death": {
+     "trunk_norm": 0.004080279022724714,
+     "trunk_share": 0.18693961146993474,
+     "whole_model_norm": 0.004706832306543581,
+     "half_cos": 0.9204240859616344,
+     "signal_fraction": 0.9507991730818738
+    },
+    "outcome": {
+     "trunk_norm": 4.995517451908057e-05,
+     "trunk_share": 0.002160418308432314,
+     "whole_model_norm": 0.0002825755452600598,
+     "half_cos": 0.5355610738349342,
+     "signal_fraction": 0.593893016203142
+    },
+    "zone_capture": {
+     "trunk_norm": 0.007028580754609629,
+     "trunk_share": 0.2686288987292657,
+     "whole_model_norm": 0.007345222350696436,
+     "half_cos": 0.8367732986915648,
+     "signal_fraction": 0.8295808993118587
+    },
+    "zone_progress": {
+     "trunk_norm": 0.0089913918122494,
+     "trunk_share": 0.38834358099699157,
+     "whole_model_norm": 0.010753281448417001,
+     "half_cos": 0.9008281455367717,
+     "signal_fraction": 0.8781517711846073
+    }
+   }
+  },
+  {
+   "checkpoint": "checkpoints/pilot-snapshots/visionary-hill-760/step_000019660800.pt",
+   "summary": {
+    "bc": {
+     "trunk_norm": 0.40130813514283004,
+     "trunk_share": 0.370830096951644,
+     "whole_model_norm": 0.4063211515566389,
+     "half_cos": 0.7296079219736792,
+     "signal_fraction": 0.8206313699245249
+    },
+    "density": {
+     "trunk_norm": 0.11735663545257491,
+     "trunk_share": 0.10724225629478946,
+     "whole_model_norm": 0.11931650488087488,
+     "half_cos": 0.6055559191371697,
+     "signal_fraction": 0.7293709306404016,
+     "trunk_cos_with_bc": 0.05331510906273237
+    },
+    "enemy_action": {
+     "trunk_norm": 0.12454259072852396,
+     "trunk_share": 0.12061531923804357,
+     "whole_model_norm": 0.1760701219247717,
+     "half_cos": 0.7989053509412164,
+     "signal_fraction": 0.854075351672626,
+     "trunk_cos_with_bc": -0.06033004291148383
+    },
+    "entropy": {
+     "trunk_norm": 0.00123444159304613,
+     "trunk_share": 0.0011565877214420983,
+     "whole_model_norm": 0.0016634392778495481,
+     "half_cos": 0.90715206381007,
+     "signal_fraction": 0.9492131270922194,
+     "trunk_cos_with_bc": 0.1070329401282693
+    },
+    "next_state": {
+     "trunk_norm": 0.3109306381918175,
+     "trunk_share": 0.279390326291195,
+     "whole_model_norm": 0.31966234458944115,
+     "half_cos": 0.8520400501308866,
+     "signal_fraction": 0.8993642026076221,
+     "trunk_cos_with_bc": 0.030842472734912852
+    },
+    "policy": {
+     "trunk_norm": 0.0,
+     "trunk_share": 0.0,
+     "whole_model_norm": 0.0,
+     "half_cos": 0.0,
+     "signal_fraction": 0.0,
+     "trunk_cos_with_bc": 0.0
+    },
+    "shot_outcome": {
+     "trunk_norm": 0.04833518107423471,
+     "trunk_share": 0.04626275962759876,
+     "whole_model_norm": 0.04895873515207932,
+     "half_cos": 0.042258812518739246,
+     "signal_fraction": -0.6104446670831679,
+     "trunk_cos_with_bc": 0.06060450692280169
+    },
+    "shot_trajectory": {
+     "trunk_norm": 0.06693933922518286,
+     "trunk_share": 0.0618904907108285,
+     "whole_model_norm": 0.06758981807599991,
+     "half_cos": 0.1426500840028626,
+     "signal_fraction": 0.19285857280010357,
+     "trunk_cos_with_bc": 0.03930832985889811
+    },
+    "value": {
+     "trunk_norm": 0.013250188102423737,
+     "trunk_share": 0.012612163163522603,
+     "whole_model_norm": 0.014976364666174885,
+     "half_cos": 0.7518587717593025,
+     "signal_fraction": 0.835834609961525,
+     "trunk_cos_with_bc": -0.02689705442594546
+    }
+   },
+   "reward_value_summary": {
+    "damage": {
+     "trunk_norm": 0.004425932856335291,
+     "trunk_share": 0.28854381017377545,
+     "whole_model_norm": 0.005334811133206389,
+     "half_cos": 0.9335482563869434,
+     "signal_fraction": 0.960627102176843
+    },
+    "kill_death": {
+     "trunk_norm": 0.0033329465036120443,
+     "trunk_share": 0.19659258920593606,
+     "whole_model_norm": 0.003929620547239295,
+     "half_cos": 0.8336667364794085,
+     "signal_fraction": 0.8654812244889749
+    },
+    "outcome": {
+     "trunk_norm": 3.2745395832840774e-05,
+     "trunk_share": 0.001968614467971369,
+     "whole_model_norm": 0.00018245791054590895,
+     "half_cos": 0.5409877514370957,
+     "signal_fraction": 0.6073751992688815
+    },
+    "zone_capture": {
+     "trunk_norm": 0.003744131087900914,
+     "trunk_share": 0.19086982386689047,
+     "whole_model_norm": 0.004278142287431324,
+     "half_cos": 0.33614680267904423,
+     "signal_fraction": -0.3366811815116753
+    },
+    "zone_progress": {
+     "trunk_norm": 0.0060729521772081236,
+     "trunk_share": 0.32202516222474886,
+     "whole_model_norm": 0.007739155380332791,
+     "half_cos": 0.5262891934035047,
+     "signal_fraction": 0.6037734890888244
+    }
+   }
+  }
+ ]
+}
