@@ -149,6 +149,8 @@ from boost_and_broadside.train.rl.shot_codes import (
     TRAJECTORY_PART_NAMES,
     ShotCodec,
     ShotTargets,
+    shot_population_masks,
+    shot_population_metric_records,
 )
 from boost_and_broadside.train.rl.sigreg import SIGReg
 
@@ -1810,7 +1812,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 bc_valid = mb_expert_probs.sum(-1) > 0
                 bc_sum += (bc_valid & mb_actor_mask & mb_alive).sum()
             if chunk.shot_labels is not None:
-                shot_sum += ((chunk.shot_labels[..., 0] > 0.5) & chunk.observer_side).sum()
+                shot_sum += (
+                    shot_population_masks(
+                        chunk.shot_labels[..., 0] > 0.5,
+                        chunk.observer_side,
+                        chunk.obs[ObsKey.VISIBLE][
+                            : mb_alive.shape[0], :, : self.buffer.num_ships
+                        ].bool(),
+                    )
+                    .any(0)
+                    .sum()
+                )
             if need_ns:
                 belief_valid = chunk.obs[ObsKey.BELIEF_VALID][
                     : mb_alive.shape[0], :, : self.buffer.num_ships
@@ -2193,11 +2205,12 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         density_loss = density.loss
 
         # ---- Counterfactual shot prediction (primary scale only) -------------
-        shot = self._shot_losses(
+        shot, shot_population_sums, shot_population_counts = self._shot_losses(
             shot_trajectory_logits,
             shot_outcome_logits,
             shot_targets,
             batch.observer_side,
+            curr_mb_obs[ObsKey.VISIBLE][:, :, : self.buffer.num_ships].bool(),
             denoms["shot_sum"],
         )
 
@@ -2293,6 +2306,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             diag["next_state_hidden_per_feat"] = next_state_hidden_per_feat
             diag["ns_population_sums"] = ns_population_sums  # (3, 2, G) gpu or None
             diag["ns_population_counts"] = ns_population_counts  # (3,) gpu or None
+            diag["shot_population_sums"] = shot_population_sums  # (2, M) gpu or None
+            diag["shot_population_counts"] = shot_population_counts  # (2,) gpu or None
             diag["scripted_entropy"] = scripted_entropy.detach()
             diag["bc_kl"] = bc_loss.detach() - scripted_entropy.detach()
             diag["approx_kl"] = (((ratio - 1) - log_ratio) * pg_f).sum() / pg_sum
@@ -2366,18 +2381,21 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         outcome_logits: torch.Tensor | None,
         targets: ShotTargets | None,
         observer_side: torch.Tensor,
+        visible: torch.Tensor,
         shot_sum: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
+    ) -> tuple[dict[str, torch.Tensor], torch.Tensor | None, torch.Tensor | None]:
         """Masked cross-entropies of the two shot heads, and their diagnostics.
 
-        Supervised on the observer's own ships only: theirs is the observation
-        that carried the exact command applied at launch. An enemy token holds a
-        forecast of it, and what its shot would do is another question.
+        Supervised on every ship the observer sees on the launch decision: its
+        own, and enemies in sight (``SHOT_POPULATIONS``). A hidden enemy's shot
+        leaves from a true launch state the token reading it does not have.
 
-        Returns ``trajectory`` and ``outcome`` (the weighted terms, with
-        gradient), the trajectory loss split by channel, and the realized and
-        predicted outcome rates -- every entry additive across micro-batches.
-        Both are in nats per shot, like every other term per token: the
+        Returns the losses -- ``trajectory`` and ``outcome`` (the weighted
+        terms, with gradient), the trajectory loss split by channel, and the
+        realized and predicted outcome rates, every entry additive across
+        micro-batches -- and the per-population ``(2, M)`` sums and ``(2,)``
+        counts (``SHOT_MOMENT_NAMES``), or ``None`` without shot heads. Both
+        losses are in nats per shot, like every other term per token: the
         trajectory loss sums its softmax groups and both queried ages, the
         outcome is one softmax. The ``shot/trajectory_*`` diagnostics are per
         query.
@@ -2394,22 +2412,22 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             "clear_miss_predicted",
         )
         if targets is None or trajectory_logits is None or outcome_logits is None:
-            return {name: self._zero_tensor for name in names}
-        supervised = (targets.valid & observer_side).float()  # (T, B, N)
+            return {name: self._zero_tensor for name in names}, None, None
+        masks = shot_population_masks(targets.valid, observer_side, visible)  # (2, T, B, N)
+        supervised = masks.any(0).float()  # (T, B, N)
         parts = ShotCodec.trajectory_cross_entropy(trajectory_logits, targets.trajectory)
         per_example = parts.sum((-2, -1))  # (T, B, N)
+        outcome = ShotCodec.outcome_cross_entropy(outcome_logits, targets.outcome)
         losses = {
             "trajectory": (per_example * supervised).sum() / shot_sum,
-            "outcome": (
-                ShotCodec.outcome_cross_entropy(outcome_logits, targets.outcome) * supervised
-            ).sum()
-            / shot_sum,
+            "outcome": (outcome * supervised).sum() / shot_sum,
         }
         with torch.no_grad():
             part_means = (parts.mean(-2) * supervised.unsqueeze(-1)).sum((0, 1, 2)) / shot_sum
             for index, name in enumerate(TRAJECTORY_PART_NAMES):
                 losses[f"trajectory_{name}"] = part_means[index]
             predicted = F.softmax(outcome_logits.float(), dim=-1)
+            moments = [per_example.detach().float(), outcome.detach().float()]
             for name, index in (
                 ("enemy_hit", ENEMY_HIT),
                 ("ally_hit", ALLY_HIT),
@@ -2417,7 +2435,11 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             ):
                 losses[f"{name}_rate"] = (targets.outcome[..., index] * supervised).sum() / shot_sum
                 losses[f"{name}_predicted"] = (predicted[..., index] * supervised).sum() / shot_sum
-        return losses
+                moments += [targets.outcome[..., index].float(), predicted[..., index]]
+            weights = masks.float()
+            population_sums = torch.einsum("mtbn,ptbn->pm", torch.stack(moments), weights)
+            population_counts = weights.sum((1, 2, 3))
+        return losses, population_sums.double(), population_counts.double()
 
     def _global_density_loss(
         self,
@@ -3164,6 +3186,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # small population's mean is a ratio of sums, not a mean of ratios.
         ns_population_sums: torch.Tensor | None = None
         ns_population_counts: torch.Tensor | None = None
+        shot_population_sums: torch.Tensor | None = None
+        shot_population_counts: torch.Tensor | None = None
         hist_returns: torch.Tensor | None = None
         hist_logprob: torch.Tensor | None = None
         hist_alive: torch.Tensor | None = None
@@ -3417,6 +3441,17 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                                     ns_population_counts = (
                                         ns_population_counts + diag["ns_population_counts"]
                                     )
+                            if diag.get("shot_population_sums") is not None:
+                                if shot_population_sums is None:
+                                    shot_population_sums = diag["shot_population_sums"]
+                                    shot_population_counts = diag["shot_population_counts"]
+                                else:
+                                    shot_population_sums = (
+                                        shot_population_sums + diag["shot_population_sums"]
+                                    )
+                                    shot_population_counts = (
+                                        shot_population_counts + diag["shot_population_counts"]
+                                    )
                             hist_diag = diag
 
                     # Non-additive stats finalized per scale: max for the ratio,
@@ -3577,6 +3612,10 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
 
         if ns_population_sums is not None:
             metrics.update(population_metric_records(ns_population_sums, ns_population_counts))
+        if shot_population_sums is not None:
+            metrics.update(
+                shot_population_metric_records(shot_population_sums, shot_population_counts)
+            )
 
         for name, (total, count) in all_buffers[0].belief_diagnostics.items():
             metrics[name] = (total / count.clamp(min=1.0)).item()

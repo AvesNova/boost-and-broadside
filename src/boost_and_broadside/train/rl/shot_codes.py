@@ -1,8 +1,9 @@
 """Categorical targets for the counterfactual shot heads.
 
-The environment emits one compact physical example per completed shot
+The trainer re-simulates one compact physical example per shot
 (``env/shot_labels.py``); this module turns it into what the two heads are
-trained toward, on the fly in the loss, the way the next-state code is.
+trained toward, on the fly in the loss, the way the next-state code is, and
+says whose shots are supervised: the observer's ships and enemies in sight.
 
 Trajectory, at each queried bullet age, in the launch attitude's frame:
 
@@ -239,3 +240,54 @@ def shot_time_features(ages: torch.Tensor, max_age: int, harmonics: int) -> torc
     k = torch.arange(1, harmonics + 1, device=ages.device, dtype=normalized.dtype)
     angle = 2.0 * math.pi * normalized.unsqueeze(-1) * k
     return torch.cat([normalized.unsqueeze(-1), angle.sin(), angle.cos()], dim=-1)
+
+
+# ---------------------------------------------------------------------------
+# Supervised populations
+# ---------------------------------------------------------------------------
+
+#: Ships whose shots the heads learn from, in a fixed order. A hidden enemy's
+#: shot is never supervised: its launch state is the true one, which the
+#: token reading it does not have.
+SHOT_POPULATIONS: tuple[str, ...] = ("ally", "enemy_visible")
+#: Rows of the per-population sums: the two losses, then realized and
+#: predicted outcome rates.
+SHOT_MOMENT_NAMES: tuple[str, ...] = (
+    "trajectory",
+    "outcome",
+    "enemy_hit_rate",
+    "enemy_hit_predicted",
+    "ally_hit_rate",
+    "ally_hit_predicted",
+    "clear_miss_rate",
+    "clear_miss_predicted",
+)
+
+
+def shot_population_masks(
+    valid: torch.Tensor, observer_side: torch.Tensor, visible: torch.Tensor
+) -> torch.Tensor:
+    """``(2, ...)`` bool: valid shots of the observer's ships, and of enemies in sight.
+
+    Args:
+        valid: ``(...)`` the shot has a complete label.
+        observer_side: ``(...)`` the ship is on the observing team.
+        visible: ``(...)`` the observer sees the ship on the launch decision.
+    """
+    return torch.stack([valid & observer_side, valid & ~observer_side & visible])
+
+
+def shot_population_metric_records(sums: torch.Tensor, counts: torch.Tensor) -> dict[str, float]:
+    """Finalize accumulated ``(2, M)`` sums and ``(2,)`` counts into logger keys."""
+    sums = sums.cpu()
+    counts = counts.cpu()
+    total = float(counts.sum())
+    records: dict[str, float] = {}
+    for p, population in enumerate(SHOT_POPULATIONS):
+        count = float(counts[p])
+        records[f"shot_population/{population}/shot_share"] = count / max(total, 1.0)
+        if count <= 0.0:
+            continue
+        for m, moment in enumerate(SHOT_MOMENT_NAMES):
+            records[f"shot_population/{population}/{moment}"] = float(sums[p, m]) / count
+    return records

@@ -584,8 +584,9 @@ bins evenly spaced in log distance from the collision radius to six radii; clear
 the next bin on that axis, so a pass just inside it shares mass with clear miss and
 anything farther is clear miss alone. No head is ever asked how far a bad miss was.
 
-Only the observer's own ships are supervised: theirs is the observation that carried the
-exact command that produced the launch state. Both heads exist only when `shot_trajectory_coef` or
+Every ship the observer sees on the launch decision is supervised: its own ships, and
+enemies in sight. A hidden enemy's shot leaves from a true launch state the token reading it
+does not have, so it is never a target. Both heads exist only when `shot_trajectory_coef` or
 `shot_outcome_coef` is above zero, and a reload reads their presence off the weights.
 
 ## Why team size can change

@@ -24,6 +24,8 @@ from boost_and_broadside.train.rl.shot_codes import (
     TRAJECTORY_DIM,
     TRAJECTORY_GROUPS,
     ShotCodec,
+    shot_population_masks,
+    shot_population_metric_records,
 )
 from tests.train.test_ppo import _make_train_config
 
@@ -127,6 +129,25 @@ def test_buffer_resimulates_its_stored_launches():
     buffer.reset()
     assert buffer.shot_labels[..., 0].sum() == 0
     assert not buffer.shot_launch.alive.any()
+
+
+def test_only_ships_in_sight_are_supervised():
+    valid = torch.tensor([True, True, True, True, False])
+    observer = torch.tensor([True, True, False, False, True])
+    visible = torch.tensor([True, False, True, False, True])
+    ally, enemy = shot_population_masks(valid, observer, visible)
+    # Allies always count; an enemy only in sight; nothing without a label.
+    assert ally.tolist() == [True, True, False, False, False]
+    assert enemy.tolist() == [False, False, True, False, False]
+
+
+def test_population_records_are_means_over_each_population():
+    sums = torch.tensor([[60.0, 2.0, 0.2, 0.2, 0.0, 0.0, 1.0, 1.0], [0.0] * 8]).double()
+    records = shot_population_metric_records(sums, torch.tensor([2.0, 0.0]).double())
+    assert records["shot_population/ally/trajectory"] == 30.0
+    assert records["shot_population/ally/shot_share"] == 1.0
+    assert records["shot_population/enemy_visible/shot_share"] == 0.0
+    assert "shot_population/enemy_visible/trajectory" not in records
 
 
 def test_heads_answer_every_query():

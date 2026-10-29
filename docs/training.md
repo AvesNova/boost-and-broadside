@@ -193,9 +193,10 @@ The total update combines:
   labels are re-simulated once the rollout is complete, from launch states the environment
   copies each tick ([environment](environment.md#shot-labels)). A shot's flight reads the 28
   rows after its launch, so the last 28 rows of every rollout carry none -- about 22% of a
-  128-step rollout, dropped rather than carried over. Both losses are nats per shot.
-  `shot/*` logs the trajectory loss by channel and realized against predicted enemy-hit,
-  ally-hit and clear-miss rates;
+  128-step rollout, dropped rather than carried over. Allies and enemies in sight are
+  supervised, hidden enemies never. Both losses are nats per shot. `shot/*` logs the
+  trajectory loss by channel and realized against predicted enemy-hit, ally-hit and
+  clear-miss rates, and `shot_population/{ally,enemy_visible}/*` the same per population;
 - optional sketched isotropic Gaussian regularization of the embedding space
   (SIGReg, from [LeJEPA](https://arxiv.org/abs/2511.08544)), disabled in the
   reference configuration.
