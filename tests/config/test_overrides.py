@@ -109,3 +109,14 @@ def test_profile_overrides_survive_vram_sizing() -> None:
     assert launch.resolved.model_config.n_spatial_heads == 2
     assert launch.resolved.model_config.spatial_rope is True
     assert launch.resolved.train_config.total_timesteps == 200_000_000
+
+
+def test_schedule_keypoints_can_be_set_as_a_tuple_literal() -> None:
+    """A learning-rate anneal is a sweep arm like any other value."""
+    profile = _apply("schedule_spec.learning_rate=((0, 1e-7, 'linear'), (1e6, 3e-4, 'hold'))")
+    assert profile.schedule_spec.learning_rate == ((0, 1e-7, "linear"), (1e6, 3e-4, "hold"))
+
+
+def test_a_tuple_field_refuses_anything_but_a_literal() -> None:
+    with pytest.raises(OverrideError, match="schedule_spec.learning_rate"):
+        _apply("schedule_spec.learning_rate=3e-4")

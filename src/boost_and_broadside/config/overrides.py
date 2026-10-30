@@ -17,6 +17,7 @@ produces an arm that claims to have tested something it did not.
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 from difflib import get_close_matches
 from functools import cache
@@ -81,9 +82,24 @@ def _coerce(text: str, annotation: Any, path: str) -> Any:
             return float(text)
         if target is str:
             return text
-    except ValueError as error:
+        if get_origin(target) is tuple:
+            # Schedule keypoints and other tuples, as a Python literal:
+            # ``((0, 1e-7, 'linear'), (1e6, 3e-4, 'hold'))``. Shape and element
+            # types are checked where the value is used, e.g. by the schedule
+            # compiler, which already validates every keypoint.
+            value = ast.literal_eval(text)
+            if not isinstance(value, (tuple, list)):
+                raise ValueError(f"expected a tuple literal, got {text!r}")
+            return _as_tuples(value)
+    except (ValueError, SyntaxError) as error:
         raise OverrideError(f"{path}={text!r}: {error}") from error
     raise OverrideError(f"{path} is a {annotation}, which cannot be set from the command line")
+
+
+def _as_tuples(value: Any) -> Any:
+    if isinstance(value, (tuple, list)):
+        return tuple(_as_tuples(item) for item in value)
+    return value
 
 
 def _optional(annotation: Any) -> bool:
