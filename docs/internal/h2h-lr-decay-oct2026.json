@@ -1,0 +1,123 @@
+[
+ {
+  "a": "tenebrous-horseman-765/step_000049152000",
+  "b": "magic-darkness-764/step_000049152000",
+  "games": 256,
+  "wins": 156,
+  "losses": 66,
+  "ties": 34,
+  "score": 0.67578125,
+  "score_se": 0.029255137913362057,
+  "elo_diff": 127.5872043010886
+ },
+ {
+  "a": "tenebrous-horseman-765/step_000049152000",
+  "b": "magic-darkness-764/ema_step_000049152000",
+  "games": 256,
+  "wins": 129,
+  "losses": 95,
+  "ties": 32,
+  "score": 0.56640625,
+  "score_se": 0.030973161893160215,
+  "elo_diff": 46.41800937932698
+ },
+ {
+  "a": "tenebrous-horseman-765/ema_step_000049152000",
+  "b": "magic-darkness-764/ema_step_000049152000",
+  "games": 256,
+  "wins": 105,
+  "losses": 120,
+  "ties": 31,
+  "score": 0.470703125,
+  "score_se": 0.031196309697324526,
+  "elo_diff": -20.380899319814947
+ },
+ {
+  "a": "tenebrous-horseman-765/ema_step_000049152000",
+  "b": "tenebrous-horseman-765/step_000049152000",
+  "games": 256,
+  "wins": 105,
+  "losses": 112,
+  "ties": 39,
+  "score": 0.486328125,
+  "score_se": 0.03123831530511051,
+  "elo_diff": -9.502560557608613
+ },
+ {
+  "a": "tenebrous-horseman-765/step_000049152000",
+  "b": "scripted",
+  "games": 256,
+  "wins": 214,
+  "losses": 23,
+  "ties": 19,
+  "score": 0.873046875,
+  "score_se": 0.020807528408901516,
+  "elo_diff": 334.95766659563236
+ },
+ {
+  "a": "magic-darkness-764/step_000049152000",
+  "b": "scripted",
+  "games": 256,
+  "wins": 171,
+  "losses": 43,
+  "ties": 42,
+  "score": 0.75,
+  "score_se": 0.027063293868263706,
+  "elo_diff": 190.84850188786498
+ },
+ {
+  "a": "magic-darkness-764/ema_step_000049152000",
+  "b": "scripted",
+  "games": 256,
+  "wins": 229,
+  "losses": 10,
+  "ties": 17,
+  "score": 0.927734375,
+  "score_se": 0.01618295115181012,
+  "elo_diff": 443.39675422314866
+ },
+ {
+  "a": "s5_762",
+  "b": "s5_764",
+  "games": 256,
+  "wins": 82,
+  "losses": 140,
+  "ties": 34,
+  "score": 0.38671875,
+  "score_se": 0.03043739466090842,
+  "elo_diff": -80.10578312467354
+ },
+ {
+  "a": "s5_762",
+  "b": "u762_34.4M",
+  "games": 256,
+  "wins": 114,
+  "losses": 112,
+  "ties": 30,
+  "score": 0.50390625,
+  "score_se": 0.031249046311131234,
+  "elo_diff": 2.714395737316835
+ },
+ {
+  "a": "s5_764",
+  "b": "avg_step_000034406400",
+  "games": 256,
+  "wins": 101,
+  "losses": 111,
+  "ties": 44,
+  "score": 0.48046875,
+  "score_se": 0.03122614904019731,
+  "elo_diff": -13.578611811075142
+ },
+ {
+  "a": "s4_762",
+  "b": "s4_763",
+  "games": 256,
+  "wins": 128,
+  "losses": 96,
+  "ties": 32,
+  "score": 0.5625,
+  "score_se": 0.031004898176538172,
+  "elo_diff": 43.657787770027234
+ }
+]
