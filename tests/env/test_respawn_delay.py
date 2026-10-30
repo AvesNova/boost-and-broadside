@@ -116,6 +116,23 @@ def test_a_dead_ship_waits_out_the_delay_parked_where_it_died() -> None:
     assert (env.state.ship_respawn_ticks[:, slot] == 0).all()
 
 
+def test_a_waiting_ship_is_neither_a_shooter_nor_a_target_for_shot_labels() -> None:
+    """The learner's shot re-simulation reads the launch copy's ``alive``: a
+    parked wreck must not fire a labelled shot or absorb one fired at it."""
+    env = TensorEnv(2, _SHIP, replace(_env_config(), max_bullets=4, shot_labels=True), "cpu")
+    env.reset(seed=7)
+    slot = 0
+    _kill_outside(env, slot)
+    shoot = _hold()
+    shoot[..., 2] = 1  # everyone pulls the trigger, the wreck included
+    env.tick(shoot)  # the copy precedes this tick's deaths: a shot fired as it dies is real
+    assert not env.state.ship_alive[:, slot].any()
+    for _ in range(respawn_delay_ticks(_FRONTLINE, _SHIP) - 1):
+        env.tick(shoot)
+        assert not env.shot_launch.alive[:, slot].any()
+        assert env.shot_launch.alive[:, 1:].all()
+
+
 def test_a_zero_delay_still_respawns_on_the_tick_of_death() -> None:
     env = _env(replace(_FRONTLINE, respawn_delay=0.0))
     _kill_outside(env, 1)
