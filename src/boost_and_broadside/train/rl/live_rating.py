@@ -45,7 +45,7 @@ DEFAULT_PRIOR_GAMES = 1.0
 # Players excluded from every fit here because their strength changes under the
 # record. A count matrix cannot say when a game was played, so pooling a moving
 # player's results fits the average of something that was never the same twice.
-NON_STATIONARY = frozenset({"avg"})
+NON_STATIONARY = frozenset({"avg", "ema"})
 
 
 def fit_ladder(

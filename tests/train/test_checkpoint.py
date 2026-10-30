@@ -225,6 +225,7 @@ class TestObservationSchema:
             grad_tokens=0,
             elapsed_train_time=0.0,
             avg_live_elo=0.0,
+            ema_live_elo=0.0,
             floating_games=0,
             eval_window_rand=[],
             eval_window_sc=[],
@@ -327,6 +328,8 @@ class TestResumableCheckpointContract:
         payload.pop(field)
         if field == "ema_params":
             payload["avg_update_count"] = 1  # the exemption below covers count 0
+        if field == "ema_live_elo":
+            payload.pop("avg_live_elo")  # otherwise it reseeds from the average's
 
         with pytest.raises(ValueError, match=f"not a resumable training checkpoint.*{field}"):
             require_resumable_checkpoint(payload, "step_000000000042.pt")
@@ -1054,7 +1057,9 @@ class TestBestCheckpoints:
         trainer._active_save_thread.join(timeout=60)
         path = Path(tmp_path) / trainer.run_name / f"ema_step_{trainer._global_step:012d}.pt"
         saved = torch.load(path, map_location="cpu", weights_only=False)
-        for (name, _), ema in zip(trainer._avg_policy_module.named_parameters(), trainer._ema_params):
+        for (name, _), ema in zip(
+            trainer._avg_policy_module.named_parameters(), trainer._ema_params
+        ):
             torch.testing.assert_close(saved["policy_state_dict"][name].float(), ema.cpu())
         trainer.shutdown()
 

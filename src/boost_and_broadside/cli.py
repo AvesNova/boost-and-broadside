@@ -485,6 +485,29 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ),
     ),
     CommandSpec(
+        "head-to-head",
+        "Score chosen pairs of agents against each other in one batch of games.",
+        (
+            _option(
+                "--pair",
+                nargs=2,
+                action="append",
+                required=True,
+                metavar=("AGENT", "AGENT"),
+                help="Two agents to play each other (repeatable): a .pt path or scripted.",
+            ),
+            _option(
+                "--games",
+                type=_positive_int,
+                default=256,
+                help="Games per pair, split evenly between the two sides (default: 256).",
+            ),
+            _option("--json", default=None, metavar="PATH", help="Also write the scores as JSON."),
+            _DEVICE,
+            _SEED,
+        ),
+    ),
+    CommandSpec(
         "elo-calibrate",
         "Post-hoc Bradley-Terry calibration for one exact run or agent field.",
         (

@@ -392,9 +392,12 @@ the live rating leaves it behind. Ratings for the scripted and average entries a
 from the continuous evaluator every update, since a stale rating misdirects every draw.
 
 An exponential moving average of the same snapshots (`average_ema_decay` per update) is
-kept beside the uniform mean. It is neither rated nor drawn during training; both averages
-are written with every step checkpoint, as `avg_step_*.pt` and `ema_step_*.pt`, so either
-can be measured afterwards as an ordinary policy file.
+kept beside the uniform mean. The evaluator's live-versus-average slot is split between
+them, so both carry a one-way in-training rating (`live_elo/avg`, `live_elo/ema`); the EMA
+is never drawn as an opponent. Both averages are written with every step checkpoint, as
+`avg_step_*.pt` and `ema_step_*.pt`, so either can be measured afterwards as an ordinary
+policy file. Measured head to head, they are the stronger players: in run 764 both beat
+the live policy about three games in four by 34M steps.
 
 The [`EloRoster`](../src/boost_and_broadside/train/rl/roster.py) retains historical entries
 rather than evicting the weakest; `league_size` only bounds the GPU-resident LRU policy
@@ -411,7 +414,7 @@ evaluation environments alongside training. The evaluator has five logical slots
 1. live vs fixed anchor;
 2. live vs floating checkpoint;
 3. live vs scripted controller;
-4. live vs running-average policy;
+4. live vs the running averages (half the slot each: uniform mean and EMA);
 5. floating checkpoint vs fixed anchor.
 
 Ratings live on the **live gauge**: an approximate scale, defined rather than measured,

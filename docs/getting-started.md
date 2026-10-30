@@ -233,6 +233,13 @@ uv run bnb elo-calibrate \
 uv run bnb elo-calibrate \
   --agents scripted random checkpoints/<run>/<checkpoint>.pt
 
+# Score chosen pairs in one batch: two seeds at one step, a policy and its EMA.
+# Plays in the first checkpoint's own arena; a draw counts as half a win.
+uv run bnb head-to-head --games 256 --json scores.json \
+  --pair checkpoints/<run-a>/step_<N>.pt checkpoints/<run-b>/step_<N>.pt \
+  --pair checkpoints/<run-a>/ema_step_<N>.pt checkpoints/<run-a>/step_<N>.pt \
+  --pair checkpoints/<run-a>/step_<N>.pt scripted
+
 # Rate frozen checkpoints across symmetric fleet sizes (resumable)
 uv run bnb elo-scale \
   --run resilient-resonance-682 --sizes 1,2,4,8,16,32,64

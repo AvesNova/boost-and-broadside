@@ -235,6 +235,7 @@ class LoggingMixin:
             )
         if self._avg_update_count > 0:
             metrics["live_elo/avg"] = self._avg_live_elo
+            metrics["live_elo/ema"] = self._ema_live_elo
             if self._eval_window_live_vs_avg:
                 metrics["eval/score_vs_avg"] = sum(self._eval_window_live_vs_avg) / len(
                     self._eval_window_live_vs_avg
@@ -357,6 +358,7 @@ class LoggingMixin:
             "global_step": self._global_step,
             "live": self._live_elo,
             "avg": self._avg_live_elo,
+            "ema": self._ema_live_elo,
             "scripted": self.cfg.elo_eval.scripted_live_elo,
             "counts": {label: list(wlt) for label, wlt in self._match_counts.items()},
             "entries": [

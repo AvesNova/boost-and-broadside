@@ -71,6 +71,7 @@ SMOKE_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("capture", "capture", timeout_seconds=120),
     SmokeCase("collect-stats", "collect-stats"),
     SmokeCase("crossover", "crossover", timeout_seconds=120),
+    SmokeCase("head-to-head", "head-to-head", timeout_seconds=120),
     SmokeCase("elo-calibrate", "elo-calibrate", timeout_seconds=120),
     SmokeCase("elo-scale", "elo-scale", timeout_seconds=120),
     SmokeCase("semi-random", "semi-random"),
@@ -268,6 +269,7 @@ def build_synthetic_run(
         grad_tokens=0,
         elapsed_train_time=0.0,
         avg_live_elo=0.0,
+        ema_live_elo=0.0,
         floating_games=0,
         eval_window_rand=[],
         eval_window_sc=[],
@@ -504,6 +506,28 @@ def _run_mode_case(case: SmokeCase, roots: SmokeRoots) -> None:
                     "1",
                     "--games-per-matchup",
                     "1",
+                    "--device",
+                    "cpu",
+                    "--seed",
+                    "7",
+                ]
+            )
+    elif case.command == "head-to-head":
+        from boost_and_broadside.modes.head_to_head import run_head_to_head_mode
+
+        def bounded_head_to_head(**kwargs):
+            kwargs.update(_fixture_arena(fixture))
+            return run_head_to_head_mode(**kwargs)
+
+        with patch.object(cli_commands, "run_head_to_head_mode", side_effect=bounded_head_to_head):
+            result = main(
+                [
+                    "head-to-head",
+                    "--pair",
+                    checkpoint,
+                    "scripted",
+                    "--games",
+                    "2",
                     "--device",
                     "cpu",
                     "--seed",

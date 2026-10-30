@@ -399,7 +399,8 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
             raise ValueError(f"keep_checkpoints must be positive or None, got {keep_checkpoints}")
         if archive_checkpoints_every is not None and archive_checkpoints_every < 1:
             raise ValueError(
-                f"archive_checkpoints_every must be positive or None, got {archive_checkpoints_every}"
+                "archive_checkpoints_every must be positive or None, "
+                f"got {archive_checkpoints_every}"
             )
         self._keep_checkpoints = keep_checkpoints
         self._archive_checkpoints_every = archive_checkpoints_every
@@ -695,10 +696,25 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         ]
         self._avg_update_count: int = 0
         # Exponential moving average of the same snapshots, seeded by the first.
+        # The fp32 list is the state; the module is its playable copy, rated by
+        # the evaluator beside the uniform average.
         self._ema_params: list[torch.Tensor] = [
             torch.zeros(p.shape, dtype=torch.float32, device=p.device)
             for p in self._policy_module.parameters()
         ]
+        self._ema_policy_module = build_policy(
+            model_config,
+            ship_config,
+            num_value_components=K,
+            num_ships=N,
+            global_value_k=self._global_value_k,
+            predict_density=train_config.global_density_coef > 0.0,
+            predict_shots=self._predict_shots,
+        ).to(self.device)
+        self.ema_policy = compile_policy(self._ema_policy_module, compile_mode)
+        self._ema_policy_module.load_state_dict(self._policy_module.state_dict())
+        for p in self._ema_policy_module.parameters():
+            p.requires_grad_(False)
 
         # Warmup: force torch.compile to trace both policies under autocast, so
         # the graph it specializes on matches the one training actually runs.
@@ -719,6 +735,9 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                     self.policy.get_action_and_value(_obs_2B, _h_2B, return_enemy_action=True)
                 _h_avg = self._avg_policy_module.initial_hidden(B, _nt, self.device)
                 self.avg_policy.get_action_and_value(
+                    sample_obs, _h_avg, return_enemy_action=self._ego_pass
+                )
+                self.ema_policy.get_action_and_value(
                     sample_obs, _h_avg, return_enemy_action=self._ego_pass
                 )
 
@@ -750,6 +769,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # back.
         self._live_elo: float = LIVE_RANDOM_ELO
         self._avg_live_elo: float = LIVE_RANDOM_ELO
+        self._ema_live_elo: float = LIVE_RANDOM_ELO
         self._floating_games: int = 0  # rated games of the floating ladder checkpoint
         self._bc_cutoff_streak: int = 0  # consecutive updates past the BC win-rate target
         # Raw win rate against the scripted controller, refreshed each update.
@@ -1206,11 +1226,13 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 device=self.device,
                 live_policy=self.policy,
                 avg_policy=self.avg_policy,
+                ema_policy=self.ema_policy,
                 scripted_agent=self.scripted_agent,
                 num_ships=num_ships,
                 ego_pass=self._ego_pass,
                 live_elo=self._live_elo,
                 avg_elo=self._avg_live_elo,
+                ema_elo=self._ema_live_elo,
                 anchors=anchors,
                 floating=floating,
                 floating_games=self._floating_games,
@@ -1297,6 +1319,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         elo_snapshot = runtime.elo_eval.flush(avg_eval_active)
         self._live_elo = elo_snapshot.live_elo
         self._avg_live_elo = elo_snapshot.avg_elo
+        self._ema_live_elo = elo_snapshot.ema_elo
         self._floating_games = elo_snapshot.floating_games
         self._match_counts = elo_snapshot.match_counts
         if elo_snapshot.floating_label is not None:
@@ -1650,6 +1673,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
                 if first_avg_update:
                     elo_eval.seed_avg_elo_from_live()
                     self._avg_live_elo = self._live_elo
+                    self._ema_live_elo = self._live_elo
 
     def train(self) -> None:
         """Run the full PPO training loop."""

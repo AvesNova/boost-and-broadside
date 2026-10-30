@@ -128,6 +128,12 @@ def flip_team_obs(obs: YemongObservation, num_ships: int) -> YemongObservation:
 class OpponentMixin:
     """Opponent-management behavior mixed into PPOTrainer."""
 
+    def _sync_ema_module(self) -> None:
+        """Copy the fp32 EMA state into its playable module."""
+        with torch.no_grad():
+            for ema_parameter, ema in zip(self._ema_policy_module.parameters(), self._ema_params):
+                ema_parameter.copy_(ema)
+
     def _update_avg_model(self) -> None:
         """Add the current training policy snapshot to the uniform and EMA averages."""
         first_update = self._avg_update_count == 0
@@ -141,6 +147,7 @@ class OpponentMixin:
                 ema.copy_(parameter.detach().float())
             else:
                 ema.lerp_(parameter.detach().float(), 1.0 - decay)
+        self._sync_ema_module()
         for avg_parameter, cumulative in zip(
             self._avg_policy_module.parameters(), self._avg_param_cumsum
         ):

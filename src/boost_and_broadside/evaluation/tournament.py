@@ -175,6 +175,21 @@ class BatchStat:
     ratings: list[float] = field(default_factory=list)
 
 
+def load_checkpoint_provenance(path: str | Path) -> tuple[EnvConfig, ModelConfig, ShipConfig]:
+    """The task and model a checkpoint file records it was trained under.
+
+    Every payload family carries these, so any policy file -- a step, average,
+    EMA, ladder or best checkpoint -- can name the arena it belongs in.
+    """
+    checkpoint = load_checkpoint_payload(path, map_location="cpu")
+    require_observation_schema(checkpoint, str(path))
+    return (
+        EnvConfig(**checkpoint["env_config"]),
+        ModelConfig(**checkpoint["model_config"]),
+        ShipConfig(**checkpoint["ship_config"]),
+    )
+
+
 def load_run_config(
     run_dir: Path,
 ) -> tuple[EnvConfig, ModelConfig, ShipConfig, str]:

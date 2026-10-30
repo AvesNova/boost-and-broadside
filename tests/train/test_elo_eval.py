@@ -1,5 +1,7 @@
 """Tests for shared Elo rating math."""
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
@@ -168,3 +170,40 @@ class TestAnchorProbabilityTable:
         expected = table[idx] * draws
         assert collapsed.mean() == pytest.approx(expected.mean(), abs=0.4)
         assert collapsed.mean() == pytest.approx(per_rung.mean(), abs=0.4)
+
+
+class TestAveragedPolicySlot:
+    """Slot 3 rates the uniform average on its first half and the EMA on the rest."""
+
+    @staticmethod
+    def _evaluator() -> EloEvaluator:
+        evaluator = EloEvaluator.__new__(EloEvaluator)
+        evaluator.matchup_size = 4
+        evaluator._avg_half = 2
+        evaluator.config = SimpleNamespace(k_factor=8.0)
+        evaluator.float_pro_agent = None
+        evaluator.scripted_agent = None
+        evaluator._anchor_elos = torch.zeros(1, dtype=torch.float64)
+        evaluator._anchor_idx_live = torch.zeros(4, dtype=torch.long)
+        evaluator._random_anchor_index = lambda: 0
+        for name in ("live_elo", "avg_elo", "ema_elo"):
+            setattr(evaluator, name, torch.tensor(1000.0, dtype=torch.float64))
+        return evaluator
+
+    def test_each_half_moves_only_its_own_rating(self) -> None:
+        evaluator = self._evaluator()
+        score = torch.zeros(20)
+        score[14:16] = 1.0  # live beats the EMA; it loses to the uniform average
+        rated = torch.zeros(20)
+        rated[12:16] = 1.0
+
+        evaluator._apply_rating_updates(score, rated, avg_active=True)
+
+        assert float(evaluator.avg_elo) > 1000.0
+        assert float(evaluator.ema_elo) < 1000.0
+        assert float(evaluator.live_elo) == 1000.0  # the averages' games are one-way
+
+    def test_inactive_averages_are_not_rated(self) -> None:
+        evaluator = self._evaluator()
+        evaluator._apply_rating_updates(torch.ones(20), torch.ones(20), avg_active=False)
+        assert float(evaluator.avg_elo) == float(evaluator.ema_elo) == 1000.0

@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from boost_and_broadside.agents.stochastic_config import StochasticAgentConfig
 from boost_and_broadside.agents.stochastic_scripted import StochasticScriptedAgent
 from boost_and_broadside.artifacts import ArtifactStore, Invocation
-from boost_and_broadside.config import EnvConfig
+from boost_and_broadside.config import EnvConfig, ModelConfig, ShipConfig
 from boost_and_broadside.config.defaults import ELO_CALIBRATE, MODEL_CONFIG, REWARDS, SHIP_CONFIG
 from boost_and_broadside.config.diagnostics import GradientDiagnosticsConfig
 from boost_and_broadside.config.overrides import parse_override
@@ -24,6 +24,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_latest_resumable_run,
     summarize_runs,
 )
+from boost_and_broadside.evaluation.tournament import load_checkpoint_provenance
 from boost_and_broadside.execution import initialize_execution, resolve_execution_settings
 from boost_and_broadside.launch import TrainingLaunch, resolve_training_launch
 from boost_and_broadside.modes.ar_report import run_canonical_ar_report_mode
@@ -33,6 +34,7 @@ from boost_and_broadside.modes.crossover import parse_counts, run_crossover_mode
 from boost_and_broadside.modes.elo_calibrate import run_elo_calibrate_mode
 from boost_and_broadside.modes.elo_scale import run_elo_scale_mode
 from boost_and_broadside.modes.feature_stats import run_feature_stats_mode
+from boost_and_broadside.modes.head_to_head import run_head_to_head_mode
 from boost_and_broadside.modes.interactive import run_play_mode, run_watch_mode
 from boost_and_broadside.modes.noise_calibration import run_noise_calibration_mode
 from boost_and_broadside.modes.semi_random_tournament import (
@@ -360,24 +362,54 @@ def _crossover(args: argparse.Namespace, prepare: ContextFactory) -> None:
     )
 
 
+def _agent_arena(specs: Sequence[str]) -> tuple[EnvConfig, ModelConfig, ShipConfig]:
+    """The arena an explicit agent field plays in: the first checkpoint's own.
+
+    A policy only plays the game it was trained in, so a field holding one takes
+    its world, fleet and mode from that file's provenance. A field of scripted
+    or random agents alone has no provenance and falls back to the defaults.
+    """
+    for spec in specs:
+        if spec.endswith(".pt"):
+            return load_checkpoint_provenance(spec)
+    return (
+        EnvConfig(num_ships=8, max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP, max_episode_steps=1024),
+        MODEL_CONFIG,
+        SHIP_CONFIG,
+    )
+
+
 def _elo_calibrate(args: argparse.Namespace, prepare: ContextFactory) -> None:
     context = prepare()
     device = context.device
+    env_config, model_config, ship_config = _agent_arena(args.agents or ())
     run_elo_calibrate_mode(
         run_spec=args.run,
         agent_specs=args.agents,
         from_artifact=args.from_artifact,
-        ship_config=SHIP_CONFIG,
+        ship_config=ship_config,
         device=device,
         checkpoint_dir="checkpoints",
         config=_calibration_config(args),
-        model_config=MODEL_CONFIG,
-        env_config=EnvConfig(
-            num_ships=8,
-            max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
-            max_episode_steps=1024,
-        ),
+        model_config=model_config,
+        env_config=env_config,
         store=context.store,
+    )
+
+
+def _head_to_head(args: argparse.Namespace, prepare: ContextFactory) -> None:
+    context = prepare()
+    pairs = [tuple(pair) for pair in args.pair]
+    env_config, model_config, ship_config = _agent_arena([s for pair in pairs for s in pair])
+    run_head_to_head_mode(
+        pairs=pairs,
+        games_per_pair=args.games,
+        ship_config=ship_config,
+        model_config=model_config,
+        env_config=env_config,
+        device=context.device,
+        checkpoint_dir="checkpoints",
+        out=args.json,
     )
 
 
@@ -532,6 +564,7 @@ _HANDLERS = {
     "collect-stats": _collect_stats,
     "crossover": _crossover,
     "elo-calibrate": _elo_calibrate,
+    "head-to-head": _head_to_head,
     "elo-scale": _elo_scale,
     "semi-random": _semi_random,
     "ar-report": _ar_report,

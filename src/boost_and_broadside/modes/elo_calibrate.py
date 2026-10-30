@@ -81,7 +81,7 @@ from boost_and_broadside.train.rl.bradley_terry import (
 
 # Opponents that are not stationary and so cannot be tournament players. "avg"
 # changes every update, exactly like the live policy it is measured against.
-_NON_STATIONARY = frozenset({"avg"})
+_NON_STATIONARY = frozenset({"avg", "ema"})
 
 # The saved best-so-far policies, rated in the same tournament as the ladder and
 # the final checkpoint. Their frozen files *are* stationary -- unlike the live
@@ -272,6 +272,19 @@ def _load_source_measurement(path: str | Path) -> tuple[dict, dict, str]:
     return artifact.read_json(), manifest, artifact_digest(artifact)
 
 
+def agent_labels(agent_specs: list[str]) -> list[str]:
+    """Short labels: a checkpoint's file stem, qualified by its run directory when
+    two runs' files share a stem (``step_*.pt`` names repeat across runs)."""
+
+    stems = [Path(spec).stem if spec.endswith(".pt") else spec for spec in agent_specs]
+    return [
+        f"{Path(spec).parent.name}/{stem}"
+        if spec.endswith(".pt") and stems.count(stem) > 1
+        else stem
+        for spec, stem in zip(agent_specs, stems, strict=True)
+    ]
+
+
 def build_arbitrary_players(
     agent_specs: list[str],
     ship_config: ShipConfig,
@@ -282,7 +295,7 @@ def build_arbitrary_players(
 ) -> list[Player]:
     """Resolve an explicit stationary calibration field without a training run."""
 
-    labels = [Path(spec).stem if spec.endswith(".pt") else spec for spec in agent_specs]
+    labels = agent_labels(agent_specs)
     duplicates = sorted({label for label in labels if labels.count(label) > 1})
     if duplicates:
         raise ValueError(f"calibration agents resolve to duplicate label {duplicates[0]!r}")

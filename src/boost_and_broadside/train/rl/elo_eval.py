@@ -8,7 +8,8 @@ in batch order):
     0  live vs anchor      — updates live only (anchor ratings are fixed)
     1  live vs floating    — zero-sum between live and the floating checkpoint
     2  live vs scripted    — win-rate window + one-way live rating update
-    3  live vs avg         — win-rate window + one-way avg rating update
+    3  live vs averages    — first half the uniform average, second half the EMA;
+                             one-way rating update for each (window: uniform only)
     4  floating vs anchor  — one-way floating-checkpoint rating update
 
 The live policy plays team 0 in slots 0-3; the floating checkpoint plays team 0
@@ -157,6 +158,7 @@ class EloSnapshot:
 
     live_elo: float
     avg_elo: float
+    ema_elo: float
     floating_elo: float | None  # None before the first milestone snapshot
     floating_games: int  # rated games the floating checkpoint has accumulated
     # Rated episodes this update, keyed by opponent label → (win, loss, tie)
@@ -182,11 +184,13 @@ class EloEvaluator:
         device: torch.device,
         live_policy: YemongPolicy,
         avg_policy: YemongPolicy,
+        ema_policy: YemongPolicy,
         scripted_agent: StochasticScriptedAgent | None,
         num_ships: int,
         ego_pass: bool,
         live_elo: float,
         avg_elo: float,
+        ema_elo: float,
         anchors: list[LadderOpponent],
         floating: LadderOpponent | None,
         floating_games: int,
@@ -252,17 +256,24 @@ class EloEvaluator:
         size = self.matchup_size
         self.live_agent = ResolvedAgent("policy", live_policy)
         self.avg_agent = ResolvedAgent("policy", avg_policy)
+        self.ema_agent = ResolvedAgent("policy", ema_policy)
+        # Slot 3 is split: [3·size, 3·size + half) plays the uniform average,
+        # the rest the EMA.
+        self._avg_half = size // 2
         self.scripted_agent = (
             ResolvedAgent("scripted", scripted_agent) if scripted_agent is not None else None
         )
         self.random_agent = ResolvedAgent("random", None)
         init_hidden(self.live_agent, 4 * size, device)
-        init_hidden(self.avg_agent, size, device)
+        init_hidden(self.avg_agent, self._avg_half, device)
+        init_hidden(self.ema_agent, size - self._avg_half, device)
         self._init_belief(self.live_agent, 4 * size)
-        self._init_belief(self.avg_agent, size)
+        self._init_belief(self.avg_agent, self._avg_half)
+        self._init_belief(self.ema_agent, size - self._avg_half)
 
         self.live_elo = torch.tensor(float(live_elo), device=device, dtype=torch.float64)
         self.avg_elo = torch.tensor(float(avg_elo), device=device, dtype=torch.float64)
+        self.ema_elo = torch.tensor(float(ema_elo), device=device, dtype=torch.float64)
         # Pinned by the live gauge, never updated: slot 2 moves the live policy
         # instead (see _apply_rating_updates).
         self.scripted_elo = torch.tensor(
@@ -314,7 +325,8 @@ class EloEvaluator:
         self._count_floating = self._anchor_rows
         self._count_scripted = self._anchor_rows + 1
         self._count_avg = self._anchor_rows + 2
-        self._count_rows = self._anchor_rows + 3
+        self._count_ema = self._anchor_rows + 3
+        self._count_rows = self._anchor_rows + 4
         self._match_counts = torch.zeros(self._count_rows, 3, device=device, dtype=torch.float64)
         # (anchor_rows, 3) tally of slot-4 episodes as (floating win, floating
         # loss, tie), by the anchor each episode was assigned. Both players are
@@ -590,6 +602,7 @@ class EloEvaluator:
     def seed_avg_elo_from_live(self) -> None:
         """Seed the first averaged-policy rating from the identical live snapshot."""
         self.avg_elo = self.live_elo.clone()
+        self.ema_elo = self.live_elo.clone()
 
     # ------------------------------------------------------------------
     # Stepping
@@ -666,7 +679,20 @@ class EloEvaluator:
         state = self.env.state
 
         action_live = self._policy_actions(self.live_agent, 0, 4 * size, 0)  # (4·size, N, 3)
-        action_avg = self._policy_actions(self.avg_agent, 3 * size, 4 * size, 1)
+        split = 3 * size + self._avg_half
+        # A one-env slot leaves the uniform half empty; an empty batch is skipped
+        # rather than run through the policy.
+        action_avg = torch.cat(
+            [
+                self._policy_actions(agent, lo, hi, 1)
+                for agent, lo, hi in (
+                    (self.avg_agent, 3 * size, split),
+                    (self.ema_agent, split, 4 * size),
+                )
+                if hi > lo
+            ],
+            dim=0,
+        )
 
         if self.scripted_agent is not None:
             action_scripted = get_actions(
@@ -843,15 +869,22 @@ class EloEvaluator:
         self.live_elo = live_before + delta_live
 
         if avg_active:
-            slot3 = slice(3 * size, 4 * size)
-            self.avg_elo = (
-                self.avg_elo
-                + (
-                    k
-                    * ((1.0 - score[slot3]) - expected_score(self.avg_elo, live_before))
-                    * rated_float[slot3]
-                ).sum()
-            )
+            split = 3 * size + self._avg_half
+            for name, slot in (
+                ("avg_elo", slice(3 * size, split)),
+                ("ema_elo", slice(split, 4 * size)),
+            ):
+                rating = getattr(self, name)
+                setattr(
+                    self,
+                    name,
+                    rating
+                    + (
+                        k
+                        * ((1.0 - score[slot]) - expected_score(rating, live_before))
+                        * rated_float[slot]
+                    ).sum(),
+                )
 
     def _accumulate_match_counts(
         self,
@@ -883,7 +916,9 @@ class EloEvaluator:
         if self.scripted_agent is not None:
             self._match_counts[self._count_scripted] += outcomes[2 * size : 3 * size].sum(dim=0)
         if avg_active:
-            self._match_counts[self._count_avg] += outcomes[3 * size : 4 * size].sum(dim=0)
+            split = 3 * size + self._avg_half
+            self._match_counts[self._count_avg] += outcomes[3 * size : split].sum(dim=0)
+            self._match_counts[self._count_ema] += outcomes[split : 4 * size].sum(dim=0)
         if self.float_pro_agent is not None:
             # Slot 4 is the floating checkpoint as team 0, so the columns already
             # read as (floating win, floating loss, tie).
@@ -899,6 +934,7 @@ class EloEvaluator:
         if self.scripted_agent is not None:
             labels[self._count_scripted] = "scripted"
         labels[self._count_avg] = "avg"
+        labels[self._count_ema] = "ema"
         return labels
 
     def _resample_anchor_assignments(self, done_any: torch.Tensor) -> None:
@@ -935,7 +971,9 @@ class EloEvaluator:
         """Reset recurrent state for every policy agent's finished envs."""
         size = self.matchup_size
         reset_done_envs(self.live_agent, done_any[: 4 * size])
-        reset_done_envs(self.avg_agent, done_any[3 * size : 4 * size])
+        split = 3 * size + self._avg_half
+        reset_done_envs(self.avg_agent, done_any[3 * size : split])
+        reset_done_envs(self.ema_agent, done_any[split : 4 * size])
         if self.float_opp_agent is not None:
             reset_done_envs(self.float_opp_agent, done_any[size : 2 * size])
             reset_done_envs(self.float_pro_agent, done_any[4 * size :])
@@ -988,6 +1026,7 @@ class EloEvaluator:
         snapshot = EloSnapshot(
             live_elo=float(self.live_elo.item()),
             avg_elo=float(self.avg_elo.item()),
+            ema_elo=float(self.ema_elo.item()),
             floating_elo=float(self.floating_elo.item()) if floating_active else None,
             floating_games=int(self.floating_games.item()) if floating_active else 0,
             match_counts=self._flush_match_counts(),
@@ -1033,6 +1072,7 @@ class EloEvaluator:
                 rated2 = is_rated[2 * size : 3 * size]
                 self.scripted_window.extend(win[2 * size : 3 * size][rated2].tolist())
             if avg_active:
-                rated3 = is_rated[3 * size : 4 * size]
-                self.live_vs_avg_window.extend(win[3 * size : 4 * size][rated3].tolist())
+                split = 3 * size + self._avg_half
+                rated3 = is_rated[3 * size : split]
+                self.live_vs_avg_window.extend(win[3 * size : split][rated3].tolist())
         return snapshot

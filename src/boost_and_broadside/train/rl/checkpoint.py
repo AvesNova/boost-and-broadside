@@ -103,6 +103,7 @@ def build_training_checkpoint_payload(
     grad_tokens: int,
     elapsed_train_time: float,
     avg_live_elo: float,
+    ema_live_elo: float,
     floating_games: int,
     eval_window_rand: list[Any],
     eval_window_sc: list[Any],
@@ -135,6 +136,7 @@ def build_training_checkpoint_payload(
         "grad_tokens": grad_tokens,
         "elapsed_train_time": elapsed_train_time,
         "avg_live_elo": avg_live_elo,
+        "ema_live_elo": ema_live_elo,
         "floating_games": floating_games,
         "eval_window_rand": eval_window_rand,
         "eval_window_sc": eval_window_sc,
@@ -194,6 +196,7 @@ RESUMABLE_CHECKPOINT_FIELDS: tuple[str, ...] = (
     "grad_tokens",
     "elapsed_train_time",
     "avg_live_elo",
+    "ema_live_elo",
     "floating_games",
     "eval_window_rand",
     "eval_window_sc",
@@ -225,6 +228,10 @@ def require_resumable_checkpoint(checkpoint: Mapping[str, Any], path: str | None
     # folded in there is nothing for it to restore, so those still resume.
     if "ema_params" in missing and checkpoint.get("avg_update_count") == 0:
         missing.remove("ema_params")
+    # A rating rather than state: a checkpoint written before the EMA was rated
+    # reseeds it from the uniform average's, which is the nearest thing measured.
+    if "ema_live_elo" in missing and "avg_live_elo" in checkpoint:
+        missing.remove("ema_live_elo")
     if not missing:
         return
     location = f" {path!r}" if path is not None else ""
@@ -283,9 +290,7 @@ def _prune_checkpoint_family(
     kept = {str(p) for p in candidates[-keep_last_n:]} | protected
     if archive_every_steps is not None:
         kept |= {
-            str(p)
-            for p in candidates
-            if int(p.stem.rsplit("_", 1)[-1]) % archive_every_steps == 0
+            str(p) for p in candidates if int(p.stem.rsplit("_", 1)[-1]) % archive_every_steps == 0
         }
     for old_path in candidates:
         if str(old_path) not in kept:
@@ -598,6 +603,7 @@ class CheckpointMixin:
             grad_tokens=self._grad_tokens,
             elapsed_train_time=self._elapsed_train_time + (time.time() - self._train_start_time),
             avg_live_elo=self._avg_live_elo,
+            ema_live_elo=self._ema_live_elo,
             floating_games=self._floating_games,
             eval_window_rand=list(self._eval_window_rand),
             eval_window_sc=list(self._eval_window_sc),
@@ -896,9 +902,11 @@ class CheckpointMixin:
         self._avg_update_count = ckpt["avg_update_count"]
         if "ema_params" in ckpt:
             self._ema_params = [e.to(self.device, torch.float32) for e in ckpt["ema_params"]]
+            self._sync_ema_module()
         self._live_elo = ckpt["live_elo"]
         self._elo_milestone = ckpt["elo_milestone"]
         self._avg_live_elo = ckpt["avg_live_elo"]
+        self._ema_live_elo = ckpt.get("ema_live_elo", self._avg_live_elo)
         self._floating_games = ckpt["floating_games"]
         window = self.cfg.elo_eval.window_size
         self._eval_window_rand = deque(ckpt["eval_window_rand"], maxlen=window)
