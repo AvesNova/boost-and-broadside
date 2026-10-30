@@ -161,9 +161,10 @@ RL_PROFILE = ProfileSpec(
     # No cloning, so nothing for a win rate to switch off.
     bc_winrate_target=None,
     average_ema_decay=0.95,
-    # Kept out of the league so the average is measured without changing the
-    # opponents the live policy trains against.
-    league_includes_average=False,
+    # Both averages are league opponents: a de-noised copy of the live policy at
+    # its own rating, which is what fictitious play trains against. In run 764
+    # each beat the live policy about three games in four by 34M steps.
+    league_includes_average=True,
     # --- Persistence and logging ---
     checkpoint_dir="checkpoints",
     histogram_interval=10,

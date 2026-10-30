@@ -760,7 +760,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         )
         # Random anchor is added by EloRoster.__init__ (Elo=0, fixed) and is
         # excluded from opponent sampling. "scripted" is registered below;
-        # "avg" joins when _update_avg_model() first runs.
+        # "avg" and "ema" join when _update_avg_model() first runs.
         self._register_special_opponents()
 
         # Seeded at the random reference's rating: an untrained policy is a
@@ -1334,6 +1334,7 @@ class PPOTrainer(CheckpointMixin, LoggingMixin, OpponentMixin):
         # than keep the rating the entry was created with. The scripted entry
         # needs no such sync: the live gauge pins it and it never moves.
         self.roster.set_special_elo("avg", elo_snapshot.avg_elo)
+        self.roster.set_special_elo("ema", elo_snapshot.ema_elo)
         self._allocate_ladder_games(runtime.elo_eval)
         return terminated
 

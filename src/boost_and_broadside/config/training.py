@@ -230,8 +230,9 @@ class TrainConfig:
     # (a warm start's BC phase is the gate) and are checkpointed as
     # avg_step_*.pt and ema_step_*.pt; 0.95 is a time constant of 20 updates.
     average_ema_decay: float
-    # Whether the uniform average joins the league as a sampled opponent. Off,
-    # it is still rated by the evaluator but never shapes the training data.
+    # Whether the averaged policies (uniform and EMA) join the league as sampled
+    # opponents. Off, they are still rated by the evaluator but never shape the
+    # training data.
     league_includes_average: bool
     histogram_interval: int  # record expensive histograms every N updates
 

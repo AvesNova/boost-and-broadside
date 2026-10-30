@@ -154,6 +154,10 @@ class OpponentMixin:
             avg_parameter.data.copy_(cumulative / self._avg_update_count)
         if first_update:
             self.roster.add_special("avg", self._global_step, 0, initial_elo=self._live_elo)
+        # Idempotent, and outside the first-update branch so a run resumed from
+        # before the EMA was a league entry gains it at its next update.
+        ema_elo = self._live_elo if first_update else self._ema_live_elo
+        self.roster.add_special("ema", self._global_step, 0, initial_elo=ema_elo)
 
     def _opponent_obs(self, obs_slice: YemongObservation, num_ships: int) -> YemongObservation:
         """Return the observation perspective used by policy opponents."""
@@ -295,6 +299,8 @@ class OpponentMixin:
         """
         if entry.kind == "avg":
             return self.avg_policy
+        if entry.kind == "ema":
+            return self.ema_policy
         if entry.kind == "checkpoint":
             return entry.policy  # already loaded by _sample_league_entry
         return None

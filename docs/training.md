@@ -365,11 +365,12 @@ Every opponent is an ordinary roster entry on one Elo scale:
 
 - **scripted:** a stochastic hand-built controller, also the behavior-cloning target and a
   stable evaluation benchmark;
-- **average:** a uniform running mean of live-policy snapshots, one per update, joining the
-  roster at the scripted performance cutoff, or at the first update when the profile sets no
-  cutoff (a warm start's pretraining is the gate). With `league_includes_average` off it is
-  rated but never drawn, so it does not change the opponents the live policy trains
-  against;
+- **averages:** a uniform running mean and an EMA of live-policy snapshots, one per update,
+  joining the roster at the scripted performance cutoff, or at the first update when the
+  profile sets no cutoff (a warm start's pretraining is the gate). They sit at or above the
+  live rating, so proximity sampling draws them often: the live policy trains against a
+  de-noised copy of itself, as fictitious play does. With `league_includes_average` off they
+  are rated but never drawn;
 - **checkpoint:** frozen historical snapshots, joining at each Elo milestone.
 
 Self-play is the other half of the batch: the live weights viewed from the other team
@@ -393,8 +394,8 @@ from the continuous evaluator every update, since a stale rating misdirects ever
 
 An exponential moving average of the same snapshots (`average_ema_decay` per update) is
 kept beside the uniform mean. The evaluator's live-versus-average slot is split between
-them, so both carry a one-way in-training rating (`live_elo/avg`, `live_elo/ema`); the EMA
-is never drawn as an opponent. Both averages are written with every step checkpoint, as
+them, so both carry a one-way in-training rating (`live_elo/avg`, `live_elo/ema`), which
+is also what proximity sampling reads. Both averages are written with every step checkpoint, as
 `avg_step_*.pt` and `ema_step_*.pt`, so either can be measured afterwards as an ordinary
 policy file. Measured head to head, they are the stronger players: in run 764 both beat
 the live policy about three games in four by 34M steps.

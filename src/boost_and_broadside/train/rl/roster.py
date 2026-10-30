@@ -43,7 +43,7 @@ _DEFAULT_ELO = 0.0
 class RosterEntry:
     """A single rated agent in the league roster."""
 
-    kind: str  # "random" | "checkpoint" | "avg" | "scripted"
+    kind: str  # "random" | "checkpoint" | "avg" | "ema" | "scripted"
     label: str  # W&B key suffix (e.g. "random", "avg", "scripted", "ckpt_1024000")
     elo: float  # Current Elo rating
     global_step: int  # Training step when this agent was snapshotted
@@ -110,7 +110,7 @@ class EloRoster:
         self.max_size = max_size
         self.elo_temperature = elo_temperature
         self.uniform_sampling = uniform_sampling
-        # False keeps the running-average entry rated but never drawn.
+        # False keeps the running-average entries rated but never drawn.
         self.sample_average = sample_average
         self.entries: list[RosterEntry] = []
         self._load_order: list[RosterEntry] = []  # loaded checkpoints, oldest use first
@@ -142,18 +142,18 @@ class EloRoster:
         update: int = 0,
         initial_elo: float = _DEFAULT_ELO,
     ) -> RosterEntry:
-        """Add or return the existing entry for a special agent ("avg" or "scripted").
+        """Add or return the existing entry for a special agent ("avg", "ema" or "scripted").
 
         Idempotent: if an entry of this kind already exists it is returned unchanged.
 
         Args:
-            kind:        "avg" or "scripted".
+            kind:        "avg", "ema" or "scripted".
             global_step: Training step when this agent became available.
             update:      PPO update index when it became available.
             initial_elo: Starting Elo.  Pass the current training Elo so the new
                          entry begins calibrated rather than at an arbitrary default.
         """
-        assert kind in ("avg", "scripted"), f"add_special: invalid kind {kind!r}"
+        assert kind in ("avg", "ema", "scripted"), f"add_special: invalid kind {kind!r}"
         for entry in self.entries:
             if entry.kind == kind:
                 return entry
@@ -353,7 +353,8 @@ class EloRoster:
         are all ordinary candidates — proximity weighting is what decides the
         opponent mix. Retired entries are skipped.
 
-        The running average is excluded too when ``sample_average`` is off.
+        The running averages (uniform and EMA) are excluded too when
+        ``sample_average`` is off.
 
         The random anchor is excluded, and that exclusion is load-bearing rather
         than incidental: the live rating starts at 0 and so does random's, so
@@ -365,7 +366,9 @@ class EloRoster:
         candidates = [
             e
             for e in self.entries
-            if e.kind != "random" and e.usable and (self.sample_average or e.kind != "avg")
+            if e.kind != "random"
+            and e.usable
+            and (self.sample_average or e.kind not in ("avg", "ema"))
         ]
         if not candidates:
             return None
