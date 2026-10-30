@@ -389,6 +389,30 @@ def test_headless_frontline_frame_draws_boundary_zones_hud_and_selection(monkeyp
         renderer.close()
 
 
+def test_the_camera_reframes_when_a_new_map_replaces_the_arena(monkeypatch):
+    """A capture batch reuses one renderer across seeds, and each seed draws its
+    map somewhere else in the world. Framing only the first left every later
+    clip pointed at empty space."""
+    monkeypatch.setenv("HEADLESS", "1")
+    ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE)
+    env = TensorEnv(1, ship_config, replace(PLAY_ENV_CONFIG, num_ships=8), "cpu")
+    renderer = GameRenderer(ship_config, RenderConfig(window_size=320, show_ui=False))
+    try:
+        centers = []
+        for seed in (11, 12):
+            env.reset(seed=seed)
+            renderer.draw_frame(env.state)
+            centers.append(complex(env.state.map_center[0].item()))
+            assert abs(renderer.camera.center - centers[-1]) < 1e-3
+        assert centers[0] != centers[1]
+        renderer.camera.pan_screen((40, 0))
+        panned = renderer.camera.center
+        renderer.draw_frame(env.state)  # same map: the viewer's pan survives
+        assert renderer.camera.center == panned
+    finally:
+        renderer.close()
+
+
 def test_team_view_hides_enemy_sprites_ghosts_bullets_and_minimap_markers(monkeypatch):
     monkeypatch.setenv("HEADLESS", "1")
     ship_config = ShipConfig(world_size=FRONTLINE_WORLD_SIZE, field_radius_max=750.0)

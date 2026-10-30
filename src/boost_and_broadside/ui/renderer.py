@@ -319,7 +319,11 @@ class GameRenderer:
         self._selection_initialized = False
         self._selected_position: complex | None = None
         self._frontline_fit: tuple[complex, float] | None = None
-        self._did_initial_frontline_fit = False
+        # The arena the camera last framed. A new map (a reset, or the next
+        # match in a capture batch) is a different place in the world, so the
+        # camera re-frames whenever this changes, and only then: a pan or zoom
+        # made during a match is kept.
+        self._fitted_arena: tuple[complex, float] | None = None
 
         W = s
         H = s
@@ -567,9 +571,9 @@ class GameRenderer:
             center = complex(state.map_center[0].item())
             radius = float(state.playable_boundary_radius[0].item())
             self._frontline_fit = (center, radius)
-            if not self._did_initial_frontline_fit:
+            if self._fitted_arena != (center, radius):
                 self.camera.fit_region(center, radius)
-                self._did_initial_frontline_fit = True
+                self._fitted_arena = (center, radius)
             self._draw_boundary(state, surf)
             self._draw_zones(state, surf)
         self._draw_fields(state, surf)

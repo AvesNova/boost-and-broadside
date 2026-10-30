@@ -218,9 +218,7 @@ def test_capture_records_a_fields_run_in_a_field_arena(fields_run, built_envs, t
     _assert_played_with_fields(built_envs)
 
 
-def test_capture_records_a_chosen_pair_in_the_checkpoints_arena(
-    fields_run, built_envs, tmp_path
-):
+def test_capture_records_a_chosen_pair_in_the_checkpoints_arena(fields_run, built_envs, tmp_path):
     """A pair names its own agents, so the arena comes from the checkpoint in it."""
 
     from boost_and_broadside.modes.capture import run_capture_mode
