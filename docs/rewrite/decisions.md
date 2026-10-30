@@ -1179,10 +1179,71 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
   stars). Its API is dicts keyed by agent name, and SMAX is its closest sibling
   environment.
 
+### Findings from `feat/resim-shot-labels` (reviewed 2026-10-30)
+
+The author's working branch for the old code, previously not visible here (it unblocks
+tabled item 13 and the "other branch" items of reviews 4b-4e). 33 commits, 2026-10-06 to
+10-30, branched from `75d67631` on `feat/counterfactual-shot-labels`, *before* that
+branch's ghost-bullet and respawn-delay commits (see Repository for the consequence).
+Details: `docs/training.md`, `docs/internal/frontline-redesign-implementation.md`
+(deviations 38-42) and the `docs/internal/*-oct2026.json` records on that branch.
+
+- **Timing already matches our decision:** the old env now runs `dt` = 1/30 s with one
+  tick per decision (physics tick = decision tick).
+- **Loss units: every term in nats per token** (cross-entropy summed over what one token
+  predicts, averaged over tokens with a target; next-state sums its 22 groups, density
+  its cells per living ship, the critic its levels at per-level weights). A weight is an
+  exchange rate between nats and does not move with fleet size. Weights are then set
+  against **measured trunk-gradient shares** (`benchmarks/gradient_decomposition.py`),
+  not by hand. Dividing by log K per group was rejected. Adopt for the rewrite.
+- **Rewards (tabled item 13): zero-sum at every level from the first step**; the 2:1
+  offensive premium and its 50M-300M taper are gone (the payout-ratio mechanism remains,
+  unused), so the critic's targets never move within a run or across a BC warm start.
+  **Damage is counted in full shields:** emptying one costs 0.274, beside a death's
+  0.283 (it had been priced per health point, 27 wins per shield, hidden by the old
+  advantage scaler). **Critic bins span +-2 symlog units (+-6.4 raw)**, not +-5: the
+  largest measured return is 4.55 and every level's median is 0.02-0.13.
+- **BC (review 4c):** weights solved from pilots 754, 755, 759 against target trunk
+  shares; final bc 0.025, value 0.007 per level, next_state 0.0041, enemy_action 0.11,
+  density 0.021, shot_trajectory 0.0035, shot_outcome 0.019 (shares measured on run 760:
+  bc 0.36, next_state 0.25, enemy_action 0.16, density 0.12, shot heads 0.06 / 0.05,
+  value 0.009). Solving value up to a 0.30 share was rejected (run 756: live Elo 530 vs
+  913, worse cloning). BC never withdraws cloning; a run stops on a plateau in BC KL.
+  *Check against our 4c "entropy through teacher targets": BC pins the entropy weight it
+  was calibrated with.*
+- **BC -> RL (review 4c/4d):** RL is a **warm start only**: BC's weights and return
+  normaliser, a fresh optimizer, no cloning loss, no win-rate gate. Policy-gradient
+  weight 27 (about 0.36-0.40 of the trunk; 14 and 60 bracket it), entropy 3e-4 of the
+  policy weight (DreamerV3) under the same return normaliser; enemy_action 0.11 (halving
+  it, run 763, did worse). **Trust region: clip 0.2 and target_kl 0.02 early stopping,
+  one value for the whole run; max_grad_norm 1.0 as a spike guard only**; warm up 1M
+  steps to 3e-4, then hold. This settles 4d's "clip and weight retuning". Pilot 762: 0.43
+  -> 0.89 score against scripted, live Elo ~1,000 -> ~1,300 in 20M steps.
+- **Gradient diagnostics worth porting** (add to `diagnostics.md`): per-term half-batch
+  cosine and signal fraction (`grad_half_cos`, `grad_signal_fraction`: split a
+  minibatch's micro-batches into two halves of disjoint games, no extra backward pass);
+  `ratio_max` over trained tokens only; offline trust-region arms (`--hold`).
+- **Shot labels (tabled item 15) implemented as decided:** learner-side re-simulation from
+  per-tick launch-state copies; it matched the ghost labels bit for bit (314,240 shots)
+  and re-simulated real shots match the env to 3e-5 px; about 3x coverage; the last 28
+  rows of a rollout carry none (22% of 128). Shot heads also train on **enemies in
+  sight** (never hidden ones). Shot-outcome gradient is mostly sampling noise.
+- **League and evaluation (review 4b/4e):** a uniform average **and an EMA** of the live
+  policy, both rated and both drawn as league opponents (the live policy trains against
+  a de-noised copy of itself, as in fictitious play). Measured: both averages beat the
+  live policy about 3 games in 4 by 34M steps (run 764); LR-decay fork and matched-average
+  head-to-heads recorded. Checkpoint archiving every K-th update; `bnb head-to-head` for
+  named pairs. Our 4b kept "avg"; extend it to uniform + EMA, both in the league.
+
 ### Repository
 
 - **Design branch:** `jax-rewrite/design` holds the old code plus `docs/rewrite/`, so
   design discussions have full context. Specs and contracts are drafted here.
+  *2026-10-30:* merging `feat/resim-shot-labels` into the design branch conflicts in 19
+  code and doc files: that branch re-did the ghost-bullet commits with new hashes and
+  does not contain `feat/counterfactual-shot-labels`' respawn-delay commits (`94ce1df4`
+  respawn delay, `2bb78cec` respawn wait as time plus a Fourier basis, `f65593d2`,
+  `9e5d7aa2`), which the design branch carries. Merge aborted pending the author.
 - **Option 3:** same repo, fresh start on a branch.
   - Tag the current state (proposed tag: `v1-torch-final`) on the working branch
     (`feat/counterfactual-shot-labels`, after the physics-first changes), not `main`.
@@ -1290,8 +1351,8 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     codes in absolute units with global maximums from the design envelope (arbitrary
     parameters within reason); next-state loss on allies, visible and hidden enemies,
     averaged per population.
-13. **Reward weights, zero-sum and the return-scale details:** changed on a branch not
-    visible here (recalibrated weights, simple zero-sum env). Revisit with access.
+13. ~~Reward weights, zero-sum and the return-scale details~~: resolved 2026-10-30 from
+    `feat/resim-shot-labels`; see "Findings from `feat/resim-shot-labels`".
 14. ~~Naming convention~~: decided (ship, team, controller, lineup, view, carry, model /
     params / checkpoint, learner, match / decision step / tick; "agent" only in the JaxMARL
     adapter, where an agent is a team). See the review, 3d.
@@ -1302,7 +1363,8 @@ checks `final_check.py`). Author: induced drag x3 adopted; fold the model into t
     steps); damage in the outcome. Port the heads as they are until benchmarked.
     Added 2026-10-22: labels must be defined per decision step (2 physics ticks at the
     decided 60 Hz physics / 30 Hz decisions); today they require `action_repeat == 1`.
-    **Decided (author, 2026-10-22): learner-side re-simulation.** No ghosts in the env
+    *Implemented and validated on `feat/resim-shot-labels` (2026-10-29); see its findings
+    section.* **Decided (author, 2026-10-22): learner-side re-simulation.** No ghosts in the env
     (pure gameplay, plain bullet ring buffer). The learner re-flies a counterfactual shot
     from every stored decision with the same pure bullet functions, against stored ship
     states (interpolated between decisions, using stored velocities), with the relative
@@ -1377,7 +1439,8 @@ part 4 training 4a-4e), `docs/rewrite/diagnostics.md` (diagnostics audit).
       streamed to host while the next chunk collects, small per-step arrays and GAE on
       device, buffer residency as config; non-finite steps skipped, counted, dumped for
       replay, abort on a budget; entropy E1 fixed coefficient; SIGReg dropped; clip and
-      weight retuning tabled to the other branch).
+      weight retuning tabled to the other branch). *Resolved 2026-10-30: clip 0.2 +
+      target_kl 0.02 early stopping, PG 27, entropy 3e-4 of PG; see the findings section.*
 - [x] Evaluation 4e (decided: offline BT pipeline kept, torch parts rewritten on the JAX
       match engine; leaderboard keyed by game version x mode x fleet size, scripted at
       1000; diagnostics every 10 updates).
