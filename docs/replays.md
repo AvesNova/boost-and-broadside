@@ -79,6 +79,16 @@ uv run bnb capture \
   --gif
 ```
 
+Any two agents can be recorded instead of a run's final checkpoint, team 0 first, each
+`--pair` its own set of clips. The arena is the first checkpoint's own, and the match runs
+to that checkpoint's horizon unless `--max-steps` shortens it:
+
+```bash
+uv run bnb capture --seeds 0-2 \
+  --pair checkpoints/<run>/avg_step_<N>.pt checkpoints/<run>/ema_step_<N>.pt \
+  --pair checkpoints/<run>/ema_step_<N>.pt scripted
+```
+
 Capture writes to `out/`, which is scratch and is never tracked. The curated subset was
 copied into `docs/results/replays/` and committed; those committed files are the clips.
 

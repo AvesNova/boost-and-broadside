@@ -311,6 +311,7 @@ def _capture(args: argparse.Namespace, prepare: ContextFactory) -> None:
     context = prepare()
     device = context.device
     run_capture_mode(
+        pairs=[tuple(pair) for pair in args.pair] if args.pair else None,
         run_spec=args.run,
         scenarios=args.scenarios,
         seeds=args.seeds,

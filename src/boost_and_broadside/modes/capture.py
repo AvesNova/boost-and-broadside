@@ -10,10 +10,16 @@ Scenarios, all with the run's final checkpoint:
                    learned to act as team 0; without the flip its team-1 play is off.
     vs_scripted  — the final policy (team 0) against the stochastic scripted agent.
 
+Or explicit pairs of agents (any checkpoint file or ``scripted``), team 0 first:
+an averaged policy against its EMA, a live snapshot against the scripted
+controller. The arena is the first checkpoint's own, as for ``head-to-head``.
+A policy on team 1 gets the same team-flipped view ``self`` gives it.
+
 The same weights play any team size (1v1 … 64v64) zero-shot, since the model is
 token-based and nothing in it is sized by the ship count.
 
-Writes ``<out>/<scenario>_<AvA>_seed<NN>.mp4``, one clip per (scenario, size, seed).
+Writes ``<out>/<scenario>_<AvA>_seed<NN>.mp4``, one clip per (scenario, size, seed),
+or ``<out>/<team0>__vs__<team1>_<AvA>_seed<NN>.mp4`` for a pair.
 """
 
 import os
@@ -34,6 +40,7 @@ from boost_and_broadside.evaluation.run_catalog import (
     select_final_training_checkpoint,
 )
 from boost_and_broadside.evaluation.sizes import Matchup, parse_matchup
+from boost_and_broadside.modes.elo_calibrate import agent_labels
 from boost_and_broadside.train.rl.checkpoint_schema import (
     load_checkpoint_payload,
     require_observation_schema,
@@ -87,12 +94,11 @@ def _open_encoder(out: Path, size: int, fps: int) -> subprocess.Popen:
 
 
 def _capture_match(
-    scenario: str,
     seed: int,
     n0: int,
     n1: int,
-    policy: ResolvedAgent,
-    scripted: ResolvedAgent,
+    agent0: ResolvedAgent,
+    agent1: ResolvedAgent,
     ship_config: ShipConfig,
     env_config: EnvConfig,
     renderer: GameRenderer,
@@ -104,8 +110,7 @@ def _capture_match(
 ) -> int:
     """Play one seeded match, encode it to ``out``; return the frame count.
 
-    team-0 (n0 ships) is always the policy; team-1 (n1 ships) is a second policy
-    view of the same weights (self) or the scripted agent (vs_scripted).
+    ``agent0`` plays team 0 (n0 ships) and ``agent1`` team 1 (n1 ships).
 
     Uses TensorEnv directly (not the training wrapper, which auto-resets a finished
     env): the terminal state persists, so after the outcome is decided the match
@@ -117,12 +122,6 @@ def _capture_match(
 
     N = env_config.num_ships
     env = create_evaluation_env(1, ship_config, env_config, device)
-    agent0 = policy
-    agent1 = (
-        ResolvedAgent("policy", policy.agent, bundle=policy.bundle)
-        if scenario == "self"
-        else scripted
-    )
     # Finished environments are deliberately never reset: the match holds its
     # terminal state on screen so a viewer can see who won.
     runner = MatchRunner(
@@ -191,7 +190,7 @@ def _write_gif(mp4: Path, fps: int, width: int) -> Path:
 
 
 def run_capture_mode(
-    run_spec: str,
+    run_spec: str | None,
     scenarios: list[str],
     seeds: str,
     ship_config: ShipConfig,
@@ -201,25 +200,36 @@ def run_capture_mode(
     out_dir: Path = Path("gameplay_clips"),
     sizes: list[str] | None = None,
     fps: int = 60,
-    max_steps: int = 1024,
+    max_steps: int | None = None,
     window: int = 720,
     hold_ms: int = 1500,
     gif: bool = False,
     gif_fps: int = 24,
     gif_width: int = 480,
+    pairs: list[tuple[str, str]] | None = None,
 ) -> list[Path]:
-    """Capture one seeded mp4 per (scenario, size, seed) for a run's final checkpoint.
+    """Capture one seeded mp4 per (scenario or pair, size, seed).
+
+    With ``pairs`` the clips are of those agents rather than of ``run_spec``'s
+    final checkpoint, and ``scenarios`` is ignored.
 
     ``sizes`` is a list of team-size specs ('1v1', '4v4', ..., or bare per-side
     counts); each is played zero-shot by the same weights. When omitted, the run's
     native training size is used. ``max_steps`` is the match length before it is
-    called a tie (also the env's truncation point); most matches end far sooner by
-    elimination. With ``gif`` a downscaled gif is written beside each mp4.
+    called a tie (also the env's truncation point); ``None`` keeps the checkpoint's
+    own horizon, so a clip shows the game the policy was trained and rated in.
+    With ``gif`` a downscaled gif is written beside each mp4.
     """
     os.environ.setdefault("HEADLESS", "1")  # dummy SDL driver — set before pygame init
 
-    run_dir = resolve_exact_run(run_spec, checkpoint_dir).path
-    checkpoint = _final_checkpoint(run_dir)
+    if pairs:
+        checkpoint = next((Path(s) for pair in pairs for s in pair if s.endswith(".pt")), None)
+        if checkpoint is None:
+            raise ValueError("a capture pair needs at least one checkpoint to set the arena")
+    else:
+        if run_spec is None:
+            raise ValueError("capture needs a run or at least one pair")
+        checkpoint = _final_checkpoint(resolve_exact_run(run_spec, checkpoint_dir).path)
     checkpoint_data = load_checkpoint_payload(checkpoint, map_location="cpu")
     require_observation_schema(checkpoint_data, str(checkpoint))
     # The recorded physics contract is part of the subject. In particular, a
@@ -232,9 +242,11 @@ def run_capture_mode(
     torch_device = torch.device(device)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for scenario in scenarios:
-        if scenario not in SCENARIOS:
-            raise ValueError(f"unknown scenario {scenario!r}; choose from {SCENARIOS}")
+    if not pairs:
+        for scenario in scenarios:
+            if scenario not in SCENARIOS:
+                raise ValueError(f"unknown scenario {scenario!r}; choose from {SCENARIOS}")
+    horizon = max_steps if max_steps is not None else base_env.max_episode_steps
 
     renderer = GameRenderer(ship_config, RenderConfig(window_size=window, show_ui=False))
     scripted = resolve_agent_spec("scripted", ship_config, model_config, device)
@@ -245,35 +257,59 @@ def run_capture_mode(
         for n0, n1 in matchups:
             # Override the env's truncation so matches get max_steps to resolve
             # before being called a tie.
-            env_config = replace(base_env, num_ships=n0 + n1, max_episode_steps=max_steps)
-            # A fresh policy per size so its token slicing matches the env; the same
+            env_config = replace(base_env, num_ships=n0 + n1, max_episode_steps=horizon)
+
+            # A fresh agent per size so its token slicing matches the env; the same
             # weights load at any size (nothing in the model is sized by ship count).
-            policy = resolve_agent_spec(
-                str(checkpoint), ship_config, model_config, device, num_ships=env_config.num_ships
-            )
-            for scenario in scenarios:
-                for seed in seed_list:
-                    out = out_dir / f"{scenario}_{n0}v{n1}_seed{seed:02d}.mp4"
-                    frames, winner = _capture_match(
+            def resolve(spec: str, n_ships: int = env_config.num_ships) -> ResolvedAgent:
+                return resolve_agent_spec(
+                    spec, ship_config, model_config, device, num_ships=n_ships
+                )
+
+            if pairs:
+                labels = agent_labels([s for pair in pairs for s in pair])
+                clips = [
+                    (
+                        f"{labels[2 * i]}__vs__{labels[2 * i + 1]}".replace("/", "-"),
+                        resolve(a),
+                        resolve(b),
+                    )
+                    for i, (a, b) in enumerate(pairs)
+                ]
+            else:
+                policy = resolve(str(checkpoint))
+                clips = [
+                    (
                         scenario,
+                        policy,
+                        ResolvedAgent("policy", policy.agent, bundle=policy.bundle)
+                        if scenario == "self"
+                        else scripted,
+                    )
+                    for scenario in scenarios
+                ]
+            for name, agent0, agent1 in clips:
+                for seed in seed_list:
+                    out = out_dir / f"{name}_{n0}v{n1}_seed{seed:02d}.mp4"
+                    frames, winner = _capture_match(
                         seed,
                         n0,
                         n1,
-                        policy,
-                        scripted,
+                        agent0,
+                        agent1,
                         ship_config,
                         env_config,
                         renderer,
                         torch_device,
                         out,
-                        max_steps,
+                        horizon,
                         fps,
                         hold_ms,
                     )
                     written.append(out)
                     if gif:
                         written.append(_write_gif(out, gif_fps, gif_width))
-                    # team0 is always blue (the trained policy); name the winner plainly.
+                    # team0 is blue (the first agent named); name the winner plainly.
                     side = {"team0": "blue", "team1": "red", "tie": "tie"}[winner]
                     print(f"wrote {out}  ({frames} frames, {frames / fps:.1f}s)  winner: {side}")
     finally:

@@ -410,9 +410,30 @@ COMMANDS: tuple[CommandSpec, ...] = (
     ),
     CommandSpec(
         "capture",
-        "Capture seeded scratch gameplay clips from an exact run.",
+        "Capture seeded scratch gameplay clips from an exact run or chosen agent pairs.",
         (
-            _RUN,
+            OptionSpec(
+                ("--run",),
+                {
+                    "type": _exact_run,
+                    "metavar": "RUN",
+                    "help": "Exact run directory name: clips of its final checkpoint.",
+                },
+                "capture-subject",
+                True,
+            ),
+            OptionSpec(
+                ("--pair",),
+                {
+                    "nargs": 2,
+                    "action": "append",
+                    "metavar": ("TEAM0", "TEAM1"),
+                    "help": "Two agents to record playing each other (repeatable): a .pt "
+                    "path or scripted. The first is team 0 (blue).",
+                },
+                "capture-subject",
+                True,
+            ),
             _option("--scenarios", nargs="+", default=["self", "vs_scripted"], metavar="SCENARIO"),
             _option(
                 "--seeds",
@@ -425,9 +446,9 @@ COMMANDS: tuple[CommandSpec, ...] = (
             _option(
                 "--max-steps",
                 type=_positive_int,
-                default=1024,
+                default=None,
                 metavar="PHYSICS_TICKS",
-                help="Maximum physics ticks before a tie.",
+                help="Maximum physics ticks before a tie (default: the checkpoint's own).",
             ),
             _option("--hold-ms", type=_positive_int, default=1500),
             _option("--gif", action="store_true", help="Also write a downscaled GIF."),

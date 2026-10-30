@@ -218,6 +218,35 @@ def test_capture_records_a_fields_run_in_a_field_arena(fields_run, built_envs, t
     _assert_played_with_fields(built_envs)
 
 
+def test_capture_records_a_chosen_pair_in_the_checkpoints_arena(
+    fields_run, built_envs, tmp_path
+):
+    """A pair names its own agents, so the arena comes from the checkpoint in it."""
+
+    from boost_and_broadside.modes.capture import run_capture_mode
+
+    written = run_capture_mode(
+        run_spec=None,
+        pairs=[(str(fields_run.checkpoint), "scripted")],
+        scenarios=[],
+        seeds="0",
+        ship_config=ShipConfig(),
+        model_config=MODEL_CONFIG,
+        device="cpu",
+        checkpoint_dir=str(tmp_path),
+        out_dir=tmp_path / "clips",
+        sizes=["1v1"],
+        max_steps=2,
+        window=64,
+        hold_ms=0,
+    )
+    _assert_played_with_fields(built_envs)
+    assert [path.name for path in written] == [
+        f"{fields_run.checkpoint.stem}__vs__scripted_1v1_seed00.mp4"
+    ]
+    assert written[0].stat().st_size > 0
+
+
 def test_a_field_free_run_is_still_played_at_zero_fields(built_envs, tmp_path):
     """The other direction: zero fields is a width, not a deprecated variant.
 
