@@ -50,8 +50,8 @@ That rate is set by the plant, not by the renderer:
 
 | timescale | seconds | decisions @ 30 Hz |
 |---|---:|---:|
-| firing cooldown | 0.10 | 3 |
-| bullet flight to ~200 px | 0.40 | 12 |
+| firing cooldown (was 0.10, 3 ticks) | 0.067 | 2 |
+| bullet flight, ~186 px (the whole range) | 0.40 | 12 |
 | full 360° turn | 1.3–2.3 | 39–69 |
 | mean episode | ~4.7 | ~140 |
 | `num_steps=128` rollout | 4.3 | 128 |

@@ -193,8 +193,9 @@ def test_recharge_charges_back_the_attacker_that_caused_the_damage():
     assert s.ship_shield_recharge[0, 0] > 0
     # Ship 0 was at 15 with a full 100 shield, so 85 of its deficit predates
     # the hit and only the hit's share of the recharge is the attacker's.
-    deficit = 100.0 - (15.0 - 10.0)
-    share = s.ship_shield_recharge[0, 0] * 10.0 / deficit
+    damage = e.ship_config.bullet_damage
+    deficit = 100.0 - (15.0 - damage)
+    share = s.ship_shield_recharge[0, 0] * damage / deficit
     assert s.recharge_matrix[0, 5, 0] == pytest.approx(share.item(), rel=1e-5)
     assert s.ship_unattributed_recharge[0, 0] == pytest.approx(
         (s.ship_shield_recharge[0, 0] - share).item(), rel=1e-5

@@ -67,6 +67,9 @@ def make_state(
         ship_health=torch.full((num_envs, max_ships), ship_config.max_health, device=dev),
         ship_power=torch.full((num_envs, max_ships), ship_config.max_power, device=dev),
         ship_cooldown=torch.zeros((num_envs, max_ships), dtype=torch.float32, device=dev),
+        ship_last_shot_tick=torch.full(
+            (num_envs, max_ships), -1_000_000, dtype=torch.int32, device=dev
+        ),
         ship_team_id=torch.zeros((num_envs, max_ships), dtype=torch.int32, device=dev),
         ship_alive=torch.ones((num_envs, max_ships), dtype=torch.bool, device=dev),
         ship_is_shooting=torch.zeros((num_envs, max_ships), dtype=torch.bool, device=dev),

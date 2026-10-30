@@ -26,8 +26,9 @@ shield and kill its ship. Friendly fire removes shields and delays recovery but 
 finish a depleted ship. The soft outer boundary also depletes shields, then kills on
 a later tick. Field interfaces and defense/spawn zones inflict no passive damage.
 
-Damage resets a five-second recharge delay. After that undamaged interval, shields
-recover at 15 units/second anywhere, capped at 100. A hit and recharge never pay out
+Damage resets a six-second recharge delay. After that undamaged interval, shields
+recover at 12 units/second anywhere, capped at 100, so a ship hit to zero is whole again
+about 14 seconds later -- sooner than dying and flying back from the spawn would make it. A hit and recharge never pay out
 on the same tick. The timer is an observed, predicted ship channel.
 
 A destroyed ship is down for `respawn_delay` seconds (8 in the shipped profile; 0
@@ -39,9 +40,10 @@ carries no key mask, so the fused flash kernel is unaffected. It re-enters at it
 as of the moment the wait ends, so a ship lost in a capture fight comes back from the
 post-capture spawn rather than the one beside the zone it just lost.
 
-Initial placement and respawns use 15 shields, 40 power and 30 px/s proper
-speed, facing the enemy defense, with the full recharge delay. This avoids a special
-full-resource opening and leaves enough power and steering speed to act immediately.
+Initial placement and respawns use full (100) shields, 40 power and 30 px/s proper
+speed, facing the enemy defense, with the full recharge delay. The respawn wait is the
+price of a death, so a ship comes back whole; 40 power leaves enough to steer and fire a
+burst at once, but not to do both for long.
 Ships inside their current friendly spawn are invulnerable. Spawn membership is
 sampled after movement at collision time; a zone-role change takes effect for the next
 collision tick. Spawn offers protection, not a special healing rate.
@@ -317,9 +319,19 @@ field evaluation.
 The configured muzzle speed is a proper speed relative to the firing ship: it is divided
 by the local index before adding ship velocity and spread. Projectiles continuously
 refract, experience quadratic drag, wrap, and expire through a fixed per-ship ring buffer.
-The production pool uses ten slots: at 30 Hz a one-second projectile moves 29 times and
-launches are at least the three-tick (0.1-second) cooldown apart, so ten slots are exactly
-enough without overwriting a live projectile.
+Guns are short-range: a 0.4-second projectile carries about 186 px from rest (500 px/s
+muzzle speed under drag), and an 8 px hitbox takes 12 damage per hit, scaled down to 30%
+for a head-on hit. A shot costs 3 power, so a 40-power spawn burst is 13 shots -- enough
+to break a full shield from behind, not from the front -- and sustained fire is held to
+what the 10 power/s regeneration pays for.
+
+Every whole-tick duration is read off the episode's tick clock rather than counted down
+in float seconds. A ship's gun is ready once the ticks since its last shot reach the
+cooldown (two ticks, 15 shots/s), and a projectile expires on exactly its twelfth tick;
+both tests carry a tiny epsilon, because 0.4 - 12/30 in float32 lands a hair above zero
+and a plain `> 0` test flew every bullet a thirteenth tick. The pool size is derived from
+the same two numbers (`physics.live_bullet_capacity`): six slots, exactly the bullets one
+gun can have in flight, so none is ever overwritten.
 
 Projectiles are also observable by the policy. `observation_from_state(...,
 include_bullets=True)` flattens the per-ship ring buffers into one `(B, N*K, ...)` axis
@@ -366,7 +378,7 @@ the end of the rollout or across an episode end.
 With spread at zero the re-simulation reproduces what the environment's own bullets do:
 on a Frontline rollout it matched the earlier in-environment labels bit for bit, and
 re-simulated real shots land exactly the hits the environment applies. Every living ship
-gets a label on every decision, about three times as many as one shot per firing cooldown.
+gets a label on every decision, about twice as many as one shot per firing cooldown.
 Spread and the queried ages come from the trainer's own random stream. Evaluation
 environments never copy launch states.
 

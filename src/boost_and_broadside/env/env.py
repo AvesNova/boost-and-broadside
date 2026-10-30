@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from boost_and_broadside.config import EnvConfig, MatchResult, ShipConfig
+from boost_and_broadside.constants import GUN_READY_TICK
 from boost_and_broadside.env import shot_labels
 from boost_and_broadside.env.field_generation import generate_field_layout
 from boost_and_broadside.env.field_physics import evaluate_fields
@@ -26,6 +27,8 @@ from boost_and_broadside.env.frontline import (
 from boost_and_broadside.env.physics import (
     _combat_damage_tensors,
     advance_bullets,
+    fire_interval_ticks,
+    gun_cooldown_seconds,
     resolve_collisions,
     update_ships,
 )
@@ -139,6 +142,7 @@ class TensorEnv:
             ship_health=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_power=torch.zeros((B, N), dtype=torch.float32, device=dev),
             ship_cooldown=torch.zeros((B, N), dtype=torch.float32, device=dev),
+            ship_last_shot_tick=torch.full((B, N), GUN_READY_TICK, dtype=torch.int32, device=dev),
             ship_team_id=torch.zeros((B, N), dtype=torch.int32, device=dev),
             ship_alive=torch.zeros((B, N), dtype=torch.bool, device=dev),
             ship_is_shooting=torch.zeros((B, N), dtype=torch.bool, device=dev),
@@ -310,18 +314,24 @@ class TensorEnv:
         # variance into the win signal that no policy could have influenced.
         health = torch.full((B, N), self.ship_config.max_health, device=self.device)
         power = torch.full((B, N), self.ship_config.max_power, device=self.device)
-        cooldown = torch.zeros((B, N), device=self.device)
+        # Ticks since each ship's last shot, at this episode's tick 0: ready.
+        since_shot = torch.full((B, N), -GUN_READY_TICK, dtype=torch.int32, device=self.device)
         spread = self.env_config.spawn_resource_spread
         if spread > 0.0:
             lo = 1.0 - spread
             health = health * (lo + torch.rand((B, N), device=self.device) * spread)
             power = power * (lo + torch.rand((B, N), device=self.device) * spread)
-            cooldown = torch.rand((B, N), device=self.device) * self.ship_config.firing_cooldown
+            interval = fire_interval_ticks(self.ship_config)
+            since_shot = torch.randint(
+                1, interval + 1, (B, N), dtype=torch.int32, device=self.device
+            )
+        cooldown = gun_cooldown_seconds(since_shot, self.ship_config)
         s.ship_health = torch.where(m, health, s.ship_health)
         s.ship_shield_delay = torch.where(m, 0.0, s.ship_shield_delay)
         s.ship_shield_recharge = torch.where(m, 0.0, s.ship_shield_recharge)
         s.ship_power = torch.where(m, power, s.ship_power)
         s.ship_cooldown = torch.where(m, cooldown, s.ship_cooldown)
+        s.ship_last_shot_tick = torch.where(m, -since_shot, s.ship_last_shot_tick)
         s.ship_ang_vel = torch.where(m, 0.0, s.ship_ang_vel)
         s.ship_slip = torch.where(m, 0.0, s.ship_slip)
         s.ship_slip_rate = torch.where(m, 0.0, s.ship_slip_rate)

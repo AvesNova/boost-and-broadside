@@ -53,6 +53,11 @@ class TensorState:
     ship_health: torch.Tensor  # (B, N) shield in Frontline, hull in elimination combat
     ship_power: torch.Tensor  # (B, N) float32
     ship_cooldown: torch.Tensor  # (B, N) float32    — seconds until next shot
+    # The tick each ship last fired, on the env's own ``step_count`` clock. The
+    # gun's readiness is read from elapsed game time against it rather than from
+    # a countdown, so float error cannot accumulate and a cooldown of k ticks is
+    # exactly k ticks. ``ship_cooldown`` is derived from it for the observation.
+    ship_last_shot_tick: torch.Tensor  # (B, N) int32
 
     # Identity / status
     ship_team_id: torch.Tensor  # (B, N) int32

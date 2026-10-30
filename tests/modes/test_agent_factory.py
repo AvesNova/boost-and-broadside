@@ -187,7 +187,7 @@ def test_scripted_spec_resolves_the_single_frontline_configuration() -> None:
 
     assert isinstance(resolved.agent, StochasticScriptedAgent)
     assert resolved.agent.config.frontline_aggression == pytest.approx(1.05)
-    assert resolved.agent.config.frontline_combat_radius == pytest.approx(393.0)
+    assert resolved.agent.config.frontline_combat_radius == pytest.approx(160.0)
 
     with pytest.raises(CheckpointNotFoundError):
         resolve_agent_spec(

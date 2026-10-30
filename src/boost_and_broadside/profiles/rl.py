@@ -27,17 +27,21 @@ from boost_and_broadside.config.defaults import (
     make_rl_schedule_spec,
 )
 from boost_and_broadside.config.schema import LaunchSizingSpec, ProfileSpec
-from boost_and_broadside.constants import DEFAULT_MAX_BULLETS_PER_SHIP
 from boost_and_broadside.env.frontline import frontline_ship_config
+from boost_and_broadside.env.physics import live_bullet_capacity
+
+_SHIP_CONFIG = frontline_ship_config(SHIP_CONFIG)
 
 RL_PROFILE = ProfileSpec(
     name="rl",
-    ship_config=frontline_ship_config(SHIP_CONFIG),
+    ship_config=_SHIP_CONFIG,
     model_config=MODEL_CONFIG,
     # --- Environment ---
     num_ships=10,
     num_fields=10,
-    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+    # Exactly the bullets a ship can have in flight at once (7): derived from
+    # its lifetime and fire interval, so changing either resizes the buffer.
+    max_bullets=live_bullet_capacity(_SHIP_CONFIG),
     max_episode_steps=9_000,
     # Frontline physics and decisions both run at 30 Hz. The 128-step rollout
     # spans 4.3 seconds without repeating field/visibility work inside a decision.
@@ -56,18 +60,21 @@ RL_PROFILE = ProfileSpec(
     spawn_reveal=True,
     frontline=FrontlineConfig(
         zone_radius=330.0,
-        zone_ring_radius=1200.0,
+        zone_ring_radius=1600.0,
         playable_radius=2600.0,
         capture_seconds=10.0,
         # Off. Standing on a point cost 2 health/s while paying nothing until the
         # meter completed, which made contesting a zone strictly dominated early
         # and compounded the shaping bias run 735 exploited. The capture tier now
         # supplies the pressure that this was standing in for.
-        respawn_health=15.0,
+        # Full shields on every spawn: the respawn wait is the price of a death,
+        # so a ship comes back whole. Healing from zero (6 s + 100/12 s, about
+        # 14 s) stays quicker than dying and flying back from the spawn.
+        respawn_health=100.0,
         respawn_power=40.0,
         respawn_speed=30.0,
-        shield_recharge_delay=5.0,
-        shield_recharge_per_second=15.0,
+        shield_recharge_delay=6.0,
+        shield_recharge_per_second=12.0,
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,

@@ -39,6 +39,7 @@ from typing import NamedTuple
 import torch
 
 from boost_and_broadside.config import ShipConfig
+from boost_and_broadside.env.physics import bullet_lifetime_moves
 from boost_and_broadside.env.state import TensorState
 
 # Encounter sides, relative to the shooter.
@@ -73,20 +74,10 @@ def shot_label_delay(config: ShipConfig) -> int:
     Counted with the same float32 countdown ``advance_bullets`` runs, so the
     flight can never disagree with the simulation's by a rounding.
     """
-    return _countdown_moves(config.bullet_lifetime, config.dt)
+    return bullet_lifetime_moves(config)
 
 
 @functools.cache
-def _countdown_moves(lifetime: float, dt: float) -> int:
-    remaining = torch.tensor(lifetime, dtype=torch.float32)
-    moves = 0
-    while True:
-        remaining = remaining - dt
-        if not bool(remaining > 0):
-            return moves
-        moves += 1
-
-
 class ShotLaunchState(NamedTuple):
     """Every ship as a bullet fired this tick would leave it, ``(..., N)`` each.
 

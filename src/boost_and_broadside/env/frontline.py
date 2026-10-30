@@ -7,7 +7,7 @@ import torch
 
 from boost_and_broadside.config import FrontlineConfig, MatchResult, ShipConfig, ZoneRole
 from boost_and_broadside.config.core import NUM_FRONTLINE_ZONES
-from boost_and_broadside.constants import EPS
+from boost_and_broadside.constants import EPS, GUN_READY_TICK
 from boost_and_broadside.env.field_physics import evaluate_fields
 from boost_and_broadside.env.state import TensorState
 
@@ -174,6 +174,16 @@ def frontline_ship_config(config: ShipConfig) -> ShipConfig:
         # field evaluations per ship tick in the latency-sensitive play loop.
         field_integrator="two_step",
         field_integration_substeps=1,
+        # Short-range guns (Oct 2026): 0.4 s at 500 px/s is about 200 px of
+        # range, a shot every second decision (15/s), and lethality that comes
+        # from energy rather than volume -- 3 energy for 12 damage, so a
+        # 40-energy spawn burst of 13 shots can break a full 100 shield from
+        # behind but not from the front.
+        bullet_lifetime=0.4,
+        firing_cooldown=2.0 / 30.0,
+        bullet_energy_cost=3.0,
+        bullet_damage=12.0,
+        collision_radius=8.0,
     )
 
 
@@ -465,6 +475,13 @@ def place_ships_at_spawns(
         ship_mask, config.shield_recharge_delay, state.ship_shield_delay
     )
     state.ship_cooldown = torch.where(ship_mask, 0.0, state.ship_cooldown)
+    # A respawned gun is ready: its last shot is far enough back on this
+    # episode's clock that any cooldown has elapsed.
+    state.ship_last_shot_tick = torch.where(
+        ship_mask,
+        state.step_count.unsqueeze(1) + GUN_READY_TICK,
+        state.ship_last_shot_tick,
+    )
     state.ship_is_shooting &= ~ship_mask
     state.ship_alive |= ship_mask
     state.ship_local_index = torch.where(ship_mask, field_eval.index, state.ship_local_index)

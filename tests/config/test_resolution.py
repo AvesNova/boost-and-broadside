@@ -29,6 +29,7 @@ from boost_and_broadside.config.schedule_spec import compile_keypoints, hold
 from boost_and_broadside.config.schema import LaunchSizingSpec, ProfileSpec
 from boost_and_broadside.config.service import format_resolved_config, resolved_profile_document
 from boost_and_broadside.config.training import TrainConfig
+from boost_and_broadside.env.physics import live_bullet_capacity
 from boost_and_broadside.profiles import PROFILES
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -151,14 +152,19 @@ def test_training_profiles_use_the_frontline_perception_contract(name: str) -> N
     assert scale.env_config.frontline is not None
     assert scale.env_config.frontline.capture_seconds == 10.0
     assert scale.env_config.frontline.respawn_power == 40.0
-    assert scale.env_config.frontline.shield_recharge_delay == 5.0
-    assert scale.env_config.frontline.shield_recharge_per_second == 15.0
+    assert scale.env_config.frontline.shield_recharge_delay == 6.0
+    assert scale.env_config.frontline.shield_recharge_per_second == 12.0
+    assert scale.env_config.frontline.respawn_health == 100.0
+    assert scale.env_config.frontline.zone_ring_radius == 1600.0
     assert scale.env_config.vision_range == 1024.0
     assert scale.env_config.zones_occlude
     assert scale.env_config.num_fields == 10
     assert scale.env_config.num_entity_tokens == 26
     assert launch_geometry(PROFILES[name]).entity_tokens == 26
     assert resolved.train_config.paradigm == "ego_pass"
+    # The bullet buffer is derived, not chosen: exactly one 0.4 s, 2-tick gun's worth.
+    assert resolved.ship_config.bullet_lifetime == 0.4
+    assert scale.env_config.max_bullets == live_bullet_capacity(resolved.ship_config) == 6
 
 
 def test_canonical_serialization_has_a_stable_golden_vector() -> None:

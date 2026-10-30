@@ -34,8 +34,10 @@ def test_play_preset_is_timed_frontline_with_scriptable_fleets() -> None:
     assert PLAY_ENV_CONFIG.frontline.zone_radius == 330.0
     assert PLAY_ENV_CONFIG.frontline.capture_seconds == 10.0
     assert PLAY_ENV_CONFIG.frontline.respawn_power == 40.0
-    assert PLAY_ENV_CONFIG.frontline.shield_recharge_delay == 5.0
-    assert PLAY_ENV_CONFIG.frontline.shield_recharge_per_second == 15.0
+    assert PLAY_ENV_CONFIG.frontline.shield_recharge_delay == 6.0
+    assert PLAY_ENV_CONFIG.frontline.shield_recharge_per_second == 12.0
+    assert PLAY_ENV_CONFIG.frontline.respawn_health == 100.0
+    assert PLAY_ENV_CONFIG.frontline.zone_ring_radius == 1600.0
     assert FRONTLINE_FIELD_RADIUS_MAX == 750.0
     ship_config = frontline_ship_config(ShipConfig())
     assert ship_config.dt == 1.0 / 30.0

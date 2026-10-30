@@ -74,8 +74,11 @@ class StochasticAgentConfig:
     shoot_angle_ramp: tuple[float, float] = (1.0, 1.5)
     shoot_angle_prob: tuple[float, float] = (0.95, 0.05)
 
-    # Distance: direct world-unit distances
-    shoot_distance_ramp: tuple[float, float] = (200, 500)
+    # Distance: direct world-unit distances. Matched by hand to the 0.4 s gun
+    # (about 186 px from rest, 230 px at cruise): certain inside half a range,
+    # unlikely past one, so the teacher BC clones does not spend 3-energy shots
+    # on targets they cannot reach.
+    shoot_distance_ramp: tuple[float, float] = (100.0, 200.0)
     shoot_distance_prob: tuple[float, float] = (0.95, 0.05)
 
     # Team Target Ramps
@@ -90,7 +93,9 @@ class StochasticAgentConfig:
 
     # State-derived Frontline strategy; excluded from the legacy tuning vector.
     frontline_aggression: float = 1.05
-    frontline_combat_radius: float = 393.0
+    # Weapon scale, so it shrank with the gun: the old 393 px was 0.79 of the
+    # old 500 px shooting range, and 160 px keeps that ratio at 200 px.
+    frontline_combat_radius: float = 160.0
     frontline_zone_radius: float | None = 1090.0
     frontline_zone_margin: float = 0.98  # full-health ship equivalents
     frontline_separation_radius: float | None = 141.0

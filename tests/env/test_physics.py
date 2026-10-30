@@ -3,6 +3,8 @@
 Tests physical invariants rather than exact floating-point values where possible.
 """
 
+from dataclasses import replace
+
 import pytest
 import torch
 
@@ -15,6 +17,9 @@ from boost_and_broadside.constants import (
 )
 from boost_and_broadside.env.physics import (
     advance_bullets,
+    bullet_lifetime_moves,
+    fire_interval_ticks,
+    live_bullet_capacity,
     resolve_collisions,
     update_ships,
 )
@@ -226,7 +231,7 @@ class TestShooting:
     def test_shoot_blocked_by_cooldown(self, cfg):
         """Cannot shoot while cooldown is active."""
         state = make_state(num_envs=1, max_ships=1, ship_config=cfg)
-        state.ship_cooldown[:] = cfg.firing_cooldown  # cooldown not expired
+        state.ship_last_shot_tick[:] = state.step_count  # fired this tick: cooldown not expired
         state.ship_power[:] = cfg.max_power
 
         actions = torch.zeros((1, 1, 3), dtype=torch.float32)
@@ -270,10 +275,13 @@ class TestShooting:
                 shots += 1
                 assert not cursor_slot_was_live
             state, _ = advance_bullets(state, cfg)
+            state.step_count += 1  # the env's clock, which the gun reads
             peak_live = max(peak_live, int(state.bullet_active.sum().item()))
 
         assert shots > DEFAULT_MAX_BULLETS_PER_SHIP
-        assert peak_live < DEFAULT_MAX_BULLETS_PER_SHIP
+        # A gun on its exact interval fills the derived capacity and no more,
+        # and the default pool holds that many.
+        assert peak_live == live_bullet_capacity(cfg) <= DEFAULT_MAX_BULLETS_PER_SHIP
 
 
 class TestBulletLifetime:
@@ -541,3 +549,48 @@ class TestApplyCombatDamage:
 
         assert torch.equal(state.ship_health, orig_health)
         assert torch.equal(state.damage_matrix, orig_matrix)
+
+
+class TestGameClock:
+    """Whole-tick durations are read off the tick clock, so rounding cannot stretch them."""
+
+    @staticmethod
+    def _frontline():
+        from boost_and_broadside.config.defaults import SHIP_CONFIG
+        from boost_and_broadside.env.frontline import frontline_ship_config
+
+        return replace(
+            frontline_ship_config(SHIP_CONFIG), bullet_energy_cost=0.0, passive_power_gain=0.0
+        )
+
+    def test_the_gun_fires_on_exactly_every_interval_for_a_whole_match(self):
+        cfg = self._frontline()
+        interval = fire_interval_ticks(cfg)
+        assert interval == 2
+        state = make_state(num_envs=1, max_ships=1, max_bullets=8, ship_config=cfg)
+        actions = torch.tensor([[[0, 0, int(ShootActions.SHOOT)]]])
+        fired = []
+        for _ in range(900):
+            state = update_ships(state, actions, cfg)
+            fired.append(bool(state.ship_is_shooting[0, 0]))
+            state, _ = advance_bullets(state, cfg)
+            state.step_count += 1
+        assert fired == [tick % interval == 0 for tick in range(900)]
+
+    def test_a_bullet_lives_exactly_its_lifetime(self):
+        cfg = self._frontline()
+        state = make_state(num_envs=1, max_ships=1, max_bullets=8, ship_config=cfg)
+        shoot = torch.tensor([[[0, 0, int(ShootActions.SHOOT)]]])
+        state = update_ships(state, shoot, cfg)
+        assert state.bullet_active[0, 0, 0]
+        moves = 0
+        while True:
+            state, _ = advance_bullets(state, cfg)
+            if not bool(state.bullet_active[0, 0, 0]):
+                break
+            moves += 1
+        # 0.4 s at 30 Hz is 12 ticks: the launch tick and 11 more moves. Float32
+        # leaves 0.4 - 12/30 a hair above zero, which a plain > 0 test turned
+        # into a 13th tick.
+        assert moves + 1 == round(cfg.bullet_lifetime / cfg.dt) == 12
+        assert moves == bullet_lifetime_moves(cfg)

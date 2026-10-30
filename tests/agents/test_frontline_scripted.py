@@ -126,7 +126,8 @@ def test_hidden_enemy_changes_do_not_change_labels():
 @pytest.mark.parametrize("flat", [False, True])
 def test_healthy_close_range_is_exact_legacy_dogfighter(flat):
     ship, state, visibility = _scenario(1)
-    state.ship_pos[0] = torch.tensor([6000 + 100j, 6100 + 110j])
+    # Inside the inner shooting range, where the strategy hands over to the dogfighter.
+    state.ship_pos[0] = torch.tensor([6000 + 100j, 6040 + 110j])
     state.ship_health[:] = ship.max_health
     agent = StochasticScriptedAgent(
         ship, StochasticAgentConfig(flat_action_sampling=flat, team_target_distance_prob=(0.2, 0.8))
@@ -198,7 +199,7 @@ def test_separation_pushes_apart_and_stays_bounded_in_dense_fleet():
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"frontline_combat_radius": 200},
+        {"frontline_combat_radius": 90},  # inside the 100 px inner shooting range
         {"frontline_zone_radius": 0},
         {"frontline_aggression": float("nan")},
         {"frontline_zone_margin": -1},

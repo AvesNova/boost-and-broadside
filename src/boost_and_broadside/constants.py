@@ -11,6 +11,9 @@ EPS: float = 1e-6  # division safety guard for direction/speed normalization
 # One-second projectiles fired at the default 0.1-second cooldown need at most
 # nine simultaneously live slots at 60 Hz. Ten retains one safety slot while
 # avoiding the dense physics/collision cost of the previous 20-slot pools.
+# A last-shot tick this far before an episode's clock reads as "gun ready":
+# more ticks than any cooldown, and far from int32 overflow within an episode.
+GUN_READY_TICK: int = -1_000_000
 DEFAULT_MAX_BULLETS_PER_SHIP: int = 10
 
 

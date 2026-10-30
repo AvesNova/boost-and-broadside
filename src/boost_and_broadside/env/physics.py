@@ -4,6 +4,7 @@ All functions operate on TensorState in-place and return the mutated state.
 No Python loops over batch or ship dimensions.
 """
 
+import math
 from collections.abc import Callable
 from typing import NamedTuple
 
@@ -573,6 +574,50 @@ def _update_kinematics(
 # ---------------------------------------------------------------------------
 
 
+# Slack on every whole-tick time test: the gun's readiness and a bullet's
+# expiry. Both compare float32 seconds against a duration that is meant to be a
+# whole number of ticks (a 2-tick cooldown, a 12-tick 0.4 s lifetime), and
+# rounding can leave the difference a hair above zero on the tick it should
+# reach it -- a bullet then flies a 13th tick. This is far below one tick at
+# any rate the game runs at.
+GAME_TIME_EPS = 1e-5
+
+
+def fire_interval_ticks(config: ShipConfig) -> int:
+    """Ticks between a ship's shots: the first whole tick count covering the cooldown."""
+    return max(1, math.ceil(config.firing_cooldown / config.dt - GAME_TIME_EPS / config.dt))
+
+
+def bullet_lifetime_moves(config: ShipConfig) -> int:
+    """Moves a bullet survives after launch, by ``advance_bullets``'s own countdown."""
+    remaining = torch.tensor(config.bullet_lifetime, dtype=torch.float32)
+    moves = 0
+    while True:
+        remaining = remaining - config.dt
+        if not bool(remaining > GAME_TIME_EPS):
+            return moves
+        moves += 1
+
+
+def live_bullet_capacity(config: ShipConfig) -> int:
+    """Most bullets one ship can have in flight: one per fire interval of a lifetime.
+
+    The bullet ring buffer needs no more slots than this; fewer would recycle a
+    bullet still in flight.
+    """
+    # Ticks a bullet occupies its slot: the moves ``advance_bullets`` keeps it
+    # for, plus the launch tick, since a slot is written before that tick's
+    # decrement.
+    lifetime_ticks = bullet_lifetime_moves(config) + 1
+    return max(1, math.ceil(lifetime_ticks / fire_interval_ticks(config)))
+
+
+def gun_cooldown_seconds(since_shot: torch.Tensor, config: ShipConfig) -> torch.Tensor:
+    """Seconds until the gun is ready, ``since_shot`` ticks after the last shot."""
+    remaining = config.firing_cooldown - since_shot.float() * config.dt
+    return torch.where(remaining <= GAME_TIME_EPS, 0.0, remaining)
+
+
 def _handle_shooting(
     state: TensorState, shoot_action: torch.Tensor, config: ShipConfig
 ) -> TensorState:
@@ -586,23 +631,27 @@ def _handle_shooting(
         state.ship_is_shooting = torch.zeros_like(state.ship_is_shooting)
         return state
 
-    state.ship_cooldown = (state.ship_cooldown - config.dt).clamp(min=0.0)
+    since_shot = state.step_count.unsqueeze(1) - state.ship_last_shot_tick  # (B, N) ticks
+    gun_ready = since_shot.float() * config.dt >= config.firing_cooldown - GAME_TIME_EPS
 
     can_shoot = (
         (shoot_action == ShootActions.SHOOT)
-        & (state.ship_cooldown <= 0)
+        & gun_ready
         & (state.ship_power >= config.bullet_energy_cost)
         & state.ship_alive
     )  # (B, N) bool
     state.ship_is_shooting = can_shoot
+    state.ship_last_shot_tick = torch.where(
+        can_shoot, state.step_count.unsqueeze(1), state.ship_last_shot_tick
+    )
+    # Seconds until the gun is ready, as of this tick: a cooldown read off the
+    # clock, so the observation and the rule can never disagree.
+    state.ship_cooldown = gun_cooldown_seconds(
+        state.step_count.unsqueeze(1) - state.ship_last_shot_tick, config
+    )
 
     state.ship_power = torch.where(
         can_shoot, state.ship_power - config.bullet_energy_cost, state.ship_power
-    )
-    state.ship_cooldown = torch.where(
-        can_shoot,
-        config.firing_cooldown,
-        state.ship_cooldown,
     )
 
     K = state.max_bullets
@@ -752,7 +801,7 @@ def advance_bullets(
         The state and ephemeral points defining two swept collision segments.
     """
     state.bullet_time = state.bullet_time - config.dt
-    state.bullet_active = state.bullet_active & (state.bullet_time > 0)
+    state.bullet_active = state.bullet_active & (state.bullet_time > GAME_TIME_EPS)
     flight = fly_bullets(
         state.bullet_pos,
         state.bullet_vel,

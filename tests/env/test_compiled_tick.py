@@ -103,6 +103,7 @@ def test_a_compiled_launch_simulates_the_same_world() -> None:
     assert torch.equal(eager.state.ship_pos, compiled.state.ship_pos), "reset already differs"
 
     actions = _shoot_everything()
+    shots = 0
     for _ in range(8):
         # The tick draws for bullet spread, so both must see the same stream or
         # their trajectories decorrelate for reasons that are not the point here.
@@ -110,9 +111,12 @@ def test_a_compiled_launch_simulates_the_same_world() -> None:
         eager.tick(actions)
         torch.cuda.set_rng_state(rng)
         compiled.tick(actions)
+        # Every tick, not only the last: a gun fires on a fixed interval, so the
+        # last tick of a window need not be one it fires on.
+        shots += int(eager.state.ship_is_shooting.sum())
+        assert torch.equal(eager.state.ship_is_shooting, compiled.state.ship_is_shooting)
 
-    assert eager.state.ship_is_shooting.sum() > 0, "the probe never fired; it proves nothing"
-    assert torch.equal(eager.state.ship_is_shooting, compiled.state.ship_is_shooting)
+    assert shots > 0, "the probe never fired; it proves nothing"
     assert torch.equal(eager.state.ship_alive, compiled.state.ship_alive)
     for name, atol in (
         ("ship_pos", 1e-2),

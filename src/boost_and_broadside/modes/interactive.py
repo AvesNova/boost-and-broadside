@@ -23,8 +23,8 @@ from boost_and_broadside.config import (
     RewardConfig,
     ShipConfig,
 )
+from boost_and_broadside.config.defaults import SHIP_CONFIG
 from boost_and_broadside.constants import (
-    DEFAULT_MAX_BULLETS_PER_SHIP,
     PowerActions,
     ShootActions,
     TurnActions,
@@ -34,6 +34,7 @@ from boost_and_broadside.env.frontline import (
     scaled_frontline_geometry,
 )
 from boost_and_broadside.env.perception import team_visibility_from_state
+from boost_and_broadside.env.physics import live_bullet_capacity
 from boost_and_broadside.env.wrapper import YemongEnvWrapper
 from boost_and_broadside.evaluation.agents import (
     ResolvedAgent,
@@ -54,11 +55,11 @@ from boost_and_broadside.train.rl.belief import BeliefTracker, legal_policy_view
 from boost_and_broadside.ui.renderer import GameRenderer, RenderConfig, VisionMode
 
 _PLAY_ZONE_RADIUS = 330.0
-_PLAY_ZONE_RING_RADIUS = 1200.0
+_PLAY_ZONE_RING_RADIUS = 1600.0
 
 PLAY_ENV_CONFIG = EnvConfig(
     num_ships=10,
-    max_bullets=DEFAULT_MAX_BULLETS_PER_SHIP,
+    max_bullets=live_bullet_capacity(frontline_ship_config(SHIP_CONFIG)),
     max_episode_steps=9_000,
     # Ten low-discrepancy fields with the larger Frontline radius distribution
     # preserve slightly more nominal coverage than the earlier 20 × 490 px
@@ -75,11 +76,11 @@ PLAY_ENV_CONFIG = EnvConfig(
         zone_ring_radius=_PLAY_ZONE_RING_RADIUS,
         playable_radius=2600.0,
         capture_seconds=10.0,
-        respawn_health=15.0,
+        respawn_health=100.0,
         respawn_power=40.0,
         respawn_speed=30.0,
-        shield_recharge_delay=5.0,
-        shield_recharge_per_second=15.0,
+        shield_recharge_delay=6.0,
+        shield_recharge_per_second=12.0,
         boundary_damage_per_second=5.0,
         boundary_damage_per_pixel_second=0.05,
         front_win_threshold=3,
