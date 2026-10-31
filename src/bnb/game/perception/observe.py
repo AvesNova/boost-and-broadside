@@ -7,11 +7,16 @@ team-major storage this is a static gather, fused into the copy this stage write
 import torch
 
 from bnb.contracts import Obs, Privileged
-from bnb.contracts.obs import SHIP_HIDDEN_ZERO
+from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 
 from ..rules import Rules
 from ..state import State, replace
 from .sight import visibility
+
+# The row layout `ship_rows` writes: the hidden columns, then the always-shown ones.
+HIDDEN = ("x", "y", "c", "s", "vx", "vy", "w", "alpha", "r", "E", "shield", "gun_wait")
+SHOWN = ("alive", "visible", "respawn", "type", "team_rel", "since_seen", "spawned")
+assert HIDDEN + SHOWN == SHIP_COLUMNS and len(HIDDEN) == SHIP_HIDDEN_ZERO
 
 LAST_SEEN_CAP = 1 << 30  # ticks; keeps the counter far from int32 overflow
 
@@ -49,15 +54,16 @@ def perceive(p: Rules, st: State) -> tuple[State, Obs, Privileged]:
     vis = visibility(p, st)
     last_seen = torch.where(vis.ships, 0, (st.match.last_seen + 1).clamp_max(LAST_SEEN_CAP))
 
-    hidden, shown = _ship_columns(p, st)
+    hidden, shown = (v[:, order] for v in _ship_columns(p, st))  # (B, T, N, ...) by row
     team_rel = (torch.arange(N, device=device) // S).float()  # by row: the ordering makes it static
+    extra = torch.stack([team_rel.expand(B, T, N), st.ships.spawned[:, order].float()], -1)
 
     def ship_rows(seen: torch.Tensor, since: torch.Tensor) -> torch.Tensor:
-        masked = torch.where(seen[..., None], hidden[:, None], 0.0)  # (B, T, N, 12)
-        rows = torch.cat([masked, shown[:, None].expand(B, T, N, 3)], -1)[:, views, order]
-        return torch.cat([rows[..., :SHIP_HIDDEN_ZERO + 1], seen[:, views, order, None].float(),
-                          rows[..., SHIP_HIDDEN_ZERO + 1:], team_rel.expand(B, T, N)[..., None],
-                          since[:, views, order, None], st.ships.spawned[:, order, None].float()], -1)
+        """seen, since: (B, T, N) in sim order."""
+        seen, since = seen[:, views, order, None], since[:, views, order, None]
+        alive, rest = shown[..., :1], shown[..., 1:]  # alive, then respawn and type
+        return torch.cat([torch.where(seen, hidden, 0.0), alive, seen.float(), rest,
+                          extra[..., :1], since, extra[..., 1:]], -1)
 
     ships = ship_rows(vis.ships, last_seen.float() * p.tick)
 
