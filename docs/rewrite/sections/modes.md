@@ -33,8 +33,10 @@ Status: decisions settled, 2026-11-01. Spec: `modes-spec.md`.
 ### Frontline (v1's rules, scaled with the arena)
 
 - **Zones:** five on a ring at 0.615 `R_a`, with zone radius `330 s_a`.
-- **Roles,** in order around the ring: team 0's spawn, team 0's defense, neutral, team
-  1's defense, team 1's spawn. They rotate one place per capture.
+- **Roles,** in order around the ring: neutral, team 0's spawn, team 0's defense, team
+  1's defense, team 1's spawn (then back to neutral). The two defense zones are adjacent,
+  and the front runs between them. The roles rotate one place per capture. (Corrected
+  2026-11-01: the first text put neutral in the middle.)
 - **Capture:**
   - only the two defense zones can be captured;
   - the meter moves toward the attacker on a strict alive majority inside the zone;
