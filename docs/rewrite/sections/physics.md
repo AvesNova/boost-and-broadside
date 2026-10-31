@@ -63,8 +63,12 @@ Status: decisions nearly complete, 2026-10-31. The starting spec is the race spe
     - offline, float64;
     - successor of v1's `config/handling.py` (a log-linear solve plus a simulated
       correction), with the handle list from `ship-card.md` revised for the new model.
-14. **Rewards and Yemong keep today's ideas and math, in new code.** For Yemong: whether
-    "today" includes the Yemong-review decisions is to be asked.
+14. **Rewards and Yemong keep today's ideas and math, in new code.**
+    - Yemong starts as the current v1 model, which is known to train.
+    - The Yemong-review design (Griffin-only memory, the dual next-state head, damped
+      rotary encodings for hidden tokens) is added later as an option for a head-to-head
+      comparison.
+    - The Yemong section must keep both buildable from config.
 
 ## Agreed: constants
 
@@ -84,7 +88,10 @@ One coding agent, launched with a written brief.
 - **Does not see:** the float64 oracle or the v1 code.
 - **Changes:**
   - `src/bnb/game/physics/`;
-  - `src/bnb/game/perception/`, only to read the new state layout;
+  - `src/bnb/game/perception/`: only what the state changes force (field access, the
+    bullet representation). Sight rules and the observation contract stay fixed; the
+    observation goldens check it. Option (a) of question 9; the perception section's own
+    work (fog-off envs, the mode block, sight-test speed) stays separate;
   - new tests under `tests/sections/`.
 - **Must not change:** contracts, runtime, the goldens or the spec docs. It files
   requests in its report instead.
