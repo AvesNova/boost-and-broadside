@@ -1,6 +1,6 @@
 # Contracts (section 0)
 
-Status: **draft for review**, 2026-10-31.
+Status: **draft, first review done** 2026-10-31 (see the review log at the end).
 - Each item is marked **carried** (decided before, or the race spec), **new** (a choice
   made here), or **open**.
 - Plan and design rules: [scaffold.md](scaffold.md).
@@ -103,10 +103,15 @@ rotation or mirroring (decided).
 
 **Team identity (decided 2026-10-31).** Agents never see the sim's team index:
 - every entity carries `team_rel = (team − viewer) mod T`;
-- **entities are ordered by `team_rel`**: the viewer's own ships come first. This is a
-  reordering, not geometry. It is needed because a fixed sim order would leak the seat
-  (team 1 would always find itself in the second block). Ships keep their slot order
-  within a team.
+- **entities are ordered by `team_rel`** (own ships first). This is a reordering, not
+  geometry, and costs nothing:
+  - with team-major storage it is a roll of the team axis, `(B, T, S, F)`, fused into the
+    write the observe stage does anyway;
+  - a permutation-invariant model (Yemong: no token-index embedding) does not care;
+  - a model that reads token position would otherwise learn its seat. The skeleton's MLP
+    over the flattened view is one;
+  - own ships sit at a fixed slice `[:S]`, so the per-ship action heads and enemy-action
+    heads slice instead of gathering.
 - The sim index lives in `Privileged`.
 
 ```python
@@ -149,8 +154,7 @@ Per tick, from `step`. These are what rewards and diagnostics are built from.
 ```python
 @dataclass(frozen=True)
 class Events:                # (B, N) unless noted
-    damage_dealt: Tensor     # float: hit damage this ship's bullets did
-    damage_taken: Tensor     # float: hit damage this ship took
+    damage: Tensor           # (B, N, N) float: hit damage from shooter to target, this tick
     boundary_damage: Tensor  # float
     died: Tensor; fired: Tensor; spawned: Tensor    # bool
     killer: Tensor           # int: ship index of the killing shooter, −1 if none
@@ -158,10 +162,16 @@ class Events:                # (B, N) unless noted
     SCHEMA_VERSION = 1
 ```
 
-- **new:** the race's pairwise `damage (B, N, N)` matrix is **not** in the contract.
-  - At N = 100, B = 1024 it is 40 MB per tick, and 5 GB if a 128-step rollout stored it.
-  - Per-ship dealt and taken, plus `killer`, cover every reward and diagnostic we have.
-  - A mode that needs pairs (an assist rule, say) adds a field when it arrives.
+- **carried (revised 2026-10-31):** the pairwise `damage (B, N, N)` stays.
+  - Today's rewards need pairs: kill credit is split among attackers, half by the killing
+    tick's hits and half by a running per-pair ledger of damage not yet recharged.
+    Shield recharge charges attackers back pro rata from that ledger (`rewards.py`
+    `KillDeathReward`, `DamageReward`).
+  - The matrix is a per-tick transient: the reward stage consumes it and the trajectory
+    never stores it. Only per-ship rewards are stored (§9). At N = 100 and B = 1024 it is
+    40 MB, plus a ledger of the same size.
+  - The ledger `(B, N, N)` is **mode state**: it lives in the runtime carry beside the
+    game state, owned by `modes/` and cleared for a slot on respawn. It is not game state.
 - Indices in `Events` are sim indices: events are learner-side and privileged in spirit.
   A reward function maps them to per-ship rewards. Agents never receive `Events`.
 
@@ -208,9 +218,14 @@ class Outputs:
   - feature encoding belongs to the model;
   - PPO needs only logp, entropy and value;
   - `aux_loss` sits on the model.
-- **new:** a controller acts for **one team view** at a time. It receives `Obs` sliced to
-  its view, `(B_pool, …)`, and returns actions for that team's `S` ships. Controllers
-  never see other views.
+- **new (author, 2026-10-31):** a controller plays **one team**.
+  - Input: everything that team sees, i.e. its view of `Obs` (own ships, visible
+    enemies, bullets, fields, globals), shaped `(B_pool, …)`.
+  - Output: `Action` for that team's `S` ships only. Only these are executed or trained
+    as actions.
+  - A model may also predict the enemy team's actions (an enemy-action head, shared or
+    separate). That prediction goes in `Outputs.extra` as an auxiliary output; it is
+    never executed.
 - **new:** `gen` is the controller's named random stream. The runtime registers it with
   the CUDA graph.
 - **carried:** the human controller is a pure function of an input array that the shell
@@ -264,7 +279,7 @@ learner's views only.
 reset(cfg, types, gen) -> State
 step(cfg, types, state, action, gen) -> tuple[State, Events]
 observe(cfg, state) -> tuple[Obs, Privileged]
-reward(mode, events, state) -> Tensor        # modes section
+reward(mode, mode_state, events, state) -> tuple[Tensor, ModeState]  # modes section
 snapshot(state) -> RenderSnapshot            # play section
 ```
 
@@ -273,12 +288,16 @@ snapshot(state) -> RenderSnapshot            # play section
 - **new:** randomness enters through `gen`. The correctness surface for tests also accepts
   explicit draws, as in the race: spread normals and reset uniforms.
 
-## Open, for review
+## Review log
 
-1. Action contract: factored components (recommended) vs joint 42.
-2. Ordering observation rows by `team_rel` (needed to hide the seat; it is a reordering
-   only).
-3. Dropping the pairwise damage matrix from `Events`.
-4. `Match.last_seen` and `seat_of_team` as new state.
-5. A controller acts for one team view (no cross-view controllers).
-6. Learner seat randomized per env per episode within a pool.
+- 2026-10-31 (author):
+  1. Factored action components: **agreed**.
+  2. Ordering by `team_rel`: asked about cost. Answer above (free); kept unless the
+     author objects.
+  3. Rewards must keep their information: the pairwise matrix stays as a per-tick
+     transient, and the ledger becomes mode state.
+  4. `last_seen` and `seat_of_team`: **agreed**.
+  5. A controller gets the whole team view and acts for its own ships only. An
+     enemy-action prediction is an auxiliary output: **agreed, revised as above**.
+  6. Learner seat randomized per env per episode: **agreed** (a cheap guard; maps are
+     already seat-symmetric).
