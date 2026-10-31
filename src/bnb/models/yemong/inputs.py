@@ -1,8 +1,9 @@
 """What the model composes from one team view and what it read from its carry (spec 4).
 
-Per view the tokens are the ship rows (own ships first), the global token and the fields.
-A ship row's physical state is the belief's, so it is truth where visible. Nothing here
-reads a hidden ship's hidden-zero columns.
+Per view the tokens are the ship rows (own ships first), the global token, the fields and
+the mode's zones (modes spec 7; none outside Frontline). A ship row's physical state is the
+belief's, so it is truth where visible. Nothing here reads a hidden ship's hidden-zero
+columns.
 
 Every position the model reads (ships, fields, the map centre) is shifted by the view's
 random offset, drawn per match. The categorical position codes then cannot memorise
@@ -17,7 +18,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.contracts.action import NUM_JOINT
-from bnb.contracts.obs import FIELD, GLOBAL, SHIP
+from bnb.contracts.obs import FIELD, GLOBAL, SHIP, ZONE, ZONE_COLUMNS
 from bnb.contracts.tree import contract
 from bnb.game.rules import TEAMS
 
@@ -32,6 +33,7 @@ ARENA_SCALE = 2600.0  # m
 FIELD_RADIUS_SCALE = 1000.0  # m
 FIELD_BAND_SCALE = 40.0  # m
 FIELD_LEVEL_SCALE = 2.0
+ZONE_ROLES = 5  # own spawn, own defense, neutral, enemy defense, enemy spawn
 # The enemy-action forecasts are stored as int16 fixed point (2 bytes, resolution 3e-5), and
 # the step composes from the stored integers, so unroll reads exactly what the step read.
 # (Not bf16: inside a compiled kernel inductor drops a fused fp32 -> bf16 -> fp32 round trip
@@ -45,8 +47,12 @@ def store_action(probabilities: torch.Tensor) -> torch.Tensor:
 
 SHIP_FLAGS = ("alive", "visible", "fired")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
-GLOBAL_INPUTS = POSITION_CODE + 3
+# The centre's code, then episode progress, arena radius, fog, the mode one-hot (2), both
+# scores over the target, the target, the front and its threshold.
+GLOBAL_INPUTS = POSITION_CODE + 10
 FIELD_INPUTS = POSITION_CODE + 3
+# The centre's code, radius, the role one-hot, progress, direction and the two distances.
+ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
 
 
 def ship_inputs(code_width: int, ship_types: int) -> int:
@@ -88,20 +94,22 @@ def truth(ships: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
 class Tokens:
     """The encoder's inputs and the geometry for the rotary tables, (...) leading axes.
 
-    ship (..., N, ship_inputs), global_token (..., 1, 84), field (..., M, 84); code (..., N,
-    490) the belief's state code (the next-state head's baseline); ship_type (..., N) int64;
-    query_position (..., N + 1, 2) and query_heading (..., N + 1): the ships' belief and the
-    map centre (no heading); field_position (..., M, 2). Positions are shifted.
+    ship (..., N, ship_inputs), global_token (..., 1, GLOBAL_INPUTS), field (..., M,
+    FIELD_INPUTS), zone (..., Z, ZONE_INPUTS); code (..., N, 490) the belief's state code (the
+    next-state head's baseline); ship_type (..., N) int64; query_position (..., N + 1, 2) and
+    query_heading (..., N + 1): the ships' belief and the map centre (no heading);
+    memory_position (..., M + Z, 2), the fields' and zones' centres. Positions are shifted.
     """
 
     ship: torch.Tensor
     global_token: torch.Tensor
     field: torch.Tensor
+    zone: torch.Tensor
     code: torch.Tensor
     ship_type: torch.Tensor
     query_position: torch.Tensor
     query_heading: torch.Tensor
-    field_position: torch.Tensor
+    memory_position: torch.Tensor
 
 
 def _position_code(position: torch.Tensor) -> torch.Tensor:
@@ -145,10 +153,16 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
                       pending, gradient, presence], -1)
 
     globals_ = obs.globals
-    global_token = torch.cat([_position_code(centre),
-                              torch.stack([globals_[..., GLOBAL["episode_progress"]],
-                                           globals_[..., GLOBAL["arena_radius"]] / ARENA_SCALE,
-                                           globals_[..., GLOBAL["fogged"]]], -1)], -1)[..., None, :]
+    target = globals_[..., GLOBAL["score_target"]]
+    per_target = torch.where(target > 0.0, 1.0 / torch.where(target > 0.0, target, 1.0), 0.0)
+    global_token = torch.cat([_position_code(centre), torch.stack([
+        globals_[..., GLOBAL["episode_progress"]],
+        globals_[..., GLOBAL["arena_radius"]] / ARENA_SCALE, globals_[..., GLOBAL["fogged"]],
+        globals_[..., GLOBAL["mode_team_deathmatch"]], globals_[..., GLOBAL["mode_frontline"]],
+        globals_[..., GLOBAL["score_own"]] * per_target,
+        globals_[..., GLOBAL["score_enemy"]] * per_target, symlog(target),
+        globals_[..., GLOBAL["front"]], globals_[..., GLOBAL["front_threshold"]]], -1)],
+        -1)[..., None, :]
 
     fields = obs.fields
     field_position = torch.stack([fields[..., FIELD["x"]], fields[..., FIELD["y"]]], -1) \
@@ -157,8 +171,19 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
                        torch.stack([fields[..., FIELD["radius"]] / FIELD_RADIUS_SCALE,
                                     fields[..., FIELD["band_width"]] / FIELD_BAND_SCALE,
                                     fields[..., FIELD["level"]] / FIELD_LEVEL_SCALE], -1)], -1)
+    zones = obs.zones if obs.zones is not None \
+        else fields.new_zeros(fields.shape[:-2] + (0, len(ZONE_COLUMNS)))
+    zone_position = torch.stack([zones[..., ZONE["x"]], zones[..., ZONE["y"]]], -1) \
+        + centre[..., None, :]
+    role = zones[..., ZONE["role"]].long()
+    zone = torch.cat([_position_code(zone_position), torch.cat([
+        (zones[..., ZONE["radius"]] / FIELD_RADIUS_SCALE)[..., None],
+        (role[..., None] == torch.arange(ZONE_ROLES, device=role.device)).to(dtype),
+        torch.stack([zones[..., ZONE["progress"]], zones[..., ZONE["direction"]],
+                     symlog(zones[..., ZONE["offensive_distance"]]),
+                     symlog(zones[..., ZONE["defensive_distance"]])], -1)], -1)], -1)
     query_position = torch.cat([position, centre[..., None, :]], -2)
     query_heading = torch.cat([replay.means[..., 4], torch.zeros_like(centre[..., :1])], -1)
-    return Tokens(ship=ship, global_token=global_token, field=field, code=code,
+    return Tokens(ship=ship, global_token=global_token, field=field, zone=zone, code=code,
                   ship_type=ship_type, query_position=query_position, query_heading=query_heading,
-                  field_position=field_position)
+                  memory_position=torch.cat([field_position, zone_position], -2))

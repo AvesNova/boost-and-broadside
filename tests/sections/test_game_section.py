@@ -16,7 +16,7 @@ from bnb.game import api
 from bnb.game.physics.combat import hits
 from bnb.game.physics.medium import medium
 from bnb.game.physics.spawning import formation_rank
-from bnb.game.rules import LN_SQRT2, FlightConstants, Rules
+from bnb.game.rules import LN_SQRT2, FlightConstants
 from bnb.game.ship_types import DEFAULTS
 from bnb.game.state import Fields, replace
 
@@ -275,7 +275,7 @@ def test_medium_gradients_are_finite_everywhere(case):
 def test_defaults_match_the_spec_table():
     spec = json.loads((REFERENCE / "golden" / "presets.json").read_text())
     preset = spec["presets"]["squad"]
-    rules = api.rules_of(GameConfig(5, 10, 2600.0))
+    rules = api.rules_of(GameConfig(5, 10, 2600.0, mode="sandbox"))  # the physics game
     for key, value in preset.items():
         if key in RULES:
             assert math.isclose(getattr(rules, RULES[key]), value), key
@@ -323,7 +323,7 @@ def test_ship_card_is_data_per_environment():
 
 
 def test_formation_ranks_ties_to_the_lower_slot():
-    rules = Rules(ships_per_team=4, num_fields=1, arena_radius=1000.0)
+    rules = api.rules_of(GameConfig(4, 1, 1000.0))
     keys = torch.tensor([[0.5, 0.5, 0.1, 0.9, 0.3, 0.3, 0.3, 0.0]])
     assert formation_rank(rules, keys).tolist() == [[1, 2, 0, 3, 1, 2, 3, 0]]
 

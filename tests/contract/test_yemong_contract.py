@@ -6,7 +6,7 @@ import typing
 
 import torch
 
-from bnb.contracts import GameConfig, Obs, Privileged
+from bnb.contracts import REWARD_LEVELS, GameConfig, Obs, Privileged
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.models.yemong.model import Yemong, YemongConfig
@@ -31,7 +31,7 @@ def test_yemong_outputs():
         action, carry, out = controller.step(carry, view, torch.ones(4, dtype=torch.bool))
     assert action.power.shape == (4, 2) and action.power.dtype == torch.int32
     assert out.logp.shape == out.entropy.shape == out.value.shape == (4, 2)
-    assert out.values.shape == (4, 2, 2) and out.outcome.shape == (4, 4)
+    assert out.values.shape == (4, 2, len(REWARD_LEVELS)) and out.outcome.shape == (4, 4)
     torch.testing.assert_close(out.value, out.values.sum(-1))
     torch.testing.assert_close(out.outcome.sum(-1), torch.ones(4))
     leaves = torch.utils._pytree.tree_leaves(out.replay)

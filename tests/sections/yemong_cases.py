@@ -18,6 +18,7 @@ CPU = torch.device("cpu")
 # squad's sizes in a smaller arena with short episodes, so a segment has fights and resets
 SQUAD = GameConfig(5, 10, 2600.0)
 SHORT_SQUAD = GameConfig(5, 10, 1500.0, episode_s=2.0, respawn_s=1.0)
+SHORT_FRONTLINE = GameConfig(5, 10, 1500.0, episode_s=2.0, respawn_s=1.0, mode="frontline")
 
 
 def model(config: GameConfig = SQUAD, seed: int = 0, dtype=torch.float32) -> Yemong:
@@ -67,7 +68,8 @@ def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: in
     decisions = []
     reset = resets(obs)
     for t in range(start, obs.ships.shape[0]):
-        view = Obs(ships=obs.ships[t], fields=obs.fields[t], globals=obs.globals[t])
+        view = Obs(ships=obs.ships[t], fields=obs.fields[t], globals=obs.globals[t],
+                   zones=None if obs.zones is None else obs.zones[t])
         decision = step(carry, view, reset[t])
         carry = dataclasses.replace(decision.carry, previous_action=joint[t])
         decisions.append(decision)

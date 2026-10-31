@@ -20,7 +20,8 @@ SHIP_SCALE = {"x": 1e-3, "y": 1e-3, "velocity_x": 1e-2, "velocity_y": 1e-2,
               "proper_speed": 1e-2, "energy": 1e-4, "shield": 1e-2, "respawn_wait": 0.125,
               "log_index_gradient_x": 100.0, "log_index_gradient_y": 100.0}
 FIELD_SCALE = (1e-3, 1e-3, 1e-2, 1e-2, 1.0)
-GLOBAL_SCALE = (1.0, 1e-3, 1.0, 1.0)
+GLOBAL_SCALE = {"arena_radius": 1e-3, "score_own": 0.04, "score_enemy": 0.04,
+                "score_target": 0.04, "front": 1.0 / 3.0, "front_threshold": 1.0 / 3.0}
 
 
 class MLP(nn.Module):
@@ -39,7 +40,9 @@ class MLP(nn.Module):
         scale = torch.tensor([SHIP_SCALE.get(name, 1.0) for name in SHIP_COLUMNS])
         self.register_buffer("ship_scale", scale, persistent=False)
         self.register_buffer("field_scale", torch.tensor(FIELD_SCALE), persistent=False)
-        self.register_buffer("global_scale", torch.tensor(GLOBAL_SCALE), persistent=False)
+        self.register_buffer("global_scale",
+                             torch.tensor([GLOBAL_SCALE.get(name, 1.0) for name in GLOBAL_COLUMNS]),
+                             persistent=False)
         nn.init.zeros_(self.policy.weight)  # a uniform policy at the start
         nn.init.zeros_(self.policy.bias)
 

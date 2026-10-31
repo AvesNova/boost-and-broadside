@@ -19,6 +19,12 @@ class Events:
     boundary_damage: float. died, fired, spawned: bool.
     killer: int32 sim index of the shooter whose hit killed the ship, -1 if none.
     done: (B,) bool, the environment reset after this tick.
+    shield_lost: the shield a ship alive at tick start actually lost to this tick's damage
+        (overkill ignored). shield_restored: the recharge applied this tick.
+    objective_progress, objective: the mode's two objective amounts, signed per ship, each
+        summing to zero over the environment (Frontline: meter fractions, captures).
+    result: (B,) int32, the match result for team 0 (+1 win, -1 loss, 0 draw), nonzero
+        only where done.
     """
 
     damage: torch.Tensor
@@ -28,4 +34,9 @@ class Events:
     spawned: torch.Tensor
     killer: torch.Tensor
     done: torch.Tensor
-    SCHEMA_VERSION: ClassVar[int] = 1
+    shield_lost: torch.Tensor
+    shield_restored: torch.Tensor
+    objective_progress: torch.Tensor
+    objective: torch.Tensor
+    result: torch.Tensor
+    SCHEMA_VERSION: ClassVar[int] = 2

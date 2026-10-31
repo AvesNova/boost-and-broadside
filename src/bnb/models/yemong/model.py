@@ -16,7 +16,7 @@ import math
 import torch
 import torch.nn as nn
 
-from bnb.contracts import Obs
+from bnb.contracts import REWARD_LEVELS, Obs
 from bnb.contracts.action import NUM_JOINT
 from bnb.contracts.obs import SHIP
 from bnb.contracts.tree import contract
@@ -31,6 +31,7 @@ from .inputs import (
     FIELD_INPUTS,
     GLOBAL_INPUTS,
     POSITION_CODE,
+    ZONE_INPUTS,
     Replay,
     Tokens,
     compose,
@@ -66,7 +67,7 @@ class YemongConfig:
     map_width: int = 64
     value_bins: int = 51
     value_limit: float = 2.0
-    levels: tuple[str, ...] = ("reward", "outcome")
+    levels: tuple[str, ...] = REWARD_LEVELS
     outcome_level: str = "outcome"
     hex_rings: int = 10
     presence_radius: float = 150.0  # m
@@ -169,7 +170,7 @@ class Yemong(nn.Module):
             rules.bullet_moves * rules.tick_length, float(types.hit_radius.min()))
         self.bullet_moves = rules.bullet_moves
         self.encoder = Encoder(ship_inputs(self.state_code.width, self.ship_types), GLOBAL_INPUTS,
-                               FIELD_INPUTS, width, config.map_width)
+                               FIELD_INPUTS, width, config.map_width, ZONE_INPUTS)
         self.trunk = Trunk(width, config.heads, config.map_width, config.blocks,
                            config.spatial_per_block)
         levels = len(config.levels) - 1
@@ -199,7 +200,7 @@ class Yemong(nn.Module):
         with torch.no_grad():
             self.encoder.ship.first.weight[:, :self.state_code.width].normal_(
                 0.0, self.state_code.groups**-0.5)
-            for kind in (self.encoder.field, self.encoder.global_token):
+            for kind in (self.encoder.field, self.encoder.global_token, self.encoder.zone):
                 kind.first.weight[:, :POSITION_CODE].normal_(0.0, POSITION_LEVELS**-0.5)
             nn.init.zeros_(self.ship_heads.lasts[1].weight)
             self.density.lasts[0].bias.fill_(math.log(max(num_ships, 2) / 2 / cells))
@@ -256,12 +257,12 @@ class Yemong(nn.Module):
 
     def _encode(self, tokens: Tokens):
         """Queries (..., Q, D), map memory (..., M, Dm) and the rotary tables."""
-        queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field)
+        queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field, tokens.zone)
         frequencies = (self.position_periods, self.position_periods, self.heading_frequencies)
         token_tables = rotary_tables(tokens.query_position,
                                      tokens.query_heading, *frequencies)
-        map_tables = rotary_tables(tokens.field_position,
-                                   torch.zeros_like(tokens.field_position[..., 0]), *frequencies)
+        map_tables = rotary_tables(tokens.memory_position,
+                                   torch.zeros_like(tokens.memory_position[..., 0]), *frequencies)
         return queries, memory, token_tables, map_tables
 
     def _values(self, value_logits: torch.Tensor, outcome_logits: torch.Tensor):

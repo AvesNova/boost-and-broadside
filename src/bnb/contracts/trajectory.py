@@ -8,10 +8,15 @@ from .action import Action
 from .obs import Obs
 from .tree import contract
 
+# The reward levels, from the least to the most directly tied to winning (rewards spec 1):
+# the order of Trajectory.reward's last axis and of the critic's levels.
+REWARD_LEVELS = ("damage", "kill_death", "objective_progress", "objective", "outcome")
+
 
 @contract
 class Trajectory:
-    """obs: the parts the model reads, (L, R, ...). action, logp, value, reward: (L, R, S).
+    """obs: the parts the model reads, (L, R, ...). action, logp, value: (L, R, S).
+    reward: (L, R, S, len(REWARD_LEVELS)), per level, weighted.
     done: (L, R) bool, the view's environment reset after this step.
 
     When the learner's controller gives them (else None): values (L, R, S, K), outcome

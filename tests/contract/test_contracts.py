@@ -40,7 +40,7 @@ def test_joint_action_round_trip():
 def test_observation_schema():
     assert len(SHIP_COLUMNS) == len(set(SHIP_COLUMNS)) == 24
     assert SHIP_COLUMNS[SHIP_HIDDEN_ZERO] == "alive"
-    assert Obs.SCHEMA_VERSION == Action.SCHEMA_VERSION == 1
+    assert Obs.SCHEMA_VERSION == 2 and Action.SCHEMA_VERSION == 1
 
 
 def test_contracts_are_pytrees():

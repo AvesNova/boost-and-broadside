@@ -66,8 +66,9 @@ class Trainer:
         return traj, last_value
 
     def pool_rewards(self, traj) -> dict[str, float]:
-        """Learner reward per ship per second, by pool: the skeleton's progress signal."""
-        per_row = traj.reward.mean((0, 2))  # (R,)
+        """Learner reward per ship per second (the levels summed), by pool: the skeleton's
+        progress signal."""
+        per_row = traj.reward.sum(-1).mean((0, 2))  # (R,)
         count = torch.zeros(len(self.pool_names), device=per_row.device)
         total = torch.zeros_like(count)
         count.index_add_(0, self.learner_pool, torch.ones_like(per_row))
