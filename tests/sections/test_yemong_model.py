@@ -12,7 +12,7 @@ from bnb.contracts import GameConfig, Obs
 from bnb.contracts.obs import SHIP, SHIP_HIDDEN_ZERO
 from bnb.game import api
 from bnb.models.yemong import policy
-from bnb.models.yemong.inputs import POSITION_CODE, truth
+from bnb.models.yemong.inputs import ACTION_SCALE, POSITION_CODE, truth
 from bnb.models.yemong.state_code import POSITION_PERIOD
 
 OWN = 5  # squad: own ships per view
@@ -203,8 +203,8 @@ def test_spawning_voids_a_belief():
         replay = net.step(carry, dataclasses.replace(view, ships=ships), no_reset).replay
     assert not replay.valid[:, 5].any() and replay.valid[:, 6:10].all()
     assert (replay.means[:, 5] == 0).all() and (replay.spreads[:, 5] == 0).all()
-    uniform = torch.full_like(replay.enemy_action[:, 0], 1 / 42)
-    assert torch.allclose(replay.enemy_action[:, 0], uniform, atol=1e-4)  # row 5: enemy row 0
+    forecast = replay.enemy_action[:, 0].double() / ACTION_SCALE  # row 5 is enemy row 0
+    assert torch.allclose(forecast, torch.full_like(forecast, 1 / 42), atol=1e-4)
     assert (replay.means[:, 6:10] == 7.0).all() and (replay.spreads[:, 6:10] == 3.0).all()
 
 

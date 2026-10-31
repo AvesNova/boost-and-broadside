@@ -32,8 +32,16 @@ ARENA_SCALE = 2600.0  # m
 FIELD_RADIUS_SCALE = 1000.0  # m
 FIELD_BAND_SCALE = 40.0  # m
 FIELD_LEVEL_SCALE = 2.0
-# Stored rounded: the forecast probabilities and spreads (the step reads the same values).
-STORED_DTYPE = torch.bfloat16
+# The enemy-action forecasts are stored as int16 fixed point (2 bytes, resolution 3e-5), and
+# the step composes from the stored integers, so unroll reads exactly what the step read.
+# (Not bf16: inside a compiled kernel inductor drops a fused fp32 -> bf16 -> fp32 round trip
+# by default, so the step would read unrounded values while the replay held rounded ones.)
+# The spreads stay float32: rounding them moved the state code by up to 5e-3.
+ACTION_SCALE = 32767.0
+
+
+def store_action(probabilities: torch.Tensor) -> torch.Tensor:
+    return torch.round(probabilities * ACTION_SCALE).to(torch.int16)
 
 SHIP_FLAGS = ("alive", "visible", "fired")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
@@ -51,9 +59,9 @@ def ship_inputs(code_width: int, ship_types: int) -> int:
 class Replay:
     """What one decision read from the carry, after assimilating sight: valid (R, N);
     age (R, N) int32 ticks since seen; means (R, N, 12) in the shifted frame; spreads
-    (R, N, U) bf16; enemy_action (R, N - S, 42) bf16, the action belief of the enemy rows (the
-    only rows it is read for); previous_action (R, S); offset (R, 2) m, the view's position
-    offset."""
+    (R, N, U); enemy_action (R, N - S, 42) int16 (store_action), the action belief of the
+    enemy rows (the only rows it is read for); previous_action (R, S); offset (R, 2) m, the
+    view's position offset."""
 
     valid: torch.Tensor
     age: torch.Tensor
@@ -110,7 +118,7 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
     visible = column["visible"] > 0.5
     ship_type = column["ship_type"].long()
     team = column["team_relative"].long()
-    spreads = replay.spreads.to(dtype)
+    spreads = replay.spreads
     centre = replay.offset  # the map centre, the origin, in the shifted frame
     # A ship with no belief sits at the map centre, not at the frame's origin (which would
     # reveal the offset to rotary attention).
@@ -122,8 +130,8 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
     own_action = (replay.previous_action[..., None] == joint).to(dtype)
     spawned = column["spawned"][..., own:, None] > 0.5
     null = (joint == NULL_ACTION).to(dtype)
-    pending = torch.cat([own_action, torch.where(spawned, null, replay.enemy_action.to(dtype))],
-                        -2)
+    forecast = replay.enemy_action.to(dtype) / ACTION_SCALE
+    pending = torch.cat([own_action, torch.where(spawned, null, forecast)], -2)
 
     gradient = torch.stack([column["log_index_gradient_x"], column["log_index_gradient_y"]], -1)
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE

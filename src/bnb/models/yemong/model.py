@@ -31,11 +31,11 @@ from .inputs import (
     FIELD_INPUTS,
     GLOBAL_INPUTS,
     POSITION_CODE,
-    STORED_DTYPE,
     Replay,
     Tokens,
     compose,
     ship_inputs,
+    store_action,
     truth,
 )
 from .layers import rotary_tables
@@ -282,8 +282,8 @@ class Yemong(nn.Module):
         spawned = ships[..., SHIP["spawned"]] > 0.5
         seen = beliefs.observe(carry.belief, truth(ships, carry.offset), visible, spawned)
         replay = Replay(valid=seen.valid, age=seen.age, means=seen.means,
-                        spreads=seen.spreads.to(STORED_DTYPE),
-                        enemy_action=seen.action[:, own:].to(STORED_DTYPE),
+                        spreads=seen.spreads,
+                        enemy_action=store_action(seen.action[:, own:]),
                         previous_action=carry.previous_action, offset=carry.offset)
         tokens = self.tokens(obs, replay)
         ships_count = tokens.code.shape[-2]
