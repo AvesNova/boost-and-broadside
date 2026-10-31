@@ -3,7 +3,7 @@ it points. The game's spawn state (speed, energy, shield, waits, the medium) is 
 `physics.spawning.spawn`.
 
 Every placement is computed for every ship, every tick, as one static-shape pass, and the
-spawn mask selects it. Candidates are compared by squared distance to the nearest target
+spawn mask selects it. Candidates are compared by squared distance to the nearest enemy
 that counts; ties go to the lower candidate, and with nothing to count candidate 0 wins.
 Nothing depends on the team index or the sim index beyond each ship's own team.
 """
@@ -14,30 +14,44 @@ import torch
 
 from ..physics.spawning import Placement, formation, formation_rank
 from ..rules import Rules
-from ..state import ModeState
+from ..state import ModeState, by_team
 from .frontline import TEAM0_DEFENSE, TEAM0_SPAWN, TEAM1_DEFENSE, TEAM1_SPAWN
 from .rules import FRONTLINE, TEAM_DEATHMATCH
 
 INFINITY = float("inf")
 
 
-def _team(rules: Rules, device) -> torch.Tensor:
-    return torch.arange(rules.num_ships, device=device) // rules.ships_per_team
-
-
 def _nearest(x: torch.Tensor, y: torch.Tensor, target_x: torch.Tensor, target_y: torch.Tensor,
              counts: torch.Tensor) -> torch.Tensor:
-    """Squared distance (B, N, K) from each candidate (B, N, K) to the nearest target
-    (B, T) that counts for its ship (counts (B, N, T) or (N, T)); inf if none counts."""
-    dx = x[..., None] - target_x[:, None, None, :]
-    dy = y[..., None] - target_y[:, None, None, :]
+    """Squared distance (..., K) from each candidate (..., K) to the nearest target (..., T)
+    that counts (counts (..., T)); inf if none counts."""
+    dx = x[..., None] - target_x[..., None, :]
+    dy = y[..., None] - target_y[..., None, :]
     return torch.where(counts[..., None, :], dx * dx + dy * dy, INFINITY).amin(-1)
 
 
 def _best(x: torch.Tensor, y: torch.Tensor, score: torch.Tensor):
-    """The candidate (B, N, K) with the largest score, ties to the lower one: (x, y) (B, N)."""
+    """The candidate (..., K) with the largest score, ties to the lower one: (x, y) (...)."""
     pick = score.argmax(-1, keepdim=True)
     return x.gather(-1, pick)[..., 0], y.gather(-1, pick)[..., 0]
+
+
+def _farthest_from_enemies(x: torch.Tensor, y: torch.Tensor, target_x: torch.Tensor,
+                           target_y: torch.Tensor, counts: torch.Tensor | None = None):
+    """Each ship's candidate (B, N, K) farthest from its nearest enemy target (B, N; an
+    infinite coordinate does not count). Only the other team's slots are compared
+    (team-major: a flip of the team axis); counts (B, 2, S, S) [team, slot, enemy slot]
+    restricts the pairs further."""
+    B, N, K = x.shape
+    # One stacked tensor, so the compiled stage stores the targets once instead of
+    # recomputing them (a sqrt, a cos and a sin at a reset) for every pair: half the time.
+    targets = by_team(torch.stack([target_x, target_y], -1)).flip(1)[:, :, None, None]
+    dx = by_team(x)[..., None] - targets[..., 0]  # (B, 2, S, K, S)
+    dy = by_team(y)[..., None] - targets[..., 1]
+    distance = dx * dx + dy * dy
+    if counts is not None:
+        distance = torch.where(counts[:, :, :, None, :], distance, INFINITY)
+    return _best(x, y, distance.amin(-1).reshape(B, N, K))
 
 
 def _disc(radius: float, radius_uniform: torch.Tensor, angle_uniform: torch.Tensor):
@@ -73,10 +87,10 @@ def _group_centres(rules: Rules, uniforms: torch.Tensor):
     for g in range(1, G):
         earlier_x, earlier_y = torch.stack(centres_x, -1), torch.stack(centres_y, -1)
         counts = torch.ones((1, g), dtype=torch.bool, device=uniforms.device)
-        nearest = _nearest(x[:, g:g + 1], y[:, g:g + 1], earlier_x, earlier_y, counts)
-        best_x, best_y = _best(x[:, g:g + 1], y[:, g:g + 1], nearest)
-        centres_x.append(best_x[:, 0])
-        centres_y.append(best_y[:, 0])
+        nearest = _nearest(x[:, g], y[:, g], earlier_x, earlier_y, counts)  # (B, K)
+        best_x, best_y = _best(x[:, g], y[:, g], nearest)
+        centres_x.append(best_x)
+        centres_y.append(best_y)
     return torch.stack(centres_x, -1), torch.stack(centres_y, -1)
 
 
@@ -106,9 +120,7 @@ def deathmatch(rules: Rules, uniforms: torch.Tensor, x: torch.Tensor, y: torch.T
     per_environment = 2 * K * len(groups)
     per_ship = uniforms[:, per_environment:].reshape(B, N, -1)
     radius_uniform, angle_uniform = per_ship[..., :K], per_ship[..., K:2 * K]
-    team = _team(rules, x.device)
-    enemy = team[:, None] != team  # (N, N)
-    living_enemy = enemy & alive[:, None, :]
+    starting = reset[:, None]
 
     # Uniform over the arena: the respawn rule, and the grouped rule's fallback.
     uniform_x, uniform_y = _disc(rules.arena_radius, radius_uniform, angle_uniform)
@@ -118,7 +130,9 @@ def deathmatch(rules: Rules, uniforms: torch.Tensor, x: torch.Tensor, y: torch.T
         offset_x, offset_y = _disc(mode.group_radius, radius_uniform, angle_uniform)
         reset_x = centres_x.gather(1, group)[..., None] + offset_x
         reset_y = centres_y.gather(1, group)[..., None] + offset_y
-        rival = enemy & (group[:, :, None] == group[:, None, :])  # enemies of the same group
+        by_group = by_team(group)
+        rival = by_group[..., :, None] == by_group.flip(1)[..., None, :]  # same-group enemies
+        counts = rival | ~reset[:, None, None, None]
         anchor_x, anchor_y, any_living = _anchors(alive, per_ship[..., 2 * K + 1], x, y)
         distance = mode.anchor_distance_min \
             + (mode.anchor_distance_max - mode.anchor_distance_min) * radius_uniform
@@ -127,20 +141,21 @@ def deathmatch(rules: Rules, uniforms: torch.Tensor, x: torch.Tensor, y: torch.T
                                 + distance * torch.cos(angle), uniform_x)
         respawn_y = torch.where(any_living[..., None], anchor_y[..., None]
                                 + distance * torch.sin(angle), uniform_y)
+        candidate_x = torch.where(starting[..., None], reset_x, respawn_x)
+        candidate_y = torch.where(starting[..., None], reset_y, respawn_y)
     else:
-        reset_x, reset_y, rival = uniform_x, uniform_y, enemy.expand(B, N, N)
-        respawn_x, respawn_y = uniform_x, uniform_y
+        counts, candidate_x, candidate_y = None, uniform_x, uniform_y
 
-    # A reset is one symmetric pass: candidate 0 of every ship is its provisional point.
-    provisional = _nearest(reset_x, reset_y, reset_x[..., 0], reset_y[..., 0], rival)
-    reset_x, reset_y = _best(reset_x, reset_y, provisional)
-    respawn_x, respawn_y = _best(respawn_x, respawn_y,
-                                 _nearest(respawn_x, respawn_y, x, y, living_enemy))
+    # One pass serves both rules. A reset is symmetric: every ship's candidate 0 is its
+    # provisional point, and it keeps away from the provisional points of its rivals (the
+    # enemies, of its own group when grouped). A respawn keeps away from the living enemies.
+    target = starting | alive
+    target_x = torch.where(target, torch.where(starting, candidate_x[..., 0], x), INFINITY)
+    target_y = torch.where(target, torch.where(starting, candidate_y[..., 0], y), INFINITY)
+    place_x, place_y = _farthest_from_enemies(candidate_x, candidate_y, target_x, target_y,
+                                              counts)
     heading_cos, heading_sin = _heading(per_ship[..., 2 * K])
-    starting = reset[:, None]
-    return Placement(x=torch.where(starting, reset_x, respawn_x),
-                     y=torch.where(starting, reset_y, respawn_y),
-                     heading_cos=heading_cos, heading_sin=heading_sin)
+    return Placement(x=place_x, y=place_y, heading_cos=heading_cos, heading_sin=heading_sin)
 
 
 def frontline(rules: Rules, uniforms: torch.Tensor, mode: ModeState) -> Placement:
