@@ -10,7 +10,7 @@ from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.models.yemong import codes, critic, density, shots
 from bnb.models.yemong.model import Yemong, YemongConfig
-from bnb.models.yemong.state_code import MEANS, SPREADS, ShipStateCode, velocity_reach
+from bnb.models.yemong.state_code import MEANS, POSITION_PERIOD, ShipStateCode, velocity_reach
 
 RULES = api.rules_of(GameConfig(5, 10, 2600.0))
 TYPES = api.ship_types()
@@ -52,14 +52,26 @@ def _states(generator, margin: float):
     return means, ship_type
 
 
-def _angle_error(a, b):
-    return torch.remainder(a - b + math.pi, 2.0 * math.pi) - math.pi
+def _periodic_error(actual, expected, period):
+    return torch.remainder(actual - expected + 0.5 * period, period) - 0.5 * period
+
+
+def _angle_error(actual, expected):
+    return _periodic_error(actual, expected, 2.0 * math.pi)
+
+
+def _errors(decoded, means):
+    """|decoded - means|, positions modulo the code's period, the heading modulo 2 pi."""
+    error = (decoded - means).abs()
+    error[:, 0:2] = _periodic_error(decoded[:, 0:2], means[:, 0:2], POSITION_PERIOD).abs()
+    error[:, MEANS.index("heading")] = _angle_error(decoded[:, 4], means[:, 4]).abs()
+    return error
 
 
 def test_layout(code):
     assert code.width == 490 and code.groups == 23
     assert code.runs[0] == (9, 9) and code.runs[1] == (3, 81) and code.runs[-1] == (1, 4)
-    assert len(MEANS) == 12 and len(SPREADS) == 15
+    assert len(MEANS) == 12 and code.spread_count == 15
     assert velocity_reach() == pytest.approx(50.0 * (math.e**2 - 1.0))
 
 
@@ -67,8 +79,7 @@ def test_sharp_round_trip(code):
     generator = torch.Generator().manual_seed(0)
     means, ship_type = _states(generator, margin=0.0)
     decoded, spreads = code.decode(code.sharp(means, ship_type), ship_type)
-    error = (decoded - means).abs()
-    error[:, MEANS.index("heading")] = _angle_error(decoded[:, 4], means[:, 4]).abs()
+    error = _errors(decoded, means)
     scale = means.abs().amax(0).clamp_min(1.0)
     assert (error.amax(0) / scale).max() < 1e-12
     assert spreads.abs().max() < 1e-9
@@ -81,18 +92,19 @@ def test_round_trip_with_spreads(code):
     spreads = torch.tensor([30.0, 25.0, 5.0, 16.0, 0.3, 0.5, 0.05, 0.5, 5.0, 300.0, 0.05,
                             0.0, 0.0, 0.0, 0.0], dtype=torch.float64).expand(COUNT, -1)
     decoded, decoded_spreads = code.decode(code.encode(means, spreads, ship_type), ship_type)
-    error = (decoded - means).abs()
-    error[:, 4] = _angle_error(decoded[:, 4], means[:, 4]).abs()
+    error = _errors(decoded, means)
     assert (error.amax(0) / means.abs().amax(0).clamp_min(1.0)).max() < 1e-12
     torch.testing.assert_close(decoded_spreads, spreads, rtol=1e-4, atol=1e-9)
 
 
-def test_decoded_positions_are_centred(code):
+def test_decoded_positions_lie_in_one_period(code):
     means = torch.zeros(3, 12, dtype=torch.float64)
-    means[:, 0] = torch.tensor([-12_000.0, -1.0, 12_000.0], dtype=torch.float64)
+    means[:, 0] = torch.tensor([-12_000.0, -1.0, 30_000.0], dtype=torch.float64)
     ship_type = torch.zeros(3, dtype=torch.long)
     decoded, _ = code.decode(code.sharp(means, ship_type), ship_type)
-    torch.testing.assert_close(decoded[:, 0], means[:, 0], rtol=0, atol=1e-9)
+    assert ((decoded[:, 0] >= 0) & (decoded[:, 0] < POSITION_PERIOD)).all()
+    torch.testing.assert_close(torch.remainder(means[:, 0], POSITION_PERIOD), decoded[:, 0],
+                               rtol=0, atol=1e-9)
 
 
 def test_v2_shot_constants():
@@ -115,8 +127,8 @@ def test_v2_shot_constants():
 def test_density_target_and_rates():
     model = Yemong(YemongConfig(), RULES, TYPES)
     cells = density.cell_count(10)
-    assert cells == 331 and model.density.last.out_features == 2 * cells
-    bias = model.density.last.bias
+    assert cells == 331 and model.density.lasts[0].out_features == 2 * cells
+    bias = model.density.lasts[0].bias
     assert torch.allclose(bias, torch.full_like(bias, math.log(5.0 / cells)))
     x = torch.tensor([[0.0, 100.0, 9000.0]])
     counts = density.hex_counts(x, torch.zeros_like(x), torch.tensor([[True, False, True]]),

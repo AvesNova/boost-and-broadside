@@ -29,7 +29,7 @@ class YemongController:
         joint, logp, entropy = policy.sample(decision.policy_logits)
         carry = dataclasses.replace(decision.carry, previous_action=joint)
         outputs = Outputs(logp=logp, entropy=entropy, value=decision.values.sum(-1),
-                          values=decision.values, outcome=decision.outcome,
+                          values=decision.values, outcome=decision.outcome_probabilities,
                           replay=decision.replay)
         return from_joint(joint), carry, outputs
 

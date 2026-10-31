@@ -1,5 +1,5 @@
-"""Output heads (spec 7): MLP heads, the next-state head over its baseline, the critic's
-values, and the shot trajectory head queried at bullet ages."""
+"""Output heads (spec 7): groups of MLP heads over one token, the next-state logits over
+their baseline, the critic's values, and the shot trajectory head queried at bullet ages."""
 
 import math
 
@@ -14,38 +14,42 @@ FIRST_GAIN = math.sqrt(2.0)
 LAST_GAIN = 0.01
 
 
-def _orthogonal(layer: nn.Linear, gain: float) -> None:
-    nn.init.orthogonal_(layer.weight, gain)
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+def _orthogonal(weight: torch.Tensor, gain: float) -> None:
+    with torch.no_grad():
+        nn.init.orthogonal_(weight, gain)
 
 
-class MLPHead(nn.Module):
-    """last(gelu(norm(first x))): first orthogonal with gain sqrt 2, last with gain 0.01,
-    biases zero."""
+class HeadGroup(nn.Module):
+    """MLP heads reading the same token, each last(gelu(norm(first x))). Their first
+    projections are one matrix, so the group costs one matrix product to start.
 
-    def __init__(self, inputs: int, hidden: int, outputs: int) -> None:
+    Initialisation (spec 7): each head's block of `first` orthogonal with gain sqrt 2, each
+    `last` orthogonal with gain 0.01, biases zero.
+    """
+
+    def __init__(self, inputs: int, hidden: int, outputs: tuple[int, ...]) -> None:
         super().__init__()
-        self.first = nn.Linear(inputs, hidden)
-        self.norm = norm(hidden)
-        self.last = nn.Linear(hidden, outputs)
-        _orthogonal(self.first, FIRST_GAIN)
-        _orthogonal(self.last, LAST_GAIN)
+        self.hidden = hidden
+        self.first = nn.Linear(inputs, hidden * len(outputs))
+        self.norms = nn.ModuleList(norm(hidden) for _ in outputs)
+        self.lasts = nn.ModuleList(nn.Linear(hidden, size) for size in outputs)
+        for block in self.first.weight.split(hidden):
+            _orthogonal(block, FIRST_GAIN)
+        nn.init.zeros_(self.first.bias)
+        for last in self.lasts:
+            _orthogonal(last.weight, LAST_GAIN)
+            nn.init.zeros_(last.bias)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return self.last(F.gelu(self.norm(self.first(inputs))))
+    def forward(self, inputs: torch.Tensor) -> list[torch.Tensor]:
+        hidden = self.first(inputs).split(self.hidden, -1)
+        return [last(F.gelu(normed(part)))
+                for part, normed, last in zip(hidden, self.norms, self.lasts, strict=True)]
 
 
-class NextStateHead(MLPHead):
-    """The next state's code logits as a change from the current code: it starts as
-    "nothing changes" (its last weight is zero)."""
-
-    def __init__(self, inputs: int, hidden: int, outputs: int) -> None:
-        super().__init__(inputs, hidden, outputs)
-        nn.init.zeros_(self.last.weight)
-
-    def forward(self, inputs: torch.Tensor, code: torch.Tensor) -> torch.Tensor:
-        return codes.baseline(code) + super().forward(inputs)
+def next_state_logits(code: torch.Tensor, change: torch.Tensor) -> torch.Tensor:
+    """The next state's code logits as a change from the current code. The head's last
+    weight starts at zero, so the forecast starts as "nothing changes"."""
+    return codes.baseline(code) + change
 
 
 def critic_values(local_logits: torch.Tensor, outcome_logits: torch.Tensor, bins: torch.Tensor,
@@ -79,10 +83,11 @@ class ShotTrajectoryHead(nn.Module):
         self.middle = nn.Linear(width, width)
         self.middle_norm = norm(width)
         self.last = nn.Linear(width, outputs)
-        _orthogonal(self.latent, FIRST_GAIN)
-        _orthogonal(self.age, FIRST_GAIN)
-        _orthogonal(self.middle, FIRST_GAIN)
-        _orthogonal(self.last, LAST_GAIN)
+        for layer, gain in ((self.latent, FIRST_GAIN), (self.age, FIRST_GAIN),
+                            (self.middle, FIRST_GAIN), (self.last, LAST_GAIN)):
+            _orthogonal(layer.weight, gain)
+            if layer.bias is not None:
+                nn.init.zeros_(layer.bias)
 
     def query(self, latent: torch.Tensor, age_features: torch.Tensor) -> torch.Tensor:
         """latent (..., D) from `self.latent`; age_features (..., ages, F) broadcasting

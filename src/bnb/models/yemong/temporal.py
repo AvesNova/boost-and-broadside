@@ -43,18 +43,22 @@ def parallel_scan(decay: torch.Tensor, contribution: torch.Tensor,
 
 
 class RGLRU(nn.Module):
-    """The real-gated linear recurrent unit."""
+    """The real-gated linear recurrent unit. Its recurrence and input gates are one matrix
+    (recurrence rows first), so they cost one matrix product."""
 
     def __init__(self, width: int) -> None:
         super().__init__()
         self.log_decay = nn.Parameter(torch.linspace(0.0, 4.0, width))
-        self.recurrence_gate = nn.Linear(width, width)
-        self.input_gate = nn.Linear(width, width)
+        self.gates = nn.Linear(width, 2 * width)
+        with torch.no_grad():  # each half as nn.Linear(width, width) would start
+            bound = width**-0.5
+            for half in self.gates.weight.chunk(2):
+                nn.init.kaiming_uniform_(half, a=5**0.5)
+            self.gates.bias.uniform_(-bound, bound)
 
     def _terms(self, inputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """(decay a, contribution) of each input."""
-        recurrence = torch.sigmoid(self.recurrence_gate(inputs))
-        gate = torch.sigmoid(self.input_gate(inputs))
+        recurrence, gate = torch.sigmoid(self.gates(inputs)).chunk(2, -1)
         decay = torch.exp(DECAY_EXPONENT * recurrence * F.logsigmoid(self.log_decay))
         scale = torch.sqrt(torch.clamp_min((1.0 - decay) * (1.0 + decay), CONTRIBUTION_FLOOR))
         return decay, scale * gate * inputs

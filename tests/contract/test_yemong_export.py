@@ -27,7 +27,7 @@ class Step(torch.nn.Module):
     def forward(self, ships, fields, globals, reset, *carry):
         decision = self.model.step(_pytree.tree_unflatten(list(carry), self.carry_spec),
                                    Obs(ships=ships, fields=fields, globals=globals), reset)
-        return (decision.policy_logits, decision.values, decision.outcome,
+        return (decision.policy_logits, decision.values, decision.outcome_probabilities,
                 *_pytree.tree_leaves(decision.carry))
 
 

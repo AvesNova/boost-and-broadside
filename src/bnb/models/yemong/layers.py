@@ -34,13 +34,17 @@ def apply_rotary(values: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> 
 
 
 class GatedMLP(nn.Module):
-    """down(gelu(gate x) * up x), no biases."""
+    """down(gelu(gate x) * up x), no biases. The gate and up projections are one matrix
+    (gate rows first), so they cost one matrix product."""
 
     def __init__(self, width: int, hidden: int) -> None:
         super().__init__()
-        self.gate = nn.Linear(width, hidden, bias=False)
-        self.up = nn.Linear(width, hidden, bias=False)
+        self.gate_up = nn.Linear(width, 2 * hidden, bias=False)
         self.down = nn.Linear(hidden, width, bias=False)
+        with torch.no_grad():  # each half as nn.Linear(width, hidden) would start
+            for half in self.gate_up.weight.chunk(2):
+                nn.init.kaiming_uniform_(half, a=5**0.5)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        return self.down(F.gelu(self.gate(inputs)) * self.up(inputs))
+        gate, up = self.gate_up(inputs).chunk(2, -1)
+        return self.down(F.gelu(gate) * up)

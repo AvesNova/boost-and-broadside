@@ -13,10 +13,6 @@ from bnb.models.yemong.network import Encoder, Trunk
 from bnb.models.yemong.spatial import SpatialBlock
 from bnb.models.yemong.temporal import RGLRU, TemporalBlock, parallel_scan
 
-RECURRENCE = ("log_decay", "recurrence_gate.weight", "recurrence_gate.bias",
-              "input_gate.weight", "input_gate.bias")
-
-
 def _loaded(module: torch.nn.Module, weights: dict) -> torch.nn.Module:
     dtype = next(iter(weights.values())).dtype
     module = module.to(dtype)
@@ -24,13 +20,41 @@ def _loaded(module: torch.nn.Module, weights: dict) -> torch.nn.Module:
     return module
 
 
-def _temporal_names(weights: dict, prefix: str = "") -> dict:
-    """The fixtures list the RG-LRU's parameters beside the block's; ours nest them."""
-    out = {}
-    for name, value in weights.items():
-        local = name[len(prefix):] if name.startswith(prefix) else None
-        out[prefix + "recurrence." + local if local in RECURRENCE else name] = value
+def _fused(weights: dict, parts: tuple[str, ...], into: str, prefix: str = "") -> dict:
+    """Concatenate the fixture's separate matrices `prefix + part + .weight/.bias` (in order)
+    into our one matrix `prefix + into`."""
+    out = dict(weights)
+    for kind in ("weight", "bias"):
+        names = [f"{prefix}{part}.{kind}" for part in parts]
+        if names[0] in out:
+            out[f"{prefix}{into}.{kind}"] = torch.cat([out.pop(name) for name in names])
     return out
+
+
+def _temporal_names(weights: dict, prefix: str = "") -> dict:
+    """The fixtures list the RG-LRU's parameters beside the block's, with its two gates
+    apart; ours nest them under `recurrence` with the gates as one matrix."""
+    out = _fused(weights, ("recurrence_gate", "input_gate"), "recurrence.gates", prefix)
+    out = _mlp_names(out, prefix + "feedforward.")
+    if prefix + "log_decay" in out:
+        out[prefix + "recurrence.log_decay"] = out.pop(prefix + "log_decay")
+    return out
+
+
+def _mlp_names(weights: dict, prefix: str = "") -> dict:
+    """The gated MLP's gate and up matrices are one matrix in ours."""
+    return _fused(weights, ("gate", "up"), "gate_up", prefix)
+
+
+def _spatial_names(weights: dict, prefix: str = "") -> dict:
+    return _mlp_names(weights, prefix + "feedforward.")
+
+
+def _head_names(weights: dict) -> dict:
+    """One MLP head as a group of one."""
+    renamed = {"norm.weight": "norms.0.weight", "last.weight": "lasts.0.weight",
+               "last.bias": "lasts.0.bias"}
+    return {renamed.get(name, name): value for name, value in weights.items()}
 
 
 def _starts(done: torch.Tensor, time_axis: int) -> torch.Tensor:
@@ -48,7 +72,8 @@ class Arm:
         return outputs.transpose(0, 1), final
 
     def rg_lru(self, weights, inputs, initial, done):
-        unit = _loaded(RGLRU(inputs.shape[-1]), weights)
+        unit = _loaded(RGLRU(inputs.shape[-1]),
+                       _fused(weights, ("recurrence_gate", "input_gate"), "gates"))
         outputs, final = unit.sequence(inputs.transpose(0, 1), initial, _starts(done, 1))
         return outputs.transpose(0, 1), final
 
@@ -73,11 +98,11 @@ class Arm:
 
     def gated_mlp(self, weights, inputs):
         width, hidden = inputs.shape[-1], weights["gate.weight"].shape[0]
-        return _loaded(layers.GatedMLP(width, hidden), weights)(inputs)
+        return _loaded(layers.GatedMLP(width, hidden), _mlp_names(weights))(inputs)
 
     def spatial_block(self, weights, heads_count, tokens, map_memory, token_tables, map_tables):
         block = _loaded(SpatialBlock(tokens.shape[-1], heads_count, map_memory.shape[-1]),
-                        weights)
+                        _spatial_names(weights))
         return block(tokens, map_memory, token_tables, map_tables)
 
     # ------------------------------------------------------------------ model
@@ -87,7 +112,7 @@ class Arm:
         encoder = Encoder(ship.shape[-1], global_token.shape[-1], field.shape[-1], width,
                           weights["map_memory.weight"].shape[0])
         # `global` is a Python keyword, so our global kind is `global_token`.
-        names = {name.replace("global.", "global_token.", 1) if name.startswith("global.") else name:
+        names = {("global_token." + name[len("global."):] if name.startswith("global.") else name):
                  value for name, value in weights.items()}
         return _loaded(encoder, names)(ship, global_token, field)
 
@@ -97,6 +122,8 @@ class Arm:
         names = weights
         for index in range(config["blocks"]):
             names = _temporal_names(names, f"blocks.{index}.temporal.")
+            for layer in range(config["spatial_per_block"]):
+                names = _spatial_names(names, f"blocks.{index}.spatial.{layer}.")
         return _loaded(trunk, names)
 
     def trunk_sequence(self, weights, config, tokens, map_memory, token_tables, map_tables,
@@ -118,12 +145,11 @@ class Arm:
 
     def mlp_head(self, weights, inputs):
         hidden, outputs = weights["first.weight"].shape[0], weights["last.weight"].shape[0]
-        return _loaded(heads.MLPHead(inputs.shape[-1], hidden, outputs), weights)(inputs)
+        group = _loaded(heads.HeadGroup(inputs.shape[-1], hidden, (outputs,)), _head_names(weights))
+        return group(inputs)[0]
 
     def next_state_head(self, weights, inputs, code):
-        hidden, outputs = weights["first.weight"].shape[0], weights["last.weight"].shape[0]
-        head = _loaded(heads.NextStateHead(inputs.shape[-1], hidden, outputs), weights)
-        return head(inputs, code)
+        return heads.next_state_logits(code, self.mlp_head(weights, inputs))
 
     def critic_values(self, local_logits, outcome_logits, bins, local_levels, outcome_level):
         return heads.critic_values(local_logits, outcome_logits, bins, tuple(local_levels),
