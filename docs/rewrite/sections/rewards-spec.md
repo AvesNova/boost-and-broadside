@@ -53,8 +53,9 @@ Inputs: `Events` (sim order) and each ship's team. Write `raw = events.damage` a
    - the events are v1's death, kill, ally kill and unforced, computed from
      `raw[:, t]` and the **ship rows** of the ledger. Kill shares are half by the final
      tick's raw impact and half by outstanding damage. Ally blame pays the opposing team
-     twice; boundary deaths and unheld shares pay the opposing team, split evenly over
-     its slots (dead ones included).
+     twice; a boundary death pays the opposing team, split evenly over its slots (dead
+     ones included). v1 also paid "unheld" shares this way, but a v2 combat death always
+     has a hit, so the shares always sum to one and there is nothing unheld.
 4. **Recharge attribution** (v1, fixture `ledger_recharge`):
    - with `restored = events.shield_restored`, `deficit_t = Σ_rows ledger[:, t]` and
      `fraction_t = min(restored_t / deficit_t, 1)` (0 where the deficit is 0), each row
