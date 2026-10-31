@@ -57,7 +57,7 @@ def test_yemong_step_exports_to_onnx(tmp_path):
     model = Yemong(YemongConfig(), rules, types).eval()
     with torch.no_grad():
         for name, parameter in model.named_parameters():
-            if name.endswith("last.weight"):  # non-trivial heads
+            if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):
                 parameter.normal_(0.0, 0.05)
         carry = model.initial_carry(1, config.ships_per_team, config.num_ships)
         reset = torch.ones(1, dtype=torch.bool)

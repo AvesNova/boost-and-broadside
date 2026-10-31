@@ -6,6 +6,8 @@ time-first and batch-first ones, and the interface's `done` ("ended at this step
 model's episode starts ("an episode starts at this step").
 """
 
+import math
+
 import torch
 
 from bnb.models.yemong import belief, codes, critic, density, features, heads, layers, shots
@@ -90,8 +92,9 @@ class Arm:
     def rotary_tables(self, frequencies_x, frequencies_y, frequencies_heading, position,
                       heading):
         angle = torch.atan2(heading[..., 1], heading[..., 0])  # 0 for (0, 0)
-        return layers.rotary_tables(position, angle, frequencies_x, frequencies_y,
-                                    frequencies_heading)
+        # Ours takes the position frequencies as periods, 2 pi / f.
+        return layers.rotary_tables(position, angle, 2 * math.pi / frequencies_x,
+                                    2 * math.pi / frequencies_y, frequencies_heading)
 
     def apply_rotary(self, values, cos, sin):
         return layers.apply_rotary(values, cos, sin)

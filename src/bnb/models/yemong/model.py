@@ -183,9 +183,10 @@ class Yemong(nn.Module):
         self.shot_trajectory_head = ShotTrajectoryHead(width, 1 + 2 * SHOT_HARMONICS,
                                                        self.shot_code.trajectory_width)
         self._initialise(rules.num_ships, cells)
+        # Frequencies (2 pi / period) 2^k, held as their periods (exact powers of two metres).
         octaves = 2.0 ** torch.arange(config.rotary_octaves, dtype=torch.float32)
-        position_frequencies = 2.0 * math.pi / config.rotary_period * octaves
-        self.register_buffer("position_frequencies", position_frequencies, persistent=False)
+        self.register_buffer("position_periods", config.rotary_period / octaves,
+                             persistent=False)
         self.register_buffer("heading_frequencies",
                              torch.tensor(config.heading_harmonics, dtype=torch.float32),
                              persistent=False)
@@ -256,9 +257,9 @@ class Yemong(nn.Module):
     def _encode(self, tokens: Tokens):
         """Queries (..., Q, D), map memory (..., M, Dm) and the rotary tables."""
         queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field)
-        frequencies = (self.position_frequencies, self.position_frequencies,
-                       self.heading_frequencies)
-        token_tables = rotary_tables(tokens.query_position, tokens.query_heading, *frequencies)
+        frequencies = (self.position_periods, self.position_periods, self.heading_frequencies)
+        token_tables = rotary_tables(tokens.query_position,
+                                     tokens.query_heading, *frequencies)
         map_tables = rotary_tables(tokens.field_position,
                                    torch.zeros_like(tokens.field_position[..., 0]), *frequencies)
         return queries, memory, token_tables, map_tables

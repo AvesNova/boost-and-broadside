@@ -27,8 +27,9 @@ def model(config: GameConfig = SQUAD, seed: int = 0, dtype=torch.float32) -> Yem
     net = Yemong(YemongConfig(), api.rules_of(config), api.ship_types())
     with torch.no_grad():
         for name, parameter in net.named_parameters():
-            if name.endswith("last.weight"):
+            if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):
                 parameter.normal_(0.0, 0.05)
+    assert net.ship_heads.lasts[1].weight.abs().min() > 0, "the next-state head must be live"
     return net.to(dtype).eval()
 
 

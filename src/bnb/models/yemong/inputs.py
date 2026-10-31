@@ -111,7 +111,12 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
     ship_type = column["ship_type"].long()
     team = column["team_relative"].long()
     spreads = replay.spreads.to(dtype)
-    code = state_code.encode(replay.means, spreads, ship_type)
+    centre = replay.offset  # the map centre, the origin, in the shifted frame
+    # A ship with no belief sits at the map centre, not at the frame's origin (which would
+    # reveal the offset to rotary attention).
+    position = torch.where(replay.valid[..., None], replay.means[..., 0:2], centre[..., None, :])
+    means = torch.cat([position, replay.means[..., 2:]], -1)
+    code = state_code.encode(means, spreads, ship_type)
 
     joint = torch.arange(NUM_JOINT, device=ships.device)
     own_action = (replay.previous_action[..., None] == joint).to(dtype)
@@ -122,7 +127,6 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
 
     gradient = torch.stack([column["log_index_gradient_x"], column["log_index_gradient_y"]], -1)
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE
-    position = replay.means[..., 0:2]
     presence = local_presence(position, team, replay.valid, presence_radius)
     since_seen = replay.age.to(dtype) * tick
     ship = torch.cat([code, (team[..., None] == torch.arange(TEAMS, device=ships.device)).to(dtype),
@@ -132,7 +136,6 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
                       symlog(since_seen)[..., None], respawn_features(column["respawn_wait"]),
                       pending, gradient, presence], -1)
 
-    centre = replay.offset  # the map centre, the origin, in the shifted frame
     globals_ = obs.globals
     global_token = torch.cat([_position_code(centre),
                               torch.stack([globals_[..., GLOBAL["episode_progress"]],

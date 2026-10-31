@@ -31,12 +31,19 @@ def circular_encode(mean: torch.Tensor, sigma: torch.Tensor, period: float, colo
     """(...) mean and sigma to (..., levels, colours) probabilities.
 
     The spec's coordinate is (m mod P) / p_l * c. Only its fraction and its floor mod c are
-    used, and m / p_l * c differs from it by a multiple of c^(l + 1), so the mod is left out:
-    in float32 it would cost the finest levels their precision (x mod 26 km rounds to 2 mm,
-    0.15% of a 4 m level's 1.3 m colour).
+    used, so each level reduces the position modulo its own period first (m mod p_l, by
+    remainders level after level) and the coordinate stays below c. That changes nothing in
+    exact arithmetic, but in float32 a coordinate near c^(l + 1) (about 2e4 at the position
+    code's finest level) keeps only 1e-3 of a colour, and fused and unfused kernels round
+    it differently. The remainders are exact for the code's integer-metre periods.
     """
+    reduced, coordinates = mean, []
+    for level in range(levels):
+        level_period = period / colours**level
+        reduced = torch.remainder(reduced, level_period)
+        coordinates.append(reduced * (colours / level_period))
+    position = torch.stack(coordinates, -1)
     level_periods = period / colours ** torch.arange(levels, dtype=mean.dtype, device=mean.device)
-    position = mean[..., None] * (colours / level_periods)
     lower = torch.floor(position)
     fraction = position - lower
     colour = torch.remainder(lower, colours).long()

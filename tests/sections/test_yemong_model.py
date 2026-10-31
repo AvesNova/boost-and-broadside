@@ -261,8 +261,9 @@ def test_resets_draw_fresh_offsets_and_keep_them_within_a_match():
 
 
 def test_the_offset_reaches_the_outputs_only_through_the_position_codes():
-    """With the encoder's position-code columns zeroed, outputs do not depend on the offset
-    (rotary attention and presence read only differences)."""
+    """With the encoder's position-code columns zeroed, a decision does not depend on the
+    offset: the same history in a frame shifted by delta (belief positions and offset moved
+    alike) gives the same outputs. Rotary attention and presence read only differences."""
     net = cases.model(dtype=torch.float64)
     with torch.no_grad():
         encoder = net.encoder
@@ -270,25 +271,23 @@ def test_the_offset_reaches_the_outputs_only_through_the_position_codes():
         encoder.field.first.weight[:, :POSITION_CODE] = 0.0
         encoder.global_token.first.weight[:, :POSITION_CODE] = 0.0
     sequence = [cases.cast(view, torch.float64)
-                for view in _view_sequence(cases.SQUAD, fogged=True, ticks=12)]
+                for view in _view_sequence(cases.SQUAD, fogged=True, ticks=24)]
     views = sequence[0].ships.shape[0]
-    blank = net.initial_carry(views, OWN, 10)
-    outputs = []
     with torch.no_grad():
-        for offset in (torch.zeros(views, 2, dtype=torch.float64),
-                       torch.rand(views, 2, dtype=torch.float64) * POSITION_PERIOD):
-            carry = dataclasses.replace(blank, offset=offset)
-            reset = torch.zeros(views, dtype=torch.bool)
-            for view in sequence:
-                decision = net.step(carry, view, reset)
-                carry = dataclasses.replace(decision.carry,
-                                            previous_action=decision.policy_logits.argmax(-1).int())
-            outputs.append(decision)
-    plain, shifted = outputs
+        carry = _run(net, sequence[:-1], net.initial_carry(views, OWN, 10))
+        hidden = sequence[-1].ships[..., SHIP["visible"]] < 0.5
+        assert (hidden & carry.belief.valid).any()  # forecasts in the shifted frame
+        delta = torch.rand(views, 2, dtype=torch.float64) * POSITION_PERIOD
+        means = carry.belief.means.clone()
+        means[..., 0:2] += delta[:, None, :]
+        shifted = dataclasses.replace(carry, offset=carry.offset + delta,
+                                      belief=dataclasses.replace(carry.belief, means=means))
+        reset = torch.zeros(views, dtype=torch.bool)
+        plain, moved = net.step(carry, sequence[-1], reset), net.step(shifted, sequence[-1], reset)
     for name in ("policy_logits", "enemy_action_logits", "values", "outcome_probabilities"):
-        torch.testing.assert_close(getattr(shifted, name), getattr(plain, name),
+        torch.testing.assert_close(getattr(moved, name), getattr(plain, name),
                                    rtol=1e-8, atol=1e-8)
-    torch.testing.assert_close(shifted.next_state_logits[..., POSITION_CODE:],
+    torch.testing.assert_close(moved.next_state_logits[..., POSITION_CODE:],
                                plain.next_state_logits[..., POSITION_CODE:], rtol=1e-8, atol=1e-8)
 
 
