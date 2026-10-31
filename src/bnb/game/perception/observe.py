@@ -61,13 +61,15 @@ def perceive(p: Preset, st: dict) -> tuple[dict, Obs, Privileged]:
 
     bn = torch.exp(st["blogn"]).reshape(B, N * K)
     bw = st["bw"].reshape(B, N * K)
+    speed = bw / bn  # world speed
     bcols = torch.stack([st["bx"].reshape(B, -1), st["by"].reshape(B, -1),
-                         st["bdx"].reshape(B, -1) * bw / bn, st["bdy"].reshape(B, -1) * bw / bn], -1)
+                         st["bdx"].reshape(B, -1) * speed, st["bdy"].reshape(B, -1) * speed], -1)
     border = (order[..., None] * K + torch.arange(K, device=device)).reshape(T, N * K)
     bvis = vis.bullets[:, views, border]  # (B, T, N K)
-    bullets = torch.cat([torch.where(bvis[..., None], bcols[:, border], 0.0), bvis[..., None].float(),
-                         torch.where(bvis, (torch.arange(N * K, device=device) // (S * K)).float(),
-                                     0.0)[..., None]], -1)
+    bullet_rel = (torch.arange(N * K, device=device) // (S * K)).float()  # owner's team_rel
+    bullet_cols = torch.where(bvis[..., None], bcols[:, border], 0.0)
+    bullets = torch.cat([bullet_cols, bvis[..., None].float(),
+                         torch.where(bvis, bullet_rel, 0.0)[..., None]], -1)
 
     fields = torch.stack([st["fx"], st["fy"], st["fr"], st["flevel"].float()], -1)
     t = st["t"].float()
@@ -76,8 +78,7 @@ def perceive(p: Preset, st: dict) -> tuple[dict, Obs, Privileged]:
     obs = Obs(ships=ships, bullets=bullets, fields=fields[:, None].expand(B, T, -1, -1),
               globals=glob[:, None].expand(B, T, -1))
 
-    everything = torch.ones_like(vis.ships)
+    everything, never = torch.ones_like(vis.ships), torch.zeros_like(last_seen, dtype=torch.float32)
     truth = Privileged(team=(torch.arange(N, device=device) // S).to(torch.int32).expand(B, N),
-                       view_order=order.expand(B, T, N),
-                       ships=ship_rows(everything, torch.zeros_like(last_seen, dtype=torch.float32)))
+                       view_order=order.expand(B, T, N), ships=ship_rows(everything, never))
     return dict(st, last_seen=last_seen), obs, truth

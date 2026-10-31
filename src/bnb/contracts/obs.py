@@ -12,7 +12,8 @@ import torch
 from .tree import contract
 
 SHIP_COLUMNS = (
-    "x", "y", "c", "s", "vx", "vy", "w", "alpha", "r", "E", "shield", "gun_wait",  # zero when hidden
+    # zero when the team cannot see the ship
+    "x", "y", "c", "s", "vx", "vy", "w", "alpha", "r", "E", "shield", "gun_wait",
     "alive", "visible", "respawn", "type", "team_rel", "since_seen", "spawned",  # always shown
 )
 SHIP_HIDDEN_ZERO = 12  # the first this-many columns are zero for a ship the team cannot see

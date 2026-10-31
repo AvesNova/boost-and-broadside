@@ -37,9 +37,17 @@ explicit = true
 
 [tool.ruff]
 line-length = 100
+# Design-record scripts and the race tests are kept as written.
+extend-exclude = ["docs", "tests/reference"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Copied verbatim from the race PyTorch arm (120-character lines); the physics section
+# rewrites these files.
+"src/bnb/game/physics/*" = ["E501"]
+"src/bnb/game/perception/sight.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

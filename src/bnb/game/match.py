@@ -12,7 +12,9 @@ from bnb.contracts import Events, GameConfig, ticks_of
 
 from .physics.constants import Preset, preset_of
 from .physics.spawn import new_map
-from .physics.step import ORIGIN_KEYS, move, reset as physics_reset, resolve as physics_resolve
+from .physics.step import ORIGIN_KEYS, move
+from .physics.step import reset as physics_reset
+from .physics.step import resolve as physics_resolve
 
 __all__ = ["ORIGIN_KEYS", "move", "new_map", "preset", "reset", "resolve"]
 

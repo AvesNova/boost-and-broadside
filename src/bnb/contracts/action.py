@@ -26,7 +26,7 @@ class Action:
         return torch.stack([self.power, self.stick, self.shoot], -1).to(torch.int32)
 
     @staticmethod
-    def unpack(packed: torch.Tensor) -> "Action":
+    def unpack(packed: torch.Tensor) -> Action:
         return Action(packed[..., 0], packed[..., 1], packed[..., 2])
 
 

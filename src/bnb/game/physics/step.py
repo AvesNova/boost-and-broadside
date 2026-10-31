@@ -6,8 +6,8 @@ from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits
 from .constants import Preset
 from .flight import FLIGHT_KEYS, actions_to_controls, flight_tick
-from .spawn import clear_envs, new_map, spawn
 from .ship_types import flight_of, slot_types
+from .spawn import clear_envs, new_map, spawn
 from .state import blank_state, fields_of, select
 
 
