@@ -1,6 +1,6 @@
 # Section 1: physics (and the perception code that reads its state)
 
-Status: decisions in progress, 2026-10-31. The starting spec is the race spec
+Status: decisions nearly complete, 2026-10-31. The starting spec is the race spec
 (`physics-race/SPEC.md`, branch `v3-general`) and its PyTorch arm, already in
 `src/bnb/game`.
 
@@ -22,16 +22,16 @@ Status: decisions in progress, 2026-10-31. The starting spec is the race spec
      ignored.
    - Any damage to a ship whose shield was already broken at tick start kills it.
 
-   This equals the race spec text. Pending confirmation: boundary damage counts, and
-   damage equal to the shield breaks it.
+   This equals the race spec text. Boundary damage counts as damage, and damage equal to
+   the shield breaks it (confirmed).
 6. **Friendly fire is on:** a bullet is a bullet.
-   - Proposed: a bullet never hits its own shooter.
+   - A bullet never hits its own shooter (confirmed).
    - Cost: the hit test pairs every bullet with every ship, about 2x the pairwise hit
      work.
    - The modes section's ally-damage terms become live.
 7. **Spawns:** a random slot assignment.
-   - Proposed: an evenly spread formation, randomly permuted over the spawning ships and
-     randomly rotated each spawn, so ships spawning together do not overlap.
+   - An evenly spread formation, randomly permuted over the spawning ships and randomly
+     rotated each spawn, so ships spawning together do not overlap (confirmed).
    - Nothing reveals the seat; the strict xfail becomes a real test.
 8. **Fair maps by symmetry,** with the symmetry chosen per mode:
    - opposite spawns (deathmatch) use a 180-degree rotation about the centre;
@@ -44,24 +44,56 @@ Status: decisions in progress, 2026-10-31. The starting spec is the race spec
 9. **Agent inputs:** the agent gets the spec and the goldens, not the float64 oracle
    ("we don't want to poison it"). The oracle and goldens are updated for every spec
    change here before the agent starts.
+10. **Principles, refined:** repeatability, differentiability and throughput are traded by
+    judgement, not by an absolute rule. Example: if repeatability costs 0.01%
+    throughput, take it.
+11. **Bullets have drag and interact with fields.** Drag acts on proper speed so it
+    composes with the curved-space motion.
+12. **Combat values will be tuned by feel later.** Defaults:
+    - v1's training values where v1 has them: head-on fraction 0.3, about 13 shots from
+      a spawn store, and a range of about 186 m with drag;
+    - race values elsewhere.
+13. **High-level handles drive the physics (the ship card, its own section after this
+    one):**
+    - designers set handles such as corner speed, and code solves the physics
+      parameters;
+    - the handles form a full coordinate system, so every solve pins all of them;
+    - changing one handle leaves the others unchanged, and a whole new set is the same
+      solve;
+    - offline, float64;
+    - successor of v1's `config/handling.py` (a log-linear solve plus a simulated
+      correction), with the handle list from `ship-card.md` revised for the new model.
+14. **Rewards and Yemong keep today's ideas and math, in new code.** For Yemong: whether
+    "today" includes the Yemong-review decisions is to be asked.
 
-## Recommended, awaiting the author
+## Agreed: constants
 
-- **Scope:** the physics agent also ports `game/perception` (the sight test and observe)
-  to its new state layout, accepted against the same goldens. The observation contract
-  does not change.
-- **Constants:**
-  - Ship-card parameters are tensors per ship type (one compile for any values; sweeps
-    can vary them per environment).
-  - Fixed numerics (tick, soft-min exponent, bands) are Python numbers.
-  - Eager mode stays fully supported for compile-free tuning.
+- Ship-card parameters are tensors per ship type (one compile for any values; sweeps can
+  vary them per environment).
+- Fixed numerics (tick, soft-min exponent, bands) are Python numbers.
+- Eager mode stays fully supported for compile-free tuning.
 
-## Open: combat numbers (see the v1 vs race table in the session notes)
+## Proposed: agent scope (awaiting the author)
 
-- (a) Head-on damage fraction: 0.3 (v1 training since run 731) or 0.1 (race spec).
-- (b) Ammunition from spawn: about 13 shots (v1: "lethality from energy, not volume") or
-  about 68 (race: cost tied to engine power).
-- (c) Bullet drag: v1's quadratic drag, or the race's drag-free bullets.
+One coding agent, launched with a written brief.
+
+- **Workspace:** its own git worktree and branch (`section/physics`) and its own scratch
+  folder.
+- **Reads:** this file, the physics spec, the contracts, the plan, the current `src/bnb`
+  and tests, and the goldens.
+- **Does not see:** the float64 oracle or the v1 code.
+- **Changes:**
+  - `src/bnb/game/physics/`;
+  - `src/bnb/game/perception/`, only to read the new state layout;
+  - new tests under `tests/sections/`.
+- **Must not change:** contracts, runtime, the goldens or the spec docs. It files
+  requests in its report instead.
+- **Checks:** tests on the CPU, and the skeleton benchmark under the GPU lock.
+- **Hands back:** commits and a report (decisions, benchmark changes, size, contract
+  requests).
+
+Then a blind review by a separate agent, then integration after the author has seen
+both.
 
 ## Carried from the race review
 
