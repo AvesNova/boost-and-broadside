@@ -21,17 +21,27 @@ def test_levels_and_weights():
 
 # ------------------------------------------------------------------ real play
 
+def _check_conservation(ledger, state, types):
+    """Each living ship's column (its ship rows plus its boundary entry) sums to its shield
+    deficit within 1e-3 points; a dead ship's column was cleared at its death."""
+    ships = state.ships
+    deficit = per_ship(types.max_shield, ships.ship_type) - ships.shield
+    column = ledger.ships.sum(1) + ledger.boundary
+    assert (column[ships.alive] - deficit[ships.alive]).abs().max() <= 1e-3
+    assert (column[~ships.alive] == 0).all()
+
+
 def _check_tick(levels, ledger, after, types, scale_floor=1e-6):
     """Every level sums to zero over every environment (float32, relative to the tick's
-    largest reward); each living ship's ledger column sums to its shield deficit."""
+    largest reward), and the ledger holds every deficit."""
     total = levels.sum(1)  # (B, 5)
     largest = levels.abs().amax((1, 2), keepdim=True)[:, 0].clamp_min(scale_floor)
     assert (total.abs() <= 1e-5 * largest).all(), (total.abs() / largest).max()
-    ships = after.ships
-    deficit = per_ship(types.max_shield, ships.ship_type) - ships.shield
-    column = ledger.sum(1)
-    assert (column[ships.alive] - deficit[ships.alive]).abs().max() <= 1e-3
-    assert (column[~ships.alive] == 0).all()  # a dead ship's column was cleared at its death
+    _check_conservation(ledger, after, types)
+
+
+def _largest(ledger) -> float:
+    return max(float(ledger.ships.abs().max()), float(ledger.boundary.abs().max()))
 
 
 @pytest.mark.parametrize("mode", list(cases.MODES))
@@ -53,24 +63,8 @@ def test_levels_are_zero_sum_and_the_ledger_holds_every_deficit(mode):
         seen["respawns"] += int((after.ships.spawned & ~events.done[:, None]).sum())
         seen["resets"] += int(events.done.sum())
         seen["recharge"] += int((events.shield_restored > 0).sum())
-    assert sum(seen[k] for k in ("friendly", "kills", "boundary")) > 0, seen
-    assert seen["respawns"] > 0 and seen["resets"] > 0 and seen["recharge"] > 0, seen
-
-
-def test_real_play_covers_every_kind_of_death():
-    """Across the modes' play, friendly fire, enemy kills and boundary deaths all occur
-    (so the zero-sum and conservation checks above see each)."""
-    friendly = kills = boundary = 0
-    for mode in ("sandbox", "team_deathmatch", "grouped"):
-        config = cases.MODES[mode]
-        team = torch.arange(config.num_ships) // config.ships_per_team
-        for _, events, _ in cases.play(config, batch=16, ticks=300, seed=5):
-            killer_team = torch.where(events.killer >= 0, events.killer // config.ships_per_team,
-                                      -1)
-            friendly += int((events.died & (killer_team == team)).sum())
-            kills += int((events.died & (killer_team >= 0) & (killer_team != team)).sum())
-            boundary += int((events.died & (events.killer < 0)).sum())
-    assert friendly > 0 and kills > 0 and boundary > 0, (friendly, kills, boundary)
+    # every kind of death, in every mode (Frontline included), plus respawns and resets
+    assert all(count > 0 for count in seen.values()), seen
 
 
 # ------------------------------------------------------------------ scenarios
@@ -126,7 +120,7 @@ def test_a_healed_duel_nets_zero_damage_reward():
     for _ in range(9):
         match.tick(restored=[(1, 10.0)])
     torch.testing.assert_close(match.level("damage"), torch.zeros(2), atol=1e-6, rtol=0)
-    assert match.ledger.abs().max() < 1e-5
+    assert _largest(match.ledger) < 1e-5
 
 
 def test_a_kill_is_shared_by_the_final_hits_and_the_outstanding_damage():
@@ -139,7 +133,8 @@ def test_a_kill_is_shared_by_the_final_hits_and_the_outstanding_damage():
     torch.testing.assert_close(damage, torch.tensor([-1.0, -0.4, 0.6 + 0.4, 0.4]))
     match.tick(hits=[(3, 0, 12.0)], died=[0])
     torch.testing.assert_close(match.level("kill_death"), torch.tensor([-1.0, -0.2, 0.5, 0.7]))
-    assert match.ledger[0, :, 0].abs().max() == 0  # the dead ship's column is cleared
+    assert match.ledger.ships[0, :, 0].abs().max() == 0  # the dead ship's column is cleared
+    assert match.ledger.boundary[0, 0] == 0
 
 
 def test_a_boundary_death_pays_the_other_team_and_credits_no_attacker():
@@ -192,7 +187,7 @@ def test_the_outcome_pays_every_ship_of_both_teams():
     levels = match.tick(done=True, result=-1)
     torch.testing.assert_close(levels[:, LEVEL["outcome"]], torch.tensor([-1.0, -1.0, 1.0, 1.0]))
     match.tick(hits=[(0, 2, 10.0)], lost=[(2, 10.0)], done=True, result=0)
-    assert match.ledger.abs().max() == 0  # a finished match clears the ledger
+    assert _largest(match.ledger) == 0  # a finished match clears the ledger
 
 
 # ------------------------------------------------------------------ the rollout
@@ -218,6 +213,27 @@ def test_rollout_stores_every_level_zero_sum_per_environment(mode):
     assert (outcome[~trajectory.done] == 0).all()
 
 
+@pytest.mark.parametrize("mode", list(cases.MODES))
+def test_the_rollouts_ledger_holds_every_deficit(mode):
+    """Through the runtime: the rollout's carried ledger against its carried state, after
+    each of 16 short runs (staggered clocks, so resets fall inside)."""
+    from bnb.controllers.scripted import Chaser, Random
+    from bnb.runtime.rollout import Rollout
+
+    config = cases.MODES[mode]
+    S = config.ships_per_team
+    rollout = Rollout(config, (Pool("random", 0.5, ("r", "r")), Pool("chaser", 0.5, ("c", "r"))),
+                      {"r": Random(S), "c": Chaser(S)}, "r", 8, 8, torch.device("cpu"),
+                      compile=False)
+    held = 0.0
+    for _ in range(16):
+        rollout.run()
+        carry = rollout.carry
+        _check_conservation(carry["ledger"], carry["state"], carry["types"])
+        held = max(held, float(carry["ledger"].ships.sum()))
+    assert held > 0, "some damage should be outstanding at some point"
+
+
 @pytest.mark.slow
 def test_compiled_reward_step_matches_eager():
     config = cases.MODES["frontline"]
@@ -228,7 +244,8 @@ def test_compiled_reward_step_matches_eager():
         got, ledger = step(CONFIG, ledger, events, team)
         want, eager = rewards.reward_step(CONFIG, eager, events, team)
         torch.testing.assert_close(got, want, rtol=1e-5, atol=1e-6)
-        torch.testing.assert_close(ledger, eager, rtol=1e-5, atol=1e-4)
+        torch.testing.assert_close(ledger.ships, eager.ships, rtol=1e-5, atol=1e-4)
+        torch.testing.assert_close(ledger.boundary, eager.boundary, rtol=1e-5, atol=1e-4)
         ledger = eager
 
 
@@ -242,5 +259,6 @@ def test_a_bigger_game_runs_too():
                     objective_progress=zero, objective=zero, result=torch.zeros(2).int())
     levels, ledger = rewards.reward_step(CONFIG, rewards.blank_ledger(2, N), events,
                                          torch.arange(N) // 50)
-    assert levels.shape == (2, N, 5) and ledger.shape == (2, N + 1, N) and not levels.any()
+    assert levels.shape == (2, N, 5) and not levels.any()
+    assert ledger.ships.shape == (2, N, N) and ledger.boundary.shape == (2, N)
     assert GameConfig(50, 40, 8200.0).num_ships == N

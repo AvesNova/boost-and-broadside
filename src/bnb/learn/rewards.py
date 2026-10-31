@@ -1,9 +1,10 @@
 """Rewards (rewards spec): the game's per-tick Events to five zero-sum reward levels.
 
 A pure function of (ledger, events) to (rewards per ship per level, ledger'), called by the
-rollout every tick. The ledger (B, N + 1, N), [attacker, target], holds each pair's damage
-that has not healed; row N is the boundary, so each living ship's column sums to its
-shield deficit. The component functions are v1's math (fixtures in tests/reference/rewards)
+rollout every tick. The ledger holds each pair's damage that has not healed, [attacker,
+target], with the boundary as a pseudo-attacker: each living ship's column of ship rows
+plus its boundary entry sums to its shield deficit. It is the spec's (B, N + 1, N) ledger
+kept as its ship rows and its boundary row, so the step writes each without a copy. The component functions are v1's math (fixtures in tests/reference/rewards)
 and take any leading axes; `team` is each ship's team, 0 or 1, broadcasting against them.
 
 The step is memory-bound on its (B, N, N) matrices, so it reads each as few times as it
@@ -16,8 +17,9 @@ import dataclasses
 import torch
 
 from bnb.contracts import REWARD_LEVELS, Events
+from bnb.contracts.tree import contract
 
-__all__ = ["REWARD_LEVELS", "RewardConfig", "accumulate_ledger", "attribute_recharge",
+__all__ = ["REWARD_LEVELS", "Ledger", "RewardConfig", "accumulate_ledger", "attribute_recharge",
            "blank_ledger", "damage_events", "enemy_team_share", "kill_death_events",
            "outcome_events", "reward_step"]
 
@@ -40,9 +42,20 @@ class RewardConfig:
         return tuple(getattr(self, level) for level in REWARD_LEVELS)
 
 
-def blank_ledger(batch: int, num_ships: int, device=None) -> torch.Tensor:
-    """(B, N + 1, N) zeros: no outstanding damage."""
-    return torch.zeros((batch, num_ships + 1, num_ships), device=device)
+@contract
+class Ledger:
+    """Outstanding damage (rewards spec 2): ships (B, N, N) [attacker, target], each ship's
+    damage to each target that has not healed; boundary (B, N), the boundary's (the spec's
+    row N). Reward state, carried by the runtime."""
+
+    ships: torch.Tensor
+    boundary: torch.Tensor
+
+
+def blank_ledger(batch: int, num_ships: int, device=None) -> Ledger:
+    """No outstanding damage."""
+    return Ledger(ships=torch.zeros((batch, num_ships, num_ships), device=device),
+                  boundary=torch.zeros((batch, num_ships), device=device))
 
 
 def _column_total(values: torch.Tensor) -> torch.Tensor:
@@ -151,26 +164,24 @@ def damage_events(team: torch.Tensor, combat_applied: torch.Tensor,
 
 # ------------------------------------------------------------------ one tick (v2)
 
-def reward_step(config: RewardConfig, ledger: torch.Tensor, events: Events,
-                team: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def reward_step(config: RewardConfig, ledger: Ledger, events: Events,
+                team: torch.Tensor) -> tuple[torch.Tensor, Ledger]:
     """(rewards (B, N, 5) in REWARD_LEVELS order, ledger') for one tick (rewards spec 3).
 
-    ledger (B, N + 1, N); events in sim order; team (N,) or (B, N).
+    Events in sim order; team (N,) or (B, N).
     """
-    N = events.died.shape[-1]
     raw, boundary = events.damage, events.boundary_damage
     raw_total = _column_total(raw)
-    old_total = _column_total(ledger[..., :N, :])
+    old_total = _column_total(ledger.ships)
     hit = raw_total[..., 0, :]  # raw hit damage per target
     total = hit + boundary
     lost = torch.where(total > 0.0, events.shield_lost / torch.where(total > 0.0, total, 1.0), 0.0)
     combat_applied, boundary_applied = hit * lost, boundary * lost
 
-    # The ship rows and the boundary row stay apart until the end (one write). The
-    # accumulated rows' totals follow without a sum: the shares of a hit target sum to one.
-    ships = accumulate_ledger(ledger[..., :N, :], raw, combat_applied, raw_total=raw_total)
+    # The accumulated rows' totals follow without a sum: a hit target's shares sum to one.
+    ships = accumulate_ledger(ledger.ships, raw, combat_applied, raw_total=raw_total)
     ships_total = old_total + combat_applied[..., None, :]
-    boundary_row = ledger[..., N:, :] + boundary_applied[..., None, :]
+    boundary_row = (ledger.boundary + boundary_applied)[..., None, :]
 
     died = events.died
     combat_death = died & (hit > 0.0)
@@ -193,6 +204,6 @@ def reward_step(config: RewardConfig, ledger: torch.Tensor, events: Events,
     rewards = torch.stack([weight * level for weight, level in zip(config.weights, levels)], -1)
     # A death makes the damage done to the ship stick; a finished match starts afresh.
     # A ship's row (its claims on others) survives its own death.
-    ledger = torch.cat([ships, boundary_row], -2)
-    ledger = torch.where(died[..., None, :] | events.done[..., None, None], 0.0, ledger)
-    return rewards, ledger
+    clear = died[..., None, :] | events.done[..., None, None]
+    return rewards, Ledger(ships=torch.where(clear, 0.0, ships),
+                           boundary=torch.where(clear[..., 0, :], 0.0, boundary_row[..., 0, :]))

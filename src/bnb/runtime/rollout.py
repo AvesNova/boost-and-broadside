@@ -167,7 +167,7 @@ class Rollout:
         _assign(carry["state"], st)
         team = torch.arange(self.N, device=self.device) // self.S
         reward, ledger = rewards.reward_step(self.reward_config, carry["ledger"], ev, team)
-        carry["ledger"].copy_(ledger)
+        _assign(carry["ledger"], ledger)
         reward = reward.reshape(self.B, self.T, self.S, len(REWARD_LEVELS))
         name, buf, t = self.learner, carry["buf"], carry["t_idx"]
         e = self.lineup.env[name]
