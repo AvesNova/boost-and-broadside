@@ -332,6 +332,19 @@ cut; where they differ, this section and the code win.
   `perceive`, `spread`, `uniforms`. Randomness is explicit (spec section 2).
 - **Teams:** two, a constant (`rules.TEAMS`).
 - **Names:** full words (scaffold rule 10).
+- **Learner outputs (section 5, 2026-11-01):**
+  - **`Outputs`** gains:
+    - `values (R, S, K)`: the critic per reward level, in raw units;
+    - `outcome (R, 4)`: the outcome probabilities (win, tie, loss, unresolved);
+    - `replay`: an opaque pytree with leading `(R,)`, what the decision read from the
+      controller's carry.
+    `value` is the sum of `values` when a controller gives them.
+  - **`Trajectory`** gains `values (L, R, S, K)`, `outcome (L, R, 4)`, `replay (L, R, …)`
+    and `initial_carry`, the learner's carry at the start of the segment. The runtime fills
+    them for the learner's views; all are `None` for controllers without them.
+  - **Rule:** the replay must hold exactly what the step read. Never store a rounded copy
+    of a value that a compiled stage also uses unrounded: inductor drops fused precision
+    casts by default.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
