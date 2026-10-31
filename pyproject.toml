@@ -1,0 +1,49 @@
+[project]
+name = "bnb"
+version = "0.0.1"
+description = "Boost and Broadside v2: the game and its training stack"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "numpy>=2.5",
+    "torch==2.15.0",
+    "tyro>=1.0",
+]
+
+[project.scripts]
+bnb = "bnb.cli:main"
+
+[dependency-groups]
+dev = [
+    "onnx",
+    "onnxruntime>=1.31",
+    "onnxscript",
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<1"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu132" }
+
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: needs a CUDA device",
+    "slow: takes more than a few seconds",
+]
