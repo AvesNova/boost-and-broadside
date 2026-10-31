@@ -32,7 +32,7 @@ def train_cell(size: dict, envs: int) -> dict:
     trainer.update()  # compiles the rollout stages, the graph and the learner
     torch.cuda.synchronize()
     compile_s = time.perf_counter() - t0
-    for _ in range(math.ceil(trainer.rollout.p.episode_ticks / cfg.length)):  # one episode
+    for _ in range(math.ceil(trainer.rollout.rules.episode_ticks / cfg.length)):  # one episode
         trainer.collect()
     rollout_s, learn_s = [], []
     for _ in range(TIMED):

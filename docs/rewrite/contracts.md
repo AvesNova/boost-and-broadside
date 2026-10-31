@@ -303,6 +303,36 @@ snapshot(state) -> RenderSnapshot            # play section
   6. Learner seat randomized per env per episode: **agreed** (a cheap guard; maps are
      already seat-symmetric).
 
+## Current schema (2026-11-01, after the game section)
+
+The source of truth is the code: `src/bnb/contracts/`. The tables above are the first
+cut; where they differ, this section and the code win.
+
+- **Ship columns (24),** in two groups:
+  - zeroed for a ship the team cannot see: x, y, heading_cos, heading_sin, velocity_x,
+    velocity_y, proper_speed, angle_of_attack, nose_rate, energy, shield,
+    shield_recharge_wait, gun_cooldown, log_refractive_index, log_index_gradient_x,
+    log_index_gradient_y;
+  - always shown: alive, visible, fired, respawn_wait, ship_type, team_relative,
+    time_since_seen, spawned.
+
+  Times are in seconds.
+- **Field columns:** x, y, radius, band_width, level.
+- **Global columns:** episode_progress, arena_radius, fogged, reset. Mode features come
+  with the modes section.
+- **Fog of war:**
+  - per environment, `Match.fogged`, set at reset;
+  - `Pool.fog_share` (default 1.0) chooses the fogged share of each pool, as a fixed
+    contiguous split;
+  - without fog, every living ship is visible.
+- **Ship card:** `bnb.game.ship_types.ShipTypes`, per-type tensors shaped `(types,)` or
+  `(B, types)` (per-environment cards for sweeps). It is a required argument of every
+  game function.
+- **Game API:** `bnb.game.api`: `rules_of`, `reset`, `move`, `resolve`, `step`,
+  `perceive`, `spread`, `uniforms`. Randomness is explicit (spec section 2).
+- **Teams:** two, a constant (`rules.TEAMS`).
+- **Names:** full words (scaffold rule 10).
+
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
 `Obs` has `ships`, `fields` and `globals` only. Reasons:

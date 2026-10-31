@@ -11,8 +11,8 @@ fast batched GPU training and for maintainability.
 
 ## Status
 
-Milestone 0, the walking skeleton, runs end to end: race physics, the contract
-observation, team deathmatch rewards, scripted controllers, a small MLP and plain PPO,
+Milestone 0, the walking skeleton, runs end to end. Section 1 (the game: v2 physics,
+perception, spawns, maps, fog of war) is merged. Then: the contract observation, team deathmatch rewards, scripted controllers, a small MLP and plain PPO,
 with compiled stages and CUDA-graph rollouts. Every section is a stub to be replaced.
 
 ## Running
