@@ -67,11 +67,15 @@ Notes:
     section after the game section merges.
 - **AoA limit and nose reversal time** are the two "nose" dials: crisp and wide vs slow
   and narrow.
-- **Not a handle: nose pointing while flying straight** (a snapshot without turning).
-  - In this model the nose sits off the flight path only because the ship pulls lift.
-  - Decoupling them needs a new mechanic, such as commanding the nose past stall into
-    the post-stall region of the lift curve (Cobra-like, paid for in drag).
-  - Parked with the open game-design items. If adopted, it brings its own handle.
+- **Snapshots come from the three nose and energy handles (author, 2026-10-31).** A
+  quick nose (reversal time) with a wide AoA limit gets most of a large nose swing from
+  the angle of attack within a few tenths of a second, before the flight path has turned
+  much. It pays the bleed rate for only that short burst of maximum lift. A narrow-AoA
+  ship must turn its path instead, which is slower and bleeds for longer.
+  - No post-stall mechanic is needed.
+  - Above corner speed, the g limit shrinks the usable AoA (roughly as (corner/speed)^2),
+    so wide deflection is a near-corner ability.
+  - Nose damping `zeta` stays shared; it is a possible later "crispness" handle.
 
 ## Combat handles (per ship type)
 
