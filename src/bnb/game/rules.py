@@ -10,6 +10,8 @@ import math
 
 from bnb.contracts import GameConfig, ticks_of
 
+from .modes.rules import CLOCKS, ModeRules, mode_rules_of
+
 TEAMS = 2
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
 POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
@@ -64,6 +66,7 @@ class Rules:
     field_band_width: float = 40.0  # m [b]
     vision_range: float = 1024.0  # m [V]
     flight: FlightConstants = FlightConstants()
+    mode: ModeRules = ModeRules()
 
     def __post_init__(self) -> None:
         if not self.team_types:  # within a team, slots alternate starting with a fighter
@@ -90,16 +93,27 @@ class Rules:
         return 4 * self.num_fields + 1
 
     @property
-    def tick_uniform_count(self) -> int:
-        """Uniforms per environment per tick (game spec 2): the map, a formation rotation
-        per team, a formation key per ship."""
+    def game_uniform_count(self) -> int:
+        """Uniforms per environment per tick for the game (game spec 2): the map, a
+        formation rotation per team, a formation key per ship."""
         return self.map_uniform_count + TEAMS + self.num_ships
+
+    @property
+    def tick_uniform_count(self) -> int:
+        """All uniforms per environment per tick: the game's, then the mode's spawn draws
+        (modes spec 2)."""
+        return self.game_uniform_count + self.mode.uniform_count(self.num_ships)
 
 
 def rules_of(config: GameConfig, **overrides) -> Rules:
-    """The rules for a config's sizes and time-native rules; `overrides` replace defaults."""
+    """The rules for a config's sizes, mode and time-native rules (the mode's clock where
+    the config leaves it out); `overrides` replace defaults."""
     tick_length = overrides.pop("tick_length", Rules.tick_length)
+    episode_s, respawn_s = CLOCKS[config.mode]
+    episode_s = episode_s if config.episode_s is None else config.episode_s
+    respawn_s = respawn_s if config.respawn_s is None else config.respawn_s
     return Rules(ships_per_team=config.ships_per_team, num_fields=config.num_fields,
                  arena_radius=config.arena_radius, tick_length=tick_length,
-                 episode_ticks=ticks_of(config.episode_s, tick_length),
-                 respawn_ticks=ticks_of(config.respawn_s, tick_length), **overrides)
+                 episode_ticks=ticks_of(episode_s, tick_length),
+                 respawn_ticks=ticks_of(respawn_s, tick_length), mode=mode_rules_of(config),
+                 **overrides)

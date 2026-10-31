@@ -92,11 +92,36 @@ class Match:
 
 
 @contract
+class ModeState:
+    """The mode's part of the match (modes spec 6). score (B, 2) int32, deaths scored per
+    team (team deathmatch). Frontline, with Z zones (Z = 0 in other modes): front (B,)
+    int32, captures ahead for team 0; the zones' centres and radii (B, Z); role (B, Z)
+    int32 in team 0's frame; progress (B, Z), the meters; direction (B, Z) int32, the
+    meters' last push in team 0's frame (+1 a team-0 majority); attack_ledger and
+    defense_ledger (B, Z, N), the attempt ledgers; handedness (B,) +-1 and ring_rotation
+    (B,) rad, the ring's draw."""
+
+    score: torch.Tensor
+    front: torch.Tensor
+    zone_x: torch.Tensor
+    zone_y: torch.Tensor
+    zone_radius: torch.Tensor
+    role: torch.Tensor
+    progress: torch.Tensor
+    direction: torch.Tensor
+    attack_ledger: torch.Tensor
+    defense_ledger: torch.Tensor
+    handedness: torch.Tensor
+    ring_rotation: torch.Tensor
+
+
+@contract
 class State:
     ships: Ships
     bullets: Bullets
     fields: Fields
     match: Match
+    mode: ModeState
 
 
 @contract
@@ -123,6 +148,7 @@ SHIP_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Ships)} | dict(
     ship_type=INT)
 BULLET_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Bullets)} | dict(moves_left=INT)
 FIELD_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Fields)} | dict(level=INT)
+MODE_INTEGERS = ("score", "front", "role", "direction")
 
 
 def blank(rules: Rules, batch: int, device=None) -> State:
@@ -132,6 +158,12 @@ def blank(rules: Rules, batch: int, device=None) -> State:
     def zeros(dtypes: dict, shape: tuple) -> dict:
         return {k: torch.zeros(shape, dtype=d, device=device) for k, d in dtypes.items()}
 
+    Z = rules.mode.num_zones
+    shapes = dict(score=(B, TEAMS), front=(B,), attack_ledger=(B, Z, N),
+                  defense_ledger=(B, Z, N), handedness=(B,), ring_rotation=(B,))
+    mode = {field.name: torch.zeros(shapes.get(field.name, (B, Z)), device=device,
+                                    dtype=INT if field.name in MODE_INTEGERS else FLOAT)
+            for field in dataclasses.fields(ModeState)}
     return State(ships=Ships(**zeros(SHIP_DTYPES, (B, N))),
                  bullets=Bullets(**zeros(BULLET_DTYPES, (B, N, K))),
                  fields=Fields(**zeros(FIELD_DTYPES, (B, M))),
@@ -140,7 +172,8 @@ def blank(rules: Rules, batch: int, device=None) -> State:
                              spawn_axis_y=torch.zeros(B, device=device),
                              ticks_since_seen=torch.zeros((B, TEAMS, N), dtype=INT,
                                                           device=device),
-                             fogged=torch.ones(B, dtype=BOOL, device=device)))
+                             fogged=torch.ones(B, dtype=BOOL, device=device)),
+                 mode=ModeState(**mode))
 
 
 def sweep_like(state: State) -> Sweep:

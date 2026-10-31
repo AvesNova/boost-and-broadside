@@ -92,12 +92,19 @@ def boundary_damage(rules: Rules, ships: Ships, alive_at_start: torch.Tensor) ->
     return torch.where(alive_at_start & (depth > 0.0), rate * rules.tick_length, 0.0)
 
 
+class Damage(NamedTuple):
+    ships: Ships
+    died: torch.Tensor  # (B, N)
+    shield_lost: torch.Tensor  # (B, N) what the shield actually lost, overkill ignored
+    shield_restored: torch.Tensor  # (B, N) the recharge applied
+
+
 def apply_damage(rules: Rules, types: ShipTypes, ships: Ships, alive_at_start: torch.Tensor,
-                 total: torch.Tensor) -> tuple[Ships, torch.Tensor]:
+                 total: torch.Tensor) -> Damage:
     """Phase 5 for ships alive at tick start: shields, recharge, and who dies.
 
     Damage beyond the shield breaks it (the overkill is ignored); any damage to a shield
-    already broken at tick start kills. Returns (ships, died).
+    already broken at tick start kills. Ships dead at tick start lose and restore nothing.
     """
     tick_length = rules.tick_length
     shield0, wait0 = ships.shield, ships.shield_recharge_wait
@@ -106,7 +113,9 @@ def apply_damage(rules: Rules, types: ShipTypes, ships: Ships, alive_at_start: t
     shield = (shield0 - total).clamp_min(0.0)
     recharge = torch.minimum(per_ship(types.max_shield, ships.ship_type) - shield,
                              rules.shield_recharge_rate * (tick_length - wait0).clamp(0.0, tick_length))
-    shield = torch.where(hurt, shield, shield + recharge)  # an unhurt ship cannot have died
+    restored = torch.where(alive_at_start & ~hurt, recharge, 0.0)  # an unhurt ship cannot have died
     wait = torch.where(hurt, rules.shield_recharge_delay, (wait0 - tick_length).clamp_min(0.0))
-    return replace(ships, shield=torch.where(alive_at_start, shield, shield0),
-                   shield_recharge_wait=torch.where(alive_at_start, wait, wait0)), died
+    ships = replace(ships, shield=torch.where(alive_at_start, shield + restored, shield0),
+                    shield_recharge_wait=torch.where(alive_at_start, wait, wait0))
+    return Damage(ships=ships, died=died, shield_lost=torch.where(alive_at_start, shield0 - shield, 0.0),
+                  shield_restored=restored)

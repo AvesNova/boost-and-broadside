@@ -1,6 +1,11 @@
-"""New maps for reset environments (game spec 9) and spawning (game spec 8)."""
+"""New maps for reset environments (game spec 9) and spawning (game spec 8).
+
+Spawning keeps game spec 8's spawn state; where a ship appears and which way it points
+come from the mode (`modes.spawns`). The formation of game spec 8 is sandbox's placement.
+"""
 
 import math
+from typing import NamedTuple
 
 import torch
 
@@ -13,13 +18,23 @@ from .numerics import lookup
 
 class TickUniforms:
     """Slices of the (B, U) tick uniforms (game spec 2): the map, a formation rotation per
-    team, a formation key per ship."""
+    team, a formation key per ship; then the mode's spawn draws (modes spec 2)."""
 
     def __init__(self, rules: Rules, uniforms: torch.Tensor) -> None:
         start = rules.map_uniform_count
         self.map = uniforms[:, :start]
         self.rotation = uniforms[:, start:start + TEAMS]
         self.keys = uniforms[:, start + TEAMS:start + TEAMS + rules.num_ships]
+        self.mode = uniforms[:, rules.game_uniform_count:]
+
+
+class Placement(NamedTuple):
+    """Where spawning ships appear and which way they point, (B, N) each."""
+
+    x: torch.Tensor
+    y: torch.Tensor
+    heading_cos: torch.Tensor
+    heading_sin: torch.Tensor
 
 
 def new_map(rules: Rules, uniforms: torch.Tensor) -> tuple[Fields, torch.Tensor, torch.Tensor]:
@@ -55,28 +70,37 @@ def formation_rank(rules: Rules, keys: torch.Tensor) -> torch.Tensor:
     return before.sum(-1).reshape(B, TEAMS * S)
 
 
-def spawn(rules: Rules, types: ShipTypes, ships: Ships, fields: Fields, axis_x, axis_y,
-          mask: torch.Tensor, rotation: torch.Tensor, keys: torch.Tensor) -> Ships:
-    """Spawn the ships in mask (B, N) on their team's formation (game spec 8).
-
-    axis_x, axis_y (B,): the spawn axis; rotation (B, 2) and keys (B, N): tick uniforms.
-    Computed for every ship and selected by mask, so the graph has no data-dependent shape.
-    """
-    N, S = mask.shape[1], rules.ships_per_team
-    team = torch.arange(N, device=mask.device) // S
+def formation(rules: Rules, axis_x: torch.Tensor, axis_y: torch.Tensor, rotation: torch.Tensor,
+              keys: torch.Tensor) -> Placement:
+    """Game spec 8's formation for every ship: around its team's centre on the spawn axis
+    (B,), at its rank's phase plus its team's rotation (B, 2), nose toward the other
+    centre. keys (B, N): the formation keys."""
+    N, S = keys.shape[1], rules.ships_per_team
+    team = torch.arange(N, device=keys.device) // S
     side = (2 * team - 1).to(torch.float32)  # team 0 spawns at -0.8 R_a axis, team 1 at +
     phase = formation_rank(rules, keys) / S + rotation.repeat_interleave(S, 1)
     angle = 2.0 * math.pi * torch.frac(phase)
     axis_x, axis_y = axis_x[:, None], axis_y[:, None]
     radius = rules.spawn_radius * rules.map_scale
     offset = side * (rules.spawn_offset * rules.arena_radius)
-    x = offset * axis_x + radius * torch.cos(angle)
-    y = offset * axis_y + radius * torch.sin(angle)
+    return Placement(x=offset * axis_x + radius * torch.cos(angle),
+                     y=offset * axis_y + radius * torch.sin(angle),
+                     heading_cos=-side * axis_x.expand_as(angle),
+                     heading_sin=-side * axis_y.expand_as(angle))
+
+
+def spawn(rules: Rules, types: ShipTypes, ships: Ships, fields: Fields, mask: torch.Tensor,
+          placement: Placement) -> Ships:
+    """Spawn the ships in mask (B, N) at their placement (game spec 8's spawn state).
+
+    Computed for every ship and selected by mask, so the graph has no data-dependent shape.
+    """
+    x, y = placement.x, placement.y
     log_index, gradient_x, gradient_y = medium(fields, x, y)
     zeros, ones = torch.zeros_like(x), torch.ones_like(x)
     integer_zeros = torch.zeros_like(ships.gun_cooldown)
     fresh = Ships(
-        x=x, y=y, heading_cos=-side * axis_x, heading_sin=-side * axis_y,
+        x=x, y=y, heading_cos=placement.heading_cos, heading_sin=placement.heading_sin,
         proper_speed=rules.spawn_speed * torch.exp(log_index), angle_of_attack=zeros,
         angle_of_attack_cos=ones, angle_of_attack_sin=zeros, nose_rate=zeros,
         energy=per_ship(types.spawn_energy, ships.ship_type), log_refractive_index=log_index,

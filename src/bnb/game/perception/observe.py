@@ -1,4 +1,5 @@
-"""The observation contract (bnb.contracts.obs) from the game state.
+"""The observation contract (bnb.contracts.obs) from the game state: ships, fields, the
+mode's zones and the globals (the mode's columns last).
 
 Each view lists rows by team_relative: view v's row block j holds team (j + v) mod 2. With
 team-major storage this is a static gather, fused into the copy this stage writes anyway.
@@ -9,6 +10,7 @@ import torch
 from bnb.contracts import Obs, Privileged
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 
+from ..modes.observation import mode_globals, zone_rows
 from ..rules import TEAMS, Rules
 from ..state import State, replace
 from .sight import visibility
@@ -80,8 +82,10 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     tick = match.episode_tick.float()
     global_row = torch.stack([tick / rules.episode_ticks, torch.full_like(tick, rules.arena_radius),
                               match.fogged.float(), (match.episode_tick == 0).float()], -1)
+    globals_ = torch.cat([global_row[:, None].expand(B, TEAMS, -1),
+                          mode_globals(rules, state.mode)], -1)
     obs = Obs(ships=ship_rows(visible, since), fields=field_rows[:, None].expand(B, TEAMS, -1, -1),
-              globals=global_row[:, None].expand(B, TEAMS, -1))
+              globals=globals_, zones=zone_rows(rules, state.mode))
 
     truth = Privileged(team=(torch.arange(N, device=device) // S).to(torch.int32).expand(B, N),
                        view_order=order.expand(B, TEAMS, N),
