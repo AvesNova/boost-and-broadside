@@ -76,6 +76,9 @@ class Rollout:
             logp=torch.zeros((L, R, S), device=dev), value=torch.zeros((L, R, S), device=dev),
             reward=torch.zeros((L, R, S), device=dev),
             done=torch.zeros((L, R), dtype=torch.bool, device=dev))
+        controller_carry = {name: c.init_carry(self.lineup.rows(name), dev)
+                            for name, c in self.controllers.items()}
+        buf.update(self._learner_buffers(obs, controller_carry[self.learner]))
         carry = dict(
             state=st, types=types, obs={part: getattr(obs, part) for part in PARTS},
             seat=torch.randint(0, self.T, (B,), device=dev),
@@ -83,11 +86,30 @@ class Rollout:
             spread=torch.zeros((B, self.N, 2), device=dev),
             uniforms=torch.zeros((B, rules.tick_uniform_count), device=dev),
             sweep=api.sweep_like(st),
-            ctrl={name: c.init_carry(self.lineup.rows(name), dev)
-                  for name, c in self.controllers.items()},
+            ctrl=controller_carry,
             buf=buf, t_idx=torch.zeros(1, dtype=torch.long, device=dev),
             counters=torch.zeros(len(COUNTERS), dtype=torch.int64, device=dev))
         return _clone(carry)
+
+    @torch.no_grad()
+    def _learner_buffers(self, obs: Obs, learner_carry) -> dict:
+        """Buffers for what the learner's controller gives beyond logp and value: values,
+        outcome and replay, shaped (L, R, ...), and the carry at a segment's start. Their
+        shapes come from one probe decision on the learner's first row only."""
+        L, R, dev = self.length, self.lineup.rows(self.learner), self.device
+        e, team = self.lineup.env[self.learner][:1], self.lineup.role[self.learner][:1]
+        view = Obs(**{part: getattr(obs, part)[e, team] for part in PARTS})
+        done = view.globals[..., GLOBAL["reset"]] > 0.5
+        one_row = _pytree.tree_map_only(torch.Tensor, lambda x: x[:1].clone(), learner_carry)
+        _, _, out = self.controllers[self.learner].step(one_row, view, done)
+        out = dict(values=out.values, outcome=out.outcome, replay=out.replay)
+        buffers = {name: _pytree.tree_map_only(
+            torch.Tensor,
+            lambda x: torch.zeros((L, R) + x.shape[1:], dtype=x.dtype, device=dev), value)
+            for name, value in out.items() if value is not None}
+        if learner_carry is not None:
+            buffers["initial_carry"] = _clone(learner_carry)
+        return buffers
 
     def _team(self, name: str, seat: torch.Tensor) -> torch.Tensor:
         return (self.lineup.role[name] + seat[self.lineup.env[name]]) % self.T
@@ -120,6 +142,11 @@ class Rollout:
                 if out.logp is not None:  # a scripted "learner" (baselines) records no policy
                     buf["logp"].index_copy_(0, t, out.logp[None])
                     buf["value"].index_copy_(0, t, out.value[None])
+                for part in ("values", "outcome", "replay"):
+                    if part in buf:
+                        for stored, given in zip(_tensors(buf[part]), _tensors(getattr(out, part)),
+                                                 strict=True):
+                            stored.index_copy_(0, t, given[None])
         carry["actions"].copy_(actions.reshape(B, self.N, 3))
         carry["spread"].copy_(api.spread(self.rules, B, dev))
         carry["uniforms"].copy_(api.uniforms(self.rules, B, dev))
@@ -176,6 +203,9 @@ class Rollout:
         """Advance `length` ticks; the returned trajectory views the carry's buffers (valid
         until the next run)."""
         self.carry["t_idx"].zero_()
+        buf = self.carry["buf"]
+        if "initial_carry" in buf:
+            _assign(buf["initial_carry"], self.carry["ctrl"][self.learner])
         if self.device.type == "cuda":
             if self.graph is None:
                 self._capture()
@@ -185,10 +215,11 @@ class Rollout:
         else:
             for _ in range(self.length):
                 self._tick()
-        buf = self.carry["buf"]
         obs = Obs(**{part: buf["obs"].get(part) for part in PARTS})
         return Trajectory(obs=obs, action=Action.unpack(buf["action"]), logp=buf["logp"],
-                          value=buf["value"], reward=buf["reward"], done=buf["done"])
+                          value=buf["value"], reward=buf["reward"], done=buf["done"],
+                          values=buf.get("values"), outcome=buf.get("outcome"),
+                          replay=buf.get("replay"), initial_carry=buf.get("initial_carry"))
 
     @torch.no_grad()
     def learner_view(self) -> Obs:
