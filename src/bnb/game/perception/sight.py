@@ -4,8 +4,13 @@ from typing import NamedTuple
 
 import torch
 
-from ..physics.constants import Preset
-from ..physics.state import by_team, enemy
+from ..rules import Rules
+from ..state import State, by_team
+
+
+def enemy(v: torch.Tensor) -> torch.Tensor:
+    """(B, N) per-ship values as seen by each team's enemy: row T holds team 1 - T."""
+    return by_team(v).flip(1)
 
 
 def core_membership(cores: dict, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -20,7 +25,7 @@ def core_membership(cores: dict, x: torch.Tensor, y: torch.Tensor) -> torch.Tens
     return (inside.long() << torch.arange(M, device=x.device)).sum(-1)
 
 
-def sighted(p: Preset, cores: dict, observers: tuple, targets: tuple) -> torch.Tensor:
+def sighted(p: Rules, cores: dict, observers: tuple, targets: tuple) -> torch.Tensor:
     """(B, 2, Q): some living observer of the team is within V of the target with a clear line.
 
     observers: (x, y, alive, membership) per team, (B, 2, O); targets: (x, y, membership),
@@ -61,11 +66,12 @@ class Visibility(NamedTuple):
     enemy_ships: torch.Tensor  # (B, T, N/2): team 1 - T's ships seen by team T
 
 
-def visibility(p: Preset, st: dict, teams: slice = slice(None)) -> Visibility:
+def visibility(p: Rules, st: State, teams: slice = slice(None)) -> Visibility:
     """Who sees what (SPEC 10.1). teams: the looking teams, as a slice of the team axis."""
     # Opaque cores: radius max(R - b/2, 0); a field too small for a flat interior has none.
-    rho = (st["fr"] - 0.5 * st["fw"]).clamp_min(0.0)
-    cores = dict(fx=st["fx"], fy=st["fy"], rho2=rho * rho)
+    f, sh = st.fields, st.ships
+    rho = (f.radius - 0.5 * f.width).clamp_min(0.0)
+    cores = dict(fx=f.x, fy=f.y, rho2=rho * rho)
 
     def own(v):
         return by_team(v)[:, teams]
@@ -76,10 +82,10 @@ def visibility(p: Preset, st: dict, teams: slice = slice(None)) -> Visibility:
     def located(x, y):  # (x, y, core membership), each (B, T, ...)
         return x, y, core_membership(cores, x, y)
 
-    ox, oy, o_in = located(own(st["x"]), own(st["y"]))
-    observers = (ox, oy, own(st["alive"]), o_in)
-    seen_ships = sighted(p, cores, observers, located(foreign(st["x"]), foreign(st["y"])))
-    enemy_ships = foreign(st["alive"]) & (foreign(st["fired"]) | foreign(st["spawned"]) | seen_ships)
+    ox, oy, o_in = located(own(sh.x), own(sh.y))
+    observers = (ox, oy, own(sh.alive), o_in)
+    seen_ships = sighted(p, cores, observers, located(foreign(sh.x), foreign(sh.y)))
+    enemy_ships = foreign(sh.alive) & (foreign(sh.fired) | foreign(sh.spawned) | seen_ships)
 
     def all_ships(team, own_part, enemy_part):  # one team's row over every ship, team 0's first
         return torch.cat([own_part, enemy_part] if team == 0 else [enemy_part, own_part], -1)

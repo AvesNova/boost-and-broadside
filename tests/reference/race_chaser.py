@@ -4,21 +4,27 @@ import math
 
 import torch
 
-from bnb.game.physics.constants import Preset
-from bnb.game.physics.state import by_team, enemy
+from bnb.game.rules import Rules
+from bnb.game.state import State, by_team
 
 
-def chaser(p: Preset, st: dict) -> torch.Tensor:
+def enemy(v: torch.Tensor) -> torch.Tensor:
+    return by_team(v).flip(1)
+
+
+def chaser(p: Rules, state: State) -> torch.Tensor:
     """Deterministic chaser (BENCHMARK.md 3.1): turn toward and shoot at the nearest living enemy."""
-    tx = enemy(st["x"])[..., None, :] - by_team(st["x"])[..., :, None]  # (B, 2, self, enemy)
-    ty = enemy(st["y"])[..., None, :] - by_team(st["y"])[..., :, None]
-    d2 = torch.where(enemy(st["alive"])[..., None, :], tx * tx + ty * ty, math.inf)
+    st = state.ships
+    half = p.ships_per_team
+    tx = enemy(st.x)[..., None, :] - by_team(st.x)[..., :, None]  # (B, 2, self, enemy)
+    ty = enemy(st.y)[..., None, :] - by_team(st.y)[..., :, None]
+    d2 = torch.where(enemy(st.alive)[..., None, :], tx * tx + ty * ty, math.inf)
     nearest = (d2 == d2.amin(-1, keepdim=True)) & (d2 < math.inf)
-    index = torch.arange(p.half, device=d2.device)
-    first = torch.where(nearest, index, p.half).amin(-1, keepdim=True)  # ties to the lowest index
+    index = torch.arange(half, device=d2.device)
+    first = torch.where(nearest, index, half).amin(-1, keepdim=True)  # ties to the lowest index
     pick = index == first
     tx, ty = (torch.where(pick, tx, 0.0).sum(-1), torch.where(pick, ty, 0.0).sum(-1))
-    c, s = by_team(st["c"]), by_team(st["s"])
+    c, s = by_team(st.c), by_team(st.s)
     bearing = torch.atan2(c * ty - s * tx, c * tx + s * ty).abs()
     left = torch.atan2(c * ty - s * tx, c * tx + s * ty) >= 0.0
     dist = torch.sqrt(tx * tx + ty * ty)
@@ -28,5 +34,5 @@ def chaser(p: Preset, st: dict) -> torch.Tensor:
     power = torch.where(dist > 600.0, 1, torch.where(dist < 120.0, 2, 0))
     shoot = ((bearing < math.radians(8.0)) & (dist < 250.0)).int()
     act = torch.stack([power, stick, shoot], -1).to(torch.int32)
-    has_target = first[..., 0] < p.half
-    return torch.where(has_target[..., None], act, 0).reshape(st["x"].shape + (3,))
+    has_target = first[..., 0] < half
+    return torch.where(has_target[..., None], act, 0).reshape(st.x.shape + (3,))

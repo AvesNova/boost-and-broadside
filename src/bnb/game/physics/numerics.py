@@ -32,3 +32,14 @@ def softmin(a: torch.Tensor, b, q: float) -> torch.Tensor:
 def smoothstep(t: torch.Tensor) -> torch.Tensor:
     """t^2 (3 - 2t), the engine fall phi of SPEC 3.3 after clipping."""
     return t * t * (3.0 - 2.0 * t)
+
+
+def lookup(values: tuple, index: torch.Tensor) -> torch.Tensor:
+    """values[index] for a small constant table, as a chain of selects: no host-to-device
+    copy, so it is safe inside CUDA-graph capture in eager mode, and it fuses when
+    compiled. Indices outside the table give values[0]."""
+    dtype = torch.int32 if all(isinstance(v, int) for v in values) else torch.float32
+    out = torch.full_like(index, values[0], dtype=dtype)
+    for i, v in enumerate(values[1:], 1):
+        out = torch.where(index == i, v, out)
+    return out

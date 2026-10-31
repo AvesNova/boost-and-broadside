@@ -1,43 +1,40 @@
-"""The game's public functions over the contracts: reset, the two halves of a tick, perceive.
+"""The game's public functions over the contracts.
 
-The state is a dict of tensors, opaque outside `bnb.game` (the runtime only copies it).
-Physics is the race arm (race SPEC, branch v3-general) until the physics section replaces it.
+    rules = rules_of(cfg); types = ship_types(device)   # types: optional, the ship card
+    state = reset(rules, uniforms(rules, B), types)
+    moved, origin = move(rules, state, action, spread(rules, B), types)
+    state, events = resolve(rules, moved, origin, uniforms(rules, B), types)
+    state, obs, privileged = perceive(rules, state)
+
+Every function is pure (tensors in, tensors out) and works eagerly or under
+torch.compile, at any batch size, on any device. The state is opaque outside `bnb.game`.
+The tick's randomness is an explicit input; `spread` and `uniforms` draw it.
 """
-
-import dataclasses
 
 import torch
 
-from bnb.contracts import Events, GameConfig, ticks_of
+from .perception.observe import perceive
+from .physics.step import move, reset, resolve, step
+from .rules import Rules, rules_of
+from .ship_types import ShipTypes, ship_types
+from .state import Origin, State, replace
 
-from .physics.constants import Preset, preset_of
-from .physics.spawn import new_map
-from .physics.step import ORIGIN_KEYS, move
-from .physics.step import reset as physics_reset
-from .physics.step import resolve as physics_resolve
+__all__ = ["Origin", "Rules", "ShipTypes", "State", "move", "perceive", "preset", "reset",
+           "resolve", "rules_of", "ship_types", "spread", "start_clocks", "step", "uniforms"]
 
-__all__ = ["ORIGIN_KEYS", "move", "new_map", "preset", "reset", "resolve"]
-
-
-def preset(cfg: GameConfig) -> Preset:
-    """The physics constants for a config's sizes and time-native rules."""
-    p = preset_of(dict(num_ships=cfg.num_ships, num_fields=cfg.num_fields,
-                       arena_radius=cfg.arena_radius))
-    return dataclasses.replace(p, episode_ticks=ticks_of(cfg.episode_s, p.h),
-                               respawn_ticks=ticks_of(cfg.respawn_s, p.h))
+preset = rules_of  # the skeleton's name, still used by tests/contract
 
 
-def reset(p: Preset, uniforms: torch.Tensor) -> dict:
-    """A fresh state from (B, 4M + 1) reset uniforms: new maps, every ship spawned, t = 0."""
-    st = physics_reset(p, uniforms)
-    B, N = st["x"].shape
-    st["last_seen"] = torch.zeros((B, 2, N), dtype=torch.int32, device=uniforms.device)
-    return st
+def spread(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
+    """(B, N, 2) standard normals: the bullet spread of one tick."""
+    return torch.randn((batch, rules.num_ships, 2), device=device, generator=generator)
 
 
-def resolve(p: Preset, moved: dict, origin: dict, fresh: dict) -> tuple[dict, Events]:
-    """Phases 4-8 of the tick (hits through episode end), with the events as a contract."""
-    st, ev = physics_resolve(p, moved, origin, fresh)
-    return st, Events(damage=ev["damage"], boundary_damage=ev["boundary_damage"], died=ev["died"],
-                      fired=ev["fired"], spawned=st["spawned"], killer=ev["killer"],
-                      done=ev["done"])
+def uniforms(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
+    """(B, U) uniforms in [0, 1): a tick's map, formation rotations and keys."""
+    return torch.rand((batch, rules.num_uniforms), device=device, generator=generator)
+
+
+def start_clocks(state: State, t: torch.Tensor) -> State:
+    """The state with its episode clocks set to t (B,) int32 (to stagger resets)."""
+    return replace(state, match=replace(state.match, t=t.to(torch.int32)))
