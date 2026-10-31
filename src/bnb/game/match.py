@@ -4,9 +4,11 @@ The state is a dict of tensors, opaque outside `bnb.game` (the runtime only copi
 Physics is the race arm (race SPEC, branch v3-general) until the physics section replaces it.
 """
 
+import dataclasses
+
 import torch
 
-from bnb.contracts import Events, GameConfig
+from bnb.contracts import Events, GameConfig, ticks_of
 
 from .physics.constants import Preset, preset_of
 from .physics.spawn import new_map
@@ -16,9 +18,11 @@ __all__ = ["ORIGIN_KEYS", "move", "new_map", "preset", "reset", "resolve"]
 
 
 def preset(cfg: GameConfig) -> Preset:
-    """The physics constants for a config's sizes."""
-    return preset_of(dict(num_ships=cfg.num_ships, num_fields=cfg.num_fields,
-                          arena_radius=cfg.arena_radius))
+    """The physics constants for a config's sizes and time-native rules."""
+    p = preset_of(dict(num_ships=cfg.num_ships, num_fields=cfg.num_fields,
+                       arena_radius=cfg.arena_radius))
+    return dataclasses.replace(p, episode_ticks=ticks_of(cfg.episode_s, p.h),
+                               respawn_ticks=ticks_of(cfg.respawn_s, p.h))
 
 
 def reset(p: Preset, uniforms: torch.Tensor) -> dict:

@@ -9,6 +9,7 @@ from .controller import Controller, Outputs
 from .events import Events
 from .obs import Obs, Privileged
 from .pools import Pool
+from .trajectory import Trajectory
 
 __all__ = [
     "Action",
@@ -19,5 +20,6 @@ __all__ = [
     "Outputs",
     "Pool",
     "Privileged",
+    "Trajectory",
     "ticks_of",
 ]

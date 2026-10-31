@@ -16,6 +16,8 @@ class GameConfig:
     ships_per_team: int
     num_fields: int
     arena_radius: float  # m
+    episode_s: float = 60.0  # time-native rules: whole multiples of the tick, or the
+    respawn_s: float = 8.0  #   physics preset fails to build (ticks_of)
     num_teams: int = 2
 
     def __post_init__(self) -> None:
