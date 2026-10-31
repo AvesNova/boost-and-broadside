@@ -300,7 +300,8 @@ weighted mean `μ = Σ α_i L_i / W` (0 where `W ≤ 1e-12`):
 
 ```
 ln n = A μ
-∇A   = Σ_i ∇α_i Π_{j≠i}(1 − α_j)          (leave-one-out products; never divide by 1 − α_i)
+∇A   = Σ_i ∇α_i Π_{j≠i}(1 − α_j)          (leave-one-out products; an implementation may divide by `1 − α_i` only
+                                         where it is provably positive, i.e. where `∇α_i ≠ 0`)
 ∇μ   = (Σ ∇α_i L_i − μ Σ ∇α_i) / W         (0 where W ≤ 1e-12)
 ∇ln n = μ ∇A + A ∇μ
 ```
@@ -371,7 +372,7 @@ one tick.
 
 Damage of a hit: with `θ` the angle between `−d̂` (the bullet's post-move direction) and
 the target's post-move nose `(c, s)`,
-`D (1 − (1 − f_0) exp(−4θ²/π))` with the shooter's `D`: a tenth from dead ahead, nearly full from the side or
+`D (1 − (1 − f_0) exp(−4θ²/π))` with the shooter's `D`: the fraction `f_0` from dead ahead, nearly full from the side or
 rear.
 
 ### 7.2 Damage, death and shields (phase 5)
