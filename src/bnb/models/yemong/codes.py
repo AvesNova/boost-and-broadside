@@ -28,9 +28,15 @@ def _one_hot(index: torch.Tensor, size: int, dtype: torch.dtype) -> torch.Tensor
 
 def circular_encode(mean: torch.Tensor, sigma: torch.Tensor, period: float, colours: int,
                     levels: int) -> torch.Tensor:
-    """(...) mean and sigma to (..., levels, colours) probabilities."""
+    """(...) mean and sigma to (..., levels, colours) probabilities.
+
+    The spec's coordinate is (m mod P) / p_l * c. Only its fraction and its floor mod c are
+    used, and m / p_l * c differs from it by a multiple of c^(l + 1), so the mod is left out:
+    in float32 it would cost the finest levels their precision (x mod 26 km rounds to 2 mm,
+    a fifth of a percent of a 4 m level's colour).
+    """
     level_periods = period / colours ** torch.arange(levels, dtype=mean.dtype, device=mean.device)
-    position = torch.remainder(mean, period)[..., None] / level_periods * colours
+    position = mean[..., None] * (colours / level_periods)
     lower = torch.floor(position)
     fraction = position - lower
     colour = torch.remainder(lower, colours).long()
@@ -50,7 +56,7 @@ def circular_decode(probabilities: torch.Tensor, period: float, colours: int,
     real = (probabilities * torch.cos(angles)).sum(-1)
     imaginary = (probabilities * torch.sin(angles)).sum(-1)
     phase = torch.remainder(torch.atan2(imaginary, real), 2.0 * math.pi)
-    sector = torch.clamp_max(torch.floor(phase / step), colours - 1)
+    sector = torch.clamp_max(torch.floor(phase / step), float(colours - 1))
     offset = phase - sector * step
     denominator = math.sin(step) * torch.cos(offset) + (1.0 - math.cos(step)) * torch.sin(offset)
     fraction = torch.clamp(torch.sin(offset) / torch.clamp_min(denominator, eps), 0.0, 1.0)
@@ -58,10 +64,10 @@ def circular_decode(probabilities: torch.Tensor, period: float, colours: int,
                        + (fraction * math.sin(step)) ** 2)
     attenuation = torch.clamp_max(torch.sqrt(real * real + imaginary * imaginary) / chord, 1.0)
     level_periods = [period / colours**level for level in range(levels)]
-    local_mean = (sector + fraction) * torch.tensor(level_periods, dtype=dtype,
-                                                    device=device) / colours
-    precision = torch.where(attenuation > INFORMATIVE, attenuation**2, 0.0) \
-        * torch.tensor([(period / p) ** 2 for p in level_periods], dtype=dtype, device=device)
+    # Per-level constants built on the device (no host copy, so eager graph capture works).
+    refinement = colours ** torch.arange(levels, dtype=dtype, device=device)  # period / p_l
+    local_mean = (sector + fraction) * (period / refinement) / colours
+    precision = torch.where(attenuation > INFORMATIVE, attenuation**2, 0.0) * refinement**2
 
     mean, total = local_mean[..., 0], precision[..., 0]
     for level in range(1, levels):
@@ -73,8 +79,7 @@ def circular_decode(probabilities: torch.Tensor, period: float, colours: int,
 
     attenuation = torch.where(attenuation > 1.0 - 1e-6, 1.0, attenuation)
     informative = attenuation > INFORMATIVE
-    curvature = torch.tensor([0.5 * (2.0 * math.pi / p) ** 2 for p in level_periods],
-                             dtype=dtype, device=device)
+    curvature = 0.5 * (2.0 * math.pi * refinement / period) ** 2
     weight = informative.to(dtype) * attenuation**2
     variance = -(weight * curvature * torch.log(torch.clamp_min(attenuation, INFORMATIVE))).sum(-1)
     variance = torch.clamp_min(variance / torch.clamp_min((weight * curvature**2).sum(-1), tiny),
@@ -111,8 +116,8 @@ def position_decode(probabilities: torch.Tensor, periods: tuple[float, float],
 
 def _scalar_coordinate(values: torch.Tensor, low: float, high: float, bins: int):
     spacing = (high - low) / (bins - 1)
-    coordinate = torch.clamp((values - low) / spacing, 0.0, bins - 1)
-    lower = torch.clamp_max(torch.floor(coordinate), bins - 2)
+    coordinate = torch.clamp((values - low) / spacing, 0.0, float(bins - 1))
+    lower = torch.clamp_max(torch.floor(coordinate), float(bins - 2))
     return coordinate, lower, coordinate - lower, spacing
 
 
@@ -193,7 +198,7 @@ def scalar_decode(probabilities: torch.Tensor, low: float, high: float,
     """(..., bins) to (mean, spread)."""
     spacing = (high - low) / (bins - 1)
     index = torch.arange(bins, dtype=probabilities.dtype, device=probabilities.device)
-    coordinate = torch.clamp((probabilities * index).sum(-1), 0.0, bins - 1)
+    coordinate = torch.clamp((probabilities * index).sum(-1), 0.0, float(bins - 1))
     variance = (probabilities * (index - coordinate[..., None]) ** 2).sum(-1)
     fraction = coordinate - torch.floor(coordinate)
     physical = variance - fraction * (1.0 - fraction)

@@ -208,7 +208,7 @@ class Yemong(nn.Module):
             return torch.where(keep.view(shape), tensor, fill)
 
         prior = carry.belief
-        belief = Belief(valid=masked(prior.valid, False), age=masked(prior.age),
+        belief = Belief(valid=prior.valid & keep[..., None], age=masked(prior.age),
                         means=masked(prior.means), spreads=masked(prior.spreads),
                         action=masked(prior.action, 1.0 / NUM_JOINT))
         return Carry(state=masked(carry.state), convolution_buffer=masked(carry.convolution_buffer),

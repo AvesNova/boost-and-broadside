@@ -86,7 +86,10 @@ class Arm:
         width = weights["shared.weight"].shape[0]
         encoder = Encoder(ship.shape[-1], global_token.shape[-1], field.shape[-1], width,
                           weights["map_memory.weight"].shape[0])
-        return _loaded(encoder, weights)(ship, global_token, field)
+        # `global` is a Python keyword, so our global kind is `global_token`.
+        names = {name.replace("global.", "global_token.", 1) if name.startswith("global.") else name:
+                 value for name, value in weights.items()}
+        return _loaded(encoder, names)(ship, global_token, field)
 
     def _trunk(self, weights, config):
         trunk = Trunk(config["width"], config["heads"], config["map_width"], config["blocks"],

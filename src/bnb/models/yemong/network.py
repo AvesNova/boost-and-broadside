@@ -30,8 +30,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.ship = KindProjection(ship_inputs, 2 * width)
         self.field = KindProjection(field_inputs, 2 * width)
-        # `global` is a keyword, so the global kind is registered by name.
-        self.add_module("global", KindProjection(global_inputs, 2 * width))
+        self.global_token = KindProjection(global_inputs, 2 * width)
         self.shared = nn.Linear(2 * width, width)
         self.shared_norm = norm(width)
         self.map_memory = nn.Linear(width, map_width, bias=False)
@@ -44,8 +43,7 @@ class Encoder(nn.Module):
                 field: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """ship (..., N, Fs), global_token (..., 1, Fg), field (..., M, Ff) to the queries
         (..., N + 1, D) and the map memory (..., M, Dm)."""
-        queries = self._shared(torch.cat([self.ship(ship), getattr(self, "global")(global_token)],
-                                         -2))
+        queries = self._shared(torch.cat([self.ship(ship), self.global_token(global_token)], -2))
         memory = self.map_memory_norm(self.map_memory(self._shared(self.field(field))))
         return queries, memory
 

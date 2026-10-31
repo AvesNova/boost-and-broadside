@@ -52,10 +52,9 @@ def hex_counts(x: torch.Tensor, y: torch.Tensor, is_ally: torch.Tensor, alive: t
     lower = u + v <= 1.0
     # Three vertices per ship: the lower triangle (0,0),(1,0),(0,1) or the upper (1,0),(0,1),(1,1).
     device = x.device
-    offset_q = torch.where(lower[..., None], torch.tensor([0, 1, 0], device=device),
-                           torch.tensor([1, 0, 1], device=device))
-    offset_r = torch.where(lower[..., None], torch.tensor([0, 0, 1], device=device),
-                           torch.tensor([0, 1, 1], device=device))
+    vertex = torch.arange(3, device=device)
+    offset_q = torch.where(lower[..., None], vertex == 1, vertex != 1).long()
+    offset_r = torch.where(lower[..., None], vertex == 2, vertex >= 1).long()
     weight = torch.where(lower[..., None], torch.stack([1.0 - u - v, u, v], -1),
                          torch.stack([1.0 - v, 1.0 - u, u + v - 1.0], -1))
     q = base_q.long()[..., None] + offset_q + rings
