@@ -26,10 +26,9 @@ from .heads import MLPHead, NextStateHead, ShotTrajectoryHead, critic_values
 from .inputs import FIELD_INPUTS, GLOBAL_INPUTS, Tokens, compose, ship_inputs, truth
 from .layers import rotary_tables
 from .network import Encoder, Trunk
-from .state_code import MEANS, SPREADS, ShipStateCode, velocity_reach
+from .state_code import MEANS, POSITION_LEVELS, SPREADS, ShipStateCode, velocity_reach
 
-SHOT_OUTCOMES = 19
-SHOT_HARMONICS = 4
+SHOT_HARMONICS = 4  # the trajectory head's age features
 
 
 @dataclasses.dataclass(frozen=True)
@@ -41,6 +40,10 @@ class YemongConfig:
     off the global token (the others are per-ship categorical values).
     rotary_period: the base period (m) of the position frequencies (2 pi / p) 2^k,
     k < rotary_octaves; heading_harmonics: the heading's.
+    bfloat16_matmuls: run the network's matrix products (encoder, trunk, heads) under bf16
+    autocast. The residual stream, the recurrence, the codes, the belief and the critic
+    expectations stay float32. Off by default: `step` and `unroll` then agree to float32
+    rounding, which PPO's ratio relies on.
     """
 
     width: int = 128
@@ -57,10 +60,13 @@ class YemongConfig:
     rotary_period: float = 64.0  # m
     rotary_octaves: int = 8
     heading_harmonics: tuple[int, ...] = (1, 2, 4, 8)
+    bfloat16_matmuls: bool = False
 
     def __post_init__(self) -> None:
         if self.outcome_level not in self.levels:
             raise ValueError(f"outcome level {self.outcome_level!r} is not in {self.levels}")
+        if len(self.levels) < 2:
+            raise ValueError("the critic needs at least one per-ship level besides the outcome")
         pairs = 2 * self.rotary_octaves + len(self.heading_harmonics)
         if 2 * pairs > self.width // self.heads:
             raise ValueError(f"{pairs} rotary pairs do not fit a head of "
@@ -88,13 +94,13 @@ class Carry:
 @contract
 class Replay:
     """What one decision read from the belief and the carry, after assimilating sight:
-    valid (R, N), means (R, N, 12), spreads (R, N, 15), action (R, N, 42), previous_action
-    (R, S)."""
+    valid (R, N), means (R, N, 12), spreads (R, N, 15); enemy_action (R, N - S, 42), the
+    action belief of the enemy rows (the only rows it is read for); previous_action (R, S)."""
 
     valid: torch.Tensor
     means: torch.Tensor
     spreads: torch.Tensor
-    action: torch.Tensor
+    enemy_action: torch.Tensor
     previous_action: torch.Tensor
 
 
@@ -158,7 +164,7 @@ class Yemong(nn.Module):
         self.outcome = MLPHead(width, hidden, critic.OUTCOMES)
         cells = density.cell_count(config.hex_rings)
         self.density = MLPHead(width, hidden, 2 * cells)
-        self.shot_outcome = MLPHead(width, hidden, SHOT_OUTCOMES)
+        self.shot_outcome = MLPHead(width, hidden, self.shot_code.outcome_width)
         self.shot_trajectory_head = ShotTrajectoryHead(width, 1 + 2 * SHOT_HARMONICS,
                                                        self.shot_code.trajectory_width)
         self._initialise(rules.num_ships, cells)
@@ -177,8 +183,8 @@ class Yemong(nn.Module):
         groups = self.state_code.groups
         with torch.no_grad():
             self.encoder.ship.first.weight[:, :self.state_code.width].normal_(0.0, groups**-0.5)
-            field_code = FIELD_INPUTS - 3
-            self.encoder.field.first.weight[:, :field_code].normal_(0.0, (field_code // 9) ** -0.5)
+            field_code = 9 * POSITION_LEVELS  # the field token's position code
+            self.encoder.field.first.weight[:, :field_code].normal_(0.0, POSITION_LEVELS**-0.5)
             self.density.last.bias.fill_(math.log(max(num_ships, 2) / 2 / cells))
 
     # ------------------------------------------------------------------ carry
@@ -217,9 +223,12 @@ class Yemong(nn.Module):
 
     # ------------------------------------------------------------------ shared
 
+    def _matmuls(self, device: torch.device):
+        return torch.autocast(device.type, torch.bfloat16, enabled=self.config.bfloat16_matmuls)
+
     def tokens(self, obs: Obs, replay: Replay) -> Tokens:
         """The encoder inputs of views and their replay records."""
-        return compose(obs, replay.valid, replay.means, replay.spreads, replay.action,
+        return compose(obs, replay.valid, replay.means, replay.spreads, replay.enemy_action,
                        replay.previous_action, self.state_code, self.ship_types,
                        self.config.presence_radius)
 
@@ -260,17 +269,22 @@ class Yemong(nn.Module):
         spawned = ships[..., SHIP["spawned"]] > 0.5
         seen = beliefs.observe(carry.belief, truth(ships), visible, spawned)
         replay = Replay(valid=seen.valid, means=seen.means, spreads=seen.spreads,
-                        action=seen.action, previous_action=carry.previous_action)
+                        enemy_action=seen.action[..., carry.previous_action.shape[-1]:, :],
+                        previous_action=carry.previous_action)
         tokens = self.tokens(obs, replay)
-        queries, memory, token_tables, map_tables = self._encode(tokens)
-        hidden, state, buffer = self.trunk.step(queries, memory, token_tables, map_tables,
-                                                carry.state, carry.convolution_buffer)
-        policy_logits, enemy_action_logits, next_state_logits, _, values, outcome_logits = \
-            self._decision_heads(hidden, tokens.code, carry.previous_action.shape[-1])
+        with self._matmuls(ships.device):
+            queries, memory, token_tables, map_tables = self._encode(tokens)
+            hidden, state, buffer = self.trunk.step(queries, memory, token_tables, map_tables,
+                                                    carry.state, carry.convolution_buffer)
+            policy_logits, enemy_action_logits, next_state_logits, _, values, outcome_logits = \
+                self._decision_heads(hidden, tokens.code, carry.previous_action.shape[-1])
+        dtype = self.bins.dtype  # the model's, if autocast left bf16
+        policy_logits, enemy_action_logits, outcome_logits = \
+            policy_logits.to(dtype), enemy_action_logits.to(dtype), outcome_logits.to(dtype)
         means, spreads = self.state_code.decode_logits(next_state_logits, tokens.ship_type)
         advanced, nonfinite = beliefs.advance(seen, torch.cat([means, spreads], -1),
                                               enemy_action_logits)
-        carry = Carry(state=state, convolution_buffer=buffer, belief=advanced,
+        carry = Carry(state=state.to(dtype), convolution_buffer=buffer.to(dtype), belief=advanced,
                       previous_action=carry.previous_action,
                       nonfinite=carry.nonfinite + nonfinite)
         return Decision(policy_logits=policy_logits, enemy_action_logits=enemy_action_logits,
@@ -285,20 +299,26 @@ class Yemong(nn.Module):
         every step at once, the temporal sublayers scan over time."""
         carry = self._cleared(carry, reset[0])
         tokens = self.tokens(obs, replay)
-        queries, memory, token_tables, map_tables = self._encode(tokens)
-        hidden, _, _ = self.trunk.sequence(queries, memory, token_tables, map_tables,
-                                           carry.state, carry.convolution_buffer, reset)
-        policy_logits, enemy_action_logits, next_state_logits, value_logits, values, \
-            outcome_logits = self._decision_heads(hidden, tokens.code,
-                                                  replay.previous_action.shape[-1])
         ships = tokens.code.shape[-2]
-        ship_hidden = hidden[..., :ships, :]
-        return Unrolled(policy_logits=policy_logits, enemy_action_logits=enemy_action_logits,
-                        next_state_logits=next_state_logits, value_logits=value_logits,
-                        values=values, outcome_logits=outcome_logits,
-                        density_log_rates=self.density(hidden[..., ships, :]),
-                        shot_outcome_logits=self.shot_outcome(ship_hidden),
-                        shot_latents=self.shot_trajectory_head.latent(ship_hidden))
+        with self._matmuls(obs.ships.device):
+            queries, memory, token_tables, map_tables = self._encode(tokens)
+            hidden, _, _ = self.trunk.sequence(queries, memory, token_tables, map_tables,
+                                               carry.state, carry.convolution_buffer, reset)
+            policy_logits, enemy_action_logits, next_state_logits, value_logits, values, \
+                outcome_logits = self._decision_heads(hidden, tokens.code,
+                                                      replay.previous_action.shape[-1])
+            ship_hidden = hidden[..., :ships, :]
+            density_log_rates = self.density(hidden[..., ships, :])
+            shot_outcome_logits = self.shot_outcome(ship_hidden)
+            shot_latents = self.shot_trajectory_head.latent(ship_hidden)
+        dtype = self.bins.dtype  # the model's, if autocast left bf16
+        return Unrolled(policy_logits=policy_logits.to(dtype),
+                        enemy_action_logits=enemy_action_logits.to(dtype),
+                        next_state_logits=next_state_logits, value_logits=value_logits.to(dtype),
+                        values=values, outcome_logits=outcome_logits.to(dtype),
+                        density_log_rates=density_log_rates.to(dtype),
+                        shot_outcome_logits=shot_outcome_logits.to(dtype),
+                        shot_latents=shot_latents.to(dtype))
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
         """Trajectory code logits (..., ages, 154) of latents (..., D) at bullet ages (in

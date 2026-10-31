@@ -68,10 +68,11 @@ class Tokens:
 
 
 def compose(obs: Obs, valid: torch.Tensor, means: torch.Tensor, spreads: torch.Tensor,
-            action: torch.Tensor, previous_action: torch.Tensor, state_code: ShipStateCode,
+            enemy_action: torch.Tensor, previous_action: torch.Tensor, state_code: ShipStateCode,
             ship_types: int, presence_radius: float) -> Tokens:
-    """valid (..., N), means (..., N, 12), spreads (..., N, 15), action (..., N, 42): the belief
-    after this observation; previous_action (..., S) the own ships' last joint actions."""
+    """valid (..., N), means (..., N, 12), spreads (..., N, 15): the belief after this
+    observation; enemy_action (..., N - S, 42): its action forecasts for the enemy rows (the
+    own rows' pending actions are previous_action (..., S), their last joint actions)."""
     ships = obs.ships
     own = previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -84,8 +85,7 @@ def compose(obs: Obs, valid: torch.Tensor, means: torch.Tensor, spreads: torch.T
     own_action = (previous_action[..., None] == joint).to(ships.dtype)
     spawned = column["spawned"][..., own:, None] > 0.5
     null = (joint == NULL_ACTION).to(ships.dtype)
-    enemy_action = torch.where(spawned, null, action[..., own:, :])
-    pending = torch.cat([own_action, enemy_action], -2)
+    pending = torch.cat([own_action, torch.where(spawned, null, enemy_action)], -2)
 
     gradient = torch.stack([column["log_index_gradient_x"], column["log_index_gradient_y"]], -1)
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE

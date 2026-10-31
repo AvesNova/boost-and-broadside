@@ -151,7 +151,8 @@ def test_spawning_voids_a_belief():
         replay = net.step(carry, dataclasses.replace(view, ships=ships), no_reset).replay
     assert not replay.valid[:, 5].any() and replay.valid[:, 6:10].all()
     assert (replay.means[:, 5] == 0).all() and (replay.spreads[:, 5] == 0).all()
-    assert torch.allclose(replay.action[:, 5], torch.full_like(replay.action[:, 5], 1 / 42))
+    uniform = torch.full_like(replay.enemy_action[:, 0], 1 / 42)
+    assert torch.allclose(replay.enemy_action[:, 0], uniform)  # row 5 is enemy row 0
     assert (replay.means[:, 6:10] == 7.0).all() and (replay.spreads[:, 6:10] == 3.0).all()
 
 
