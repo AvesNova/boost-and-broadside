@@ -59,7 +59,8 @@ def main() -> None:
             if r["status"] != "ok":
                 print(f"{label}: {r['status']} {r.get('error', '')[-500:]}", flush=True)
             elif cell["kind"] == "train":
-                print(f"{label} x{cell['envs']:5d} envs: rollout {r['rollout_env_ticks_per_s']:,.0f}"
+                rollout = r["rollout_env_ticks_per_s"]
+                print(f"{label} x{cell['envs']:5d} envs: rollout {rollout:,.0f}"
                       f" env-ticks/s, train {r['train_env_ticks_per_s']:,.0f}, learn "
                       f"{r['learn_ms']:.0f} ms, VRAM {r['peak_vram_gb']:.2f} GB, compile "
                       f"{r['compile_s']:.0f} s", flush=True)

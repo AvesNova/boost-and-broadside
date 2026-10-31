@@ -1,4 +1,4 @@
-"""Visibility (race SPEC 10.1): who sees which ships and bullets."""
+"""Visibility (race SPEC 10.1): which ships each team sees. Bullets are not observed."""
 
 from typing import NamedTuple
 
@@ -58,9 +58,7 @@ class Visibility(NamedTuple):
     """Per looking team T (the team axis holds the teams asked for, both by default)."""
 
     ships: torch.Tensor  # (B, T, N): ship k visible to team T
-    bullets: torch.Tensor  # (B, T, N K): bullet j visible to team T
     enemy_ships: torch.Tensor  # (B, T, N/2): team 1 - T's ships seen by team T
-    enemy_bullets: torch.Tensor  # (B, T, N/2 K): team 1 - T's bullets seen by team T
 
 
 def visibility(p: Preset, st: dict, teams: slice = slice(None)) -> Visibility:
@@ -81,16 +79,12 @@ def visibility(p: Preset, st: dict, teams: slice = slice(None)) -> Visibility:
     ox, oy, o_in = located(own(st["x"]), own(st["y"]))
     observers = (ox, oy, own(st["alive"]), o_in)
     seen_ships = sighted(p, cores, observers, located(foreign(st["x"]), foreign(st["y"])))
-    seen_bullets = sighted(p, cores, observers, located(foreign(st["bx"]), foreign(st["by"])))
     enemy_ships = foreign(st["alive"]) & (foreign(st["fired"]) | foreign(st["spawned"]) | seen_ships)
-    enemy_bullets = foreign(st["ttl"] > 0) & seen_bullets
 
     def all_ships(team, own_part, enemy_part):  # one team's row over every ship, team 0's first
         return torch.cat([own_part, enemy_part] if team == 0 else [enemy_part, own_part], -1)
 
     looking = range(2)[teams]
-    own_active = own(st["ttl"] > 0)
     ships = torch.stack([all_ships(T, torch.ones_like(enemy_ships[:, i]), enemy_ships[:, i])
                          for i, T in enumerate(looking)], 1)
-    bullets = torch.stack([all_ships(T, own_active[:, i], enemy_bullets[:, i]) for i, T in enumerate(looking)], 1)
-    return Visibility(ships, bullets, enemy_ships, enemy_bullets)
+    return Visibility(ships, enemy_ships)

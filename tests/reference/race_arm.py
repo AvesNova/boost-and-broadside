@@ -2,12 +2,14 @@
 
 The observation is translated from the contract layout back to the race's: rows in sim
 order, `ally` from team_rel, times in ticks, no team_rel / since_seen / spawned columns.
+Bullets are not observed (contract decision 2026-10-31), so the race's bullet observation
+checks are removed from the copied tests.
 """
 
 import numpy as np
 import torch
 
-from bnb.contracts.obs import BULLET, SHIP
+from bnb.contracts.obs import SHIP
 from bnb.game import match
 from bnb.game.perception.observe import perceive
 from bnb.game.physics import flight as flight_mod
@@ -40,7 +42,6 @@ def with_memory(st: dict) -> dict:
 def race_observation(p, st: dict) -> dict:
     _, obs, truth = perceive(p, with_memory(st))
     B, T, N, _ = obs.ships.shape
-    K = p.slots
     inverse = torch.argsort(truth.view_order[0], dim=-1)  # (T, N): row of each sim ship
     views = torch.arange(T)[:, None]
     ships = obs.ships[:, views, inverse]
@@ -52,9 +53,7 @@ def race_observation(p, st: dict) -> dict:
             cols.append(torch.round(ships[..., SHIP[name]] / p.h))
         else:
             cols.append(ships[..., SHIP[name]])
-    binv = (inverse[..., None] * K + torch.arange(K)).reshape(T, N * K)
-    bullets = obs.bullets[:, views, binv][..., [BULLET[c] for c in ("x", "y", "vx", "vy", "visible")]]
-    return dict(ships=torch.stack(cols, -1), bullets=bullets, fields=obs.fields[:, 0],
+    return dict(ships=torch.stack(cols, -1), fields=obs.fields[:, 0],
                 globals=obs.globals[:, 0, :2])
 
 

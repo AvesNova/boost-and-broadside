@@ -39,7 +39,7 @@ def perceive(p: Preset, st: dict) -> tuple[dict, Obs, Privileged]:
     """Visibility, the per-view observation and the truth. Returns the state with
     `last_seen` advanced (the only state perception changes)."""
     B, N = st["x"].shape
-    T, S, K = 2, p.half, p.slots
+    T, S = 2, p.half
     device = st["x"].device
     order = view_order(T, S, device)  # (T, N)
     views = torch.arange(T, device=device)[:, None]
@@ -59,23 +59,11 @@ def perceive(p: Preset, st: dict) -> tuple[dict, Obs, Privileged]:
 
     ships = ship_rows(vis.ships, last_seen.float() * p.h)
 
-    bn = torch.exp(st["blogn"]).reshape(B, N * K)
-    bw = st["bw"].reshape(B, N * K)
-    speed = bw / bn  # world speed
-    bcols = torch.stack([st["bx"].reshape(B, -1), st["by"].reshape(B, -1),
-                         st["bdx"].reshape(B, -1) * speed, st["bdy"].reshape(B, -1) * speed], -1)
-    border = (order[..., None] * K + torch.arange(K, device=device)).reshape(T, N * K)
-    bvis = vis.bullets[:, views, border]  # (B, T, N K)
-    bullet_rel = (torch.arange(N * K, device=device) // (S * K)).float()  # owner's team_rel
-    bullet_cols = torch.where(bvis[..., None], bcols[:, border], 0.0)
-    bullets = torch.cat([bullet_cols, bvis[..., None].float(),
-                         torch.where(bvis, bullet_rel, 0.0)[..., None]], -1)
-
     fields = torch.stack([st["fx"], st["fy"], st["fr"], st["flevel"].float()], -1)
     t = st["t"].float()
     glob = torch.stack([t / p.episode_ticks, torch.full_like(t, p.arena_radius), torch.ones_like(t),
                         (st["t"] == 0).float()], -1)
-    obs = Obs(ships=ships, bullets=bullets, fields=fields[:, None].expand(B, T, -1, -1),
+    obs = Obs(ships=ships, fields=fields[:, None].expand(B, T, -1, -1),
               globals=glob[:, None].expand(B, T, -1))
 
     everything, never = torch.ones_like(vis.ships), torch.zeros_like(last_seen, dtype=torch.float32)

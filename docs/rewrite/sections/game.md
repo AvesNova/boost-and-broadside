@@ -1,4 +1,8 @@
-# Section 1: physics (and the perception code that reads its state)
+# Section 1: game (physics, perception, spawns and maps: the `bnb.game` package)
+
+Renamed from "physics" (author, 2026-10-31). Perception is part of this section, because
+the package that owns the state owns the code that reads it. The mode block on the global
+token belongs to the modes section.
 
 Status: decisions nearly complete, 2026-10-31. The starting spec is the race spec
 (`physics-race/SPEC.md`, branch `v3-general`) and its PyTorch arm, already in
@@ -88,10 +92,9 @@ One coding agent, launched with a written brief.
 - **Does not see:** the float64 oracle or the v1 code.
 - **Changes:**
   - `src/bnb/game/physics/`;
-  - `src/bnb/game/perception/`: only what the state changes force (field access, the
-    bullet representation). Sight rules and the observation contract stay fixed; the
-    observation goldens check it. Option (a) of question 9; the perception section's own
-    work (fog-off envs, the mode block, sight-test speed) stays separate;
+  - `src/bnb/game/perception/`: sight and observe, kept correct for the new state.
+    Within scope: the sight test's speed at general sizes, and fog-off envs. The sight
+    rules and the observation contract are fixed; the goldens check them;
   - new tests under `tests/sections/`.
 - **Must not change:** contracts, runtime, the goldens or the spec docs. It files
   requests in its report instead.
@@ -101,6 +104,14 @@ One coding agent, launched with a written brief.
 
 Then a blind review by a separate agent, then integration after the author has seen
 both.
+
+15. **No bullets in the observation (author, 2026-10-31).**
+    - Models do not read bullets, and a firing ship is always visible, so its bullets
+      would be too.
+    - Shot labels are rebuilt learner-side from stored truth and train on enemies in
+      sight, which is ship visibility.
+    - So there is no bullet sight test, which was about 6x the ship sight-test work. The
+      contract and the skeleton are already changed.
 
 ## Carried from the race review
 

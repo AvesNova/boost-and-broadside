@@ -28,7 +28,6 @@ def test_step_matches_reference(arm, preset):
     compare_dict(st, g["expected_state"], rtol=2e-5, max_bad=2e-3, context=f"step {preset} state: ")
     compare_dict(ev, g["events"], rtol=2e-5, max_bad=2e-3, context=f"step {preset} events: ")
     compare(obs["ships"], g["obs"]["ships"], "obs.ships", atol=5e-2, rtol=2e-5, max_bad=2e-3)
-    compare(obs["bullets"], g["obs"]["bullets"], "obs.bullets", atol=5e-2, rtol=2e-5, max_bad=2e-3)
     compare(obs["fields"], g["obs"]["fields"], "obs.fields", atol=1e-2, rtol=1e-6)
     compare(obs["globals"], g["obs"]["globals"], "obs.globals", atol=1e-6, rtol=1e-6)
 
@@ -38,7 +37,6 @@ def test_observe_matches_reference(arm, preset):
     g = golden(f"step_{preset}.npz")
     obs = arm.observe(preset, g["state"])
     compare(obs["ships"], g["obs_before"]["ships"], "obs.ships", atol=5e-2, rtol=2e-5, max_bad=2e-3)
-    compare(obs["bullets"], g["obs_before"]["bullets"], "obs.bullets", atol=5e-2, rtol=2e-5, max_bad=2e-3)
 
 
 @pytest.mark.parametrize("preset", PRESET_NAMES)

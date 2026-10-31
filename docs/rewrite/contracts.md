@@ -303,6 +303,17 @@ snapshot(state) -> RenderSnapshot            # play section
   6. Learner seat randomized per env per episode: **agreed** (a cheap guard; maps are
      already seat-symmetric).
 
+## Decision: no bullets in the observation (author, 2026-10-31)
+
+`Obs` has `ships`, `fields` and `globals` only. Reasons:
+- models do not read bullets;
+- a firing ship is always visible, so its bullets would be too;
+- shot labels are rebuilt learner-side from stored truth, and they use ship visibility.
+
+This supersedes the decision log's "raw observation includes bullets". The sight test no
+longer pairs bullets with observers. The race reference tests lost their bullet
+observation checks (`test_bullet_visibility` and the `obs.bullets` comparisons).
+
 ## Skeleton implementation notes (2026-10-31)
 
 Milestone 0 is built (`src/bnb`). These are the places where it differs from or settles

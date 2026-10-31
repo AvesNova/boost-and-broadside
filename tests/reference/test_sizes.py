@@ -29,5 +29,4 @@ def test_step_at_custom_size(arm, name):
     compare_dict(st, g["expected_state"], rtol=2e-5, max_bad=2e-3, context=f"step {name} state: ")
     compare_dict(ev, g["events"], rtol=2e-5, max_bad=2e-3, context=f"step {name} events: ")
     compare(obs["ships"], g["obs"]["ships"], "obs.ships", atol=5e-2, rtol=2e-5, max_bad=2e-3)
-    compare(obs["bullets"], g["obs"]["bullets"], "obs.bullets", atol=5e-2, rtol=2e-5, max_bad=2e-3)
     compare(arm.chaser(size, g["state"]), g["chaser"], "chaser", max_bad=2e-3)

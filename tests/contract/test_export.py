@@ -21,7 +21,7 @@ class Step(torch.nn.Module):
         self.model = model
 
     def forward(self, ships, fields, globals):
-        return self.model(Obs(ships=ships, bullets=None, fields=fields, globals=globals))
+        return self.model(Obs(ships=ships, fields=fields, globals=globals))
 
 
 def test_mlp_exports_to_onnx(tmp_path):

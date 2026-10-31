@@ -133,7 +133,7 @@ Coupling found in the current code that blocks goal B:
 - The env emits a **raw, team-canonicalized observation** (self = team 0). A
   model-owned adapter inside the agent builds the model's input; nothing model-specific
   (codes, belief composition, feature transforms) lives in the env or the runtime.
-- Raw observation includes bullets even though Yemong does not read them.
+- ~~Raw observation includes bullets even though Yemong does not read them.~~ Superseded 2026-10-31: no bullets in the observation (see contracts.md).
 - Categorical token type (ship, field, zone, super token) separate from a categorical
   team (two teams for now). Game mode categorical.
 - Absolute world positions (models add rotary or other encodings themselves).

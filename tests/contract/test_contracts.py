@@ -44,10 +44,10 @@ def test_observation_schema():
 
 
 def test_contracts_are_pytrees():
-    obs = Obs(ships=torch.zeros(2, 3), bullets=None, fields=torch.ones(1), globals=None)
+    obs = Obs(ships=torch.zeros(2, 3), fields=torch.ones(1), globals=None)
     leaves, spec = _pytree.tree_flatten(obs)
     back = _pytree.tree_unflatten(leaves, spec)
-    assert back.bullets is None and torch.equal(back.ships, obs.ships)
+    assert back.globals is None and torch.equal(back.ships, obs.ships)
     out = _pytree.tree_map_only(torch.Tensor, lambda x: x + 1, Outputs(logp=torch.zeros(2)))
     assert out.value is None and out.logp.sum() == 2
 

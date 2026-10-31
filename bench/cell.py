@@ -21,7 +21,7 @@ TIMED = 3
 
 
 def train_cell(size: dict, envs: int) -> dict:
-    from bnb.runtime.train import Trainer, TrainConfig
+    from bnb.runtime.train import TrainConfig, Trainer
 
     torch.manual_seed(0)
     dev = torch.device("cuda")

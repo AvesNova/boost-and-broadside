@@ -267,17 +267,3 @@ def test_hidden_rows_are_masked(arm):
     assert row[11] == 1.0 and row[12] == 0.0 and row[13] == 0.0
 
 
-def test_bullet_visibility(arm):
-    st = vis_state(arm)
-    st["ttl"][0, 1, 0] = 5
-    st["bx"][0, 1, 0], st["by"][0, 1, 0] = 100.0, 0.0
-    st["bdx"][0, 1, 0], st["bdy"][0, 1, 0], st["bw"][0, 1, 0] = -1.0, 0.0, 500.0
-    obs = arm.observe("duel", st)["bullets"]
-    K = PRESETS["duel"]["slots"]
-    j = 1 * K + 0
-    assert obs[0, 0, j, 4] == 1.0 and obs[0, 1, j, 4] == 1.0
-    assert abs(obs[0, 0, j, 2] + 500.0) < 1e-3
-    core_at(st, -100.0, 0.0, 100.0)
-    obs = arm.observe("duel", st)["bullets"]
-    assert obs[0, 0, j, 4] == 0.0 and obs[0, 1, j, 4] == 1.0, "hidden behind a core, still the owner's"
-    assert (obs[0, 0, j] == 0.0).all()

@@ -17,12 +17,10 @@ SHIP_COLUMNS = (
     "alive", "visible", "respawn", "type", "team_rel", "since_seen", "spawned",  # always shown
 )
 SHIP_HIDDEN_ZERO = 12  # the first this-many columns are zero for a ship the team cannot see
-BULLET_COLUMNS = ("x", "y", "vx", "vy", "visible", "team_rel")
 FIELD_COLUMNS = ("x", "y", "radius", "level")
 GLOBAL_COLUMNS = ("t_frac", "arena_radius", "fog", "reset")
 
 SHIP = {name: i for i, name in enumerate(SHIP_COLUMNS)}
-BULLET = {name: i for i, name in enumerate(BULLET_COLUMNS)}
 FIELD = {name: i for i, name in enumerate(FIELD_COLUMNS)}
 GLOBAL = {name: i for i, name in enumerate(GLOBAL_COLUMNS)}
 
@@ -32,14 +30,15 @@ class Obs:
     """One or more team views, float32. Leading axes are (batch..., ) then:
 
     ships (..., N, len(SHIP_COLUMNS)), own team's S ships first, then by team_rel and slot;
-    bullets (..., N*K, len(BULLET_COLUMNS)), ordered by the owner's row then slot;
     fields (..., M, len(FIELD_COLUMNS)); globals (..., len(GLOBAL_COLUMNS)).
 
     A stored batch may leave out (None) a part its model does not read.
+
+    There are no bullets (author, 2026-10-31): models do not read them, a firing ship is
+    always visible, and shot labels are rebuilt learner-side from stored truth.
     """
 
     ships: torch.Tensor | None
-    bullets: torch.Tensor | None
     fields: torch.Tensor | None
     globals: torch.Tensor | None
     SCHEMA_VERSION: ClassVar[int] = 1

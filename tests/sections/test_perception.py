@@ -41,7 +41,7 @@ def test_views_swap_with_the_teams():
     p, st = _game()
     _, obs, _ = perceive(p, st)
     _, swapped, _ = perceive(p, _swap_teams(st, p.half))
-    for part in ("ships", "bullets", "fields", "globals"):
+    for part in ("ships", "fields", "globals"):
         a, b = getattr(obs, part), getattr(swapped, part)
         assert torch.equal(a[:, 0], b[:, 1]) and torch.equal(a[:, 1], b[:, 0]), part
 

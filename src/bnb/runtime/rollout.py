@@ -21,7 +21,7 @@ from bnb.game.perception.observe import perceive
 
 from .lineup import Lineup
 
-PARTS = ("ships", "bullets", "fields", "globals")
+PARTS = ("ships", "fields", "globals")
 COUNTERS = ("shots", "hits", "deaths", "resets")
 
 

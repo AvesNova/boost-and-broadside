@@ -328,8 +328,8 @@ Not yet in the skeleton:
 | # | Section | Acceptance type |
 |---|---|---|
 | 0 | contracts + skeleton | contract tests, toy learning, benchmark baseline |
-| 1 | physics (arm + review fixes) | race oracle + goldens + mutants (already exist) |
-| 2 | perception / observation | float64 oracle + goldens; schema contract |
+| 1 | game: physics, perception, spawns, maps (arm + review fixes + decided changes; `sections/game.md`) | race oracle + goldens + mutants (updated for the changes) |
+| 1b | ship card: handles to physics parameters (offline solver) | round-trip and independence tests against the forward model |
 | 3 | modes + events | rule tests per component; zero-sum property tests |
 | 4 | scripted agent | behavioural tests; Elo vs today's scripted, as a sanity range |
 | 5 | model (Yemong) | `unroll == loop(step)`; parity with today's forward where specced |
