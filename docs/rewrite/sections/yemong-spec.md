@@ -253,9 +253,10 @@ Positions are the belief means; "valid" is the belief's valid flag; there is no 
 **Rotary geometry:**
 - tokens: ships at their belief position and heading; the global token at the origin with
   no heading; fields at their centres with no heading;
-- frequencies `(2π/p) 2^k`, with `p = 64 m` and `k = 0…7` on each of x and y, and
-  harmonics `1, 2, 4, 8` on the heading **(v2**: metre periods; there is no torus, so
-  periodicity no longer constrains the coarsest);
+- frequencies `(2π/8192 m) 2^k`, `k = 0…7`, on each of x and y (periods from 8192 m
+  down to 64 m), and harmonics `1, 2, 4, 8` on the heading **(v2**: metre periods; there is
+  no torus, so periodicity no longer fixes the coarsest. Erratum 2026-11-01: the first
+  text inverted this, giving periods from 64 m down to 0.5 m);
 - 20 pairs, 40 of the 64 head dims.
 
 **Initialising the encoder's code columns** (v1): each first projection's columns for
