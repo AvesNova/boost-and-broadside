@@ -258,3 +258,118 @@ per tick.
      but it changes the replay's definition.
 9. **bf16** (deviation 11). The learner section should decide whether to run rollouts and
    updates under bf16 with the ratio computed against a bf16 `unroll`.
+
+## Fix round (2026-11-01)
+
+This section supersedes the earlier text where they differ, including deviations 1, 2, 5 and
+11 and requests 1–7. `uv run --no-sync pytest` passes in full, with all 43 Yemong
+equivalence tests running (the presence golden was regenerated on `v2`). Ruff is clean.
+
+### Design change: a per-view position offset
+- Each view draws an offset in `[0, P)` per axis, P = 26 244 m:
+  - at every reset, and in `initial_carry`;
+  - from the default generator, so it is capture-safe like the action noise.
+- It lives in `Carry.offset` and `Replay.offset`.
+- `truth` adds it to the observed ship positions, and `compose` adds it to the field
+  centres and the map centre. The belief, the codes, the forecasts and the rotary
+  positions all live in that shifted frame.
+- The global token has its position code back (the shifted map centre, sigma 0), and its
+  rotary position is that centre.
+- Decoded forecast positions come back in `[0, P)`. They are mapped to the copy nearest
+  the prior belief (`_nearest`), so the frame stays continuous and differences never
+  wrap. *Deviation:* the coordinator's text says the centring "goes away". Without
+  `_nearest`, a ship near the period seam would appear 26 km from its neighbours in
+  presence and rotary.
+- A row with no belief sits at the map centre, not at the frame origin. *Deviation:* at
+  the origin it would reveal the offset to rotary attention.
+- Tests check that resets draw different offsets and keep them within a match. They also
+  check that, with the position-code columns zeroed, a decision does not change when the
+  history is moved to a frame shifted by delta (1e-8 in float64).
+
+### Float32 precision in the shifted frame
+- The frame reaches about 40 km. Two quantities then lost float32 precision, and fused
+  (compiled) and unfused kernels rounded them differently:
+  - the finest position-code level (a coordinate near 2e4);
+  - the rotary angles (thousands of radians).
+- Both now reduce first:
+  - the circular code reduces modulo each level's period, which is exact for integer
+    periods (spec-equivalent);
+  - rotary uses `2π (x mod p)/p`, with the periods held as exact powers of two.
+    `rotary_tables` takes periods; the adapter converts frequencies to periods
+    (`2π/f`).
+- The compiled and eager step tokens now agree to 4e-6 (was 1e-3), and the values after
+  one step to 1.4e-6 (was 1.2e-4).
+
+### Answers applied
+- **Rotary erratum:** periods run from 8192 m down to 64 m (`rotary_period = 8192`).
+- **`time_since_seen`** is `age × tick`, from the belief. `Replay.age` carries it.
+- **Fog off:** "zero spread" applies to living ships only (deviation 6 stands).
+- **`Outputs.values`** stays the raw expectation; bf16 stays opt-in.
+
+### Review findings
+1. **Scan memory.** Measured at (L, B, D) = (128, 1024, 128), compiled, forward and
+   backward, under the bench lock:
+
+   | Scan | Time | Peak extra |
+   |---|---:|---:|
+   | Hillis-Steele (before) | 27.2 ms | 1152 MiB (18× one input) |
+   | Plain loop | 416 ms | 322 MiB |
+   | Chunked, chunk 8 | 12.9 ms | 448 MiB |
+   | Chunked, chunk 16 | 19.1 ms | 472 MiB |
+   | Chunked, chunk 32 | 40.8 ms | 420 MiB |
+
+   Adopted: chunked with `SCAN_CHUNK = 8`. L is padded to whole chunks.
+2. **Tests from a carry with history.**
+   - Split segment: unroll of steps 32–63 from the step loop's carry at t = 32 matches
+     to 1e-9; with the trunk carry zeroed it does not (asserted to be more than 1e-3 off).
+   - `test_unroll_reproduces_the_stored_rollout` runs the rollout twice, so the stored
+     initial carry has history.
+   - Found while doing this: the test helper randomised only `last.weight`, which missed
+     the grouped heads' `lasts.*`. The next-state head was therefore dead in tests. It
+     now randomises them, and asserts they are live.
+3. **Step speed.**
+   - Fused: gate and up; the two RG-LRU gates; the first linear of the heads that share
+     a token (`HeadGroup`: own ships = policy + value; ships = enemy action + next
+     state). The adapter concatenates the fixture weights.
+   - `step` runs the enemy-action and next-state heads, and the decode, on enemy rows
+     only. `Decision.enemy_action_logits` and `next_state_logits` are `(R, N - S, ...)`.
+   - Carry copies: under compile, inductor already folds the reset `where`s into their
+     consumers. The step's new carry is written once and copied by the runtime. I left
+     the conv-buffer shift (a ring buffer would need a per-view tick and a gather).
+   - Step profile, 1792 views at the 40-ship size, compiled: 88.4 → 85.6 ms in float32
+     and 52.4 → 48.4 ms with bf16 matmuls. The trunk dominates (sgemm about 34 ms, the
+     gated MLP's gelu-mul 11.6 ms). The heads were a small share.
+   - Drift, compiled step loop against compiled unroll, 128 steps at squad:
+
+     | Precision | Policy logits | Values | PPO \|ratio − 1\| max | mean |
+     |---|---:|---:|---:|---:|
+     | float32 | 1.8e-6 | 8.3e-7 | 1.4e-6 | 2.4e-7 |
+     | bf16 matmuls | 1.9e-2 | 9.3e-3 | 1.6e-2 | 2.7e-3 |
+     | TF32 (set at the entry point) | 1.1e-3 | 4.7e-4 | 7.3e-4 | 1.3e-4 |
+
+   - Not resolved: the compiled and captured rollout's stored values drift from unroll by
+     up to 1.5e-4 over 64 ticks, growing through the recurrence. A step compiled and
+     captured on its own (with in-place carry `copy_`) agrees to 2e-6. So the cause is
+     specific to compiling the step inside the whole act stage. I did not isolate it.
+     The runtime storage test uses 1e-3.
+4. **Replay in bf16.** The enemy-action probabilities and the spreads are stored in bf16,
+   and `step` composes from the same rounded values, so step and unroll stay exact.
+   - Measured on real forecast spreads: rounding changes the state code by up to 5.4e-3
+     absolute, and the next-state baseline `log(code + 1e-3)` by up to 0.44.
+   - I judge the spreads **not clearly safe**. Recommendation: store spreads in float32
+     (one line, `inputs.STORED_DTYPE` applied only to `enemy_action`). I did not have
+     time to make and re-measure that change.
+   - The 26-ship cell re-run and the new rollout and unroll cells were still running when
+     I handed back. Results will be in `/tmp/bnb-scratch-yemong/bench_run2.log`.
+6. Hidden-columns test: now runs after 40 ticks of history, and asserts that hidden ships
+   hold beliefs.
+7. Cooldown residuals: derived from the card (`ShipStateCode.spread_count`).
+8. `density.HexGrid` builds its table once. `ReturnScale.update` uses `nanquantile` with
+   precomputed levels and has no host sync.
+9. The rollout probes the learner's first row only, then allocates `(L, R, ...)`.
+
+Nits:
+- full-word names (`sandwich`, `shots`, `density`, `codes`, `state_code`);
+- `TEAMS` imported from `bnb.game.rules`;
+- the bf16 docstring corrected;
+- `Decision.outcome_probabilities` against `Unrolled.outcome_logits`.
