@@ -95,7 +95,8 @@ first". The new flight model now exists fresh in the PyTorch arm, so that step i
 5. **Fixed shapes per run; preallocate everything.**
    - Allocate the rollout buffer, carry and observation once.
    - No allocation inside the captured region.
-6. **Struct-of-arrays state with a team axis.** Ship tensors are `(B, T, S, ...)` with an
+6. **State layout is chosen by measured speed and memory only** (author, 2026-11-01). Today: struct-of-arrays, team-major `(B, N)`, viewed as `(B, T, S)` (a view, no copy). Two teams is a fixed constant for now; N teams is a deliberate later change.
+   *Superseded wording:* **Struct-of-arrays state with a team axis.** Ship tensors are `(B, T, S, ...)` with an
    `active` mask, so N teams and the enemy view are free.
 7. **Dtypes:**
    - float32 state (positions included; the race showed float32 is enough with
@@ -337,7 +338,8 @@ Not yet in the skeleton:
 | 0 | contracts + skeleton | contract tests, toy learning, benchmark baseline |
 | 1 | game: physics, perception, spawns, maps (arm + review fixes + decided changes; `sections/game.md`) | race oracle + goldens + mutants (updated for the changes) |
 | 1b | ship card: handles to physics parameters (offline solver) | round-trip and independence tests against the forward model |
-| 3 | modes + events | rule tests per component; zero-sum property tests |
+| 3 | modes: game rules (zones, capture, win, respawn) in `bnb.game` | rule tests per component |
+| 3b | rewards: events to reward levels (v1 math: zero-sum, ally blame, kill shares, charge-back), learning side | zero-sum property tests; equivalence with v1 terms |
 | 4 | scripted agent | behavioural tests; Elo vs today's scripted, as a sanity range |
 | 5 | model (Yemong) | `unroll == loop(step)`; parity with today's forward where specced |
 | 6 | PPO + labels | toy-learning tests; label equivalence (resim matched bit for bit before) |

@@ -35,6 +35,10 @@ Status: walkthrough in progress, 2026-10-31.
 - **Food for thought:** separate encoders for allies and enemies. Rows are ordered by
   `team_rel`, so this is a contiguous slice and cheap. Candidate ablation.
 
+- **Equivalence by fixtures (author, 2026-11-01):** v1's modules are run on fixed inputs
+  and weights, and their inputs, weights and outputs are saved as goldens. The v2 modules
+  must match them. The agent does not read the v1 code.
+
 ## Related decisions (outside the model)
 
 - **Fog of war is toggleable per environment,** with a mix of fogged and clear maps in
@@ -50,6 +54,5 @@ Status: walkthrough in progress, 2026-10-31.
 
 ## Open
 
-- Equivalence fixtures from v1 modules vs letting the agent read the v1 code.
 - Contract additions for the inputs v1 reads (is-shooting, shield wait, local index and
   gradient, field band width). Names per the full-words rule.
