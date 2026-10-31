@@ -1,6 +1,6 @@
 # Section 3: modes (game rules in `bnb.game`)
 
-Status: decisions settled, 2026-11-01. Spec next.
+Status: decisions settled, 2026-11-01. Spec: `modes-spec.md`.
 
 ## Decided (author, 2026-11-01)
 

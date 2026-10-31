@@ -1,6 +1,6 @@
 # Section 3b: rewards (events to reward levels, learning side)
 
-Status: decisions settled, 2026-11-01. Spec next.
+Status: decisions settled, 2026-11-01. Spec: `rewards-spec.md`.
 
 ## Decided (author, 2026-11-01)
 
