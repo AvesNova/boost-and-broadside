@@ -13,7 +13,7 @@ from bnb.contracts.obs import GLOBAL, SHIP, ZONE
 from bnb.game import api
 from bnb.game.modes import frontline, spawns
 from bnb.game.modes.rules import PRESETS
-from bnb.game.physics.spawning import TickUniforms
+from bnb.game.physics.spawning import TickUniforms, formation_rank
 from bnb.game.state import by_team, replace
 
 TYPES = cases.TYPES
@@ -240,6 +240,36 @@ def test_grouped_reset_spreads_the_groups_and_fills_them_by_rank():
     plain = torch.stack([radius * angle.cos(), radius * angle.sin()], -1)
     plain_gaps = torch.stack([torch.pdist(c).min() for c in plain])
     assert gaps.mean() > 1.5 * plain_gaps.mean() and spread > 0
+
+
+def test_grouped_reset_picks_by_the_enemies_of_its_own_group():
+    """Brute force on a small arena, where groups overlap: each ship takes the candidate
+    (in the 300 m disc around its group's centre) farthest from the provisional points of
+    the enemies in its own group."""
+    rules = api.rules_of(GameConfig(4, 2, 600.0, spawn_groups=(2, 1, 1)))
+    B, N, S, K = 128, rules.num_ships, rules.ships_per_team, rules.mode.spawn_candidates
+    uniforms = api.uniforms(rules, B, generator=torch.Generator().manual_seed(18))
+    tick = TickUniforms(rules, uniforms)
+    zeros = torch.zeros(B, N)
+    place = spawns.deathmatch(rules, tick.mode, zeros, zeros, zeros.bool(),
+                              torch.ones(B, dtype=torch.bool), tick.keys)
+    centres = _group_centres(rules, uniforms)
+    rank = formation_rank(rules, tick.keys)
+    group = (rank >= 2).long() + (rank >= 3).long()
+    per_ship = tick.mode[:, 2 * K * 3:].reshape(B, N, -1)
+    distance = 300.0 * per_ship[..., :K].sqrt()
+    angle = 2.0 * math.pi * per_ship[..., K:2 * K]
+    centre = centres[torch.arange(B)[:, None], group]  # (B, N, 2)
+    x = centre[..., :1] + distance * angle.cos()
+    y = centre[..., 1:] + distance * angle.sin()
+    team = torch.arange(N) // S
+    rival = (team[:, None] != team) & (group[:, :, None] == group[:, None, :])
+    d = ((x[..., :, None] - x[:, None, None, :, 0]) ** 2
+         + (y[..., :, None] - y[:, None, None, :, 0]) ** 2)
+    nearest = torch.where(rival[:, :, None, :], d, math.inf).amin(-1)
+    pick = nearest.argmax(-1, keepdim=True)
+    torch.testing.assert_close(place.x, x.gather(-1, pick)[..., 0])
+    torch.testing.assert_close(place.y, y.gather(-1, pick)[..., 0])
 
 
 def test_grouped_respawns_land_near_a_living_anchor():

@@ -95,9 +95,9 @@ def kill_death_events(team: torch.Tensor, combat_death: torch.Tensor,
     """(..., N, 4) death, kill, ally kill, unforced.
 
     A dead ship's kill is shared half by the final tick's raw hits and half by the ship
-    rows' outstanding damage (by the hits alone when nothing is outstanding). Shares held
-    by enemies are kills; shares held by allies blame them and pay the opposing team twice.
-    A boundary death, and any share nobody holds, pays the opposing team.
+    rows' outstanding damage (by the hits alone when nothing is outstanding), so every
+    share is held. Shares held by enemies are kills; shares held by allies blame them and
+    pay the opposing team twice. A boundary death pays the opposing team.
     """
     raw_share = _shares(raw)
     outstanding = ledger.sum(-2, keepdim=True) > 0.0
@@ -106,8 +106,7 @@ def kill_death_events(team: torch.Tensor, combat_death: torch.Tensor,
     enemies = _enemies(team)
     ally_share = torch.where(enemies, 0.0, share)
     kill = torch.where(enemies, share, 0.0).sum(-1)
-    unheld = combat_death * (1.0 - share.sum(-2))
-    value = boundary_death + unheld + 2.0 * ally_share.sum(-2)
+    value = boundary_death + 2.0 * ally_share.sum(-2)
     death = -(combat_death | boundary_death).to(share.dtype)
     return torch.stack([death, kill, -ally_share.sum(-1), enemy_team_share(value, team)], -1)
 
