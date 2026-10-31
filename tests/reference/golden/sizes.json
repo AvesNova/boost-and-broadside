@@ -1,0 +1,22 @@
+{
+  "n14_m23_dense": {
+    "num_ships": 14,
+    "num_fields": 23,
+    "arena_radius": 2307.0
+  },
+  "n4_m64": {
+    "num_ships": 4,
+    "num_fields": 64,
+    "arena_radius": 1500.0
+  },
+  "n2_m1": {
+    "num_ships": 2,
+    "num_fields": 1,
+    "arena_radius": 900.0
+  },
+  "n66_m37_sparse": {
+    "num_ships": 66,
+    "num_fields": 37,
+    "arena_radius": 8684.0
+  }
+}

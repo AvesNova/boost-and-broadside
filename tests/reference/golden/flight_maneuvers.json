@@ -1,0 +1,366 @@
+{
+  "maneuvers": [
+    {
+      "name": "cruise_charging",
+      "speed": 105.0,
+      "store": 0.0,
+      "power": 0,
+      "stick": 0,
+      "seconds": 40,
+      "ship_type": 0
+    },
+    {
+      "name": "top_full_store",
+      "speed": 105.0,
+      "store": 10000.0,
+      "power": 0,
+      "stick": 0,
+      "seconds": 60,
+      "ship_type": 0
+    },
+    {
+      "name": "dive_full_store",
+      "speed": 105.0,
+      "store": 10000.0,
+      "power": 1,
+      "stick": 0,
+      "seconds": 10,
+      "ship_type": 0
+    },
+    {
+      "name": "reverse_from_105",
+      "speed": 105.0,
+      "store": 0.0,
+      "power": 2,
+      "stick": 0,
+      "seconds": 40,
+      "ship_type": 0
+    },
+    {
+      "name": "turn_0.4",
+      "speed": 60.0,
+      "store": 10000.0,
+      "power": 0,
+      "stick": 2,
+      "seconds": 30,
+      "ship_type": 0
+    },
+    {
+      "name": "turn_0.75",
+      "speed": 60.0,
+      "store": 10000.0,
+      "power": 0,
+      "stick": 4,
+      "seconds": 30,
+      "ship_type": 0
+    },
+    {
+      "name": "turn_1.0",
+      "speed": 60.0,
+      "store": 10000.0,
+      "power": 0,
+      "stick": 6,
+      "seconds": 30,
+      "ship_type": 0
+    },
+    {
+      "name": "turn_1.0_right",
+      "speed": 110.0,
+      "store": 10000.0,
+      "power": 0,
+      "stick": 5,
+      "seconds": 30,
+      "ship_type": 0
+    },
+    {
+      "name": "snap_turn_90",
+      "speed": 90.0,
+      "store": 5000.0,
+      "power": 0,
+      "stick": 6,
+      "seconds": 1,
+      "ship_type": 0
+    },
+    {
+      "name": "boost_turn",
+      "speed": 90.0,
+      "store": 5000.0,
+      "power": 1,
+      "stick": 4,
+      "seconds": 10,
+      "ship_type": 0
+    },
+    {
+      "name": "heavy_cruise_charging",
+      "speed": 105.0,
+      "store": 0.0,
+      "power": 0,
+      "stick": 0,
+      "seconds": 40,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_top_full_store",
+      "speed": 105.0,
+      "store": 14000.0,
+      "power": 0,
+      "stick": 0,
+      "seconds": 60,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_dive_full_store",
+      "speed": 105.0,
+      "store": 14000.0,
+      "power": 1,
+      "stick": 0,
+      "seconds": 10,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_reverse_from_105",
+      "speed": 105.0,
+      "store": 0.0,
+      "power": 2,
+      "stick": 0,
+      "seconds": 40,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_turn_0.4",
+      "speed": 60.0,
+      "store": 14000.0,
+      "power": 0,
+      "stick": 2,
+      "seconds": 30,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_turn_0.75",
+      "speed": 60.0,
+      "store": 14000.0,
+      "power": 0,
+      "stick": 4,
+      "seconds": 30,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_turn_1.0",
+      "speed": 60.0,
+      "store": 14000.0,
+      "power": 0,
+      "stick": 6,
+      "seconds": 30,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_turn_1.0_right",
+      "speed": 110.0,
+      "store": 14000.0,
+      "power": 0,
+      "stick": 5,
+      "seconds": 30,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_snap_turn_90",
+      "speed": 90.0,
+      "store": 5000.0,
+      "power": 0,
+      "stick": 6,
+      "seconds": 1,
+      "ship_type": 1
+    },
+    {
+      "name": "heavy_boost_turn",
+      "speed": 90.0,
+      "store": 5000.0,
+      "power": 1,
+      "stick": 4,
+      "seconds": 10,
+      "ship_type": 1
+    }
+  ],
+  "stats": {
+    "cruise_charging": {
+      "ticks": 1200,
+      "final_speed": 103.8348309754971,
+      "peak_speed": 104.99051020141142,
+      "final_store": 8736.352674973032,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 104.74442305791507
+    },
+    "top_full_store": {
+      "ticks": 1800,
+      "final_speed": 103.71954554747175,
+      "peak_speed": 104.99119005054243,
+      "final_store": 10000.0,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 104.76048000928941
+    },
+    "dive_full_store": {
+      "ticks": 300,
+      "final_speed": 125.85362774744908,
+      "peak_speed": 162.56477308824807,
+      "final_store": 8.885948246116024e-57,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 129.74877993235802
+    },
+    "reverse_from_105": {
+      "ticks": 1200,
+      "final_speed": 103.48313653601689,
+      "peak_speed": 104.19353875644568,
+      "final_store": 9999.999999999996,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 83.24595390050862
+    },
+    "turn_0.4": {
+      "ticks": 900,
+      "final_speed": 70.7246662052634,
+      "peak_speed": 70.72468492742725,
+      "final_store": 9999.989886119289,
+      "final_turn_rate_deg": 44.3285252515442,
+      "peak_turn_rate_deg": 44.32853680757617,
+      "speed_after_1s": 64.03244917757186
+    },
+    "turn_0.75": {
+      "ticks": 900,
+      "final_speed": 48.13910197544531,
+      "peak_speed": 60.84922578286093,
+      "final_store": 9789.075495797115,
+      "final_turn_rate_deg": 57.965858084704294,
+      "peak_turn_rate_deg": 70.18287824767951,
+      "speed_after_1s": 55.706978997809564
+    },
+    "turn_1.0": {
+      "ticks": 900,
+      "final_speed": 47.124459876579934,
+      "peak_speed": 60.79981171105968,
+      "final_store": 6703.294965879224,
+      "final_turn_rate_deg": 69.51655521801068,
+      "peak_turn_rate_deg": 86.9500418261261,
+      "speed_after_1s": 51.85050048052393
+    },
+    "turn_1.0_right": {
+      "ticks": 900,
+      "final_speed": 47.12145364449433,
+      "peak_speed": 109.9780954667069,
+      "final_store": 6718.347647256423,
+      "final_turn_rate_deg": -69.5096693116859,
+      "peak_turn_rate_deg": 122.89698520981334,
+      "speed_after_1s": 72.40678468484887
+    },
+    "snap_turn_90": {
+      "ticks": 30,
+      "final_speed": 75.13172296648804,
+      "peak_speed": 90.19356172543425,
+      "final_store": 4963.912969344068,
+      "final_turn_rate_deg": 102.698251699491,
+      "peak_turn_rate_deg": 122.54751034659198,
+      "speed_after_1s": 62.51736924552666
+    },
+    "boost_turn": {
+      "ticks": 300,
+      "final_speed": 52.94859969727922,
+      "peak_speed": 91.55712960801893,
+      "final_store": 1.9030429941675683e-13,
+      "final_turn_rate_deg": 63.758996904868816,
+      "peak_turn_rate_deg": 104.46726452592844,
+      "speed_after_1s": 82.55647233191314
+    },
+    "heavy_cruise_charging": {
+      "ticks": 1200,
+      "final_speed": 106.99524632050493,
+      "peak_speed": 107.63387503264616,
+      "final_store": 11099.931494117613,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 105.6488536787202
+    },
+    "heavy_top_full_store": {
+      "ticks": 1800,
+      "final_speed": 105.99371195533966,
+      "peak_speed": 105.99371197819974,
+      "final_store": 13999.999999993452,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 105.2273711437317
+    },
+    "heavy_dive_full_store": {
+      "ticks": 300,
+      "final_speed": 127.40701322721682,
+      "peak_speed": 171.0717312913274,
+      "final_store": 3.176074178969077e-36,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 129.39685798923855
+    },
+    "heavy_reverse_from_105": {
+      "ticks": 1200,
+      "final_speed": 105.873724523502,
+      "peak_speed": 105.88819102839726,
+      "final_store": 13999.999999999996,
+      "final_turn_rate_deg": 0.0,
+      "peak_turn_rate_deg": 0.0,
+      "speed_after_1s": 84.69387972275244
+    },
+    "heavy_turn_0.4": {
+      "ticks": 900,
+      "final_speed": 82.48927255430999,
+      "peak_speed": 82.48930107134176,
+      "final_store": 13999.987633006402,
+      "final_turn_rate_deg": 42.12528330088421,
+      "peak_turn_rate_deg": 42.125297697052176,
+      "speed_after_1s": 67.8038198703098
+    },
+    "heavy_turn_0.75": {
+      "ticks": 900,
+      "final_speed": 60.807498739118465,
+      "peak_speed": 62.32735741378575,
+      "final_store": 13875.636181182379,
+      "final_turn_rate_deg": 59.406014684674375,
+      "peak_turn_rate_deg": 60.569903166953466,
+      "speed_after_1s": 61.913902921843714
+    },
+    "heavy_turn_1.0": {
+      "ticks": 900,
+      "final_speed": 57.861520366873414,
+      "peak_speed": 61.97072350917128,
+      "final_store": 10606.905308228768,
+      "final_turn_rate_deg": 70.743709006603,
+      "peak_turn_rate_deg": 74.49961266172072,
+      "speed_after_1s": 59.3012794558176
+    },
+    "heavy_turn_1.0_right": {
+      "ticks": 900,
+      "final_speed": 57.85590248715471,
+      "peak_speed": 110.00692232756761,
+      "final_store": 10617.093522123632,
+      "final_turn_rate_deg": -70.73504445357867,
+      "peak_turn_rate_deg": 96.72297752721389,
+      "speed_after_1s": 91.2388077184397
+    },
+    "heavy_snap_turn_90": {
+      "ticks": 30,
+      "final_speed": 82.81606757482594,
+      "peak_speed": 90.49675499234299,
+      "final_store": 4959.842203121801,
+      "final_turn_rate_deg": 85.96607338298942,
+      "peak_turn_rate_deg": 97.54883697231782,
+      "speed_after_1s": 73.95594482395559
+    },
+    "heavy_boost_turn": {
+      "ticks": 300,
+      "final_speed": 67.03679334262523,
+      "peak_speed": 92.56024095893768,
+      "final_store": 3.9287220614745973e-11,
+      "final_turn_rate_deg": 65.44830203604573,
+      "peak_turn_rate_deg": 86.55081306564936,
+      "speed_after_1s": 90.06720487460838
+    }
+  }
+}

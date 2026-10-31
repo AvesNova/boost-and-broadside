@@ -1,0 +1,46 @@
+{
+  "preset": "squad",
+  "note": "staggered start: t uniform in [0, T_ep)",
+  "chaser": {
+    "envs": 256,
+    "ticks": 1800,
+    "ship_ticks": 4608000,
+    "totals": {
+      "shots": 270000,
+      "hits": 63882,
+      "deaths": 1094,
+      "resets": 256,
+      "seen_ships": 2039843,
+      "seen_bullets": 1903682
+    },
+    "per_ship_tick": {
+      "shots": 0.05859375,
+      "hits": 0.01386328125,
+      "deaths": 0.00023741319444444444,
+      "resets": 5.555555555555556e-05,
+      "seen_ships": 0.4426742621527778,
+      "seen_bullets": 0.4131254340277778
+    }
+  },
+  "random": {
+    "envs": 256,
+    "ticks": 1800,
+    "ship_ticks": 4608000,
+    "totals": {
+      "shots": 680638,
+      "hits": 0,
+      "deaths": 319,
+      "resets": 256,
+      "seen_ships": 683514,
+      "seen_bullets": 893
+    },
+    "per_ship_tick": {
+      "shots": 0.14770789930555556,
+      "hits": 0.0,
+      "deaths": 6.922743055555556e-05,
+      "resets": 5.555555555555556e-05,
+      "seen_ships": 0.14833203125,
+      "seen_bullets": 0.00019379340277777778
+    }
+  }
+}
