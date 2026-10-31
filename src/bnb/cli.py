@@ -8,8 +8,14 @@ import tyro
 
 @dataclasses.dataclass(frozen=True)
 class Train:
-    """Train the skeleton MLP with PPO."""
+    """Train the skeleton MLP with PPO.
 
+    preset: a training preset (deathmatch, deathmatch_wide, frontline), which sets the mode,
+    the sizes and the spawn groups; without one, the mode and sizes below.
+    """
+
+    preset: str | None = None
+    mode: str = "team_deathmatch"
     ships_per_team: int = 5
     num_fields: int = 10
     arena_radius: float = 2600.0
@@ -25,9 +31,16 @@ def main() -> None:
     import torch
 
     from bnb.contracts import GameConfig
+    from bnb.game.modes.rules import PRESETS
     from bnb.runtime.train import TrainConfig, train
 
-    game = GameConfig(args.ships_per_team, args.num_fields, args.arena_radius)
+    if args.preset is not None:
+        if args.preset not in PRESETS:
+            raise SystemExit(f"unknown preset {args.preset!r}; one of {sorted(PRESETS)}")
+        game = PRESETS[args.preset]
+    else:
+        game = GameConfig(args.ships_per_team, args.num_fields, args.arena_radius,
+                          mode=args.mode)
     cfg = TrainConfig(game=game, num_envs=args.num_envs, updates=args.updates, seed=args.seed)
 
     def log(row: dict) -> None:

@@ -4,8 +4,10 @@ A pure function of (ledger, events) to (rewards per ship per level, ledger'), ca
 rollout every tick. The ledger holds each pair's damage that has not healed, [attacker,
 target], with the boundary as a pseudo-attacker: each living ship's column of ship rows
 plus its boundary entry sums to its shield deficit. It is the spec's (B, N + 1, N) ledger
-kept as its ship rows and its boundary row, so the step writes each without a copy. The component functions are v1's math (fixtures in tests/reference/rewards)
-and take any leading axes; `team` is each ship's team, 0 or 1, broadcasting against them.
+kept as its ship rows and its boundary row, so the step writes each without a copy.
+
+The component functions are v1's math (fixtures in tests/reference/rewards) and take any
+leading axes; `team` is each ship's team, 0 or 1, broadcasting against them.
 
 The step is memory-bound on its (B, N, N) matrices, so it reads each as few times as it
 can: the components optionally take the column totals (..., 1, T) the step already has,
