@@ -2,8 +2,8 @@
 
     rules = rules_of(cfg); types = ship_types(device)   # types: optional, the ship card
     state = reset(rules, uniforms(rules, B), types)
-    moved, origin = move(rules, state, action, spread(rules, B), types)
-    state, events = resolve(rules, moved, origin, uniforms(rules, B), types)
+    moved, sweep = move(rules, state, action, spread(rules, B), types)
+    state, events = resolve(rules, moved, sweep, uniforms(rules, B), types)
     state, obs, privileged = perceive(rules, state)
 
 Every function is pure (tensors in, tensors out) and works eagerly or under
@@ -17,10 +17,11 @@ from .perception.observe import perceive
 from .physics.step import move, reset, resolve, step
 from .rules import Rules, rules_of
 from .ship_types import ShipTypes, ship_types
-from .state import Origin, State, replace
+from .state import State, Sweep, replace, sweep_like
 
-__all__ = ["Origin", "Rules", "ShipTypes", "State", "move", "perceive", "preset", "reset",
-           "resolve", "rules_of", "ship_types", "spread", "start_clocks", "step", "uniforms"]
+__all__ = ["Rules", "ShipTypes", "State", "Sweep", "move", "perceive", "preset", "reset",
+           "resolve", "rules_of", "ship_types", "spread", "start_clocks", "step", "sweep_like",
+           "uniforms"]
 
 preset = rules_of  # the skeleton's name, still used by tests/contract
 

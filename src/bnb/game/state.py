@@ -98,14 +98,19 @@ class State:
 
 
 @contract
-class Origin:
-    """Tick-start positions the hit test sweeps from: ships (B, N), bullets after firing
-    (B, N, K). Passed from `move` to `resolve`."""
+class Sweep:
+    """This tick's straight-line motions, which the hit test sweeps: tick-start positions
+    (x, y) and displacements (dx, dy) of the ships (B, N) and of the bullets after firing
+    (bx, by, bdx, bdy; B, N, K). Passed from `move` to `resolve`."""
 
     x: torch.Tensor
     y: torch.Tensor
+    dx: torch.Tensor
+    dy: torch.Tensor
     bx: torch.Tensor
     by: torch.Tensor
+    bdx: torch.Tensor
+    bdy: torch.Tensor
 
 
 replace = dataclasses.replace
@@ -131,6 +136,13 @@ def blank(rules: Rules, batch: int, device=None) -> State:
                              axis_x=torch.zeros(B, device=device),
                              axis_y=torch.zeros(B, device=device),
                              last_seen=torch.zeros((B, T, N), dtype=INT, device=device)))
+
+
+def sweep_like(st: State) -> Sweep:
+    """A zero Sweep shaped for this state (a buffer for runtimes that cut between stages)."""
+    s, b = st.ships, st.bullets
+    return Sweep(*(torch.zeros_like(s.x) for _ in range(4)),
+                 *(torch.zeros_like(b.x) for _ in range(4)))
 
 
 def where(mask: torch.Tensor, new, old):

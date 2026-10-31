@@ -22,9 +22,9 @@ class Realtime:
     def _tick_fn(self, state: match.State, types: match.ShipTypes,
                  actions: torch.Tensor) -> tuple[match.State, Obs]:
         p = self.p
-        moved, origin = match.move(p, state, Action.unpack(actions[None]), match.spread(p, 1),
-                                   types)
-        stepped, _ = match.resolve(p, moved, origin, match.uniforms(p, 1), types)
+        moved, sweep = match.move(p, state, Action.unpack(actions[None]), match.spread(p, 1),
+                                  types)
+        stepped, _ = match.resolve(p, moved, sweep, match.uniforms(p, 1), types)
         stepped, obs, _ = match.perceive(p, stepped)
         return stepped, obs
 

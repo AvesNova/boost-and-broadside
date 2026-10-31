@@ -67,10 +67,16 @@ def ship_types(device=None, **overrides) -> ShipTypes:
 
 
 def per_ship(table: torch.Tensor, ship_type: torch.Tensor) -> torch.Tensor:
-    """A card parameter for each ship, shaped like ship_type (B, ...)."""
-    index = ship_type.long()
-    if table.dim() == 1:
-        return table[index]
-    B = ship_type.shape[0]  # (B, num_types): each environment its own card
-    return table.gather(1, index.reshape(B, -1)).reshape(ship_type.shape)
+    """A card parameter for each ship, shaped like ship_type (B, ...).
+
+    A select over the (few, statically known) types rather than a gather: it fuses into
+    any kernel without an indirect load or bounds check, and needs no host copy, so it is
+    also safe in eager CUDA-graph capture.
+    """
+    if table.dim() == 2:  # (B, num_types): each environment its own card
+        table = table.reshape(table.shape[:1] + (1,) * (ship_type.dim() - 1) + table.shape[1:])
+    out = table[..., 0].expand(ship_type.shape)
+    for i in range(1, table.shape[-1]):
+        out = torch.where(ship_type == i, table[..., i], out)
+    return out
 

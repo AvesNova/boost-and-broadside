@@ -14,7 +14,7 @@ from bnb.contracts import Action, Events
 
 from ..rules import Rules
 from ..ship_types import ShipTypes, ship_types
-from ..state import Origin, State, blank, replace, where
+from ..state import State, Sweep, blank, replace, where
 from ..state import apply as apply_fields
 from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits
@@ -42,21 +42,23 @@ def reset(rules: Rules, uniforms: torch.Tensor, types: ShipTypes | None = None) 
 
 
 def move(rules: Rules, st: State, action: Action, spread: torch.Tensor,
-         types: ShipTypes | None = None) -> tuple[State, Origin]:
-    """Phases 1-3: fire, ships fly, bullets fly. Returns the moved state and the tick-start
-    positions. Motion changes no flag (but `fired`), clock or ttl."""
+         types: ShipTypes | None = None) -> tuple[State, Sweep]:
+    """Phases 1-3: fire, ships fly, bullets fly. Returns the moved state and this tick's
+    motions (the hit test's input). Motion changes no flag (but `fired`), clock or ttl."""
     types = _card(types, spread.device)
-    ships, bullets = fire(rules, types, st.ships, st.bullets, action.shoot == 1, spread)
-    origin = Origin(x=ships.x, y=ships.y, bx=bullets.x, by=bullets.y)
-
+    ships0, bullets0 = fire(rules, types, st.ships, st.bullets, action.shoot == 1, spread)
     stick, power = controls(action.power, action.stick)
-    A = airframe(types, ships.ship_type)
-    flown = flight_tick(rules.flight, A, rules.tick, ships, stick, power, st.fields)
-    ships = where(ships.alive, flown, ships)  # ships dead at tick start keep everything
-    return replace(st, ships=ships, bullets=move_bullets(rules, bullets, st.fields)), origin
+    A = airframe(types, ships0.ship_type)
+    flown = flight_tick(rules.flight, A, rules.tick, ships0, stick, power, st.fields)
+    ships = where(ships0.alive, flown, ships0)  # ships dead at tick start keep everything
+    bullets = move_bullets(rules, bullets0, st.fields)
+    sweep = Sweep(x=ships0.x, y=ships0.y, dx=ships.x - ships0.x, dy=ships.y - ships0.y,
+                  bx=bullets0.x, by=bullets0.y, bdx=bullets.x - bullets0.x,
+                  bdy=bullets.y - bullets0.y)
+    return replace(st, ships=ships, bullets=bullets), sweep
 
 
-def resolve(rules: Rules, st: State, origin: Origin, uniforms: torch.Tensor,
+def resolve(rules: Rules, st: State, sweep: Sweep, uniforms: torch.Tensor,
             types: ShipTypes | None = None) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, clocks, death and respawn, episode end."""
     types = _card(types, uniforms.device)
@@ -64,7 +66,7 @@ def resolve(rules: Rules, st: State, origin: Origin, uniforms: torch.Tensor,
     alive0, active = ships.alive, bullets.ttl > 0  # as at tick start: motion changes neither
 
     # 4-5. Hits between the two motions, then damage, deaths and shields.
-    hit = hits(rules, types, origin, ships, bullets, alive0)
+    hit = hits(rules, types, sweep, ships, bullets, alive0)
     boundary = boundary_damage(rules, ships, alive0)
     ships, died = apply_damage(rules, types, ships, alive0, hit.taken + boundary)
     killer = torch.where(died, hit.first_shooter, -1).to(torch.int32)
@@ -103,7 +105,7 @@ def resolve(rules: Rules, st: State, origin: Origin, uniforms: torch.Tensor,
 def step(rules: Rules, st: State, action: Action, spread: torch.Tensor,
          uniforms: torch.Tensor, types: ShipTypes | None = None) -> tuple[State, Events]:
     """One whole tick (phases 1-8; perception is separate)."""
-    moved, origin = move(rules, st, action, spread, types)
-    return resolve(rules, moved, origin, uniforms, types)
+    moved, sweep = move(rules, st, action, spread, types)
+    return resolve(rules, moved, sweep, uniforms, types)
 
 

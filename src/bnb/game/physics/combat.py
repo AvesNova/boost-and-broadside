@@ -11,9 +11,10 @@ import torch
 
 from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
-from ..state import Bullets, Origin, Ships, replace
+from ..state import Bullets, Ships, Sweep, replace
 
 INF = float("inf")
+NONE = torch.iinfo(torch.int64).max
 
 
 class Hits(NamedTuple):
@@ -23,27 +24,28 @@ class Hits(NamedTuple):
     first_shooter: torch.Tensor  # (B, N) owner of the earliest hit on each ship, -1 if none
 
 
-def hits(rules: Rules, types: ShipTypes, origin: Origin, ships: Ships, bullets: Bullets,
+def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bullets,
          alive0: torch.Tensor) -> Hits:
     """Relative swept test between this tick's bullet and ship motions.
 
-    origin: tick-start positions (bullets after firing); ships, bullets: after the moves;
-    alive0: (B, N) ships alive at tick start. Active bullets are those with ttl > 0.
+    sweep: the motions from `move`; ships, bullets: after the moves; alive0: (B, N) ships
+    alive at tick start. Active bullets are those with ttl > 0.
     """
     B, N, K = bullets.ttl.shape
     flat = (B, N * K, 1)
-    d0x = origin.bx.reshape(flat) - origin.x[:, None, :]  # (B, N K, N) bullet minus ship
-    d0y = origin.by.reshape(flat) - origin.y[:, None, :]
-    deltax = bullets.x.reshape(flat) - ships.x[:, None, :] - d0x
-    deltay = bullets.y.reshape(flat) - ships.y[:, None, :] - d0y
+    d0x = sweep.bx.reshape(flat) - sweep.x[:, None, :]  # (B, N K, N) bullet minus ship
+    d0y = sweep.by.reshape(flat) - sweep.y[:, None, :]
+    deltax = sweep.bdx.reshape(flat) - sweep.dx[:, None, :]
+    deltay = sweep.bdy.reshape(flat) - sweep.dy[:, None, :]
     tau = (-(d0x * deltax + d0y * deltay)
            / (deltax * deltax + deltay * deltay).clamp_min(1e-12)).clamp(0.0, 1.0)
     missx, missy = d0x + tau * deltax, d0y + tau * deltay
-    radius = per_ship(types.hit_radius, ships.ship_type)[:, None, :]  # the target's
+    # The target's hit radius squared; -1 (no contact possible) for a ship dead at tick start.
+    reach = torch.where(alive0, per_ship(types.hit_radius, ships.ship_type) ** 2, -1.0)
     ship = torch.arange(N, device=alive0.device)
     not_shooter = ship.repeat_interleave(K)[:, None] != ship  # (N K, N)
-    contact = ((missx * missx + missy * missy) < radius * radius) & not_shooter \
-        & (bullets.ttl > 0).reshape(flat) & alive0[:, None, :]
+    contact = ((missx * missx + missy * missy) < reach[:, None, :]) & not_shooter \
+        & (bullets.ttl > 0).reshape(flat)
 
     # Each bullet hits only its first contact: smallest tau, ties to the lowest ship index
     # (min returns the first minimal index).
@@ -58,12 +60,19 @@ def hits(rules: Rules, types: ShipTypes, origin: Origin, ships: Ships, bullets: 
     aspect = 1.0 - (1.0 - rules.head_on_fraction) * torch.exp(-4.0 * theta * theta / math.pi)
     dmg = torch.where(hit, full * aspect, 0.0)
 
-    on_target = hit[..., None] & (first[..., None] == ship)  # (B, N K, N), never stored
-    damage = torch.where(on_target, dmg[..., None], 0.0).reshape(B, N, K, N).sum(2)
-
-    # The earliest hit on each target: smallest tau, ties to the lowest bullet index o K + k.
-    tau_earliest, earliest = torch.where(on_target, tau_first[..., None], INF).min(1)  # (B, N)
-    shooter = torch.where(tau_earliest < INF, earliest // K, -1)
+    # Scatter each bullet's hit to its (shooter, target): O(bullets), not O(bullets x ships).
+    # A bullet that hit nothing adds 0. The sum's order can matter only when three or more
+    # of one shooter's bullets hit one target in the same tick.
+    owner = ship.repeat_interleave(K)
+    damage = torch.zeros((B, N * N), dtype=dmg.dtype, device=dmg.device) \
+        .scatter_add(1, owner * N + first, dmg).reshape(B, N, N)
+    # The earliest hit on each target: smallest tau, ties to the lowest bullet index o K + k,
+    # as one int64 key (tau >= 0, so its float bits order like the floats) and an exact min.
+    bullet = torch.arange(N * K, device=dmg.device)
+    key = torch.where(hit, tau_first.view(torch.int32).long() * (N * K) + bullet, NONE)
+    earliest = torch.full((B, N), NONE, dtype=torch.int64, device=dmg.device) \
+        .scatter_reduce(1, first, key, "amin")
+    shooter = torch.where(earliest < NONE, (earliest % (N * K)) // K, -1)
     return Hits(damage=damage, taken=damage.sum(1), bullet_hit=hit.reshape(B, N, K),
                 first_shooter=shooter)
 

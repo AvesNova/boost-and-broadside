@@ -82,7 +82,7 @@ class Rollout:
             actions=torch.zeros((B, self.N, 3), dtype=torch.int32, device=dev),
             spread=torch.zeros((B, self.N, 2), device=dev),
             uniforms=torch.zeros((B, p.num_uniforms), device=dev),
-            origin=match.Origin(x=st.ships.x, y=st.ships.y, bx=st.bullets.x, by=st.bullets.y),
+            sweep=match.sweep_like(st),
             ctrl={name: c.init_carry(self.lineup.rows(name), dev)
                   for name, c in self.controllers.items()},
             buf=buf, t_idx=torch.zeros(1, dtype=torch.long, device=dev),
@@ -125,13 +125,13 @@ class Rollout:
         carry["uniforms"].copy_(match.uniforms(self.p, B, dev))
 
     def _advance(self, carry: dict) -> None:
-        moved, origin = match.move(self.p, carry["state"], Action.unpack(carry["actions"]),
+        moved, sweep = match.move(self.p, carry["state"], Action.unpack(carry["actions"]),
                                    carry["spread"], carry["types"])
         _assign(carry["state"], moved)
-        _assign(carry["origin"], origin)
+        _assign(carry["sweep"], sweep)
 
     def _resolve(self, carry: dict) -> None:
-        st, ev = match.resolve(self.p, carry["state"], carry["origin"], carry["uniforms"],
+        st, ev = match.resolve(self.p, carry["state"], carry["sweep"], carry["uniforms"],
                                carry["types"])
         _assign(carry["state"], st)
         reward = deathmatch.reward(ev).reshape(self.B, self.T, self.S)
