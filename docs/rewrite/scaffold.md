@@ -116,7 +116,14 @@ first". The new flight model now exists fresh in the PyTorch arm, so that step i
    - The client sim stays on CPU torch.
    - Rendering reads snapshots on the GPU through OpenGL or wgpu, independent of torch.
    - A contract test checks that the export matches the eager step.
-10. **Small files with one job.**
+10. **Names in full words** (author, 2026-10-31). Variables, functions, classes and
+    contract columns use clear, unambiguous words. Universal abbreviations (`cos`, `x`,
+    `y`) are fine; spec symbols (`c`, `w`, `r`, `E`, `gx`) are not.
+11. **No legacy at the end** (author, 2026-10-31). The finished rewrite has no dead code,
+    shims or stale docs from v1 or the race unless kept by an explicit decision.
+    Compatibility layers (such as the race-layout test adapter) are temporary: once
+    something is proven, native tests replace them.
+12. **Small files with one job.**
    - Names follow the spec.
    - Comments say *why*; the spec says *what*.
    - The old tree is 46k lines; the scaffold sets no target, but each section review
