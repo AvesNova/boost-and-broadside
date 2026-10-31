@@ -140,9 +140,11 @@ class Unrolled:
     shot_latents: torch.Tensor
 
 
+BELIEF_FIELDS = tuple(field.name for field in dataclasses.fields(Belief))  # (traced as constants)
+
+
 def _rows(belief: Belief, rows: slice) -> Belief:
-    return Belief(**{field.name: getattr(belief, field.name)[:, rows]
-                     for field in dataclasses.fields(Belief)})
+    return Belief(**{name: getattr(belief, name)[:, rows] for name in BELIEF_FIELDS})
 
 
 def _nearest(position: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
@@ -302,9 +304,8 @@ class Yemong(nn.Module):
         advanced, nonfinite = beliefs.advance(enemy, torch.cat([means, spreads], -1),
                                               enemy_action_logits)
         mine = _rows(seen, slice(None, own))
-        belief = Belief(**{field.name: torch.cat([getattr(mine, field.name),
-                                                  getattr(advanced, field.name)], 1)
-                           for field in dataclasses.fields(Belief)})
+        belief = Belief(**{name: torch.cat([getattr(mine, name), getattr(advanced, name)], 1)
+                           for name in BELIEF_FIELDS})
         carry = Carry(state=state.to(dtype), convolution_buffer=buffer.to(dtype), belief=belief,
                       previous_action=carry.previous_action, offset=carry.offset,
                       nonfinite=carry.nonfinite + nonfinite)

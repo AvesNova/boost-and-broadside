@@ -77,16 +77,17 @@ class ReturnScale:
         self.decay, self.floor = decay, floor
         self.low = torch.zeros((), dtype=dtype, device=device)
         self.high = torch.zeros((), dtype=dtype, device=device)
+        self.levels = torch.tensor([0.05, 0.95], dtype=dtype, device=device)
 
     def update(self, returns: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """Fold one batch in (an empty batch is skipped) and return the scale. Reads the mask
-        on the host, so it is not for captured code."""
-        selected = returns[mask]
-        if selected.numel():
-            quantiles = torch.quantile(selected, torch.tensor([0.05, 0.95], dtype=returns.dtype,
-                                                              device=returns.device))
-            self.low = self.decay * self.low + (1.0 - self.decay) * quantiles[0]
-            self.high = self.decay * self.high + (1.0 - self.decay) * quantiles[1]
+        """Fold one batch in (an empty batch is skipped) and return the scale. No host sync:
+        masked-out returns are NaN to nanquantile, and an empty batch leaves the EMAs."""
+        masked = torch.where(mask, returns, torch.nan).flatten()
+        quantiles = torch.nanquantile(masked, self.levels)
+        some = mask.any()
+        decay = self.decay
+        self.low = torch.where(some, decay * self.low + (1.0 - decay) * quantiles[0], self.low)
+        self.high = torch.where(some, decay * self.high + (1.0 - decay) * quantiles[1], self.high)
         return self.scale()
 
     def scale(self) -> torch.Tensor:

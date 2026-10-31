@@ -94,16 +94,18 @@ class Rollout:
     @torch.no_grad()
     def _learner_buffers(self, obs: Obs, learner_carry) -> dict:
         """Buffers for what the learner's controller gives beyond logp and value: values,
-        outcome and replay, shaped like one decision's with a leading (L,), and the carry at
-        a segment's start. Their shapes come from one probe decision on the first view."""
-        L, dev = self.length, self.device
-        e, team = self.lineup.env[self.learner], self.lineup.role[self.learner]
+        outcome and replay, shaped (L, R, ...), and the carry at a segment's start. Their
+        shapes come from one probe decision on the learner's first row only."""
+        L, R, dev = self.length, self.lineup.rows(self.learner), self.device
+        e, team = self.lineup.env[self.learner][:1], self.lineup.role[self.learner][:1]
         view = Obs(**{part: getattr(obs, part)[e, team] for part in PARTS})
         done = view.globals[..., GLOBAL["reset"]] > 0.5
-        _, _, out = self.controllers[self.learner].step(_clone(learner_carry), view, done)
+        one_row = _pytree.tree_map_only(torch.Tensor, lambda x: x[:1].clone(), learner_carry)
+        _, _, out = self.controllers[self.learner].step(one_row, view, done)
         out = dict(values=out.values, outcome=out.outcome, replay=out.replay)
         buffers = {name: _pytree.tree_map_only(
-            torch.Tensor, lambda x: torch.zeros((L,) + x.shape, dtype=x.dtype, device=dev), value)
+            torch.Tensor,
+            lambda x: torch.zeros((L, R) + x.shape[1:], dtype=x.dtype, device=dev), value)
             for name, value in out.items() if value is not None}
         if learner_carry is not None:
             buffers["initial_carry"] = _clone(learner_carry)

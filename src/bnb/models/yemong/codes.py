@@ -71,8 +71,9 @@ def circular_decode(probabilities: torch.Tensor, period: float, colours: int,
 
     mean, total = local_mean[..., 0], precision[..., 0]
     for level in range(1, levels):
-        p = level_periods[level]
-        unwrapped = local_mean[..., level] + torch.round((mean - local_mean[..., level]) / p) * p
+        level_period = level_periods[level]
+        unwrapped = local_mean[..., level] \
+            + torch.round((mean - local_mean[..., level]) / level_period) * level_period
         total = total + precision[..., level]
         mean = mean + precision[..., level] / torch.clamp_min(total, tiny) * (unwrapped - mean)
     mean = torch.remainder(mean, period)
@@ -252,11 +253,15 @@ def velocity_jacobian(velocity: torch.Tensor, knee: float) -> tuple[torch.Tensor
 
 def sandwich(outer: torch.Tensor, inner: torch.Tensor) -> torch.Tensor:
     """A S A for packed symmetric 2x2 matrices (xx, xy, yy)."""
-    a, b, c = outer.unbind(-1)
-    p, q, r = inner.unbind(-1)
-    return torch.stack([a * a * p + 2.0 * a * b * q + b * b * r,
-                        a * b * p + (a * c + b * b) * q + b * c * r,
-                        b * b * p + 2.0 * b * c * q + c * c * r], -1)
+    outer_xx, outer_xy, outer_yy = outer.unbind(-1)
+    inner_xx, inner_xy, inner_yy = inner.unbind(-1)
+    return torch.stack([outer_xx * outer_xx * inner_xx + 2.0 * outer_xx * outer_xy * inner_xy
+                        + outer_xy * outer_xy * inner_yy,
+                        outer_xx * outer_xy * inner_xx
+                        + (outer_xx * outer_yy + outer_xy * outer_xy) * inner_xy
+                        + outer_xy * outer_yy * inner_yy,
+                        outer_xy * outer_xy * inner_xx + 2.0 * outer_xy * outer_yy * inner_xy
+                        + outer_yy * outer_yy * inner_yy], -1)
 
 
 def _project(vector: torch.Tensor) -> torch.Tensor:

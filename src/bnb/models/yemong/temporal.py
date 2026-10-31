@@ -17,6 +17,7 @@ from .layers import GatedMLP, norm
 TAPS = 4  # the convolution reads the current input and the 3 before it
 DECAY_EXPONENT = 8.0
 CONTRIBUTION_FLOOR = 1e-6
+SCAN_CHUNK = 8  # steps per chunk of the scan; measured best at L = 128
 
 
 def _later(starts: torch.Tensor) -> torch.Tensor:
@@ -27,19 +28,37 @@ def _later(starts: torch.Tensor) -> torch.Tensor:
 def parallel_scan(decay: torch.Tensor, contribution: torch.Tensor,
                   initial: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """h_t = decay_t h_(t-1) + contribution_t over the leading time axis, from `initial`.
+    Returns every h (L, ...) and the last.
 
-    A Hillis-Steele scan: ceil(log2 L) rounds of elementwise work, no sequential loop over
-    time. Returns every h (L, ...) and the last.
+    A chunked scan: a sequential pass within chunks of SCAN_CHUNK steps, all chunks at
+    once (from zero, with each chunk's running decay product), then a sequential pass over
+    the chunk ends to carry the state across, and one fix-up. Backward keeps a few copies of
+    the inputs, where a log-depth (Hillis-Steele) scan kept about twenty; measured in the
+    fix-round notes. L is padded to a whole number of chunks (the padding is cut off).
     """
     length = decay.shape[0]
-    state = torch.cat([(contribution[0] + decay[0] * initial)[None], contribution[1:]])
-    product = decay
-    offset = 1
-    while offset < length:
-        state = torch.cat([state[:offset], state[offset:] + product[offset:] * state[:-offset]])
-        product = torch.cat([product[:offset], product[offset:] * product[:-offset]])
-        offset *= 2
-    return state, state[-1]
+    pad = -length % SCAN_CHUNK
+    if pad:  # a static shape, not a data-dependent branch
+        decay = torch.cat([decay, decay.new_zeros((pad,) + decay.shape[1:])])
+        contribution = torch.cat([contribution,
+                                  contribution.new_zeros((pad,) + contribution.shape[1:])])
+    chunks = decay.shape[0] // SCAN_CHUNK
+    decay = decay.unflatten(0, (chunks, SCAN_CHUNK))
+    contribution = contribution.unflatten(0, (chunks, SCAN_CHUNK))
+    local, products = [], []
+    state, product = torch.zeros_like(contribution[:, 0]), torch.ones_like(decay[:, 0])
+    for step in range(SCAN_CHUNK):
+        state = decay[:, step] * state + contribution[:, step]
+        product = product * decay[:, step]
+        local.append(state)
+        products.append(product)
+    local, products = torch.stack(local, 1), torch.stack(products, 1)
+    carried, entering = initial, []
+    for chunk in range(chunks):
+        entering.append(carried)
+        carried = local[chunk, -1] + products[chunk, -1] * carried
+    states = (local + products * torch.stack(entering)[:, None]).flatten(0, 1)[:length]
+    return states, states[-1]
 
 
 class RGLRU(nn.Module):

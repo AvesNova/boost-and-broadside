@@ -236,7 +236,7 @@ class Arm:
         return density.hex_cells(rings, dtype=torch.float64)
 
     def hex_counts(self, x, y, is_ally, alive, arena_radius, rings):
-        return density.hex_counts(x, y, is_ally, alive, arena_radius, rings)
+        return density.HexGrid(rings).counts(x, y, is_ally, alive, arena_radius)
 
     def poisson_terms(self, log_rate, counts):
         return density.poisson_terms(log_rate, counts)

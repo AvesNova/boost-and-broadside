@@ -55,18 +55,17 @@ def shot_code_parameters(fastest_muzzle: float, velocity_reach: float, lifetime:
 def trajectory_code(parameters: ShotCodeParameters, snapshots: torch.Tensor) -> torch.Tensor:
     """(..., 5) snapshots (displacement x, y; velocity x, y; refractive index) to
     (..., trajectory_width)."""
-    p = parameters
     displacement, velocity, index = snapshots[..., :2], snapshots[..., 2:4], snapshots[..., 4]
     zero = torch.zeros_like(index)
-    position = codes.position_encode(displacement, zero,
-                                     (p.displacement_period, p.displacement_period),
-                                     p.displacement_levels)
+    period = parameters.displacement_period
+    position = codes.position_encode(displacement, zero, (period, period),
+                                     parameters.displacement_levels)
     direction = codes.circular_encode(torch.atan2(velocity[..., 1], velocity[..., 0]), zero,
-                                      2.0 * math.pi, 4, p.direction_levels)
-    speed = codes.scalar_sharp(torch.hypot(velocity[..., 0], velocity[..., 1]), 0.0, p.top_speed,
-                               p.speed_bins)
-    log_index = codes.scalar_sharp(torch.log(torch.clamp_min(index, 1e-6)), -p.index_span,
-                                   p.index_span, p.index_bins)
+                                      2.0 * math.pi, 4, parameters.direction_levels)
+    speed = codes.scalar_sharp(torch.hypot(velocity[..., 0], velocity[..., 1]), 0.0,
+                               parameters.top_speed, parameters.speed_bins)
+    log_index = codes.scalar_sharp(torch.log(torch.clamp_min(index, 1e-6)), -parameters.index_span,
+                                   parameters.index_span, parameters.index_bins)
     return torch.cat([position.flatten(-2), direction.flatten(-2), speed, log_index], -1)
 
 
@@ -74,21 +73,20 @@ def outcome_code(parameters: ShotCodeParameters, hit: torch.Tensor, distance: to
                  side: torch.Tensor) -> torch.Tensor:
     """(...) hit (HIT_*), closest-pass distance (m) and its side (SIDE_*) to
     (..., outcome_width): [enemy hit, ally hit, enemy near 1..n, ally near 1..n, clear]."""
-    p = parameters
-    bins = p.near_bins + 1
-    low = math.log(p.collision_radius)
-    step = math.log(p.near_span_radii) / (p.near_bins - 1)
-    high = low + p.near_bins * step
-    log_distance = torch.log(torch.clamp_min(distance, p.collision_radius))
-    near = codes.scalar_encode(log_distance, torch.full_like(distance, p.near_sigma_bins * step),
-                               low, high, bins)
+    bins = parameters.near_bins + 1
+    low = math.log(parameters.collision_radius)
+    step = math.log(parameters.near_span_radii) / (parameters.near_bins - 1)
+    high = low + parameters.near_bins * step
+    log_distance = torch.log(torch.clamp_min(distance, parameters.collision_radius))
+    sigma = torch.full_like(distance, parameters.near_sigma_bins * step)
+    near = codes.scalar_encode(log_distance, sigma, low, high, bins)
     clear = (torch.arange(bins, device=distance.device) == bins - 1).to(distance.dtype)
     near = torch.where((distance >= math.exp(high))[..., None], clear, near)
     ally = (side == SIDE_ALLY)[..., None]
     passes = torch.cat([torch.zeros_like(near[..., :2]),
                         torch.where(ally, 0.0, near[..., :-1]),
                         torch.where(ally, near[..., :-1], 0.0), near[..., -1:]], -1)
-    width = p.outcome_width
+    width = parameters.outcome_width
     hits = (torch.where(hit == HIT_ENEMY, 0, 1)[..., None]
             == torch.arange(width, device=hit.device)).to(distance.dtype)
     return torch.where((hit != HIT_NONE)[..., None], hits, passes)

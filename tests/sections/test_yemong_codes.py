@@ -131,8 +131,10 @@ def test_density_target_and_rates():
     bias = model.density.lasts[0].bias
     assert torch.allclose(bias, torch.full_like(bias, math.log(5.0 / cells)))
     x = torch.tensor([[0.0, 100.0, 9000.0]])
-    counts = density.hex_counts(x, torch.zeros_like(x), torch.tensor([[True, False, True]]),
-                                torch.ones_like(x, dtype=torch.bool), torch.tensor([[2600.0]]), 10)
+    counts = density.HexGrid(10).counts(x, torch.zeros_like(x),
+                                        torch.tensor([[True, False, True]]),
+                                        torch.ones_like(x, dtype=torch.bool),
+                                        torch.tensor([[2600.0]]))
     assert counts.shape == (1, 662)
     assert counts[0, :cells].sum() == pytest.approx(1.0)  # the far ally is off the grid
     assert counts[0, cells:].sum() == pytest.approx(1.0)
