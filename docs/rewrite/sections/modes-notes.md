@@ -2,8 +2,8 @@
 
 Branch `section/modes`. The modes spec (`modes-spec.md`) is implemented in `bnb.game.modes`,
 the rewards spec (`rewards-spec.md`) in `bnb.learn.rewards`. All tests pass
-(`uv run --no-sync pytest`: 264 passed, none skipped, the 13 rewards equivalence tests
-included), and `ruff check` is clean. The fixed tests and goldens are unchanged.
+(`uv run --no-sync pytest`: 276 passed after the fix round, none skipped, the 13 rewards
+equivalence tests included), and `ruff check` is clean. The fixed tests and goldens are unchanged.
 
 ## Design
 
@@ -30,7 +30,8 @@ The skeleton reward stub `game/modes/deathmatch.py` is deleted.
   the spawn disc. Compiled graphs specialize on it like the rest of `Rules`, and every
   mode hook dispatches on `rules.mode.name` in Python, so a graph holds one mode.
 - `modes.rules.PRESETS` holds `deathmatch`, `deathmatch_wide` (40 fields, 8200 m, groups
-  (2, 2, 1)) and `frontline`, all 5v5. `WIDE_SHARE = 0.25` records the proposed mix.
+  (2, 2, 1)) and `frontline`, all 5v5 (`bnb train --preset`). The proposed 25% mix is
+  the learner section's to wire.
 
 ### State
 
@@ -40,7 +41,7 @@ The skeleton reward stub `game/modes/deathmatch.py` is deleted.
 - the zones' `zone_x, zone_y, zone_radius (B, Z)`;
 - `role (B, Z)` int32, in team 0's frame;
 - `progress (B, Z)`;
-- `direction (B, Z)` int32, the last push;
+- `movement (B, Z)` int32, the sign of each meter's progress change this tick (fix round);
 - `attack_ledger, defense_ledger (B, Z, N)`;
 - `handedness (B,)` (±1) and `ring_rotation (B,)`.
 
@@ -125,8 +126,11 @@ The mode phase:
   - x, y, radius;
   - role relative to the viewer (team 1 reads `4 − role`);
   - progress;
-  - direction: the push in the viewer's favour (team 0's sign, negated for team 1);
+  - direction: the meter's movement this tick, +1 toward the viewer's capture, −1 toward
+    the enemy's, 0 still;
   - the two terminal distances (team 1 reads team 0's swapped).
+  - Team 1 lists the zones in mirrored cyclic order, zone (−z) mod 5 in row z, so both
+    views read the same rows at the same front (fix round).
 - **Global columns:**
   - the mode one-hot;
   - the scores by `team_relative`, and the score target (team deathmatch);
@@ -156,7 +160,8 @@ The mode phase:
 
 ### Rewards and the ledger
 
-`reward_step(config, ledger (B, N + 1, N), events, team) → (rewards (B, N, 5), ledger')`,
+`reward_step(config, ledger, events, team) → (rewards (B, N, 5), ledger')`, with the
+ledger a `Ledger(ships (B, N, N), boundary (B, N))` since the fix round,
 pure, in the rollout's resolve stage. It follows rewards spec 3 step by step:
 
 1. **Applied damage:** what the shield lost, split over raw hits and boundary damage.
@@ -184,8 +189,9 @@ it already has (keyword-only), because it is memory-bound on its (B, N, N) matri
 
 ## Decisions and deviations
 
-1. **Mode clocks.** `episode_s`/`respawn_s` default to the mode's (spec: 300 s
-   default; respawn per mode). Sandbox keeps 60 s and 8 s, the physics game's, so the
+1. **Mode clocks: sandbox runs 60 s matches with 8 s respawns, not the spec's 300 s.**
+   `episode_s`/`respawn_s` default to the mode's (spec: 300 s default; respawn per mode).
+   Sandbox keeps 60 s and 8 s, the physics game's, so the
    race tests run through an adapter that only selects `mode="sandbox"` (and passes
    sandbox's empty mode state to `State`, which now requires it).
 2. **The level names live in `bnb.contracts`** (`REWARD_LEVELS`, next to
@@ -197,7 +203,8 @@ it already has (keyword-only), because it is memory-bound on its (B, N, N) matri
    - The meters compute it in their own dtype, which the capture fixture needs in
      float64.
    - H₀ is never used, since meters move only on a strict majority.
-4. **Frontline `direction`** is v1's: the majority's sign in team 0's frame, clipped meters
+4. **(Superseded in the fix round: the observation now shows the meter's movement.)**
+   **Frontline `direction`** is v1's: the majority's sign in team 0's frame, clipped meters
    included, zeroed on a completion (the fixture). The observation shows it in the
    viewer's favour, which reads +1 for a defender whose meter falls: my reading of "+1
    when the meter is moving toward the viewer's capture".
@@ -233,7 +240,8 @@ it already has (keyword-only), because it is memory-bound on its (B, N, N) matri
     `tests/contract/test_contracts.py` asserts it (request 2).
 14. **Proposals implemented as written:**
     - team deathmatch respawn 5 s;
-    - `deathmatch_wide` at 25% (recorded as `WIDE_SHARE`). One game is one mode, so the
+    - `deathmatch_wide` at 25% (the `WIDE_SHARE` constant was removed in the fix round).
+      One game is one mode, so the
       learner section wires the mix.
 15. **Speed: team deathmatch placement.**
     - One pass serves resets and respawns, against the enemy slots only (team-major
@@ -321,7 +329,10 @@ RTX 4070 laptop, bench lock held, seed 20261031 (`bench.sizes`), mid-game states
   - `model.py`: the levels default, the zone kind's initialisation, the memory's rotary
     tables.
 - **`bnb.models.mlp`:** `GLOBAL_SCALE` covers the new global columns. This is forced: the
-  MLP reads every global column.
+  MLP reads every global column. Outside the brief's list; accepted as mechanical.
+- **`REWARD_LEVELS` in `bnb.contracts`** (decision 2), outside the brief's list; accepted
+  as mechanical.
+- **`bnb.cli`** (fix round): `--preset` and `--mode`.
 - **`bnb.controllers.yemong`:** `reads` includes `zones`.
 - **`bnb.runtime`:**
   - `rollout.py`: the ledger in the carry, the reward step, the zones part, the level
@@ -333,7 +344,8 @@ RTX 4070 laptop, bench lock held, seed 20261031 (`bench.sizes`), mid-game states
   - `tests/reference/rewards/rewards_arm.py`;
   - `tests/contract/test_yemong_contract.py`: the values' level count is now
     `len(REWARD_LEVELS)`. This file is outside my list. The spec's level default forces
-    the change; nothing else in it changed.
+    the change; nothing else in it changed. Accepted as mechanical.
+  - `tests/contract/test_contracts.py` (fix round, permitted): `Obs.SCHEMA_VERSION == 2`.
   - in `tests/sections`: `test_game_section.py` reads the spec defaults in sandbox;
     `test_yemong_model.py` takes the level count; `yemong_cases.py` passes zones and adds
     a short Frontline config;
@@ -431,3 +443,128 @@ RTX 4070 laptop, bench lock held, seed 20261031 (`bench.sizes`), mid-game states
 
 `src/bnb` grew by 1,025 lines net (the stub's 25 deleted). The section tests grew by about
 1,065 lines, nearly all in four new files.
+
+## Fix round (after the blind review)
+
+`origin/v2` is merged (the modes.md ring order). 276 tests pass (`uv run --no-sync
+pytest`, GPU and slow included, none skipped) and `ruff check` is clean.
+
+### Major
+
+1. **Seat leak through the zone row order.**
+   - Team 1 now lists the zones in mirrored cyclic order, zone (−z) mod 5 in row z
+     (`modes/observation.py`). At front 0 both views read neutral, own spawn, own
+     defense, enemy defense, enemy spawn; at any front each view's roles by row are
+     `roles_from_front` of its own front.
+   - New `test_mode_rows_do_not_reveal_the_seat`, for every mode, on 1024 fresh matches
+     and through play:
+     - both views' globals and zone rows (radius, role, progress, direction, distances)
+       are identical at a match's start;
+     - the ring's handedness seen from either view is counter-clockwise 40–60% of the time;
+     - through play, each view's roles by row and its front column follow its own front.
+   - The own-ship layout test stays, for every mode.
+   - The ring-order mutant now fails this test.
+2. **Three surviving mutants, now covered.**
+   - **Team 1 wins Frontline:** by three captures (front −3), and at the clock with front
+     −1. Both check the result (−1) and the outcome level's sign: +1 to team 1's ships,
+     −1 to team 0's.
+   - **Team deathmatch respawn, through the game:**
+     - ship 0's wait ends on the tick enemy ship 3 dies to the boundary at the arena's
+       edge;
+     - the test recomputes the candidates from the tick uniforms: the placement is the
+       one farthest from the survivor only;
+     - the test asserts that counting the dying ship would choose differently in some
+       environments.
+   - **Frontline respawn on a capture tick, through the game:** a team-1 ship due on the
+     tick team 0 completes a capture spawns in team 1's post-capture spawn zone, facing
+     its new target (the old zone is checked to be elsewhere). The single-element loop is
+     gone: the reset case is its own test.
+   - **Mutation check of these and the fixes** (`/tmp/bnb-scratch-modes/mutants2.py`): 7
+     mutants, all now fail.
+     - The three the reviewer found survived: scoring respawns against tick-start alive,
+       respawning at pre-capture zones, a team-1 win counted as team 0's (capture and
+       clock).
+     - The others: ring-ordered team-1 rows, direction from the push, no grouped clip.
+
+### Minor
+
+3. **Direction is the meter's movement.**
+   - `ModeState.movement` is the sign of each meter's progress change this tick, 0 on a
+     completion. It replaces the stored push, which the observation no longer needed.
+   - The zone row shows it per viewer: +1 for a meter rising on the zone the viewer
+     attacks or falling on the one it defends, −1 the opposite, 0 still.
+   - `capture_step` still returns v1's push, as the fixture pins.
+   - A new test covers a rising meter, the same meter falling, and an empty meter held by
+     the defenders: the push is −1 there, but the direction is 0.
+4. **`Obs.SCHEMA_VERSION` is 2;** the contract test asserts it.
+5. **Changes outside the brief:** the notes list all three (the Yemong contract test,
+   the MLP's `GLOBAL_SCALE`, `REWARD_LEVELS` in contracts), plus this round's CLI and
+   contract-test assertion.
+6. **Coverage.**
+   - The lively play is harsher at the boundary (60 per s base) and sandbox's arena is
+     300 m with 8 s matches. The zero-sum and conservation rollouts then require enemy
+     kills, friendly fire and boundary deaths in every mode, Frontline included, plus
+     respawns, resets and recharge. At 16 environments × 300 ticks, the smallest counts
+     are 1 enemy kill (team deathmatch) and 7 boundary deaths (sandbox).
+   - `test_the_rollouts_ledger_holds_every_deficit`, for every mode: through the runtime
+     `Rollout` (random and chaser pools, staggered clocks), after each of 16 short runs,
+     the carried ledger against the carried state.
+7. **Grouped candidates are clipped radially into the disc R_a − 50 m** before scoring,
+   resets and respawns alike (`ModeRules.spawn_margin`). The uniform rule's candidates
+   lie within R_a by construction (r = R_a √u) and are not clipped.
+   - The grouped brute-force test clips too, and asserts some candidates needed it.
+   - The respawn test accepts a landing on the clip circle and checks every grouped
+     spawn is inside the disc.
+
+### Your answers, acted on
+
+- **Ledger split.**
+  - The ledger is now `Ledger(ships (B, N, N), boundary (B, N))`, a pytree contract in
+    `bnb.learn.rewards`; the math is unchanged.
+  - The adapter is untouched: the fixture functions never saw the boundary row.
+  - The reward step at 114 ships × 360 went 0.63 → 0.52 ms. At 40 and 26 ships it reads
+    0.15–0.16 and 0.10 ms, against 0.14 and 0.09 before: within this laptop's run-to-run
+    spread, or a few µs of the second output.
+- **CLI:** `bnb train --preset {deathmatch, deathmatch_wide, frontline}` or `--mode`.
+  Smoke-tested on the GPU.
+
+### Nits
+
+- **One default for the mode:** `GameConfig.mode` (team deathmatch). `Rules.mode` and
+  `ModeRules.name` have no defaults, and `rules_of` builds them from the config.
+- Sandbox's 60 s / 8 s is listed as deviation 1.
+- `WIDE_SHARE` is removed.
+- The placement functions are `deathmatch_placement` and `frontline_placement`.
+- The `Encoder` docstring says why `zone_inputs` is optional: the fixed reference arm
+  builds a five-argument encoder and loads its weights strictly.
+
+### Measurements after the fix round
+
+Per tick, compiled, same method as above:
+
+| cell | mode | resolve ms | vs sandbox | reward step ms |
+|---|---|---:|---:|---:|
+| 114 ships, 360 envs | sandbox | 0.574 | — | 0.517 |
+| | team deathmatch | 0.823 | +0.249 | 0.525 |
+| | grouped | 0.770 | +0.196 | 0.518 |
+| | Frontline | 0.709 | +0.135 | 0.518 |
+| 40 ships, 1024 envs | sandbox | 0.251 | — | 0.151 |
+| | team deathmatch | 0.447 | +0.195 | 0.162 |
+| | grouped | 0.397 | +0.146 | 0.155 |
+| | Frontline | 0.426 | +0.175 | 0.164 |
+| 26 ships, 1576 envs | sandbox | 0.367 | — | 0.099 |
+| | team deathmatch | 0.488 | +0.121 | 0.098 |
+| | grouped | 0.432 | +0.066 | 0.097 |
+| | Frontline | 0.491 | +0.124 | 0.098 |
+
+- **The mode phase** is where it was, within about ±0.05 ms of the first round's run.
+- **The grouped clip** adds a sqrt per candidate.
+- **Frontline's movement** column costs nothing measurable; differences between the two
+  runs are this laptop's noise.
+
+### Still open
+
+- `contracts.md`: the coordinator updates it at merge, including the `Ledger` now
+  replacing the (B, N + 1, N) tensor.
+- The per-level discounts belong to section 6.
+- Rewards spec wording on unheld shares: the coordinator fixes it.
