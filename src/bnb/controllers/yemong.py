@@ -15,7 +15,7 @@ from bnb.models.yemong.model import Carry, Replay, Unrolled, Yemong
 
 
 class YemongController:
-    reads = ("ships", "fields", "globals")
+    reads = ("ships", "fields", "globals", "zones")
 
     def __init__(self, model: Yemong, ships_per_team: int, num_ships: int) -> None:
         self.model = model

@@ -65,7 +65,10 @@ class PPO:
     def update(self, traj: Trajectory, last_value: torch.Tensor) -> dict[str, float]:
         cfg = self.cfg
         with torch.no_grad():
-            adv, ret = gae(traj.reward, traj.value, traj.done, last_value, cfg.gamma, cfg.lam)
+            # The skeleton's critic is one value: the reward levels are summed (section 6
+            # gives each level its own head, discount and lambda).
+            adv, ret = gae(traj.reward.sum(-1), traj.value, traj.done, last_value, cfg.gamma,
+                           cfg.lam)
         L, R = traj.reward.shape[:2]
         if (L * R) % cfg.minibatches:
             raise ValueError(f"{L} x {R} views do not split into {cfg.minibatches} minibatches")

@@ -3,7 +3,8 @@
 A tick is four stages over one carry (a dict of persistent device buffers):
   act       controllers choose actions; the tick's random draws; record learner views
   advance   physics phases 1-3 (fire, ships fly, bullets fly)
-  resolve   phases 4-8 (hits through episode end), rewards, seat redraw at resets
+  resolve   phases 4-8 (hits through episode end), rewards and their ledger, seat redraw
+            at resets
   perceive  visibility and the observation of the new state
 Each stage is a pure function of the carry whose outputs are copied back in. Stages are
 compiled separately (the cut list is this tuple), and on a GPU a block of ticks is captured
@@ -13,14 +14,14 @@ as one CUDA graph, so a rollout is a few graph replays.
 import torch
 from torch.utils import _pytree
 
-from bnb.contracts import Action, Controller, GameConfig, Obs, Pool, Trajectory
+from bnb.contracts import REWARD_LEVELS, Action, Controller, GameConfig, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL
 from bnb.game import api
-from bnb.game.modes import deathmatch
+from bnb.learn import rewards
 
 from .lineup import Lineup
 
-PARTS = ("ships", "fields", "globals")
+PARTS = ("ships", "fields", "globals", "zones")
 COUNTERS = ("shots", "hits", "deaths", "resets")
 
 
@@ -42,8 +43,10 @@ class Rollout:
     def __init__(self, cfg: GameConfig, pools: tuple[Pool, ...],
                  controllers: dict[str, Controller], learner: str, num_envs: int,
                  length: int, device: torch.device, compile: bool = True,
-                 graph_ticks: int = 32) -> None:
+                 graph_ticks: int = 32, reward_config: rewards.RewardConfig | None = None
+                 ) -> None:
         self.rules = api.rules_of(cfg)
+        self.reward_config = reward_config or rewards.RewardConfig()
         self.T, self.S, self.N = cfg.num_teams, cfg.ships_per_team, cfg.num_ships
         self.B, self.length, self.device = num_envs, length, device
         self.lineup = Lineup(pools, num_envs, device)
@@ -74,7 +77,7 @@ class Rollout:
             obs={part: torch.zeros((L, R) + view_shape[part], device=dev) for part in self.reads},
             action=torch.zeros((L, R, S, 3), dtype=torch.int32, device=dev),
             logp=torch.zeros((L, R, S), device=dev), value=torch.zeros((L, R, S), device=dev),
-            reward=torch.zeros((L, R, S), device=dev),
+            reward=torch.zeros((L, R, S, len(REWARD_LEVELS)), device=dev),
             done=torch.zeros((L, R), dtype=torch.bool, device=dev))
         controller_carry = {name: c.init_carry(self.lineup.rows(name), dev)
                             for name, c in self.controllers.items()}
@@ -86,6 +89,7 @@ class Rollout:
             spread=torch.zeros((B, self.N, 2), device=dev),
             uniforms=torch.zeros((B, rules.tick_uniform_count), device=dev),
             sweep=api.sweep_like(st),
+            ledger=rewards.blank_ledger(B, self.N, dev),
             ctrl=controller_carry,
             buf=buf, t_idx=torch.zeros(1, dtype=torch.long, device=dev),
             counters=torch.zeros(len(COUNTERS), dtype=torch.int64, device=dev))
@@ -161,7 +165,10 @@ class Rollout:
         st, ev = api.resolve(self.rules, carry["types"], carry["state"], carry["sweep"],
                              carry["uniforms"])
         _assign(carry["state"], st)
-        reward = deathmatch.reward(ev).reshape(self.B, self.T, self.S)
+        team = torch.arange(self.N, device=self.device) // self.S
+        reward, ledger = rewards.reward_step(self.reward_config, carry["ledger"], ev, team)
+        carry["ledger"].copy_(ledger)
+        reward = reward.reshape(self.B, self.T, self.S, len(REWARD_LEVELS))
         name, buf, t = self.learner, carry["buf"], carry["t_idx"]
         e = self.lineup.env[name]
         buf["reward"].index_copy_(0, t, reward[e, self._team(name, carry["seat"])][None])

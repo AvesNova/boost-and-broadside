@@ -1,6 +1,7 @@
 """The encoder and the trunk (spec 6.1, 6.5).
 
-The query tokens are the ships, then the global token. Fields enter only as map memory.
+The query tokens are the ships, then the global token. Fields, and the mode's zones, enter
+only as map memory.
 """
 
 import torch
@@ -25,12 +26,16 @@ class KindProjection(nn.Module):
 
 
 class Encoder(nn.Module):
+    """One first projection per token kind, then a shared one. Query kinds: ships and the
+    global token; memory kinds: fields and, with zone_inputs, the mode's zones."""
+
     def __init__(self, ship_inputs: int, global_inputs: int, field_inputs: int, width: int,
-                 map_width: int) -> None:
+                 map_width: int, zone_inputs: int | None = None) -> None:
         super().__init__()
         self.ship = KindProjection(ship_inputs, 2 * width)
         self.field = KindProjection(field_inputs, 2 * width)
         self.global_token = KindProjection(global_inputs, 2 * width)
+        self.zone = KindProjection(zone_inputs, 2 * width) if zone_inputs else None
         self.shared = nn.Linear(2 * width, width)
         self.shared_norm = norm(width)
         self.map_memory = nn.Linear(width, map_width, bias=False)
@@ -39,12 +44,16 @@ class Encoder(nn.Module):
     def _shared(self, tokens: torch.Tensor) -> torch.Tensor:
         return self.shared_norm(self.shared(tokens))
 
-    def forward(self, ship: torch.Tensor, global_token: torch.Tensor,
-                field: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """ship (..., N, Fs), global_token (..., 1, Fg), field (..., M, Ff) to the queries
-        (..., N + 1, D) and the map memory (..., M, Dm)."""
+    def forward(self, ship: torch.Tensor, global_token: torch.Tensor, field: torch.Tensor,
+                zone: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+        """ship (..., N, Fs), global_token (..., 1, Fg), field (..., M, Ff) and, for an
+        encoder with zones, zone (..., Z, Fz) to the queries (..., N + 1, D) and the map
+        memory (..., M + Z, Dm), fields first."""
         queries = self._shared(torch.cat([self.ship(ship), self.global_token(global_token)], -2))
-        memory = self.map_memory_norm(self.map_memory(self._shared(self.field(field))))
+        memory = self.field(field)
+        if self.zone is not None:
+            memory = torch.cat([memory, self.zone(zone)], -2)
+        memory = self.map_memory_norm(self.map_memory(self._shared(memory)))
         return queries, memory
 
 

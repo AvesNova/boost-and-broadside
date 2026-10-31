@@ -77,7 +77,8 @@ TYPES = api.ship_types()
 
 def rules(spec) -> Rules:
     p = race_preset(spec)
-    return api.rules_of(GameConfig(p["num_ships"] // 2, p["num_fields"], p["arena_radius"]))
+    return api.rules_of(GameConfig(p["num_ships"] // 2, p["num_fields"], p["arena_radius"],
+                                   mode="sandbox"))
 
 
 def to_torch(arrays: dict) -> dict:
@@ -94,14 +95,15 @@ def flat(state: State) -> dict:
 
 
 def unflat(p: Rules, arrays: dict) -> State:
-    """A race state dict as a State; the parts the race lacks start blank (fogged)."""
+    """A race state dict as a State; the parts the race lacks start blank (fogged, and
+    sandbox's empty mode state)."""
     values = to_torch(arrays)
     base = blank(p, values["x"].shape[0])
     parts = {"ships": {}, "bullets": {}, "fields": {}, "match": dataclasses.asdict(base.match)}
     for key, (part, name) in STATE_KEYS.items():
         parts[part][name] = values[key]
     return State(ships=Ships(**parts["ships"]), bullets=Bullets(**parts["bullets"]),
-                 fields=Fields(**parts["fields"]), match=Match(**parts["match"]))
+                 fields=Fields(**parts["fields"]), match=Match(**parts["match"]), mode=base.mode)
 
 
 def fields_of(arrays: dict) -> Fields:

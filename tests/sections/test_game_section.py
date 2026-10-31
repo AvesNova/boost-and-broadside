@@ -275,7 +275,7 @@ def test_medium_gradients_are_finite_everywhere(case):
 def test_defaults_match_the_spec_table():
     spec = json.loads((REFERENCE / "golden" / "presets.json").read_text())
     preset = spec["presets"]["squad"]
-    rules = api.rules_of(GameConfig(5, 10, 2600.0))
+    rules = api.rules_of(GameConfig(5, 10, 2600.0, mode="sandbox"))  # the physics game
     for key, value in preset.items():
         if key in RULES:
             assert math.isclose(getattr(rules, RULES[key]), value), key
