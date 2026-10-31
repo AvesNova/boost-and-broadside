@@ -373,3 +373,50 @@ Nits:
 - `TEAMS` imported from `bnb.game.rules`;
 - the bf16 docstring corrected;
 - `Decision.outcome_probabilities` against `Unrolled.outcome_logits`.
+
+### Fix round, part 2: the act-stage drift and the replay dtypes
+
+**Cause of the act-stage drift.** It was an inductor numerics setting, not an ordering or
+aliasing bug, and not reassociation through the recurrence.
+- The replay stored the spreads as bf16, and the step composed its tokens from that rounded
+  copy.
+- Inside the compiled act stage, inductor fused the fp32 → bf16 → fp32 round trip into the
+  kernels that consume it, and by default drops the rounding there
+  (`torch._inductor.config.emulate_precision_casts = False`).
+- So the compiled step read unrounded spreads while the stored replay held rounded ones.
+  `unroll` then saw slightly different inputs at every tick, and the recurrence carried the
+  difference forward.
+
+**How it was isolated:** the same act stage, values compared with `unroll` over 64 ticks
+(`drift_bisection.py`):
+
+| run | max value error |
+|---|---:|
+| eager, captured | 6e-7 |
+| compiled, bf16 spreads | 1.4e-4 |
+| compiled, bf16 spreads, `emulate_precision_casts = True` | 2.4e-6 |
+| compiled, float32 spreads | 2.3e-6 |
+| compiled, not captured | 2.7e-6 |
+
+The checks the coordinator listed came out clean:
+- TF32 and matmul precision: off everywhere ("highest").
+- The replay's previous action equals the stored action of the step before, cleared at
+  resets.
+- The offset is constant within an episode.
+- Visible rows' stored means equal the shifted truth from the stored obs, to 2e-7.
+
+**Fix:**
+- The spreads are stored in float32.
+- The enemy-action forecasts are stored as int16 fixed point, `round(p * 32767)`:
+  2 bytes, resolution 3e-5. The step composes its tokens from those stored integers. Integer
+  rounding is not elided, so the step reads exactly what the replay holds. (bf16 storage
+  would have the same elision problem.)
+- With this, the compiled, captured rollout agrees with `unroll` to 2e-6 over 64 ticks, flat
+  in time. The runtime storage test is back to 1e-5.
+
+**Rule for the learner section:** never store a rounded copy that a compiled stage also
+reads unrounded. Round with integer storage, or store at full precision.
+
+**Benchmark (bench_run2).** Re-run after the spreads change. The cells still running at
+hand-back write their results to `/tmp/bnb-scratch-yemong/bench_run2.log`; I have not
+copied them here.
