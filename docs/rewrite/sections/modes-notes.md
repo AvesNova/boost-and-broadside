@@ -2,7 +2,7 @@
 
 Branch `section/modes`. The modes spec (`modes-spec.md`) is implemented in `bnb.game.modes`,
 the rewards spec (`rewards-spec.md`) in `bnb.learn.rewards`. All tests pass
-(`uv run --no-sync pytest`: 270 passed, none skipped, the 13 rewards equivalence tests
+(`uv run --no-sync pytest`: 264 passed, none skipped, the 13 rewards equivalence tests
 included), and `ruff check` is clean. The fixed tests and goldens are unchanged.
 
 ## Design
@@ -281,7 +281,30 @@ RTX 4070 laptop, bench lock held, seed 20261031 (`bench.sizes`), mid-game states
 
 **Bench cells, train rollout** (env-ticks/s), and realtime:
 
-CELLS_TABLE
+`bench.cell` with the mode in the size, one run each. The base is the branch point
+572733fd (the game section's game with the skeleton reward stub), run in the same session.
+
+| cell | base | sandbox | team deathmatch | grouped | Frontline |
+|---|---:|---:|---:|---:|---:|
+| 114 ships, 22 fields, 360 envs | 111,234 | 86,530 | 80,225 | 81,872 | 91,767 |
+| 40 ships, 8 fields, 1024 envs | 440,713 | 392,525 | 365,598 | 375,563 | 389,671 |
+| 26 ships, 54 fields, 1576 envs | 427,240 | 414,633 | 389,667 | 398,643 | 407,565 |
+| train env-ticks/s, 114 / 40 / 26 ships | 18,966 / 56,584 / 78,978 | 18,026 / 55,558 / 78,457 | 17,663 / 54,731 / 77,376 | 17,705 / 55,051 / 77,600 | 18,142 / 55,395 / 78,009 |
+| realtime, CPU, 10 ships, p50 / p99 ms | 0.157 / 0.167 | 0.18 / 0.20 | 0.19 / 0.23 | 0.21 / 0.23 | 0.21 / 0.26 |
+
+- **Where the rollout loss goes.**
+  - In sandbox it is almost all the reward step: the game's `resolve` is unchanged
+    (0.580 ms vs the base's 0.582 ms at 114 ships), against the base's two-pass stub.
+  - In team deathmatch the placement adds its 0.13–0.27 ms per tick.
+  - The large-N cell feels the O(N²) step most (−22% sandbox, −28% team deathmatch); at
+    26 ships it is −3% and −9%.
+- **Training throughput** is dominated by the PPO update (about 2 s), so it moves 1–7%.
+- **Peak VRAM** is unchanged within 0.1 GB. The ledger is (B, N + 1, N) float32: 19 MB at
+  114 ships × 360.
+- **Realtime** at B = 1 is 15–35% slower at p50. The reward step does not run there; the
+  cost is the mode's code and the wider observation, many small ops at B = 1.
+- **Compile times** vary by cache state: the first mode of each size pays the cold
+  cache.
 
 ## Changes outside `bnb.game`
 
@@ -404,7 +427,7 @@ CELLS_TABLE
 | `game/modes/phase.py` | 109 |
 | `game/modes/rules.py` | 72 |
 | `game/modes/observation.py` | 48 |
-| changes to the existing `bnb.game` modules (step, spawning, combat, state, rules, observe) | +116 net |
+| changes to the existing `bnb.game` modules (step, spawning, combat, state, rules, observe) | +112 net |
 
-`src/bnb` grew by about 1,040 lines. The new section tests are about 1,060 lines in four
-files.
+`src/bnb` grew by 1,025 lines net (the stub's 25 deleted). The section tests grew by about
+1,065 lines, nearly all in four new files.
