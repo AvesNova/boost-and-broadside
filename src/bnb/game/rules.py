@@ -47,6 +47,7 @@ class Rules:
     ships_per_team: int
     num_fields: int
     arena_radius: float  # m
+    mode: ModeRules  # from the config (rules_of): one default for the mode, GameConfig's
     episode_ticks: int = 1800
     respawn_ticks: int = 240
     team_types: tuple[int, ...] = ()  # ship type per slot, the same for both teams
@@ -66,7 +67,6 @@ class Rules:
     field_band_width: float = 40.0  # m [b]
     vision_range: float = 1024.0  # m [V]
     flight: FlightConstants = FlightConstants()
-    mode: ModeRules = ModeRules()
 
     def __post_init__(self) -> None:
         if not self.team_types:  # within a team, slots alternate starting with a fighter

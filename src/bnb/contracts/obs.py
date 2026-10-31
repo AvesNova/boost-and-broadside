@@ -60,7 +60,7 @@ class Obs:
     fields: torch.Tensor | None
     globals: torch.Tensor | None
     zones: torch.Tensor | None = None
-    SCHEMA_VERSION: ClassVar[int] = 1
+    SCHEMA_VERSION: ClassVar[int] = 2  # 2: zones and the mode's global columns
 
 
 @contract

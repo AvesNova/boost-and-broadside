@@ -27,7 +27,11 @@ class KindProjection(nn.Module):
 
 class Encoder(nn.Module):
     """One first projection per token kind, then a shared one. Query kinds: ships and the
-    global token; memory kinds: fields and, with zone_inputs, the mode's zones."""
+    global token; memory kinds: fields and, with zone_inputs, the mode's zones.
+
+    zone_inputs is optional so an encoder can be built exactly as before the modes section:
+    the fixed reference arm (tests/reference/yemong) builds one from five arguments and
+    loads its fixture weights strictly, with no zone kind. Yemong always passes it."""
 
     def __init__(self, ship_inputs: int, global_inputs: int, field_inputs: int, width: int,
                  map_width: int, zone_inputs: int | None = None) -> None:

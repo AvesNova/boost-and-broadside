@@ -61,8 +61,12 @@ def mode_phase(rules: Rules, mode: ModeState, ships: Ships, alive: torch.Tensor,
         held = frontline.zone_progress_events(team, inside, capture.roles, mode.progress,
                                               capture.progress, capture.team0_captured,
                                               capture.team1_captured)
+        # The observation shows each meter's actual movement (the fixture's `direction` is
+        # the majority's push, which a clipped meter does not follow).
+        completed = (capture.team0_captured | capture.team1_captured)[:, None]
+        movement = torch.where(completed, 0, torch.sign(capture.progress - mode.progress))
         state = replace(mode, front=capture.front, role=capture.roles,
-                        progress=capture.progress, direction=capture.direction.to(torch.int32),
+                        progress=capture.progress, movement=movement.to(torch.int32),
                         attack_ledger=capture.attack_ledger,
                         defense_ledger=capture.defense_ledger)
         won = capture.front.abs() >= rules.mode.front_threshold

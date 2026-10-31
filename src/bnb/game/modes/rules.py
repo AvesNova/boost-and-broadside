@@ -15,27 +15,27 @@ TEAM_DEATHMATCH, FRONTLINE, SANDBOX = "team_deathmatch", "frontline", "sandbox"
 CLOCKS = {TEAM_DEATHMATCH: (300.0, 5.0), FRONTLINE: (300.0, 8.0), SANDBOX: (60.0, 8.0)}
 FRONTLINE_ZONES = 5
 
-# Training presets, all 5v5 (modes spec 1); deathmatch_wide takes WIDE_SHARE of team
-# deathmatch training (proposal).
+# Training presets, all 5v5 (modes spec 1). deathmatch_wide is to take 25% of team
+# deathmatch training (proposal), a mix the learner section wires.
 PRESETS = {
     "deathmatch": GameConfig(5, 10, 2600.0, mode=TEAM_DEATHMATCH),
     "deathmatch_wide": GameConfig(5, 40, 8200.0, mode=TEAM_DEATHMATCH, spawn_groups=(2, 2, 1)),
     "frontline": GameConfig(5, 10, 2600.0, mode=FRONTLINE),
 }
-WIDE_SHARE = 0.25
 
 
 @dataclasses.dataclass(frozen=True)
 class ModeRules:
     """name: the mode. Team deathmatch: kills_per_ship, spawn_groups (ships per team per
     group; empty for uniform spawns), spawn_candidates (K, best of K), the group centres'
-    disc (group_centre_fraction of the arena radius), the members' disc (group_radius) and
-    the respawn ring around an anchor (anchor_distance_min to _max). Frontline: the zone
+    disc (group_centre_fraction of the arena radius), the members' disc (group_radius), the
+    respawn ring around an anchor (anchor_distance_min to _max), and spawn_margin, how far
+    inside the arena edge a grouped candidate is clipped to. Frontline: the zone
     ring (zone_ring_fraction of the arena radius), zone_radius (m before map scaling),
     capture_seconds (a lead of one), front_threshold (captures ahead that win) and the
     spawn disc (spawn_zone_fraction of the zone radius)."""
 
-    name: str = SANDBOX
+    name: str
     kills_per_ship: int = 5
     spawn_groups: tuple[int, ...] = ()
     spawn_candidates: int = 8
@@ -43,6 +43,7 @@ class ModeRules:
     group_radius: float = 300.0  # m
     anchor_distance_min: float = 250.0  # m
     anchor_distance_max: float = 600.0  # m
+    spawn_margin: float = 50.0  # m: grouped candidates are kept this far inside the arena
     zone_ring_fraction: float = 0.615
     zone_radius: float = 330.0  # m, before map scaling
     capture_seconds: float = 10.0

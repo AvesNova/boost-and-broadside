@@ -96,8 +96,8 @@ class ModeState:
     """The mode's part of the match (modes spec 6). score (B, 2) int32, deaths scored per
     team (team deathmatch). Frontline, with Z zones (Z = 0 in other modes): front (B,)
     int32, captures ahead for team 0; the zones' centres and radii (B, Z); role (B, Z)
-    int32 in team 0's frame; progress (B, Z), the meters; direction (B, Z) int32, the
-    meters' last push in team 0's frame (+1 a team-0 majority); attack_ledger and
+    int32 in team 0's frame; progress (B, Z), the meters; movement (B, Z) int32, the
+    sign of each meter's progress change this tick (0 on a completion); attack_ledger and
     defense_ledger (B, Z, N), the attempt ledgers; handedness (B,) +-1 and ring_rotation
     (B,) rad, the ring's draw."""
 
@@ -108,7 +108,7 @@ class ModeState:
     zone_radius: torch.Tensor
     role: torch.Tensor
     progress: torch.Tensor
-    direction: torch.Tensor
+    movement: torch.Tensor
     attack_ledger: torch.Tensor
     defense_ledger: torch.Tensor
     handedness: torch.Tensor
@@ -148,7 +148,7 @@ SHIP_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Ships)} | dict(
     ship_type=INT)
 BULLET_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Bullets)} | dict(moves_left=INT)
 FIELD_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Fields)} | dict(level=INT)
-MODE_INTEGERS = ("score", "front", "role", "direction")
+MODE_INTEGERS = ("score", "front", "role", "movement")
 
 
 def blank(rules: Rules, batch: int, device=None) -> State:
