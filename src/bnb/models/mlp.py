@@ -1,10 +1,11 @@
 """The skeleton's baseline model: a small MLP over one team's view.
 
-Each own ship reads its own row, every ship's position and velocity relative to it in its
-nose frame (so bearings need no learning), and a summary of the whole view (every ship
-row, the fields and the globals). The first layer is split along that concatenation, so the summary
-half is computed once per view instead of once per ship. The model reads token position
-(the summary is a flattened view), so it relies on rows being ordered by team_rel.
+Each own ship reads its own row plus a summary of the whole view (every ship row, the
+fields and the globals), raw apart from fixed scales. It exists to exercise the loop, not
+to play well; Yemong is the model that matters. The first layer is split along that
+concatenation, so the summary half is computed once per view instead of once per ship.
+The model reads token position (the summary is a flattened view), so it relies on rows
+being ordered by team_rel.
 """
 
 import torch
@@ -18,7 +19,6 @@ from .heads import SIZES
 SHIP_SCALE = {"x": 1e-3, "y": 1e-3, "vx": 1e-2, "vy": 1e-2, "w": 1e-2, "E": 1e-4,
               "shield": 1e-2, "respawn": 0.125}
 FIELD_SCALE = (1e-3, 1e-3, 1e-2, 1.0)
-EGO = 5  # per other ship: forward, left (1e-3 m), closing velocity forward, left (1e-2 m/s), seen
 GLOBAL_SCALE = (1.0, 1e-3, 1.0, 1.0)
 
 
@@ -30,7 +30,7 @@ class MLP(nn.Module):
         C = len(SHIP_COLUMNS)
         self.ships_per_team = ships_per_team
         summary = num_ships * C + num_fields * len(FIELD_COLUMNS) + len(GLOBAL_COLUMNS)
-        self.own = nn.Linear(C + EGO * num_ships, hidden)
+        self.own = nn.Linear(C, hidden)
         self.summary = nn.Linear(summary, hidden, bias=False)
         self.body = nn.Linear(hidden, hidden)
         self.policy = nn.Linear(hidden, sum(SIZES))
@@ -51,20 +51,7 @@ class MLP(nn.Module):
         summary = torch.cat([ships.flatten(-2), (obs.fields * self.field_scale).flatten(-2),
                              obs.globals * self.global_scale], -1)
         own = ships[..., : self.ships_per_team, :]
-        h = torch.relu(self.own(torch.cat([own, self._egocentric(obs.ships)], -1))
-                       + self.summary(summary)[..., None, :])
+        h = torch.relu(self.own(own) + self.summary(summary)[..., None, :])
         h = torch.relu(self.body(h))
         return self.policy(h), self.value(h)[..., 0]
 
-    def _egocentric(self, ships: torch.Tensor) -> torch.Tensor:
-        """(..., S, N * EGO): every ship as seen from each own ship's nose frame."""
-        S = self.ships_per_team
-        col = {k: ships[..., SHIP[k]] for k in ("x", "y", "vx", "vy", "c", "s", "visible")}
-        own = {k: v[..., :S, None] for k, v in col.items()}
-        dx, dy = col["x"][..., None, :] - own["x"], col["y"][..., None, :] - own["y"]
-        dvx, dvy = col["vx"][..., None, :] - own["vx"], col["vy"][..., None, :] - own["vy"]
-        c, s = own["c"], own["s"]
-        seen = col["visible"][..., None, :].expand_as(dx)
-        ego = torch.stack([(c * dx + s * dy) * 1e-3, (c * dy - s * dx) * 1e-3,
-                           (c * dvx + s * dvy) * 1e-2, (c * dvy - s * dvx) * 1e-2, seen], -1)
-        return (ego * seen[..., None]).flatten(-2)

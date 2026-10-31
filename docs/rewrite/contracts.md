@@ -15,6 +15,7 @@ Status: **draft, first review done** 2026-10-31 (see the review log at the end).
 | Ship order | Team-major: ship `n = team·S + slot`. Ship tensors are stored `(B, N, …)` and viewed `(B, T, S, …)` for free | new |
 | Floats | float32 everywhere in game and runtime. float64 only in `reference/`. bf16 only inside models | carried |
 | Ints | int32 counters and categoricals; bool flags; int64 only where torch requires it (indexing), converted at the use site | carried |
+| Ship indices | At most 255 ships (author: no plans beyond 256); stored ship indices (killer, per-bullet target, row maps) may be `uint8` with 255 = none. Torch treats a `uint8` index tensor as a boolean mask, so convert to int64 before indexing | new |
 | Units | m, s, kg, J, W, rad. Angles counter-clockwise, y up | carried |
 | Containers | frozen `@dataclass`es whose fields are tensors, registered as pytrees (`torch.utils._pytree`) so the runtime can map `copy_`, `clone`, `to(device)` over them. No dicts at contract boundaries | new |
 | Versions | `Obs`, `Action` and `Events` each carry a `SCHEMA_VERSION` class constant. A model checkpoint and an exported ONNX model record the versions they were trained on; loading a mismatch fails | new |
@@ -301,3 +302,38 @@ snapshot(state) -> RenderSnapshot            # play section
      enemy-action prediction is an auxiliary output: **agreed, revised as above**.
   6. Learner seat randomized per env per episode: **agreed** (a cheap guard; maps are
      already seat-symmetric).
+
+## Skeleton implementation notes (2026-10-31)
+
+Milestone 0 is built (`src/bnb`). These are the places where it differs from or settles
+the text above:
+
+- **Controller signature:** `step(carry, obs, done) -> (action, carry, outputs)`.
+  - Following PyTorch idiom, a model's parameters live in the controller's own module.
+    There is no `params` argument; a league slot is a separate controller whose weights
+    are `copy_`'d in.
+  - `done` is the view's reset flag.
+  - Random draws use the default generator for now. Named, graph-registered generators
+    come later.
+  - `reads` lists the Obs parts a controller uses; the rollout stores only the learner's.
+- **Perception:** `perceive(p, state) -> (state, Obs, Privileged)`. "When did this team
+  last see this ship" is game state (`last_seen`, ticks, `(B, T, N)`), so perception
+  returns the state with it advanced.
+- **Seat:** a runtime array `seat (B,)`, redrawn at every reset. Role r plays team
+  `(r + seat) mod T`. `Match.seat_of_team` (map sides) is not needed by team deathmatch
+  and arrives with the first mode that has side-specific roles.
+- **Known seat leak, physics section:**
+  - The race spawn rule places ship i at phase `frac(0.618 i + 0.382 t)` using the
+    sim index.
+  - So team 0's slot 0 always spawns due east of its team's centre in world coordinates,
+    and a reset reveals the seat.
+  - Fix: phase by slot within the team, measured relative to the spawn axis. That
+    changes the race goldens.
+  - `tests/sections/test_perception.py::test_spawn_layout_does_not_reveal_the_seat` is a
+    strict xfail until then.
+- **Physics constants:** sizes and the two time-native rules (`episode_s`, `respawn_s`)
+  are in `GameConfig`. Everything else is still the race's `presets.json` until the
+  physics section.
+- **Events** carry the race's per-tick pairwise damage. The stub reward uses only kills,
+  deaths and damage dealt and taken. The attribution ledger arrives with the modes
+  section.
