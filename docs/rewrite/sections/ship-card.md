@@ -1,6 +1,6 @@
 # Section 1b: ship card (handles to physics parameters)
 
-Status: design agreed in principle, 2026-10-31. Implementation follows the game section
+Status: design concluded, 2026-10-31. Implementation follows the game section
 (it needs the per-type parameter tensors).
 
 ## Purpose
@@ -11,7 +11,7 @@ computes the physics parameters that make the simulated ship meet them.
 - **Independence is the requirement.** The handles are coordinates: changing one
   re-solves with every other handle held at its value, and the physics parameters move
   however the math requires. A whole new set of handles is the same solve. The number of
-  handles equals the number of free parameters, and the solver checks the conditioning:
+  handles equals the number of free parameters (13 per type: `C_max`, `a_max`, `C_D0`, the charge rate `a_0` (P follows from the cruise fix), `F_s`, `E_max`, `k`, `e`, `omega_c`, `a_dive`, `a_climb`, `alpha_s`, vision range), and the solver checks the conditioning:
   nearly redundant handles give a warning.
 - **Infeasible handle sets fail with a reason** (for example a g limit below 1), never a
   silent nearest fit.
@@ -30,7 +30,7 @@ So Boyd's E-M metrics (specific excess power, sustained and instantaneous turn) 
 over almost directly, and the handles are the specifications a WW2 or F-16 designer would
 recognise.
 
-## Flight handles (12, per ship type)
+## Flight handles (13, per ship type)
 
 | # | Handle | Real-world analogue |
 |---|---|---|
@@ -41,7 +41,8 @@ recognise.
 | 5 | ceiling: store size | service ceiling |
 | 6 | low-speed acceleration | acceleration, thrust at low speed |
 | 7 | sustained turn rate | sustained turn (Ps = 0 at load) |
-| 8 | roll: nose reversal time | roll rate |
+| 8 | **bleed rate**: Ps at corner speed in a max-g turn | energy bleed in a hard turn (E-M) |
+| 8b | roll: nose reversal time | roll rate |
 | 9 | dive acceleration (boost strength) | dive |
 | 10 | zoom: reverse/brake strength | zoom climb |
 | 11 | AoA limit (stall angle; sets the gun offset in turns) | angle-of-attack limit |
@@ -57,11 +58,20 @@ Notes:
     sustained-turn and roll handles stay pinned.
 - **Vision range** becomes per type (the observer's type sets its range). The game agent
   was told to keep the sight test compatible.
-- **No Ps-point handle for now.** The Ps curve's four shape parameters (power, drag,
-  induced drag, static thrust) are already pinned by handles 3, 4, 6 and 7.
-  - The one genuinely new option is the **bleed rate**: Ps at corner speed in a max-g
-    turn. It needs a new physics freedom (a separate drag factor for turning lift).
-  - It is the first addition if ships feel too alike.
+- **Bleed rate (author, 2026-10-31: "turns hard but bleeds fast" vs "turns gently but
+  keeps energy").** Induced drag becomes `k |C|^e` with a per-type **bleed exponent**
+  `e` (2 today), or `k1 C^2 + k2 C^4` if cheaper.
+  - The sustained turn and the bleed rate pin `k` and `e` independently. A high `e`
+    makes hard turns very expensive and gentle ones cheap.
+  - This is a small physics change (one formula, one per-type value), made in this
+    section after the game section merges.
+- **AoA limit and nose reversal time** are the two "nose" dials: crisp and wide vs slow
+  and narrow.
+- **Not a handle: nose pointing while flying straight** (a snapshot without turning).
+  - In this model the nose sits off the flight path only because the ship pulls lift.
+  - Decoupling them needs a new mechanic, such as commanding the nose past stall into
+    the post-stall region of the lift curve (Cobra-like, paid for in drag).
+  - Parked with the open game-design items. If adopted, it brings its own handle.
 
 ## Combat handles (per ship type)
 
