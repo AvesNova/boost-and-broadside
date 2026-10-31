@@ -1,6 +1,6 @@
 # Section: Yemong (the model)
 
-Status: walkthrough in progress, 2026-10-31.
+Status: spec written 2026-11-01 (`yemong-spec.md`, brief `yemong-brief.md`).
 
 ## Decided (author, 2026-10-31)
 
@@ -52,7 +52,13 @@ Status: walkthrough in progress, 2026-10-31.
 
   Yemong's own rule (train at 5v5, evaluate at 50v50) does not bind these.
 
-## Open
+## Settled in the spec (2026-11-01)
 
-- Contract additions for the inputs v1 reads (is-shooting, shield wait, local index and
-  gradient, field band width). Names per the full-words rule.
+- **v1's inputs in v2 columns:**
+  - is-shooting is `fired`;
+  - the shield wait, the local index and its gradient, and the field band width all have
+    columns;
+  - the pending action comes from the model's carry.
+- **The replay record:** `step` returns what it read from its belief, and the runtime
+  stores it. `unroll` then recomputes a segment in parallel without replaying the belief
+  (`Outputs.replay`, `Trajectory.replay`).
