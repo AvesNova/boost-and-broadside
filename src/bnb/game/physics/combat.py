@@ -1,8 +1,7 @@
-"""Hits (SPEC 7.1) and damage, death and shields (SPEC 7.2).
+"""Hits (game spec 7.1) and damage, death and shields (game spec 7.2).
 
-Bullets are paired only with the ships of the other team: with the team axis first, team
-T's bullets (B, 2, N/2 K) meet `enemy` ships (B, 2, N/2), so every pair below is a
-legal one and allied fire never needs masking.
+Friendly fire is on: every bullet is paired with every ship but its own shooter, as
+(B, N K, N) pair tensors that the compiled stage reduces without storing.
 """
 
 import math
@@ -10,82 +9,104 @@ from typing import NamedTuple
 
 import torch
 
-from .constants import Preset
-from .ship_types import type_value
-from .state import by_team, enemy, per_ship
+from ..rules import Rules
+from ..ship_types import ShipTypes, per_ship
+from ..state import Bullets, Ships, Sweep, replace
 
-INF = float("inf")
+INFINITY = float("inf")
+NO_HIT = torch.iinfo(torch.int64).max
 
 
 class Hits(NamedTuple):
     damage: torch.Tensor  # (B, N, N) hit damage from shooter to target
     taken: torch.Tensor  # (B, N) hit damage taken by each ship
     bullet_hit: torch.Tensor  # (B, N, K) the bullet hit something this tick
-    first_shooter: torch.Tensor  # (B, N) owner of the earliest hit on each ship (-1 if none)
+    first_shooter: torch.Tensor  # (B, N) owner of the earliest hit on each ship, -1 if none
 
 
-def hits(p: Preset, start: dict, end: dict, active: torch.Tensor, alive0: torch.Tensor) -> Hits:
-    """Relative swept test between the bullet and ship motions of this tick.
+def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bullets,
+         alive_at_start: torch.Tensor) -> Hits:
+    """Relative swept test between this tick's bullet and ship motions.
 
-    start: tick-start positions x, y, bx, by (bullets after firing); end: the moved state;
-    active: (B, N, K) bullets that moved; alive0: (B, N) ships alive at tick start.
+    sweep: the motions from `move`; ships, bullets: after the moves; alive_at_start:
+    (B, N). Active bullets are those with moves_left > 0.
     """
-    B, N, K = active.shape
-    half = p.half
-
-    def pair(key_b, key_s, st):  # bullet minus enemy-ship coordinate, (B, 2, N/2 K, N/2)
-        return by_team(st[key_b])[..., :, None] - enemy(st[key_s])[..., None, :]
-
-    d0x, d0y = pair("bx", "x", start), pair("by", "y", start)
-    deltax, deltay = pair("bx", "x", end) - d0x, pair("by", "y", end) - d0y
-    tau = (-(d0x * deltax + d0y * deltay) / (deltax * deltax + deltay * deltay).clamp_min(1e-12)).clamp(0.0, 1.0)
-    missx, missy = d0x + tau * deltax, d0y + tau * deltay
-    radius = enemy(type_value(p, "hit_radius", end["ship_type"]))[..., None, :]  # the target's
-    contact = ((missx * missx + missy * missy) < radius * radius) & by_team(active)[..., None] \
-        & enemy(alive0)[..., None, :]
+    B, N, K = bullets.moves_left.shape
+    per_bullet = (B, N * K, 1)
+    start_x = sweep.bullet_x.reshape(per_bullet) - sweep.ship_x[:, None, :]  # (B, N K, N): D0
+    start_y = sweep.bullet_y.reshape(per_bullet) - sweep.ship_y[:, None, :]
+    relative_x = (sweep.bullet_displacement_x.reshape(per_bullet)
+                  - sweep.ship_displacement_x[:, None, :])  # Delta
+    relative_y = (sweep.bullet_displacement_y.reshape(per_bullet)
+                  - sweep.ship_displacement_y[:, None, :])
+    # abs() turns a -0.0 from the clamp into +0.0, so ties at tau = 0 order by bullet index
+    # in the integer key below, eagerly and compiled alike.
+    tau = (-(start_x * relative_x + start_y * relative_y)
+           / (relative_x * relative_x + relative_y * relative_y).clamp_min(1e-12)
+           ).clamp(0.0, 1.0).abs()
+    miss_x, miss_y = start_x + tau * relative_x, start_y + tau * relative_y
+    # The target's hit radius squared; -1 (no contact possible) for a ship dead at tick start.
+    reach = torch.where(alive_at_start, per_ship(types.hit_radius, ships.ship_type) ** 2, -1.0)
+    ship = torch.arange(N, device=alive_at_start.device)
+    not_shooter = ship.repeat_interleave(K)[:, None] != ship  # (N K, N)
+    contact = (((miss_x * miss_x + miss_y * miss_y) < reach[:, None, :]) & not_shooter
+               & (bullets.moves_left > 0).reshape(per_bullet))
 
     # Each bullet hits only its first contact: smallest tau, ties to the lowest ship index
-    # (torch.min returns the first minimal index).
-    tau_first, first = torch.where(contact, tau, INF).min(-1)  # (B, 2, N/2 K)
-    hit = tau_first < INF
+    # (min returns the first minimal index).
+    tau_first, target = torch.where(contact, tau, INFINITY).min(-1)  # (B, N K)
+    hit = tau_first < INFINITY
 
-    # Damage by aspect, per bullet: theta between its reversed direction and its target's nose.
-    dx, dy = by_team(end["bdx"]), by_team(end["bdy"])
-    nc, ns = enemy(end["c"]).gather(2, first), enemy(end["s"]).gather(2, first)
-    theta = torch.atan2((dx * ns - dy * nc).abs(), -(dx * nc + dy * ns))
-    full = by_team(type_value(p, "damage", end["ship_type"])[..., None].expand(B, N, K))  # the shooter's D
-    dmg = torch.where(hit, full * (1.0 - (1.0 - p.head_on_fraction) * torch.exp(-4.0 * theta * theta / math.pi)),
-                      0.0)
+    # Damage by aspect: theta between the bullet's reversed direction and its target's nose.
+    direction_x = bullets.direction_x.reshape(B, N * K)
+    direction_y = bullets.direction_y.reshape(B, N * K)
+    nose_cos, nose_sin = ships.heading_cos.gather(1, target), ships.heading_sin.gather(1, target)
+    theta = torch.atan2((direction_x * nose_sin - direction_y * nose_cos).abs(),
+                        -(direction_x * nose_cos + direction_y * nose_sin))
+    full = per_ship(types.hit_damage, ships.ship_type).repeat_interleave(K, 1)  # the shooter's
+    aspect = 1.0 - (1.0 - rules.head_on_fraction) * torch.exp(-4.0 * theta * theta / math.pi)
+    bullet_damage = torch.where(hit, full * aspect, 0.0)
 
-    # Spread each bullet's hit over its target column: (B, 2, N/2 K, N/2), never stored.
-    on_target = hit[..., None] & (first[..., None] == torch.arange(half, device=first.device))
-    by_shooter = torch.where(on_target, dmg[..., None], 0.0).reshape(B, 2, half, K, half).sum(3)
-    zeros = torch.zeros_like(by_shooter[:, 0])
-    damage = torch.cat([torch.cat([zeros, by_shooter[:, 0]], -1), torch.cat([by_shooter[:, 1], zeros], -1)], 1)
-
-    # The earliest hit on each target: smallest tau, ties to the lowest bullet index o K + slot.
-    tau_earliest, earliest = torch.where(on_target, tau_first[..., None], INF).min(2)  # (B, 2, N/2) targets
-    team_base = torch.tensor([0, half], device=first.device)[None, :, None]
-    shooter = torch.where(tau_earliest < INF, team_base + earliest // K, -1)
-    return Hits(damage=damage, taken=per_ship(by_shooter.sum(2).flip(1)), bullet_hit=hit.reshape(B, N, K),
-                first_shooter=per_ship(shooter.flip(1)))
-
-
-def boundary_damage(p: Preset, st: dict, alive0: torch.Tensor) -> torch.Tensor:
-    """SPEC 5: (5 + 0.05 depth) h for a living ship outside the arena after its move."""
-    depth = torch.sqrt(st["x"] * st["x"] + st["y"] * st["y"]) - p.arena_radius
-    return torch.where(alive0 & (depth > 0.0), (p.boundary_base + p.boundary_per_m * depth) * p.h, 0.0)
+    # Scatter each bullet's hit to its (shooter, target): O(bullets), not O(bullets x ships).
+    # A bullet that hit nothing adds 0. The sum's order can matter only when three or more
+    # of one shooter's bullets hit one target in the same tick.
+    owner = ship.repeat_interleave(K)
+    damage = (torch.zeros((B, N * N), dtype=bullet_damage.dtype, device=bullet_damage.device)
+              .scatter_add(1, owner * N + target, bullet_damage).reshape(B, N, N))
+    # The earliest hit on each target: smallest tau, ties to the lowest bullet index o K + k,
+    # as one int64 key (tau >= +0.0, so its float bits order like the floats) and an exact
+    # min.
+    bullet = torch.arange(N * K, device=bullet_damage.device)
+    key = torch.where(hit, tau_first.view(torch.int32).long() * (N * K) + bullet, NO_HIT)
+    earliest = (torch.full((B, N), NO_HIT, dtype=torch.int64, device=bullet_damage.device)
+                .scatter_reduce(1, target, key, "amin"))
+    shooter = torch.where(earliest < NO_HIT, (earliest % (N * K)) // K, -1)
+    return Hits(damage=damage, taken=damage.sum(1), bullet_hit=hit.reshape(B, N, K),
+                first_shooter=shooter)
 
 
-def apply_damage(p: Preset, st: dict, alive0: torch.Tensor, total: torch.Tensor):
-    """Phase 5 for ships alive at tick start: shields, recharge, and who dies. Returns (state, died)."""
-    shield0, wait0 = st["shield"], st["shield_wait"]
+def boundary_damage(rules: Rules, ships: Ships, alive_at_start: torch.Tensor) -> torch.Tensor:
+    """Game spec 5: (5 + 0.05 depth) tick_length for a living ship outside the arena after its move."""
+    depth = torch.sqrt(ships.x * ships.x + ships.y * ships.y) - rules.arena_radius
+    rate = rules.boundary_damage_base + rules.boundary_damage_per_metre * depth
+    return torch.where(alive_at_start & (depth > 0.0), rate * rules.tick_length, 0.0)
+
+
+def apply_damage(rules: Rules, types: ShipTypes, ships: Ships, alive_at_start: torch.Tensor,
+                 total: torch.Tensor) -> tuple[Ships, torch.Tensor]:
+    """Phase 5 for ships alive at tick start: shields, recharge, and who dies.
+
+    Damage beyond the shield breaks it (the overkill is ignored); any damage to a shield
+    already broken at tick start kills. Returns (ships, died).
+    """
+    tick_length = rules.tick_length
+    shield0, wait0 = ships.shield, ships.shield_recharge_wait
     hurt = total > 0.0
-    died = alive0 & hurt & (shield0 <= 0.0)  # an exposed core dies to anything
+    died = alive_at_start & hurt & (shield0 <= 0.0)
     shield = (shield0 - total).clamp_min(0.0)
-    recharge = torch.minimum(type_value(p, "shield_max", st["ship_type"]) - shield,
-                             p.shield_regen * (p.h - wait0).clamp(0.0, p.h))
+    recharge = torch.minimum(per_ship(types.max_shield, ships.ship_type) - shield,
+                             rules.shield_recharge_rate * (tick_length - wait0).clamp(0.0, tick_length))
     shield = torch.where(hurt, shield, shield + recharge)  # an unhurt ship cannot have died
-    wait = torch.where(hurt, p.shield_delay, (wait0 - p.h).clamp_min(0.0))
-    out = dict(st, shield=torch.where(alive0, shield, shield0), shield_wait=torch.where(alive0, wait, wait0))
-    return out, died
+    wait = torch.where(hurt, rules.shield_recharge_delay, (wait0 - tick_length).clamp_min(0.0))
+    return replace(ships, shield=torch.where(alive_at_start, shield, shield0),
+                   shield_recharge_wait=torch.where(alive_at_start, wait, wait0)), died

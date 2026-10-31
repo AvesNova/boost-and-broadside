@@ -23,5 +23,11 @@ def preset(spec) -> dict:
     return {**PRESETS["squad"], **{k: spec[k] for k in SIZE_KEYS}}
 
 
-def reset_uniform_count(spec) -> int:
+def map_uniform_count(spec) -> int:
     return 4 * preset(spec)["num_fields"] + 1
+
+
+def reset_uniform_count(spec) -> int:
+    """Tick uniforms per environment (game spec 2): the map, two team rotations, a key per
+    ship."""
+    return map_uniform_count(spec) + 2 + preset(spec)["num_ships"]

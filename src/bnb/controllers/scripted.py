@@ -57,7 +57,7 @@ class Chaser:
         d2 = torch.where(target[:, None, :], tx * tx + ty * ty, math.inf)
         pick = torch.nn.functional.one_hot(d2.argmin(-1), d2.shape[-1]).bool()  # ties: lowest row
         tx, ty = torch.where(pick, tx, 0.0).sum(-1), torch.where(pick, ty, 0.0).sum(-1)
-        c, s = own[..., SHIP["c"]], own[..., SHIP["s"]]
+        c, s = own[..., SHIP["heading_cos"]], own[..., SHIP["heading_sin"]]
         signed = torch.atan2(c * ty - s * tx, c * tx + s * ty)
         bearing, dist = signed.abs(), torch.sqrt(tx * tx + ty * ty)
         level = sum((bearing >= math.radians(deg)).int() for deg in (3.0, 10.0, 30.0))

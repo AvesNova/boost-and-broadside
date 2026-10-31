@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from conftest import golden
-from helpers import FLIGHT, H, compare, compare_dict
+from helpers import FLIGHT, H, compare, compare_dict, first_move, half_drag
 
 SHIP_KEYS = ("x", "y", "c", "s", "w", "alpha", "ca", "sa", "r", "E", "logn", "gx", "gy")
 
@@ -158,14 +158,19 @@ def test_bullets_fly_straight_in_empty_space(arm):
                   fr=np.full((1, 1), 100.0, np.float32), fw=np.full((1, 1), 40.0, np.float32),
                   flevel=np.ones((1, 1), np.int32))
     out = arm.bullet_tick(b, fields)
-    compare(out["bx"], b["bx"] + b["bdx"] * b["bw"] * H, "bx", atol=1e-3, rtol=1e-6)
-    compare(out["by"], b["by"] + b["bdy"] * b["bw"] * H, "by", atol=1e-3, rtol=1e-6)
-    compare(out["bw"], b["bw"], "bw", atol=0.0, rtol=0.0)
+    w = b["bw"].astype(np.float64)
+    step_len = np.array([[first_move(v) for v in row] for row in w])
+    compare(out["bx"], b["bx"] + b["bdx"] * step_len, "bx", atol=1e-3, rtol=1e-6)
+    compare(out["by"], b["by"] + b["bdy"] * step_len, "by", atol=1e-3, rtol=1e-6)
+    compare(out["bw"], half_drag(half_drag(w, 0.0), 0.0), "bw", atol=1e-3, rtol=1e-6)
 
 
-def test_bullets_keep_proper_speed_and_unit_direction(arm):
+def test_drag_slows_proper_speed_and_direction_stays_unit(arm):
+    """Proper speed changes only by drag: half a tick with the start index, half with the new."""
     g = golden("bullet_tick.npz")
-    out = arm.bullet_tick(g["bullets"], g["fields"])
-    compare(out["bw"], g["bullets"]["bw"], "bw", atol=0.0, rtol=0.0)
+    b = g["bullets"]
+    out = arm.bullet_tick(b, g["fields"])
+    want = half_drag(half_drag(b["bw"].astype(np.float64), b["blogn"]), out["blogn"].astype(np.float64))
+    compare(out["bw"], want, "bw", atol=1e-3, rtol=1e-6)
     norm = np.hypot(out["bdx"].astype(np.float64), out["bdy"])
     compare(norm, np.ones_like(norm), "|d|", atol=1e-5, rtol=0.0)

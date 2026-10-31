@@ -15,9 +15,8 @@ from torch.utils import _pytree
 
 from bnb.contracts import Action, Controller, GameConfig, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL
-from bnb.game import match
+from bnb.game import api
 from bnb.game.modes import deathmatch
-from bnb.game.perception.observe import perceive
 
 from .lineup import Lineup
 
@@ -44,7 +43,7 @@ class Rollout:
                  controllers: dict[str, Controller], learner: str, num_envs: int,
                  length: int, device: torch.device, compile: bool = True,
                  graph_ticks: int = 32) -> None:
-        self.p = match.preset(cfg)
+        self.p = api.rules_of(cfg)  # the game's rules (bench/cell.py reads rollout.p)
         self.T, self.S, self.N = cfg.num_teams, cfg.ships_per_team, cfg.num_ships
         self.B, self.length, self.device = num_envs, length, device
         self.lineup = Lineup(pools, num_envs, device)
@@ -65,9 +64,10 @@ class Rollout:
 
     def _initial_carry(self) -> dict:
         p, B, dev = self.p, self.B, self.device
-        st = match.reset(p, torch.rand((B, p.num_uniforms), device=dev))
-        st["t"] = torch.randint(0, p.episode_ticks, (B,), device=dev, dtype=torch.int32)
-        st, obs, _ = perceive(p, st)
+        types = api.ship_types(dev)
+        st = api.reset(p, types, api.uniforms(p, B, dev), self.lineup.fogged)
+        st = api.start_clocks(st, torch.randint(0, p.episode_ticks, (B,), device=dev))
+        st, obs, _ = api.perceive(p, st)
         R, L, S = self.lineup.rows(self.learner), self.length, self.S
         view_shape = {part: getattr(obs, part).shape[2:] for part in PARTS}
         buf = dict(
@@ -77,12 +77,12 @@ class Rollout:
             reward=torch.zeros((L, R, S), device=dev),
             done=torch.zeros((L, R), dtype=torch.bool, device=dev))
         carry = dict(
-            state=st, obs={part: getattr(obs, part) for part in PARTS},
+            state=st, types=types, obs={part: getattr(obs, part) for part in PARTS},
             seat=torch.randint(0, self.T, (B,), device=dev),
             actions=torch.zeros((B, self.N, 3), dtype=torch.int32, device=dev),
             spread=torch.zeros((B, self.N, 2), device=dev),
-            fresh=match.new_map(p, torch.zeros((B, p.num_uniforms), device=dev)),
-            origin={k: torch.zeros_like(st[k]) for k in match.ORIGIN_KEYS},
+            uniforms=torch.zeros((B, p.tick_uniform_count), device=dev),
+            sweep=api.sweep_like(st),
             ctrl={name: c.init_carry(self.lineup.rows(name), dev)
                   for name, c in self.controllers.items()},
             buf=buf, t_idx=torch.zeros(1, dtype=torch.long, device=dev),
@@ -121,18 +121,19 @@ class Rollout:
                     buf["logp"].index_copy_(0, t, out.logp[None])
                     buf["value"].index_copy_(0, t, out.value[None])
         carry["actions"].copy_(actions.reshape(B, self.N, 3))
-        carry["spread"].copy_(torch.randn((B, self.N, 2), device=dev))
-        _assign(carry["fresh"], match.new_map(self.p, torch.rand((B, self.p.num_uniforms),
-                                                                 device=dev)))
+        carry["spread"].copy_(api.spread(self.p, B, dev))
+        carry["uniforms"].copy_(api.uniforms(self.p, B, dev))
 
     def _advance(self, carry: dict) -> None:
-        moved, origin = match.move(self.p, carry["state"], carry["actions"], carry["spread"])
-        _assign({k: carry["state"][k] for k in moved}, moved)
-        _assign(carry["origin"], origin)
+        moved, sweep = api.move(self.p, carry["types"], carry["state"],
+                                Action.unpack(carry["actions"]), carry["spread"])
+        _assign(carry["state"], moved)
+        _assign(carry["sweep"], sweep)
 
     def _resolve(self, carry: dict) -> None:
-        st, ev = match.resolve(self.p, carry["state"], carry["origin"], carry["fresh"])
-        _assign({k: carry["state"][k] for k in st}, st)
+        st, ev = api.resolve(self.p, carry["types"], carry["state"], carry["sweep"],
+                             carry["uniforms"])
+        _assign(carry["state"], st)
         reward = deathmatch.reward(ev).reshape(self.B, self.T, self.S)
         name, buf, t = self.learner, carry["buf"], carry["t_idx"]
         e = self.lineup.env[name]
@@ -144,8 +145,8 @@ class Rollout:
                                             ev.done.sum()]))
 
     def _perceive(self, carry: dict) -> None:
-        st, obs, _ = perceive(self.p, carry["state"])
-        carry["state"]["last_seen"].copy_(st["last_seen"])
+        st, obs, _ = api.perceive(self.p, carry["state"])
+        carry["state"].match.ticks_since_seen.copy_(st.match.ticks_since_seen)
         _assign(carry["obs"], {part: getattr(obs, part) for part in PARTS})
         carry["t_idx"].add_(1)
 

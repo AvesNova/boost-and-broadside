@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from race_presets import FLIGHT, PRESETS, reset_uniform_count
+from race_presets import FLIGHT, PRESETS, map_uniform_count, reset_uniform_count
 
 H = 1.0 / 30.0
 
@@ -115,8 +115,22 @@ def step(arm, preset, st, act):
 
 
 def aspect(theta):
-    return 1.0 - 0.9 * math.exp(-4.0 * theta * theta / math.pi)
+    f0 = PRESETS["squad"]["head_on_fraction"]
+    return 1.0 - (1.0 - f0) * math.exp(-4.0 * theta * theta / math.pi)
+
+
+def first_move(proper_speed, n=1.0):
+    """Distance a bullet launched at `proper_speed` covers in its first tick (game spec 6.2,
+    no field gradient): half a tick of drag, then the drift."""
+    k = PRESETS["squad"]["bullet_drag"]
+    w = proper_speed / (1.0 + k * proper_speed * 0.5 * H / n)
+    return w / n * H
+
+
+def half_drag(w, logn):
+    k = PRESETS["squad"]["bullet_drag"]
+    return w / (1.0 + k * w * 0.5 * H * np.exp(-logn))
 
 
 __all__ = ["FLIGHT", "PRESETS", "H", "compare", "compare_dict", "far_fields", "fresh", "place", "actions",
-           "zeros_noise", "step", "aspect"]
+           "zeros_noise", "step", "aspect", "first_move", "half_drag"]

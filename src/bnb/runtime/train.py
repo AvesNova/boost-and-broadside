@@ -72,7 +72,7 @@ class Trainer:
         total = torch.zeros_like(count)
         count.index_add_(0, self.learner_pool, torch.ones_like(per_row))
         total.index_add_(0, self.learner_pool, per_row)
-        rate = (total / count.clamp_min(1) / self.rollout.p.h).tolist()
+        rate = (total / count.clamp_min(1) / self.rollout.p.tick_length).tolist()
         return dict(zip(self.pool_names, rate))
 
     def update(self) -> dict:

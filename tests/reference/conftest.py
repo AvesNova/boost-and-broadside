@@ -20,7 +20,18 @@ from race_arm import RaceArm  # noqa: E402
 
 @pytest.fixture(scope="session")
 def arm():
-    return RaceArm()
+    """bnb's game, or another implementation of the race interface: REFERENCE_ARM=<dir with
+    arm.py defining make_arm()> (used to validate these tests against the float64 oracle and
+    its deliberate mutants)."""
+    path = os.environ.get("REFERENCE_ARM")
+    if not path:
+        return RaceArm()
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("reference_arm", os.path.join(path, "arm.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.make_arm()
 
 
 def golden(name: str) -> dict:

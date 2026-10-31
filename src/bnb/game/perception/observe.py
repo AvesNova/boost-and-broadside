@@ -1,72 +1,89 @@
 """The observation contract (bnb.contracts.obs) from the game state.
 
-Each view lists rows by team_rel: view v's row block j holds team (j + v) mod T. With
+Each view lists rows by team_relative: view v's row block j holds team (j + v) mod 2. With
 team-major storage this is a static gather, fused into the copy this stage writes anyway.
 """
 
 import torch
 
 from bnb.contracts import Obs, Privileged
-from bnb.contracts.obs import SHIP_HIDDEN_ZERO
+from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 
-from ..physics.constants import Preset
+from ..rules import TEAMS, Rules
+from ..state import State, replace
 from .sight import visibility
 
-LAST_SEEN_CAP = 1 << 30  # ticks; keeps the counter far from int32 overflow
+# The row layout `ship_rows` writes: the hidden columns, then the always-shown ones.
+HIDDEN = ("x", "y", "heading_cos", "heading_sin", "velocity_x", "velocity_y", "proper_speed",
+          "angle_of_attack", "nose_rate", "energy", "shield", "shield_recharge_wait",
+          "gun_cooldown", "log_refractive_index", "log_index_gradient_x", "log_index_gradient_y")
+SHOWN = ("alive", "visible", "fired", "respawn_wait", "ship_type", "team_relative",
+         "time_since_seen", "spawned")
+assert HIDDEN + SHOWN == SHIP_COLUMNS and len(HIDDEN) == SHIP_HIDDEN_ZERO
+
+TICKS_SINCE_SEEN_CAP = 1 << 30  # keeps the counter far from int32 overflow
 
 
-def view_order(num_teams: int, ships_per_team: int, device) -> torch.Tensor:
-    """(T, N) int64: the sim index of each row of each view."""
+def view_order(ships_per_team: int, device) -> torch.Tensor:
+    """(2, N) int64: the sim index of each row of each view."""
     slot = torch.arange(ships_per_team, device=device)
-    rows = [torch.cat([((j + v) % num_teams) * ships_per_team + slot for j in range(num_teams)])
-            for v in range(num_teams)]
+    rows = [torch.cat([((j + v) % TEAMS) * ships_per_team + slot for j in range(TEAMS)])
+            for v in range(TEAMS)]
     return torch.stack(rows)
 
 
-def _ship_columns(p: Preset, st: dict) -> tuple[torch.Tensor, torch.Tensor]:
-    """(B, N, 12) hidden-when-unseen columns and (B, N, 3) always-shown ones (sim order)."""
-    n = torch.exp(st["logn"])
-    c, s, ca, sa, w = st["c"], st["s"], st["ca"], st["sa"], st["w"]
-    vx, vy = (w / n) * (c * ca + s * sa), (w / n) * (s * ca - c * sa)
-    hidden = torch.stack([st["x"], st["y"], c, s, vx, vy, w, st["alpha"], st["r"], st["E"],
-                          st["shield"], st["gun_wait"].float() * p.h], -1)
-    shown = torch.stack([st["alive"].float(), st["respawn"].float() * p.h,
-                         st["ship_type"].float()], -1)
-    return hidden, shown
+def _hidden_columns(rules: Rules, state: State) -> torch.Tensor:
+    """(B, N, 16) the columns a team sees only for ships it can see (sim order)."""
+    ships = state.ships
+    speed = ships.proper_speed / torch.exp(ships.log_refractive_index)
+    cos, sin = ships.heading_cos, ships.heading_sin
+    angle_cos, angle_sin = ships.angle_of_attack_cos, ships.angle_of_attack_sin
+    velocity_x = speed * (cos * angle_cos + sin * angle_sin)
+    velocity_y = speed * (sin * angle_cos - cos * angle_sin)
+    return torch.stack([ships.x, ships.y, cos, sin, velocity_x, velocity_y, ships.proper_speed,
+                        ships.angle_of_attack, ships.nose_rate, ships.energy, ships.shield,
+                        ships.shield_recharge_wait, ships.gun_cooldown.float() * rules.tick_length,
+                        ships.log_refractive_index, ships.log_index_gradient_x,
+                        ships.log_index_gradient_y], -1)
 
 
-def perceive(p: Preset, st: dict) -> tuple[dict, Obs, Privileged]:
+def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     """Visibility, the per-view observation and the truth. Returns the state with
-    `last_seen` advanced (the only state perception changes)."""
-    B, N = st["x"].shape
-    T, S = 2, p.half
-    device = st["x"].device
-    order = view_order(T, S, device)  # (T, N)
-    views = torch.arange(T, device=device)[:, None]
+    `ticks_since_seen` advanced (the only state perception changes)."""
+    ships, fields, match = state.ships, state.fields, state.match
+    B, N = ships.x.shape
+    S, device = rules.ships_per_team, ships.x.device
+    order = view_order(S, device)  # (2, N)
+    views = torch.arange(TEAMS, device=device)[:, None]
 
-    vis = visibility(p, st)
-    last_seen = torch.where(vis.ships, 0, (st["last_seen"] + 1).clamp_max(LAST_SEEN_CAP))
+    visible = visibility(rules, state)  # (B, 2, N) sim order
+    unfogged = ~match.fogged[:, None, None]
+    since = torch.where(visible | unfogged, 0,
+                        (match.ticks_since_seen + 1).clamp_max(TICKS_SINCE_SEEN_CAP))
 
-    hidden, shown = _ship_columns(p, st)
-    team_rel = (torch.arange(N, device=device) // S).float()  # by row: the ordering makes it static
+    hidden = _hidden_columns(rules, state)[:, order]  # (B, 2, N, 16) by row
+    team_relative = (torch.arange(N, device=device) // S).float()  # by row: static
+    alive, fired = ships.alive[:, order].float(), ships.fired[:, order].float()
+    respawn_wait = ships.respawn_wait[:, order].float() * rules.tick_length
+    ship_type, spawned = ships.ship_type[:, order].float(), ships.spawned[:, order].float()
 
-    def ship_rows(seen: torch.Tensor, since: torch.Tensor) -> torch.Tensor:
-        masked = torch.where(seen[..., None], hidden[:, None], 0.0)  # (B, T, N, 12)
-        rows = torch.cat([masked, shown[:, None].expand(B, T, N, 3)], -1)[:, views, order]
-        return torch.cat([rows[..., :SHIP_HIDDEN_ZERO + 1], seen[:, views, order, None].float(),
-                          rows[..., SHIP_HIDDEN_ZERO + 1:], team_rel.expand(B, T, N)[..., None],
-                          since[:, views, order, None], st["spawned"][:, order, None].float()], -1)
+    def ship_rows(seen: torch.Tensor, ticks: torch.Tensor) -> torch.Tensor:
+        """seen, ticks: (B, 2, N) in sim order."""
+        seen, ticks = seen[:, views, order], ticks[:, views, order]
+        shown = torch.stack([alive, seen.float(), fired, respawn_wait, ship_type,
+                             team_relative.expand(B, TEAMS, N), ticks.float() * rules.tick_length,
+                             spawned], -1)
+        return torch.cat([torch.where(seen[..., None], hidden, 0.0), shown], -1)
 
-    ships = ship_rows(vis.ships, last_seen.float() * p.h)
+    field_rows = torch.stack([fields.x, fields.y, fields.radius, fields.band_width,
+                              fields.level.float()], -1)
+    tick = match.episode_tick.float()
+    global_row = torch.stack([tick / rules.episode_ticks, torch.full_like(tick, rules.arena_radius),
+                              match.fogged.float(), (match.episode_tick == 0).float()], -1)
+    obs = Obs(ships=ship_rows(visible, since), fields=field_rows[:, None].expand(B, TEAMS, -1, -1),
+              globals=global_row[:, None].expand(B, TEAMS, -1))
 
-    fields = torch.stack([st["fx"], st["fy"], st["fr"], st["flevel"].float()], -1)
-    t = st["t"].float()
-    glob = torch.stack([t / p.episode_ticks, torch.full_like(t, p.arena_radius), torch.ones_like(t),
-                        (st["t"] == 0).float()], -1)
-    obs = Obs(ships=ships, fields=fields[:, None].expand(B, T, -1, -1),
-              globals=glob[:, None].expand(B, T, -1))
-
-    everything, never = torch.ones_like(vis.ships), torch.zeros_like(last_seen, dtype=torch.float32)
     truth = Privileged(team=(torch.arange(N, device=device) // S).to(torch.int32).expand(B, N),
-                       view_order=order.expand(B, T, N), ships=ship_rows(everything, never))
-    return dict(st, last_seen=last_seen), obs, truth
+                       view_order=order.expand(B, TEAMS, N),
+                       ships=ship_rows(torch.ones_like(visible), torch.zeros_like(since)))
+    return replace(state, match=replace(match, ticks_since_seen=since)), obs, truth
