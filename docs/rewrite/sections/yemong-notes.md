@@ -430,5 +430,14 @@ TF32 off; min of 3 runs after 2 warm-up runs):
 | 40 ships, 1024 envs | 11,729 | 6.17 GB | 21,347 | 5.95 GB | 11,302 / 19,771 |
 | 26 ships, 1576 envs | out of memory in compile and capture | | not run | | out of memory |
 
-The unroll cells were still running at hand-back. Their results are in
-`/tmp/bnb-scratch-yemong/bench_run2.log`.
+**Unroll cells** (L = 128, compiled forward and backward; peak is the memory above the
+stored rollout; numbers before the fix round in brackets):
+
+| Cell | Precision | Forward | Forward + backward | Peak extra |
+|---|---|---:|---:|---:|
+| squad, 32 views | float32 | 60 ms (64) | 158 ms (168) | 4.23 GB (4.70) |
+| squad, 32 views | bf16 | 37 ms (42) | 98 ms (110) | 2.83 GB (3.29) |
+| 40 ships, 8 views | float32 | 54 ms (58) | 136 ms (145) | 3.78 GB (4.21) |
+| 40 ships, 8 views | bf16 | 33 ms (38) | 84 ms (94) | 2.52 GB (2.97) |
+
+The chunked scan lowers peak memory by about 0.45 GB in every cell, and time by 6-11%.
