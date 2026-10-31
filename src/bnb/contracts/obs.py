@@ -1,8 +1,8 @@
 """What a team sees (`Obs`) and the truth only learners may use (`Privileged`).
 
 An observation is raw and in world coordinates, with no rotation or mirroring. The only
-canonicalization is the team: every entity carries `team_rel = (team - viewer) mod T`, and
-rows are ordered by `team_rel` (own ships first), so nothing reveals which seat a team has.
+canonicalization is the team: every entity carries `team_relative = (team - viewer) mod T`, and
+rows are ordered by `team_relative` (own ships first), so nothing reveals which seat a team has.
 """
 
 from typing import ClassVar
@@ -13,12 +13,17 @@ from .tree import contract
 
 SHIP_COLUMNS = (
     # zero when the team cannot see the ship
-    "x", "y", "c", "s", "vx", "vy", "w", "alpha", "r", "E", "shield", "gun_wait",
-    "alive", "visible", "respawn", "type", "team_rel", "since_seen", "spawned",  # always shown
+    "x", "y", "heading_cos", "heading_sin", "velocity_x", "velocity_y", "proper_speed",
+    "angle_of_attack", "nose_rate", "energy", "shield", "shield_recharge_wait", "gun_cooldown",
+    "log_refractive_index", "log_index_gradient_x", "log_index_gradient_y",
+    # always shown; fired: fired this tick
+    "alive", "visible", "fired", "respawn_wait", "ship_type", "team_relative", "time_since_seen",
+    "spawned",
 )
-SHIP_HIDDEN_ZERO = 12  # the first this-many columns are zero for a ship the team cannot see
-FIELD_COLUMNS = ("x", "y", "radius", "level")
-GLOBAL_COLUMNS = ("t_frac", "arena_radius", "fog", "reset")
+SHIP_HIDDEN_ZERO = 16  # the first this-many columns are zero for a ship the team cannot see
+FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")
+GLOBAL_COLUMNS = ("episode_progress", "arena_radius", "fogged", "reset")
+# Times (shield_recharge_wait, gun_cooldown, respawn_wait, time_since_seen) are in seconds.
 
 SHIP = {name: i for i, name in enumerate(SHIP_COLUMNS)}
 FIELD = {name: i for i, name in enumerate(FIELD_COLUMNS)}
@@ -29,7 +34,7 @@ GLOBAL = {name: i for i, name in enumerate(GLOBAL_COLUMNS)}
 class Obs:
     """One or more team views, float32. Leading axes are (batch..., ) then:
 
-    ships (..., N, len(SHIP_COLUMNS)), own team's S ships first, then by team_rel and slot;
+    ships (..., N, len(SHIP_COLUMNS)), own team's S ships first, then by team_relative and slot;
     fields (..., M, len(FIELD_COLUMNS)); globals (..., len(GLOBAL_COLUMNS)).
 
     A stored batch may leave out (None) a part its model does not read.

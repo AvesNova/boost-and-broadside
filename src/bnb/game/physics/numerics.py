@@ -1,13 +1,13 @@
-"""Small normative formulas shared by flight and bullets (SPEC 3.3)."""
+"""Small normative formulas shared by flight and bullets (game spec 3.3)."""
 
 import torch
 
 
-def cs(theta: torch.Tensor):
-    """(cos, sin) of a small angle by the normative truncated series."""
-    t2 = theta * theta
-    cos = 1.0 - t2 * (0.5 - t2 * (1.0 / 24.0 - t2 / 720.0))
-    sin = theta * (1.0 - t2 * (1.0 / 6.0 - t2 * (1.0 / 120.0 - t2 / 5040.0)))
+def small_angle_cos_sin(angle: torch.Tensor):
+    """(cos, sin) of a small angle by the normative truncated series (spec: cs)."""
+    square = angle * angle
+    cos = 1.0 - square * (0.5 - square * (1.0 / 24.0 - square / 720.0))
+    sin = angle * (1.0 - square * (1.0 / 6.0 - square * (1.0 / 120.0 - square / 5040.0)))
     return cos, sin
 
 
@@ -16,21 +16,21 @@ def rotate(x: torch.Tensor, y: torch.Tensor, cos: torch.Tensor, sin: torch.Tenso
     return x * cos - y * sin, x * sin + y * cos
 
 
-def softmin(a: torch.Tensor, b, q: float) -> torch.Tensor:
+def softmin(a: torch.Tensor, b, exponent: float) -> torch.Tensor:
     """a (1 + (a/b)^q)^(-1/q) for a, b >= 0.
 
-    Written as lo (1 + (lo/hi)^q)^(-1/q) with lo, hi the smaller and larger argument (the
-    same value, since the formula is symmetric in a and b), so the power never overflows.
+    Written with the smaller and the larger argument (the formula is symmetric in a and b),
+    so the power never overflows.
     """
     if isinstance(b, torch.Tensor):
-        lo, hi = torch.minimum(a, b), torch.maximum(a, b)
+        low, high = torch.minimum(a, b), torch.maximum(a, b)
     else:
-        lo, hi = a.clamp_max(b), a.clamp_min(b)
-    return lo * torch.pow(1.0 + torch.pow(lo / hi, q), -1.0 / q)
+        low, high = a.clamp_max(b), a.clamp_min(b)
+    return low * torch.pow(1.0 + torch.pow(low / high, exponent), -1.0 / exponent)
 
 
 def smoothstep(t: torch.Tensor) -> torch.Tensor:
-    """t^2 (3 - 2t), the engine fall phi of SPEC 3.3 after clipping."""
+    """t^2 (3 - 2t), the engine fall of game spec 3.3 after clipping."""
     return t * t * (3.0 - 2.0 * t)
 
 
@@ -40,6 +40,6 @@ def lookup(values: tuple, index: torch.Tensor) -> torch.Tensor:
     compiled. Indices outside the table give values[0]."""
     dtype = torch.int32 if all(isinstance(v, int) for v in values) else torch.float32
     out = torch.full_like(index, values[0], dtype=dtype)
-    for i, v in enumerate(values[1:], 1):
-        out = torch.where(index == i, v, out)
+    for i, value in enumerate(values[1:], 1):
+        out = torch.where(index == i, value, out)
     return out

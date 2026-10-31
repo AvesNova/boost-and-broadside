@@ -16,9 +16,10 @@ from bnb.contracts.obs import FIELD_COLUMNS, GLOBAL_COLUMNS, SHIP, SHIP_COLUMNS
 
 from .heads import SIZES
 
-SHIP_SCALE = {"x": 1e-3, "y": 1e-3, "vx": 1e-2, "vy": 1e-2, "w": 1e-2, "E": 1e-4,
-              "shield": 1e-2, "respawn": 0.125}
-FIELD_SCALE = (1e-3, 1e-3, 1e-2, 1.0)
+SHIP_SCALE = {"x": 1e-3, "y": 1e-3, "velocity_x": 1e-2, "velocity_y": 1e-2,
+              "proper_speed": 1e-2, "energy": 1e-4, "shield": 1e-2, "respawn_wait": 0.125,
+              "log_index_gradient_x": 100.0, "log_index_gradient_y": 100.0}
+FIELD_SCALE = (1e-3, 1e-3, 1e-2, 1e-2, 1.0)
 GLOBAL_SCALE = (1.0, 1e-3, 1.0, 1.0)
 
 
@@ -45,7 +46,7 @@ class MLP(nn.Module):
     def forward(self, obs: Obs) -> tuple[torch.Tensor, torch.Tensor]:
         """Logits (..., S, 12) and values (..., S) for views with any leading axes."""
         ships = obs.ships * self.ship_scale
-        since = SHIP["since_seen"]
+        since = SHIP["time_since_seen"]
         ships = torch.cat([ships[..., :since], torch.log1p(ships[..., since:since + 1]),
                            ships[..., since + 1:]], -1)
         summary = torch.cat([ships.flatten(-2), (obs.fields * self.field_scale).flatten(-2),

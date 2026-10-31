@@ -13,11 +13,11 @@ DAMAGE_WEIGHT = 0.25
 SHIELD_UNIT = 100.0  # damage counted in fighter shields
 
 
-def reward(events: Events, num_teams: int = 2) -> torch.Tensor:
-    """(B, N) reward of each ship (sim order) for one tick."""
+def reward(events: Events) -> torch.Tensor:
+    """(B, N) reward of each ship (sim order) for one tick; two equal teams."""
     N = events.died.shape[1]
     ships = torch.arange(N, device=events.died.device)
-    team = ships // (N // num_teams)
+    team = ships // (N // 2)
     sign = torch.where(team[:, None] == team, -1.0, 1.0)  # (shooter, target): -1 for allies
     killed = events.killer[:, :, None] == ships  # (B, target, shooter)
     kills = (killed * sign.T).sum(1)  # by shooter

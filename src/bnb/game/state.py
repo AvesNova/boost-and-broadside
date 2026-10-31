@@ -2,7 +2,7 @@
 
 Opaque outside `bnb.game`: the runtime copies, clones and moves it as a pytree and never
 reads a field. Ship order is team-major (ship `n = team * S + slot`), so a (B, N, ...)
-tensor viewed as (B, T, S, ...) is indexed by team for free.
+tensor viewed as (B, 2, S, ...) is indexed by team for free.
 """
 
 import dataclasses
@@ -11,76 +11,84 @@ import torch
 
 from bnb.contracts.tree import contract
 
-from .rules import Rules
+from .rules import TEAMS, Rules
 
 
 @contract
 class Ships:
-    """(B, N). Floats: position (m), nose (c, s), proper speed w, angle of attack alpha with
-    its (ca, sa), nose rate r, energy E, the cached medium (logn, gx, gy), shield and
-    shield_wait (s). Flags: alive, fired and spawned this tick. Ints: respawn wait (ticks),
-    gun_wait (ticks), the next bullet slot (cursor) and ship_type."""
+    """(B, N), one entry per ship.
+
+    Floats: position x, y (m); the nose direction (heading_cos, heading_sin); proper_speed
+    (m/s); angle_of_attack (rad) with its cos and sin; nose_rate (rad/s); energy (J); the
+    medium at the ship, cached from its last evaluation (log_refractive_index and its
+    gradient, 1/m); shield; shield_recharge_wait (s).
+    Flags: alive; fired and spawned this tick.
+    Ints: respawn_wait and gun_cooldown (ticks); next_slot, the bullet slot the next shot
+    uses; ship_type.
+    """
 
     x: torch.Tensor
     y: torch.Tensor
-    c: torch.Tensor
-    s: torch.Tensor
-    w: torch.Tensor
-    alpha: torch.Tensor
-    ca: torch.Tensor
-    sa: torch.Tensor
-    r: torch.Tensor
-    E: torch.Tensor
-    logn: torch.Tensor
-    gx: torch.Tensor
-    gy: torch.Tensor
+    heading_cos: torch.Tensor
+    heading_sin: torch.Tensor
+    proper_speed: torch.Tensor
+    angle_of_attack: torch.Tensor
+    angle_of_attack_cos: torch.Tensor
+    angle_of_attack_sin: torch.Tensor
+    nose_rate: torch.Tensor
+    energy: torch.Tensor
+    log_refractive_index: torch.Tensor
+    log_index_gradient_x: torch.Tensor
+    log_index_gradient_y: torch.Tensor
     shield: torch.Tensor
-    shield_wait: torch.Tensor
+    shield_recharge_wait: torch.Tensor
     alive: torch.Tensor
     fired: torch.Tensor
     spawned: torch.Tensor
-    respawn: torch.Tensor
-    gun_wait: torch.Tensor
-    cursor: torch.Tensor
+    respawn_wait: torch.Tensor
+    gun_cooldown: torch.Tensor
+    next_slot: torch.Tensor
     ship_type: torch.Tensor
 
 
 @contract
 class Bullets:
-    """(B, N, K), by owner and slot: position, unit direction (dx, dy), proper speed w, the
-    cached medium, and ttl (moves left, 0 = inactive)."""
+    """(B, N, K), by owner and slot: position, unit direction, proper speed, the cached
+    medium, and moves_left (0 = inactive)."""
 
     x: torch.Tensor
     y: torch.Tensor
-    dx: torch.Tensor
-    dy: torch.Tensor
-    w: torch.Tensor
-    logn: torch.Tensor
-    gx: torch.Tensor
-    gy: torch.Tensor
-    ttl: torch.Tensor
+    direction_x: torch.Tensor
+    direction_y: torch.Tensor
+    proper_speed: torch.Tensor
+    log_refractive_index: torch.Tensor
+    log_index_gradient_x: torch.Tensor
+    log_index_gradient_y: torch.Tensor
+    moves_left: torch.Tensor
 
 
 @contract
 class Fields:
-    """(B, M): centre, radius, band width (m) and level in {-2, -1, 1, 2}."""
+    """(B, M): centre, radius and band width (m), level in {-2, -1, 1, 2}."""
 
     x: torch.Tensor
     y: torch.Tensor
     radius: torch.Tensor
-    width: torch.Tensor
+    band_width: torch.Tensor
     level: torch.Tensor
 
 
 @contract
 class Match:
-    """t (B,) ticks into the episode; the spawn axis (axis_x, axis_y) (B,); last_seen
-    (B, T, N) ticks since team T last saw ship n (0 while visible)."""
+    """episode_tick (B,) ticks into the episode; the spawn axis (B,); ticks_since_seen
+    (B, 2, N), ticks since team T last saw ship n (0 while visible); fogged (B,), the
+    environment hides what its teams cannot see (fixed at reset by the caller)."""
 
-    t: torch.Tensor
-    axis_x: torch.Tensor
-    axis_y: torch.Tensor
-    last_seen: torch.Tensor
+    episode_tick: torch.Tensor
+    spawn_axis_x: torch.Tensor
+    spawn_axis_y: torch.Tensor
+    ticks_since_seen: torch.Tensor
+    fogged: torch.Tensor
 
 
 @contract
@@ -90,41 +98,36 @@ class State:
     fields: Fields
     match: Match
 
-    def __getitem__(self, key: str) -> torch.Tensor:
-        """Read-only access by the race's flat key names (CANONICAL), for tests and
-        debugging; game code uses the typed fields."""
-        part, name = CANONICAL[key]
-        return getattr(getattr(self, part), name)
-
 
 @contract
 class Sweep:
     """This tick's straight-line motions, which the hit test sweeps: tick-start positions
-    (x, y) and displacements (dx, dy) of the ships (B, N) and of the bullets after firing
-    (bx, by, bdx, bdy; B, N, K). Passed from `move` to `resolve`."""
+    and displacements of the ships (B, N) and of the bullets after firing (B, N, K).
+    Passed from `move` to `resolve`."""
 
-    x: torch.Tensor
-    y: torch.Tensor
-    dx: torch.Tensor
-    dy: torch.Tensor
-    bx: torch.Tensor
-    by: torch.Tensor
-    bdx: torch.Tensor
-    bdy: torch.Tensor
+    ship_x: torch.Tensor
+    ship_y: torch.Tensor
+    ship_displacement_x: torch.Tensor
+    ship_displacement_y: torch.Tensor
+    bullet_x: torch.Tensor
+    bullet_y: torch.Tensor
+    bullet_displacement_x: torch.Tensor
+    bullet_displacement_y: torch.Tensor
 
 
 replace = dataclasses.replace
 
 FLOAT, BOOL, INT = torch.float32, torch.bool, torch.int32
-SHIP_DTYPES = {f.name: FLOAT for f in dataclasses.fields(Ships)} | dict(
-    alive=BOOL, fired=BOOL, spawned=BOOL, respawn=INT, gun_wait=INT, cursor=INT, ship_type=INT)
-BULLET_DTYPES = {f.name: FLOAT for f in dataclasses.fields(Bullets)} | dict(ttl=INT)
-FIELD_DTYPES = {f.name: FLOAT for f in dataclasses.fields(Fields)} | dict(level=INT)
+SHIP_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Ships)} | dict(
+    alive=BOOL, fired=BOOL, spawned=BOOL, respawn_wait=INT, gun_cooldown=INT, next_slot=INT,
+    ship_type=INT)
+BULLET_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Bullets)} | dict(moves_left=INT)
+FIELD_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Fields)} | dict(level=INT)
 
 
 def blank(rules: Rules, batch: int, device=None) -> State:
-    """Every value zero and every flag false, in the canonical shapes and dtypes."""
-    B, N, K, M, T = batch, rules.num_ships, rules.slots, rules.num_fields, rules.num_teams
+    """Every value zero and every flag false (fogged true), in the canonical shapes."""
+    B, N, K, M = batch, rules.num_ships, rules.bullet_slots, rules.num_fields
 
     def zeros(dtypes: dict, shape: tuple) -> dict:
         return {k: torch.zeros(shape, dtype=d, device=device) for k, d in dtypes.items()}
@@ -132,59 +135,38 @@ def blank(rules: Rules, batch: int, device=None) -> State:
     return State(ships=Ships(**zeros(SHIP_DTYPES, (B, N))),
                  bullets=Bullets(**zeros(BULLET_DTYPES, (B, N, K))),
                  fields=Fields(**zeros(FIELD_DTYPES, (B, M))),
-                 match=Match(t=torch.zeros(B, dtype=INT, device=device),
-                             axis_x=torch.zeros(B, device=device),
-                             axis_y=torch.zeros(B, device=device),
-                             last_seen=torch.zeros((B, T, N), dtype=INT, device=device)))
+                 match=Match(episode_tick=torch.zeros(B, dtype=INT, device=device),
+                             spawn_axis_x=torch.zeros(B, device=device),
+                             spawn_axis_y=torch.zeros(B, device=device),
+                             ticks_since_seen=torch.zeros((B, TEAMS, N), dtype=INT,
+                                                          device=device),
+                             fogged=torch.ones(B, dtype=BOOL, device=device)))
 
 
-def sweep_like(st: State) -> Sweep:
+def sweep_like(state: State) -> Sweep:
     """A zero Sweep shaped for this state (a buffer for runtimes that cut between stages)."""
-    s, b = st.ships, st.bullets
-    return Sweep(*(torch.zeros_like(s.x) for _ in range(4)),
-                 *(torch.zeros_like(b.x) for _ in range(4)))
+    ship, bullet = state.ships.x, state.bullets.x
+    return Sweep(*(torch.zeros_like(ship) for _ in range(4)),
+                 *(torch.zeros_like(bullet) for _ in range(4)))
 
 
 def where(mask: torch.Tensor, new, old):
     """`new` where mask, `old` elsewhere, field by field for two dataclasses of one type.
     mask broadcasts from the left over each field's trailing axes."""
     out = {}
-    for f in dataclasses.fields(old):
-        a, b = getattr(new, f.name), getattr(old, f.name)
-        m = mask.reshape(mask.shape + (1,) * (b.dim() - mask.dim()))
-        out[f.name] = torch.where(m, a, b)
+    for field in dataclasses.fields(old):
+        chosen, kept = getattr(new, field.name), getattr(old, field.name)
+        expanded = mask.reshape(mask.shape + (1,) * (kept.dim() - mask.dim()))
+        out[field.name] = torch.where(expanded, chosen, kept)
     return type(old)(**out)
 
 
-def apply(fn, obj):
-    """A dataclass of the same type with `fn` applied to every field."""
-    return type(obj)(**{f.name: fn(getattr(obj, f.name)) for f in dataclasses.fields(obj)})
+def apply(function, value):
+    """A dataclass of the same type with `function` applied to every field."""
+    return type(value)(**{field.name: function(getattr(value, field.name))
+                          for field in dataclasses.fields(value)})
 
 
-def by_team(v: torch.Tensor, teams: int = 2) -> torch.Tensor:
-    """(B, N, ...) per-ship values as (B, T, S, ...)."""
-    return v.reshape(v.shape[0], teams, v.shape[1] // teams, *v.shape[2:])
-
-
-# The race's flat key names (game spec 3.1, 6, 4), for tests and debugging only.
-CANONICAL = (
-    {k: ("ships", k) for k in SHIP_DTYPES}
-    | {"b" + k: ("bullets", k) for k in BULLET_DTYPES if k != "ttl"} | {"ttl": ("bullets", "ttl")}
-    | {"fx": ("fields", "x"), "fy": ("fields", "y"), "fr": ("fields", "radius"),
-       "fw": ("fields", "width"), "flevel": ("fields", "level")}
-    | {k: ("match", k) for k in ("t", "axis_x", "axis_y", "last_seen")}
-)
-
-
-def flat(st: State) -> dict[str, torch.Tensor]:
-    """The state under the race's flat key names."""
-    return {k: getattr(getattr(st, part), name) for k, (part, name) in CANONICAL.items()}
-
-
-def unflat(values: dict[str, torch.Tensor]) -> State:
-    """Inverse of `flat`."""
-    parts: dict[str, dict] = {"ships": {}, "bullets": {}, "fields": {}, "match": {}}
-    for k, (part, name) in CANONICAL.items():
-        parts[part][name] = values[k]
-    return State(ships=Ships(**parts["ships"]), bullets=Bullets(**parts["bullets"]),
-                 fields=Fields(**parts["fields"]), match=Match(**parts["match"]))
+def by_team(values: torch.Tensor) -> torch.Tensor:
+    """(B, N, ...) per-ship values as (B, 2, S, ...)."""
+    return values.reshape(values.shape[0], TEAMS, values.shape[1] // TEAMS, *values.shape[2:])

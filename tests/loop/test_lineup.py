@@ -22,7 +22,7 @@ class Constant:
         return None
 
     def step(self, carry, obs: Obs, done):
-        self.seen.append(obs.ships[:, : self.S, SHIP["w"]].clone())
+        self.seen.append(obs.ships[:, : self.S, SHIP["proper_speed"]].clone())
         shape = obs.ships.shape[:1] + (self.S,)
         zero = torch.zeros(shape, dtype=torch.int32)
         return Action(zero + self.power, zero, zero), carry, Outputs()
@@ -35,7 +35,7 @@ def test_actions_and_views_follow_the_seat():
     ro = Rollout(cfg, pools, {"fast": fast, "slow": slow}, "fast", 8, 40, CPU, compile=False)
     ro.run()
     st, seat = ro.carry["state"], ro.carry["seat"]
-    w = st["w"].reshape(8, 2, 3).mean(-1)  # (B, team)
+    w = st.ships.proper_speed.reshape(8, 2, 3).mean(-1)  # (B, team)
     lineup = ro.lineup
     for name, quick in (("fast", True), ("slow", False)):
         env = lineup.env[name]

@@ -5,8 +5,7 @@ import pytest
 import torch
 
 from bnb.contracts import GameConfig, Obs
-from bnb.game import match
-from bnb.game.perception.observe import perceive
+from bnb.game import api
 from bnb.models.mlp import MLP
 
 onnxruntime = pytest.importorskip("onnxruntime")
@@ -26,8 +25,9 @@ class Step(torch.nn.Module):
 
 def test_mlp_exports_to_onnx(tmp_path):
     cfg = GameConfig(3, 4, 1500.0)
-    p = match.preset(cfg)
-    _, obs, _ = perceive(p, match.reset(p, torch.rand(1, p.num_uniforms)))
+    rules = api.rules_of(cfg)
+    state = api.reset(rules, api.ship_types(), api.uniforms(rules, 1))
+    _, obs, _ = api.perceive(rules, state)
     model = MLP(cfg.ships_per_team, cfg.num_ships, cfg.num_fields, hidden=64).eval()
     torch.nn.init.normal_(model.policy.weight, std=0.1)  # non-trivial outputs
     args = (obs.ships[:, 0], obs.fields[:, 0], obs.globals[:, 0])

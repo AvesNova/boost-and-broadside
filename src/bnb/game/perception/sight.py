@@ -1,36 +1,34 @@
 """Visibility (game spec 10.1): which ships each team sees. Bullets are not perceived."""
 
-from typing import NamedTuple
-
 import torch
 
 from ..rules import Rules
 from ..state import State, by_team
 
 
-def enemy(v: torch.Tensor, teams: int = 2) -> torch.Tensor:
+def enemy(values: torch.Tensor) -> torch.Tensor:
     """(B, N) per-ship values as seen by each team's enemy: row T holds team 1 - T."""
-    return by_team(v, teams).flip(1)
+    return by_team(values).flip(1)
 
 
 def core_membership(cores: tuple, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """(B, T, P) int64 points as bitmasks: bit i is set when the point is strictly inside
+    """(B, 2, P) int64 points as bitmasks: bit i is set when the point is strictly inside
     core i. With 64 cores bit 63 is the sign bit; XOR, the shifts below and this sum of
     disjoint bits all still read it correctly."""
-    cx, cy, rho2 = cores
-    M = cx.shape[1]
-    dx = x[..., None] - cx[:, None, None, :]
-    dy = y[..., None] - cy[:, None, None, :]
-    inside = dx * dx + dy * dy < rho2[:, None, None, :]
+    centre_x, centre_y, radius_squared = cores
+    M = centre_x.shape[1]
+    offset_x = x[..., None] - centre_x[:, None, None, :]
+    offset_y = y[..., None] - centre_y[:, None, None, :]
+    inside = offset_x * offset_x + offset_y * offset_y < radius_squared[:, None, None, :]
     return (inside.long() << torch.arange(M, device=x.device)).sum(-1)
 
 
 def sighted(cores: tuple, observers: tuple, targets: tuple) -> torch.Tensor:
-    """(B, T, Q): some living observer of team T is within its range of target q with a
+    """(B, 2, Q): some living observer of team T is within its range of target q with a
     clear sight line (game spec 10.1).
 
     cores: centre x, y and radius^2, (B, M); observers: (x, y, membership, alive, range),
-    (B, T, O); targets: (x, y, membership), (B, T, Q); membership from `core_membership`.
+    (B, 2, O); targets: (x, y, membership), (B, 2, Q); membership from `core_membership`.
 
     A segment comes within rho of a core centre exactly when an end is inside the core, or
     the foot of the perpendicular from the centre falls inside the segment (0 < u.d < |d|^2,
@@ -40,55 +38,51 @@ def sighted(cores: tuple, observers: tuple, targets: tuple) -> torch.Tensor:
       - exactly one end is inside it: the bitmasks differ in its bit, or
       - neither end is inside and the perpendicular test holds. Giving an observer inside
         a core a radius of 0 for that core switches the test off for it.
-    The cores are folded one at a time, so each pair stays in registers (M <= 64 keeps the
-    unrolled loop small).
+    The cores are folded one at a time, so each pair stays in registers; M <= 64 keeps the
+    unrolled loop small (compile and run time against M: see game-notes.md).
     """
-    cx, cy, rho2 = cores
-    ox, oy, o_in, alive, reach = observers
-    tx, ty, t_in = targets
-    dx = tx[..., :, None] - ox[..., None, :]  # (B, T, Q, O), observer to target
-    dy = ty[..., :, None] - oy[..., None, :]
-    dd = dx * dx + dy * dy
-    blocked = (t_in[..., :, None] ^ o_in[..., None, :]) != 0
-    M = cx.shape[1]
-    own_core = (o_in[..., None] >> torch.arange(M, device=o_in.device)) & 1 == 1  # (B, T, O, M)
-    rho2 = torch.where(own_core, 0.0, rho2[:, None, None, :])
+    centre_x, centre_y, radius_squared = cores
+    observer_x, observer_y, observer_in, alive, vision = observers
+    target_x, target_y, target_in = targets
+    line_x = target_x[..., :, None] - observer_x[..., None, :]  # (B, 2, Q, O): d
+    line_y = target_y[..., :, None] - observer_y[..., None, :]
+    length_squared = line_x * line_x + line_y * line_y
+    blocked = (target_in[..., :, None] ^ observer_in[..., None, :]) != 0
+    M = centre_x.shape[1]
+    own_core = (observer_in[..., None] >> torch.arange(M, device=observer_in.device)) & 1 == 1
+    radius_squared = torch.where(own_core, 0.0, radius_squared[:, None, None, :])  # (B, 2, O, M)
     for i in range(M):
-        ux = cx[:, i, None, None, None] - ox[..., None, :]  # observer to core centre
-        uy = cy[:, i, None, None, None] - oy[..., None, :]
-        along = ux * dx + uy * dy
-        across = ux * dy - uy * dx
-        blocked = blocked | ((across * across < rho2[..., None, :, i] * dd) & (along > 0.0)
-                             & (along < dd))
-    in_range = dd <= (reach * reach)[..., None, :]
+        to_centre_x = centre_x[:, i, None, None, None] - observer_x[..., None, :]  # u
+        to_centre_y = centre_y[:, i, None, None, None] - observer_y[..., None, :]
+        along = to_centre_x * line_x + to_centre_y * line_y
+        across = to_centre_x * line_y - to_centre_y * line_x
+        blocked = blocked | ((across * across < radius_squared[..., None, :, i] * length_squared)
+                             & (along > 0.0) & (along < length_squared))
+    in_range = length_squared <= (vision * vision)[..., None, :]
     return (in_range & alive[..., None, :] & ~blocked).any(-1)
 
 
-class Visibility(NamedTuple):
-    ships: torch.Tensor  # (B, T, N): ship n visible to team T
-    enemy_ships: torch.Tensor  # (B, T, S): team 1 - T's ships seen by team T
+def vision_range(rules: Rules, state: State) -> torch.Tensor:
+    """(B, N) each ship's vision range (m) as an observer. One shared value for now; a
+    per-type range (the ship card) becomes a `per_ship` lookup here."""
+    return torch.full_like(state.ships.x, rules.vision_range)
 
 
-def vision_range(rules: Rules, st: State) -> torch.Tensor:
-    """(B, N) each ship's vision range (m) as an observer. One shared V for now; a per-type
-    range (the ship card) is a `per_ship` lookup here."""
-    return torch.full_like(st.ships.x, rules.vision)
-
-
-def visibility(rules: Rules, st: State) -> Visibility:
-    """Who sees what (game spec 10.1), for both teams. Range tests use d^2 <= V^2 with the
-    observer's V."""
-    f, sh, T = st.fields, st.ships, rules.num_teams
-    rho = (f.radius - 0.5 * f.width).clamp_min(0.0)  # a field with no flat interior: no core
-    cores = (f.x, f.y, rho * rho)
-    own, foe = (lambda v: by_team(v, T)), (lambda v: enemy(v, T))
-    ox, oy, tx, ty = own(sh.x), own(sh.y), foe(sh.x), foe(sh.y)
-    observers = (ox, oy, core_membership(cores, ox, oy), own(sh.alive),
-                 own(vision_range(rules, st)))
-    seen = sighted(cores, observers, (tx, ty, core_membership(cores, tx, ty)))
-    enemy_ships = foe(sh.alive) & (foe(sh.fired) | foe(sh.spawned) | seen)  # (B, T, S)
-    # Each team's row over every ship in sim order (own ships always visible); T = 2.
-    mine = torch.ones_like(enemy_ships)
-    ships = torch.stack([torch.cat([mine[:, 0], enemy_ships[:, 0]], -1),
-                         torch.cat([enemy_ships[:, 1], mine[:, 1]], -1)], 1)
-    return Visibility(ships, enemy_ships)
+def visibility(rules: Rules, state: State) -> torch.Tensor:
+    """(B, 2, N): ship n visible to team T, in sim order (game spec 10.1). Range tests use
+    d^2 <= V^2 with the observer's V. In an environment without fog every living ship is
+    visible."""
+    fields, ships = state.fields, state.ships
+    core = (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)  # no flat interior: none
+    cores = (fields.x, fields.y, core * core)
+    observer_x, observer_y = by_team(ships.x), by_team(ships.y)
+    target_x, target_y = enemy(ships.x), enemy(ships.y)
+    observers = (observer_x, observer_y, core_membership(cores, observer_x, observer_y),
+                 by_team(ships.alive), by_team(vision_range(rules, state)))
+    seen = sighted(cores, observers, (target_x, target_y,
+                                      core_membership(cores, target_x, target_y)))
+    unfogged = ~state.match.fogged[:, None, None]
+    enemies = enemy(ships.alive) & (enemy(ships.fired) | enemy(ships.spawned) | seen | unfogged)
+    own = torch.ones_like(enemies)  # (B, 2, S) each; a team always sees its own ships
+    return torch.stack([torch.cat([own[:, 0], enemies[:, 0]], -1),
+                        torch.cat([enemies[:, 1], own[:, 1]], -1)], 1)

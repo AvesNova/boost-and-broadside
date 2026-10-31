@@ -2,10 +2,8 @@
 
 The tick is split where the runtime may cut stages: `move` (phases 1-3, the motions) and
 `resolve` (phases 4-8, everything that depends on both motions). Randomness comes in as
-inputs: spread (B, N, 2) standard normals and the (B, U) tick uniforms.
-
-`types` is the ship card (tensors, so a sweep can vary it without recompiling); None
-means the default card.
+inputs: spread (B, N, 2) standard normals and the (B, U) tick uniforms. `types` is the
+ship card, tensors, so a sweep can vary it without recompiling.
 """
 
 import torch
@@ -13,57 +11,56 @@ import torch
 from bnb.contracts import Action, Events
 
 from ..rules import Rules
-from ..ship_types import ShipTypes, ship_types
-from ..state import State, Sweep, blank, replace, where
-from ..state import apply as apply_fields
+from ..ship_types import ShipTypes
+from ..state import State, Sweep, apply, blank, replace, where
 from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits
-from .flight import airframe, controls, flight_tick
+from .flight import airframe_of, controls, flight_tick
 from .spawning import TickUniforms, new_map, spawn
 
 
-def _card(types: ShipTypes | None, device) -> ShipTypes:
-    return ship_types(device) if types is None else types
-
-
-def reset(rules: Rules, uniforms: torch.Tensor, types: ShipTypes | None = None) -> State:
-    """A fresh state from (B, U) tick uniforms: new maps, every ship spawned, t = 0."""
+def reset(rules: Rules, types: ShipTypes, uniforms: torch.Tensor,
+          fogged: torch.Tensor | None = None) -> State:
+    """A fresh state from (B, U) tick uniforms: new maps, every ship spawned, tick 0.
+    fogged (B,) bool: which environments hide what their teams cannot see (default all);
+    it stays fixed through the episode resets that follow."""
     B, device = uniforms.shape[0], uniforms.device
-    types = _card(types, device)
-    st = blank(rules, B, device)
+    state = blank(rules, B, device)
     ship_type = torch.tensor(rules.slot_types, dtype=torch.int32, device=device)
-    st = replace(st, ships=replace(st.ships, ship_type=ship_type.expand(B, -1).contiguous()))
-    u = TickUniforms(rules, uniforms)
-    fields, ax, ay = new_map(rules, u.map)
-    ships = spawn(rules, types, st.ships, fields, ax, ay,
-                  torch.ones_like(st.ships.alive), u.rotation, u.keys)
-    return replace(st, ships=ships, fields=fields,
-                   match=replace(st.match, axis_x=ax, axis_y=ay))
+    ships = replace(state.ships, ship_type=ship_type.expand(B, -1).contiguous())
+    tick = TickUniforms(rules, uniforms)
+    fields, axis_x, axis_y = new_map(rules, tick.map)
+    ships = spawn(rules, types, ships, fields, axis_x, axis_y, torch.ones_like(ships.alive),
+                  tick.rotation, tick.keys)
+    match = replace(state.match, spawn_axis_x=axis_x, spawn_axis_y=axis_y)
+    if fogged is not None:
+        match = replace(match, fogged=fogged.to(torch.bool))
+    return replace(state, ships=ships, fields=fields, match=match)
 
 
-def move(rules: Rules, st: State, action: Action, spread: torch.Tensor,
-         types: ShipTypes | None = None) -> tuple[State, Sweep]:
+def move(rules: Rules, types: ShipTypes, state: State, action: Action,
+         spread: torch.Tensor) -> tuple[State, Sweep]:
     """Phases 1-3: fire, ships fly, bullets fly. Returns the moved state and this tick's
-    motions (the hit test's input). Motion changes no flag (but `fired`), clock or ttl."""
-    types = _card(types, spread.device)
-    ships0, bullets0 = fire(rules, types, st.ships, st.bullets, action.shoot == 1, spread)
+    motions (the hit test's input). Motion changes no flag (but `fired`), clock or count."""
+    ships0, bullets0 = fire(rules, types, state.ships, state.bullets, action.shoot == 1, spread)
     stick, power = controls(action.power, action.stick)
-    A = airframe(types, ships0.ship_type)
-    flown = flight_tick(rules.flight, A, rules.tick, ships0, stick, power, st.fields)
+    airframe = airframe_of(types, ships0.ship_type)
+    flown = flight_tick(rules.flight, airframe, rules.tick_length, ships0, stick, power,
+                        state.fields)
     ships = where(ships0.alive, flown, ships0)  # ships dead at tick start keep everything
-    bullets = move_bullets(rules, bullets0, st.fields)
-    sweep = Sweep(x=ships0.x, y=ships0.y, dx=ships.x - ships0.x, dy=ships.y - ships0.y,
-                  bx=bullets0.x, by=bullets0.y, bdx=bullets.x - bullets0.x,
-                  bdy=bullets.y - bullets0.y)
-    return replace(st, ships=ships, bullets=bullets), sweep
+    bullets = move_bullets(rules, bullets0, state.fields)
+    sweep = Sweep(ship_x=ships0.x, ship_y=ships0.y, ship_displacement_x=ships.x - ships0.x,
+                  ship_displacement_y=ships.y - ships0.y, bullet_x=bullets0.x,
+                  bullet_y=bullets0.y, bullet_displacement_x=bullets.x - bullets0.x,
+                  bullet_displacement_y=bullets.y - bullets0.y)
+    return replace(state, ships=ships, bullets=bullets), sweep
 
 
-def resolve(rules: Rules, st: State, sweep: Sweep, uniforms: torch.Tensor,
-            types: ShipTypes | None = None) -> tuple[State, Events]:
+def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
+            uniforms: torch.Tensor) -> tuple[State, Events]:
     """Phases 4-8 on the moved state: hits, damage, clocks, death and respawn, episode end."""
-    types = _card(types, uniforms.device)
-    ships, bullets, match = st.ships, st.bullets, st.match
-    alive0, active = ships.alive, bullets.ttl > 0  # as at tick start: motion changes neither
+    ships, bullets, match = state.ships, state.bullets, state.match
+    alive0, active = ships.alive, bullets.moves_left > 0  # as at tick start: motion keeps them
 
     # 4-5. Hits between the two motions, then damage, deaths and shields.
     hit = hits(rules, types, sweep, ships, bullets, alive0)
@@ -72,40 +69,44 @@ def resolve(rules: Rules, st: State, sweep: Sweep, uniforms: torch.Tensor,
     killer = torch.where(died, hit.first_shooter, -1).to(torch.int32)
 
     # 6. Clocks.
-    ttl = torch.where(hit.bullet_hit, 0, torch.where(active, bullets.ttl - 1, bullets.ttl))
-    bullets = replace(bullets, ttl=ttl)
+    moves_left = torch.where(hit.bullet_hit, 0,
+                             torch.where(active, bullets.moves_left - 1, bullets.moves_left))
+    bullets = replace(bullets, moves_left=moves_left)
 
     # 7. Death and respawn (the spawns happen together with the resets below).
     was_dead = ~alive0
-    respawn = torch.where(was_dead, ships.respawn - 1, ships.respawn)
-    due = was_dead & (respawn <= 0)
-    ships = replace(ships, alive=alive0 & ~died, gun_wait=(ships.gun_wait - 1).clamp_min(0),
-                    respawn=torch.where(died, rules.respawn_ticks, respawn),
-                    w=torch.where(died, rules.flight.eps, ships.w),
-                    r=torch.where(died, 0.0, ships.r))
+    respawn_wait = torch.where(was_dead, ships.respawn_wait - 1, ships.respawn_wait)
+    due = was_dead & (respawn_wait <= 0)
+    ships = replace(ships, alive=alive0 & ~died,
+                    gun_cooldown=(ships.gun_cooldown - 1).clamp_min(0),
+                    respawn_wait=torch.where(died, rules.respawn_ticks, respawn_wait),
+                    proper_speed=torch.where(died, rules.flight.speed_floor, ships.proper_speed),
+                    nose_rate=torch.where(died, 0.0, ships.nose_rate))
 
-    # 8. Episode clock: a finished environment gets a new map, no bullets, cleared cursors
-    # and flags, and all its ships spawn.
-    done = match.t + 1 >= rules.episode_ticks
-    u = TickUniforms(rules, uniforms)
-    fields, ax, ay = new_map(rules, u.map)
-    fields = where(done, fields, st.fields)
-    ax, ay = torch.where(done, ax, match.axis_x), torch.where(done, ay, match.axis_y)
-    bullets = where(done, apply_fields(torch.zeros_like, bullets), bullets)
+    # 8. Episode clock: a finished environment gets a new map, no bullets, cleared slots
+    # and flags, and all its ships spawn. Its fog setting stays.
+    done = match.episode_tick + 1 >= rules.episode_ticks
+    tick = TickUniforms(rules, uniforms)
+    fields, axis_x, axis_y = new_map(rules, tick.map)
+    fields = where(done, fields, state.fields)
+    axis_x = torch.where(done, axis_x, match.spawn_axis_x)
+    axis_y = torch.where(done, axis_y, match.spawn_axis_y)
+    bullets = where(done, apply(torch.zeros_like, bullets), bullets)
     keep = ~done[:, None]
-    ships = replace(ships, cursor=torch.where(keep, ships.cursor, 0), fired=ships.fired & keep)
-    ships = spawn(rules, types, ships, fields, ax, ay, due | done[:, None], u.rotation, u.keys)
-    match = replace(match, t=torch.where(done, 0, match.t + 1), axis_x=ax, axis_y=ay)
+    ships = replace(ships, next_slot=torch.where(keep, ships.next_slot, 0),
+                    fired=ships.fired & keep)
+    ships = spawn(rules, types, ships, fields, axis_x, axis_y, due | done[:, None],
+                  tick.rotation, tick.keys)
+    match = replace(match, episode_tick=torch.where(done, 0, match.episode_tick + 1),
+                    spawn_axis_x=axis_x, spawn_axis_y=axis_y)
 
-    events = Events(damage=hit.damage, boundary_damage=boundary, died=died, fired=st.ships.fired,
-                    spawned=ships.spawned, killer=killer, done=done)
+    events = Events(damage=hit.damage, boundary_damage=boundary, died=died,
+                    fired=state.ships.fired, spawned=ships.spawned, killer=killer, done=done)
     return State(ships=ships, bullets=bullets, fields=fields, match=match), events
 
 
-def step(rules: Rules, st: State, action: Action, spread: torch.Tensor,
-         uniforms: torch.Tensor, types: ShipTypes | None = None) -> tuple[State, Events]:
+def step(rules: Rules, types: ShipTypes, state: State, action: Action, spread: torch.Tensor,
+         uniforms: torch.Tensor) -> tuple[State, Events]:
     """One whole tick (phases 1-8; perception is separate)."""
-    moved, sweep = move(rules, st, action, spread, types)
-    return resolve(rules, moved, sweep, uniforms, types)
-
-
+    moved, sweep = move(rules, types, state, action, spread)
+    return resolve(rules, types, moved, sweep, uniforms)
