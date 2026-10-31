@@ -332,6 +332,24 @@ cut; where they differ, this section and the code win.
   `perceive`, `spread`, `uniforms`. Randomness is explicit (spec section 2).
 - **Teams:** two, a constant (`rules.TEAMS`).
 - **Names:** full words (scaffold rule 10).
+- **Modes and rewards (sections 3 and 3b, 2026-11-01):**
+  - **`GameConfig`** gains `mode` (`"team_deathmatch"` default, `"frontline"`,
+    `"sandbox"`), `spawn_groups` and `kills_per_ship`. `episode_s` and `respawn_s` default
+    to the mode's (None).
+  - **`Events` (schema 2)** gains:
+    - `shield_lost` and `shield_restored` (B, N);
+    - `objective_progress` and `objective` (B, N), each zero-sum per environment;
+    - `result` (B,), for team 0 on done environments.
+  - **`Obs` (schema 2)** gains a `zones` part (`ZONE_COLUMNS`: x, y, radius, role,
+    progress, direction, offensive_distance, defensive_distance). Its rows are in each
+    viewer's own ring order, so the order reveals no seat, and `Z = 0` in modes without
+    zones. `GLOBAL_COLUMNS` gains `mode_team_deathmatch`, `mode_frontline`, `score_own`,
+    `score_enemy`, `score_target`, `front` and `front_threshold`. All are team-relative.
+  - **`REWARD_LEVELS`** (`bnb.contracts.trajectory`): damage, kill_death,
+    objective_progress, objective, outcome. `Trajectory.reward` is
+    `(L, R, S, len(REWARD_LEVELS))`, per level and weighted.
+  - **Reward state:** `bnb.learn.rewards.Ledger(ships (B, N, N), boundary (B, N))`,
+    carried by the runtime. That is the spec's (B, N + 1, N), split for speed.
 - **Learner outputs (section 5, 2026-11-01):**
   - **`Outputs`** gains:
     - `values (R, S, K)`: the critic per reward level, in raw units;
