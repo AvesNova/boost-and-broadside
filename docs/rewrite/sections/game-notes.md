@@ -213,3 +213,116 @@ Lines per module (`src/bnb/game`, 1269 total; the race arm it replaces was about
 
 New tests: `tests/sections/test_sight.py` (2 tests) and `test_game_section.py` (8 tests).
 `test_perception.py` was ported, and its spawn-leak xfail is removed and now passes.
+
+## Fix round (after the blind review)
+
+The spec amendment 3f583fb0 is pulled: the guarded division in the medium gradient is now
+allowed, so decision 1's deviation is gone. 114 tests pass (`uv run --no-sync pytest`,
+GPU and slow tests included).
+
+1. **Killer tie-break at tau = 0.**
+   - The bug: an exact -0.0 survived the eager clamp, and its int32 bit pattern sorted
+     before +0.0. Compiled code flushed it, so eager and compiled disagreed.
+   - The fix: `.abs()` after the clamp. It is identity for tau >= 0 and, unlike `+ 0.0`,
+     a compiler cannot fold it away.
+   - Test: `test_killer_ties_at_tau_zero_go_to_the_lower_bullet_eager_and_compiled`, both
+     orders.
+2. **Medium gradient at a field's exact centre.**
+   - The distance is a double-where sqrt, so autograd is finite everywhere.
+   - Tests: the medium against a float64 leave-one-out reference (inner band edge down to
+     1e-6 m, 64 coincident fields, nested, 64 staggered, exact centre, battle-scale
+     positions), and finite autograd through points and fields for every case.
+3. **The ship card is required:** `reset(rules, types, uniforms, fogged=None)`,
+   `move(rules, types, ...)`, `resolve(rules, types, ...)`, `step(rules, types, ...)`.
+   Every caller passes it.
+4. **No legacy left in src:**
+   - the `match.preset` alias, `State.__getitem__`, and the canonical, flat and unflat
+     helpers are deleted;
+   - the race-key translation (state, constants, observation) lives in
+     `tests/reference/race_arm.py`;
+   - `Visibility` is gone: `visibility()` returns the (B, 2, N) tensor;
+   - `tests/contract/test_export.py` and `tests/loop/test_lineup.py` use the new API, and
+     `test_contracts.py` the new column count;
+   - the card test builds per-environment cards with `ship_types(**overrides)`. A
+     (B, types) override gives every parameter the batch axis.
+5. **Two teams is a constant,** `rules.TEAMS`. `Rules.num_teams` and the team arguments
+   are gone. `view_order`, `team_relative` and the uniform layout stay written as they
+   are.
+6. **Full-word names everywhere in bnb.game**, including the state fields, the constants
+   and the card. Examples: `heading_cos`, `proper_speed`, `angle_of_attack_sin`,
+   `log_index_gradient_x`, `moves_left`, `next_slot`, `max_lift_coefficient`,
+   `ticks_between_shots`, `tick_length`.
+   - Spec symbols are kept in comments, e.g. `# [alpha_s]`.
+   - `bnb.game.match` is now `bnb.game.api` (no clash with `Match`).
+   - Kept short: shape letters (B, N, K, M, S, P), x and y, cos and sin, the spec's matrix
+     entries (m11 ...) and theta.
+   - `Rollout.p` keeps its name because `bench/cell.py` reads `rollout.p.episode_ticks`.
+7. **Observation columns** are as listed by the coordinator (`contracts/obs.py`:
+   SHIP_HIDDEN_ZERO = 16, 24 ship columns, 5 field columns, 4 globals; times in
+   seconds).
+   - The MLP's scales and the chaser follow.
+   - The adapter maps back to the race's 17 columns and 4 field columns.
+8. **Fog of war per environment.**
+   - `Match.fogged` (B,) bool is set at reset (default: all fogged) and kept through
+     episode resets.
+   - Without fog, every living enemy is visible, `time_since_seen` is 0 for every ship,
+     and `globals.fogged` is 0.
+   - `Pool.fog_share` (default 1.0) must give a whole number of environments.
+     `pool_sizes` fails otherwise.
+   - **The split is fixed and contiguous:** the first `fog_share` of each pool's
+     environments are fogged for the whole run. The seat is redrawn each episode, so
+     neither side gains from it.
+   - Tests cover the unfogged views, the flag in the observation, fog surviving episode
+     resets, the rollout's split, and whole-number validation.
+9. **New test sizes:** compiled vs eager at odd M (5 fields), M = 64 and battle size
+   (100 ships, 40 fields, R 8200 m).
+   - Floats agree to rtol and atol 2e-5; flags, counters and indices are compared exactly.
+   - The batch-1 `Realtime` path is tested eagerly and compiled, fogged and not, across an
+     episode reset.
+10. **Sight scaling** at fixed size (40 ships, 1024 environments, RTX 4070 laptop, bench
+    lock):
+
+    | M | compile | perceive per tick |
+    |---:|---:|---:|
+    | 8 | 5.1 s | 115 µs |
+    | 16 | 7.1 s | 132 µs |
+    | 32 | 9.5 s | 161 µs |
+    | 48 | 17.8 s | 203 µs |
+    | 64 | 19.0 s | 228 µs |
+
+    Both grow about linearly with M, with no kernel splitting, so nothing is changed. The
+    field-axis reduction alternative was measured slower earlier (decision 5).
+11. **Costs to know about.**
+    - **Eager hit-test memory.** Eagerly, the hit test materializes its (B, N·K, N) pair
+      tensors: about 10 float or bool tensors of B·N·K·N elements. At battle size with
+      B = 1024 that is 61 M elements each, roughly 3 GB at peak. Compiled, the pair tensors
+      fuse into one reduction and are never stored. Eager battle-size runs should use a
+      smaller B.
+    - **Per-tick spawn work.** The spawn formation is computed for every ship every tick
+      and selected by the spawn mask: the formation ranks (B, 2, S, S), the new map for
+      every environment, and the medium at every would-be spawn point (B, N, M). Most of
+      it is discarded, so its cost is constant per tick rather than per spawn: about
+      0.13 ms at 54 fields and 1576 environments. Making it conditional would need a
+      data-dependent shape, or sharing the flight's medium evaluation (open item 7).
+
+**Benchmark after the fix round** (same seed):
+
+| cell | rollout env-ticks/s | VRAM |
+|---|---:|---:|
+| 114 ships, 22 fields | 110,344 (first round 111,834) | 3.86 GB |
+| 40 ships, 8 fields | 439,236 (first round 438,961) | 3.85 GB |
+| 26 ships, 54 fields | 425,337 (first round 433,183) | 4.27 GB |
+| realtime | p50 0.16 ms, p99 0.17 ms | |
+
+- Rollout throughput is unchanged within run-to-run noise.
+- VRAM is about 0.25-0.3 GB higher than the first round, from the wider observation
+  (19 → 24 ship columns) in the stored trajectory and the larger MLP input.
+
+**Still open:**
+- **The learning test passes** at its fixed seed with the new observation, but stays
+  marginal across seeds (request 1).
+- **The scripted Random controller** still makes a host copy that blocks eager capture of
+  the whole rollout (request 2, controllers section).
+
+**Size after the fix round:** `src/bnb/game` is 1322 lines. Full-word names made the
+lines longer; the module list is unchanged except `match.py` → `api.py`.
