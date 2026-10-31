@@ -12,20 +12,20 @@ See request 1. Ruff is clean.
 
 | Module | Job | Lines |
 |---|---|---:|
-| `model.py` | `YemongConfig`; the `Carry`, `Replay`, `Decision` and `Unrolled` pytrees; `Yemong.step`, `Yemong.unroll`, `shot_trajectory` | MODEL_LINES |
-| `inputs.py` | `compose`: ship, global and field tokens from a view and its belief; `truth` (observed state in belief order) | INPUTS_LINES |
-| `belief.py` | `Belief`; `observe` (sight) and `advance` (store the forecast, count non-finite entries) | BELIEF_LINES |
-| `state_code.py` | `ShipStateCode`: means and spreads to the 490-wide code and back; the 3.2 constants | STATE_LINES |
-| `codes.py` | the 3.3 primitives: circular, position, scalar (with moment matching), velocity, grouped softmax, baseline floor | CODES_LINES |
-| `network.py` | `Encoder` (kinds, shared projection, map memory), `Trunk` (`step`, `sequence`) | NETWORK_LINES |
-| `spatial.py`, `temporal.py`, `layers.py` | the sublayers: attention over queries and map memory; causal convolution, RG-LRU and the scan; RMSNorm, rotary, gated MLP | SUBLAYER_LINES |
-| `heads.py` | `MLPHead`, `NextStateHead`, `critic_values`, `ShotTrajectoryHead` | HEADS_LINES |
-| `policy.py` | joint-action Gumbel-max sampling, log-probability and entropy | POLICY_LINES |
-| `critic.py` | value bins, two-hot, expectation, outcome classes and lambda targets, `ReturnScale` | CRITIC_LINES |
-| `density.py`, `shots.py`, `features.py` | the hex density target and Poisson terms; shot codes and age features; symlog, respawn features, local presence | TARGET_LINES |
-| `controllers/yemong.py` | `YemongController`: sample, set the previous action, fill `Outputs` | CONTROLLER_LINES |
+| `model.py` | `YemongConfig`; the `Carry`, `Replay`, `Decision` and `Unrolled` pytrees; `Yemong.step`, `Yemong.unroll`, `shot_trajectory` | 327 |
+| `inputs.py` | `compose`: ship, global and field tokens from a view and its belief; `truth` (observed state in belief order) | 117 |
+| `belief.py` | `Belief`; `observe` (sight) and `advance` (store the forecast, count non-finite entries) | 69 |
+| `state_code.py` | `ShipStateCode`: means and spreads to the 490-wide code and back; the 3.2 constants | 156 |
+| `codes.py` | the 3.3 primitives: circular, position, scalar (with moment matching), velocity, grouped softmax, baseline floor | 347 |
+| `network.py` | `Encoder` (kinds, shared projection, map memory), `Trunk` (`step`, `sequence`) | 101 |
+| `spatial.py`, `temporal.py`, `layers.py` | the sublayers: attention over queries and map memory; causal convolution, RG-LRU and the scan; RMSNorm, rotary, gated MLP | 226 |
+| `heads.py` | `MLPHead`, `NextStateHead`, `critic_values`, `ShotTrajectoryHead` | 91 |
+| `policy.py` | joint-action Gumbel-max sampling, log-probability and entropy | 24 |
+| `critic.py` | value bins, two-hot, expectation, outcome classes and lambda targets, `ReturnScale` | 93 |
+| `density.py`, `shots.py`, `features.py` | the hex density target and Poisson terms; shot codes and age features; symlog, respawn features, local presence | 221 |
+| `controllers/yemong.py` | `YemongController`: sample, set the previous action, fill `Outputs` | 39 |
 
-The adapter `tests/reference/yemong/yemong_arm.py` has ARM_LINES lines. Each method
+The adapter `tests/reference/yemong/yemong_arm.py` has 263 lines. Each method
 builds a module from the fixture weights or calls a function. The translations are:
 - the RG-LRU's flat weight names to the block's nested `recurrence.*`;
 - `global.*` to `global_token.*`, because `global` is a Python keyword and FX codegen
@@ -153,7 +153,14 @@ ages in parallel.
 
 ### Spec 3.2: velocity reach and nose rate (chaser vs chaser, one 60 s episode)
 
-MEASURE_TABLE
+| preset, fog | ship-steps | share > 319 m/s | share \|nose rate\| > 8 | max speed (m/s) | max \|nose rate\| | gun reach p50 (m) |
+|---|---:|---:|---:|---:|---:|---:|
+| duel, on | 901k | 0 | 0 | 204 | 4.9 | 197 |
+| duel, off | 917k | 0 | 0 | 226 | 5.0 | 197 |
+| squad, on | 2.12M | 0 | 0 | 309 | 7.0 | 202 |
+| squad, off | 2.14M | 0 | 0 | 245 | 5.5 | 199 |
+| battle, on | 2.87M | 5.1e-5 | 0 | 337 | 7.4 | 213 |
+| battle, off | 2.79M | 0 | 0 | 242 | 5.7 | 206 |
 
 Both shares are below 1e-3 everywhere. The largest world speed seen was 337 m/s, in a
 fogged battle; the reach is 319 m/s. The largest |nose rate| was 7.4 rad/s. The ranges
@@ -169,7 +176,24 @@ reach, close to v1's 0.78. I kept it.
 
 ### Speed (acceptance item 7)
 
-SPEED
+Bench sizes (seed 20261031), RTX 4070 Laptop, float32 (TF32 off), Yemong as learner and
+league slot, chaser and random pools as in `TrainConfig`; min of 3 rollouts after 2 warm-up.
+
+| cell | precision | rollout env-ticks/s | ms per tick | peak VRAM (GB) | MLP skeleton env-ticks/s |
+|---|---|---:|---:|---:|---:|
+| 114 ships, 22 fields, R 9654 m, 360 envs (540 learner views) | fp32 | 4,028 | 89.4 | 6.63 | 111,834 |
+| 40 ships, 8 fields, R 6146 m, 1024 envs (1536 learner views) | fp32 | 11,302 | 90.6 | 6.66 | 438,961 |
+
+Not finished when the run was cut short: the 26-ship cell, the bf16 rollout cells, and
+the `unroll` forward and backward cells (L = 128; squad R = 32, 40 ships R = 8). The
+script is `/tmp/bnb-scratch-yemong/bench_yemong.py` (CELLS env var lists them).
+
+Step profile (40-ship size, 1792 views, compiled): 88 ms in float32, 52 ms with
+`bfloat16_matmuls` (1.7x). In float32, sgemm takes 36 ms at about 54% of peak, the gated
+MLP's gelu-mul (memory-bound) takes 11.5 ms, and the codes, norms, rotary and carry copies
+take the rest. Fusing gate and up into one matrix product measured no gain (88.4 vs
+87.8 ms) and was reverted. The act stage dominates the rollout; the game is about 1-2 ms
+per tick.
 
 ## Runtime and contract changes
 

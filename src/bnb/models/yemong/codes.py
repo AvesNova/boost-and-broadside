@@ -33,7 +33,7 @@ def circular_encode(mean: torch.Tensor, sigma: torch.Tensor, period: float, colo
     The spec's coordinate is (m mod P) / p_l * c. Only its fraction and its floor mod c are
     used, and m / p_l * c differs from it by a multiple of c^(l + 1), so the mod is left out:
     in float32 it would cost the finest levels their precision (x mod 26 km rounds to 2 mm,
-    a fifth of a percent of a 4 m level's colour).
+    0.15% of a 4 m level's 1.3 m colour).
     """
     level_periods = period / colours ** torch.arange(levels, dtype=mean.dtype, device=mean.device)
     position = mean[..., None] * (colours / level_periods)
