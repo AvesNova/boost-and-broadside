@@ -420,3 +420,15 @@ reads unrounded. Round with integer storage, or store at full precision.
 **Benchmark (bench_run2).** Re-run after the spreads change. The cells still running at
 hand-back write their results to `/tmp/bnb-scratch-yemong/bench_run2.log`; I have not
 copied them here.
+
+**Rollout cells from bench_run2** (after the spreads change; Yemong as learner and league;
+TF32 off; min of 3 runs after 2 warm-up runs):
+
+| Cell | float32 env-ticks/s | float32 VRAM | bf16 env-ticks/s | bf16 VRAM | Before the fix round (float32 / bf16) |
+|---|---:|---:|---:|---:|---|
+| 114 ships, 360 envs | 4,152 | 6.14 GB | 7,513 | 5.92 GB | 4,028 / 6,941 |
+| 40 ships, 1024 envs | 11,729 | 6.17 GB | 21,347 | 5.95 GB | 11,302 / 19,771 |
+| 26 ships, 1576 envs | out of memory in compile and capture | | not run | | out of memory |
+
+The unroll cells were still running at hand-back. Their results are in
+`/tmp/bnb-scratch-yemong/bench_run2.log`.
