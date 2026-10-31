@@ -280,6 +280,49 @@ Everything runs end to end, nothing is good yet.
 
 Every later section reports against this table.
 
+### Milestone 0 status (2026-10-31): built
+
+Code in `src/bnb`; how it differs from the contracts text is in the contracts doc's
+skeleton notes.
+
+Done criteria:
+
+| Criterion | Result |
+|---|---|
+| Runs end to end at 3 sizes | yes (`bnb` CLI; benchmark cells) |
+| Contract tests | pass (`tests/contract`, including the import direction and ONNX export) |
+| Race reference tests on the ported physics and the new observation | 61 pass |
+| Toy learning | **changed:** the MLP learns to stop dying against the chaser (−0.05 → −0.01 reward/s; random scores −0.05). It does not learn to hunt random ships within 500 updates, so "beats random" was not met; hunting is left to the learning sections (BC) |
+| Benchmark | 127 s with a warm compile cache; a cold run is a few minutes |
+
+Benchmark, commit `4cc7c13c`, sealed sizes (seed 20261031), 40,960 ships per batch,
+RTX 4070 Laptop:
+
+| Size | Rollout env-ticks/s | Train env-ticks/s | Learn per update | VRAM |
+|---|---|---|---|---|
+| 114 ships, 22 fields, R 9654 m (360 envs) | 71k | 17k | 2.0 s | 4.4 GB |
+| 40 ships, 8 fields, R 6146 m (1024 envs) | 407k | 56k | 2.0 s | 4.4 GB |
+| 26 ships, 54 fields, R 4950 m (1576 envs) | 323k | 76k | 2.0 s | 4.8 GB |
+| CPU realtime, 10 ships | p50 0.15 ms, p99 0.17 ms | | | |
+
+Notes:
+- The learner dominates training throughput. The stub's PPO makes 4 epochs over 1.5
+  views per env, in fp32 with TF32 off. The cost is the same at every size because the
+  ship budget is fixed.
+- At the largest map the teams spawn about 15 km apart and never meet within a 60 s
+  episode, so that load has no hits. Dense pair tests cost the same either way, but a
+  combat-load check needs scripted fleets.
+
+Not yet in the skeleton:
+- named, graph-registered random generators;
+- the determinism cost measurement;
+- crash replay;
+- fog-off envs and fog share;
+- mode state (the attribution ledger);
+- PPO microbatching;
+- the TF32 decision;
+- the spawn seat leak, fixed in the physics section.
+
 ## 8. Section order and acceptance
 
 | # | Section | Acceptance type |
