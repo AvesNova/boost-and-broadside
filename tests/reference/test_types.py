@@ -5,9 +5,11 @@ import math
 import numpy as np
 import pytest
 
-from helpers import H, PRESETS, actions, aspect, far_fields, fresh, place, step
+from helpers import H, PRESETS, actions, aspect, far_fields, first_move, fresh, place, step  # noqa: F401
+from race_presets import _DATA
 
-HEAVY_COST = 70.0
+HEAVY_COST = _DATA["types"]["heavy"]["bullet_cost"]
+HEAVY_MUZZLE = _DATA["types"]["heavy"]["muzzle_speed"]
 
 
 def rule(preset):
@@ -56,7 +58,7 @@ def test_heavy_gun_rate_cost_and_muzzle(arm):
         pattern.append(bool(st["fired"][0, 1]))
         if k == 0:
             assert abs((calm["E"][0, 1] - st["E"][0, 1]) - HEAVY_COST) < 0.02
-            assert abs(st["bx"][0, 1, 0] - (100.0 + 420.0) * H) < 0.05
+            assert abs(st["bx"][0, 1, 0] - first_move(100.0 + HEAVY_MUZZLE)) < 0.05
     assert pattern == [True, False, False, True, False, False]
 
 

@@ -4,8 +4,9 @@ episode end, visibility (SPEC 5-10). Fields are moved out of play unless a test 
 import math
 
 import numpy as np
+import pytest
 
-from helpers import H, PRESETS, actions, aspect, far_fields, fresh, place, step
+from helpers import H, PRESETS, actions, aspect, far_fields, first_move, fresh, map_uniform_count, place, step
 
 COST = PRESETS["squad"]["bullet_cost"]
 
@@ -27,8 +28,10 @@ def test_firing_costs_energy_and_starts_a_bullet(arm):
     assert fired["fired"][0, 0] and not calm["fired"][0, 0]
     assert abs((calm["E"][0, 0] - fired["E"][0, 0]) - COST) < 0.02
     assert fired["ttl"][0, 0, 0] == 11 and fired["cursor"][0, 0] == 1 and fired["gun_wait"][0, 0] == 1
-    # First move starts at the tick-start position, at muzzle + ship speed along the nose.
-    assert abs(fired["bx"][0, 0, 0] - (100.0 + 465.0) * H) < 0.05
+    # First move starts at the tick-start position, at muzzle + ship speed along the nose,
+    # less half a tick of drag.
+    muzzle = PRESETS["squad"]["muzzle_speed"]
+    assert abs(fired["bx"][0, 0, 0] - first_move(100.0 + muzzle)) < 0.05
     assert abs(fired["by"][0, 0, 0]) < 1e-3
 
 
@@ -93,18 +96,34 @@ def test_first_contact_only(arm):
     assert ev["damage"][0, 0, 5] > 0 and ev["damage"][0, 0, 6] == 0
 
 
-def test_allied_bullets_pass_through(arm):
-    st, act = crossing(arm, "squad", target=1, ahead=9.0)  # ship 1 is on team 0
+def test_friendly_fire_hits_allies(arm):
+    """A bullet is a bullet: ship 1 is on the shooter's team and is hit all the same."""
+    st, act = crossing(arm, "squad", target=1, ahead=9.0)
+    new, ev, _ = step(arm, "squad", st, act)
+    assert ev["damage"][0, 0, 1] > 0 and new["ttl"][0, 0, 0] == 0
+
+
+def test_an_ally_kill_credits_the_shooter(arm):
+    st, act = crossing(arm, "squad", target=1, ahead=9.0, shield=0.0)
+    _, ev, _ = step(arm, "squad", st, act)
+    assert ev["died"][0, 1] and ev["killer"][0, 1] == 0
+
+
+def test_a_bullet_never_hits_its_shooter(arm):
+    """The bullet starts on the shooter (zero miss distance at tau = 0) and still flies on."""
+    st, act = crossing(arm, "squad", target=1, ahead=9.0)
+    place(st, 1, 2000.0, 2000.0, 0.0)  # nobody in front
+    st["w"][0, 0] = 1e-3  # the shooter barely moves, so it stays inside its own bullet's start
     new, ev, _ = step(arm, "squad", st, act)
     assert ev["damage"].sum() == 0 and new["ttl"][0, 0, 0] == 11
 
 
-def test_head_on_hits_do_a_tenth(arm):
+def test_head_on_hits_do_the_head_on_fraction(arm):
     st, act = crossing(arm, ahead=9.0)
     place(st, 1, 9.0, 0.0, math.pi)  # facing the shooter
     st["w"][0, 1] = 1e-3
     _, ev, _ = step(arm, "duel", st, act)
-    assert abs(ev["damage"][0, 0, 1] - 1.2) < 0.05
+    assert abs(ev["damage"][0, 0, 1] - 12.0 * PRESETS["duel"]["head_on_fraction"]) < 0.05
 
 
 def test_exposed_core_dies_and_credits_the_shooter(arm):
@@ -149,22 +168,67 @@ def test_boundary_damage_grows_with_depth(arm):
 
 # ------------------------------------------------------------------ respawn, reset
 
-def test_respawn_places_the_ship_at_its_spawn(arm):
-    st = duel(arm)
-    st["alive"][0, 1] = False
-    st["respawn"][0, 1] = 1
-    st["t"][0] = 77
-    new, _, obs = step(arm, "duel", st, actions(1, 2))
-    p = PRESETS["duel"]
-    assert new["alive"][0, 1] and new["spawned"][0, 1] and not new["spawned"][0, 0]
+def tick_uniforms(preset, rotation=(0.0, 0.0), keys=None):
+    """(1, U) tick uniforms with a chosen formation rotation per team and keys per ship."""
+    p = PRESETS[preset]
+    N, m = p["num_ships"], map_uniform_count(preset)
+    u = np.zeros((1, m + 2 + N), np.float32)
+    u[0, m:m + 2] = rotation
+    if keys is not None:
+        u[0, m + 2:] = keys
+    return u
+
+
+def test_respawn_places_the_ship_on_the_shuffled_rotated_formation(arm):
+    """Squad, team 1 keys (0.9, 0.1, 0.5, 0.7, 0.3): slot ranks 4, 0, 2, 3, 1. Ships 6 and 8
+    (slots 1 and 3) respawn together at phases 0/5 + 0.25 and 3/5 + 0.25."""
+    p = PRESETS["squad"]
+    st = far_fields(fresh(arm, "squad"))
+    for i in range(10):
+        place(st, i, -1500.0 + 300.0 * i, 0.0, 0.0)
+    for i in (6, 8):
+        st["alive"][0, i] = False
+        st["respawn"][0, i] = 1
+    keys = [0.0] * 5 + [0.9, 0.1, 0.5, 0.7, 0.3]
+    uni = tick_uniforms("squad", rotation=(0.6, 0.25), keys=keys)
+    spread = np.zeros((1, 10, 2), np.float32)
+    new, _, _ = arm.step("squad", st, actions(1, 10), spread, uni)
     ax, ay = st["axis_x"][0], st["axis_y"][0]
-    phase = (1 * 0.61803398875 + 77 * 0.38196601125) % 1.0
     rho = p["spawn_radius"] * p["arena_radius"] / 2600.0
     cx, cy = 0.8 * p["arena_radius"] * ax, 0.8 * p["arena_radius"] * ay
-    assert abs(new["x"][0, 1] - (cx + rho * math.cos(2 * math.pi * phase))) < 1e-2
-    assert abs(new["y"][0, 1] - (cy + rho * math.sin(2 * math.pi * phase))) < 1e-2
-    assert abs(new["c"][0, 1] + ax) < 1e-5 and abs(new["s"][0, 1] + ay) < 1e-5
-    assert new["shield"][0, 1] == 100.0 and new["E"][0, 1] == 4000.0 and new["gun_wait"][0, 1] == 0
+    for ship, rank in ((6, 0), (8, 3)):
+        phase = rank / 5 + 0.25
+        assert new["alive"][0, ship] and new["spawned"][0, ship]
+        assert abs(new["x"][0, ship] - (cx + rho * math.cos(2 * math.pi * phase))) < 1e-2
+        assert abs(new["y"][0, ship] - (cy + rho * math.sin(2 * math.pi * phase))) < 1e-2
+        assert abs(new["c"][0, ship] + ax) < 1e-5 and abs(new["s"][0, ship] + ay) < 1e-5
+    # Ship 6 is team 1's slot 1: a heavy (full heavy shield and spawn energy).
+    assert new["shield"][0, 6] == 160.0 and new["E"][0, 6] == 5600.0 and new["gun_wait"][0, 6] == 0
+    assert not new["spawned"][0, 5]
+
+
+def test_reset_formation_is_evenly_spread_per_team(arm):
+    rng = np.random.default_rng(5)
+    from helpers import reset_uniform_count
+    st = arm.reset("squad", rng.random((8, reset_uniform_count("squad"))).astype(np.float32))
+    for team in (0, 1):
+        x, y = st["x"][:, 5 * team:5 * team + 5], st["y"][:, 5 * team:5 * team + 5]
+        ang = np.sort(np.mod(np.arctan2(y - y.mean(1, keepdims=True), x - x.mean(1, keepdims=True)), 2 * np.pi), 1)
+        gaps = np.diff(np.concatenate([ang, ang[:, :1] + 2 * np.pi], 1), axis=1)
+        assert np.allclose(gaps, 2 * np.pi / 5, atol=1e-3), gaps
+
+
+@pytest.mark.parametrize("preset", ["duel", "squad", "battle"])
+def test_maps_are_point_symmetric(arm, preset):
+    rng = np.random.default_rng(6)
+    from helpers import reset_uniform_count
+    st = arm.reset(preset, rng.random((4, reset_uniform_count(preset))).astype(np.float32))
+    M = PRESETS[preset]["num_fields"]
+    P = M // 2
+    for k, sign in (("fx", -1.0), ("fy", -1.0), ("fr", 1.0), ("fw", 1.0), ("flevel", 1.0)):
+        np.testing.assert_allclose(st[k][:, P:2 * P], sign * st[k][:, :P], rtol=1e-6, atol=1e-3)
+    if M % 2:
+        assert np.allclose(st["fx"][:, -1], 0.0) and np.allclose(st["fy"][:, -1], 0.0)
 
 
 def test_spawned_ships_are_revealed(arm):
