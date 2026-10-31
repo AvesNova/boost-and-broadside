@@ -77,7 +77,8 @@ def circular_decode(probabilities: torch.Tensor, period: float, colours: int,
                              dtype=dtype, device=device)
     weight = informative.to(dtype) * attenuation**2
     variance = -(weight * curvature * torch.log(torch.clamp_min(attenuation, INFORMATIVE))).sum(-1)
-    variance = torch.clamp_min(variance / torch.clamp_min((weight * curvature**2).sum(-1), tiny), 0.0)
+    variance = torch.clamp_min(variance / torch.clamp_min((weight * curvature**2).sum(-1), tiny),
+                               0.0)
     two_hot = ((probabilities > 0).sum(-1) <= 2).all(-1)
     variance = torch.where(two_hot, 0.0, variance)
     spread = torch.where(informative.any(-1), torch.sqrt(variance), period)

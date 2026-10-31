@@ -20,12 +20,21 @@ Carry = Any  # a pytree of tensors the runtime stores but never inspects (None i
 class Outputs:
     """Per controlled ship, shaped (R, S) for R views. None for controllers that do not learn.
 
-    logp: log-probability of the chosen action; entropy: of the policy; value: the critic.
+    logp: log-probability of the chosen action; entropy: of the policy; value: the critic,
+    the sum of `values` over levels when a controller gives them.
+    values (R, S, K): the critic per reward level, in raw units and the configured level
+        order (an outcome level is P(win) - P(loss)).
+    outcome (R, 4): the outcome probabilities (win, tie, loss, unresolved).
+    replay: an opaque pytree with leading (R,), what the decision read from the controller's
+        carry, so the learner can recompute a segment without replaying it.
     """
 
     logp: torch.Tensor | None = None
     entropy: torch.Tensor | None = None
     value: torch.Tensor | None = None
+    values: torch.Tensor | None = None
+    outcome: torch.Tensor | None = None
+    replay: Any = None
 
 
 class Controller(Protocol):
