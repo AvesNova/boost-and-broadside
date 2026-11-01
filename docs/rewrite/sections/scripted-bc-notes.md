@@ -13,8 +13,10 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
   another agent's suite held 4.7 GB of the GPU; those 6 (learner precision and streaming)
   pass when rerun with the GPU free. The toy BC test passed inside the suite. The
   `bnb --objective bc` command runs end to end on the CPU at a toy size. After merging
-  origin/v2 (section 1b): docs, contract and section tests without the slow ones pass
-  (732), `tests/sections/test_handling.py` in full, and the scores re-run.
+  origin/v2 (section 1b), the full suite at 386db109+: 909 passed, 8 skipped (the
+  baseline's 6, the policy-file round trip, one of 1b's), 6 failed with CUDA
+  out-of-memory while another process held 6.2 GB; the same 6 pass when rerun with the
+  GPU free. The scores were re-run after the merge.
 - **Open:** the policy-file hand-off (section 11), request 1 below.
 
 ## Design
