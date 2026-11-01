@@ -83,7 +83,7 @@ class LearnerConfig:
     epochs: int = 4
     minibatches: int = 32
     micro_batch_rows: int = 160
-    target_kl: float = 0.02
+    target_kl: float | None = 0.02  # None: no early stop
     old_log_probabilities: str = "rollout"
     seed: int = 0
 
@@ -277,20 +277,14 @@ class Learner:
     def _loss(self, trajectory: Trajectory, label: dict, derived: dict, denominator: dict,
               scale: torch.Tensor):
         """One micro-batch: (loss, terms (TERMS,), value loss per level (K,), statistics
-        (clip fraction, approximate KL)), every sum over its tokens divided by its
-        minibatch-total denominator."""
+        (STATISTICS,)), every sum over its tokens divided by its minibatch-total
+        denominator."""
         config, model = self.config, self.model
         unrolled = self.unroll(trajectory)
         own = trajectory.logp.shape[-1]
-        own_alive = trajectory.alive[..., :own]
-        log_probability, entropy = policy.evaluate(unrolled.policy_logits,
-                                                   _own_joint(trajectory))
-        old = derived["old_log_probability"]
-        surrogate = losses.surrogate(log_probability, old, derived["advantage"], scale,
-                                     config.clip)
-        terms = dict.fromkeys(TERMS, log_probability.new_zeros(()))
-        terms["policy"] = losses.masked_sum(surrogate, own_alive) / denominator["policy"]
-        terms["entropy"] = losses.masked_sum(entropy, own_alive) / denominator["policy"]
+        terms = dict.fromkeys(TERMS, unrolled.policy_logits.new_zeros(()))
+        terms["policy"], terms["entropy"], statistics = self._policy(
+            unrolled, trajectory, derived, denominator, scale)
         per_level = losses.critic_losses(
             unrolled.value_logits, unrolled.outcome_logits,
             derived["level_returns"].index_select(-1, self.local_index), derived["outcome_targets"],
@@ -325,12 +319,31 @@ class Learner:
             terms["shot_outcome"] = losses.masked_sum(outcome, label["shot_mask"]) \
                 / denominator["shots"]
         loss = sum(getattr(config, term) * terms[term] for term in TERMS)
-        ratio = torch.exp(log_probability - old)
-        clipped = losses.masked_sum(((ratio - 1.0).abs() > config.clip).float(), own_alive)
-        divergence = losses.masked_sum((ratio - 1.0) - (log_probability - old), own_alive)
-        statistics = torch.stack([clipped, divergence]) / denominator["policy"]
         return loss, torch.stack([terms[term] for term in TERMS]).detach(), \
             per_level.detach(), statistics.detach()
+
+    STATISTICS = ("clip_fraction", "approximate_kl")  # what `_policy` reports per minibatch
+
+    def _policy(self, unrolled, trajectory: Trajectory, derived: dict, denominator: dict,
+                scale: torch.Tensor):
+        """The policy's terms of a micro-batch: (the clipped surrogate, the mean entropy,
+        statistics (STATISTICS,)), each over own ships alive."""
+        own_alive = trajectory.alive[..., :trajectory.logp.shape[-1]]
+        log_probability, entropy = policy.evaluate(unrolled.policy_logits,
+                                                   _own_joint(trajectory))
+        old = derived["old_log_probability"]
+        surrogate = losses.surrogate(log_probability, old, derived["advantage"], scale,
+                                     self.config.clip)
+        ratio = torch.exp(log_probability - old)
+        clipped = losses.masked_sum(((ratio - 1.0).abs() > self.config.clip).float(), own_alive)
+        divergence = losses.masked_sum((ratio - 1.0) - (log_probability - old), own_alive)
+        return (losses.masked_sum(surrogate, own_alive) / denominator["policy"],
+                losses.masked_sum(entropy, own_alive) / denominator["policy"],
+                torch.stack([clipped, divergence]) / denominator["policy"])
+
+    def report(self, statistics: list[float]) -> dict:
+        """The first epoch's mean STATISTICS, by name."""
+        return dict(zip(self.STATISTICS, statistics, strict=True))
 
     # ------------------------------------------------------------------ update
 
@@ -411,7 +424,7 @@ class Learner:
         micro = self._micro_batches(chosen)
         terms_sum = torch.zeros(len(TERMS), device=device)
         levels_sum = torch.zeros(len(REWARD_LEVELS), device=device)
-        statistics = torch.zeros(2, device=device)
+        statistics = torch.zeros(len(self.STATISTICS), device=device)
         self.optimizer.zero_grad(set_to_none=True)
         for host_views, (trajectory, shot_labels) in zip(micro, self.staged(segments, micro),
                                                          strict=True):
@@ -446,7 +459,7 @@ class Learner:
             # Minibatches as equal as the views allow (micro-batches of micro_views views,
             # each minibatch's last one smaller where they do not divide).
             order = torch.randperm(views, generator=self.order_generator)
-            statistics = torch.zeros(2, device=device)
+            statistics = torch.zeros(len(self.STATISTICS), device=device)
             for chosen in order.tensor_split(config.minibatches):
                 terms, per_level, statistic = self.gradient(segments, prepared, chosen)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
@@ -459,7 +472,9 @@ class Learner:
             if epoch == 0:
                 first_epoch = statistics
             # The early stop reads the epoch's mean KL: one host sync per epoch.
-            if epoch + 1 < config.epochs and statistics[1].item() > config.target_kl:
+            if (config.target_kl is not None and epoch + 1 < config.epochs
+                    and statistics[self.STATISTICS.index("approximate_kl")].item()
+                    > config.target_kl):
                 stopped = True
                 break
         readout = torch.cat([terms_total / steps, levels_total / steps,
@@ -472,9 +487,10 @@ class Learner:
         out.update({f"value_loss/{name}": value for name, value in zip(REWARD_LEVELS, levels)})
         out.update({f"explained_variance/{name}": value
                     for name, value in zip(REWARD_LEVELS, variance)})
-        out.update(ratio_drift_max=readout[0], ratio_drift_mean=readout[1],
-                   clip_fraction=readout[2], approximate_kl=readout[3], minibatch_steps=steps,
-                   stopped_early=stopped, return_scale=readout[4],
+        drift, readout = readout[:2], readout[2:]
+        statistics, readout = readout[:len(self.STATISTICS)], readout[len(self.STATISTICS):]
+        out.update(ratio_drift_max=drift[0], ratio_drift_mean=drift[1], **self.report(statistics),
+                   minibatch_steps=steps, stopped_early=stopped, return_scale=readout[0],
                    learning_rate=self.optimizer.param_groups[0]["lr"])
         return out
 

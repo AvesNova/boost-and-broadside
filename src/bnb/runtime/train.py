@@ -3,11 +3,14 @@ progress metrics.
 
 Lineup: self-play, one league slot (a lagged copy of the learner), the chaser and random, in
 fixed shares of the batch. A mixed batch (mixed spec 5) crosses the lineup with the games of
-a training mix. The learner is Yemong, or the toy relational model (learner spec 9).
+a training mix. The learner is Yemong, or the toy relational model (learner spec 9). The
+objective is PPO, or behaviour cloning of the scripted agent (`bnb.learn.bc`, with its own
+lineup and stop rule in `bnb.runtime.cloning`).
 """
 
 import copy
 import dataclasses
+import functools
 import time
 from collections.abc import Callable
 
@@ -15,10 +18,12 @@ import torch
 
 from bnb.contracts import REWARD_LEVELS, GameConfig, Pool
 from bnb.controllers.relational import RelationalController
-from bnb.controllers.scripted import Chaser, Random
+from bnb.controllers.scripted import Chaser, Random, Scripted, distribution
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
+from bnb.game.handling import characteristics
 from bnb.game.modes.rules import PRESETS
+from bnb.learn.bc import BehaviourCloning, TeacherConfig
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalConfig
@@ -28,6 +33,7 @@ from .evaluate import first_results, shares
 from .rollout import Rollout
 
 LEARNER = "learner"
+SCRIPTED = "scripted"
 # The default training mix (mixed spec 1, a proposal): each game preset's share of the batch.
 # The battle map is 25% of team deathmatch.
 TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.375), ("deathmatch_wide", 0.125))
@@ -38,6 +44,7 @@ LINEUP = (
     Pool("random", 0.125, (LEARNER, "random")),
 )
 MODELS = ("yemong", "relational")
+OBJECTIVES = ("ppo", "bc")
 PRECISIONS = ("float32", "tf32", "bfloat16")
 
 
@@ -66,7 +73,9 @@ class TrainConfig:
     length: ticks per segment; shards: segments per update. precision: "float32", "tf32" (a
     process-wide setting, which the entry point applies with `set_precision`) or
     "bfloat16" (the model's matmuls). host_store: stream the segments through pinned host
-    memory (on a GPU) rather than keep them on the device."""
+    memory (on a GPU) rather than keep them on the device. objective: "ppo", or "bc" (clone
+    the scripted agent; `learner` should then be `bnb.learn.bc.config()`, and `teacher`
+    sets its labels)."""
 
     game: GameConfig
     num_envs: int = 1024
@@ -82,8 +91,12 @@ class TrainConfig:
     host_store: bool = True
     seed: int = 0  # the entry point seeds the process with it
     compile: bool = True
+    objective: str = "ppo"
+    teacher: TeacherConfig = TeacherConfig()
 
     def __post_init__(self) -> None:
+        if self.objective not in OBJECTIVES:
+            raise ValueError(f"objective {self.objective!r} is not one of {OBJECTIVES}")
         if self.model not in MODELS:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
@@ -124,20 +137,40 @@ class Trainer:
         self.cfg = cfg
         self.model = build_model(cfg, device)
         self.league = copy.deepcopy(self.model).requires_grad_(False)
-        self.controllers = {LEARNER: model_controller(self.model, game),
-                            "league_0": model_controller(self.league, game),
-                            "chaser": Chaser(game.ships_per_team),
-                            "random": Random(game.ships_per_team)}
+        cloning = cfg.objective == "bc"
+        seated = {name for pool in cfg.pools for name in pool.seats}
+        types = api.ship_types(device)
+        # The scripted agent's characteristics, when it plays or teaches (measured once).
+        self.characteristics = characteristics(types, api.rules_of(game)) \
+            if cloning or SCRIPTED in seated else None
+        builders = {LEARNER: lambda: model_controller(self.model, game),
+                    "league_0": lambda: model_controller(self.league, game),
+                    "chaser": lambda: Chaser(game.ships_per_team),
+                    "random": lambda: Random(game.ships_per_team),
+                    SCRIPTED: lambda: Scripted(self.characteristics)}
+        self.controllers = {name: build() for name, build in builders.items()
+                            if name in seated or name in (LEARNER, "league_0")}
         reward_config = RewardConfig()
         self.rollout = Rollout(game, cfg.pools, self.controllers, LEARNER, cfg.num_envs,
                                cfg.length, device, compile=cfg.compile,
                                reward_config=reward_config, shards=cfg.shards,
-                               host_store=cfg.host_store)
-        self.ppo = Learner(self.model, cfg.learner, self.rollout.rules, api.ship_types(device),
-                           reward_config.outcome, device, stage=compiler(cfg.compile))
+                               host_store=cfg.host_store,
+                               extra_reads=Scripted.reads if cloning else ())
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)
         self.learner_pool = lineup.pool_of[LEARNER]
+        rules, stage = self.rollout.rules, compiler(cfg.compile)
+        if cloning:  # the teacher is the scripted opponent; only its labels are tempered
+            agent = self.controllers.get(SCRIPTED) or Scripted(self.characteristics)
+            teacher = functools.partial(distribution, characteristics=agent.characteristics,
+                                        parameters=agent.parameters)
+            self.ppo = BehaviourCloning(self.model, cfg.learner, rules, types,
+                                        reward_config.outcome, device, teacher, cfg.teacher,
+                                        self.pool_names, self.learner_pool.repeat(cfg.shards),
+                                        stage=stage)
+        else:
+            self.ppo = Learner(self.model, cfg.learner, rules, types, reward_config.outcome,
+                               device, stage=stage)
         self.updates_done = 0
 
     def collect(self):

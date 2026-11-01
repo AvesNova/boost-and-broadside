@@ -14,7 +14,7 @@ from .rollout import Rollout
 
 @torch.no_grad()
 def first_results(game: GameConfig, pools: tuple[Pool, ...], controllers: dict[str, Controller],
-                  player: str, games: int, device: torch.device, length: int = 256,
+                  player: str, games: int, device: torch.device, length: int = 64,
                   compile: bool = True) -> torch.Tensor:
     """(views,) int32: the result of each of `player`'s views in its environment's first
     game, +1 a win, 0 a draw, -1 a loss. games: environments (the pools' batch)."""
