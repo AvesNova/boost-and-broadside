@@ -7,10 +7,10 @@
 capture: build the trainer of a cell (as `bench.update_profile`), run one update so the
 weights are trained, collect a fresh store and save the cell, the weights, the optimizer,
 the store's leaves and the bootstraps.
-run: rebuild the trainer from the cell (with the optional overrides: "compile", "learner"
-fields), load the saved state into it, and save the outputs: the gradient of the first
-minibatch (its views from a fixed generator) at the saved weights, then one update's
-reported metrics and the parameter deltas it made.
+run: rebuild the trainer from the cell (with the optional overrides: "compile": false runs
+the learner's stages eager, "learner" fields), load the saved state into it, and save the
+outputs: the gradient of the first minibatch (its views from a fixed generator) at the
+saved weights, then one update's reported metrics and the parameter deltas it made.
 compare: the largest difference of each output, relative to the output's scale (the
 largest magnitude of that tensor, or of that metric).
 GPU runs take the benchmark lock.
@@ -46,11 +46,17 @@ def capture(path: str, cell: dict) -> None:
 
 
 def _restore(saved: dict, overrides: dict):
+    from bnb.learn import shots
+
     cell = dict(saved["cell"], **{k: v for k, v in overrides.items() if k != "compile"})
     if "learner" in overrides:
         cell["learner"] = dict(saved["cell"].get("learner", {}), **overrides["learner"])
-    cell["compile"] = overrides.get("compile", True)
     trainer, _ = build(cell)
+    if not overrides.get("compile", True):  # the learner's stages eager (the rollout's not)
+        ppo = trainer.ppo
+        ppo.loss, ppo.shot_tick = ppo._loss, shots.tick
+        if hasattr(ppo, "codes"):  # a separate label-code stage
+            ppo.codes = ppo._codes
     device = torch.device("cuda")
     trainer.model.load_state_dict(saved["model"])
     trainer.ppo.optimizer.load_state_dict(saved["optimizer"])
