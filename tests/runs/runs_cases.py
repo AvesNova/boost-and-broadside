@@ -94,3 +94,23 @@ def assert_equal(got: dict, want: dict) -> None:
     assert got.keys() == want.keys()
     for name in want:
         assert torch.equal(got[name], want[name]), name
+
+
+def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
+    """A TrainConfig small enough to train on the CPU in seconds, uncompiled."""
+    from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.train import TrainConfig
+
+    learner = LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64)
+    values = dict(game=GameConfig(2, 2, 1500.0, episode_s=4.0, respawn_s=1.0), num_envs=16,
+                  updates=updates, length=16, model=model, relational_hidden=16,
+                  league_every=1, learner=learner, compile=False)
+    values.update(changes)
+    return TrainConfig(**values)
+
+
+TRAIN_OPTIONS = ("--device", "cpu", "--model", "relational", "--ships-per-team", "2",
+                 "--num-fields", "2", "--arena-radius", "1500", "--num-envs", "16",
+                 "--set", "length=16", "--set", "compile=false",
+                 "--set", "learner.minibatches=2", "--set", "learner.epochs=1",
+                 "--set", "relational_hidden=16", "--set", "game.episode_s=4.0")

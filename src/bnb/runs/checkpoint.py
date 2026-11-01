@@ -29,7 +29,7 @@ from bnb.models.yemong.critic import ReturnScale
 
 from . import provenance
 from .registry import BUILDS, model_class, name_of
-from .serialise import from_json, to_json
+from .serialise import from_json, named_tensors, to_json, tree_from_named
 
 FORMAT = 1
 RECORD = "checkpoint.json"
@@ -204,3 +204,217 @@ def load_policy(directory: str | os.PathLike, device: torch.device) -> torch.nn.
     model.load_state_dict(safetensors.torch.load_file(pathlib.Path(directory) / WEIGHTS,
                                                       device=str(device)))
     return model
+
+
+# ---------------------------------------------------------------- training checkpoints
+
+# TrainConfig fields a resume may change (runs spec 6): the budget, the learning rate and
+# its warm-up, the loss coefficients and the entropy. Everything else is structural, or
+# not listed and so fixed: a resume takes it from the checkpoint.
+OVERRIDABLE = ("updates", "learner.learning_rate", "learner.warmup_start",
+               "learner.warmup_steps", "learner.policy", "learner.entropy", "learner.value",
+               "learner.next_state", "learner.enemy_action", "learner.density",
+               "learner.shot_trajectory", "learner.shot_outcome")
+
+
+def _generators(trainer) -> dict[str, torch.Generator]:
+    """The named streams a trainer draws from beyond the default generators."""
+    return {"shot_spread": trainer.ppo.spread_generator,
+            "minibatch_order": trainer.ppo.order_generator}
+
+
+def default_generator_states(device: torch.device) -> dict[str, torch.Tensor]:
+    """The default CPU generator's state and, on a GPU, the device's: the rollout's draws
+    and the policy's sampling inside the captured graph come from it."""
+    states = {"cpu": torch.get_rng_state()}
+    if device.type == "cuda":
+        states["cuda"] = torch.cuda.get_rng_state(device)
+    return states
+
+
+def save_training(directory: str | os.PathLike, trainer, *, stage: object = None,
+                  extra: dict | None = None) -> pathlib.Path:
+    """Write a training checkpoint of `trainer` (`bnb.runtime.train.Trainer`) at
+    `directory`: the policy file of its model, plus the full TrainConfig, the optimizer,
+    the league slot, every generator, the rollout carry and the step counters. `extra`
+    goes into the record as it is (the run's settings)."""
+    cfg, ppo = trainer.cfg, trainer.ppo
+    device = trainer.rollout.device
+    steps = dict(environment_steps=ppo.env_steps, updates=trainer.updates_done)
+    record = policy_record(trainer.model, ppo.return_scale, steps, cfg.game,
+                           trainer.ppo.types)
+    optimizer = ppo.optimizer.state_dict()
+    record.update(kind="training", train_config=to_json(cfg),
+                  optimizer=dict(param_groups=to_json(optimizer["param_groups"])),
+                  extra=dict(extra or {}))
+    tensors = {}
+    tensors.update(named_tensors(optimizer["state"], "optimizer."))
+    tensors.update(named_tensors(trainer.league.state_dict(), "league."))
+    tensors.update(named_tensors(trainer.rollout.saved_carry(), "carry."))
+    for name, generator in _generators(trainer).items():
+        tensors[f"generator.{name}"] = generator.get_state()
+    for name, state in default_generator_states(device).items():
+        tensors[f"default_generator.{name}"] = state
+    tensors = {name: tensor.detach().to("cpu", copy=True).contiguous()
+               for name, tensor in tensors.items()}
+    return write_checkpoint(directory, record, {WEIGHTS: weights(trainer.model),
+                                                TRAINING: tensors}, stage)
+
+
+def _paths(value, prefix: str = "") -> dict:
+    """A JSON object's leaves by dotted path."""
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            out.update(_paths(item, f"{prefix}.{key}" if prefix else key))
+        return out
+    return {prefix: value}
+
+
+def config_differences(saved, given, allowed: tuple[str, ...] = ()) -> list[str]:
+    """The dotted fields where two TrainConfigs differ, apart from `allowed`."""
+    saved, given = _paths(to_json(saved)), _paths(to_json(given))
+    return sorted(path for path in saved.keys() | given.keys()
+                  if saved.get(path) != given.get(path) and path not in allowed)
+
+
+def _check_build(model: torch.nn.Module, policy: PolicyRecord, directory, what: str) -> None:
+    if (name_of(model), type(model).VERSION) != (policy.name, policy.version):
+        raise CheckpointError(f"{what} refused: {directory} holds {policy.name} version "
+                              f"{policy.version}, the run builds {name_of(model)} version "
+                              f"{type(model).VERSION}")
+    if model.build != policy.build:
+        differ = config_differences(policy.build, model.build)
+        raise CheckpointError(f"{what} refused: the build record of {directory} differs from "
+                              f"the run's model in {', '.join(differ)}. A new architecture "
+                              f"is a new run")
+
+
+def _load_weights(model: torch.nn.Module, directory: pathlib.Path) -> None:
+    device = next(model.parameters()).device
+    model.load_state_dict(safetensors.torch.load_file(directory / WEIGHTS, device=str(device)))
+
+
+def _set_return_scale(trainer, scale: tuple[float, float] | None) -> None:
+    if scale is not None:
+        device = trainer.ppo.return_scale.low.device
+        trainer.ppo.return_scale.low = torch.tensor(scale[0], device=device)
+        trainer.ppo.return_scale.high = torch.tensor(scale[1], device=device)
+
+
+def _restore(trainer, directory: pathlib.Path, record: dict, policy: PolicyRecord,
+             carry: bool) -> None:
+    """Load the model, league, optimizer, return scale and counters (and with `carry`, the
+    rollout carry and the named streams) of a training checkpoint into `trainer`."""
+    stored = safetensors.torch.load_file(directory / TRAINING)
+    _load_weights(trainer.model, directory)
+    trainer.league.load_state_dict(tree_from_named(trainer.league.state_dict(), stored,
+                                                   "league."))
+    optimizer: dict = {}
+    for name, tensor in stored.items():
+        if name.startswith("optimizer."):
+            _, index, key = name.split(".", 2)
+            optimizer.setdefault(int(index), {})[key] = tensor
+    groups = record["optimizer"]["param_groups"]
+    for group in groups:
+        group["betas"] = tuple(group["betas"])
+    trainer.ppo.optimizer.load_state_dict(dict(state=optimizer, param_groups=groups))
+    _set_return_scale(trainer, policy.return_scale)
+    trainer.ppo.env_steps = policy.steps["environment_steps"]
+    trainer.updates_done = policy.steps["updates"]
+    if carry:
+        trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored,
+                                                   "carry."))
+        for name, generator in _generators(trainer).items():
+            generator.set_state(stored[f"generator.{name}"])
+
+
+def _check_card(trainer, record: dict, directory) -> None:
+    card = _ship_card(trainer.ppo.types)
+    if record["ship_card"] != card:
+        differ = sorted(name for name in card if record["ship_card"].get(name) != card[name])
+        raise CheckpointError(f"{directory} trained on another ship card ({', '.join(differ)} "
+                              f"differ); the card cannot change on a resume: fork with --from")
+
+
+def restore_default_generators(directory: str | os.PathLike, device: torch.device) -> None:
+    """Set the process's default CPU (and on a GPU, the device's) generator to a training
+    checkpoint's. The one process-wide effect of a resume, so the entry point calls it."""
+    stored = safetensors.torch.load_file(pathlib.Path(directory) / TRAINING)
+    torch.set_rng_state(stored["default_generator.cpu"])
+    if device.type == "cuda":
+        if "default_generator.cuda" not in stored:
+            raise CheckpointError(f"{directory} was saved on the CPU: it holds no CUDA "
+                                  f"generator to resume on {device}")
+        torch.cuda.set_rng_state(stored["default_generator.cuda"], device)
+
+
+def training_config(directory: str | os.PathLike):
+    """(the TrainConfig a training checkpoint ran with, the fields its defaults filled)."""
+    from bnb.runtime.train import TrainConfig
+
+    record = read_record(directory)
+    if record.get("kind") != "training":
+        raise CheckpointError(f"{directory} is a {record.get('kind')} file, not a training "
+                              f"checkpoint")
+    config, filled = from_json(TrainConfig, record["train_config"])
+    return config, filled
+
+
+def load_training(directory: str | os.PathLike, device: torch.device, config=None):
+    """The trainer of a training checkpoint, ready to continue exactly where it stopped:
+    built from the checkpoint's own TrainConfig, or `config`, which may differ from it only
+    in OVERRIDABLE fields. The model's build and the ship card must equal what this code
+    builds from that config. The default generators are the caller's
+    (`restore_default_generators`)."""
+    from bnb.runtime.train import Trainer
+
+    directory = pathlib.Path(directory)
+    saved, filled = training_config(directory)
+    if filled:
+        warnings.warn(f"the TrainConfig of {directory} lacks {', '.join(filled)}; they take "
+                      f"their defaults", FilledDefaults, stacklevel=2)
+    config = saved if config is None else config
+    structural = config_differences(saved, config, OVERRIDABLE)
+    if structural:
+        raise CheckpointError(f"a resume cannot change {', '.join(structural)}; start a new "
+                              f"run from this checkpoint with --from")
+    record, policy = read_record(directory), read_policy(directory)
+    trainer = Trainer(config, device)
+    _check_build(trainer.model, policy, directory, "the resume")
+    _check_card(trainer, record, directory)
+    _restore(trainer, directory, record, policy, carry=True)
+    return trainer
+
+
+def fork_training(directory: str | os.PathLike, config, device: torch.device):
+    """A new trainer with `config` that starts from a training checkpoint's model, league
+    slot, optimizer, return scale and step counts (not its carry or generators: the new
+    run's sizes may differ). Refuses unless the model's name, version and build match."""
+    from bnb.runtime.train import Trainer
+
+    directory = pathlib.Path(directory)
+    record, policy = read_record(directory), read_policy(directory)
+    if record.get("kind") != "training":
+        raise CheckpointError(f"{directory} is a {record.get('kind')} file; a fork needs a "
+                              f"training checkpoint (a policy file is a warm start)")
+    trainer = Trainer(config, device)
+    _check_build(trainer.model, policy, directory, "the fork")
+    _restore(trainer, directory, record, policy, carry=False)
+    return trainer
+
+
+def warm_start(directory: str | os.PathLike, config, device: torch.device):
+    """A new trainer with `config` whose model (and league slot) start from a policy file's
+    weights and return scale, with a fresh optimizer and fresh step counts: the BC -> RL
+    hand-off. Refuses unless the policy's build matches the run's model."""
+    from bnb.runtime.train import Trainer
+
+    directory = pathlib.Path(directory)
+    policy = read_policy(directory)
+    trainer = Trainer(config, device)
+    _check_build(trainer.model, policy, directory, "the warm start")
+    _load_weights(trainer.model, directory)
+    trainer.league.load_state_dict(trainer.model.state_dict())
+    _set_return_scale(trainer, policy.return_scale)
+    return trainer
