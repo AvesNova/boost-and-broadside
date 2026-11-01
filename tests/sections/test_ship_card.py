@@ -19,11 +19,12 @@ from bnb.game.handling import (
     NAMES,
     Handles,
     Infeasible,
+    RedundantHandles,
     measure,
     solve,
 )
 from bnb.game.handling.manoeuvres import batched, cruise_speed
-from bnb.game.handling.solver import ACCEPTANCE, ERROR_FLOOR
+from bnb.game.handling.solver import ACCEPTANCE, CONDITION_WARNING, ERROR_FLOOR
 from bnb.game.physics.flight import airframe_of, flight_tick
 from bnb.game.state import Fields, Ships, replace
 
@@ -77,11 +78,28 @@ def test_independence():
             assert error.max() < ACCEPTANCE, (moved, sign, name, error.max().item())
 
 
-def test_conditioning_is_reported():
+def test_conditioning_is_reported_and_the_default_card_is_well_conditioned():
+    """Every card's condition number is reported; the default card's is below 50 (measured
+    16 and 17 with the bleed at the middle stick, against 1e4 and more where two handles
+    measure nearly the same thing)."""
     cases = cases_module.cases()
     condition = cases.solution.condition
     assert condition.shape == cases.targets.ceiling.shape
     assert torch.isfinite(condition).all() and (condition >= 1.0).all()
+    assert condition[0].max() < 50.0, condition[0]
+
+
+def test_redundant_handles_warn():
+    """A low-speed acceleration beyond what the engine's power gives at the stall speed
+    leaves the static-thrust cap no effect: the low-speed acceleration then moves only with
+    the power, which the cruise sets, and the two handles are nearly redundant."""
+    cases = cases_module.cases()
+    beyond = cases.default.replace(
+        low_speed_acceleration=cases.default.low_speed_acceleration * 5.0)
+    with pytest.warns(RedundantHandles,
+                      match="low_speed_acceleration and cruise_speed are nearly redundant"):
+        solution = solve(beyond, cases.rules, iterations=1, strict=False)
+    assert (solution.condition > CONDITION_WARNING).all()
 
 
 # ------------------------------------------------------------------ tick rates
