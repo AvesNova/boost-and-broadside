@@ -3,13 +3,16 @@
 Two kinds of leaves, each a pytree per name:
   per tick     (L, V, ...), V = shards x R views, written block by block from the
                rollout's GPU staging ring;
-  per segment  (V, ...), written once per segment (the initial carry, the last truth).
+  per view     (V, ...), written once per segment (the initial carry, the last truth), or
+               by the learner for a range of views (its labels, `write_views`).
 
 Writes go out on a copy stream, asynchronously: the rollout records an event after each
 block and the copy waits on it; before the ring slots (or a segment buffer) are written
 again, the compute stream waits on that copy. The update stages micro-batches of views
 back the same way, gathering the next one into a pinned buffer and copying it while the
-current one computes. On a CPU-only run every copy is a plain copy.
+current one computes. Readers wait on the last write's event: the compute stream on the
+GPU where the data stays on the device, the host only where it reads pinned memory itself.
+On a CPU-only run every copy is a plain copy.
 """
 
 import concurrent.futures
@@ -50,6 +53,7 @@ class SegmentStore:
         self.per_tick = tuple(ticks)
         self.names = tuple(self.data)
         self.copy_stream = torch.cuda.Stream(device) if device.type == "cuda" else None
+        self._written: torch.cuda.Event | None = None  # the last write, on the copy stream
         self._staging: dict = {}
         self._worker = concurrent.futures.ThreadPoolExecutor(1) if self.pinned else None
 
@@ -61,9 +65,28 @@ class SegmentStore:
 
     def write(self, source: dict, shard: int, start: int | None = None) -> torch.cuda.Event | None:
         """Copy {name: pytree} into shard `shard`: per-tick leaves (n, R, ...) at ticks
-        start .. start + n, per-segment leaves (R, ...). Asynchronous on a GPU: returns the
+        start .. start + n, per-view leaves (R, ...). Asynchronous on a GPU: returns the
         event the compute stream must wait on before it writes `source` again."""
         views = slice(shard * self.shard_views, (shard + 1) * self.shard_views)
+        return self._copy(source, views, start)
+
+    def write_views(self, source: dict, views: slice) -> None:
+        """Copy {name: pytree (n, ...)} into the per-view leaves of `views` (n of them),
+        allocating a name's leaves (V, ...) on its first write. The sources may be
+        temporaries: the copy stream keeps them until it has read them."""
+        for name, tree in source.items():
+            if name not in self.data:
+                leaves, self.specs[name] = _pytree.tree_flatten(tree)
+                where = torch.device("cpu") if self.pinned else self.device
+                self.data[name] = [torch.empty((self.views,) + tuple(leaf.shape[1:]),
+                                               dtype=leaf.dtype, device=where,
+                                               pin_memory=self.pinned) for leaf in leaves]
+            if self.copy_stream is not None:
+                for leaf in _leaves(tree):
+                    leaf.record_stream(self.copy_stream)
+        self._copy(source, views, None)
+
+    def _copy(self, source: dict, views: slice, start: int | None) -> torch.cuda.Event | None:
         ready = None
         if self.copy_stream is not None:
             ready = torch.cuda.Event()
@@ -86,18 +109,27 @@ class SegmentStore:
                 return None
             written = torch.cuda.Event()
             written.record(self.copy_stream)
+        self._written = written
         return written
 
     def synchronize(self) -> None:
-        """Wait until every write has landed (before the host reads the store)."""
-        if self.copy_stream is not None:
-            self.copy_stream.synchronize()
+        """The host waits until every write has landed (before it reads the store)."""
+        if self._written is not None:
+            self._written.synchronize()
+
+    def _written_before_compute(self) -> None:
+        """The compute stream waits on the GPU for every write so far (no host wait)."""
+        if self._written is not None:
+            torch.cuda.current_stream(self.device).wait_event(self._written)
 
     # ---------------------------------------------------------------- reading
 
     def shard(self, names: tuple[str, ...], shard: int) -> dict:
         """Whole-shard copies on the device of the per-tick leaves `names`, (L, R, ...)."""
-        self.synchronize()
+        if self.pinned:  # a shard of several is a strided slice the host reads to copy it
+            self.synchronize()
+        else:
+            self._written_before_compute()
         views = slice(shard * self.shard_views, (shard + 1) * self.shard_views)
         return {name: _pytree.tree_unflatten(
             [leaf[:, views].to(self.device, non_blocking=True) for leaf in self.data[name]],
@@ -130,14 +162,15 @@ class SegmentStore:
         """Yield {name: pytree} on the device for each list of views (int64, on the host).
         From pinned memory the next batch is gathered and copied while the caller computes
         on the current one; a yielded batch is valid until the next-but-one."""
-        self.synchronize()
         if not self.pinned:
+            self._written_before_compute()
             device = self.data[names[0]][0].device
             for views in view_batches:
                 if views.device != device and device.type == "cuda":
                     views = views.pin_memory().to(device, non_blocking=True)
                 yield self._unflatten(self._gather(names, views.to(device), None))
             return
+        self.synchronize()  # the host gathers from pinned memory the copies wrote
         compute = torch.cuda.current_stream(self.device)
 
         def slot(index: int) -> dict:

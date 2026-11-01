@@ -5,21 +5,26 @@ An update reads its segments from a store (`Segments`) and works on the device o
 one micro-batch at a time:
   1. per shard, the returns: per-level GAE, team mixing, the outcome's targets; then the
      return scale, once per batch;
-  2. one pass over the views for each view's token counts (the shot labels need the
-     re-simulation) and, when set, the old log-probabilities recomputed by `unroll`;
+  2. one pass over the views: the shot re-simulation, whose labels go into the store
+     beside the segments for every epoch, each view's token counts and, when set, the old
+     log-probabilities recomputed by `unroll`;
   3. epochs of minibatches over the views (a view keeps its whole segment); a minibatch is
      several micro-batches, each term divided by its minibatch-total denominator, so the
      accumulated gradient is the unsplit minibatch's.
+Results stay on the device: the update reads the epoch's mean KL once per epoch (the early
+stop) and everything it reports once, at its end.
 The learner owns the optimizer and updates the model's parameters in place, which keeps the
 rollout's captured graph pointing at the current weights. A model lacking a head gives no
 such field (or None) and that term is skipped.
 """
 
 import dataclasses
+import zlib
 from collections.abc import Callable, Iterator
 from typing import Protocol
 
 import torch
+from torch.utils import _pytree
 
 from bnb.contracts import REWARD_LEVELS, Trajectory
 from bnb.contracts.action import to_joint
@@ -39,6 +44,8 @@ TERMS = ("policy", "entropy", "value", "next_state", "enemy_action", "density",
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
 # The per-tick records the returns read, staged whole per shard.
 SMALL = ("reward", "values", "outcome", "done", "result", "logp", "alive", "valued")
+# The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
+SHOT_LABELS = "shot_labels"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -51,7 +58,8 @@ class LearnerConfig:
     the first epoch). minibatches: per epoch, as equal in views as the views allow;
     micro_batch_rows: ship rows per micro-batch, so micro_batch_rows // N views (at least
     one): memory only, the result is the same, and the memory a micro-batch needs follows
-    its rows at any fleet size. seed: the shot re-simulation's spread generator.
+    its rows at any fleet size. seed: the learner's random streams (the shot spread, the
+    minibatch order).
     """
 
     discount: tuple[float, ...] = (0.991, 0.995, 0.995, 0.999, 0.9997)
@@ -102,6 +110,14 @@ class Segments(Protocol):
     def batches(self, names: tuple[str, ...],
                 view_batches: list[torch.Tensor]) -> Iterator[dict]: ...
 
+    def write_views(self, source: dict, views: slice) -> None: ...
+
+
+def random_stream(seed: int, name: str, device: torch.device | None = None) -> torch.Generator:
+    """The learner's random stream `name`: its own generator, seeded from the seed and the
+    name, so a new stream shifts no other's draws and the global generator none of them."""
+    return torch.Generator(device).manual_seed(seed << 32 | zlib.crc32(name.encode()))
+
 
 def learning_rate(config: LearnerConfig, steps: int) -> float:
     """Linear warmup from warmup_start over the first warmup_steps environment steps."""
@@ -143,11 +159,13 @@ class Learner:
             raise ValueError(f"the model's levels {levels} are not {REWARD_LEVELS}")
         self.outcome_level = levels.index(model.config.outcome_level)
         self.local_levels = model.config.local_levels
+        self.local_index = torch.tensor(self.local_levels, device=device)  # no copy per use
         self.optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate,
                                           fused=device.type == "cuda")
         self.return_scale = critic.ReturnScale(config.return_scale_decay,
                                                config.return_scale_floor, device)
-        self.generator = torch.Generator(device).manual_seed(config.seed)
+        self.spread_generator = random_stream(config.seed, "shot_spread", device)
+        self.order_generator = random_stream(config.seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)
@@ -214,12 +232,24 @@ class Learner:
         return shot, shot.valid & (rows | visible)
 
     @torch.no_grad()
-    def labels(self, trajectory: Trajectory, spread: torch.Tensor) -> dict:
-        """The auxiliary targets and masks of a micro-batch (none without auxiliary heads)."""
+    def labels(self, trajectory: Trajectory, shot_labels: dict | None) -> dict:
+        """The auxiliary targets and masks of a micro-batch, from its stored rows and its
+        stored shot labels (none without auxiliary heads)."""
         if not self.auxiliary:
             return {}
-        shot, shot_mask = self.shots(trajectory, spread)
-        return self.codes(trajectory, shot, shot_mask)
+        return self.codes(trajectory, shot_labels["shots"], shot_labels["mask"])
+
+    def staged(self, segments: Segments,
+               view_batches: list[torch.Tensor]) -> Iterator[tuple[Trajectory, dict | None]]:
+        """Each batch of views (host indices) on the device: its Trajectory and, with
+        auxiliary heads, its shot labels from the store ({"shots", "mask"}, (L, n, ...))."""
+        names = segments.names + ((SHOT_LABELS,) if self.auxiliary else ())
+        for batch in segments.batches(names, view_batches):
+            stored = batch.pop(SHOT_LABELS, None)
+            if stored is not None:
+                stored = _pytree.tree_map_only(torch.Tensor, lambda x: x.transpose(0, 1),
+                                               stored)
+            yield Trajectory(**batch), stored
 
     def _codes(self, trajectory: Trajectory, shot: shots.Shots, shot_mask: torch.Tensor) -> dict:
         """The targets as the heads' codes, from the stored rows and the re-simulated shots
@@ -263,7 +293,7 @@ class Learner:
         terms["entropy"] = losses.masked_sum(entropy, own_alive) / denominator["policy"]
         per_level = losses.critic_losses(
             unrolled.value_logits, unrolled.outcome_logits,
-            derived["level_returns"][..., list(self.local_levels)], derived["outcome_targets"],
+            derived["level_returns"].index_select(-1, self.local_index), derived["outcome_targets"],
             trajectory.valued, model.bins, self.local_levels, self.outcome_level,
             denominator["valued"], denominator["steps"])
         terms["value"] = per_level.sum()
@@ -323,7 +353,8 @@ class Learner:
     def prepare(self, segments: Segments, bootstraps: list) -> dict:
         """Steps 1 and 2: per view, the advantage, the returns, the outcome targets and the
         old log-probabilities (L, V, ...), each view's token counts (V, COUNTS), the return
-        scale, the shot spread draw and the explained variance."""
+        scale and the explained variance per level (K,); the shot labels go into the
+        store."""
         config, device = self.config, self.device
         small = [segments.shard(SMALL, shard) for shard in range(segments.shards)]
         parts = [self.shard_returns(part, bootstraps[shard]) for shard, part in enumerate(small)]
@@ -338,10 +369,11 @@ class Learner:
         own_alive = joined("alive", small)[..., :rollout_log_probability.shape[-1]]
         scale = self.return_scale.update(joined("total", parts), own_alive)
         counts = torch.cat([self._counts(part) for part in small], 0)
-        spread = torch.randn((segments.length, segments.views, self.rules.num_ships, 2),
-                             device=device, generator=self.generator)
         recompute = config.old_log_probabilities == "recomputed"
         if self.auxiliary or recompute:
+            # One spread draw per update: each epoch reads the same stored labels.
+            spread = torch.randn((segments.length, segments.views, self.rules.num_ships, 2),
+                                 device=device, generator=self.spread_generator)
             order = self._micro_batches(torch.arange(segments.views))  # host indices
             for host_views, batch in zip(order, segments.batches(segments.names, order),
                                          strict=True):
@@ -349,20 +381,24 @@ class Learner:
                 trajectory = Trajectory(**batch)
                 with torch.no_grad():
                     if self.auxiliary:
-                        label = self.labels(trajectory, spread[:, views])
+                        shot, shot_mask = self.shots(trajectory, spread[:, views])
                         counts[views, COUNTS.index("next_state")] = \
-                            label["next_state_mask"].sum((0, 2)).float()
-                        counts[views, COUNTS.index("shots")] = \
-                            label["shot_mask"].sum((0, 2)).float()
+                            labels.next_state_mask(trajectory).sum((0, 2)).float()
+                        counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
+                        stored = _pytree.tree_map_only(
+                            torch.Tensor, lambda x: x.transpose(0, 1).contiguous(),
+                            dict(shots=shot, mask=shot_mask))  # (n, L, ...)
+                        first = int(host_views[0])
+                        segments.write_views({SHOT_LABELS: stored},
+                                             slice(first, first + host_views.numel()))
                     if recompute:
                         log_probability, _ = policy.evaluate(self.unroll(trajectory).policy_logits,
-                                                  _own_joint(trajectory))
+                                                             _own_joint(trajectory))
                         derived["old_log_probability"][:, views] = log_probability
-        variance = _explained_variance(joined("level_returns", parts), joined("values", parts),
-                                       joined("valued", small))
+        variance = explained_variance(joined("level_returns", parts), joined("values", parts),
+                                      joined("valued", small))
         return dict(derived=derived, rollout_log_probability=rollout_log_probability,
-                    counts=counts, scale=scale,
-                    spread=spread, explained_variance=variance)
+                    counts=counts, scale=scale, explained_variance=variance)
 
     def gradient(self, segments: Segments, prepared: dict, chosen: torch.Tensor) -> tuple:
         """Accumulate one minibatch's gradient (views `chosen`, host indices) into the
@@ -377,11 +413,10 @@ class Learner:
         levels_sum = torch.zeros(len(REWARD_LEVELS), device=device)
         statistics = torch.zeros(2, device=device)
         self.optimizer.zero_grad(set_to_none=True)
-        for host_views, batch in zip(micro, segments.batches(segments.names, micro),
-                                     strict=True):
+        for host_views, (trajectory, shot_labels) in zip(micro, self.staged(segments, micro),
+                                                         strict=True):
             views = self._on_device(host_views)
-            trajectory = Trajectory(**batch)
-            label = self.labels(trajectory, prepared["spread"][:, views])
+            label = self.labels(trajectory, shot_labels)
             part = {name: value.index_select(1, views) for name, value in derived.items()}
             loss, terms, per_level, statistic = self.loss(trajectory, label, part, denominator,
                                                           prepared["scale"])
@@ -405,43 +440,49 @@ class Learner:
         self.env_steps += env_steps
         terms_total = torch.zeros(len(TERMS), device=device)
         levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
-        first_epoch = torch.zeros(2, device=device)
-        steps, first_epoch_steps, stopped = 0, 0, False
         drift = self.drift(segments, prepared)
+        steps, stopped = 0, False
         for epoch in range(config.epochs):
             # Minibatches as equal as the views allow (micro-batches of micro_views views,
             # each minibatch's last one smaller where they do not divide).
-            for chosen in torch.randperm(views).tensor_split(config.minibatches):
-                terms, per_level, statistics = self.gradient(segments, prepared, chosen)
+            order = torch.randperm(views, generator=self.order_generator)
+            statistics = torch.zeros(2, device=device)
+            for chosen in order.tensor_split(config.minibatches):
+                terms, per_level, statistic = self.gradient(segments, prepared, chosen)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
                 self.optimizer.step()
                 terms_total += terms
                 levels_total += per_level
+                statistics += statistic
                 steps += 1
-                if epoch == 0:
-                    first_epoch += statistics
-                    first_epoch_steps += 1
-                if statistics[1].item() > config.target_kl:  # one host sync per minibatch
-                    stopped = True
-                    break
-            if stopped:
+            statistics = statistics / config.minibatches  # the epoch's means
+            if epoch == 0:
+                first_epoch = statistics
+            # The early stop reads the epoch's mean KL: one host sync per epoch.
+            if epoch + 1 < config.epochs and statistics[1].item() > config.target_kl:
+                stopped = True
                 break
-        first = (first_epoch / first_epoch_steps).tolist()
-        out = {f"loss/{term}": value for term, value in zip(TERMS, (terms_total / steps).tolist())}
-        out.update({f"value_loss/{name}": value
-                    for name, value in zip(REWARD_LEVELS, (levels_total / steps).tolist())})
-        out.update(prepared["explained_variance"])
-        out.update(drift)
-        out.update(clip_fraction=first[0], approximate_kl=first[1], minibatch_steps=steps,
-                   stopped_early=stopped, return_scale=prepared["scale"].item(),
+        readout = torch.cat([terms_total / steps, levels_total / steps,
+                             prepared["explained_variance"], drift, first_epoch,
+                             prepared["scale"].reshape(1)]).tolist()  # the one transfer
+        terms, readout = readout[:len(TERMS)], readout[len(TERMS):]
+        levels, readout = readout[:len(REWARD_LEVELS)], readout[len(REWARD_LEVELS):]
+        variance, readout = readout[:len(REWARD_LEVELS)], readout[len(REWARD_LEVELS):]
+        out = {f"loss/{term}": value for term, value in zip(TERMS, terms)}
+        out.update({f"value_loss/{name}": value for name, value in zip(REWARD_LEVELS, levels)})
+        out.update({f"explained_variance/{name}": value
+                    for name, value in zip(REWARD_LEVELS, variance)})
+        out.update(ratio_drift_max=readout[0], ratio_drift_mean=readout[1],
+                   clip_fraction=readout[2], approximate_kl=readout[3], minibatch_steps=steps,
+                   stopped_early=stopped, return_scale=readout[4],
                    learning_rate=self.optimizer.param_groups[0]["lr"])
         return out
 
     @torch.no_grad()
-    def drift(self, segments: Segments, prepared: dict) -> dict:
-        """The step/unroll ratio drift before any optimizer step, on the first micro-batch
-        of views: |exp(log_probability_unroll - log_probability_rollout) - 1| over living
-        own ships, max and mean."""
+    def drift(self, segments: Segments, prepared: dict) -> torch.Tensor:
+        """(2,): the step/unroll ratio drift before any optimizer step, on the first
+        micro-batch of views: |exp(log_probability_unroll - log_probability_rollout) - 1|
+        over living own ships, max and mean (0 without any)."""
         views = torch.arange(min(self.micro_views, segments.views))
         batch = next(iter(segments.batches(segments.names, [views])))
         trajectory = Trajectory(**batch)
@@ -449,19 +490,23 @@ class Learner:
                                              _own_joint(trajectory))
         mask = trajectory.alive[..., :log_probability.shape[-1]]
         rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
-        error = (torch.exp(log_probability - rollout) - 1.0).abs()[mask]
-        if error.numel() == 0:
-            return dict(ratio_drift_max=0.0, ratio_drift_mean=0.0)
-        return dict(ratio_drift_max=error.max().item(), ratio_drift_mean=error.mean().item())
+        error = torch.where(mask, (torch.exp(log_probability - rollout) - 1.0).abs(), 0.0)
+        return torch.stack([error.amax(), error.sum() / mask.sum().clamp_min(1)])
 
 
-def _explained_variance(level_returns: torch.Tensor, values: torch.Tensor,
-                        valued: torch.Tensor) -> dict:
-    """1 - Var(return - value) / Var(return) per level, over valued own ships."""
-    out = {}
-    for index, name in enumerate(REWARD_LEVELS):
-        target, value = level_returns[..., index][valued], values[..., index][valued]
-        variance = target.var() if target.numel() > 1 else target.new_zeros(())
-        out[f"explained_variance/{name}"] = \
-            (1.0 - (target - value).var() / variance).item() if variance > 0 else 0.0
-    return out
+def explained_variance(level_returns: torch.Tensor, values: torch.Tensor,
+                       valued: torch.Tensor) -> torch.Tensor:
+    """(K,) per level, 1 - Var(return - value) / Var(return) over the valued own ships
+    (unbiased variances; 0 where the returns do not vary). level_returns, values
+    (L, V, S, K); valued (L, V, S)."""
+    mask = valued[..., None].to(level_returns.dtype)
+    count = mask.sum((0, 1, 2))
+
+    def variance(x: torch.Tensor) -> torch.Tensor:
+        mean = (x * mask).sum((0, 1, 2)) / count.clamp_min(1)
+        return ((x - mean) ** 2 * mask).sum((0, 1, 2)) / (count - 1).clamp_min(1)
+
+    total = variance(level_returns)
+    residual = variance(level_returns - values)
+    varies = total > 0
+    return torch.where(varies, 1.0 - residual / torch.where(varies, total, 1.0), 0.0)

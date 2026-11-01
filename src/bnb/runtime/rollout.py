@@ -331,7 +331,8 @@ class Rollout:
         R = self.lineup.rows(self.learner)
         views = slice(shard * R, (shard + 1) * R)
         fields = {}
-        for name, leaves in self.store.data.items():
+        for name in self.store.names:
+            leaves = self.store.data[name]
             picked = [x[:, views] if name in self.store.per_tick else x[views] for x in leaves]
             fields[name] = _pytree.tree_unflatten(picked, self.store.specs[name])
         return Trajectory(**fields)

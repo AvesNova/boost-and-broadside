@@ -3,6 +3,7 @@ against an independent computation on a real stored segment, micro-batches again
 unsplit minibatch, the labels' alignment, the reset flags unroll receives, the bootstrap,
 and the replay compaction."""
 
+import copy
 import dataclasses
 import math
 
@@ -11,13 +12,14 @@ import pytest
 import torch
 import torch.nn.functional as F
 import yemong_cases as cases
+from torch.utils import _pytree
 
 from bnb.contracts import Obs, Outputs, Pool
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.learn import labels
-from bnb.learn.ppo import COUNTS, TERMS
-from bnb.models.yemong import critic
+from bnb.learn.ppo import COUNTS, TERMS, random_stream
+from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
 
@@ -51,7 +53,6 @@ def test_unroll_receives_the_reset_before_each_step(segment):
     with torch.no_grad():
         right = learner.unroll(trajectory)
         wrong = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, done)
-    from bnb.models.yemong import policy
     right_logp, _ = policy.evaluate(right.policy_logits, joint)
     wrong_logp, _ = policy.evaluate(wrong.policy_logits, joint)
     assert cases.scale_error(right_logp, trajectory.logp) <= 1e-5
@@ -122,9 +123,9 @@ def _grouped_cross_entropy(logits, target, runs) -> torch.Tensor:
 
 def test_each_loss_term_matches_an_independent_computation(segment):
     net, runner, learner, prepared = segment
-    trajectory = lc.whole(runner)
     views = torch.arange(runner.store.views)
-    label = learner.labels(trajectory, prepared["spread"][:, views])
+    trajectory, shot_labels = next(learner.staged(runner.store, [views]))
+    label = learner.labels(trajectory, shot_labels)
     denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
     derived = prepared["derived"]
     with torch.no_grad():
@@ -193,7 +194,7 @@ def test_each_loss_term_matches_an_independent_computation(segment):
 
     # shots: valid shots of own ships and visible enemies, the trajectory averaged over
     # each shot's valid ages
-    shot, _ = learner.shots(trajectory, prepared["spread"][:, views])
+    shot = shot_labels["shots"]
     visible = ships[..., SHIP["visible"]] > 0.5
     shooters = shot.valid & torch.cat([torch.ones_like(visible[..., :OWN]),
                                        visible[..., OWN:]], -1)
@@ -381,3 +382,39 @@ def test_an_update_consumes_several_shards():
     torch.testing.assert_close(following[continued], progress[-1][continued] + 1.0 / 60.0)
     stats = trainer.ppo.update(store, bootstraps)
     assert stats["minibatch_steps"] == 8 and math.isfinite(stats["loss/value"])
+
+
+# ------------------------------------------------------------------ the update's other paths
+
+
+def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
+    """prepare re-simulates every view once, from the learner's own spread stream, and
+    stores the labels; each epoch's micro-batch reads them back unchanged."""
+    _, runner, learner, _ = segment
+    store = runner.store
+    spread = torch.randn((store.length, store.views, 10, 2),
+                         generator=random_stream(learner.config.seed, "shot_spread"))
+    views = torch.arange(3, 7)  # not one of prepare's micro-batches
+    trajectory, stored = next(learner.staged(store, [views]))
+    shot, mask = learner.shots(trajectory, spread[:, views])
+    assert mask.any() and torch.equal(stored["mask"], mask)
+    for a, b in zip(_pytree.tree_leaves(stored["shots"]), _pytree.tree_leaves(shot),
+                    strict=True):
+        assert torch.equal(a, b)
+
+
+def test_the_update_is_the_same_whatever_the_global_seed(segment):
+    """Every draw of the update (the shot spread, the minibatch order) comes from the
+    learner's own streams: the global generator's state changes nothing."""
+    net, runner, _, _ = segment
+    results = []
+    for seed in (1, 2):
+        model = copy.deepcopy(net)
+        learner = lc.learner(model, runner, epochs=1, minibatches=3)
+        torch.manual_seed(seed)
+        out = learner.update(runner.store, [runner.bootstrap()])
+        results.append((out, [parameter.detach().clone() for parameter in model.parameters()]))
+    (first, first_parameters), (second, second_parameters) = results
+    assert first == second
+    assert all(torch.equal(a, b) for a, b in zip(first_parameters, second_parameters,
+                                                 strict=True))
