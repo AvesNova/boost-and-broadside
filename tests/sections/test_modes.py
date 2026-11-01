@@ -586,7 +586,8 @@ def test_frontline_respawn_on_a_capture_tick_uses_the_new_spawn_zone():
     zone after the roles rotate, not before."""
     rules, state = cases.rules_and_state(FRONTLINE, batch=1, seed=22)
     state = cases.fields_away(state)
-    rate = frontline.harmonic(torch.tensor(3)) * rules.tick_length / rules.pools[0].mode.capture_seconds
+    capture_seconds = rules.pools[0].mode.capture_seconds
+    rate = frontline.harmonic(torch.tensor(3)) * rules.tick_length / capture_seconds
     ticks = 0
     while True:
         attacked = state.mode.role == frontline.TEAM1_DEFENSE
