@@ -385,12 +385,19 @@ def test_chart_tool_runs_and_its_shown_quantities_hold(tmp_path, capsys):
                             float(ship.proper_speed), rel_tol=2e-3)
         assert math.isclose(_printed(text, "stick 0.4: gun offset (deg)")[t],
                             math.degrees(float(ship.angle_of_attack)), rel_tol=2e-3)
-        # The instantaneous peak: the turn at its printed speed, nose settled, fine tick.
+        # The instantaneous peak: the turn at its printed speed, nose settled, fine tick; the
+        # path's rate at the start by Richardson extrapolation of one- and two-tick turns (a
+        # one-tick difference is high). The tool flies 30 Hz, 0.12% under the fine-tick limit.
         speed = _printed(text, "at speed (m/s)")[t]
         fine = Pilot(t, 1.0 / 3000.0)
         settled = fine.settle_nose(speed, 0.25 * full, 1.0, t)
-        after = fine.step(settled, 1.0)
-        turned = (math.remainder(_heading(after) - _heading(settled), 2.0 * math.pi)
-                  - (float(after.angle_of_attack) - float(settled.angle_of_attack)))
+        path, ship = [], settled
+        for _ in range(2):
+            after = fine.step(ship, 1.0)
+            path.append((path[-1] if path else 0.0)
+                        + math.remainder(_heading(after) - _heading(ship), 2.0 * math.pi)
+                        - (float(after.angle_of_attack) - float(ship.angle_of_attack)))
+            ship = after
+        rate = 2.0 * path[0] / fine.tick - path[1] / (2.0 * fine.tick)
         peak = _printed(text, "instantaneous peak turn (deg/s)")[t]
-        assert math.isclose(peak, math.degrees(turned / fine.tick), rel_tol=2e-3)
+        assert math.isclose(peak, math.degrees(rate), rel_tol=ACCEPTANCE)
