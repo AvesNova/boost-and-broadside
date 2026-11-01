@@ -9,7 +9,7 @@ health 0.2 + 0.8 shield / max_shield (a ship at full shield counts 1).
 import torch
 
 from bnb.contracts.obs import ZONE
-from bnb.game.handling import Characteristics
+from bnb.game.handling.characteristics import Characteristics
 from bnb.game.ship_types import per_ship
 
 from .scripted_combat import (

@@ -15,6 +15,10 @@ dependencies = [
     "tyro>=1.0",
 ]
 
+[project.optional-dependencies]
+# Offline tools: `bnb ship-card` writes its charts with matplotlib.
+tools = ["matplotlib>=3.10"]
+
 [project.scripts]
 bnb = "bnb.cli:main"
 

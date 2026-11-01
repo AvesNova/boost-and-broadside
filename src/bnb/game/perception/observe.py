@@ -59,7 +59,7 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     order = view_order(S, device)  # (2, N)
     views = torch.arange(TEAMS, device=device)[:, None]
 
-    visible = visibility(rules, state)  # (B, 2, N) sim order
+    visible = visibility(state)  # (B, 2, N) sim order
     unfogged = ~match.fogged[:, None, None]
     since = torch.where(visible | unfogged, 0,
                         (match.ticks_since_seen + 1).clamp_max(TICKS_SINCE_SEEN_CAP))

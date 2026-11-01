@@ -79,7 +79,9 @@ the ship card, from `bnb.game.ship_types.DEFAULTS`:
 A parameter is a tensor of shape `(types,)`, or `(B, types)` to give every environment its
 own card. `bnb.game.ship_types.per_ship` reads a ship's value as a select over the types,
 which fuses into any kernel and needs no host copy. Changing a card value recompiles
-nothing.
+nothing. The fields ending in `_scale`{.plain} scale a shared value per type
+(`bnb.game.ship_types.SCALED`); [The ship card](ship-card.md) explains them and how a card
+is designed from handles.
 
 ## Flight
 
@@ -108,7 +110,8 @@ The power mode is the sign of the energy exchange: negative (boost) trades store
 positive (reverse) trades speed for store, and zero (coast) leaves the slow exchange that
 fades as the store fills.
 
-The constants every type shares (`bnb.game.rules.FlightConstants`):
+The shared flight constants (`bnb.game.rules.FlightConstants`). The induced-drag factor,
+the stall angle and the three exchanges are scaled per type by the card:
 
 <!-- generated: flight-constants -->
 
@@ -127,22 +130,26 @@ which blocks sight (see [Perception and fog](perception.md)).
 
 - **Firing.** A ship fires when it is alive, its gun is cooled down and its store holds the
   shot's energy cost. The bullet starts at the ship's position with the ship's velocity plus
-  the muzzle speed along the nose, plus a random spread. It lives a fixed number of moves.
-- **Drag.** Bullets slow quadratically on their proper speed, so a shot has a range.
+  the muzzle speed along the nose, plus the shooter's random spread. It lives 0.4 s
+  (`bnb.game.rules.BULLET_LIFE`), a whole number of moves at the rules' tick.
+- **Drag.** Bullets slow quadratically on their proper speed, with the shooter's drag, so a
+  shot has a range.
 - **Hits.** A swept test between each bullet's and each ship's straight motion this tick
   finds contacts within the target's hit radius. A bullet hits only its first contact.
   **Friendly fire is on:** a bullet can hit any ship but its own shooter.
-- **Damage.** A hit from dead ahead deals the head-on fraction of the shooter's damage;
-  from the side or rear, nearly all of it.
+- **Damage.** A hit from dead ahead deals the target's head-on fraction of the shooter's
+  damage; from the side or rear, nearly all of it.
 - **Shields.** Damage beyond the current shield breaks it, and the overkill is ignored.
   Any damage to a ship whose shield was already broken at tick start kills it. After a
-  delay without damage, the shield recharges at a fixed rate.
+  delay without damage, the shield recharges at a fixed rate; both are per type.
 - **The arena** is a disc with no wall. A ship outside it takes boundary damage that grows
   with its depth.
 - **The killer** of a ship is the owner of its earliest hit this tick, ties to the lower
   bullet index.
 
-The shared constants, from `bnb.game.rules.Rules`:
+The shared constants, from `bnb.game.rules.Rules`. The card scales the spread, the
+bullet drag, the head-on fraction, the shield recharge rate and delay, and the vision range
+per type:
 
 <!-- generated: game-constants -->
 

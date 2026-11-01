@@ -326,8 +326,23 @@ cut; where they differ, this section and the code win.
     contiguous split;
   - without fog, every living ship is visible.
 - **Ship card:** `bnb.game.ship_types.ShipTypes`, per-type tensors shaped `(types,)` or
-  `(B, types)` (per-environment cards for sweeps). It is a required argument of every
-  game function.
+  `(B, types)` (per-environment cards for sweeps). The game functions that read it take it
+  as an argument.
+  - **Section 1b (merged 2026-11-02):**
+    - the formerly shared parameters (`SCALED`) are per-type scales of their shared
+      value in `Rules` or `FlightConstants`. The default card (every scale 1) is the
+      shared game, bit for bit;
+    - the rate of fire is `fire_rate` in shots per second. `ticks_between_shots` converts
+      it exactly (`Fraction`), and `reset` refuses a rate that is not a whole number of
+      ticks at the run's tick rate;
+    - `bleed_exponent` `e` in the induced drag; at `e = 2` the term is bit-exact with
+      the old one;
+    - readers of per-type values use the card: Yemong's coding ranges take the card's
+      largest stall angle, recharge delay and ticks between shots;
+    - the play shell's snapshot still reads the shared `stall_angle` (an open request).
+  - **Designer handles:** `bnb.game.handling`. `measure` flies the game's own code;
+    `solve` finds the card that meets a set of handles (Levenberg–Marquardt in float64,
+    the cruise fix included). `bnb ship-card` is its command.
 - **Game API:** `bnb.game.api`: `rules_of`, `reset`, `move`, `resolve`, `step`,
   `perceive`, `spread`, `uniforms`. Randomness is explicit (spec section 2).
   - **Display functions (section 10, 2026-11-01), for the play shell:**

@@ -12,7 +12,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.contracts.obs import GLOBAL, SHIP
-from bnb.game.handling import Characteristics, time_of_flight
+from bnb.game.handling.characteristics import Characteristics, time_of_flight
 from bnb.game.ship_types import per_ship
 
 from .scripted_parameters import ScriptedParameters, ramp

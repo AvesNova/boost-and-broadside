@@ -1,4 +1,4 @@
-"""Pass 6: the ships, instanced silhouettes filled with the team colour, every one
+"""Pass 5: the ships, instanced silhouettes filled with the team colour, every one
 outlined, never smaller on screen than MINIMUM_RING_PIXELS."""
 
 import moderngl

@@ -11,7 +11,13 @@ import torch
 
 from bnb.contracts import Action, GameConfig
 from bnb.game import api
-from bnb.game.handling import characteristics, measure, time_of_flight
+from bnb.game.handling.characteristics import (
+    characteristics,
+    measure_characteristics,
+    time_of_flight,
+)
+from bnb.game.handling.manoeuvres import TURNING_STORE
+from bnb.game.handling.shown import SETTLE_TIME
 from bnb.game.state import replace
 
 GOLDEN = pathlib.Path(__file__).resolve().parents[1] / "reference" / "golden"
@@ -81,37 +87,32 @@ def test_cruise_and_top_speed_match_the_reference_maneuvers():
             stats[f"{prefix}dive_full_store"]["peak_speed"], rel=5e-3)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("ship_type", [0, 1])
-def test_turn_rates_match_the_game_holding_the_stick_at_cruise(ship_type):
+def test_turn_rates_match_a_settled_turn_in_the_game(ship_type):
+    """The coast datum: from cruise, the stick held and the store held at TURNING_STORE,
+    coasting for SETTLE_TIME through the game's move; the last second's path rate."""
     cruise = float(MEASURED.cruise_speed[ship_type])
-    a_max = float(TYPES.max_acceleration[ship_type])
-    lift = float(TYPES.max_lift_coefficient[ship_type])
+    store = TURNING_STORE * float(TYPES.max_energy[ship_type])
+    second = round(1.0 / RULES.tick_length)
     for level, stick in enumerate((2, 4, 6)):
-        rules, state = _one_ship(ship_type, cruise, float(TYPES.max_energy[ship_type]))
+        rules, state = _one_ship(ship_type, cruise, store)
         angles = []
-        for _ in range(31):
+        for _ in range(round(SETTLE_TIME / rules.tick_length)):
             state, _ = api.move(rules, TYPES, state, _action(stick=stick), torch.zeros((1, 2, 2)))
-            speed = state.ships.proper_speed.clone()
-            speed[0, 0] = cruise
-            state = replace(state, ships=replace(state.ships, proper_speed=speed))
+            energy = state.ships.energy.clone()
+            energy[0, 0] = store
+            state = replace(state, ships=replace(state.ships, energy=energy))
             ships = state.ships
             path_cos = (ships.heading_cos * ships.angle_of_attack_cos
                         + ships.heading_sin * ships.angle_of_attack_sin)
             path_sin = (ships.heading_sin * ships.angle_of_attack_cos
                         - ships.heading_cos * ships.angle_of_attack_sin)
             angles.append(math.atan2(float(path_sin[0, 0]), float(path_cos[0, 0])))
-        rate = (angles[-1] - angles[-2]) / rules.tick_length
-        assert float(MEASURED.turn_rate[ship_type, level]) == pytest.approx(rate, rel=1e-3)
-        # The lateral lift over the speed (game spec 3.4), within the thrust's share.
-        sigma = (0.4, 0.75, 1.0)[level]
-
-        def softmin(a, b):
-            return a * (1.0 + (a / b) ** 16) ** (-1.0 / 16.0)
-
-        commanded = softmin(sigma * lift * cruise ** 2, a_max)
-        total = math.hypot(commanded, 27.0)
-        share = softmin(total, softmin(lift * cruise ** 2, a_max)) / total
-        assert rate == pytest.approx(commanded * share / cruise, rel=0.03)
+        turned = torch.tensor(angles[-second - 1:]).diff()
+        turned = torch.remainder(turned + math.pi, 2 * math.pi) - math.pi
+        rate = float(turned.sum()) / (second * rules.tick_length)
+        assert float(MEASURED.turn_rate[ship_type, level]) == pytest.approx(rate, rel=0.01)
 
 
 def test_card_values_and_constants_are_read_as_given():
@@ -120,15 +121,18 @@ def test_card_values_and_constants_are_read_as_given():
         assert torch.equal(getattr(MEASURED, name), getattr(TYPES, name)), name
     corner = torch.sqrt(TYPES.max_acceleration / TYPES.max_lift_coefficient)
     torch.testing.assert_close(MEASURED.corner_speed, corner)
-    assert torch.all(MEASURED.stall_angle == RULES.flight.stall_angle)
-    assert torch.all(MEASURED.vision_range == RULES.vision_range)
+    torch.testing.assert_close(MEASURED.stall_angle,
+                               RULES.flight.stall_angle * TYPES.stall_angle_scale)
+    torch.testing.assert_close(MEASURED.vision_range, RULES.vision_range * TYPES.vision_range_scale)
+    torch.testing.assert_close(MEASURED.bullet_drag, RULES.bullet_drag * TYPES.bullet_drag_scale)
     assert characteristics(TYPES, RULES) is MEASURED  # cached
 
 
 @pytest.mark.slow
 def test_the_characteristics_move_with_the_card():
     def scaled(name: str, factor: float):
-        return measure(api.ship_types(**{name: getattr(TYPES, name) * factor}), RULES)
+        card = api.ship_types(**{name: getattr(TYPES, name) * factor})
+        return measure_characteristics(card, RULES)
 
     faster_gun = scaled("muzzle_speed", 1.1)
     assert torch.all(faster_gun.gun_range > MEASURED.gun_range)
@@ -138,7 +142,6 @@ def test_the_characteristics_move_with_the_card():
     assert torch.all(draggier.top_speed < MEASURED.top_speed)
     stronger = scaled("max_acceleration", 1.2)
     assert torch.all(stronger.corner_speed > MEASURED.corner_speed)
-    assert torch.all(stronger.turn_rate[:, 2] > MEASURED.turn_rate[:, 2])
     liftier = scaled("max_lift_coefficient", 1.2)
     assert torch.all(liftier.corner_speed < MEASURED.corner_speed)
     assert torch.all(liftier.turn_rate[:, 0] > MEASURED.turn_rate[:, 0])

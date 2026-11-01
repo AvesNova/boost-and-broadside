@@ -14,7 +14,7 @@ from bnb.contracts import GameConfig, Pool
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Scripted, distribution
 from bnb.game import api
-from bnb.game.handling import characteristics
+from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import StopConfig, StopRule, flat_views
 
 from .rollout import Rollout

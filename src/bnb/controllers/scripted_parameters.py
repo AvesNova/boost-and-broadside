@@ -1,5 +1,5 @@
 """The scripted agent's parameters (scripted spec A3): dimensionless numbers, each named for
-the characteristic quantity it scales (`bnb.game.handling.Characteristics`).
+the characteristic quantity it scales (`bnb.game.handling.characteristics.Characteristics`).
 
 A value is a float, or a tensor (R, 1) with one value per view (`unpack` of a parameter
 table), so one compiled controller can play several parameter sets side by side (the

@@ -102,6 +102,7 @@ nav:
       - Benchmarking: guides/benchmarking.md
       - Reference fixtures: guides/reference-fixtures.md
       - Adding a mode: guides/adding-a-mode.md
+      - Designing a ship: guides/designing-a-ship.md
       - Playing and spectating: guides/playing.md
   - Explanation:
       - explanation/index.md
@@ -113,6 +114,7 @@ nav:
           - Modes: explanation/game/modes.md
           - Rewards: explanation/game/rewards.md
           - Mixed batches: explanation/game/mixed-batches.md
+          - The ship card: explanation/game/ship-card.md
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
       - The learner: explanation/learner.md
@@ -121,7 +123,6 @@ nav:
       - Roadmap: explanation/roadmap.md
       - Glossary: explanation/glossary.md
       - In progress:
-          - The ship card: explanation/in-progress/ship-card.md
           - League and ratings: explanation/in-progress/league.md
           - Diagnostics: explanation/in-progress/diagnostics.md
           - The play shell: explanation/in-progress/play-shell.md

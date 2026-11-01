@@ -11,7 +11,7 @@ import torch
 from bnb.contracts import Action, Obs, Outputs
 from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP
-from bnb.game.handling import Characteristics
+from bnb.game.handling.characteristics import Characteristics
 
 from .scripted_combat import Marginals, combat, context
 from .scripted_frontline import frontline

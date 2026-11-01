@@ -7,7 +7,7 @@ import torch
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.obs import GLOBAL, GLOBAL_COLUMNS, SHIP, SHIP_COLUMNS, ZONE, ZONE_COLUMNS
 from bnb.game import api
-from bnb.game.handling import characteristics
+from bnb.game.handling.characteristics import characteristics
 
 RULES = api.rules_of(GameConfig(2, 1, 2600.0))
 TYPES = api.ship_types()

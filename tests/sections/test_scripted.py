@@ -18,7 +18,7 @@ from bnb.controllers import scripted_combat
 from bnb.controllers.scripted import Scripted, distribution, marginals
 from bnb.controllers.scripted_parameters import ScriptedParameters, pack, table, unpack
 from bnb.game import api
-from bnb.game.handling import time_of_flight
+from bnb.game.handling.characteristics import time_of_flight
 from bnb.runtime.rollout import Rollout
 
 PARAMETERS = ScriptedParameters()

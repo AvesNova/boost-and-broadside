@@ -68,10 +68,10 @@ and resolves it onto the target, then draws the ImGui layer. The passes, in orde
 | Fields | A topographic map of the true refractive index: terraces filled by sign (thin air below ambient, thick air above), stronger with depth, and a contour at every third of a level. The core edge is drawn bold. |
 | Zones | Frontline's zones, tinted with their owner's colour, with each defense zone's capture meter as an arc in the attacker's colour. |
 | Trails | Each ship's recent path, a strip that tapers and fades with age, and in hard turns a faint vortex line from the inside wingtip. A dead ship's trail fades out where it ended. |
-| Bullets | Short streaks along each bullet's direction, in the shooter's team colour. |
 | Ships | Silhouettes from the Komet family, filled with the team colour, every ship outlined. A ship type without a silhouette of its own draws a plain dart. |
 | Rings | One ring at the hitbox: the shield on an arc centred on the nose, the energy on an arc centred on the tail, each shrinking toward its centre as it empties. |
 | Fog | In a team's view, everything the team cannot see is multiplied by the theme's fog colour: darker, with its saturation kept. |
+| Bullets | Short streaks along each bullet's direction, in the shooter's team colour, drawn above the ships and the fog, so fog never darkens a bullet. |
 | HUD | The clock, the score or the front, the flown ship's respawn timer, the view, theme and time scale. |
 
 Ships, rings, bullets and trails keep a minimum size on screen, so they stay visible at the
@@ -111,8 +111,8 @@ from the mask's edges
 own function on the CPU was too slow for a frame budget at large fleets; the shader runs
 the same rule on the GPU.
 
-Every bullet is drawn in every view; agents never see bullets, so this is an advantage
-human players have. Ships come from the observation instead: a team's view draws only the
+Every bullet is drawn in every view, above the fog at full brightness; agents never see
+bullets, so this is an advantage human players have. Ships come from the observation instead: a team's view draws only the
 ships its observation shows (a ship that fires is visible while it fires, by the game's
 sight rule). Each trail sample records which teams saw
 the ship then, so a team's view draws only the parts of an enemy's path it saw; an enemy

@@ -21,7 +21,7 @@ from bnb.controllers.relational import RelationalController
 from bnb.controllers.scripted import Chaser, Random, Scripted, distribution
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
-from bnb.game.handling import characteristics
+from bnb.game.handling.characteristics import characteristics
 from bnb.game.modes.rules import PRESETS
 from bnb.learn.bc import BehaviourCloning, TeacherConfig
 from bnb.learn.ppo import Learner, LearnerConfig

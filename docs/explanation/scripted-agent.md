@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_frontline.py, src/bnb/game/handling.py, src/bnb/runtime/evaluate.py]
+covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_frontline.py, src/bnb/game/handling/characteristics.py, src/bnb/runtime/evaluate.py]
 reviewed: 2026-11-02
 ---
 
@@ -34,26 +34,28 @@ mode selects per view, so a mixed batch is one graph.
 
 Every threshold is a dimensionless parameter times a characteristic quantity of the
 observing ship's type (or the target's, for its hit radius). The quantities are
-`bnb.game.handling.Characteristics`, measured per ship type by
-`bnb.game.handling.measure` through the game's own `flight_tick`, `launch` and
-`bullet_motion` at the standard field index, so they follow the ship card:
+`bnb.game.handling.characteristics.Characteristics`, read per ship type from the
+[ship card](game/ship-card.md)'s own measurements, flown in the game's code at the
+standard field index, so they follow the card
+(`bnb.game.handling.characteristics.measure_characteristics`):
 
-- `cruise_speed`: coasting straight until the speed and the store settle;
+- `cruise_speed` and `gun_range`: the card's handles (`bnb.game.handling.measure`);
 - `top_speed`: the peak of a straight boost from cruise with a full store;
-- `corner_speed`: `sqrt(max_acceleration / max_lift_coefficient)`, the card's;
-- `turn_rate`: the steady flight-path rate at cruise for each of the three stick levels;
-- `gun_range` and `bullet_speed`: a bullet fired along the flight path at cruise, flown
-  for its whole life;
+- `corner_speed`: `sqrt(max_acceleration / max_lift_coefficient)`;
+- `turn_rate`: the coast datum's settled flight-path rate at each of the three stick
+  levels;
+- `bullet_speed`: cruise plus muzzle speed, the launch speed the gun range assumes;
 - the card's values (`max_energy`, `bullet_energy_cost`, `max_shield`, `hit_radius`,
-  `max_acceleration`) and the rules' (`stall_angle`, `bullet_drag`, `vision_range`).
+  `max_acceleration`) and the per-type scaled rules (`stall_angle`, `bullet_drag`,
+  `vision_range`).
 
-`bnb.game.handling.time_of_flight` gives a bullet's time to a distance from the drag law,
-`t = (exp(k s) − 1) / (k w₀)`. `bnb.game.handling.characteristics` caches the measurement
-per card and rules; it takes a few seconds on the CPU.
+`bnb.game.handling.characteristics.time_of_flight` gives a bullet's time to a distance from
+the drag law, `t = (exp(k s) − 1) / (k w₀)`. `bnb.game.handling.characteristics.characteristics`
+caches the measurement per card and rules; it takes about 12 s on the CPU.
 
-`tests/sections/test_handling.py` checks each quantity against an independent run of the
-game (a bullet fired with `bnb.game.api.move`, the reference flight maneuvers, the stick
-held through the game's move) and that a changed card moves them the right way.
+`tests/sections/test_handling.py` checks the quantities against independent runs of the
+game (a bullet fired with `bnb.game.api.move`, the reference flight maneuvers, a settled
+turn flown through the game's move) and that a changed card moves them the right way.
 
 ## The combat layer
 
