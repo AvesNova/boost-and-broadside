@@ -6,9 +6,11 @@ import pytest
 import torch
 
 from bnb.contracts import Action, GameConfig
+from bnb.contracts.obs import SHIP
 from bnb.game import api
 from bnb.game.physics.bullets import launch_state
 from bnb.game.physics.combat import hits
+from bnb.learn import labels
 from bnb.learn.shots import ShotCapture, resimulate
 from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE
 
@@ -146,3 +148,45 @@ def test_a_flight_an_episode_end_cuts_short_is_invalid(played):
                     assert tick + last_age <= end and shots.hit[tick, env, ship] != HIT_NONE
                     hit_first += 1
     assert cut > 0 and hit_first > 0
+
+
+# ------------------------------------------------------------------ the rollout's capture
+
+
+@pytest.fixture(scope="module")
+def stored():
+    """A real rollout's stored segment: Yemong as the learner, in self-play (one team-0 and
+    one team-1 view per environment) and against the chaser."""
+    import learner_cases as lc
+    import yemong_cases as cases
+
+    runner = lc.rollout(cases.model(), runs=1)
+    assert set(runner.lineup.role["learner"].tolist()) == {0, 1}  # team-1 views exist
+    return runner.trajectory(0)
+
+
+def test_the_rollouts_capture_is_the_tick_start_state_in_view_order(stored):
+    """The capture at tick t is the state the stored privileged rows show at t, row for row:
+    a capture taken after the move, or in sim order, differs (team-1 views reorder rows)."""
+    rows = labels.privileged_rows(stored)
+    capture, launch = stored.capture, stored.capture.launch
+    assert torch.equal(capture.alive, rows[..., SHIP["alive"]] > 0.5)
+    alive = capture.alive
+    for name in ("x", "y", "heading_cos", "heading_sin", "proper_speed"):
+        assert torch.equal(getattr(launch, name)[alive], rows[..., SHIP[name]][alive]), name
+
+
+def test_the_rollouts_displacement_is_the_next_row_minus_this_one(stored):
+    """Where a ship is alive at t and t + 1 within one episode, the stored displacement is
+    its move from row t to row t + 1. Tolerance: float32 rounding of a position of a few
+    thousand metres (an ulp is under 5e-4 m)."""
+    rows = labels.privileged_rows(stored)
+    following = labels.next_rows(stored, rows)
+    moving = (stored.capture.alive & (following[..., SHIP["alive"]] > 0.5)
+              & (following[..., SHIP["spawned"]] < 0.5) & ~stored.done[..., None])
+    assert moving.float().mean() > 0.5
+    for axis, displacement in (("x", stored.capture.displacement_x),
+                               ("y", stored.capture.displacement_y)):
+        moved = following[..., SHIP[axis]] - rows[..., SHIP[axis]]
+        torch.testing.assert_close(displacement[moving], moved[moving], rtol=0, atol=1e-3)
+    assert stored.capture.displacement_x[moving].abs().max() > 1.0  # the ships do move
