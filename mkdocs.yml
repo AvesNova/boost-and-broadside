@@ -124,6 +124,7 @@ nav:
           - League and ratings: explanation/in-progress/league.md
           - Diagnostics: explanation/in-progress/diagnostics.md
           - The play shell: explanation/in-progress/play-shell.md
+          - Runs and checkpoints: explanation/in-progress/runs.md
   - Reference:
       - reference/index.md
       - bnb.contracts: reference/contracts.md

@@ -2,8 +2,8 @@
 
 Status: spec, 2026-11-01. Sources: the consistency audit
 (`../audits/2026-11-01-consistency.md`, at `49e5e2a9`) and the mutation sweep of the
-merged sections (its survivors are restated in section 3 as behaviour, so no tool is
-needed to act on them). Code style: `docs/contributing/code-style.md` (drafted with this
+merged sections (177 mutants, 43 survivors; the real gaps are restated in section 3 as
+behaviour, so no tool is needed to act on them). Code style: `docs/contributing/code-style.md` (drafted with this
 spec, for the author's review). **(proposal)** marks a choice the spec makes, implemented
 as written and listed for the author.
 
@@ -19,8 +19,9 @@ as written and listed for the author.
   shell) may run at the same time. So:
   - leave `bnb/controllers/scripted.py` (section 4 replaces it) and `bnb/play/`
     alone;
-  - do the renames of section 1.1 first, in one commit, and push it at once, so the other
-    branches can merge it early;
+  - first, format the whole tree with `ruff format` (section 1.0), in one commit;
+  - then do the renames of section 1.1, in one commit, and push both at once, so the
+    other branches can merge them early;
   - merge `origin/v2` into the cleanup branch at least once a day.
 - **Out of scope:**
   - the native goldens that replace the race adapter (`tests/reference/race_arm.py`);
@@ -30,6 +31,18 @@ as written and listed for the author.
   - any behaviour change.
 
 ## 1. Names
+
+### 1.0 The formatter (author, 2026-11-01)
+
+- Run `uv run --no-sync ruff format` over `src`, `bench` and `tests` (except
+  `tests/reference`, which ruff excludes), in a commit of its own that changes nothing
+  else.
+- Add that commit's hash to `.git-blame-ignore-revs` at the repository root, so
+  `git blame` skips it.
+- A test runs `ruff format --check` and fails on unformatted code.
+- When this spec was written, it reformatted 66 files (about 4,400 changed lines). An
+  open branch merging it should format its own files with `ruff format` first; most
+  conflicts then resolve to the formatted side.
 
 ### 1.1 Contract renames (first commit)
 
@@ -194,8 +207,25 @@ reach these paths):
     multiple of 4).
 22. `ticks_of` rejects a time just off a whole tick (for example 1.01 s at 1/30 s).
 
-**Not yet run when this spec was written:** the sweep's Yemong (`Y*`), lineup (`LU*`)
-and part of the reward set. Their survivors are appended here before launch.
+**Yemong** (section 6 changed `inputs.py` and `model.py`; re-check each against the
+merged code):
+
+23. A ship that spawned this tick enters with the null pending action, not the stale
+    enemy-action forecast.
+24. The local-presence input counts only valid belief rows: a ship whose belief is invalid
+    adds no presence.
+25. The time-since-seen input is in seconds: an age of `a` ticks shows `a · tick_length`.
+26. The predicted enemy position is taken at the image nearest the belief, modulo the
+    position period. Test it with a belief and a prediction on opposite sides of a period
+    boundary.
+27. `unroll` from a nonzero carry whose first step is a reset equals `unroll` from a zero
+    carry. Today's unroll-equals-steps tests never start a segment with a reset.
+28. A reset in the middle of a segment: `unroll` equals the step loop around that reset.
+    If `starts` and `_later(starts)` cannot be told apart by any input, write the
+    argument instead.
+
+The sweep ran 177 of its 179 mutants (two Yemong mutants, `Y08` and `Y15`, were not run).
+Its log and report are not available to you; this section is the complete list.
 
 ## 4. Docs, docstrings and contracts.md
 

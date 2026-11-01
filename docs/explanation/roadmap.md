@@ -1,5 +1,5 @@
 ---
-covers: [docs/roadmap.yml]
+covers: []
 reviewed: 2026-11-01
 ---
 
