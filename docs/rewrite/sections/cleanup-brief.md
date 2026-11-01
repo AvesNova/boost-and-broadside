@@ -77,8 +77,7 @@ that fail when the behaviour breaks.
 6. **Commit and push often:**
    - commit to `section/cleanup`, then `git push -u origin section/cleanup`;
    - author Julian Kizanis <julianzia@gmail.com>;
-   - end every commit message with
-     `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+   - no `Co-Authored-By` or other attribution lines in the message.
 
 ## Boundaries
 

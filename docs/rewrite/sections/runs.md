@@ -1,8 +1,8 @@
 # Section 11: runs (checkpoints, resume, run records)
 
-Status: decisions draft, 2026-11-01. The spec follows once the open questions are
-answered. Background: the gap analysis (`../audits/2026-11-01-v1-gaps.md`, gap 1).
-**(proposal)** marks a choice made here for the author to confirm.
+Status: decisions settled 2026-11-02 (drafted 2026-11-01); the spec follows. Background:
+the gap analysis (`../audits/2026-11-01-v1-gaps.md`, gap 1). **(proposal)** marks a
+choice made here that the author has not overruled.
 
 ## Already decided
 
@@ -161,29 +161,48 @@ answered. Background: the gap analysis (`../audits/2026-11-01-v1-gaps.md`, gap 1
   stopped.
 - **League opponents** share the live policy's architecture (league spec, section 6).
 
-## Open questions
+## Decided (author, 2026-11-02): loading and resuming
 
-1. **A newer code version adds a model option.** Older checkpoints do not have the
-   field. When they load:
-   - **(a)** take the option's default and log that it was missing **(proposal)**.
-     The style guide then requires that a new option's default reproduces the old
-     behaviour;
-   - **(b)** fail, so nothing is ever loaded with a value it was not trained with.
-2. **Resuming with a changed configuration:**
-   - **(a)** refuse every change except the budget (more updates) **(proposal)**. A
-     change of anything else is a fork (`--from`), so a run's record stays one
-     configuration;
-   - **(b)** allow any override, and record it in `run.json`.
-3. **Off-machine storage:**
-   - **(a)** local only, with a `bnb runs upload RUN` command that sends chosen
-     checkpoints to W&B artifacts **(proposal)**;
-   - **(b)** automatic upload of every final policy and league snapshot;
-   - **(c)** the Hugging Face Hub instead of W&B (more natural for a public release).
-4. **Saving the rollout carry** (game state, recurrent state and controller state of
-   every environment) for an exact resume:
-   - **(a)** save it **(proposal)**. A resume then continues mid-episode, bit for bit
-     where the stack is deterministic. It costs tens of MB per checkpoint at training
-     sizes (to be measured);
-   - **(b)** do not; a resume starts every environment on a new episode. It is smaller,
-     but not identical to an uninterrupted run, which the league spec's resume test
-     requires.
+### Model versions and old checkpoints
+
+- **Each model carries a version** in its code (for example `Yemong.VERSION`), and every
+  checkpoint records it.
+- **Loading:**
+  - same version: the checkpoint loads. Options it lacks (added later) take their
+    defaults;
+  - different version: it refuses, with both versions in the message. The way back is a
+    worktree at an older commit;
+  - no migration code, and no editing of checkpoint files.
+- **The rule for a new option:** its default must reproduce the old behaviour. If it
+  cannot, the change alters what old weights compute, and the version goes up. A change
+  of that kind includes:
+  - a different normalisation;
+  - a reordering of input columns;
+  - a new part that is always on.
+- **Refactors do not matter:** loading goes by the model's registered name, never by a
+  Python class path.
+- **The test that keeps it honest:** the repository keeps a few tiny checkpoints, one per
+  model version, with their outputs on a fixed input.
+  - The suite loads each one and checks the outputs.
+  - A behaviour change without a version bump fails it.
+  - A version bump retires the old version's checkpoint and adds a new one.
+
+### Resume and fork
+
+- **`--resume RUN`** uses only what the run's checkpoint holds: every setting, not the
+  code's current defaults.
+  - **Run-time overrides on the CLI** are allowed: the update budget, the learning rate,
+    loss coefficients, entropy, logging and checkpoint cadence. Each is recorded in
+    `run.json` with the step it took effect at.
+  - **Structural settings** cannot change on a resume: the model architecture, the game
+    rules and ship card, the fleet sizes and the training mix, the environment count, and
+    the rollout length.
+- **`--from RUN [--at STEP]` (a fork)** starts a new run with the code's current settings
+  (plus the command line), loading the checkpoint's state where it still fits.
+  - The model's weights load only if its version and build match. If they do not, the
+    fork refuses: a new architecture is a new run, or a warm start from a policy file of
+    the same build.
+- **Code changes since the checkpoint:** a resume on a different commit goes ahead, with
+  a warning. `run.json` records each commit the run ran on and the step it started at,
+  for example "steps 0 to 412M at abc123, from 412M at def456". Model-version mismatches
+  still refuse, as above.

@@ -209,7 +209,7 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 - **The body** says why, and states any measured result with where it was measured. The
   diff already shows what changed.
 - **One idea per commit.** Fold fixes to unpushed work into the commit they belong to.
-- **Attribution:** a commit written with an AI assistant ends with its `Co-Authored-By`
-  trailer.
+- **No authorship trailers:** the commit's author field is the only attribution. No
+  `Co-Authored-By` lines, and no tool, assistant or session lines.
 - **Commit and push as you go:** each finished step is pushed, so no work lives only on
   one machine.

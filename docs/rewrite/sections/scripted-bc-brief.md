@@ -69,8 +69,7 @@ design, and code the next person can read and change.
 5. **Commit and push often:**
    - commit to `section/scripted`, then `git push -u origin section/scripted`;
    - author Julian Kizanis <julianzia@gmail.com>;
-   - end every commit message with
-     `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+   - no `Co-Authored-By` or other attribution lines in the message.
 
 ## Boundaries
 
