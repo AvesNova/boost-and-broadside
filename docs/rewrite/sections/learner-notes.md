@@ -232,15 +232,14 @@ MEASUREMENTS
 
 SIZE
 
-## Progress (working state, 2026-11-01)
+## Progress (working state, 2026-11-01, evening)
 
-- **Done and tested:** the learner (`bnb.learn`), the store and ring, the shot
-  re-simulation (bit for bit against the game), the toy learner (beats the chaser: 98% at
-  200 updates in a scratch run; the loop test asserts >= 60% after 400), the equivalence
-  fixtures. Full suite: 315 passed under the bench lock (before the uneven-minibatch change).
-- **Half-done:** uneven minibatches (`tensor_split`) and per-size pinned staging in
-  `store.batches` are written but not yet run on the GPU; the placeholders in this file.
-- **Next:** merge `origin/v2`, `uv sync`, fix `tests/docs`; then the measurements under the
-  lock (scratch scripts in `/tmp/bnb-scratch-learner/`: `stream_cost.py`, `precision.py`,
-  `toy.py`, bytes in `bytes.py`), the throughput cells via `bench.cell`, the 26-ship cell.
-- **In flight:** nothing.
+- **Done and tested:** everything in the design above; `origin/v2` merged; the docs
+  updated (`tests/docs` passes); the full suite passed (315) before the last performance
+  changes (host view indices, compiled label codes, the staging worker thread), which
+  passed their own tests.
+- **In flight:** `/tmp/bnb-scratch-learner/chain3.sh` (streaming cost, then the precision
+  matrix's Yemong rows) into `chain3.log`, then `chain2.sh` (toy curves for the matrix, the
+  four 5v5 training cells and the 26-ship cell through `bench.cell`) into `chain2.log`.
+- **Next:** fill the measurement tables below from those logs; rerun the full suite under
+  the lock; hand back.
