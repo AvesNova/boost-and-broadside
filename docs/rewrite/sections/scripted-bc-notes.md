@@ -12,7 +12,9 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
   baseline plus the policy-file round trip), 6 failed with CUDA out-of-memory while
   another agent's suite held 4.7 GB of the GPU; those 6 (learner precision and streaming)
   pass when rerun with the GPU free. The toy BC test passed inside the suite. The
-  `bnb --objective bc` command runs end to end on the CPU at a toy size.
+  `bnb --objective bc` command runs end to end on the CPU at a toy size. After merging
+  origin/v2 (section 1b): docs, contract and section tests without the slow ones pass
+  (732), `tests/sections/test_handling.py` in full, and the scores re-run.
 - **Open:** the policy-file hand-off (section 11), request 1 below.
 
 ## Design
@@ -21,22 +23,23 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
 
 | Module | Job | Lines |
 |---|---|---:|
-| `game/handling.py` | `Characteristics`, `measure` (the game's `flight_tick`, `launch`, `bullet_motion` at n = 1), `time_of_flight`, the cached `characteristics` | 194 |
+| `game/handling/characteristics.py` | `Characteristics` from section 1b's measurements (`measure`'s handles, `shown.top_speed`, `shown.settled`), `time_of_flight`, the cached `characteristics` | 98 |
 | `controllers/scripted_parameters.py` | `Ramp`, `ramp`, `ScriptedParameters` (the searched defaults), `pack`/`unpack`/`table` (per-view parameters) | 112 |
 | `controllers/scripted_combat.py` | `Context` (what both layers read), `lead`, the stick/power/shoot marginals, the boundary steer, `combat`, `blend` | 226 |
 | `controllers/scripted_frontline.py` | strength kernels, the defense/attack assignment by rank, separation, recovery, the blend with combat | 141 |
 | `controllers/scripted.py` | `marginals`, `joint`, `distribution`, `Scripted` (sampling, rungs) beside `Random` and `Chaser` | 161 |
 | `runtime/evaluate.py` | `first_results` (fresh games to their end, each view's first result), `score`, `shares`; `win_rate` uses it | 44 |
 
-- **Characteristics.** Measured once per card and rules (about 5 s on the CPU, cached):
-  cruise is coasting straight from corner speed with a full store until a second changes
-  the speed by less than 1e-3 m/s (the true no-input terminal speed, store full); top
-  speed is the peak of a straight boost from that state (the store empties first); turn
-  rates hold each stick level at cruise speed (the speed reset each tick) for 1 s and read
-  the path rate; gun range flies a no-spread bullet launched from the cruise state for its
-  12 moves. Corner speed is the card's `sqrt(a_max / C_max)`. The default card gives
-  cruise 103.7 / 106.0 m/s, top 162.1 / 171.3 m/s, gun range 220.8 / 204.7 m, turn rates
-  1.12 / 1.96 / 2.00 and 0.94 / 1.44 / 1.45 rad/s (fighter / heavy).
+- **Characteristics.** Read from section 1b's measurements once per card and rules
+  (about 12 s on the CPU, cached): cruise and gun range are the card's handles (cruise
+  with a full store; the gun range at cruise plus muzzle speed); top speed is 1b's shown
+  peak of a full-store boost from cruise; the turn rates are 1b's coast datum (settled
+  coasting turns with the store held at a quarter); stall angle, vision range and bullet
+  drag are the card's per-type scaled values. Before section 1b merged this section flew
+  its own measurement (`game/handling.py`, removed in the merge); cruise, top speed and gun
+  range agree with it to 1e-5, and the turn rates changed definition (below). The default
+  card gives cruise 103.7 / 106.0 m/s, top 162.1 / 171.3 m/s, gun range 220.8 / 204.7 m,
+  datum turn rates 0.80 / 1.04 / 1.22 and 0.76 / 1.09 / 1.26 rad/s (fighter / heavy).
 - **One pass, fixed shapes.** Both layers are computed for every view; the mode one-hot
   selects per view (`torch.where`), so a mixed batch is one graph and nothing branches on
   data. Pair work is `(R, S, E)` and `(R, S, S)`.
@@ -99,7 +102,14 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
    60 s coast (`top_full_store`) to 2e-4.
 6. **`turn_rate` and `top_speed` are measured but the agent does not read them** (its
    turn ramps are in stall angles, as the spec says). They are part of the
-   characteristics A2 lists and the ship card (1b) will extend this module.
+   characteristics A2 lists. Since 1b merged, `turn_rate` is 1b's coast datum (the settled
+   turn) rather than A2's "at cruise": one shared definition, and no reader depends on it.
+14. **Merged with section 1b.** 1b's `bnb.game.handling` package took the module's name;
+    the characteristics became `bnb.game.handling.characteristics` on top of 1b's
+    functions, with no flight code of their own. The search, the scores and the toy run
+    were measured before the merge; the default card's flight is the same after it
+    (cruise, top speed, gun range unchanged), and the scores were re-run after the merge
+    (below).
 7. **Labels are exact per tick, not across batch shapes.** The update labels a segment
    as one batch; the CPU's vectorized kernels may round the last bit differently from the
    rollout's per-tick batch (measured: 1.2e-7 at most, 0.15% of entries). The test
@@ -181,6 +191,10 @@ The chosen defaults, fresh games to their end, 5v5 presets, fog on, seat drawn p
 | `frontline` | 2048 wins (0 non-wins) | 0.994 (0.988 wins, 0.012 draws) | 0.926 |
 | `deathmatch_wide` | 2048 wins | 1.000 | not run (dynamo's recompile limit in the script) |
 
+After the merge with section 1b (386db109), the same runs with a fresh seed: deathmatch
+2048/2048 against random and 1.000 against the chaser; Frontline 2048/2048 against random
+and 0.993 against the chaser (0.985 wins, 0.015 draws).
+
 The starting parameters scored 0.997 (deathmatch) and about 0.94 (Frontline, 512 games)
 against the chaser before the search, and 1.0 / 1.0 against random after the Frontline
 assignment fix.
@@ -260,8 +274,8 @@ re-measurement should settle it.
 
 ## Changes outside `bnb.controllers` and `bnb.learn`
 
-- **`bnb.game.handling`** (new): the characteristics, measured through the game's code.
-  Game behaviour is unchanged.
+- **`bnb.game.handling.characteristics`** (new, in section 1b's package): the
+  characteristics from the card's measurements. Game behaviour is unchanged.
 - **`bnb.runtime.evaluate`** (new): `first_results`, `score`, `shares`.
 - **`bnb.runtime.cloning`** (new): BC's lineup, loop, warm start and teacher sampling.
 - **`bnb.runtime.rollout`**: `extra_reads`; the learner's view carries `self.reads`.
@@ -295,8 +309,8 @@ re-measurement should settle it.
    return scale is listed only in a training checkpoint. Either the policy file carries
    the return scale, or RL warm-starts from BC's training checkpoint (weights and return
    scale, discarding the optimizer).
-3. **Request (spec A2):** `stall_angle` is one shared flight constant today; it enters the
-   characteristics per type so a per-type card value drops in.
+3. **Resolved by 1b:** the stall angle, vision range and bullet drag are per type now and
+   the characteristics read them per type.
 4. **Question:** should RL's learning-rate warmup restart after BC (it does now, with the
    fresh optimizer)?
 5. **Question (spec A5):** the literal per-ship "neediest zone" choice oscillates without
@@ -307,6 +321,6 @@ re-measurement should settle it.
 
 ## Size
 
-Part A: 834 lines of source (handling 194, the four controller modules 640) and 44 for
+Part A: 738 lines of source (characteristics 98, the four controller modules 640) and 44 for
 `evaluate`; part B: 210 (`bc.py`) + 107 (`cloning.py`); edits to `ppo.py`, `rollout.py`,
 `train.py` and `cli.py`: +143 / −58. Tests: 844 lines in five files.
