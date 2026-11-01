@@ -134,6 +134,20 @@ too much; narrow its `covers`.
 - Short sentences and full words. Abbreviations only where universal (`cos`, `x`, `y`).
 - Name things as the code names them.
 
+## Code rules
+
+A v2 code style guide is pending; `STYLE_GUIDE.md` at the repository root is v1's and is
+not current. Until the v2 guide exists, the code rules are those of the scaffold,
+`docs/rewrite/scaffold.md` sections 3 and 4, in short:
+
+- sections are pure functions of tensors; only `bnb.runtime` writes persistent buffers;
+- section code does not compile itself, call `torch.cuda` or set process-wide options;
+- one code path for the CPU and the GPU at any batch size, with fixed shapes per run;
+- contracts are versioned frozen dataclasses; imports point down the layer order
+  (see [Architecture](../explanation/architecture.md));
+- names in full words, apart from universal ones such as `cos`, `x` and `y`;
+- no legacy code, shims or stale docs; small files with one job.
+
 ## Checks
 
 `tests/docs` runs with the rest of the suite:

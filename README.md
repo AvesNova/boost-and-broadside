@@ -7,6 +7,15 @@ graphs.
 
 - The previous code is at tag `v1-torch-final`.
 
+## Status
+
+Merged: the contracts and walking skeleton (section 0), the game (1), modes (3), rewards
+(3b), mixed batches (3c) and the model, Yemong (5). Training still runs the skeleton's MLP
+and plain PPO; the learner (6), the ship card (1b), the scripted agent (4), behaviour
+cloning (7), the league (8), diagnostics (9) and the play shell (10) are specified or
+planned. The [roadmap](docs/explanation/roadmap.md) is kept current from
+`docs/roadmap.yml`.
+
 ## Quickstart
 
 ```
