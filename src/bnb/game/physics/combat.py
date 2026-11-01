@@ -64,7 +64,9 @@ def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bu
     theta = torch.atan2((direction_x * nose_sin - direction_y * nose_cos).abs(),
                         -(direction_x * nose_cos + direction_y * nose_sin))
     full = per_ship(types.hit_damage, ships.ship_type).repeat_interleave(K, 1)  # the shooter's
-    aspect = 1.0 - (1.0 - rules.head_on_fraction) * torch.exp(-4.0 * theta * theta / math.pi)
+    head_on = rules.head_on_fraction * per_ship(types.head_on_fraction_scale, ships.ship_type)
+    head_on = head_on.gather(1, target)  # the target's armour
+    aspect = 1.0 - (1.0 - head_on) * torch.exp(-4.0 * theta * theta / math.pi)
     bullet_damage = torch.where(hit, full * aspect, 0.0)
 
     # Scatter each bullet's hit to its (shooter, target): O(bullets), not O(bullets x ships).
@@ -113,10 +115,12 @@ def apply_damage(rules: Rules, types: ShipTypes, ships: Ships, alive_at_start: t
     hurt = total > 0.0
     died = alive_at_start & hurt & (shield0 <= 0.0)
     shield = (shield0 - total).clamp_min(0.0)
+    rate = rules.shield_recharge_rate * per_ship(types.shield_recharge_rate_scale, ships.ship_type)
+    delay = rules.shield_recharge_delay * per_ship(types.shield_recharge_delay_scale, ships.ship_type)
     recharge = torch.minimum(per_ship(types.max_shield, ships.ship_type) - shield,
-                             rules.shield_recharge_rate * (tick_length - wait0).clamp(0.0, tick_length))
+                             rate * (tick_length - wait0).clamp(0.0, tick_length))
     restored = torch.where(alive_at_start & ~hurt, recharge, 0.0)  # an unhurt ship cannot have died
-    wait = torch.where(hurt, rules.shield_recharge_delay, (wait0 - tick_length).clamp_min(0.0))
+    wait = torch.where(hurt, delay, (wait0 - tick_length).clamp_min(0.0))
     ships = replace(ships, shield=torch.where(alive_at_start, shield + restored, shield0),
                     shield_recharge_wait=torch.where(alive_at_start, wait, wait0))
     return Damage(ships=ships, died=died, shield_lost=torch.where(alive_at_start, shield0 - shield, 0.0),

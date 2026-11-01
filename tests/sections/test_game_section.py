@@ -17,7 +17,7 @@ from bnb.game.physics.combat import hits
 from bnb.game.physics.medium import medium
 from bnb.game.physics.spawning import formation_rank
 from bnb.game.rules import LN_SQRT2, FlightConstants
-from bnb.game.ship_types import DEFAULTS
+from bnb.game.ship_types import DEFAULTS, SCALED
 from bnb.game.state import Fields, replace
 
 REFERENCE = pathlib.Path(__file__).resolve().parents[1] / "reference"
@@ -296,7 +296,11 @@ def test_defaults_match_the_spec_table():
             if want is None:
                 want = spec["flight"].get(key, preset.get(key))
             assert math.isclose(float(getattr(TYPES, field)[t]), want, rel_tol=1e-6), (name, key)
-    assert set(CARD.values()) == set(DEFAULTS)
+    # The ship card's additions: the bleed exponent (2) and per-type scales (1) of values
+    # that are shared in the spec's table.
+    assert set(CARD.values()) == set(DEFAULTS) - {"bleed_exponent", *SCALED}
+    assert TYPES.bleed_exponent.tolist() == [2.0, 2.0]
+    assert all(getattr(TYPES, name).tolist() == [1.0, 1.0] for name in SCALED)
 
 
 def test_ship_card_is_data_per_environment():

@@ -17,17 +17,18 @@ def _half_bend(tick_length: float, bullet: Bullets, index: torch.Tensor):
     return rotate(bullet.direction_x, bullet.direction_y, *small_angle_cos_sin(turn))
 
 
-def _half_drag(rules: Rules, speed: torch.Tensor, index: torch.Tensor) -> torch.Tensor:
+def _half_drag(rules: Rules, drag_scale, speed: torch.Tensor, index: torch.Tensor) -> torch.Tensor:
     """Half a tick of quadratic drag on proper speed, dw/dt = -k w^2 / n, n held: exact."""
-    return speed / (1.0 + rules.bullet_drag * 0.5 * rules.tick_length * speed / index)
+    return speed / (1.0 + rules.bullet_drag * 0.5 * rules.tick_length * drag_scale * speed / index)
 
 
-def bullet_motion(rules: Rules, bullet: Bullets, fields: Fields) -> Bullets:
+def bullet_motion(rules: Rules, bullet: Bullets, fields: Fields, drag_scale=1.0) -> Bullets:
     """One move of every bullet given (game spec 6.2, normative); moves_left is untouched
-    and the caller freezes inactive bullets. Shapes (B, P)."""
+    and the caller freezes inactive bullets. Shapes (B, P). drag_scale: each bullet's
+    shooter's scale of the shared drag (B, P), or one number (1: the shared drag)."""
     tick_length = rules.tick_length
     index = torch.exp(bullet.log_refractive_index)
-    bullet = replace(bullet, proper_speed=_half_drag(rules, bullet.proper_speed, index))
+    bullet = replace(bullet, proper_speed=_half_drag(rules, drag_scale, bullet.proper_speed, index))
     direction_x, direction_y = _half_bend(tick_length, bullet, index)
     speed = bullet.proper_speed / index
     correction = 0.5 * tick_length * speed * (direction_x * bullet.log_index_gradient_x
@@ -41,7 +42,7 @@ def bullet_motion(rules: Rules, bullet: Bullets, fields: Fields) -> Bullets:
                      log_index_gradient_y=gradient_y)
     direction_x, direction_y = _half_bend(tick_length, bullet, index)
     return replace(bullet, direction_x=direction_x, direction_y=direction_y,
-                   proper_speed=_half_drag(rules, bullet.proper_speed, index))
+                   proper_speed=_half_drag(rules, drag_scale, bullet.proper_speed, index))
 
 
 def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: torch.Tensor,
@@ -53,12 +54,13 @@ def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: 
     cos, sin, speed = ships.heading_cos, ships.heading_sin, ships.proper_speed
     angle_cos, angle_sin = ships.angle_of_attack_cos, ships.angle_of_attack_sin
     muzzle = per_ship(types.muzzle_speed, ships.ship_type)
+    spread_speed = rules.bullet_spread * per_ship(types.bullet_spread_scale, ships.ship_type)
     # Proper velocity: the ship's own along its flight path, plus the muzzle velocity along
     # the nose, plus the spread.
     velocity_x = (speed * (cos * angle_cos + sin * angle_sin) + muzzle * cos
-                  + rules.bullet_spread * spread[..., 0])
+                  + spread_speed * spread[..., 0])
     velocity_y = (speed * (sin * angle_cos - cos * angle_sin) + muzzle * sin
-                  + rules.bullet_spread * spread[..., 1])
+                  + spread_speed * spread[..., 1])
     bullet_speed = torch.sqrt(velocity_x * velocity_x + velocity_y * velocity_y)
 
     def slot_value(value):
@@ -82,9 +84,13 @@ def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: 
     return ships, bullets
 
 
-def move_bullets(rules: Rules, bullets: Bullets, fields: Fields) -> Bullets:
-    """Phase 3: every active bullet moves; inactive ones are frozen."""
+def move_bullets(rules: Rules, types: ShipTypes, bullets: Bullets, fields: Fields,
+                 ship_type: torch.Tensor) -> Bullets:
+    """Phase 3: every active bullet moves, with its shooter's drag; inactive ones are
+    frozen. ship_type (B, N), the owners' types."""
     B, N, K = bullets.moves_left.shape
-    moved = bullet_motion(rules, apply(lambda v: v.reshape(B, N * K), bullets), fields)
+    drag_scale = per_ship(types.bullet_drag_scale, ship_type)[..., None].expand(B, N, K)
+    moved = bullet_motion(rules, apply(lambda v: v.reshape(B, N * K), bullets), fields,
+                          drag_scale.reshape(B, N * K))
     moved = apply(lambda v: v.reshape(B, N, K), moved)
     return where(bullets.moves_left > 0, moved, bullets)

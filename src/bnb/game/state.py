@@ -82,13 +82,16 @@ class Fields:
 class Match:
     """episode_tick (B,) ticks into the episode; the spawn axis (B,); ticks_since_seen
     (B, 2, N), ticks since team T last saw ship n (0 while visible); fogged (B,), the
-    environment hides what its teams cannot see (fixed at reset by the caller)."""
+    environment hides what its teams cannot see (fixed at reset by the caller);
+    vision_range (B, N), each ship's range as an observer (m), its type's from the card,
+    set by every reset and tick (perception reads it here, as it takes no card)."""
 
     episode_tick: torch.Tensor
     spawn_axis_x: torch.Tensor
     spawn_axis_y: torch.Tensor
     ticks_since_seen: torch.Tensor
     fogged: torch.Tensor
+    vision_range: torch.Tensor
 
 
 @contract
@@ -152,7 +155,8 @@ MODE_INTEGERS = ("score", "front", "role", "movement")
 
 
 def blank(rules: Rules, batch: int, device=None) -> State:
-    """Every value zero and every flag false (fogged true), in the canonical shapes."""
+    """Every value zero and every flag false (fogged true, vision the shared range), in the
+    canonical shapes."""
     B, N, K, M = batch, rules.num_ships, rules.bullet_slots, rules.num_fields
 
     def zeros(dtypes: dict, shape: tuple) -> dict:
@@ -172,7 +176,8 @@ def blank(rules: Rules, batch: int, device=None) -> State:
                              spawn_axis_y=torch.zeros(B, device=device),
                              ticks_since_seen=torch.zeros((B, TEAMS, N), dtype=INT,
                                                           device=device),
-                             fogged=torch.ones(B, dtype=BOOL, device=device)),
+                             fogged=torch.ones(B, dtype=BOOL, device=device),
+                             vision_range=torch.full((B, N), rules.vision_range, device=device)),
                  mode=ModeState(**mode))
 
 

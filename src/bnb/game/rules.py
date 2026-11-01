@@ -22,6 +22,7 @@ POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
 FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)
 MAP_SCALE_RADIUS = 2600.0  # the map scale is arena_radius / 2600
+BULLET_LIFE = 0.4  # s, every bullet's: 12 moves at 30 Hz
 
 
 @dataclasses.dataclass(frozen=True)
@@ -73,7 +74,7 @@ class Rules:
     team_types: tuple[int, ...] = ()  # ship type per slot, the same for both teams
     bullet_slots: int = 6  # per ship [K]
     tick_length: float = 1.0 / 30.0  # s [h]
-    bullet_moves: int = 12  # a bullet's lifetime
+    bullet_moves: int = 12  # a bullet's lifetime, BULLET_LIFE in ticks (rules_of converts)
     bullet_drag: float = 8e-4  # 1/m [k_b]
     bullet_spread: float = 12.0  # m/s per axis, proper [sigma_b]
     head_on_fraction: float = 0.3  # [f_0]
@@ -168,5 +169,6 @@ def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | N
         if len(merged) == 1:
             merged = [dataclasses.replace(merged[0], environments=None)]
         games = tuple(merged)
+    overrides.setdefault("bullet_moves", ticks_of(BULLET_LIFE, tick_length))
     return Rules(ships_per_team=config.ships_per_team, num_fields=config.num_fields,
                  pools=games, tick_length=tick_length, **overrides)
