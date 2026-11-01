@@ -1,8 +1,9 @@
-"""Command-line entry point: `bnb train ...` and `bnb ship-card ...`. The one place that sets
-process-wide options."""
+"""Command-line entry point: `bnb ...` trains, `bnb ship-card ...` charts a ship card. The one
+place that sets process-wide options."""
 
 import dataclasses
 import os
+import sys
 
 import tyro
 
@@ -44,11 +45,10 @@ class ShipCard:
 
 def main() -> None:
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
-    args = tyro.extras.subcommand_cli_from_dict({"train": Train, "ship-card": ShipCard})
-    if isinstance(args, ShipCard):
-        ship_card(args)
+    if sys.argv[1:2] == ["ship-card"]:
+        ship_card(tyro.cli(ShipCard, args=sys.argv[2:], prog="bnb ship-card"))
     else:
-        train(args)
+        train(tyro.cli(Train))
 
 
 def ship_card(args: ShipCard) -> None:
