@@ -12,6 +12,9 @@ class GameConfig:
     """Sizes and rules of one match. Everything else comes from the game's constants.
 
     Teams are equal in size and team-major: ship `n = team * ships_per_team + slot`.
+    A batch of several games (mixed spec 1) shares the sizes (ships, fields); mode,
+    arena_radius, spawn_groups, episode_s and respawn_s are then the defaults its pools
+    override (`Pool`).
 
     mode: the game's rules (modes spec 1): "team_deathmatch", "frontline" or "sandbox" (no
         score and no win, formation spawns: the physics game the race tests run).

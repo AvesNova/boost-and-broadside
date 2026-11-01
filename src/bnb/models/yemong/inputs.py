@@ -5,8 +5,8 @@ the mode's zones (modes spec 7; none outside Frontline). A ship row's physical s
 belief's, so it is truth where visible. Nothing here reads a hidden ship's hidden-zero
 columns.
 
-Every position the model reads (ships, fields, the map centre) is shifted by the view's
-random offset, drawn per match. The categorical position codes then cannot memorise
+Every position the model reads (ships, fields, zones, the map centre) is shifted by the
+view's random offset, drawn per match. The categorical position codes then cannot memorise
 absolute map positions; rotary attention and local presence read only differences, where
 the offset cancels.
 """
@@ -95,16 +95,19 @@ class Tokens:
     """The encoder's inputs and the geometry for the rotary tables, (...) leading axes.
 
     ship (..., N, ship_inputs), global_token (..., 1, GLOBAL_INPUTS), field (..., M,
-    FIELD_INPUTS), zone (..., Z, ZONE_INPUTS); code (..., N, 490) the belief's state code (the
-    next-state head's baseline); ship_type (..., N) int64; query_position (..., N + 1, 2) and
-    query_heading (..., N + 1): the ships' belief and the map centre (no heading);
-    memory_position (..., M + Z, 2), the fields' and zones' centres. Positions are shifted.
+    FIELD_INPUTS), zone (..., Z, ZONE_INPUTS); zone_present (..., Z) bool, the zone is
+    the mode's (an absent one becomes the learned absent token); code (..., N, 490) the
+    belief's state code (the next-state head's baseline); ship_type (..., N) int64;
+    query_position (..., N + 1, 2) and query_heading (..., N + 1): the ships' belief and the
+    map centre (no heading); memory_position (..., M + Z, 2), the fields' and zones' centres,
+    an absent zone at the map centre (the global token's rotation). Positions are shifted.
     """
 
     ship: torch.Tensor
     global_token: torch.Tensor
     field: torch.Tensor
     zone: torch.Tensor
+    zone_present: torch.Tensor
     code: torch.Tensor
     ship_type: torch.Tensor
     query_position: torch.Tensor
@@ -173,8 +176,12 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
                                     fields[..., FIELD["level"]] / FIELD_LEVEL_SCALE], -1)], -1)
     zones = obs.zones if obs.zones is not None \
         else fields.new_zeros(fields.shape[:-2] + (0, len(ZONE_COLUMNS)))
-    zone_position = torch.stack([zones[..., ZONE["x"]], zones[..., ZONE["y"]]], -1) \
-        + centre[..., None, :]
+    # An absent zone takes the global token's rotation (the map centre; heading 0, like
+    # every memory token): at the frame's origin it would reveal the offset to attention.
+    present = zones[..., ZONE["present"]] > 0.5
+    zone_position = torch.where(present[..., None],
+                                torch.stack([zones[..., ZONE["x"]], zones[..., ZONE["y"]]], -1)
+                                + centre[..., None, :], centre[..., None, :])
     role = zones[..., ZONE["role"]].long()
     zone = torch.cat([_position_code(zone_position), torch.cat([
         (zones[..., ZONE["radius"]] / FIELD_RADIUS_SCALE)[..., None],
@@ -184,6 +191,7 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
                      symlog(zones[..., ZONE["defensive_distance"]])], -1)], -1)], -1)
     query_position = torch.cat([position, centre[..., None, :]], -2)
     query_heading = torch.cat([replay.means[..., 4], torch.zeros_like(centre[..., :1])], -1)
-    return Tokens(ship=ship, global_token=global_token, field=field, zone=zone, code=code,
+    return Tokens(ship=ship, global_token=global_token, field=field, zone=zone,
+                  zone_present=present, code=code,
                   ship_type=ship_type, query_position=query_position, query_heading=query_heading,
                   memory_position=torch.cat([field_position, zone_position], -2))

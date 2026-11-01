@@ -19,7 +19,7 @@ FRONTLINE_ZONES = 5
 # deathmatch training (proposal), a mix the learner section wires.
 PRESETS = {
     "deathmatch": GameConfig(5, 10, 2600.0, mode=TEAM_DEATHMATCH),
-    "deathmatch_wide": GameConfig(5, 40, 8200.0, mode=TEAM_DEATHMATCH, spawn_groups=(2, 2, 1)),
+    "deathmatch_wide": GameConfig(5, 10, 8200.0, mode=TEAM_DEATHMATCH, spawn_groups=(2, 2, 1)),
     "frontline": GameConfig(5, 10, 2600.0, mode=FRONTLINE),
 }
 

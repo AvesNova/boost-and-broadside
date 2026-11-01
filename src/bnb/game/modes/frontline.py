@@ -188,23 +188,23 @@ def timeout_result(front: torch.Tensor) -> torch.Tensor:
 
 # ------------------------------------------------------------------ the map (v2)
 
-def zone_ring(arena_radius: float, zone_radius: float, ring_fraction: float,
+def zone_ring(arena_radius: torch.Tensor, zone_radius: torch.Tensor, ring_fraction: float,
               rotation: torch.Tensor, handedness: torch.Tensor):
     """Zone centres (B, 5) x, y at angles rotation + handedness 2 pi k / 5 on the ring, and
-    their radii (B, 5)."""
+    their radii (B, 5); arena_radius and zone_radius (B,)."""
     angle = rotation[:, None] + handedness[:, None] * (2.0 * math.pi / ZONES) \
         * torch.arange(ZONES, device=rotation.device)
-    distance = ring_fraction * arena_radius
+    distance = (ring_fraction * arena_radius)[:, None]
     return (distance * torch.cos(angle), distance * torch.sin(angle),
-            torch.full_like(angle, zone_radius))
+            zone_radius[:, None] + torch.zeros_like(angle))
 
 
-def mirror_fields(fields: Fields, map_uniforms: torch.Tensor, arena_radius: float,
+def mirror_fields(fields: Fields, map_uniforms: torch.Tensor, arena_radius: torch.Tensor,
                   rotation: torch.Tensor) -> Fields:
     """The point-symmetric map's fields made mirror-symmetric about the axis at angle
     `rotation` through the centre and zone 0: field P + i is field i reflected about it,
     and an odd last field lies on the axis at signed distance 0.85 R_a (2u - 1) (u the
-    field's first uniform). Radii, bands and levels are as drawn."""
+    field's first uniform; arena_radius (B,)). Radii, bands and levels are as drawn."""
     B, M = fields.x.shape
     P = M // 2
     cos2, sin2 = torch.cos(2.0 * rotation)[:, None], torch.sin(2.0 * rotation)[:, None]

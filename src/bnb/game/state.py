@@ -158,7 +158,7 @@ def blank(rules: Rules, batch: int, device=None) -> State:
     def zeros(dtypes: dict, shape: tuple) -> dict:
         return {k: torch.zeros(shape, dtype=d, device=device) for k, d in dtypes.items()}
 
-    Z = rules.mode.num_zones
+    Z = rules.num_zones
     shapes = dict(score=(B, TEAMS), front=(B,), attack_ledger=(B, Z, N),
                   defense_ledger=(B, Z, N), handedness=(B,), ring_rotation=(B,))
     mode = {field.name: torch.zeros(shapes.get(field.name, (B, Z)), device=device,

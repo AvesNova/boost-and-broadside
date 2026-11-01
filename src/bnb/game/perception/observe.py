@@ -10,6 +10,7 @@ import torch
 from bnb.contracts import Obs, Privileged
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 
+from ..layout import environment, per_mode
 from ..modes.observation import mode_globals, zone_rows
 from ..rules import TEAMS, Rules
 from ..state import State, replace
@@ -79,13 +80,15 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
 
     field_rows = torch.stack([fields.x, fields.y, fields.radius, fields.band_width,
                               fields.level.float()], -1)
+    arena = environment(rules, B, device)
     tick = match.episode_tick.float()
-    global_row = torch.stack([tick / rules.episode_ticks, torch.full_like(tick, rules.arena_radius),
+    global_row = torch.stack([tick / arena.episode_ticks.float(), arena.arena_radius,
                               match.fogged.float(), (match.episode_tick == 0).float()], -1)
-    globals_ = torch.cat([global_row[:, None].expand(B, TEAMS, -1),
-                          mode_globals(rules, state.mode)], -1)
+    mode_part, zones = per_mode(rules, B, lambda rule, mode: (mode_globals(rules, rule, mode),
+                                                              zone_rows(rule, mode)), state.mode)
+    globals_ = torch.cat([global_row[:, None].expand(B, TEAMS, -1), mode_part], -1)
     obs = Obs(ships=ship_rows(visible, since), fields=field_rows[:, None].expand(B, TEAMS, -1, -1),
-              globals=globals_, zones=zone_rows(rules, state.mode))
+              globals=globals_, zones=zones)
 
     truth = Privileged(team=(torch.arange(N, device=device) // S).to(torch.int32).expand(B, N),
                        view_order=order.expand(B, TEAMS, N),

@@ -3,12 +3,16 @@
 Compiled graphs specialize on these, so they cost nothing at run time. The ship-card
 parameters that differ by ship type are tensors instead (`ship_types.ShipTypes`), so one
 compiled graph serves any values of them. A game has exactly two teams (author decision).
+
+A batch may hold several games (mixed spec): `Rules.pools` lists them as static, contiguous
+slices of the batch, each with its mode, arena and clocks. The sizes are shared.
 """
 
 import dataclasses
 import math
 
-from bnb.contracts import GameConfig, ticks_of
+from bnb.contracts import GameConfig, Pool, ticks_of
+from bnb.contracts.pools import pool_game, pool_sizes
 
 from .modes.rules import CLOCKS, ModeRules, mode_rules_of
 
@@ -40,16 +44,32 @@ class FlightConstants:
 
 
 @dataclasses.dataclass(frozen=True)
+class PoolRules:
+    """One game of the batch (mixed spec 1): `environments` contiguous environments (None:
+    the whole batch, at any size) playing `mode` in an arena of this radius, with these
+    clocks. Adjacent pools of the same game are one PoolRules."""
+
+    environments: int | None
+    mode: ModeRules
+    arena_radius: float  # m
+    episode_ticks: int
+    respawn_ticks: int
+
+    @property
+    def game(self) -> tuple:
+        """Everything but the size: pools that agree on it play the same game."""
+        return self.mode, self.arena_radius, self.episode_ticks, self.respawn_ticks
+
+
+@dataclasses.dataclass(frozen=True)
 class Rules:
-    """Sizes and every shared constant of one game (game spec 1). Static: a different value
-    is a different compiled graph."""
+    """Sizes and every shared constant of a batch of games (game spec 1), and the games, as
+    static slices of the batch (`pools`). Static: a different value is a different compiled
+    graph. Built by `rules_of`."""
 
     ships_per_team: int
     num_fields: int
-    arena_radius: float  # m
-    mode: ModeRules  # from the config (rules_of): one default for the mode, GameConfig's
-    episode_ticks: int = 1800
-    respawn_ticks: int = 240
+    pools: tuple[PoolRules, ...]
     team_types: tuple[int, ...] = ()  # ship type per slot, the same for both teams
     bullet_slots: int = 6  # per ship [K]
     tick_length: float = 1.0 / 30.0  # s [h]
@@ -84,8 +104,14 @@ class Rules:
         return self.team_types * TEAMS
 
     @property
-    def map_scale(self) -> float:
-        return self.arena_radius / MAP_SCALE_RADIUS
+    def modes(self) -> tuple[ModeRules, ...]:
+        return tuple(pool.mode for pool in self.pools)
+
+    @property
+    def num_zones(self) -> int:
+        """Zone slots in every environment: Frontline's five if any pool plays it (an
+        environment of another mode leaves them absent), else none."""
+        return max(mode.num_zones for mode in self.modes)
 
     @property
     def map_uniform_count(self) -> int:
@@ -101,19 +127,46 @@ class Rules:
     @property
     def tick_uniform_count(self) -> int:
         """All uniforms per environment per tick: the game's, then the mode's spawn draws
-        (modes spec 2)."""
-        return self.game_uniform_count + self.mode.uniform_count(self.num_ships)
+        (modes spec 2), as wide as the widest mode needs; each environment reads its own
+        mode's prefix (mixed spec 2)."""
+        return self.game_uniform_count + max(mode.uniform_count(self.num_ships)
+                                             for mode in self.modes)
 
 
-def rules_of(config: GameConfig, **overrides) -> Rules:
-    """The rules for a config's sizes, mode and time-native rules (the mode's clock where
-    the config leaves it out); `overrides` replace defaults."""
+def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) -> PoolRules:
+    """A game's mode and its time-native rules (the mode's clock where it leaves them out)."""
+    episode_s, respawn_s = CLOCKS[game.mode]
+    episode_s = episode_s if game.episode_s is None else game.episode_s
+    respawn_s = respawn_s if game.respawn_s is None else game.respawn_s
+    return PoolRules(environments=environments, mode=mode_rules_of(game),
+                     arena_radius=game.arena_radius,
+                     episode_ticks=ticks_of(episode_s, tick_length),
+                     respawn_ticks=ticks_of(respawn_s, tick_length))
+
+
+def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | None = None,
+             **overrides) -> Rules:
+    """The rules for a config's sizes and games; `overrides` replace defaults.
+
+    Without pools the batch plays the config's game, at any batch size. With pools (and
+    num_envs, their batch size) each pool plays its own (`pool_game`), in pool order;
+    adjacent pools of the same game merge, and if one game remains it covers the whole
+    batch as without pools.
+    """
     tick_length = overrides.pop("tick_length", Rules.tick_length)
-    episode_s, respawn_s = CLOCKS[config.mode]
-    episode_s = episode_s if config.episode_s is None else config.episode_s
-    respawn_s = respawn_s if config.respawn_s is None else config.respawn_s
+    if not pools:
+        games = (_pool_rules(None, config, tick_length),)
+    else:
+        sizes = pool_sizes(pools, num_envs)
+        merged: list[PoolRules] = []
+        for size, pool in zip(sizes, pools):
+            game = _pool_rules(size, pool_game(config, pool), tick_length)
+            if merged and merged[-1].game == game.game:
+                game = dataclasses.replace(game, environments=merged.pop().environments + size)
+            if game.environments:
+                merged.append(game)
+        if len(merged) == 1:
+            merged = [dataclasses.replace(merged[0], environments=None)]
+        games = tuple(merged)
     return Rules(ships_per_team=config.ships_per_team, num_fields=config.num_fields,
-                 arena_radius=config.arena_radius, tick_length=tick_length,
-                 episode_ticks=ticks_of(episode_s, tick_length),
-                 respawn_ticks=ticks_of(respawn_s, tick_length), mode=mode_rules_of(config),
-                 **overrides)
+                 pools=games, tick_length=tick_length, **overrides)

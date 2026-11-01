@@ -85,9 +85,11 @@ def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bu
                 first_shooter=shooter)
 
 
-def boundary_damage(rules: Rules, ships: Ships, alive_at_start: torch.Tensor) -> torch.Tensor:
-    """Game spec 5: (5 + 0.05 depth) tick_length for a living ship outside the arena after its move."""
-    depth = torch.sqrt(ships.x * ships.x + ships.y * ships.y) - rules.arena_radius
+def boundary_damage(rules: Rules, arena_radius: torch.Tensor, ships: Ships,
+                    alive_at_start: torch.Tensor) -> torch.Tensor:
+    """Game spec 5: (5 + 0.05 depth) tick_length for a living ship outside the arena (radius
+    (B,)) after its move."""
+    depth = torch.sqrt(ships.x * ships.x + ships.y * ships.y) - arena_radius[:, None]
     rate = rules.boundary_damage_base + rules.boundary_damage_per_metre * depth
     return torch.where(alive_at_start & (depth > 0.0), rate * rules.tick_length, 0.0)
 

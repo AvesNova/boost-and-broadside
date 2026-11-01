@@ -257,7 +257,8 @@ class Yemong(nn.Module):
 
     def _encode(self, tokens: Tokens):
         """Queries (..., Q, D), map memory (..., M, Dm) and the rotary tables."""
-        queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field, tokens.zone)
+        queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field, tokens.zone,
+                                       tokens.zone_present)
         frequencies = (self.position_periods, self.position_periods, self.heading_frequencies)
         token_tables = rotary_tables(tokens.query_position,
                                      tokens.query_heading, *frequencies)

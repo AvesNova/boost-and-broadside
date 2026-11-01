@@ -25,9 +25,10 @@ FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")
 # Zones (Frontline's), for the viewer: role 0 own spawn, 1 own defense, 2 neutral, 3 enemy
 # defense, 4 enemy spawn; progress, the meter in [0, 1]; direction +1 when the meter moves
 # in the viewer's favour, -1 in the enemy's, 0 still; the distances: captures to the
-# viewer's win and to its loss.
+# viewer's win and to its loss; present, 1 for a zone of the environment's mode and 0 for an
+# absent slot (a mode without zones in a batch that has them), whose other columns are 0.
 ZONE_COLUMNS = ("x", "y", "radius", "role", "progress", "direction", "offensive_distance",
-                "defensive_distance")
+                "defensive_distance", "present")
 # The mode block: a mode one-hot (all zero in sandbox); the scores by team_relative and the
 # score that wins (team deathmatch); the front, positive in the viewer's favour, and the
 # front that wins (Frontline). Absent quantities are 0.
@@ -48,7 +49,8 @@ class Obs:
 
     ships (..., N, len(SHIP_COLUMNS)), own team's S ships first, then by team_relative and slot;
     fields (..., M, len(FIELD_COLUMNS)); globals (..., len(GLOBAL_COLUMNS)); zones (..., Z,
-    len(ZONE_COLUMNS)), Z = 0 in modes without zones.
+    len(ZONE_COLUMNS)), Z the batch's zone slots (0 when no environment's mode has zones; an
+    environment whose mode has none then shows absent rows).
 
     A stored batch may leave out (None) a part its model does not read.
 
