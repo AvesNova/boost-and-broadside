@@ -151,6 +151,16 @@ answered. Background: the gap analysis (`../audits/2026-11-01-v1-gaps.md`, gap 1
   hand-off against the interface and finishes it once section 11 merges.
 - **Before the league (section 8),** whose resume test needs it.
 
+## Decided (author, 2026-11-02)
+
+- **Storage:** checkpoints are local by default. Only chosen checkpoints are uploaded,
+  by an explicit command: to W&B artifacts, the Hugging Face Hub, or the repository
+  through Git LFS. Nothing uploads automatically.
+- **A full resume:** a training checkpoint holds the rollout carry (game, recurrent and
+  controller state of every environment), so a resumed run continues exactly where it
+  stopped.
+- **League opponents** share the live policy's architecture (league spec, section 6).
+
 ## Open questions
 
 1. **A newer code version adds a model option.** Older checkpoints do not have the
