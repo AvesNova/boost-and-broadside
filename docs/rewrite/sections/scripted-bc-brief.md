@@ -53,7 +53,20 @@ design, and code the next person can read and change.
    - Any GPU timing must hold the benchmark lock (`bench.lock.bench_lock()` in your
      script). Never wrap a lock-taking command in plain `flock`, and never run GPU tests
      while your own benchmark holds the GPU.
-4. **Commit and push often:**
+4. **Docs.** The docs in `docs/` and `README.md` are checked by the suite.
+   - `uv run --no-sync pytest` fails if any of these breaks: a backticked name, a
+     repository path, a `bnb` command option, a runnable example, or
+     `mkdocs build --strict`. Fix those as part of your change.
+   - Tables of values from the code are generated; never copy them into prose.
+   - When you change code that a page lists under `covers:`, pytest warns
+     `PossiblyStalePage`. Reread that page and fix it, or set its `reviewed:` date if it
+     is still correct (`uv run --no-sync python -m tests.docs.staleness` lists them).
+   - When your section is done, replace its pages under `docs/explanation/in-progress/`
+     with prose (an explanation, plus a guide if it adds a task) and set its status in
+     `docs/roadmap.yml`.
+   - Follow `docs/contributing/writing-docs.md`: say what exists and why; no evaluative
+     adjectives; no design history; every number says where it was measured.
+5. **Commit and push often:**
    - commit to `section/scripted`, then `git push -u origin section/scripted`;
    - author Julian Kizanis <julianzia@gmail.com>;
    - end every commit message with
@@ -68,11 +81,12 @@ design, and code the next person can read and change.
   - `src/bnb/learn/**` and `src/bnb/runtime/**`, for BC and its rollouts;
   - `src/bnb/cli.py`;
   - `src/bnb/contracts/**`, only for the spec's additions;
-  - `tests/sections/**`, the adapters above, and your notes file.
+  - `tests/sections/**`, the adapters above, the user docs (`docs/` outside
+    `docs/rewrite/`, `README.md`), and your notes file.
 
   List every change outside `bnb.controllers` and `bnb.learn` in your notes.
-- **You may not change:** `bench/`, the fixed tests and goldens, or the docs (apart from
-  your notes file).
+- **You may not change:** `bench/`, the fixed tests and goldens, or `docs/rewrite/`
+  (apart from your notes file). The user docs in `docs/` you update as point 4 says.
 - **The scripted agent reads only the observation.** Never `Privileged`, never game
   state.
 - **If the spec or a contract looks wrong:** take the most literal reading, keep going,

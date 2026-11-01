@@ -15,3 +15,6 @@ wandb/
 *.pt
 *.log
 /tmp/
+
+# The documentation site, built by `mkdocs build`
+site/

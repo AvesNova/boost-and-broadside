@@ -1,0 +1,36 @@
+# The packages of the repository and what each holds. The architecture page renders this
+# file with the layer of each package from LAYER in tests/contract/test_imports.py (the
+# import-direction test), and the status of an unbuilt package from docs/roadmap.yml.
+# package: the name under src/bnb (or a top-level directory); holds: one line;
+# section: the roadmap section that builds it, for a package that does not exist yet;
+# reference: the reference page, for a package that exists.
+- package: contracts
+  holds: the types shared between sections; shapes, dtypes and meanings, no logic
+  reference: reference/contracts.md
+- package: game
+  holds: "the rules: physics, perception, modes, the batch layout"
+  reference: reference/game.md
+- package: controllers
+  holds: scripted controllers; the adapters that make a model a controller
+  reference: reference/controllers.md
+- package: models
+  holds: models and their heads; the skeleton MLP and Yemong
+  reference: reference/models.md
+- package: learn
+  holds: rewards and learners
+  reference: reference/learn.md
+- package: runtime
+  holds: "the only stateful code: buffers, carries, compiled stages, CUDA graphs, the rollout, the training loop"
+  reference: reference/runtime.md
+- package: league
+  holds: opponent pools and ratings
+  section: "8"
+- package: play
+  holds: the interactive shell
+  section: "10"
+- package: cli
+  holds: the entry point, `bnb`
+  reference: reference/cli.md
+- package: bench
+  holds: the benchmark harness, a top-level directory outside the package and the layers
+  reference: reference/bench.md

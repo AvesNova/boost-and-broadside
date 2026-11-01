@@ -26,6 +26,17 @@ dev = [
     "pytest",
     "ruff",
 ]
+# The documentation site (mkdocs.yml); a default group, so `uv sync` installs it and the
+# strict build in tests/docs always runs.
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.8.0",
+    "mkdocstrings[python]>=1.0.8",
+    "pyyaml>=6.0.3",
+]
+
+[tool.uv]
+default-groups = ["dev", "docs"]
 
 [build-system]
 requires = ["uv_build>=0.9,<1"]
