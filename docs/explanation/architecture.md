@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/, src/bnb/runtime/rollout.py, src/bnb/contracts/tree.py, tests/contract/test_imports.py]
+covers: [src/bnb/runtime/rollout.py, src/bnb/runtime/realtime.py, src/bnb/contracts/tree.py, src/bnb/game/ship_types.py, tests/contract/test_imports.py]
 ---
 
 # Architecture
@@ -56,7 +56,7 @@ Configuration splits by how it reaches compiled code:
 ## Compiled stages
 
 The unit of compilation is a **stage**: a pure function of the rollout's carry whose
-outputs the runtime copies back in. `bnb.runtime.rollout.Rollout` cuts one tick into four:
+outputs the runtime copies back in. `bnb.runtime.rollout.Rollout` cuts one tick into these stages:
 
 | Stage | Does |
 |---|---|
@@ -75,10 +75,10 @@ The PPO loss is compiled the same way, separately (`bnb.learn.ppo.PPO`).
 
 On a GPU the rollout captures a block of ticks as one CUDA graph and replays it:
 
-- The block is the largest divisor of the rollout length up to `graph_ticks` (32 by
-  default).
-- Capture runs two warm-up ticks on a side stream, which compiles every stage, records
-  the block, then restores the carry, so capture changes nothing.
+- The block is the largest divisor of the rollout length up to the rollout's
+  `graph_ticks`.
+- Capture runs warm-up ticks on a side stream, which compiles every stage, records the
+  block, then restores the carry, so capture changes nothing.
 - A rollout of `length` ticks is then `length / block` graph replays.
 
 Two rules keep the captured graph correct:

@@ -1,5 +1,6 @@
 ---
 covers: [mkdocs.yml, docs/hooks/generated.py, tests/docs/]
+reviewed: 2026-11-01
 ---
 
 # Writing docs
@@ -115,8 +116,10 @@ may be stale. The report on its own:
 uv run --no-sync python -m tests.docs.staleness
 ```
 
-When you change covered code, reread the pages that cover it, and commit the page even if
-only to confirm it, so the warning clears.
+When you change covered code, reread the pages that cover it and fix what changed. If a
+page is still correct, set `reviewed:` in its front matter to the date and commit it: any
+commit to the page clears the warning. A page that is warned about on most commits covers
+too much; narrow its `covers`.
 
 ## Voice
 

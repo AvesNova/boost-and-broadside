@@ -5,7 +5,7 @@ covers: [src/bnb/learn/rewards.py, src/bnb/contracts/trajectory.py, src/bnb/runt
 # Rewards
 
 The game emits events, not rewards. `bnb.learn.rewards` turns each tick's
-`bnb.contracts.Events` into per-ship rewards at five **levels**, on the learning side. The
+`bnb.contracts.Events` into per-ship rewards at several **levels**, on the learning side. The
 math is v1's, checked by the fixtures in `tests/reference/rewards`; the spec is
 `docs/rewrite/sections/rewards-spec.md`.
 
@@ -50,7 +50,7 @@ healed.
 ## One tick
 
 `bnb.learn.rewards.reward_step` is a pure function, `(ledger, events) -> (rewards, ledger')`,
-with rewards `(B, N, 5)` in level order. The rollout calls it every tick, in the resolve
+with rewards `(B, N, len(REWARD_LEVELS))` in level order. The rollout calls it every tick, in the resolve
 stage.
 
 1. **Applied damage.** What each shield actually lost is split over its raw hits and its

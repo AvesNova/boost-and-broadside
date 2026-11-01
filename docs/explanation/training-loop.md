@@ -10,7 +10,7 @@ and configure it is in the [training guide](../guides/training.md).
 
 ## One update
 
-`bnb.runtime.train.Trainer.update` does three things:
+`bnb.runtime.train.Trainer.update` does, in order:
 
 1. **Collect** a rollout of `length` ticks over the whole batch (`Rollout.run`), and the
    value of the learner's views after it, for the bootstrap.
@@ -23,7 +23,7 @@ statistics, and the learner's reward per ship per second for each pool.
 
 ## Controllers
 
-The trainer builds four controllers, one per name a pool can seat:
+The trainer builds one controller per name a pool can seat:
 
 - `learner`: the model being trained, through `bnb.controllers.model.ModelController`;
 - `league_0`: a frozen copy of it;
@@ -42,7 +42,7 @@ flattened view, it reads token position, and it relies on rows being ordered by
 `bnb.runtime.rollout.Rollout` owns the carry: the game state, the ship card, every
 controller's carry, the current observation, the seat, the tick's random draws, the
 reward ledger and the learner's trajectory buffer, all allocated when it is built. A tick
-is four compiled stages over that carry (see [Architecture](architecture.md)).
+is a sequence of compiled stages over that carry (see [Architecture](architecture.md)).
 
 - **The lineup** (`bnb.runtime.lineup.Lineup`) lists, for each controller, the environments
   and roles its views come from, pool by pool. A row's team is `(role + seat) mod 2`.

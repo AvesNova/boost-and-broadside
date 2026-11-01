@@ -40,8 +40,8 @@ A **cell** is one measurement in a fresh process (`bench.cell`). It prints one l
 
 - **`train`:** builds the trainer, runs one update (compilation, the CUDA-graph capture
   and the learner's compile), then one episode of rollouts so that the staggered clocks
-  and combat reach a steady state. It then times three rollouts and three PPO updates and
-  reports the fastest of each: rollout and training throughput in environment-ticks per
+  and combat reach a steady state. It then times `bench.cell.TIMED` rollouts and PPO updates
+  and reports the fastest of each: rollout and training throughput in environment-ticks per
   second, the rollout and learner times, peak VRAM, compile time, and the rollout's
   event counters. A train cell gives either a `size` (`ships_per_team`, `num_fields`,
   `arena_radius`) or a `preset`: a game preset name, or `mixed`.
@@ -58,8 +58,8 @@ uv run --no-sync python -m bench.cell '{"kind": "train", "preset": "deathmatch",
 
 ## The skeleton benchmark
 
-`uv run --no-sync python -m bench.run [--seed N]` runs three training cells at random
-sizes and one realtime cell, under the lock, and appends every result to
+`uv run --no-sync python -m bench.run [--seed N]` runs training cells at random sizes
+and one realtime cell, under the lock, and appends every result to
 `bench/results.jsonl` with the commit, the seed and a time stamp. It is sized to finish in
 about five minutes on the development laptop, most of it compilation.
 

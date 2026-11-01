@@ -62,8 +62,8 @@ When a match ends, the environment gets a new map and a fresh mode state
 
 ## Frontline
 
-- **The ring:** five zones on a circle around the centre, at a random rotation and a random
-  handedness (clockwise or counter-clockwise). At front 0 their roles are, in ring order:
+- **The ring:** `bnb.game.modes.rules.FRONTLINE_ZONES` zones on a circle around the
+  centre, at a random rotation and a random handedness (clockwise or counter-clockwise). At front 0 their roles are, in ring order:
   neutral, team 0's spawn, team 0's defense, team 1's defense, team 1's spawn.
 - **Meters:** only the two defense zones have meters. A zone's meter moves toward the
   attacker on a strict majority of living ships inside it, at a rate set by the harmonic

@@ -20,7 +20,7 @@ Shapes use `B` environments, `N` ships (two teams of `S`), `M` fields, `Z` zone 
 
 ## The observation
 
-`bnb.contracts.Obs` is what one team sees. `bnb.game.api.perceive` builds one view per
+[`Obs`][bnb.contracts.obs.Obs] is what one team sees. `bnb.game.api.perceive` builds one view per
 team, with a leading view axis: view `v` is what team `v` sees.
 
 - **Raw and in world coordinates.** No rotation, no mirroring, no model features. Each
@@ -72,12 +72,13 @@ controller can receive it.
 
 ## The action
 
-`bnb.contracts.Action` is three integer components per ship, each shaped `(..., ships)`:
+[`Action`][bnb.contracts.action.Action] is integer components per ship, each shaped `(..., ships)`:
 
 <!-- generated-table: action-layout -->
 
 - `power`: 0 coast, 1 boost, 2 reverse.
-- `stick`: 0 straight, then three levels to each side.
+- `stick`: 0 straight, then turn levels alternating right and left (the stick levels are
+  tabled in [Physics](game/physics.md#flight)).
 - `shoot`: 0 hold, 1 fire.
 
 The joint index is `power * 14 + stick * 2 + shoot`. `bnb.contracts.action.to_joint` and

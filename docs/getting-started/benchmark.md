@@ -4,8 +4,8 @@ covers: [bench/]
 
 # A benchmark
 
-The skeleton benchmark measures the training loop at three random sizes and the CPU
-realtime path at one:
+The skeleton benchmark measures the training loop at random sizes and the CPU realtime
+path at one:
 
 <!-- not-runnable: needs CUDA and the benchmark lock; takes minutes -->
 ```bash

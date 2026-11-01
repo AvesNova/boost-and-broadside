@@ -1,5 +1,6 @@
 ---
-covers: [tests/, pyproject.toml]
+covers: [pyproject.toml, tests/conftest.py]
+reviewed: 2026-11-01
 ---
 
 # Running the tests

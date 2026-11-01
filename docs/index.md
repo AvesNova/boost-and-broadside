@@ -1,5 +1,5 @@
 ---
-covers: [src/bnb/]
+covers: []
 ---
 
 # Boost and Broadside

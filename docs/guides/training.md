@@ -119,7 +119,7 @@ config = TrainConfig(game=GameConfig(5, 10, 2600.0), pools=pools, num_envs=1024,
 train(config, torch.device("cuda"))
 ```
 
-The trainer knows four controller names: `learner`, `league_0`, `chaser` and `random`. A
+The trainer knows the controller names `learner`, `league_0`, `chaser` and `random`. A
 pool that names any other controller fails when the rollout is built.
 
 ## Seeds and process settings
