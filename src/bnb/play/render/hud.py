@@ -5,6 +5,7 @@ theme and time scale; the key reference on demand."""
 import dataclasses
 from typing import TYPE_CHECKING
 
+import numpy as np
 from imgui_bundle import imgui
 
 from ..themes import Theme
@@ -57,6 +58,13 @@ def _clock(seconds: float) -> str:
     return f"{whole // 60}:{whole % 60:02d}"
 
 
+def ship_label(team: np.ndarray, index: int) -> str:
+    """A ship by its team and its slot in the team ("team 0, ship 2"), from its sim index
+    and the (N,) team of every ship in sim order."""
+    slot = int((team[:index] == team[index]).sum())
+    return f"team {int(team[index])}, ship {slot}"
+
+
 def draw_hud(frame: Snapshot, state: HudState, theme: Theme, font) -> None:
     """Into the current ImGui frame's foreground draw list."""
     draw = imgui.get_foreground_draw_list()
@@ -96,7 +104,7 @@ def draw_hud(frame: Snapshot, state: HudState, theme: Theme, font) -> None:
     if state.pilot is not None:
         ships = frame.ships
         pilot = state.pilot
-        label = f"Flying team {int(ships.team[pilot])}, ship {pilot}"
+        label = f"Flying {ship_label(ships.team, pilot)}"
         if state.follow:
             label += " (following)"
         if not ships.alive[pilot]:

@@ -6,6 +6,7 @@ camera, and drives ImGui's panels when it is over one (ImGui then takes the keyb
 too, so typing a hex code does not fly the ship).
 """
 
+import string
 import time
 
 import glfw
@@ -25,22 +26,54 @@ FLIGHT_KEYS = {
     "lightest": (glfw.KEY_LEFT_CONTROL, glfw.KEY_RIGHT_CONTROL), "shoot": (glfw.KEY_SPACE,),
 }
 
-# The keys ImGui's text fields and navigation need.
-IMGUI_KEYS = {
-    glfw.KEY_TAB: imgui.Key.tab, glfw.KEY_LEFT: imgui.Key.left_arrow,
-    glfw.KEY_RIGHT: imgui.Key.right_arrow, glfw.KEY_UP: imgui.Key.up_arrow,
-    glfw.KEY_DOWN: imgui.Key.down_arrow, glfw.KEY_HOME: imgui.Key.home,
-    glfw.KEY_END: imgui.Key.end, glfw.KEY_DELETE: imgui.Key.delete,
-    glfw.KEY_BACKSPACE: imgui.Key.backspace, glfw.KEY_ENTER: imgui.Key.enter,
-    glfw.KEY_KP_ENTER: imgui.Key.keypad_enter, glfw.KEY_ESCAPE: imgui.Key.escape,
-    glfw.KEY_A: imgui.Key.a, glfw.KEY_C: imgui.Key.c, glfw.KEY_V: imgui.Key.v,
-    glfw.KEY_X: imgui.Key.x, glfw.KEY_Z: imgui.Key.z,
-    glfw.KEY_LEFT_CONTROL: imgui.Key.left_ctrl, glfw.KEY_RIGHT_CONTROL: imgui.Key.right_ctrl,
-    glfw.KEY_LEFT_SHIFT: imgui.Key.left_shift, glfw.KEY_RIGHT_SHIFT: imgui.Key.right_shift,
-    glfw.KEY_LEFT_ALT: imgui.Key.left_alt, glfw.KEY_RIGHT_ALT: imgui.Key.right_alt,
+# The named keys GLFW and ImGui share (the names below are both libraries' own).
+NAMED_KEYS = {
+    "TAB": "tab", "LEFT": "left_arrow", "RIGHT": "right_arrow", "UP": "up_arrow",
+    "DOWN": "down_arrow", "PAGE_UP": "page_up", "PAGE_DOWN": "page_down", "HOME": "home",
+    "END": "end", "INSERT": "insert", "DELETE": "delete", "BACKSPACE": "backspace",
+    "SPACE": "space", "ENTER": "enter", "ESCAPE": "escape", "APOSTROPHE": "apostrophe",
+    "COMMA": "comma", "MINUS": "minus", "PERIOD": "period", "SLASH": "slash",
+    "SEMICOLON": "semicolon", "EQUAL": "equal", "LEFT_BRACKET": "left_bracket",
+    "BACKSLASH": "backslash", "RIGHT_BRACKET": "right_bracket", "GRAVE_ACCENT": "grave_accent",
+    "CAPS_LOCK": "caps_lock", "SCROLL_LOCK": "scroll_lock", "NUM_LOCK": "num_lock",
+    "PRINT_SCREEN": "print_screen", "PAUSE": "pause", "MENU": "menu",
+    "KP_DECIMAL": "keypad_decimal", "KP_DIVIDE": "keypad_divide",
+    "KP_MULTIPLY": "keypad_multiply", "KP_SUBTRACT": "keypad_subtract", "KP_ADD": "keypad_add",
+    "KP_ENTER": "keypad_enter", "KP_EQUAL": "keypad_equal",
+    "LEFT_SHIFT": "left_shift", "LEFT_CONTROL": "left_ctrl", "LEFT_ALT": "left_alt",
+    "LEFT_SUPER": "left_super", "RIGHT_SHIFT": "right_shift", "RIGHT_CONTROL": "right_ctrl",
+    "RIGHT_ALT": "right_alt", "RIGHT_SUPER": "right_super",
 }
+FUNCTION_KEYS = 24  # F1 to F24: ImGui has no F25
+
+# The keys that act once when pressed, to the `Window` method they call.
+SHELL_KEYS = {
+    glfw.KEY_ESCAPE: "quit", glfw.KEY_V: "cycle_view", glfw.KEY_T: "cycle_theme",
+    glfw.KEY_E: "toggle_editor", glfw.KEY_F: "toggle_follow", glfw.KEY_F1: "toggle_help",
+    glfw.KEY_P: "toggle_pause", glfw.KEY_N: "single_step", glfw.KEY_TAB: "next_pilot",
+    glfw.KEY_EQUAL: "faster", glfw.KEY_KP_ADD: "faster", glfw.KEY_MINUS: "slower",
+    glfw.KEY_KP_SUBTRACT: "slower", glfw.KEY_HOME: "fit",
+}
+
+
+def _imgui_keys() -> dict[int, imgui.Key]:
+    """Every GLFW key that ImGui has, to its ImGui key: letters, digits, the keypad, the
+    function keys and the named keys (as Dear ImGui's own GLFW backend maps them)."""
+    keys = {getattr(glfw, f"KEY_{letter}"): getattr(imgui.Key, letter.lower())
+            for letter in string.ascii_uppercase}
+    for digit in range(10):
+        keys[getattr(glfw, f"KEY_{digit}")] = getattr(imgui.Key, f"_{digit}")
+        keys[getattr(glfw, f"KEY_KP_{digit}")] = getattr(imgui.Key, f"keypad{digit}")
+    for number in range(1, FUNCTION_KEYS + 1):
+        keys[getattr(glfw, f"KEY_F{number}")] = getattr(imgui.Key, f"f{number}")
+    for glfw_name, imgui_name in NAMED_KEYS.items():
+        keys[getattr(glfw, f"KEY_{glfw_name}")] = getattr(imgui.Key, imgui_name)
+    return keys
+
+
+IMGUI_KEYS = _imgui_keys()
 MODIFIERS = ((glfw.MOD_CONTROL, imgui.Key.mod_ctrl), (glfw.MOD_SHIFT, imgui.Key.mod_shift),
-             (glfw.MOD_ALT, imgui.Key.mod_alt))
+             (glfw.MOD_ALT, imgui.Key.mod_alt), (glfw.MOD_SUPER, imgui.Key.mod_super))
 
 
 class Window:
@@ -73,8 +106,8 @@ class Window:
     def _scale(self) -> tuple[float, float]:
         """Framebuffer pixels per window unit (above 1 on high-density displays)."""
         width, height = glfw.get_window_size(self.window)
-        fb_width, fb_height = glfw.get_framebuffer_size(self.window)
-        return fb_width / max(width, 1), fb_height / max(height, 1)
+        framebuffer_width, framebuffer_height = glfw.get_framebuffer_size(self.window)
+        return framebuffer_width / max(width, 1), framebuffer_height / max(height, 1)
 
     # Callbacks ---------------------------------------------------------------------------
 
@@ -86,23 +119,46 @@ class Window:
             io.add_key_event(IMGUI_KEYS[key], action == glfw.PRESS)
         if action != glfw.PRESS or io.want_capture_keyboard:
             return
-        session, loop = self.session, self.session.loop
-        actions = {
-            glfw.KEY_ESCAPE: lambda: glfw.set_window_should_close(window, True),
-            glfw.KEY_V: session.cycle_view,
-            glfw.KEY_T: session.cycle_theme,
-            glfw.KEY_E: lambda: setattr(session.editor, "open", not session.editor.open),
-            glfw.KEY_F: lambda: setattr(session, "follow", not session.follow),
-            glfw.KEY_F1: lambda: setattr(session, "help", not session.help),
-            glfw.KEY_P: lambda: setattr(loop, "paused", not loop.paused),
-            glfw.KEY_N: loop.single_step,
-            glfw.KEY_TAB: loop.next_pilot,
-            glfw.KEY_EQUAL: loop.faster, glfw.KEY_KP_ADD: loop.faster,
-            glfw.KEY_MINUS: loop.slower, glfw.KEY_KP_SUBTRACT: loop.slower,
-            glfw.KEY_HOME: lambda: session.camera.fit(session.frame.arena_radius),
-        }
-        if key in actions:
-            actions[key]()
+        if key in SHELL_KEYS:
+            getattr(self, SHELL_KEYS[key])()
+
+    # The shell's keys (SHELL_KEYS) ---------------------------------------------------------
+
+    def quit(self) -> None:
+        glfw.set_window_should_close(self.window, True)
+
+    def cycle_view(self) -> None:
+        self.session.cycle_view()
+
+    def cycle_theme(self) -> None:
+        self.session.cycle_theme()
+
+    def toggle_editor(self) -> None:
+        self.session.editor.open = not self.session.editor.open
+
+    def toggle_follow(self) -> None:
+        self.session.follow = not self.session.follow
+
+    def toggle_help(self) -> None:
+        self.session.help = not self.session.help
+
+    def toggle_pause(self) -> None:
+        self.session.loop.paused = not self.session.loop.paused
+
+    def single_step(self) -> None:
+        self.session.loop.single_step()
+
+    def next_pilot(self) -> None:
+        self.session.loop.next_pilot()
+
+    def faster(self) -> None:
+        self.session.loop.faster()
+
+    def slower(self) -> None:
+        self.session.loop.slower()
+
+    def fit(self) -> None:
+        self.session.camera.fit(self.session.frame.arena_radius)
 
     def on_char(self, window, codepoint: int) -> None:
         imgui.get_io().add_input_character(codepoint)
