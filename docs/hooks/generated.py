@@ -370,7 +370,7 @@ def bench_sizes() -> str:
 
 # ------------------------------------------------------------------ the roadmap
 
-ROADMAP_STATUSES = ("merged", "specified", "decided", "planned")
+ROADMAP_STATUSES = ("merged", "built", "specified", "decided", "planned")
 ROADMAP_KEYS = {"section", "title", "status", "spec", "page"}
 
 
@@ -420,6 +420,7 @@ def roadmap_summary(page: str) -> str:
 
 STATUS_SENTENCES = {
     "merged": "is merged",
+    "built": "is built on its branch and not merged yet",
     "specified": "is specified and not built",
     "decided": "has its decisions recorded; its spec is to follow",
     "planned": "is planned",
