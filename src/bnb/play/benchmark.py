@@ -46,8 +46,8 @@ class Benchmark:
 
 def _percentiles(values: list[float]) -> dict:
     data = np.array(values) * 1e3
-    return {f"p{q}": float(np.percentile(data, q)) for q in (50, 90, 99)} | {
-        "max": float(data.max())}
+    return {f"p{percentile}": float(np.percentile(data, percentile))
+            for percentile in (50, 90, 99)} | {"max": float(data.max())}
 
 
 def measure(session: Session, target, seconds: float, profile_frames: int,
@@ -97,9 +97,9 @@ def measure(session: Session, target, seconds: float, profile_frames: int,
         last = now
     return dict(frames=len(frame_times), frame_ms=_percentiles(frame_times),
                 tick_rate=tick_rate, real_time_rate=1.0 / loop.tick_length,
-                gpu_ms={k: float(np.mean(v)) for k, v in gpu.items()},
-                pass_cpu_ms={k: float(np.mean(v)) for k, v in cpu.items()},
-                stage_ms={k: float(np.mean(v)) for k, v in stages.items()},
+                gpu_ms={name: float(np.mean(values)) for name, values in gpu.items()},
+                pass_cpu_ms={name: float(np.mean(values)) for name, values in cpu.items()},
+                stage_ms={name: float(np.mean(values)) for name, values in stages.items()},
                 map_change=dict(frames=len(rebuild), frame_ms=_percentiles(rebuild)),
                 fog_mask=list(session.renderer.fog.size) if session.renderer.fog.size else None,
                 index_grid=dataclasses.asdict(session.renderer.fields.grid))

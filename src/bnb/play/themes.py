@@ -44,7 +44,7 @@ class Colour:
     @classmethod
     def from_floats(cls, values) -> Colour:
         """From 3 or 4 floats in [0, 1] (alpha 1 when there are 3), rounded to 8 bits."""
-        channels = [min(max(round(float(v) * 255.0), 0), 255) for v in values]
+        channels = [min(max(round(float(value) * 255.0), 0), 255) for value in values]
         return cls(*channels)
 
     def hex(self) -> str:
@@ -95,13 +95,13 @@ class Theme:
 
 
 NUMBER_FIELDS = ("fill_strength", "vortex_threshold")
-COLOUR_FIELDS = tuple(f.name for f in dataclasses.fields(Theme)
-                      if f.name != "name" and f.name not in NUMBER_FIELDS)
+COLOUR_FIELDS = tuple(field.name for field in dataclasses.fields(Theme)
+                      if field.name != "name" and field.name not in NUMBER_FIELDS)
 
 
 def parse(name: str, values: dict) -> Theme:
     """A theme from a file's table; fails on a missing, unknown or malformed value."""
-    expected = {f.name for f in dataclasses.fields(Theme)} - {"name"}
+    expected = {field.name for field in dataclasses.fields(Theme)} - {"name"}
     missing, unknown = expected - values.keys(), values.keys() - expected
     if missing or unknown:
         raise ValueError(f"theme {name}: missing {sorted(missing)}, unknown {sorted(unknown)}")
@@ -117,7 +117,7 @@ def parse(name: str, values: dict) -> Theme:
         elif field.metadata.get("pair"):
             if not isinstance(value, list) or len(value) != 2:
                 raise ValueError(f"theme {name}: {field.name} needs two colours, one per team")
-            out[field.name] = tuple(Colour.from_hex(v) for v in value)
+            out[field.name] = tuple(Colour.from_hex(code) for code in value)
         else:
             out[field.name] = Colour.from_hex(value)
     return Theme(name=name, **out)

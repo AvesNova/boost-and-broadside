@@ -54,7 +54,7 @@ class FogPass:
         """Draw the mask into its own framebuffer (the caller binds its target again).
         observers (O, 4): x, y, vision range, unused; cores (M, 4): x, y, radius squared,
         unused."""
-        width, height = (int(v) for v in camera["viewport"])
+        width, height = (int(value) for value in camera["viewport"])
         self._resize(width, height)
         self.observers = self._table(self.context, self.observers, observers)
         self.cores = self._table(self.context, self.cores, cores)
@@ -62,9 +62,9 @@ class FogPass:
         self.context.disable(moderngl.BLEND)  # the mask's one channel has no alpha to blend
         self.observers.use(0)
         self.cores.use(1)
-        set_uniforms(self.sight, **{**camera, "viewport": tuple(float(v) for v in self.size)},
-                     observers=0, observer_count=len(observers), cores=1,
-                     core_count=len(cores))
+        mask_viewport = tuple(float(value) for value in self.size)
+        set_uniforms(self.sight, **{**camera, "viewport": mask_viewport}, observers=0,
+                     observer_count=len(observers), cores=1, core_count=len(cores))
         self.sight_array.render(moderngl.TRIANGLES, vertices=3)
 
     def draw(self, camera: dict, theme: Theme) -> None:

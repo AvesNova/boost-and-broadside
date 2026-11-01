@@ -9,7 +9,7 @@ import pytest
 import torch
 
 from bnb.game.modes.rules import PRESETS
-from bnb.play.interpolate import angle_lerp, interpolate
+from bnb.play.interpolate import interpolate
 from bnb.play.loop import MatchLoop
 
 

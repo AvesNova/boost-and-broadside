@@ -22,11 +22,11 @@ const int CORNER_SAMPLE[6] = int[6](0, 0, 1, 1, 0, 1);
 const float CORNER_SIDE[6] = float[6](-1.0, 1.0, -1.0, -1.0, 1.0, 1.0);
 
 vec2 point(int ship, int k, vec4 ship_row) {
-    vec4 s = texelFetch(samples, ivec2(k, ship), 0);
-    if (!vortex) return s.xy;
+    vec4 sample_row = texelFetch(samples, ivec2(k, ship), 0);
+    if (!vortex) return sample_row.xy;
     float turn = texelFetch(turns, ivec2(k, ship), 0).r;
-    vec2 left = vec2(-sin(s.w), cos(s.w));
-    return s.xy + left * sign(turn) * ship_row.z * ship_row.y;
+    vec2 left = vec2(-sin(sample_row.w), cos(sample_row.w));
+    return sample_row.xy + left * sign(turn) * ship_row.z * ship_row.y;
 }
 
 void main() {

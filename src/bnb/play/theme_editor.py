@@ -93,7 +93,7 @@ class ThemeEditor:
         expanded, self.open = imgui.begin(f"Theme: {theme.name}###theme editor", self.open)
         if expanded:
             imgui.push_item_width(-LABEL_WIDTH)
-            fields = {f.name: f for f in dataclasses.fields(Theme)}
+            fields = {field.name: field for field in dataclasses.fields(Theme)}
             for name in COLOUR_FIELDS:
                 field = fields[name]
                 teams = (0, 1) if field.metadata.get("pair") else (None,)

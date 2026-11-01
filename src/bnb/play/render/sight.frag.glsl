@@ -34,8 +34,8 @@ bool clear_line(vec2 observer, vec2 target) {
 void main() {
     vec2 target = world_of(gl_FragCoord.xy);
     seen = 0.0;
-    for (int o = 0; o < observer_count; ++o) {
-        vec3 observer = texelFetch(observers, ivec2(o, 0), 0).xyz;
+    for (int index = 0; index < observer_count; ++index) {
+        vec3 observer = texelFetch(observers, ivec2(index, 0), 0).xyz;
         vec2 line = target - observer.xy;
         if (dot(line, line) > observer.z * observer.z) continue;
         if (clear_line(observer.xy, target)) {

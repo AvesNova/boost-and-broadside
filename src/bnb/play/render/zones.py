@@ -24,13 +24,13 @@ METER_TRACK_OPACITY = 0.2
 
 def zone_table(theme: Theme, zones: Zones, metres_per_pixel: float) -> np.ndarray:
     shown = np.flatnonzero(zones.present)
-    team = [c.floats() for c in theme.team]
+    team = [colour.floats() for colour in theme.team]
     rows = []
-    for z in shown:
-        owner, attacker = int(zones.owner[z]), int(zones.attacker[z])
+    for zone in shown:
+        owner, attacker = int(zones.owner[zone]), int(zones.attacker[zone])
         colour = np.array(team[owner] if owner >= 0 else theme.neutral.floats(), np.float32)
         disc = arcs(1)[0]
-        disc[0:3] = zones.x[z], zones.y[z], zones.radius[z]
+        disc[0:3] = zones.x[zone], zones.y[zone], zones.radius[zone]
         disc[4] = OUTLINE_PIXELS
         disc[5:9] = colour
         disc[8] = DEFENSE_TINT if attacker >= 0 else SPAWN_TINT
@@ -41,12 +41,12 @@ def zone_table(theme: Theme, zones: Zones, metres_per_pixel: float) -> np.ndarra
         if attacker < 0:
             continue
         meter_colour = np.array(team[attacker], np.float32)
-        radius = zones.radius[z] + METER_GAP_PIXELS * metres_per_pixel
-        for opacity, fraction in ((METER_TRACK_OPACITY, 1.0), (1.0, float(zones.meter[z]))):
+        radius = zones.radius[zone] + METER_GAP_PIXELS * metres_per_pixel
+        for opacity, fraction in ((METER_TRACK_OPACITY, 1.0), (1.0, float(zones.meter[zone]))):
             if fraction <= 0.0:
                 continue
             arc = arcs(1)[0]
-            arc[0:3] = zones.x[z], zones.y[z], radius
+            arc[0:3] = zones.x[zone], zones.y[zone], radius
             arc[4] = METER_PIXELS
             arc[9:13] = meter_colour
             arc[12] = opacity

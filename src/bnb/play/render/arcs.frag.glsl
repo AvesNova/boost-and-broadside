@@ -13,17 +13,17 @@ const float PI = 3.14159265;
 out vec4 colour;
 
 void main() {
-    float r = length(local);
+    float from_centre = length(local);
     float offset = mod(atan(local.y, local.x) - v_arc.x + PI, 2.0 * PI) - PI;
     float distance;
     if (abs(offset) <= v_arc.y) {
-        distance = abs(r - v_radius);
+        distance = abs(from_centre - v_radius);
     } else {
         float end = v_arc.x + sign(offset) * v_arc.y;
         distance = length(local - v_radius * vec2(cos(end), sin(end)));
     }
     float line_alpha = v_line.a * line_coverage(distance / pixel, v_width / pixel);
-    float fill_alpha = v_fill.a * clamp((v_radius - r) / pixel + 0.5, 0.0, 1.0);
+    float fill_alpha = v_fill.a * clamp((v_radius - from_centre) / pixel + 0.5, 0.0, 1.0);
     float alpha = line_alpha + fill_alpha * (1.0 - line_alpha);
     if (alpha <= 0.0) discard;
     vec3 rgb = (v_line.rgb * line_alpha + v_fill.rgb * fill_alpha * (1.0 - line_alpha)) / alpha;

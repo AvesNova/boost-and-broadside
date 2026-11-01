@@ -62,7 +62,8 @@ class Options:
         preset = PRESETS[self.preset]
         sizes = dict(ships_per_team=self.ships_per_team, num_fields=self.fields,
                      arena_radius=self.arena_radius)
-        return dataclasses.replace(preset, **{k: v for k, v in sizes.items() if v is not None})
+        return dataclasses.replace(preset, **{name: value for name, value in sizes.items()
+                                              if value is not None})
 
 
 class Session:
@@ -103,8 +104,8 @@ class Session:
 
     def _map_changed(self) -> bool:
         fields = self.loop.current.fields
-        return not all(np.array_equal(getattr(fields, k), getattr(self.map_fields, k))
-                       for k in ("x", "y", "radius", "band_width", "level"))
+        return not all(np.array_equal(getattr(fields, name), getattr(self.map_fields, name))
+                       for name in ("x", "y", "radius", "band_width", "level"))
 
     def _new_map(self, whole: bool) -> None:
         """Start the static layers of the current map: the whole index texture now, or

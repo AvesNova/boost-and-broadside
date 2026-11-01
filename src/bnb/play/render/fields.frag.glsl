@@ -33,17 +33,17 @@ vec4 catmull_rom(float t) {
 float log_index(vec2 point) {
     vec2 texel = (point - index_grid.x) / index_grid.y - 0.5;
     vec2 base = floor(texel);
-    vec2 t = texel - base;
-    vec4 wx = catmull_rom(t.x), wy = catmull_rom(t.y);
+    vec2 fraction = texel - base;
+    vec4 weight_x = catmull_rom(fraction.x), weight_y = catmull_rom(fraction.y);
     ivec2 size = textureSize(index_map, 0);
     float sum = 0.0;
     for (int j = 0; j < 4; ++j) {
         float row = 0.0;
         for (int i = 0; i < 4; ++i) {
             ivec2 at = clamp(ivec2(base) + ivec2(i - 1, j - 1), ivec2(0), size - 1);
-            row += wx[i] * texelFetch(index_map, at, 0).r;
+            row += weight_x[i] * texelFetch(index_map, at, 0).r;
         }
-        sum += wy[j] * row;
+        sum += weight_y[j] * row;
     }
     return sum;
 }

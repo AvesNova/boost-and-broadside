@@ -28,7 +28,7 @@ def ring_table(theme: Theme, x: np.ndarray, y: np.ndarray, heading: np.ndarray,
     table[:, :, 2] = size[:, None]
     table[:, :, 3] = WIDTH_FRACTION * size[:, None]
     table[:, :, 4] = MINIMUM_WIDTH_PIXELS
-    shield_colour = np.array([c.floats() for c in theme.shield], np.float32)[team]
+    shield_colour = np.array([colour.floats() for colour in theme.shield], np.float32)[team]
     energy_colour = np.array(theme.energy.floats(), np.float32)
     for arc, colour, opacity in ((0, shield_colour, TRACK_OPACITY), (1, shield_colour, 1.0),
                                  (2, energy_colour, TRACK_OPACITY), (3, energy_colour, 1.0)):
