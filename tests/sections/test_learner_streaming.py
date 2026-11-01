@@ -101,7 +101,7 @@ def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
     runner = Rollout(config, lc.POOLS, controllers, "learner", 16, LENGTH, CUDA, compile=False,
                      graph_ticks=BLOCK, host_store=True)
     trajectory = runner.run()
-    ring = runner.carry["buf"]["obs"].ships
+    ring = runner.carry["records"]["obs"].ships
     assert ring.shape[0] == 2 * BLOCK and ring.device.type == "cuda"
     assert trajectory.obs.ships.shape[0] == LENGTH and trajectory.obs.ships.device.type == "cpu"
     # The stored segment is what the captured graph wrote: unroll reproduces its decisions.

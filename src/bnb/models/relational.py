@@ -22,8 +22,15 @@ from bnb.contracts.tree import contract
 from .yemong import critic
 from .yemong.heads import critic_values
 
-DISTANCE_SCALE = 1000.0  # m
-SPEED_SCALE = 100.0  # m/s
+# Each input's typical size, so the features are of order one: a fixed scale, not a game
+# rule, and nothing breaks if a value exceeds it.
+DISTANCE_SCALE = 1000.0  # m: the pair offsets and distances
+SPEED_SCALE = 100.0  # m/s: the velocities
+ENERGY_SCALE = 1e4  # J: the energy store
+SHIELD_SCALE = 100.0  # points: the shield
+SHIELD_WAIT_SCALE = 6.0  # s: the shield's recharge wait
+GUN_COOLDOWN_RATE = 10.0  # 1/s: the gun's cooldown, in tenths of a second
+RESPAWN_WAIT_SCALE = 5.0  # s: the respawn wait
 OWN_FEATURES = 15
 OTHER_FEATURES = 10
 
@@ -78,9 +85,10 @@ def features(obs: Obs, own: int) -> torch.Tensor:
         torch.sqrt(x * x + y * y) / radius,
         velocity_forward / SPEED_SCALE, velocity_left / SPEED_SCALE,
         column["angle_of_attack"][..., me], column["nose_rate"][..., me],
-        column["energy"][..., me] / 1e4, column["shield"][..., me] / 100.0,
-        column["shield_recharge_wait"][..., me] / 6.0, column["gun_cooldown"][..., me] * 10.0,
-        column["alive"][..., me], column["respawn_wait"][..., me] / 5.0,
+        column["energy"][..., me] / ENERGY_SCALE, column["shield"][..., me] / SHIELD_SCALE,
+        column["shield_recharge_wait"][..., me] / SHIELD_WAIT_SCALE,
+        column["gun_cooldown"][..., me] * GUN_COOLDOWN_RATE,
+        column["alive"][..., me], column["respawn_wait"][..., me] / RESPAWN_WAIT_SCALE,
         column["ship_type"][..., me], column["log_refractive_index"][..., me]], -1)
 
     # Pairs (own i, row j): j relative to i, in i's heading frame.
