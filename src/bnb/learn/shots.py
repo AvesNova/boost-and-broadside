@@ -95,7 +95,7 @@ def tick(rules: Rules, types: ShipTypes, bullets: Bullets, capture: ShotCapture,
     bullets = Bullets(**{name: torch.cat([getattr(fresh, name)[..., None],
                                           getattr(bullets, name)[..., :-1]], -1)
                          for name in BULLET_FIELDS})
-    moved = move_bullets(rules, bullets, _fields(field_rows))
+    moved = move_bullets(rules, types, bullets, _fields(field_rows), capture.launch.ship_type)
     start = capture.launch
     sweep = Sweep(ship_x=start.x, ship_y=start.y, ship_displacement_x=capture.displacement_x,
                   ship_displacement_y=capture.displacement_y, bullet_x=bullets.x,

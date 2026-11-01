@@ -63,22 +63,23 @@ def sighted(cores: tuple, observers: tuple, targets: tuple) -> torch.Tensor:
 
 
 def vision_range(rules: Rules, state: State) -> torch.Tensor:
-    """(B, N) each ship's vision range (m) as an observer. One shared value for now; a
-    per-type range (the ship card) becomes a `per_ship` lookup here."""
-    return torch.full_like(state.ships.x, rules.vision_range)
+    """(B, N) each ship's vision range (m) as an observer: its type's, which reset and every
+    resolve keep in `Match.vision_range`. Takes the rules like the api's other display
+    functions."""
+    return state.match.vision_range
 
 
-def visibility(rules: Rules, state: State) -> torch.Tensor:
+def visibility(state: State) -> torch.Tensor:
     """(B, 2, N): ship n visible to team T, in sim order (game spec 10.1). Range tests use
-    d^2 <= V^2 with the observer's V. In an environment without fog every living ship is
-    visible."""
+    d^2 <= V^2 with the observer's V (`Match.vision_range`). In an environment without fog
+    every living ship is visible."""
     fields, ships = state.fields, state.ships
     core = (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)  # no flat interior: none
     cores = (fields.x, fields.y, core * core)
     observer_x, observer_y = by_team(ships.x), by_team(ships.y)
     target_x, target_y = enemy(ships.x), enemy(ships.y)
     observers = (observer_x, observer_y, core_membership(cores, observer_x, observer_y),
-                 by_team(ships.alive), by_team(vision_range(rules, state)))
+                 by_team(ships.alive), by_team(state.match.vision_range))
     seen = sighted(cores, observers, (target_x, target_y,
                                       core_membership(cores, target_x, target_y)))
     unfogged = ~state.match.fogged[:, None, None]

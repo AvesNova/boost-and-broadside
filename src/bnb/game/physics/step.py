@@ -18,7 +18,7 @@ from ..modes import phase as modes
 from ..modes.rules import FRONTLINE, ModeRules
 from ..modes.spawns import placement
 from ..rules import Rules
-from ..ship_types import ShipTypes
+from ..ship_types import ShipTypes, per_ship, ticks_between_shots
 from ..state import State, Sweep, apply, blank, replace, where
 from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits
@@ -54,11 +54,18 @@ def _placement(rules: Rules, arena: Environment, tick: TickUniforms, mode, ships
                     alive, starting, axis_x, axis_y, tick.rotation, tick.keys)
 
 
+def _vision_ranges(rules: Rules, types: ShipTypes, ship_type: torch.Tensor) -> torch.Tensor:
+    """(B, N) each ship's vision range (m), its type's: kept in the match for perception."""
+    return rules.vision_range * per_ship(types.vision_range_scale, ship_type)
+
+
 def reset(rules: Rules, types: ShipTypes, uniforms: torch.Tensor,
           fogged: torch.Tensor | None = None) -> State:
     """A fresh state from (B, U) tick uniforms: new maps and modes, every ship spawned,
     tick 0. fogged (B,) bool: which environments hide what their teams cannot see (default
-    all); it stays fixed through the episode resets that follow."""
+    all); it stays fixed through the episode resets that follow. Raises ValueError for a
+    card whose fire rate is not a whole number of ticks at the rules' tick."""
+    ticks_between_shots(types.fire_rate, rules.tick_length)  # refuses a fire rate the tick cannot keep
     B, device = uniforms.shape[0], uniforms.device
     state = blank(rules, B, device)
     arena = environment(rules, B, device)
@@ -69,7 +76,8 @@ def reset(rules: Rules, types: ShipTypes, uniforms: torch.Tensor,
     everyone = torch.ones_like(state.mode.front, dtype=torch.bool)
     place = _placement(rules, arena, tick, mode, ships, ships.alive, everyone, axis_x, axis_y)
     ships = spawn(rules, types, ships, fields, torch.ones_like(ships.alive), place)
-    match = replace(state.match, spawn_axis_x=axis_x, spawn_axis_y=axis_y)
+    match = replace(state.match, spawn_axis_x=axis_x, spawn_axis_y=axis_y,
+                    vision_range=_vision_ranges(rules, types, ships.ship_type))
     if fogged is not None:
         match = replace(match, fogged=fogged.to(torch.bool))
     return State(ships=ships, bullets=state.bullets, fields=fields, match=match, mode=mode)
@@ -85,7 +93,7 @@ def move(rules: Rules, types: ShipTypes, state: State, action: Action,
     flown = flight_tick(rules.flight, airframe, rules.tick_length, ships0, stick, power,
                         state.fields)
     ships = where(ships0.alive, flown, ships0)  # ships dead at tick start keep everything
-    bullets = move_bullets(rules, bullets0, state.fields)
+    bullets = move_bullets(rules, types, bullets0, state.fields, ships0.ship_type)
     sweep = Sweep(ship_x=ships0.x, ship_y=ships0.y, ship_displacement_x=ships.x - ships0.x,
                   ship_displacement_y=ships.y - ships0.y, bullet_x=bullets0.x,
                   bullet_y=bullets0.y, bullet_displacement_x=bullets.x - bullets0.x,
@@ -159,7 +167,8 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     place = _placement(rules, arena, tick, mode, ships, alive, done, axis_x, axis_y)
     ships = spawn(rules, types, ships, fields, due | done[:, None], place)
     match = replace(match, episode_tick=torch.where(done, 0, match.episode_tick + 1),
-                    spawn_axis_x=axis_x, spawn_axis_y=axis_y)
+                    spawn_axis_x=axis_x, spawn_axis_y=axis_y,
+                    vision_range=_vision_ranges(rules, types, ships.ship_type))
 
     events = Events(damage=damage, boundary_damage=boundary, died=died,
                     fired=state.ships.fired, spawned=ships.spawned, killer=killer, done=done,

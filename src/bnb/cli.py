@@ -1,8 +1,9 @@
-"""Command-line entry point: `bnb train ...`. The one place that sets process-wide options
-(the seed and the matmul precision)."""
+"""Command-line entry point: `bnb ...` trains, `bnb ship-card ...` charts a ship card. The one
+place that sets process-wide options (the seed, the matmul precision, the charts' backend)."""
 
 import dataclasses
 import os
+import sys
 
 import tyro
 
@@ -34,16 +35,62 @@ class Train:
     device: str = "cuda"
 
 
+@dataclasses.dataclass(frozen=True)
+class ShipCard:
+    """Print every handle, parameter and shown quantity of a ship card per type, and write its
+    charts (the Ps curve, the E-M doghouse, the similarity ratios against the P-51D). The
+    charts need the optional tools extra (uv sync --extra tools).
+
+    card: a JSON file of ship-card fields (per-type lists; missing fields keep the default);
+    the default card without one.
+    out: the directory the charts are written to.
+    """
+
+    card: str | None = None
+    out: str = "ship-card"
+
+
 def main() -> None:
+    """The `bnb` command: `bnb ship-card ...` charts a card, anything else trains."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
-    args = tyro.cli(Train)
+    if sys.argv[1:2] == ["ship-card"]:
+        os.environ.setdefault("MPLBACKEND", "Agg")  # the charts go to files: no display
+        ship_card(tyro.cli(ShipCard, args=sys.argv[2:], prog="bnb ship-card"))
+    else:
+        train(tyro.cli(Train))
+
+
+def ship_card(args: ShipCard) -> None:
+    """`bnb ship-card`: print the card's chart at 30 Hz and write its charts to args.out;
+    exits with the reason when matplotlib is missing."""
+    from bnb.contracts import GameConfig
+    from bnb.game.api import rules_of
+    from bnb.game.handling import chart
+
+    rules = rules_of(GameConfig(1, 1, 1000.0))  # flight and weapons need no arena
+    types = chart.load_card(args.card)
+    card = chart.report(rules, types)
+    print("\n".join(chart.lines(rules, types, card)))
+    try:
+        paths = chart.write_charts(rules, types, card, args.out)
+    except ImportError as error:
+        raise SystemExit(str(error)) from error
+    for path in paths:
+        print(f"wrote {path}")
+
+
+def train(args: Train) -> None:
+    """`bnb`: train with PPO on the preset (or the mode and sizes) given, logging a line
+    per update; exits with the reason for an unknown preset or an environment count that
+    the pools cannot share."""
     import torch
 
     from bnb.contracts import GameConfig
     from bnb.contracts.pools import environment_multiple
     from bnb.game.modes.rules import PRESETS
     from bnb.learn.ppo import LearnerConfig
-    from bnb.runtime.train import LINEUP, TrainConfig, mixed, set_precision, train
+    from bnb.runtime.train import LINEUP, TrainConfig, mixed, set_precision
+    from bnb.runtime.train import train as run
 
     pools = LINEUP
     if args.preset == "mixed":
@@ -76,4 +123,4 @@ def main() -> None:
               f"kl {row['approximate_kl']:+.4f}  clip {row['clip_fraction']:.3f}  "
               f"reward/s: {rewards}", flush=True)
 
-    train(cfg, torch.device(args.device), log)
+    run(cfg, torch.device(args.device), log)

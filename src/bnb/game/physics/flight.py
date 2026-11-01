@@ -1,8 +1,9 @@
 """Ship flight (game spec 3): the flight setting, the kick, and one kick-drift-kick tick.
 
 `constants` holds what every type shares (Python numbers); `airframe` the flying ships'
-own ship-card values (per-ship tensors). `stick` and `power` are the stick level sigma and
-the power mode pi as floats, not the action indices (`controls` converts).
+own ship-card values (per-ship tensors). A parameter the card scales (`ship_types.SCALED`)
+is the shared value times the ship's scale. `stick` and `power` are the stick level sigma
+and the power mode pi as floats, not the action indices (`controls` converts).
 """
 
 from typing import NamedTuple
@@ -27,6 +28,12 @@ class Airframe(NamedTuple):
     static_thrust: torch.Tensor
     max_energy: torch.Tensor
     corner_nose_frequency: torch.Tensor
+    bleed_exponent: torch.Tensor
+    induced_drag_scale: torch.Tensor
+    stall_angle_scale: torch.Tensor
+    coast_exchange_scale: torch.Tensor
+    dive_exchange_scale: torch.Tensor
+    climb_exchange_scale: torch.Tensor
     corner_speed: torch.Tensor  # sqrt(max_acceleration / max_lift_coefficient)
 
 
@@ -49,15 +56,21 @@ def engine_fall(constants: FlightConstants, airframe: Airframe, energy: torch.Te
                       .clamp(0.0, 1.0))
 
 
+def stall_angle(constants: FlightConstants, airframe: Airframe) -> torch.Tensor:
+    """alpha_s of each ship."""
+    return constants.stall_angle * airframe.stall_angle_scale
+
+
 def lift_coefficient(constants: FlightConstants, airframe: Airframe, angle: torch.Tensor):
-    ratio = (angle / constants.stall_angle).clamp(-2.0, 2.0)
+    ratio = (angle / stall_angle(constants, airframe)).clamp(-2.0, 2.0)
     return airframe.max_lift_coefficient * (2.0 * ratio - ratio * ratio.abs())
 
 
 def lift_slope(constants: FlightConstants, airframe: Airframe, angle: torch.Tensor):
-    ratio = (angle / constants.stall_angle).abs()
-    return torch.where(ratio < 2.0, (airframe.max_lift_coefficient / constants.stall_angle)
-                       * (2.0 - 2.0 * ratio), 0.0)
+    stall = stall_angle(constants, airframe)
+    ratio = (angle / stall).abs()
+    return torch.where(ratio < 2.0, (airframe.max_lift_coefficient / stall) * (2.0 - 2.0 * ratio),
+                       0.0)
 
 
 class Setting(NamedTuple):
@@ -72,8 +85,12 @@ class Setting(NamedTuple):
 def setting(constants: FlightConstants, airframe: Airframe, speed, energy, stick,
             power) -> Setting:
     fall = engine_fall(constants, airframe, energy)
-    commanded = torch.where(power == 0.0, constants.coast_exchange * (1.0 - fall),
-                            torch.where(power > 0.0, constants.climb_exchange, -constants.dive_exchange))
+    dive = constants.dive_exchange * airframe.dive_exchange_scale  # a_d
+    commanded = torch.where(power == 0.0,
+                            constants.coast_exchange * airframe.coast_exchange_scale * (1.0 - fall),
+                            torch.where(power > 0.0,
+                                        constants.climb_exchange * airframe.climb_exchange_scale,
+                                        -dive))
     lift_reach = airframe.max_lift_coefficient * speed * speed
     budget = softmin(lift_reach, airframe.max_acceleration, constants.lift_softmin_exponent)  # L
     safe_budget = budget.clamp_min(1e-12)
@@ -83,8 +100,7 @@ def setting(constants: FlightConstants, airframe: Airframe, speed, energy, stick
     flown = softmin(need, safe_budget, constants.lift_softmin_exponent) / need.clamp_min(1e-12)  # q
     lateral = lateral_command * flown
     lateral_share = (lateral.abs() / safe_budget).clamp(0.0, 1.0)  # chi
-    exchange = (commanded * torch.sqrt(1.0 - lateral_share * lateral_share) * flown
-                - (1.0 - flown) * constants.dive_exchange)
+    exchange = commanded * torch.sqrt(1.0 - lateral_share * lateral_share) * flown - (1.0 - flown) * dive
     # Fade the exchange out at the ends of the store: charging stops at the maximum,
     # spending at 0.
     fade = constants.store_fade_band * airframe.max_energy
@@ -100,10 +116,17 @@ def rates(constants: FlightConstants, airframe: Airframe, current: Setting, inde
     """(d speed / dt, d energy / dt) for a speed, lift coefficient, cos(angle of attack) and
     1/u^2 (game spec 3.4). `index` is the refractive index n."""
     induced = current.vertical_lift * inverse_speed_squared
-    drag = (airframe.zero_lift_drag + constants.induced_drag_factor
-            * (lift * lift + induced * induced)) * speed * speed
+    drag = (airframe.zero_lift_drag + constants.induced_drag_factor * airframe.induced_drag_scale
+            * bleed(airframe, lift * lift + induced * induced)) * speed * speed
     return ((current.thrust * angle_cos - drag - current.exchange) / index,
             constants.mass * speed * current.exchange / index)
+
+
+def bleed(airframe: Airframe, lift_squared: torch.Tensor) -> torch.Tensor:
+    """(C^2 + (z/u^2)^2)^(e/2) with the bleed exponent e (ship-card spec 2), written as
+    s * s^(e/2 - 1) so that it is exactly s at e = 2 (pow(x, 0) is exactly 1). The clamp
+    keeps s = 0 at 0 for any e."""
+    return lift_squared * torch.pow(lift_squared.clamp_min(1e-30), 0.5 * airframe.bleed_exponent - 1.0)
 
 
 def exponential_2x2(a11, a12, a21, a22, dt: float):
@@ -140,8 +163,8 @@ def kick(constants: FlightConstants, airframe: Airframe, ship: Ships, index, gra
                  .clamp_min(constants.nose_frequency_floor) / index)  # Omega
     reach = (current.lateral_lift.abs() * inverse_speed_squared
              / airframe.max_lift_coefficient).clamp(0.0, 1.0)
-    angle_step = (torch.sign(current.lateral_lift) * constants.stall_angle * (1.0 - torch.sqrt(1.0 - reach))
-                  - angle0)
+    angle_step = (torch.sign(current.lateral_lift) * stall_angle(constants, airframe)
+                  * (1.0 - torch.sqrt(1.0 - reach)) - angle0)
 
     # The nose oscillator, linearized about the commanded angle of attack, solved exactly.
     m11, m12, m21, m22 = exponential_2x2(

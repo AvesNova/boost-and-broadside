@@ -17,16 +17,18 @@ visible to a team when:
 - it is on that team; or
 - it is alive and it fired this tick; or
 - it is alive and it spawned this tick; or
-- it is alive and some living ship of that team is within vision range of it
-  (`Rules.vision_range`) with a clear sight line.
+- it is alive and some living ship of that team is within that observer's vision range of
+  it with a clear sight line.
 
 A **sight line** is blocked by a field's opaque core, a disc of radius
 `max(radius - band_width / 2, 0)`, when the segment passes strictly inside that disc,
 unless both ends are strictly inside the same core. Range tests compare squared
 distances. Bullets are not perceived.
 
-The vision range is per observer (`bnb.game.perception.sight.vision_range`), today one
-shared value for every ship.
+The vision range is the observer's: its type's scale (`vision_range_scale` on the
+[ship card](ship-card.md)) times the shared `Rules.vision_range`. Perception takes no card,
+so every reset and every tick write the ranges into `Match.vision_range`, which
+`bnb.game.perception.sight.visibility` reads.
 
 ## Fog of war
 

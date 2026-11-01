@@ -51,7 +51,7 @@ def test_core_radius_is_where_the_sight_test_blocks():
                         y=torch.zeros(1, 2), alive=torch.ones(1, 2, dtype=torch.bool),
                         fired=torch.zeros(1, 2, dtype=torch.bool),
                         spawned=torch.zeros(1, 2, dtype=torch.bool))
-        visible = sight.visibility(rules, replace(state, ships=ships))
+        visible = sight.visibility(replace(state, ships=ships))
         assert bool(visible[0, 0, 1]) is seen, offset
 
 
@@ -97,7 +97,7 @@ def test_a_spawn_zones_owner_is_the_team_it_protects():
 def test_visible_is_the_sight_test_in_sim_order():
     rules, state, observation = _state(GameConfig(4, 12, 2600.0), ticks=60, seed=2)
     got = api.visible(rules, observation)
-    assert torch.equal(got, sight.visibility(rules, state))
+    assert torch.equal(got, sight.visibility(state))
     assert not got.all()  # the scenario hides someone
 
 
