@@ -255,3 +255,17 @@ def test_energy_is_conserved_at_every_rate(rate, exponent):
     assert keep.sum() > N // 4
     assert ((end - start).abs() / start)[keep].max() < 1e-4
 
+
+def test_yemong_sizes_its_coding_ranges_from_the_card():
+    """The state code's ranges are the card's largest per-type values: twice the widest
+    stall angle, the longest recharge delay, and one more bin than the most ticks between
+    shots."""
+    from bnb.models.yemong.state_code import ShipStateCode
+
+    rules = api.rules_of(GameConfig(1, 1, 1000.0))
+    types = ship_types(stall_angle_scale=(1.0, 1.5), shield_recharge_delay_scale=(2.0, 1.0),
+                       fire_rate=(15.0, 5.0))
+    code = ShipStateCode(rules, types)
+    assert math.isclose(code.angle_of_attack_limit, 3.0 * rules.flight.stall_angle)
+    assert math.isclose(code.shield_delay, 2.0 * rules.shield_recharge_delay)
+    assert code.cooldown_bins == 1 + 6

@@ -3,8 +3,9 @@ groups, and back.
 
 The belief stores physical values (m, m/s, rad, s, J). Shield and energy are coded as
 fractions of the ship type's maximum, read from the ship card the model was built with.
-The gun cooldown's bins (and so its residual spreads) are one more than the card's most
-ticks between shots at the rules' tick.
+The other ranges are the card's largest over its types: the angle of attack spans twice the
+widest stall angle, the recharge wait the longest recharge delay, and the gun cooldown's
+bins (and so its residual spreads) are one more than the most ticks between shots.
 """
 
 import math
@@ -57,8 +58,11 @@ class ShipStateCode(nn.Module):
 
     def __init__(self, rules: Rules, types: ShipTypes) -> None:
         super().__init__()
-        self.angle_of_attack_limit = 2.0 * rules.flight.stall_angle
-        self.shield_delay = rules.shield_recharge_delay
+        # The shared values times the card's largest scale (exact at the default card's 1).
+        self.angle_of_attack_limit = 2.0 * rules.flight.stall_angle * float(
+            types.stall_angle_scale.max())
+        self.shield_delay = rules.shield_recharge_delay * float(
+            types.shield_recharge_delay_scale.max())
         self.tick = rules.tick_length
         self.cooldown_bins = 1 + int(ticks_between_shots(types.fire_rate, rules.tick_length).max())
         self.register_buffer("max_shield", types.max_shield.detach().clone().float())
