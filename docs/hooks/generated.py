@@ -366,7 +366,7 @@ def play_themes() -> str:
     from bnb.play import themes
 
     names = ", ".join(_code(name) + (" (the default)" if name == themes.DEFAULT else "")
-                      for name in themes.available())
+                      for name in themes.shipped_names())
     labels = [(_code(field.name), field.metadata["label"])
               for field in dataclasses.fields(themes.Theme) if field.name != "name"]
     return f"Themes: {names}.\n\n" + _table(("Value", "In the theme editor"), labels)

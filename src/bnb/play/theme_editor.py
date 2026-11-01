@@ -2,16 +2,15 @@
 
 Each colour shows its hex code, which can be typed (`#1F3A93`, or `#RRGGBBAA` where alpha
 matters); the swatch opens ImGui's picker. An edit makes a new `Theme`, which the next
-frame draws with. "Save as theme" writes it under a new name; "Revert" goes back to the
-theme's file.
+frame draws with. "Save as theme" writes it to the user's themes under a new name, and
+asks before it replaces a user theme of that name; "Revert" goes back to the theme's file.
 """
 
 import dataclasses
-import pathlib
 
 from imgui_bundle import imgui
 
-from .themes import COLOUR_FIELDS, NUMBER_FIELDS, THEMES, Colour, Theme, save
+from .themes import COLOUR_FIELDS, NUMBER_FIELDS, Colour, Library, Theme
 
 HEX_FLAGS = imgui.ColorEditFlags_.display_hex | imgui.ColorEditFlags_.input_rgb
 ALPHA_FLAGS = HEX_FLAGS | imgui.ColorEditFlags_.alpha_bar | imgui.ColorEditFlags_.alpha_preview_half
@@ -29,13 +28,45 @@ def with_colour(theme: Theme, name: str, colour: Colour, team: int | None = None
 
 
 class ThemeEditor:
-    """open: whether the panel shows. name: the name field for "Save as theme"."""
+    """open: whether the panel shows. name: the name field for "Save as theme". pending:
+    a theme waiting for the user to confirm it replaces the user theme of its name."""
 
-    def __init__(self, directory: pathlib.Path = THEMES) -> None:
-        self.directory = directory
+    def __init__(self, library: Library) -> None:
+        self.library = library
         self.open = False
         self.name = ""
-        self.message = ""
+        self.pending: Theme | None = None
+        shadowed = library.shadowed()
+        self.message = (f"ignored user themes with shipped names: {', '.join(shadowed)}"
+                        if shadowed else "")
+
+    def save_as(self, theme: Theme, name: str) -> Theme | None:
+        """Save the theme under `name`; returns the saved theme, or None when nothing was
+        written: the name is invalid (`message` says why), or a user theme has it, which
+        waits in `pending` for `confirm`."""
+        named = dataclasses.replace(theme, name=name.strip())
+        try:
+            path = self.library.user_path(named.name)
+        except ValueError as error:
+            self.message = str(error)
+            return None
+        if path.exists():
+            self.pending, self.message = named, f"replace your theme {named.name}?"
+            return None
+        return self._write(named)
+
+    def confirm(self) -> Theme | None:
+        """Replace the user theme with the pending one; returns it."""
+        named, self.pending = self.pending, None
+        return None if named is None else self._write(named)
+
+    def cancel(self) -> None:
+        self.pending, self.message = None, "not saved"
+
+    def _write(self, theme: Theme) -> Theme:
+        path = self.library.save(theme)
+        self.message = f"saved {path}"
+        return theme
 
     def _colour(self, theme: Theme, field: dataclasses.Field, team: int | None) -> Theme:
         value = getattr(theme, field.name)
@@ -75,16 +106,20 @@ class ThemeEditor:
                     theme = dataclasses.replace(theme, **{name: value})
             imgui.separator()
             _, self.name = imgui.input_text("name", self.name)
-            if imgui.button("Save as theme"):
-                try:
-                    saved = dataclasses.replace(theme, name=self.name.strip())
-                    path = save(saved, self.directory)
-                    theme, self.message = saved, f"saved {path.name}"
-                except ValueError as error:
-                    saved, self.message = None, str(error)
-            imgui.same_line()
-            if imgui.button("Revert"):
-                theme, self.message = original, f"reverted to {original.name}"
+            if self.pending is None:
+                if imgui.button("Save as theme"):
+                    saved = self.save_as(theme, self.name)
+                imgui.same_line()
+                if imgui.button("Revert"):
+                    theme, self.message = original, f"reverted to {original.name}"
+            else:
+                if imgui.button("Replace"):
+                    saved = self.confirm()
+                imgui.same_line()
+                if imgui.button("Cancel"):
+                    self.cancel()
+            if saved is not None:
+                theme = saved
             if self.message:
                 imgui.text_wrapped(self.message)
             imgui.pop_item_width()

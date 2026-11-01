@@ -33,6 +33,7 @@ dependencies = [
     { name = "imgui-bundle" },
     { name = "moderngl" },
     { name = "numpy" },
+    { name = "platformdirs" },
     { name = "torch" },
     { name = "tyro" },
 ]
@@ -58,6 +59,7 @@ requires-dist = [
     { name = "imgui-bundle", specifier = ">=1.93.0" },
     { name = "moderngl", specifier = ">=5.13.0" },
     { name = "numpy", specifier = ">=2.5" },
+    { name = "platformdirs", specifier = ">=4.3" },
     { name = "torch", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/cu132" },
     { name = "tyro", specifier = ">=1.0" },
 ]

@@ -10,6 +10,7 @@ dependencies = [
     "imgui-bundle>=1.93.0",
     "moderngl>=5.13.0",
     "numpy>=2.5",
+    "platformdirs>=4.3",
     "torch==2.15.0",
     "tyro>=1.0",
 ]

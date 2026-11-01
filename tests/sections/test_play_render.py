@@ -444,7 +444,8 @@ def test_a_hex_code_typed_into_the_editor_applies(context, tmp_path):
 
     width, height = 1280, 720
     target = context.framebuffer(color_attachments=[context.texture((width, height), 4)])
-    session = Session(Options(compile=False), context, width, height)
+    session = Session(Options(compile=False), context, width, height,
+                      library=themes.Library(tmp_path))
     session.update(1.0 / 60.0)
     session.editor.open = True
     session.draw(target)

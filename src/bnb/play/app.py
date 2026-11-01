@@ -69,7 +69,7 @@ class Session:
     """One match being watched or played, independent of any window."""
 
     def __init__(self, options: Options, context: moderngl.Context, width: int,
-                 height: int, theme_directory: pathlib.Path = themes.THEMES) -> None:
+                 height: int, library: themes.Library | None = None) -> None:
         self.loop = MatchLoop(options.game(), fogged=options.fog, compile=options.compile,
                               pilot=0 if options.fly else None)
         self.context = context
@@ -83,10 +83,10 @@ class Session:
         self.renderer = Renderer(context, width, height)
         self.camera = Camera(width, height)
         self.view = VIEWS.index(options.view)
-        self.theme_directory = theme_directory
-        self.theme_names = themes.available(theme_directory)
-        self.theme = themes.load(options.theme, theme_directory)
-        self.editor = ThemeEditor(theme_directory)
+        self.library = themes.Library() if library is None else library
+        self.theme_names = self.library.names()
+        self.theme = self.library.load(options.theme)
+        self.editor = ThemeEditor(self.library)
         self.trails = Trails(self.loop.rules.num_ships, self.loop.current.stall_angle)
         self.follow = False
         self.help = False
@@ -132,7 +132,7 @@ class Session:
     def cycle_theme(self) -> None:
         names = self.theme_names
         index = names.index(self.theme.name) if self.theme.name in names else -1
-        self.theme = themes.load(names[(index + 1) % len(names)], self.theme_directory)
+        self.theme = self.library.load(names[(index + 1) % len(names)])
 
     def resize(self, width: int, height: int) -> None:
         self.renderer.resize(width, height)
@@ -184,7 +184,7 @@ class Session:
             self.original = self._file_theme()
         self.theme, saved = self.editor.draw(self.theme, self.original)
         if saved is not None:
-            self.theme_names = themes.available(self.theme_directory)
+            self.theme_names = self.library.names()
         imgui.render()
         self.renderer.draw_imgui(imgui.get_draw_data())
 
@@ -195,7 +195,7 @@ class Session:
     def _file_theme(self) -> themes.Theme:
         """The current theme as its file holds it (what "Revert" restores)."""
         try:
-            return themes.load(self.theme.name, self.theme_directory)
+            return self.library.load(self.theme.name)
         except FileNotFoundError:
             return self.theme
 

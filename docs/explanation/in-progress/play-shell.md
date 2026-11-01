@@ -121,10 +121,12 @@ view has no fog: it draws everything and darkens nothing.
 
 ## Themes
 
-A theme is a TOML file in `src/bnb/play/themes/` holding every colour the renderer uses,
-as hex codes, plus two numbers (`bnb.play.themes.Theme`). The colours reach the shaders
-as uniforms each frame, so a change shows on the next frame. The theme editor
-(`bnb.play.theme_editor.ThemeEditor`) edits them live and saves new theme files.
+A theme is a TOML file holding every colour the renderer uses, as hex codes, plus two
+numbers (`bnb.play.themes.Theme`). The shipped themes, in `src/bnb/play/themes/`, are
+read-only; the user's live in a per-user configuration directory
+(`bnb.play.themes.Library`). The colours reach the shaders as uniforms each frame, so a
+change shows on the next frame. The theme editor (`bnb.play.theme_editor.ThemeEditor`)
+edits them live and saves new theme files to the user's directory.
 
 ## The keyboard pilot
 

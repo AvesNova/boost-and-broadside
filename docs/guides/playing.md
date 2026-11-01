@@ -58,7 +58,9 @@ follow the ship you fly. While the ship waits to respawn, the HUD shows the time
 
 ## Themes and the theme editor
 
-T cycles through the themes in `src/bnb/play/themes/`.
+T cycles through the themes: the shipped ones in `src/bnb/play/themes/`, then your own,
+which live in your configuration directory (`bnb.play.themes.USER`; on Linux,
+~/.config/boost-and-broadside/themes).
 
 <!-- generated: play-themes -->
 
@@ -67,15 +69,18 @@ E opens the theme editor, a panel with every colour of the current theme:
 - Each colour shows its hex code. Click it and type a new one (`#1F3A93`, or `#RRGGBBAA`
   for the colours whose alpha matters); the swatch next to it opens a picker you drag.
 - A change draws on the next frame.
-- **Save as theme** writes the colours to `src/bnb/play/themes/<name>.toml` under the name
-  in the name field (lowercase words joined by hyphens). The saved theme joins the T cycle.
+- **Save as theme** writes the colours to your themes as `<name>.toml`, under the name in
+  the name field (lowercase words joined by hyphens). The saved theme joins the T cycle.
+  The shipped themes are read-only, so a shipped name is refused, and replacing one of
+  your own themes asks first (Replace or Cancel).
 - **Revert** restores the colours from the theme's file.
 
 ![The theme editor and the key list, lemon and ice air](../images/play/theme-editor.png)
 
-To make a theme by hand, copy a file in `src/bnb/play/themes/` and change its values; a
-file must list every value, and `bnb.play.themes.load` names any value that is missing,
-unknown or malformed.
+To make a theme by hand, copy a file from `src/bnb/play/themes/` into your themes and
+change its values; a file must list every value, and `bnb.play.themes.load` names any
+value that is missing, unknown or malformed. A file of yours with a shipped theme's name
+is not loaded, and the theme editor says so.
 
 ## Offscreen renders
 

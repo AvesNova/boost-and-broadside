@@ -1,8 +1,13 @@
-"""Themes: the colours the renderer draws with, as data files in `themes/` (TOML).
+"""Themes: the colours the renderer draws with, as data files (TOML).
 
 Every colour is a hex code, "#RRGGBB" or "#RRGGBBAA" (alpha where it matters). A theme
 file lists every field of `Theme`, no more and no fewer; `load` checks that. The colours
 reach the shaders as uniforms each frame, so an edited theme draws on the next frame.
+
+Themes live in two places (`Library`): the shipped ones in the package's `themes/`, which
+are read-only, and the user's in a per-user configuration directory, where "Save as"
+writes. A shipped name always means the shipped theme: a user file with that name is
+listed by `Library.shadowed` and not loaded.
 """
 
 import dataclasses
@@ -10,7 +15,10 @@ import pathlib
 import re
 import tomllib
 
-THEMES = pathlib.Path(__file__).parent / "themes"
+import platformdirs
+
+SHIPPED = pathlib.Path(__file__).parent / "themes"
+USER = pathlib.Path(platformdirs.user_config_dir("boost-and-broadside")) / "themes"
 DEFAULT = "mint-pink"
 HEX = re.compile(r"#([0-9A-Fa-f]{6})([0-9A-Fa-f]{2})?")
 NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
@@ -115,16 +123,66 @@ def parse(name: str, values: dict) -> Theme:
     return Theme(name=name, **out)
 
 
-def load(name: str, directory: pathlib.Path = THEMES) -> Theme:
-    """The theme in `directory/name.toml`."""
-    with open(directory / f"{name}.toml", "rb") as file:
-        return parse(name, tomllib.load(file))
+def read(path: pathlib.Path) -> Theme:
+    """The theme in a file, named for its stem."""
+    with open(path, "rb") as file:
+        return parse(path.stem, tomllib.load(file))
 
 
-def available(directory: pathlib.Path = THEMES) -> list[str]:
-    """The theme names in a directory, the default first, then alphabetical."""
-    names = sorted(path.stem for path in directory.glob("*.toml"))
-    return sorted(names, key=lambda n: n != DEFAULT)
+def _names(directory: pathlib.Path) -> set[str]:
+    return {path.stem for path in directory.glob("*.toml")} if directory.is_dir() else set()
+
+
+def shipped_names() -> list[str]:
+    """The shipped themes, the default first, then alphabetical."""
+    return sorted(_names(SHIPPED), key=lambda name: (name != DEFAULT, name))
+
+
+@dataclasses.dataclass(frozen=True)
+class Library:
+    """The theme files: the shipped ones (read-only) and the user's (where `save`
+    writes). A test passes its own user directory."""
+
+    user_directory: pathlib.Path = USER
+
+    def names(self) -> list[str]:
+        """Every theme: the shipped ones (`shipped_names`), then the user's,
+        alphabetical."""
+        return shipped_names() + sorted(_names(self.user_directory) - _names(SHIPPED))
+
+    def shadowed(self) -> list[str]:
+        """User themes not loaded because a shipped theme has their name."""
+        return sorted(_names(self.user_directory) & _names(SHIPPED))
+
+    def path(self, name: str) -> pathlib.Path:
+        """The file a theme name loads from: the shipped one, else the user's."""
+        shipped = SHIPPED / f"{name}.toml"
+        return shipped if shipped.is_file() else self.user_directory / f"{name}.toml"
+
+    def load(self, name: str) -> Theme:
+        return read(self.path(name))
+
+    def user_path(self, name: str) -> pathlib.Path:
+        """Where `save` writes a theme of this name. Fails for a name that is not
+        lowercase words joined by hyphens, or that a shipped theme has."""
+        if NAME.fullmatch(name) is None:
+            raise ValueError(f"theme name {name!r}: use lowercase words joined by hyphens")
+        if (SHIPPED / f"{name}.toml").is_file():
+            raise ValueError(f"theme name {name!r} is a shipped theme's; choose another")
+        return self.user_directory / f"{name}.toml"
+
+    def save(self, theme: Theme) -> pathlib.Path:
+        """Write the theme to the user's directory (created if missing), replacing any
+        file of its name; returns the path."""
+        path = self.user_path(theme.name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(to_toml(theme))
+        return path
+
+
+def load(name: str) -> Theme:
+    """A theme by name, from the shipped themes or the user's (`Library()`)."""
+    return Library().load(name)
 
 
 def to_toml(theme: Theme) -> str:
@@ -141,13 +199,3 @@ def to_toml(theme: Theme) -> str:
             text = f'"{value.hex()}"'
         lines.append(f"{field.name} = {text}")
     return "\n".join(lines) + "\n"
-
-
-def save(theme: Theme, directory: pathlib.Path = THEMES) -> pathlib.Path:
-    """Write the theme to `directory/<its name>.toml`; returns the path. Names are
-    lowercase words joined by hyphens."""
-    if NAME.fullmatch(theme.name) is None:
-        raise ValueError(f"theme name {theme.name!r}: use lowercase words joined by hyphens")
-    path = directory / f"{theme.name}.toml"
-    path.write_text(to_toml(theme))
-    return path
