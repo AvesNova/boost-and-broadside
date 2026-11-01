@@ -84,8 +84,9 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     tick = match.episode_tick.float()
     global_row = torch.stack([tick / arena.episode_ticks.float(), arena.arena_radius,
                               match.fogged.float(), (match.episode_tick == 0).float()], -1)
-    mode_part, zones = per_mode(rules, B, lambda rule, mode: (mode_globals(rules, rule, mode),
-                                                              zone_rows(rule, mode)), state.mode)
+    mode_part, zones = per_mode(
+        rules, B, lambda mode_rules, mode: (mode_globals(rules, mode_rules, mode),
+                                            zone_rows(mode_rules, mode)), state.mode)
     globals_ = torch.cat([global_row[:, None].expand(B, TEAMS, -1), mode_part], -1)
     obs = Obs(ships=ship_rows(visible, since), fields=field_rows[:, None].expand(B, TEAMS, -1, -1),
               globals=globals_, zones=zones)

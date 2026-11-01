@@ -34,18 +34,18 @@ def test_zones_are_memory_tokens_after_the_fields():
     assert tokens.memory_position.shape[-2] == view.fields.shape[-2] + 5
     _, memory, _, _ = net._encode(tokens)
     assert memory.shape[-2] == view.fields.shape[-2] + 5
-    # a team deathmatch view has no zones: None and an empty part are the same
+    # a team deathmatch view has the same five slots, every one absent: the learned token
     rules = api.rules_of(cases.SQUAD)
     _, squad, _ = api.perceive(rules, api.reset(rules, api.ship_types(), api.uniforms(rules, 1)))
     squad = cases.cast(Obs(ships=squad.ships[:, 0], fields=squad.fields[:, 0],
                            globals=squad.globals[:, 0], zones=squad.zones[:, 0]), torch.float64)
-    plain = cases.model(dtype=torch.float64)
-    carry = plain.initial_carry(1, OWN, 10)
-    reset = torch.zeros(1, dtype=torch.bool)  # (a reset would draw a fresh offset)
+    assert squad.zones.shape[-2] == 5 and not squad.zones.any()
+    carry = net.initial_carry(1, OWN, 10)
     with torch.no_grad():
-        given = plain.step(carry, squad, reset)
-        left_out = plain.step(carry, dataclasses.replace(squad, zones=None), reset)
-    torch.testing.assert_close(given.policy_logits, left_out.policy_logits)
+        replay = net.step(carry, squad, torch.zeros(1, dtype=torch.bool)).replay
+        _, memory, _, _ = net._encode(net.tokens(squad, replay))
+    fields = squad.fields.shape[-2]
+    assert torch.equal(memory[0, fields:], net.encoder.absent_zone.expand(5, -1))
 
 
 def _decide(net, view):

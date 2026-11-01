@@ -49,8 +49,8 @@ class Obs:
 
     ships (..., N, len(SHIP_COLUMNS)), own team's S ships first, then by team_relative and slot;
     fields (..., M, len(FIELD_COLUMNS)); globals (..., len(GLOBAL_COLUMNS)); zones (..., Z,
-    len(ZONE_COLUMNS)), Z the batch's zone slots (0 when no environment's mode has zones; an
-    environment whose mode has none then shows absent rows).
+    len(ZONE_COLUMNS)), Z = 5 zone slots in every mode (a mode without zones shows them
+    absent).
 
     A stored batch may leave out (None) a part its model does not read.
 
@@ -62,7 +62,7 @@ class Obs:
     fields: torch.Tensor | None
     globals: torch.Tensor | None
     zones: torch.Tensor | None = None
-    SCHEMA_VERSION: ClassVar[int] = 2  # 2: zones and the mode's global columns
+    SCHEMA_VERSION: ClassVar[int] = 3  # 2: zones and the mode's global columns; 3: present
 
 
 @contract

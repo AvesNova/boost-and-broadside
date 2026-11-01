@@ -10,7 +10,7 @@ from torch.utils import _pytree
 from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool, Privileged, ticks_of
 from bnb.contracts.action import NUM_JOINT, from_joint, to_joint
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
-from bnb.contracts.pools import pool_sizes
+from bnb.contracts.pools import environments_per_pool
 
 
 def test_game_config_limits():
@@ -40,7 +40,7 @@ def test_joint_action_round_trip():
 def test_observation_schema():
     assert len(SHIP_COLUMNS) == len(set(SHIP_COLUMNS)) == 24
     assert SHIP_COLUMNS[SHIP_HIDDEN_ZERO] == "alive"
-    assert Obs.SCHEMA_VERSION == 2 and Action.SCHEMA_VERSION == 1
+    assert Obs.SCHEMA_VERSION == 3 and Action.SCHEMA_VERSION == 1
 
 
 def test_contracts_are_pytrees():
@@ -54,11 +54,11 @@ def test_contracts_are_pytrees():
 
 def test_pool_shares_must_be_whole():
     pools = (Pool("a", 0.5, ("x", "y")), Pool("b", 0.5, ("x", "x")))
-    assert pool_sizes(pools, 8) == (4, 4)
+    assert environments_per_pool(pools, 8) == (4, 4)
     with pytest.raises(ValueError):
-        pool_sizes(pools, 7)
+        environments_per_pool(pools, 7)
     with pytest.raises(ValueError):
-        pool_sizes(pools[:1], 8)
+        environments_per_pool(pools[:1], 8)
 
 
 def _controller_classes():

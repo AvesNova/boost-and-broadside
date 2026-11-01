@@ -5,8 +5,8 @@ The ring is a mirror image about the neutral zone, so team 1 lists the zones in 
 cyclic order, zone (-z) mod 5 in row z: at front 0 both views read neutral, own spawn, own
 defense, enemy defense, enemy spawn, and nothing in the rows reveals the seat.
 
-Both functions take one mode and run on its slice of the batch. A mode without zones in a
-batch with zone slots shows them absent: present 0 and every other column 0."""
+Both functions take one mode and run on its slice of the batch. A mode without zones shows
+its zone slots absent: present 0 and every other column 0."""
 
 import torch
 
@@ -20,18 +20,17 @@ from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
 MODE_GLOBALS = GLOBAL_COLUMNS[GLOBAL_COLUMNS.index("mode_team_deathmatch"):]
 
 
-def zone_rows(rule: ModeRules, mode: ModeState) -> torch.Tensor:
-    """(B, 2, Z, len(ZONE_COLUMNS)) in ZONE_COLUMNS order (Z = 0 when no mode of the batch
-    has zones; absent rows outside Frontline).
+def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
+    """(B, 2, Z, len(ZONE_COLUMNS)) in ZONE_COLUMNS order (absent rows outside Frontline).
 
     direction: the meter's movement this tick, +1 toward the viewer's capture (a meter
     rising on the zone the viewer attacks, or falling on the one it defends), -1 toward
     the enemy's, 0 still."""
     role = mode.role
     B, Z = role.shape
-    if Z == 0 or rule.name != FRONTLINE:
+    if mode_rules.name != FRONTLINE:
         return torch.zeros((B, TEAMS, Z, len(ZONE_COLUMNS)), device=role.device)
-    offensive, defensive = frontline.terminal_distances(mode.front, rule.front_threshold)
+    offensive, defensive = frontline.terminal_distances(mode.front, mode_rules.front_threshold)
     present = torch.ones_like(mode.progress)
     team0_attacks = torch.where(role == frontline.TEAM1_DEFENSE, 1,
                                 torch.where(role == frontline.TEAM0_DEFENSE, -1, 0))
@@ -47,15 +46,15 @@ def zone_rows(rule: ModeRules, mode: ModeState) -> torch.Tensor:
     return torch.stack([team0, team1[:, mirrored]], 1)
 
 
-def mode_globals(rules: Rules, rule: ModeRules, mode: ModeState) -> torch.Tensor:
+def mode_globals(rules: Rules, mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
     """(B, 2, len(MODE_GLOBALS)): the mode one-hot, the scores by team_relative and the
     winning score, the front (positive for the viewer) and the winning front."""
     B = mode.front.shape[0]
     zero = torch.zeros(B, device=mode.front.device)
-    name = rule.name
+    name = mode_rules.name
     score = mode.score.float()
-    target = rule.kills_per_ship * rules.ships_per_team if name == TEAM_DEATHMATCH else 0
-    threshold = rule.front_threshold if name == FRONTLINE else 0
+    target = mode_rules.kills_per_ship * rules.ships_per_team if name == TEAM_DEATHMATCH else 0
+    threshold = mode_rules.front_threshold if name == FRONTLINE else 0
     front = mode.front.float()
     views = [torch.stack([zero + float(name == TEAM_DEATHMATCH), zero + float(name == FRONTLINE),
                           score[:, view], score[:, 1 - view], zero + float(target),

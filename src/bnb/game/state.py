@@ -94,12 +94,12 @@ class Match:
 @contract
 class ModeState:
     """The mode's part of the match (modes spec 6). score (B, 2) int32, deaths scored per
-    team (team deathmatch). Frontline, with Z zones (Z = 0 in other modes): front (B,)
-    int32, captures ahead for team 0; the zones' centres and radii (B, Z); role (B, Z)
-    int32 in team 0's frame; progress (B, Z), the meters; movement (B, Z) int32, the
-    sign of each meter's progress change this tick (0 on a completion); attack_ledger and
-    defense_ledger (B, Z, N), the attempt ledgers; handedness (B,) +-1 and ring_rotation
-    (B,) rad, the ring's draw."""
+    team (team deathmatch). Frontline, with Z = 5 zone slots (absent, zero, in other
+    modes): front (B,) int32, captures ahead for team 0; the zones' centres and radii
+    (B, Z); role (B, Z) int32 in team 0's frame; progress (B, Z), the meters; movement
+    (B, Z) int32, the sign of each meter's progress change this tick (0 on a completion);
+    attack_ledger and defense_ledger (B, Z, N), the attempt ledgers; handedness (B,) +-1
+    and ring_rotation (B,) rad, the ring's draw."""
 
     score: torch.Tensor
     front: torch.Tensor

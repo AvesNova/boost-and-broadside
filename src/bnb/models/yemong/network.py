@@ -33,7 +33,7 @@ class Encoder(nn.Module):
     the fixed reference arm (tests/reference/yemong) builds one from five arguments and
     loads its fixture weights strictly, with no zone kind. Yemong always passes it.
 
-    An absent zone (a mode without zones in a batch with zone slots, mixed spec 4) is one
+    An absent zone (a zone slot of a mode without zones, mixed spec 4) is one
     learned map-memory token, `absent_zone`, selected where the zone is not present; the
     projection's output for its row is discarded. No mask, so the fused attention kernel
     stays usable."""
@@ -45,13 +45,13 @@ class Encoder(nn.Module):
         self.field = KindProjection(field_inputs, 2 * width)
         self.global_token = KindProjection(global_inputs, 2 * width)
         self.zone = KindProjection(zone_inputs, 2 * width) if zone_inputs else None
-        # At the scale of a normalised memory token (RMS 1), where the norm is well
-        # conditioned (at zero its gradient is 1 / sqrt(eps)).
-        self.absent_zone = nn.Parameter(torch.randn(map_width)) if zone_inputs else None
         self.shared = nn.Linear(2 * width, width)
         self.shared_norm = norm(width)
         self.map_memory = nn.Linear(width, map_width, bias=False)
         self.map_memory_norm = norm(map_width)
+        # Uninitialised here (no random draw): the model initialises it after every other
+        # layer, so theirs do not depend on it.
+        self.absent_zone = nn.Parameter(torch.empty(map_width)) if zone_inputs else None
 
     def _shared(self, tokens: torch.Tensor) -> torch.Tensor:
         return self.shared_norm(self.shared(tokens))

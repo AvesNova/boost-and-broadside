@@ -358,7 +358,9 @@ def test_mode_rows_do_not_reveal_the_seat(mode):
     shown = [ZONE[name] for name in ("radius", "role", "progress", "direction",
                                      "offensive_distance", "defensive_distance")]
     assert torch.equal(zones[:, 0][..., shown], zones[:, 1][..., shown])
-    if zones.shape[2]:
+    assert torch.equal(zones[..., ZONE["present"]] == 1,
+                       torch.full(zones.shape[:-1], config.mode == "frontline"))
+    if config.mode == "frontline":
         assert torch.equal(zones[0, :, :, ZONE["role"]],
                            torch.tensor([[2.0, 0, 1, 3, 4]] * 2))
         angle = torch.atan2(zones[..., ZONE["y"]], zones[..., ZONE["x"]])
@@ -367,7 +369,7 @@ def test_mode_rows_do_not_reveal_the_seat(mode):
         assert ((counterclockwise > 0.4) & (counterclockwise < 0.6)).all(), counterclockwise
     for _, _, after in cases.play(config, batch=8, ticks=120, seed=19):
         _, obs, _ = api.perceive(rules, after)
-        if obs.zones.shape[2]:
+        if config.mode == "frontline":
             for view, sign in ((0, 1), (1, -1)):
                 want = frontline.roles_from_front(sign * after.mode.front).float()
                 assert torch.equal(obs.zones[:, view, :, ZONE["role"]], want)
@@ -752,7 +754,7 @@ def test_deathmatch_globals_carry_the_scores_by_team_relative():
     assert (g[..., GLOBAL["score_target"]] == 25).all()
     assert (g[..., GLOBAL["mode_team_deathmatch"]] == 1).all()
     assert (g[..., GLOBAL["mode_frontline"]] == 0).all() and (g[..., GLOBAL["front"]] == 0).all()
-    assert obs.zones.shape == (2, 2, 0, len(ZONE))
+    assert obs.zones.shape == (2, 2, 5, len(ZONE)) and not obs.zones.any()  # absent slots
 
 
 # ------------------------------------------------------------------ compiled

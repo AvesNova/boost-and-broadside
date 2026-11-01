@@ -5,8 +5,7 @@ a new match's mode state and map.
 
 Each hook takes one mode (static, `ModeRules`) and runs on that mode's slice of the batch
 (`layout.per_mode`): it dispatches on the mode's name, so a slice holds one mode's rules. A
-slice of a batch with zone slots (Z = 5) but a mode without zones leaves them absent: zero,
-and untouched.
+mode without zones leaves its zone slots (Z = 5 in every mode) absent: zero, and untouched.
 """
 
 import math
@@ -43,24 +42,24 @@ def _inside(mode: ModeState, ships: Ships) -> torch.Tensor:
                                      mode.zone_radius)
 
 
-def mode_phase(rules: Rules, rule: ModeRules, mode: ModeState, ships: Ships, alive: torch.Tensor,
-               died: torch.Tensor) -> Phase:
+def mode_phase(rules: Rules, mode_rules: ModeRules, mode: ModeState, ships: Ships,
+               alive: torch.Tensor, died: torch.Tensor) -> Phase:
     """ships: after the moves; alive (B, N): alive after the damage phase; died (B, N)."""
     zero = torch.zeros_like(ships.x)
     no = torch.zeros_like(mode.front, dtype=torch.bool)
-    if rule.name == TEAM_DEATHMATCH:
+    if mode_rules.name == TEAM_DEATHMATCH:
         # Every death scores for the other team, whatever its cause.
         deaths = by_team(died.to(torch.int32)).sum(-1)  # (B, 2) by the dead ship's team
         score = mode.score + deaths.flip(-1)
-        reached = score >= rule.kills_per_ship * rules.ships_per_team
+        reached = score >= mode_rules.kills_per_ship * rules.ships_per_team
         result = reached[:, 0].to(torch.int32) - reached[:, 1].to(torch.int32)  # both: a draw
         return Phase(replace(mode, score=score), zero, zero, reached.any(-1), result)
-    if rule.name == FRONTLINE:
+    if mode_rules.name == FRONTLINE:
         team = _team(rules, ships.x.device)
         inside = _inside(mode, ships) & alive[..., None]
         capture = frontline.capture_step(team, alive, inside, mode.role, mode.progress,
                                          mode.attack_ledger, mode.defense_ledger, mode.front,
-                                         rules.tick_length, rule.capture_seconds)
+                                         rules.tick_length, mode_rules.capture_seconds)
         held = frontline.zone_progress_events(team, inside, capture.roles, mode.progress,
                                               capture.progress, capture.team0_captured,
                                               capture.team1_captured)
@@ -72,44 +71,44 @@ def mode_phase(rules: Rules, rule: ModeRules, mode: ModeState, ships: Ships, ali
                         progress=capture.progress, movement=movement.to(torch.int32),
                         attack_ledger=capture.attack_ledger,
                         defense_ledger=capture.defense_ledger)
-        won = capture.front.abs() >= rule.front_threshold
+        won = capture.front.abs() >= mode_rules.front_threshold
         return Phase(state, held.sum(-1), capture.gain - capture.loss, won,
                      torch.sign(capture.front).to(torch.int32))
     return Phase(mode, zero, zero, no, torch.zeros_like(mode.front))
 
 
-def clock_result(rule: ModeRules, mode: ModeState) -> torch.Tensor:
+def clock_result(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
     """(B,) int32: the result for team 0 when the clock ends the match."""
-    if rule.name == TEAM_DEATHMATCH:
+    if mode_rules.name == TEAM_DEATHMATCH:
         return torch.sign(mode.score[:, 0] - mode.score[:, 1]).to(torch.int32)
-    if rule.name == FRONTLINE:
+    if mode_rules.name == FRONTLINE:
         return frontline.timeout_result(mode.front).to(torch.int32)
     return torch.zeros_like(mode.front)
 
 
-def protected(rules: Rules, rule: ModeRules, mode: ModeState, ships: Ships) -> torch.Tensor:
+def protected(rules: Rules, mode_rules: ModeRules, mode: ModeState, ships: Ships) -> torch.Tensor:
     """(B, N): hits on these ships deal no damage (Frontline: inside the own team's spawn
     zone, by the roles at tick start and the post-move position; other modes: none)."""
-    if rule.name != FRONTLINE:
+    if mode_rules.name != FRONTLINE:
         return torch.zeros_like(ships.alive)
     own = torch.stack([mode.role == frontline.TEAM0_SPAWN, mode.role == frontline.TEAM1_SPAWN],
                       1).repeat_interleave(rules.ships_per_team, 1)  # (B, N, Z)
     return (_inside(mode, ships) & own).any(-1)
 
 
-def new_match(rule: ModeRules, arena_radius: torch.Tensor, map_scale: torch.Tensor,
+def new_match(mode_rules: ModeRules, arena_radius: torch.Tensor, map_scale: torch.Tensor,
               uniforms: torch.Tensor, map_uniforms: torch.Tensor, fields: Fields,
               blank: ModeState) -> tuple[ModeState, Fields]:
     """A new match's mode state and map from the mode's tick uniforms (B, U_mode) and the
     environments' arena radius and map scale (B,): the drawn point-symmetric fields as they
     are, or, in Frontline, a random ring (rotation, then handedness) with fields mirrored
     about its neutral axis."""
-    if rule.name != FRONTLINE:
+    if mode_rules.name != FRONTLINE:
         return blank, fields
     rotation = 2.0 * math.pi * uniforms[:, 0]
     handedness = torch.where(uniforms[:, 1] < 0.5, 1.0, -1.0)
     zone_x, zone_y, radius = frontline.zone_ring(
-        arena_radius, rule.zone_radius * map_scale, rule.zone_ring_fraction, rotation,
+        arena_radius, mode_rules.zone_radius * map_scale, mode_rules.zone_ring_fraction, rotation,
         handedness)
     roles = frontline.roles_from_front(blank.front)
     state = replace(blank, zone_x=zone_x, zone_y=zone_y, zone_radius=radius, role=roles,

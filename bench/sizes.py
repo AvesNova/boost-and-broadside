@@ -26,6 +26,13 @@ def draw(seed: int, count: int) -> list[dict]:
     return out
 
 
-def envs_for(size: dict, budget: int = SHIP_BUDGET) -> int:
-    """Environments for a ship budget, rounded to a multiple of 8 (pool shares are eighths)."""
-    return max(8, 8 * round(budget / (2 * size["ships_per_team"]) / 8))
+def envs_for(size: dict, budget: int = SHIP_BUDGET, preset: str | None = None) -> int:
+    """Environments for a ship budget, rounded to a whole multiple of what the pools need:
+    8 for the skeleton lineup (its shares are eighths), 64 for the mixed preset."""
+    multiple = 8
+    if preset == "mixed":
+        from bnb.contracts.pools import environment_multiple
+        from bnb.runtime.train import mixed
+
+        multiple = environment_multiple(mixed()[1])
+    return max(multiple, multiple * round(budget / (2 * size["ships_per_team"]) / multiple))

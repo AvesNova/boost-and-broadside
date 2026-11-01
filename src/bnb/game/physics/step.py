@@ -30,9 +30,9 @@ def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, blank_mod
     """Each environment's new map and mode state (the mode's map on its own slices)."""
     fields, axis_x, axis_y = new_map(rules, arena.arena_radius, arena.map_scale, tick.map)
 
-    def match(rule: ModeRules, arena, uniforms, map_uniforms, fields, blank_mode):
-        return modes.new_match(rule, arena.arena_radius, arena.map_scale,
-                               uniforms[:, :rule.uniform_count(rules.num_ships)], map_uniforms,
+    def match(mode_rules: ModeRules, arena, uniforms, map_uniforms, fields, blank_mode):
+        return modes.new_match(mode_rules, arena.arena_radius, arena.map_scale,
+                               uniforms[:, :mode_rules.uniform_count(rules.num_ships)], map_uniforms,
                                fields, blank_mode)
 
     mode, fields = per_mode(rules, tick.map.shape[0], match, arena, tick.mode, tick.map, fields,
@@ -44,10 +44,10 @@ def _placement(rules: Rules, arena: Environment, tick: TickUniforms, mode, ships
                starting, axis_x, axis_y):
     """Every ship's spawn placement by its environment's mode (selected later by the mask)."""
 
-    def place(rule: ModeRules, arena, uniforms, mode, x, y, alive, starting, axis_x, axis_y,
+    def place(mode_rules: ModeRules, arena, uniforms, mode, x, y, alive, starting, axis_x, axis_y,
               rotation, keys):
-        return placement(rules, rule, arena.arena_radius, arena.map_scale,
-                         uniforms[:, :rule.uniform_count(rules.num_ships)], mode, x, y, alive,
+        return placement(rules, mode_rules, arena.arena_radius, arena.map_scale,
+                         uniforms[:, :mode_rules.uniform_count(rules.num_ships)], mode, x, y, alive,
                          starting, axis_x, axis_y, rotation, keys)
 
     return per_mode(rules, alive.shape[0], place, arena, tick.mode, mode, ships.x, ships.y,
@@ -107,7 +107,7 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     hit = hits(rules, types, sweep, ships, bullets, alive0)
     damage, first_shooter = hit.damage, hit.first_shooter
     if any(mode.name == FRONTLINE for mode in rules.modes):  # the only mode that protects
-        guarded = per_mode(rules, B, lambda rule, mode, ships: modes.protected(rules, rule, mode,
+        guarded = per_mode(rules, B, lambda mode_rules, mode, ships: modes.protected(rules, mode_rules, mode,
                                                                                ships),
                            state.mode, ships)
         damage = torch.where(guarded[:, None, :], 0.0, damage)
@@ -120,9 +120,9 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     # The mode phase: the mode state, the objective events, and whether the match is won.
     alive = alive0 & ~died
 
-    def mode_phase(rule: ModeRules, mode, ships, alive, died):
-        phase = modes.mode_phase(rules, rule, mode, ships, alive, died)
-        return phase, modes.clock_result(rule, phase.mode)
+    def mode_phase(mode_rules: ModeRules, mode, ships, alive, died):
+        phase = modes.mode_phase(rules, mode_rules, mode, ships, alive, died)
+        return phase, modes.clock_result(mode_rules, phase.mode)
 
     phase, clock_result = per_mode(rules, B, mode_phase, state.mode, ships, alive, died)
     done = (match.episode_tick + 1 >= arena.episode_ticks) | phase.won

@@ -12,9 +12,9 @@ import dataclasses
 import math
 
 from bnb.contracts import GameConfig, Pool, ticks_of
-from bnb.contracts.pools import pool_game, pool_sizes
+from bnb.contracts.pools import environments_per_pool, pool_game
 
-from .modes.rules import CLOCKS, ModeRules, mode_rules_of
+from .modes.rules import CLOCKS, ZONE_SLOTS, ModeRules, mode_rules_of
 
 TEAMS = 2
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
@@ -109,9 +109,9 @@ class Rules:
 
     @property
     def num_zones(self) -> int:
-        """Zone slots in every environment: Frontline's five if any pool plays it (an
-        environment of another mode leaves them absent), else none."""
-        return max(mode.num_zones for mode in self.modes)
+        """Zone slots in every environment, whatever its mode (a mode without zones leaves
+        them absent)."""
+        return ZONE_SLOTS
 
     @property
     def map_uniform_count(self) -> int:
@@ -157,7 +157,7 @@ def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | N
     if not pools:
         games = (_pool_rules(None, config, tick_length),)
     else:
-        sizes = pool_sizes(pools, num_envs)
+        sizes = environments_per_pool(pools, num_envs)
         merged: list[PoolRules] = []
         for size, pool in zip(sizes, pools):
             game = _pool_rules(size, pool_game(config, pool), tick_length)

@@ -15,13 +15,16 @@ import torch
 from bnb.contracts import GameConfig, Pool
 from bnb.controllers.model import ModelController
 from bnb.controllers.scripted import Chaser, Random
-from bnb.game.modes.rules import PRESETS, TRAINING_MIX
+from bnb.game.modes.rules import PRESETS
 from bnb.learn.ppo import PPO, PPOConfig
 from bnb.models.mlp import MLP
 
 from .rollout import Rollout
 
 LEARNER = "learner"
+# The default training mix (mixed spec 1, a proposal): each game preset's share of the batch.
+# The battle map is 25% of team deathmatch.
+TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.375), ("deathmatch_wide", 0.125))
 LINEUP = (
     Pool("self_play", 0.5, (LEARNER, LEARNER)),
     Pool("league_0", 0.25, (LEARNER, "league_0")),

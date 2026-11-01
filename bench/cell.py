@@ -1,7 +1,8 @@
 """One benchmark cell in its own process; prints `RESULT {json}`.
 
 train: build the trainer (compile), run one episode of rollouts to reach a steady state
-(staggered clocks, combat under way), then time rollouts and updates.
+(staggered clocks, combat under way), then time rollouts and updates. A train cell may name
+a training preset instead of a size ("preset": a game preset, or "mixed").
 realtime: CPU, one match, the latency of one tick.
 """
 
@@ -20,19 +21,31 @@ from bnb.contracts import GameConfig  # noqa: E402
 TIMED = 3
 
 
-def train_cell(size: dict, envs: int) -> dict:
-    from bnb.runtime.train import TrainConfig, Trainer
+def train_config(size: dict | None, envs: int, preset: str | None):
+    from bnb.game.modes.rules import PRESETS
+    from bnb.runtime.train import TrainConfig, mixed
+
+    if preset == "mixed":
+        game, pools = mixed()
+        return TrainConfig(game=game, pools=pools, num_envs=envs)
+    game = PRESETS[preset] if preset is not None else GameConfig(**size)
+    return TrainConfig(game=game, num_envs=envs)
+
+
+def train_cell(size: dict | None, envs: int, preset: str | None = None) -> dict:
+    from bnb.runtime.train import Trainer
 
     torch.manual_seed(0)
     dev = torch.device("cuda")
     torch.cuda.reset_peak_memory_stats(dev)
-    cfg = TrainConfig(game=GameConfig(**size), num_envs=envs)
+    cfg = train_config(size, envs, preset)
     t0 = time.perf_counter()
     trainer = Trainer(cfg, dev)
     trainer.update()  # compiles the rollout stages, the graph and the learner
     torch.cuda.synchronize()
     compile_s = time.perf_counter() - t0
-    for _ in range(math.ceil(trainer.rollout.rules.episode_ticks / cfg.length)):  # one episode
+    episode_ticks = max(pool.episode_ticks for pool in trainer.rollout.rules.pools)
+    for _ in range(math.ceil(episode_ticks / cfg.length)):  # one episode
         trainer.collect()
     rollout_s, learn_s = [], []
     for _ in range(TIMED):
@@ -78,5 +91,6 @@ def realtime_cell(size: dict, steps: int = 1000) -> dict:
 if __name__ == "__main__":
     cell = json.loads(sys.argv[1])
     fn = train_cell if cell["kind"] == "train" else realtime_cell
-    args = (cell["size"], cell["envs"]) if cell["kind"] == "train" else (cell["size"],)
+    args = (cell.get("size"), cell["envs"], cell.get("preset")) if cell["kind"] == "train" \
+        else (cell["size"],)
     print("RESULT " + json.dumps(dict(cell=cell, **fn(*args))), flush=True)

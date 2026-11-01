@@ -3,7 +3,7 @@
 import torch
 
 from bnb.contracts import Pool
-from bnb.contracts.pools import pool_sizes
+from bnb.contracts.pools import environments_per_pool
 
 
 class Lineup:
@@ -17,7 +17,7 @@ class Lineup:
     """
 
     def __init__(self, pools: tuple[Pool, ...], num_envs: int, device: torch.device) -> None:
-        sizes = pool_sizes(pools, num_envs)
+        sizes = environments_per_pool(pools, num_envs)
         env: dict[str, list[int]] = {}
         role: dict[str, list[int]] = {}
         pool_of: dict[str, list[int]] = {}

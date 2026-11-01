@@ -2,6 +2,8 @@
 environments."""
 
 import dataclasses
+import math
+from fractions import Fraction
 
 from .config import GameConfig
 
@@ -41,7 +43,18 @@ def pool_game(config: GameConfig, pool: Pool) -> GameConfig:
     return dataclasses.replace(config, **given)
 
 
-def pool_sizes(pools: tuple[Pool, ...], num_envs: int) -> tuple[int, ...]:
+def environment_multiple(pools: tuple[Pool, ...]) -> int:
+    """The smallest batch the pools split into whole environments (with whole fogged
+    shares); every batch size they accept is a multiple of it."""
+    multiple = 1
+    for pool in pools:
+        share = Fraction(pool.share).limit_denominator(1 << 20)
+        fogged = share * Fraction(pool.fog_share).limit_denominator(1 << 20)
+        multiple = math.lcm(multiple, share.denominator, fogged.denominator)
+    return multiple
+
+
+def environments_per_pool(pools: tuple[Pool, ...], num_envs: int) -> tuple[int, ...]:
     """Environments per pool. Each share times num_envs must be a whole number and the
     shares must sum to 1, or this fails."""
     sizes = []
