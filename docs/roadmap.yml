@@ -69,3 +69,8 @@
   status: specified
   spec: docs/rewrite/sections/play-spec.md
   page: explanation/in-progress/play-shell.md
+- section: "11"
+  title: Runs and checkpoints
+  status: decided
+  spec: docs/rewrite/sections/runs.md
+  page: explanation/in-progress/runs.md
