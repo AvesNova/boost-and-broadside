@@ -12,13 +12,9 @@ import numpy as np
 import torch
 
 from bnb.contracts import Obs
-from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.contracts.obs import GLOBAL
+from bnb.game import api
 from bnb.game.api import Rules, ShipTypes, State
-from bnb.game.modes.frontline import TEAM0_DEFENSE, TEAM0_SPAWN, TEAM1_DEFENSE, TEAM1_SPAWN
-from bnb.game.perception.observe import view_order
-from bnb.game.perception.sight import vision_range
-from bnb.game.rules import LN_SQRT2, TEAMS
-from bnb.game.ship_types import per_ship
 
 
 @dataclasses.dataclass(frozen=True)
@@ -66,7 +62,7 @@ class Bullets:
 @dataclasses.dataclass(frozen=True)
 class Fields:
     """(M,): centre, radius and band width (m), level, and the core radius (m), the disc
-    that blocks sight (`core_radius`)."""
+    that blocks sight (`bnb.game.api.core_radius`)."""
 
     x: np.ndarray
     y: np.ndarray
@@ -97,10 +93,9 @@ class Zones:
 class Snapshot:
     """One tick of one match. tick: ticks into the episode; clock and episode_length in
     seconds. score (2,) by team and score_target (team deathmatch); front (positive for
-    team 0) and front_threshold (Frontline). reset: the episode (and its map) started on
-    this tick, so the static layers rebuild and nothing interpolates into it.
-    log_index_per_level: ln n per field level; stall_angle (rad): the game's constants the
-    drawing scales by."""
+    team 0) and front_threshold (Frontline). fogged: the match hides what each team cannot
+    see (without it a team's view has no fog). log_index_per_level: ln n per field level;
+    stall_angle (rad): the game's constants the drawing scales by."""
 
     ships: Ships
     bullets: Bullets
@@ -116,16 +111,9 @@ class Snapshot:
     score_target: int
     front: int
     front_threshold: int
-    reset: bool
+    fogged: bool
     log_index_per_level: float
     stall_angle: float
-
-
-def core_radius(radius: torch.Tensor, band_width: torch.Tensor) -> torch.Tensor:
-    """The radius of a field's core, the disc that blocks sight: the one
-    `bnb.game.perception.sight.visibility` builds from the fields (a test holds the two
-    together)."""
-    return (radius - 0.5 * band_width).clamp_min(0.0)
 
 
 def _numpy(value: torch.Tensor) -> np.ndarray:
@@ -137,22 +125,19 @@ def _ships(rules: Rules, types: ShipTypes, state: State, observation: Obs) -> Sh
     heading = torch.atan2(ships.heading_sin, ships.heading_cos)
     angle_of_attack = ships.angle_of_attack
     flight_path = heading - angle_of_attack
-    order = view_order(rules.ships_per_team, ships.x.device)  # (2, N) sim index of each row
-    seen = observation.ships[0, :, :, SHIP["visible"]] > 0.5  # (2, N) by row
-    visible = torch.zeros_like(seen)
-    visible[torch.arange(TEAMS)[:, None], order] = seen
     team = torch.arange(rules.num_ships) // rules.ships_per_team
     return Ships(
         x=_numpy(ships.x[0]), y=_numpy(ships.y[0]), heading=_numpy(heading[0]),
         flight_path=_numpy(torch.remainder(flight_path[0] + math.pi, 2 * math.pi) - math.pi),
         angle_of_attack=_numpy(angle_of_attack[0]), nose_rate=_numpy(ships.nose_rate[0]),
-        shield=_numpy((ships.shield / per_ship(types.max_shield, ships.ship_type))[0]),
-        energy=_numpy((ships.energy / per_ship(types.max_energy, ships.ship_type))[0]),
+        shield=_numpy((ships.shield / api.per_ship(types.max_shield, ships.ship_type))[0]),
+        energy=_numpy((ships.energy / api.per_ship(types.max_energy, ships.ship_type))[0]),
         alive=_numpy(ships.alive[0]), team=_numpy(team), ship_type=_numpy(ships.ship_type[0]),
         fired=_numpy(ships.fired[0]), spawned=_numpy(ships.spawned[0]),
         respawn_wait=_numpy(ships.respawn_wait[0].float() * rules.tick_length),
-        hit_radius=_numpy(per_ship(types.hit_radius, ships.ship_type)[0]),
-        vision_range=_numpy(vision_range(rules, state)[0]), visible=_numpy(visible))
+        hit_radius=_numpy(api.per_ship(types.hit_radius, ships.ship_type)[0]),
+        vision_range=_numpy(api.vision_range(rules, state)[0]),
+        visible=_numpy(api.visible(rules, observation)[0]))
 
 
 def _bullets(rules: Rules, state: State) -> Bullets:
@@ -171,16 +156,14 @@ def _fields(state: State) -> Fields:
     fields = state.fields
     return Fields(x=_numpy(fields.x[0]), y=_numpy(fields.y[0]), radius=_numpy(fields.radius[0]),
                   band_width=_numpy(fields.band_width[0]), level=_numpy(fields.level[0]),
-                  core_radius=_numpy(core_radius(fields.radius, fields.band_width)[0]))
+                  core_radius=_numpy(api.core_radius(state)[0]))
 
 
 def _zones(rules: Rules, state: State) -> Zones:
     mode = state.mode
     role = mode.role[0]
     present = torch.full_like(role, rules.pools[0].mode.name == "frontline", dtype=torch.bool)
-    owner = torch.where((role == TEAM0_SPAWN) | (role == TEAM0_DEFENSE), 0,
-                        torch.where((role == TEAM1_SPAWN) | (role == TEAM1_DEFENSE), 1, -1))
-    attacker = torch.where(role == TEAM0_DEFENSE, 1, torch.where(role == TEAM1_DEFENSE, 0, -1))
+    owner, attacker = (side[0] for side in api.zone_sides(state))
     return Zones(x=_numpy(mode.zone_x[0]), y=_numpy(mode.zone_y[0]),
                  radius=_numpy(mode.zone_radius[0]), role=_numpy(role),
                  meter=_numpy(mode.progress[0]), owner=_numpy(torch.where(present, owner, -1)),
@@ -201,4 +184,5 @@ def snapshot(rules: Rules, types: ShipTypes, state: State, observation: Obs) -> 
         episode_length=pool.episode_ticks * rules.tick_length, tick_length=rules.tick_length,
         score=_numpy(state.mode.score[0]), score_target=int(globals_[GLOBAL["score_target"]]),
         front=int(state.mode.front[0]), front_threshold=int(globals_[GLOBAL["front_threshold"]]),
-        reset=tick == 0, log_index_per_level=LN_SQRT2, stall_angle=rules.flight.stall_angle)
+        fogged=bool(state.match.fogged[0]), log_index_per_level=api.LN_SQRT2,
+        stall_angle=rules.flight.stall_angle)

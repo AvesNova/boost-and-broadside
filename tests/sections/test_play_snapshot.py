@@ -1,5 +1,5 @@
-"""The render snapshot (`bnb.play.snapshot`): pure, complete, and its visibility and core
-radius are the game's."""
+"""The render snapshot (`bnb.play.snapshot`): pure, complete, and its visibility is each
+team's observation."""
 
 import dataclasses
 import math
@@ -10,11 +10,8 @@ import torch
 
 from bnb.contracts import GameConfig
 from bnb.contracts.obs import SHIP
-from bnb.game import api
 from bnb.game.modes.rules import PRESETS
-from bnb.game.perception.sight import visibility
-from bnb.game.state import replace
-from bnb.play.snapshot import Snapshot, core_radius, snapshot
+from bnb.play.snapshot import Snapshot, snapshot
 from bnb.runtime.realtime import Realtime
 
 
@@ -66,7 +63,7 @@ def test_snapshot_is_pure_and_complete():
     assert first.mode == "frontline" and first.zones.present.all()
     assert (0.0 <= first.ships.shield).all() and (first.ships.shield <= 1.0).all()
     assert (0.0 <= first.ships.energy).all() and (first.ships.energy <= 1.0 + 1e-6).all()
-    assert {f.name for f in dataclasses.fields(Snapshot)} >= {"arena_radius", "clock", "reset"}
+    assert {f.name for f in dataclasses.fields(Snapshot)} >= {"arena_radius", "clock", "fogged"}
 
 
 def test_visibility_is_each_teams_observation_in_sim_order():
@@ -89,21 +86,3 @@ def test_flight_path_and_angle_of_attack_agree_with_the_velocity():
     velocity = torch.atan2(truth[:5, SHIP["velocity_y"]], truth[:5, SHIP["velocity_x"]]).numpy()
     turn = np.remainder(frame.ships.flight_path[:5] - velocity + math.pi, 2 * math.pi) - math.pi
     assert np.abs(turn).max() < 1e-4
-
-
-def test_core_radius_is_where_the_sight_test_blocks():
-    """An observer far off looks at an enemy on the line through a field's centre: the
-    enemy is hidden just inside the core radius and seen just outside it."""
-    rules = api.rules_of(GameConfig(1, 1, 2600.0))
-    types = api.ship_types()
-    state = api.reset(rules, types, api.uniforms(rules, 1))
-    fields = replace(state.fields, x=torch.tensor([[0.0]]), y=torch.tensor([[0.0]]),
-                     radius=torch.tensor([[300.0]]), band_width=torch.tensor([[40.0]]))
-    core = float(core_radius(fields.radius, fields.band_width)[0, 0])
-    for offset, seen in ((-0.5, False), (0.5, True)):
-        ships = replace(state.ships, x=torch.tensor([[900.0, core + offset]]),
-                        y=torch.zeros(1, 2), alive=torch.ones(1, 2, dtype=torch.bool),
-                        fired=torch.zeros(1, 2, dtype=torch.bool),
-                        spawned=torch.zeros(1, 2, dtype=torch.bool))
-        visible = visibility(rules, replace(state, ships=ships, fields=fields))
-        assert bool(visible[0, 0, 1]) is seen, offset

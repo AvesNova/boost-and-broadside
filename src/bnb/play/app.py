@@ -17,7 +17,7 @@ import numpy as np
 from imgui_bundle import imgui
 
 from bnb.contracts import GameConfig
-from bnb.game.modes.rules import PRESETS
+from bnb.game.api import PRESETS
 
 from . import themes
 from .camera import Camera

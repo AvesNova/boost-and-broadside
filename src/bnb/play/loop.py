@@ -16,7 +16,7 @@ from bnb.contracts import GameConfig, Obs
 from bnb.contracts.obs import GLOBAL
 from bnb.controllers.human import INPUTS, human_action
 from bnb.controllers.scripted import Chaser
-from bnb.game.rules import TEAMS
+from bnb.game.api import TEAMS
 from bnb.runtime.realtime import Realtime
 
 from .interpolate import interpolate
@@ -38,9 +38,9 @@ class MatchLoop:
     Every ship plays the chaser except the pilot's (a sim index, or None for none), which
     follows `inputs`, a bool tensor in `bnb.controllers.human.INPUTS` order that the shell
     fills each frame. `timings` holds the seconds the last tick spent per stage. `ticks`
-    counts every tick run; `restarted` (N,) collects the ships that spawned (or reset)
-    since the shell last cleared it, so their trails restart even when a frame runs several
-    ticks.
+    counts every tick run; `restarted` (N,) collects the ships that spawned (every ship
+    does at a reset) since the shell last cleared it, so their trails restart even when a
+    frame runs several ticks.
     """
 
     def __init__(self, config: GameConfig, fogged: bool = False, compile: bool = True,
@@ -94,7 +94,7 @@ class MatchLoop:
         stepped = time.perf_counter()
         self.previous, self.current = self.current, self._snapshot()
         self.ticks += 1
-        self.restarted |= self.current.ships.spawned | self.current.reset
+        self.restarted |= self.current.ships.spawned
         self.timings["sim"] = stepped - started
         self.timings["snapshot"] = time.perf_counter() - stepped
 
@@ -129,10 +129,6 @@ class MatchLoop:
     def frame(self) -> Snapshot:
         """The state to draw now."""
         return interpolate(self.previous, self.current, self.alpha)
-
-    def fly(self, pilot: int | None) -> None:
-        """Hand the keyboard to this ship (None: every ship plays the chaser)."""
-        self.pilot = pilot
 
     def next_pilot(self) -> None:
         """Hand the keyboard to the next ship in sim order (the released ship returns to

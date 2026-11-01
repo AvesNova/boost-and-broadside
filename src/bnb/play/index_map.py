@@ -1,4 +1,5 @@
-"""The index texture: ln n on a grid over the map, from the game's own `medium`.
+"""The index texture: ln n on a grid over the map, from the game's own medium
+(`bnb.game.api.log_index`).
 
 Fields are static within an episode, so the grid is built once per map. Only tiles that
 touch a field's outer edge (radius plus half the band) are evaluated: beyond it a field
@@ -18,9 +19,7 @@ import time
 import numpy as np
 import torch
 
-from bnb.game.physics.medium import medium
-from bnb.game.rules import MAP_SCALE_RADIUS
-from bnb.game.state import Fields
+from bnb.game import api
 
 from .snapshot import Fields as FieldSnapshot
 
@@ -50,7 +49,7 @@ class TileUpdate:
 
 def grid_for(fields: FieldSnapshot, arena_radius: float) -> IndexGrid:
     """The grid covering the arena and every field, at TEXEL_METRES times the map scale."""
-    texel = TEXEL_METRES * arena_radius / MAP_SCALE_RADIUS
+    texel = TEXEL_METRES * arena_radius / api.MAP_SCALE_RADIUS
     outer = fields.radius + 0.5 * fields.band_width
     reach = max(arena_radius, float(np.max(np.maximum(np.abs(fields.x), np.abs(fields.y))
                                            + outer, initial=0.0)))
@@ -97,11 +96,11 @@ class IndexBuilder:
         def column(values: np.ndarray, padding: float, dtype) -> torch.Tensor:
             return torch.from_numpy(np.where(used, values[order], padding).astype(dtype))
 
-        f = self.fields
-        fields = Fields(x=column(f.x, 0.0, np.float32), y=column(f.y, 0.0, np.float32),
-                        radius=column(f.radius, -1e9, np.float32),
-                        band_width=column(f.band_width, 1.0, np.float32),
-                        level=column(f.level, 1, np.int32))
+        fields = self.fields
+        tile_fields = (column(fields.x, 0.0, np.float32), column(fields.y, 0.0, np.float32),
+                       column(fields.radius, -1e9, np.float32),
+                       column(fields.band_width, 1.0, np.float32),
+                       column(fields.level, 1, np.int32))
         grid = self.grid
         offsets = (np.arange(TILE) + 0.5) * grid.texel
         tile_x = grid.origin + (tiles % self.columns) * TILE * grid.texel
@@ -113,10 +112,11 @@ class IndexBuilder:
         def points(values: np.ndarray) -> torch.Tensor:
             return torch.from_numpy(values.reshape(len(tiles), -1).astype(np.float32))
 
-        log_index = medium(fields, points(x), points(y))[0]
+        log_index = api.log_index(*tile_fields, points(x), points(y))
         values = log_index.numpy().reshape(len(tiles), TILE, TILE)
-        return [TileUpdate(column=int(t % self.columns) * TILE, row=int(t // self.columns) * TILE,
-                           values=values[i]) for i, t in enumerate(tiles)]
+        return [TileUpdate(column=int(tile % self.columns) * TILE,
+                           row=int(tile // self.columns) * TILE, values=values[index])
+                for index, tile in enumerate(tiles)]
 
     @torch.no_grad()
     def run(self, budget: float = math.inf) -> list[TileUpdate]:

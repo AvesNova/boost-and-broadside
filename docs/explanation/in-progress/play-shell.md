@@ -8,9 +8,9 @@ covers: [src/bnb/play/, src/bnb/controllers/human.py]
 
 The play shell (`bnb.play`) is a desktop window that plays one match at the display rate:
 the realtime sim at its fixed tick underneath, the game drawn in shaders on top, and a
-layer of Dear ImGui for the HUD and the panels. It adds no game rules. It reads the game
-through one pure function, `bnb.play.snapshot.snapshot`, and through the game's own
-`medium` and sight rule. [Playing and spectating](../../guides/playing.md) covers the
+layer of Dear ImGui for the HUD and the panels. It adds no game rules. It reaches the game only through
+`bnb.game.api`: it reads a tick through one pure function, `bnb.play.snapshot.snapshot`,
+and draws the medium, the cores and the zones with the game's own functions. [Playing and spectating](../../guides/playing.md) covers the
 keys, views, themes and offscreen renders.
 
 ![Team 0's view of a Frontline match](../../images/play/frontline-team0.png)
@@ -40,15 +40,15 @@ produces the same states as `Realtime` alone
 `bnb.play.snapshot.Snapshot` is one tick of one match as numpy arrays: the ships, bullets,
 fields and zones, the arena, the clock, the score or the front, and each team's
 visibility from its own observation's `visible` column. `snapshot` copies every value, so
-a snapshot does not change when the sim steps on. Its `reset` flag marks the first tick of
-an episode, when the map changes.
+a snapshot does not change when the sim steps on. Its `fogged` flag says whether the
+match has fog of war.
 
 `bnb.play.interpolate.interpolate` gives the drawn state between two snapshots:
 
 - positions, shields and energies are linear;
 - headings take the shorter way round;
-- a ship that spawned, respawned or reset draws at its new state, with no interpolation
-  across the teleport;
+- a ship that spawned or respawned draws at its new state, with no interpolation across
+  the teleport (an episode reset spawns every ship and clears every bullet);
 - a bullet fired on the later tick draws from its launch point, the shooter's position at
   the earlier tick, where the game fires it from.
 
@@ -81,7 +81,7 @@ framebuffer.
 ### The index texture
 
 The fields pass draws from a float texture of ln n on a grid over the map,
-built by `bnb.play.index_map` with the game's own `bnb.game.physics.medium.medium`. Fields
+built by `bnb.play.index_map` with the game's own medium (`bnb.game.api.log_index`). Fields
 are static within an episode, so the grid is built once per map. The texel is
 `TEXEL_METRES` at map scale 1 and grows with the map, so every map's texture has the
 same size. Only tiles that touch a field's outer edge are evaluated, each with only the
@@ -95,8 +95,8 @@ the sampled ln n, antialiased with screen-space derivatives, and fade where they
 closer together than a few pixels.
 
 The bold line on each core edge is drawn from the field geometry, at
-`bnb.play.snapshot.core_radius`, the radius at which the game's sight test blocks a sight
-line (`tests/sections/test_play_snapshot.py::test_core_radius_is_where_the_sight_test_blocks`).
+`bnb.game.api.core_radius`, the radius at which the game's sight test blocks a sight line
+(`tests/sections/test_game_api_display.py::test_core_radius_is_where_the_sight_test_blocks`).
 
 ### The fog mask
 
