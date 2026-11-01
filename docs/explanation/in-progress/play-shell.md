@@ -82,9 +82,11 @@ framebuffer.
 
 The fields pass draws from a float texture of ln n on a grid over the map,
 built by `bnb.play.index_map` with the game's own medium (`bnb.game.api.log_index`). Fields
-are static within an episode, so the grid is built once per map. The texel is
-`TEXEL_METRES` at map scale 1 and grows with the map, so every map's texture has the
-same size. Only tiles that touch a field's outer edge are evaluated, each with only the
+are static within an episode, so the grid is built once per map. The grid is a square
+over the arena and every field's outer edge (`bnb.play.index_map.grid_for`). Its texel is
+`TEXEL_METRES` at map scale 1 and grows with the map, so maps whose fields stay inside the
+arena all have a texture of one size, and a field that reaches past the arena makes the
+texture larger. Only tiles that touch a field's outer edge are evaluated, each with only the
 fields that touch it; beyond every outer edge ln n is exactly 0. A new map is built a
 few tiles per frame (`IndexBuilder.run` with a time budget), so a map change does not stall
 a frame.

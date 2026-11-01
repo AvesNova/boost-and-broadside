@@ -11,7 +11,7 @@ skip without an OpenGL 3.3 (EGL) context.
 
 | Module | Job |
 |---|---|
-| `play/snapshot.py` | `Snapshot` (ships, bullets, fields, zones, match) as numpy; `snapshot(rules, types, state, observation)`; `core_radius` |
+| `play/snapshot.py` | `Snapshot` (ships, bullets, fields, zones, match) as numpy; `snapshot(rules, types, state, observation)` |
 | `play/interpolate.py` | `interpolate(previous, current, alpha)`, `angle_lerp` |
 | `play/loop.py` | `MatchLoop`: the realtime sim, chasers plus one pilot, the accumulator, pause, step, time scale |
 | `play/index_map.py` | `IndexBuilder`, `build`: ln n on a grid from `medium`, tile by tile |
@@ -51,18 +51,19 @@ the default 16; a B = 1 tick gains nothing from more threads.
 position, heading, flight path (heading minus angle of attack), angle of attack, nose rate,
 shield and energy as fractions of the type's maxima, alive, team, type, fired, spawned,
 respawn wait (s), hit radius and vision range (the game's `vision_range`), and
-`visible (2, N)` from each team's observation, put back in sim order with `view_order`.
+`visible (2, N)` from each team's observation, in sim order (`bnb.game.api.visible`).
 Bullets are the (N K) slots with active, moves left, owner and team. Fields add
-`core_radius`. Zones carry role, meter (progress), owner (the team a spawn or defense zone
-belongs to, -1 neutral) and attacker (whose capture the meter counts). The match part:
+`core_radius` (`bnb.game.api.core_radius`). Zones carry role, meter (progress), owner (the
+team a spawn or defense zone belongs to, -1 neutral) and attacker (whose capture the meter
+counts), from `bnb.game.api.zone_sides`. The match part:
 arena radius, mode, tick, clock, episode length, score and score target, front and front
-threshold, `reset` (tick 0), and two game constants the drawing scales by
+threshold, `fogged`, and two game constants the drawing scales by
 (`log_index_per_level`, `stall_angle`), so rendering imports nothing from the game.
 
 ### Interpolation
 
 Linear positions, shield and energy; headings and flight paths by the shorter way; a ship
-that spawned (or was dead on the earlier tick, or the episode reset) snaps. A bullet slot
+that spawned (or was dead on the earlier tick; a reset spawns every ship) snaps. A bullet slot
 is fresh when it was idle or its moves left did not go down; a fresh bullet draws from its
 owner's earlier position, which is where `fire` launches it.
 
@@ -94,7 +95,8 @@ Uniforms per frame: `camera` (centre, clip units per metre), `pixel` (metres per
    zone the meter: a 5 px arc 7 px outside the disc, in the attacker's colour, growing
    clockwise from the top over a faint full track.
 4. **Trails** (`trails.vert.glsl`): no vertex buffers. The trail store (positions, age,
-   heading; the turn fraction; per ship team, shown, ring radius, wingtip) goes up as three
+   heading; the turn fraction and whether the view saw the sample; per ship team, ring
+   radius, wingtip) goes up as three
    small float textures, and vertex `v` is a corner of segment `v / 6`. Width tapers 2.5 to
    0.5 px and alpha fades with age over `TRAIL_SECONDS` (1.5 s, proposal); samples every
    1/60 s of game time. The vortex is a second draw of the same store, offset to the
@@ -147,8 +149,8 @@ team colour mixed 30% toward the sky at 70% alpha.
 The editor: one `color_edit3` per colour (`color_edit4` with an alpha bar for the
 contours, trails and vortex) with `display_hex`, so the inline field is the hex code; the
 swatch opens ImGui's picker. A test clicks the sky field, selects it, types `#204060` and
-checks the theme. "Save as theme" writes `<name>.toml` into the themes directory and
-refreshes the T cycle; "Revert" restores the file's values.
+checks the theme. "Save as theme" writes `<name>.toml` into the user's themes directory
+(see the fix round) and refreshes the T cycle; "Revert" restores the file's values.
 
 ## Decisions and deviations
 
@@ -160,8 +162,10 @@ refreshes the T cycle; "Revert" restores the file's values.
 2. **ImGui through moderngl.** imgui-bundle's Python OpenGL backends need PyOpenGL. Rather
    than a second GL wrapper on one context, `render/imgui_renderer.py` (78 lines) draws
    ImGui's draw data with moderngl, including the 1.92 texture protocol (the atlas grows as
-   text needs glyphs). The window's input to ImGui is in `window.py` (mouse, wheel, the keys
-   text fields need, characters). Each `Session` owns its ImGui context and makes it
+   text needs glyphs). The window's input to ImGui is in `window.py` (mouse, wheel, every
+   key GLFW names that ImGui has, characters). This is a deviation from the spec, which
+   names imgui-bundle's GLFW backend: the window is pyGLFW, and the renderer is our own
+   (accepted in the fix round). Each `Session` owns its ImGui context and makes it
    current (ImGui's `CreateContext` does not when another exists).
 3. **`snapshot` takes the ship card:** `snapshot(rules, types, state, observation)`. The
    spec's signature has no card, but the shield and energy fractions and the hit radius
@@ -179,15 +183,12 @@ refreshes the T cycle; "Revert" restores the file's values.
    field's outer disc are skipped (exactly 0 there), and each tile passes `medium` only the
    fields that touch it, padded with a field far inside out; the sums and the product are
    unchanged, and a test compares the grid with `medium` at sampled texels.
-6. **The core radius is computed in `bnb.play.snapshot.core_radius`,** the same expression
-   `visibility` builds inline. `test_core_radius_is_where_the_sight_test_blocks` holds them
-   together (an enemy just inside the radius is hidden, just outside is seen). Request 1.
-7. **Map changes** are detected by comparing the fields with the built map, not only by
-   the snapshot's `reset` flag: at x8 a frame runs several ticks and can skip the reset
-   tick. The `reset` flag still stops interpolation into a new episode.
+6. **The core radius comes from `bnb.game.api.core_radius`** (fix round; it was a copy in
+   the play shell). Request 1.
+7. **Map changes** are detected by comparing the fields with the built map: at x8 a frame
+   runs several ticks and can skip the reset tick.
 8. **`--fog` is opt-in,** literally. Without it the chasers see everything, and a team's
-   view darkens what its ships cannot see but draws every ship (the observation shows
-   them all). Question 1.
+   view draws everything with no fog (fix round).
 9. **Options beyond the spec:** the sizes (`--ships-per-team`, `--fields`,
    `--arena-radius`, "or the sizes"), `--fly/--no-fly`, `--width`, `--height`,
    `--vsync/--no-vsync`, `--compile/--no-compile` (a quick start), `--threads`. Views are
@@ -201,8 +202,8 @@ refreshes the T cycle; "Revert" restores the file's values.
     `vortex_threshold`.
 12. **The heavy silhouette** is mine, a broader member of the Komet family (the brainstorm
     names the family, not the per-type shapes). The fighter is the colour tool's Komet.
-13. **Saved themes go to the package's `themes/` directory** (`src/bnb/play/themes/` in a
-    checkout). Question 2.
+13. **Saved themes go to a per-user directory** (fix round); the shipped ones are
+    read-only.
 14. **Docs outside the listed files:** `mkdocs.yml` (nav entries for the guide and the
     reference; the strict build fails on a page left out of the nav) and
     `docs/hooks/generated.py` (the blocks `play-options`, `play-keys`, `play-themes`, and
@@ -340,7 +341,7 @@ page):
   independent of the window, and runs offscreen for tests. A developer panel is one more
   `draw` call in the ImGui frame after the HUD, like `ThemeEditor`.
 - **Already there:** the team-view toggle (`Session.view`), take control of any ship
-  (`MatchLoop.fly(index)`), the speed dial's state (`paused`, `single_step`,
+  (`MatchLoop.pilot`, `MatchLoop.next_pilot`), the speed dial's state (`paused`, `single_step`,
   `time_scale`, `TIME_SCALES`), theme switching and editing.
 - **Replays:** `MatchLoop.tick(actions)` is the one place a tick happens with explicit
   actions; recording is a clone of `realtime.state` every k ticks plus the actions, and
@@ -350,8 +351,7 @@ page):
   runs now; the decided "uncompiled while the new graph compiles in the background" needs
   `Realtime` to swap in its compiled tick when ready (request 3).
 - **What made it harder:** imgui-bundle's Python backends need PyOpenGL (hence our
-  renderer and input wiring); only the keys text fields need are mapped to ImGui, so
-  panels with keyboard navigation need more of the table; an ImGui window takes its size
+  renderer and input wiring); an ImGui window takes its size
   on its second frame, which offscreen tests must allow for.
 
 ## The code style draft
@@ -367,11 +367,109 @@ this work). Where the play shell departs from it, by the spec or by necessity:
 - **`.numpy()` host copies** in the snapshot are the point of it: the shell runs at B = 1
   on the CPU, not in a training hot path.
 
+## Fix round
+
+The coordinator's decisions on the blind review (8/10), each with what changed and the
+test that now guards it. Every new test was broken by hand (the mutation named) and
+failed before it was committed. Tests live in `tests/sections/`; `render` is
+`test_play_render.py`.
+
+1. **Enemy bullets in team views.** The mask was already applied; it was untested.
+   `render::test_an_enemy_bullet_draws_only_where_the_team_sees` (an enemy bullet in the
+   dark draws nothing, an own one there draws, an enemy one beside a team-0 ship draws);
+   `render::test_a_hidden_enemy_draws_nothing_in_its_enemys_view` now gives the hidden
+   enemy two bullets beside it and removes them with it. Both fail with
+   `masked = np.zeros_like(active)`.
+2. **The core line.** Taken from `bnb.game.api.core_radius` (see 5).
+   `render::test_the_core_line_is_drawn_at_the_sight_tests_core_radius` renders with red
+   core lines: the pixel on the core radius is red, the pixel on the field radius is not.
+   Fails when `FieldsPass.core_edges` uses `fields.radius`.
+3. **Trails in team views.** `Trails.seen (2, N, SAMPLES)` records each team's `visible`
+   with every sample; the trails texture carries the view's flag, and a segment draws only
+   when both ends were seen (spectator: all). The per-ship `shown` gate is gone, so a dead
+   ship's trail now fades where it ended (8). Tests:
+   `render::test_an_enemy_coming_into_view_draws_no_trail_from_its_hidden_stretch` and
+   `render::test_an_enemy_revealed_by_firing_does_not_flash_its_hidden_path`; both fail
+   with every sample seen and with the old per-ship gate.
+4. **Untested paths.**
+   - The snapshot's `reset` flag is gone: a reset spawns every ship (so `spawned` already
+     snaps them and restarts their trails) and clears every bullet, so nothing depended on
+     it. `fogged` replaced it (7).
+   - `test_play_interpolate.py::test_headings_take_the_shortest_way_round` now goes
+     through `interpolate` (heading and flight path, 170 to -170 degrees); fails with
+     `lerp`.
+   - `test_play_interpolate.py::test_a_refired_slot_draws_from_its_launch_point` builds a
+     re-fired slot from two real ticks (a flying bullet's slot given a just-fired bullet)
+     and checks it draws from its shooter. Fails with `fresh = after.active &
+     ~before.active`. The game's current card never re-fires a slot in flight (bullets
+     expire first), hence the built case. Two more: a bullet fired into an idle slot draws
+     from its launch point, a bullet in flight moves linearly.
+5. **Layering.** `bnb.game.api` gains, adding only: `log_index` (the medium at points, for
+   a subset of fields), `core_radius`, `zone_sides` (owners and attackers from Frontline's
+   own `_sides` and spawn roles), `visible` (each team's observation in sim order), and the
+   re-exports `vision_range`, `per_ship`, `TEAMS`, `LN_SQRT2`, `MAP_SCALE_RADIUS`,
+   `PRESETS`. Tests, one each, in `test_game_api_display.py`: `log_index` equals `medium`;
+   the core radius is where `visibility` blocks; a lone ship in a zone raises the meter
+   exactly where `zone_sides` names its team the attacker (through `capture_step`); a
+   spawn zone's owner is the team `protected` shields there; `visible` equals
+   `visibility`; the re-exports are the game's own objects.
+   `test_play_layers.py::test_play_reaches_the_game_only_through_its_api` parses every
+   file in `bnb.play` and allows only `bnb.play`, `bnb.runtime`, `bnb.controllers`,
+   `bnb.game.api` and `bnb.contracts`. Deviation: `core_radius` is a second expression of
+   the rule inside the game (`visibility` builds its own; the round could not change
+   `sight.py`), held by the test; request 1.
+6. **The window.** pyGLFW and the custom moderngl ImGui renderer are accepted (the spec
+   names imgui-bundle's GLFW backend, whose Python renderers need PyOpenGL); noted as a
+   deviation in decision 2. `window.IMGUI_KEYS` now maps every key GLFW names that ImGui
+   has (letters, digits, keypad, F1 to F24, the named keys, Super), and the shell's
+   one-shot keys are a table of `Window` methods (`SHELL_KEYS`).
+   `test_play_window.py`: ImGui hears every GLFW key but the five it lacks; every shell
+   and flight key reaches ImGui; every shell key names a `Window` method.
+7. **Unfogged team views.** `Snapshot.fogged`; the renderer draws the mask and the fog
+   only in a team view of a fogged match. The guide and the explanation page say so.
+   `render::test_a_team_view_of_an_unfogged_match_draws_no_fog`: both team views equal
+   the spectator's, pixel for pixel. Fails with `fogged = team_view`.
+8. **The trails docstring.** Kept, and now true: a dead ship's trail fades out where it
+   ended (3).
+9. **Themes.** `themes.Library` reads the shipped themes (`themes.SHIPPED`, read-only) and
+   the user's (`themes.USER`, from `platformdirs`, now a dependency). `save` writes only to
+   the user's directory and refuses a shipped name; a user file with a shipped name is not
+   loaded, `Library.shadowed` lists it and the editor's message says so; "Save as" over an
+   existing user theme waits for Replace or Cancel (`ThemeEditor.save_as`, `confirm`,
+   `cancel`). The docs hook lists only the shipped themes, so the generated page does not
+   depend on the machine. Tests in `test_play_themes.py`: saves land in the user directory
+   and reload equal; the shipped files are unchanged by saves and a shipped name is
+   refused; a shadowing user file is reported and not loaded; replacing asks first.
+10. **Quality.** `MatchLoop.fly` removed (unused); full words in Python and GLSL (`f`,
+    `fb_width`, `t`, `k, v`, `c`, `z`, `s`, `r`, `o`, `wx`, ...); type hints on
+    `ring_table`, `ShipsPass.draw`, `BulletsPass.draw`, `FogPass._table`. Ship types of
+    any count: `silhouettes.silhouette_of` maps a type without its own silhouette to
+    `GENERIC`, a plain dart, for the ships and the trails' wingtips.
+    `render::test_a_ship_type_without_a_silhouette_draws_the_generic_one` (type 7, with a
+    trail): fails without the fallback.
+11. **Docs and small items.** The explanation page says the grid covers the arena and
+    every field's outer edge, so a field past the arena makes the texture larger
+    (`grid_for`). The HUD names the flown ship by team and slot
+    (`render.hud.ship_label`; `test_play_hud.py`). **The 2 m texel is enough** because the
+    contours are drawn from a bicubic sample through the texel centres of a smooth
+    (quintic) profile whose band spans tens of texels: on the 5v5 maps the worst contour
+    shift is 1.4 cm, under a third of a pixel at the closest zoom (0.05 m per pixel), and
+    halving the texel would quadruple the texture and triple the build for no visible
+    change. On the 8200 m maps (6.3 m texels) the worst is 0.55 m, about 2 pixels at
+    0.25 m per pixel; a per-band texture would fix it if it ever shows.
+12. **History.** The WIP commit was reworded as `docs(play): mark the measurements
+    provisional; list the code style departures` (only this branch was force-pushed),
+    and each fix above is its own Conventional Commit.
+
+No frame-time measurements were taken in this round (the coordinator measures on a quiet
+machine). The trails texture gained a channel and the trail draw is otherwise unchanged.
+
 ## Requests and open questions
 
-1. **Request (game):** a public `cores(fields)` (or `core_radius`) in
-   `bnb.game.perception.sight`, used by `visibility`, so the play shell draws the core edge
-   from the game's own function.
+1. **Request (game):** `bnb.game.perception.sight.visibility` should build its cores with
+   `bnb.game.api.core_radius` (or a shared function in `sight` that the api re-exports),
+   so the rule has one definition. The fix round could add to the api only, so the api
+   holds the second expression, held to `visibility` by a test.
 2. **Request (runtime):** `Realtime` takes a `torch.Generator` for its spread and
    uniforms. Today it draws from the global generator, so the shell's determinism rests on
    the entry point's `torch.manual_seed` and on nothing else drawing in between; replays
@@ -379,10 +477,11 @@ this work). Where the play shell departs from it, by the spec or by necessity:
 3. **Request (runtime):** `Realtime` returns or keeps the tick's `Events` (died, killer,
    damage), for a kill feed and the "shards when the shield breaks" idea, and supports
    swapping in a background-compiled tick (milestone 2's pickers).
-4. **Question:** should `--fog` default on? A team's view of an unfogged match shows every
-   ship under the darkening, which is accurate but may surprise.
-5. **Question:** saved themes go into the package's `themes/` (the repository in a
-   checkout). An installed client would want a user directory; which?
+4. **Question:** should `--fog` default on? A team's view of an unfogged match now looks
+   like the spectator's.
+5. **Request (cleanup):** `PRESETS` is re-exported by `bnb.game.api` for the play shell;
+   when the cleanup moves it to `bnb.runtime`, the play shell imports it from there and
+   the re-export goes.
 6. **Open:** the boundary hatching at 35% and the 14 px minimum ring radius were set by
    eye against the mock-ups; the colour tool has no value for either.
 
