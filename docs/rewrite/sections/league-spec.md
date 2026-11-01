@@ -81,15 +81,15 @@ Order: after sections 4 and 7. The stationary ladder is section 4's controller (
 
 ## 5. Snapshots and retention
 
-- **A snapshot every N environment steps (deterministic).**
+- **A snapshot every N environment steps (deterministic; author, 2026-11-01).**
   - The default N gives about 30 minutes at the preset's measured throughput; the run
     records N.
   - Wall-clock triggers are not used, because they would break reproducibility.
-- **Retention:**
+- **Retention (author, 2026-11-01):** what is kept on disk, and so what the pool can draw:
   - the newest 8 snapshots;
   - plus a geometric history: of the older ones, the snapshot nearest each age `2^k`
-    snapshots back, for `k ≥ 4` **(proposal)**.
-- **On disk:** every retained snapshot. Only the 4 slots are on the GPU.
+    snapshots back, for `k ≥ 3` (8, 16, 32, 64, …).
+- **On the GPU:** only the 4 loaded slots.
 - **Resuming:** the run's checkpoint holds the pool (entries and their weights on disk),
   the ratings, the records and the sampling state. A resumed run continues identically.
 
