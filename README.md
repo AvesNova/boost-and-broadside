@@ -1,38 +1,40 @@
 # Boost and Broadside (v2, in progress)
 
-A from-scratch PyTorch rewrite of the game and its training stack, designed as a whole for
-fast batched GPU training and for maintainability.
+A game in which two teams of ships fly, fight and hold zones, and the stack that trains
+agents to play it. Version 2 is a from-scratch PyTorch rewrite, built for batched training
+on one GPU: the game is pure functions of tensors, stepped in compiled stages and CUDA
+graphs.
 
-- Plan and scaffold: [docs/rewrite/scaffold.md](docs/rewrite/scaffold.md)
-- Contracts between sections: [docs/rewrite/contracts.md](docs/rewrite/contracts.md)
-- Decision log (written while JAX was the candidate; the framework is now PyTorch, see the
-  scaffold): [docs/rewrite/decisions.md](docs/rewrite/decisions.md)
 - The previous code is at tag `v1-torch-final`.
+- Which sections are built, and which are in progress: the
+  [roadmap](docs/explanation/roadmap.md), rendered from `docs/roadmap.yml`.
 
-## Status
+## Quickstart
 
-Milestone 0, the walking skeleton, runs end to end. Section 1 (the game: v2 physics,
-perception, spawns, maps, fog of war) is merged. Then: the contract observation, team deathmatch rewards, scripted controllers, a small MLP and plain PPO,
-with compiled stages and CUDA-graph rollouts. Every section is a stub to be replaced.
-
-## Running
-
-```
-uv sync
-uv run --no-sync pytest                     # all tests (the learning test needs a GPU)
-uv run --no-sync pytest -m "not slow"       # the fast ones
-uv run --no-sync bnb --ships-per-team 2 --num-fields 4 --arena-radius 1200 --num-envs 512
-uv run --no-sync python -m bench.run        # skeleton benchmark, about five minutes
+<!-- not-runnable: changes the environment; the training run and the benchmark need CUDA -->
+```bash
+uv sync                                       # the environment, with the docs tools
+uv run --no-sync pytest -m "not gpu"          # the tests that run on the CPU
+uv run --no-sync bnb --preset mixed           # train the skeleton model (needs CUDA)
+uv run --no-sync python -m bench.run          # the skeleton benchmark (needs CUDA)
+uv run --no-sync mkdocs serve                 # these docs, at http://127.0.0.1:8000
 ```
 
-## Layout
+The Python and torch versions and the GPU requirement are on the
+[installation page](docs/getting-started/installation.md).
 
-| Path | What |
-|---|---|
-| `src/bnb/contracts` | types shared between sections, no logic |
-| `src/bnb/game` | physics, perception, modes (pure functions) |
-| `src/bnb/controllers`, `src/bnb/models` | scripted controllers; models and their heads |
-| `src/bnb/learn` | learners (PPO) |
-| `src/bnb/runtime` | the only stateful code: rollout, stages, CUDA graphs, training loop |
-| `bench/` | benchmark harness (lock, random sizes, cells) |
-| `tests/reference` | the physics race's float64 goldens, run through an adapter |
+## Documentation
+
+The documentation is a MkDocs site built from [`docs/`](docs/index.md):
+
+- [Getting started](docs/getting-started/index.md): installation, tests, a first training
+  run, a benchmark.
+- [Guides](docs/guides/index.md): training, benchmarking, the reference fixtures, adding a
+  mode.
+- [Explanation](docs/explanation/index.md): the architecture, the contracts, the game, the
+  model, the training loop, the roadmap and a [glossary](docs/explanation/glossary.md).
+- Reference: generated from the code by `mkdocs build`.
+- [Writing docs](docs/contributing/writing-docs.md): how the docs are written and checked.
+
+The design records of the rewrite are in [`docs/rewrite/`](docs/rewrite/scaffold.md),
+outside the site.

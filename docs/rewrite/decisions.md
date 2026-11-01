@@ -1416,6 +1416,11 @@ Checks and revisits deliberately deferred until the JAX port runs.
       is removed in the port (Griffin-only memory); compare against it after the port.
 - [ ] Random occlusion augmentation (randomly hide visible enemies for a few steps) as an
       optional knob, if hidden-ship learning looks data-starved.
+- [ ] Power-profile profiling (author, 2026-11-01): profile the training cells under the
+      laptop's low-power and full-power settings, on a quiet machine. First make every
+      benchmark record the active power profile, then re-baseline under the profile
+      chosen for day-to-day work. Until then the profile stays as it is, so recorded
+      numbers stay comparable.
 
 ## Next steps (resume point)
 

@@ -1,6 +1,6 @@
 # Section 8: league and ratings
 
-Status: decisions settled, 2026-11-01. Spec: to follow.
+Status: decisions settled, 2026-11-01. Spec: `league-spec.md`. Fixtures: `tests/reference/league/`.
 
 ## Already decided (training review 4b, 4e and the 2026-10-30 findings)
 
