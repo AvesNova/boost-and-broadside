@@ -1,6 +1,6 @@
 # Section 6: PPO and labels (the learner)
 
-Status: decisions in progress, 2026-11-01.
+Status: decisions settled, 2026-11-01. Spec: `learner-spec.md`.
 
 ## Decided (author, 2026-11-01)
 
