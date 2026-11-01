@@ -1,0 +1,135 @@
+site_name: Boost and Broadside
+site_description: The game and its training stack (v2)
+repo_name: AvesNova/boost-and-broadside
+repo_url: https://github.com/AvesNova/boost-and-broadside
+edit_uri: ""
+copyright: MIT license
+
+docs_dir: docs
+# The design records under docs/rewrite/ are internal and stay out of the site. The hook
+# and the roadmap data are build inputs, not pages.
+exclude_docs: |
+  rewrite/
+  hooks/
+  roadmap.yml
+
+theme:
+  name: material
+  font: false
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+
+hooks:
+  - docs/hooks/generated.py
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src, .]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: true
+            show_submodules: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+            heading_level: 2
+            filters: ["!^_"]
+            merge_init_into_class: true
+            show_if_no_docstring: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+# Strict builds (tests/docs/test_build.py) turn every one of these warnings into a failure.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - getting-started/index.md
+      - Installation: getting-started/installation.md
+      - Running the tests: getting-started/running-tests.md
+      - A first training run: getting-started/first-training-run.md
+      - A benchmark: getting-started/benchmark.md
+  - Guides:
+      - guides/index.md
+      - Training: guides/training.md
+      - Benchmarking: guides/benchmarking.md
+      - Reference fixtures: guides/reference-fixtures.md
+      - Adding a mode: guides/adding-a-mode.md
+  - Explanation:
+      - explanation/index.md
+      - Architecture: explanation/architecture.md
+      - Contracts: explanation/contracts.md
+      - The game:
+          - Physics: explanation/game/physics.md
+          - Perception and fog: explanation/game/perception.md
+          - Modes: explanation/game/modes.md
+          - Rewards: explanation/game/rewards.md
+          - Mixed batches: explanation/game/mixed-batches.md
+      - The model (Yemong): explanation/yemong.md
+      - The training loop: explanation/training-loop.md
+      - Roadmap: explanation/roadmap.md
+      - In progress:
+          - The learner: explanation/in-progress/learner.md
+          - The ship card: explanation/in-progress/ship-card.md
+          - The scripted agent: explanation/in-progress/scripted-agent.md
+          - Behaviour cloning: explanation/in-progress/behaviour-cloning.md
+          - League and ratings: explanation/in-progress/league.md
+          - Diagnostics: explanation/in-progress/diagnostics.md
+          - The play shell: explanation/in-progress/play-shell.md
+  - Reference:
+      - reference/index.md
+      - bnb.contracts: reference/contracts.md
+      - bnb.game: reference/game.md
+      - bnb.controllers: reference/controllers.md
+      - bnb.models: reference/models.md
+      - bnb.learn: reference/learn.md
+      - bnb.runtime: reference/runtime.md
+      - bnb.cli: reference/cli.md
+      - bench: reference/bench.md
+  - Contributing:
+      - Writing docs: contributing/writing-docs.md

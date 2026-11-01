@@ -1,0 +1,57 @@
+# The rewrite's sections and their status. The roadmap page renders this file
+# (docs/hooks/generated.py, table "roadmap"); update the status here when a section moves.
+# status: merged (on v2), specified (a spec exists, not built), decided (decisions
+# recorded, no spec yet), planned (in the plan only).
+# spec: the design record, or null.
+- section: "0"
+  title: Contracts and the walking skeleton
+  status: merged
+  spec: docs/rewrite/contracts.md
+- section: "1"
+  title: "The game: physics, perception, spawns, maps"
+  status: merged
+  spec: docs/rewrite/sections/game-spec.md
+- section: "1b"
+  title: The ship card (handles to physics parameters)
+  status: specified
+  spec: docs/rewrite/sections/ship-card-spec.md
+- section: "3"
+  title: Modes (team deathmatch, Frontline, sandbox)
+  status: merged
+  spec: docs/rewrite/sections/modes-spec.md
+- section: "3b"
+  title: Rewards
+  status: merged
+  spec: docs/rewrite/sections/rewards-spec.md
+- section: "3c"
+  title: Mixed batches
+  status: merged
+  spec: docs/rewrite/sections/mixed-spec.md
+- section: "4"
+  title: The scripted agent
+  status: specified
+  spec: docs/rewrite/sections/scripted-bc-spec.md
+- section: "5"
+  title: The model (Yemong)
+  status: merged
+  spec: docs/rewrite/sections/yemong-spec.md
+- section: "6"
+  title: PPO and labels (the learner)
+  status: specified
+  spec: docs/rewrite/sections/learner-spec.md
+- section: "7"
+  title: Behaviour cloning
+  status: specified
+  spec: docs/rewrite/sections/scripted-bc-spec.md
+- section: "8"
+  title: League and ratings
+  status: decided
+  spec: docs/rewrite/sections/league.md
+- section: "9"
+  title: Diagnostics
+  status: planned
+  spec: docs/rewrite/diagnostics.md
+- section: "10"
+  title: The play shell
+  status: planned
+  spec: null

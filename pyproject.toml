@@ -14,6 +14,14 @@ dependencies = [
 [project.scripts]
 bnb = "bnb.cli:main"
 
+[project.optional-dependencies]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.8.0",
+    "mkdocstrings[python]>=1.0.8",
+    "pyyaml>=6.0.3",
+]
+
 [dependency-groups]
 dev = [
     "onnx",
