@@ -58,8 +58,8 @@ def circular_levels(period: float, colours: int, levels: int, probabilities: tor
     remainder = phase - sector * theta
     sin_theta, cos_theta = math.sin(theta), math.cos(theta)
     sin_remainder = torch.sin(remainder)
-    denominator = torch.clamp_min(sin_theta * torch.cos(remainder) + (1 - cos_theta) * sin_remainder,
-                                  eps)
+    chord_slope = sin_theta * torch.cos(remainder) + (1 - cos_theta) * sin_remainder
+    denominator = torch.clamp_min(chord_slope, eps)
     fraction = torch.clamp(sin_remainder / denominator, 0, 1)
     chord = torch.sqrt((1 - fraction + fraction * cos_theta) ** 2 + (fraction * sin_theta) ** 2)
     attenuation = torch.clamp_max(torch.sqrt(real**2 + imaginary**2) / chord, 1)
@@ -158,8 +158,10 @@ def match_moments(probabilities, offsets, target_mean, target_variance):
     mass = torch.clamp_min(source.sum(-1), tiny)
     shift = (target_mean - mean) / mass
     shift = torch.where(shift.abs() <= tolerance, 0.0, shift)
-    shift_cost = shift.abs() * (source * (2 * torch.sign(shift).unsqueeze(-1) * offsets + 1)).sum(-1)
-    widen = torch.clamp_min((target_variance + target_mean**2 - second - shift_cost) / (2 * mass), 0)
+    direction = torch.sign(shift).unsqueeze(-1)
+    shift_cost = shift.abs() * (source * (2 * direction * offsets + 1)).sum(-1)
+    excess_variance = target_variance + target_mean**2 - second - shift_cost
+    widen = torch.clamp_min(excess_variance / (2 * mass), 0)
     widen = torch.where(widen <= tolerance, 0.0, widen)
     excess = torch.clamp_min(2 * widen + shift.abs(), 1)
     widen = (widen / excess).unsqueeze(-1)
