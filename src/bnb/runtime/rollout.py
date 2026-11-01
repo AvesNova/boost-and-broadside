@@ -27,9 +27,11 @@ COUNTERS = ("shots", "hits", "deaths", "resets")
 
 
 def _assign(dst, src) -> None:
-    """Copy a pytree of tensors into the matching carry buffers."""
+    """Copy a pytree of tensors into the matching carry buffers. A leaf a stage passed
+    through unchanged (the buffer itself) is not copied onto itself."""
     for d, s in zip(_tensors(dst), _tensors(src), strict=True):
-        d.copy_(s)
+        if d is not s:
+            d.copy_(s)
 
 
 def _tensors(tree) -> list[torch.Tensor]:
