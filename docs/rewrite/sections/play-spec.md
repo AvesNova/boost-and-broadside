@@ -140,6 +140,20 @@ must look clean at both a full-arena zoom and a dogfight zoom.
   - The default: mint and pink air with navy and amber ships (`map-vis.png`).
   - Also ship the brainstorm's two other favourites (lemon and ice air with green and
     magenta ships; purple and ice air with green and vermilion ships) **(proposal)**.
+  - **The theme editor** (author request, 2026-11-01), an ImGui panel toggled with a key:
+    - it lists every colour of the current theme: sky, thin and thick air, contours, the
+      bold core line, the fog darkening, the two team colours, outline, shield, energy and
+      trail;
+    - each colour has ImGui's picker (`color_edit3`, or `color_edit4` where alpha
+      matters), so a colour can be dragged with the mouse or typed as a hex code
+      (`#1F3A93`); hex entry is visible and works, not only the RGB fields;
+    - changes apply on the next frame, with no restart: the colours are shader uniforms;
+    - "Save as theme" writes the current colours to a new `themes/*.toml` (a name field),
+      and "Revert" restores the theme's file values. Saved themes join the theme cycle.
+    - Tests: a hex string round-trips through the theme's colour type; an edited theme
+      saves and reloads equal; an offscreen render after an edit shows the new colour at a
+      known pixel.
+    - Docs: the editor is in the "Playing and spectating" guide.
 
 ## 7. The keyboard pilot
 
