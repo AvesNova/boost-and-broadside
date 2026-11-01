@@ -56,16 +56,16 @@
   page: explanation/in-progress/behaviour-cloning.md
 - section: "8"
   title: League and ratings
-  status: decided
-  spec: docs/rewrite/sections/league.md
+  status: specified
+  spec: docs/rewrite/sections/league-spec.md
   page: explanation/in-progress/league.md
 - section: "9"
   title: Diagnostics
-  status: planned
-  spec: docs/rewrite/diagnostics.md
+  status: specified
+  spec: docs/rewrite/sections/diagnostics-spec.md
   page: explanation/in-progress/diagnostics.md
 - section: "10"
   title: The play shell
-  status: planned
-  spec: null
+  status: specified
+  spec: docs/rewrite/sections/play-spec.md
   page: explanation/in-progress/play-shell.md

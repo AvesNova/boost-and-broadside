@@ -1,5 +1,6 @@
 ---
 covers: [docs/roadmap.yml]
+reviewed: 2026-11-01
 ---
 
 # Roadmap
