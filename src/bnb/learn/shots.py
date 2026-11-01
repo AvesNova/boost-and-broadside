@@ -38,8 +38,9 @@ class ShotCapture:
 
 @contract
 class Shots:
-    """One shot per (tick, row), (L, R, N) leading: valid, the shooter was alive and the
-    flight (to its hit, or all its moves) ends inside the segment and the episode;
+    """One shot per (tick, row), (L, R, N) leading: valid, the shooter was alive, the
+    longest flight from its launch ends inside the segment, and its own flight (to its hit,
+    or all its moves) ends inside the episode;
     snapshots (L, R, N, A, 5), after each move: the displacement and velocity (m, m/s) in
     the launch heading's frame (forward, left) and the refractive index; age_valid
     (L, R, N, A), the shot is valid and the age is not after its hit; hit (HIT_*), the first
@@ -160,7 +161,10 @@ def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: tor
     ended = ended[:, :, None].expand(-1, -1, rows)  # (L + 1, R, N)
     end_tick = launch_tick[:, :, None] + flight_end  # (L, R, N)
     crossed = ended.gather(0, end_tick.clamp_max(length)) - ended[:-1]
-    valid = capture.alive & (end_tick < length) & (crossed == 0)
+    # A shot launched within the longest flight of the segment's end is invalid whatever it
+    # hit: keeping the ones that hit in time would bias the tail's labels toward hits.
+    whole_flight = (launch_tick + ages - 1 < length)[..., None]  # (L, 1, 1)
+    valid = capture.alive & whole_flight & (crossed == 0)
     age_valid = valid[..., None] & (torch.arange(ages, device=device) <= flight_end[..., None])
 
     start = capture.launch

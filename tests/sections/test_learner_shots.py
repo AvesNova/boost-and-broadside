@@ -19,6 +19,7 @@ from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE
 ENVS, TICKS = 32, 100
 CONFIG = GameConfig(3, 6, 500.0, episode_s=3.0)  # crowded, with fields and episode ends
 OWN = CONFIG.ships_per_team
+MOVES = api.rules_of(CONFIG).bullet_moves  # the longest bullet flight, in ticks
 
 
 def _frame(launch, x, y, velocity_x, velocity_y):
@@ -65,9 +66,17 @@ def played():
         state, obs, _ = api.perceive(rules, state)
     stack = lambda items: torch.utils._pytree.tree_map(lambda *x: torch.stack(x), *items)  # noqa: E731
     capture = stack(captures)
-    shots = resimulate(rules, types, capture, torch.stack(fields), torch.stack(dones),
-                       torch.stack(spreads), OWN)
-    return capture, torch.stack(dones), shots, game
+    inputs = (capture, torch.stack(fields), torch.stack(dones), torch.stack(spreads))
+
+    def segment(length: int):
+        """The shots of the recording's first `length` ticks, as a segment of them."""
+        return resimulate(rules, types, *stack_prefix(inputs, length), OWN)
+
+    return capture, inputs[2], segment(TICKS), game, segment
+
+
+def stack_prefix(tree, length: int):
+    return torch.utils._pytree.tree_map(lambda x: x[:length], tree)
 
 
 def _fired(game):
@@ -77,7 +86,7 @@ def _fired(game):
 
 
 def test_a_resimulated_shot_is_the_bullet_the_game_fires(played):
-    capture, _, shots, game = played
+    capture, _, shots, game, _ = played
     compared = 0
     for tick, env, ship, slot in _fired(game):
         launch = torch.utils._pytree.tree_map(lambda x: x[tick, env, ship], capture.launch)
@@ -97,7 +106,7 @@ def test_a_resimulated_shot_is_the_bullet_the_game_fires(played):
 def test_a_resimulated_hit_is_the_games_hit_with_its_side(played):
     """Hits tick by tick: the game's bullet hits on the age where the shot's flight ends in
     a hit, on the side the re-simulation names (the game's damage matrix says whom)."""
-    _, _, shots, game = played
+    _, _, shots, game, _ = played
     sides = {HIT_ENEMY: 0, HIT_ALLY: 0}
     for tick, env, ship, slot in _fired(game):
         valid = shots.age_valid[tick, env, ship]
@@ -120,7 +129,7 @@ def test_a_resimulated_hit_is_the_games_hit_with_its_side(played):
 
 
 def test_flights_cross_fields(played):
-    _, _, shots, _ = played
+    _, _, shots, _, _ = played
     index = shots.snapshots[..., 4][shots.age_valid]
     assert ((index - 1.0).abs() > 0.01).any()
 
@@ -128,7 +137,7 @@ def test_flights_cross_fields(played):
 def test_a_flight_an_episode_end_cuts_short_is_invalid(played):
     """The game clears every bullet at an episode end; a shot whose flight would continue
     past it is invalid, and one that hit before it is not."""
-    capture, done, shots, _ = played
+    capture, done, shots, _, _ = played
     cut = hit_first = 0
     for tick in range(TICKS - 12):
         for env in range(ENVS):
@@ -190,3 +199,24 @@ def test_the_rollouts_displacement_is_the_next_row_minus_this_one(stored):
         moved = following[..., SHIP[axis]] - rows[..., SHIP[axis]]
         torch.testing.assert_close(displacement[moving], moved[moving], rtol=0, atol=1e-3)
     assert stored.capture.displacement_x[moving].abs().max() > 1.0  # the ships do move
+
+
+def test_a_shot_launched_near_the_segments_end_is_invalid_whatever_it_hit(played):
+    """A shot launched within the longest flight of the segment's end is invalid, hit or
+    not, so the tail does not bias the labels toward hits; every other shot keeps the label
+    it has in a longer segment (the body's hit rate is unchanged)."""
+    _, _, long, _, segment = played
+    length = 60
+    short = segment(length)
+    tail = length - (MOVES - 1)
+    assert not short.valid[tail:].any()
+    assert long.valid[tail:length].any() and (long.hit[tail:length][long.valid[tail:length]]
+                                              != HIT_NONE).any()  # the tail held hits
+    body = slice(0, tail)
+    assert torch.equal(short.valid[body], long.valid[body])
+    valid = short.valid[body]
+    assert valid.any()
+    for name in ("hit", "distance", "side"):
+        assert torch.equal(getattr(short, name)[body][valid], getattr(long, name)[body][valid])
+    assert torch.equal(short.age_valid[body], long.age_valid[body])
+
