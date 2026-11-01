@@ -57,12 +57,13 @@ the card is public game knowledge.
 - **The starting values** are v1's, converted through v1's own characteristics where a
   conversion exists (for example v1's shoot ramp 100–200 px over its 200 px range is
   0.5–1.0 gun ranges). Where none exists, a value the agent chooses and lists.
-- **Retuning (proposal):**
-  - a small search over the parameters, in batched games, scored by the score against
-    the chaser and against the v1-converted starting point, in both modes, fog as in
-    training;
-  - record the chosen values and the search in the notes;
-  - proportionate: hours, not days, on the dev GPU.
+- **Retuning (author: keep it short):**
+  - the scripted agent's primary job is a sensible action distribution, for BC and as an
+    opponent, not peak strength;
+  - one small search over the parameters, in batched games, scored against the chaser and
+    against the v1-converted starting point, in both modes, fog as in training, capped at
+    about an hour of GPU time;
+  - record the chosen values and the search in the notes.
 - **v1's team-target blend is not ported:** v1's only shipped configuration disables it
   (probability 0 at both ends of its ramp), so it is dead code **(v2)**.
 - **v1's `prob_offset`** was never read; not ported.
@@ -132,9 +133,13 @@ The same terms and their combination, read from the observation:
 
 ## A6. Rungs
 
-- **`Rung(p)`:** per ship and decision, the scripted action with probability `p`, else
-  uniform over the 42 actions. Its distribution is `p · scripted + (1 − p)/42`.
-- One class; the league (section 8) chooses the `p` values.
+- **One controller for the whole stationary ladder (author):** random, every rung and the
+  scripted agent are one controller with a per-view probability `p` (a tensor: 0 is
+  random, 1 is the scripted agent).
+- **One pass each:** a single scripted pass and a single uniform draw over all its views,
+  then per ship and decision the scripted action where `u < p`, else the uniform one. Its
+  distribution is `p · scripted + (1 − p)/42`.
+- The league (section 8) sets each view's `p`.
 
 ## A7. Acceptance
 
@@ -154,8 +159,9 @@ The same terms and their combination, read from the observation:
      values of hidden rows' zeroed columns.
 2. **Against random:** at most 2 non-wins (losses or draws) in 2048 games per mode, both
    seats, fog as in training. A steady 99% fails.
-3. **Against the chaser:** a score of at least 0.70 per mode over 1024 games, both seats,
-   fog as in training.
+3. **Against the chaser:** a target, not a blocker. Aim for a score of 0.70 per mode over
+   1024 games, both seats, fog as in training. It must beat the chaser (above 0.5); if it
+   falls short of 0.70 after the capped search, report the score and move on.
 4. **Speed:** its cost per tick, compiled within the rollout, is at most 10% of the
    game's tick at the 5v5 bench cells **(proposal)**. Report it.
 5. **Characteristics:** each measured quantity matches an independent run of the game

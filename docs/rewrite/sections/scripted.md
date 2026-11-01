@@ -36,7 +36,8 @@ Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md`.
   - **Against random:** it essentially always wins. The bar is a small buffer for a
     one-in-a-million game, not a tolerance: a steady 99% would be a failure to
     investigate.
-  - **Against the chaser:** a win rate of at least 70% in both modes.
+  - **Against the chaser:** 70% in both modes is the goal, not a blocker (author): it
+    must beat the chaser, but no long recalibration chasing the number.
   - **Speed:** "dummy fast": well under the game's own tick cost, since BC runs it on
     every learner environment.
   - **No v1 Elo comparison:** v1 and v2 are different games.
