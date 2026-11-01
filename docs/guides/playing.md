@@ -39,8 +39,8 @@ V cycles through three views:
 - **Spectator:** no fog; every ship and every bullet is drawn.
 - **Team 0** and **Team 1:** what that team sees. In a match with fog of war (`--fog`),
   what the team cannot see is darker, with its colours kept. Only the ships the team sees
-  are drawn, with the parts of their trails it saw, its own bullets and the enemy bullets
-  inside its sight. The arena, the fields and the zones are always drawn.
+  are drawn, with the parts of their trails it saw. Every bullet is drawn in every view;
+  agents never see bullets. The arena, the fields and the zones are always drawn.
 
 Without fog of war the game shows every ship to both teams (see
 [Perception and fog](../explanation/game/perception.md)), so a team's view draws

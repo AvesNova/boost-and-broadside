@@ -237,8 +237,8 @@ def _without_bullets(frame):
 
 
 def test_a_hidden_enemy_draws_nothing_in_its_enemys_view(renderer, context):
-    """The hidden enemy and its bullets around it: removing both changes nothing in team
-    0's view, and changes the spectator's."""
+    """The hidden enemy ship draws nothing in team 0's view (its bullets still do), and
+    draws in the spectator's."""
     loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
     enemy = _out_of_sight(loop)
     frame = loop.current
@@ -251,31 +251,35 @@ def test_a_hidden_enemy_draws_nothing_in_its_enemys_view(renderer, context):
                           math.cos(ships.heading[enemy]), math.sin(ships.heading[enemy]))
     alive = ships.alive.copy()
     alive[enemy] = False
-    without = _without_bullets(dataclasses.replace(
-        frame, ships=dataclasses.replace(ships, alive=alive)))
+    ship_removed = dataclasses.replace(shown, ships=dataclasses.replace(ships, alive=alive))
+    bullets_only = _without_bullets(ship_removed)
     assert np.array_equal(_draw(renderer, context, shown, 0, camera, theme),
-                          _draw(renderer, context, without, 0, camera, theme))
+                          _draw(renderer, context, ship_removed, 0, camera, theme))
+    assert not np.array_equal(_draw(renderer, context, ship_removed, 0, camera, theme),
+                              _draw(renderer, context, bullets_only, 0, camera, theme))
     assert not np.array_equal(_draw(renderer, context, shown, SPECTATOR, camera, theme),
-                              _draw(renderer, context, without, SPECTATOR, camera, theme))
+                              _draw(renderer, context, ship_removed, SPECTATOR, camera, theme))
 
 
-def test_an_enemy_bullet_draws_only_where_the_team_sees(renderer, context):
-    """One bullet in the dark, far from every team-0 ship: an enemy's draws nothing in
-    team 0's view, an own one draws; an enemy's next to a team-0 ship draws."""
+def test_every_bullet_draws_in_every_view(renderer, context):
+    """Agents never see bullets, so the human UI draws every one: an enemy's in the dark,
+    far from every team-0 ship, draws in team 0's view and in the spectator's, as does an
+    own one and an enemy's next to a team-0 ship."""
     loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
     enemy = _out_of_sight(loop)
     frame = _without_bullets(loop.current)
     ships = frame.ships
     theme = themes.load(themes.DEFAULT)
     friend = int(np.flatnonzero(ships.alive & (ships.team == 0))[0])
-    for owner, (x, y), drawn in ((enemy, (ships.x[enemy] + 30, ships.y[enemy] + 30), False),
-                                 (friend, (ships.x[enemy] + 30, ships.y[enemy] + 30), True),
-                                 (enemy, (ships.x[friend] + 30, ships.y[friend] + 30), True)):
+    for owner, (x, y) in ((enemy, (ships.x[enemy] + 30, ships.y[enemy] + 30)),
+                          (friend, (ships.x[enemy] + 30, ships.y[enemy] + 30)),
+                          (enemy, (ships.x[friend] + 30, ships.y[friend] + 30))):
         camera = Camera(WIDTH, HEIGHT, float(x), float(y), 0.5)
         with_bullet = _with_bullets(frame, owner, np.array([x]), np.array([y]))
-        changed = not np.array_equal(_draw(renderer, context, with_bullet, 0, camera, theme),
-                                     _draw(renderer, context, frame, 0, camera, theme))
-        assert changed is drawn, (owner, drawn)
+        for view in (0, SPECTATOR):
+            assert not np.array_equal(_draw(renderer, context, with_bullet, view, camera, theme),
+                                      _draw(renderer, context, frame, view, camera, theme)), (
+                owner, view)
 
 
 def test_a_team_view_of_an_unfogged_match_draws_no_fog(renderer, context):
