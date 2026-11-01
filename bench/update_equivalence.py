@@ -72,7 +72,7 @@ def _restore(saved: dict, overrides: dict):
 
 
 def run(inputs: str, outputs: str, overrides: dict) -> None:
-    saved = torch.load(inputs, weights_only=False)
+    saved = torch.load(inputs, weights_only=False, map_location="cpu")
     trainer, store, bootstraps = _restore(saved, overrides)
     ppo = trainer.ppo
     before = [parameter.detach().clone() for parameter in trainer.model.parameters()]
@@ -102,7 +102,7 @@ def _relative(a: torch.Tensor, b: torch.Tensor) -> float:
 
 
 def compare(path_a: str, path_b: str) -> dict:
-    a, b = torch.load(path_a, weights_only=False), torch.load(path_b, weights_only=False)
+    a, b = (torch.load(path, weights_only=False, map_location="cpu") for path in (path_a, path_b))
     out = {f"first/{name}": _relative(a["first"][name], b["first"][name])
            for name in a["first"]}
     gradient = [_relative(x, y) for x, y in zip(a["gradient"], b["gradient"], strict=True)]
