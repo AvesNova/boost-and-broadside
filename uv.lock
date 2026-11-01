@@ -34,14 +34,6 @@ dependencies = [
     { name = "tyro" },
 ]
 
-[package.optional-dependencies]
-docs = [
-    { name = "mkdocs" },
-    { name = "mkdocs-material" },
-    { name = "mkdocstrings", extra = ["python"] },
-    { name = "pyyaml" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "onnx" },
@@ -50,18 +42,19 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings", extra = ["python"] },
+    { name = "pyyaml" },
+]
 
 [package.metadata]
 requires-dist = [
-    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6,<2" },
-    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.8.0" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=1.0.8" },
     { name = "numpy", specifier = ">=2.5" },
-    { name = "pyyaml", marker = "extra == 'docs'", specifier = ">=6.0.3" },
     { name = "torch", specifier = "==2.15.0", index = "https://download.pytorch.org/whl/cu132" },
     { name = "tyro", specifier = ">=1.0" },
 ]
-provides-extras = ["docs"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -70,6 +63,12 @@ dev = [
     { name = "onnxscript" },
     { name = "pytest" },
     { name = "ruff" },
+]
+docs = [
+    { name = "mkdocs", specifier = ">=1.6,<2" },
+    { name = "mkdocs-material", specifier = ">=9.8.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.8" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [[package]]

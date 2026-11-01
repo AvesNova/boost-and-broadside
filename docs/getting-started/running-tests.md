@@ -37,7 +37,7 @@ One test file runs in a few seconds:
 uv run --no-sync pytest tests/contract/test_imports.py -q
 ```
 
-The docs build test needs the docs extra (`uv sync --extra docs`); without it, that test
-skips and says so. The other docs checks need nothing extra.
+The docs build test needs the `docs` dependency group, which `uv sync` installs by
+default; without it, that test skips and says so.
 
 Next: [a first training run](first-training-run.md).
