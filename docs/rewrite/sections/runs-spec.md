@@ -113,8 +113,10 @@ define and push those first. The league (section 8) comes after this section.
 
 - **`runs/<run>/`** at the repository root (configurable, `--runs-directory`), ignored by
   git.
-- **The run name:** `<YYYY-MM-DD>-<HHMM>-<preset or mode>`, plus a suffix `-2`, `-3`, …
-  if it exists **(proposal)**. `--name` overrides it.
+- **The run name (author, 2026-11-02):** `<YYYY-MM-DD>-<preset or mode>-<adjective>-<noun>`,
+  for example `2026-11-02-mixed-purple-pumpkin`. The two words are drawn from small
+  built-in word lists, so a name is easy for a person to remember. Draw again on a clash.
+  `--name` overrides it.
 - **`run.json`**, rewritten atomically on every change:
   - the name and the status (`running`, `stopped`, `finished`, `failed`), with the
     process id and the host;
@@ -130,7 +132,8 @@ define and push those first. The league (section 8) comes after this section.
   steps.
   - The default N gives about 30 minutes at the preset's measured throughput, and the
     run records N.
-  - Kept: the newest 2 plus the final one **(proposal)**.
+  - **Kept (author, 2026-11-02):** the league's retention: the newest 8, plus the one
+    nearest each age 8, 16, 32, … checkpoints back, plus the final one.
 - **`league/`:** the league's policy snapshots (section 8 writes them; retention is the
   league's).
 - **`metrics.jsonl`:** section 9's local sink (this section creates the path).
@@ -181,7 +184,7 @@ define and push those first. The league (section 8) comes after this section.
   - Record both in `run.json`.
   - If the reserved peak is over the budget, stop with a message naming the peak, the
     budget and the sizes that set them (environments, micro-batch rows). The budget is
-    the device's total memory less a margin, 0.5 GB by default **(proposal)**.
+    the device's total memory less a margin, 0.5 GB by default (author, 2026-11-02).
 - **`--probe`** runs the setup and one update, prints the peaks, and exits without
   writing a run.
 - **On the CPU,** the probe records nothing and never stops a run.
