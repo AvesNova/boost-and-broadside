@@ -1,4 +1,5 @@
-"""Command-line entry point: `bnb train ...`. The one place that sets process-wide options."""
+"""Command-line entry point: `bnb train ...` and `bnb ship-card ...`. The one place that sets
+process-wide options."""
 
 import dataclasses
 import os
@@ -26,15 +27,51 @@ class Train:
     device: str = "cuda"
 
 
+@dataclasses.dataclass(frozen=True)
+class ShipCard:
+    """Print every handle, parameter and shown quantity of a ship card per type, and write its
+    charts (the Ps curve, the E-M doghouse, the similarity ratios against the P-51D). The
+    charts need the optional tools extra (uv sync --extra tools).
+
+    card: a JSON file of ship-card fields (per-type lists; missing fields keep the default);
+    the default card without one.
+    out: the directory the charts are written to.
+    """
+
+    card: str | None = None
+    out: str = "ship-card"
+
+
 def main() -> None:
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
-    args = tyro.cli(Train)
+    args = tyro.extras.subcommand_cli_from_dict({"train": Train, "ship-card": ShipCard})
+    if isinstance(args, ShipCard):
+        ship_card(args)
+    else:
+        train(args)
+
+
+def ship_card(args: ShipCard) -> None:
+    from bnb.contracts import GameConfig
+    from bnb.game.api import rules_of
+    from bnb.game.handling import chart
+
+    rules = rules_of(GameConfig(1, 1, 1000.0))  # flight and weapons need no arena
+    types = chart.load_card(args.card)
+    card = chart.report(rules, types)
+    print("\n".join(chart.lines(rules, types, card)))
+    for path in chart.write_charts(rules, types, card, args.out):
+        print(f"wrote {path}")
+
+
+def train(args: Train) -> None:
     import torch
 
     from bnb.contracts import GameConfig
     from bnb.contracts.pools import environment_multiple
     from bnb.game.modes.rules import PRESETS
-    from bnb.runtime.train import LINEUP, TrainConfig, mixed, train
+    from bnb.runtime.train import LINEUP, TrainConfig, mixed
+    from bnb.runtime.train import train as run
 
     pools = LINEUP
     if args.preset == "mixed":
@@ -60,4 +97,4 @@ def main() -> None:
               f"learn {row['learn_s'] * 1e3:6.0f} ms  entropy {row['entropy']:.2f}  "
               f"kl {row['approx_kl']:+.4f}  reward/s: {rewards}", flush=True)
 
-    train(cfg, torch.device(args.device), log)
+    run(cfg, torch.device(args.device), log)
