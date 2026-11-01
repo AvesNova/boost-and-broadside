@@ -5,7 +5,6 @@ ratios against the P-51D), written with matplotlib (the optional `tools` extra).
 
 import dataclasses
 import json
-import math
 import pathlib
 from typing import NamedTuple
 
@@ -14,12 +13,11 @@ import torch
 from ..rules import Rules
 from ..ship_types import DEFAULTS, SCALED, ShipTypes, ship_types
 from . import shown as shown_module
-from .handles import NAMES, UNITS, Handles
+from .handles import DEGREES, NAMES, UNITS, Handles
 from .manoeuvres import batched, cruise_speed
 from .solver import measure
 
 TYPE_NAMES = ("fighter", "heavy")
-DEGREES = 180.0 / math.pi
 CHARTS = ("ps_curve.png", "doghouse.png", "similarity.png")
 
 

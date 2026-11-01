@@ -32,7 +32,9 @@ FIT_DEGREE = 3
 SETTLE_TIME = 20.0  # s, a sustained turn's settling time
 REVERSAL_LIMIT = 2.0  # s, the longest nose reversal measured
 CLIMB_LIMIT = 900.0  # s, the longest climb measured
-CRUISE_BISECTIONS = 60
+CLIMB_PROGRESS = 10.0  # s: a climb whose store has not risen over this long is given up
+CRUISE_BISECTIONS = 50
+CRUISE_GRID = 48  # speeds, log-spaced from the stall speed to 30 times it
 TURNING_STORE = 0.25  # store fraction for the turns: below the knee, clear of the fade bands
 DIVE_STORE = 0.5  # store fraction for the dive and the zoom (spec: half full)
 FAR = 1e9  # m, where the one field of a flight-only map sits
@@ -151,31 +153,43 @@ def aitken(first, second, third):
 
 
 def cruise_speed(rules: Rules, types: ShipTypes, energy: torch.Tensor) -> torch.Tensor:
-    """(B, T, G) the straight coasting equilibrium at stores energy (B, T, G): the speed the
-    flight tick leaves unchanged, between the stall speed and 30 times it (bisection on
-    one-tick flights). NaN where the tick slows the ship at the stall speed or still speeds
-    it up at the top of the bracket."""
+    """(B, T, G) the straight coasting equilibrium at stores energy (B, T, G): the fastest
+    speed the flight tick leaves unchanged, the terminal speed a ship coasting straight
+    reaches from above. Bracketed on a grid of one-tick flights from the stall speed to 30
+    times it (the last sign change of the speed's gain from + to -), then bisected. NaN
+    where there is none."""
     types = batched(types)
     B, T, G = energy.shape
     ship_type = type_axis(types)[..., None].expand(B, T, G).reshape(B, T * G)
     airframe = airframe_of(types, ship_type)
     stall = torch.sqrt(rules.flight.gravity / airframe.max_lift_coefficient)
-    low, high = stall, 30.0 * stall
     flat = energy.reshape(B, T * G)
-    zeros = torch.zeros_like(flat)
-    fields = empty_map(flat)
 
-    def gain(speed):
-        start = ships(speed, flat, zeros, zeros, ship_type)
-        end = flight_tick(rules.flight, airframe, rules.tick_length, start, zeros, zeros, fields)
-        return end.proper_speed - speed
+    def gain(speed):  # (B, P, ...) speeds
+        shape = speed.shape
+        speed = speed.reshape(B, -1)
+        stores = flat[..., None].expand(shape).reshape(B, -1)
+        kinds = ship_type[..., None].expand(shape).reshape(B, -1)
+        zeros = torch.zeros_like(speed)
+        start = ships(speed, stores, zeros, zeros, kinds)
+        flown = airframe_of(types, kinds)
+        end = flight_tick(rules.flight, flown, rules.tick_length, start, zeros, zeros,
+                          empty_map(speed))
+        return (end.proper_speed - speed).reshape(shape)
 
-    bracketed = (gain(low) > 0.0) & (gain(high) < 0.0)
+    grid = stall[..., None] * torch.logspace(0.0, math.log10(30.0), CRUISE_GRID,
+                                             dtype=stall.dtype, device=stall.device)
+    rising = gain(grid) > 0.0
+    falls = rising[..., :-1] & ~rising[..., 1:]  # a stable root in (grid[i], grid[i + 1])
+    found = falls.any(-1)
+    last = (CRUISE_GRID - 2) - falls.flip(-1).int().argmax(-1)
+    low = grid.gather(-1, last[..., None])[..., 0]
+    high = grid.gather(-1, (last + 1)[..., None])[..., 0]
     for _ in range(CRUISE_BISECTIONS):
         middle = 0.5 * (low + high)
-        rising = gain(middle) > 0.0
-        low, high = torch.where(rising, middle, low), torch.where(rising, high, middle)
-    return torch.where(bracketed, 0.5 * (low + high), torch.nan).reshape(B, T, G)
+        up = gain(middle[..., None])[..., 0] > 0.0
+        low, high = torch.where(up, middle, low), torch.where(up, high, middle)
+    return torch.where(found, 0.5 * (low + high), torch.nan).reshape(B, T, G)
 
 
 class Flown(NamedTuple):
@@ -239,8 +253,9 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     climb_time = torch.full_like(full, torch.nan)
     history = {"speed": [speed], "energy": [energy], "angle": [angle]}
     path, path_samples = torch.zeros_like(speed), {}
-    tick, limit = 0, round(CLIMB_LIMIT / h)
-    while tick < limit and (tick < max(short, settle) or climb_time.isnan().any()):
+    tick, limit, check = 0, round(CLIMB_LIMIT / h), round(CLIMB_PROGRESS / h)
+    pending, checkpoint = climb_time.isnan(), energy[:, :T]
+    while tick < limit and (tick < max(short, settle) or pending.any()):
         new = flight_tick(constants, flight, h, state, stick, power, fields)
         path = path + path_turned(state, new)
         tick += 1
@@ -248,6 +263,10 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
         crossed = climb_time.isnan() & (after >= climb_target)
         fraction = (climb_target - before) / (after - before)
         climb_time = torch.where(crossed, h * (tick - 1 + fraction), climb_time)
+        pending = pending & ~crossed
+        if tick % check == 0:  # a climb whose store stopped rising never finishes
+            pending = pending & (after > checkpoint + 1e-6 * full)
+            checkpoint = after
         state = new
         if tick <= short:
             for key, value in (("speed", new.proper_speed), ("energy", new.energy),

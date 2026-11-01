@@ -6,6 +6,7 @@ the factor that shows it in the chart tool's display units.
 """
 
 import dataclasses
+import math
 
 import torch
 
@@ -47,9 +48,6 @@ class Handles:
     def replace(self, **values) -> Handles:
         return dataclasses.replace(self, **values)
 
-    def values(self) -> dict[str, torch.Tensor]:
-        return {name: getattr(self, name) for name in NAMES}
-
 
 NAMES = tuple(field.name for field in dataclasses.fields(Handles))
 FLIGHT = NAMES[:14]
@@ -60,7 +58,7 @@ FLOWN = ("cruise_speed", "climb_time", "low_speed_acceleration", "sustained_turn
          "bleed_rate", "nose_reversal_time", "dive_acceleration", "zoom_acceleration")
 DIRECT_FLIGHT = tuple(name for name in FLIGHT if name not in FLOWN)
 
-DEGREES = 180.0 / 3.141592653589793
+DEGREES = 180.0 / math.pi
 # (display unit, factor from SI) for the chart tool.
 UNITS = dict(
     stall_speed=("m/s", 1.0), g_limit=("g", 1.0), cruise_speed=("m/s", 1.0),

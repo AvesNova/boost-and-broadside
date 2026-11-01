@@ -23,9 +23,13 @@ from .handles import FLOWN, NAMES, Handles
 from .manoeuvres import TURNING_STORE, batched, fly, steady_turn
 from .weapons import combat_card, combat_handles
 
-# The parameter each flown handle sets, in FLOWN's order (physical values, not scales).
+# The parameter each flown handle sets, in FLOWN's order (physical values, not scales). The
+# induced drag is solved as its factor at full lift, k C_max^(e - 2): the induced drag
+# k S^(e/2) is then that times C_max^2 (S / C_max^2)^(e/2), so the bleed exponent reshapes
+# the polar below full lift instead of rescaling all of it (k alone has units m^(e - 1),
+# and its log moves with e: Newton in (log k, e) is badly conditioned).
 FLOWN_PARAMETERS = ("engine_power_full_store", "coast_exchange", "static_thrust",
-                    "induced_drag_factor", "bleed_exponent", "corner_nose_frequency",
+                    "full_lift_induced_drag", "bleed_exponent", "corner_nose_frequency",
                     "dive_exchange", "climb_exchange")
 # A handle's error is relative to max(|target|, floor), so handles near zero have a floor.
 ERROR_FLOOR = dict(cruise_speed=1.0, climb_time=0.1, low_speed_acceleration=0.1,
@@ -33,19 +37,23 @@ ERROR_FLOOR = dict(cruise_speed=1.0, climb_time=0.1, low_speed_acceleration=0.1,
                    dive_acceleration=0.1, zoom_acceleration=0.1)
 TOLERANCE = 1e-4  # stop when every flown handle is this close (the spec's bar is 5e-3)
 ACCEPTANCE = 5e-3  # the spec's 0.5%: beyond it after the budget, the solve fails
-ITERATIONS = 12
+ITERATIONS = 16
 STEP = 1e-5  # the finite-difference step in log parameters
 STEP_LIMIT = 0.5  # the largest Newton step in any log parameter
+DAMPING = (1e-6, 1e6)  # Levenberg-Marquardt's: the first, and the bounds
+EXPONENT_BOUNDS = (0.5, 5.0)  # the bleed exponents the solver considers
+EXPONENT_SCAN = (0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0)  # the first guess's
 CONDITION_WARNING = 1e4  # a Jacobian condition number above this warns
-EXPONENT_BOUNDS = (0.25, 8.0)  # the first guess's bleed exponent stays in these
 
 
 def _flight_card(rules: Rules, handles: Handles, parameters: torch.Tensor) -> dict:
     """Card fields from the direct flight handles and the flown parameters (..., 8)."""
     constants = rules.flight
     value = dict(zip(FLOWN_PARAMETERS, parameters.unbind(-1)))
+    lift = constants.gravity / handles.stall_speed ** 2  # C_max
+    induced = value["full_lift_induced_drag"] * lift ** (2.0 - value["bleed_exponent"])  # k
     return dict(
-        max_lift_coefficient=constants.gravity / handles.stall_speed ** 2,
+        max_lift_coefficient=lift,
         max_acceleration=handles.g_limit * constants.gravity,
         zero_lift_drag=handles.zero_lift_drag,
         engine_power=(value["engine_power_full_store"]
@@ -55,7 +63,7 @@ def _flight_card(rules: Rules, handles: Handles, parameters: torch.Tensor) -> di
         max_energy=handles.ceiling,
         corner_nose_frequency=value["corner_nose_frequency"],
         bleed_exponent=value["bleed_exponent"],
-        induced_drag_scale=value["induced_drag_factor"] / constants.induced_drag_factor,
+        induced_drag_scale=induced / constants.induced_drag_factor,
         stall_angle_scale=handles.stall_angle / constants.stall_angle,
         coast_exchange_scale=value["coast_exchange"] / constants.coast_exchange,
         dive_exchange_scale=value["dive_exchange"] / constants.dive_exchange,
@@ -170,9 +178,10 @@ def _drag_and_exchange(rules: Rules, airframe, speed, energy, stick, angle):
     return drag, current
 
 
-def first_guess(rules: Rules, handles: Handles, combat: dict) -> torch.Tensor:
-    """(B, num_types, 8) flown parameters from closed forms in the handles, each inverting
-    the game's own instantaneous equations at the manoeuvre's state (no flight)."""
+def first_guess(rules: Rules, handles: Handles, combat: dict, exponent: float) -> torch.Tensor:
+    """(B, num_types, 8) flown parameters at this bleed exponent, from closed forms in the
+    handles, each inverting the game's own instantaneous equations at its manoeuvre's state
+    (no flight). The bleed rate is left to the exponent scan (`solve`)."""
     constants = rules.flight
     mass = constants.mass
     stall, cruise, store = handles.stall_speed, handles.cruise_speed, handles.ceiling
@@ -185,14 +194,16 @@ def first_guess(rules: Rules, handles: Handles, combat: dict) -> torch.Tensor:
     if (dive <= 0.0).any() or (climb <= 0.0).any():
         raise Infeasible("the dive acceleration must exceed, and the zoom acceleration fall "
                          "short of, the coast exchange the climb implies")
-    induced, exponent = (torch.full_like(stall, constants.induced_drag_factor),
-                         torch.full_like(stall, 2.0))
+    lift = constants.gravity / stall ** 2  # C_max
+    exponent = torch.full_like(stall, exponent)
+    full_lift = torch.full_like(stall, constants.induced_drag_factor)  # k C_max^(e - 2)
     thrust_cap = torch.full_like(stall, 1e6)
+    zeros, ones = torch.zeros_like(stall), torch.ones_like(stall)
+    turning = TURNING_STORE * store
     for _ in range(3):
-        parameters = torch.stack([torch.ones_like(stall), coast, thrust_cap, induced, exponent,
-                                  torch.ones_like(stall), dive, climb], -1)
+        parameters = torch.stack([ones, coast, thrust_cap, full_lift, exponent, ones, dive,
+                                  climb], -1)
         airframe = airframe_of(_card(rules, handles, parameters, combat), columns)
-        zeros, ones = torch.zeros_like(stall), torch.ones_like(stall)
         # The null power at cruise, full store, drag only (the cap is the flight's to meet).
         drag, _ = _drag_and_exchange(rules, airframe, cruise, store, zeros, zeros)
         null_power = drag * cruise
@@ -207,36 +218,25 @@ def first_guess(rules: Rules, handles: Handles, combat: dict) -> torch.Tensor:
         thrust_cap = torch.where(needed < free, capped, 10.0 * needed)
         parameters[..., 2] = thrust_cap
         airframe = airframe_of(_card(rules, handles, parameters, combat), columns)
-        # Induced drag factor and bleed exponent from the sustained turn and the bleed rate:
-        # each pins k S^(e/2) at its state, and the two states' S differ.
-        turning = TURNING_STORE * store
+        # The induced drag k S^(e/2) where the sustained turn settles: thrust meets drag and
+        # exchange.
         low, high = stall * 1.0001, stall * torch.sqrt(handles.g_limit)
         for _ in range(60):
             middle = 0.5 * (low + high)
             rate = steady_turn(rules, airframe, middle, turning, ones).path_rate
             slow = rate < handles.sustained_turn_rate
             low, high = torch.where(slow, middle, low), torch.where(slow, high, middle)
-        sustained_speed = 0.5 * (low + high)
-        corner = stall * torch.sqrt(handles.g_limit)
-        factors = []
-        for speed, kind in ((sustained_speed, "sustained"), (corner, "bleed")):
-            turn = steady_turn(rules, airframe, speed, turning, ones)
-            drag, current = _drag_and_exchange(rules, airframe, speed, turning, ones, turn.angle)
-            lift = lift_coefficient(constants, airframe, turn.angle)
-            lifting = lift * lift + (current.vertical_lift / speed ** 2) ** 2  # S
-            if kind == "sustained":  # settled: thrust meets drag and exchange
-                total = current.thrust * torch.cos(turn.angle) - current.exchange
-            else:  # Ps = u (T cos(alpha) - D)
-                total = current.thrust * torch.cos(turn.angle) - handles.bleed_rate / speed
-            induced_drag = (total / speed ** 2 - handles.zero_lift_drag).clamp_min(1e-12)
-            factors.append((induced_drag, lifting))  # k S^(e/2), S
-        (sustained_factor, sustained_lift), (bleed_factor, bleed_lift) = factors
-        exponent = (2.0 * torch.log(bleed_factor / sustained_factor)
-                    / torch.log(bleed_lift / sustained_lift)).clamp(*EXPONENT_BOUNDS)
-        induced = sustained_factor / sustained_lift ** (0.5 * exponent)
+        speed = 0.5 * (low + high)
+        turn = steady_turn(rules, airframe, speed, turning, ones)
+        _, current = _drag_and_exchange(rules, airframe, speed, turning, ones, turn.angle)
+        coefficient = lift_coefficient(constants, airframe, turn.angle)
+        lifting = coefficient ** 2 + (current.vertical_lift / speed ** 2) ** 2  # S
+        total = current.thrust * torch.cos(turn.angle) - current.exchange
+        induced_drag = (total / speed ** 2 - handles.zero_lift_drag).clamp_min(1e-12)
+        full_lift = induced_drag / lifting ** (0.5 * exponent) * lift ** (exponent - 2.0)
     frequency = _reversal_constant(constants.nose_damping) / handles.nose_reversal_time
-    return torch.stack([null_power, coast, thrust_cap, induced, exponent, frequency, dive, climb],
-                       -1)
+    return torch.stack([null_power, coast, thrust_cap, full_lift, exponent, frequency, dive,
+                        climb], -1)
 
 
 # ------------------------------------------------------------------ Newton
@@ -247,16 +247,23 @@ class Solution(NamedTuple):
     condition: torch.Tensor  # (..., num_types) the flown Jacobian's condition number
     redundant: list  # (card, type, handle, handle) for every warned pair
     iterations: int
+    converged: torch.Tensor  # (..., num_types) bool: every flown handle within 0.5%
+    failures: list  # the reason for each card and type that did not converge
 
 
 def _flown_values(flown) -> torch.Tensor:
     return torch.stack([getattr(flown, name) for name in FLOWN], -1)
 
 
-def solve(handles: Handles, rules: Rules, iterations: int = ITERATIONS) -> Solution:
+def solve(handles: Handles, rules: Rules, iterations: int = ITERATIONS,
+          strict: bool = True) -> Solution:
     """The card meeting these handles ((num_types,) or (B, num_types) fields), solved in
     float64 on the handles' device and stored in float32. Infeasible with a reason when no
-    card can meet them; a RedundantHandles warning when two are nearly redundant."""
+    card can meet them; a RedundantHandles warning when two are nearly redundant.
+
+    A batch converges or fails card by card. strict (the default) raises Infeasible with
+    every failure's reason; otherwise the Solution lists them (`converged`, `failures`), and
+    a failed card's types are its best attempt."""
     one_card = handles.ceiling.dim() == 1
     handles = _batched_handles(Handles(**{n: getattr(handles, n).double() for n in NAMES}))
     check(rules, handles)
@@ -264,51 +271,81 @@ def solve(handles: Handles, rules: Rules, iterations: int = ITERATIONS) -> Solut
     B, T = handles.ceiling.shape
     target = torch.stack([getattr(handles, name) for name in FLOWN], -1)  # (B, T, 8)
     scale = torch.maximum(target.abs(), target.new_tensor([ERROR_FLOOR[n] for n in FLOWN]))
-    x = first_guess(rules, handles, combat).log()
-    if not torch.isfinite(x).all():
+    def flown(log_parameters: torch.Tensor, copies: int) -> torch.Tensor:
+        """Relative residuals (B, copies, T, 8) of log parameters (B * copies, T, 8)."""
+        repeated = Handles(**{n: getattr(handles, n).repeat_interleave(copies, 0) for n in NAMES})
+        types = _card(rules, repeated, log_parameters.exp(),
+                      {k: v.repeat_interleave(copies, 0) for k, v in combat.items()})
+        measured = _flown_values(fly(rules, types)).reshape(B, copies, T, 8)
+        return (measured - target[:, None]) / scale[:, None]
+
+    # The first guess: closed forms at each scanned bleed exponent, flown in one batch; each
+    # card and type starts from its best.
+    scan = torch.stack([first_guess(rules, handles, combat, e) for e in EXPONENT_SCAN], 1).log()
+    if not torch.isfinite(scan).all():
         raise Infeasible("the closed-form first guess has no finite parameters")
+    cost = flown(scan.reshape(B * len(EXPONENT_SCAN), T, 8), len(EXPONENT_SCAN)).pow(2).sum(-1)
+    if not torch.isfinite(cost).any(1).all():
+        raise Infeasible("no first guess flies every manoeuvre (no straight equilibrium, or a "
+                         "climb that never fills the store)")
+    choice = cost.nan_to_num(math.inf).argmin(1)  # (B, T)
+    x = scan.gather(1, choice[:, None, :, None].expand(B, 1, T, 8))[:, 0]
     eye = torch.eye(8, dtype=x.dtype, device=x.device)
     candidates = torch.cat([torch.zeros_like(eye[:1]), STEP * eye])  # (9, 8)
-    repeated = Handles(**{n: getattr(handles, n).repeat_interleave(9, 0) for n in NAMES})
-    repeated_combat = {k: v.repeat_interleave(9, 0) for k, v in combat.items()}
-    best_x, best_worst = x, torch.full_like(x[..., 0], math.inf)
-    best_error = torch.full_like(x, math.inf)
+    bounds = math.log(EXPONENT_BOUNDS[0]), math.log(EXPONENT_BOUNDS[1])
+    best_x, best_cost = x, torch.full_like(x[..., 0], math.inf)
+    best_base, best_jacobian = torch.full_like(x, math.inf), eye.expand(B, T, 8, 8)
+    damping = torch.full_like(best_cost, DAMPING[0])
     for iteration in range(1, iterations + 1):
-        trial = (x[:, None] + candidates[None, :, None, :]).reshape(B * 9, T, 8)
-        types = _card(rules, repeated, trial.exp(), repeated_combat)
-        measured = _flown_values(fly(rules, types)).reshape(B, 9, T, 8)
-        residual = (measured - target[:, None]) / scale[:, None]
+        residual = flown((x[:, None] + candidates[None, :, None, :]).reshape(B * 9, T, 8), 9)
         base = residual[:, 0]  # (B, T, 8)
         jacobian = ((residual[:, 1:] - base[:, None]) / STEP).permute(0, 2, 3, 1)  # (B, T, h, p)
-        worst = base.abs().amax(-1)
-        if iteration == 1 and not torch.isfinite(worst).all():
-            raise Infeasible("the first guess cannot fly every manoeuvre (no straight "
-                             "equilibrium, or a climb that never fills the store)")
-        improved = worst < best_worst  # NaN never improves
+        cost = (base * base).sum(-1)
+        improved = cost < best_cost  # NaN never improves
         best_x = torch.where(improved[..., None], x, best_x)
-        best_worst = torch.where(improved, worst, best_worst)
-        best_error = torch.where(improved[..., None], base.abs(), best_error)
-        if (best_worst < TOLERANCE).all():
+        best_cost = torch.where(improved, cost, best_cost)
+        best_base = torch.where(improved[..., None], base, best_base)
+        best_jacobian = torch.where(improved[..., None, None], jacobian, best_jacobian)
+        damping = torch.where(improved, damping / 3.0, damping * 4.0).clamp(*DAMPING)
+        if (best_base.abs().amax(-1) < TOLERANCE).all():
             break
-        # Newton from an element that improved; half way back to its best from one that did not.
-        step = -torch.linalg.solve(torch.where(improved[..., None, None], jacobian, eye),
-                                   torch.where(improved[..., None], base, 0.0)[..., None])[..., 0]
+        # Levenberg-Marquardt from each card's best point: Gauss-Newton while it improves,
+        # toward scaled gradient descent while it does not.
+        normal = best_jacobian.transpose(-1, -2) @ best_jacobian
+        normal = normal + damping[..., None, None] * torch.diag_embed(
+            normal.diagonal(dim1=-2, dim2=-1))
+        gradient = (best_jacobian.transpose(-1, -2) @ best_base[..., None])[..., 0]
+        step = -torch.linalg.solve(normal, gradient[..., None])[..., 0]
         step = step * (STEP_LIMIT / step.abs().amax(-1, keepdim=True).clamp_min(STEP_LIMIT))
-        x = torch.where(improved[..., None], x + step, 0.5 * (x + best_x))
+        x = best_x + step
+        x[..., 4] = x[..., 4].clamp(*bounds)  # the bleed exponent
+    best_error = best_base.abs()
+    best_worst = best_error.amax(-1)
+    jacobian = best_jacobian
     error, worst = best_error, best_worst
-    if not (worst < ACCEPTANCE).all():
-        card, kind = divmod(int(worst.flatten().nan_to_num(math.inf).argmax()), T)
-        handle = FLOWN[int(error[card, kind].nan_to_num(math.inf).argmax())]
-        raise Infeasible(f"no convergence within {iterations} iterations: card {card} type "
-                         f"{kind} misses {handle} by {float(worst[card, kind]):.2%}")
     condition, redundant = _conditioning(jacobian)
+    converged = worst < ACCEPTANCE
+    failures = []
+    for card, kind in (~converged).nonzero().tolist():
+        handle = FLOWN[int(error[card, kind].nan_to_num(math.inf).argmax())]
+        weakest = torch.linalg.svd(jacobian[card, kind])[0][:, -1].abs().topk(2).indices
+        exponent = math.exp(float(best_x[card, kind, 4]))
+        bound = [b for b in EXPONENT_BOUNDS if math.isclose(exponent, b, rel_tol=1e-6)]
+        failures.append(f"card {card} type {kind}: no convergence within {iterations} "
+                        f"iterations: misses {handle} by {float(worst[card, kind]):.2%} "
+                        f"(condition number {float(condition[card, kind]):.3g}, weakest "
+                        f"handles {FLOWN[int(weakest[0])]} and {FLOWN[int(weakest[1])]}"
+                        + (f"; the bleed exponent is at its bound {bound[0]:g}" if bound else "")
+                        + ")")
+    if failures and strict:
+        raise Infeasible("; ".join(failures))
     final = _card(rules, handles, best_x.exp(), combat)
     final = ShipTypes(**{name: value if name == "ticks_between_shots" else value.float()
                          for name, value in vars(final).items()})
     if one_card:
         final = ShipTypes(**{name: value[0] for name, value in vars(final).items()})
-        error, condition = error[0], condition[0]
-    return Solution(final, error, condition, redundant, iteration)
+        error, condition, converged = error[0], condition[0], converged[0]
+    return Solution(final, error, condition, redundant, iteration, converged, failures)
 
 
 def _conditioning(jacobian: torch.Tensor):
