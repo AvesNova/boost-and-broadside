@@ -2,7 +2,7 @@
 
 Branch `section/learner`. The spec (`learner-spec.md`) is implemented in `bnb.learn`
 (`ppo`, `returns`, `losses`, `labels`, `shots`), `bnb.runtime` (`store`, `rollout`, `train`)
-and `bnb.models.relational`. MEASUREMENTS_STATUS
+and `bnb.models.relational`. STATUS_LINE
 
 ## Design
 
@@ -10,15 +10,15 @@ and `bnb.models.relational`. MEASUREMENTS_STATUS
 
 | Module | Job | Lines |
 |---|---|---:|
-| `learn/ppo.py` | `LearnerConfig`; `Learner`: the per-shard returns, the pass over the views (token counts, recomputed old log-probabilities), the labels of a micro-batch, the micro-batch loss, `gradient` (one minibatch, micro-batch by micro-batch), `update`, the drift and explained variance | LINES_PPO |
-| `learn/returns.py` | per-level GAE, team mixing with the level sum | LINES_RETURNS |
-| `learn/losses.py` | the clipped surrogate, cross-entropies, the critic's per-level losses, the shot cross-entropies; masked sums over a given denominator | LINES_LOSSES |
-| `learn/labels.py` | next-state targets and mask, enemy actions and mask, the density counts, the privileged rows | LINES_LABELS |
-| `learn/shots.py` | `ShotCapture`, `Shots`; `tick` (one tick of the scan) and `resimulate` | LINES_SHOTS |
-| `runtime/store.py` | `SegmentStore`: pinned host memory or the device; asynchronous writes from the ring, staged micro-batches with prefetch | LINES_STORE |
-| `runtime/rollout.py` | the staging ring, the label records (privileged rows, every row's action, the shot capture), `bootstrap` | LINES_ROLLOUT |
-| `runtime/train.py` | `TrainConfig`, `Trainer` (shards, pool metrics), `win_rate`, `set_precision`, the learner's stage cut | LINES_TRAIN |
-| `models/relational.py`, `controllers/relational.py` | the toy model and its controller | LINES_RELATIONAL |
+| `learn/ppo.py` | `LearnerConfig`; `Learner`: the per-shard returns, the pass over the views (token counts, recomputed old log-probabilities), the labels of a micro-batch, the micro-batch loss, `gradient` (one minibatch, micro-batch by micro-batch), `update`, the drift and explained variance | 462 |
+| `learn/returns.py` | per-level GAE, team mixing with the level sum | 56 |
+| `learn/losses.py` | the clipped surrogate, cross-entropies, the critic's per-level losses, the shot cross-entropies; masked sums over a given denominator | 65 |
+| `learn/labels.py` | next-state targets and mask, enemy actions and mask, the density counts, the privileged rows | 61 |
+| `learn/shots.py` | `ShotCapture`, `Shots`; `tick` (one tick of the scan) and `resimulate` | 187 |
+| `runtime/store.py` | `SegmentStore`: pinned host memory or the device; asynchronous writes from the ring, staged micro-batches with prefetch | 183 |
+| `runtime/rollout.py` | the staging ring, the label records (privileged rows, every row's action, the shot capture), `bootstrap` | 350 (was 241) |
+| `runtime/train.py` | `TrainConfig`, `Trainer` (shards, pool metrics), `win_rate`, `set_precision`, the learner's stage cut | 223 |
+| `models/relational.py`, `controllers/relational.py` | the toy model and its controller | 159 + 25 |
 
 ### The data path
 
@@ -181,7 +181,82 @@ over every step. Heads start at zero (a uniform policy).
 
 ## Measurements
 
-MEASUREMENTS
+RTX 4070 Laptop (8 GB), bench lock held, a fresh process per cell. The ship-card agent
+shared the machine (mostly CPU load), so update times vary by about 15% between runs.
+Commit d4631a83 unless noted: the last performance change
+(`perf: the pinned staging gathers the next micro-batch on a worker thread`).
+
+### Bytes per view-tick in the store (spec 2, compaction)
+
+From the store's leaves (`/tmp/bnb-scratch-learner/bytes.py`):
+
+| size | per view-tick | replay (before compaction) | privileged rows (all rows) | without both compactions |
+|---|---:|---:|---:|---:|
+| 5v5, 10 fields | 3799 B | 1013 B (1578 B) | 480 B (960 B) | 4844 B |
+| 26 ships, 54 fields | 10039 B | 2621 B (4090 B) | 1248 B (2496 B) | 12756 B |
+| 40 ships, 8 fields | 13809 B | 4028 B (6288 B) | 1920 B (3840 B) | 17989 B |
+| 114 ships, 22 fields | 38879 B | 11465 B (17906 B) | 5472 B (10944 B) | 50792 B |
+
+The rest at 5v5: the observation 1384 B, the shot capture 530 B, every row's action 120 B,
+rewards and values 200 B, the small flags 16 B. Per view-segment the initial carry is
+49 kB. A 5v5 segment of 1536 views is 747 MB of pinned memory.
+
+### Streaming cost (spec 2's budget)
+
+`deathmatch`, 512 environments (768 learner views), float32; rollout: min of 5, update:
+min of 2, after a compile update and three rollouts (`stream_cost.py`):
+
+| store | rollout | update | peak VRAM |
+|---|---:|---:|---:|
+| pinned host memory | 1691 ms | 30.68 s | 3.28 GB |
+| device | 1689 ms | 30.25 s | 3.65 GB |
+
+The rollout costs 0.1% more and the update 1.4%: 1.3% of rollout and update together,
+inside the 5% budget. The device holds two blocks of records instead of a segment.
+
+How the budget was reached (each change committed):
+- the staged micro-batch's view indices were moved to the host with `.cpu()`, a device
+  sync per micro-batch, so the host gather waited for the compute: +30% on the update;
+- with indices kept on the host and copied from pinned memory, still +29% under the other
+  agent's CPU load: the host gather (25 ms per 16-view micro-batch in the trainer, 1-4 ms
+  alone) ran on the main thread between kernel launches;
+- with the gather on a worker thread, a 48-view minibatch's gradient takes 341 ms from
+  pinned memory and 340 ms from the device.
+
+### Precision matrix (spec 8)
+
+Yemong, `deathmatch`, 256 environments (384 views), warmup off so the first epoch is a real
+update at 3e-4 (`precision.py`). Two updates after a compile update and three rollouts;
+drift is before the update's first step, against the rollout's log-probabilities; clip
+fraction and KL are the first epoch's means. Values: the first update, then the second.
+
+| precision | old log-probabilities | rollout | update | ratio drift max | ratio drift mean | clip fraction | KL |
+|---|---|---:|---:|---:|---:|---:|---:|
+| float32 | rollout | 868 ms | 16.3 / 18.9 s | 7.2e-7 / 6.2e-6 | 6.3e-8 / 2.3e-7 | 0.031 / 0.032 | 0.0046 / 0.0041 |
+| float32 | recomputed | 871 ms | 18.2 / 17.9 s | 7.2e-7 / 6.4e-6 | 6.4e-8 / 2.3e-7 | 0.031 / 0.040 | 0.0046 / 0.0044 |
+| TF32 | rollout | 631 ms | 19.4 / 16.6 s | 3.7e-5 / 1.7e-4 | 5.2e-6 / 2.4e-5 | 0.033 / 0.037 | 0.0046 / 0.0042 |
+| TF32 | recomputed | 635 ms | 17.8 / 18.8 s | 3.4e-5 / 1.6e-4 | 5.3e-6 / 2.5e-5 | 0.031 / 0.043 | 0.0046 / 0.0044 |
+| bf16 | rollout | 479 ms | 13.8 / 15.5 s | 1.1e-3 / 3.8e-3 | 1.0e-4 / 3.7e-4 | 0.027 / 0.037 | 0.0043 / 0.0041 |
+| bf16 | recomputed | 479 ms | 16.1 / 14.9 s | 1.1e-3 / 3.9e-3 | 1.0e-4 / 3.5e-4 | 0.028 / 0.039 | 0.0049 / 0.0042 |
+
+- The rollout gains 1.4x with TF32 and 1.8x with bf16 matmuls.
+- The update's time is within run-to-run noise across the three precisions here (the
+  update at this size is dominated by the re-simulation scan's launches and the
+  micro-batch count, not the matmuls).
+- Drift: float32's ratios agree to float32 rounding; TF32's to 2e-4; bf16's to 4e-3. With
+  the clip at 0.2 none of them moves the clip fraction or KL measurably: a real update's
+  ratios move by far more.
+- "Recomputed" ratios start at exactly 1, but the first-epoch clip fraction and KL are the
+  same within noise, because the drift is small next to the update's own step.
+
+TOY_MATRIX
+
+The default stays float32 (spec 8); the author chooses from the matrix.
+
+TOY_BUDGET
+
+THROUGHPUT
+
 
 ## Changes outside `bnb.learn`, `bnb.runtime` and `bnb.models.relational`
 
@@ -230,7 +305,14 @@ MEASUREMENTS
 
 ## Size
 
-SIZE
+| part | lines |
+|---|---:|
+| `bnb.learn` new code (ppo, returns, losses, labels, shots) | 831 (the skeleton PPO's 92 removed) |
+| `bnb.runtime` (store new; rollout and train rewritten) | 756 |
+| `bnb.models.relational` and its controller | 184 |
+| `src/bnb` in total, against the branch point 8a1ad198 | +1655 / -232 |
+| of which outside the three packages (game exposure, Yemong replay, contracts, CLI) | +186 / -51 |
+| tests (sections, loop, the adapter) | +716 / -29 |
 
 ## Progress (working state, 2026-11-01, evening)
 
