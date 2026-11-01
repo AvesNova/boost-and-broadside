@@ -15,7 +15,8 @@ from .themes import COLOUR_FIELDS, NUMBER_FIELDS, THEMES, Colour, Theme, save
 
 HEX_FLAGS = imgui.ColorEditFlags_.display_hex | imgui.ColorEditFlags_.input_rgb
 ALPHA_FLAGS = HEX_FLAGS | imgui.ColorEditFlags_.alpha_bar | imgui.ColorEditFlags_.alpha_preview_half
-PANEL_WIDTH = 380.0
+PANEL_WIDTH = 440.0
+LABEL_WIDTH = 170.0  # pixels kept for the labels right of the fields
 
 
 def with_colour(theme: Theme, name: str, colour: Colour, team: int | None = None) -> Theme:
@@ -58,8 +59,9 @@ class ThemeEditor:
         width, _ = imgui.get_io().display_size
         imgui.set_next_window_pos((width - PANEL_WIDTH - 10.0, 10.0), imgui.Cond_.first_use_ever)
         imgui.set_next_window_size((PANEL_WIDTH, 0.0), imgui.Cond_.first_use_ever)
-        expanded, self.open = imgui.begin(f"Theme: {theme.name}", self.open)
+        expanded, self.open = imgui.begin(f"Theme: {theme.name}###theme editor", self.open)
         if expanded:
+            imgui.push_item_width(-LABEL_WIDTH)
             fields = {f.name: f for f in dataclasses.fields(Theme)}
             for name in COLOUR_FIELDS:
                 field = fields[name]
@@ -85,5 +87,6 @@ class ThemeEditor:
                 theme, self.message = original, f"reverted to {original.name}"
             if self.message:
                 imgui.text_wrapped(self.message)
+            imgui.pop_item_width()
         imgui.end()
         return theme, saved

@@ -51,9 +51,10 @@ def context():
 def imgui_context():
     from imgui_bundle import imgui
 
-    imgui.create_context()
+    created = imgui.create_context()
+    imgui.set_current_context(created)
     yield
-    imgui.destroy_context()
+    imgui.destroy_context(created)
 
 
 @pytest.fixture(scope="module")
@@ -252,3 +253,37 @@ def test_offscreen_frames_are_written(tmp_path):
                                   compile=False, preset="frontline", fog=True, view="team1"))
     assert [p.name for p in paths] == ["frame_0000.png", "frame_0001.png", "frame_0002.png"]
     assert all(p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" for p in paths)
+
+
+def test_a_hex_code_typed_into_the_editor_applies(context, tmp_path):
+    """Click the sky's hex field, select it, type a code: the next frame draws with it."""
+    from imgui_bundle import imgui
+
+    from bnb.play.app import Session
+    from bnb.play.theme_editor import PANEL_WIDTH
+
+    width, height = 1280, 720
+    target = context.framebuffer(color_attachments=[context.texture((width, height), 4)])
+    session = Session(Options(compile=False), context, width, height)
+    session.update(1.0 / 60.0)
+    session.editor.open = True
+    session.draw(target)
+    session.draw(target)  # a new panel takes its size on its second frame
+    io, style = imgui.get_io(), imgui.get_style()
+    row = imgui.get_font_size() + 2 * style.frame_padding.y
+    io.add_mouse_pos_event(width - PANEL_WIDTH - 10 + style.window_padding.x + 30,
+                           10 + row + style.window_padding.y + 0.5 * row)
+    for event in (lambda: io.add_mouse_button_event(0, True),
+                  lambda: io.add_mouse_button_event(0, False),
+                  lambda: (io.add_key_event(imgui.Key.mod_ctrl, True),
+                           io.add_key_event(imgui.Key.a, True)),
+                  lambda: (io.add_key_event(imgui.Key.a, False),
+                           io.add_key_event(imgui.Key.mod_ctrl, False)),
+                  lambda: io.add_input_characters_utf8("#204060"),
+                  lambda: io.add_key_event(imgui.Key.enter, True),
+                  lambda: io.add_key_event(imgui.Key.enter, False)):
+        event()
+        session.draw(target)
+    assert session.theme.sky == Colour.from_hex("#204060")
+    assert session.theme.thin_air == themes.load(themes.DEFAULT).thin_air
+    session.close()

@@ -154,6 +154,7 @@ class Window:
             self.session.update(elapsed)
             self.session.draw(self.context.screen)
             glfw.swap_buffers(self.window)
+        self.session.close()
         glfw.terminate()
 
 

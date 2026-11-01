@@ -30,6 +30,10 @@ class ImguiRenderer:
     def _update_textures(self) -> None:
         for texture in imgui.get_platform_io().textures:
             status = texture.status
+            foreign = texture.tex_id != 0 and texture.tex_id not in self.textures
+            if foreign and status != imgui.ImTextureStatus.destroyed:
+                # Another renderer made it (an ImGui context can outlive one): make our own.
+                status = imgui.ImTextureStatus.want_create
             if status == imgui.ImTextureStatus.want_create:
                 created = self.context.texture((texture.width, texture.height), 4,
                                                texture.get_pixels_array().tobytes())

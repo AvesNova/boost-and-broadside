@@ -1,7 +1,8 @@
 # The rewrite's sections and their status. The roadmap page renders this file
 # (docs/hooks/generated.py, table "roadmap"); update the status here when a section moves.
-# status: merged (on v2), specified (a spec exists, not built), decided (decisions
-# recorded, no spec yet), planned (in the plan only).
+# status: merged (on v2), milestone 1 built (the first of several milestones built),
+# specified (a spec exists, not built), decided (decisions recorded, no spec yet), planned
+# (in the plan only).
 # spec: the design record, or null. page: the page on this site that covers the section
 # (prose once merged, a short in-progress page before).
 - section: "0"
@@ -66,6 +67,6 @@
   page: explanation/in-progress/diagnostics.md
 - section: "10"
   title: The play shell
-  status: planned
-  spec: null
+  status: milestone 1 built
+  spec: docs/rewrite/sections/play-spec.md
   page: explanation/in-progress/play-shell.md

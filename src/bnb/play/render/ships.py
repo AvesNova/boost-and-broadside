@@ -33,6 +33,10 @@ class ShipsPass:
     def _reserve(self, count: int) -> None:
         if count <= self.capacity:
             return
+        if self.capacity:
+            for vertex_array in self.vertex_arrays.values():
+                vertex_array.release()
+            self.instances.release()
         self.capacity = max(count, 2 * self.capacity)
         self.instances = self.context.buffer(reserve=self.capacity * 8 * 4, dynamic=True)
         self.vertex_arrays = {
@@ -57,6 +61,7 @@ class ShipsPass:
                 continue
             table = np.concatenate([np.stack([x[chosen], y[chosen], heading[chosen],
                                               size[chosen]], -1), colours[team[chosen]]], -1)
+            self.instances.orphan()  # fresh storage: no wait on the last frame's draw
             self.instances.write(table.astype(np.float32).tobytes())
             vertex_array.render(moderngl.TRIANGLES, vertices=self.meshes[kind][2],
                                 instances=count)

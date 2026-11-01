@@ -7,7 +7,7 @@ reviewed: 2026-11-01
 
 <!-- not-runnable: runs the whole suite -->
 ```bash
-uv run --no-sync pytest                    # everything; the gpu tests need CUDA
+uv run --no-sync pytest                    # everything; the gpu tests need a GPU
 uv run --no-sync pytest -m "not gpu"       # everything that runs on the CPU
 uv run --no-sync pytest -m "not slow"      # the fast tests
 uv run --no-sync ruff check .              # the linter, configured in pyproject.toml
@@ -17,7 +17,8 @@ uv run --no-sync ruff check .              # the linter, configured in pyproject
 
 Two markers, declared in `pyproject.toml`:
 
-- `gpu`: the test needs a CUDA device. These tests also skip when none is available.
+- `gpu`: the test needs a GPU: a CUDA device, or an OpenGL 3.3 context (EGL) for the play
+  shell's renderer. These tests also skip when none is available.
 - `slow`: the test takes more than a few seconds.
 
 ## Layout

@@ -31,6 +31,9 @@ The trainer builds one controller per name a pool can seat:
   visible living enemy;
 - `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions.
 
+The keyboard pilot, `bnb.controllers.human.human_action`, is for the
+[play shell](in-progress/play-shell.md) only; no pool seats it.
+
 The model is the skeleton MLP (`bnb.models.mlp.MLP`). Each own ship reads its own row and a
 summary of the whole view, with fixed scales, through a factored policy over power, stick
 and shoot (`bnb.models.heads`). It exists to exercise the loop. Because its summary is a

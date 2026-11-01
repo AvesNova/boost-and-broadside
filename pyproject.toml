@@ -66,6 +66,6 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "gpu: needs a CUDA device",
+    "gpu: needs a GPU (a CUDA device, or an OpenGL 3.3 context for the play shell)",
     "slow: takes more than a few seconds",
 ]

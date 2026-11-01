@@ -24,7 +24,7 @@ from .imgui_renderer import ImguiRenderer
 from .rings import ring_table
 from .ships import ShipsPass, ring_radius
 from .sky import SkyPass
-from .trails import TrailsPass, trail_geometry
+from .trails import TrailsPass
 from .zones import zone_table
 
 if TYPE_CHECKING:
@@ -106,9 +106,9 @@ class Renderer:
         game time (s), for the trails."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
-        shown = ships.alive & (True if view == SPECTATOR else ships.visible[view])
-        size = ring_radius(ships.hit_radius, pixel)
         fogged = view != SPECTATOR
+        shown = ships.alive & ships.visible[view] if fogged else ships.alive.copy()
+        size = ring_radius(ships.hit_radius, pixel)
         if fogged:
             with self._measure("fog mask"):
                 team = ships.alive & (ships.team == view)
@@ -126,9 +126,8 @@ class Renderer:
         with self._measure("zones"):
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
         with self._measure("trails"):
-            vertices, indices = trail_geometry(trails, theme, now, shown, ships.team,
-                                               ships.ship_type, size)
-            self.trails.draw(uniforms, vertices, indices)
+            self.trails.draw(uniforms, theme, trails, now, shown, ships.team, ships.ship_type,
+                             size)
         with self._measure("bullets"):
             bullets = frame.bullets
             active = bullets.active

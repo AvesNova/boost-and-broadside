@@ -24,6 +24,9 @@ class BulletsPass:
     def _reserve(self, count: int) -> None:
         if count <= self.capacity:
             return
+        if self.capacity:
+            self.vertex_array.release()
+            self.instances.release()
         self.capacity = max(count, 2 * self.capacity)
         self.instances = self.context.buffer(reserve=self.capacity * FLOATS * 4, dynamic=True)
         self.vertex_array = self.context.vertex_array(
@@ -39,6 +42,7 @@ class BulletsPass:
         colours = np.array([c.floats() for c in theme.team], np.float32)[team]
         table = np.concatenate([np.stack([x, y, direction_x, direction_y], -1), colours,
                                 masked[:, None]], -1).astype(np.float32)
+        self.instances.orphan()  # fresh storage: no wait on the last frame's draw
         self.instances.write(table.tobytes())
         if fog_mask is not None:
             fog_mask.use(0)

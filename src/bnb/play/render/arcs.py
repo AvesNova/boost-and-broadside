@@ -34,6 +34,9 @@ class ArcProgram:
     def _reserve(self, count: int) -> None:
         if count <= self.capacity:
             return
+        if self.capacity:
+            self.vertex_array.release()
+            self.instances.release()
         self.capacity = max(count, 2 * self.capacity)
         self.instances = self.context.buffer(reserve=self.capacity * FLOATS * 4, dynamic=True)
         self.vertex_array = self.context.vertex_array(
@@ -43,6 +46,7 @@ class ArcProgram:
         if len(table) == 0:
             return
         self._reserve(len(table))
+        self.instances.orphan()  # fresh storage: no wait on the last frame's draw
         self.instances.write(np.ascontiguousarray(table, np.float32).tobytes())
         set_uniforms(self.program, **camera)
         self.vertex_array.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=len(table))

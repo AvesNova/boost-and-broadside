@@ -344,6 +344,34 @@ def cli_options() -> str:
     return _table(("Option", "Default"), rows)
 
 
+def play_options() -> str:
+    """The options of python -m bnb.play."""
+    from bnb.play.app import Options
+
+    comments = _field_comments(Options)
+    rows = [(_code("--" + field.name.replace("_", "-")), _code(_number(field.default)),
+             comments.get(field.name, "")) for field in dataclasses.fields(Options)]
+    return _table(("Option", "Default", "Note in the source"), rows)
+
+
+def play_keys() -> str:
+    """The play shell's keys."""
+    from bnb.play.render.hud import KEYS
+
+    return _table(("Key", "Does"), [(key, meaning) for key, meaning in KEYS])
+
+
+def play_themes() -> str:
+    """The shipped themes, and the values each theme file lists."""
+    from bnb.play import themes
+
+    names = ", ".join(_code(name) + (" (the default)" if name == themes.DEFAULT else "")
+                      for name in themes.available())
+    labels = [(_code(field.name), field.metadata["label"])
+              for field in dataclasses.fields(themes.Theme) if field.name != "name"]
+    return f"Themes: {names}.\n\n" + _table(("Value", "In the theme editor"), labels)
+
+
 def yemong_config() -> str:
     """The fields of YemongConfig."""
     from bnb.models.yemong.model import YemongConfig
@@ -370,7 +398,7 @@ def bench_sizes() -> str:
 
 # ------------------------------------------------------------------ the roadmap
 
-ROADMAP_STATUSES = ("merged", "specified", "decided", "planned")
+ROADMAP_STATUSES = ("merged", "milestone 1 built", "specified", "decided", "planned")
 ROADMAP_KEYS = {"section", "title", "status", "spec", "page"}
 
 
@@ -420,6 +448,7 @@ def roadmap_summary(page: str) -> str:
 
 STATUS_SENTENCES = {
     "merged": "is merged",
+    "milestone 1 built": "has its first milestone built; the later milestones are to follow",
     "specified": "is specified and not built",
     "decided": "has its decisions recorded; its spec is to follow",
     "planned": "is planned",
@@ -542,6 +571,9 @@ BLOCKS: dict[str, Callable[..., str]] = {
     "ppo-config": ppo_config,
     "cli-options": cli_options,
     "yemong-config": yemong_config,
+    "play-options": play_options,
+    "play-keys": play_keys,
+    "play-themes": play_themes,
     "bench-sizes": bench_sizes,
     "roadmap": roadmap,
     "roadmap-summary": roadmap_summary,

@@ -17,6 +17,7 @@ uv sync                                       # the environment, with the docs t
 uv run --no-sync pytest -m "not gpu"          # the tests that run on the CPU
 uv run --no-sync bnb --preset mixed           # train the skeleton model (needs CUDA)
 uv run --no-sync python -m bench.run          # the skeleton benchmark (needs CUDA)
+uv run --no-sync python -m bnb.play           # watch or fly a match (needs OpenGL)
 uv run --no-sync mkdocs serve                 # these docs, at http://127.0.0.1:8000
 ```
 
@@ -30,7 +31,7 @@ The documentation is a MkDocs site built from [`docs/`](docs/index.md):
 - [Getting started](docs/getting-started/index.md): installation, tests, a first training
   run, a benchmark.
 - [Guides](docs/guides/index.md): training, benchmarking, the reference fixtures, adding a
-  mode.
+  mode, playing and spectating.
 - [Explanation](docs/explanation/index.md): the architecture, the contracts, the game, the
   model, the training loop, the roadmap and a [glossary](docs/explanation/glossary.md).
 - Reference: generated from the code by `mkdocs build`.

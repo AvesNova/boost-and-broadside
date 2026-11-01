@@ -73,7 +73,8 @@ class Session:
         self.loop = MatchLoop(options.game(), fogged=options.fog, compile=options.compile,
                               pilot=0 if options.fly else None)
         self.context = context
-        imgui.create_context()
+        self.imgui_context = imgui.create_context()
+        imgui.set_current_context(self.imgui_context)
         io = imgui.get_io()
         io.set_ini_filename("")  # no imgui.ini next to wherever the shell was started
         io.display_size = (width, height)
@@ -92,7 +93,9 @@ class Session:
         self.builder: IndexBuilder | None = None
         self.map_fields = None
         self.timings: dict[str, float] = {}
-        self.original = self.theme
+        self.original = self.theme  # what "Revert" restores
+        self.elapsed = 0.0
+        self.frame = self.loop.frame()
         self._new_map(whole=True)
         self.camera.fit(self.loop.current.arena_radius)
 
@@ -127,14 +130,14 @@ class Session:
         self.view = (self.view + 1) % len(VIEWS)
 
     def cycle_theme(self) -> None:
-        index = self.theme_names.index(self.theme.name) if self.theme.name in \
-            self.theme_names else -1
-        self.theme = themes.load(self.theme_names[(index + 1) % len(self.theme_names)],
-                                 self.theme_directory)
+        names = self.theme_names
+        index = names.index(self.theme.name) if self.theme.name in names else -1
+        self.theme = themes.load(names[(index + 1) % len(names)], self.theme_directory)
 
     def resize(self, width: int, height: int) -> None:
         self.renderer.resize(width, height)
         self.camera.resize(width, height)
+        imgui.set_current_context(self.imgui_context)
         imgui.get_io().display_size = (width, height)
 
     # A frame ----------------------------------------------------------------------------------
@@ -145,7 +148,7 @@ class Session:
         self.elapsed = elapsed
         started = time.perf_counter()
         ticks = self.loop.advance(elapsed)
-        self.timings["sim"] = time.perf_counter() - started
+        self.timings["advance"] = time.perf_counter() - started
         if ticks and self._map_changed():
             self._new_map(whole=False)
         if self.builder is not None:
@@ -169,6 +172,7 @@ class Session:
         view = SPECTATOR if self.view == 0 else self.view - 1
         self.renderer.draw(self.frame, view, self.camera, self.theme, self.trails,
                            self.loop.game_time, target)
+        imgui.set_current_context(self.imgui_context)
         imgui.get_io().delta_time = max(self.elapsed, 1e-4)
         imgui.new_frame()
         loop = self.loop
@@ -183,6 +187,10 @@ class Session:
             self.theme_names = themes.available(self.theme_directory)
         imgui.render()
         self.renderer.draw_imgui(imgui.get_draw_data())
+
+    def close(self) -> None:
+        """Release the session's ImGui context."""
+        imgui.destroy_context(self.imgui_context)
 
     def _file_theme(self) -> themes.Theme:
         """The current theme as its file holds it (what "Revert" restores)."""
@@ -219,4 +227,5 @@ def run_offscreen(options: Options) -> list[pathlib.Path]:
         path = options.offscreen / f"frame_{index:04d}.png"
         write_png(path, read_pixels(target))
         paths.append(path)
+    session.close()
     return paths
