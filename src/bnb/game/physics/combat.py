@@ -24,14 +24,25 @@ class Hits(NamedTuple):
     first_shooter: torch.Tensor  # (B, N) owner of the earliest hit on each ship, -1 if none
 
 
-def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bullets,
-         alive_at_start: torch.Tensor) -> Hits:
-    """Relative swept test between this tick's bullet and ship motions.
+class Contacts(NamedTuple):
+    """Every (bullet, ship) pair of one tick's swept test, (B, N K, N): tau, the fraction of
+    the move at the closest approach; miss_squared, that distance squared (m^2); contact,
+    the pair is a hit candidate (an active bullet, a ship alive at tick start that is not
+    its shooter, within the ship's hit radius)."""
 
-    sweep: the motions from `move`; ships, bullets: after the moves; alive_at_start:
-    (B, N). Active bullets are those with moves_left > 0.
+    tau: torch.Tensor
+    miss_squared: torch.Tensor
+    contact: torch.Tensor
+
+
+def contacts(types: ShipTypes, sweep: Sweep, ship_type: torch.Tensor, active: torch.Tensor,
+             alive_at_start: torch.Tensor) -> Contacts:
+    """The relative swept test between this tick's bullet and ship motions.
+
+    sweep: the motions from `move`; ship_type, alive_at_start: (B, N); active: (B, N, K),
+    the bullets with moves left. Bullet o K + k belongs to ship o.
     """
-    B, N, K = bullets.moves_left.shape
+    B, N, K = active.shape
     per_bullet = (B, N * K, 1)
     start_x = sweep.bullet_x.reshape(per_bullet) - sweep.ship_x[:, None, :]  # (B, N K, N): D0
     start_y = sweep.bullet_y.reshape(per_bullet) - sweep.ship_y[:, None, :]
@@ -45,17 +56,33 @@ def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bu
            / (relative_x * relative_x + relative_y * relative_y).clamp_min(1e-12)
            ).clamp(0.0, 1.0).abs()
     miss_x, miss_y = start_x + tau * relative_x, start_y + tau * relative_y
+    miss_squared = miss_x * miss_x + miss_y * miss_y
     # The target's hit radius squared; -1 (no contact possible) for a ship dead at tick start.
-    reach = torch.where(alive_at_start, per_ship(types.hit_radius, ships.ship_type) ** 2, -1.0)
+    reach = torch.where(alive_at_start, per_ship(types.hit_radius, ship_type) ** 2, -1.0)
     ship = torch.arange(N, device=alive_at_start.device)
     not_shooter = ship.repeat_interleave(K)[:, None] != ship  # (N K, N)
-    contact = (((miss_x * miss_x + miss_y * miss_y) < reach[:, None, :]) & not_shooter
-               & (bullets.moves_left > 0).reshape(per_bullet))
+    contact = (miss_squared < reach[:, None, :]) & not_shooter & active.reshape(per_bullet)
+    return Contacts(tau=tau, miss_squared=miss_squared, contact=contact)
 
-    # Each bullet hits only its first contact: smallest tau, ties to the lowest ship index
-    # (min returns the first minimal index).
-    tau_first, target = torch.where(contact, tau, INFINITY).min(-1)  # (B, N K)
-    hit = tau_first < INFINITY
+
+def first_contact(pairs: Contacts) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Each bullet hits only its first contact: smallest tau, ties to the lowest ship index
+    (min returns the first minimal index). Returns (tau, target, hit), each (B, N K)."""
+    tau_first, target = torch.where(pairs.contact, pairs.tau, INFINITY).min(-1)
+    return tau_first, target, tau_first < INFINITY
+
+
+def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bullets,
+         alive_at_start: torch.Tensor) -> Hits:
+    """Hits of this tick's swept test (`contacts`), each bullet on its first contact.
+
+    sweep: the motions from `move`; ships, bullets: after the moves; alive_at_start:
+    (B, N). Active bullets are those with moves_left > 0.
+    """
+    B, N, K = bullets.moves_left.shape
+    tau_first, target, hit = first_contact(
+        contacts(types, sweep, ships.ship_type, bullets.moves_left > 0, alive_at_start))
+    ship = torch.arange(N, device=alive_at_start.device)
 
     # Damage by aspect: theta between the bullet's reversed direction and its target's nose.
     direction_x = bullets.direction_x.reshape(B, N * K)

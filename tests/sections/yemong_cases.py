@@ -78,7 +78,8 @@ def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: in
 
 
 def joint_actions(trajectory) -> torch.Tensor:
-    return to_joint(trajectory.action).to(torch.int32)
+    """The learner's own joint actions (L, R, S); trajectory.action holds every row."""
+    return to_joint(trajectory.action).to(torch.int32)[..., :trajectory.logp.shape[-1]]
 
 
 def double(net: Yemong) -> Yemong:

@@ -63,11 +63,12 @@ def ship_inputs(code_width: int, ship_types: int) -> int:
 
 @contract
 class Replay:
-    """What one decision read from the carry, after assimilating sight: valid (R, N);
-    age (R, N) int32 ticks since seen; means (R, N, 12) in the shifted frame; spreads
-    (R, N, U); enemy_action (R, N - S, 42) int16 (store_action), the action belief of the
-    enemy rows (the only rows it is read for); previous_action (R, S); offset (R, 2) m, the
-    view's position offset."""
+    """What one decision read from the carry, after assimilating sight, for the enemy rows
+    (the only rows a belief can hide; an own ship is always visible, so its row is the
+    observation's truth with no spread, and `compose` rebuilds it): valid (R, N - S);
+    age (R, N - S) int32 ticks since seen; means (R, N - S, 12) in the shifted frame;
+    spreads (R, N - S, U); enemy_action (R, N - S, 42) int16 (store_action), the action
+    belief; previous_action (R, S); offset (R, 2) m, the view's position offset."""
 
     valid: torch.Tensor
     age: torch.Tensor
@@ -121,6 +122,19 @@ def _position_code(position: torch.Tensor) -> torch.Tensor:
                                  POSITION_LEVELS).flatten(-2)
 
 
+def believed(ships: torch.Tensor, replay: Replay) -> tuple[torch.Tensor, ...]:
+    """Every row's (valid, age, means, spreads) from the replay's enemy rows and the own
+    rows' observed truth (valid, seen now, no spread), exactly what sight gave the step."""
+    own = replay.previous_action.shape[-1]
+    own_means = truth(ships[..., :own, :], replay.offset)
+    rows = own_means.shape[:-1]
+    valid = torch.cat([replay.valid.new_ones(rows), replay.valid], -1)
+    age = torch.cat([replay.age.new_zeros(rows), replay.age], -1)
+    spreads = torch.cat([replay.spreads.new_zeros(rows + replay.spreads.shape[-1:]),
+                         replay.spreads], -2)
+    return valid, age, torch.cat([own_means, replay.means], -2), spreads
+
+
 def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int,
             presence_radius: float, tick: float) -> Tokens:
     ships, dtype = obs.ships, obs.ships.dtype
@@ -129,12 +143,12 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
     visible = column["visible"] > 0.5
     ship_type = column["ship_type"].long()
     team = column["team_relative"].long()
-    spreads = replay.spreads
+    valid, age, believed_means, spreads = believed(ships, replay)
     centre = replay.offset  # the map centre, the origin, in the shifted frame
     # A ship with no belief sits at the map centre, not at the frame's origin (which would
     # reveal the offset to rotary attention).
-    position = torch.where(replay.valid[..., None], replay.means[..., 0:2], centre[..., None, :])
-    means = torch.cat([position, replay.means[..., 2:]], -1)
+    position = torch.where(valid[..., None], believed_means[..., 0:2], centre[..., None, :])
+    means = torch.cat([position, believed_means[..., 2:]], -1)
     code = state_code.encode(means, spreads, ship_type)
 
     joint = torch.arange(NUM_JOINT, device=ships.device)
@@ -146,8 +160,8 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
 
     gradient = torch.stack([column["log_index_gradient_x"], column["log_index_gradient_y"]], -1)
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE
-    presence = local_presence(position, team, replay.valid, presence_radius)
-    since_seen = replay.age.to(dtype) * tick
+    presence = local_presence(position, team, valid, presence_radius)
+    since_seen = age.to(dtype) * tick
     ship = torch.cat([code, (team[..., None] == torch.arange(TEAMS, device=ships.device)).to(dtype),
                       (ship_type[..., None] == torch.arange(ship_types, device=ships.device))
                       .to(dtype),
@@ -190,7 +204,7 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
                      symlog(zones[..., ZONE["offensive_distance"]]),
                      symlog(zones[..., ZONE["defensive_distance"]])], -1)], -1)], -1)
     query_position = torch.cat([position, centre[..., None, :]], -2)
-    query_heading = torch.cat([replay.means[..., 4], torch.zeros_like(centre[..., :1])], -1)
+    query_heading = torch.cat([believed_means[..., 4], torch.zeros_like(centre[..., :1])], -1)
     return Tokens(ship=ship, global_token=global_token, field=field, zone=zone,
                   zone_present=present, code=code,
                   ship_type=ship_type, query_position=query_position, query_heading=query_heading,

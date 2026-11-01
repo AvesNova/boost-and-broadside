@@ -323,14 +323,14 @@ def train_config() -> str:
     """The fields of TrainConfig."""
     from bnb.runtime.train import TrainConfig
 
-    return _dataclass_table(TrainConfig, skip=("pools", "ppo"))
+    return _dataclass_table(TrainConfig, skip=("pools", "learner"))
 
 
-def ppo_config() -> str:
-    """The fields of PPOConfig."""
-    from bnb.learn.ppo import PPOConfig
+def learner_config() -> str:
+    """The fields of LearnerConfig."""
+    from bnb.learn.ppo import LearnerConfig
 
-    return _dataclass_table(PPOConfig)
+    return _dataclass_table(LearnerConfig)
 
 
 def cli_options() -> str:
@@ -568,7 +568,7 @@ BLOCKS: dict[str, Callable[..., str]] = {
     "training-lineup": training_lineup,
     "mixed-pools": mixed_pools,
     "train-config": train_config,
-    "ppo-config": ppo_config,
+    "learner-config": learner_config,
     "cli-options": cli_options,
     "yemong-config": yemong_config,
     "play-options": play_options,

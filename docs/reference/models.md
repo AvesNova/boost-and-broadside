@@ -4,7 +4,8 @@ covers: []
 
 # bnb.models
 
-Models: the skeleton MLP, the factored policy heads and Yemong.
+Models: Yemong, the toy relational model, and the skeleton MLP with its factored policy
+heads.
 Generated from the docstrings and signatures in `src/bnb/models/`.
 
 ::: bnb.models

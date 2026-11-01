@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/runtime/rollout.py, src/bnb/runtime/realtime.py, src/bnb/contracts/tree.py, src/bnb/game/ship_types.py, tests/contract/test_imports.py]
+reviewed: 2026-11-01
 ---
 
 # Architecture
@@ -34,8 +35,7 @@ returns a new one.
   which `torch.compile` could drop.
 - **Sections do not compile themselves,** call `torch.cuda` or set process-wide options
   (TF32, thread counts, seeds, recompile limits); the runtime chooses what to compile, and
-  entry points set process-wide options once. One exception stands today: the skeleton PPO
-  in `bnb.learn.ppo` compiles its own loss, until section 6 replaces it.
+  entry points set process-wide options once.
 
 The data types that cross sections inside a tick are frozen dataclasses of tensors,
 registered as [pytrees](glossary.md#pytree) (`bnb.contracts.tree.contract`): the
@@ -62,14 +62,15 @@ stages:
 | Stage | Does |
 |---|---|
 | act | every controller chooses its actions; the tick's random draws; the learner's views are recorded |
-| advance | physics phases 1 to 3: fire, ships fly, bullets fly (`bnb.game.api.move`) |
+| advance | physics phases 1 to 3: fire, ships fly, bullets fly (`bnb.game.api.move`); the learner's shot capture is recorded |
 | resolve | phases 4 to 8, hits to the episode end, with the unnumbered mode phase after damage (`bnb.game.api.resolve`); the rewards and their ledger; the seat redraw at resets |
-| perceive | visibility and the observation of the new state (`bnb.game.api.perceive`) |
+| perceive | visibility, the observation and the privileged truth of the new state (`bnb.game.api.perceive`) |
 
 Each stage is `torch.compile(fullgraph=True, dynamic=False)`. The cut list is the tuple of
 stages in `Rollout`; moving a cut is a one-line change and a benchmark.
 
-The skeleton PPO compiles its loss itself (`bnb.learn.ppo.PPO`), the exception noted above.
+The learner's stages are cut in `bnb.runtime.train.compiler`: the micro-batch loss and the
+shot re-simulation's tick, each compiled whole (see [The learner](learner.md)).
 
 ## CUDA graphs
 

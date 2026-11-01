@@ -47,7 +47,7 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 
 - **Full words:** `environment`, `probability`{.plain}, `observation`, `length`. Universal
   abbreviations (`cos`, `sin`, `x`, `y`, `id`) are fine; spec symbols (`c`, `w`, `gx`)
-  and truncations (`obs` as a variable, `buf`, `ctrl`, `idx`) are not.
+  and truncations (`obs` as a variable, `buf`{.plain}, `ctrl`, `idx`) are not.
   - The exceptions are names that are themselves contracts or established terms: the
     `Obs` contract, the `ppo` module, `bnb`.
 - **Units in full words** as suffixes when a name carries one: `_seconds`{.plain}, `_metres`{.plain},
