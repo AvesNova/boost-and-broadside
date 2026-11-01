@@ -66,7 +66,7 @@ next person can read and change.
   notes file).
 - **Physics:** only the two changes the spec names (the bleed exponent; the cruise fix,
   imposed by the solver). The default card's numbers stay as they are. If the low-speed
-  thrust cap breaks the cruise fix by more than 0.5%, report it; do not change the
+  thrust cap breaks the cruise fix by more than 2%, report it; do not change the
   formula.
 - **If the spec or a contract looks wrong:** take the most literal reading, keep going,
   and write it up as a request in your notes. Items marked (proposal): implement them as

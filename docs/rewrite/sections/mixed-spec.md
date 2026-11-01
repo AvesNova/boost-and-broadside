@@ -80,3 +80,15 @@ columns already carry the mode one-hot.
    tick times (no mode pays for another). Report the 5v5 training cells: `deathmatch`,
    `deathmatch_wide` and `frontline` alone, then `mixed`, with the skeleton learner and
    with Yemong.
+
+## 7. Settled after implementation (author, 2026-11-01)
+
+- **The mixed tick's overhead is accepted:** about 0.1 ms per tick at 4096 environments
+  (0.81 against 0.71 ms share-weighted), +3% on the MLP rollout and +2% on Yemong's. No
+  compiler tuning per stage now: modes will be added later, so fine-tuning would not
+  last.
+- **Team deathmatch views keep the absent zone tokens** (15 memory tokens, not 10; 2% of
+  a mixed rollout), for simplicity.
+- **Equivalence:** bit for bit where pools are whole vector widths; otherwise within the
+  spec's 1e-6, tested with an unaligned size. Repeatability is sought only where it costs
+  little throughput.
