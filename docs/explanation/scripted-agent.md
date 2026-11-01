@@ -1,0 +1,131 @@
+---
+covers: [src/bnb/controllers/scripted.py, src/bnb/controllers/scripted_parameters.py, src/bnb/controllers/scripted_combat.py, src/bnb/controllers/scripted_frontline.py, src/bnb/game/handling.py, src/bnb/runtime/evaluate.py]
+reviewed: 2026-11-02
+---
+
+# The scripted agent
+
+<!-- generated: section-status -->
+
+The scripted agent is one memoryless [controller](glossary.md#controller),
+`bnb.controllers.scripted.Scripted`, with three uses: a league opponent, the rungs of the
+stationary ladder between random and scripted play, and the teacher for
+[behaviour cloning](behaviour-cloning.md). Its carry is `None`.
+
+## What it reads and gives
+
+It reads only the observation, the parts `Scripted.reads` names: the ship rows, the zone
+rows and the globals. It never reads `bnb.contracts.Privileged` or the game state, so it
+sees exactly what a model sees, fog included, and a student can match it.
+
+`bnb.controllers.scripted.distribution` is the pure function behind it: a team's views in,
+a `(R, S, 42)` distribution over the joint action out, in `bnb.contracts.action.to_joint`
+order. The joint is the outer product of three marginals, power (3), stick (7) and shoot
+(2), which `bnb.controllers.scripted.marginals` returns. `Scripted.step` samples each
+marginal by its inverse CDF from the default generator, so a captured graph draws fresh
+numbers on every replay. A dead ship, or one waiting to respawn, takes the no-op action
+with probability 1.
+
+The global mode one-hot selects the layers: team deathmatch runs the combat layer;
+Frontline runs the Frontline layer on top of it. Both are computed for every view and the
+mode selects per view, so a mixed batch is one graph.
+
+## Characteristics
+
+Every threshold is a dimensionless parameter times a characteristic quantity of the
+observing ship's type (or the target's, for its hit radius). The quantities are
+`bnb.game.handling.Characteristics`, measured per ship type by
+`bnb.game.handling.measure` through the game's own `flight_tick`, `launch` and
+`bullet_motion` at the standard field index, so they follow the ship card:
+
+- `cruise_speed`: coasting straight until the speed and the store settle;
+- `top_speed`: the peak of a straight boost from cruise with a full store;
+- `corner_speed`: `sqrt(max_acceleration / max_lift_coefficient)`, the card's;
+- `turn_rate`: the steady flight-path rate at cruise for each of the three stick levels;
+- `gun_range` and `bullet_speed`: a bullet fired along the flight path at cruise, flown
+  for its whole life;
+- the card's values (`max_energy`, `bullet_energy_cost`, `max_shield`, `hit_radius`,
+  `max_acceleration`) and the rules' (`stall_angle`, `bullet_drag`, `vision_range`).
+
+`bnb.game.handling.time_of_flight` gives a bullet's time to a distance from the drag law,
+`t = (exp(k s) − 1) / (k w₀)`. `bnb.game.handling.characteristics` caches the measurement
+per card and rules; it takes a few seconds on the CPU.
+
+`tests/sections/test_handling.py` checks each quantity against an independent run of the
+game (a bullet fired with `bnb.game.api.move`, the reference flight maneuvers, the stick
+held through the game's move) and that a changed card moves them the right way.
+
+## The combat layer
+
+Each own ship fights its target, the nearest visible living enemy (ties: lowest row).
+
+- **The lead:** the aim point is the target's displacement when a bullet fired now
+  arrives, `(p_target + v_target t) − (p_own + v_own t)` with `t` the time of flight to the
+  target's distance (`bnb.controllers.scripted_combat.lead`). The distance is capped at
+  `lead_cap_in_gun_range` gun ranges, so a far target does not get a lead of seconds.
+- **The stick:** the angle error from the nose to the wanted direction, positive to the
+  left, sets P(turn) by one ramp and the level by two more (level two over one, three over
+  two), all in stall angles. The side follows the sign.
+- **Power:** boost when slow (in corner speeds) or when the store fraction times the
+  distance in gun ranges is large; reverse when close; coast otherwise.
+- **Shoot:** P(aligned), by the nose's angle to the aim point over the target's angular
+  size `2 atan(hit_radius / distance)` (clamped to 1–45°), times P(in range), by the
+  distance in gun ranges. It is 0 while the gun cools or the store cannot pay for a shot:
+  such a shot does nothing, and a 0 keeps the teacher's labels honest about it.
+- **The boundary:** a ship within a margin of g-limited turn radii (`speed² /
+  max_acceleration`) of the arena's edge and flying outward blends a steer toward the
+  centre into its wanted direction, by a ramp on its depth into the margin.
+- **No visible enemy:** it heads for the centre and holds its course once within
+  `centre_hold_in_arena_radius` of it, and does not fire.
+
+## The Frontline layer
+
+Strength is a sum of Gaussian kernels over visible living ships, each weighted by its
+health `0.2 + 0.8 · shield / max_shield`.
+
+- **Who defends:** the own defense zone wants the larger of a floor and the enemy's
+  strength near it plus a margin, and more while its meter moves against the viewer.
+  Ships nearer the defense zone than the attack zone are assigned to it first, until
+  their strength covers the want; the rest attack the enemy's defense zone, unless their
+  strength times `exp(aggression)` is below the enemy's there, when everyone defends.
+  Every ship of a view computes the same assignment, so the team splits without memory.
+- **Separation** from allies within a radius, stronger the nearer.
+- **Recovery:** a ship below a shield fraction with enemy strength above a threshold
+  at its position falls back toward its own spawn zone. Recovery overrides power and
+  stick.
+- **The blend with combat:** the two layers' power and stick marginals are blended in log
+  probability by the nearest enemy's distance, all combat at the inner shooting range and
+  all strategy at the combat radius. The shot is the combat layer's. The boundary term
+  applies to every wanted direction.
+
+## The ladder's rungs
+
+`Scripted(scripted_probability=p)` takes a float or a tensor `(R,)` with one probability
+per view: each ship plays the scripted action with probability `p` and a uniform one
+otherwise, from one scripted pass and one uniform draw over all views. Its distribution,
+`Scripted.action_distribution`, is `p q + (1 − p) / 42`; 0 is random play and 1 the
+scripted agent. The league changes a tensor in place, and the captured graph reads it.
+
+## Parameters
+
+`bnb.controllers.scripted_parameters.ScriptedParameters` holds the dimensionless numbers,
+each named for the quantity it scales, with the ramps as
+`bnb.controllers.scripted_parameters.Ramp`. Its defaults are the values the parameter
+search chose. A value may also be a tensor `(R, 1)` with one value per view
+(`bnb.controllers.scripted_parameters.unpack` of a parameter table), so one compiled
+controller plays many parameter sets side by side; the search used that.
+
+## Measurements
+
+`bnb.runtime.evaluate.first_results` plays fresh games to their end in the training
+rollout and returns each view's result. Measured with the chosen parameters on the
+development laptop's RTX 4070, fog on in every game, both seats:
+
+<!-- measured: scripted-scores -->
+
+## Tests
+
+`tests/sections/test_scripted.py` covers the behaviour on constructed observations for
+both ship types (the stick, the gun, power, the lead, the boundary, no target, Frontline
+defense and recovery), the invariances (the seat, a mirrored world, permuted rows, the
+values of hidden rows' zeroed columns), the rungs and per-view parameters.

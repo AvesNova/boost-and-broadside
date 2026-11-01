@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/contracts/, src/bnb/runtime/lineup.py, src/bnb/runtime/rollout.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # Glossary
@@ -66,6 +66,12 @@ the GPU, over every tensor of a pytree at once.
   Python numbers. Compiled code specializes on them.
 - The **ship card** (`bnb.game.ship_types.ShipTypes`) is the per-type parameters, as
   tensors. Changing them recompiles nothing.
+
+## Rung
+
+A step of the stationary ladder between random play and the scripted agent: the scripted
+agent playing its action with probability `p` and a uniform one otherwise. See
+[The scripted agent](scripted-agent.md#the-ladders-rungs).
 
 ## Sim index, team-relative
 

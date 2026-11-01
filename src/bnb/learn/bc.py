@@ -61,8 +61,9 @@ def entropy(probabilities: torch.Tensor) -> torch.Tensor:
 
 def flat_views(obs: Obs) -> Obs:
     """Stored observations (L, n, ...) as views (L n, ...)."""
+    parts = {field.name: getattr(obs, field.name) for field in dataclasses.fields(obs)}
     return Obs(**{name: None if value is None else value.flatten(0, 1)
-                  for name, value in dataclasses.asdict(obs).items()})
+                  for name, value in parts.items()})
 
 
 def teacher_distribution(teacher: Teacher, obs: Obs) -> torch.Tensor:

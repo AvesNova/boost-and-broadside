@@ -107,15 +107,18 @@ RULES_TICK = 1.0 / 30.0
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_it_boosts_when_slow_or_far_with_a_full_store_and_reverses_when_close(ship_type):
     corner = value("corner_speed", ship_type)
+    slowest = PARAMETERS.boost_slow_ramp_in_corner_speed.low
     slow = _duel(ship_type, _ahead(ship_type, 0.0, 1.0), own=ship(ship_type=ship_type,
-                                                                   speed=0.5 * corner))
+                                                                   speed=0.9 * slowest * corner))
     assert _marginals(slow)[0][1] > 0.99
-    far = _duel(ship_type, _ahead(ship_type, 0.0, 4.0))
+    distance = 1.1 * PARAMETERS.boost_far_ramp_in_store_gun_ranges.high  # with a full store
+    far = _duel(ship_type, _ahead(ship_type, 0.0, distance))
     assert _marginals(far)[0][1] > 0.99
-    empty = _duel(ship_type, _ahead(ship_type, 0.0, 4.0),
+    empty = _duel(ship_type, _ahead(ship_type, 0.0, distance),
                   own=ship(ship_type=ship_type, energy=0.1 * value("max_energy", ship_type)))
     assert _marginals(empty)[0][1] < 0.01
-    close = _duel(ship_type, _ahead(ship_type, 0.0, 0.15))
+    closest = PARAMETERS.reverse_ramp_in_gun_range.low
+    close = _duel(ship_type, _ahead(ship_type, 0.0, 0.9 * closest))
     assert _marginals(close)[0][2] > 0.99
 
 
@@ -189,11 +192,13 @@ def test_frontline_it_defends_a_zone_whose_meter_moves_against_it(ship_type):
 @pytest.mark.parametrize("ship_type", TYPES)
 def test_frontline_it_falls_back_to_its_spawn_when_hurt_and_threatened(ship_type):
     gun_range = value("gun_range", ship_type)
-    threat = ship(x=1.5 * gun_range, y=0.5 * gun_range, team_relative=1)
-    hurt = ship(ship_type=ship_type, shield=0.1 * value("max_shield", ship_type))
+    threats = [ship(x=1.5 * gun_range, y=(0.5 + 0.2 * i) * gun_range, team_relative=1)
+               for i in range(2)]
+    hurt = ship(ship_type=ship_type, shield=0.5 * PARAMETERS.recovery_shield_fraction
+                * value("max_shield", ship_type))
     healthy = ship(ship_type=ship_type)
-    for own, side in ((hurt, 2), (healthy, 1)):  # spawn on the right, the threat on the left
-        obs = observation([own, absent(team_relative=0)], [threat, absent()], _ring())
+    for own, side in ((hurt, 2), (healthy, 1)):  # spawn on the right, the threats on the left
+        obs = observation([own, absent(team_relative=0)], threats, _ring())
         assert _levels(_marginals(obs)[1])[side] > 0.9
 
 

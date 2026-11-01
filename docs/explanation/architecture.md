@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runtime/rollout.py, src/bnb/runtime/realtime.py, src/bnb/contracts/tree.py, src/bnb/game/ship_types.py, tests/contract/test_imports.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # Architecture

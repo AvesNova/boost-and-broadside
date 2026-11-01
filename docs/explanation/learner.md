@@ -105,7 +105,9 @@ Each term matches an independent computation on a stored segment
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
 linear warmup of the learning rate over the first environment steps, and stops early after
-an epoch whose mean approximate KL divergence exceeds `target_kl`. The minibatch order and
+an epoch whose mean approximate KL divergence exceeds `target_kl` (None: never). The
+policy's terms and statistics are one method, `Learner._policy`{.plain}; behaviour cloning
+(`bnb.learn.bc.BehaviourCloning`) replaces it and keeps the rest of the update. The minibatch order and
 the shot spread come from the learner's own random streams (`bnb.learn.ppo.random_stream`,
 seeded from `LearnerConfig.seed`), so the global generator does not change an update. The old log-probabilities are
 the rollout's, or recomputed by `unroll` before the first epoch

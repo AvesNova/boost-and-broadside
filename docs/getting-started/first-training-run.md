@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runtime/train.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # A first training run

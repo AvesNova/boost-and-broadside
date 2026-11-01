@@ -3,7 +3,7 @@ the characteristic quantity it scales (`bnb.game.handling.Characteristics`).
 
 A value is a float, or a tensor (R, 1) with one value per view (`unpack` of a parameter
 table), so one compiled controller can play several parameter sets side by side (the
-parameter search). The starting values are listed in the section notes with their origin.
+parameter search). The defaults are the search's choice; the section notes record the search.
 """
 
 import dataclasses
@@ -55,28 +55,28 @@ class ScriptedParameters:
     ship falls back to its spawn.
     """
 
-    turn_ramp_in_stall_angle: Ramp = Ramp(0.03, 0.15, 0.0, 1.0)
-    level_two_ramp_in_stall_angle: Ramp = Ramp(0.2, 1.0, 0.0, 1.0)
-    level_three_ramp_in_stall_angle: Ramp = Ramp(1.0, 3.0, 0.0, 1.0)
-    boost_slow_ramp_in_corner_speed: Ramp = Ramp(0.8, 1.1, 1.0, 0.0)
-    boost_far_ramp_in_store_gun_ranges: Ramp = Ramp(1.5, 3.0, 0.0, 1.0)
-    reverse_ramp_in_gun_range: Ramp = Ramp(0.25, 0.5, 1.0, 0.0)
-    aim_ramp_in_target_size: Ramp = Ramp(0.5, 1.5, 1.0, 0.0)
-    shoot_ramp_in_gun_range: Ramp = Ramp(0.5, 1.0, 1.0, 0.0)
-    lead_cap_in_gun_range: float = 2.0
-    boundary_margin_in_turn_radius: float = 3.0
-    boundary_steer_ramp_in_margin: Ramp = Ramp(0.0, 0.5, 0.0, 1.0)
-    centre_hold_in_arena_radius: float = 0.3
-    combat_radius_in_gun_range: float = 3.0
-    support_radius_in_zone_radius: float = 2.0
-    defensive_floor: float = 0.5
-    defensive_margin: float = 0.5
-    aggression: float = 0.0
-    defense_urgency: float = 1.0
-    separation_radius_in_gun_range: float = 0.5
-    separation_weight: float = 0.5
-    recovery_shield_fraction: float = 0.3
-    recovery_threat: float = 0.5
+    turn_ramp_in_stall_angle: Ramp = Ramp(0.0185, 0.16, 0.0, 1.0)
+    level_two_ramp_in_stall_angle: Ramp = Ramp(0.153, 0.4, 0.0, 1.0)
+    level_three_ramp_in_stall_angle: Ramp = Ramp(1.04, 2.09, 0.0, 1.0)
+    boost_slow_ramp_in_corner_speed: Ramp = Ramp(0.471, 0.532, 1.0, 0.0)
+    boost_far_ramp_in_store_gun_ranges: Ramp = Ramp(2.91, 4.91, 0.0, 1.0)
+    reverse_ramp_in_gun_range: Ramp = Ramp(0.368, 0.512, 1.0, 0.0)
+    aim_ramp_in_target_size: Ramp = Ramp(0.335, 1.09, 1.0, 0.0)
+    shoot_ramp_in_gun_range: Ramp = Ramp(0.773, 0.876, 1.0, 0.0)
+    lead_cap_in_gun_range: float = 1.16
+    boundary_margin_in_turn_radius: float = 2.3
+    boundary_steer_ramp_in_margin: Ramp = Ramp(0.0133, 0.479, 0.0, 1.0)
+    centre_hold_in_arena_radius: float = 0.48
+    combat_radius_in_gun_range: float = 2.33
+    support_radius_in_zone_radius: float = 1.0
+    defensive_floor: float = 0.81
+    defensive_margin: float = 0.496
+    aggression: float = 0.628
+    defense_urgency: float = 1.82
+    separation_radius_in_gun_range: float = 0.853
+    separation_weight: float = 0.444
+    recovery_shield_fraction: float = 0.185
+    recovery_threat: float = 0.945
 
 
 NAMES = tuple(field.name for field in dataclasses.fields(ScriptedParameters))

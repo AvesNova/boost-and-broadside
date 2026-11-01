@@ -1,13 +1,15 @@
 ---
 covers: [src/bnb/runtime/, src/bnb/controllers/, src/bnb/models/relational.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # The training loop
 
 The loop lives in `bnb.runtime.train`. It trains Yemong, or the toy relational model, with
-the learner (see [The learner](learner.md)). How to run and configure it is in the
-[training guide](../guides/training.md).
+the learner (see [The learner](learner.md)), or clones the scripted agent with
+`TrainConfig.objective` set to `bc` (see [Behaviour cloning](behaviour-cloning.md), whose
+loop with its stop rule is `bnb.runtime.cloning.clone`). How to run and configure it is in
+the [training guide](../guides/training.md).
 
 ## One update
 
@@ -17,26 +19,30 @@ the learner (see [The learner](learner.md)). How to run and configure it is in t
    each followed by the learner's bootstrap evaluation (`Rollout.bootstrap`); the segments
    go into the rollout's segment store.
 2. **Learn:** one update of the learner over the stored segments
-   (`bnb.learn.ppo.Learner.update`).
+   (`bnb.learn.ppo.Learner.update`; with BC, `bnb.learn.bc.BehaviourCloning`, the same
+   update with the cloning loss).
 3. **Refresh the league:** every `league_every` updates, copy the learner's weights into the
    `league_0` controller's model, in place.
 
 It returns a row of measurements: the times of the rollout and the update, the learner's
 statistics (each loss term, the value loss and explained variance per level, the clip
-fraction and approximate KL of the first epoch, the step/unroll ratio drift, the return
-scale and the learning rate), and per pool the learner's reward per level per ship per
+fraction and approximate KL of the first epoch, or with BC the BC KL and the entropies,
+the step/unroll ratio drift, the return scale and the learning rate), and per pool the learner's reward per level per ship per
 second and its episode results.
 
 ## Controllers
 
-The trainer builds one controller per name a pool can seat:
+The trainer builds the learner, its league copy, and a controller for every other name its
+pools seat:
 
 - `learner`: the model being trained, through `bnb.controllers.yemong.YemongController` or
   `bnb.controllers.relational.RelationalController`;
 - `league_0`: a frozen copy of it;
 - `chaser`: `bnb.controllers.scripted.Chaser`, which turns toward and shoots at the nearest
   visible living enemy;
-- `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions.
+- `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions;
+- `scripted`: `bnb.controllers.scripted.Scripted`, [the scripted agent](scripted-agent.md),
+  with its characteristics measured once for the trainer.
 
 The keyboard pilot, `bnb.controllers.human.human_action`, is for the
 [play shell](in-progress/play-shell.md) only; no pool seats it.
@@ -64,7 +70,8 @@ is a sequence of compiled stages over that carry (see [Architecture](architectur
 - **Act.** Each controller receives its views of the current observation, the parts it
   `reads` plus the globals, and returns actions for its ships. The runtime scatters them
   into the batch's action tensor by environment and team.
-- **Record.** For the learner's views, the act stage writes the observation parts it reads,
+- **Record.** For the learner's views, the act stage writes the observation parts it reads
+  (and any `extra_reads`, such as the parts BC's teacher reads),
   every row's action, the log-probability and value, anything else its `Outputs` give (the
   values per level, the outcome probabilities, the replay record) and the label inputs into
   a staging ring of two graph blocks. The advance stage writes the shot capture, the resolve
