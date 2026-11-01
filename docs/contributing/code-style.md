@@ -15,8 +15,9 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 - Python 3.14 (`requires-python` in `pyproject.toml`), managed with uv. Run everything
   through `uv run --no-sync`, so a command never changes the environment.
 - `uv run --no-sync ruff check .` must pass. The rule sets and the line length (100) are
-  in `[tool.ruff]` in `pyproject.toml`. There is no automatic formatter: match the
-  layout of the surrounding code.
+  in `[tool.ruff]` in `pyproject.toml`.
+- The code is formatted with `uv run --no-sync ruff format .`. The suite runs
+  `ruff format --check` and fails on unformatted code.
 - A library that a task needs may be added. Tooling-only libraries go in an optional
   extra or a dependency group, so the runtime install stays small.
 
@@ -46,7 +47,7 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 
 - **Full words:** `environment`, `probability`{.plain}, `observation`, `length`. Universal
   abbreviations (`cos`, `sin`, `x`, `y`, `id`) are fine; spec symbols (`c`, `w`, `gx`)
-  and truncations (`obs` as a variable, `buf`, `ctrl`, `idx`) are not.
+  and truncations (`obs` as a variable, `buf`{.plain}, `ctrl`, `idx`) are not.
   - The exceptions are names that are themselves contracts or established terms: the
     `Obs` contract, the `ppo` module, `bnb`.
 - **Units in full words** as suffixes when a name carries one: `_seconds`{.plain}, `_metres`{.plain},
@@ -208,7 +209,5 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 - **The body** says why, and states any measured result with where it was measured. The
   diff already shows what changed.
 - **One idea per commit.** Fold fixes to unpushed work into the commit they belong to.
-- **Attribution:** a commit written with an AI assistant ends with its `Co-Authored-By`
-  trailer.
 - **Commit and push as you go:** each finished step is pushed, so no work lives only on
   one machine.

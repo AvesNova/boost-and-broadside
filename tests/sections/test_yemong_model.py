@@ -179,7 +179,7 @@ def test_visible_ship_code_is_the_sharp_code_of_its_observation():
     sharp = net.state_code.sharp(truth(view.ships, decision.replay.offset), ship_type)
     assert visible.any() and (~visible).any()
     assert torch.equal(tokens.code[visible], sharp[visible])
-    assert (decision.replay.spreads[visible] == 0).all()
+    assert (decision.replay.spreads[visible[:, OWN:]] == 0).all()  # the replay's enemy rows
 
 
 def test_spawning_voids_a_belief():
@@ -201,11 +201,12 @@ def test_spawning_voids_a_belief():
     no_reset = torch.zeros(views, dtype=torch.bool)
     with torch.no_grad():
         replay = net.step(carry, dataclasses.replace(view, ships=ships), no_reset).replay
-    assert not replay.valid[:, 5].any() and replay.valid[:, 6:10].all()
-    assert (replay.means[:, 5] == 0).all() and (replay.spreads[:, 5] == 0).all()
-    forecast = replay.enemy_action[:, 0].double() / ACTION_SCALE  # row 5 is enemy row 0
+    # The replay holds the enemy rows: row 5 is its row 0.
+    assert not replay.valid[:, 0].any() and replay.valid[:, 1:5].all()
+    assert (replay.means[:, 0] == 0).all() and (replay.spreads[:, 0] == 0).all()
+    forecast = replay.enemy_action[:, 0].double() / ACTION_SCALE
     assert torch.allclose(forecast, torch.full_like(forecast, 1 / 42), atol=1e-4)
-    assert (replay.means[:, 6:10] == 7.0).all() and (replay.spreads[:, 6:10] == 3.0).all()
+    assert (replay.means[:, 1:5] == 7.0).all() and (replay.spreads[:, 1:5] == 3.0).all()
 
 
 def test_without_fog_every_living_ship_is_certain():
@@ -213,7 +214,7 @@ def test_without_fog_every_living_ship_is_certain():
     enemy is not shown even without fog; its row keeps a forecast.)"""
     net = cases.model()
     _, trajectory = cases.rollout(net, fog_share=0.0, length=64)
-    alive = trajectory.obs.ships[..., SHIP["alive"]] > 0.5
+    alive = trajectory.obs.ships[..., OWN:, SHIP["alive"]] > 0.5  # the replay's enemy rows
     assert (trajectory.replay.spreads[alive] == 0).all()
     assert trajectory.replay.valid[alive].all()
 

@@ -85,7 +85,8 @@ How they run:
 - **Defined in code** with `wandb-workspaces` and versioned in the repo
   (`bnb/runtime/dashboards.py`, or `tools/`). A command builds or updates a run's
   workspace. If that package's API proves unstable, the fallback is one saved workspace
-  made by hand, with its export committed.
+  made by hand, with its export committed (author, 2026-11-02: in code if it can be
+  done).
 - **The x-axis** is `counters/env_steps` by default.
 
 ## 5. v2 translations of audit items (v2)
@@ -131,8 +132,11 @@ How they run:
    offline, or the saved-workspace fallback).
 6. **Cost:**
    - the per-update series add at most 2% to update time;
-   - the cadence groups, amortised over 10 updates, at most 5% **(proposal)**.
+   - the cadence groups, amortised over 10 updates, at most 5%.
 
-   Report both at the 5v5 training cells with Yemong.
+   Report both at the 5v5 training cells with Yemong. **These are soft caps (author,
+   2026-11-02):** measured and reported, never a reason to drop a useful diagnostic. A
+   series that cannot be made cheaper may go over, if the notes say what it costs and
+   why it stays. Faster is still better.
 7. **The audit's coverage:** a table in the notes lists every series of the audit,
    whether it is built and by which producer, or why not (its source does not exist).

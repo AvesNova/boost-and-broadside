@@ -323,14 +323,14 @@ def train_config() -> str:
     """The fields of TrainConfig."""
     from bnb.runtime.train import TrainConfig
 
-    return _dataclass_table(TrainConfig, skip=("pools", "ppo"))
+    return _dataclass_table(TrainConfig, skip=("pools", "learner"))
 
 
-def ppo_config() -> str:
-    """The fields of PPOConfig."""
-    from bnb.learn.ppo import PPOConfig
+def learner_config() -> str:
+    """The fields of LearnerConfig."""
+    from bnb.learn.ppo import LearnerConfig
 
-    return _dataclass_table(PPOConfig)
+    return _dataclass_table(LearnerConfig)
 
 
 def cli_options() -> str:
@@ -342,6 +342,34 @@ def cli_options() -> str:
         flag = "--" + field.name.replace("_", "-")
         rows.append((_code(flag), _code(_number(field.default))))
     return _table(("Option", "Default"), rows)
+
+
+def play_options() -> str:
+    """The options of python -m bnb.play."""
+    from bnb.play.app import Options
+
+    comments = _field_comments(Options)
+    rows = [(_code("--" + field.name.replace("_", "-")), _code(_number(field.default)),
+             comments.get(field.name, "")) for field in dataclasses.fields(Options)]
+    return _table(("Option", "Default", "Note in the source"), rows)
+
+
+def play_keys() -> str:
+    """The play shell's keys."""
+    from bnb.play.render.hud import KEYS
+
+    return _table(("Key", "Does"), [(key, meaning) for key, meaning in KEYS])
+
+
+def play_themes() -> str:
+    """The shipped themes, and the values each theme file lists."""
+    from bnb.play import themes
+
+    names = ", ".join(_code(name) + (" (the default)" if name == themes.DEFAULT else "")
+                      for name in themes.shipped_names())
+    labels = [(_code(field.name), field.metadata["label"])
+              for field in dataclasses.fields(themes.Theme) if field.name != "name"]
+    return f"Themes: {names}.\n\n" + _table(("Value", "In the theme editor"), labels)
 
 
 def yemong_config() -> str:
@@ -370,7 +398,7 @@ def bench_sizes() -> str:
 
 # ------------------------------------------------------------------ the roadmap
 
-ROADMAP_STATUSES = ("merged", "built", "specified", "decided", "planned")
+ROADMAP_STATUSES = ("merged", "milestone 1 built", "specified", "decided", "planned")
 ROADMAP_KEYS = {"section", "title", "status", "spec", "page"}
 
 
@@ -420,7 +448,7 @@ def roadmap_summary(page: str) -> str:
 
 STATUS_SENTENCES = {
     "merged": "is merged",
-    "built": "is built on its branch and not merged yet",
+    "milestone 1 built": "has its first milestone built; the later milestones are to follow",
     "specified": "is specified and not built",
     "decided": "has its decisions recorded; its spec is to follow",
     "planned": "is planned",
@@ -540,9 +568,12 @@ BLOCKS: dict[str, Callable[..., str]] = {
     "training-lineup": training_lineup,
     "mixed-pools": mixed_pools,
     "train-config": train_config,
-    "ppo-config": ppo_config,
+    "learner-config": learner_config,
     "cli-options": cli_options,
     "yemong-config": yemong_config,
+    "play-options": play_options,
+    "play-keys": play_keys,
+    "play-themes": play_themes,
     "bench-sizes": bench_sizes,
     "roadmap": roadmap,
     "roadmap-summary": roadmap_summary,

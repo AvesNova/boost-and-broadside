@@ -1,0 +1,22 @@
+# Purple thin air and ice thick air, green and vermilion ships (the colour tool's third
+# preset).
+sky = "#FFFFFF"
+outside = "#EEF0F3"
+boundary = "#A8D8F0"
+thin_air = "#A88BE0"
+thick_air = "#A8D8F0"
+thin_contour = "#695B91BF"
+thick_contour = "#69859ABF"
+thin_core = "#695B91"
+thick_core = "#69859A"
+fog = "#999999"
+neutral = "#8A93A3"
+team = ["#2E9D5B", "#F04E23"]
+outline = "#2A2F3A"
+shield = ["#2E9D5B", "#F04E23"]
+energy = "#3A4150"
+trail = ["#6DBA8CB3", "#F48365B3"]
+vortex = "#7A889959"
+text = "#2A2F3A"
+fill_strength = 0.75
+vortex_threshold = 0.6

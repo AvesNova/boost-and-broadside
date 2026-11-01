@@ -102,6 +102,7 @@ nav:
       - Reference fixtures: guides/reference-fixtures.md
       - Adding a mode: guides/adding-a-mode.md
       - Designing a ship: guides/designing-a-ship.md
+      - Playing and spectating: guides/playing.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md
@@ -115,15 +116,16 @@ nav:
           - The ship card: explanation/game/ship-card.md
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
+      - The learner: explanation/learner.md
       - Roadmap: explanation/roadmap.md
       - Glossary: explanation/glossary.md
       - In progress:
-          - The learner: explanation/in-progress/learner.md
           - The scripted agent: explanation/in-progress/scripted-agent.md
           - Behaviour cloning: explanation/in-progress/behaviour-cloning.md
           - League and ratings: explanation/in-progress/league.md
           - Diagnostics: explanation/in-progress/diagnostics.md
           - The play shell: explanation/in-progress/play-shell.md
+          - Runs and checkpoints: explanation/in-progress/runs.md
   - Reference:
       - reference/index.md
       - bnb.contracts: reference/contracts.md
@@ -132,6 +134,7 @@ nav:
       - bnb.models: reference/models.md
       - bnb.learn: reference/learn.md
       - bnb.runtime: reference/runtime.md
+      - bnb.play: reference/play.md
       - bnb.cli: reference/cli.md
       - bench: reference/bench.md
   - Contributing:

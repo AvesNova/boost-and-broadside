@@ -166,3 +166,12 @@ handles are measured by flying the game's `flight_tick` in a batched simulation.
    quantities match an independent measurement.
 8. **Each flown handle** matches an independent flight of the game for one card: a hand
    computation for the direct ones, a separate simulation script for the flown ones.
+
+## Settled after the review (author, 2026-11-02)
+
+- **The rate of fire is set in hertz** (shots per second) on the card. The game converts
+  it to ticks between shots exactly (`fractions.Fraction` of the tick rate over the fire
+  rate), and refuses a rate that is not a whole number of ticks at the run's tick rate.
+- **The bleed rate is measured at a different stick level** from the sustained turn, so
+  the two handles are no longer nearly the same measurement. The game already has three
+  stick levels; the bleed is measured at the middle one.

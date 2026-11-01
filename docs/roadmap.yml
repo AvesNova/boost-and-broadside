@@ -1,9 +1,10 @@
 # The rewrite's sections and their status. The roadmap page renders this file
 # (docs/hooks/generated.py, table "roadmap"); update the status here when a section moves.
-# status: merged (on v2), built (complete on its branch, not merged), specified (a spec exists, not built), decided (decisions
-# recorded, no spec yet), planned (in the plan only).
+# status: merged (on v2), milestone 1 built (the first of several milestones built),
+# specified (a spec exists, not built), decided (decisions recorded, no spec yet), planned
+# (in the plan only).
 # spec: the design record, or null. page: the page on this site that covers the section
-# (prose once merged, a short in-progress page before).
+# (prose once built, a short in-progress page before).
 - section: "0"
   title: Contracts and the walking skeleton
   status: merged
@@ -16,7 +17,7 @@
   page: explanation/game/physics.md
 - section: "1b"
   title: The ship card (handles to physics parameters)
-  status: built
+  status: specified
   spec: docs/rewrite/sections/ship-card-spec.md
   page: explanation/game/ship-card.md
 - section: "3"
@@ -46,9 +47,9 @@
   page: explanation/yemong.md
 - section: "6"
   title: PPO and labels (the learner)
-  status: specified
+  status: merged
   spec: docs/rewrite/sections/learner-spec.md
-  page: explanation/in-progress/learner.md
+  page: explanation/learner.md
 - section: "7"
   title: Behaviour cloning
   status: specified
@@ -66,6 +67,11 @@
   page: explanation/in-progress/diagnostics.md
 - section: "10"
   title: The play shell
-  status: specified
+  status: milestone 1 built
   spec: docs/rewrite/sections/play-spec.md
   page: explanation/in-progress/play-shell.md
+- section: "11"
+  title: Runs and checkpoints
+  status: specified
+  spec: docs/rewrite/sections/runs-spec.md
+  page: explanation/in-progress/runs.md

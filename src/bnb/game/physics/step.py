@@ -54,7 +54,7 @@ def _placement(rules: Rules, arena: Environment, tick: TickUniforms, mode, ships
                     alive, starting, axis_x, axis_y, tick.rotation, tick.keys)
 
 
-def vision_range(rules: Rules, types: ShipTypes, ship_type: torch.Tensor) -> torch.Tensor:
+def _vision_ranges(rules: Rules, types: ShipTypes, ship_type: torch.Tensor) -> torch.Tensor:
     """(B, N) each ship's vision range (m), its type's: kept in the match for perception."""
     return rules.vision_range * per_ship(types.vision_range_scale, ship_type)
 
@@ -77,7 +77,7 @@ def reset(rules: Rules, types: ShipTypes, uniforms: torch.Tensor,
     place = _placement(rules, arena, tick, mode, ships, ships.alive, everyone, axis_x, axis_y)
     ships = spawn(rules, types, ships, fields, torch.ones_like(ships.alive), place)
     match = replace(state.match, spawn_axis_x=axis_x, spawn_axis_y=axis_y,
-                    vision_range=vision_range(rules, types, ships.ship_type))
+                    vision_range=_vision_ranges(rules, types, ships.ship_type))
     if fogged is not None:
         match = replace(match, fogged=fogged.to(torch.bool))
     return State(ships=ships, bullets=state.bullets, fields=fields, match=match, mode=mode)
@@ -168,7 +168,7 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     ships = spawn(rules, types, ships, fields, due | done[:, None], place)
     match = replace(match, episode_tick=torch.where(done, 0, match.episode_tick + 1),
                     spawn_axis_x=axis_x, spawn_axis_y=axis_y,
-                    vision_range=vision_range(rules, types, ships.ship_type))
+                    vision_range=_vision_ranges(rules, types, ships.ship_type))
 
     events = Events(damage=damage, boundary_damage=boundary, died=died,
                     fired=state.ships.fired, spawned=ships.spawned, killer=killer, done=done,

@@ -288,8 +288,8 @@ class Yemong(nn.Module):
         visible = ships[..., SHIP["visible"]] > 0.5
         spawned = ships[..., SHIP["spawned"]] > 0.5
         seen = beliefs.observe(carry.belief, truth(ships, carry.offset), visible, spawned)
-        replay = Replay(valid=seen.valid, age=seen.age, means=seen.means,
-                        spreads=seen.spreads,
+        replay = Replay(valid=seen.valid[:, own:], age=seen.age[:, own:],
+                        means=seen.means[:, own:], spreads=seen.spreads[:, own:],
                         enemy_action=store_action(seen.action[:, own:]),
                         previous_action=carry.previous_action, offset=carry.offset)
         tokens = self.tokens(obs, replay)

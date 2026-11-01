@@ -62,3 +62,11 @@ Status: decisions settled for milestone 1, 2026-11-01. Spec: `play-spec.md`.
      - loading trained agents per side.
 - **Later, by agreement:** capsule fields and a new mode, after the ship card merges
   (they touch the medium and the sight test).
+- **Bullets in team views (author, 2026-11-02):** the human UI draws every bullet in
+  every view, fogged or not. Agents never see bullets (the observation has none), so
+  this is an advantage humans have. A ship that fires is visible while it fires, as the
+  game's sight rule already makes it. This reverses the milestone 1 fix round's masking
+  of enemy bullets outside the visible area.
+- **Libraries:** PyOpenGL is fine if it helps (author). imgui-bundle's own GLFW and
+  OpenGL backends need it, so milestone 2 can replace the custom ImGui renderer and key
+  table with them.

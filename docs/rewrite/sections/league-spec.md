@@ -112,9 +112,26 @@ Order: after sections 4 and 7. The stationary ladder is section 4's controller (
   `league_ratings*`), prior 1 game, then shifted so the scripted agent is 1000. **Only
   the scripted agent is pinned**; random is fitted too.
 - **Stopping:** when every rating's standard error is below a target (default 25 points)
-  or a game budget runs out.
+  or a game budget runs out (author, 2026-11-02).
 - **The leaderboard:** keyed by game version × mode × map × fleet size; each row has the
   rating, its standard error and the games behind it. Named `calibrated_elo`.
+
+### Head-to-head (author, 2026-11-02)
+
+- **`bnb head-to-head A B [C D ...] --games N`:** plays only the named pairs (policy
+  files, runs, the scripted agent, a ladder rung or random), on the same match engine as
+  `bnb ratings`. Each pair's games are split evenly between the seats.
+- **It reports, per pair:** wins, losses and draws; the score with its standard error;
+  and the split by mode and map.
+- **Results** are written as an offline artifact with provenance (section 11).
+
+### Architectures (author, 2026-11-02)
+
+- Every network entry in the league has the live policy's exact architecture (the
+  stacked slots need it). The stationary ladder (scripted, rungs, random) is not a
+  network and is exempt.
+- Policies of other architectures play in `bnb ratings`, head-to-head and the play shell.
+  A league that mixes architectures is a later decision.
 
 ## 7. Metrics
 

@@ -330,6 +330,18 @@ cut; where they differ, this section and the code win.
   game function.
 - **Game API:** `bnb.game.api`: `rules_of`, `reset`, `move`, `resolve`, `step`,
   `perceive`, `spread`, `uniforms`. Randomness is explicit (spec section 2).
+  - **Display functions (section 10, 2026-11-01), for the play shell:**
+    - `log_index`: the medium at chosen points;
+    - `core_radius`: the cores the sight test uses (a second copy, held to
+      `visibility` by a test until the cleanup pass makes it the one definition);
+    - `zone_sides`: Frontline's zone owners and attackers, from the game's own role
+      rules;
+    - `visible`: which ships each team's observation shows, in sim order.
+
+    The api also re-exports `vision_range`, `per_ship`, `TEAMS`, `LN_SQRT2`,
+    `MAP_SCALE_RADIUS` and `PRESETS`, which moves to `bnb.runtime` in the cleanup pass.
+  - **`bnb.play` imports only** `bnb.game.api`, `bnb.runtime`, `bnb.controllers` and
+    `bnb.contracts` (a test parses its imports).
 - **Teams:** two, a constant (`rules.TEAMS`).
 - **Names:** full words (scaffold rule 10).
 - **Modes and rewards (sections 3 and 3b, 2026-11-01):**
@@ -383,6 +395,27 @@ cut; where they differ, this section and the code win.
   - **Rule:** the replay must hold exactly what the step read. Never store a rounded copy
     of a value that a compiled stage also uses unrounded: inductor drops fused precision
     casts by default.
+- **The learner (section 6, merged 2026-11-02):**
+  - **`Trajectory.action`** holds every row's action, `(L, R, N)` in the view's row order
+    (own ships first; the learner's are `[..., :S]`).
+  - **`Trajectory`** gains:
+    - `result (L, R)` int32: the match result for the view's team (+1 win, −1 loss,
+      0 draw), nonzero only where `done`. The outcome targets and win rates read it, never
+      the sign of a reward;
+    - the label inputs, filled by the runtime for the learner's views:
+      - `alive (L, R, N)` and `valued (L, R, S)`;
+      - `truth (L, R, N − S, …)`, the enemy rows of `Privileged.ships`;
+      - `final_truth (R, N, …)`, after the last step;
+      - `capture`, the shot capture (`bnb.learn.shots.ShotCapture`), each row's launch
+        state and move at t.
+  - **Randomness in the update:** the learner's own streams (`bnb.learn.ppo.random_stream`,
+    named `shot_spread` and `minibatch_order`), never the global generator.
+  - **Shot labels:** a shot launched within the longest bullet flight of the segment's
+    end is invalid, whatever it hit. Episode ends keep the flight-end rule: the bullets
+    really vanish there.
+  - **Not done here, left to the cleanup pass:** the `done`/`reset` rename across the
+    controllers (`Controller.step(..., done)` still means a reset before this
+    observation).
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
