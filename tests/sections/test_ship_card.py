@@ -176,6 +176,24 @@ def test_infeasible_without_convergence():
         solve(cases.default, cases.rules, iterations=1)
 
 
+def test_infeasible_nose_reversal_beyond_its_window():
+    """A nose reversal slower than its manoeuvre's window fails naming the window, not as a
+    missing first guess."""
+    cases = cases_module.cases()
+    slow_nose = cases.default.replace(nose_reversal_time=torch.tensor([0.2, 2.5]))
+    with pytest.raises(Infeasible, match=r"nose_reversal_time beyond its measurement window"
+                                         r".* 2 s \(manoeuvres.REVERSAL_LIMIT\)"):
+        solve(slow_nose, cases.rules)
+
+
+def test_infeasible_climb_beyond_its_window():
+    cases = cases_module.cases()
+    slow_climb = cases.default.replace(climb_time=cases.default.climb_time * 6.0)
+    with pytest.raises(Infeasible, match=r"climb_time beyond its measurement window"
+                                         r".* 900 s \(manoeuvres.CLIMB_LIMIT\)"):
+        solve(slow_climb, cases.rules)
+
+
 def test_infeasible_gun_range():
     cases = cases_module.cases()
     with pytest.raises(Infeasible, match="gun range"):

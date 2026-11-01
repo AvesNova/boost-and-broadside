@@ -21,7 +21,7 @@ from ..rules import Rules
 from ..ship_types import DEFAULTS, ShipTypes
 from .errors import Infeasible, RedundantHandles
 from .handles import FLOWN, NAMES, Handles
-from .manoeuvres import TURNING_STORE, batched, fly, steady_turn
+from .manoeuvres import CLIMB_LIMIT, REVERSAL_LIMIT, TURNING_STORE, batched, fly, steady_turn
 from .weapons import combat_card, combat_handles
 
 # The parameter each flown handle sets, in FLOWN's order (physical values, not scales). The
@@ -45,6 +45,15 @@ DAMPING = (1e-6, 1e6)  # Levenberg-Marquardt's: the first, and the bounds
 EXPONENT_BOUNDS = (0.5, 5.0)  # the bleed exponents the solver considers
 EXPONENT_SCAN = (0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0)  # the first guess's
 CONDITION_WARNING = 1e4  # a Jacobian condition number above this warns
+# The flown handles measured over a bounded flight: (window in s, its constant's name).
+WINDOWS = dict(nose_reversal_time=(REVERSAL_LIMIT, "REVERSAL_LIMIT"),
+               climb_time=(CLIMB_LIMIT, "CLIMB_LIMIT"))
+# Why a flown handle is not measured (NaN), where it can be.
+UNMEASURED = dict(
+    cruise_speed="no straight equilibrium: the drag outruns the engine at every speed",
+    climb_time=f"the store does not fill within {CLIMB_LIMIT:g} s, or stops rising",
+    nose_reversal_time=f"the nose does not reverse within {REVERSAL_LIMIT:g} s",
+)
 
 
 def _flight_card(rules: Rules, handles: Handles, parameters: torch.Tensor) -> dict:
@@ -134,6 +143,24 @@ def check(rules: Rules, handles: Handles) -> None:
                          "sqrt(a_max^2 - g^2) / corner speed")
     if (handles.spawn_energy > handles.ceiling).any():
         raise Infeasible("the spawn energy must fit in the store")
+    for name, (window, constant) in WINDOWS.items():
+        if (getattr(handles, name) >= window).any():
+            raise Infeasible(f"a {name} beyond its measurement window: the manoeuvre is flown "
+                             f"for at most {window:g} s (manoeuvres.{constant})")
+
+
+def _unmeasured(residual: torch.Tensor) -> str:
+    """Why the first guesses fly no measurement: for each card and type whose every candidate
+    misses a flown handle (residual (B, copies, T, 8), NaN where not measured), the handles
+    and their reasons."""
+    missing = residual.isnan().all(1)  # (B, T, 8)
+    reasons = []
+    for card, kind in missing.any(-1).nonzero().tolist():
+        names = [FLOWN[i] for i in missing[card, kind].nonzero()[:, 0].tolist()]
+        reasons.append(f"card {card} type {kind}: "
+                       + ", ".join(f"{name} ({UNMEASURED.get(name, 'not measured')})"
+                                   for name in names))
+    return "; ".join(reasons)
 
 
 # ------------------------------------------------------------------ first guess
@@ -288,10 +315,10 @@ def solve(handles: Handles, rules: Rules, iterations: int = ITERATIONS,
     scan = torch.stack([first_guess(rules, handles, combat, e) for e in EXPONENT_SCAN], 1).log()
     if not torch.isfinite(scan).all():
         raise Infeasible("the closed-form first guess has no finite parameters")
-    cost = flown(scan.reshape(B * len(EXPONENT_SCAN), T, 8), len(EXPONENT_SCAN)).pow(2).sum(-1)
+    residual = flown(scan.reshape(B * len(EXPONENT_SCAN), T, 8), len(EXPONENT_SCAN))
+    cost = residual.pow(2).sum(-1)
     if not torch.isfinite(cost).any(1).all():
-        raise Infeasible("no first guess flies every manoeuvre (no straight equilibrium, or a "
-                         "climb that never fills the store)")
+        raise Infeasible(f"no first guess flies every manoeuvre: {_unmeasured(residual)}")
     choice = cost.nan_to_num(math.inf).argmin(1)  # (B, T)
     x = scan.gather(1, choice[:, None, :, None].expand(B, 1, T, 8))[:, 0]
     eye = torch.eye(8, dtype=x.dtype, device=x.device)
