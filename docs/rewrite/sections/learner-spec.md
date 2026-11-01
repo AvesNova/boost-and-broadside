@@ -64,7 +64,7 @@ them; the toy learner (section 9) provides the policy and the critic.
   is a real end. The last step bootstraps from section 2's values.
 - **The outcome's categorical targets:** v1's `outcome_targets` with the outcome's γ and
   λ, from the stored `p(s_t)` and the bootstrap `p(s_L)`.
-- **Team mixing and the level sum:** `A_i = Σ_k (A_ik + s_k · mean_{living teammates j}
+- **Team mixing and the level sum:** `A_i = Σ_k (A_ik + s_k · mean_{living teammates j ≠ i}
   A_jk)`, and the same of the returns. Team spirit `s` is 0 on every level by default.
 - **The return scale:** EMAs (decay 0.99) of the 5th and 95th percentiles of the summed
   returns of living own ships, floor 1. Advantages are divided by it, with no mean
