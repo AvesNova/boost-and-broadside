@@ -113,10 +113,10 @@ nav:
           - Mixed batches: explanation/game/mixed-batches.md
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
+      - The learner: explanation/learner.md
       - Roadmap: explanation/roadmap.md
       - Glossary: explanation/glossary.md
       - In progress:
-          - The learner: explanation/in-progress/learner.md
           - The ship card: explanation/in-progress/ship-card.md
           - The scripted agent: explanation/in-progress/scripted-agent.md
           - Behaviour cloning: explanation/in-progress/behaviour-cloning.md

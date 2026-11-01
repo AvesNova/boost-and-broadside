@@ -1,47 +1,54 @@
 ---
-covers: [src/bnb/runtime/, src/bnb/learn/ppo.py, src/bnb/models/mlp.py, src/bnb/models/heads.py, src/bnb/controllers/]
+covers: [src/bnb/runtime/, src/bnb/controllers/, src/bnb/models/relational.py]
+reviewed: 2026-11-01
 ---
 
 # The training loop
 
-The loop today is the walking skeleton's: everything runs end to end, and every learning
-part is a stub that a later section replaces. It lives in `bnb.runtime.train`. How to run
-and configure it is in the [training guide](../guides/training.md).
+The loop lives in `bnb.runtime.train`. It trains Yemong, or the toy relational model, with
+the learner (see [The learner](learner.md)). How to run and configure it is in the
+[training guide](../guides/training.md).
 
 ## One update
 
 `bnb.runtime.train.Trainer.update` does, in order:
 
-1. **Collect** a rollout of `length` ticks over the whole batch (`Rollout.run`), and the
-   value of the learner's views after it, for the bootstrap.
-2. **Learn:** one PPO update on the learner's views (`bnb.learn.ppo.PPO.update`).
+1. **Collect** `shards` segments of `length` ticks over the whole batch (`Rollout.run`),
+   each followed by the learner's bootstrap evaluation (`Rollout.bootstrap`); the segments
+   go into the rollout's segment store.
+2. **Learn:** one update of the learner over the stored segments
+   (`bnb.learn.ppo.Learner.update`).
 3. **Refresh the league:** every `league_every` updates, copy the learner's weights into the
    `league_0` controller's model, in place.
 
-It returns a row of measurements: the times of the rollout and the update, the PPO
-statistics, and the learner's reward per ship per second for each pool.
+It returns a row of measurements: the times of the rollout and the update, the learner's
+statistics (each loss term, the value loss and explained variance per level, the clip
+fraction and approximate KL of the first epoch, the step/unroll ratio drift, the return
+scale and the learning rate), and per pool the learner's reward per level per ship per
+second and its episode results.
 
 ## Controllers
 
 The trainer builds one controller per name a pool can seat:
 
-- `learner`: the model being trained, through `bnb.controllers.model.ModelController`;
+- `learner`: the model being trained, through `bnb.controllers.yemong.YemongController` or
+  `bnb.controllers.relational.RelationalController`;
 - `league_0`: a frozen copy of it;
 - `chaser`: `bnb.controllers.scripted.Chaser`, which turns toward and shoots at the nearest
   visible living enemy;
 - `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions.
 
-The model is the skeleton MLP (`bnb.models.mlp.MLP`). Each own ship reads its own row and a
-summary of the whole view, with fixed scales, through a factored policy over power, stick
-and shoot (`bnb.models.heads`). It exists to exercise the loop. Because its summary is a
-flattened view, it reads token position, and it relies on rows being ordered by
-`team_relative`.
+`TrainConfig.model` chooses the model: `yemong` (`bnb.models.yemong`) or `relational`, the
+toy learner's fixed-size model (`bnb.models.relational.Relational`). The skeleton MLP
+(`bnb.models.mlp.MLP`) and its controller (`bnb.controllers.model.ModelController`) remain
+for the contract tests; the loop does not train them.
 
 ## The rollout
 
 `bnb.runtime.rollout.Rollout` owns the [carry](glossary.md#carry): the game state, the ship card, every
 controller's carry, the current observation, the seat, the tick's random draws, the
-reward ledger and the learner's trajectory buffer, all allocated when it is built. A tick
+reward ledger, the learner's staging ring and its segment store, all allocated when it is
+built. A tick
 is a sequence of compiled stages over that carry (see [Architecture](architecture.md)).
 
 - **The lineup** (`bnb.runtime.lineup.Lineup`) lists, for each controller, the environments
@@ -55,31 +62,17 @@ is a sequence of compiled stages over that carry (see [Architecture](architectur
   `reads` plus the globals, and returns actions for its ships. The runtime scatters them
   into the batch's action tensor by environment and team.
 - **Record.** For the learner's views, the act stage writes the observation parts it reads,
-  the action, log-probability and value, and anything else its `Outputs` give (the values
-  per level, the outcome probabilities, the replay record) into the trajectory buffer. The
-  resolve stage writes the learner's rewards per level and the `done` flags.
+  every row's action, the log-probability and value, anything else its `Outputs` give (the
+  values per level, the outcome probabilities, the replay record) and the label inputs into
+  a staging ring of two graph blocks. The advance stage writes the shot capture, the resolve
+  stage the learner's rewards per level and the `done` flags. After each block the rollout
+  copies the ring's block into its segment store (`bnb.runtime.store.SegmentStore`), in
+  pinned host memory or on the device.
 - **Rewards** are computed every tick from the tick's events and the ledger (see
   [Rewards](game/rewards.md)), for every ship, and routed to the learner's views.
 
-`Rollout.run` returns a `bnb.contracts.Trajectory` that views the buffers; it is valid
-until the next run.
-
-## The learner
-
-`bnb.learn.ppo.PPO` is plain PPO, the skeleton's stub:
-
-- GAE over the levels summed: the stub's critic is one value per ship;
-- a clipped policy loss, a squared-error value loss and an entropy bonus;
-- several epochs of shuffled minibatches, with gradient clipping, through a fused Adam on
-  the GPU.
-
-The loss is compiled. The optimizer updates the parameters in place, which keeps the
-rollout's captured CUDA graph pointing at the current weights. The defaults are in the
-[training guide](../guides/training.md).
-
-Section 6 replaces this learner: per-level returns with the categorical critic, the return
-scale, the auxiliary losses and their labels, over Yemong (see
-[The learner](in-progress/learner.md)).
+`Rollout.run` writes one shard of the store and returns it as a `bnb.contracts.Trajectory`
+that views the store; it is valid until the shard is written again.
 
 ## Realtime
 

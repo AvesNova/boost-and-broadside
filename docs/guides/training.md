@@ -4,11 +4,10 @@ covers: [src/bnb/cli.py, src/bnb/runtime/train.py, src/bnb/contracts/pools.py, s
 
 # Training
 
-Training today runs the walking skeleton's loop: the MLP in `bnb.models.mlp`, trained by
-the plain PPO in `bnb.learn.ppo`. Section 6 replaces the learner and trains Yemong (see
-[The learner](../explanation/in-progress/learner.md)). How the loop works is in
-[The training loop](../explanation/training-loop.md); this page is about running and
-configuring it.
+Training trains Yemong (`bnb.models.yemong`), or the toy relational model, with the
+learner in `bnb.learn.ppo` (see [The learner](../explanation/learner.md)). How the loop
+works is in [The training loop](../explanation/training-loop.md); this page is about running
+and configuring it.
 
 ## Choose the game
 
@@ -96,9 +95,9 @@ runs it. The command builds the same objects.
 
 <!-- generated: train-config -->
 
-`pools` defaults to `LINEUP`, and `ppo` to `bnb.learn.ppo.PPOConfig`:
+`pools` defaults to `LINEUP`, and `learner` to `bnb.learn.ppo.LearnerConfig`:
 
-<!-- generated: ppo-config -->
+<!-- generated: learner-config -->
 
 A custom lineup, here learner against the chaser on half the batch and self-play on the
 other half, with no fog in the chaser pool:
@@ -120,9 +119,37 @@ A pool may seat only the trainer's controllers
 ([The training loop](../explanation/training-loop.md#controllers)); a pool that names any
 other controller fails when the rollout is built.
 
+## The toy learner
+
+The toy learner checks the whole loop on a small game: the relational model
+(`bnb.models.relational.Relational`) trained from scratch at 2v2 team deathmatch against the
+chaser. `bnb.runtime.train.win_rate` plays fresh games against a scripted opponent and
+returns the shares won, drawn and lost.
+
+<!-- not-runnable: needs CUDA and runs for minutes -->
+```python
+import torch
+
+from bnb.contracts import GameConfig, Pool
+from bnb.learn.ppo import LearnerConfig
+from bnb.runtime.train import LEARNER, TrainConfig, Trainer, win_rate
+
+torch.manual_seed(0)
+config = TrainConfig(game=GameConfig(2, 4, 1200.0), num_envs=256, model="relational",
+                     pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
+                     learner=LearnerConfig(micro_batch=8))
+trainer = Trainer(config, torch.device("cuda"))
+for _ in range(400):
+    trainer.update()
+print(win_rate(trainer, games=256))
+```
+
+`tests/loop/test_learning.py` runs this and requires a win rate of at least 0.6.
+
 ## Seeds and process settings
 
-`train` seeds torch's default generator from `TrainConfig.seed` once, at the start. The
-`bnb` command sets `TRITON_DEFAULT_FP_FUSION` before torch is imported. Library code sets
-no process-wide options; only entry points do (see
-[Architecture](../explanation/architecture.md)).
+The `bnb` command seeds torch's default generator from `--seed` and sets the matmul
+precision (`bnb.runtime.train.set_precision`) once, before training, and sets
+`TRITON_DEFAULT_FP_FUSION` before torch is imported. A script that calls
+`bnb.runtime.train.train` does the same itself. Library code sets no process-wide options;
+only entry points do (see [Architecture](../explanation/architecture.md)).

@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/models/yemong/, src/bnb/controllers/yemong.py]
+reviewed: 2026-11-01
 ---
 
 # The model (Yemong)
@@ -9,10 +10,8 @@ new code and the v2 units. The fixtures in `tests/reference/yemong` pin each mod
 against v1's on fixed inputs and weights. The spec is
 `docs/rewrite/sections/yemong-spec.md`.
 
-The model and its controller (`bnb.controllers.yemong.YemongController`) are built and
-run in the rollout. The training loop does not train them yet: today it trains the
-skeleton MLP, and section 6 brings the learner that trains Yemong (see
-[The learner](in-progress/learner.md)).
+The model and its controller (`bnb.controllers.yemong.YemongController`) run in the rollout,
+and the learner trains it (see [The learner](learner.md)).
 
 Nothing in the weights depends on the number of ships, the number of fields or the arena,
 so one set of weights plays at every size.
@@ -124,8 +123,10 @@ categorical value over symlog-spaced bins for each local level, and the outcome 
   time. It computes every head on every row, for the learner.
 
 `step` returns a **replay record** (`bnb.models.yemong.inputs.Replay`): exactly what the
-decision read from its carry. The runtime stores it, so `unroll` composes the same tokens
-without replaying the belief. **`unroll` equals a loop of `step`** over the same segment;
+decision read from its carry. It holds the belief of the enemy rows only: an own ship is
+always visible, so its row is the observation's truth with no spread, and
+`bnb.models.yemong.inputs.believed` rebuilds it for `step` and `unroll` alike. The runtime
+stores the record, so `unroll` composes the same tokens without replaying the belief. **`unroll` equals a loop of `step`** over the same segment;
 `tests/sections/test_yemong_model.py` and `tests/sections/test_modes_yemong.py` check it.
 
 The controller samples the joint action from the policy logits by Gumbel-max

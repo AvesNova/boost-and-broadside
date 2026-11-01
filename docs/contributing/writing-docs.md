@@ -168,8 +168,7 @@ not current. Until the v2 guide exists, the code rules are those of the scaffold
 `docs/rewrite/scaffold.md` sections 3 and 4, in short:
 
 - sections are pure functions of tensors; only `bnb.runtime` writes persistent buffers;
-- section code does not compile itself, call `torch.cuda` or set process-wide options (the
-  skeleton PPO's compiled loss is the one exception, until section 6 replaces it);
+- section code does not compile itself, call `torch.cuda` or set process-wide options;
 - one code path for the CPU and the GPU at any batch size, with fixed shapes per run;
 - contracts are versioned frozen dataclasses; imports point down the layer order
   (see [Architecture](../explanation/architecture.md));

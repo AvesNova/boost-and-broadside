@@ -1,9 +1,9 @@
 # The rewrite's sections and their status. The roadmap page renders this file
 # (docs/hooks/generated.py, table "roadmap"); update the status here when a section moves.
-# status: merged (on v2), specified (a spec exists, not built), decided (decisions
-# recorded, no spec yet), planned (in the plan only).
+# status: merged (on v2), built (on its branch, not merged yet), specified (a spec exists,
+# not built), decided (decisions recorded, no spec yet), planned (in the plan only).
 # spec: the design record, or null. page: the page on this site that covers the section
-# (prose once merged, a short in-progress page before).
+# (prose once built, a short in-progress page before).
 - section: "0"
   title: Contracts and the walking skeleton
   status: merged
@@ -46,9 +46,9 @@
   page: explanation/yemong.md
 - section: "6"
   title: PPO and labels (the learner)
-  status: specified
+  status: built
   spec: docs/rewrite/sections/learner-spec.md
-  page: explanation/in-progress/learner.md
+  page: explanation/learner.md
 - section: "7"
   title: Behaviour cloning
   status: specified

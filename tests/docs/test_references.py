@@ -134,7 +134,7 @@ def test_every_generated_block_renders(name):
     if name in ("roadmap", "roadmap-summary", "roadmap-in-progress", "packages",
                 "section-status"):
         pytest.importorskip("yaml", reason="the data files need PyYAML: the docs dependency group")
-    page = "explanation/in-progress/learner.md" if name == "section-status" \
+    page = "explanation/in-progress/league.md" if name == "section-status" \
         else "explanation/index.md"
     assert HOOK.render(name, page).strip()
 

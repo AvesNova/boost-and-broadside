@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/contracts/]
+reviewed: 2026-11-01
 ---
 
 # Contracts
@@ -141,7 +142,10 @@ replaying it.
   The [training guide](../guides/training.md) lists its fields.
 - `bnb.contracts.Trajectory` is a rollout as the learner receives it: `L` steps of the
   learner's `R` views, `S` ships each. Its reward is per level, in the order of
-  `bnb.contracts.REWARD_LEVELS` (see [Rewards](game/rewards.md)).
+  `bnb.contracts.REWARD_LEVELS` (see [Rewards](game/rewards.md)). Its action holds every
+  row of the view, and it carries the learner's label inputs: the enemy rows of the
+  privileged view, the `alive` and `valued` flags, and the shot capture
+  (see [The learner](learner.md)).
 
 ## Configuration
 

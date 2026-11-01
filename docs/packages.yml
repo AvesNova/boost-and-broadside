@@ -14,7 +14,7 @@
   holds: scripted controllers; the adapters that make a model a controller
   reference: reference/controllers.md
 - package: models
-  holds: models and their heads; the skeleton MLP and Yemong
+  holds: models and their heads; Yemong, the toy relational model and the skeleton MLP
   reference: reference/models.md
 - package: learn
   holds: rewards and learners
