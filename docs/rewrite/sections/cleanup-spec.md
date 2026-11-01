@@ -202,7 +202,7 @@ and part of the reward set. Their survivors are appended here before launch.
 - **Retire `STYLE_GUIDE.md`:**
   - delete it;
   - `docs/contributing/code-style.md` (the author-reviewed draft) replaces it;
-  - point the "Code rules" in `docs/contributing/writing-docs.md` at it;
+  - `docs/contributing/writing-docs.md` already points its "Code rules" at it;
   - fix every reference to the old guide.
 - **Docstrings against the code** (audit section 3):
   - `cli.py:1` (`bnb train`, and the claim that the CLI is the one place that seeds);
