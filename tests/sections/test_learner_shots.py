@@ -8,11 +8,11 @@ import torch
 from bnb.contracts import Action, GameConfig
 from bnb.contracts.obs import SHIP
 from bnb.game import api
-from bnb.game.physics.bullets import launch_state
+from bnb.game.physics.bullets import Launch, launch_state
 from bnb.game.physics.combat import hits
 from bnb.learn import labels
 from bnb.learn.shots import ShotCapture, resimulate
-from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE
+from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE, SIDE_ALLY, SIDE_ENEMY
 
 # Whole vector widths of environments, so eager CPU kernels take one code path everywhere
 # (mixed-notes deviation 4) and the comparison can be exact.
@@ -220,3 +220,44 @@ def test_a_shot_launched_near_the_segments_end_is_invalid_whatever_it_hit(played
         assert torch.equal(getattr(short, name)[body][valid], getattr(long, name)[body][valid])
     assert torch.equal(short.age_valid[body], long.age_valid[body])
 
+
+def _still(rows: int, length: int, positions: list[tuple[float, float]]) -> ShotCapture:
+    """One view of `rows` ships standing at `positions` for `length` ticks, noses along +x,
+    with no speed, angle of attack or medium gradient."""
+    x = torch.tensor([p[0] for p in positions]).expand(length, 1, rows)
+    y = torch.tensor([p[1] for p in positions]).expand(length, 1, rows)
+    zero = torch.zeros(length, 1, rows)
+    launch = Launch(x=x, y=y, heading_cos=zero + 1.0, heading_sin=zero, proper_speed=zero,
+                    angle_of_attack_cos=zero + 1.0, angle_of_attack_sin=zero,
+                    log_refractive_index=zero, log_index_gradient_x=zero,
+                    log_index_gradient_y=zero,
+                    ship_type=torch.zeros(length, 1, rows, dtype=torch.int32))
+    return ShotCapture(launch=launch, displacement_x=zero, displacement_y=zero,
+                       alive=torch.ones(length, 1, rows, dtype=torch.bool))
+
+
+@pytest.mark.parametrize(("shooter", "positions", "distance", "side"), [
+    # 2v2, rows 0-1 one side and 2-3 the other; the shooter at the origin fires along +x.
+    (0, [(0, 0), (100, 30), (100, -50), (100, 2000)], 30.0, SIDE_ALLY),
+    (0, [(0, 0), (100, 50), (100, -30), (100, 2000)], 30.0, SIDE_ENEMY),
+    (2, [(100, -50), (100, 2000), (0, 0), (100, 30)], 30.0, SIDE_ALLY),
+    (2, [(100, 2000), (100, -30), (0, 0), (100, 50)], 30.0, SIDE_ENEMY),
+])
+def test_a_miss_records_its_closest_pass_and_that_ships_side(shooter, positions, distance,
+                                                             side):
+    """A straight shot past ships standing beside its line: the closest pass is the nearest
+    one's offset from the line (computed here by hand, not by the re-simulation), on the
+    side of that ship relative to the shooter. Tolerance: float32 rounding along a flight of
+    about 200 m."""
+    rules, types = api.rules_of(GameConfig(2, 2, 1500.0)), api.ship_types()
+    length, rows = MOVES, 4
+    capture = _still(rows, length, positions)
+    far_field = torch.tensor([1e5, 1e5, 1.0, 1.0, 0.0]).expand(length, 1, 1, 5)
+    shots = resimulate(rules, types, capture, far_field,
+                       torch.zeros(length, 1, dtype=torch.bool),
+                       torch.zeros(length, 1, rows, 2), 2)
+    assert shots.valid[0, 0, shooter] and shots.hit[0, 0, shooter] == HIT_NONE
+    assert shots.snapshots[0, 0, shooter, -1, 0] > 100.0  # the flight passes the ships
+    torch.testing.assert_close(shots.distance[0, 0, shooter], torch.tensor(distance),
+                               rtol=0, atol=1e-3)
+    assert shots.side[0, 0, shooter] == side
