@@ -6,8 +6,9 @@ covers: []
 
 One page per package, generated at build time from the docstrings and signatures in the
 code, so it always describes the code in the tree. Packages are listed in the order of the
-dependency rule (see [Architecture](../explanation/architecture.md)): each may import only
-the packages above it.
+dependency rule (see [Architecture](../explanation/architecture.md)): each imports only from
+its own layer and the layers above it in this table. `bnb.controllers` and `bnb.models` share
+a layer.
 
 | Page | Package |
 |---|---|
