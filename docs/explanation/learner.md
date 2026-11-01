@@ -37,8 +37,14 @@ views into a staging ring of two graph blocks on the device, and after each bloc
 block into a `bnb.runtime.store.SegmentStore` on a copy stream. The store keeps the segments
 in pinned host memory (`host_store`, the default) or on the device. The update stages
 micro-batches of views back the same way, gathering and copying the next one while the
-current one computes. The two paths give the same losses and gradients bit for bit
+current one computes. A rollout from the same seed writes the same records into either
+store, with one shard or several, and the update's counts, losses and gradients are the
+same bit for bit
 (`tests/sections/test_learner_streaming.py::test_the_update_through_pinned_memory_equals_the_device_path`).
+Readers wait on the store's last write: the GPU waits where the data stays on the device,
+and the host only where it reads pinned memory itself. An update synchronises with the
+host once per epoch, for the early stop, and once at its end, for its results
+(`tests/sections/test_learner_streaming.py::test_an_update_synchronises_only_to_read_its_kl_and_its_results`).
 
 A segment holds, per view and tick:
 
@@ -98,8 +104,10 @@ Each term matches an independent computation on a stored segment
 
 An update makes `epochs` passes of `minibatches` minibatches over the views; a view keeps
 its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam with a
-linear warmup of the learning rate over the first environment steps, and stops early when
-a minibatch's approximate KL divergence exceeds `target_kl`. The old log-probabilities are
+linear warmup of the learning rate over the first environment steps, and stops early after
+an epoch whose mean approximate KL divergence exceeds `target_kl`. The minibatch order and
+the shot spread come from the learner's own random streams (`bnb.learn.ppo.random_stream`,
+seeded from `LearnerConfig.seed`), so the global generator does not change an update. The old log-probabilities are
 the rollout's, or recomputed by `unroll` before the first epoch
 (`LearnerConfig.old_log_probabilities`).
 
@@ -115,11 +123,14 @@ again with the game's own code (`bnb.learn.shots.resimulate`):
   `bnb.game.physics.bullets.move_bullets`, and the game's swept test
   (`bnb.game.physics.combat.contacts`, `bnb.game.physics.combat.first_contact`) runs it against
   the tick's stored ship motion. The spread is drawn from the learner's own generator, once
-  per update.
+  per update. The re-simulation runs once per update, before the epochs, and its labels go
+  into the store beside the segments; every epoch reads them back.
 - **Each shot records** at every age its displacement and velocity in the launch heading's
   frame and the refractive index, and its first hit (an enemy or an ally of the shooter), or
-  else its closest pass and that ship's side. Ages after a hit are invalid, and so is a shot
-  whose flight crosses an episode end or the segment's end.
+  else its closest pass and that ship's side. Ages after a hit are invalid. A shot whose
+  flight crosses an episode end is invalid, and so is every shot launched within the
+  longest flight of the segment's end, whatever it hit: keeping the ones that hit in time
+  would bias the labels toward hits.
 
 A re-simulated shot is the bullet the game fires from that state, position, velocity and
 hit, tick by tick, including friendly fire and fields (`tests/sections/test_learner_shots.py`).
@@ -129,7 +140,8 @@ queried at every age at once.
 ## The other labels
 
 Built per micro-batch on the device, from the stored rows (`bnb.learn.labels`), row-aligned
-with the view:
+with the view (as are the shot labels' codes; expanded, the codes would be many times the
+size of the segment):
 
 - **Next state:** the sharp code of each row's truth at `t + 1`, its position shifted by the
   view's offset; the last step's truth is the observation after the segment.
