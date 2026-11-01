@@ -21,8 +21,8 @@ from bnb.game import api
 from bnb.game.modes.rules import PRESETS
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
-from bnb.models.relational import Relational, RelationalConfig
-from bnb.models.yemong.model import Yemong, YemongConfig
+from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 from .rollout import Rollout
 
@@ -99,9 +99,9 @@ def build_model(cfg: TrainConfig, device: torch.device) -> torch.nn.Module:
     game, bfloat16 = cfg.game, cfg.precision == "bfloat16"
     if cfg.model == "relational":
         config = RelationalConfig(hidden=cfg.relational_hidden, bfloat16_matmuls=bfloat16)
-        return Relational(config, game.ships_per_team, game.num_ships).to(device)
-    return Yemong(YemongConfig(bfloat16_matmuls=bfloat16), api.rules_of(game),
-                  api.ship_types()).to(device)
+        return Relational(RelationalBuild(config, game.ships_per_team, game.num_ships)).to(device)
+    return Yemong(yemong_build(YemongConfig(bfloat16_matmuls=bfloat16), api.rules_of(game),
+                               api.ship_types())).to(device)
 
 
 def model_controller(model: torch.nn.Module, game: GameConfig):
