@@ -185,10 +185,14 @@ def sweep_like(state: State) -> Sweep:
 
 def where(mask: torch.Tensor, new, old):
     """`new` where mask, `old` elsewhere, field by field for two dataclasses of one type.
-    mask broadcasts from the left over each field's trailing axes."""
+    mask broadcasts from the left over each field's trailing axes. A field that is the same
+    tensor in both is kept as it is (no copy)."""
     out = {}
     for field in dataclasses.fields(old):
         chosen, kept = getattr(new, field.name), getattr(old, field.name)
+        if chosen is kept:
+            out[field.name] = kept
+            continue
         expanded = mask.reshape(mask.shape + (1,) * (kept.dim() - mask.dim()))
         out[field.name] = torch.where(expanded, chosen, kept)
     return type(old)(**out)

@@ -26,17 +26,17 @@ from .flight import airframe_of, controls, flight_tick
 from .spawning import TickUniforms, new_map, spawn
 
 
-def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, blank_mode) -> tuple:
+def _new_matches(rules: Rules, arena: Environment, tick: TickUniforms, previous_mode) -> tuple:
     """Each environment's new map and mode state (the mode's map on its own slices)."""
     fields, axis_x, axis_y = new_map(rules, arena.arena_radius, arena.map_scale, tick.map)
 
-    def match(mode_rules: ModeRules, arena, uniforms, map_uniforms, fields, blank_mode):
+    def match(mode_rules: ModeRules, arena, uniforms, map_uniforms, fields, previous_mode):
         return modes.new_match(mode_rules, arena.arena_radius, arena.map_scale,
                                uniforms[:, :mode_rules.uniform_count(rules.num_ships)], map_uniforms,
-                               fields, blank_mode)
+                               fields, previous_mode)
 
     mode, fields = per_mode(rules, tick.map.shape[0], match, arena, tick.mode, tick.map, fields,
-                            blank_mode)
+                            previous_mode)
     return mode, fields, axis_x, axis_y
 
 
@@ -147,8 +147,7 @@ def resolve(rules: Rules, types: ShipTypes, state: State, sweep: Sweep,
     # 8. Episode end: a finished environment gets a new map and mode state, no bullets,
     # cleared slots and flags, and all its ships spawn. Its fog setting stays.
     tick = TickUniforms(rules, uniforms)
-    mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick,
-                                                apply(torch.zeros_like, phase.mode))
+    mode, fields, axis_x, axis_y = _new_matches(rules, arena, tick, phase.mode)
     fields = where(done, fields, state.fields)
     mode = where(done, mode, phase.mode)
     axis_x = torch.where(done, axis_x, match.spawn_axis_x)

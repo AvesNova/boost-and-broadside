@@ -382,3 +382,18 @@ def test_the_rollout_staggers_each_start_clock_within_its_own_episode():
     length = environment(rollout.rules, 256).episode_ticks
     assert (tick < length).all() and (tick >= 0).all()
     assert tick[128:].max() >= length[0] and tick[:128].max() > length[0] // 2  # spread out
+
+
+def test_a_mode_without_zones_passes_its_absent_slots_through():
+    """Team deathmatch alone: the tick hands back the absent slots it was given (no copy
+    of them), through deaths and resets."""
+    rules = cases.lively(cases.MODES["team_deathmatch"])
+    state = api.reset(rules, cases.LIVELY_TYPES, api.uniforms(rules, 8))
+    zone_leaves = ("zone_x", "zone_y", "zone_radius", "role", "progress", "movement",
+                   "attack_ledger", "defense_ledger", "front", "handedness", "ring_rotation")
+    for _ in range(200):
+        after, _ = cases.tick(rules, state)
+        assert all(getattr(after.mode, name) is getattr(state.mode, name)
+                   for name in zone_leaves)
+        state = after
+    assert not any(getattr(state.mode, name).any() for name in zone_leaves)

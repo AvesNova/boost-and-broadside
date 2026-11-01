@@ -14,7 +14,7 @@ from typing import NamedTuple
 import torch
 
 from ..rules import Rules
-from ..state import Fields, ModeState, Ships, by_team, replace
+from ..state import Fields, ModeState, Ships, apply, by_team, replace
 from . import frontline
 from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
@@ -98,13 +98,16 @@ def protected(rules: Rules, mode_rules: ModeRules, mode: ModeState, ships: Ships
 
 def new_match(mode_rules: ModeRules, arena_radius: torch.Tensor, map_scale: torch.Tensor,
               uniforms: torch.Tensor, map_uniforms: torch.Tensor, fields: Fields,
-              blank: ModeState) -> tuple[ModeState, Fields]:
+              previous: ModeState) -> tuple[ModeState, Fields]:
     """A new match's mode state and map from the mode's tick uniforms (B, U_mode) and the
     environments' arena radius and map scale (B,): the drawn point-symmetric fields as they
     are, or, in Frontline, a random ring (rotation, then handedness) with fields mirrored
-    about its neutral axis."""
+    about its neutral axis. previous: the mode state as it stands. A mode without zones
+    zeroes only the score; its other leaves are zero already and pass through unchanged
+    (no copy of the absent slots)."""
     if mode_rules.name != FRONTLINE:
-        return blank, fields
+        return replace(previous, score=torch.zeros_like(previous.score)), fields
+    blank = apply(torch.zeros_like, previous)
     rotation = 2.0 * math.pi * uniforms[:, 0]
     handedness = torch.where(uniforms[:, 1] < 0.5, 1.0, -1.0)
     zone_x, zone_y, radius = frontline.zone_ring(
