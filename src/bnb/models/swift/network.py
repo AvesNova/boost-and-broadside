@@ -20,13 +20,16 @@ DECAY_EXPONENT = 8.0
 
 
 class RMSNorm(nn.Module):
-    """RMSNorm with a learned scale and the dtype's machine epsilon."""
+    """RMSNorm with a learned scale and the dtype's machine epsilon. Low-precision inputs
+    (autocast) are normalised in float32, with float32's epsilon."""
 
     def __init__(self, width: int):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(width))
 
     def forward(self, x):
+        if x.dtype not in (torch.float32, torch.float64):
+            x = x.float()
         return F.rms_norm(x, (x.shape[-1],), self.weight, eps=torch.finfo(x.dtype).eps)
 
 
