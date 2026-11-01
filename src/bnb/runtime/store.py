@@ -125,43 +125,53 @@ class SegmentStore:
                 for name, value in leaves.items()}
 
     def batches(self, names: tuple[str, ...], view_batches: list[torch.Tensor]):
-        """Yield {name: pytree} on the device for each list of views (int64, all of one
-        size). From pinned memory the next batch is gathered and copied while the caller
-        computes on the current one; a yielded batch is valid until the next-but-one."""
+        """Yield {name: pytree} on the device for each list of views (int64). From pinned
+        memory the next batch is gathered and copied while the caller computes on the
+        current one; a yielded batch is valid until the next-but-one."""
         self.synchronize()
         if not self.pinned:
             for views in view_batches:
                 yield self._unflatten(self._gather(names, views.to(self.data[names[0]][0].device),
                                                    None))
             return
-        count = view_batches[0].numel()
-        key = (names, count)
-        if key not in self._staging:
-            self._staging[key] = [(self._buffers(names, count, "cpu", True),
-                                   self._buffers(names, count, self.device, False))
-                                  for _ in range(2)]
-        staging = self._staging[key]
-        copied = [torch.cuda.Event(), torch.cuda.Event()]
-        released = [torch.cuda.Event(), torch.cuda.Event()]
         compute = torch.cuda.current_stream(self.device)
-        for event in released:
-            event.record(compute)
 
-        def issue(index: int) -> None:
-            host, device = staging[index % 2]
-            copied[index % 2].synchronize()  # the pinned buffer's last copy has finished
-            self._gather(names, view_batches[index].cpu(), host)
+        def slot(index: int) -> dict:
+            """The staging slot of batch `index`: per micro-batch size, two pinned and device
+            buffers that alternate, each with the copy that fills it and the compute that
+            last read it."""
+            key = (names, view_batches[index].numel())
+            if key not in self._staging:
+                pairs = []
+                for _ in range(2):
+                    released = torch.cuda.Event()
+                    released.record(compute)
+                    pairs.append(dict(host=self._buffers(names, key[1], "cpu", True),
+                                      device=self._buffers(names, key[1], self.device, False),
+                                      copied=torch.cuda.Event(), released=released))
+                self._staging[key] = [pairs, 0]
+            pairs, turn = self._staging[key]
+            self._staging[key][1] = 1 - turn
+            return pairs[turn]
+
+        def issue(index: int) -> dict:
+            buffers = slot(index)
+            buffers["copied"].synchronize()  # the pinned buffer's last copy has finished
+            self._gather(names, view_batches[index].cpu(), buffers["host"])
             with torch.cuda.stream(self.copy_stream):
-                self.copy_stream.wait_event(released[index % 2])
+                self.copy_stream.wait_event(buffers["released"])
                 for name in names:
-                    for target, source in zip(device[name], host[name], strict=True):
+                    for target, source in zip(buffers["device"][name], buffers["host"][name],
+                                              strict=True):
                         target.copy_(source, non_blocking=True)
-                copied[index % 2].record(self.copy_stream)
+                buffers["copied"].record(self.copy_stream)
+            return buffers
 
-        issue(0)
+        upcoming = issue(0)
         for index in range(len(view_batches)):
-            compute.wait_event(copied[index % 2])
-            yield self._unflatten(staging[index % 2][1])
-            released[index % 2].record(compute)
+            current = upcoming
+            compute.wait_event(current["copied"])
+            yield self._unflatten(current["device"])
+            current["released"].record(compute)
             if index + 1 < len(view_batches):
-                issue(index + 1)
+                upcoming = issue(index + 1)

@@ -48,8 +48,9 @@ class LearnerConfig:
     coefficient rewards it).
 
     old_log_probabilities: "rollout" (the rollout's) or "recomputed" (by `unroll` before
-    the first epoch). micro_batch: views per micro-batch (memory only; the result is the
-    same). seed: the shot re-simulation's spread generator.
+    the first epoch). minibatches: per epoch, as equal in views as the views allow;
+    micro_batch: views per micro-batch (memory only; the result is the same). seed: the
+    shot re-simulation's spread generator.
     """
 
     discount: tuple[float, ...] = (0.991, 0.995, 0.995, 0.999, 0.9997)
@@ -373,10 +374,8 @@ class Learner:
         steps this update collected (the warmup counts them)."""
         config, device = self.config, self.device
         views = segments.views
-        minibatch = views // config.minibatches
-        if views % config.minibatches or minibatch % config.micro_batch:
-            raise ValueError(f"{views} views do not split into {config.minibatches} minibatches "
-                             f"of whole {config.micro_batch}-view micro-batches")
+        if views < config.minibatches:
+            raise ValueError(f"{views} views do not make {config.minibatches} minibatches")
         prepared = self.prepare(segments, bootstraps)
         for group in self.optimizer.param_groups:
             group["lr"] = learning_rate(config, self.env_steps)
@@ -387,10 +386,10 @@ class Learner:
         steps, first_epoch_steps, stopped = 0, 0, False
         drift = self.drift(segments, prepared)
         for epoch in range(config.epochs):
-            permutation = torch.randperm(views, device=device)
-            for start in range(0, views, minibatch):
-                terms, per_level, statistics = self.gradient(
-                    segments, prepared, permutation[start:start + minibatch])
+            # Minibatches as equal as the views allow (micro-batches of micro_batch views,
+            # each minibatch's last one smaller where they do not divide).
+            for chosen in torch.randperm(views, device=device).tensor_split(config.minibatches):
+                terms, per_level, statistics = self.gradient(segments, prepared, chosen)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
                 self.optimizer.step()
                 terms_total += terms
@@ -420,7 +419,7 @@ class Learner:
         """The step/unroll ratio drift before any optimizer step, on the first micro-batch
         of views: |exp(log_probability_unroll - log_probability_rollout) - 1| over living
         own ships, max and mean."""
-        views = torch.arange(self.config.micro_batch, device=self.device)
+        views = torch.arange(min(self.config.micro_batch, segments.views), device=self.device)
         batch = next(iter(segments.batches(segments.names, [views])))
         trajectory = Trajectory(**batch)
         log_probability, _ = policy.evaluate(self.unroll(trajectory).policy_logits,
