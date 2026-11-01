@@ -44,7 +44,8 @@ TERMS = ("policy", "entropy", "value", "next_state", "enemy_action", "density",
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
 # The per-tick records the returns read, staged whole per shard.
 SMALL = ("reward", "values", "outcome", "done", "result", "logp", "alive", "valued")
-# The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
+# The stored shot labels' name in the store: per view, {"shots": Shots, "mask"} and, with
+# sampled_shot_ages, "ages", (V, L, ...).
 SHOT_LABELS = "shot_labels"
 
 
@@ -58,8 +59,11 @@ class LearnerConfig:
     the first epoch). minibatches: per epoch, as equal in views as the views allow;
     micro_batch_rows: ship rows per micro-batch, so micro_batch_rows // N views (at least
     one): memory only, the result is the same, and the memory a micro-batch needs follows
-    its rows at any fleet size. seed: the learner's random streams (the shot spread, the
-    minibatch order).
+    its rows at any fleet size. sampled_shot_ages: 0 (the default) queries the shot
+    trajectory head at every age; k > 0 at k of each shot's valid ages, drawn once per
+    update (an unbiased estimate of the average over its ages, at about k / 12 of the
+    head's and its code's cost). seed: the learner's random streams (the shot spread, the
+    minibatch order, the sampled ages).
     """
 
     discount: tuple[float, ...] = (0.991, 0.995, 0.995, 0.999, 0.9997)
@@ -85,11 +89,14 @@ class LearnerConfig:
     micro_batch_rows: int = 160
     target_kl: float = 0.02
     old_log_probabilities: str = "rollout"
+    sampled_shot_ages: int = 0
     seed: int = 0
 
     def __post_init__(self) -> None:
         if self.old_log_probabilities not in ("rollout", "recomputed"):
             raise ValueError(f"old_log_probabilities {self.old_log_probabilities!r}")
+        if self.sampled_shot_ages < 0:
+            raise ValueError(f"sampled_shot_ages {self.sampled_shot_ages} is negative")
         for name in ("discount", "trace_decay", "team_spirit"):
             if len(getattr(self, name)) != len(REWARD_LEVELS):
                 raise ValueError(f"{name} needs one value per reward level")
@@ -166,6 +173,7 @@ class Learner:
                                                config.return_scale_floor, device)
         self.spread_generator = random_stream(config.seed, "shot_spread", device)
         self.order_generator = random_stream(config.seed, "minibatch_order")  # host indices
+        self.age_generator = random_stream(config.seed, "shot_ages", device)
         self.auxiliary = hasattr(model, "state_code")
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)
@@ -220,15 +228,22 @@ class Learner:
 
     # ------------------------------------------------------------------ labels
 
-    def shots(self, trajectory: Trajectory, spread: torch.Tensor):
-        """The re-simulated shots and the loss mask: valid shots of own ships and of enemies
-        visible at t."""
+    def shots(self, trajectory: Trajectory, spread: torch.Tensor) -> dict:
+        """The stored shot labels of a batch of views: the re-simulated shots, the loss mask
+        (valid shots of own ships and of enemies visible at t) and, with sampled_shot_ages,
+        the ages the head is queried at ({"shots", "mask", "ages"?}, (L, n, ...))."""
         own = trajectory.logp.shape[-1]
         shot = shots.resimulate(self.rules, self.types, trajectory.capture, trajectory.obs.fields,
                                 trajectory.done, spread, own, self.shot_tick)
         visible = trajectory.obs.ships[..., SHIP["visible"]] > 0.5
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
-        return shot, shot.valid & (rows | visible)
+        stored = dict(shots=shot, mask=shot.valid & (rows | visible))
+        if self.config.sampled_shot_ages:
+            keys = torch.rand(shot.age_valid.shape, device=shot.age_valid.device,
+                              generator=self.age_generator)
+            stored["shots"], stored["ages"] = shots.sample_ages(shot, keys,
+                                                               self.config.sampled_shot_ages)
+        return stored
 
     def labels(self, trajectory: Trajectory, shot_labels: dict | None) -> dict:
         """The auxiliary targets and masks of a micro-batch, from its stored rows and its
@@ -238,7 +253,8 @@ class Learner:
         if not self.auxiliary:
             return {}
         with torch.no_grad():
-            return self._codes(trajectory, shot_labels["shots"], shot_labels["mask"])
+            return self._codes(trajectory, shot_labels["shots"], shot_labels["mask"],
+                               shot_labels.get("ages", self.ages))
 
     def staged(self, segments: Segments,
                view_batches: list[torch.Tensor]) -> Iterator[tuple[Trajectory, dict | None]]:
@@ -252,8 +268,10 @@ class Learner:
                                                stored)
             yield Trajectory(**batch), stored
 
-    def _codes(self, trajectory: Trajectory, shot: shots.Shots, shot_mask: torch.Tensor) -> dict:
-        """The targets as the heads' codes, from the stored rows and the re-simulated shots."""
+    def _codes(self, trajectory: Trajectory, shot: shots.Shots, shot_mask: torch.Tensor,
+               shot_ages: torch.Tensor) -> dict:
+        """The targets as the heads' codes, from the stored rows and the re-simulated shots,
+        and the ages their snapshots are at (every age (A,), or the sampled (L, n, N, k))."""
         model = self.model
         rows = labels.privileged_rows(trajectory)
         enemy, enemy_mask = labels.enemy_actions(trajectory)
@@ -264,7 +282,7 @@ class Learner:
             enemy_action=enemy, enemy_mask=enemy_mask,
             density=labels.density_targets(self.grid, trajectory, rows),
             shot_trajectory=shot_codes.trajectory_code(code, shot.snapshots),
-            shot_ages=shot.age_valid, shot_mask=shot_mask,
+            shot_query_ages=shot_ages, shot_ages=shot.age_valid, shot_mask=shot_mask,
             shot_outcome=shot_codes.outcome_code(code, shot.hit, shot.distance, shot.side))
 
     # ------------------------------------------------------------------ the loss
@@ -316,7 +334,7 @@ class Learner:
                 / denominator["steps"]
         if _head(unrolled, "shot_latents") is not None:
             parts, outcome = losses.shot_cross_entropy(
-                model.shot_trajectory(unrolled.shot_latents, self.ages),
+                model.shot_trajectory(unrolled.shot_latents, label["shot_query_ages"]),
                 label["shot_trajectory"], unrolled.shot_outcome_logits, label["shot_outcome"],
                 self.shot_runs)
             ages = label["shot_ages"]
@@ -382,13 +400,14 @@ class Learner:
                 trajectory = Trajectory(**batch)
                 with torch.no_grad():
                     if self.auxiliary:
-                        shot, shot_mask = self.shots(trajectory, spread[:, views])
+                        stored = self.shots(trajectory, spread[:, views])
                         counts[views, COUNTS.index("next_state")] = \
                             labels.next_state_mask(trajectory).sum((0, 2)).float()
-                        counts[views, COUNTS.index("shots")] = shot_mask.sum((0, 2)).float()
+                        counts[views, COUNTS.index("shots")] = \
+                            stored["mask"].sum((0, 2)).float()
                         stored = _pytree.tree_map_only(
                             torch.Tensor, lambda x: x.transpose(0, 1).contiguous(),
-                            dict(shots=shot, mask=shot_mask))  # (n, L, ...)
+                            stored)  # (n, L, ...)
                         first = int(host_views[0])
                         segments.write_views({SHOT_LABELS: stored},
                                              slice(first, first + host_views.numel()))

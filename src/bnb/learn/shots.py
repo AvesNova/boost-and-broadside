@@ -189,3 +189,18 @@ def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: tor
     side = torch.where(same_side(nearest), SIDE_ALLY, SIDE_ENEMY)
     return Shots(valid=valid, snapshots=snapshots, age_valid=age_valid, hit=hit,
                  distance=torch.sqrt(closest), side=side)
+
+
+def sample_ages(shot: Shots, keys: torch.Tensor, count: int) -> tuple[Shots, torch.Tensor]:
+    """`count` of each shot's ages, drawn uniformly without replacement among its valid ages
+    (all of them where it has fewer; the rest are invalid): the shot with snapshots
+    (..., count, 5) and age_valid (..., count) at those ages, and the ages in moves
+    (..., count). keys (..., A): uniform draws in [0, 1), one per age. The mean over the
+    drawn valid ages is an unbiased estimate of the mean over all the valid ages."""
+    ranked = torch.where(shot.age_valid, keys, -1.0)
+    index = ranked.topk(count, -1).indices
+    snapshots = shot.snapshots.gather(-2, index[..., None].expand(index.shape
+                                                                  + shot.snapshots.shape[-1:]))
+    sampled = replace(shot, snapshots=snapshots, age_valid=shot.age_valid.gather(-1, index))
+    return sampled, (index + 1).to(shot.snapshots.dtype)
+

@@ -396,11 +396,59 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
                          generator=random_stream(learner.config.seed, "shot_spread"))
     views = torch.arange(3, 7)  # not one of prepare's micro-batches
     trajectory, stored = next(learner.staged(store, [views]))
-    shot, mask = learner.shots(trajectory, spread[:, views])
-    assert mask.any() and torch.equal(stored["mask"], mask)
-    for a, b in zip(_pytree.tree_leaves(stored["shots"]), _pytree.tree_leaves(shot),
+    fresh = learner.shots(trajectory, spread[:, views])
+    assert fresh["mask"].any() and torch.equal(stored["mask"], fresh["mask"])
+    for a, b in zip(_pytree.tree_leaves(stored["shots"]), _pytree.tree_leaves(fresh["shots"]),
                     strict=True):
         assert torch.equal(a, b)
+
+
+def test_sampled_shot_ages_are_distinct_valid_ages_drawn_uniformly():
+    from bnb.learn.shots import Shots, sample_ages
+
+    draws, ages = 4000, 12
+    valid_count = torch.tensor([12, 5, 2, 0])  # valid ages 0 .. count - 1 of each shot
+    age_valid = (torch.arange(ages) < valid_count[:, None]).expand(draws, 4, ages)
+    snapshots = torch.arange(ages, dtype=torch.float32)[:, None].expand(draws, 4, ages, 5)
+    zeros = torch.zeros(draws, 4)
+    shot = Shots(valid=valid_count.expand(draws, 4) > 0, snapshots=snapshots,
+                 age_valid=age_valid, hit=zeros.long(), distance=zeros, side=zeros.long())
+    keys = torch.rand((draws, 4, ages), generator=torch.Generator().manual_seed(0))
+    sampled, query = sample_ages(shot, keys, 3)
+    assert sampled.snapshots.shape == (draws, 4, 3, 5) and query.shape == (draws, 4, 3)
+    assert torch.equal(sampled.snapshots[..., 0], query - 1)  # each snapshot at its age
+    # min(3, valid) valid ages per shot, each a valid age, all distinct
+    torch.testing.assert_close(sampled.age_valid.sum(-1),
+                               valid_count.clamp_max(3).expand(draws, 4))
+    index = (query - 1).long()
+    assert (index[sampled.age_valid] < valid_count.expand(draws, 4)[..., None].expand(
+        draws, 4, 3)[sampled.age_valid]).all()
+    assert (index.sort(-1).values.diff(dim=-1) > 0).all()
+    # uniform: every valid age of the 12-age shot is drawn about 3 / 12 of the time
+    frequency = F.one_hot(index[:, 0], ages).sum((0, 1)).float() / draws
+    torch.testing.assert_close(frequency, torch.full((ages,), 0.25), atol=0.03, rtol=0)
+
+
+def test_sampling_every_age_gives_the_full_average():
+    """sampled_shot_ages = 12 queries every valid age of each shot (in another order): the
+    terms are the default's."""
+    net = cases.model()
+    runner = lc.rollout(net)
+    terms = []
+    for sampled in (0, 12):
+        learner = lc.learner(net, runner, sampled_shot_ages=sampled)
+        prepared = learner.prepare(runner.store, [runner.bootstrap()])
+        views = torch.arange(runner.store.views)
+        trajectory, shot_labels = next(learner.staged(runner.store, [views]))
+        assert ("ages" in shot_labels) == bool(sampled)
+        denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
+        with torch.no_grad():
+            terms.append(learner.loss(trajectory, shot_labels, prepared["derived"],
+                                      denominator, prepared["scale"])[1])
+        runner.store.data.pop("shot_labels")  # the next learner stores another tree
+        runner.store.specs.pop("shot_labels")
+    assert terms[0][TERMS.index("shot_trajectory")] > 0
+    torch.testing.assert_close(terms[1], terms[0], rtol=1e-5, atol=1e-7)
 
 
 def test_recomputed_old_log_probabilities_are_the_unrolls(segment):
