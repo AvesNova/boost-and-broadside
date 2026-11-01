@@ -3,10 +3,10 @@ target, then the ImGui layer (HUD and panels) on top.
 
 Draw order: sky and arena, fields, zones, trails, bullets, ships, rings, fog. A spectator
 sees everything; a team's view draws only the ships that team sees (its observation's
-`visible`), the parts of their trails it saw, its own bullets and the enemy bullets inside
-its sight, and in a fogged match darkens what it cannot see. In a match without fog every
-ship and bullet is visible to both teams, so a team's view draws no fog. Rendering reads
-snapshots (numpy) and never imports torch.
+`visible`) and the parts of their trails it saw, and in a fogged match darkens what it
+cannot see. Every bullet is drawn in every view: agents never see bullets, so this is an
+advantage human players have. In a match without fog every ship is visible to both teams,
+so a team's view draws no fog. Rendering reads snapshots (numpy) and never imports torch.
 """
 
 import contextlib
@@ -135,11 +135,9 @@ class Renderer:
         with self._measure("bullets"):
             bullets = frame.bullets
             active = bullets.active
-            masked = (bullets.team != view) if fogged else np.zeros_like(active)
             self.bullets.draw(uniforms, theme, bullets.x[active], bullets.y[active],
                               bullets.direction_x[active], bullets.direction_y[active],
-                              bullets.team[active], masked[active].astype(np.float32),
-                              self.fog.mask if fogged else None)
+                              bullets.team[active])
         with self._measure("ships"):
             self.ships.draw(uniforms, theme, ships.x[shown], ships.y[shown],
                             ships.heading[shown], size[shown], ships.team[shown],

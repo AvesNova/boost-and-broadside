@@ -111,14 +111,15 @@ from the mask's edges
 own function on the CPU was too slow for a frame budget at large fleets; the shader runs
 the same rule on the GPU.
 
-The bullets pass reads the mask, so a team sees its own bullets everywhere and enemy
-bullets only inside its sight. Ships come from the observation instead: a team's view
-draws only the ships its observation shows. Each trail sample records which teams saw
+Every bullet is drawn in every view; agents never see bullets, so this is an advantage
+human players have. Ships come from the observation instead: a team's view draws only the
+ships its observation shows (a ship that fires is visible while it fires, by the game's
+sight rule). Each trail sample records which teams saw
 the ship then, so a team's view draws only the parts of an enemy's path it saw; an enemy
 revealed for a moment by firing does not show where it came from. Terrain (the arena, the
 fields and the zones) stays drawn under the fog.
 
-In a match without fog of war every ship and bullet is visible to both teams, so a team's
+In a match without fog of war every ship is visible to both teams, so a team's
 view has no fog: it draws everything and darkens nothing.
 
 ## Themes

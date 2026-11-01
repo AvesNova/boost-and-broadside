@@ -5,14 +5,12 @@ in vec2 corner;  // x in [0, 1] from the tail to the tip, y in [-1, 1] across
 in vec2 tip;
 in vec2 direction;
 in vec4 tint;
-in float masked;  // drawn only where the view's team can see (an enemy bullet)
 
 uniform float length_pixels;
 uniform float width_pixels;
 
 out vec2 along_across;  // pixels from the tail, pixels from the axis
 flat out vec4 v_colour;
-flat out float v_masked;
 
 void main() {
     float pad = width_pixels;
@@ -22,6 +20,5 @@ void main() {
     vec2 side = vec2(-direction.y, direction.x);
     vec2 world = tip + (direction * (along - length_pixels) + side * across) * pixel;
     v_colour = tint;
-    v_masked = masked;
     gl_Position = clip_of(world);
 }
