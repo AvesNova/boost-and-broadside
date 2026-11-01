@@ -25,7 +25,7 @@ class Handles:
     ceiling: torch.Tensor  # J, the store size
     low_speed_acceleration: torch.Tensor  # m/s^2 at the stall speed, store empty
     sustained_turn_rate: torch.Tensor  # rad/s, settled full-stick coasting turn
-    bleed_rate: torch.Tensor  # W/kg, specific energy rate at corner speed, full stick
+    bleed_rate: torch.Tensor  # W/kg, specific energy rate at corner speed, middle stick
     nose_reversal_time: torch.Tensor  # s, to 90% of the reversed angle of attack
     dive_acceleration: torch.Tensor  # m/s^2 at the start of a boost from cruise
     zoom_acceleration: torch.Tensor  # m/s^2 at the start of a reverse from cruise

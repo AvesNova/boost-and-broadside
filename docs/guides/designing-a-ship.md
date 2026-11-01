@@ -63,15 +63,20 @@ print(solution.error.amax(-1), solution.condition)
 types = solution.types  # a float32 card for the game
 ```
 
-- `Solution.error` is each flown handle's remaining relative error (at most 1e-4 when the
-  solve succeeds); `Solution.condition` is the conditioning of each type's solve.
+- `Solution.error` is each flown handle's remaining relative error. A solve succeeds when
+  every one is within the solver's `ACCEPTANCE`, the spec's bar; it stops early once all are
+  within its much smaller `TOLERANCE`. `Solution.condition` is the conditioning of each
+  type's solve.
 - A handle set that no card meets raises `bnb.game.handling.Infeasible` with the reason. A
   batch of cards (handles shaped `(cards, types)`) can be solved with `strict=False`, which
   returns the failures in `Solution.failures` instead.
 - A `bnb.game.handling.RedundantHandles` warning names two handles that pull in nearly the
-  same direction. The sustained turn rate and the bleed rate are such a pair: moving one
-  while holding the other can need an extreme bleed exponent, and a 5% move of the
-  sustained turn alone fails.
+  same direction. A low-speed acceleration beyond what the engine gives at the stall speed
+  is one way to get it: the static-thrust cap no longer acts, so the low-speed acceleration
+  moves only with the engine power, which the cruise sets.
+- The zero-lift drag is a handle the solver holds, not one it solves for: under the cruise
+  fix, the cruise is met at any drag by the power that pays for it, so the cruise cannot
+  set the drag.
 
 ## 4. Save the card and chart it
 
@@ -88,7 +93,8 @@ quantities.
 
 ## 5. Check it at every tick rate
 
-The weapons' times must be whole ticks at the rules' tick: solving with
-`api.rules_of(..., tick_length=1.0 / 25)` refuses a fire interval of 1/15 s. Flight
+The fire rate and the recharge delay must be whole numbers of ticks at the rules' tick:
+solving with `api.rules_of(..., tick_length=1.0 / 25)` refuses the fighter's 15 Hz fire
+rate, and so does the game's reset. Flight
 handles agree across 25, 30 and 60 Hz; `tests/sections/test_ship_card.py` checks this for
 the default and varied cards.

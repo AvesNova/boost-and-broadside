@@ -30,9 +30,10 @@ Three kinds of field:
 - **Scales of shared values.** A parameter that is a shared value in `Rules` or
   `FlightConstants` is per type as a scale of that value: a type's stall angle is
   `FlightConstants.stall_angle` times its `stall_angle_scale`. `bnb.game.ship_types.SCALED`
-  lists every scale and the value it multiplies. Every scale is 1 on the default card. The
-  shared values keep their meaning for code that reads them, such as Yemong's coding
-  ranges and the race reference tests.
+  lists every scale and the value it multiplies. Every scale is 1 on the default card.
+  Setting a shared value still applies to every type, as the race reference tests assume.
+  Code sized to the card reads the largest per-type value instead: Yemong's coding ranges
+  span the widest stall angle and the longest recharge delay of the card it is built with.
 
 Whose value applies: the flight and shield values are the ship's own; the bullet spread and
 drag are the shooter's; the head-on fraction is the target's; the vision range is the
@@ -50,11 +51,11 @@ handles are read off flights at the standard field index (no fields).
 | `stall_speed` | `sqrt(g / C_max)` | the lift coefficient |
 | `g_limit` | `a_max / g` | the g limit |
 | `cruise_speed` | flown: the speed the flight tick leaves unchanged, coasting straight at a full store | the engine power at a full store |
-| `climb_time` | flown: empty to 98% of the store, coasting straight from cruise | the coast exchange |
+| `climb_time` | flown: from empty to the store less its fade band (`store_fade_band` in `bnb.game.rules.FlightConstants`), coasting straight from cruise | the coast exchange |
 | `ceiling` | the store size | the store size |
 | `low_speed_acceleration` | flown: the start rate of speed at the stall speed, store empty | the static-thrust cap |
 | `sustained_turn_rate` | flown: the settled full-stick coasting turn, store held below the engine knee | the induced-drag factor |
-| `bleed_rate` | flown: the start rate of specific energy at corner speed, full stick, nose at its steady angle of attack | the bleed exponent |
+| `bleed_rate` | flown: the start rate of specific energy at corner speed, the middle stick level, nose at its steady angle of attack | the bleed exponent |
 | `nose_reversal_time` | flown: from a settled full-stick turn at corner speed, the time to 90% of the reversed steady angle of attack | the nose frequency |
 | `dive_acceleration` | flown: the start rate of speed in a boost from cruise, store half full | the dive exchange |
 | `zoom_acceleration` | flown: the start rate of speed in a reverse from cruise, store half full | the climb exchange |
@@ -62,7 +63,17 @@ handles are read off flights at the standard field index (no fields).
 | `vision_range` | the observer's range | the vision range |
 | `zero_lift_drag` | the zero-lift drag coefficient | itself; the solver holds it |
 
-The combat handles are the damage, the fire interval in seconds, the muzzle speed, the
+The sustained turn and the bleed rate set the induced drag's factor and exponent. They are
+turns at different stick levels, full and middle, and so at different lifts: the exponent
+changes their ratio, which keeps the two handles apart.
+
+**Why the zero-lift drag is held.** Under the cruise fix (below), the engine's full-store
+power is the drag's power at cruise. Whatever the zero-lift drag, the full-store power that
+pays for it meets the cruise, so the cruise does not determine the drag. The drag is
+therefore a handle of its own, held like the store size, and the cruise sets the
+full-store power instead.
+
+The combat handles are the damage, the fire rate in shots per second, the muzzle speed, the
 spread, the gun range (the distance a bullet fired at cruise along the flight path travels
 in its 0.4 s life), the shots a full store pays for, the shield capacity, recharge rate and
 delay, the head-on fraction, the hit radius and the spawn energy. They map to the card in
@@ -90,9 +101,11 @@ changes from positive to negative.
 ## Solving
 
 `solve` sets the direct handles' parameters in closed form and the combat handles' with
-`bnb.game.handling.weapons.combat_card`. Times convert to whole ticks at the rules' tick, or
-the solve fails with the reason: 1/15 s is 2 ticks at 30 Hz, 4 at 60 Hz, and no whole number
-at 25 Hz. The eight flown handles set eight parameters
+`bnb.game.handling.weapons.combat_card`. The fire rate and the recharge delay must be whole
+numbers of ticks at the rules' tick, or the solve fails with the reason: the fighter's
+15 Hz is 2 ticks at 30 Hz, 4 at 60 Hz, and no whole number at 25 Hz. The game refuses such
+a card at reset too (`bnb.game.ship_types.ticks_between_shots`, in exact fractions). The
+eight flown handles set eight parameters
 (`bnb.game.handling.solver.FLOWN_PARAMETERS`{.nolink}):
 
 1. **The cruise fix.** Cruise does not depend on the store: the engine power below the
@@ -111,23 +124,23 @@ at 25 Hz. The eight flown handles set eight parameters
 4. **Stop** when every flown handle is within `TOLERANCE` of its target, or after
    `ITERATIONS` iterations.
 
-A card that ends further than 0.5% from a handle fails with its reason: the handle it
+A card that ends further than `ACCEPTANCE` from a handle fails with its reason: the handle it
 misses, the condition number of its Jacobian and the two handles its weakest direction
 involves. `solve` raises `bnb.game.handling.Infeasible` by default; with `strict=False` it
 returns the reasons in `Solution.failures`. Handle sets that cannot be met at all, such as a
 g limit at or below 1, a cruise below the stall speed or a sustained turn above the
-instantaneous peak, fail before any flight. A condition number above
+instantaneous peak, fail before any flight. So does a nose reversal or a climb longer than
+its manoeuvre flies (`REVERSAL_LIMIT` and `CLIMB_LIMIT` in
+`bnb.game.handling.manoeuvres`), with the window named. A condition number above
 `CONDITION_WARNING` raises a `bnb.game.handling.RedundantHandles` warning.
 
 ## How independent the handles are
 
-On the default card (measured at commit `845f2db5` on the development laptop's CPU, the
-cases in `tests/sections/ship_card_cases.py`), re-solving after moving one flight handle
-by 5% holds every other flight handle within 0.5% for 27 of the 28 moves. Moving the
-sustained turn rate up 5% with the bleed rate held fails: both handles are full-stick
-turns at a lift near 0.9 of the maximum, so only the bleed exponent separates them, and it
-would have to leave its bounds. Moving the stall speed 5% needs bleed exponents from 0.7 to
-3.7. The details are in `docs/rewrite/sections/ship-card-notes.md`.
+On the default card (measured on the development laptop's CPU, the cases in
+`tests/sections/ship_card_cases.py`), re-solving after moving one flight handle by 5% holds
+every other flight handle within 1e-6 for all 28 moves. The largest change of the bleed
+exponent is to 1.4 (the sustained turn rate up 5%), and the condition numbers stay between
+11 and 34. The details are in `docs/rewrite/sections/ship-card-notes.md`.
 
 ## The reference chart
 

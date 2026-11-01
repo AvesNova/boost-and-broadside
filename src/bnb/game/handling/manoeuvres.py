@@ -23,7 +23,7 @@ from ..physics.flight import (
     setting,
     stall_angle,
 )
-from ..rules import Rules
+from ..rules import STICK_LEVELS, Rules
 from ..ship_types import ShipTypes
 from ..state import Fields, Ships, replace
 
@@ -38,6 +38,10 @@ CROSSING_BISECTIONS = 50  # on the cubic through the ticks around a crossing
 CRUISE_GRID = 48  # speeds, log-spaced from the stall speed to 30 times it
 TURNING_STORE = 0.25  # store fraction for the turns: below the knee, clear of the fade bands
 DIVE_STORE = 0.5  # store fraction for the dive and the zoom (spec: half full)
+# The bleed's stick: the middle of the game's three levels, so that the bleed and the
+# full-stick sustained turn are turns at different lifts and pin the induced drag's factor
+# and exponent apart.
+BLEED_STICK = sorted(level for level in STICK_LEVELS if level > 0.0)[1]
 FAR = 1e9  # m, where the one field of a flight-only map sits
 
 
@@ -215,8 +219,9 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     handles off it.
 
     The cruise is found first (cruise_speed at a full store), since the climb, the dive and
-    the zoom start from it. The sustained turn and the bleed start at corner speed with the
-    nose at its steady angle of attack; the sustained turn's store is held below the knee.
+    the zoom start from it. The sustained turn (full stick) and the bleed (BLEED_STICK)
+    start at corner speed with the nose at its steady angle of attack; the sustained turn's
+    store is held below the knee.
     """
     types = batched(types)
     constants, h = rules.flight, rules.tick_length
@@ -230,6 +235,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     turning = TURNING_STORE * full
     hard_left = torch.ones_like(full)
     steady = steady_turn(rules, airframe, corner, turning, hard_left)
+    bleeding = steady_turn(rules, airframe, corner, turning, BLEED_STICK * hard_left)
     zeros, ones = torch.zeros_like(full), torch.ones_like(full)
 
     def blocks(*values):
@@ -237,10 +243,10 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
 
     speed = blocks(cruise, cruise, cruise, stall, corner, corner, corner)
     energy = blocks(zeros, DIVE_STORE * full, DIVE_STORE * full, zeros, turning, turning, turning)
-    angle = blocks(zeros, zeros, zeros, zeros, steady.angle, steady.angle, -steady.angle)
-    nose_rate = blocks(zeros, zeros, zeros, zeros, steady.path_rate, steady.path_rate,
+    angle = blocks(zeros, zeros, zeros, zeros, steady.angle, bleeding.angle, -steady.angle)
+    nose_rate = blocks(zeros, zeros, zeros, zeros, steady.path_rate, bleeding.path_rate,
                        -steady.path_rate)
-    stick = blocks(zeros, zeros, zeros, zeros, ones, ones, ones)
+    stick = blocks(zeros, zeros, zeros, zeros, ones, BLEED_STICK * ones, ones)
     power = blocks(zeros, -ones, ones, zeros, zeros, zeros, zeros)
     ship_type = columns.repeat(1, 7)
     # The sustained turn's store is held, so it stays below the knee however long it flies.

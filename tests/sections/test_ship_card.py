@@ -13,13 +13,20 @@ import ship_card_cases as cases_module
 import torch
 
 from bnb.game import api
-from bnb.game.handling import FLIGHT, FLOWN, NAMES, Handles, Infeasible, measure, solve
+from bnb.game.handling import (
+    FLIGHT,
+    FLOWN,
+    NAMES,
+    Handles,
+    Infeasible,
+    measure,
+    solve,
+)
 from bnb.game.handling.manoeuvres import batched, cruise_speed
-from bnb.game.handling.solver import ERROR_FLOOR
+from bnb.game.handling.solver import ACCEPTANCE, ERROR_FLOOR
 from bnb.game.physics.flight import airframe_of, flight_tick
 from bnb.game.state import Fields, Ships, replace
 
-ACCEPTANCE = 0.005
 pytestmark = pytest.mark.slow
 
 
@@ -55,25 +62,13 @@ def test_varied_cards_span_the_envelope():
 
 # ------------------------------------------------------------------ independence
 
-# Perturbations the solver cannot meet (ship-card-notes.md, "Independence"): holding the
-# bleed rate and the other handles, the sustained turn cannot rise 5%; the solve drives the
-# bleed exponent below 0.8 and still misses the climb (and fails, with that reason).
-UNREACHABLE = {("sustained_turn_rate", 1.0)}
-
-
 def test_independence():
     """Each flight handle by -5% and +5%, re-solved: it moves by the perturbation and every
-    other measured handle stays within 0.5% of the default's; the UNREACHABLE ones fail
-    with a reason instead."""
+    other measured handle stays within 0.5% of the default's."""
     cases = cases_module.cases()
     first = cases.independence.start
     for i, (moved, sign) in enumerate(cases.labels):
         row = first + i
-        if (moved, sign) in UNREACHABLE:
-            assert not cases.solution.converged[row].all()
-            assert any(f.startswith(f"card {row} ") and "no convergence" in f
-                       for f in cases.solution.failures)
-            continue
         assert cases.solution.converged[row].all(), (moved, sign)
         for name in FLIGHT:
             base = getattr(cases.default, name)
@@ -118,16 +113,18 @@ def test_unsupported_weapon_cadence_is_refused():
 # ------------------------------------------------------------------ the cruise fix
 
 # Solved cards whose cruise varies by more than 2% across the store (ship-card-notes.md,
-# "The cruise fix"): the static-thrust cap shaves the empty store's engine power more than
-# the full store's. Reported, not fixed (spec 2).
-OVER_TWO_PERCENT = {3: "varied card 2", 10: "stall speed +5%", 11: "g limit -5%"}
+# "Fix round"): the static-thrust cap shaves the empty store's engine power more than the
+# full store's. Reported, not fixed (spec 2).
+OVER_TWO_PERCENT = {
+    3: "varied card 2: 3.4% (fighter) and 2.1% (heavy)",
+    22: "sustained turn +5%: 2.2% (fighter)",
+}
 
 
 def test_cruise_varies_little_across_the_store():
     """Cruise (the straight coasting equilibrium) across the store, empty to full: within 2%
     for the re-solved default card and every converged solved card but OVER_TWO_PERCENT,
-    within 5% (the author's "too much") for those but the stall speed's +5% (whose bleed
-    exponent fell below 0.9 and engine power tripled). The default card is reported."""
+    within 5% (the author's "too much") for those. The default card is reported."""
     cases = cases_module.cases()
     grid = torch.linspace(0.0, 1.0, 51, dtype=torch.float64)
 
@@ -139,7 +136,7 @@ def test_cruise_varies_little_across_the_store():
     converged = cases.solution.converged.all(-1)
     over = {row for row in range(len(solved)) if converged[row] and solved[row].max() > 0.02}
     assert over == set(OVER_TWO_PERCENT), {row: solved[row].tolist() for row in over}
-    for row in over - {10}:
+    for row in over:
         assert solved[row].max() < 0.05, (row, solved[row].tolist())
     default = variation(batched(api.ship_types(dtype=torch.float64)))
     print(f"default card's cruise variation: fighter {default[0, 0]:.2%}, "
@@ -306,8 +303,8 @@ def test_each_flown_handle_matches_an_independent_flight(ship_type):
 
     corner = math.sqrt(acceleration / lift)
     turning = 0.25 * full
-    settled = fine.settle_nose(corner, turning, 1.0, ship_type)
-    bleed = start_rate(settled, stick=1.0, specific=True)
+    settled = fine.settle_nose(corner, turning, 0.75, ship_type)  # the middle stick level
+    bleed = start_rate(settled, stick=0.75, specific=True)
     assert math.isclose(measured["bleed_rate"], bleed, rel_tol=ACCEPTANCE)
 
     # Sustained turn: 60 s at full stick from cruise, the store held below the knee; the
