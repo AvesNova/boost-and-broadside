@@ -1,9 +1,10 @@
 """measure (card -> handles) and solve (handles -> card), ship-card spec 4.
 
 The direct handles set their parameters in closed form. The eight flown handles set eight
-parameters (FLOWN_PARAMETERS) by Newton's method on flights of the game's own code: a
-closed-form first guess, then per iteration one batch that flies the base card and its
-eight perturbations (log space, finite differences), one environment each. The cruise fix
+parameters (FLOWN_PARAMETERS) by Levenberg-Marquardt on flights of the game's own code: a
+closed-form first guess at each of several bleed exponents (flown, the best kept), then per
+iteration one batch that flies the base card and its eight perturbations (log space, finite
+differences), one environment each. The cruise fix
 derives the engine power: P = P_min + m a_0 u_cruise, with P_min (the null power) solved
 so that the flown cruise meets its handle.
 """
