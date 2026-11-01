@@ -342,14 +342,34 @@ cut; where they differ, this section and the code win.
     - `result` (B,), for team 0 on done environments.
   - **`Obs` (schema 2)** gains a `zones` part (`ZONE_COLUMNS`: x, y, radius, role,
     progress, direction, offensive_distance, defensive_distance). Its rows are in each
-    viewer's own ring order, so the order reveals no seat, and `Z = 0` in modes without
-    zones. `GLOBAL_COLUMNS` gains `mode_team_deathmatch`, `mode_frontline`, `score_own`,
+    viewer's own ring order, so the order reveals no seat. (Since section 3c, `Z` is 5 in
+    every mode; see below.) `GLOBAL_COLUMNS` gains `mode_team_deathmatch`, `mode_frontline`, `score_own`,
     `score_enemy`, `score_target`, `front` and `front_threshold`. All are team-relative.
   - **`REWARD_LEVELS`** (`bnb.contracts.trajectory`): damage, kill_death,
     objective_progress, objective, outcome. `Trajectory.reward` is
     `(L, R, S, len(REWARD_LEVELS))`, per level and weighted.
   - **Reward state:** `bnb.learn.rewards.Ledger(ships (B, N, N), boundary (B, N))`,
     carried by the runtime. That is the spec's (B, N + 1, N), split for speed.
+- **Mixed batches (section 3c, 2026-11-01):**
+  - **`Pool`** gains `mode`, `arena_radius`, `spawn_groups`, `episode_s` and `respawn_s`
+    (None: the `GameConfig`'s value, and for the clocks then the mode's default).
+    `pool_game(config, pool)` gives a pool's game; `environment_multiple(pools)` the batch
+    size multiple a lineup needs (64 for the training mix). The `GameConfig` keeps the
+    shared sizes and the pools' defaults.
+  - **`Rules.pools`** (a tuple of `PoolRules`: environments, mode, arena radius, episode
+    and respawn ticks) replaces `Rules.mode`, `arena_radius`, `episode_ticks` and
+    `respawn_ticks`. Adjacent pools of one game merge; without pools, one game covers the
+    whole batch at any size.
+  - **`bnb.game.layout.Environment`:** the per-environment arena radius, map scale and
+    clocks, `(B,)` tensors. Mode-owned steps run on static per-mode slices.
+  - **Zones:** `Z = 5` in every mode, a fixed shape like `M`. `ZONE_COLUMNS` gains
+    `present` (last). An absent zone has `present` 0 and every other column 0.
+    **`Obs` is schema 3.**
+  - **Yemong:** an absent zone's map-memory token is one learned vector, selected with
+    `where` (no mask), with the global token's rotation.
+  - **The training mix** (`bnb.runtime.train.TRAINING_MIX`, preset `mixed`): Frontline
+    0.5, team deathmatch squad 0.375, team deathmatch battle map 0.125 (5v5, 10 fields,
+    arena 8200 m, groups (2, 2, 1)).
 - **Learner outputs (section 5, 2026-11-01):**
   - **`Outputs`** gains:
     - `values (R, S, K)`: the critic per reward level, in raw units;
