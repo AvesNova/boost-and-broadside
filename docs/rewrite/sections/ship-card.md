@@ -1,7 +1,6 @@
 # Section 1b: ship card (handles to physics parameters)
 
-Status: design concluded, 2026-10-31. Implementation follows the game section
-(it needs the per-type parameter tensors).
+Status: design concluded, 2026-10-31. Spec: `ship-card-spec.md`.
 
 ## Purpose
 

@@ -33,9 +33,10 @@ Every threshold is a dimensionless parameter times a characteristic quantity of 
 observing ship's type (or the target's, where stated). The type is a visible column;
 the card is public game knowledge.
 
-- **`bnb/game/characteristics.py`** measures them per ship type, through the game's own
-  flight and bullet code (a short batched simulation at construction, cached), at the
-  standard field index:
+- **Measured with the ship card's tool:** `bnb/game/handling.py` (section 1b) measures
+  them per ship type, through the game's own flight and bullet code (a short batched
+  simulation at construction, cached), at the standard field index. If section 1b has
+  not merged, this section creates the module with what it needs, and 1b extends it:
   - `cruise_speed`: the no-input terminal speed;
   - `top_speed`: the boost terminal speed, straight;
   - `corner_speed`: the slowest speed where the g limit caps the full-stick turn;
@@ -46,8 +47,8 @@ the card is public game knowledge.
     (closed form: `t = (exp(k s) − 1) / (k w₀)` for quadratic drag at index 1);
   - `max_energy`, `bullet_energy_cost`, `max_shield`, `hit_radius` (card values);
   - `vision_range`.
-- **Section 1b** extends this module with its measured handles. Nothing here may
-  duplicate the flight equations: the measurement runs the game's functions.
+- Nothing here may duplicate the flight equations: the measurement runs the game's
+  functions.
 
 ## A3. Parameters
 
