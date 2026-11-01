@@ -395,6 +395,27 @@ cut; where they differ, this section and the code win.
   - **Rule:** the replay must hold exactly what the step read. Never store a rounded copy
     of a value that a compiled stage also uses unrounded: inductor drops fused precision
     casts by default.
+- **The learner (section 6, merged 2026-11-02):**
+  - **`Trajectory.action`** holds every row's action, `(L, R, N)` in the view's row order
+    (own ships first; the learner's are `[..., :S]`).
+  - **`Trajectory`** gains:
+    - `result (L, R)` int32: the match result for the view's team (+1 win, −1 loss,
+      0 draw), nonzero only where `done`. The outcome targets and win rates read it, never
+      the sign of a reward;
+    - the label inputs, filled by the runtime for the learner's views:
+      - `alive (L, R, N)` and `valued (L, R, S)`;
+      - `truth (L, R, N − S, …)`, the enemy rows of `Privileged.ships`;
+      - `final_truth (R, N, …)`, after the last step;
+      - `capture`, the shot capture (`bnb.learn.shots.ShotCapture`), each row's launch
+        state and move at t.
+  - **Randomness in the update:** the learner's own streams (`bnb.learn.ppo.random_stream`,
+    named `shot_spread` and `minibatch_order`), never the global generator.
+  - **Shot labels:** a shot launched within the longest bullet flight of the segment's
+    end is invalid, whatever it hit. Episode ends keep the flight-end rule: the bullets
+    really vanish there.
+  - **Not done here, left to the cleanup pass:** the `done`/`reset` rename across the
+    controllers (`Controller.step(..., done)` still means a reset before this
+    observation).
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
