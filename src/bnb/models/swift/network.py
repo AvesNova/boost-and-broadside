@@ -107,7 +107,10 @@ class SpatialBlock(nn.Module):
         map_key, map_value = map_keys_values
         key = torch.cat([key, map_key], -3).transpose(-2, -3)
         value = torch.cat([value, map_value], -3).transpose(-2, -3)
-        attended = F.scaled_dot_product_attention(query.transpose(-2, -3), key, value)
+        query = query.transpose(-2, -3)
+        batch = query.shape[:-3]
+        attended = F.scaled_dot_product_attention(query.flatten(0, -4), key.flatten(0, -4),
+                                                  value.flatten(0, -4)).unflatten(0, batch)
         x = x + self.output(attended.transpose(-2, -3).flatten(-2))
         return x + self.feedforward(self.feedforward_norm(x))
 

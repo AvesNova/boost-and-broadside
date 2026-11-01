@@ -27,6 +27,7 @@ import torch
 
 from bench.lock import bench_lock
 from bnb.models.swift.model import Replay, Yemong, YemongConfig
+from bnb.models.swift.runtime import CapturedStep
 from bnb.models.swift.synthetic import random_segment, time_slice
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -124,30 +125,26 @@ def training_cell(model, views, precision, mode, repetitions, warmup):
 
 
 def rollout_cell(model, views, precision, mode, repetitions, warmup):
-    obs, reset = random_segment(2, views, SHIPS, FIELDS, ZONES, device="cuda", seed=1)
+    """eager: `step` with the carry fed back. compiled: `CapturedStep` without the graph (the
+    compiled step writes the carry in place). cudagraphs: `CapturedStep` replayed as one CUDA
+    graph. The observation is already in the static buffer, as the environment writes it."""
+    obs, _ = random_segment(2, views, SHIPS, FIELDS, ZONES, device="cuda", seed=1)
     single = time_slice(obs, 1)
     reset = torch.zeros(views, dtype=torch.bool, device="cuda")
     reset[: views // 64] = True  # a few environments reset this tick
 
-    @torch.no_grad()
-    def step(carry, obs, reset):
-        with autocast(precision):
-            return model.step(carry, obs, reset)
-
-    carry = nonzero_carry(model, views)
     if mode == "eager":
-        compute = step
-    elif mode == "compiled":
-        compute = torch.compile(step, fullgraph=True)
-    else:
-        compute = torch.compile(step, fullgraph=True, mode="reduce-overhead")
-    state = {"carry": carry}
+        state = {"carry": nonzero_carry(model, views)}
 
-    def iteration():
-        carry, out = compute(state["carry"], single, reset)
-        if mode == "cudagraphs":  # outputs live in the graph's pool: keep the carry outside
-            carry = type(carry)(*(leaf.clone() for leaf in carry))
-        state["carry"] = carry
+        @torch.no_grad()
+        def iteration():
+            with autocast(precision):
+                state["carry"], _ = model.step(state["carry"], single, reset)
+    else:
+        captured = CapturedStep(model, views, single, precision, compile=True,
+                                graph=mode == "cudagraphs")
+        captured.reset.copy_(reset)
+        iteration = captured.replay
 
     torch.cuda.reset_peak_memory_stats()
     median, times = timed(iteration, repetitions, warmup)

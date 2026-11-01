@@ -34,7 +34,10 @@ def circular_encode(period: float, colours: int, levels: int, mean: torch.Tensor
                     sigma: torch.Tensor) -> torch.Tensor:
     """mean, sigma (...) in the period's units -> probabilities (..., levels, colours)."""
     periods = level_periods(period, colours, levels, mean)
-    position = torch.remainder(mean, period).unsqueeze(-1) / periods * colours  # (..., L)
+    # (m mod P) / p_l * c reduced modulo p_l first (P is a multiple of p_l, so the colour and
+    # fraction are the same): u stays in [0, c), so its fraction keeps full precision at fine
+    # levels instead of losing log2(c^l) bits.
+    position = torch.remainder(mean.unsqueeze(-1), periods) / periods * colours  # (..., L)
     lower = torch.floor(position)
     fraction = (position - lower).unsqueeze(-1)
     colour = torch.remainder(lower, colours).unsqueeze(-1)
