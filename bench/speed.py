@@ -26,6 +26,7 @@ import time
 import torch
 
 from bench.lock import bench_lock
+from bnb.models.swift import network
 from bnb.models.swift.model import Replay, Yemong, YemongConfig
 from bnb.models.swift.runtime import CapturedStep
 from bnb.models.swift.synthetic import random_segment, time_slice
@@ -34,6 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results.jsonl")
 SHIPS, FIELDS, ZONES, STEPS = 10, 10, 5, 128
 SHOT_AGES = 4
+COMPILE_OPTIONS = {"autotune": False}
 HEAD_KEYS = ("action_logits", "enemy_action_logits", "next_state_logits", "value_logits",
              "outcome_logits", "density_log_rates", "shot_outcome_logits",
              "shot_trajectory_logits")
@@ -109,9 +111,11 @@ def training_cell(model, views, precision, mode, repetitions, warmup):
     if mode == "eager":
         compute = loss_of
     elif mode == "compiled":
-        compute = torch.compile(loss_of, fullgraph=True)
+        compute = torch.compile(loss_of, fullgraph=True, mode="max-autotune-no-cudagraphs"
+                                if COMPILE_OPTIONS["autotune"] else None)
     else:  # compiled with CUDA graphs
-        compute = torch.compile(loss_of, fullgraph=True, mode="reduce-overhead")
+        compute = torch.compile(loss_of, fullgraph=True, mode="max-autotune"
+                                if COMPILE_OPTIONS["autotune"] else "reduce-overhead")
 
     def iteration():
         model.zero_grad(set_to_none=True)
@@ -142,7 +146,7 @@ def rollout_cell(model, views, precision, mode, repetitions, warmup):
                 state["carry"], _ = model.step(state["carry"], single, reset)
     else:
         captured = CapturedStep(model, views, single, precision, compile=True,
-                                graph=mode == "cudagraphs")
+                                graph=mode == "cudagraphs", autotune=COMPILE_OPTIONS["autotune"])
         captured.reset.copy_(reset)
         iteration = captured.replay
 
@@ -152,17 +156,25 @@ def rollout_cell(model, views, precision, mode, repetitions, warmup):
             "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30, "times_ms": times}
 
 
-def run_with_retries(function, *arguments, attempts: int = 3):
-    """A cell; an out-of-memory error (the GPU is shared) waits and retries, then is
-    recorded."""
+def run_with_retries(function, model, *arguments, attempts: int = 4):
+    """A cell. Training that runs out of memory retries with the trunk's sublayers
+    recomputed in the backward (recorded as recompute: true); any cell that still does
+    (the GPU is shared) waits and retries, then is recorded as an error."""
     for attempt in range(attempts):
+        recompute = function is training_cell and attempt % 2 == 1
+        model.trunk.recompute = recompute
         try:
-            return function(*arguments)
+            return function(model, *arguments) | {"recompute": recompute}
         except torch.OutOfMemoryError as error:
             message = str(error).split(".")[0]
+            print(f"[bench] out of memory (attempt {attempt + 1}, recompute {recompute}): "
+                  f"{message}", flush=True)
+        finally:
+            model.trunk.recompute = False
+            model.zero_grad(set_to_none=True)
             torch._dynamo.reset()
             torch.cuda.empty_cache()
-            print(f"[bench] out of memory (attempt {attempt + 1}): {message}", flush=True)
+        if not (function is training_cell and attempt % 2 == 0):
             time.sleep(30)
     return {"ms": None, "error": "out of memory"}
 
@@ -176,6 +188,9 @@ def main():
     parser.add_argument("--repetitions", type=int, default=20)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--label", default="")
+    parser.add_argument("--attention", default=None, choices=("sdpa", "matmul", "broadcast"))
+    parser.add_argument("--autotune", action="store_true",
+                        help="compile with max-autotune (Triton GEMM templates, fused epilogues)")
     parser.add_argument("--no-write", action="store_true")
     arguments = parser.parse_args()
 
@@ -186,6 +201,9 @@ def main():
         cells += [("training", v) for v in (arguments.views or [16, 64])]
     if arguments.only in (None, "rollout"):
         cells += [("rollout", v) for v in (arguments.views or [2048])]
+    if arguments.attention:
+        network.ATTENTION["kernel"] = arguments.attention
+    COMPILE_OPTIONS["autotune"] = arguments.autotune
     sha = commit()
     with bench_lock():
         model = make_model()
@@ -193,12 +211,17 @@ def main():
             for precision in arguments.precision:
                 for mode in arguments.mode:
                     torch._dynamo.reset()
+                    # tfloat32 (optional): float32 storage, TF32 tensor-core matmuls
+                    torch.backends.cuda.matmul.allow_tf32 = precision == "tfloat32"
+                    torch.backends.cudnn.allow_tf32 = precision == "tfloat32"
                     function = training_cell if kind == "training" else rollout_cell
                     result = run_with_retries(function, model, views, precision, mode,
                                               arguments.repetitions, arguments.warmup)
                     record = {"kind": kind, "views": views, "steps": STEPS if kind ==
                               "training" else 1, "precision": precision, "mode": mode,
                               "commit": sha, "label": arguments.label,
+                              "attention": network.ATTENTION["kernel"],
+                              "autotune": arguments.autotune,
                               "time": datetime.datetime.now().isoformat(timespec="seconds"),
                               "gpu": torch.cuda.get_device_name()} | result
                     rate = record.get("view_ticks_per_s") or record.get("view_steps_per_s") or 0
@@ -208,7 +231,8 @@ def main():
                         continue
                     print(f"{kind:8s} V={views:5d} {precision:8s} {mode:10s} "
                           f"{record['ms']:9.3f} ms  {rate:12.0f} /s  "
-                          f"{record['peak_memory_gb']:.2f} GB", flush=True)
+                          f"{record['peak_memory_gb']:.2f} GB"
+                          + ("  (recompute)" if record["recompute"] else ""), flush=True)
                     if not arguments.no_write:
                         with open(RESULTS, "a") as handle:
                             handle.write(json.dumps(record) + "\n")

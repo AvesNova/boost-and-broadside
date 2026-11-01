@@ -13,7 +13,10 @@ import math
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
+from . import attention as small_attention
+from . import gated
 from .scan import linear_scan
 
 DECAY_EXPONENT = 8.0
@@ -37,6 +40,9 @@ def gelu(x):
     return F.gelu(x)
 
 
+FUSED_MLP = {"enabled": False}  # gated.py's one-kernel hidden layer under 16-bit autocast
+
+
 class GatedMLP(nn.Module):
     """down(gelu(gate x) * up x), no biases."""
 
@@ -47,6 +53,10 @@ class GatedMLP(nn.Module):
         self.down = nn.Linear(hidden, width, bias=False)
 
     def forward(self, x):
+        if FUSED_MLP["enabled"]:
+            hidden = gated.fused_hidden(x, self.gate.weight, self.up.weight)
+            if hidden is not None:
+                return self.down(hidden)
         gate_up = F.linear(x, torch.cat([self.gate.weight, self.up.weight]))
         gate, up = gate_up.chunk(2, -1)
         return self.down(gelu(gate) * up)
@@ -76,12 +86,20 @@ def apply_rotary(values, cos, sin):
 # --------------------------------------------------------------------------- spatial
 
 
-ATTENTION = {"kernel": "sdpa"}  # "sdpa" or "matmul" (an explicit softmax(q k^T / sqrt(W)) v)
+# "sdpa", "matmul" (softmax(q k^T / sqrt(W)) v as batched matmuls) or "broadcast" (the same
+# as multiply-reductions the compiler fuses: 11 queries and 21 keys are too small for tiles)
+# or "triton" (attention.py, one program per view and head, on CUDA)
+ATTENTION = {"kernel": "sdpa"}
 
 
 def attention(query, key, value):
     """query (..., H, Q, W), key and value (..., H, K, W) -> (..., H, Q, W), one softmax
     over all K keys, scale 1/sqrt(W), no mask."""
+    if ATTENTION["kernel"] == "broadcast":  # small problems: fused multiply-reductions
+        scores = (query.unsqueeze(-2) * key.unsqueeze(-3)).sum(-1) * query.shape[-1] ** -0.5
+        weights = torch.softmax(scores.to(torch.promote_types(scores.dtype, torch.float32)),
+                                -1).to(value.dtype)
+        return (weights.unsqueeze(-1) * value.unsqueeze(-3)).sum(-2)
     if ATTENTION["kernel"] == "matmul":
         scores = torch.matmul(query, key.transpose(-1, -2)) * query.shape[-1] ** -0.5
         return torch.matmul(torch.softmax(scores, -1).to(value.dtype), value)
@@ -119,6 +137,13 @@ class SpatialBlock(nn.Module):
         if map_keys_values is None:
             map_keys_values = self.map_keys_values(memory, map_tables)
         map_key, map_value = map_keys_values
+        if ATTENTION["kernel"] == "triton" and small_attention.supported(query):
+            dtype = value.dtype  # under autocast the rotary tables promote q and k to float32
+            batch = query.shape[:-3]
+            attended = small_attention.attention_heads(
+                *(t.to(dtype).flatten(0, -4) for t in (query, key, value, map_key, map_value)))
+            x = x + self.output(attended.unflatten(0, batch).flatten(-2))
+            return x + self.feedforward(self.feedforward_norm(x))
         key = torch.cat([key, map_key], -3).transpose(-2, -3)
         value = torch.cat([value, map_value], -3).transpose(-2, -3)
         attended = attention(query.transpose(-2, -3), key, value)
@@ -285,6 +310,12 @@ class Trunk(nn.Module):
         super().__init__()
         self.blocks = nn.ModuleList(Block(width, heads, map_width, spatial_per_block)
                                     for _ in range(blocks))
+        self.recompute = False  # recompute each sublayer in the backward (activation memory)
+
+    def sublayer(self, module, *arguments):
+        if self.recompute and torch.is_grad_enabled():
+            return checkpoint(module, *arguments, use_reentrant=False)
+        return module(*arguments)
 
     def forward(self, tokens, memory, token_tables, map_tables, state, buffer, starts=None):
         """tokens (T, B, Q, D); memory (T, B, M, Dm); tables (T, B, tokens, 1, R); state
@@ -296,9 +327,9 @@ class Trunk(nn.Module):
         x = tokens
         for index, block in enumerate(self.blocks):
             for spatial in block.spatial:
-                x = spatial(x, memory, token_tables, map_tables)
-            x, block_state, block_buffer = block.temporal(x, state[index], buffer[index],
-                                                          token_starts)
+                x = self.sublayer(spatial, x, memory, token_tables, map_tables)
+            x, block_state, block_buffer = self.sublayer(block.temporal, x, state[index],
+                                                         buffer[index], token_starts)
             states.append(block_state)
             buffers.append(block_buffer)
         return x, torch.stack(states), torch.stack(buffers)

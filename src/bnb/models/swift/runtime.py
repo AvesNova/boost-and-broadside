@@ -26,7 +26,8 @@ def static_like(obs: Obs) -> Obs:
 
 class CapturedStep:
     def __init__(self, model, views: int, obs: Obs, precision: str = "float32",
-                 compile: bool = True, graph: bool = True, warmup: int = 3):
+                 compile: bool = True, graph: bool = True, warmup: int = 3,
+                 autotune: bool = False):
         """obs: one decision's observation (R, ...), used for the shapes and the warm-up."""
         self.model = model
         ships = obs.ships.shape[-2]
@@ -36,7 +37,9 @@ class CapturedStep:
         self.reset = torch.zeros(views, dtype=torch.bool, device=device)
         self.precision = precision
         function = self.update
-        self.function = torch.compile(function, fullgraph=True) if compile else function
+        mode = "max-autotune-no-cudagraphs" if autotune else None
+        self.function = torch.compile(function, fullgraph=True, mode=mode) if compile \
+            else function
         for leaf, value in zip(obs_leaves(self.obs), obs_leaves(obs), strict=True):
             if leaf is not None:
                 leaf.copy_(value)
