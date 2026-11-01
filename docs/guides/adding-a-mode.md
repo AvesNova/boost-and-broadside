@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/game/modes/, src/bnb/contracts/config.py, src/bnb/contracts/obs.py, src/bnb/game/physics/step.py, src/bnb/models/yemong/inputs.py, tests/sections/modes_cases.py]
+reviewed: 2026-11-01
 ---
 
 # Adding a mode
