@@ -102,9 +102,12 @@ def features(obs: Obs, own: int) -> torch.Tensor:
     team = column["team_relative"][..., None, :].expand(visible.shape)
     alive = column["alive"][..., None, :].expand(visible.shape)
     others = torch.cat([seen, torch.stack([team, alive, visible], -1)], -1)  # (..., S, N, F)
-    # Drop each own ship's own row: the others stay in row order.
-    keep = ~torch.eye(own, rows, dtype=torch.bool, device=ships.device)
-    others = others[..., keep, :].unflatten(-2, (own, rows - 1))
+    # Drop each own ship's own row: own ship i reads rows 0 .. i - 1, then i + 1 .. N - 1,
+    # by a gather of static indices (no boolean index, so no host sync).
+    other = torch.arange(rows - 1, device=ships.device)
+    index = other + (other >= torch.arange(own, device=ships.device)[:, None])  # (S, N - 1)
+    index = index[..., None].expand(others.shape[:-2] + (rows - 1, others.shape[-1]))
+    others = others.gather(-2, index)
     return torch.cat([own_state, others.flatten(-2)], -1)
 
 

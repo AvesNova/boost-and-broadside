@@ -1,0 +1,53 @@
+"""Shared cases for the learner section tests: a real stored Yemong segment on the CPU, and a
+learner over it."""
+
+import dataclasses
+
+import torch
+import yemong_cases as cases
+
+from bnb.contracts import Pool
+from bnb.controllers.scripted import Chaser
+from bnb.learn.ppo import Learner, LearnerConfig
+from bnb.learn.rewards import RewardConfig
+from bnb.runtime.rollout import Rollout
+
+CPU = torch.device("cpu")
+OWN = 5
+# Self-play and the chaser, half fogged, short clocks: resets, hidden ships and fights.
+POOLS = (Pool("self_play", 0.5, ("learner", "learner"), 0.5),
+         Pool("chaser", 0.5, ("learner", "chaser"), 0.5))
+
+
+def rollout(net, envs: int = 8, length: int = 32, runs: int = 2, config=cases.SHORT_SQUAD,
+            pools=POOLS, controllers=None):
+    """A Rollout run `runs` times (so the stored initial carry has history), with Yemong as
+    the learner."""
+    controllers = controllers or {"learner": cases.controller(net, config),
+                                  "chaser": Chaser(config.ships_per_team)}
+    runner = Rollout(config, pools, controllers, "learner", envs, length, CPU, compile=False)
+    for _ in range(runs):
+        runner.run()
+    return runner
+
+
+def learner(net, runner: Rollout, **config) -> Learner:
+    """Every view in one minibatch by default."""
+    views = runner.store.views
+    config = dict(dict(minibatches=1, micro_batch=views), **config)
+    return Learner(net, LearnerConfig(**config), runner.rules, runner.carry["types"],
+                   RewardConfig().outcome, CPU)
+
+
+def whole(runner: Rollout):
+    """Every view of the store as one micro-batch Trajectory."""
+    from bnb.contracts import Trajectory
+
+    store = runner.store
+    views = torch.arange(store.views)
+    return Trajectory(**next(iter(store.batches(store.names, [views]))))
+
+
+def with_micro_batch(learner: Learner, size: int) -> Learner:
+    learner.config = dataclasses.replace(learner.config, micro_batch=size)
+    return learner

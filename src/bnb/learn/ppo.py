@@ -128,7 +128,8 @@ class Learner:
     also need `state_code`, `shot_code`, `shot_trajectory` and `config.hex_rings`. rules and
     types: the game's (for the shot re-simulation). outcome_weight: the outcome level's
     reward weight (its value in reward units is P(win) - P(loss) times it). stage: how the
-    runtime compiles the micro-batch loss (identity: eager)."""
+    runtime compiles the micro-batch loss and the shot re-simulation's tick (identity:
+    eager)."""
 
     def __init__(self, model: torch.nn.Module, config: LearnerConfig, rules: Rules,
                  types: ShipTypes, outcome_weight: float, device: torch.device,
@@ -154,6 +155,7 @@ class Learner:
         self.team_spirit = torch.tensor(config.team_spirit, device=device)
         self.ages = torch.arange(1, rules.bullet_moves + 1, dtype=torch.float32, device=device)
         self.loss = stage(self._loss)
+        self.shot_tick = stage(shots.tick)
         self.env_steps = 0
 
     # ------------------------------------------------------------------ returns
@@ -204,7 +206,7 @@ class Learner:
         visible at t."""
         own = trajectory.logp.shape[-1]
         shot = shots.resimulate(self.rules, self.types, trajectory.capture, trajectory.obs.fields,
-                                trajectory.done, spread, own)
+                                trajectory.done, spread, own, self.shot_tick)
         visible = trajectory.obs.ships[..., SHIP["visible"]] > 0.5
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
         return shot, shot.valid & (rows | visible)
@@ -341,7 +343,31 @@ class Learner:
                     counts=counts, scale=scale,
                     spread=spread, explained_variance=variance)
 
-    def update(self, segments: Segments, bootstraps: list, env_steps: int) -> dict:
+    def gradient(self, segments: Segments, prepared: dict, chosen: torch.Tensor) -> tuple:
+        """Accumulate one minibatch's gradient (views `chosen`) into the parameters' .grad,
+        micro-batch by micro-batch: (terms (TERMS,), value loss per level, statistics
+        (clip fraction, approximate KL)), each the minibatch's."""
+        device, derived = self.device, prepared["derived"]
+        total = prepared["counts"][chosen].sum(0).clamp_min(1.0)
+        denominator = dict(zip(COUNTS, total.unbind()))
+        micro = self._micro_batches(chosen)
+        terms_sum = torch.zeros(len(TERMS), device=device)
+        levels_sum = torch.zeros(len(REWARD_LEVELS), device=device)
+        statistics = torch.zeros(2, device=device)
+        self.optimizer.zero_grad(set_to_none=True)
+        for views, batch in zip(micro, segments.batches(segments.names, micro), strict=True):
+            trajectory = Trajectory(**batch)
+            label = self.labels(trajectory, prepared["spread"][:, views])
+            part = {name: value.index_select(1, views) for name, value in derived.items()}
+            loss, terms, per_level, statistic = self.loss(trajectory, label, part, denominator,
+                                                          prepared["scale"])
+            loss.backward()
+            terms_sum += terms
+            levels_sum += per_level
+            statistics += statistic
+        return terms_sum, levels_sum, statistics
+
+    def update(self, segments: Segments, bootstraps: list, env_steps: int = 0) -> dict:
         """One update from the store's shards and their bootstraps (each the learner's
         Outputs on the observation after the shard's last tick). env_steps: environment
         steps this update collected (the warmup counts them)."""
@@ -352,39 +378,23 @@ class Learner:
             raise ValueError(f"{views} views do not split into {config.minibatches} minibatches "
                              f"of whole {config.micro_batch}-view micro-batches")
         prepared = self.prepare(segments, bootstraps)
-        derived, counts, scale = prepared["derived"], prepared["counts"], prepared["scale"]
         for group in self.optimizer.param_groups:
             group["lr"] = learning_rate(config, self.env_steps)
         self.env_steps += env_steps
         terms_total = torch.zeros(len(TERMS), device=device)
         levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
         first_epoch = torch.zeros(2, device=device)
-        steps, first_epoch_steps, drift, stopped = 0, 0, {}, False
+        steps, first_epoch_steps, stopped = 0, 0, False
+        drift = self.drift(segments, prepared)
         for epoch in range(config.epochs):
             permutation = torch.randperm(views, device=device)
             for start in range(0, views, minibatch):
-                chosen = permutation[start:start + minibatch]
-                denominator = dict(zip(COUNTS, counts[chosen].sum(0).clamp_min(1.0).unbind()))
-                micro = self._micro_batches(chosen)
-                statistics = torch.zeros(2, device=device)
-                self.optimizer.zero_grad(set_to_none=True)
-                for views_of, batch in zip(micro, segments.batches(segments.names, micro),
-                                           strict=True):
-                    trajectory = Trajectory(**batch)
-                    if not drift:
-                        drift = self._drift(
-                            trajectory, prepared["rollout_log_probability"][:, views_of])
-                    label = self.labels(trajectory, prepared["spread"][:, views_of])
-                    part = {name: value.index_select(1, views_of)
-                            for name, value in derived.items()}
-                    loss, terms, per_level, statistic = self.loss(trajectory, label, part,
-                                                                  denominator, scale)
-                    loss.backward()
-                    terms_total += terms
-                    levels_total += per_level
-                    statistics += statistic
+                terms, per_level, statistics = self.gradient(
+                    segments, prepared, permutation[start:start + minibatch])
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
                 self.optimizer.step()
+                terms_total += terms
+                levels_total += per_level
                 steps += 1
                 if epoch == 0:
                     first_epoch += statistics
@@ -401,18 +411,23 @@ class Learner:
         out.update(prepared["explained_variance"])
         out.update(drift)
         out.update(clip_fraction=first[0], approximate_kl=first[1], minibatch_steps=steps,
-                   stopped_early=stopped, return_scale=scale.item(),
+                   stopped_early=stopped, return_scale=prepared["scale"].item(),
                    learning_rate=self.optimizer.param_groups[0]["lr"])
         return out
 
     @torch.no_grad()
-    def _drift(self, trajectory: Trajectory, rollout_log_probability: torch.Tensor) -> dict:
-        """The step/unroll ratio drift before any optimizer step, |exp(log_probability_unroll
-        - log_probability_rollout) - 1| over living own ships: max and mean."""
+    def drift(self, segments: Segments, prepared: dict) -> dict:
+        """The step/unroll ratio drift before any optimizer step, on the first micro-batch
+        of views: |exp(log_probability_unroll - log_probability_rollout) - 1| over living
+        own ships, max and mean."""
+        views = torch.arange(self.config.micro_batch, device=self.device)
+        batch = next(iter(segments.batches(segments.names, [views])))
+        trajectory = Trajectory(**batch)
         log_probability, _ = policy.evaluate(self.unroll(trajectory).policy_logits,
                                              _own_joint(trajectory))
         mask = trajectory.alive[..., :log_probability.shape[-1]]
-        error = (torch.exp(log_probability - rollout_log_probability) - 1.0).abs()[mask]
+        rollout = prepared["rollout_log_probability"][:, views]
+        error = (torch.exp(log_probability - rollout) - 1.0).abs()[mask]
         if error.numel() == 0:
             return dict(ratio_drift_max=0.0, ratio_drift_mean=0.0)
         return dict(ratio_drift_max=error.max().item(), ratio_drift_mean=error.mean().item())

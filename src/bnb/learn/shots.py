@@ -10,6 +10,7 @@ ages are invalid. Rows are in the view's order, so a shooter's side is its block
 """
 
 import dataclasses
+from collections.abc import Callable
 
 import torch
 
@@ -82,10 +83,18 @@ def _fields(rows: torch.Tensor) -> Fields:
                   level=rows[..., 4].to(torch.int32))
 
 
-def _tick(rules: Rules, types: ShipTypes, bullets: Bullets, capture: ShotCapture,
-          fields: Fields) -> tuple[Bullets, _Tick]:
-    """Move every bullet (R, N, A) once and test it against this tick's ships."""
-    moved = move_bullets(rules, bullets, fields)
+def tick(rules: Rules, types: ShipTypes, bullets: Bullets, capture: ShotCapture,
+         spread: torch.Tensor, field_rows: torch.Tensor) -> tuple[Bullets, _Tick]:
+    """One tick of the scan, every view (R, ...): each row fires a fresh bullet from its
+    captured launch state (the newest age), every bullet (R, N, A) moves once, and each is
+    tested against this tick's ships. The runtime may compile it (the scan calls it once
+    per tick)."""
+    fresh = launch(rules, types, capture.launch, spread)
+    fresh = replace(fresh, moves_left=torch.ones_like(fresh.moves_left))
+    bullets = Bullets(**{name: torch.cat([getattr(fresh, name)[..., None],
+                                          getattr(bullets, name)[..., :-1]], -1)
+                         for name in BULLET_FIELDS})
+    moved = move_bullets(rules, bullets, _fields(field_rows))
     start = capture.launch
     sweep = Sweep(ship_x=start.x, ship_y=start.y, ship_displacement_x=capture.displacement_x,
                   ship_displacement_y=capture.displacement_y, bullet_x=bullets.x,
@@ -108,11 +117,13 @@ def _tick(rules: Rules, types: ShipTypes, bullets: Bullets, capture: ShotCapture
 
 
 def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: torch.Tensor,
-               done: torch.Tensor, spread: torch.Tensor, own: int) -> Shots:
+               done: torch.Tensor, spread: torch.Tensor, own: int,
+               step: Callable = tick) -> Shots:
     """The shots of a stored segment. capture (L, R, N); fields (L, R, M, 5), the
     observation's field rows (the map of each tick); done (L, R), the episode ended after
     the tick; spread (L, R, N, 2) standard normals (the learner's draw); own: S, the
-    shooter's side is rows [0, S) or [S, N)."""
+    shooter's side is rows [0, S) or [S, N); step: `tick`, or the runtime's compiled
+    copy of it."""
     length, views, rows = capture.alive.shape
     ages = rules.bullet_moves
     device = capture.alive.device
@@ -121,23 +132,18 @@ def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: tor
     bullets = replace(empty, moves_left=torch.ones_like(empty.moves_left))
     records = []
     for time in range(length):
-        fresh = launch(rules, types, _at(capture.launch, time), spread[time])
-        fresh = replace(fresh, moves_left=torch.ones_like(fresh.moves_left))
-        bullets = Bullets(**{name: torch.cat([getattr(fresh, name)[..., None],
-                                              getattr(bullets, name)[..., :-1]], -1)
-                             for name in BULLET_FIELDS})
-        bullets, record = _tick(rules, types, bullets, _at(capture, time),
-                                _fields(fields[time]))
+        bullets, record = step(rules, types, bullets, _at(capture, time), spread[time],
+                               fields[time])
         records.append(record)
     by_tick = torch.utils._pytree.tree_map(lambda *x: torch.stack(x), *records)  # (L, R, N, A)
     # By launch: the shot fired at t is at age a + 1 on tick t + a.
     launch_tick = torch.arange(length, device=device)[:, None]
-    tick = launch_tick + torch.arange(ages, device=device)  # (L, A)
-    inside = tick < length
-    tick = tick.clamp_max(length - 1)
+    flown = launch_tick + torch.arange(ages, device=device)  # (L, A): the tick of each age
+    inside = flown < length
+    flown = flown.clamp_max(length - 1)
 
     def by_launch(values: torch.Tensor) -> torch.Tensor:
-        index = tick.reshape(length, 1, 1, ages).expand(values.shape)
+        index = flown.reshape(length, 1, 1, ages).expand(values.shape)
         age = torch.arange(ages, device=device).expand(values.shape)
         return values.gather(0, index).gather(-1, age)  # [t, ..., a] = values[t + a, ..., a]
 
