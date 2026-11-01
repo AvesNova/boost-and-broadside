@@ -294,7 +294,10 @@ Its log and report are not available to you; this section is the complete list.
   8. the action sizes `[3, 7, 2]` and the joint-action formula: tests and `bench/` use
      the contract's constants and `to_joint`;
   9. the batch multiple 8 in `bench/sizes.py`;
-  10. `INFINITY`.
+  10. `INFINITY`;
+  11. the core radius: `bnb.perception.sight.visibility` computes it inline, and the play
+      shell added `bnb.game.api.core_radius` as a second copy (held to it by a test).
+      `visibility` uses the one function.
 
 ## 6. Test hygiene
 
