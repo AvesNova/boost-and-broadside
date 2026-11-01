@@ -8,7 +8,11 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
 
 - **Done:** parts A and B, their acceptance runs and measurements, the docs. Commits on
   `section/scripted`, pushed.
-- **In flight:** the full suite at the last commit (see the last commit message).
+- **Suite:** `uv run --no-sync pytest` at 9b-final: 848 passed, 7 skipped (the 6 of the
+  baseline plus the policy-file round trip), 6 failed with CUDA out-of-memory while
+  another agent's suite held 4.7 GB of the GPU; those 6 (learner precision and streaming)
+  pass when rerun with the GPU free. The toy BC test passed inside the suite. The
+  `bnb --objective bc` command runs end to end on the CPU at a toy size.
 - **Open:** the policy-file hand-off (section 11), request 1 below.
 
 ## Design
