@@ -1,6 +1,6 @@
 # Section 4: the scripted agent
 
-Status: decisions settled, 2026-11-01. Spec: to follow.
+Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md`.
 
 ## Already decided (training review 4c)
 

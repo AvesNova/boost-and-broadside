@@ -1,6 +1,6 @@
 # Section 7: behaviour cloning (BC)
 
-Status: decisions settled, 2026-11-01. Spec: to follow (with section 4's).
+Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md` (with section 4).
 
 ## Already decided (training review 4c, and the 2026-10-30 findings)
 
