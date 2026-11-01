@@ -104,7 +104,9 @@ class BehaviourCloning(Learner):
         logits = unrolled.policy_logits.float()
         cross = losses.cross_entropy(logits, target)
         teacher_entropy = entropy(target)
-        student_entropy = entropy(torch.softmax(logits, -1))
+        # A statistic, not trained (its coefficient is 0): detached, since the gradient of
+        # p log p at a probability that underflows to 0 is 0 times infinity.
+        student_entropy = entropy(torch.softmax(logits.detach(), -1))
         per_view = torch.stack([torch.where(own_alive, value, 0.0).sum((0, 2))
                                 for value in (cross - teacher_entropy, teacher_entropy,
                                               student_entropy, own_alive.float())])

@@ -249,3 +249,21 @@ def test_the_hand_off_round_trips_through_a_policy_file(tmp_path):
     for a, b in zip(loaded.state_dict().values(), student.model.state_dict().values(),
                     strict=True):
         assert torch.equal(a, b)
+
+
+def test_the_gradient_stays_finite_for_a_confident_student(segment):
+    """The student's entropy is a statistic: with probabilities that underflow to zero, its
+    p log p would put 0 x infinity into the gradient."""
+    import types
+
+    _, runner, learner, prepared = segment
+    trajectory = lc.whole(runner)
+    shape = trajectory.logp.shape + (42,)
+    logits = torch.zeros(shape)
+    logits[..., 3] = 1e4  # every other action's probability underflows to 0
+    logits.requires_grad_(True)
+    policy_term, entropy_term, _ = learner._policy(
+        types.SimpleNamespace(policy_logits=logits), trajectory, prepared["derived"],
+        dict(policy=trajectory.alive[..., :shape[2]].sum().float()), prepared["scale"])
+    (policy_term + 0.0 * entropy_term).backward()
+    assert torch.isfinite(logits.grad).all()

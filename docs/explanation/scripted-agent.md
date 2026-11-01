@@ -118,10 +118,23 @@ controller plays many parameter sets side by side; the search used that.
 ## Measurements
 
 `bnb.runtime.evaluate.first_results` plays fresh games to their end in the training
-rollout and returns each view's result. Measured with the chosen parameters on the
-development laptop's RTX 4070, fog on in every game, both seats:
+rollout and returns each view's result. Measured on 2026-11-02 with the default parameters
+on the development laptop (RTX 4070 Laptop GPU), 5v5 at the training presets, fog on in
+every game, the seat drawn per game. A score is wins plus half the draws.
 
-<!-- measured: scripted-scores -->
+| Preset | Against random (2048 games) | Against the chaser (1024 games) | Against the starting parameters (1024 games) |
+|---|---|---|---|
+| `deathmatch` | 2048 wins | 1.000 | 0.907 |
+| `frontline` | 2048 wins | 0.994 (1.2% draws) | 0.926 |
+| `deathmatch_wide` | 2048 wins | 1.000 | not measured |
+
+The starting parameters are the values the search began from, recorded in the section's
+notes (`docs/rewrite/sections/scripted-bc-notes.md`).
+
+Its cost inside the compiled rollout, at the 5v5 training mix and 4096 environments
+(bench's ship budget), one team's views scripted against random play: 0.059 ms per tick,
+5.6% of the 1.05 ms tick with random play on both sides (same laptop, a GPU shared with
+another process, so provisional).
 
 ## Tests
 
