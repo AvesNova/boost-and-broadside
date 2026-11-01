@@ -2,10 +2,10 @@
 #include "common.glsl"
 // Trails drawn straight from the trail store, without vertex buffers: vertex v belongs to
 // segment v / 6 (ship, then sample k to k + 1) and is one corner of its two triangles.
-// A segment with an end too old, unsampled or of a ship not shown collapses off screen.
+// A segment with an end too old, unsampled or unseen by the view collapses off screen.
 uniform sampler2D samples;  // (P, N): x, y, age (s), heading
-uniform sampler2D turns;  // (P, N): angle of attack over the stall angle
-uniform sampler2D ships;  // (1, N): team, shown, ring radius (m), wingtip (ring radii)
+uniform sampler2D turns;  // (P, N): angle of attack over the stall angle, seen by the view
+uniform sampler2D ships;  // (1, N): team, ring radius (m), wingtip (ring radii)
 uniform int sample_count;
 uniform float seconds;  // a trail's length in time
 uniform bool vortex;  // draw the wingtip vortices instead of the trails
@@ -26,7 +26,7 @@ vec2 point(int ship, int k, vec4 ship_row) {
     if (!vortex) return s.xy;
     float turn = texelFetch(turns, ivec2(k, ship), 0).r;
     vec2 left = vec2(-sin(s.w), cos(s.w));
-    return s.xy + left * sign(turn) * ship_row.w * ship_row.z;
+    return s.xy + left * sign(turn) * ship_row.z * ship_row.y;
 }
 
 void main() {
@@ -39,7 +39,9 @@ void main() {
     float age_end = texelFetch(samples, ivec2(k + 1, ship), 0).z;
     float age = texelFetch(samples, ivec2(at, ship), 0).z;
     float turn = abs(texelFetch(turns, ivec2(at, ship), 0).r);
-    bool valid = ship_row.y > 0.5 && max(age_start, age_end) <= seconds;
+    bool seen = texelFetch(turns, ivec2(k, ship), 0).g > 0.5
+                && texelFetch(turns, ivec2(k + 1, ship), 0).g > 0.5;
+    bool valid = seen && max(age_start, age_end) <= seconds;
     float strength = 1.0;
     if (vortex) {
         float threshold = max(vortex_threshold, 1e-6);

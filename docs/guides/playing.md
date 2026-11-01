@@ -37,14 +37,14 @@ nothing while an ImGui panel has the keyboard, such as while you type a hex code
 V cycles through three views:
 
 - **Spectator:** no fog; every ship and every bullet is drawn.
-- **Team 0** and **Team 1:** that team's fog. What the team cannot see is darker, with its
-  colours kept. Only the ships the team sees are drawn, with its own bullets and the enemy
-  bullets inside its sight. The arena, the fields and the zones are always drawn.
+- **Team 0** and **Team 1:** what that team sees. In a match with fog of war (`--fog`),
+  what the team cannot see is darker, with its colours kept. Only the ships the team sees
+  are drawn, with the parts of their trails it saw, its own bullets and the enemy bullets
+  inside its sight. The arena, the fields and the zones are always drawn.
 
-A team sees only what its ships see when the match has fog of war, `--fog`. Without it the
-game shows every ship to both teams (see
-[Perception and fog](../explanation/game/perception.md)), so a team's view darkens what
-its ships cannot see but draws every ship.
+Without fog of war the game shows every ship to both teams (see
+[Perception and fog](../explanation/game/perception.md)), so a team's view draws
+everything and darkens nothing: it looks like the spectator's.
 
 ![Team 0's view of a 50 against 50 match](../images/play/50v50-team0.png)
 

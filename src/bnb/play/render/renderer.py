@@ -3,8 +3,10 @@ target, then the ImGui layer (HUD and panels) on top.
 
 Draw order: sky and arena, fields, zones, trails, bullets, ships, rings, fog. A spectator
 sees everything; a team's view draws only the ships that team sees (its observation's
-`visible`), its own bullets and the enemy bullets inside its sight, and darkens what it
-cannot see. Rendering reads snapshots (numpy) and never imports torch.
+`visible`), the parts of their trails it saw, its own bullets and the enemy bullets inside
+its sight, and in a fogged match darkens what it cannot see. In a match without fog every
+ship and bullet is visible to both teams, so a team's view draws no fog. Rendering reads
+snapshots (numpy) and never imports torch.
 """
 
 import contextlib
@@ -106,8 +108,9 @@ class Renderer:
         game time (s), for the trails."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
-        fogged = view != SPECTATOR
-        shown = ships.alive & ships.visible[view] if fogged else ships.alive.copy()
+        team_view = view != SPECTATOR
+        fogged = team_view and frame.fogged
+        shown = ships.alive & ships.visible[view] if team_view else ships.alive.copy()
         size = ring_radius(ships.hit_radius, pixel)
         if fogged:
             with self._measure("fog mask"):
@@ -126,7 +129,8 @@ class Renderer:
         with self._measure("zones"):
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
         with self._measure("trails"):
-            self.trails.draw(uniforms, theme, trails, now, shown, ships.team, ships.ship_type,
+            seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
+            self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type,
                              size)
         with self._measure("bullets"):
             bullets = frame.bullets

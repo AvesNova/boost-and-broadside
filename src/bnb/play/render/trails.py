@@ -2,7 +2,10 @@
 hard turns (the angle of attack beyond the theme's vortex threshold, as a fraction of the
 stall angle) a faint vortex line trails from the inside wingtip.
 
-The trail store goes to the GPU as two small float textures each frame, and the vertex
+Only the samples the view saw draw: a segment needs both ends seen (`Trails.seen`), so a
+team's view never shows the stretch of an enemy's path it did not see.
+
+The trail store goes to the GPU as three small float textures each frame, and the vertex
 shader builds the strips from them, so the CPU does no per-vertex work."""
 
 from typing import TYPE_CHECKING
@@ -12,7 +15,7 @@ import numpy as np
 
 from ..themes import Theme
 from .programs import program, set_uniforms
-from .silhouettes import HALF_OUTLINES, MOCKUP_RING
+from .silhouettes import WINGTIPS, silhouette_of
 
 if TYPE_CHECKING:
     from ..trails import Trails
@@ -21,8 +24,6 @@ NEWEST_PIXELS = 2.5  # the trail's width at the ship
 OLDEST_PIXELS = 0.5
 VORTEX_PIXELS = 1.2
 VORTEX_RAMP = 4.0  # the vortex reaches full strength this many thresholds' worth past it
-WINGTIP = {kind: max(abs(side) for _, side in outline) / MOCKUP_RING
-           for kind, outline in HALF_OUTLINES.items()}  # half span, in ring radii
 NEVER = 1e30  # the age of an empty sample
 
 
@@ -46,20 +47,22 @@ class TrailsPass:
             texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
             return texture
 
-        self.samples, self.turns = table(samples, ships, 4), table(samples, ships, 1)
-        self.ships = table(1, ships, 4)
+        self.samples, self.turns = table(samples, ships, 4), table(samples, ships, 2)
+        self.ships = table(1, ships, 3)
 
     def draw(self, camera: dict, theme: Theme, trails: Trails, now: float,
-             shown: np.ndarray, team: np.ndarray, ship_type: np.ndarray,
+             seen: np.ndarray, team: np.ndarray, ship_type: np.ndarray,
              size: np.ndarray) -> None:
+        """Every ship's trail at game time `now` (s). seen (N, SAMPLES): the samples the
+        view saw; team, ship_type and size (the ring radius, m) are per ship."""
         ships, samples = trails.x.shape
         self._resize(ships, samples)
         age = np.where(np.isfinite(trails.time), now - trails.time, NEVER)
         self.samples.write(np.stack([trails.x, trails.y, age, trails.heading], -1)
                            .astype(np.float32).tobytes())
-        self.turns.write(trails.turn.astype(np.float32).tobytes())
-        wingtip = np.array([WINGTIP[int(k)] for k in ship_type], np.float32)
-        self.ships.write(np.stack([team, shown, size, wingtip], -1).astype(np.float32).tobytes())
+        self.turns.write(np.stack([trails.turn, seen], -1).astype(np.float32).tobytes())
+        wingtip = np.array([WINGTIPS[key] for key in silhouette_of(ship_type)], np.float32)
+        self.ships.write(np.stack([team, size, wingtip], -1).astype(np.float32).tobytes())
         self.samples.use(0)
         self.turns.use(1)
         self.ships.use(2)

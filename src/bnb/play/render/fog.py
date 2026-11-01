@@ -36,7 +36,8 @@ class FogPass:
         self.framebuffer = self.context.framebuffer(color_attachments=[self.mask])
 
     @staticmethod
-    def _table(context, texture, rows: np.ndarray):
+    def _table(context: moderngl.Context, texture: moderngl.Texture | None,
+               rows: np.ndarray) -> moderngl.Texture:
         """A (len(rows), 1) RGBA float texture holding rows (k, 4), grown as needed."""
         count = max(len(rows), 1)
         if texture is None or texture.width < count:

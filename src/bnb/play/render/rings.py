@@ -17,8 +17,11 @@ WIDTH_FRACTION = 0.12  # of the ring radius
 MINIMUM_WIDTH_PIXELS = 1.6
 
 
-def ring_table(theme: Theme, x, y, heading, size, team, shield, energy) -> np.ndarray:
-    """The arcs of the listed ships: shield track, shield, energy track, energy."""
+def ring_table(theme: Theme, x: np.ndarray, y: np.ndarray, heading: np.ndarray,
+               size: np.ndarray, team: np.ndarray, shield: np.ndarray,
+               energy: np.ndarray) -> np.ndarray:
+    """The arcs of the listed ships (arrays of one length; size the ring radius in m,
+    shield and energy fractions): shield track, shield, energy track, energy."""
     count = len(x)
     table = arcs(4 * count).reshape(count, 4, -1)
     table[:, :, 0], table[:, :, 1] = x[:, None], y[:, None]

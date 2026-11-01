@@ -34,8 +34,11 @@ class BulletsPass:
                            (self.instances, "2f 2f 4f 1f/i", "tip", "direction", "tint",
                             "masked")])
 
-    def draw(self, camera: dict, theme: Theme, x, y, direction_x, direction_y, team, masked,
-             fog_mask: moderngl.Texture | None) -> None:
+    def draw(self, camera: dict, theme: Theme, x: np.ndarray, y: np.ndarray,
+             direction_x: np.ndarray, direction_y: np.ndarray, team: np.ndarray,
+             masked: np.ndarray, fog_mask: moderngl.Texture | None) -> None:
+        """The listed bullets (arrays of one length). masked: 1.0 for a bullet drawn only
+        where fog_mask shows the view's team sees (an enemy's, in a fogged team view)."""
         if len(x) == 0:
             return
         self._reserve(len(x))

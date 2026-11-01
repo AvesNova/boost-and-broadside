@@ -67,9 +67,9 @@ and resolves it onto the target, then draws the ImGui layer. The passes, in orde
 | Sky | The sky inside the arena disc; beyond it the boundary damage zone, hatched in the theme's boundary colour, and a line on the edge. |
 | Fields | A topographic map of the true refractive index: terraces filled by sign (thin air below ambient, thick air above), stronger with depth, and a contour at every third of a level. The core edge is drawn bold. |
 | Zones | Frontline's zones, tinted with their owner's colour, with each defense zone's capture meter as an arc in the attacker's colour. |
-| Trails | Each ship's recent path, a strip that tapers and fades with age, and in hard turns a faint vortex line from the inside wingtip. |
+| Trails | Each ship's recent path, a strip that tapers and fades with age, and in hard turns a faint vortex line from the inside wingtip. A dead ship's trail fades out where it ended. |
 | Bullets | Short streaks along each bullet's direction, in the shooter's team colour. |
-| Ships | Silhouettes from the Komet family, filled with the team colour, every ship outlined. |
+| Ships | Silhouettes from the Komet family, filled with the team colour, every ship outlined. A ship type without a silhouette of its own draws a plain dart. |
 | Rings | One ring at the hitbox: the shield on an arc centred on the nose, the energy on an arc centred on the tail, each shrinking toward its centre as it empties. |
 | Fog | In a team's view, everything the team cannot see is multiplied by the theme's fog colour: darker, with its saturation kept. |
 | HUD | The clock, the score or the front, the flown ship's respawn timer, the view, theme and time scale. |
@@ -111,11 +111,13 @@ the same rule on the GPU.
 
 The bullets pass reads the mask, so a team sees its own bullets everywhere and enemy
 bullets only inside its sight. Ships come from the observation instead: a team's view
-draws only the ships its observation shows. Terrain (the arena, the fields and the zones)
-stays drawn under the fog.
+draws only the ships its observation shows. Each trail sample records which teams saw
+the ship then, so a team's view draws only the parts of an enemy's path it saw; an enemy
+revealed for a moment by firing does not show where it came from. Terrain (the arena, the
+fields and the zones) stays drawn under the fog.
 
-In a match without fog of war every living ship is visible to both teams, so a team's
-view still darkens what that team's ships cannot see, but draws every ship.
+In a match without fog of war every ship and bullet is visible to both teams, so a team's
+view has no fog: it draws everything and darkens nothing.
 
 ## Themes
 

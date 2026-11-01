@@ -9,7 +9,8 @@ import pytest
 import torch
 
 from bnb.contracts import GameConfig
-from bnb.game.modes.rules import PRESETS
+from bnb.game import api
+from bnb.game.api import PRESETS
 from bnb.game.perception.sight import core_membership, sighted
 from bnb.game.physics.medium import medium
 from bnb.play import themes
@@ -21,7 +22,7 @@ from bnb.play.render.renderer import SPECTATOR, Renderer
 from bnb.play.render.ships import ring_radius
 from bnb.play.theme_editor import with_colour
 from bnb.play.themes import Colour
-from bnb.play.trails import Trails
+from bnb.play.trails import SAMPLE_SECONDS, Trails
 
 pytestmark = pytest.mark.gpu
 WIDTH, HEIGHT = 320, 240
@@ -74,12 +75,13 @@ def _loop(config, fogged=True, ticks=0, seed=0):
     return loop
 
 
-def _draw(renderer, context, frame, view, camera, theme):
+def _draw(renderer, context, frame, view, camera, theme, trails=None, now=0.0):
     grid, values = build(frame.fields, frame.arena_radius)
     renderer.set_map(frame, grid, values)
     target = _target(context)
-    trails = Trails(len(frame.ships.x), frame.stall_angle)
-    renderer.draw(frame, view, camera, theme, trails, 0.0, target)
+    if trails is None:
+        trails = Trails(len(frame.ships.x), frame.stall_angle)
+    renderer.draw(frame, view, camera, theme, trails, now, target)
     assert context.error == "GL_NO_ERROR"
     return read_pixels(target).astype(int)
 
@@ -198,27 +200,205 @@ def test_fog_darkens_what_the_team_cannot_see(renderer, context):
     assert np.abs(team[row, column] - spectator[row, column]).max() <= 2
 
 
-def test_a_hidden_enemy_draws_nothing_in_its_enemys_view(renderer, context):
-    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
-    for _ in range(300):
-        loop.step()
+def _out_of_sight(loop, team: int = 0, seed_ticks: int = 300) -> int:
+    """Step until an enemy of `team` is alive, hidden from it, and beyond every one of its
+    ships' vision range (so the area around it is dark too); its sim index."""
+    for _ in range(seed_ticks):
         ships = loop.current.ships
-        hidden = ships.alive & (ships.team == 1) & ~ships.visible[0]
+        own = ships.alive & (ships.team == team)
+        reach = np.hypot(ships.x[:, None] - ships.x[own], ships.y[:, None] - ships.y[own])
+        far = (reach > 1.5 * ships.vision_range[own]).all(1)
+        hidden = ships.alive & (ships.team != team) & ~ships.visible[team] & far
         if hidden.any():
-            break
+            return int(np.flatnonzero(hidden)[0])
+        loop.step()
+    pytest.fail("no enemy out of sight in the scenario")
+
+
+def _with_bullets(frame, owner: int, x, y, direction_x: float = 1.0, direction_y: float = 0.0):
+    """The frame with only these bullets active, all fired by `owner`, at x, y (m)."""
+    bullets = frame.bullets
+    K = len(bullets.x) // len(frame.ships.x)
+    slots = owner * K + np.arange(len(x))
+    active = np.zeros_like(bullets.active)
+    active[slots] = True
+    values = {name: getattr(bullets, name).copy() for name in ("x", "y", "direction_x",
+                                                              "direction_y")}
+    values["x"][slots], values["y"][slots] = x, y
+    values["direction_x"][slots], values["direction_y"][slots] = direction_x, direction_y
+    return dataclasses.replace(frame, bullets=dataclasses.replace(bullets, active=active,
+                                                                  **values))
+
+
+def _without_bullets(frame):
+    bullets = frame.bullets
+    return dataclasses.replace(frame, bullets=dataclasses.replace(
+        bullets, active=np.zeros_like(bullets.active)))
+
+
+def test_a_hidden_enemy_draws_nothing_in_its_enemys_view(renderer, context):
+    """The hidden enemy and its bullets around it: removing both changes nothing in team
+    0's view, and changes the spectator's."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
+    enemy = _out_of_sight(loop)
     frame = loop.current
-    enemy = int(np.flatnonzero(hidden)[0])
+    ships = frame.ships
     theme = themes.load(themes.DEFAULT)
-    camera = Camera(WIDTH, HEIGHT, float(frame.ships.x[enemy]), float(frame.ships.y[enemy]),
-                    0.5)
-    seen = _draw(renderer, context, frame, 0, camera, theme)
-    alive = frame.ships.alive.copy()
+    camera = Camera(WIDTH, HEIGHT, float(ships.x[enemy]), float(ships.y[enemy]), 0.5)
+    ahead = np.array([10.0, 25.0])
+    shown = _with_bullets(frame, enemy, ships.x[enemy] + ahead * math.cos(ships.heading[enemy]),
+                          ships.y[enemy] + ahead * math.sin(ships.heading[enemy]),
+                          math.cos(ships.heading[enemy]), math.sin(ships.heading[enemy]))
+    alive = ships.alive.copy()
     alive[enemy] = False
-    without = dataclasses.replace(frame, ships=dataclasses.replace(frame.ships, alive=alive))
-    assert np.array_equal(seen, _draw(renderer, context, without, 0, camera, theme))
+    without = _without_bullets(dataclasses.replace(
+        frame, ships=dataclasses.replace(ships, alive=alive)))
+    assert np.array_equal(_draw(renderer, context, shown, 0, camera, theme),
+                          _draw(renderer, context, without, 0, camera, theme))
+    assert not np.array_equal(_draw(renderer, context, shown, SPECTATOR, camera, theme),
+                              _draw(renderer, context, without, SPECTATOR, camera, theme))
+
+
+def test_an_enemy_bullet_draws_only_where_the_team_sees(renderer, context):
+    """One bullet in the dark, far from every team-0 ship: an enemy's draws nothing in
+    team 0's view, an own one draws; an enemy's next to a team-0 ship draws."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
+    enemy = _out_of_sight(loop)
+    frame = _without_bullets(loop.current)
+    ships = frame.ships
+    theme = themes.load(themes.DEFAULT)
+    friend = int(np.flatnonzero(ships.alive & (ships.team == 0))[0])
+    for owner, (x, y), drawn in ((enemy, (ships.x[enemy] + 30, ships.y[enemy] + 30), False),
+                                 (friend, (ships.x[enemy] + 30, ships.y[enemy] + 30), True),
+                                 (enemy, (ships.x[friend] + 30, ships.y[friend] + 30), True)):
+        camera = Camera(WIDTH, HEIGHT, float(x), float(y), 0.5)
+        with_bullet = _with_bullets(frame, owner, np.array([x]), np.array([y]))
+        changed = not np.array_equal(_draw(renderer, context, with_bullet, 0, camera, theme),
+                                     _draw(renderer, context, frame, 0, camera, theme))
+        assert changed is drawn, (owner, drawn)
+
+
+def test_a_team_view_of_an_unfogged_match_draws_no_fog(renderer, context):
+    """Without fog of war a team sees every ship and bullet, so its view is the
+    spectator's, with nothing darkened."""
+    loop = _loop(PRESETS["deathmatch"], fogged=False, ticks=10)
+    frame = loop.current
+    assert frame.ships.visible[:, frame.ships.alive].all()
+    theme = themes.load(themes.DEFAULT)
+    camera = Camera(WIDTH, HEIGHT)
+    camera.fit(frame.arena_radius)
     spectator = _draw(renderer, context, frame, SPECTATOR, camera, theme)
-    assert not np.array_equal(spectator, _draw(renderer, context, without, SPECTATOR, camera,
-                                               theme))
+    for team in (0, 1):
+        assert np.array_equal(_draw(renderer, context, frame, team, camera, theme), spectator)
+
+
+STEP = 1.01 * SAMPLE_SECONDS  # a sample is due at every step, whatever the rounding
+SPEED = 60.0  # m/s
+
+
+def _flown_trail(frame, ship: int, seen_by_team0):
+    """Trails of the ship flying along +x at SPEED, one sample per STEP, seen by team 0
+    at each sample as listed; returns (trails, now, start x, y, the last frame)."""
+    trails = Trails(len(frame.ships.x), frame.stall_angle)
+    start_x, start_y = float(frame.ships.x[ship]), float(frame.ships.y[ship])
+    now = 0.0
+    for index, seen in enumerate(seen_by_team0):
+        now = index * STEP
+        x, heading, visible = frame.ships.x.copy(), frame.ships.heading.copy(), \
+            frame.ships.visible.copy()
+        x[ship] = start_x + SPEED * now
+        heading[ship] = 0.0
+        visible[0, ship] = seen
+        moved = dataclasses.replace(frame, ships=dataclasses.replace(
+            frame.ships, x=x, heading=heading, visible=visible,
+            angle_of_attack=np.zeros_like(x)))
+        trails.record(moved, now, np.zeros(len(x), bool))
+    return trails, now, start_x, start_y, moved
+
+
+def _trail_scene(seed: int = 1):
+    """A frame without bullets and an enemy out of team 0's sight."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=seed)
+    enemy = _out_of_sight(loop)
+    return _without_bullets(loop.current), enemy
+
+
+def test_an_enemy_coming_into_view_draws_no_trail_from_its_hidden_stretch(renderer, context):
+    """Hidden for a stretch, then seen and still seen: team 0's view draws its trail only
+    from where it came into view."""
+    frame, enemy = _trail_scene()
+    hidden, seen = 40, 40
+    trails, now, start_x, start_y, frame = _flown_trail(frame, enemy,
+                                                        [False] * hidden + [True] * seen)
+    theme = themes.load(themes.DEFAULT)
+    empty = Trails(len(frame.ships.x), frame.stall_angle)
+    for stretch, drawn_for_team in ((0.5 * hidden, False), (hidden + 0.5 * seen, True)):
+        x = start_x + SPEED * stretch * STEP
+        camera = Camera(WIDTH, HEIGHT, x, start_y, 0.1)
+        row, column = _pixel_of(camera, x, start_y)
+
+        def pixel(view, store):
+            return _draw(renderer, context, frame, view, camera, theme, store, now)[row, column]
+
+        assert not np.array_equal(pixel(SPECTATOR, trails), pixel(SPECTATOR, empty))
+        assert (not np.array_equal(pixel(0, trails), pixel(0, empty))) is drawn_for_team
+
+
+def test_an_enemy_revealed_by_firing_does_not_flash_its_hidden_path(renderer, context):
+    """Hidden all along, seen on one sample (the tick it fires): team 0's view draws
+    none of its path, the spectator's draws it."""
+    frame, enemy = _trail_scene()
+    trails, now, start_x, start_y, frame = _flown_trail(frame, enemy, [False] * 60 + [True])
+    theme = themes.load(themes.DEFAULT)
+    empty = Trails(len(frame.ships.x), frame.stall_angle)
+    middle = start_x + SPEED * 30 * STEP
+    camera = Camera(WIDTH, HEIGHT, middle, start_y, SPEED * 60 * STEP / (0.8 * WIDTH))
+    assert np.array_equal(_draw(renderer, context, frame, 0, camera, theme, trails, now),
+                          _draw(renderer, context, frame, 0, camera, theme, empty, now))
+    assert not np.array_equal(
+        _draw(renderer, context, frame, SPECTATOR, camera, theme, trails, now),
+        _draw(renderer, context, frame, SPECTATOR, camera, theme, empty, now))
+
+
+def test_the_core_line_is_drawn_at_the_sight_tests_core_radius(renderer, context):
+    """With the core lines in pure red, the pixel on a field's core radius is red, and
+    the pixel on its radius is not."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0)
+    frame = loop.current
+    fields = frame.fields
+    field = int(np.argmax(fields.core_radius))
+    core = float(api.core_radius(loop.realtime.state)[0, field])
+    red = Colour.from_hex("#FF0000")
+    theme = with_colour(with_colour(themes.load(themes.DEFAULT), "thin_core", red),
+                        "thick_core", red)
+    for radius, on_line in ((core, True), (float(fields.radius[field]), False)):
+        x, y = float(fields.x[field]) + radius, float(fields.y[field])
+        camera = Camera(WIDTH, HEIGHT, x, y, 0.25)
+        row, column = _pixel_of(camera, x, y)
+        pixel = _draw(renderer, context, frame, SPECTATOR, camera, theme)[row, column]
+        assert bool(np.abs(pixel - [255, 0, 0]).max() <= 8) is on_line, (radius, pixel)
+
+
+def test_a_ship_type_without_a_silhouette_draws_the_generic_one(renderer, context):
+    loop = _loop(PRESETS["deathmatch"], ticks=10)
+    frame = loop.current
+    ships = frame.ships
+    distance = np.hypot(ships.x[:, None] - ships.x, ships.y[:, None] - ships.y)
+    distance[np.diag_indices_from(distance)] = np.inf
+    chosen = int(np.argmax(distance.min(1) * ships.alive))
+    ship_type = ships.ship_type.copy()
+    ship_type[chosen] = 7  # a type the renderer has no silhouette for
+    frame = dataclasses.replace(frame, ships=dataclasses.replace(ships, ship_type=ship_type))
+    theme = themes.load(themes.DEFAULT)
+    camera = Camera(WIDTH, HEIGHT, float(ships.x[chosen]), float(ships.y[chosen]), 0.2)
+    trails = Trails(len(ships.x), frame.stall_angle)
+    trails.record(frame, 0.0, np.zeros(len(ships.x), bool))
+    pixels = _draw(renderer, context, frame, SPECTATOR, camera, theme, trails)
+    size = float(ring_radius(ships.hit_radius[chosen:chosen + 1], 0.2)[0])
+    row, column = _pixel_of(camera, ships.x[chosen] + 0.2 * size * math.cos(ships.heading[chosen]),
+                            ships.y[chosen] + 0.2 * size * math.sin(ships.heading[chosen]))
+    colour = np.array(theme.team[int(ships.team[chosen])].floats()[:3]) * 255
+    assert np.abs(pixels[row, column] - colour).max() <= 1
 
 
 def test_an_edited_colour_draws_on_the_next_frame(renderer, context):
