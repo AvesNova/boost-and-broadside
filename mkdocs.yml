@@ -135,3 +135,4 @@ nav:
       - bench: reference/bench.md
   - Contributing:
       - Writing docs: contributing/writing-docs.md
+      - Code style: contributing/code-style.md
