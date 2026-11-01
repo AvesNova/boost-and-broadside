@@ -444,3 +444,14 @@ average above 30 from other agents), at commit `845f2db5`{.plain}.
   `cli.py`.
 - Tests: `test_ship_card.py` 400, `test_ship_card_game.py` 235, `ship_card_cases.py` 116.
 
+
+## Progress (fix round, 2026-11-02)
+
+- Done and pushed: the WIP commit reworded (fix 9a); the fire rate in hertz (1); Yemong's
+  ranges from the card (6, code); the measurement windows (3); the induced-drag energy
+  balance (5); the chart's process-wide settings and the docstrings (8).
+- In the working tree: the bleed at the middle stick (2), the conditioning and redundancy
+  tests (4), the docs (6, 7). Waiting on the re-measured acceptance
+  (`/tmp/bnb-scratch-ship-card-fix/acceptance.py`) to set `UNREACHABLE` and
+  `OVER_TWO_PERCENT`.
+- Then: merge `origin/v2`, set the roadmap status to `merged`, run the full suite.
