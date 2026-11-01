@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/learn/ppo.py, src/bnb/learn/returns.py, src/bnb/learn/losses.py, src/bnb/learn/labels.py, src/bnb/learn/shots.py, src/bnb/runtime/store.py, src/bnb/models/relational.py]
+reviewed: 2026-11-02
 ---
 
 # The learner
