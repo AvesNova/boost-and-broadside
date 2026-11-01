@@ -325,3 +325,28 @@ def test_the_outcome_targets_read_the_views_result(segment):
     assert ended.any()
     expected = critic.outcome_class(sign[ended])
     assert torch.equal(targets[ended].argmax(-1), expected)
+
+
+def test_an_update_consumes_several_shards():
+    """Two segments collected one after the other, each from the carry the last ended with,
+    and one update over both (the relational model, so it is quick)."""
+    from bnb.contracts import GameConfig
+    from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.train import LEARNER, TrainConfig, Trainer
+
+    cfg = TrainConfig(game=GameConfig(2, 3, 1200.0, episode_s=2.0), num_envs=8, length=16,
+                      shards=2, model="relational", relational_hidden=32, compile=False,
+                      pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
+                      learner=LearnerConfig(minibatches=2, micro_batch=4))
+    trainer = Trainer(cfg, torch.device("cpu"))
+    store, bootstraps = trainer.collect()
+    assert store.views == 16 and len(bootstraps) == 2
+    first, second = (trainer.rollout.trajectory(shard) for shard in range(2))
+    # The second segment continues the first: its first observation is the first's last
+    # bootstrap's (the 60-tick episode's clock moved on by one tick).
+    progress = first.obs.globals[..., GLOBAL["episode_progress"]]
+    following = second.obs.globals[0, :, GLOBAL["episode_progress"]]
+    continued = ~first.done[-1]
+    torch.testing.assert_close(following[continued], progress[-1][continued] + 1.0 / 60.0)
+    stats = trainer.ppo.update(store, bootstraps)
+    assert stats["minibatch_steps"] == 8 and math.isfinite(stats["loss/value"])

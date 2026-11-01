@@ -31,10 +31,11 @@ class SegmentStore:
     def __init__(self, ticks: dict, segments: dict, shards: int, length: int,
                  device: torch.device, host: bool) -> None:
         self.device, self.shards, self.length = device, shards, length
-        self.views = _leaves(ticks)[0].shape[0]
+        self.shard_views = _leaves(ticks)[0].shape[0]  # R
+        self.views = shards * self.shard_views  # V, every shard's
         self.pinned = host and device.type == "cuda"
         where = torch.device("cpu") if self.pinned else device
-        total = shards * self.views
+        total = self.views
 
         def allocate(example: torch.Tensor, leading: tuple) -> torch.Tensor:
             return torch.empty(leading + tuple(example.shape[1:]), dtype=example.dtype,
@@ -60,7 +61,7 @@ class SegmentStore:
         """Copy {name: pytree} into shard `shard`: per-tick leaves (n, R, ...) at ticks
         start .. start + n, per-segment leaves (R, ...). Asynchronous on a GPU: returns the
         event the compute stream must wait on before it writes `source` again."""
-        views = slice(shard * self.views, (shard + 1) * self.views)
+        views = slice(shard * self.shard_views, (shard + 1) * self.shard_views)
         ready = None
         if self.copy_stream is not None:
             ready = torch.cuda.Event()
@@ -95,7 +96,7 @@ class SegmentStore:
     def shard(self, names: tuple[str, ...], shard: int) -> dict:
         """Whole-shard copies on the device of the per-tick leaves `names`, (L, R, ...)."""
         self.synchronize()
-        views = slice(shard * self.views, (shard + 1) * self.views)
+        views = slice(shard * self.shard_views, (shard + 1) * self.shard_views)
         return {name: _pytree.tree_unflatten(
             [leaf[:, views].to(self.device, non_blocking=True) for leaf in self.data[name]],
             self.specs[name]) for name in names}

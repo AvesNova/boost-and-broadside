@@ -351,23 +351,26 @@ def test_a_mixed_batch_does_not_reveal_the_seat():
 
 
 def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
+    from bnb.learn.ppo import LearnerConfig
     from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
     pools = tuple(dataclasses.replace(pool, seats=(LEARNER, other))
                   for pool, other in zip(_pools(), ("chaser", "random", LEARNER, "league_0")))
-    cfg = TrainConfig(game=BASE, num_envs=16, length=32, hidden=32, pools=pools,
-                      compile=False)
+    cfg = TrainConfig(game=BASE, num_envs=16, length=32, model="relational",
+                      relational_hidden=32, pools=pools, compile=False,
+                      learner=LearnerConfig(minibatches=2, micro_batch=5))
     trainer = Trainer(cfg, torch.device("cpu"))
-    trajectory, last_value = trainer.collect()
-    assert set(trainer.pool_rewards(trajectory)) == set(GAMES)
+    store, bootstraps = trainer.collect()
+    metrics = trainer.pool_metrics(store)
+    assert set(metrics) == set(GAMES)
     zones = trainer.rollout.carry["obs"]["zones"]
     assert zones.shape[2] == 5
     assert (zones[:4, ..., ZONE["present"]] == 1).all() and not zones[4:].any()
     globals_ = trainer.rollout.carry["obs"]["globals"]
     assert globals_[..., GLOBAL["arena_radius"]][:, 0].tolist() == \
         [300.0] * 4 + [900.0] * 4 + [1200.0] * 4 + [300.0] * 4
-    stats = trainer.ppo.update(trajectory, last_value)
-    assert math.isfinite(stats["policy_loss"])
+    stats = trainer.ppo.update(store, bootstraps)
+    assert math.isfinite(stats["loss/policy"]) and math.isfinite(stats["loss/value"])
 
 
 def test_the_rollout_staggers_each_start_clock_within_its_own_episode():
