@@ -1,6 +1,10 @@
 """Bullets (game spec 6): firing and motion."""
 
+import dataclasses
+
 import torch
+
+from bnb.contracts.tree import contract
 
 from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
@@ -44,15 +48,41 @@ def bullet_motion(rules: Rules, bullet: Bullets, fields: Fields) -> Bullets:
                    proper_speed=_half_drag(rules, bullet.proper_speed, index))
 
 
-def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: torch.Tensor,
-         spread: torch.Tensor) -> tuple[Ships, Bullets]:
-    """Phase 1 (game spec 6.1), from the tick-start state. shoot (B, N) bool; spread
-    (B, N, 2) standard normals. The gun's values are the shooter's."""
-    cost = per_ship(types.bullet_energy_cost, ships.ship_type)
-    fired = ships.alive & shoot & (ships.gun_cooldown == 0) & (ships.energy >= cost)
-    cos, sin, speed = ships.heading_cos, ships.heading_sin, ships.proper_speed
-    angle_cos, angle_sin = ships.angle_of_attack_cos, ships.angle_of_attack_sin
-    muzzle = per_ship(types.muzzle_speed, ships.ship_type)
+@contract
+class Launch:
+    """What `fire` reads of each ship to launch its bullet, (B, N): the position (m), the
+    nose (heading_cos, heading_sin), proper_speed (m/s), the angle of attack's cos and sin,
+    the medium cached at the ship (log_refractive_index and its gradient, 1/m) and
+    ship_type (int32, for the muzzle speed). The game reads it from the tick-start state;
+    the learner's shot re-simulation stores it and fires the same bullet."""
+
+    x: torch.Tensor
+    y: torch.Tensor
+    heading_cos: torch.Tensor
+    heading_sin: torch.Tensor
+    proper_speed: torch.Tensor
+    angle_of_attack_cos: torch.Tensor
+    angle_of_attack_sin: torch.Tensor
+    log_refractive_index: torch.Tensor
+    log_index_gradient_x: torch.Tensor
+    log_index_gradient_y: torch.Tensor
+    ship_type: torch.Tensor
+
+
+LAUNCH_FIELDS = tuple(field.name for field in dataclasses.fields(Launch))  # (traced as constants)
+
+
+def launch_state(ships: Ships) -> Launch:
+    """Each ship's launch state, as `fire` reads it."""
+    return Launch(**{name: getattr(ships, name) for name in LAUNCH_FIELDS})
+
+
+def launch(rules: Rules, types: ShipTypes, state: Launch, spread: torch.Tensor) -> Bullets:
+    """The bullet each ship fires from its launch state, (B, N), with all its moves left.
+    spread (B, N, 2) standard normals. The gun's values are the shooter's."""
+    cos, sin, speed = state.heading_cos, state.heading_sin, state.proper_speed
+    angle_cos, angle_sin = state.angle_of_attack_cos, state.angle_of_attack_sin
+    muzzle = per_ship(types.muzzle_speed, state.ship_type)
     # Proper velocity: the ship's own along its flight path, plus the muzzle velocity along
     # the nose, plus the spread.
     velocity_x = (speed * (cos * angle_cos + sin * angle_sin) + muzzle * cos
@@ -60,17 +90,26 @@ def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: 
     velocity_y = (speed * (sin * angle_cos - cos * angle_sin) + muzzle * sin
                   + rules.bullet_spread * spread[..., 1])
     bullet_speed = torch.sqrt(velocity_x * velocity_x + velocity_y * velocity_y)
+    return Bullets(
+        x=state.x, y=state.y, direction_x=velocity_x / bullet_speed,
+        direction_y=velocity_y / bullet_speed, proper_speed=bullet_speed,
+        log_refractive_index=state.log_refractive_index,
+        log_index_gradient_x=state.log_index_gradient_x,
+        log_index_gradient_y=state.log_index_gradient_y,
+        moves_left=torch.full_like(state.ship_type, rules.bullet_moves))
+
+
+def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: torch.Tensor,
+         spread: torch.Tensor) -> tuple[Ships, Bullets]:
+    """Phase 1 (game spec 6.1), from the tick-start state. shoot (B, N) bool; spread
+    (B, N, 2) standard normals."""
+    cost = per_ship(types.bullet_energy_cost, ships.ship_type)
+    fired = ships.alive & shoot & (ships.gun_cooldown == 0) & (ships.energy >= cost)
 
     def slot_value(value):
         return value[..., None].expand(bullets.moves_left.shape)
 
-    new = apply(slot_value, Bullets(
-        x=ships.x, y=ships.y, direction_x=velocity_x / bullet_speed,
-        direction_y=velocity_y / bullet_speed, proper_speed=bullet_speed,
-        log_refractive_index=ships.log_refractive_index,
-        log_index_gradient_x=ships.log_index_gradient_x,
-        log_index_gradient_y=ships.log_index_gradient_y,
-        moves_left=torch.full_like(ships.gun_cooldown, rules.bullet_moves)))
+    new = apply(slot_value, launch(rules, types, launch_state(ships), spread))
     slot = torch.arange(rules.bullet_slots, device=fired.device)
     bullets = where(fired[..., None] & (slot == ships.next_slot[..., None]), new, bullets)
     ships = replace(
