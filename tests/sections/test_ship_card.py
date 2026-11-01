@@ -91,12 +91,6 @@ def test_conditioning_is_reported():
 
 # ------------------------------------------------------------------ tick rates
 
-# The nose reversal of the fastest noses (0.15 s, under four ticks at 25 Hz) differs by up
-# to 0.6% between 25 and 60 Hz, and by up to 0.54% from a 600 Hz flight at 25 Hz: the game's
-# nose integrator, not the measurement (ship-card-notes.md, "Tick rates").
-TICK_RATE_BAR = dict(nose_reversal_time=0.01)
-
-
 def test_handles_agree_across_tick_rates():
     """The same parameters (the default card and the solved varied cards) give flight
     handles that agree within 0.5% at 25, 30 and 60 Hz."""
@@ -110,7 +104,7 @@ def test_handles_agree_across_tick_rates():
     for name in FLIGHT:
         values = torch.stack([getattr(handles, name) for handles in by_rate.values()])
         spread = (values.amax(0) - values.amin(0)) / values.abs().mean(0)
-        assert spread.max() < TICK_RATE_BAR.get(name, ACCEPTANCE), (name, spread.max().item())
+        assert spread.max() < ACCEPTANCE, (name, spread.max().item())
 
 
 def test_unsupported_weapon_cadence_is_refused():

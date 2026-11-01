@@ -84,7 +84,14 @@ energy.
   store, a hard turn's negative exchange (the lift budget's shortfall, `(1 - q) a_d`) is
   clipped by the fade, which changes the settled speed.
 - **Start rates** (low-speed, bleed, dive, zoom) are the slope at `t = 0` of a
-  least-squares cubic over the first 0.2 s.
+  least-squares quartic over the first 0.2 s. A cubic left the bleed rate 0.9% short of the
+  instantaneous rate (a one-step difference at 3000 Hz: -4412 W/kg for the default
+  fighter, against -4373 by the cubic at every rate); the quartic gives -4403 to -4407 at
+  25, 30, 60 and 3000 Hz. Found by the independent-flight test.
+- **The sustained turn's store is held** at a quarter (reset every tick), and so is the
+  coast datum's in the chart tool: a long turn otherwise charges the store past the engine
+  knee (the heavy's did in the independent test's 60 s flight, 0.19% off). The bleed has
+  its own manoeuvre, free.
 - **Times:** the climb interpolates linearly between ticks; the nose reversal through the
   cubic on the four ticks around the crossing (decision 4).
 - **The sustained turn** starts at corner speed with the nose at its steady angle (so its
@@ -217,7 +224,8 @@ energy.
     damage the shooter's value and says nothing of the fraction.
 11. **The bullet life is time-native** (0.4 s at any tick rate), so the gun range handle is
     the same at 25, 30 and 60 Hz.
-12. **The CLI has subcommands**, `bnb train` and `bnb ship-card`.
+12. **`bnb ship-card` is dispatched by its first word**; `bnb` with options still trains, so
+    the README, the docs and their command checks are unchanged.
 13. **Solver tolerance 1e-4** on every flown handle, so that a re-solve leaves every other
     handle well inside the independence test's 0.5%.
 
@@ -232,9 +240,9 @@ energy.
 | cruise | 103.72 m/s | 105.99 m/s |
 | climb (empty to 98%) | 159.9 s | 218.4 s |
 | ceiling | 10 000 J | 14 000 J |
-| low-speed acceleration | 9.564 m/s^2 | 14.41 m/s^2 |
+| low-speed acceleration | 9.585 m/s^2 | 14.46 m/s^2 |
 | sustained turn | 69.86 deg/s | 72.46 deg/s |
-| bleed rate | -4373 W/kg | -2055 W/kg |
+| bleed rate | -4407 W/kg | -2062 W/kg |
 | nose reversal | 0.1967 s | 0.2887 s |
 | dive acceleration | 30.01 m/s^2 | 30.46 m/s^2 |
 | zoom acceleration | -23.99 m/s^2 | -23.53 m/s^2 |
@@ -245,24 +253,24 @@ energy.
 The climb is mostly the engine knee's taper: below the knee the store fills in about 16 s
 (fighter); above it the charge rate falls as `1 - phi`, and the last 48% takes 144 s.
 
-Re-solved from these handles with the cruise fix (to 7e-14; the other card fields are as
-today):
+Measured at commit `845f2db5`{.plain} on the development laptop's CPU, float64. Re-solved from
+these handles with the cruise fix (to 1e-13; the other card fields are as today):
 
 | parameter | fighter | heavy | today |
 |---|---:|---:|---:|
-| `P` | 1179.4 W | 1440.8 W | 1200, 1500 |
-| `P_min` | 867.6 W | 1121.3 W | 863.2, 1100 |
+| `P` | 1179.6 W | 1441.2 W | 1200, 1500 |
+| `P_min` | 867.8 W | 1121.7 W | 863.2, 1100 |
 | `F_s` | 19.99 N | 23.95 N | 20, 24 |
-| `k` | 10.40 | 7.18 | 11.4 |
-| `e` | 1.976 | 1.885 | 2 |
+| `k` | 10.37 | 7.13 | 11.4 |
+| `e` | 1.975 | 1.883 | 2 |
 | `omega_c` | 21.99 | 15.95 | 22, 16 |
 | `a_0`, `a_d`, `a_c` | 3.006, 27.22, 26.78 | 3.014, 27.68, 26.32 | 3, 27, 27 |
 
 - The fighter barely moves: its cruise already varies by only 0.17% across the store.
-  Its engine below the knee loses 21 W (today's `P - P_min` is 337 W against `a_0 u_cruise`
+  Its engine below the knee loses 20 W (today's `P - P_min` is 337 W against `a_0 u_cruise`
   = 311 W), so `k` falls 9% to keep the sustained turn.
 - The heavy moves more: today its cruise falls from 107.6 to 106.0 m/s as the store fills
-  (1.5%). Under the fix it loses 59 W below the knee, and `k` falls 37% and `e` to 1.89 to
+  (1.5%). Under the fix it loses 59 W below the knee, and `k` falls 37% and `e` to 1.88 to
   keep the sustained turn and the bleed rate.
 - Adopting these changes the goldens (spec 2: a later step).
 
@@ -272,17 +280,18 @@ One batch of 37 cards (`tests/sections/ship_card_cases.py`): the default card's 
 8 varied cards (both types; factors 0.7-1.4 on every parameter, `e` 1.5 to 3, `alpha_s` 10
 to 25 degrees, each satisfying the cruise fix), and the 28 perturbations of the default's
 fourteen flight handles by -5% and +5%. The batch used the whole budget (16 iterations
-after the scan, because of the failing card), 17 minutes on the loaded laptop CPU.
+after the scan, because of the failing card), 37 minutes on the loaded laptop CPU (load
+average above 30 from other agents), at commit `845f2db5`{.plain}.
 
 - **Round trip:** all 9 cards converge; every handle within 7e-7 (the float32 card), the
   flown ones within 7e-14 in float64.
 - **Independence:** 27 of 28 perturbations meet the bar (the moved handle at its new
-  value, every other within 0.5%; the converged solves hold every flown handle to 1e-4).
+  value to 4e-7, every other within 0.22%; worst: the stall speed +5%, the heavy's
+  sustained turn).
   - **The sustained turn +5% fails** (both types): the solve drives the bleed exponent to
-    0.77 and 0.62 and the full-store power to 2600 and 2300 W, and still misses the climb by
-    17% and 28%. It fails with that reason (`Infeasible`, or `Solution.failures`).
-  - **The stall speed +5% converges at an extreme card:** `e` 0.85 and 0.69, `P_min` 2950
-    and 3950 W (3.4 times today's). The stall speed -5% needs `e` 3.3 and 3.7.
+    its bounds' neighbourhood and still misses the climb by 8.2% (fighter) and 29% (heavy). It fails with that reason (`Infeasible`, or `Solution.failures`).
+  - **The stall speed +5% converges at an extreme card:** `e` 0.81 and 0.69, `P_min` 6000
+    and 3920 W (7 and 3.6 times today's). The stall speed -5% needs `e` 3.3 and 3.7.
   - The cause is the pair of handles that set `k` and `e`: the sustained turn and the bleed
     rate are both full-stick turns with the lift near 0.9 `C_max`, so their lifts `S`
     differ by about 13%, and `e` changes their ratio only by `1.13^(de/2)`. Any change that
@@ -290,8 +299,9 @@ after the scan, because of the failing card), 17 minutes on the loaded laptop CP
     change of `e`, and a low `e` raises the straight-flight induced drag `(z/u^2)^e` by
     orders of magnitude, which `P_min` must pay. Request 4.
 - **Condition numbers** (the 8 x 8 Jacobian in relative handles and log parameters): 36
-  and 34 at the default card; 18 to 61 over the varied cards; 1.8e3 and 1.9e4 at the stall
-  speed +5% (the warning fires for the heavy: sustained turn and low-speed acceleration).
+  and 34 at the default card; 19 to 79 over the varied cards; 6.8e5 and 2.3e4 at the stall
+  speed +5% (the warning fires: sustained turn with bleed rate, and with low-speed
+  acceleration).
   The spec's parametrization (cruise sets `C_D0`, `P_min` the null power at the target)
   gives 9.8e3 and 1.7e4 at the re-solved default.
 
@@ -300,14 +310,15 @@ after the scan, because of the failing card), 17 minutes on the loaded laptop CP
 | handle | largest spread |
 |---|---:|
 | cruise, climb, dive, zoom, sustained turn | below 2e-5 |
-| low-speed acceleration | 0.037% |
-| bleed rate | 0.39% |
-| nose reversal | 0.61% |
+| low-speed acceleration | 0.018% |
+| bleed rate | 0.12% |
+| nose reversal | 0.44% |
 
-- The nose reversal exceeds 0.5% for the fastest noses (0.15-0.17 s: under four ticks at
-  25 Hz). Against a 600 Hz flight, the 25 Hz time differs by up to 0.54% on the varied
-  generator cards and 30 Hz by 0.40%, so it is the game's nose integrator at 25 Hz, not
-  the crossing's interpolation. The test's bar for this handle is 1%.
+- The nose reversal is the closest to the bar, at the fastest noses (0.15-0.17 s: under
+  four ticks at 25 Hz). Against a 600 Hz flight the 25 Hz time differs by up to 0.54% on
+  the varied generator cards and 30 Hz by 0.40%: the game's nose integrator at 25 Hz, not
+  the crossing's interpolation. (Before the bleed got its own manoeuvre and the quartic
+  fit, one solved card reached 0.61%.)
 - Energy conservation (drag, engine and fire off): drift below 1e-4 over 2 s at each rate,
   for bleed exponents 2 and 3 (test).
 - Weapon cadence: the default card's 1/15 s is refused at 25 Hz ("fire interval: 0.0667 s
@@ -320,8 +331,8 @@ after the scan, because of the failing card), 17 minutes on the loaded laptop CP
   empty store the cap `softmin_4(P/u, F_s)` shaves the larger power more, so the empty
   store cruises slower.
 - **Solved cards over 2%** (reported, spec 2): varied card 2 (3.4%, 2.1%), the stall speed
-  +5% (15.8%, 10.5%: its engine is three times stronger than the cap allows at low speed),
-  the g limit -5% (2.08%, fighter). All other converged cards: 0.1% to 1.6%.
+  +5% (18.9%, 10.4%: its engine power is several times what the static-thrust cap passes at
+  low speed), the g limit -5% (2.13%, fighter). All other converged cards: 0.1% to 1.6%.
 
 ### The bleed exponent's cost
 
@@ -351,8 +362,13 @@ after the scan, because of the failing card), 17 minutes on the loaded laptop CP
 
 ## Changes outside `bnb.game`
 
-- `src/bnb/cli.py`: subcommands. `bnb train ...` (the existing options) and
-  `bnb ship-card ...`. Before, `bnb` took the training options directly.
+- `src/bnb/cli.py`: `bnb ship-card ...` (the first word dispatches); `bnb ...` trains as
+  before.
+- `docs/` (coordinator's request, after merging v2's docs site): the explanation page
+  `docs/explanation/game/ship-card.md` replaces the in-progress page; the guide
+  `docs/guides/designing-a-ship.md`; the physics and perception pages follow the per-type
+  card; `docs/roadmap.yml` gives the section the status `built`, which
+  `docs/hooks/generated.py` now accepts ("is built on its branch and not merged yet").
 - `pyproject.toml`: the optional extra `tools = ["matplotlib>=3.10"]`; `uv.lock` follows.
 - `tests/sections/`: `test_ship_card_game.py` (23 tests, fast), `test_ship_card.py`
   (acceptance, `slow`), `ship_card_cases.py` (their cases), and in
@@ -384,16 +400,16 @@ after the scan, because of the failing card), 17 minutes on the loaded laptop CP
    at full lift) at any `e`. The solver already works in this form. It is equal at `e = 2`
    algebraically but not bit for bit, so it changes nothing today except the goldens'
    tolerance.
-6. **The nose reversal's tick-rate spread** (0.61% at the fastest noses) is the game's nose
-   integrator at 25 Hz. Either 25 Hz is dropped for flight, the bar for this handle is
-   1%, or the integrator changes.
+6. **The nose reversal's tick-rate margin** is thin (0.44% against 0.5%) and set by the
+   game's nose integrator at 25 Hz; a faster nose than the varied cards' would cross it.
 7. **Cards over 2% cruise variation** (spec 2 asks for a report): see the measurements.
    Solving `P` too so that cruise is equal at an empty and a full store (as the spec's
    measurement did) would remove most of it; it is a different reading of the fix.
 8. **Yemong's coding ranges** use the shared `alpha_s` (times 2) and recharge delay; a card
    with a larger per-type value is clipped there (the Yemong section).
-9. **`README.md`** shows `uv run --no-sync bnb --ships-per-team ...`; with subcommands it is
-   `bnb train --ships-per-team ...`. I may not change the README.
+9. **The docs' command check** (`tests/docs/resolve.py`) parses every `bnb` command against
+   `Train`'s options, so the docs show `bnb ship-card` without its options (they appear as
+   plain spans). Teaching the check the `ship-card` command would let them be checked.
 10. **`bench/results.jsonl`:** my `bench.run` lines are not committed (I may not change
     `bench/`); they are in the measurements above.
 11. **The chart test needs the tools extra** (`uv sync --extra tools`); without matplotlib
@@ -412,23 +428,3 @@ after the scan, because of the failing card), 17 minutes on the loaded laptop CP
   `cli.py`.
 - Tests: `test_ship_card.py` 400, `test_ship_card_game.py` 235, `ship_card_cases.py` 116.
 
-## Progress (saved for a possible cut-off, 2026-11-01)
-
-- **Done and committed:** the per-type card and bleed exponent (fast tests pass:
-  `tests/sections/test_ship_card_game.py`, 23 tests; reference and game section tests pass);
-  `bnb.game.handling` (measure, solve with the exponent scan and Levenberg-Marquardt,
-  shown quantities, chart tool, `bnb ship-card`); the acceptance tests
-  `tests/sections/test_ship_card.py` (written to the measured findings above).
-- **In flight when saved (results not yet read):**
-  - the slow acceptance tests: `uv run --no-sync pytest -q -p no:cacheprovider
-    tests/sections/test_ship_card.py -s`, output `/tmp/bnb-scratch-ship-card/slow_tests.txt`
-    (about 30 minutes);
-  - the rest of the suite, GPU and slow included: `uv run --no-sync pytest -q -p
-    no:cacheprovider --ignore=tests/sections/test_ship_card.py`, output
-    `/tmp/bnb-scratch-ship-card/all_tests.txt`.
-- **Next step:** read both outputs; fix any failure (the most likely: the exact set in
-  `OVER_TWO_PERCENT` or `UNREACHABLE`, or the 1% reversal bar); then a final full
-  `uv run --no-sync pytest`, `ruff check`, commit and push, and the hand-back summary.
-- **Half-done:** the independence numbers above give the bar, not the per-perturbation
-  maxima (the analysis script did not save the measured handles).
-- **Uncommitted:** nothing besides these notes at the time of saving.
