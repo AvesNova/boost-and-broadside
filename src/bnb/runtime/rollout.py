@@ -266,6 +266,20 @@ class Rollout:
         carry["truth"].copy_(truth.ships)
         carry["t_idx"].add_(1)
 
+    # ---- checkpoints --------------------------------------------------------------------
+
+    def saved_carry(self) -> dict:
+        """The carry a resume needs (runs spec 3): the game state, the observation, every
+        controller's carry, the seats, the reward ledger and the counters. Not the staging
+        ring or the segment buffers, which every segment writes before it reads them."""
+        return {name: tree for name, tree in self.carry.items()
+                if name not in ("records", "segment")}
+
+    def load_carry(self, carry: dict) -> None:
+        """Copy a saved carry into the carry's buffers (a captured graph keeps reading
+        them)."""
+        _assign(self.saved_carry(), carry)
+
     # ---- running ----------------------------------------------------------------------
 
     def _tick(self) -> None:
@@ -273,8 +287,14 @@ class Rollout:
             stage(self.carry)
 
     def _capture(self) -> None:
-        """Compile, warm up and capture `block` ticks, leaving the carry as it was."""
+        """Compile, warm up and capture `block` ticks, leaving the carry and the device's
+        default generator as they were: the capture draws nothing a replay would, so a run
+        resumed in a fresh process (which captures again) draws what the first did."""
         saved = _clone(self.carry)
+        generator = torch.cuda.default_generators[self.device.index
+                                                  if self.device.index is not None
+                                                  else torch.cuda.current_device()]
+        generator_state = generator.get_state()
         side = torch.cuda.Stream(self.device)
         side.wait_stream(torch.cuda.current_stream(self.device))
         with torch.cuda.stream(side):
@@ -286,6 +306,7 @@ class Rollout:
             for _ in range(self.block):
                 self._tick()
         _assign(self.carry, saved)
+        generator.set_state(generator_state)
 
     def _reusable(self, key) -> None:
         """Before the compute stream writes a ring slot or segment buffer again, wait for
