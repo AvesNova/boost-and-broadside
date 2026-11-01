@@ -1,7 +1,8 @@
 """The training loop: rollout, PPO update, league refresh, logging.
 
 Skeleton lineup: self-play, one league slot (a lagged copy of the learner), the chaser and
-random, in fixed shares of the batch.
+random, in fixed shares of the batch. A mixed batch (mixed spec 5) crosses the lineup with
+the games of a training mix.
 """
 
 import copy
@@ -14,12 +15,41 @@ import torch
 from bnb.contracts import GameConfig, Pool
 from bnb.controllers.model import ModelController
 from bnb.controllers.scripted import Chaser, Random
+from bnb.game.modes.rules import PRESETS
 from bnb.learn.ppo import PPO, PPOConfig
 from bnb.models.mlp import MLP
 
 from .rollout import Rollout
 
 LEARNER = "learner"
+# The default training mix (mixed spec 1, a proposal): each game preset's share of the batch.
+# The battle map is 25% of team deathmatch.
+TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.375), ("deathmatch_wide", 0.125))
+LINEUP = (
+    Pool("self_play", 0.5, (LEARNER, LEARNER)),
+    Pool("league_0", 0.25, (LEARNER, "league_0")),
+    Pool("chaser", 0.125, (LEARNER, "chaser")),
+    Pool("random", 0.125, (LEARNER, "random")),
+)
+
+
+def mixed(lineup: tuple[Pool, ...] = LINEUP,
+          mix: tuple[tuple[str, float], ...] = TRAINING_MIX) -> tuple[GameConfig, tuple[Pool, ...]]:
+    """A mixed batch: the shared config (the first game's) and every game of the mix (a
+    preset name and its share) crossed with every pool of the lineup, game by game, so each
+    game's environments are one contiguous slice. Pool "frontline/chaser" takes the
+    frontline share of the chaser share."""
+    base = PRESETS[mix[0][0]]
+    pools = []
+    for name, share in mix:
+        game = PRESETS[name]
+        if (game.ships_per_team, game.num_fields) != (base.ships_per_team, base.num_fields):
+            raise ValueError(f"{name} has other sizes than {mix[0][0]}: one batch, one size")
+        pools.extend(Pool(f"{name}/{pool.name}", share * pool.share, pool.seats, pool.fog_share,
+                          mode=game.mode, arena_radius=game.arena_radius,
+                          spawn_groups=game.spawn_groups, episode_s=game.episode_s,
+                          respawn_s=game.respawn_s) for pool in lineup)
+    return base, tuple(pools)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -30,12 +60,7 @@ class TrainConfig:
     length: int = 128
     hidden: int = 256
     league_every: int = 10  # updates between copies of the learner into the league slot
-    pools: tuple[Pool, ...] = (
-        Pool("self_play", 0.5, (LEARNER, LEARNER)),
-        Pool("league_0", 0.25, (LEARNER, "league_0")),
-        Pool("chaser", 0.125, (LEARNER, "chaser")),
-        Pool("random", 0.125, (LEARNER, "random")),
-    )
+    pools: tuple[Pool, ...] = LINEUP
     ppo: PPOConfig = PPOConfig()
     seed: int = 0
     compile: bool = True

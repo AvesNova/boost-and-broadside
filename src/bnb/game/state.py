@@ -94,12 +94,12 @@ class Match:
 @contract
 class ModeState:
     """The mode's part of the match (modes spec 6). score (B, 2) int32, deaths scored per
-    team (team deathmatch). Frontline, with Z zones (Z = 0 in other modes): front (B,)
-    int32, captures ahead for team 0; the zones' centres and radii (B, Z); role (B, Z)
-    int32 in team 0's frame; progress (B, Z), the meters; movement (B, Z) int32, the
-    sign of each meter's progress change this tick (0 on a completion); attack_ledger and
-    defense_ledger (B, Z, N), the attempt ledgers; handedness (B,) +-1 and ring_rotation
-    (B,) rad, the ring's draw."""
+    team (team deathmatch). Frontline, with Z = 5 zone slots (absent, zero, in other
+    modes): front (B,) int32, captures ahead for team 0; the zones' centres and radii
+    (B, Z); role (B, Z) int32 in team 0's frame; progress (B, Z), the meters; movement
+    (B, Z) int32, the sign of each meter's progress change this tick (0 on a completion);
+    attack_ledger and defense_ledger (B, Z, N), the attempt ledgers; handedness (B,) +-1
+    and ring_rotation (B,) rad, the ring's draw."""
 
     score: torch.Tensor
     front: torch.Tensor
@@ -158,7 +158,7 @@ def blank(rules: Rules, batch: int, device=None) -> State:
     def zeros(dtypes: dict, shape: tuple) -> dict:
         return {k: torch.zeros(shape, dtype=d, device=device) for k, d in dtypes.items()}
 
-    Z = rules.mode.num_zones
+    Z = rules.num_zones
     shapes = dict(score=(B, TEAMS), front=(B,), attack_ledger=(B, Z, N),
                   defense_ledger=(B, Z, N), handedness=(B,), ring_rotation=(B,))
     mode = {field.name: torch.zeros(shapes.get(field.name, (B, Z)), device=device,
@@ -185,10 +185,14 @@ def sweep_like(state: State) -> Sweep:
 
 def where(mask: torch.Tensor, new, old):
     """`new` where mask, `old` elsewhere, field by field for two dataclasses of one type.
-    mask broadcasts from the left over each field's trailing axes."""
+    mask broadcasts from the left over each field's trailing axes. A field that is the same
+    tensor in both is kept as it is (no copy)."""
     out = {}
     for field in dataclasses.fields(old):
         chosen, kept = getattr(new, field.name), getattr(old, field.name)
+        if chosen is kept:
+            out[field.name] = kept
+            continue
         expanded = mask.reshape(mask.shape + (1,) * (kept.dim() - mask.dim()))
         out[field.name] = torch.where(expanded, chosen, kept)
     return type(old)(**out)

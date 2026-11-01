@@ -193,6 +193,11 @@ class Yemong(nn.Module):
                              persistent=False)
         self.register_buffer("bins", critic.value_bins(config.value_bins, config.value_limit),
                              persistent=False)
+        # Last, so no other layer's initialisation depends on it: at the scale of a
+        # normalised memory token (RMS 1), where the norm is well conditioned (at zero its
+        # gradient is 1 / sqrt(eps)).
+        with torch.no_grad():
+            self.encoder.absent_zone.normal_()
 
     def _initialise(self, num_ships: int, cells: int) -> None:
         """Code columns of each first projection ~ N(0, 1 / groups); the next-state head
@@ -257,7 +262,8 @@ class Yemong(nn.Module):
 
     def _encode(self, tokens: Tokens):
         """Queries (..., Q, D), map memory (..., M, Dm) and the rotary tables."""
-        queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field, tokens.zone)
+        queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field, tokens.zone,
+                                       tokens.zone_present)
         frequencies = (self.position_periods, self.position_periods, self.heading_frequencies)
         token_tables = rotary_tables(tokens.query_position,
                                      tokens.query_heading, *frequencies)

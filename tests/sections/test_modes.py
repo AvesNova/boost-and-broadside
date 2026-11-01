@@ -23,15 +23,19 @@ TYPES = cases.TYPES
 
 
 def test_modes_take_their_clocks_and_presets_build():
-    assert api.rules_of(GameConfig(5, 10, 2600.0)).episode_ticks == 9000
-    assert api.rules_of(GameConfig(5, 10, 2600.0)).respawn_ticks == 150  # 5 s
-    assert api.rules_of(GameConfig(5, 10, 2600.0, mode="frontline")).respawn_ticks == 240
-    assert api.rules_of(GameConfig(5, 10, 2600.0, mode="sandbox")).episode_ticks == 1800
-    assert api.rules_of(GameConfig(5, 10, 2600.0, episode_s=2.0)).episode_ticks == 60
+    def game(**config):
+        pool, = api.rules_of(GameConfig(5, 10, 2600.0, **config)).pools
+        return pool
+
+    assert game().episode_ticks == 9000
+    assert game().respawn_ticks == 150  # 5 s
+    assert game(mode="frontline").respawn_ticks == 240
+    assert game(mode="sandbox").episode_ticks == 1800
+    assert game(episode_s=2.0).episode_ticks == 60
     for name, config in PRESETS.items():
         rules = api.rules_of(config)
         assert rules.num_ships == 10, name
-    assert api.rules_of(PRESETS["deathmatch_wide"]).mode.spawn_groups == (2, 2, 1)
+    assert api.rules_of(PRESETS["deathmatch_wide"]).pools[0].mode.spawn_groups == (2, 2, 1)
     with pytest.raises(ValueError):
         GameConfig(5, 10, 2600.0, spawn_groups=(2, 2))  # must sum to the team's size
     with pytest.raises(ValueError):
@@ -71,7 +75,7 @@ def _boundary_kill(state, ships):
 def test_deathmatch_first_to_the_target_wins(score, dying, result):
     config = GameConfig(3, 2, 1200.0, kills_per_ship=int(25 / 3) + 1)  # target 27
     rules, state = cases.rules_and_state(config, batch=1)
-    target = rules.mode.kills_per_ship * rules.ships_per_team
+    target = rules.pools[0].mode.kills_per_ship * rules.ships_per_team
     shift = target - 25
     state = cases.edit_mode(state, score=torch.tensor([[score[0] + shift, score[1] + shift]],
                                                       dtype=torch.int32))
@@ -94,7 +98,7 @@ def test_deathmatch_clock_goes_to_the_higher_score(score, result):
     rules, state = cases.rules_and_state(GameConfig(3, 2, 1200.0), batch=1)
     state = cases.edit_mode(state, score=torch.tensor([score], dtype=torch.int32))
     state = replace(state, match=replace(state.match, episode_tick=torch.tensor(
-        [rules.episode_ticks - 1], dtype=torch.int32)))
+        [rules.pools[0].episode_ticks - 1], dtype=torch.int32)))
     _, events = cases.tick(rules, state)
     assert events.done.item() and events.result.item() == result
 
@@ -118,11 +122,19 @@ def test_every_death_scores_for_the_other_team():
     assert all(count > 0 for count in causes.values()), causes
 
 
+def _placement(rules, uniforms, x, y, alive, reset, keys):
+    """Team deathmatch placement in a one-game batch."""
+    pool, = rules.pools
+    arena_radius = torch.full((x.shape[0],), pool.arena_radius)
+    return spawns.deathmatch_placement(rules, pool.mode, arena_radius, uniforms, x, y, alive,
+                                       reset, keys)
+
+
 def _uniform_layout(rules, uniforms):
     """The team-deathmatch candidates as the spec draws them: (x, y) (B, N, K), heading."""
-    K, B, N = rules.mode.spawn_candidates, uniforms.shape[0], rules.num_ships
+    K, B, N = rules.pools[0].mode.spawn_candidates, uniforms.shape[0], rules.num_ships
     per_ship = TickUniforms(rules, uniforms).mode.reshape(B, N, -1)
-    distance = rules.arena_radius * per_ship[..., :K].sqrt()
+    distance = rules.pools[0].arena_radius * per_ship[..., :K].sqrt()
     angle = 2.0 * math.pi * per_ship[..., K:2 * K]
     return distance * angle.cos(), distance * angle.sin(), 2.0 * math.pi * per_ship[..., 2 * K]
 
@@ -136,7 +148,7 @@ def test_deathmatch_respawn_takes_the_candidate_farthest_from_living_enemies():
     y = (torch.rand(B, N, generator=generator) - 0.5) * 4000
     alive = torch.rand(B, N, generator=generator) < 0.6
     keys = TickUniforms(rules, uniforms).keys
-    place = spawns.deathmatch_placement(rules, TickUniforms(rules, uniforms).mode, x, y, alive,
+    place = _placement(rules, TickUniforms(rules, uniforms).mode, x, y, alive,
                               torch.zeros(B, dtype=torch.bool), keys)
     cx, cy, heading = _uniform_layout(rules, uniforms)
     team = torch.arange(N) // rules.ships_per_team
@@ -165,10 +177,10 @@ def test_deathmatch_reset_is_one_symmetric_pass():
     tick = TickUniforms(rules, uniforms)
     zeros = torch.zeros(B, N)
     reset = torch.ones(B, dtype=torch.bool)
-    place = spawns.deathmatch_placement(rules, tick.mode, zeros, zeros, zeros.bool(), reset,
+    place = _placement(rules, tick.mode, zeros, zeros, zeros.bool(), reset,
                                         tick.keys)
     swapped = tick.mode.reshape(B, 2, S, -1).flip(1).reshape(B, -1)
-    other = spawns.deathmatch_placement(rules, swapped, zeros, zeros, zeros.bool(), reset,
+    other = _placement(rules, swapped, zeros, zeros, zeros.bool(), reset,
                                         tick.keys)
     torch.testing.assert_close(other.x, place.x.roll(S, 1))
     torch.testing.assert_close(other.y, place.y.roll(S, 1))
@@ -190,9 +202,9 @@ def test_deathmatch_candidates_are_uniform_over_the_arena():
     uniforms = api.uniforms(rules, B, generator=torch.Generator().manual_seed(5))
     tick = TickUniforms(rules, uniforms)
     zeros = torch.zeros(B, rules.num_ships)
-    place = spawns.deathmatch_placement(rules, tick.mode, zeros, zeros, zeros.bool(),
+    place = _placement(rules, tick.mode, zeros, zeros, zeros.bool(),
                               torch.zeros(B, dtype=torch.bool), tick.keys)
-    radius = torch.hypot(place.x, place.y) / rules.arena_radius
+    radius = torch.hypot(place.x, place.y) / rules.pools[0].arena_radius
     assert radius.max() <= 1.0
     area = (radius**2).flatten()  # uniform on [0, 1] for a uniform disc
     for q in (0.1, 0.25, 0.5, 0.75, 0.9):
@@ -205,9 +217,9 @@ def test_deathmatch_candidates_are_uniform_over_the_arena():
 
 def _group_centres(rules, uniforms):
     """Centre 0 uniform in 0.85 R_a; centre g the best of K draws by the nearest earlier."""
-    G, K = len(rules.mode.spawn_groups), rules.mode.spawn_candidates
+    G, K = len(rules.pools[0].mode.spawn_groups), rules.pools[0].mode.spawn_candidates
     drawn = TickUniforms(rules, uniforms).mode[:, :2 * K * G].reshape(-1, G, K, 2)
-    distance = 0.85 * rules.arena_radius * drawn[..., 0].sqrt()
+    distance = 0.85 * rules.pools[0].arena_radius * drawn[..., 0].sqrt()
     angle = 2.0 * math.pi * drawn[..., 1]
     x, y = distance * angle.cos(), distance * angle.sin()
     centres = [torch.stack([x[:, 0, 0], y[:, 0, 0]], -1)]
@@ -229,7 +241,7 @@ def test_grouped_reset_spreads_the_groups_and_fills_them_by_rank():
     position = torch.stack([state.ships.x, state.ships.y], -1)
     distance = torch.cdist(position, centres)  # (B, N, G)
     group = distance.argmin(-1)
-    assert (distance.amin(-1) <= rules.mode.group_radius + 1e-3).all()
+    assert (distance.amin(-1) <= rules.pools[0].mode.group_radius + 1e-3).all()
     for team in range(2):
         counts = torch.stack([(group[:, team * 5:(team + 1) * 5] == g).sum(-1) for g in range(3)],
                              -1)
@@ -238,7 +250,7 @@ def test_grouped_reset_spreads_the_groups_and_fills_them_by_rank():
     spread = torch.pdist(centres[0]).min()
     gaps = torch.stack([torch.pdist(c).min() for c in centres])
     independent = torch.rand(B, 3, generator=torch.Generator().manual_seed(7))
-    radius = 0.85 * rules.arena_radius * independent.sqrt()
+    radius = 0.85 * rules.pools[0].arena_radius * independent.sqrt()
     angle = 2 * math.pi * torch.rand(B, 3, generator=torch.Generator().manual_seed(8))
     plain = torch.stack([radius * angle.cos(), radius * angle.sin()], -1)
     plain_gaps = torch.stack([torch.pdist(c).min() for c in plain])
@@ -250,11 +262,11 @@ def test_grouped_reset_picks_by_the_enemies_of_its_own_group():
     (in the 300 m disc around its group's centre, clipped into the disc R_a - 50 m)
     farthest from the provisional points of the enemies in its own group."""
     rules = api.rules_of(GameConfig(4, 2, 600.0, spawn_groups=(2, 1, 1)))
-    B, N, S, K = 128, rules.num_ships, rules.ships_per_team, rules.mode.spawn_candidates
+    B, N, S, K = 128, rules.num_ships, rules.ships_per_team, rules.pools[0].mode.spawn_candidates
     uniforms = api.uniforms(rules, B, generator=torch.Generator().manual_seed(18))
     tick = TickUniforms(rules, uniforms)
     zeros = torch.zeros(B, N)
-    place = spawns.deathmatch_placement(rules, tick.mode, zeros, zeros, zeros.bool(),
+    place = _placement(rules, tick.mode, zeros, zeros, zeros.bool(),
                                         torch.ones(B, dtype=torch.bool), tick.keys)
     centres = _group_centres(rules, uniforms)
     rank = formation_rank(rules, tick.keys)
@@ -325,9 +337,9 @@ def test_spawn_layout_does_not_reveal_the_seat(mode):
     # where a view's centre of mass sits, and how far its ships are from the map centre
     for column in ("x", "y"):
         mean = own[..., SHIP[column]].mean((0, 2))
-        assert (mean.abs() < 0.1 * rules.arena_radius).all(), (column, mean)
+        assert (mean.abs() < 0.1 * rules.pools[0].arena_radius).all(), (column, mean)
     reach = torch.hypot(own[..., SHIP["x"]], own[..., SHIP["y"]]).mean((0, 2))
-    assert abs(float(reach[0] - reach[1])) < 0.05 * rules.arena_radius
+    assert abs(float(reach[0] - reach[1])) < 0.05 * rules.pools[0].arena_radius
 
 
 @pytest.mark.parametrize("mode", list(cases.MODES))
@@ -346,7 +358,9 @@ def test_mode_rows_do_not_reveal_the_seat(mode):
     shown = [ZONE[name] for name in ("radius", "role", "progress", "direction",
                                      "offensive_distance", "defensive_distance")]
     assert torch.equal(zones[:, 0][..., shown], zones[:, 1][..., shown])
-    if zones.shape[2]:
+    assert torch.equal(zones[..., ZONE["present"]] == 1,
+                       torch.full(zones.shape[:-1], config.mode == "frontline"))
+    if config.mode == "frontline":
         assert torch.equal(zones[0, :, :, ZONE["role"]],
                            torch.tensor([[2.0, 0, 1, 3, 4]] * 2))
         angle = torch.atan2(zones[..., ZONE["y"]], zones[..., ZONE["x"]])
@@ -355,7 +369,7 @@ def test_mode_rows_do_not_reveal_the_seat(mode):
         assert ((counterclockwise > 0.4) & (counterclockwise < 0.6)).all(), counterclockwise
     for _, _, after in cases.play(config, batch=8, ticks=120, seed=19):
         _, obs, _ = api.perceive(rules, after)
-        if obs.zones.shape[2]:
+        if config.mode == "frontline":
             for view, sign in ((0, 1), (1, -1)):
                 want = frontline.roles_from_front(sign * after.mode.front).float()
                 assert torch.equal(obs.zones[:, view, :, ZONE["role"]], want)
@@ -524,7 +538,7 @@ def test_frontline_timeout_goes_to_the_front(captures, team, result):
         ticks += 1
     assert state.mode.front.item() == captures * (1 - 2 * team)
     state = replace(state, match=replace(state.match, episode_tick=torch.tensor(
-        [rules.episode_ticks - 1], dtype=torch.int32)))
+        [rules.pools[0].episode_ticks - 1], dtype=torch.int32)))
     _, events = cases.tick(rules, _hold(state, attackers=0))
     assert events.done.item() and events.result.item() == result
     paid = torch.tensor([float(result)] * 3 + [float(-result)] * 3)
@@ -574,7 +588,8 @@ def test_frontline_respawn_on_a_capture_tick_uses_the_new_spawn_zone():
     zone after the roles rotate, not before."""
     rules, state = cases.rules_and_state(FRONTLINE, batch=1, seed=22)
     state = cases.fields_away(state)
-    rate = frontline.harmonic(torch.tensor(3)) * rules.tick_length / rules.mode.capture_seconds
+    capture_seconds = rules.pools[0].mode.capture_seconds
+    rate = frontline.harmonic(torch.tensor(3)) * rules.tick_length / capture_seconds
     ticks = 0
     while True:
         attacked = state.mode.role == frontline.TEAM1_DEFENSE
@@ -599,7 +614,7 @@ def test_deathmatch_respawn_keeps_away_from_the_enemies_alive_after_this_ticks_d
     Its candidates are scored against the surviving enemy (ship 2) only."""
     rules, state = cases.rules_and_state(GameConfig(2, 1, 2600.0), batch=64, seed=23)
     state = cases.fields_away(state)
-    B, R = 64, rules.arena_radius
+    B, R = 64, rules.pools[0].arena_radius
     ships = state.ships
     alive, wait, shield = ships.alive.clone(), ships.respawn_wait.clone(), ships.shield.clone()
     x, y = ships.x.clone(), ships.y.clone()
@@ -682,7 +697,8 @@ def test_frontline_zone_rows_are_team_relative():
         state, _ = cases.tick(rules, _hold(state, attackers=2), seed=t)
     _, obs, _ = api.perceive(rules, state)
     zones = obs.zones
-    assert zones.shape == (8, 2, 5, 8)
+    assert zones.shape == (8, 2, 5, 9)
+    assert (zones[..., ZONE["present"]] == 1).all()
     torch.testing.assert_close(zones[:, 0, :, ZONE["x"]], state.mode.zone_x)
     torch.testing.assert_close(zones[:, 1, :, ZONE["x"]], state.mode.zone_x[:, MIRRORED])
     role = zones[..., ZONE["role"]]
@@ -738,7 +754,7 @@ def test_deathmatch_globals_carry_the_scores_by_team_relative():
     assert (g[..., GLOBAL["score_target"]] == 25).all()
     assert (g[..., GLOBAL["mode_team_deathmatch"]] == 1).all()
     assert (g[..., GLOBAL["mode_frontline"]] == 0).all() and (g[..., GLOBAL["front"]] == 0).all()
-    assert obs.zones.shape == (2, 2, 0, 8)
+    assert obs.zones.shape == (2, 2, 5, len(ZONE)) and not obs.zones.any()  # absent slots
 
 
 # ------------------------------------------------------------------ compiled

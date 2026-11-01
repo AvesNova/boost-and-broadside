@@ -18,7 +18,8 @@ from .numerics import lookup
 
 class TickUniforms:
     """Slices of the (B, U) tick uniforms (game spec 2): the map, a formation rotation per
-    team, a formation key per ship; then the mode's spawn draws (modes spec 2)."""
+    team, a formation key per ship; then the mode's spawn draws (modes spec 2), as wide as
+    the widest mode of the batch needs (each mode reads its own prefix)."""
 
     def __init__(self, rules: Rules, uniforms: torch.Tensor) -> None:
         start = rules.map_uniform_count
@@ -37,8 +38,10 @@ class Placement(NamedTuple):
     heading_sin: torch.Tensor
 
 
-def new_map(rules: Rules, uniforms: torch.Tensor) -> tuple[Fields, torch.Tensor, torch.Tensor]:
-    """Fields and the spawn axis (x, y) from (B, 4M + 1) map uniforms.
+def new_map(rules: Rules, arena_radius: torch.Tensor, map_scale: torch.Tensor,
+            uniforms: torch.Tensor) -> tuple[Fields, torch.Tensor, torch.Tensor]:
+    """Fields and the spawn axis (x, y) from (B, 4M + 1) map uniforms, in arenas of this
+    radius and map scale (B,).
 
     Point-symmetric: field P + i is field i rotated by 180 degrees about the centre
     (P = M // 2), and an odd last field sits at the centre.
@@ -46,11 +49,11 @@ def new_map(rules: Rules, uniforms: torch.Tensor) -> tuple[Fields, torch.Tensor,
     B, M = uniforms.shape[0], rules.num_fields
     P = M // 2
     per_field = uniforms[:, :4 * M].reshape(B, M, 4)
-    distance = 0.85 * rules.arena_radius * torch.sqrt(per_field[:, :P, 0])
+    distance = (0.85 * arena_radius)[:, None] * torch.sqrt(per_field[:, :P, 0])
     angle = 2.0 * math.pi * per_field[:, :P, 1]
     x, y = distance * torch.cos(angle), distance * torch.sin(angle)
     drawn = torch.cat([per_field[:, :P], per_field[:, :P], per_field[:, 2 * P:]], 1)  # pairs, centre
-    radius = rules.map_scale * (30.0 + 460.0 * drawn[..., 2])
+    radius = map_scale[:, None] * (30.0 + 460.0 * drawn[..., 2])
     level = lookup(FIELD_LEVELS, (4.0 * drawn[..., 3]).to(torch.int32).clamp_max(3))
     centre = torch.zeros((B, M - 2 * P), device=uniforms.device)
     fields = Fields(x=torch.cat([x, -x, centre], 1), y=torch.cat([y, -y, centre], 1),
@@ -70,19 +73,20 @@ def formation_rank(rules: Rules, keys: torch.Tensor) -> torch.Tensor:
     return before.sum(-1).reshape(B, TEAMS * S)
 
 
-def formation(rules: Rules, axis_x: torch.Tensor, axis_y: torch.Tensor, rotation: torch.Tensor,
+def formation(rules: Rules, arena_radius: torch.Tensor, map_scale: torch.Tensor,
+              axis_x: torch.Tensor, axis_y: torch.Tensor, rotation: torch.Tensor,
               keys: torch.Tensor) -> Placement:
     """Game spec 8's formation for every ship: around its team's centre on the spawn axis
     (B,), at its rank's phase plus its team's rotation (B, 2), nose toward the other
-    centre. keys (B, N): the formation keys."""
+    centre. keys (B, N): the formation keys; arena_radius and map_scale (B,)."""
     N, S = keys.shape[1], rules.ships_per_team
     team = torch.arange(N, device=keys.device) // S
     side = (2 * team - 1).to(torch.float32)  # team 0 spawns at -0.8 R_a axis, team 1 at +
     phase = formation_rank(rules, keys) / S + rotation.repeat_interleave(S, 1)
     angle = 2.0 * math.pi * torch.frac(phase)
     axis_x, axis_y = axis_x[:, None], axis_y[:, None]
-    radius = rules.spawn_radius * rules.map_scale
-    offset = side * (rules.spawn_offset * rules.arena_radius)
+    radius = (rules.spawn_radius * map_scale)[:, None]
+    offset = side * (rules.spawn_offset * arena_radius)[:, None]
     return Placement(x=offset * axis_x + radius * torch.cos(angle),
                      y=offset * axis_y + radius * torch.sin(angle),
                      heading_cos=-side * axis_x.expand_as(angle),

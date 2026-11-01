@@ -31,7 +31,12 @@ class Encoder(nn.Module):
 
     zone_inputs is optional so an encoder can be built exactly as before the modes section:
     the fixed reference arm (tests/reference/yemong) builds one from five arguments and
-    loads its fixture weights strictly, with no zone kind. Yemong always passes it."""
+    loads its fixture weights strictly, with no zone kind. Yemong always passes it.
+
+    An absent zone (a zone slot of a mode without zones, mixed spec 4) is one
+    learned map-memory token, `absent_zone`, selected where the zone is not present; the
+    projection's output for its row is discarded. No mask, so the fused attention kernel
+    stays usable."""
 
     def __init__(self, ship_inputs: int, global_inputs: int, field_inputs: int, width: int,
                  map_width: int, zone_inputs: int | None = None) -> None:
@@ -44,20 +49,29 @@ class Encoder(nn.Module):
         self.shared_norm = norm(width)
         self.map_memory = nn.Linear(width, map_width, bias=False)
         self.map_memory_norm = norm(map_width)
+        # Uninitialised here (no random draw): the model initialises it after every other
+        # layer, so theirs do not depend on it.
+        self.absent_zone = nn.Parameter(torch.empty(map_width)) if zone_inputs else None
 
     def _shared(self, tokens: torch.Tensor) -> torch.Tensor:
         return self.shared_norm(self.shared(tokens))
 
     def forward(self, ship: torch.Tensor, global_token: torch.Tensor, field: torch.Tensor,
-                zone: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+                zone: torch.Tensor | None = None, zone_present: torch.Tensor | None = None
+                ) -> tuple[torch.Tensor, torch.Tensor]:
         """ship (..., N, Fs), global_token (..., 1, Fg), field (..., M, Ff) and, for an
-        encoder with zones, zone (..., Z, Fz) to the queries (..., N + 1, D) and the map
-        memory (..., M + Z, Dm), fields first."""
+        encoder with zones, zone (..., Z, Fz) and zone_present (..., Z) bool to the queries
+        (..., N + 1, D) and the map memory (..., M + Z, Dm), fields first."""
         queries = self._shared(torch.cat([self.ship(ship), self.global_token(global_token)], -2))
         memory = self.field(field)
         if self.zone is not None:
             memory = torch.cat([memory, self.zone(zone)], -2)
         memory = self.map_memory_norm(self.map_memory(self._shared(memory)))
+        if self.zone is not None:
+            fields = field.shape[-2]
+            zones = torch.where(zone_present[..., None], memory[..., fields:, :],
+                                self.absent_zone.to(memory.dtype))
+            memory = torch.cat([memory[..., :fields, :], zones], -2)
         return queries, memory
 
 

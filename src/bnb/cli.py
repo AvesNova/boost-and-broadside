@@ -11,7 +11,8 @@ class Train:
     """Train the skeleton MLP with PPO.
 
     preset: a training preset (deathmatch, deathmatch_wide, frontline), which sets the mode,
-    the sizes and the spawn groups; without one, the mode and sizes below.
+    the sizes and the spawn groups, or mixed, the default training mix of all three in one
+    batch; without one, the mode and sizes below.
     """
 
     preset: str | None = None
@@ -31,17 +32,27 @@ def main() -> None:
     import torch
 
     from bnb.contracts import GameConfig
+    from bnb.contracts.pools import environment_multiple
     from bnb.game.modes.rules import PRESETS
-    from bnb.runtime.train import TrainConfig, train
+    from bnb.runtime.train import LINEUP, TrainConfig, mixed, train
 
-    if args.preset is not None:
+    pools = LINEUP
+    if args.preset == "mixed":
+        game, pools = mixed()
+    elif args.preset is not None:
         if args.preset not in PRESETS:
-            raise SystemExit(f"unknown preset {args.preset!r}; one of {sorted(PRESETS)}")
+            raise SystemExit(f"unknown preset {args.preset!r}; one of "
+                             f"{sorted(PRESETS) + ['mixed']}")
         game = PRESETS[args.preset]
     else:
         game = GameConfig(args.ships_per_team, args.num_fields, args.arena_radius,
                           mode=args.mode)
-    cfg = TrainConfig(game=game, num_envs=args.num_envs, updates=args.updates, seed=args.seed)
+    multiple = environment_multiple(pools)
+    if args.num_envs % multiple:
+        raise SystemExit(f"--num-envs {args.num_envs} does not split into the pools' shares: "
+                         f"use a multiple of {multiple}")
+    cfg = TrainConfig(game=game, pools=pools, num_envs=args.num_envs, updates=args.updates,
+                      seed=args.seed)
 
     def log(row: dict) -> None:
         rewards = " ".join(f"{k} {v:+.3f}" for k, v in row["reward_per_s"].items())

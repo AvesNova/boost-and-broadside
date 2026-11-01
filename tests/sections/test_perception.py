@@ -8,7 +8,7 @@ import torch
 
 from bnb.contracts import Action, GameConfig, Pool
 from bnb.contracts.obs import GLOBAL, SHIP, SHIP_HIDDEN_ZERO
-from bnb.contracts.pools import pool_sizes
+from bnb.contracts.pools import environments_per_pool
 from bnb.game import api
 from bnb.game.state import State, apply, replace
 
@@ -101,9 +101,9 @@ def test_fog_survives_episode_resets():
 
 
 def test_fog_share_must_be_whole():
-    assert pool_sizes((Pool("a", 1.0, ("x", "x"), fog_share=0.25),), 8) == (8,)
+    assert environments_per_pool((Pool("a", 1.0, ("x", "x"), fog_share=0.25),), 8) == (8,)
     with pytest.raises(ValueError):
-        pool_sizes((Pool("a", 1.0, ("x", "x"), fog_share=0.3),), 8)
+        environments_per_pool((Pool("a", 1.0, ("x", "x"), fog_share=0.3),), 8)
 
 
 def test_rollout_fogs_the_first_share_of_each_pool():

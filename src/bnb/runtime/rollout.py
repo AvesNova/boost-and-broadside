@@ -17,6 +17,7 @@ from torch.utils import _pytree
 from bnb.contracts import REWARD_LEVELS, Action, Controller, GameConfig, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL
 from bnb.game import api
+from bnb.game.layout import environment
 from bnb.learn import rewards
 
 from .lineup import Lineup
@@ -26,9 +27,11 @@ COUNTERS = ("shots", "hits", "deaths", "resets")
 
 
 def _assign(dst, src) -> None:
-    """Copy a pytree of tensors into the matching carry buffers."""
+    """Copy a pytree of tensors into the matching carry buffers. A leaf a stage passed
+    through unchanged (the buffer itself) is not copied onto itself."""
     for d, s in zip(_tensors(dst), _tensors(src), strict=True):
-        d.copy_(s)
+        if d is not s:
+            d.copy_(s)
 
 
 def _tensors(tree) -> list[torch.Tensor]:
@@ -45,7 +48,7 @@ class Rollout:
                  length: int, device: torch.device, compile: bool = True,
                  graph_ticks: int = 32, reward_config: rewards.RewardConfig | None = None
                  ) -> None:
-        self.rules = api.rules_of(cfg)
+        self.rules = api.rules_of(cfg, pools, num_envs)
         self.reward_config = reward_config or rewards.RewardConfig()
         self.T, self.S, self.N = cfg.num_teams, cfg.ships_per_team, cfg.num_ships
         self.B, self.length, self.device = num_envs, length, device
@@ -69,7 +72,8 @@ class Rollout:
         rules, B, dev = self.rules, self.B, self.device
         types = api.ship_types(dev)
         st = api.reset(rules, types, api.uniforms(rules, B, dev), self.lineup.fogged)
-        st = api.start_clocks(st, torch.randint(0, rules.episode_ticks, (B,), device=dev))
+        episode_ticks = environment(rules, B, dev).episode_ticks
+        st = api.start_clocks(st, torch.randint(0, 1 << 30, (B,), device=dev) % episode_ticks)
         st, obs, _ = api.perceive(rules, st)
         R, L, S = self.lineup.rows(self.learner), self.length, self.S
         view_shape = {part: getattr(obs, part).shape[2:] for part in PARTS}

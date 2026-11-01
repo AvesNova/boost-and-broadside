@@ -276,9 +276,11 @@ def test_defaults_match_the_spec_table():
     spec = json.loads((REFERENCE / "golden" / "presets.json").read_text())
     preset = spec["presets"]["squad"]
     rules = api.rules_of(GameConfig(5, 10, 2600.0, mode="sandbox"))  # the physics game
+    pool, = rules.pools  # the clocks are per game
     for key, value in preset.items():
         if key in RULES:
-            assert math.isclose(getattr(rules, RULES[key]), value), key
+            owner = pool if hasattr(pool, RULES[key]) else rules
+            assert math.isclose(getattr(owner, RULES[key]), value), key
         else:
             sizes = ("num_ships", "num_fields", "arena_radius", "ship_types")
             assert key in CARD or key in sizes, key
