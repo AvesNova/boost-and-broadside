@@ -5,7 +5,7 @@ import pathlib
 
 SRC = pathlib.Path(__file__).resolve().parents[2] / "src" / "bnb"
 LAYER = {"contracts": 0, "game": 1, "controllers": 2, "models": 2, "learn": 3, "runtime": 4,
-         "league": 5, "play": 6, "cli": 7}
+         "runs": 5, "league": 6, "play": 7, "cli": 8}
 
 
 def _imports(path: pathlib.Path) -> set[str]:
