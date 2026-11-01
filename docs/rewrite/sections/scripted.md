@@ -1,6 +1,6 @@
 # Section 4: the scripted agent
 
-Status: decisions settled, 2026-11-01, except the chaser bar (below). Spec: to follow.
+Status: decisions settled, 2026-11-01. Spec: to follow.
 
 ## Already decided (training review 4c)
 
@@ -36,7 +36,7 @@ Status: decisions settled, 2026-11-01, except the chaser bar (below). Spec: to f
   - **Against random:** it essentially always wins. The bar is a small buffer for a
     one-in-a-million game, not a tolerance: a steady 99% would be a failure to
     investigate.
-  - **Against the chaser:** a win-rate bar in both modes (value to confirm).
+  - **Against the chaser:** a win rate of at least 70% in both modes.
   - **Speed:** "dummy fast": well under the game's own tick cost, since BC runs it on
     every learner environment.
   - **No v1 Elo comparison:** v1 and v2 are different games.
