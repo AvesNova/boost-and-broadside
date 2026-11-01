@@ -7,13 +7,14 @@ covers: [pyproject.toml, .python-version]
 ## Requirements
 
 - **uv** manages the environment. The lock file, `uv.lock`, pins every dependency.
-- **Python 3.14.** `pyproject.toml` requires `>=3.14,<3.15`, and `.python-version` names
-  3.14; uv installs it if it is missing.
-- **torch 2.15.0**, from the PyTorch CUDA 13.2 wheel index (`pytorch-cu132` in
-  `pyproject.toml`).
-- **An NVIDIA GPU** with a driver that supports CUDA 13.2, for training and benchmarks.
-  The rollout captures CUDA graphs and the `bnb` command defaults to `--device cuda`. The
-  tests run on the CPU, apart from those marked `gpu`.
+- **The versions** below come from `pyproject.toml`. uv installs the Python version if it
+  is missing.
+- **An NVIDIA GPU** with a driver that supports the CUDA version of the torch wheels
+  (their index is named after it), for training and benchmarks. The rollout captures CUDA
+  graphs and the `bnb` command defaults to `--device cuda`. The tests run on the CPU, apart
+  from those marked `gpu`.
+
+<!-- generated: versions -->
 
 ## Set up
 
@@ -21,12 +22,12 @@ From the repository root:
 
 <!-- not-runnable: changes the environment -->
 ```bash
-uv sync                  # the project and its development tools
-uv sync --extra docs     # the same, plus MkDocs for building these docs
+uv sync
 ```
 
-`uv sync` makes the environment match the lock file exactly, so a plain `uv sync` removes
-the docs packages again. Use `--extra docs` whenever you work on the docs.
+`uv sync` makes the environment match the lock file exactly. It installs the project and
+the default dependency groups, which include the tools that build these docs, so the strict
+docs build runs in every test run.
 
 ## Run commands through uv
 

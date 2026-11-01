@@ -4,8 +4,9 @@ covers: []
 
 # The learner (in progress)
 
-Section 6, PPO and labels, is specified (`docs/rewrite/sections/learner-spec.md`) and not
-built. Until it merges, training uses the skeleton's plain PPO
+<!-- generated: section-status -->
+
+Until it merges, training uses the skeleton's plain PPO
 (see [The training loop](../training-loop.md)).
 
 It will cover:

@@ -4,8 +4,9 @@ covers: []
 
 # The scripted agent (in progress)
 
-Section 4 is specified (`docs/rewrite/sections/scripted-bc-spec.md`, part A) and not built.
-Today the scripted controllers are `bnb.controllers.scripted.Random` and
+<!-- generated: section-status -->
+
+The section is part A of that record. Today the scripted controllers are `bnb.controllers.scripted.Random` and
 `bnb.controllers.scripted.Chaser`.
 
 It will cover one memoryless scripted controller with three uses: league opponent, the

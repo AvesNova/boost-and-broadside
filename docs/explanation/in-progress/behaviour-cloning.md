@@ -4,7 +4,9 @@ covers: []
 
 # Behaviour cloning (in progress)
 
-Section 7 is specified (`docs/rewrite/sections/scripted-bc-spec.md`, part B) and not built.
+<!-- generated: section-status -->
+
+The section is part B of that record.
 
 It will cover on-policy imitation of the scripted agent: the student flies the learner's
 views and the teacher labels the states it visits. Behaviour cloning gives every head a

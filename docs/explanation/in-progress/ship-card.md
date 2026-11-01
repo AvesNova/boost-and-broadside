@@ -4,7 +4,9 @@ covers: []
 
 # The ship card (in progress)
 
-Section 1b is specified (`docs/rewrite/sections/ship-card-spec.md`) and not built. Today the
+<!-- generated: section-status -->
+
+Today the
 card is the per-type parameter table in `bnb.game.ship_types`
 (see [Physics](../game/physics.md)).
 

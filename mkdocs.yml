@@ -12,6 +12,7 @@ exclude_docs: |
   rewrite/
   hooks/
   roadmap.yml
+  packages.yml
 
 theme:
   name: material
@@ -113,6 +114,7 @@ nav:
       - The model (Yemong): explanation/yemong.md
       - The training loop: explanation/training-loop.md
       - Roadmap: explanation/roadmap.md
+      - Glossary: explanation/glossary.md
       - In progress:
           - The learner: explanation/in-progress/learner.md
           - The ship card: explanation/in-progress/ship-card.md

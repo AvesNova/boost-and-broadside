@@ -4,7 +4,9 @@ covers: []
 
 # The play shell (in progress)
 
-Section 10 is planned, with no spec yet. Today `bnb.runtime.realtime.Realtime` runs one
+<!-- generated: section-status -->
+
+Today `bnb.runtime.realtime.Realtime` runs one
 match on the CPU (see [The training loop](../training-loop.md#realtime)).
 
 It will cover the interactive shell: a window, input, rendering from snapshots of the state,

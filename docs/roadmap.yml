@@ -2,56 +2,70 @@
 # (docs/hooks/generated.py, table "roadmap"); update the status here when a section moves.
 # status: merged (on v2), specified (a spec exists, not built), decided (decisions
 # recorded, no spec yet), planned (in the plan only).
-# spec: the design record, or null.
+# spec: the design record, or null. page: the page on this site that covers the section
+# (prose once merged, a short in-progress page before).
 - section: "0"
   title: Contracts and the walking skeleton
   status: merged
   spec: docs/rewrite/contracts.md
+  page: explanation/contracts.md
 - section: "1"
   title: "The game: physics, perception, spawns, maps"
   status: merged
   spec: docs/rewrite/sections/game-spec.md
+  page: explanation/game/physics.md
 - section: "1b"
   title: The ship card (handles to physics parameters)
   status: specified
   spec: docs/rewrite/sections/ship-card-spec.md
+  page: explanation/in-progress/ship-card.md
 - section: "3"
   title: Modes (team deathmatch, Frontline, sandbox)
   status: merged
   spec: docs/rewrite/sections/modes-spec.md
+  page: explanation/game/modes.md
 - section: "3b"
   title: Rewards
   status: merged
   spec: docs/rewrite/sections/rewards-spec.md
+  page: explanation/game/rewards.md
 - section: "3c"
   title: Mixed batches
   status: merged
   spec: docs/rewrite/sections/mixed-spec.md
+  page: explanation/game/mixed-batches.md
 - section: "4"
   title: The scripted agent
   status: specified
   spec: docs/rewrite/sections/scripted-bc-spec.md
+  page: explanation/in-progress/scripted-agent.md
 - section: "5"
   title: The model (Yemong)
   status: merged
   spec: docs/rewrite/sections/yemong-spec.md
+  page: explanation/yemong.md
 - section: "6"
   title: PPO and labels (the learner)
   status: specified
   spec: docs/rewrite/sections/learner-spec.md
+  page: explanation/in-progress/learner.md
 - section: "7"
   title: Behaviour cloning
   status: specified
   spec: docs/rewrite/sections/scripted-bc-spec.md
+  page: explanation/in-progress/behaviour-cloning.md
 - section: "8"
   title: League and ratings
   status: decided
   spec: docs/rewrite/sections/league.md
+  page: explanation/in-progress/league.md
 - section: "9"
   title: Diagnostics
   status: planned
   spec: docs/rewrite/diagnostics.md
+  page: explanation/in-progress/diagnostics.md
 - section: "10"
   title: The play shell
   status: planned
   spec: null
+  page: explanation/in-progress/play-shell.md
