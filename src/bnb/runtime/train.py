@@ -150,22 +150,25 @@ class Trainer:
 
     def pool_metrics(self, store) -> dict:
         """Per pool: the learner's reward per level, per ship and second, and its episode
-        results (wins, draws, losses) in the stored segments."""
+        results (wins, draws, losses) in the stored segments. The per-pool sums are masked
+        reductions, not atomic adds, so the metrics are the same on every run of the same
+        data (an exact resume logs what a run straight through logs)."""
         pools = len(self.pool_names)
         device = self.learner_pool.device
+        member = (self.learner_pool[None, :] == torch.arange(pools, device=device)[:, None])
+        member = member.float()[..., None]  # (pools, views, 1)
         steps = torch.zeros(pools, device=device)
         totals = torch.zeros((pools, len(REWARD_LEVELS)), device=device)
         results = torch.zeros((pools, 3), device=device)
         for shard in range(store.shards):
             small = store.shard(("reward", "done", "result"), shard)
             reward, ended, result = small["reward"], small["done"], small["result"]
-            steps.index_add_(0, self.learner_pool,
-                             torch.full_like(reward[0, :, 0, 0], reward.shape[0]))
-            totals.index_add_(0, self.learner_pool, reward.mean(2).sum(0))
+            steps += member[..., 0].sum(1) * reward.shape[0]
+            totals += (member * reward.mean(2).sum(0)).sum(1)
             per_view = torch.stack([(ended & (result > 0)).sum(0),
                                     (ended & (result == 0)).sum(0),
                                     (ended & (result < 0)).sum(0)], -1).float()
-            results.index_add_(0, self.learner_pool, per_view)
+            results += (member * per_view).sum(1)
         rate = (totals / steps.clamp_min(1)[:, None] / self.rollout.rules.tick_length).tolist()
         results = results.tolist()
         return {name: dict(reward_per_s=dict(zip(REWARD_LEVELS, rate[index])),
