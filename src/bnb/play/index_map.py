@@ -26,7 +26,7 @@ from .snapshot import Fields as FieldSnapshot
 
 TEXEL_METRES = 2.0  # at map scale 1 (arena radius 2600 m); the texel grows with the map
 TILE = 32  # texels per tile side
-TILES_PER_CALL = 64
+TILES_PER_CALL = 4  # about 1 to 3 ms per call at 5v5 and 50v50 on one thread
 
 
 @dataclasses.dataclass(frozen=True)

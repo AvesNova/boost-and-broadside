@@ -6,7 +6,9 @@ frame waits for the GPU to finish, as a swap without vsync would), and reports t
 time's percentiles and whether the sim kept its real-time tick rate. A second, shorter
 run times each pass with GPU timer queries (which stall the pipeline, so they are not
 part of the frame times) and the CPU stages (sim tick, controllers, snapshot, index
-tiles, interpolation, and each pass's own Python, which includes its uploads).
+tiles, interpolation, and each pass's own Python, which includes its uploads). Last, it
+rebuilds the map's index texture as a map change does, a few tiles per frame, and reports
+those frames.
 """
 
 import dataclasses
@@ -82,11 +84,23 @@ def measure(session: Session, target, seconds: float, profile_frames: int,
         for name, value in (session.timings | loop.timings).items():
             stages.setdefault(name, []).append(value * 1e3)
     session.renderer.timer = None
+
+    # A map change: the index texture is rebuilt a few tiles per frame.
+    session._new_map(whole=False)
+    rebuild, last = [], time.perf_counter()
+    while session.builder is not None:
+        now = time.perf_counter()
+        session.update(now - last)
+        session.draw(target)
+        context.finish()
+        rebuild.append(time.perf_counter() - now)
+        last = now
     return dict(frames=len(frame_times), frame_ms=_percentiles(frame_times),
                 tick_rate=tick_rate, real_time_rate=1.0 / loop.tick_length,
                 gpu_ms={k: float(np.mean(v)) for k, v in gpu.items()},
                 pass_cpu_ms={k: float(np.mean(v)) for k, v in cpu.items()},
                 stage_ms={k: float(np.mean(v)) for k, v in stages.items()},
+                map_change=dict(frames=len(rebuild), frame_ms=_percentiles(rebuild)),
                 fog_mask=list(session.renderer.fog.size) if session.renderer.fog.size else None,
                 index_grid=dataclasses.asdict(session.renderer.fields.grid))
 
