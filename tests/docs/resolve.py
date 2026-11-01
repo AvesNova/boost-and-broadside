@@ -1,10 +1,14 @@
 """Whether a code reference in the docs names something that exists."""
 
 import ast
+import builtins
 import dataclasses
 import importlib
+import importlib.util
+import re
 import sys
 
+from . import names
 from .pages import ROOT
 
 if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repository
@@ -74,3 +78,72 @@ def python_imports(code: str) -> list[tuple[int, str]]:
                        if alias.name.split(".")[0] in ("bnb", "bench"))
     return out
 
+
+
+SHORT = re.compile(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$")
+FILE_NAME = re.compile(r"^[\w.-]+\.(?:md|toml|yml|yaml|lock|py|json|jsonl|npz|txt)$")
+
+
+def file_name(span: str) -> str | None:
+    """None if a bare file name in backticks exists somewhere in the repository."""
+    if (ROOT / span).exists() or any(True for _ in ROOT.glob(f"[!.]*/**/{span}")):
+        return None
+    return f"no file named `{span}` in the repository; add {{.plain}} if it is generic"
+
+
+def short_name(span: str) -> str | None:
+    """None if a backticked name that is not a full `bnb.`/`bench.` name is fine: a lowercase
+    word the code uses, a class, function or constant that names exactly one definition
+    (`GameConfig`, `Rules.pools`), or a dotted name in an importable library (`torch.compile`).
+    Spans that are not identifier-shaped (shapes, expressions, commands) are not checked."""
+    parts = span.split(".")
+    if FILE_NAME.match(span):
+        return file_name(span)
+    if not SHORT.match(span) or parts[0] in ("bnb", "bench"):
+        return None
+    if len(parts) == 1 and (span[0].islower() or span[0] == "_" or len(span) == 1):
+        return None if names.is_word(span) else f"`{span}` is not a name in the code; " \
+            "write it without backticks, or add {.plain} if it is code but not Python"
+    if len(parts) == 1 and (span in dir(builtins) or names.is_string(span)):
+        return None
+    if len(parts) > 1 and parts[0] != "tests" and parts[0] not in _CLASS_LIKE() \
+            and importlib.util.find_spec(parts[0]) is not None:
+        return dotted_name(span)
+    found = names.matches(span)
+    if len(found) == 1:
+        return None
+    if not found:
+        return f"`{span}` names nothing in src/bnb, bench or tests"
+    return f"`{span}` is ambiguous; write it in full: {', '.join(found)}"
+
+
+def _CLASS_LIKE() -> set[str]:
+    """Names the code defines, which win over a library of the same name."""
+    return {part for name in names.index()[0] for part in name.split(".")}
+
+
+def command(arguments: str) -> str | None:
+    """None if `bnb <arguments>` uses only the options of `bnb.cli.Train`, with a known
+    preset and mode."""
+    import shlex
+
+    from bnb.cli import Train
+    from bnb.contracts.config import MODES
+    from bnb.game.modes.rules import PRESETS
+
+    options = {"--" + field.name.replace("_", "-") for field in dataclasses.fields(Train)}
+    values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}
+    tokens = shlex.split(arguments)
+    for index, token in enumerate(tokens):
+        if not token.startswith("-"):
+            continue
+        flag, _, value = token.partition("=")
+        if flag in ("--help", "-h"):
+            continue
+        if flag not in options:
+            return f"bnb has no option {flag}; its options are {sorted(options)}"
+        if not value and index + 1 < len(tokens):
+            value = tokens[index + 1]
+        if flag in values and value not in values[flag]:
+            return f"bnb {flag} {value!r} is not one of {sorted(values[flag])}"
+    return None

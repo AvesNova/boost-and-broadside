@@ -1,7 +1,9 @@
-"""The documentation pages as the checks read them: front matter, code spans, fenced blocks.
+"""The documentation pages as the checks read them: front matter, code spans, fenced blocks,
+command lines and links.
 
-Every location is a (page, line) pair, with the page relative to the repository root, so a
-failure names where to look.
+The pages are the site's (docs/, without the internal design records) and README.md. Every
+location is a (page, line) pair, with the page relative to the repository root, so a failure
+names where to look.
 """
 
 import dataclasses
@@ -11,14 +13,21 @@ import re
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 INTERNAL = DOCS / "rewrite"  # the design records: not part of the site, not checked
+README = ROOT / "README.md"
 RUNNABLE = "<!-- runnable -->"
 NOT_RUNNABLE = re.compile(r"^<!-- not-runnable: .+ -->$")
-# Fences in these languages must say whether they run (see contributing/writing-docs.md).
+# Fences in these languages, or whose first word is a command below, must say whether they
+# run (see contributing/writing-docs.md). Every fence must name its language.
 COMMAND_LANGUAGES = ("bash", "sh", "shell", "console")
-CHECKED_LANGUAGES = ("python", *COMMAND_LANGUAGES)
+CHECKED_LANGUAGES = ("python", "text", *COMMAND_LANGUAGES)
+COMMAND_WORDS = ("uv", "bnb", "python")
+# After a code span: {.plain} is not code, so not checked; {.nolink} is a full name the
+# reference has no entry for (a tuple-assigned constant), so checked but not linked.
 
 FENCE = re.compile(r"^(?P<indent>\s*)(?P<fence>`{3,}|~{3,})\s*(?P<language>[\w+-]*)")
-CODE_SPAN = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
+CODE_SPAN = re.compile(r"(?<!`)`([^`\n]+)`(?!`)(?:\{\.(plain|nolink)\})?")
+LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+COMMAND = re.compile(r"(?:^|[\s`(])bnb(?=[ \t]|$)((?:[ \t]+[^\s#`]+)*)")
 AUTOREF = re.compile(r"\]\[((?:bnb|bench)(?:\.\w+)+)\]")
 DIRECTIVE = re.compile(r"^:::\s+((?:bnb|bench)(?:\.\w+)*)\s*$")
 DOTTED = re.compile(r"^(?:bnb|bench)(?:\.\w+)+$")
@@ -38,6 +47,11 @@ class Fence:
         return self.marker == RUNNABLE
 
     @property
+    def needs_marker(self) -> bool:
+        words = self.code.split()
+        return self.language in CHECKED_LANGUAGES or bool(words and words[0] in COMMAND_WORDS)
+
+    @property
     def location(self) -> str:
         return f"{self.page}:{self.line}"
 
@@ -49,6 +63,11 @@ class Page:
     @property
     def name(self) -> str:
         return str(self.path.relative_to(ROOT))
+
+    @property
+    def on_site(self) -> bool:
+        """Built by MkDocs (README.md is read on GitHub, without the hook)."""
+        return DOCS in self.path.parents
 
     @property
     def lines(self) -> list[str]:
@@ -127,18 +146,50 @@ class Page:
             if directive:
                 out.append((number, directive.group(1)))
             out.extend((number, name) for name in AUTOREF.findall(line))
-            for span in CODE_SPAN.findall(line):
+            for span, mark in CODE_SPAN.findall(line):
                 span = span.strip()
-                if DOTTED.match(span) or REPOSITORY_PATH.match(span):
+                if mark != "plain" and (DOTTED.match(span) or REPOSITORY_PATH.match(span)):
                     out.append((number, span))
         return out
 
+    def code_spans(self) -> list[tuple[int, str]]:
+        """(line, span) of every code span outside fenced blocks not marked `{.plain}`."""
+        return [(number, span.strip()) for number, line in self.prose()
+                for span, mark in CODE_SPAN.findall(line) if mark != "plain"]
+
+    def commands(self) -> list[tuple[int, str]]:
+        """(line, arguments) of every `bnb` command, in fenced blocks (with backslash
+        continuations joined) and in code spans. Comments are dropped."""
+        out = []
+        for fence in self.fences():
+            lines = fence.code.splitlines()
+            index = 0
+            while index < len(lines):
+                start, text = index, lines[index]
+                while text.rstrip().endswith("\\") and index + 1 < len(lines):
+                    index += 1
+                    text = text.rstrip()[:-1] + " " + lines[index]
+                out.extend((fence.line + 1 + start, match) for match in
+                           COMMAND.findall(text.split(" #")[0]) if not fence.language == "python")
+                index += 1
+        for number, span in self.code_spans():
+            out.extend((number, match) for match in COMMAND.findall(span))
+        return out
+
+    def links(self) -> list[tuple[int, str]]:
+        """(line, target) of every relative Markdown link outside fenced blocks."""
+        return [(number, target) for number, line in self.prose()
+                for target in LINK.findall(line)
+                if not re.match(r"^[a-z]+:", target) and not target.startswith("#")]
+
 
 def pages() -> list[Page]:
-    """Every Markdown page of the site (docs/, without the internal design records)."""
+    """Every Markdown page of the site (docs/, without the internal design records), then
+    README.md."""
     return [Page(path) for path in sorted(DOCS.rglob("*.md"))
-            if INTERNAL not in path.parents]
+            if INTERNAL not in path.parents] + [Page(README)]
 
 
-def fences(languages: tuple[str, ...] = CHECKED_LANGUAGES) -> list[Fence]:
-    return [fence for page in pages() for fence in page.fences() if fence.language in languages]
+def fences() -> list[Fence]:
+    """Every fenced block of every page."""
+    return [fence for page in pages() for fence in page.fences()]
