@@ -1,10 +1,11 @@
 """The combat handles (ship-card spec 3) and the card's weapons, shields and armour, in closed
 form both ways.
 
-Times are stated in seconds and become whole ticks at the rules' tick, or the conversion
-fails with the reason (spec 5). The gun's range is the distance a bullet fired at cruise
-along the flight path travels in its life: s = ln(1 + k_b w0 t) / k_b at n = 1, with
-w0 = cruise + muzzle speed, solved for the drag k_b by bisection.
+Times are stated in seconds, and the fire rate in shots per second; each must be a whole
+number of ticks at the rules' tick, or the conversion fails with the reason (spec 5). The
+gun's range is the distance a bullet fired at cruise along the flight path travels in its
+life: s = ln(1 + k_b w0 t) / k_b at n = 1, with w0 = cruise + muzzle speed, solved for the
+drag k_b by bisection.
 """
 
 import torch
@@ -12,7 +13,7 @@ import torch
 from bnb.contracts import ticks_of
 
 from ..rules import Rules
-from ..ship_types import ShipTypes
+from ..ship_types import ShipTypes, ticks_between_shots
 from .errors import Infeasible
 
 DRAG_BISECTIONS = 200
@@ -63,10 +64,14 @@ def combat_card(rules: Rules, handles, cruise_speed: torch.Tensor) -> dict[str, 
     if (handles.shots_per_store < 1.0).any():
         raise Infeasible("a full store must pay for at least one shot")
     whole_ticks(handles.shield_recharge_delay, rules, "shield recharge delay")
+    try:
+        ticks_between_shots(handles.fire_rate, rules.tick_length)
+    except ValueError as error:
+        raise Infeasible(str(error)) from error
     drag = range_drag(rules, handles.gun_range, cruise_speed + handles.muzzle_speed)
     return dict(
         hit_damage=handles.hit_damage,
-        ticks_between_shots=whole_ticks(handles.fire_interval, rules, "fire interval"),
+        fire_rate=handles.fire_rate,
         muzzle_speed=handles.muzzle_speed,
         bullet_spread_scale=handles.bullet_spread / rules.bullet_spread,
         bullet_drag_scale=drag / rules.bullet_drag,
@@ -85,7 +90,7 @@ def combat_handles(rules: Rules, types: ShipTypes, cruise_speed: torch.Tensor) -
     drag = rules.bullet_drag * types.bullet_drag_scale
     return dict(
         hit_damage=types.hit_damage,
-        fire_interval=types.ticks_between_shots.to(types.hit_damage.dtype) * rules.tick_length,
+        fire_rate=types.fire_rate,
         muzzle_speed=types.muzzle_speed,
         bullet_spread=rules.bullet_spread * types.bullet_spread_scale,
         gun_range=gun_range(rules, drag, cruise_speed + types.muzzle_speed),

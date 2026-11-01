@@ -18,7 +18,7 @@ from ..modes import phase as modes
 from ..modes.rules import FRONTLINE, ModeRules
 from ..modes.spawns import placement
 from ..rules import Rules
-from ..ship_types import ShipTypes, per_ship
+from ..ship_types import ShipTypes, per_ship, ticks_between_shots
 from ..state import State, Sweep, apply, blank, replace, where
 from .bullets import fire, move_bullets
 from .combat import apply_damage, boundary_damage, hits
@@ -63,7 +63,9 @@ def reset(rules: Rules, types: ShipTypes, uniforms: torch.Tensor,
           fogged: torch.Tensor | None = None) -> State:
     """A fresh state from (B, U) tick uniforms: new maps and modes, every ship spawned,
     tick 0. fogged (B,) bool: which environments hide what their teams cannot see (default
-    all); it stays fixed through the episode resets that follow."""
+    all); it stays fixed through the episode resets that follow. Raises ValueError for a
+    card whose fire rate is not a whole number of ticks at the rules' tick."""
+    ticks_between_shots(types.fire_rate, rules.tick_length)  # refuses a fire rate the tick cannot keep
     B, device = uniforms.shape[0], uniforms.device
     state = blank(rules, B, device)
     arena = environment(rules, B, device)

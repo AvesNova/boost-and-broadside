@@ -66,6 +66,10 @@ def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: 
     def slot_value(value):
         return value[..., None].expand(bullets.moves_left.shape)
 
+    # The tick rate over the fire rate, whole ticks for any card reset accepted
+    # (ship_types.ticks_between_shots, in exact fractions): rounding removes only the float error.
+    rate = per_ship(types.fire_rate, ships.ship_type)
+    interval = torch.round(1.0 / (rules.tick_length * rate)).to(torch.int32)
     new = apply(slot_value, Bullets(
         x=ships.x, y=ships.y, direction_x=velocity_x / bullet_speed,
         direction_y=velocity_y / bullet_speed, proper_speed=bullet_speed,
@@ -77,8 +81,7 @@ def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: 
     bullets = where(fired[..., None] & (slot == ships.next_slot[..., None]), new, bullets)
     ships = replace(
         ships, energy=torch.where(fired, ships.energy - cost, ships.energy),
-        gun_cooldown=torch.where(fired, per_ship(types.ticks_between_shots, ships.ship_type),
-                                 ships.gun_cooldown),
+        gun_cooldown=torch.where(fired, interval, ships.gun_cooldown),
         next_slot=torch.where(fired, (ships.next_slot + 1) % rules.bullet_slots, ships.next_slot),
         fired=fired)
     return ships, bullets

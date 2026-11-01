@@ -33,7 +33,7 @@ class Handles:
     vision_range: torch.Tensor  # m
     zero_lift_drag: torch.Tensor  # 1/m, held by the solver
     hit_damage: torch.Tensor
-    fire_interval: torch.Tensor  # s
+    fire_rate: torch.Tensor  # shots/s
     muzzle_speed: torch.Tensor  # m/s, proper
     bullet_spread: torch.Tensor  # m/s per axis, proper
     gun_range: torch.Tensor  # m, a bullet fired at cruise along the flight path, in its life
@@ -66,7 +66,7 @@ UNITS = dict(
     sustained_turn_rate=("deg/s", DEGREES), bleed_rate=("W/kg", 1.0),
     nose_reversal_time=("s", 1.0), dive_acceleration=("m/s^2", 1.0),
     zoom_acceleration=("m/s^2", 1.0), stall_angle=("deg", DEGREES), vision_range=("m", 1.0),
-    zero_lift_drag=("1/m", 1.0), hit_damage=("", 1.0), fire_interval=("s", 1.0),
+    zero_lift_drag=("1/m", 1.0), hit_damage=("", 1.0), fire_rate=("Hz", 1.0),
     muzzle_speed=("m/s", 1.0), bullet_spread=("m/s", 1.0), gun_range=("m", 1.0),
     shots_per_store=("", 1.0), max_shield=("", 1.0), shield_recharge_rate=("1/s", 1.0),
     shield_recharge_delay=("s", 1.0), head_on_fraction=("", 1.0), hit_radius=("m", 1.0),

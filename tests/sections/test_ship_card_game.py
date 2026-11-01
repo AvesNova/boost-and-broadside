@@ -7,17 +7,16 @@ import math
 
 import pytest
 import torch
+from ship_card_cases import seconds_between_shots
 
 from bnb.contracts import Action, GameConfig
 from bnb.contracts.obs import SHIP
 from bnb.game import api
-from bnb.game.handling.errors import Infeasible
-from bnb.game.handling.weapons import whole_ticks
 from bnb.game.physics import flight
 from bnb.game.physics.bullets import fire, move_bullets
 from bnb.game.physics.combat import apply_damage, hits
 from bnb.game.rules import POWER_MODES, STICK_LEVELS, FlightConstants
-from bnb.game.ship_types import SCALED, ship_types
+from bnb.game.ship_types import SCALED, ship_types, ticks_between_shots
 from bnb.game.state import Bullets, Fields, Ships, Sweep, replace
 
 RATES = (25, 30, 60)
@@ -199,14 +198,36 @@ def test_bullet_life_is_time_native(rate):
 
 
 def test_weapon_cadence_is_validated_per_rate():
-    """1/15 s is 2 ticks at 30 Hz and 4 at 60 Hz, and refused at 25 Hz with the reason."""
-    interval = torch.tensor([1 / 15, 0.1], dtype=torch.float64)
+    """15 Hz is 2 ticks at 30 Hz and 4 at 60 Hz, and refused at 25 Hz naming both rates; the
+    game's reset refuses it too."""
+    fire_rate = torch.tensor([15.0, 10.0])
     for rate, ticks in ((30, [2, 3]), (60, [4, 6])):
-        rules = api.rules_of(GameConfig(1, 1, 1000.0), tick_length=1.0 / rate)
-        assert whole_ticks(interval, rules, "fire interval").tolist() == ticks
+        assert ticks_between_shots(fire_rate, 1.0 / rate).tolist() == ticks
+    with pytest.raises(ValueError, match="fire rate of 15 Hz is not a whole number of ticks at "
+                                         "25 Hz"):
+        ticks_between_shots(fire_rate, 1.0 / 25)
     rules = api.rules_of(GameConfig(1, 1, 1000.0), tick_length=1.0 / 25)
-    with pytest.raises(Infeasible, match="fire interval.*not a whole number.*25 Hz"):
-        whole_ticks(interval, rules, "fire interval")
+    with pytest.raises(ValueError, match="15 Hz.*25 Hz"):
+        api.reset(rules, ship_types(), api.uniforms(rules, 1))
+
+
+def test_a_fire_rate_is_read_as_a_small_fraction():
+    """A rate stored as a float is read as the nearest fraction with a small denominator:
+    30/7 Hz is 7 ticks at 30 Hz; 4.3 Hz is not whole."""
+    assert ticks_between_shots(torch.tensor([30.0 / 7.0]), 1.0 / 30).tolist() == [7]
+    with pytest.raises(ValueError, match="4.3 Hz"):
+        ticks_between_shots(torch.tensor([4.3], dtype=torch.float64), 1.0 / 30)
+
+
+@pytest.mark.parametrize("rate", RATES)
+def test_the_time_between_shots_is_the_fire_rates_at_every_tick_rate(rate):
+    """The game's fire shoots every 1 / fire rate seconds at 25, 30 and 60 Hz (5 and 2.5 Hz
+    are whole at each), and so does the default card at 30 and 60 Hz."""
+    rules = api.rules_of(GameConfig(1, 1, 1000.0), tick_length=1.0 / rate)
+    cards = [ship_types(fire_rate=(5.0, 2.5))] + ([ship_types()] if rate != 25 else [])
+    for types in cards:
+        seconds = seconds_between_shots(rules, types)[0]
+        assert torch.allclose(seconds, 1.0 / types.fire_rate.double(), rtol=1e-9), seconds
 
 
 @pytest.mark.parametrize("rate", RATES)
@@ -233,3 +254,4 @@ def test_energy_is_conserved_at_every_rate(rate, exponent):
     keep = (ships.energy > 300) & (ships.energy < types.max_energy.min() - 300)
     assert keep.sum() > N // 4
     assert ((end - start).abs() / start)[keep].max() < 1e-4
+

@@ -202,12 +202,11 @@ def shown(rules: Rules, types: ShipTypes) -> Shown:
     hard = instant(rules, types, speeds, 1.0)
     peak, at = hard.turn_rate.max(-1)
     radius = (hard.speed / hard.turn_rate).amin(-1)
-    interval = types.ticks_between_shots.to(corner.dtype) * rules.tick_length
     return Shown(corner_speed=corner, peak_turn_rate=peak,
                  peak_turn_speed=hard.speed.gather(-1, at[..., None])[..., 0],
                  minimum_radius=radius, datum=settled(rules, types, STICKS),
                  top_speed=top_speed(rules, types), endurance=endurance(rules, types),
-                 damage_per_second=types.hit_damage / interval)
+                 damage_per_second=types.hit_damage * types.fire_rate)
 
 
 # ------------------------------------------------------------------ similarity (spec 6)

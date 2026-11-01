@@ -108,10 +108,10 @@ def test_handles_agree_across_tick_rates():
 
 
 def test_unsupported_weapon_cadence_is_refused():
-    """The default fire interval (1/15 s) is not whole at 25 Hz: the solve refuses with the
+    """The default fire rate (15 Hz) is not whole at 25 Hz: the solve refuses with the
     reason before flying."""
     cases = cases_module.cases()
-    with pytest.raises(Infeasible, match="fire interval.*25 Hz"):
+    with pytest.raises(Infeasible, match="fire rate of 15 Hz.*25 Hz"):
         solve(cases.default, cases_module.rules(25))
 
 
@@ -357,7 +357,7 @@ def test_chart_tool_runs_and_its_shown_quantities_hold(tmp_path, capsys):
         assert math.isclose(_printed(text, "top speed (m/s)")[t], top, rel_tol=1e-3)
         # Firing endurance coasting: fire at every chance until a shot is refused.
         ship, cost = _one_ship(cruise, full, t), float(DEFAULT.bullet_energy_cost[t])
-        interval, wait, tick = int(DEFAULT.ticks_between_shots[t]), 0, 0
+        interval, wait, tick = round(1.0 / (pilot.tick * float(DEFAULT.fire_rate[t]))), 0, 0
         while True:
             if wait == 0:
                 if float(ship.energy) < cost:

@@ -110,7 +110,7 @@ def check(rules: Rules, handles: Handles) -> None:
     constants = rules.flight
     positive = ("stall_speed", "cruise_speed", "climb_time", "ceiling", "sustained_turn_rate",
                 "nose_reversal_time", "stall_angle", "vision_range", "zero_lift_drag",
-                "fire_interval", "muzzle_speed", "gun_range", "shots_per_store", "max_shield",
+                "fire_rate", "muzzle_speed", "gun_range", "shots_per_store", "max_shield",
                 "hit_radius")
     for name in positive:
         if not (getattr(handles, name) > 0.0).all():
@@ -323,10 +323,9 @@ def solve(handles: Handles, rules: Rules, iterations: int = ITERATIONS,
         step = step * (STEP_LIMIT / step.abs().amax(-1, keepdim=True).clamp_min(STEP_LIMIT))
         x = best_x + step
         x = torch.cat([x[..., :4], x[..., 4:5].clamp(*bounds), x[..., 5:]], -1)  # the exponent
-    best_error = best_base.abs()
-    best_worst = best_error.amax(-1)
     jacobian = best_jacobian
-    error, worst = best_error, best_worst
+    error = best_base.abs()
+    worst = error.amax(-1)
     condition, redundant = _conditioning(jacobian)
     converged = worst < ACCEPTANCE
     failures = []
@@ -344,8 +343,7 @@ def solve(handles: Handles, rules: Rules, iterations: int = ITERATIONS,
     if failures and strict:
         raise Infeasible("; ".join(failures))
     final = _card(rules, handles, best_x.exp(), combat)
-    final = ShipTypes(**{name: value if name == "ticks_between_shots" else value.float()
-                         for name, value in vars(final).items()})
+    final = ShipTypes(**{name: value.float() for name, value in vars(final).items()})
     if one_card:
         final = ShipTypes(**{name: value[0] for name, value in vars(final).items()})
         error, condition, converged = error[0], condition[0], converged[0]

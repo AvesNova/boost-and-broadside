@@ -9,8 +9,9 @@ from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.game.handling import FLIGHT, NAMES, Handles, measure, solve
 from bnb.game.handling.handles import stack
-from bnb.game.handling.manoeuvres import cruise_speed
-from bnb.game.ship_types import DEFAULTS
+from bnb.game.handling.manoeuvres import batched, cruise_speed, ships, type_axis
+from bnb.game.physics.bullets import fire
+from bnb.game.state import Bullets, replace
 
 VARIED = 8  # cards, each with every type
 PERTURBATION = 0.05
@@ -56,7 +57,7 @@ def varied_cards(seed: int = 20261101) -> api.ShipTypes:
     delay = torch.randint(1, 4, (VARIED, 2), generator=generator).double() * 0.5
     values["shield_recharge_delay_scale"] = delay
     values["spawn_energy"] = 0.4 * values["max_energy"]
-    values["ticks_between_shots"] = torch.tensor(DEFAULTS["ticks_between_shots"]).expand(VARIED, 2)
+    values["fire_rate"] = torch.full((VARIED, 2), 5.0, dtype=torch.float64)  # whole at 25 Hz
     # The cruise fix: the engine's power below the knee is the full store's plus the charging
     # power at cruise (which the full-store power alone sets), so each card is itself a
     # solution of its handles.
@@ -107,8 +108,31 @@ class Cases:
 
 def double(types: api.ShipTypes) -> api.ShipTypes:
     """A float32 card as float64 (its values exactly), for measuring."""
-    return api.ShipTypes(**{name: value if value.dtype == torch.int32 else value.double()
-                            for name, value in vars(types).items()})
+    return api.ShipTypes(**{name: value.double() for name, value in vars(types).items()})
+
+
+def seconds_between_shots(rules, types: api.ShipTypes) -> torch.Tensor:
+    """(B, num_types) s between a type's first two shots, firing at every chance
+    through the game's `fire` (and the step's cooldown count), with a store that never runs
+    dry."""
+    types = batched(types)
+    ship_type = type_axis(types)
+    zeros = torch.zeros(ship_type.shape, dtype=types.max_energy.dtype)
+    state = ships(zeros + 100.0, zeros + 1e12, zeros, zeros, ship_type)
+    empty = torch.zeros(ship_type.shape + (rules.bullet_slots,), dtype=zeros.dtype)
+    bullets = Bullets(x=empty, y=empty, direction_x=empty, direction_y=empty, proper_speed=empty,
+                      log_refractive_index=empty, log_index_gradient_x=empty,
+                      log_index_gradient_y=empty, moves_left=empty.int())
+    shoot = torch.ones_like(zeros, dtype=torch.bool)
+    shots = []
+    for _ in range(round(2.0 / rules.tick_length)):  # 2 s: two shots at 1 Hz or faster
+        state, bullets = fire(rules, types, state, bullets, shoot, torch.zeros(zeros.shape + (2,)))
+        shots.append(state.fired)
+        state = replace(state, gun_cooldown=(state.gun_cooldown - 1).clamp_min(0))
+    fired = torch.stack(shots, -1)  # (B, T, ticks)
+    assert fired[..., 0].all()  # the first shot is at tick 0
+    second = (fired.cumsum(-1) < 2).sum(-1)  # the second shot's tick
+    return second.double() * rules.tick_length
 
 
 @functools.cache

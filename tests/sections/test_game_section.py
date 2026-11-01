@@ -295,10 +295,13 @@ def test_defaults_match_the_spec_table():
             want = override.get("flight", {}).get(key, override.get(key))
             if want is None:
                 want = spec["flight"].get(key, preset.get(key))
+            if field == "ticks_between_shots":  # the card holds the rate: 1 / interval
+                field, want = "fire_rate", 1.0 / (want * rules.tick_length)
             assert math.isclose(float(getattr(TYPES, field)[t]), want, rel_tol=1e-6), (name, key)
     # The ship card's additions: the bleed exponent (2) and per-type scales (1) of values
-    # that are shared in the spec's table.
-    assert set(CARD.values()) == set(DEFAULTS) - {"bleed_exponent", *SCALED}
+    # that are shared in the spec's table; the fire rate replaces the ticks between shots.
+    assert set(CARD.values()) - {"ticks_between_shots"} == (
+        set(DEFAULTS) - {"bleed_exponent", "fire_rate", *SCALED})
     assert TYPES.bleed_exponent.tolist() == [2.0, 2.0]
     assert all(getattr(TYPES, name).tolist() == [1.0, 1.0] for name in SCALED)
 
@@ -324,7 +327,7 @@ def test_ship_card_is_data_per_environment():
                          fullgraph=True)
     step(state, TYPES)
     graphs = torch._dynamo.utils.counters["stats"]["unique_graphs"]
-    step(state, api.ship_types(hit_damage=(20.0, 30.0), ticks_between_shots=(1, 4)))
+    step(state, api.ship_types(hit_damage=(20.0, 30.0), fire_rate=(30.0, 7.5)))
     assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == graphs
 
 
