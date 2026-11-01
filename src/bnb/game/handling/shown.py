@@ -16,6 +16,7 @@ from ..ship_types import ShipTypes, per_ship
 from ..state import Bullets, replace
 from .manoeuvres import (
     TURNING_STORE,
+    aitken,
     batched,
     cruise_speed,
     derivative_weights,
@@ -29,7 +30,7 @@ from .weapons import bullet_life
 
 STICKS = tuple(level for level in STICK_LEVELS if level > 0.0)  # 0.4, 0.75, 1
 SUSTAINED_CURVE = tuple(i / 12 for i in range(1, 13))  # stick levels drawn on the doghouse
-SETTLE_TIME = 20.0  # s
+SETTLE_TIME = 40.0  # s
 ENDURANCE_LIMIT = 120.0  # s: firing longer than this counts as unlimited
 TOP_SPEED_LIMIT = 60.0  # s
 SPEED_GRID = 160  # speeds on the charts' curves
@@ -43,9 +44,10 @@ def _grid(types: ShipTypes, *values: torch.Tensor):
 
 
 def trajectory(rules: Rules, types: ShipTypes, speed, energy, angle, nose_rate, stick, power,
-               ticks: int) -> dict[str, torch.Tensor]:
+               ticks: int, hold_store: bool = False) -> dict[str, torch.Tensor]:
     """Fly (B, T, G) starts for `ticks` ticks: (ticks + 1, B, T, G) speed, energy, angle of
-    attack and the flight path's angle (from 0)."""
+    attack and the flight path's angle (from 0). hold_store: the store is reset to its start
+    after every tick."""
     B, T, G = speed.shape
     ship_type, airframe, (speed, energy, angle, nose_rate, stick, power) = _grid(
         types, speed, energy, angle, nose_rate, stick, power)
@@ -56,7 +58,7 @@ def trajectory(rules: Rules, types: ShipTypes, speed, energy, angle, nose_rate, 
     for _ in range(ticks):
         new = flight_tick(rules.flight, airframe, rules.tick_length, state, stick, power, fields)
         path = path + path_turned(state, new)
-        state = new
+        state = replace(new, energy=energy) if hold_store else new
         for key, value in (("speed", new.proper_speed), ("energy", new.energy),
                            ("angle", new.angle_of_attack), ("path", path)):
             history[key].append(value)
@@ -104,8 +106,9 @@ class Settled(NamedTuple):
 
 
 def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settled:
-    """The coast datum at each stick level: coasting from cruise below the engine knee until
-    speed, angle of attack and turn rate settle (the last second's means)."""
+    """The coast datum at each stick level: coasting from cruise with the store held below
+    the engine knee until speed, angle of attack and turn rate settle (the Aitken limit of
+    the last three seconds' means)."""
     B, T = types.max_energy.shape
     S = len(sticks)
     stick = torch.tensor(sticks, dtype=types.max_energy.dtype).expand(B, T, S)
@@ -115,9 +118,16 @@ def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settle
     last = round(1.0 / rules.tick_length)
     energy = TURNING_STORE * types.max_energy[..., None].expand(B, T, S)
     flown = trajectory(rules, types, cruise.expand(B, T, S), energy, zeros, zeros, stick, zeros,
-                       ticks)
-    rate = (flown["path"][-1] - flown["path"][-1 - last]) / (last * rules.tick_length)
-    return Settled(stick, flown["speed"][-last:].mean(0), rate, flown["angle"][-last:].mean(0))
+                       ticks, hold_store=True)
+    ends = [ticks - k * last for k in (2, 1, 0)]  # three one-second windows
+
+    def settled_value(values):
+        return aitken(*(values[end - last + 1:end + 1].mean(0) for end in ends))
+
+    rates = [(flown["path"][end] - flown["path"][end - last]) / (last * rules.tick_length)
+             for end in ends]
+    return Settled(stick, settled_value(flown["speed"]), aitken(*rates),
+                   settled_value(flown["angle"]))
 
 
 def top_speed(rules: Rules, types: ShipTypes) -> torch.Tensor:

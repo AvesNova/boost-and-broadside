@@ -17,7 +17,7 @@ from bnb.game.handling import FLIGHT, FLOWN, NAMES, Handles, Infeasible, measure
 from bnb.game.handling.manoeuvres import batched, cruise_speed
 from bnb.game.handling.solver import ERROR_FLOOR
 from bnb.game.physics.flight import airframe_of, flight_tick
-from bnb.game.state import Fields, Ships
+from bnb.game.state import Fields, Ships, replace
 
 ACCEPTANCE = 0.005
 pytestmark = pytest.mark.slow
@@ -298,10 +298,11 @@ def test_each_flown_handle_matches_an_independent_flight(ship_type):
     bleed = start_rate(settled, stick=1.0, specific=True)
     assert math.isclose(measured["bleed_rate"], bleed, rel_tol=ACCEPTANCE)
 
-    # Sustained turn: 60 s at full stick from cruise; the path's rate over the last 10 s.
+    # Sustained turn: 60 s at full stick from cruise, the store held below the knee; the
+    # path's rate over the last 10 s.
     ship, path, samples = _one_ship(cruise, turning, ship_type), 0.0, []
     for tick in range(1800):
-        after = pilot.step(ship, 1.0)
+        after = replace(pilot.step(ship, 1.0), energy=ship.energy)
         turned = math.remainder(_heading(after) - _heading(ship), 2.0 * math.pi)
         path += turned - (float(after.angle_of_attack) - float(ship.angle_of_attack))
         ship = after
@@ -373,14 +374,15 @@ def test_chart_tool_runs_and_its_shown_quantities_hold(tmp_path, capsys):
             ship, wait, tick = pilot.step(ship), max(wait - 1, 0), tick + 1
         endurance = _printed(text, "firing endurance, coasting (s)")[t]
         assert math.isclose(endurance, tick * pilot.tick, rel_tol=1e-3)
-        # The coast datum at stick 0.4: settled speed, turn rate and gun offset.
+        # The coast datum at stick 0.4 (the store held below the knee): settled speed, turn
+        # rate and gun offset after 120 s.
         ship, path, last = _one_ship(cruise, 0.25 * full, t), 0.0, []
-        for k in range(900):
-            after = pilot.step(ship, 0.4)
+        for k in range(3600):
+            after = replace(pilot.step(ship, 0.4), energy=ship.energy)
             path += (math.remainder(_heading(after) - _heading(ship), 2.0 * math.pi)
                      - (float(after.angle_of_attack) - float(ship.angle_of_attack)))
             ship = after
-            if k + 1 in (870, 900):
+            if k + 1 in (3570, 3600):
                 last.append(path)
         rate = math.degrees((last[1] - last[0]) / (30 * pilot.tick))
         assert math.isclose(_printed(text, "stick 0.4: coast datum turn (deg/s)")[t], rate,

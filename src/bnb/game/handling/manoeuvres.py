@@ -3,7 +3,7 @@
 Every manoeuvre of every type of every card flies at once: one environment per card and one
 ship per (manoeuvre, type), at the standard field index (n = 1, no fields) and in the card's
 dtype (float64 for the solver). Rates at the start of a manoeuvre are the slope at t = 0 of
-a cubic fitted over its first FIT_WINDOW. The climb's time interpolates linearly between
+a quartic fitted over its first FIT_WINDOW. The climb's time interpolates linearly between
 ticks; the nose reversal's, which is only a few ticks long, through a cubic on the four
 ticks around the crossing (linear interpolation alone leaves up to 0.5% between 25 and 60
 Hz). Both are continuous in the parameters and comparable across tick rates.
@@ -25,10 +25,10 @@ from ..physics.flight import (
 )
 from ..rules import Rules
 from ..ship_types import ShipTypes
-from ..state import Fields, Ships
+from ..state import Fields, Ships, replace
 
 FIT_WINDOW = 0.2  # s
-FIT_DEGREE = 3
+FIT_DEGREE = 4  # a cubic's slope is 0.9% off the bleed rate's (its curvature)
 SETTLE_TIME = 20.0  # s, a sustained turn's settling time
 REVERSAL_LIMIT = 2.0  # s, the longest nose reversal measured
 CLIMB_LIMIT = 900.0  # s, the longest climb measured
@@ -206,7 +206,7 @@ class Flown(NamedTuple):
 
 
 # The manoeuvres, in the order of the ship axis (each a block of num_types ships).
-CLIMB, DIVE, ZOOM, LOW_SPEED, SUSTAINED, REVERSAL = range(6)
+CLIMB, DIVE, ZOOM, LOW_SPEED, SUSTAINED, BLEED, REVERSAL = range(7)
 
 
 def fly(rules: Rules, types: ShipTypes) -> Flown:
@@ -214,8 +214,8 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     handles off it.
 
     The cruise is found first (cruise_speed at a full store), since the climb, the dive and
-    the zoom start from it. The sustained turn starts at corner speed with the nose at its
-    steady angle of attack, so its first FIT_WINDOW is also the bleed manoeuvre.
+    the zoom start from it. The sustained turn and the bleed start at corner speed with the
+    nose at its steady angle of attack; the sustained turn's store is held below the knee.
     """
     types = batched(types)
     constants, h = rules.flight, rules.tick_length
@@ -232,15 +232,19 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     zeros, ones = torch.zeros_like(full), torch.ones_like(full)
 
     def blocks(*values):
-        return torch.cat(values, -1)  # (B, T) per manoeuvre -> (B, 6 T)
+        return torch.cat(values, -1)  # (B, T) per manoeuvre -> (B, 7 T)
 
-    speed = blocks(cruise, cruise, cruise, stall, corner, corner)
-    energy = blocks(zeros, DIVE_STORE * full, DIVE_STORE * full, zeros, turning, turning)
-    angle = blocks(zeros, zeros, zeros, zeros, steady.angle, -steady.angle)
-    nose_rate = blocks(zeros, zeros, zeros, zeros, steady.path_rate, -steady.path_rate)
-    stick = blocks(zeros, zeros, zeros, zeros, ones, ones)
-    power = blocks(zeros, -ones, ones, zeros, zeros, zeros)
-    ship_type = columns.repeat(1, 6)
+    speed = blocks(cruise, cruise, cruise, stall, corner, corner, corner)
+    energy = blocks(zeros, DIVE_STORE * full, DIVE_STORE * full, zeros, turning, turning, turning)
+    angle = blocks(zeros, zeros, zeros, zeros, steady.angle, steady.angle, -steady.angle)
+    nose_rate = blocks(zeros, zeros, zeros, zeros, steady.path_rate, steady.path_rate,
+                       -steady.path_rate)
+    stick = blocks(zeros, zeros, zeros, zeros, ones, ones, ones)
+    power = blocks(zeros, -ones, ones, zeros, zeros, zeros, zeros)
+    ship_type = columns.repeat(1, 7)
+    # The sustained turn's store is held, so it stays below the knee however long it flies.
+    held = blocks(*(torch.full_like(full, block == SUSTAINED, dtype=torch.bool)
+                    for block in range(7)))
     state = ships(speed, energy, angle, nose_rate, ship_type)
     flight = airframe_of(types, ship_type)
     fields = empty_map(speed)
@@ -267,7 +271,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
         if tick % check == 0:  # a climb whose store stopped rising never finishes
             pending = pending & (after > checkpoint + 1e-6 * full)
             checkpoint = after
-        state = new
+        state = replace(new, energy=torch.where(held, energy, new.energy))
         if tick <= short:
             for key, value in (("speed", new.proper_speed), ("energy", new.energy),
                                ("angle", new.angle_of_attack)):
@@ -289,7 +293,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     return Flown(cruise_speed=cruise, climb_time=climb_time,
                  low_speed_acceleration=start_rate(block(series["speed"], LOW_SPEED)),
                  sustained_turn_rate=block(aitken(*rates), SUSTAINED),
-                 bleed_rate=start_rate(block(specific, SUSTAINED)),
+                 bleed_rate=start_rate(block(specific, BLEED)),
                  nose_reversal_time=reversal,
                  dive_acceleration=start_rate(block(series["speed"], DIVE)),
                  zoom_acceleration=start_rate(block(series["speed"], ZOOM)))
