@@ -336,6 +336,9 @@ average above 30 from other agents), at commit `845f2db5`{.plain}.
 
 ### The bleed exponent's cost
 
+**Provisional:** every timing below was taken on the shared laptop while other agents ran
+(CPU load average 20-45, the GPU shared). The coordinator re-measures at verification.
+
 - **The flight tick alone** (compiled, RTX 4070 laptop, bench lock, the three bench cells'
   sizes, the power against the old induced drag alternated 40 times in one process, best
   of 40): 90.3 against 89.8 us, 240.0 against 239.0 us, 208.4 against 209.2 us. Not
@@ -359,6 +362,19 @@ average above 30 from other agents), at commit `845f2db5`{.plain}.
 - The solver's own cost: eager float64 on the CPU, about 1-3 ms per flight tick per batch;
   the climb (up to 320 s of flight) dominates. One card: about 25 s per measurement on the
   loaded machine, 2-3 minutes per solve.
+
+### Test failures found on the way, and what was wrong
+
+- **The bleed rate against an independent flight** (0.9% off): the code. A cubic over 0.2 s
+  missed the bleed's curvature; the start rates are now a quartic's slope.
+- **The heavy's sustained turn against an independent flight** (0.19% off): the test. Its
+  60 s turn charged the store past the engine knee. Both the manoeuvre and the test now
+  hold the store below the knee, and so does the chart's coast datum (whose 20 s, unheld,
+  was 0.7% off a longer flight: the code).
+- **The chart's peak turn against an independent flight** (0.27% off, bar 0.2%): the test.
+  Its one-tick difference at 3000 Hz read 0.16% high; it now uses a two-tick Richardson
+  estimate, and the bar is the spec's 0.5% (the tool flies 30 Hz, 0.12% under the
+  fine-tick limit).
 
 ## Changes outside `bnb.game`
 

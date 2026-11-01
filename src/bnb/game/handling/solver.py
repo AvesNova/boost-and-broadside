@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 import torch
 
-from ..physics.flight import airframe_of, lift_coefficient, rates, setting
+from ..physics.flight import Airframe, airframe_of, lift_coefficient, rates, setting
 from ..rules import Rules
 from ..ship_types import DEFAULTS, ShipTypes
 from .errors import Infeasible, RedundantHandles
@@ -201,24 +201,27 @@ def first_guess(rules: Rules, handles: Handles, combat: dict, exponent: float) -
     thrust_cap = torch.full_like(stall, 1e6)
     zeros, ones = torch.zeros_like(stall), torch.ones_like(stall)
     turning = TURNING_STORE * store
+    null_power = ones
+
+    def airframe_at() -> Airframe:
+        parameters = torch.stack([null_power, coast, thrust_cap, full_lift, exponent, ones,
+                                  dive, climb], -1)
+        return airframe_of(_card(rules, handles, parameters, combat), columns)
+
     for _ in range(3):
-        parameters = torch.stack([ones, coast, thrust_cap, full_lift, exponent, ones, dive,
-                                  climb], -1)
-        airframe = airframe_of(_card(rules, handles, parameters, combat), columns)
+        airframe = airframe_at()
         # The null power at cruise, full store, drag only (the cap is the flight's to meet).
         drag, _ = _drag_and_exchange(rules, airframe, cruise, store, zeros, zeros)
         null_power = drag * cruise
         power = null_power + mass * coast * cruise
         # The static-thrust cap from the low-speed acceleration (store empty).
-        parameters[..., 0] = null_power
-        airframe = airframe_of(_card(rules, handles, parameters, combat), columns)
+        airframe = airframe_at()
         drag, current = _drag_and_exchange(rules, airframe, stall, zeros, zeros, zeros)
         needed = handles.low_speed_acceleration + drag + current.exchange
         free = power / stall
         capped = (needed ** -4 - free ** -4).clamp_min(1e-30) ** -0.25  # softmin_4 inverted
         thrust_cap = torch.where(needed < free, capped, 10.0 * needed)
-        parameters[..., 2] = thrust_cap
-        airframe = airframe_of(_card(rules, handles, parameters, combat), columns)
+        airframe = airframe_at()
         # The induced drag k S^(e/2) where the sustained turn settles: thrust meets drag and
         # exchange.
         low, high = stall * 1.0001, stall * torch.sqrt(handles.g_limit)
@@ -319,7 +322,7 @@ def solve(handles: Handles, rules: Rules, iterations: int = ITERATIONS,
         step = -torch.linalg.solve(normal, gradient[..., None])[..., 0]
         step = step * (STEP_LIMIT / step.abs().amax(-1, keepdim=True).clamp_min(STEP_LIMIT))
         x = best_x + step
-        x[..., 4] = x[..., 4].clamp(*bounds)  # the bleed exponent
+        x = torch.cat([x[..., :4], x[..., 4:5].clamp(*bounds), x[..., 5:]], -1)  # the exponent
     best_error = best_base.abs()
     best_worst = best_error.amax(-1)
     jacobian = best_jacobian
