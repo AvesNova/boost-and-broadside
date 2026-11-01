@@ -445,13 +445,100 @@ average above 30 from other agents), at commit `845f2db5`{.plain}.
 - Tests: `test_ship_card.py` 400, `test_ship_card_game.py` 235, `ship_card_cases.py` 116.
 
 
-## Progress (fix round, 2026-11-02)
+## Fix round (2026-11-02)
 
-- Done and pushed: the WIP commit reworded (fix 9a); the fire rate in hertz (1); Yemong's
-  ranges from the card (6, code); the measurement windows (3); the induced-drag energy
-  balance (5); the chart's process-wide settings and the docstrings (8).
-- In the working tree: the bleed at the middle stick (2), the conditioning and redundancy
-  tests (4), the docs (6, 7). Waiting on the re-measured acceptance
-  (`/tmp/bnb-scratch-ship-card-fix/acceptance.py`) to set `UNREACHABLE` and
-  `OVER_TWO_PERCENT`.
-- Then: merge `origin/v2`, set the roadmap status to `merged`, run the full suite.
+The review's fixes, each with what changed and the test that guards it. This section
+supersedes the measurements above where they differ (the bleed is now measured at the
+middle stick).
+
+1. **The fire rate in hertz.** The card's `ticks_between_shots` became `fire_rate` (shots
+   per second; 15 and 10 Hz by default, the old 2 and 3 ticks at 30 Hz), and the combat
+   handle `fire_interval` became `fire_rate`.
+   - `ship_types.ticks_between_shots(fire_rate, tick_length)` divides the tick rate by the
+     fire rate in `fractions.Fraction` and refuses a rate that is not whole, naming both
+     rates. A card stores floats, so each rate is read as the nearest fraction with a
+     denominator up to `RATE_DENOMINATOR` (30/7 Hz is seven ticks at 30 Hz).
+   - `reset` refuses such a card; `combat_card` does too, as `Infeasible`. `fire` rounds
+     the same quotient on the device, which is whole for any card reset accepted.
+   - Tests: `test_weapon_cadence_is_validated_per_rate` (the reset included),
+     `test_a_fire_rate_is_read_as_a_small_fraction`,
+     `test_the_time_between_shots_is_the_fire_rates_at_every_tick_rate` (the game's `fire`
+     at 25, 30, 60 Hz, and the default card at 30 and 60), and
+     `test_handles_agree_across_tick_rates`, which also compares the seconds between shots
+     flown through `fire` at each rate. The varied cards now fire at 5 Hz, whole at every
+     rate; the default card's 15 Hz is compared at 30 and 60 Hz.
+2. **The bleed rate at the middle stick** (`manoeuvres.BLEED_STICK`, 0.75). The bleed
+   manoeuvre starts at corner speed with the nose at its steady angle for that stick. The
+   independent-flight test flies it at 0.75. The default card's bleed rates are now -2782
+   (fighter) and -1143 W/kg (heavy); everything else is unchanged.
+3. **Measurement windows.** `check` refuses a nose reversal at or beyond
+   `REVERSAL_LIMIT` and a climb at or beyond `CLIMB_LIMIT`, naming the window and the
+   constant. A first guess that measures nothing now names each missing handle and its
+   reason. Tests: `test_infeasible_nose_reversal_beyond_its_window`,
+   `test_infeasible_climb_beyond_its_window`.
+4. **Conditioning.** `test_conditioning_is_reported_and_the_default_card_is_well_conditioned`
+   bounds the default card's condition number below 50 (measured 16.0 and 16.8).
+   `test_redundant_handles_warn`: a low-speed acceleration five times the default's is
+   beyond what the engine gives at the stall speed, so the static-thrust cap has no effect
+   and the low-speed acceleration moves only with the power the cruise sets. The solve
+   warns that `low_speed_acceleration` and `cruise_speed` are nearly redundant (condition
+   numbers 4.9e5 and 1.6e6).
+5. **The energy balance sees the bleed exponent.** `test_energy_lost_is_the_induced_drags_work`
+   turns the induced drag on (exponents 1.5 and 3, scaled by `C_max^(2-e)`), and checks
+   that `1/2 w^2 + E/m` falls by the induced drag's work, written out in the test and
+   integrated by the trapezoid rule: within 1%, with at most 0.35% measured at 25, 30 and
+   60 Hz. `test_the_balance_sees_the_bleed_exponent` replaces `flight.bleed` with one that
+   ignores the exponent and requires the balance to break; a bleed 2% off also fails the
+   1% bound (measured 1.8%).
+6. **Yemong's ranges from the card.** `ShipStateCode` spans the angle of attack over twice
+   the widest stall angle and the recharge wait over the longest recharge delay (the
+   shared value times the card's largest scale, exact at the default card), and sizes its
+   cooldown bins with `ticks_between_shots`. Test:
+   `test_yemong_sizes_its_coding_ranges_from_the_card`; the Yemong tests pass unchanged.
+   The explanation page no longer says the shared values keep their meaning for Yemong.
+7. **Docs.** The guide's success bar is `ACCEPTANCE`, with `TOLERANCE` as the early stop;
+   the explanation page and the guide say why the zero-lift drag is held (under the cruise
+   fix the cruise is met at any drag); the climb's end is named by `store_fade_band`; the
+   fire rate, the middle-stick bleed and the windows are described. The test module now
+   imports the solver's `ACCEPTANCE` instead of defining its own.
+8. **Code quality.** Docstrings for every name listed; `derivative_weights` names
+   `FIT_DEGREE`; the solver's leftover aliases are gone (folded into the fire-rate commit);
+   `CROSSING_BISECTIONS` sits with the other constants; the chart raises `ImportError`, and
+   the cli sets `MPLBACKEND` and turns the error into its exit.
+9. **History and the roadmap.** The WIP commit is now
+   `refactor: one airframe builder in the solver's first guess`. `origin/v2` is merged and
+   the section's status is `merged`.
+
+### Acceptance 3 and 5, re-measured
+
+One batch of the 37 shared cards, float64 on the development laptop's CPU, 5 iterations
+after the scan, 409 s for the solve and the measurement.
+
+- **Round trip:** all 9 cards converge; every handle within 4.8e-5 (the float32 card).
+- **Independence:** all 28 perturbations converge. The moved handle lands within 4.1e-7,
+  every other within 8.6e-7. `UNREACHABLE` is gone.
+  - **The sustained turn +5% now converges:** bleed exponents 1.44 and 1.38, full-store
+    powers 1070 and 1313 W (+24% and +19%).
+  - **The stall speed +5% no longer lands on an extreme card:** exponents 1.58 and 1.50,
+    full-store powers 986 and 1237 W (+14% and +13%; before, 6000 and 3920 W). The stall
+    speed -5% needs 2.45 and 2.50 (before, 3.3 and 3.7).
+- **Condition numbers:** 16.0 and 16.8 at the default card (36 and 34 before); 11.4 to 33.3
+  over every card (before, up to 6.8e5). No `RedundantHandles` warning fires.
+- **The default card re-solved under the cruise fix:** `P` 1175.1 and 1418.3 W, `P_min`
+  863.4 and 1098.8 W, `e` 1.996 and 1.993 (before: `e` 1.975 and 1.883).
+- **Cruise across the store** (empty to full, 51 stores):
+  - default card, not re-solved: 0.17% (fighter), 1.53% (heavy);
+  - re-solved default: 0.92% and 0.75%;
+  - over 2% (`OVER_TWO_PERCENT`, both below 5%): varied card 2 (3.38% and 2.08%, as
+    before) and the sustained turn +5% (2.15%, fighter). The stall speed +5% (18.9% before)
+    is now 1.75%, and the g limit -5% 1.18%. Every other solved card: 0.11% to 1.75%.
+- **Tick rates** (25, 30, 60 Hz; the round-trip cards): nose reversal 0.44% (unchanged),
+  bleed rate 0.033%, low-speed acceleration 0.018%, the rest below 1e-5.
+
+### Deviations
+
+- The fire rate is validated where the card first meets the run's tick, at `reset`; `fire`
+  rounds the same quotient, since a step cannot run `Fraction` on the host. A sweep that
+  changes the fire rate after reset is not re-validated.
+- Some commits carry more than one fix: the solver alias removal is in the fire-rate
+  commit, and the docs of fixes 6 and 7 are in the bleed commit.

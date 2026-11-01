@@ -106,7 +106,8 @@ def test_redundant_handles_warn():
 
 def test_handles_agree_across_tick_rates():
     """The same parameters (the default card and the solved varied cards) give flight
-    handles that agree within 0.5% at 25, 30 and 60 Hz."""
+    handles that agree within 0.5% at 25, 30 and 60 Hz, and the same seconds between
+    shots."""
     cases = cases_module.cases()
     rows = cases.round_trip
     cards = cases_module.double(api.ShipTypes(**{k: v[rows]
@@ -118,6 +119,13 @@ def test_handles_agree_across_tick_rates():
         values = torch.stack([getattr(handles, name) for handles in by_rate.values()])
         spread = (values.amax(0) - values.amin(0)) / values.abs().mean(0)
         assert spread.max() < ACCEPTANCE, (name, spread.max().item())
+    # The seconds between shots, flown through the game's fire: the varied cards' 5 Hz is
+    # whole at every rate, the default card's 15 and 10 Hz at 30 and 60 Hz.
+    seconds = {rate: cases_module.seconds_between_shots(cases_module.rules(rate), cards)
+               for rate in cases_module.TICK_RATES}
+    for rate in cases_module.TICK_RATES:
+        rows = slice(0, None) if rate != 25 else slice(1, None)
+        assert torch.allclose(seconds[rate][rows], seconds[30][rows], rtol=1e-9), rate
 
 
 def test_unsupported_weapon_cadence_is_refused():
