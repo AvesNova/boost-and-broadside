@@ -309,6 +309,11 @@ Its log and report are not available to you; this section is the complete list.
     `CUDA_VISIBLE_DEVICES=` and a guard;
   - the `not slow and not gpu` tier should take under 3 minutes on a quiet machine
     **(proposal)**. Report its time.
+- **GPU tests take the benchmark lock** (a fixture in `tests/conftest.py` for every
+  `gpu`-marked test, through `bench.lock.bench_lock()`). Another process using the GPU
+  makes them fail by out-of-memory, or by an invalidated graph capture when an allocation
+  fails mid-capture (seen 2026-11-02 in `test_learner_streaming.py` while another agent
+  trained).
 - **No shared random state:**
   - remove the global reseeding (`yemong_cases.py:27`, `test_learning.py:18`);
   - every test that draws numbers uses a local `torch.Generator`
