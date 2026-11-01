@@ -57,7 +57,7 @@ def test_the_update_through_pinned_memory_equals_the_device_path():
     results = []
     for store in (host, device):
         model = copy.deepcopy(net)
-        learner = Learner(model, LearnerConfig(minibatches=1, micro_batch=views // 4),
+        learner = Learner(model, LearnerConfig(minibatches=1, micro_batch_rows=views // 4 * 10),
                           runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA)
         prepared = learner.prepare(store, [bootstrap])
         chosen = torch.randperm(views, generator=torch.Generator().manual_seed(0))

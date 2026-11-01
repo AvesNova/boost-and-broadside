@@ -9,13 +9,11 @@ import pytest
 import torch
 
 from bnb.contracts import GameConfig, Pool
-from bnb.learn.ppo import LearnerConfig
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer, win_rate
 
 pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 TOY = TrainConfig(game=GameConfig(2, 4, 1200.0), num_envs=256, model="relational",
-                  pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
-                  learner=LearnerConfig(micro_batch=8))
+                  pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),))
 UPDATES = 400
 
 

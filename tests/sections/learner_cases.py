@@ -34,7 +34,8 @@ def rollout(net, envs: int = 8, length: int = 32, runs: int = 2, config=cases.SH
 def learner(net, runner: Rollout, **config) -> Learner:
     """Every view in one minibatch by default."""
     views = runner.store.views
-    config = dict(dict(minibatches=1, micro_batch=views), **config)
+    rows = views * runner.rules.num_ships
+    config = dict(dict(minibatches=1, micro_batch_rows=rows), **config)
     return Learner(net, LearnerConfig(**config), runner.rules, runner.carry["types"],
                    RewardConfig().outcome, CPU)
 
@@ -48,6 +49,8 @@ def whole(runner: Rollout):
     return Trajectory(**next(iter(store.batches(store.names, [views]))))
 
 
-def with_micro_batch(learner: Learner, size: int) -> Learner:
-    learner.config = dataclasses.replace(learner.config, micro_batch=size)
+def with_micro_batch(learner: Learner, views: int) -> Learner:
+    """Micro-batches of `views` views."""
+    rows = views * learner.rules.num_ships
+    learner.config = dataclasses.replace(learner.config, micro_batch_rows=rows)
     return learner

@@ -358,7 +358,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
                   for pool, other in zip(_pools(), ("chaser", "random", LEARNER, "league_0")))
     cfg = TrainConfig(game=BASE, num_envs=16, length=32, model="relational",
                       relational_hidden=32, pools=pools, compile=False,
-                      learner=LearnerConfig(minibatches=2, micro_batch=5))
+                      learner=LearnerConfig(minibatches=2, micro_batch_rows=30))
     trainer = Trainer(cfg, torch.device("cpu"))
     store, bootstraps = trainer.collect()
     metrics = trainer.pool_metrics(store)

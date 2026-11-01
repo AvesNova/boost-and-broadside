@@ -131,13 +131,11 @@ returns the shares won, drawn and lost.
 import torch
 
 from bnb.contracts import GameConfig, Pool
-from bnb.learn.ppo import LearnerConfig
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer, win_rate
 
 torch.manual_seed(0)
 config = TrainConfig(game=GameConfig(2, 4, 1200.0), num_envs=256, model="relational",
-                     pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
-                     learner=LearnerConfig(micro_batch=8))
+                     pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),))
 trainer = Trainer(config, torch.device("cuda"))
 for _ in range(400):
     trainer.update()

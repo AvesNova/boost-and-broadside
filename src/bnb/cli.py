@@ -29,7 +29,7 @@ class Train:
     model: str = "yemong"
     precision: str = "float32"
     old_log_probabilities: str = "rollout"
-    micro_batch: int = 16
+    micro_batch_rows: int = 160
     seed: int = 0
     device: str = "cuda"
 
@@ -61,7 +61,7 @@ def main() -> None:
         raise SystemExit(f"--num-envs {args.num_envs} does not split into the pools' shares: "
                          f"use a multiple of {multiple}")
     learner = LearnerConfig(old_log_probabilities=args.old_log_probabilities,
-                            micro_batch=args.micro_batch, seed=args.seed)
+                            micro_batch_rows=args.micro_batch_rows, seed=args.seed)
     cfg = TrainConfig(game=game, pools=pools, num_envs=args.num_envs, updates=args.updates,
                       shards=args.shards, model=args.model, precision=args.precision,
                       learner=learner, seed=args.seed)

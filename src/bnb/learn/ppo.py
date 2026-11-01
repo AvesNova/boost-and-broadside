@@ -49,8 +49,9 @@ class LearnerConfig:
 
     old_log_probabilities: "rollout" (the rollout's) or "recomputed" (by `unroll` before
     the first epoch). minibatches: per epoch, as equal in views as the views allow;
-    micro_batch: views per micro-batch (memory only; the result is the same). seed: the
-    shot re-simulation's spread generator.
+    micro_batch_rows: ship rows per micro-batch, so micro_batch_rows // N views (at least
+    one): memory only, the result is the same, and the memory a micro-batch needs follows
+    its rows at any fleet size. seed: the shot re-simulation's spread generator.
     """
 
     discount: tuple[float, ...] = (0.991, 0.995, 0.995, 0.999, 0.9997)
@@ -73,7 +74,7 @@ class LearnerConfig:
     max_grad_norm: float = 1.0
     epochs: int = 4
     minibatches: int = 32
-    micro_batch: int = 16
+    micro_batch_rows: int = 160
     target_kl: float = 0.02
     old_log_probabilities: str = "rollout"
     seed: int = 0
@@ -304,8 +305,13 @@ class Learner:
 
     # ------------------------------------------------------------------ update
 
+    @property
+    def micro_views(self) -> int:
+        """Views per micro-batch: micro_batch_rows ship rows."""
+        return max(1, self.config.micro_batch_rows // self.rules.num_ships)
+
     def _micro_batches(self, views: torch.Tensor) -> list[torch.Tensor]:
-        return list(views.split(self.config.micro_batch))
+        return list(views.split(self.micro_views))
 
     def _on_device(self, views: torch.Tensor) -> torch.Tensor:
         """Host view indices on the device, from pinned memory: no wait on the queued work
@@ -404,7 +410,7 @@ class Learner:
         steps, first_epoch_steps, stopped = 0, 0, False
         drift = self.drift(segments, prepared)
         for epoch in range(config.epochs):
-            # Minibatches as equal as the views allow (micro-batches of micro_batch views,
+            # Minibatches as equal as the views allow (micro-batches of micro_views views,
             # each minibatch's last one smaller where they do not divide).
             for chosen in torch.randperm(views).tensor_split(config.minibatches):
                 terms, per_level, statistics = self.gradient(segments, prepared, chosen)
@@ -437,7 +443,7 @@ class Learner:
         """The step/unroll ratio drift before any optimizer step, on the first micro-batch
         of views: |exp(log_probability_unroll - log_probability_rollout) - 1| over living
         own ships, max and mean."""
-        views = torch.arange(min(self.config.micro_batch, segments.views))
+        views = torch.arange(min(self.micro_views, segments.views))
         batch = next(iter(segments.batches(segments.names, [views])))
         trajectory = Trajectory(**batch)
         log_probability, _ = policy.evaluate(self.unroll(trajectory).policy_logits,

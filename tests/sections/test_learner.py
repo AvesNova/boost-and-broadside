@@ -337,7 +337,7 @@ def test_an_update_consumes_several_shards():
     cfg = TrainConfig(game=GameConfig(2, 3, 1200.0, episode_s=2.0), num_envs=8, length=16,
                       shards=2, model="relational", relational_hidden=32, compile=False,
                       pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
-                      learner=LearnerConfig(minibatches=2, micro_batch=4))
+                      learner=LearnerConfig(minibatches=2, micro_batch_rows=16))
     trainer = Trainer(cfg, torch.device("cpu"))
     store, bootstraps = trainer.collect()
     assert store.views == 16 and len(bootstraps) == 2
