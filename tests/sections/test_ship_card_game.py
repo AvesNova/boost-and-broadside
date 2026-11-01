@@ -256,6 +256,65 @@ def test_energy_is_conserved_at_every_rate(rate, exponent):
     assert ((end - start).abs() / start)[keep].max() < 1e-4
 
 
+
+def _induced_drag_balance(rate: int, exponent: float) -> torch.Tensor:
+    """With the zero-lift drag, the engine and fire off but the induced drag on, the
+    relative mismatch per ship between the change of 1/2 w^2 + E/m over 2 s and the induced
+    drag's work, k (C^2 + (z/u^2)^2)^(e/2) u^3, written out here and integrated by the
+    trapezoid rule over each tick. The induced drag is scaled by C_max^(2 - e) so that it
+    is as strong at any exponent."""
+    generator = torch.Generator().manual_seed(rate)
+    N = 256
+    constants = FlightConstants()
+    lift = ship_types().max_lift_coefficient
+    types = ship_types(zero_lift_drag=0.0, engine_power=0.0, engine_power_full_store=0.0,
+                       static_thrust=1e-6, bleed_exponent=exponent,
+                       induced_drag_scale=lift ** (2.0 - exponent))
+    speed = 60.0 + 100.0 * torch.rand(1, N, generator=generator)
+    energy = 3000.0 + 4000.0 * torch.rand(1, N, generator=generator)
+    ship_type = torch.randint(0, 2, (1, N), generator=generator, dtype=torch.int32)
+    ships = _ships(speed, energy, ship_type=ship_type)
+    stick = torch.tensor(STICK_LEVELS)[torch.randint(0, 7, (1, N), generator=generator)]
+    power = torch.tensor(POWER_MODES)[torch.randint(0, 3, (1, N), generator=generator)]
+    airframe = flight.airframe_of(types, ship_type)
+    factor = constants.induced_drag_factor * airframe.induced_drag_scale.double()
+
+    def total(ship):
+        return 0.5 * ship.proper_speed.double() ** 2 + ship.energy.double() / constants.mass
+
+    def induced_power(ship):  # W/kg
+        u = ship.proper_speed.double()
+        current = flight.setting(constants, airframe, ship.proper_speed, ship.energy, stick,
+                                 power)
+        coefficient = flight.lift_coefficient(constants, airframe, ship.angle_of_attack).double()
+        lifting = coefficient ** 2 + (current.vertical_lift.double() / u ** 2) ** 2
+        return factor * lifting ** (0.5 * exponent) * u ** 3
+
+    work, start = torch.zeros_like(speed, dtype=torch.float64), total(ships)
+    for _ in range(2 * rate):
+        after = flight.flight_tick(constants, airframe, 1.0 / rate, ships, stick, power,
+                                   _no_fields(speed))
+        work = work + 0.5 / rate * (induced_power(ships) + induced_power(after))
+        ships = after
+    keep = (ships.energy > 300) & (ships.energy < types.max_energy.min() - 300)
+    assert keep.sum() > N // 4
+    return ((total(ships) - start + work).abs() / work)[keep]
+
+
+@pytest.mark.parametrize("rate", RATES)
+@pytest.mark.parametrize("exponent", [1.5, 3.0])
+def test_energy_lost_is_the_induced_drags_work(rate, exponent):
+    """With the induced drag on, 1/2 w^2 + E/m falls by the bleed's work, within 1%: the
+    trapezoid rule and the float32 state leave at most 0.35% (measured), and a bleed 2% off
+    fails."""
+    assert _induced_drag_balance(rate, exponent).max() < 1e-2
+
+
+def test_the_balance_sees_the_bleed_exponent(monkeypatch):
+    """A bleed that ignores its exponent breaks the balance above (the test can fail)."""
+    monkeypatch.setattr(flight, "bleed", lambda airframe, lift_squared: lift_squared)
+    assert _induced_drag_balance(30, 3.0).min() > 0.1
+
 def test_yemong_sizes_its_coding_ranges_from_the_card():
     """The state code's ranges are the card's largest per-type values: twice the widest
     stall angle, the longest recharge delay, and one more bin than the most ticks between
