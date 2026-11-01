@@ -88,6 +88,23 @@ game, pools = mixed()
 print(game.mode, len(pools), environment_multiple(pools), environment_multiple(LINEUP))
 ```
 
+## Choose the model and the learner's settings
+
+The command's other options set the model and the learner:
+
+| Option | Values | Sets |
+|---|---|---|
+| `--model` | `yemong`, `relational` | `TrainConfig.model`: Yemong or the toy relational model |
+| `--precision` | `float32`, `tf32`, `bfloat16` | `TrainConfig.precision`: the matmuls' precision |
+| `--shards` | a count | `TrainConfig.shards`: segments collected per update |
+| `--old-log-probabilities` | `rollout`, `recomputed` | `LearnerConfig.old_log_probabilities`: the rollout's, or recomputed by `unroll` before the first epoch |
+| `--micro-batch-rows` | a count | `LearnerConfig.micro_batch_rows`: ship rows per micro-batch (memory only; the result is the same) |
+
+<!-- not-runnable: needs CUDA -->
+```bash
+uv run --no-sync bnb --preset mixed --precision tf32 --shards 2 --micro-batch-rows 320
+```
+
 ## Configure a run in Python
 
 `bnb.runtime.train.TrainConfig` holds the loop's settings, and `bnb.runtime.train.train`
