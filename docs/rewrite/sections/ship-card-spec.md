@@ -36,11 +36,21 @@ and fixtures (`tests/reference/`) pass untouched. The global shape rules stay sh
     `P = P_min + m a_0 u_cruise`, so `P` and `P_min` are derived, not set.
   - **The low-speed thrust cap (proposal):** keep it in the drive term, and let the
     solver's measurement include it.
+    - The cap is `T = softmin_4(P(E)/u, F_s)`. It limits thrust near zero speed, where
+      `P/u` would grow without bound, but it also shaves about 2.6% at cruise. The shave
+      is not proportional to `P`, so the two linear constraints above are not exactly
+      fall-independent.
+    - Measured (2026-11-01, a straight-flight root find on today's card): with `P_min`
+      solved so cruise is equal at an empty and a full store, the leftover mid-store
+      variation is 0.16% (fighter) and 0.11% (heavy), within the 0.5% bar.
+    - Today's card: the fighter already varies by only 0.17%. The heavy varies by 1.5%
+      (107.6 m/s falling to 106.0 m/s as the store fills; its `P_min` would be about
+      1148 W, not 1100 W). It stays as it is until the defaults are re-solved.
     - The acceptance measures how much cruise varies across the store for the default
       card and for the solved test cards.
     - If any varies by more than 0.5%, report it. The alternative, moving the cap out of
       the drive term, is then the author's decision. Do not change the formula yourself.
-- **The default card's numbers stay as they are** in this section. The report gives the
+- **The default card's numbers stay as they are** in this section (author, 2026-11-01). The report gives the
   default card's measured handles, and what the solver would make of them under the
   cruise fix. Adopting re-solved defaults is a later step, because it changes the game's
   goldens.
@@ -131,8 +141,8 @@ handles are measured by flying the game's `flight_tick` in a batched simulation.
     sustained curve per stick level and corner speed;
   - the similarity ratios against the P-51D set in `ship-card.md` ("Similarity ratios"),
     with that table's inputs.
-- **Plotting (proposal):** matplotlib as an optional `tools` extra, so the core install
-  stays lean.
+- **Plotting (author, 2026-11-01):** matplotlib, as an optional `tools` extra, so the
+  core install stays lean. Libraries may be added when a task needs them.
 
 ## 7. Acceptance
 
