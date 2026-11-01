@@ -58,9 +58,16 @@ If the game is fast enough relative to the update, roll out to the episode's end
 value targets need no bootstrapping (Monte Carlo returns) and the critic gets exact
 targets.
 
-## Open
+## Settled (author, 2026-11-01)
 
-- **The battle map in mixed batches:**
-  - (a) pad every environment to 40 fields;
-  - (b) give the battle map 10 zoomed fields.
-- **Whether mixed batches are a section (3c)** ahead of the learner.
+- **The battle map keeps 10 fields, zoomed** (option b). The point is long-range
+  geometry, and the zero-shot claim covers fields too: train at 10, evaluate at 50v50's
+  40.
+- **Mixed batches are their own section, 3c** (`mixed-spec.md`):
+  - the mode chosen per pool, by static slices of the batch, so no mode pays for
+    another's rules;
+  - the arena radius per environment;
+  - absent zones as a learned vector, with the global token's rotation (no rotation
+    would leak the per-team position offset).
+
+  Whatever is fastest wins.
