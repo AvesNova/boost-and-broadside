@@ -126,11 +126,10 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     net, runner, learner, prepared = segment
     views = torch.arange(runner.store.views)
     trajectory, shot_labels = next(learner.staged(runner.store, [views]))
-    label = learner.labels(trajectory, shot_labels)
     denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
     derived = prepared["derived"]
     with torch.no_grad():
-        _, terms, per_level, _ = learner.loss(trajectory, label, derived, denominator,
+        _, terms, per_level, _ = learner.loss(trajectory, shot_labels, derived, denominator,
                                               prepared["scale"])
         out = learner.unroll(trajectory)
     got = dict(zip(TERMS, terms.tolist()))

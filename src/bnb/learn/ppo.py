@@ -146,8 +146,8 @@ class Learner:
     also need `state_code`, `shot_code`, `shot_trajectory` and `config.hex_rings`. rules and
     types: the game's (for the shot re-simulation). outcome_weight: the outcome level's
     reward weight (its value in reward units is P(win) - P(loss) times it). stage: how the
-    runtime compiles the micro-batch loss, the shot re-simulation's tick and the label codes
-    (identity: eager)."""
+    runtime compiles the micro-batch loss (with its label codes) and the shot
+    re-simulation's tick (identity: eager)."""
 
     def __init__(self, model: torch.nn.Module, config: LearnerConfig, rules: Rules,
                  types: ShipTypes, outcome_weight: float, device: torch.device,
@@ -176,7 +176,6 @@ class Learner:
         self.ages = torch.arange(1, rules.bullet_moves + 1, dtype=torch.float32, device=device)
         self.loss = stage(self._loss)
         self.shot_tick = stage(shots.tick)
-        self.codes = stage(self._codes)
         self.env_steps = 0
 
     # ------------------------------------------------------------------ returns
@@ -231,13 +230,15 @@ class Learner:
         rows = torch.arange(visible.shape[-1], device=visible.device) < own
         return shot, shot.valid & (rows | visible)
 
-    @torch.no_grad()
     def labels(self, trajectory: Trajectory, shot_labels: dict | None) -> dict:
         """The auxiliary targets and masks of a micro-batch, from its stored rows and its
-        stored shot labels (none without auxiliary heads)."""
+        stored shot labels (none without auxiliary heads). Part of the micro-batch loss, so
+        the compiler fuses the codes into the terms that read them and never writes them
+        out."""
         if not self.auxiliary:
             return {}
-        return self.codes(trajectory, shot_labels["shots"], shot_labels["mask"])
+        with torch.no_grad():
+            return self._codes(trajectory, shot_labels["shots"], shot_labels["mask"])
 
     def staged(self, segments: Segments,
                view_batches: list[torch.Tensor]) -> Iterator[tuple[Trajectory, dict | None]]:
@@ -252,8 +253,7 @@ class Learner:
             yield Trajectory(**batch), stored
 
     def _codes(self, trajectory: Trajectory, shot: shots.Shots, shot_mask: torch.Tensor) -> dict:
-        """The targets as the heads' codes, from the stored rows and the re-simulated shots
-        (a stage the runtime may compile)."""
+        """The targets as the heads' codes, from the stored rows and the re-simulated shots."""
         model = self.model
         rows = labels.privileged_rows(trajectory)
         enemy, enemy_mask = labels.enemy_actions(trajectory)
@@ -274,12 +274,13 @@ class Learner:
         return self.model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
                                  reset)
 
-    def _loss(self, trajectory: Trajectory, label: dict, derived: dict, denominator: dict,
-              scale: torch.Tensor):
-        """One micro-batch: (loss, terms (TERMS,), value loss per level (K,), statistics
-        (clip fraction, approximate KL)), every sum over its tokens divided by its
-        minibatch-total denominator."""
+    def _loss(self, trajectory: Trajectory, shot_labels: dict | None, derived: dict,
+              denominator: dict, scale: torch.Tensor):
+        """One micro-batch, from its stored rows and shot labels: (loss, terms (TERMS,),
+        value loss per level (K,), statistics (clip fraction, approximate KL)), every sum
+        over its tokens divided by its minibatch-total denominator."""
         config, model = self.config, self.model
+        label = self.labels(trajectory, shot_labels)
         unrolled = self.unroll(trajectory)
         own = trajectory.logp.shape[-1]
         own_alive = trajectory.alive[..., :own]
@@ -416,10 +417,9 @@ class Learner:
         for host_views, (trajectory, shot_labels) in zip(micro, self.staged(segments, micro),
                                                          strict=True):
             views = self._on_device(host_views)
-            label = self.labels(trajectory, shot_labels)
             part = {name: value.index_select(1, views) for name, value in derived.items()}
-            loss, terms, per_level, statistic = self.loss(trajectory, label, part, denominator,
-                                                          prepared["scale"])
+            loss, terms, per_level, statistic = self.loss(trajectory, shot_labels, part,
+                                                          denominator, prepared["scale"])
             loss.backward()
             terms_sum += terms
             levels_sum += per_level

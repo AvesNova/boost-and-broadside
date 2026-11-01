@@ -70,7 +70,6 @@ def main() -> None:
                 for field in dataclasses.fields(Trajectory)
             }
         )
-        label = ppo.labels(trajectory, shot_labels)
         device_views = views.to(ppo.device)
         part = {
             name: value.index_select(1, device_views) for name, value in prepared["derived"].items()
@@ -114,7 +113,7 @@ def main() -> None:
 
             def run(dropping=dropping):
                 ppo.unroll = dropping
-                return compiled_loss(trajectory, label, part, denominator, scale)[0]
+                return compiled_loss(trajectory, shot_labels, part, denominator, scale)[0]
 
             functions[name] = run
         functions["trunk only"] = torch.compile(trunk, fullgraph=True, dynamic=False)
@@ -132,11 +131,10 @@ def main() -> None:
             name: tuple(sorted(values)[len(values) // 2] for values in pair)
             for name, pair in samples.items()
         }
-        codes = torch.compile(Learner._codes.__get__(ppo), fullgraph=True, dynamic=False)
+        codes = torch.compile(Learner.labels.__get__(ppo), fullgraph=True, dynamic=False)
 
         def label_codes():
-            with torch.no_grad():
-                return codes(trajectory, shot_labels["shots"], shot_labels["mask"])
+            return codes(trajectory, shot_labels)
 
         times = []
         for _ in range(repeats + 2):
