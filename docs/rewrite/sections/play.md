@@ -70,3 +70,5 @@ Status: decisions settled for milestone 1, 2026-11-01. Spec: `play-spec.md`.
 - **Libraries:** PyOpenGL is fine if it helps (author). imgui-bundle's own GLFW and
   OpenGL backends need it, so milestone 2 can replace the custom ImGui renderer and key
   table with them.
+- **Bullets under fog are drawn at full brightness (author, 2026-11-02):** the bullets
+  pass draws after the fog pass, so fog never darkens a bullet.

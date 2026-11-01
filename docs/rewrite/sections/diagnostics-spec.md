@@ -40,7 +40,8 @@ listed.
 
 ## 2. Sinks
 
-- **W&B** (the project's own account), sampled history as before. Tests and offline runs
+- **W&B**, project `boost-and-broadside-v2` (author, 2026-11-02), sampled history as
+  before. Tests and offline runs
   use W&B's offline mode or a local JSONL sink; no test touches the network.
 - **A local JSONL file per run** with the same records, so any analysis can run without
   W&B.
