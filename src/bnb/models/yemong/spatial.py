@@ -33,6 +33,11 @@ class SpatialBlock(nn.Module):
         map_key = apply_rotary(map_key, *map_tables)
         keys = torch.cat([key, map_key], -3).transpose(-3, -2)  # (..., heads, Q + M, width)
         values = torch.cat([value, map_value], -3).transpose(-3, -2)
-        attended = F.scaled_dot_product_attention(query.transpose(-3, -2), keys, values)
+        query = query.transpose(-3, -2)
+        # As (batch, heads, tokens, width): the fused attention kernels take four dimensions
+        # only, and an unrolled segment's five would fall back to the unfused math.
+        batch = query.shape[:-3]
+        attended = F.scaled_dot_product_attention(
+            *(x.reshape((-1,) + x.shape[-3:]) for x in (query, keys, values))).unflatten(0, batch)
         tokens = tokens + self.output(attended.transpose(-3, -2).flatten(-2))
         return tokens + self.feedforward(self.feedforward_norm(tokens))
