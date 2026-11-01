@@ -32,7 +32,9 @@ loop.
 Every section is pure functions of tensors: tensors in, tensors out. The game's step
 takes a state and returns a new one; a model's step takes a carry and returns a new one.
 Only `bnb.runtime` owns persistent buffers, and it writes them in one way: it copies a
-stage's outputs into the buffers with `copy_`.
+stage's outputs into the buffers with `copy_`. The one other mutation is the learner's: it
+owns the model's parameters and its optimizer state, and updates them in place with a
+plain PyTorch optimizer.
 
 - Section code runs eagerly on the CPU, so every section is testable without a GPU and
   without compilation.
