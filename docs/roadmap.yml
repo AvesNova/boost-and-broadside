@@ -17,7 +17,7 @@
   page: explanation/game/physics.md
 - section: "1b"
   title: The ship card (handles to physics parameters)
-  status: specified
+  status: merged
   spec: docs/rewrite/sections/ship-card-spec.md
   page: explanation/game/ship-card.md
 - section: "3"

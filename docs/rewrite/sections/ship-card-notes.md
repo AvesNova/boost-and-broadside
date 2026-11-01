@@ -535,6 +535,21 @@ after the scan, 409 s for the solve and the measurement.
 - **Tick rates** (25, 30, 60 Hz; the round-trip cards): nose reversal 0.44% (unchanged),
   bleed rate 0.033%, low-speed acceleration 0.018%, the rest below 1e-5.
 
+### The merge of `origin/v2`
+
+- `fire` is now split into `launch` (v2, for the learner's shot re-simulation); `launch`
+  takes the shooter's spread scale and `fire` the fire rate's cooldown.
+- `move_bullets` keeps the owners' types for the drag, so `bnb.learn.shots.tick` (outside
+  `bnb.game`) passes `capture.launch.ship_type`: one line, needed for the re-simulation to
+  fly a per-type card's bullets as the game does.
+- `bnb.game.perception.sight.vision_range(rules, state)` (v2's display hook) returns each
+  observer's range from `Match.vision_range`; the step's card lookup is private.
+- `tests/sections/test_game_api_display.py` calls `sight.visibility(state)`.
+- The cli keeps `bnb ship-card` and takes v2's training options; `uv.lock` was relocked
+  offline with the `tools` extra.
+- Request: `bnb.play.snapshot` reads the shared `rules.flight.stall_angle`; with a
+  per-type stall angle it should read the type's (the play section's).
+
 ### Deviations
 
 - The fire rate is validated where the card first meets the run's tick, at `reset`; `fire`
@@ -542,3 +557,10 @@ after the scan, 409 s for the solve and the measurement.
   changes the fire rate after reset is not re-validated.
 - Some commits carry more than one fix: the solver alias removal is in the fire-rate
   commit, and the docs of fixes 6 and 7 are in the bleed commit.
+
+## Progress (fix round)
+
+All nine fixes are committed and pushed; `origin/v2` is merged; the roadmap status of 1b
+is `merged`. The full suite after the merge: 861 passed, 6 skipped (the league arm, not yet
+implemented), 3 failed with CUDA out of memory in `test_learner_streaming.py` while another
+process held the GPU; those 4 tests pass when rerun alone under the bench lock.
