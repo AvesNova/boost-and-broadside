@@ -122,32 +122,28 @@ class SpatialBlock(nn.Module):
         self.feedforward_norm = RMSNorm(width)
         self.feedforward = GatedMLP(width, 4 * width)
 
-    def map_keys_values(self, memory, map_tables):
-        """memory (..., M, Dm) -> rotated keys, values, each (..., M, H, W)."""
-        keys, values = self.map_key_value(self.map_norm(memory)).chunk(2, -1)
-        keys = apply_rotary(keys.unflatten(-1, (self.heads, -1)), *map_tables)
-        return keys, values.unflatten(-1, (self.heads, -1))
-
-    def forward(self, x, memory, token_tables, map_tables, map_keys_values=None):
-        """x (..., Q, D); memory (..., M, Dm); tables (..., tokens, 1, R)."""
-        query, key, value = self.query_key_value(self.attention_norm(x)).chunk(3, -1)
-        query = apply_rotary(query.unflatten(-1, (self.heads, -1)), *token_tables)
-        key = apply_rotary(key.unflatten(-1, (self.heads, -1)), *token_tables)
-        value = value.unflatten(-1, (self.heads, -1))
-        if map_keys_values is None:
-            map_keys_values = self.map_keys_values(memory, map_tables)
-        map_key, map_value = map_keys_values
-        if ATTENTION["kernel"] == "triton" and small_attention.supported(query):
-            dtype = value.dtype  # under autocast the rotary tables promote q and k to float32
+    def forward(self, x, memory, token_tables, map_tables):
+        """x (..., Q, D); memory (..., M, Dm); tables (cos, sin), each (..., tokens, 1, R)."""
+        query, key, value = (t.unflatten(-1, (self.heads, -1)) for t in
+                             self.query_key_value(self.attention_norm(x)).chunk(3, -1))
+        map_key, map_value = (t.unflatten(-1, (self.heads, -1)) for t in
+                              self.map_key_value(self.map_norm(memory)).chunk(2, -1))
+        pairs = token_tables[0].shape[-1]
+        if ATTENTION["kernel"] == "triton" and small_attention.supported(query, pairs):
             batch = query.shape[:-3]
+            dtype = value.dtype
             attended = small_attention.attention_heads(
-                *(t.to(dtype).flatten(0, -4) for t in (query, key, value, map_key, map_value)))
-            x = x + self.output(attended.unflatten(0, batch).flatten(-2))
-            return x + self.feedforward(self.feedforward_norm(x))
-        key = torch.cat([key, map_key], -3).transpose(-2, -3)
-        value = torch.cat([value, map_value], -3).transpose(-2, -3)
-        attended = attention(query.transpose(-2, -3), key, value)
-        x = x + self.output(attended.transpose(-2, -3).flatten(-2))
+                *(t.to(dtype).flatten(0, -4) for t in (query, key, value, map_key, map_value)),
+                *(t.squeeze(-2).flatten(0, -3) for t in (*token_tables, *map_tables)))
+            attended = attended.unflatten(0, batch)
+        else:
+            query = apply_rotary(query, *token_tables)
+            key = torch.cat([apply_rotary(key, *token_tables), apply_rotary(map_key, *map_tables)],
+                            -3)
+            value = torch.cat([value, map_value], -3)
+            attended = attention(query.transpose(-2, -3), key.transpose(-2, -3),
+                                 value.transpose(-2, -3)).transpose(-2, -3)
+        x = x + self.output(attended.flatten(-2))
         return x + self.feedforward(self.feedforward_norm(x))
 
 

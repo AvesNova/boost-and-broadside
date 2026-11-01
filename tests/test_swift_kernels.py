@@ -33,25 +33,31 @@ def test_scan_forward_and_backward():
 
 
 @pytest.mark.parametrize("dtype,tolerance", [(torch.float32, 1e-5), (torch.bfloat16, 3e-2)])
-def test_small_attention_matches_softmax_attention(dtype, tolerance):
+def test_small_attention_matches_rotary_softmax_attention(dtype, tolerance):
     torch.manual_seed(0)
-    views, queries, maps, heads, width = 53, 11, 10, 2, 64
+    views, queries, maps, heads, width, pairs = 53, 11, 10, 2, 64, 20
     fused = torch.randn(views, queries, 3 * heads * width, device="cuda", dtype=dtype,
                         requires_grad=True)
     memory = torch.randn(views, maps, 2 * heads * width, device="cuda", dtype=dtype,
                          requires_grad=True)
+    angles = torch.randn(views, queries + maps, pairs, device="cuda") * 3
+    token_cos, token_sin = angles[:, :queries].cos(), angles[:, :queries].sin()
+    map_cos, map_sin = angles[:, queries:].cos(), angles[:, queries:].sin()
 
     def split(fused, memory):
         return [t.unflatten(-1, (heads, width)) for t in fused.chunk(3, -1) + memory.chunk(2, -1)]
 
     def triton_attention(fused, memory):
-        return attention_heads(*split(fused, memory))
+        return attention_heads(*split(fused, memory), token_cos, token_sin, map_cos, map_sin)
 
     def reference(fused, memory):
         q, k, v, mk, mv = (t.double() for t in split(fused, memory))
+        tables = [t.double().unsqueeze(-2) for t in (token_cos, token_sin, map_cos, map_sin)]
+        q = network.apply_rotary(q, *tables[:2])
+        k = torch.cat([network.apply_rotary(k, *tables[:2]),
+                       network.apply_rotary(mk, *tables[2:])], 1)
         out = torch.nn.functional.scaled_dot_product_attention(
-            q.transpose(1, 2), torch.cat([k, mk], 1).transpose(1, 2),
-            torch.cat([v, mv], 1).transpose(1, 2))
+            q.transpose(1, 2), k.transpose(1, 2), torch.cat([v, mv], 1).transpose(1, 2))
         return out.transpose(1, 2)
 
     weight = torch.randn(views, queries, heads, width, device="cuda", dtype=torch.float64)
