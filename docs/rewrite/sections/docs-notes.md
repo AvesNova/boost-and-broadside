@@ -31,10 +31,11 @@ checks under `tests/docs` that make stale docs fail the suite. Nothing under `sr
 
 ### Generated content
 
-`docs/hooks/generated.py` is an MkDocs hook (`on_page_markdown`). A page asks for a table
-with a line of its own, `<!-- generated-table: NAME -->`, outside a fenced block; the hook
-replaces it with a Markdown table built by importing `bnb`. An unknown name raises and
-fails the build. The tables (`TABLES` in the hook):
+`docs/hooks/generated.py` is an MkDocs hook (`on_page_markdown`). A page asks for a block
+with a line of its own, `<!-- generated: NAME -->` (renamed from `generated-table` in the
+fix round), outside a fenced block; the hook replaces it with Markdown built by importing
+`bnb` or reading a data file. An unknown name raises and fails the build. The blocks
+(`BLOCKS` in the hook; the fix round's additions are listed under "Fix round"):
 
 - the observation's columns: `ship-columns` (with the hidden-zero split from
   `SHIP_HIDDEN_ZERO`), `field-columns`, `zone-columns`, `global-columns`;
@@ -60,7 +61,7 @@ exists.
 
 | Check | File | Kind |
 |---|---|---|
-| 1. strict build into a temporary directory | `test_build.py` | failure; `slow`; skips without the docs extra |
+| 1. strict build into a temporary directory | `test_build.py` | failure; `slow`; skips without the docs group |
 | 2. code references resolve | `test_references.py` | failure, naming page and line |
 | 3. runnable examples run | `test_examples.py` | failure; `slow` |
 | 4. coverage map | `staleness.py`, `test_staleness.py` | warning only |
@@ -109,10 +110,10 @@ exists.
 3. **Examples run in subprocesses with CUDA hidden,** so a runnable example cannot use the
    GPU, and process state (seeds, threads, dynamo) cannot leak between examples or into the
    suite.
-4. **The build test skips without the docs extra.** `uv sync` installs no extras, and the
-   brief limits `pyproject.toml` changes to the extra. Everything else in `tests/docs` runs
-   in the base environment, so the reference, marker and coverage checks run for every
-   agent. See the request below.
+4. **The docs packages are a default dependency group** (fix round, the coordinator's
+   decision; first round: an extra, which plain `uv sync` removed). The build test still
+   skips with a reason if they are missing; the other checks need only the base
+   environment.
 5. **The reference shows members without docstrings** (`show_if_no_docstring: true`):
    without it, the `bench` page showed 6 of its 28 objects, and every undocumented
    controller method was missing.
@@ -229,50 +230,126 @@ fields' meanings) and `bnb.runtime.realtime.Realtime`.
 
 ## Requests
 
-1. **Run the build check everywhere:** either add the docs extra to the `dev` group, or add
-   `uv sync --extra docs` to every brief. Until then, an agent that ran a plain `uv sync`
-   skips the build test (it says so in the skip reason).
-2. **`.gitignore`:** add `site/`, the default output of `mkdocs build`.
-3. **Fix the disagreements above** in the files I may not edit, starting with the
-   `bnb.cli` docstring, and replace `STYLE_GUIDE.md` with a v2 code style guide (then the
-   writing guide's "Code rules" section can point at it).
+1. Done in the fix round: the docs group joins the default install; `site/` is ignored.
+2. **For the cleanup pass** (it may edit `src/`): the `bnb.cli` docstring, a v2 code style
+   guide in place of `STYLE_GUIDE.md` (then the writing guide's "Code rules" can point at
+   it), and the docstring report below.
 
 ## Keeping the docs current (for future briefs)
 
-> **Docs.** Run `uv sync --extra docs` once. The docs in `docs/` are checked by the suite:
-> `uv run --no-sync pytest` fails if a backticked `bnb.` name or a repository path in a page
-> no longer resolves, if a runnable example fails, or if `mkdocs build --strict` breaks. Fix
-> those as part of your change. Tables of values from the code (observation columns, reward
+> **Docs.** The docs in `docs/` and `README.md` are checked by the suite:
+> `uv run --no-sync pytest` fails if a backticked name (full, short or a lowercase word), a
+> repository path or a `bnb` command option in a page no longer resolves, if a runnable
+> example fails, or if `mkdocs build --strict` breaks. Fix those as part of your change. Tables of values from the code (observation columns, reward
 > levels, presets, constants) are generated; never copy them into prose. When you change code
-> that a page lists under `covers:`, pytest warns `PossiblyStalePage`: reread that page and
-> fix it, or set its `reviewed:` date if it is still correct
+> that a page lists under `covers:`, pytest warns `PossiblyStalePage`, already before you
+> commit: reread that page and fix it, or set its `reviewed:` date if it is still correct
 > (`uv run --no-sync python -m tests.docs.staleness` lists them). When your section merges,
 > replace its page under `docs/explanation/in-progress/` with prose (explanation, and a guide
 > if it adds a task), set its status in `docs/roadmap.yml`, and follow
 > `docs/contributing/writing-docs.md`: say what exists and why, no evaluative adjectives, no
 > design history, every number with where it was measured.
 
+## Fix round (after the blind review, 8/10)
+
+All requested changes made; boundaries as before (no `src/`, no GPU).
+
+**Install.** The docs packages moved from the `docs` extra to a `docs` dependency group in
+`[tool.uv] default-groups`, so plain `uv sync` keeps them. `site/` is in `.gitignore`.
+
+**Checks.**
+1. Every fence must name its language. A fence in `python`, `bash`, `sh`, `shell`,
+   `console` or `text`, or whose first word is `uv`, `bnb` or `python`, needs a run marker.
+2. Short names resolve against an index built with `ast` over `src/bnb`, `bench`, `tests`
+   and the hook (`tests/docs/names.py`): classes, functions, module constants, class
+   members and `self.` attributes. A capitalized name or `Class.attr` must name exactly
+   one definition (ambiguous: write it in full; `MODES`, `Carry` and `FRONTLINE` are). A
+   lowercase word must be a name, attribute, argument or string constant the code uses. A
+   bare file name must exist in the repository. Opt-outs the check sees: `{.plain}` after
+   the span (not code; attr_list renders it as a class), and `{.nolink}` for a full name the
+   reference has no entry for (still checked).
+3. Every `bnb ...` line, in fences and code spans, runnable or not, is parsed (with
+   backslash continuations) against `bnb.cli.Train`'s fields, and `--preset` and `--mode`
+   values against `PRESETS` and `MODES`.
+4. `README.md` is a page for the name, path, command, fence and marker checks, plus a
+   relative-link check; it may not hold generated blocks.
+5. The staleness report also counts uncommitted changes (`git diff --name-only HEAD` and
+   untracked files) against `covers:`, unless the page itself has uncommitted changes.
+6. The hook links every backticked dotted `bnb.`/`bench.` name to the reference
+   (`[`name`][name]`, resolved by mkdocs-autorefs), so the strict build validates each one.
+   Only the tuple-assigned constants (`FIGHTER`, the mode name constants) had no entry.
+7. The writing guide documents `reviewed:` (never read; it only gives the page a commit) and
+   that `mkdocs build --strict -q` exits 0 on warnings (checked: a broken link gives exit 0
+   with `-q`, exit 1 without).
+
+The checks the five review experiments hit are unchanged or stricter. New deliberate
+breakages (an unknown
+`Class.attr`, an ambiguous `Carry`, a misspelt word, an unknown file, an unlabelled fence, a
+`text` fence with a `uv` command, `bnb --num-env`, `--preset nowhere`, a broken README link)
+each fail naming the page and line.
+
+**One source of truth.**
+- Statuses: `docs/roadmap.yml` gained a `page` per section. The home page
+  (`roadmap-summary`), the roadmap table (now linked) and its in-progress list
+  (`roadmap-in-progress`), each in-progress page's status line (`section-status`) and the
+  unbuilt rows of the package table render from it. The README links to the roadmap.
+- Packages and layers: `docs/packages.yml` (what each holds, its reference page or its
+  roadmap section) with the layers from `LAYER` in `tests/contract/test_imports.py`; the
+  `packages` block is included on the architecture page and the reference index, and the
+  home page links to it. The hook checks the file against `LAYER` and the tree.
+- Controllers: listed once, in the training loop page; the training guide links there.
+- Versions: the `versions` block reads `pyproject.toml` and `.python-version` on the
+  installation page; the README links to it.
+- Numbers: the joint index is written from `NUM_STICK` and `NUM_SHOOT`; the realtime cell's
+  tick counts and the benchmark's five minutes are gone.
+- The writing guide's list of blocks is itself generated (`block-names`, from each block
+  function's docstring).
+
+**Tables.** The shared-constants table skips the sizes, the pools, `team_types` (the
+fighter-heavy alternation is in the prose) and the flight constants. Bracketed spec keys are
+stripped from source comments. `power-modes` gains the names (from the comment on
+`POWER_MODES`), and the page states the sign convention.
+
+**Accuracy.** Phases follow `step.py` (1 to 8, the mode phase unnumbered); the
+architecture page states the rules (only the runtime writes persistent buffers, in place;
+sections do not compile themselves, with the skeleton PPO's compiled loss named as the one
+exception); data contracts are pytrees, `GameConfig` and `Pool` plain frozen dataclasses;
+the race fixture set's interface (`RaceArm`, `tests/reference/helpers.py`); Frontline meters
+move either way on a strict majority.
+
+**Voice.** Removed the race history, the agent workflow, the acceptance seed, the
+memory-bound and scalar-tail details and "production defaults"; reworded the lock's rule
+and the fixtures' validation to one sentence on what it guarantees.
+
+**Newcomers.** A glossary page (adapter, belief, carry, controller, decision step,
+environment, golden, lineup, pool, seat, pytree, rules, ship card, sim index,
+team-relative, stage, view), linked from first uses. The Yemong page explains softmax
+groups, binned and multi-level circular codes, and the RG-LRU. The objective-events
+sentence on the modes page is rewritten as two items.
+
+**Left for the docstring pass.** These generated tables have empty or partly empty "Note in
+the source" columns, because the fields have no comment: `ppo-config`, `train-config`,
+`yemong-config`, `mode-rules`, `reward-config`, `game-config`, `pool-fields`.
+
 ## Size
+
+After the fix round:
 
 | Part | Lines |
 |---|---:|
-| Pages (39 Markdown files in `docs/`, without `docs/rewrite/`) | about 2030 |
-| `docs/hooks/generated.py` | 402 |
-| `docs/roadmap.yml` | 57 |
-| `mkdocs.yml` | 135 |
-| `tests/docs/` (8 files) | 516 |
-| `README.md` | 37 |
+| Pages (40 Markdown files in `docs/`, without `docs/rewrite/`) | 2148 |
+| `docs/hooks/generated.py` | 605 |
+| `docs/roadmap.yml`, `docs/packages.yml` | 71, 36 |
+| `mkdocs.yml` | 137 |
+| `tests/docs/` (10 files) | 864 |
+| `README.md` | 40 |
 
-The built site is 5.1 MB, most of it the Material theme's assets.
+The built site is about 5 MB, most of it the Material theme's assets.
 
 ## Test run
 
 - No GPU was used: every run had `CUDA_VISIBLE_DEVICES=""`, with `-m "not gpu"`.
-- `uv run --no-sync pytest -m "not gpu"` on the tree without `tests/docs` (its code is
-  unchanged by this branch): 286 passed, 5 skipped, 8 deselected, in 40 min on a CPU shared
-  with other agents.
-- `uv run --no-sync pytest tests/docs` (slow tests included, docs extra installed): 236
-  passed, in 17 s.
-- Without the docs extra (`uv sync`), the build test and the roadmap-schema test skip with
-  the reason; everything else in `tests/docs` passes.
-- `uv run --no-sync ruff check .`: clean.
+- Fix round, final tree (commit 1314e1bb plus the fix round's four commits):
+  `uv run --no-sync pytest -m "not gpu"`: 661 passed, 5 skipped, 8 deselected, in 23 min on
+  a CPU shared with other agents. `tests/docs` alone, slow tests included: 375 passed.
+- The strict build passes; `uv run --no-sync ruff check .` is clean.
