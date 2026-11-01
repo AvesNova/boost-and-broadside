@@ -12,8 +12,8 @@ are in `runs.md`.
     game=None, types=None)`: `return_scale` is the learner's `ReturnScale`, `steps` a
     dict such as `{"environment_steps": n}`;
   - `bnb.runs.checkpoint.load_policy(directory, device) -> model`;
-  - `bnb.runs.checkpoint.read_policy(directory) -> PolicyRecord` (`return_scale` as
-    `(low, high)`, `steps`), and `bnb.runs.checkpoint.warm_start(policy, config, device)
+  - `bnb.runs.checkpoint.read_policy(directory) -> PolicyRecord` (`return_scale`: the
+    state tensors `{"low", "high"}`, `steps`), and `bnb.runs.checkpoint.warm_start(policy, config, device)
     -> Trainer`, which `bnb train --init-from POLICY` calls.
   - Every model is built from its build record: `Yemong(yemong_build(config, rules,
     types))`, `Relational(RelationalBuild(config, ships_per_team, num_ships))`.
@@ -43,8 +43,9 @@ are in `runs.md`.
   (`StateCodeRanges`: angle-of-attack limit, longest shield delay, cooldown bins, per-type
   max shield and energy), i.e. everything Yemong reads from section 1b's card.
 - **Policy file:** `checkpoint.json` (format 1, kind, model name/version/build, schema
-  versions, game, ship card as per-type lists, return scale, steps, commit, dirty, time,
-  file hashes) and `weights.safetensors` (the state dict).
+  versions, game, ship card as per-type lists, whether it holds a return scale, steps,
+  commit, dirty, time, file hashes), `weights.safetensors` (the state dict) and
+  `return_scale.safetensors` (the return scale's state tensors, when saved with one).
 - **Training checkpoint:** adds `train_config`, the optimizer's param groups and `extra`
   to the record, and `training.safetensors`: `optimizer.<index>.<key>`, `league.<name>`
   (the league slot's weights), `carry.<path>` (`Rollout.saved_carry()`: state, types,
@@ -75,9 +76,11 @@ are in `runs.md`.
 2. **`build_record()` is the attribute `build`; `from_build_record` is the constructor.**
    The constructor takes exactly the record, so a separate classmethod would be the same
    call.
-3. **The return scale lives in `checkpoint.json`** (the policy part), not in
-   `training.safetensors`: a policy file needs it for the warm start, and a training
-   checkpoint is a policy file. Two float32 values round-trip exactly through JSON.
+3. **The return scale's state tensors** (`ReturnScale.low` and `high`, `SCALE_STATE`) are
+   a file of the policy part, `return_scale.safetensors`, hashed like the weights (the
+   coordinator's request from the BC hand-back), not in `training.safetensors`: a policy
+   file needs them for the warm start, and a training checkpoint is a policy file.
+   `read_policy(...).return_scale` gives them.
 4. **The default generators are restored by the entry point**
    (`restore_default_generators`, called by `bnb train --resume` and the resume worker),
    not inside `load_training`: scaffold rule 3 keeps process-wide state out of library

@@ -52,7 +52,12 @@ def test_the_return_scale_and_steps_travel_with_the_policy(tmp_path):
     save_policy(tmp_path / "policy", cases.tiny_model("relational"), return_scale=scale,
                 steps=dict(environment_steps=12345), game=cases.GAME)
     policy = checkpoint.read_policy(tmp_path / "policy")
-    assert policy.return_scale == (float(scale.low), float(scale.high))  # float32, exactly
+    assert policy.return_scale.keys() == {"low", "high"}
+    for name in ("low", "high"):  # the state tensors themselves, bit for bit
+        assert torch.equal(policy.return_scale[name], getattr(scale, name))
+    assert (tmp_path / "policy" / checkpoint.RETURN_SCALE).is_file()
+    assert checkpoint.read_policy(tmp_path / "policy").raw["files"].keys() == {
+        checkpoint.WEIGHTS, checkpoint.RETURN_SCALE}  # hashed like the weights
     assert policy.steps == dict(environment_steps=12345)
     assert policy.raw["game"]["ships_per_team"] == 2
 

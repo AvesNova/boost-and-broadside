@@ -2,10 +2,10 @@
 
 A checkpoint is a directory: `checkpoint.json` (the record) and safetensors files, never
 pickle. A policy file holds what an agent needs to play: the model's registered name,
-version and build record, its weights, the schema versions, and the return scale and step
-counts for a warm start. A training checkpoint is a policy file plus everything a resume
-needs (`training.safetensors` and the record's training part); `load_policy` reads the
-policy part of either kind.
+version and build record, its weights, the schema versions, and for a warm start the
+return scale's state tensors (`return_scale.safetensors`) and the step counts. A training
+checkpoint is a policy file plus everything a resume needs (`training.safetensors` and the
+record's training part); `load_policy` reads the policy part of either kind.
 
 Writes are atomic: everything goes into `<name>.tmp/`, every file is flushed, the
 directory is renamed to `<name>/` and the parent flushed, so a crash leaves no half-written
@@ -34,6 +34,8 @@ from .serialise import from_json, named_tensors, to_json, tree_from_named
 FORMAT = 1
 RECORD = "checkpoint.json"
 WEIGHTS = "weights.safetensors"
+RETURN_SCALE = "return_scale.safetensors"
+SCALE_STATE = ("low", "high")  # the ReturnScale tensors a warm start continues from
 TRAINING = "training.safetensors"
 
 
@@ -53,14 +55,14 @@ def schemas() -> dict[str, int]:
 @dataclasses.dataclass(frozen=True)
 class PolicyRecord:
     """A policy file's record, checked: the model's name and version, its build record (the
-    model's dataclass), the build fields its defaults filled, the return scale's (low, high)
-    or None, the step counts, and the raw record."""
+    model's dataclass), the build fields its defaults filled, the return scale's state
+    tensors (SCALE_STATE, on the CPU) or None, the step counts, and the raw record."""
 
     name: str
     version: int
     build: object
     filled: tuple[str, ...]
-    return_scale: tuple[float, float] | None
+    return_scale: dict[str, torch.Tensor] | None
     steps: dict
     raw: dict
 
@@ -74,14 +76,13 @@ def policy_record(model: torch.nn.Module, return_scale: ReturnScale | None = Non
                   types: ShipTypes | None = None) -> dict:
     """The record of a policy file for `model` (its file hashes added on writing)."""
     head, dirty = provenance.commit()
-    scale = None if return_scale is None else dict(low=float(return_scale.low),
-                                                    high=float(return_scale.high))
     return dict(format=FORMAT, kind="policy",
                 model=dict(name=name_of(model), version=type(model).VERSION,
                            build=to_json(model.build)),
                 schemas=schemas(), game=None if game is None else to_json(game),
                 ship_card=None if types is None else _ship_card(types),
-                return_scale=scale, steps=dict(steps or {}), commit=head, dirty=dirty,
+                return_scale=return_scale is not None, steps=dict(steps or {}), commit=head,
+                dirty=dirty,
                 time=provenance.now())
 
 
@@ -90,6 +91,17 @@ def weights(model: torch.nn.Module) -> dict[str, torch.Tensor]:
     storage)."""
     return {name: tensor.detach().to("cpu", copy=True).contiguous()
             for name, tensor in model.state_dict().items()}
+
+
+def policy_files(model: torch.nn.Module,
+                 return_scale: ReturnScale | None = None) -> dict[str, dict[str, torch.Tensor]]:
+    """A policy file's tensor files: the weights and, when given, the return scale's state
+    tensors."""
+    files = {WEIGHTS: weights(model)}
+    if return_scale is not None:
+        files[RETURN_SCALE] = {name: getattr(return_scale, name).detach().to("cpu", copy=True)
+                               for name in SCALE_STATE}
+    return files
 
 
 def _flush(path: pathlib.Path) -> None:
@@ -141,7 +153,7 @@ def save_policy(directory: str | os.PathLike, model: torch.nn.Module, *,
     step counts (`steps`, such as {"environment_steps": n}). game and types (the ship card)
     are recorded for information (ratings are keyed by them)."""
     record = policy_record(model, return_scale, steps, game, types)
-    return write_checkpoint(directory, record, {WEIGHTS: weights(model)})
+    return write_checkpoint(directory, record, policy_files(model, return_scale))
 
 
 def read_record(directory: str | os.PathLike) -> dict:
@@ -179,10 +191,12 @@ def read_policy(directory: str | os.PathLike) -> PolicyRecord:
             f"version {cls.VERSION}. Load it from a worktree at a commit with version "
             f"{model['version']}")
     build, filled = from_json(BUILDS[cls], model["build"])
-    scale = record["return_scale"]
+    scale = None
+    if record["return_scale"]:
+        scale = safetensors.torch.load_file(pathlib.Path(directory) / RETURN_SCALE)
     return PolicyRecord(name=model["name"], version=model["version"], build=build,
                         filled=tuple(filled),
-                        return_scale=None if scale is None else (scale["low"], scale["high"]),
+                        return_scale=scale,
                         steps=record["steps"], raw=record)
 
 
@@ -257,8 +271,8 @@ def save_training(directory: str | os.PathLike, trainer, *, stage: object = None
         tensors[f"default_generator.{name}"] = state
     tensors = {name: tensor.detach().to("cpu", copy=True).contiguous()
                for name, tensor in tensors.items()}
-    return write_checkpoint(directory, record, {WEIGHTS: weights(trainer.model),
-                                                TRAINING: tensors}, stage)
+    files = policy_files(trainer.model, ppo.return_scale)
+    return write_checkpoint(directory, record, dict(files, **{TRAINING: tensors}), stage)
 
 
 def _paths(value, prefix: str = "") -> dict:
@@ -295,11 +309,11 @@ def _load_weights(model: torch.nn.Module, directory: pathlib.Path) -> None:
     model.load_state_dict(safetensors.torch.load_file(directory / WEIGHTS, device=str(device)))
 
 
-def _set_return_scale(trainer, scale: tuple[float, float] | None) -> None:
+def _set_return_scale(trainer, scale: dict[str, torch.Tensor] | None) -> None:
     if scale is not None:
-        device = trainer.ppo.return_scale.low.device
-        trainer.ppo.return_scale.low = torch.tensor(scale[0], device=device)
-        trainer.ppo.return_scale.high = torch.tensor(scale[1], device=device)
+        target = trainer.ppo.return_scale
+        for name in SCALE_STATE:
+            setattr(target, name, scale[name].to(getattr(target, name).device))
 
 
 def _restore(trainer, directory: pathlib.Path, record: dict, policy: PolicyRecord,

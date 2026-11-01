@@ -120,8 +120,9 @@ def test_a_warm_start_takes_weights_and_return_scale_with_a_fresh_optimizer(tmp_
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(rl.model.state_dict()[name], tensor)
         assert torch.equal(rl.league.state_dict()[name], tensor)
-    assert float(rl.ppo.return_scale.low) == float(trainer.ppo.return_scale.low)
-    assert float(rl.ppo.return_scale.high) == float(trainer.ppo.return_scale.high)
+    assert torch.equal(rl.ppo.return_scale.low, trainer.ppo.return_scale.low)
+    assert torch.equal(rl.ppo.return_scale.high, trainer.ppo.return_scale.high)
+    assert float(trainer.ppo.return_scale.high) != 0.0  # a real state, not the initial zeros
     assert rl.ppo.optimizer.state_dict()["state"] == {}
     assert (rl.ppo.env_steps, rl.updates_done) == (0, 0)
 

@@ -54,8 +54,9 @@ other languages read it.
 
 - **A policy file** (`bnb.runs.checkpoint.save_policy`) is what an agent needs to play: the
   model's registered name, version and build record, the `Obs` and `Action` schema
-  versions, its weights, the return scale and the step counts (for a warm start), the
-  game and ship card it trained on, the commit and the time, and each file's SHA-256.
+  versions, its weights, the return scale's state tensors and the step counts (for a warm
+  start), the game and ship card it trained on, the commit and the time, and each file's
+  SHA-256.
 - **A training checkpoint** (`bnb.runs.checkpoint.save_training`) is a policy file plus
   the full `TrainConfig`, the optimizer, the league slot, every random generator, the
   rollout carry (the game state, every controller's carry, the seats, the reward ledger)
