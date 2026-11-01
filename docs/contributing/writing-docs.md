@@ -1,5 +1,5 @@
 ---
-covers: [mkdocs.yml, docs/hooks/generated.py, tests/docs/]
+covers: [docs/hooks/generated.py, tests/docs/]
 reviewed: 2026-11-01
 ---
 
