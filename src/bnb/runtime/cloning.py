@@ -71,6 +71,20 @@ def clone(cfg: TrainConfig, device: torch.device, stop: StopConfig = StopConfig(
 
 
 @torch.no_grad()
+def warm_start(trainer: Trainer, student: Trainer) -> None:
+    """RL from BC (scripted spec B4): the student's weights (into the learner and its league
+    copy) and its return scale. The optimizer stays fresh and nothing clones; the copy is in
+    place, so the rollout's captured graphs keep reading the weights."""
+    if trainer.cfg.objective != "ppo":
+        raise ValueError("warm_start starts reinforcement learning (objective 'ppo')")
+    state = student.model.state_dict()
+    trainer.model.load_state_dict(state)
+    trainer.league.load_state_dict(state)
+    trainer.ppo.return_scale.low.copy_(student.ppo.return_scale.low)
+    trainer.ppo.return_scale.high.copy_(student.ppo.return_scale.high)
+
+
+@torch.no_grad()
 def teacher_distributions(game: GameConfig, pools: tuple[Pool, ...], num_envs: int,
                           segments: int, device: torch.device, length: int = 128,
                           compile: bool = True) -> torch.Tensor:

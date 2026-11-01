@@ -195,3 +195,57 @@ def test_alive_mask_reads_the_own_rows(segment):
     S = trajectory.logp.shape[-1]
     torch.testing.assert_close(trajectory.alive[..., :S].float(),
                                (trajectory.obs.ships[..., :S, SHIP["alive"]] > 0.5).float())
+
+
+# ------------------------------------------------------------------ the hand-off
+
+
+def _tiny(objective: str, pools):
+    from bnb.contracts import GameConfig
+    from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.train import TrainConfig
+
+    learner = bc.config(minibatches=2) if objective == "bc" else LearnerConfig(minibatches=2)
+    return TrainConfig(game=GameConfig(2, 2, 1200.0), pools=pools, num_envs=8, length=8,
+                       model="relational", relational_hidden=16, compile=False,
+                       host_store=False, learner=learner, objective=objective)
+
+
+def test_reinforcement_learning_starts_from_the_clone():
+    from bnb.learn.ppo import Learner
+    from bnb.runtime.cloning import LINEUP, warm_start
+    from bnb.runtime.train import LINEUP as RL_LINEUP
+    from bnb.runtime.train import Trainer
+
+    torch.manual_seed(0)
+    student = Trainer(_tiny("bc", LINEUP), lc.CPU)
+    student.update()
+    trainer = Trainer(_tiny("ppo", RL_LINEUP), lc.CPU)
+    warm_start(trainer, student)
+    for module in (trainer.model, trainer.league):
+        for (name, a), b in zip(module.state_dict().items(), student.model.state_dict().values(),
+                                strict=True):
+            assert torch.equal(a, b), name
+    assert float(trainer.ppo.return_scale.scale()) == float(student.ppo.return_scale.scale())
+    assert float(student.ppo.return_scale.high) != 0.0
+    assert not trainer.ppo.optimizer.state  # fresh
+    assert type(trainer.ppo) is Learner and trainer.cfg.learner.policy == 27.0  # no cloning
+    row = trainer.update()
+    assert "bc_kl" not in row and "approximate_kl" in row
+
+
+def test_the_hand_off_round_trips_through_a_policy_file(tmp_path):
+    """Section 11's interface (runs spec 3): save_policy and load_policy. Open until that
+    section merges."""
+    checkpoint = pytest.importorskip("bnb.runs.checkpoint",
+                                     reason="section 11 (bnb.runs) has not merged")
+    from bnb.runtime.cloning import LINEUP
+    from bnb.runtime.train import Trainer
+
+    student = Trainer(_tiny("bc", LINEUP), lc.CPU)
+    student.update()
+    checkpoint.save_policy(tmp_path / "clone", student.model)
+    loaded = checkpoint.load_policy(tmp_path / "clone", lc.CPU)
+    for a, b in zip(loaded.state_dict().values(), student.model.state_dict().values(),
+                    strict=True):
+        assert torch.equal(a, b)
