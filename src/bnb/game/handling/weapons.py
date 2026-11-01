@@ -21,6 +21,7 @@ DRAG_RANGE = (1e-12, 10.0)  # 1/m
 
 
 def bullet_life(rules: Rules) -> float:
+    """Every bullet's life in seconds: its moves at the rules' tick."""
     return rules.bullet_moves * rules.tick_length
 
 

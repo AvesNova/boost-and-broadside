@@ -29,6 +29,9 @@ def load_card(path: str | None) -> ShipTypes:
 
 
 class Report(NamedTuple):
+    """A card's measured handles, shown quantities and similarity ratios, for printing and
+    charting."""
+
     handles: Handles  # (num_types,) fields
     view: shown_module.Shown  # (1, num_types, ...)
     ratios: dict  # ours, (num_types,) per ratio
@@ -36,6 +39,7 @@ class Report(NamedTuple):
 
 
 def report(rules: Rules, types: ShipTypes) -> Report:
+    """Measure one card (num_types,) and gather what the chart prints and plots."""
     types = batched(types)
     handles = measure(types, rules)
     view = shown_module.shown(rules, types)
@@ -101,14 +105,12 @@ def _curves(rules: Rules, types: ShipTypes, card: Report):
 
 
 def write_charts(rules: Rules, types: ShipTypes, card: Report, directory: str) -> list[str]:
-    """Write CHARTS into directory; returns their paths."""
+    """Write CHARTS into directory; returns their paths. Raises ImportError without
+    matplotlib (the optional tools extra)."""
     try:
-        import matplotlib
-
-        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-    except ImportError as error:  # the optional extra
-        raise SystemExit("the charts need matplotlib: uv sync --extra tools") from error
+    except ImportError as error:
+        raise ImportError("the charts need matplotlib: uv sync --extra tools") from error
     types = batched(types)
     out = pathlib.Path(directory)
     out.mkdir(parents=True, exist_ok=True)

@@ -44,14 +44,18 @@ class ShipCard:
 
 
 def main() -> None:
+    """The `bnb` command: `bnb ship-card ...` charts a card, anything else trains."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     if sys.argv[1:2] == ["ship-card"]:
+        os.environ.setdefault("MPLBACKEND", "Agg")  # the charts go to files: no display
         ship_card(tyro.cli(ShipCard, args=sys.argv[2:], prog="bnb ship-card"))
     else:
         train(tyro.cli(Train))
 
 
 def ship_card(args: ShipCard) -> None:
+    """`bnb ship-card`: print the card's chart at 30 Hz and write its charts to args.out;
+    exits with the reason when matplotlib is missing."""
     from bnb.contracts import GameConfig
     from bnb.game.api import rules_of
     from bnb.game.handling import chart
@@ -60,11 +64,18 @@ def ship_card(args: ShipCard) -> None:
     types = chart.load_card(args.card)
     card = chart.report(rules, types)
     print("\n".join(chart.lines(rules, types, card)))
-    for path in chart.write_charts(rules, types, card, args.out):
+    try:
+        paths = chart.write_charts(rules, types, card, args.out)
+    except ImportError as error:
+        raise SystemExit(str(error)) from error
+    for path in paths:
         print(f"wrote {path}")
 
 
 def train(args: Train) -> None:
+    """`bnb`: train with PPO on the preset (or the mode and sizes) given, logging a line
+    per update; exits with the reason for an unknown preset or an environment count that
+    the pools cannot share."""
     import torch
 
     from bnb.contracts import GameConfig

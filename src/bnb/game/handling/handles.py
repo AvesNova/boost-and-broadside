@@ -46,6 +46,7 @@ class Handles:
     spawn_energy: torch.Tensor  # J
 
     def replace(self, **values) -> Handles:
+        """These handles with the given ones changed (a re-solve's target)."""
         return dataclasses.replace(self, **values)
 
 

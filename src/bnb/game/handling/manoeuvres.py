@@ -34,6 +34,7 @@ REVERSAL_LIMIT = 2.0  # s, the longest nose reversal measured
 CLIMB_LIMIT = 900.0  # s, the longest climb measured
 CLIMB_PROGRESS = 10.0  # s: a climb whose store has not risen over this long is given up
 CRUISE_BISECTIONS = 50
+CROSSING_BISECTIONS = 50  # on the cubic through the ticks around a crossing
 CRUISE_GRID = 48  # speeds, log-spaced from the stall speed to 30 times it
 TURNING_STORE = 0.25  # store fraction for the turns: below the knee, clear of the fade bands
 DIVE_STORE = 0.5  # store fraction for the dive and the zoom (spec: half full)
@@ -76,6 +77,9 @@ def empty_map(like: torch.Tensor) -> Fields:
 
 
 class SteadyTurn(NamedTuple):
+    """A coasting turn's rest point: the nose at its commanded angle, turning with the
+    path. Shaped like the speeds given."""
+
     angle: torch.Tensor  # the commanded (steady) angle of attack
     path_rate: torch.Tensor  # the flight path's turn rate there, also the steady nose rate
 
@@ -94,14 +98,11 @@ def steady_turn(rules: Rules, airframe: Airframe, speed, energy, stick) -> Stead
 
 def derivative_weights(tick_length: float, like: torch.Tensor) -> torch.Tensor:
     """(K + 1,) weights whose dot product with samples at t = 0, h, ..., K h is the slope at
-    t = 0 of their least-squares cubic over FIT_WINDOW."""
+    t = 0 of their least-squares polynomial of degree FIT_DEGREE over FIT_WINDOW."""
     count = max(round(FIT_WINDOW / tick_length), FIT_DEGREE + 1) + 1
     time = torch.arange(count, dtype=like.dtype, device=like.device) * tick_length
     vandermonde = torch.stack([time ** p for p in range(FIT_DEGREE + 1)], -1)
     return torch.linalg.pinv(vandermonde)[1]
-
-
-CROSSING_BISECTIONS = 50
 
 
 def crossing_time(series: torch.Tensor, threshold: torch.Tensor, tick_length: float):

@@ -273,6 +273,8 @@ def first_guess(rules: Rules, handles: Handles, combat: dict, exponent: float) -
 # ------------------------------------------------------------------ Newton
 
 class Solution(NamedTuple):
+    """What `solve` returns: the card, how close it came, and how well determined it is."""
+
     types: ShipTypes  # float32, shaped like the handles
     error: torch.Tensor  # (..., num_types, 8) achieved relative error of each flown handle
     condition: torch.Tensor  # (..., num_types) the flown Jacobian's condition number

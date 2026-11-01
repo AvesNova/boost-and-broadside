@@ -193,6 +193,8 @@ class Shown(NamedTuple):
 
 
 def shown(rules: Rules, types: ShipTypes) -> Shown:
+    """Every shown quantity of a card ((num_types,) or (B, num_types) fields), flown in its
+    dtype at the rules' tick."""
     types = batched(types)
     constants = rules.flight
     corner = torch.sqrt(types.max_acceleration / types.max_lift_coefficient)
