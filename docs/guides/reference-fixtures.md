@@ -16,12 +16,13 @@ A section passes them through an **adapter**, the one file it writes.
 | `tests/reference/rewards` | v1's code at the tag `v1-torch-final` | `tests/reference/rewards/rewards_arm.py` |
 | `tests/reference/yemong` | v1's code at the tag `v1-torch-final` | `tests/reference/yemong/yemong_arm.py` |
 | `tests/reference/learner` | v1's code at the tag `v1-torch-final` | `tests/reference/learner/learner_arm.py` |
+| `tests/reference/league` | v1's code at the tag `v1-torch-final` | `tests/reference/league/league_arm.py` |
 
 - A golden is a `.npz` (or `.json`) file of inputs, weights where a module has them, and
   the reference's outputs.
 - The generators live outside this tree. The tests speak an interface of their own; the
   adapter translates it to `bnb`.
-  - The rewards, Yemong and learner sets describe their interface, conventions and
+  - The rewards, Yemong, learner and league sets describe their interface, conventions and
     tolerances in their directory's `README.md`{.plain}.
   - The race set (`tests/reference` itself) has no README. Its interface is the physics
     race's (numpy in, numpy out, the race's observation layout), implemented by `RaceArm`
