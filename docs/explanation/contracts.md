@@ -145,7 +145,8 @@ replaying it.
   `bnb.contracts.REWARD_LEVELS` (see [Rewards](game/rewards.md)). Its action holds every
   row of the view, and it carries the learner's label inputs: the enemy rows of the
   privileged view, the `alive` and `valued` flags, and the shot capture
-  (see [The learner](learner.md)).
+  (see [The learner](learner.md)). Its `result` is each view's match result where an
+  episode ended, from its own team's side.
 
 ## Configuration
 

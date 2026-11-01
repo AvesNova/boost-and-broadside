@@ -95,10 +95,12 @@ re-simulation). A minibatch's denominators are its views' sums.
   tick's captured ship motion. Every bullet flies all 12 moves; a shot's first contact is its
   hit (where the game spends the bullet), its later ages invalid. The closest pass is the
   smallest miss distance over the flight, over living ships but the shooter.
-- **Validity.** The shooter was alive, and the flight (to its hit, or all its moves) ends
-  inside the segment with no episode end before its last move.
-- **Spread.** One standard-normal draw per shard from the learner's own generator, so each
-  epoch sees the same labels.
+- **Validity.** The shooter was alive, the shot was launched at least the longest flight
+  before the segment's end (fix round, fix 4), and its flight (to its hit, or all its moves)
+  has no episode end before its last move.
+- **Spread and storage.** One standard-normal draw per update from the learner's own stream;
+  the re-simulation runs once, in `prepare`, and its shots and loss mask go into the store
+  (fix round, fix 6).
 - **Equality with the game** is bit for bit (tested on 32 environments of a crowded 3v3 with
   fields and episode ends: 10k+ snapshots, every hit, both sides).
 - The per-tick step is a stage the runtime compiles (357 ms to 41 ms per 16-view
@@ -127,7 +129,8 @@ over every step. Heads start at zero (a uniform policy).
 
 ## Decisions and deviations
 
-1. **Labels are built per micro-batch, not stored per shard.** Spec 2 says everything
+1. **(Superseded by the fix round, fix 6: the shot labels are stored; the codes stay per
+   micro-batch.)** **Labels are built per micro-batch, not stored per shard.** Spec 2 says everything
    derived is computed on the GPU one shard at a time. The returns, the return scale and the
    token counts are (per shard, once per update). The labels are rebuilt per micro-batch
    from the stored rows, because expanded they do not fit: at 5v5 and 1536 views the
@@ -149,17 +152,17 @@ over every step. Heads start at zero (a uniform policy).
 5. **`alive (L, R, N)` and `valued (L, R, S)` are recorded beside the observation,** so the
    returns and the token counts read 15 bytes per view-tick instead of staging the whole
    observation per shard.
-6. **The view's result** for the outcome targets is the sign of its outcome reward (the
-   outcome weight is positive); the spec stores no result.
+6. **The view's result** for the outcome targets is the match result the rollout records
+   (`Trajectory.result`, fix round, fix 11).
 7. **`next_done` for the GAE is `done[L - 1]`**: the fixtures pinned that the last step's cut
    is `~terminated[L - 1] & ~next_done`, and in the rollout the bootstrap observation's
    reset is exactly `done[L - 1]`.
 8. **Density:** the per-cell term minus its saturated value (zero at a perfect forecast; the
    same gradient), summed over cells, over the view-step's valued-ship count, averaged over
    view-steps.
-9. **The KL early stop** checks each minibatch's approximate KL, `mean((r - 1) - ln r)` over
-   living own ships, after its step, and stops the update there (one host sync per
-   minibatch). The reported clip fraction and KL are the first epoch's means.
+9. **The KL early stop** reads the epoch's mean approximate KL, `mean((r - 1) - ln r)` over
+   living own ships, once per epoch, and stops the update after that epoch (fix round,
+   fix 2). The reported clip fraction and KL are the first epoch's means.
 10. **Uneven minibatches.** Where the views do not divide into 32 minibatches (the 26-ship
     bench cell has 2364 views), `tensor_split` makes them as equal as possible, and each
     minibatch's last micro-batch is smaller. The compiled loss then has at most three
@@ -325,3 +328,102 @@ THROUGHPUT
   four 5v5 training cells and the 26-ship cell through `bench.cell`) into `chain2.log`.
 - **Next:** fill the measurement tables below from those logs; rerun the full suite under
   the lock; hand back.
+
+## Fix round (2026-11-01)
+
+The review's fixes, as the coordinator decided them. Every test below was seen to fail
+with the fix reverted or the bug put back by hand, unless it says otherwise.
+
+1. **The rollout's shot capture.** New tests on a real Yemong rollout (self-play and the
+   chaser, so team-1 views exist):
+   `test_learner_shots.py::test_the_rollouts_capture_is_the_tick_start_state_in_view_order`
+   (the capture's x, y, heading, speed and `alive` at t are the stored privileged rows at
+   t) and `::test_the_rollouts_displacement_is_the_next_row_minus_this_one` (to 1e-3 m).
+   A capture taken after the move, and one in sim order, each fail them.
+2. **No host sync per minibatch.** The update accumulates on the device and reads once at
+   its end (one `tolist`), plus the epoch's mean KL once per epoch but the last; the drift
+   and the explained variance are computed without boolean indexing. The store waits on
+   its last write's event (`SegmentStore._written`): the compute stream on the GPU for a
+   device store, the host only before it reads pinned memory itself. Indexing the levels
+   with a Python list copied an index to the device per micro-batch (the sync-debug test
+   found it); the index is built once. Guard:
+   `test_learner_streaming.py::test_an_update_synchronises_only_to_read_its_kl_and_its_results`
+   (`set_sync_debug_mode("warn")`, exactly `epochs` syncs; a copy-stream synchronise in
+   `batches` fails it). **Change:** the early stop is per epoch now, not per minibatch.
+3. **The update's draws.** `random_stream(seed, name)` gives the learner a generator per
+   stream (`shot_spread` on the device, `minibatch_order` on the host), seeded from
+   `LearnerConfig.seed` and the name. Guard:
+   `test_learner.py::test_the_update_is_the_same_whatever_the_global_seed` (fails with
+   `randperm` on the global generator).
+4. **Tail shots** (coordinator's decision). A shot launched within the longest flight
+   (`Rules.bullet_moves` ticks) of the segment's end is invalid whatever it hit, as v1's
+   last rows carried no shot labels. Guard:
+   `test_learner_shots.py::test_a_shot_launched_near_the_segments_end_is_invalid_whatever_it_hit`
+   (no valid tail shot; every body shot of a 60-tick segment has the label it has in the
+   100-tick recording, so the body's hit rate is unchanged). **Deviation from the spec's
+   literal reading** ("invalid if its flight crosses ... the segment's end"): a hit inside
+   the segment no longer makes a tail shot valid. Episode ends keep the flight-end rule (the
+   game clears the bullets there); the coordinator may want the same rule there.
+5. **Closest pass and side.** `test_learner_shots.py::test_a_miss_records_its_closest_pass_and_that_ships_side`:
+   straight shots past standing ships, the nearest 30 m off the line, from a shooter in
+   either block, ally or enemy nearest. Swapping `SIDE_ALLY` and `SIDE_ENEMY`, or dropping
+   the `sqrt`, fails all four cases.
+6. **Labels once per update.** `prepare`'s pass re-simulates every view once and writes
+   the shots and their loss mask into the store (`SegmentStore.write_views`, per-view
+   leaves `(V, L, ...)`, so a micro-batch's contiguous views are one copy);
+   `Learner.staged` reads them back with each micro-batch. The codes (next state, enemy
+   action, density, the shot codes) stay per micro-batch, because memory forbids storing
+   them: expanded they are about 97 kB per 5v5 view-tick (next state 19.6 kB, shot
+   trajectory 73.9 kB, density 2.6 kB), 25 times the 3.8 kB segment, while the stored shot
+   labels are about 2.7 kB per 5v5 view-tick (snapshots 2.4 kB). Guard:
+   `test_learner.py::test_the_stored_shot_labels_are_the_updates_resimulation`. The
+   re-simulation was about a quarter of the update (5 passes of 41 ms per 16-view
+   micro-batch, provisional, from the earlier notes); the coordinator measures the new time.
+7. **Streaming.** `test_the_update_through_pinned_memory_equals_the_device_path` now runs
+   two rollouts from the same seed, one into pinned memory and one into a device store
+   (`host_store=False`), with one and two shards: the stored records, the counts, the
+   terms, the value losses and the gradients are equal bit for bit.
+   `docs/explanation/learner.md` says exactly that.
+8. **Untested paths:** `test_recomputed_old_log_probabilities_are_the_unrolls`,
+   `test_the_drift_is_the_step_unroll_ratio_error` (against boolean indexing, and a
+   perturbed model drifts), `test_the_explained_variance_matches_an_independent_computation`,
+   `test_the_kl_early_stop_ends_the_update_after_an_epoch` (all in `test_learner.py`), and
+   `test_learner_precision.py::test_a_precision_setting_agrees_with_float32` (GPU): TF32 and
+   bf16 give finite terms and gradients, within 1e-2 and 5e-2 of float32's (relative; the
+   bounds come from the mantissas, and measured on the case the gradient's error is 8e-4
+   and 1e-2 of its norm).
+9. **Compaction: not done; a request.** Storing beliefs for hidden rows only cannot be
+   exact with static shapes: the count of hidden enemy rows varies from 0 to N - S per
+   view-tick, so a fixed layout that holds every case is the enemy block, which is what
+   the store keeps; packing them needs a data-dependent count (a host sync per block, or a
+   capacity that can overflow). The 16 columns the observation zeroes for a hidden row could
+   hold its 12 means, but not its 15 spreads, and multiplexing the observation would make
+   every reader of it unmask it. Static options for the coordinator:
+   - store the belief only for fogged views (a fog-off view never hides a row), with an
+     index map in the store; it saves the pools' fog-off share of the replay;
+   - a capacity per view-tick with an overflow count, exact only below it.
+   The existing exactness test (`test_the_compacted_replay_rebuilds_the_own_rows_sight_gave`)
+   is unchanged.
+10. **Dead code.** `returns.outcome_values` is gone (no caller; `critic.outcome_values`
+    remains). The skeleton models were left to the cleanup pass.
+11. **The outcome class.** The rollout records each view's match result
+    (`Trajectory.result`, `(L, R)` int32: `Events.result`, negated for a team-1 view); the
+    outcome targets, `Trainer.pool_metrics` and `win_rate` read it. Guards:
+    `test_learner.py::test_the_view_records_its_teams_match_result` and
+    `::test_the_outcome_targets_read_the_match_result_at_any_outcome_weight`, on a rollout
+    whose score is set to 1-0 (short random games end drawn) with the outcome weighted
+    zero.
+12. **Small items:** the training guide's option table (`--model`, `--precision`,
+    `--shards`, `--old-log-probabilities`, `--micro-batch-rows`); the relational model's
+    scales are named constants with what each normalises; `buf`, `e`, `R` and `dev` in
+    `rollout.py` became `records`, `environments`, `views` and `device` (the style guide's
+    `buf` example is now marked plain, since the name left the code).
+13. **History.** The WIP commit became
+    `refactor: size learner micro-batches in ship rows, not views` (the CLI option is
+    `--micro-batch-rows`); each fix above is its own commit.
+
+Outside the section's packages this round: `bnb.contracts.trajectory` (`result`),
+`docs/guides/training.md`, `docs/explanation/learner.md`, `docs/contributing/code-style.md`
+(one `{.plain}`), and the new `tests/sections/test_learner_precision.py`. Request:
+`contracts.md`'s current schema gains `Trajectory.result`.
+

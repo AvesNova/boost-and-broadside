@@ -65,7 +65,7 @@ is a sequence of compiled stages over that carry (see [Architecture](architectur
   every row's action, the log-probability and value, anything else its `Outputs` give (the
   values per level, the outcome probabilities, the replay record) and the label inputs into
   a staging ring of two graph blocks. The advance stage writes the shot capture, the resolve
-  stage the learner's rewards per level and the `done` flags. After each block the rollout
+  stage the learner's rewards per level, the `done` flags and each view's match result. After each block the rollout
   copies the ring's block into its segment store (`bnb.runtime.store.SegmentStore`), in
   pinned host memory or on the device.
 - **Rewards** are computed every tick from the tick's events and the ledger (see
