@@ -19,8 +19,9 @@ as written and listed for the author.
   shell) may run at the same time. So:
   - leave `bnb/controllers/scripted.py` (section 4 replaces it) and `bnb/play/`
     alone;
-  - do the renames of section 1.1 first, in one commit, and push it at once, so the other
-    branches can merge it early;
+  - first, format the whole tree with `ruff format` (section 1.0), in one commit;
+  - then do the renames of section 1.1, in one commit, and push both at once, so the
+    other branches can merge them early;
   - merge `origin/v2` into the cleanup branch at least once a day.
 - **Out of scope:**
   - the native goldens that replace the race adapter (`tests/reference/race_arm.py`);
@@ -30,6 +31,18 @@ as written and listed for the author.
   - any behaviour change.
 
 ## 1. Names
+
+### 1.0 The formatter (author, 2026-11-01)
+
+- Run `uv run --no-sync ruff format` over `src`, `bench` and `tests` (except
+  `tests/reference`, which ruff excludes), in a commit of its own that changes nothing
+  else.
+- Add that commit's hash to `.git-blame-ignore-revs` at the repository root, so
+  `git blame` skips it.
+- A test runs `ruff format --check` and fails on unformatted code.
+- When this spec was written, it reformatted 66 files (about 4,400 changed lines). An
+  open branch merging it should format its own files with `ruff format` first; most
+  conflicts then resolve to the formatted side.
 
 ### 1.1 Contract renames (first commit)
 

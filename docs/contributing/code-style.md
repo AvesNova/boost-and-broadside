@@ -15,8 +15,9 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 - Python 3.14 (`requires-python` in `pyproject.toml`), managed with uv. Run everything
   through `uv run --no-sync`, so a command never changes the environment.
 - `uv run --no-sync ruff check .` must pass. The rule sets and the line length (100) are
-  in `[tool.ruff]` in `pyproject.toml`. There is no automatic formatter: match the
-  layout of the surrounding code.
+  in `[tool.ruff]` in `pyproject.toml`.
+- The code is formatted with `uv run --no-sync ruff format .`. The suite runs
+  `ruff format --check` and fails on unformatted code.
 - A library that a task needs may be added. Tooling-only libraries go in an optional
   extra or a dependency group, so the runtime install stays small.
 
