@@ -2,8 +2,9 @@
 scripted agent at 2v2 team deathmatch scores at least 0.45 against its teacher over 512
 games, and its score against the chaser is within 0.10 of the teacher's.
 
-The budget is BUDGET environment steps of 256 environments x 128 ticks; the section notes
-record the measured curve and its time on the dev GPU.
+BC runs to its stop rule (the live score against the teacher, 0.45 over 1000 games) within
+BUDGET environment steps of 256 environments x 128 ticks. Measured: it stops by score at
+65M steps, about 13 minutes on the dev GPU (the section notes have the curve).
 """
 
 import pytest
@@ -18,7 +19,7 @@ from bnb.runtime.train import LEARNER, SCRIPTED, TrainConfig
 
 pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 GAME = GameConfig(2, 4, 1200.0)
-BUDGET = 20_000_000
+BUDGET = 100_000_000
 TOY = TrainConfig(game=GAME, pools=cloning.LINEUP, num_envs=256, model="relational",
                   learner=bc.config(), objective="bc")
 
@@ -42,6 +43,7 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
         versus_teacher = against(clone, teacher)
         versus_chaser = against(clone, chaser)
         teacher_versus_chaser = against(Scripted(student.characteristics), chaser)
-    assert versus_teacher >= 0.45, (reason, versus_teacher)
+    assert reason == "score", reason
+    assert versus_teacher >= 0.45, versus_teacher
     assert abs(versus_chaser - teacher_versus_chaser) <= 0.10, (versus_chaser,
                                                                 teacher_versus_chaser)

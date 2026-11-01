@@ -33,14 +33,17 @@ the temperature that gives a target mean entropy:
 
 <!-- not-runnable: needs CUDA -->
 ```bash
-uv run --no-sync bnb --preset mixed --calibrate-entropy 1.0
-uv run --no-sync bnb --preset mixed --calibrate-entropy 3.0 --teacher-floor 0.05
+uv run --no-sync bnb --preset mixed --calibrate-entropy 0.5
+uv run --no-sync bnb --preset mixed --calibrate-entropy 1.2 --teacher-floor 0.1
 ```
 
 It plays the scripted agent against itself in the preset's games, prints its natural
 entropy (temperature 1) and the temperature whose labels reach the target at the given
-floor, and exits. A target above what the temperature alone reaches fails with the
-reachable range; raise `--teacher-floor` then. Pass the temperature to the BC run with
+floor, and exits. A target outside what the temperature reaches at that floor fails with
+the reachable range; raise `--teacher-floor` for a higher one. The natural entropy is low
+(0.40 nats on the training mix,
+[measured](../explanation/behaviour-cloning.md#measurements)), and the temperature alone
+reaches about 0.75. Pass the temperature to the BC run with
 `--teacher-temperature`.
 
 ## From Python

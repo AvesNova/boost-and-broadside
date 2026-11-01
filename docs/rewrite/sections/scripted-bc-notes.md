@@ -6,7 +6,10 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
 
 ## Progress (working state)
 
-PROGRESS_LINE
+- **Done:** parts A and B, their acceptance runs and measurements, the docs. Commits on
+  `section/scripted`, pushed.
+- **In flight:** the full suite at the last commit (see the last commit message).
+- **Open:** the policy-file hand-off (section 11), request 1 below.
 
 ## Design
 
@@ -190,15 +193,66 @@ mostly recording.
 
 ### The teacher's natural entropy
 
-NATURAL_ENTROPY
+`bnb --preset mixed --num-envs 256 --calibrate-entropy 0.5` (and
+`/tmp/bnb-scratch-scripted/reach.py`): the scripted agent plays itself in the 5v5 training
+mix (staggered clocks, 4 segments of 128 ticks, 1.27M living own ship-steps). **Natural
+entropy 0.396 nats per living ship-step.** The distribution's support averages 2.4 joint
+actions (mean log-support 0.753), so the temperature alone reaches 0.753 at most:
+
+| floor | T = 1 | T = 2 | T = 5 | T = 100 |
+|---:|---:|---:|---:|---:|
+| 0 | 0.396 | 0.595 | 0.719 | 0.753 |
+| 0.05 | 0.745 | 0.932 | 1.050 | 1.081 |
+| 0.1 | 1.026 | 1.202 | 1.312 | 1.342 |
+| 0.2 | 1.515 | 1.668 | 1.765 | 1.791 |
+| 0.3 | 1.943 | 2.074 | 2.157 | 2.180 |
+
+Calibration to 0.5 nats at floor 0 gives T = 1.40 (twice: 1.4011 and 1.3949 on two
+recordings). The calibration test hits its targets to 0.01 nats on synthetic
+distributions.
 
 ### The toy BC result and budget (B6.5)
 
-TOY_RESULT
+`tests/sections/test_bc_toy.py` (gpu, slow): the relational model (hidden 256), 2v2 team
+deathmatch (4 fields, arena 1200 m), 256 environments x 128 ticks per update, BC's lineup,
+`bc.config()`, the default stop rule with a 100M-step budget, seed 0
+(`/tmp/bnb-scratch-scripted/toy_bc.py`, curves in `toy_bc.jsonl` and `toy_bc_30M.jsonl`):
+
+| env steps | BC KL (EMA) | student entropy | live window score vs teacher |
+|---:|---:|---:|---:|
+| 2.0M | 0.98 | 1.18 | - |
+| 5.9M | 0.58 | 0.89 | - |
+| 9.8M | 0.38 | 0.71 | - |
+| 15.7M | 0.26 | 0.55 | 0.02 |
+| 19.7M | 0.22 | 0.51 | 0.06 |
+| 29.5M | 0.15 | 0.44 | 0.23 |
+| 61.6M | 0.089 | 0.35 | 0.42 |
+| 65.4M | 0.087 | 0.35 | 0.45 (stop: score) |
+
+The teacher's label entropy is 0.25-0.27 nats in this game. Stopped by the score rule
+after 65.4M environment steps, 792 s including compilation. Then 512 fresh games each:
+**the clone scores 0.478 against its teacher, 1.000 against the chaser; the teacher scores
+1.000 against the chaser** (B6.5's 0.10 bar holds). A 30M-step run without the stop rule
+ended at 0.348 against the teacher, so the score lags the KL by a wide margin: the
+window passes 0.45 only once the KL is below about 0.09 nats.
 
 ### BC throughput (B6.7)
 
-THROUGHPUT
+`/tmp/bnb-scratch-scripted/throughput.py`: Yemong, the 5v5 training mix, 1024
+environments, float32, the bench cell's protocol (compile update, one episode of rollouts,
+best of 3 timed collect + update). 4096 environments (bench's budget) ran out of memory with
+another agent's process on the GPU.
+
+| | rollout | update | env steps / s end to end | peak VRAM |
+|---|---:|---:|---:|---:|
+| PPO, `bnb.runtime.train.LINEUP` | 3.47 s | 47.0 s | 2596 | 3.53 GB |
+| BC, `bnb.runtime.cloning.LINEUP` | 4.34 s | 63.8 s | 1923 | 3.51 GB |
+
+**BC runs at 0.74x PPO's rate here, provisionally.** Other agents' benchmarks and tests ran
+on the machine during both, and the gap does not match its known parts: the teacher's
+labels cost 0.7 ms per 16-view x 128-tick micro-batch (`teacher_cost.py`), against about
+113 ms for a micro-batch's gradient, and BC computes no extra unroll. A quiet
+re-measurement should settle it.
 
 ## Changes outside `bnb.controllers` and `bnb.learn`
 

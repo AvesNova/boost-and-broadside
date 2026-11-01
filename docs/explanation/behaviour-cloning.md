@@ -78,4 +78,17 @@ and its policy files (in progress, [Runs and checkpoints](in-progress/runs.md)).
 
 ## Measurements
 
-<!-- measured: bc-results -->
+Measured on 2026-11-02 on the development laptop (RTX 4070 Laptop GPU):
+
+- **The teacher's natural entropy:** 0.396 nats per living ship-step, over 1.27M ship-steps
+  of the scripted agent's own games of the 5v5 training mix (256 environments, four
+  segments of 128 ticks). Its distribution puts weight on 2.4 joint actions on average,
+  so the temperature alone reaches at most 0.75 nats; a floor of 0.1 gives 1.03 to 1.34.
+- **The toy test** (`tests/sections/test_bc_toy.py`): the relational model cloned at 2v2
+  team deathmatch, 256 environments, stopped by the score rule after 65.4M environment
+  steps (13 minutes). Over 512 fresh games it scores 0.478 against its teacher and 1.000
+  against the chaser; the teacher scores 1.000 against the chaser.
+- **Throughput:** Yemong on the 5v5 training mix at 1024 environments, 1923 environment
+  steps per second end to end, against 2596 for PPO with its lineup, measured while other
+  processes shared the machine (provisional). The teacher's labels take 0.7 ms per
+  micro-batch of 16 views x 128 ticks.

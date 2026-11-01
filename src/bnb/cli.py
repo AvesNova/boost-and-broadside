@@ -89,9 +89,13 @@ def main() -> None:
     if args.calibrate_entropy is not None:
         tokens = cloning.teacher_distributions(game, pools, args.num_envs, 4, device)
         natural = bc.mean_entropy(tokens, bc.TeacherConfig())
-        chosen = bc.calibrate(tokens, args.calibrate_entropy, args.teacher_floor)
-        print(f"natural entropy {natural:.4f} nats over {tokens.shape[0]} ship-steps; "
-              f"temperature {chosen.temperature:.4f} at floor {chosen.floor} gives "
+        print(f"natural entropy {natural:.4f} nats per living ship-step over "
+              f"{tokens.shape[0]} ship-steps", flush=True)
+        try:
+            chosen = bc.calibrate(tokens, args.calibrate_entropy, args.teacher_floor)
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
+        print(f"temperature {chosen.temperature:.4f} at floor {chosen.floor} gives "
               f"{bc.mean_entropy(tokens, chosen):.4f}")
         return
 
