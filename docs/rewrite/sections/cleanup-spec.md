@@ -231,7 +231,7 @@ Its log and report are not available to you; this section is the complete list.
 
 - **Retire `STYLE_GUIDE.md`:**
   - delete it;
-  - `docs/contributing/code-style.md` (the author-reviewed draft) replaces it;
+  - `docs/contributing/code-style.md` (approved by the author, 2026-11-02) replaces it;
   - `docs/contributing/writing-docs.md` already points its "Code rules" at it;
   - fix every reference to the old guide.
 - **Docstrings against the code** (audit section 3):

@@ -1,4 +1,4 @@
-"""Pass 5: bullets, short streaks along their direction in the shooter's team colour. Every
+"""Pass 8: bullets, short streaks along their direction in the shooter's team colour. Every
 bullet draws in every view."""
 
 import moderngl

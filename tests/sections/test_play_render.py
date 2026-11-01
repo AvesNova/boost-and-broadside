@@ -282,6 +282,30 @@ def test_every_bullet_draws_in_every_view(renderer, context):
                 owner, view)
 
 
+def test_a_bullet_in_the_fog_draws_at_full_brightness(renderer, context):
+    """The bullets pass draws after the fog pass, so a bullet in fogged area has the colour
+    it has in the spectator's view, while the fogged ground around it is darker."""
+    loop = _loop(PRESETS["deathmatch"], ticks=0, seed=1)
+    enemy = _out_of_sight(loop)
+    frame = _without_bullets(loop.current)
+    ships = frame.ships
+    theme = themes.load(themes.DEFAULT)
+    x, y = float(ships.x[enemy]) + 30.0, float(ships.y[enemy]) + 30.0
+    camera = Camera(WIDTH, HEIGHT, x, y, 0.5)
+    with_bullet = _with_bullets(frame, enemy, np.array([x]), np.array([y]))
+    team = _draw(renderer, context, with_bullet, 0, camera, theme)
+    spectator = _draw(renderer, context, with_bullet, SPECTATOR, camera, theme)
+    team_without = _draw(renderer, context, frame, 0, camera, theme)
+    spectator_without = _draw(renderer, context, frame, SPECTATOR, camera, theme)
+    # The ground around the bullet is fogged...
+    assert team_without.sum() < spectator_without.sum()
+    # ...but the bullet's own pixels are the spectator's, to rounding.
+    change = np.abs(spectator - spectator_without).max(-1)
+    solid = change > 100
+    assert solid.any()
+    assert np.abs(team[solid] - spectator[solid]).max() <= 2
+
+
 def test_a_team_view_of_an_unfogged_match_draws_no_fog(renderer, context):
     """Without fog of war a team sees every ship and bullet, so its view is the
     spectator's, with nothing darkened."""
