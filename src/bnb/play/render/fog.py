@@ -1,6 +1,6 @@
-"""Pass 8: fog, in a team's view. The visibility mask is drawn first, in screen space at
+"""Pass 7: fog, in a team's view. The visibility mask is drawn first, in screen space at
 MASK_SCALE of the target's resolution, from the team's living ships and the field cores;
-the bullets read it, and the fog pass multiplies what the team cannot see by the theme's
+the fog pass reads it and multiplies what the team cannot see by the theme's
 fog colour (brightness down, saturation kept). Terrain stays drawn under the fog."""
 
 import moderngl

@@ -1,12 +1,13 @@
 """The renderer: the passes in draw order, into a multisampled scene resolved onto the
 target, then the ImGui layer (HUD and panels) on top.
 
-Draw order: sky and arena, fields, zones, trails, bullets, ships, rings, fog. A spectator
+Draw order: sky and arena, fields, zones, trails, ships, rings, fog, bullets. A spectator
 sees everything; a team's view draws only the ships that team sees (its observation's
 `visible`) and the parts of their trails it saw, and in a fogged match darkens what it
-cannot see. Every bullet is drawn in every view: agents never see bullets, so this is an
-advantage human players have. In a match without fog every ship is visible to both teams,
-so a team's view draws no fog. Rendering reads snapshots (numpy) and never imports torch.
+cannot see. Every bullet is drawn in every view, above the fog at full brightness: agents
+never see bullets, so this is an advantage human players have. In a match without fog
+every ship is visible to both teams, so a team's view draws no fog. Rendering reads
+snapshots (numpy) and never imports torch.
 """
 
 import contextlib
@@ -132,12 +133,6 @@ class Renderer:
             seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
             self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type,
                              size)
-        with self._measure("bullets"):
-            bullets = frame.bullets
-            active = bullets.active
-            self.bullets.draw(uniforms, theme, bullets.x[active], bullets.y[active],
-                              bullets.direction_x[active], bullets.direction_y[active],
-                              bullets.team[active])
         with self._measure("ships"):
             self.ships.draw(uniforms, theme, ships.x[shown], ships.y[shown],
                             ships.heading[shown], size[shown], ships.team[shown],
@@ -150,6 +145,12 @@ class Renderer:
         if fogged:
             with self._measure("fog"):
                 self.fog.draw(uniforms, theme)
+        with self._measure("bullets"):
+            bullets = frame.bullets
+            active = bullets.active
+            self.bullets.draw(uniforms, theme, bullets.x[active], bullets.y[active],
+                              bullets.direction_x[active], bullets.direction_y[active],
+                              bullets.team[active])
         with self._measure("resolve"):
             context.copy_framebuffer(target, self.scene)
         target.use()
