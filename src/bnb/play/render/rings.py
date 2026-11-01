@@ -1,4 +1,4 @@
-"""Pass 7: one ring at the hitbox per ship (docs/rewrite/visual-mockups/shields3.png, row
+"""Pass 6: one ring at the hitbox per ship (docs/rewrite/visual-mockups/shields3.png, row
 3). The shield on a 240 degree arc centred on the nose, the energy on a 120 degree arc
 centred on the tail; each shrinks toward its centre as it empties, over a faint track of
 its full span. An empty shield draws no shield arc."""
