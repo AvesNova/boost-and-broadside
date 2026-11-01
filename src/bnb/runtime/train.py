@@ -24,6 +24,7 @@ from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongConfig
 
+from .evaluate import first_results, shares
 from .rollout import Rollout
 
 LEARNER = "learner"
@@ -189,7 +190,6 @@ class Trainer:
                     **stats)
 
 
-@torch.no_grad()
 def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> dict:
     """The learner against a scripted opponent over `games` fresh games (one per
     environment, every clock from zero, the seat drawn per environment): the shares won,
@@ -198,18 +198,8 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
     device = next(trainer.model.parameters()).device
     controllers = {LEARNER: trainer.controllers[LEARNER], opponent: trainer.controllers[opponent]}
     pool = Pool("evaluation", 1.0, (LEARNER, opponent), cfg.pools[0].fog_share)
-    rollout = Rollout(cfg.game, (pool,), controllers, LEARNER, games, cfg.length, device,
-                      compile=cfg.compile, staggered=False)
-    result = torch.zeros(games, device=device)
-    finished = torch.zeros(games, dtype=torch.bool, device=device)
-    while not bool(finished.all()):
-        trajectory = rollout.run()  # (L, games): one view each
-        for tick in range(trajectory.result.shape[0]):
-            first = trajectory.done[tick] & ~finished
-            result = torch.where(first, trajectory.result[tick].float(), result)
-            finished = finished | trajectory.done[tick]
-    return dict(wins=(result > 0).float().mean().item(), draws=(result == 0).float().mean().item(),
-                losses=(result < 0).float().mean().item())
+    return shares(first_results(cfg.game, (pool,), controllers, LEARNER, games, device,
+                                cfg.length, cfg.compile))
 
 
 def train(cfg: TrainConfig, device: torch.device, log: Callable[[dict], None] = print) -> Trainer:
