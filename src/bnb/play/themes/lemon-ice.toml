@@ -1,0 +1,22 @@
+# Lemon thin air and ice thick air, green and magenta ships (the colour tool's second
+# preset, docs/rewrite/visual-mockups/test-lemon.png).
+sky = "#FFFFFF"
+outside = "#EEF0F3"
+boundary = "#A8D8F0"
+thin_air = "#F2DC5D"
+thick_air = "#A8D8F0"
+thin_contour = "#928749BF"
+thick_contour = "#69859ABF"
+thin_core = "#928749"
+thick_core = "#69859A"
+fog = "#999999"
+neutral = "#8A93A3"
+team = ["#2E9D5B", "#D6338A"]
+outline = "#2A2F3A"
+shield = ["#2E9D5B", "#D6338A"]
+energy = "#3A4150"
+trail = ["#6DBA8CB3", "#E270ADB3"]
+vortex = "#7A889959"
+text = "#2A2F3A"
+fill_strength = 0.75
+vortex_threshold = 0.6

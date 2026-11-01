@@ -1,0 +1,22 @@
+# Mint thin air and pink thick air, navy and amber ships: the brainstorm's favourite
+# (docs/rewrite/visual-mockups/map-vis.png and the colour tool's first preset).
+sky = "#FFFFFF"
+outside = "#EEF0F3"
+boundary = "#F49AC1"
+thin_air = "#7FD3B4"
+thick_air = "#F49AC1"
+thin_contour = "#528279BF"
+thick_contour = "#936380BF"
+thin_core = "#528279"
+thick_core = "#936380"
+fog = "#999999"
+neutral = "#8A93A3"
+team = ["#1F3A93", "#E8A200"]
+outline = "#2A2F3A"
+shield = ["#1F3A93", "#E8A200"]
+energy = "#3A4150"
+trail = ["#6275B3B3", "#EFBE4CB3"]
+vortex = "#7A889959"
+text = "#2A2F3A"
+fill_strength = 0.75
+vortex_threshold = 0.6

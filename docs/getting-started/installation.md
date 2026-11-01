@@ -13,6 +13,9 @@ covers: [pyproject.toml, .python-version]
   (their index is named after it), for training and benchmarks. The rollout captures CUDA
   graphs and the `bnb` command defaults to `--device cuda`. The tests run on the CPU, apart
   from those marked `gpu`.
+- **An OpenGL 3.3 driver** for the [play shell](../guides/playing.md): a display for its
+  window, or EGL for offscreen renders. Its libraries (moderngl, imgui-bundle, glfw) come
+  with `uv sync`.
 
 <!-- generated: versions -->
 

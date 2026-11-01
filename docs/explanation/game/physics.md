@@ -42,6 +42,10 @@ print(obs.ships.shape, events.damage.shape)
 - `step` is `move` then `resolve`. The runtime calls the two separately, so it can cut a
   compiled stage between them; `bnb.game.state.Sweep` carries the tick's motions from one
   to the other.
+- For display, with no rules of their own: `log_index` (the medium at points),
+  `core_radius` (the cores the sight test uses), `zone_sides` (Frontline's zone owners and
+  attackers) and `visible` (each team's observation in sim order). The
+  [play shell](../in-progress/play-shell.md) draws the game through them.
 
 ## The tick
 

@@ -6,7 +6,11 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.14,<3.15"
 dependencies = [
+    "glfw>=2.11.0",
+    "imgui-bundle>=1.93.0",
+    "moderngl>=5.13.0",
     "numpy>=2.5",
+    "platformdirs>=4.3",
     "torch==2.15.0",
     "tyro>=1.0",
 ]
@@ -63,6 +67,6 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "gpu: needs a CUDA device",
+    "gpu: needs a GPU (a CUDA device, or an OpenGL 3.3 context for the play shell)",
     "slow: takes more than a few seconds",
 ]

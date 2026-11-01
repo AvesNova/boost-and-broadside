@@ -26,8 +26,8 @@
   holds: opponent pools and ratings
   section: "8"
 - package: play
-  holds: the interactive shell
-  section: "10"
+  holds: "the interactive shell: the match loop, render snapshots, the renderer, themes"
+  reference: reference/play.md
 - package: cli
   holds: the entry point, `bnb`
   reference: reference/cli.md

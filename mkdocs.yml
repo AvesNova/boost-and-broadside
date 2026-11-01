@@ -101,6 +101,7 @@ nav:
       - Benchmarking: guides/benchmarking.md
       - Reference fixtures: guides/reference-fixtures.md
       - Adding a mode: guides/adding-a-mode.md
+      - Playing and spectating: guides/playing.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md
@@ -132,6 +133,7 @@ nav:
       - bnb.models: reference/models.md
       - bnb.learn: reference/learn.md
       - bnb.runtime: reference/runtime.md
+      - bnb.play: reference/play.md
       - bnb.cli: reference/cli.md
       - bench: reference/bench.md
   - Contributing:
