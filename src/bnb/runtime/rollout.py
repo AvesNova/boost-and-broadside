@@ -341,10 +341,5 @@ class Rollout:
         _, _, out = self._evaluate(self.carry["ctrl"][self.learner], view, done)
         return out
 
-    @torch.no_grad()
-    def learner_view(self) -> Obs:
-        """The learner's current views."""
-        return self._view(self.carry, self.learner, self.reads)
-
     def counters(self) -> dict[str, int]:
         return dict(zip(COUNTERS, self.carry["counters"].tolist()))
