@@ -330,6 +330,18 @@ cut; where they differ, this section and the code win.
   game function.
 - **Game API:** `bnb.game.api`: `rules_of`, `reset`, `move`, `resolve`, `step`,
   `perceive`, `spread`, `uniforms`. Randomness is explicit (spec section 2).
+  - **Display functions (section 10, 2026-11-01), for the play shell:**
+    - `log_index`: the medium at chosen points;
+    - `core_radius`: the cores the sight test uses (a second copy, held to
+      `visibility` by a test until the cleanup pass makes it the one definition);
+    - `zone_sides`: Frontline's zone owners and attackers, from the game's own role
+      rules;
+    - `visible`: which ships each team's observation shows, in sim order.
+
+    The api also re-exports `vision_range`, `per_ship`, `TEAMS`, `LN_SQRT2`,
+    `MAP_SCALE_RADIUS` and `PRESETS`, which moves to `bnb.runtime` in the cleanup pass.
+  - **`bnb.play` imports only** `bnb.game.api`, `bnb.runtime`, `bnb.controllers` and
+    `bnb.contracts` (a test parses its imports).
 - **Teams:** two, a constant (`rules.TEAMS`).
 - **Names:** full words (scaffold rule 10).
 - **Modes and rewards (sections 3 and 3b, 2026-11-01):**
