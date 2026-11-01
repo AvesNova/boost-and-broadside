@@ -15,12 +15,12 @@ The levels run from the least to the most directly tied to winning. Their order,
 `bnb.contracts.REWARD_LEVELS`, is also the order of `Trajectory.reward`'s last axis and of
 the critic's levels.
 
-<!-- generated-table: reward-levels -->
+<!-- generated: reward-levels -->
 
 A level's reward is its weight times the sum of its events. The weights are
 `bnb.learn.rewards.RewardConfig`:
 
-<!-- generated-table: reward-config -->
+<!-- generated: reward-config -->
 
 - **damage:** damage taken, dealt, friendly fire, recharge, charge-back and unforced
   (boundary) damage, in units of `damage_unit` points for every ship type.
@@ -66,9 +66,6 @@ stage.
 7. **Clear.** A dead ship's column is zeroed, because its death made that damage stick. A
    ship keeps its claims on others (its row) across its own death and respawn. A finished
    match clears the whole ledger.
-
-The step is memory-bound on its `(B, N, N)` matrices, so the component functions accept
-column totals the step already has, instead of summing a matrix again.
 
 The tests check the levels are zero-sum and the ledger holds every deficit through real
 play in every mode

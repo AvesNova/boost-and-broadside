@@ -19,12 +19,15 @@ A section passes them through an **adapter**, the one file it writes.
 
 - A golden is a `.npz` (or `.json`) file of inputs, weights where a module has them, and
   the reference's outputs.
-- The generators live outside this tree. The tests speak an interface of their own, written
-  in each directory's `README.md`; the adapter translates it to `bnb`.
-- Each set was validated before it was handed over: the tests pass on the reference, and
-  each deliberate mutant of the reference (an off-by-one, a swapped sign, a different
-  epsilon) fails by a value comparison.
-- The tolerances are in each README, relative to each array's own scale.
+- The generators live outside this tree. The tests speak an interface of their own; the
+  adapter translates it to `bnb`.
+  - The rewards, Yemong and learner sets describe their interface, conventions and
+    tolerances in their directory's `README.md`{.plain}.
+  - The race set (`tests/reference` itself) has no README. Its interface is the physics
+    race's (numpy in, numpy out, the race's observation layout), implemented by `RaceArm`
+    in `tests/reference/race_arm.py`; its tolerances are in `tests/reference/helpers.py`.
+- Each set fails on deliberate mutants of its reference, so a passing set means the code
+  computes what the reference computes, to the stated tolerance.
 
 ## Never edit them
 
@@ -51,9 +54,8 @@ the conftest skips with a message naming the section.
 ## Another implementation: `REFERENCE_ARM`
 
 Each conftest reads the environment variable `REFERENCE_ARM`. When it is set to a directory
-containing an `arm.py` that defines `make_arm()`, the tests run against that implementation
-instead of `bnb`. This is how the tests were validated against the references and their
-mutants.
+containing an `arm.py`{.plain} that defines `make_arm()`, the tests run against that implementation
+instead of `bnb`.
 
 <!-- not-runnable: needs an arm directory outside the repository -->
 ```bash

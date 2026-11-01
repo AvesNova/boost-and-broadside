@@ -8,15 +8,18 @@ covers: [src/bnb/contracts/]
 and meanings, and no game logic. The code is the source of truth; the tables on this page
 are generated from it.
 
-- Every contract is a frozen dataclass of tensors, registered as a pytree
-  (`bnb.contracts.tree.contract`).
-- `bnb.contracts.Obs`, `bnb.contracts.Action` and `bnb.contracts.Events` each carry a
-  `SCHEMA_VERSION`. A change to their layout bumps it.
+- The data contracts (`Obs`, `Privileged`, `Action`, `Events`, `Outputs`, `Trajectory`)
+  are frozen dataclasses of tensors, registered as [pytrees](glossary.md#pytree) by
+  `bnb.contracts.tree.contract`.
+- The configuration contracts (`GameConfig`, `Pool`) are plain frozen dataclasses of Python
+  values. `Controller` is a protocol.
+- `Obs`, `Action` and `Events` each carry a schema version (`bnb.contracts.Obs.SCHEMA_VERSION`
+  and the like). A change to their layout bumps it.
 - `tests/contract` checks every implementation of every contract: shapes, dtypes, the
   import direction and ONNX export of each model's step.
 
 Shapes use `B` environments, `N` ships (two teams of `S`), `M` fields, `Z` zone slots,
-`R` views and `L` steps.
+`R` [views](glossary.md#view) and `L` steps.
 
 ## The observation
 
@@ -40,25 +43,25 @@ The parts and their columns, from `bnb.contracts.obs`:
 
 **Ships**, `(..., N, len(SHIP_COLUMNS))`:
 
-<!-- generated-table: ship-columns -->
+<!-- generated: ship-columns -->
 
 **Fields**, `(..., M, len(FIELD_COLUMNS))`, the same in every view:
 
-<!-- generated-table: field-columns -->
+<!-- generated: field-columns -->
 
 **Zones**, `(..., Z, len(ZONE_COLUMNS))`. Every mode has the same zone slots; a mode
 without zones shows them absent, with `present` 0 and every other column 0. Roles are the
 viewer's: 0 own spawn, 1 own defense, 2 neutral, 3 enemy defense, 4 enemy spawn. Rows are
 in each viewer's own ring order.
 
-<!-- generated-table: zone-columns -->
+<!-- generated: zone-columns -->
 
 **Globals**, `(..., len(GLOBAL_COLUMNS))`. The first columns are the game's; the rest are
 the mode's block: a mode one-hot (all zero in sandbox), the scores by team and the score
 that wins (team deathmatch), the front for the viewer and the front that wins (Frontline).
 An absent quantity is 0.
 
-<!-- generated-table: global-columns -->
+<!-- generated: global-columns -->
 
 `bnb.contracts.obs.SHIP`, `FIELD`, `ZONE` and `GLOBAL` map each column name to its index.
 A stored batch may leave out (`None`) a part its model does not read.
@@ -74,14 +77,15 @@ controller can receive it.
 
 [`Action`][bnb.contracts.action.Action] is integer components per ship, each shaped `(..., ships)`:
 
-<!-- generated-table: action-layout -->
+<!-- generated: action-layout -->
 
 - `power`: 0 coast, 1 boost, 2 reverse.
 - `stick`: 0 straight, then turn levels alternating right and left (the stick levels are
   tabled in [Physics](game/physics.md#flight)).
 - `shoot`: 0 hold, 1 fire.
 
-The joint index is `power * 14 + stick * 2 + shoot`. `bnb.contracts.action.to_joint` and
+The joint index is `power * (NUM_STICK * NUM_SHOOT) + stick * NUM_SHOOT + shoot`, the
+index of the action in the product of the components. `bnb.contracts.action.to_joint` and
 `bnb.contracts.action.from_joint` convert. A model may use a joint head internally, as
 Yemong does, and convert at the boundary.
 
@@ -118,7 +122,7 @@ scripted agents, random, and later humans.
 
 - A controller plays **one team**: it receives that team's views and returns actions for
   that team's `S` ships.
-- `init_carry(views, device)` gives its opaque carry, a pytree the runtime stores and
+- `init_carry(views, device)` gives its opaque [carry](glossary.md#carry), a pytree the runtime stores and
   never inspects (`None` if stateless). `step(carry, obs, done)` returns the action, the
   next carry and `bnb.contracts.Outputs`.
 - `reads` lists the observation parts it uses, so the rollout stores only those.

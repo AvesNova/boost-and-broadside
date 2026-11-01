@@ -24,19 +24,19 @@ uv run --no-sync bnb --mode team_deathmatch --ships-per-team 2 --num-fields 4 \
 
 The game presets, from `bnb.game.modes.rules.PRESETS`:
 
-<!-- generated-table: game-presets -->
+<!-- generated: game-presets -->
 
 Without a preset, the command builds a `bnb.contracts.GameConfig` from `--mode`,
 `--ships-per-team`, `--num-fields` and `--arena-radius`, with the mode's clocks:
 
-<!-- generated-table: mode-clocks -->
+<!-- generated: mode-clocks -->
 
 `GameConfig` validates itself on construction: two teams, at most
 `bnb.contracts.config.MAX_SHIPS` ships, 1 to `bnb.contracts.config.MAX_FIELDS` fields, a
 positive arena, a known mode, and spawn groups only in team deathmatch, summing to the
 ships per team. Every field:
 
-<!-- generated-table: game-config -->
+<!-- generated: game-config -->
 
 `episode_s` and `respawn_s` must be whole multiples of the tick, or building the rules
 fails (`bnb.contracts.config.ticks_of`).
@@ -48,19 +48,16 @@ each with a fixed lineup. `seats` names the controller for each role. Role `r` p
 `(r + seat) mod 2`, and the seat is redrawn for every environment at every reset, so every
 controller plays both sides. The skeleton lineup, `bnb.runtime.train.LINEUP`:
 
-<!-- generated-table: training-lineup -->
+<!-- generated: training-lineup -->
 
-- `learner` is the model being trained.
-- `league_0` is a copy of it, refreshed every `league_every` updates.
-- `chaser` turns toward and shoots at the nearest visible enemy
-  (`bnb.controllers.scripted.Chaser`).
-- `random` takes sticky uniform random actions (`bnb.controllers.scripted.Random`).
+The seats name the trainer's controllers, which
+[The training loop](../explanation/training-loop.md#controllers) lists.
 
 Each pool's `share` times the batch size must be a whole number of environments, and the
 shares must sum to 1. `fog_share` is the fraction of the pool's environments with fog of
 war; it too must come to a whole number. Every field of a pool:
 
-<!-- generated-table: pool-fields -->
+<!-- generated: pool-fields -->
 
 ## The mixed batch
 
@@ -74,11 +71,11 @@ explains how.
 training mix crossed with every pool of the lineup. The training mix,
 `bnb.runtime.train.TRAINING_MIX`:
 
-<!-- generated-table: training-mix -->
+<!-- generated: training-mix -->
 
 The crossed pools, game by game so that each game is one contiguous slice:
 
-<!-- generated-table: mixed-pools -->
+<!-- generated: mixed-pools -->
 
 `bnb.contracts.pools.environment_multiple` gives the smallest batch the pools split into;
 every valid `--num-envs` is a multiple of it.
@@ -97,11 +94,11 @@ print(game.mode, len(pools), environment_multiple(pools), environment_multiple(L
 `bnb.runtime.train.TrainConfig` holds the loop's settings, and `bnb.runtime.train.train`
 runs it. The command builds the same objects.
 
-<!-- generated-table: train-config -->
+<!-- generated: train-config -->
 
 `pools` defaults to `LINEUP`, and `ppo` to `bnb.learn.ppo.PPOConfig`:
 
-<!-- generated-table: ppo-config -->
+<!-- generated: ppo-config -->
 
 A custom lineup, here learner against the chaser on half the batch and self-play on the
 other half, with no fog in the chaser pool:
@@ -119,8 +116,9 @@ config = TrainConfig(game=GameConfig(5, 10, 2600.0), pools=pools, num_envs=1024,
 train(config, torch.device("cuda"))
 ```
 
-The trainer knows the controller names `learner`, `league_0`, `chaser` and `random`. A
-pool that names any other controller fails when the rollout is built.
+A pool may seat only the trainer's controllers
+([The training loop](../explanation/training-loop.md#controllers)); a pool that names any
+other controller fails when the rollout is built.
 
 ## Seeds and process settings
 

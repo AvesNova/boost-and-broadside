@@ -18,7 +18,7 @@ uv run --no-sync bnb --preset mixed --num-envs 1024 --updates 100
 maps, in one batch. The [training guide](../guides/training.md) explains the presets, the
 pools and the mix. Every option:
 
-<!-- generated-table: cli-options -->
+<!-- generated: cli-options -->
 
 `--num-envs` must be a multiple of what the pools split into; the command stops with a
 message naming the multiple when it is not.

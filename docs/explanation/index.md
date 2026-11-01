@@ -15,6 +15,7 @@ How the system works, and why it is built that way.
 - [The model (Yemong)](yemong.md): its belief, tokens, network, heads and carry.
 - [The training loop](training-loop.md): the rollout, the lineup and the skeleton learner.
 - [Roadmap](roadmap.md): the sections of the rewrite and their status.
+- [Glossary](glossary.md): carry, view, pytree, seat and the other terms these pages use.
 
 Sections in progress have a short page each under *In progress*, saying what they will
 cover.

@@ -39,7 +39,7 @@ flattened view, it reads token position, and it relies on rows being ordered by
 
 ## The rollout
 
-`bnb.runtime.rollout.Rollout` owns the carry: the game state, the ship card, every
+`bnb.runtime.rollout.Rollout` owns the [carry](glossary.md#carry): the game state, the ship card, every
 controller's carry, the current observation, the seat, the tick's random draws, the
 reward ledger and the learner's trajectory buffer, all allocated when it is built. A tick
 is a sequence of compiled stages over that carry (see [Architecture](architecture.md)).

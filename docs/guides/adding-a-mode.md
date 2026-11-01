@@ -13,8 +13,8 @@ page lists every place a new one plugs in.
 ## 1. Name it and give it a clock
 
 - Add the name to `bnb.contracts.config.MODES`. `GameConfig` rejects any other name.
-- Add a constant for it beside `TEAM_DEATHMATCH`, `FRONTLINE` and `SANDBOX` in
-  `src/bnb/game/modes/rules.py`.
+- Add a constant for it beside `bnb.game.modes.rules.TEAM_DEATHMATCH`{.nolink},
+  `bnb.game.modes.rules.FRONTLINE`{.nolink} and `bnb.game.modes.rules.SANDBOX`{.nolink}.
 - Add its default episode length and respawn wait to `bnb.game.modes.rules.CLOCKS`. Both
   must be whole multiples of the tick.
 
@@ -85,7 +85,7 @@ batch must have the same ships per team and fields.
 
 ## 7. Tests
 
-- Add a case to `tests/sections/modes_cases.py` (`MODES`). The tests parametrized over it
+- Add a case to `tests.sections.modes_cases.MODES` (in `tests/sections/modes_cases.py`). The tests parametrized over it
   then cover the new mode: compiled against eager
   (`tests/sections/test_modes.py::test_compiled_tick_matches_eager_in_every_mode`), CUDA-graph
   capture (`tests/sections/test_modes.py::test_eager_cuda_graph_capture_in_every_mode`),
@@ -98,7 +98,7 @@ batch must have the same ships per team and fields.
 - Check the seat: extend
   `tests/sections/test_modes.py::test_spawn_layout_does_not_reveal_the_seat` and
   `tests/sections/test_modes.py::test_mode_rows_do_not_reveal_the_seat`.
-- Check it in a mixed batch: add the case's name to `GAMES` in `tests/sections/test_mixed.py`,
+- Check it in a mixed batch: add the case's name to `tests.sections.test_mixed.GAMES`,
   whose equivalence tests
   (`tests/sections/test_mixed.py::test_a_mixed_batch_equals_each_game_run_alone`) run each
   game alone and in one batch and compare them.

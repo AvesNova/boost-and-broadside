@@ -45,28 +45,31 @@ print(obs.ships.shape, events.damage.shape)
 
 ## The tick
 
-One tick is one decision step, `Rules.tick_length` seconds. In order:
+One tick is one decision step, `Rules.tick_length` seconds. The phases, numbered as in
+`src/bnb/game/physics/step.py`:
 
 1. **Fire**, from the tick-start state.
 2. **Ships fly.** Only ships alive at tick start move.
 3. **Bullets fly**, including any fired this tick.
 4. **Hits**, between the ship and bullet motions of this tick.
 5. **Damage, death and shields.**
-6. **The mode phase:** the mode's state, objective and win rule (see [Modes](modes.md)).
-7. **Clocks:** bullet lifetimes and gun cooldowns.
-8. **Death and respawn.**
-9. **Episode end:** an environment whose clock ran out, or whose match was won, resets.
 
-`move` is phases 1 to 3; `resolve` is phases 4 to 9. Perception is separate
-(`perceive`, see [Perception and fog](perception.md)).
+   **The mode phase** (unnumbered) runs here: the mode's state, objective and win rule
+   (see [Modes](modes.md)).
+6. **Clocks:** bullet lifetimes and gun cooldowns.
+7. **Death and respawn.**
+8. **Episode end:** an environment whose clock ran out, or whose match was won, resets.
+
+`move` is phases 1 to 3; `resolve` is phases 4 to 8 with the mode phase. Perception is
+separate (`perceive`, see [Perception and fog](perception.md)).
 
 ## Ships and their card
 
-Every ship has a type, 0 fighter or 1 heavy (`bnb.game.ship_types.FIGHTER`, `HEAVY`).
+Every ship has a type, 0 fighter or 1 heavy (`FIGHTER` and `HEAVY` in `bnb.game.ship_types`).
 Within each team, slots alternate starting with a fighter. The per-type parameters are
 the ship card, from `bnb.game.ship_types.DEFAULTS`:
 
-<!-- generated-table: ship-card -->
+<!-- generated: ship-card -->
 
 A parameter is a tensor of shape `(types,)`, or `(B, types)` to give every environment its
 own card. `bnb.game.ship_types.per_ship` reads a ship's value as a select over the types,
@@ -92,20 +95,24 @@ attack, its nose rotation rate and an **energy store**.
 The stick levels and power modes by index (`bnb.game.rules.STICK_LEVELS`,
 `bnb.game.rules.POWER_MODES`):
 
-<!-- generated-table: stick-levels -->
+<!-- generated: stick-levels -->
 
-<!-- generated-table: power-modes -->
+<!-- generated: power-modes -->
+
+The power mode is the sign of the energy exchange: negative (boost) trades store for speed,
+positive (reverse) trades speed for store, and zero (coast) leaves the slow exchange that
+fades as the store fills.
 
 The constants every type shares (`bnb.game.rules.FlightConstants`):
 
-<!-- generated-table: flight-constants -->
+<!-- generated: flight-constants -->
 
 ## Fields
 
 A map has `M` circular **fields** that change the refractive index `n` of space. Each has a
-centre, a radius, a band width and a level in `bnb.game.rules.FIELD_LEVELS`; level `l`
-sets `ln n = l ln √2`, so `n` spans one half to two. The profile is a smooth step across
-the band, and overlapping fields compose as a union.
+centre, a radius, a band width and a level in `bnb.game.rules.FIELD_LEVELS`; a level
+`l`{.plain} sets `ln n = l ln √2`, so `n` spans one half to two. The profile is a smooth
+step across the band, and overlapping fields compose as a union.
 
 Inside a field a ship or a bullet keeps its proper speed while its world speed is that
 divided by `n`, and its path bends toward higher `n`. Each field also has an opaque core,
@@ -132,7 +139,7 @@ which blocks sight (see [Perception and fog](perception.md)).
 
 The shared constants, from `bnb.game.rules.Rules`:
 
-<!-- generated-table: game-constants -->
+<!-- generated: game-constants -->
 
 ## Spawns and maps
 

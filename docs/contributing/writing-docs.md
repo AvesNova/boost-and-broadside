@@ -11,14 +11,16 @@ the site and these rules do not apply to it.
 
 ## Build and preview
 
-<!-- not-runnable: changes the environment and starts a server -->
+<!-- not-runnable: starts a server -->
 ```bash
-uv sync --extra docs
+uv sync                                              # includes the docs group
 uv run --no-sync mkdocs serve                        # preview at http://127.0.0.1:8000
 uv run --no-sync mkdocs build --strict --site-dir /tmp/bnb-site
 ```
 
-The suite checks the docs on every run (`tests/docs`); see [Checks](#checks).
+`mkdocs build --strict -q` exits 0 even when there are warnings: quiet mode hides the
+warnings strict mode counts. Build without `-q` to check by hand. The suite checks the docs
+on every run (`tests/docs`); see [Checks](#checks).
 
 ## Kinds of page
 
@@ -40,50 +42,73 @@ The suite checks the docs on every run (`tests/docs`); see [Checks](#checks).
   that it is in progress, and what it will cover. Prose about a section waits until the
   section merges.
 
-Every page appears in `nav` in `mkdocs.yml`. A page left out of the nav fails the build.
+Every page appears in `nav`{.plain} in `mkdocs.yml`. A page left out of the nav fails the build.
 
 ## Linking code
 
-- **Names:** write the full dotted name in backticks, `bnb.game.api.reset`. The checks
+- **Full names:** write the full dotted name in backticks, `bnb.game.api.reset`. The checks
   import every backticked name that starts with `bnb.` or `bench.`, so a renamed or deleted
-  name fails the suite. A short name such as `Rules.pools` is not checked; use the full name
-  where it matters.
-- **Links into the reference:** `[reset][bnb.game.api.reset]` links to the generated
-  entry. The strict build fails if the target is not in the reference.
+  name fails the suite. The build turns each one into a link to its reference entry, and
+  the strict build fails if the reference has no such entry.
+- **Short names:** `Rules.pools`, `GameConfig` or `MAX_SHIPS` are resolved against an index
+  of the code's classes, functions, members and constants in `src/bnb`, `bench`, `tests`
+  and the docs hook (`tests/docs/names.py`). A short name must name exactly one thing;
+  write an ambiguous one in full (`bnb.contracts.config.MODES`, not `MODES`{.plain}).
+- **Lowercase words** in backticks (`shield_lost`, `fog_share`, `team_relative`) must be
+  words the code uses: names, attributes, arguments or string constants such as column
+  names.
+- **Not code:** a backticked word that is not a Python name, such as a file format or a
+  configuration key, opts out with `{.plain}` right after the span:
+  `` `nav`{.plain} ``. The check skips it, and the page renders it as code.
+- **Commands:** every `bnb ...` line, in a fence or in backticks, runnable or not, is parsed
+  against the options of `bnb.cli.Train`, with known values for `--preset` and `--mode`.
+- **No reference entry:** a full name the reference does not render, such as a constant
+  assigned in a tuple, takes `{.nolink}`{.plain} after the span. It is still checked, but not
+  linked.
+- **Links into the reference** by hand: `[reset][bnb.game.api.reset]`.
 - **Repository paths:** write them in backticks from the root, `src/bnb/game/rules.py` or
   `tests/sections/test_modes.py`. A test can be named as
   `tests/sections/test_modes.py::test_spawn_layout_does_not_reveal_the_seat`. The checks fail
-  if the path, or the test, does not exist.
+  if the path, or the test, does not exist. A bare file name (`pyproject.toml`) must exist
+  somewhere in the repository.
 - **Pages:** link with relative paths to the `.md` file, `[Modes](../explanation/game/modes.md)`.
+- **Terms:** link a term's first use on a page to the [glossary](../explanation/glossary.md).
 
-## Generated tables
+`README.md` is checked like a page (names, paths, commands, fences and its links), but it is
+read on GitHub without the hook: it cannot hold generated blocks, so it links to the pages
+that do instead of repeating them.
 
-A table of values that live in the code is generated at build time, never copied by hand.
-Put the marker on a line of its own:
+## Generated blocks
+
+Values that live in the code or in a data file are generated at build time, never copied
+by hand. Put the marker on a line of its own:
 
 ```markdown
-<!-- generated-table: ship-columns -->
+<!-- generated: ship-columns -->
 ```
 
-The build replaces it with the table, built by `docs/hooks/generated.py`. The names
-available are the keys of `TABLES` there: the observation's columns (`ship-columns`,
-`field-columns`, `zone-columns`, `global-columns`), the action layout (`action-layout`,
-`stick-levels`, `power-modes`), the rewards (`reward-levels`, `reward-config`), the game
-(`ship-card`, `game-constants`, `flight-constants`, `mode-clocks`, `mode-rules`,
-`game-presets`, `game-config`, `pool-fields`), training (`training-mix`,
-`training-lineup`, `mixed-pools`, `train-config`, `ppo-config`, `cli-options`), the model
-(`yemong-config`), the benchmark (`bench-sizes`) and the `roadmap`.
+The build replaces it with the block, built by `docs/hooks/generated.py`. The blocks:
 
-To add a table, write a function that imports the value from `bnb` and returns Markdown,
-and add it to `TABLES`. Where a value's unit or meaning is a comment in the source, the
-dataclass tables read that comment; keep such comments short.
+<!-- generated: block-names -->
 
-The roadmap's status comes from `docs/roadmap.yml`. When a section's status changes, edit
-that file, not prose.
+To add a block, write a function in the hook that imports the value from `bnb` (or reads
+`pyproject.toml` or a data file) and returns Markdown, and add it to `BLOCKS`. A function
+with a `page` argument receives the page's path, for links. Where a value's unit or meaning
+is a comment in the source, the dataclass tables read that comment, without any bracketed
+spec key; keep such comments short.
 
-## Examples
+Two data files hold what the code does not:
 
-Every fenced `python` or `bash` block says whether it runs, on the line before the fence:
+- `docs/roadmap.yml`: each section's title, status, design record and page. Every status on
+  the site comes from it; when a section's status changes, edit this file, not prose.
+- `docs/packages.yml`: what each package holds, its reference page, or the roadmap section
+  that will build it. The layers come from `LAYER` in `tests/contract/test_imports.py`.
+
+## Fences and examples
+
+Every fence names its language: `python`, `bash`, `markdown`, `text`, `yaml` and so on.
+A `python`, `bash` or `text` block, or any block whose first word is `uv`, `bnb` or
+`python`, says whether it runs, on the line before the fence:
 
 ```markdown
 <!-- runnable -->
@@ -94,8 +119,8 @@ Every fenced `python` or `bash` block says whether it runs, on the line before t
   Python block in a fresh interpreter, a command block in bash. It must finish on the CPU
   in seconds and leave the repository as it was.
 - A **not-runnable** block gives its reason: it needs a GPU, the benchmark lock, minutes,
-  or it changes the environment. Its Python still has to parse, and its `bnb` imports have
-  to resolve.
+  or it changes the environment. Its Python still has to parse, its `bnb` imports have to
+  resolve, and its `bnb` commands have to use real options.
 
 ## What a page covers
 
@@ -107,9 +132,10 @@ covers: [src/bnb/game/physics/, src/bnb/game/rules.py]
 ---
 ```
 
-A page that describes no particular code declares `covers: []`. The paths must exist. When
-a commit after the page's last change touches a covered path, the suite warns that the page
-may be stale. The report on its own:
+A page that describes no particular code declares `covers: []`. The paths must exist. The
+suite warns that a page may be stale when a covered path changed in a commit after the
+page's last commit, or has uncommitted changes while the page has none, so the warning
+shows before you commit. The report on its own:
 
 <!-- runnable -->
 ```bash
@@ -117,9 +143,10 @@ uv run --no-sync python -m tests.docs.staleness
 ```
 
 When you change covered code, reread the pages that cover it and fix what changed. If a
-page is still correct, set `reviewed:` in its front matter to the date and commit it: any
-commit to the page clears the warning. A page that is warned about on most commits covers
-too much; narrow its `covers`.
+page is still correct, set `reviewed:` in its front matter to the date and commit the page.
+Nothing reads `reviewed:`; it exists only so that confirming a page is a change to commit,
+because the warning clears once the page has a commit newer than the code. A page that is
+warned about on most commits covers too much; narrow its `covers`.
 
 ## Voice
 
@@ -141,7 +168,8 @@ not current. Until the v2 guide exists, the code rules are those of the scaffold
 `docs/rewrite/scaffold.md` sections 3 and 4, in short:
 
 - sections are pure functions of tensors; only `bnb.runtime` writes persistent buffers;
-- section code does not compile itself, call `torch.cuda` or set process-wide options;
+- section code does not compile itself, call `torch.cuda` or set process-wide options (the
+  skeleton PPO's compiled loss is the one exception, until section 6 replaces it);
 - one code path for the CPU and the GPU at any batch size, with fixed shapes per run;
 - contracts are versioned frozen dataclasses; imports point down the layer order
   (see [Architecture](../explanation/architecture.md));
@@ -154,10 +182,10 @@ not current. Until the v2 guide exists, the code rules are those of the scaffold
 
 | Check | Test | Fails when |
 |---|---|---|
-| strict build | `tests/docs/test_build.py` | a link, page, nav entry, anchor, mkdocstrings target or generated table is broken (needs the docs extra) |
-| code references | `tests/docs/test_references.py` | a backticked name or path, a `:::` target or a Python block's import does not resolve; a page has no `covers`; a block has no run marker; a table name is unknown |
+| strict build | `tests/docs/test_build.py` | a link, anchor, page, nav entry, reference link (including every linked `bnb.` name) or generated block is broken |
+| code references | `tests/docs/test_references.py` | a full name, short name, word, path, `:::` target, `bnb` command or Python import does not resolve; a fence has no language or no run marker; a page has no `covers`; a block name is unknown; a README link is broken |
 | examples | `tests/docs/test_examples.py` | a runnable example fails |
-| coverage map | `tests/docs/test_staleness.py` | never; it warns |
+| coverage map | `tests/docs/test_staleness.py` | never; it warns, for commits and uncommitted changes |
 
 The docstring report lists public modules, classes and functions whose docstring is
 missing or one word:

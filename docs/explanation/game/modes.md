@@ -22,11 +22,11 @@ The modes are `bnb.contracts.config.MODES`:
 A match ends when its clock runs out or when the win rule ends it. The clocks by mode
 (`bnb.game.modes.rules.CLOCKS`), which a `GameConfig` or a pool may override:
 
-<!-- generated-table: mode-clocks -->
+<!-- generated: mode-clocks -->
 
 The training presets (`bnb.game.modes.rules.PRESETS`):
 
-<!-- generated-table: game-presets -->
+<!-- generated: game-presets -->
 
 ## The mode phase
 
@@ -65,9 +65,11 @@ When a match ends, the environment gets a new map and a fresh mode state
 - **The ring:** `bnb.game.modes.rules.FRONTLINE_ZONES` zones on a circle around the
   centre, at a random rotation and a random handedness (clockwise or counter-clockwise). At front 0 their roles are, in ring order:
   neutral, team 0's spawn, team 0's defense, team 1's defense, team 1's spawn.
-- **Meters:** only the two defense zones have meters. A zone's meter moves toward the
-  attacker on a strict majority of living ships inside it, at a rate set by the harmonic
-  number of the lead: a lead of one fills a meter in `capture_seconds`.
+- **Meters:** only the two defense zones have meters, from 0 to 1. A meter moves only on a
+  strict majority of the living ships inside its zone: it rises while the attackers
+  outnumber the defenders there, and falls while the defenders outnumber the attackers. Its
+  rate is the harmonic number of the lead (1, 1.5, 1.83, ... for a lead of 1, 2, 3, ...)
+  over `capture_seconds`, so a lead of one fills an empty meter in `capture_seconds`.
 - **Captures:** a full meter captures. The front moves one step in the capturing team's
   favour, every meter empties, and the roles rotate around the ring.
 - **Win:** a front of `front_threshold` captures ahead. At the clock the sign of the front
@@ -76,10 +78,15 @@ When a match ends, the environment gets a new map and a fresh mode state
   the zone its team attacks.
 - **Spawn protection:** a hit on a ship inside its own team's spawn zone deals no damage.
   The bullet is still spent. Boundary damage is unaffected.
-- **Objective events:** `objective_progress` attributes each meter movement: the side it
-  favours splits it among its ships inside the zone, and the other side's ships outside are
-  charged it. `objective` pays each capture as shares, half by presence on the completing
-  tick and half by an attempt ledger kept over the attempt.
+- **Objective events,** two amounts per ship, each summing to zero over the environment:
+  - `objective_progress` follows the meters. When a meter moves, the side the move favours
+    shares the size of the move among its ships inside the zone, and the other side loses
+    the same amount, shared among its ships outside the zone (all its ships, if none is
+    outside). The tick that completes a capture pays nothing here.
+  - `objective` follows captures. A capture is worth +1 to the attacking side and -1 to the
+    defending side. Within each side, half is shared among the ships in the zone on the
+    completing tick, and half by an attempt ledger kept while the meter rose: attackers are
+    credited for being present, defenders charged for being absent.
 - **The map** is mirror-symmetric about the axis through the centre and the neutral zone.
 
 ## The mode's rules
@@ -87,7 +94,7 @@ When a match ends, the environment gets a new map and a fresh mode state
 `bnb.game.modes.rules.ModeRules` holds each mode's constants, as Python numbers that
 compiled graphs specialize on:
 
-<!-- generated-table: mode-rules -->
+<!-- generated: mode-rules -->
 
 ## The mode's observation
 

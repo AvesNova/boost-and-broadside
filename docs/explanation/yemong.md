@@ -20,7 +20,8 @@ so one set of weights plays at every size.
 ## The model owns its inputs
 
 Yemong reads the raw observation and composes its own tokens. Everything it remembers
-lives in its carry (`bnb.models.yemong.model.Carry`), per view:
+lives in its [carry](glossary.md#carry) (`bnb.models.yemong.model.Carry`), per
+[view](glossary.md#view):
 
 - the trunk's recurrent state and convolution buffer;
 - the **belief**, per ship row (`bnb.models.yemong.belief.Belief`): whether it holds a
@@ -55,16 +56,33 @@ checks it.
 The query tokens are the ship rows, own ships first, then one global token. Fields and the
 mode's zones are key and value memory only.
 
-- **A ship token** is the **state code** of its belief (`bnb.models.yemong.state_code`):
-  the means and spreads as one vector of softmax groups: position and heading in
-  multi-level circular codes, velocity and the other channels in binned codes. Then its team and type one-hots, its flags, the
-  time since it was seen, its respawn wait as Fourier features, its pending action, the
-  refractive-index gradient, and the local presence of allies and enemies around it.
+- **A ship token** is the **state code** of its belief (see below), then its team and type
+  one-hots, its flags, the time since it was seen, its respawn wait as Fourier features,
+  its pending action, the refractive-index gradient, and the local presence of allies and
+  enemies around it.
 - **The global token** reads the map centre's code, episode progress, the arena radius,
   the fog flag and the mode's block.
 - **A field token** reads its centre's code, radius, band width and level; **a zone token**
   its centre's code, radius, role, meter and the captures left. An absent zone is one
   learned vector (see [Mixed batches](game/mixed-batches.md)).
+
+### The state code
+
+The state code (`bnb.models.yemong.state_code`) writes a ship's believed state, each
+quantity's mean and its spread, as one vector made of **softmax groups**: short runs of
+probabilities, each run summing to one, like a probability distribution over a few bins.
+The next-state head predicts the same vector, so a forecast carries its own uncertainty.
+
+- **Binned codes** (`bnb.models.yemong.codes.scalar_encode`): a scalar such as the shield
+  or the energy is spread over a fixed set of bins between a low and a high value. The two
+  bins around the mean share its weight, and a wider spread moves weight to further bins.
+  Velocity uses a two-dimensional binned code on a scale compressed above a knee speed.
+- **Multi-level circular codes** (`bnb.models.yemong.codes.circular_encode`): a periodic
+  quantity, the heading or a position coordinate, is coded at several levels, each with a
+  period a fixed factor shorter than the one before. Each level is a softmax group over a
+  few "colours" around its circle, so the coarse levels place the value roughly and the
+  fine ones precisely. A spread larger than a level's period flattens that level toward
+  uniform.
 
 ## Network
 
@@ -74,7 +92,10 @@ mode's zones are key and value memory only.
   - A **spatial sublayer** is attention of the queries over themselves and the map memory,
     with rotary encodings of position and heading, then a gated MLP. There is no mask.
   - A **temporal sublayer** runs per query token over time: a short causal convolution and
-    an RG-LRU recurrence, gated, then a gated MLP. An episode start cuts both.
+    an RG-LRU recurrence, gated, then a gated MLP. An episode start cuts both. The RG-LRU
+    (real-gated linear recurrent unit) keeps one state vector per token and updates it as
+    `h = a * h + sqrt(1 - a**2) * (i * x)`, where the decay `a` and the input gate `i` are
+    computed from the input `x`, so the layer learns how long to remember.
 - **Heads**, each an MLP:
 
 | Head | Reads | Gives |
@@ -113,9 +134,10 @@ converts it to the factored `Action` with `bnb.contracts.action.from_joint`.
 
 ## Configuration
 
-`bnb.models.yemong.model.YemongConfig`, with the production defaults:
+`bnb.models.yemong.model.YemongConfig`. Its defaults are the configuration of v1's
+trained model:
 
-<!-- generated-table: yemong-config -->
+<!-- generated: yemong-config -->
 
 `bfloat16_matmuls` runs the matrix products of the encoder, the trunk and the heads under
 bfloat16 autocast. With it on, `step` and `unroll` agree only to bfloat16 rounding.

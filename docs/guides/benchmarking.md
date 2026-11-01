@@ -4,9 +4,8 @@ covers: [bench/]
 
 # Benchmarking
 
-The harness lives in `bench/`, outside the package. Its rules come from the physics race:
-size the measurement first, benchmark at steady state and at sizes nobody tuned for, and
-run one benchmark at a time on the machine.
+The harness lives in `bench/`, outside the package. It measures at steady state, at
+random sizes, one benchmark at a time on the machine.
 
 ## The lock
 
@@ -30,8 +29,8 @@ with bench_lock():
     print(run_cell({"kind": "train", "preset": "mixed", "envs": 4096}))
 ```
 
-Several agents share one GPU. A measurement taken without the lock can overlap another
-agent's benchmark, and then both numbers are wrong.
+Every GPU measurement runs under the lock. Two measurements that overlap on one GPU slow
+each other, and both numbers are wrong.
 
 ## Cells
 
@@ -46,8 +45,8 @@ A **cell** is one measurement in a fresh process (`bench.cell`). It prints one l
   event counters. A train cell gives either a `size` (`ships_per_team`, `num_fields`,
   `arena_radius`) or a `preset`: a game preset name, or `mixed`.
 - **`realtime`:** one match on the CPU at batch size 1 (`bnb.runtime.realtime.Realtime`),
-  compiled. It reports the median and 99th-percentile latency of one tick over 1000 ticks
-  after 300 warm-up ticks.
+  compiled. It reports the median and 99th-percentile latency of one tick, over a run of
+  ticks after a warm-up (`bench.cell.realtime_cell`).
 
 One cell alone, without `bench.run` (this does not take the lock):
 
@@ -60,13 +59,13 @@ uv run --no-sync python -m bench.cell '{"kind": "train", "preset": "deathmatch",
 
 `uv run --no-sync python -m bench.run [--seed N]` runs training cells at random sizes
 and one realtime cell, under the lock, and appends every result to
-`bench/results.jsonl` with the commit, the seed and a time stamp. It is sized to finish in
-about five minutes on the development laptop, most of it compilation.
+`bench/results.jsonl` with the commit, the seed and a time stamp. Most of its time is
+compilation.
 
-The sizes come from `bench.sizes.draw`, which draws ship, field and arena sizes the way the
-physics race did. Benchmarking at sizes nobody tuned for keeps optimizations general:
+The sizes come from `bench.sizes.draw`, which draws ship, field and arena sizes from the
+ranges below. Benchmarking at sizes nobody tuned for keeps optimizations general:
 
-<!-- generated-table: bench-sizes -->
+<!-- generated: bench-sizes -->
 
 `bench.sizes.envs_for` sets each cell's batch so that environments times ships is the
 ship budget, rounded to a whole multiple of what the pools need.
@@ -78,9 +77,6 @@ from bench import sizes
 for size in sizes.draw(sizes.SKELETON_SEED, 3):
     print(size, sizes.envs_for(size))
 ```
-
-The skeleton seed is public. A section's acceptance run uses a seed the section's agent is
-not given, so no one can tune for the sizes it draws.
 
 ## Reading results
 

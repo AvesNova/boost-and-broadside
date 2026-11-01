@@ -59,18 +59,14 @@ lineup, game by game, so each game is one contiguous slice. The tables are in th
 ## Equivalence
 
 A mixed batch equals each game run alone, environment by environment, given the same
-per-environment uniforms: state, events, observation and rewards
-(`tests/sections/test_mixed.py::test_a_mixed_batch_equals_each_game_run_alone`). On the
-CPU this is bit for bit when each pool is a whole number of vector widths. Otherwise eager
-kernels compute a tensor's tail with scalar code, whose `exp` or `sin` can differ in the
-last bit, and the test holds the batch to 1e-6 per tick instead
-(`tests/sections/test_mixed.py::test_an_unaligned_mixed_batch_equals_each_game_alone_to_float32_rounding`).
+per-environment uniforms: state, events, observation and rewards agree to float32 rounding
+on every tick
+(`tests/sections/test_mixed.py::test_a_mixed_batch_equals_each_game_run_alone`).
 
 ## Cost
 
-Measured by the mixed section after its fix round (commit `81f54b32`), on an RTX 4070
-Laptop GPU under the benchmark lock, 4096 environments, every game 5v5 with 10 fields and
-every seat random: the mixed game tick took
-0.807 to 0.812 ms against a share-weighted 0.716 ms for the games alone, 13% over. A
-mixed Yemong rollout cost 0.3% more than the weighted single games. The full table and its
+Measured at commit `81f54b32` on an RTX 4070 Laptop GPU under the benchmark lock, with
+4096 environments, every game 5v5 with 10 fields and every seat random: the mixed game tick
+took 0.807 to 0.812 ms, against a share-weighted 0.716 ms for the games alone (13% over).
+A mixed Yemong rollout cost 0.3% more than the weighted single games. The full table and its
 method are in `docs/rewrite/sections/mixed-notes.md`.
