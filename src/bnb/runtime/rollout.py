@@ -108,6 +108,7 @@ class Rollout:
             logp=torch.zeros((ring, R, S), device=dev), value=torch.zeros((ring, R, S), device=dev),
             reward=torch.zeros((ring, R, S, len(REWARD_LEVELS)), device=dev),
             done=torch.zeros((ring, R), **flags),
+            result=torch.zeros((ring, R), dtype=torch.int32, device=dev),
             alive=torch.zeros((ring, R, N), **flags), valued=torch.zeros((ring, R, S), **flags),
             truth=torch.zeros((ring, R, N - S, truth.ships.shape[-1]), device=dev),
             capture=ShotCapture(
@@ -240,9 +241,12 @@ class Rollout:
         _assign(carry["ledger"], ledger)
         reward = reward.reshape(self.B, self.T, self.S, len(REWARD_LEVELS))
         name, buf, slot = self.learner, carry["buf"], self._slot(carry)
-        e = self.lineup.env[name]
-        buf["reward"].index_copy_(0, slot, reward[e, self._team(name, carry["seat"])][None])
+        e, team = self.lineup.env[name], self._team(name, carry["seat"])
+        buf["reward"].index_copy_(0, slot, reward[e, team][None])
         buf["done"].index_copy_(0, slot, ev.done[e][None])
+        # Events.result is team 0's; the other team's is its negation (two teams).
+        result = torch.where(team == 0, ev.result[e], -ev.result[e])
+        buf["result"].index_copy_(0, slot, result[None])
         redraw = torch.randint(0, self.T, (self.B,), device=self.device)
         carry["seat"].copy_(torch.where(ev.done, redraw, carry["seat"]))
         carry["counters"].add_(torch.stack([ev.fired.sum(), (ev.damage > 0).sum(), ev.died.sum(),

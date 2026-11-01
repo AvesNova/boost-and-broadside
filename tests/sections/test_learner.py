@@ -14,6 +14,7 @@ import yemong_cases as cases
 
 from bnb.contracts import Obs, Outputs, Pool
 from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.controllers.scripted import Chaser
 from bnb.learn import labels
 from bnb.learn.ppo import COUNTS, TERMS
 from bnb.models.yemong import critic
@@ -314,17 +315,47 @@ def test_the_store_records_every_rows_action(segment):
             assert torch.equal(joint[:, view, OWN:], joint[:, partner[0], :OWN])
 
 
-def test_the_outcome_targets_read_the_views_result(segment):
-    """The class at an episode's end is the view's result: win where its outcome reward is
-    positive."""
-    _, runner, _, prepared = segment
-    trajectory = lc.whole(runner)
+@pytest.fixture(scope="module")
+def decided():
+    """A self-play and chaser rollout whose every first episode end is team 0's win (the
+    score is set to 1-0 before the segment; the clock decides team deathmatch by score), with
+    the outcome weighted zero, so its reward cannot tell the result."""
+    from bnb.learn.rewards import RewardConfig
+
+    net = cases.model()
+    controllers = {"learner": cases.controller(net, cases.SHORT_SQUAD),
+                   "chaser": Chaser(OWN)}
+    runner = lc.Rollout(cases.SHORT_SQUAD, lc.POOLS, controllers, "learner", 16, 48, lc.CPU,
+                        compile=False, reward_config=RewardConfig(outcome=0.0))
+    runner.carry["state"].mode.score[:, 0] = 1
+    team = runner._team("learner", runner.carry["seat"])  # (R,) each view's, until its reset
+    return net, runner, team, runner.run()
+
+
+@pytest.mark.slow
+def test_the_view_records_its_teams_match_result(decided):
+    """Team 0's win is a team-1 view's loss, and the result is zero where no episode
+    ended."""
+    _, _, team, trajectory = decided
     ended = trajectory.done
-    sign = torch.sign(trajectory.reward[..., 0, -1])
-    targets = prepared["derived"]["outcome_targets"]
-    assert ended.any()
-    expected = critic.outcome_class(sign[ended])
-    assert torch.equal(targets[ended].argmax(-1), expected)
+    first = ended & (ended.int().cumsum(0) == 1)
+    assert (first & (team == 0)).any() and (first & (team == 1)).any()
+    assert (trajectory.result[~ended] == 0).all()
+    expected = torch.where(team == 0, 1, -1).expand_as(first)
+    assert torch.equal(trajectory.result[first], expected[first].int())
+
+
+@pytest.mark.slow
+def test_the_outcome_targets_read_the_match_result_at_any_outcome_weight(decided):
+    """With the outcome weighted zero its reward is zero, but a decided match still ends in a
+    win or a loss, and the targets' class at an episode end is the view's result."""
+    net, runner, _, trajectory = decided
+    ended = trajectory.done
+    assert (trajectory.reward[..., -1] == 0).all()
+    assert (trajectory.result[ended] > 0).any() and (trajectory.result[ended] < 0).any()
+    learner = lc.learner(net, runner)
+    targets = learner.prepare(runner.store, [runner.bootstrap()])["derived"]["outcome_targets"]
+    assert torch.equal(targets[ended].argmax(-1), critic.outcome_class(trajectory.result[ended]))
 
 
 def test_an_update_consumes_several_shards():

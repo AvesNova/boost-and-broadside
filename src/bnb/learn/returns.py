@@ -49,8 +49,3 @@ def team_aggregate(team: torch.Tensor, alive: torch.Tensor, advantages: torch.Te
         return (per_level + team_spirit * mean).sum(-1)
 
     return mixed(advantages), mixed(returns)
-
-
-def outcome_values(probabilities: torch.Tensor, weight: float) -> torch.Tensor:
-    """The outcome level's value in reward units: (P(win) - P(loss)) times its weight."""
-    return (probabilities[..., 0] - probabilities[..., 2]) * weight

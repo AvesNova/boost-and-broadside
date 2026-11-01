@@ -38,7 +38,7 @@ TERMS = ("policy", "entropy", "value", "next_state", "enemy_action", "density",
 # waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots.
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
 # The per-tick records the returns read, staged whole per shard.
-SMALL = ("reward", "values", "outcome", "done", "logp", "alive", "valued")
+SMALL = ("reward", "values", "outcome", "done", "result", "logp", "alive", "valued")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -182,9 +182,8 @@ class Learner:
         team = torch.zeros_like(own_alive, dtype=torch.int64)  # a view's own ships: one team
         advantage, total = returns.team_aggregate(team, own_alive, advantages, level_returns,
                                                   self.team_spirit)
-        # The view's result, from the sign of its outcome reward (the weight is positive).
-        result = torch.sign(small["reward"][..., 0, level])
-        targets = critic.outcome_targets(small["outcome"], result, done, bootstrap.outcome,
+        targets = critic.outcome_targets(small["outcome"], small["result"], done,
+                                         bootstrap.outcome,
                                          config.discount[level], config.trace_decay[level])
         return dict(advantage=advantage, total=total, level_returns=level_returns,
                     values=values, outcome_targets=targets)

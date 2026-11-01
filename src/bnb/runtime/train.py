@@ -156,16 +156,15 @@ class Trainer:
         steps = torch.zeros(pools, device=device)
         totals = torch.zeros((pools, len(REWARD_LEVELS)), device=device)
         results = torch.zeros((pools, 3), device=device)
-        outcome = REWARD_LEVELS.index("outcome")
         for shard in range(store.shards):
-            small = store.shard(("reward", "done"), shard)
-            reward, ended = small["reward"], small["done"]
+            small = store.shard(("reward", "done", "result"), shard)
+            reward, ended, result = small["reward"], small["done"], small["result"]
             steps.index_add_(0, self.learner_pool,
                              torch.full_like(reward[0, :, 0, 0], reward.shape[0]))
             totals.index_add_(0, self.learner_pool, reward.mean(2).sum(0))
-            sign = torch.sign(reward[..., 0, outcome])
-            per_view = torch.stack([(ended & (sign > 0)).sum(0), (ended & (sign == 0)).sum(0),
-                                    (ended & (sign < 0)).sum(0)], -1).float()
+            per_view = torch.stack([(ended & (result > 0)).sum(0),
+                                    (ended & (result == 0)).sum(0),
+                                    (ended & (result < 0)).sum(0)], -1).float()
             results.index_add_(0, self.learner_pool, per_view)
         rate = (totals / steps.clamp_min(1)[:, None] / self.rollout.rules.tick_length).tolist()
         results = results.tolist()
@@ -203,13 +202,11 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
                       compile=cfg.compile, staggered=False)
     result = torch.zeros(games, device=device)
     finished = torch.zeros(games, dtype=torch.bool, device=device)
-    outcome = REWARD_LEVELS.index("outcome")
     while not bool(finished.all()):
-        trajectory = rollout.run()
-        sign = torch.sign(trajectory.reward[..., 0, outcome])  # (L, games): one view each
-        for tick in range(sign.shape[0]):
+        trajectory = rollout.run()  # (L, games): one view each
+        for tick in range(trajectory.result.shape[0]):
             first = trajectory.done[tick] & ~finished
-            result = torch.where(first, sign[tick], result)
+            result = torch.where(first, trajectory.result[tick].float(), result)
             finished = finished | trajectory.done[tick]
     return dict(wins=(result > 0).float().mean().item(), draws=(result == 0).float().mean().item(),
                 losses=(result < 0).float().mean().item())
