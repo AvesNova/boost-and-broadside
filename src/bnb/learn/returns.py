@@ -8,14 +8,14 @@ import torch
 
 
 def per_level_gae(rewards: torch.Tensor, values: torch.Tensor, terminated: torch.Tensor,
-                  next_value: torch.Tensor, next_done: torch.Tensor, gamma: torch.Tensor,
-                  lam: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                  next_value: torch.Tensor, next_done: torch.Tensor, discount: torch.Tensor,
+                  trace_decay: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Advantages and returns (L, R, S, K): plain GAE per level with its own discounts.
 
     rewards, values (L, R, S, K); terminated (L, R): the episode ended on step t, so the
     trace is cut after t (a timeout is a real end); next_value (R, S, K) and next_done (R,):
     the bootstrap after the last step, cut where either the last step or next_done ends the
-    episode. gamma, lam (K,).
+    episode. discount (gamma) and trace_decay (lambda): (K,).
     """
     keep = (~terminated).to(values.dtype)[..., None, None]  # (L, R, 1, 1)
     last_keep = keep[-1] * (~next_done).to(values.dtype)[:, None, None]
@@ -24,8 +24,8 @@ def per_level_gae(rewards: torch.Tensor, values: torch.Tensor, terminated: torch
     following = next_value
     for t in reversed(range(values.shape[0])):
         cut = last_keep if t == values.shape[0] - 1 else keep[t]
-        delta = rewards[t] + gamma * following * cut - values[t]
-        running = delta + gamma * lam * cut * running
+        delta = rewards[t] + discount * following * cut - values[t]
+        running = delta + discount * trace_decay * cut * running
         advantages[t] = running
         following = values[t]
     return advantages, advantages + values
