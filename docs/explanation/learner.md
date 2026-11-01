@@ -135,13 +135,18 @@ again with the game's own code (`bnb.learn.shots.resimulate`):
 A re-simulated shot is the bullet the game fires from that state, position, velocity and
 hit, tick by tick, including friendly fire and fields (`tests/sections/test_learner_shots.py`).
 The targets are Yemong's shot codes (`bnb.models.yemong.shots`), and the trajectory head is
-queried at every age at once.
+queried at every age at once. With `LearnerConfig.sampled_shot_ages` set to `k`, it is
+queried at `k` of each shot's valid ages instead, drawn once per update from the learner's
+own stream (`bnb.learn.shots.sample_ages`): the mean over the drawn ages is an unbiased
+estimate of the mean over all of them, at about `k / 12` of the head's cost. It is off by
+default.
 
 ## The other labels
 
-Built per micro-batch on the device, from the stored rows (`bnb.learn.labels`), row-aligned
-with the view (as are the shot labels' codes; expanded, the codes would be many times the
-size of the segment):
+Built per micro-batch on the device, inside the compiled micro-batch loss, from the stored
+rows (`bnb.learn.labels`), row-aligned with the view (as are the shot labels' codes;
+expanded, the codes would be many times the size of the segment, and inside the loss the
+compiler fuses them into the cross-entropies that read them):
 
 - **Next state:** the sharp code of each row's truth at `t + 1`, its position shifted by the
   view's offset; the last step's truth is the observation after the segment.
@@ -152,8 +157,8 @@ size of the segment):
 ## Compilation and precision
 
 Section code does not compile itself. The learner takes a `stage` function from the runtime
-(`bnb.runtime.train.compiler`), which compiles the micro-batch loss and the
-re-simulation's tick (`bnb.learn.shots.tick`). Matmuls are float32 by default.
+(`bnb.runtime.train.compiler`), which compiles the micro-batch loss, label codes included,
+and the re-simulation's tick (`bnb.learn.shots.tick`). Matmuls are float32 by default.
 `TrainConfig.precision` selects TF32 (a process-wide setting the entry point applies with
 `bnb.runtime.train.set_precision`) or bf16 matmuls inside the model; recurrent state, norms,
 scans and every loss reduction stay float32 in all of them.

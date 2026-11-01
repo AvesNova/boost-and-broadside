@@ -98,6 +98,15 @@ def main() -> None:
                 )
             return hidden.float().square().mean()
 
+        def spatial():
+            """The trunk's spatial sublayers alone (each block's temporal one skipped)."""
+            tokens = model.tokens(trajectory.obs, trajectory.replay)
+            with model._matmuls(trajectory.obs.ships.device):
+                queries, memory, token_tables, map_tables = model._encode(tokens)
+                for block in model.trunk.blocks:
+                    queries = block.attend(queries, memory, token_tables, map_tables)
+            return queries.float().square().mean()
+
         def encoder():
             tokens = model.tokens(trajectory.obs, trajectory.replay)
             with model._matmuls(trajectory.obs.ships.device):
@@ -117,6 +126,8 @@ def main() -> None:
 
             functions[name] = run
         functions["trunk only"] = torch.compile(trunk, fullgraph=True, dynamic=False)
+        functions["spatial sublayers only"] = torch.compile(spatial, fullgraph=True,
+                                                            dynamic=False)
         functions["encoder only"] = torch.compile(encoder, fullgraph=True, dynamic=False)
         for function in functions.values():  # compile and warm
             function().backward()
