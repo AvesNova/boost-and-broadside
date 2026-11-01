@@ -125,14 +125,16 @@ class SegmentStore:
                 for name, value in leaves.items()}
 
     def batches(self, names: tuple[str, ...], view_batches: list[torch.Tensor]):
-        """Yield {name: pytree} on the device for each list of views (int64). From pinned
-        memory the next batch is gathered and copied while the caller computes on the
-        current one; a yielded batch is valid until the next-but-one."""
+        """Yield {name: pytree} on the device for each list of views (int64, on the host).
+        From pinned memory the next batch is gathered and copied while the caller computes
+        on the current one; a yielded batch is valid until the next-but-one."""
         self.synchronize()
         if not self.pinned:
+            device = self.data[names[0]][0].device
             for views in view_batches:
-                yield self._unflatten(self._gather(names, views.to(self.data[names[0]][0].device),
-                                                   None))
+                if views.device != device and device.type == "cuda":
+                    views = views.pin_memory().to(device, non_blocking=True)
+                yield self._unflatten(self._gather(names, views.to(device), None))
             return
         compute = torch.cuda.current_stream(self.device)
 
@@ -157,7 +159,7 @@ class SegmentStore:
         def issue(index: int) -> dict:
             buffers = slot(index)
             buffers["copied"].synchronize()  # the pinned buffer's last copy has finished
-            self._gather(names, view_batches[index].cpu(), buffers["host"])
+            self._gather(names, view_batches[index], buffers["host"])
             with torch.cuda.stream(self.copy_stream):
                 self.copy_stream.wait_event(buffers["released"])
                 for name in names:

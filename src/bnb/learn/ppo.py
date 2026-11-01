@@ -129,8 +129,8 @@ class Learner:
     also need `state_code`, `shot_code`, `shot_trajectory` and `config.hex_rings`. rules and
     types: the game's (for the shot re-simulation). outcome_weight: the outcome level's
     reward weight (its value in reward units is P(win) - P(loss) times it). stage: how the
-    runtime compiles the micro-batch loss and the shot re-simulation's tick (identity:
-    eager)."""
+    runtime compiles the micro-batch loss, the shot re-simulation's tick and the label codes
+    (identity: eager)."""
 
     def __init__(self, model: torch.nn.Module, config: LearnerConfig, rules: Rules,
                  types: ShipTypes, outcome_weight: float, device: torch.device,
@@ -157,6 +157,7 @@ class Learner:
         self.ages = torch.arange(1, rules.bullet_moves + 1, dtype=torch.float32, device=device)
         self.loss = stage(self._loss)
         self.shot_tick = stage(shots.tick)
+        self.codes = stage(self._codes)
         self.env_steps = 0
 
     # ------------------------------------------------------------------ returns
@@ -217,10 +218,15 @@ class Learner:
         """The auxiliary targets and masks of a micro-batch (none without auxiliary heads)."""
         if not self.auxiliary:
             return {}
+        shot, shot_mask = self.shots(trajectory, spread)
+        return self.codes(trajectory, shot, shot_mask)
+
+    def _codes(self, trajectory: Trajectory, shot: shots.Shots, shot_mask: torch.Tensor) -> dict:
+        """The targets as the heads' codes, from the stored rows and the re-simulated shots
+        (a stage the runtime may compile)."""
         model = self.model
         rows = labels.privileged_rows(trajectory)
         enemy, enemy_mask = labels.enemy_actions(trajectory)
-        shot, shot_mask = self.shots(trajectory, spread)
         code = model.shot_code
         return dict(
             next_state=labels.next_state_targets(model.state_code, trajectory, rows),
@@ -301,6 +307,14 @@ class Learner:
     def _micro_batches(self, views: torch.Tensor) -> list[torch.Tensor]:
         return list(views.split(self.config.micro_batch))
 
+    def _on_device(self, views: torch.Tensor) -> torch.Tensor:
+        """Host view indices on the device, from pinned memory: no wait on the queued work
+        (a copy from pageable memory, or `.cpu()`, would wait for it and stall the
+        staging's overlap)."""
+        if self.device.type != "cuda":
+            return views
+        return views.pin_memory().to(self.device, non_blocking=True)
+
     def prepare(self, segments: Segments, bootstraps: list) -> dict:
         """Steps 1 and 2: per view, the advantage, the returns, the outcome targets and the
         old log-probabilities (L, V, ...), each view's token counts (V, COUNTS), the return
@@ -323,9 +337,10 @@ class Learner:
                              device=device, generator=self.generator)
         recompute = config.old_log_probabilities == "recomputed"
         if self.auxiliary or recompute:
-            order = self._micro_batches(torch.arange(segments.views, device=device))
-            for views, batch in zip(order, segments.batches(segments.names, order),
-                                    strict=True):
+            order = self._micro_batches(torch.arange(segments.views))  # host indices
+            for host_views, batch in zip(order, segments.batches(segments.names, order),
+                                         strict=True):
+                views = self._on_device(host_views)
                 trajectory = Trajectory(**batch)
                 with torch.no_grad():
                     if self.auxiliary:
@@ -345,18 +360,21 @@ class Learner:
                     spread=spread, explained_variance=variance)
 
     def gradient(self, segments: Segments, prepared: dict, chosen: torch.Tensor) -> tuple:
-        """Accumulate one minibatch's gradient (views `chosen`) into the parameters' .grad,
+        """Accumulate one minibatch's gradient (views `chosen`, host indices) into the
+        parameters' .grad,
         micro-batch by micro-batch: (terms (TERMS,), value loss per level, statistics
         (clip fraction, approximate KL)), each the minibatch's."""
         device, derived = self.device, prepared["derived"]
-        total = prepared["counts"][chosen].sum(0).clamp_min(1.0)
+        total = prepared["counts"][self._on_device(chosen)].sum(0).clamp_min(1.0)
         denominator = dict(zip(COUNTS, total.unbind()))
         micro = self._micro_batches(chosen)
         terms_sum = torch.zeros(len(TERMS), device=device)
         levels_sum = torch.zeros(len(REWARD_LEVELS), device=device)
         statistics = torch.zeros(2, device=device)
         self.optimizer.zero_grad(set_to_none=True)
-        for views, batch in zip(micro, segments.batches(segments.names, micro), strict=True):
+        for host_views, batch in zip(micro, segments.batches(segments.names, micro),
+                                     strict=True):
+            views = self._on_device(host_views)
             trajectory = Trajectory(**batch)
             label = self.labels(trajectory, prepared["spread"][:, views])
             part = {name: value.index_select(1, views) for name, value in derived.items()}
@@ -388,7 +406,7 @@ class Learner:
         for epoch in range(config.epochs):
             # Minibatches as equal as the views allow (micro-batches of micro_batch views,
             # each minibatch's last one smaller where they do not divide).
-            for chosen in torch.randperm(views, device=device).tensor_split(config.minibatches):
+            for chosen in torch.randperm(views).tensor_split(config.minibatches):
                 terms, per_level, statistics = self.gradient(segments, prepared, chosen)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
                 self.optimizer.step()
@@ -419,13 +437,13 @@ class Learner:
         """The step/unroll ratio drift before any optimizer step, on the first micro-batch
         of views: |exp(log_probability_unroll - log_probability_rollout) - 1| over living
         own ships, max and mean."""
-        views = torch.arange(min(self.config.micro_batch, segments.views), device=self.device)
+        views = torch.arange(min(self.config.micro_batch, segments.views))
         batch = next(iter(segments.batches(segments.names, [views])))
         trajectory = Trajectory(**batch)
         log_probability, _ = policy.evaluate(self.unroll(trajectory).policy_logits,
                                              _own_joint(trajectory))
         mask = trajectory.alive[..., :log_probability.shape[-1]]
-        rollout = prepared["rollout_log_probability"][:, views]
+        rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
         error = (torch.exp(log_probability - rollout) - 1.0).abs()[mask]
         if error.numel() == 0:
             return dict(ratio_drift_max=0.0, ratio_drift_mean=0.0)

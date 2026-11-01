@@ -60,10 +60,8 @@ def test_the_update_through_pinned_memory_equals_the_device_path():
         learner = Learner(model, LearnerConfig(minibatches=1, micro_batch=views // 4),
                           runner.rules, runner.carry["types"], RewardConfig().outcome, CUDA)
         prepared = learner.prepare(store, [bootstrap])
-        terms, levels, statistics = learner.gradient(store, prepared,
-                                                     torch.randperm(views, device=CUDA,
-                                                                    generator=torch.Generator(
-                                                                        CUDA).manual_seed(0)))
+        chosen = torch.randperm(views, generator=torch.Generator().manual_seed(0))
+        terms, levels, statistics = learner.gradient(store, prepared, chosen)
         results.append((terms, levels, [p.grad.clone() for p in model.parameters()],
                         prepared["counts"]))
     (terms_a, levels_a, grads_a, counts_a), (terms_b, levels_b, grads_b, counts_b) = results
