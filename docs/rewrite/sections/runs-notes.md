@@ -126,7 +126,57 @@ are in `runs.md`.
 
 ## Measurements
 
-MEASUREMENTS
+**Provisional:** RTX 4070 Laptop (8 GB), commit 797199f3, bench lock held, but two other
+agents had processes on the GPU (1 to 4 GB) and loaded the CPU, so the 5v5 cells did not
+fit at their bench size (4096 environments) and the update times are several times a quiet
+machine's. Script: `/tmp/bnb-scratch-runs/measure.py` (one cell per process; Yemong,
+float32, one update first so the optimizer has state; min of 3 saves and loads).
+
+### Checkpoint size and times (rollout carry included)
+
+| cell | environments | weights | training file | of which carry | of which optimizer | save | load (hashes + both files to the GPU) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `deathmatch` | 1024 | 10.4 MB | 128.5 MB | 97.3 MB | 20.7 MB | 0.21 s | 0.10 s |
+| `deathmatch_wide` | 2048 | 10.4 MB | 226.2 MB | 195.0 MB | 20.7 MB | 0.34 s | 0.17 s |
+| `frontline` | 2048 | 10.4 MB | 224.5 MB | 193.4 MB | 20.7 MB | 0.47 s | 0.25 s |
+| `mixed` | 2048 | 10.4 MB | 226.2 MB | 195.0 MB | 20.7 MB | 0.41 s | 0.21 s |
+| 26 ships, 54 fields | 784 | 10.4 MB | 218.0 MB | 186.8 MB | 20.7 MB | 0.34 s | 0.16 s |
+
+- The carry is 95 kB per environment at 5v5 and 238 kB at 26 ships, almost all Yemong's
+  carries (about 49 kB per learner view, learner notes), so at the bench sizes a
+  checkpoint is about 420 MB (5v5, 4096 environments) and 410 MB (26 ships, 1576),
+  extrapolated linearly; the save then takes about 1 s at this machine's rate.
+- The league slot's weights (10.4 MB) are inside the training file.
+
+### Throughput with and without checkpoints
+
+- `deathmatch`, 1024 environments, 3 updates per arm, two arms each, best of each: 2042
+  environment steps per second without checkpoints, 1913 with a checkpoint after **every**
+  update (64 s per update on the loaded machine). One save is 0.21 s, 0.3% of an update;
+  the 6% gap is the shared machine's noise.
+- **At the default cadence** (about 30 minutes), one save of under 1 s costs under 0.05%
+  of the run's time. The coordinator's quiet-machine run should confirm.
+
+### The exact resume
+
+**Bitwise.** `tests/runs/test_resume.py`: 2 updates, a training checkpoint, a resume in a
+fresh process and 2 more equal 4 updates straight through: every parameter
+(`torch.equal`) and every logged metric (compared as JSON floats, so exactly), on the CPU
+(eager) and on the GPU (compiled stages, the CUDA-graph rollout), for the relational
+model and Yemong. Two things were needed beyond saving every state (see Design): the
+capture restoring the device generator (removing it fails the GPU test), and per-pool
+metrics without atomics (with `index_add_`, the weights matched bit for bit but one
+metric, self-play damage per second, came out 1.4e-11 against -4.1e-11, both zero up to
+summation order). Two straight GPU runs were bit-identical before the fix too, so the
+atomic order varied only across the processes' different histories. Request 3 names the
+remaining atomics a long GPU run could meet. Each GPU case took 4 to 5 minutes on the
+loaded machine (Yemong's compile dominates).
+
+### The full suite
+
+939 passed, 7 skipped (none under `tests/runs/`; the skips are the suite's optional extras and hardware checks), under the bench lock (34.6 minutes on the loaded machine). An
+earlier run failed only `tests/sections/test_learner_precision.py` by out-of-memory while
+another agent's process held 4.2 GB; it passed in the locked rerun.
 
 ## Changes outside `bnb.runs`
 
