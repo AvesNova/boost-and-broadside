@@ -76,6 +76,20 @@ def apply_rotary(values, cos, sin):
 # --------------------------------------------------------------------------- spatial
 
 
+ATTENTION = {"kernel": "sdpa"}  # "sdpa" or "matmul" (an explicit softmax(q k^T / sqrt(W)) v)
+
+
+def attention(query, key, value):
+    """query (..., H, Q, W), key and value (..., H, K, W) -> (..., H, Q, W), one softmax
+    over all K keys, scale 1/sqrt(W), no mask."""
+    if ATTENTION["kernel"] == "matmul":
+        scores = torch.matmul(query, key.transpose(-1, -2)) * query.shape[-1] ** -0.5
+        return torch.matmul(torch.softmax(scores, -1).to(value.dtype), value)
+    batch = query.shape[:-3]
+    return F.scaled_dot_product_attention(query.flatten(0, -4), key.flatten(0, -4),
+                                          value.flatten(0, -4)).unflatten(0, batch)
+
+
 class SpatialBlock(nn.Module):
     """x += W_o attention(norm x) over [query keys; map keys]; x += mlp(norm x)."""
 
@@ -107,10 +121,7 @@ class SpatialBlock(nn.Module):
         map_key, map_value = map_keys_values
         key = torch.cat([key, map_key], -3).transpose(-2, -3)
         value = torch.cat([value, map_value], -3).transpose(-2, -3)
-        query = query.transpose(-2, -3)
-        batch = query.shape[:-3]
-        attended = F.scaled_dot_product_attention(query.flatten(0, -4), key.flatten(0, -4),
-                                                  value.flatten(0, -4)).unflatten(0, batch)
+        attended = attention(query.transpose(-2, -3), key, value)
         x = x + self.output(attended.transpose(-2, -3).flatten(-2))
         return x + self.feedforward(self.feedforward_norm(x))
 

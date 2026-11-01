@@ -152,6 +152,21 @@ def rollout_cell(model, views, precision, mode, repetitions, warmup):
             "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30, "times_ms": times}
 
 
+def run_with_retries(function, *arguments, attempts: int = 3):
+    """A cell; an out-of-memory error (the GPU is shared) waits and retries, then is
+    recorded."""
+    for attempt in range(attempts):
+        try:
+            return function(*arguments)
+        except torch.OutOfMemoryError as error:
+            message = str(error).split(".")[0]
+            torch._dynamo.reset()
+            torch.cuda.empty_cache()
+            print(f"[bench] out of memory (attempt {attempt + 1}): {message}", flush=True)
+            time.sleep(30)
+    return {"ms": None, "error": "out of memory"}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", choices=("training", "rollout"), default=None)
@@ -179,14 +194,18 @@ def main():
                 for mode in arguments.mode:
                     torch._dynamo.reset()
                     function = training_cell if kind == "training" else rollout_cell
-                    result = function(model, views, precision, mode, arguments.repetitions,
-                                      arguments.warmup)
+                    result = run_with_retries(function, model, views, precision, mode,
+                                              arguments.repetitions, arguments.warmup)
                     record = {"kind": kind, "views": views, "steps": STEPS if kind ==
                               "training" else 1, "precision": precision, "mode": mode,
                               "commit": sha, "label": arguments.label,
                               "time": datetime.datetime.now().isoformat(timespec="seconds"),
                               "gpu": torch.cuda.get_device_name()} | result
-                    rate = record.get("view_ticks_per_s", record.get("view_steps_per_s"))
+                    rate = record.get("view_ticks_per_s") or record.get("view_steps_per_s") or 0
+                    if "error" in record:
+                        print(f"{kind:8s} V={views:5d} {precision:8s} {mode:10s} "
+                              f"{record['error']}", flush=True)
+                        continue
                     print(f"{kind:8s} V={views:5d} {precision:8s} {mode:10s} "
                           f"{record['ms']:9.3f} ms  {rate:12.0f} /s  "
                           f"{record['peak_memory_gb']:.2f} GB", flush=True)
