@@ -40,7 +40,7 @@ def gelu(x):
     return F.gelu(x)
 
 
-FUSED_MLP = {"enabled": False}  # gated.py's one-kernel hidden layer under 16-bit autocast
+FUSED_MLP = {"enabled": True}  # gated.py's one-kernel hidden layer under 16-bit autocast
 
 
 class GatedMLP(nn.Module):
@@ -89,7 +89,7 @@ def apply_rotary(values, cos, sin):
 # "sdpa", "matmul" (softmax(q k^T / sqrt(W)) v as batched matmuls) or "broadcast" (the same
 # as multiply-reductions the compiler fuses: 11 queries and 21 keys are too small for tiles)
 # or "triton" (attention.py, one program per view and head, on CUDA)
-ATTENTION = {"kernel": "sdpa"}
+ATTENTION = {"kernel": "triton"}
 
 
 def attention(query, key, value):

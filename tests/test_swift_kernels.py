@@ -71,12 +71,12 @@ def test_spatial_block_with_small_attention():
     angles = torch.randn(40, 21, 1, 20, device="cuda")
     tokens = (angles[:, :11].cos(), angles[:, :11].sin())
     maps = (angles[:, 11:].cos(), angles[:, 11:].sin())
+    fast = block(x, memory, tokens, maps)
     try:
-        network.ATTENTION["kernel"] = "triton"
-        fast = block(x, memory, tokens, maps)
-    finally:
         network.ATTENTION["kernel"] = "sdpa"
-    plain = block(x, memory, tokens, maps)
+        plain = block(x, memory, tokens, maps)
+    finally:
+        network.ATTENTION["kernel"] = "triton"
     assert (fast - plain).abs().max() < 1e-4 * plain.abs().max()
 
 
@@ -92,7 +92,7 @@ def test_fused_gated_mlp_matches_unfused():
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 out, grads = gradients(mlp, (x,), weight)
         finally:
-            network.FUSED_MLP["enabled"] = False
+            network.FUSED_MLP["enabled"] = True
         results.append((out, grads[0], mlp.gate.weight.grad.double().clone()))
         mlp.zero_grad()
     for plain, fused in zip(*results, strict=True):
