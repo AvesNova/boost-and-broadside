@@ -18,7 +18,7 @@ from bnb.contracts import Obs, Outputs, Pool
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.learn import labels
-from bnb.learn.ppo import COUNTS, TERMS, random_stream
+from bnb.learn.ppo import COUNTS, TERMS, explained_variance, random_stream
 from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
@@ -53,6 +53,7 @@ def test_unroll_receives_the_reset_before_each_step(segment):
     with torch.no_grad():
         right = learner.unroll(trajectory)
         wrong = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, done)
+    from bnb.models.yemong import policy
     right_logp, _ = policy.evaluate(right.policy_logits, joint)
     wrong_logp, _ = policy.evaluate(wrong.policy_logits, joint)
     assert cases.scale_error(right_logp, trajectory.logp) <= 1e-5
@@ -403,6 +404,63 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
         assert torch.equal(a, b)
 
 
+def test_recomputed_old_log_probabilities_are_the_unrolls(segment):
+    """"rollout" keeps the rollout's log-probabilities; "recomputed" takes unroll's, which
+    differ from them only by the step/unroll drift."""
+    net, runner, _, prepared = segment
+    trajectory = lc.whole(runner)
+    assert torch.equal(prepared["derived"]["old_log_probability"], trajectory.logp)
+    recomputed = lc.learner(net, runner, old_log_probabilities="recomputed")
+    old = recomputed.prepare(runner.store, [runner.bootstrap()])["derived"]["old_log_probability"]
+    with torch.no_grad():
+        expected, _ = policy.evaluate(recomputed.unroll(trajectory).policy_logits,
+                                      cases.joint_actions(trajectory))
+    assert torch.equal(old, expected) and not torch.equal(old, trajectory.logp)
+    assert cases.scale_error(old, trajectory.logp) <= 1e-5
+
+
+def test_the_drift_is_the_step_unroll_ratio_error(segment):
+    """max and mean of |exp(log_probability_unroll - log_probability_rollout) - 1| over
+    living own ships, against a boolean-indexed computation; a changed model drifts."""
+    net, runner, learner, prepared = segment
+    trajectory = lc.whole(runner)
+
+    def independent(model):
+        with torch.no_grad():
+            unrolled = model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
+                                    cases.resets(trajectory.obs))
+        logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
+        error = (torch.exp(logp - trajectory.logp) - 1.0).abs()[trajectory.alive[..., :OWN]]
+        return torch.stack([error.max(), error.mean()])
+
+    torch.testing.assert_close(learner.drift(runner.store, prepared), independent(net),
+                               rtol=1e-5, atol=1e-9)
+    assert learner.drift(runner.store, prepared)[0] < 1e-5
+    changed = copy.deepcopy(net)
+    generator = torch.Generator().manual_seed(0)
+    with torch.no_grad():
+        for parameter in changed.parameters():
+            parameter.add_(0.01 * torch.randn(parameter.shape, generator=generator))
+    moved = lc.learner(changed, runner).drift(runner.store, prepared)
+    torch.testing.assert_close(moved, independent(changed), rtol=1e-5, atol=1e-9)
+    assert moved[0] > 1e-3
+
+
+def test_the_explained_variance_matches_an_independent_computation(segment):
+    """Per level over valued own ships, 1 - Var(return - value) / Var(return); a perfect
+    critic explains everything, and returns that never vary give 0."""
+    net, runner, _, prepared = segment
+    trajectory = lc.whole(runner)
+    returns, values = prepared["derived"]["level_returns"], trajectory.values  # weight 1
+    valued = trajectory.valued
+    expected = torch.stack([1.0 - (returns[..., k][valued] - values[..., k][valued]).var()
+                            / returns[..., k][valued].var() for k in range(5)])
+    torch.testing.assert_close(prepared["explained_variance"], expected, rtol=1e-4, atol=1e-5)
+    assert torch.equal(explained_variance(returns, returns, valued), torch.ones(5))
+    flat = torch.ones_like(returns)
+    assert torch.equal(explained_variance(flat, values, valued), torch.zeros(5))
+
+
 def test_the_update_is_the_same_whatever_the_global_seed(segment):
     """Every draw of the update (the shot spread, the minibatch order) comes from the
     learner's own streams: the global generator's state changes nothing."""
@@ -418,3 +476,15 @@ def test_the_update_is_the_same_whatever_the_global_seed(segment):
     assert first == second
     assert all(torch.equal(a, b) for a, b in zip(first_parameters, second_parameters,
                                                  strict=True))
+
+
+def test_the_kl_early_stop_ends_the_update_after_an_epoch(segment):
+    """The epoch's mean approximate KL above target_kl stops the update after that epoch;
+    a target it never reaches runs every epoch."""
+    net, runner, _, _ = segment
+    for target, steps, stopped in ((-1.0, 2, True), (math.inf, 4, False)):
+        learner = lc.learner(copy.deepcopy(net), runner, epochs=2, minibatches=2,
+                             target_kl=target)
+        out = learner.update(runner.store, [runner.bootstrap()])
+        assert out["minibatch_steps"] == steps and out["stopped_early"] == stopped
+        assert out["approximate_kl"] >= 0.0
