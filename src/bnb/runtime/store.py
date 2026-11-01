@@ -12,6 +12,7 @@ back the same way, gathering the next one into a pinned buffer and copying it wh
 current one computes. On a CPU-only run every copy is a plain copy.
 """
 
+import concurrent.futures
 import contextlib
 
 import torch
@@ -50,6 +51,7 @@ class SegmentStore:
         self.names = tuple(self.data)
         self.copy_stream = torch.cuda.Stream(device) if device.type == "cuda" else None
         self._staging: dict = {}
+        self._worker = concurrent.futures.ThreadPoolExecutor(1) if self.pinned else None
 
     # ---------------------------------------------------------------- writing
 
@@ -169,11 +171,13 @@ class SegmentStore:
                 buffers["copied"].record(self.copy_stream)
             return buffers
 
-        upcoming = issue(0)
+        # The next batch's gather and copy run on a worker thread (index_select and the copy
+        # release the GIL), so they overlap the caller's kernel launches as well as the GPU.
+        upcoming = self._worker.submit(issue, 0)
         for index in range(len(view_batches)):
-            current = upcoming
+            current = upcoming.result()
             compute.wait_event(current["copied"])
+            if index + 1 < len(view_batches):  # its slot's last reader finished recording
+                upcoming = self._worker.submit(issue, index + 1)
             yield self._unflatten(current["device"])
             current["released"].record(compute)
-            if index + 1 < len(view_batches):
-                upcoming = issue(index + 1)
