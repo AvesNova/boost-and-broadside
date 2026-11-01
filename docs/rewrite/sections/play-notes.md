@@ -217,12 +217,17 @@ A, D, Shift, Ctrl and Space.
 
 ## Measurements
 
-All on this machine: RTX 4070 Laptop GPU (8 GB), 16 CPU threads, shared with the other
-section agents (load average 17 to 22 during the runs), Python 3.14.2, torch 2.15.0, one
+**Provisional: taken under load.** Several section agents were running at the same time
+(load average 17 to 22 during the run), so these numbers are contended; the coordinator
+takes the final ones on a quiet machine. A second complete run after merging v2
+(load rising from 3 to 14 during it) confirmed the script end to end.
+
+All on this machine: RTX 4070 Laptop GPU (8 GB), 16 CPU threads, Python 3.14.2, torch 2.15.0, one
 torch thread. `python -m bnb.play.benchmark --seconds 10`, benchmark lock held, at
 1920 x 1080, offscreen (EGL), 4x MSAA, no frame cap, `context.finish()` at the end of
 each frame (what a swap without vsync waits for). The sim is compiled, every game has
-fog of war, nobody flies (all chasers), seed 0. Commit: the one that adds these notes.
+fog of war, nobody flies (all chasers), seed 0. Code: commit e6452fb9 plus the index
+batch size of ee89371e (`TILES_PER_CALL` 4), which the map-change columns use.
 50v50 is 50 ships per team, 40 fields, arena radius 8222 m (team deathmatch).
 
 ### Frame time (ms) and the sim's rate
@@ -348,6 +353,19 @@ page):
   renderer and input wiring); only the keys text fields need are mapped to ImGui, so
   panels with keyboard navigation need more of the table; an ImGui window takes its size
   on its second frame, which offscreen tests must allow for.
+
+## The code style draft
+
+v2 now has a code style draft (`docs/contributing/code-style.md`, merged from v2 after
+this work). Where the play shell departs from it, by the spec or by necessity:
+
+- **The game state is read outside `bnb.game`,** in `bnb.play.snapshot.snapshot` only, as
+  the decisions require ("reads state through a pure `snapshot(state)`").
+- **Global seeding in tests:** `Realtime` draws from torch's global generator, so the
+  determinism, snapshot and render tests seed it with `torch.manual_seed` (request 2 would
+  remove this). The tests that set one torch thread restore the old count.
+- **`.numpy()` host copies** in the snapshot are the point of it: the shell runs at B = 1
+  on the CPU, not in a training hot path.
 
 ## Requests and open questions
 
