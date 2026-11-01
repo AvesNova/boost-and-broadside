@@ -70,10 +70,17 @@ Order: after sections 4 and 7. The stationary ladder is section 4's controller (
   - A sweep is `±inf`. The display holds the last finite value; nothing averages it.
 - **A new snapshot** starts at the live rating of the update it was taken at, and the
   ladder fit refines it.
-- **The averages move, so they are not in the ladder fit.**
-  - Their sampling rating is the live rating plus the offset their recent record against
-    the live policy implies (`rate_against`, over their last 200 games) **(proposal)**.
-  - With no record yet, they take the live rating.
+- **The averages move, so they are not in the ladder fit** (a pooled record would mix
+  games from many versions). Their rating comes from a window **(author, 2026-11-01)**:
+  - every game an average plays is against the live policy, whose rating at that update
+    is known from stage 2;
+  - the average's rating is the one that best explains its last 200 results against
+    those per-game live ratings (`rate_against`), about ±25 points near even odds;
+  - it lags the average's current strength by the window, which matters little: the EMA
+    moves slowly and the uniform average more slowly still;
+  - with no games yet, an average takes the live rating;
+  - it steers sampling and the dashboard only. Published numbers come from the offline
+    tournament over frozen snapshots of the averages.
 - **Ratings per mode and map:** Frontline, team deathmatch squad, and team deathmatch
   battle map are separate gauges, records and ladders.
 - **The record:** a per-mode win/loss/tie matrix among entries. Only games between
