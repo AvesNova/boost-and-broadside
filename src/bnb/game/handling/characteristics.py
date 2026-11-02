@@ -12,6 +12,7 @@ import torch
 
 from bnb.contracts.tree import contract
 
+from ..physics.flight import airframe_of
 from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
 from .manoeuvres import batched
@@ -25,8 +26,8 @@ class Characteristics:
 
     cruise_speed: the terminal speed coasting straight with a full store (m/s, proper, as
         every speed here); top_speed: the peak of a straight boost from cruise with a full
-        store; corner_speed: sqrt(max_acceleration / max_lift_coefficient), above which the
-        g limit caps a full-stick turn; turn_rate: the coast datum's settled flight-path
+        store; corner_speed: the game's `Airframe.corner_speed`, above which the g limit
+        caps a full-stick turn; turn_rate: the coast datum's settled flight-path
         rate at stick levels 1-3 (rad/s); stall_angle (rad), the gun's offset scale;
         gun_range: how far a bullet fired along the flight path at cruise travels in its
         life (m); bullet_speed: that bullet's launch speed, cruise plus muzzle speed (m/s);
@@ -70,9 +71,10 @@ def measure_characteristics(types: ShipTypes, rules: Rules) -> Characteristics:
                          for field in dataclasses.fields(types)})
     handles = measure(types, rules)
     card = batched(types)
+    all_types = torch.arange(types.max_energy.shape[0])
     measured = Characteristics(
         cruise_speed=handles.cruise_speed, top_speed=top_speed(rules, card)[0],
-        corner_speed=torch.sqrt(types.max_acceleration / types.max_lift_coefficient),
+        corner_speed=airframe_of(types, all_types).corner_speed,
         turn_rate=settled(rules, card, STICKS).turn_rate[0], stall_angle=handles.stall_angle,
         gun_range=handles.gun_range, bullet_speed=handles.cruise_speed + types.muzzle_speed,
         bullet_drag=rules.bullet_drag * types.bullet_drag_scale, max_energy=types.max_energy,

@@ -18,6 +18,7 @@ from bnb.game.handling.characteristics import (
 )
 from bnb.game.handling.manoeuvres import TURNING_STORE
 from bnb.game.handling.shown import SETTLE_TIME
+from bnb.game.physics.flight import airframe_of
 from bnb.game.state import replace
 
 GOLDEN = pathlib.Path(__file__).resolve().parents[1] / "reference" / "golden"
@@ -119,8 +120,8 @@ def test_card_values_and_constants_are_read_as_given():
     for name in ("max_energy", "bullet_energy_cost", "max_shield", "hit_radius",
                  "max_acceleration"):
         assert torch.equal(getattr(MEASURED, name), getattr(TYPES, name)), name
-    corner = torch.sqrt(TYPES.max_acceleration / TYPES.max_lift_coefficient)
-    torch.testing.assert_close(MEASURED.corner_speed, corner)
+    airframe = airframe_of(TYPES, torch.arange(TYPES.max_energy.shape[0]))
+    assert torch.equal(MEASURED.corner_speed, airframe.corner_speed)  # the game's own value
     torch.testing.assert_close(MEASURED.stall_angle,
                                RULES.flight.stall_angle * TYPES.stall_angle_scale)
     torch.testing.assert_close(MEASURED.vision_range, RULES.vision_range * TYPES.vision_range_scale)
