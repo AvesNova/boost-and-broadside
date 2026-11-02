@@ -77,19 +77,165 @@ blind model's; training bf16 is 5 ms (V = 16) and 24 ms (V = 64) short of it. Th
 fp32 cell still does not fit: the blind model fits it by recomputing its MLPs in the
 backward, a memory feature outside this brief.
 
-## Progress
+## Training throughput
 
-- Step 1 (piece map): done.
-- Code for all five kernels, their switches (`kernels.Switches`), the tests
-  (`tests/sections/test_yemong_kernels.py`), the bf16 default (`TrainConfig.precision`
-  and the CLI's `--precision`), the precision signals (`nonfinite_gradients` in the PPO
-  update, `nonfinite_beliefs` in the trainer's row, both and the drift in the printed
-  line) and the docs (`yemong.md` Kernels section, `learner.md`, `training.md`): written,
-  not yet committed. GPU tests pending the lock.
-- Commits: one per kernel, built with `/tmp/bnb-scratch-fast-yemong/stages.py k` (writes
-  the intermediate `kernels/__init__.py`, `temporal.py` and test file for stage k from the
-  final versions saved in `/tmp/bnb-scratch-fast-yemong/final/`).
-- Measurements: `bench.yemong_speed` (`--plain`, `--kernels name...`) into
-  `/tmp/bnb-scratch-fast-yemong/speed.jsonl`; training throughput and memory with
-  `/tmp/bnb-scratch-fast-yemong/cell.py` (bench.cell's train cell with precision, switches
-  and micro-batch rows).
+`bnb train`'s trainer at 5v5 with 1024 environments, the default micro-batch (160 rows),
+through `bench.cell`'s train cell (compile, one episode of rollouts, then the best of three
+collect + update; `/tmp/bnb-scratch-fast-yemong/cell.py` sets the precision and the
+switches; raw rows in `throughput.jsonl`). Provisional: load average 1.0-1.3.
+
+| Precision | Kernels | Rollout (s) | Update (s) | Train env-ticks/s | Peak (GB) |
+|---|---|---:|---:|---:|---:|
+| fp32 | off (v2 before) | 3.39 | 44.45 | 2 740 | 3.6 |
+| fp32 | on | 3.02 | 40.51 | 3 011 | 3.5 |
+| bf16 | off | 1.89 | 31.09 | 3 974 | 2.8 |
+| bf16 | on (the new default) | 1.38 | 25.57 | 4 864 | 2.2 |
+
+The new default trains 1.78x faster than the old one (fp32 without kernels); the kernels
+alone give 1.22x in bf16 and 1.10x in fp32. The update is 93-95% of training time in every
+row. (The audit's estimate for the blind model in bf16 was 1.8x against fp32 today.)
+
+## Memory
+
+The largest micro-batch that fits at 5v5 x 1024, by the memory probe (`bnb train --probe`:
+setup and one update; fits = no out-of-memory and the reserved peak under the 7.12 GB
+budget), doubling from 320 rows:
+
+| Precision | Kernels off | Kernels on |
+|---|---|---|
+| fp32 | 160 (320 runs out of memory) | 160 (320 runs out of memory) |
+| bf16 | 320 (640 runs out of memory) | 1280 (2560: reserved 7.24 GB, over the budget) |
+
+The 26-ship cell (13 per team, 54 fields, 1576 environments, the default 160 rows), by the
+probe: fp32 does not fit with or without the kernels; bf16 without kernels runs out of
+memory; **bf16 with the kernels fits** (allocated 5.07 GB, reserved 6.24 GB).
+
+## Autotuning (the author's addition, 2026-11-02)
+
+The training run will be on a rented, larger GPU, so no kernel keeps tiles chosen for this
+one. Every kernel is a `triton.autotune` over a few configurations, keyed on the shapes
+that change; a configuration a GPU cannot run (too much shared memory) is pruned by the
+autotuner. Nothing reads the SM count or the shared-memory size; every kernel uses only
+what compute capability 8.0 has (bf16 `tl.dot`, IEEE float32 dots). The configurations,
+and each one forced alone at a training shape (L = 128, V = 16; eager forward + backward,
+median of 20, ms, load about 1.3; `/tmp/bnb-scratch-fast-yemong/configs.py`, log
+`configs.log`), with whether its bits equal the first configuration's:
+
+| Kernel | Key | Configuration | ms | Same bits |
+|---|---|---|---:|---|
+| scan | channels | BLOCK 128, 4 warps | 0.546 | (first) |
+| | | BLOCK 256, 4 warps | 0.541 | yes |
+| | | BLOCK 512, 4 warps | 0.591 | yes |
+| | | BLOCK 1024, 8 warps | 0.594 | yes |
+| attention (fp32 / bf16) | tokens, maps, heads, width, IEEE | 2 warps | 1.862 / 1.159 | (first) |
+| | | 4 warps | 1.892 / 1.197 | yes / no |
+| | | 8 warps | 1.849 / 1.572 | no / no |
+| gated MLP (bf16) | M, N, K | 64 x 64 x 64, 4 warps, 3 stages | 3.013 | (first) |
+| | | 128 x 64 x 64, 4 warps, 2 stages | 3.037 | yes |
+| | | 64 x 128 x 64, 4 warps, 2 stages | 3.035 | yes |
+| | | 128 x 128 x 32, 8 warps, 2 stages | 3.109 | yes |
+| temporal mix (fp32 / bf16) | steps, tokens, width | BLOCK 32, 2 warps | 1.433 / 1.183 | (first) |
+| | | BLOCK 64, 2 warps | 1.418 / 1.166 | no |
+| | | BLOCK 64, 4 warps | 1.443 / 1.206 | no |
+| | | BLOCK 128, 4 warps | 1.426 / 1.173 | no |
+| heads (bf16) | M, K, N, hidden | 32 rows, BLOCK_K 64, 4 warps | 1.239 | (first) |
+| | | 64 rows, BLOCK_K 64, 4 warps | 1.539 | yes |
+| | | 64 rows, BLOCK_K 64, 8 warps | 1.224 | no |
+| | | 128 rows, BLOCK_K 32, 8 warps | pruned here (needs 112 KB of shared memory; 99 KB on this GPU) | |
+
+The temporal mix keeps CHUNK = 16 fixed: it sets the in-chunk scan's order of operations.
+The attention's tiles are set by the token and key counts (padded to powers of two of at
+least 16), so only its warps are tuned.
+
+**Cost.** The first call of a new shape tunes it: 0.9 s per kernel pair here (1.5 s for the
+heads), most of it compiling each configuration; a later shape costs only the timing, a
+few tens of ms. The shapes of a run are few (the rollout's, and at most three micro-batch
+shapes in the update), so tuning is a one-off cost of seconds at the start of a process.
+
+**Determinism.** Configurations that split the work differently but sum in the same order
+give the same bits (the scan, the gated MLP: checked by
+`test_every_configuration_of_an_order_free_kernel_gives_the_same_bits`). For the
+attention, the temporal mix and the heads, the warps or the block change the layout of a
+reduction or of the in-chunk scan, so configurations differ in their last bits (all agree
+with the plain path: `test_every_autotune_configuration_matches_the_plain_path` forces each
+in turn). Within a process the choice is fixed once made, so identical inputs give
+identical bits. Across processes the choice is cached on disk (`cache_results=True` for
+Triton's autotuner in eager mode; Inductor's local autotune cache, on by default, for the
+compiled path, which routes user kernels through it), so a resumed run on the same machine
+repeats the bits. A resume on a machine whose caches were emptied may tune differently and
+then differ in the last bits from the run it continues: see the open questions.
+
+**A bug autotuning found.** The heads' backward wrote one norm-scale partial sum per
+program into a buffer sized for the smallest block; while autotuning timed the
+configurations, a smaller block left stale partial sums that a larger one did not
+overwrite, and the scale's gradient came out wrong (the whole-model bf16 test caught it,
+73% off). The partial sums are now over fixed groups of 32 rows, whatever the block, so
+every configuration writes the same rows.
+
+## Deviations and open questions
+
+No kernel computes a different function from v2's: the blind kernels' maths is v2's (the
+piece map lists the layout differences the port bridges, and the one constant that looked
+different, the norm epsilon, is not). The fixtures run the plain path and pass.
+
+1. **Determinism across machines.** With autotuning, the attention, the temporal mix and
+   the heads may pick a different configuration on a machine whose autotune caches were
+   emptied, and so differ in the last bits from an earlier process (same function, same
+   tolerance). A resume on the same machine repeats the bits. If exact resumes across
+   machines matter, the choices could be saved in the training checkpoint, or those three
+   kernels restricted to configurations that sum in one order (the attention at 2 warps,
+   the temporal mix at one block, the heads at 4 warps), which gives up their tuning.
+2. **The shot trajectory head runs in fp32 under bf16.** `Yemong.shot_trajectory` is called
+   outside the model's autocast (`_matmuls`), so its four products run in fp32 and the head
+   kernel does not apply to its tail, though `bfloat16_matmuls` is documented as covering
+   the heads. It is the largest head (81 920 rows at V = 16); the profile of the bf16
+   training cell shows about 1.7 ms of fp32 GEMMs, and the blind model measured that head at
+   3.5 ms in bf16 against 7.0 ms in fp32. Moving it under autocast changes what bf16 rounds,
+   so it is the author's call; it is likely most of the remaining gap below.
+3. **The remaining gap to the blind model in bf16 training** (37.7 against 32.7 ms at
+   V = 16). GPU time per segment, every kernel on (`gpu_profile.py`, before autotuning):
+   GEMMs 11.8 ms, RMSNorm (aten) 7.1, Inductor's fused kernels 7.1, gated MLP 3.9, heads
+   3.2, attention 2.8, temporal mix 1.2; 37.2 ms in all. The blind model's: GEMMs 11.0,
+   RMSNorm 6.8, fused 5.4, gated 3.5, attention 2.7, scan 1.0; 32.8 ms.
+4. **Training at V = 64 in fp32 still runs out of memory.** The blind model fits it by
+   recomputing its MLPs in the backward, a memory feature outside this brief.
+5. **Boundary.** `src/bnb/cli.py` is outside the brief's list: its `--precision` default
+   (`"float32"`) would have overridden `TrainConfig`'s, so it changed to `"bfloat16"`, and its
+   printed update line now shows the drift and the non-finite counts.
+6. **A CUDA error in one probe.** One 26-ship bf16 probe with the kernels failed with a
+   sticky CUDA error while the kernel sources were being edited under the running chain;
+   the same probe passed when rerun (see Progress for the rerun after autotuning).
+7. **Noise in the plain path's compile logs.** Compiling the plain path logs
+   "Attempting to permute a tensor of rank 5" from the fake-tensor pass; it is not fatal and
+   is not new (the plain path is v2's code).
+
+## Progress (2026-11-02, 20:3x, stopped for a machine shutdown)
+
+- **Done and pushed:** the piece map; the five kernels, one commit each (`aa9e12cd`,
+  `66cdd7ca`, `b14de1a8`, `de77abe2`, `1d6bfeba`); bf16 by default with the precision
+  signals (`dac8a4b0`); every kernel autotuned (the author's addition), with the heads'
+  partial-sum fix and the tests over every configuration (the last commit, marked WIP until
+  the full suite passes).
+- **Tested (GPU, under the lock):** `tests/sections/test_yemong_kernels.py` (24 passed
+  after autotuning); before autotuning also `test_yemong_model.py`,
+  `test_learner_precision.py`, `test_yemong_runtime.py`, `tests/runs/test_resume.py`,
+  `tests/runs/test_compatibility.py`; `tests/reference` and `tests/docs` on the CPU. Each
+  kernel broken by hand fails its own test (before autotuning; `breaks.py`).
+- **Measured after autotuning** (race benchmark, label "6 autotuned", load 0.7-1.8): training
+  V=16 fp32 76.5 ms, bf16 37.7 (0.97 GB); V=64 bf16 165.5 (3.77 GB), fp32 out of memory;
+  rollout fp32 25.4, bf16 12.2. The same as before autotuning within noise (rollout bf16
+  11.5 -> 12.2, provisional). Training throughput fp32 with kernels after autotuning:
+  3 013 env-ticks/s (load 1.1), as before.
+- **In flight when stopped:** `/tmp/bnb-scratch-fast-yemong/chain3.sh` (the bf16 throughput
+  cell after autotuning, the 26-ship probe rerun, `breaks.py` rerun, the full suite). It
+  could not be stopped from here; its results, if any, are in `/tmp/bnb-scratch-fast-yemong/`
+  (`throughput.jsonl`, `probe26b.log`, `breaks2.log`, `suite.log`), which may not survive the
+  shutdown.
+- **Next:** rerun under the lock: the full suite (`uv run --no-sync pytest`), `breaks.py`
+  (the heads break string still matches), the 26-ship bf16 probe with kernels, the bf16
+  throughput cell; then drop the WIP mark, fill the numbers in here, and hand back. Scratch
+  scripts to recreate if `/tmp` is gone: `locked.py` (runs a command under
+  `bench.lock.bench_lock`), `cell.py` (bench.cell's train cell with precision, switches and
+  micro-batch rows), `train_speed.py` (`bnb train` with `--plain`), `micro.py`,
+  `configs.py`, `breaks.py`, `gpu_profile.py` (never name a script `profile.py`: it shadows
+  the standard library's).

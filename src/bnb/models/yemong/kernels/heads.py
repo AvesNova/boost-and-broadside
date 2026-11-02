@@ -7,8 +7,8 @@ forward computes h = W1 x + b1, the norm, the gelu and the output product withou
 or the activation. The backward recomputes them, forms d activation = dout W2 in registers
 and the norm and gelu gradients there, and writes only dh and the activation a (the inputs
 of the weight and input gradient GEMMs, which stay cuBLAS; the input's is skipped when x
-needs none). The norm's scale gradient comes out as per-program partial sums, summed
-afterwards in a fixed order. No atomics.
+needs none). The norm's scale gradient comes out as partial sums over fixed groups of
+rows, summed afterwards in a fixed order. No atomics.
 
 Precision: x, W1, W2 in the autocast dtype; h, the norm and the gelu in float32 (RMSNorm
 with float32's epsilon, which is what `layers.norm` uses on a bf16 input too); out in the
@@ -19,9 +19,16 @@ import torch
 import triton
 import triton.language as tl
 
-BLOCK_M = 64
-BLOCK_K = 64
-BLOCK_O = 64
+# Rows per program, the input and output column tiles, warps. The backward's rows per program
+# also group the norm scale's partial sums. The warps can change the last bits (the layout
+# orders the norm's sums). The 128-row configuration needs more shared memory than some GPUs
+# have; autotuning skips it there.
+CONFIGS = [triton.Config({"BLOCK_M": m, "BLOCK_K": k, "BLOCK_O": 64}, num_warps=warps,
+                         num_stages=2)
+           for m, k, warps in ((32, 64, 4), (64, 64, 4), (64, 64, 8), (128, 32, 8))]
+KEY = ["M", "K", "N", "HIDDEN"]
+GROUP = min(config.kwargs["BLOCK_M"] for config in CONFIGS)  # rows per norm-scale partial sum
+LARGEST_BLOCK_M = max(config.kwargs["BLOCK_M"] for config in CONFIGS)
 EPSILON = tl.constexpr(1.1920928955078125e-07)  # float32 machine epsilon
 SQRT_HALF = tl.constexpr(0.7071067811865476)
 INVERSE_SQRT_TAU = tl.constexpr(0.3989422804014327)
@@ -43,6 +50,7 @@ def _hidden(x, first_weight, first_bias, rows, M, K, HIDDEN: tl.constexpr,
     return accumulator + tl.load(first_bias + hidden_index).to(tl.float32)[None, :]
 
 
+@triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _head_forward(x, first_weight, first_bias, norm_weight, last_weight, last_bias, out, M, K,
                   N, HIDDEN: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr,
@@ -64,10 +72,12 @@ def _head_forward(x, first_weight, first_bias, norm_weight, last_weight, last_bi
                  mask=(rows[:, None] < M) & (columns[None, :] < N))
 
 
+@triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_out,
                    grad_hidden, activation_out, norm_partial, M, K, N, HIDDEN: tl.constexpr,
-                   BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr, BLOCK_O: tl.constexpr):
+                   GROUP: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr,
+                   BLOCK_O: tl.constexpr):
     rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     row_mask = rows < M
     hidden_index = tl.arange(0, HIDDEN)
@@ -90,8 +100,12 @@ def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_o
     grad_normed = grad_activation * (cumulative + normed * tl.exp(-0.5 * normed * normed)
                                      * INVERSE_SQRT_TAU)
     grad_normed = tl.where(row_mask[:, None], grad_normed, 0.0)
-    tl.store(norm_partial + tl.program_id(0) * HIDDEN + hidden_index,
-             tl.sum(grad_normed * unit, 0))
+    # One partial sum per GROUP rows, whatever the rows per program: every configuration
+    # writes the same groups (a group past the last row is zero), so none leaves stale rows.
+    GROUPS: tl.constexpr = BLOCK_M // GROUP
+    partials = tl.sum(tl.reshape(grad_normed * unit, (GROUPS, GROUP, HIDDEN)), 1)
+    group_rows = tl.program_id(0) * GROUPS + tl.arange(0, GROUPS)
+    tl.store(norm_partial + group_rows[:, None] * HIDDEN + hidden_index[None, :], partials)
     grad_unit = grad_normed * scale
     projection = tl.sum(grad_unit * unit, 1) / HIDDEN
     grad_h = inverse_rms[:, None] * (grad_unit - unit * projection[:, None])
@@ -99,6 +113,10 @@ def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_o
     mask = row_mask[:, None]
     tl.store(grad_hidden + index, grad_h.to(grad_hidden.dtype.element_ty), mask=mask)
     tl.store(activation_out + index, activation.to(activation_out.dtype.element_ty), mask=mask)
+
+
+def _grid(rows):
+    return lambda meta: (triton.cdiv(rows, meta["BLOCK_M"]),)
 
 
 @torch.library.triton_op("yemong::fused_head", mutates_args=())
@@ -110,10 +128,9 @@ def fused_head(x: torch.Tensor, first_weight: torch.Tensor, first_bias: torch.Te
     rows, inputs = x.shape
     hidden, outputs = first_weight.shape[0], last_weight.shape[0]
     out = torch.empty(rows, outputs, dtype=x.dtype, device=x.device)
-    torch.library.wrap_triton(_head_forward)[(triton.cdiv(rows, BLOCK_M),)](
+    torch.library.wrap_triton(_head_forward)[_grid(rows)](
         x, first_weight, first_bias, norm_weight, last_weight, last_bias, out, rows, inputs,
-        outputs, HIDDEN=hidden, BLOCK_M=BLOCK_M, BLOCK_K=BLOCK_K, BLOCK_O=BLOCK_O,
-        num_warps=8, num_stages=2)
+        outputs, HIDDEN=hidden)
     return out
 
 
@@ -123,17 +140,16 @@ def fused_head_backward(x: torch.Tensor, first_weight: torch.Tensor, first_bias:
                         grad_out: torch.Tensor
                         ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """grad_out (M, N) contiguous in x's dtype. Returns (dh (M, H), activation (M, H), norm
-    scale partial sums (programs, H) float32)."""
+    scale partial sums (groups, H) float32)."""
     rows, inputs = x.shape
     hidden, outputs = first_weight.shape[0], last_weight.shape[0]
-    programs = triton.cdiv(rows, BLOCK_M)
+    groups = triton.cdiv(rows, LARGEST_BLOCK_M) * (LARGEST_BLOCK_M // GROUP)  # any configuration
     grad_hidden = torch.empty(rows, hidden, dtype=x.dtype, device=x.device)
     activation = torch.empty(rows, hidden, dtype=x.dtype, device=x.device)
-    partial = torch.empty(programs, hidden, dtype=torch.float32, device=x.device)
-    torch.library.wrap_triton(_head_backward)[(programs,)](
+    partial = torch.zeros(groups, hidden, dtype=torch.float32, device=x.device)
+    torch.library.wrap_triton(_head_backward)[_grid(rows)](
         x, first_weight, first_bias, norm_weight, last_weight, grad_out, grad_hidden,
-        activation, partial, rows, inputs, outputs, HIDDEN=hidden, BLOCK_M=BLOCK_M,
-        BLOCK_K=BLOCK_K, BLOCK_O=BLOCK_O, num_warps=8, num_stages=2)
+        activation, partial, rows, inputs, outputs, HIDDEN=hidden, GROUP=GROUP)
     return grad_hidden, activation, partial
 
 

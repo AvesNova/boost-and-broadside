@@ -12,9 +12,12 @@ import torch
 import triton
 import triton.language as tl
 
-BLOCK = 256
+# Channels per program: elementwise along channels, so every configuration gives the same bits.
+CONFIGS = [triton.Config({"BLOCK": block}, num_warps=warps)
+           for block, warps in ((128, 4), (256, 4), (512, 4), (1024, 8))]
 
 
+@triton.autotune(configs=CONFIGS, key=["channels"], cache_results=True)
 @triton.jit
 def _scan_forward(decay, contribution, initial, out, steps, channels, BLOCK: tl.constexpr):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -28,6 +31,7 @@ def _scan_forward(decay, contribution, initial, out, steps, channels, BLOCK: tl.
         tl.store(out + index, hidden, mask=mask)
 
 
+@triton.autotune(configs=CONFIGS, key=["channels"], cache_results=True)
 @triton.jit
 def _scan_backward(decay, initial, out, grad_out, grad_decay, grad_contribution, grad_initial,
                    steps, channels, BLOCK: tl.constexpr):
@@ -50,15 +54,18 @@ def _scan_backward(decay, initial, out, grad_out, grad_decay, grad_contribution,
     tl.store(grad_initial + offsets, next_decay * carried, mask=mask)
 
 
+def _grid(channels):
+    return lambda meta: (triton.cdiv(channels, meta["BLOCK"]),)
+
+
 @torch.library.triton_op("yemong::linear_scan", mutates_args=())
 def _linear_scan(decay: torch.Tensor, contribution: torch.Tensor,
                  initial: torch.Tensor) -> torch.Tensor:
     """decay, contribution (L, C) float32 contiguous; initial (C,) -> h (L, C)."""
     steps, channels = decay.shape
     out = torch.empty_like(decay)
-    grid = (triton.cdiv(channels, BLOCK),)
-    torch.library.wrap_triton(_scan_forward)[grid](decay, contribution, initial, out, steps,
-                                                   channels, BLOCK=BLOCK)
+    torch.library.wrap_triton(_scan_forward)[_grid(channels)](decay, contribution, initial,
+                                                              out, steps, channels)
     return out
 
 
@@ -70,10 +77,9 @@ def _linear_scan_backward(decay: torch.Tensor, initial: torch.Tensor, out: torch
     grad_decay = torch.empty_like(decay)
     grad_contribution = torch.empty_like(decay)
     grad_initial = torch.empty_like(initial)
-    grid = (triton.cdiv(channels, BLOCK),)
-    torch.library.wrap_triton(_scan_backward)[grid](
+    torch.library.wrap_triton(_scan_backward)[_grid(channels)](
         decay, initial, out, grad_out.contiguous(), grad_decay, grad_contribution,
-        grad_initial, steps, channels, BLOCK=BLOCK)
+        grad_initial, steps, channels)
     return grad_decay, grad_contribution, grad_initial
 
 

@@ -3,6 +3,7 @@ backward, and the whole model with every kernel on against it with every kernel 
 float32 and bf16, both measured against the plain path in float64. Every kernel gives
 bitwise-identical results on identical inputs (the exact-resume tests depend on it)."""
 
+import contextlib
 import copy
 import dataclasses
 import pathlib
@@ -12,6 +13,7 @@ import pytest
 import torch
 import yemong_cases as cases
 from torch.utils import _pytree
+from triton.runtime.errors import OutOfResources
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repository
@@ -20,7 +22,7 @@ if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repositor
 from bench.yemong_synthetic import random_segment, time_slice  # noqa: E402
 from bnb.models.yemong import kernels  # noqa: E402
 from bnb.models.yemong.heads import HeadGroup  # noqa: E402
-from bnb.models.yemong.kernels import attention, gated, scan  # noqa: E402
+from bnb.models.yemong.kernels import attention, gated, scan, temporal  # noqa: E402
 from bnb.models.yemong.kernels import heads as head_kernel  # noqa: E402
 from bnb.models.yemong.layers import GatedMLP  # noqa: E402
 from bnb.models.yemong.spatial import SpatialBlock  # noqa: E402
@@ -383,3 +385,83 @@ def test_the_model_with_kernels_is_bitwise_repeatable(segment, precision):
     second, second_gradients, _ = _model_run(segment, precision)
     _assert_identical(first + [g for g in first_gradients if g is not None],
                       second + [g for g in second_gradients if g is not None])
+
+
+# ------------------------------------------------------------------ autotune configurations
+
+
+@contextlib.contextmanager
+def _only_config(tuners, index: int):
+    """Each autotuned kernel in `tuners` restricted to its configuration `index` (the same for
+    all), with its tuning cache cleared before and after."""
+    saved = [tuner.configs for tuner in tuners]
+    for tuner in tuners:
+        tuner.configs = [tuner.configs[index]]
+        tuner.cache.clear()
+    try:
+        yield
+    finally:
+        for tuner, configs in zip(tuners, saved, strict=True):
+            tuner.configs = configs
+            tuner.cache.clear()
+
+
+def _temporal_both():
+    for precision in ("float32", "bfloat16"):
+        test_temporal_mix_is_as_close_as_the_plain_sublayer(precision)
+
+
+CONFIGURED = {
+    "scan": ((scan._scan_forward, scan._scan_backward), test_scan_equals_the_parallel_scan),
+    "attention": ((attention._attention_forward, attention._attention_backward),
+                  lambda: (test_attention_equals_the_plain_attention(),
+                           test_attention_in_bf16_is_as_close_as_the_plain_attention())),
+    "gated MLP": ((gated._gated_forward, gated._gated_backward),
+                  test_gated_mlp_in_bf16_is_as_close_as_the_plain_mlp),
+    "temporal mix": ((temporal._temporal_forward, temporal._temporal_backward), _temporal_both),
+    "heads": ((head_kernel._head_forward, head_kernel._head_backward),
+              test_heads_in_bf16_are_as_close_as_the_plain_heads),
+}
+
+
+@pytest.mark.parametrize("kernel", list(CONFIGURED))
+def test_every_autotune_configuration_matches_the_plain_path(kernel):
+    """Each configuration autotuning may pick, forced in turn, passes the kernel's comparison
+    with its plain twin; one this GPU cannot run (too much shared memory) is skipped, as
+    autotuning skips it."""
+    tuners, check = CONFIGURED[kernel]
+    ran = 0
+    for index in range(len(tuners[0].configs)):
+        with _only_config(tuners, index):
+            try:
+                check()
+            except OutOfResources:
+                continue
+            ran += 1
+    assert ran >= 1
+
+
+@pytest.mark.parametrize("kernel", ["scan", "gated MLP"])
+def test_every_configuration_of_an_order_free_kernel_gives_the_same_bits(kernel):
+    """The scan's and the gated MLP's configurations differ only in how the work is split,
+    not in the order of any sum: each gives the same bits."""
+    tuners = CONFIGURED[kernel][0]
+    if kernel == "scan":
+        def run():
+            return _gradients(scan.linear_scan, _scan_inputs(seed=3))
+    else:
+        _, inputs = _gated_inputs(seed=3)
+
+        def run():
+            return _gradients(_bf16(gated.gated_hidden), inputs)
+    results = []
+    for index in range(len(tuners[0].configs)):
+        with _only_config(tuners, index):
+            try:
+                outputs, gradients = run()
+            except OutOfResources:
+                continue
+            results.append(outputs + gradients)
+    assert len(results) >= 2
+    for result in results[1:]:
+        _assert_identical(result, results[0])

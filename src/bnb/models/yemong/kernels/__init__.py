@@ -7,6 +7,14 @@ applies (CUDA, and the dtypes it handles); elsewhere the plain path runs whateve
 says. Each is a `torch.library.triton_op` with autograd, so it compiles under
 `fullgraph=True` and captures in a CUDA graph.
 
+Each kernel autotunes its tiles and warps per shape over a few configurations
+(`triton.autotune`, the first call of a shape costs about a second), so a GPU picks its
+own; a configuration a GPU cannot run (too much shared memory) is skipped. Where
+configurations differ in their last bits (attention, the temporal mix, the heads), the
+choice is cached on disk with Triton's results and Inductor's, so a process on the same
+machine repeats the bits of an earlier one; the scan's and the gated MLP's configurations
+all give the same bits.
+
 The switches are process-wide and read at trace time: set them before compiling. Speed
 comparisons between model types run both plain or both with kernels.
 """

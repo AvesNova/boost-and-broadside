@@ -7,16 +7,19 @@ second kernel that writes d(gate, up) (rows, 2 hidden); the input and weight gra
 then two ordinary GEMMs. Only x is saved for the backward. W_gate and W_up are the row
 blocks of `GatedMLP.gate_up.weight` (gate rows first), read in place.
 
-One fixed tile configuration (no autotuning): the tile's BLOCK_K sets the order of the
-accumulation, so a configuration picked by timing would decide the bits. Float32 keeps the
-plain path (a strict-fp32 fused kernel lost to cuBLAS in the blind race).
+The tiles are autotuned per shape. Every configuration gives the same bits (the test checks
+it), so the configuration a process picks by timing does not change the result. Float32
+keeps the plain path (a strict-fp32 fused kernel lost to cuBLAS in the blind race).
 """
 
 import torch
 import triton
 import triton.language as tl
 
-BLOCK_M, BLOCK_N, BLOCK_K, WARPS, STAGES = 64, 64, 64, 4, 3
+CONFIGS = [triton.Config({"BLOCK_M": m, "BLOCK_N": n, "BLOCK_K": k}, num_warps=warps,
+                         num_stages=stages)
+           for m, n, k, warps, stages in ((64, 64, 64, 4, 3), (128, 64, 64, 4, 2),
+                                          (64, 128, 64, 4, 2), (128, 128, 32, 8, 2))]
 SQRT_HALF = tl.constexpr(0.7071067811865476)
 INVERSE_SQRT_TAU = tl.constexpr(0.3989422804014327)
 
@@ -40,6 +43,7 @@ def _gate_up(x, weight, rows, columns, M, N, K, BLOCK_M: tl.constexpr, BLOCK_N: 
     return gate, up
 
 
+@triton.autotune(configs=CONFIGS, key=["M", "N", "K"], cache_results=True)
 @triton.jit
 def _gated_forward(x, weight, out, M, N, K, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
                    BLOCK_K: tl.constexpr):
@@ -51,6 +55,7 @@ def _gated_forward(x, weight, out, M, N, K, BLOCK_M: tl.constexpr, BLOCK_N: tl.c
              mask=(rows[:, None] < M) & (columns[None, :] < N))
 
 
+@triton.autotune(configs=CONFIGS, key=["M", "N", "K"], cache_results=True)
 @triton.jit
 def _gated_backward(x, weight, grad_hidden, grad_gate_up, M, N, K, BLOCK_M: tl.constexpr,
                     BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):
@@ -70,10 +75,10 @@ def _gated_backward(x, weight, grad_hidden, grad_gate_up, M, N, K, BLOCK_M: tl.c
 
 
 def _launch(kernel, M, N, *arguments):
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
-    torch.library.wrap_triton(kernel)[grid](*arguments, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
-                                            BLOCK_K=BLOCK_K, num_warps=WARPS,
-                                            num_stages=STAGES)
+    def grid(meta):
+        return triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"])
+
+    torch.library.wrap_triton(kernel)[grid](*arguments)
 
 
 @torch.library.triton_op("yemong::gated_hidden", mutates_args=())

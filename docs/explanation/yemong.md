@@ -172,9 +172,16 @@ kernels.switches.heads = True
 
 A change to a piece with a kernel is made twice, in the plain path and in the kernel, and
 the test keeps them equal; a new piece can be tried with the switch off first. A speed
-comparison between model types runs both plain or both with their kernels. The tile sizes
-were chosen on an RTX 4070 Laptop GPU; another GPU computes the same function but may
-want other tiles.
+comparison between model types runs both plain or both with their kernels.
+
+Each kernel autotunes its tiles and warps for each shape it meets, over a few
+configurations (`triton.autotune`), so every GPU picks its own; a configuration a GPU
+cannot run is skipped. Tuning a new shape costs about a second, once.
+`tests/sections/test_yemong_kernels.py::test_every_autotune_configuration_matches_the_plain_path`
+checks every configuration against the plain path. The scan's and the gated MLP's
+configurations give the same bits; the others' can differ in the last bits, so the choice
+is cached on disk (Triton's and Inductor's autotune caches), and a later process on the
+same machine, such as a resumed run, makes the same choice and repeats the bits.
 
 ## Configuration
 

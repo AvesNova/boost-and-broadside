@@ -28,7 +28,10 @@ import triton
 import triton.language as tl
 
 CHUNK = 16
-BLOCK = 64
+# Channels per program and warps; CHUNK stays fixed (it sets the scan's order of operations).
+# The configurations differ in their last bits (the layout orders the in-chunk scan).
+CONFIGS = [triton.Config({"BLOCK": block}, num_warps=warps)
+           for block, warps in ((32, 2), (64, 2), (64, 4), (128, 4))]
 SQRT_HALF = tl.constexpr(0.7071067811865476)
 INVERSE_SQRT_TAU = tl.constexpr(0.3989422804014327)
 
@@ -64,6 +67,7 @@ def _gates(pre, keep, log_decay_sigmoid, row, d, mask, WIDTH: tl.constexpr,
     return recurrence, gate, decay, kept
 
 
+@triton.autotune(configs=CONFIGS, key=["steps", "tokens", "WIDTH"], cache_results=True)
 @triton.jit
 def _temporal_forward(pre, convolved, branch, keep, log_decay, initial, hidden_out, y_out,
                       steps, tokens, branch_stride, WIDTH: tl.constexpr,
@@ -99,6 +103,7 @@ def _temporal_forward(pre, convolved, branch, keep, log_decay, initial, hidden_o
         hidden = tl.sum(tl.where(rows_in_chunk[:, None] == CHUNK - 1, states, 0.0), 0)
 
 
+@triton.autotune(configs=CONFIGS, key=["steps", "tokens", "WIDTH"], cache_results=True)
 @triton.jit
 def _temporal_backward(pre, convolved, branch, keep, log_decay, initial, hidden, grad_y,
                        grad_hidden, grad_pre, grad_convolved, grad_branch, grad_initial,
@@ -178,7 +183,7 @@ def _temporal_backward(pre, convolved, branch, keep, log_decay, initial, hidden,
 
 
 def _grid(channels):
-    return (triton.cdiv(channels, BLOCK),)
+    return lambda meta: (triton.cdiv(channels, meta["BLOCK"]),)
 
 
 @torch.library.triton_op("yemong::temporal_mix", mutates_args=())
@@ -194,7 +199,7 @@ def _temporal_mix(pre: torch.Tensor, convolved: torch.Tensor, branch: torch.Tens
     torch.library.wrap_triton(_temporal_forward)[_grid(tokens * width)](
         pre, convolved, branch, keep, log_decay, initial, hidden, y, steps, tokens,
         branch.stride(1), WIDTH=width, HAS_KEEP=True, EXPONENT=exponent, FLOOR=floor,
-        CHUNK=CHUNK, BLOCK=BLOCK)
+        CHUNK=CHUNK)
     return hidden, y
 
 
@@ -217,8 +222,7 @@ def _temporal_mix_backward(pre: torch.Tensor, convolved: torch.Tensor, branch: t
         pre, convolved, branch, keep, log_decay, initial, hidden, grad_y,
         grad_y if grad_hidden is None else grad_hidden, grad_pre, grad_convolved, grad_branch,
         grad_initial, partial, steps, tokens, branch.stride(1), WIDTH=width, HAS_KEEP=True,
-        HAS_GRAD_HIDDEN=grad_hidden is not None, EXPONENT=exponent, FLOOR=floor, CHUNK=CHUNK,
-        BLOCK=BLOCK)
+        HAS_GRAD_HIDDEN=grad_hidden is not None, EXPONENT=exponent, FLOOR=floor, CHUNK=CHUNK)
     return grad_pre, grad_convolved, grad_branch, grad_initial, partial
 
 

@@ -118,6 +118,13 @@ def _weights(query_even, query_odd, key_even, key_odd, scale, tokens, maps,
     return tl.where((rows < tokens)[:, None], weights, 0.0)
 
 
+# Warps per program; the tiles are set by the token and key counts, not tuned. The warps
+# can change the last bits (the layout orders the softmax's sums).
+CONFIGS = [triton.Config({}, num_warps=warps) for warps in (2, 4, 8)]
+KEY = ["tokens", "maps", "heads", "WIDTH", "IEEE"]
+
+
+@triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _attention_forward(query, key, value, map_key, map_value, token_cos, token_sin, map_cos,
                        map_sin, out, scale,
@@ -152,6 +159,7 @@ def _store_halves(pointer, base, row_stride, rows, lanes, mask, even, odd):
     tl.store(pointer + offsets + 1, odd.to(pointer.dtype.element_ty), mask=mask[:, None])
 
 
+@triton.autotune(configs=CONFIGS, key=KEY, cache_results=True)
 @triton.jit
 def _attention_backward(query, key, value, map_key, map_value, token_cos, token_sin, map_cos,
                         map_sin, out, grad_out, grad_query, grad_key, grad_value, grad_map_key,
@@ -227,7 +235,7 @@ def _arguments(query, key, value, map_key, map_value, token_cos, map_cos):
                  token_cos.shape[-1]),
         meta=dict(QUERIES=max(16, triton.next_power_of_2(tokens)),
                   KEYS=max(16, triton.next_power_of_2(tokens + maps)), WIDTH=width,
-                  IEEE=query.dtype == torch.float32, num_warps=4),
+                  IEEE=query.dtype == torch.float32),
         grid=(views, heads))
 
 
