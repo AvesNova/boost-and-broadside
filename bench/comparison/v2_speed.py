@@ -1,0 +1,155 @@
+"""v2's Yemong under the blind race's benchmark protocol (bench/speed.py of race/yemong-blind).
+
+Same segments (blind `random_segment`), same loss (every head's mean, summed; the shot
+trajectory head at 4 ages per ship-step), same reset layout, nonzero carry, lock held,
+median of >= 20 CUDA-synchronised repetitions after warm-up. bf16 is v2's own
+`bfloat16_matmuls` (the production path). Run from the v2 worktree:
+
+    uv run --no-sync python <this> [--only training|rollout] [--views 16]
+"""
+
+import argparse
+import dataclasses
+import json
+import pathlib
+import statistics
+import sys
+import time
+
+import torch
+from torch.utils import _pytree
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from blind_synthetic import random_segment, time_slice  # noqa: E402
+
+from bench.lock import bench_lock  # noqa: E402
+from bnb.contracts.config import GameConfig  # noqa: E402
+from bnb.game import api  # noqa: E402
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build  # noqa: E402
+
+SHIPS, FIELDS, ZONES, STEPS, SHOT_AGES, OWN = 10, 10, 5, 128, 4, 5
+HEADS = ("policy_logits", "enemy_action_logits", "next_state_logits", "value_logits",
+         "outcome_logits", "density_log_rates", "shot_outcome_logits")
+
+
+def make_model(precision):
+    torch.manual_seed(0)
+    config = YemongConfig(bfloat16_matmuls=precision == "bfloat16")
+    rules = api.rules_of(GameConfig(5, 10, 2600.0))  # 5v5, 10 fields, the segments' arena
+    return Yemong(yemong_build(config, rules, api.ship_types())).cuda()
+
+
+def nonzero_carry(model, views):
+    carry = model.initial_carry(views, OWN, SHIPS, device="cuda")
+    return dataclasses.replace(carry, state=torch.randn_like(carry.state),
+                               convolution_buffer=torch.randn_like(carry.convolution_buffer))
+
+
+def timed(function, repetitions, warmup):
+    for _ in range(warmup):
+        function()
+    torch.cuda.synchronize()
+    times = []
+    for _ in range(repetitions):
+        start = time.perf_counter()
+        function()
+        torch.cuda.synchronize()
+        times.append((time.perf_counter() - start) * 1e3)
+    return statistics.median(times), times
+
+
+@torch.no_grad()
+def record_replay(model, carry, obs, reset):
+    replays = []
+    for t in range(reset.shape[0]):
+        decision = model.step(carry, time_slice(obs, t), reset[t])
+        carry = decision.carry
+        replays.append(decision.replay)
+    leaves, spec = zip(*(_pytree.tree_flatten(r) for r in replays))
+    return _pytree.tree_unflatten([torch.stack(group) for group in zip(*leaves)], spec[0])
+
+
+def training_cell(model, views, mode, repetitions, warmup):
+    obs, reset = random_segment(STEPS, views, SHIPS, FIELDS, ZONES, device="cuda", seed=views,
+                                reset_steps=(STEPS // 2,))
+    start = nonzero_carry(model, views)
+    replay = record_replay(model, start, obs, reset)
+    ages = torch.randint(1, 13, (STEPS, views, SHIPS, SHOT_AGES), device="cuda")
+
+    def loss_of(carry, obs, replay, reset, ages):
+        out = model.unroll(carry, obs, replay, reset)
+        total = sum(getattr(out, key).float().mean() for key in HEADS)
+        return total + model.shot_trajectory(out.shot_latents, ages).float().mean()
+
+    compute = {"eager": loss_of,
+               "compiled": torch.compile(loss_of, fullgraph=True),
+               "cudagraphs": torch.compile(loss_of, fullgraph=True, mode="reduce-overhead")}[mode]
+
+    def iteration():
+        model.zero_grad(set_to_none=True)
+        compute(start, obs, replay, reset, ages).backward()
+
+    torch.cuda.reset_peak_memory_stats()
+    median, times = timed(iteration, repetitions, warmup)
+    return {"ms": median, "view_ticks_per_s": views * STEPS / median * 1e3,
+            "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30}
+
+
+def rollout_cell(model, views, mode, repetitions, warmup):
+    obs, _ = random_segment(2, views, SHIPS, FIELDS, ZONES, device="cuda", seed=1)
+    single = time_slice(obs, 1)
+    reset = torch.zeros(views, dtype=torch.bool, device="cuda")
+    reset[: views // 64] = True
+    step = {"eager": model.step,
+            "compiled": torch.compile(model.step, fullgraph=True),
+            "cudagraphs": torch.compile(model.step, fullgraph=True, mode="reduce-overhead")}[mode]
+    state = {"carry": nonzero_carry(model, views)}
+
+    @torch.no_grad()
+    def iteration():
+        carry = step(state["carry"], single, reset).carry
+        state["carry"] = (_pytree.tree_map(torch.clone, carry) if mode == "cudagraphs"
+                          else carry)
+
+    torch.cuda.reset_peak_memory_stats()
+    median, times = timed(iteration, repetitions, warmup)
+    return {"ms": median, "view_steps_per_s": views / median * 1e3,
+            "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--only", choices=("training", "rollout"))
+    parser.add_argument("--views", type=int)
+    parser.add_argument("--repetitions", type=int, default=20)
+    parser.add_argument("--out", default=str(pathlib.Path(__file__).parent / "v2_results.jsonl"))
+    arguments = parser.parse_args()
+    torch.set_float32_matmul_precision("highest")
+    cells = [("training", v) for v in (16, 64)] + [("rollout", 2048)]
+    with bench_lock():
+        for kind, views in cells:
+            if arguments.only and kind != arguments.only:
+                continue
+            if arguments.views and views != arguments.views:
+                continue
+            for precision in ("float32", "bfloat16"):
+                for mode in ("eager", "compiled", "cudagraphs"):
+                    model = make_model(precision)
+                    cell = training_cell if kind == "training" else rollout_cell
+                    try:
+                        result = cell(model, views, mode, arguments.repetitions, 5)
+                    except torch.OutOfMemoryError:
+                        result = {"ms": None, "error": "out of memory"}
+                    finally:
+                        del model
+                        torch._dynamo.reset()
+                        torch.cuda.empty_cache()
+                    row = {"arm": "v2", "kind": kind, "views": views, "precision": precision,
+                           "mode": mode, **result}
+                    print(json.dumps(row), flush=True)
+                    with open(arguments.out, "a") as handle:
+                        handle.write(json.dumps(row) + "\n")
+
+
+if __name__ == "__main__":
+    main()
