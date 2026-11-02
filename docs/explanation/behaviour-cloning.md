@@ -37,9 +37,12 @@ reinforcement learning at a chosen entropy without an entropy bonus
 (`bnb.learn.bc.TeacherConfig`): `q_T ∝ q^(1/T)` over the joint, then `(1 − ε) q_T + ε / 42`.
 One global temperature keeps the teacher's relative confidence between states, which the
 clone learns. A structural zero (turning away from the target) stays zero under the
-temperature alone; the floor lifts every zero and reaches entropies the temperature cannot. The
-transformation applies to the labels only: as an opponent, the scripted agent plays its
-natural distribution.
+temperature alone; the floor lifts every zero and reaches entropies the temperature cannot.
+In BC's own games the scripted opponent plays the labels' distribution
+(`bnb.learn.bc.TeacherOpponent`: each marginal tempered, then a uniform joint action with
+probability ε), so the live score is against the teacher the clone copies. At T = 1 and
+ε = 0 it draws exactly the scripted agent's actions. Everywhere else the scripted agent
+plays its natural distribution.
 
 The floor defaults to ε = 0.01 (`bnb.learn.bc.FLOOR`), spread over all 42 joint actions,
 so no label gives an action probability 0. The teacher itself puts weight on about 2.4
@@ -54,8 +57,8 @@ training mix (`bnb.runtime.cloning.teacher_distributions`).
 
 ## Rollouts
 
-`bnb.runtime.cloning.LINEUP`: half self-play, half against the scripted agent at its
-natural distribution, crossed with the training mix in a mixed batch. The live scores per
+`bnb.runtime.cloning.LINEUP`: half self-play, half against the scripted agent playing the
+labels' distribution, crossed with the training mix in a mixed batch. The live scores per
 opponent come from the training games themselves; there are no evaluation rollouts.
 
 ## When it stops
@@ -64,9 +67,13 @@ opponent come from the training games themselves; there are no evaluation rollou
 first rule to fire (`bnb.learn.bc.StopConfig`):
 
 - **score:** the score against the scripted agent (wins plus half the draws) over the last
-  1000 finished training games reaches 0.45, even if the KL is still falling. The window
-  keeps each update's totals, drops the oldest updates whole and counts the oldest one
-  it keeps by the share of its games the window needs, so trimming favours no result;
+  1000 finished training games, less two of its standard errors, reaches 0.45, even if
+  the KL is still falling. The standard error is the window's own: the sample deviation of
+  its per-game scores (1, 0.5 or 0) over the square root of 1000. The rule is checked
+  every update, so the bound keeps a window that is high by chance from stopping BC. The
+  window keeps each update's games, points and squared points, drops the oldest updates
+  whole and counts the oldest one it keeps by the share of its games the window needs, so
+  trimming favours no result;
 - **KL plateau:** the BC KL, `KL(labels ‖ student) = CE − H(labels)` per token, as an
   exponential average over updates, improved by less than 1% over the last 20M
   environment steps;

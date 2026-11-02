@@ -19,12 +19,15 @@ uv run --no-sync bnb train --preset mixed --objective bc --teacher-temperature 1
 ```
 
 `--objective bc` plays the BC lineup (half self-play, half the scripted agent) in the
-chosen game and runs until a stop rule fires: the live score against the scripted agent,
-a KL plateau, or the budget. `--updates` is not used. Each update prints the BC KL, the
-labels' and the student's entropy and the live score per opponent; the last line names
-the rule that stopped it. The other options (`--model`, `--num-envs`, `--shards`,
-`--precision`, `--micro-batch-rows`, `--seed`, `--set`, `--name`, `--runs-directory`)
-are training's ([Training](training.md)).
+chosen game and runs until a stop rule fires: the live score against the scripted agent
+(over 1000 games, less two standard errors), a KL plateau, or the budget
+([When it stops](../explanation/behaviour-cloning.md#when-it-stops)). The scripted
+opponent plays the labels' distribution, at `--teacher-floor` and `--teacher-temperature`.
+`--updates` is not used. Each update prints the BC KL, the labels' and the student's
+entropy, the live score per opponent and, once 1000 games have finished, the stop rule's
+window score and its bound; the last line names the rule that stopped it. The other
+options (`--model`, `--num-envs`, `--shards`, `--precision`, `--micro-batch-rows`,
+`--seed`, `--set`, `--name`, `--runs-directory`) are training's ([Training](training.md)).
 
 The run lives in a run directory like a PPO run's
 ([Runs and checkpoints](../explanation/runs.md)). When a stop rule fires, or after the

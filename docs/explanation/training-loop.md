@@ -42,7 +42,8 @@ pools seat:
   visible living enemy;
 - `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions;
 - `scripted`: `bnb.controllers.scripted.Scripted`, [the scripted agent](scripted-agent.md),
-  with its characteristics measured once for the trainer.
+  with its characteristics measured once for the trainer. With BC it is wrapped in
+  `bnb.learn.bc.TeacherOpponent`, which plays the labels' distribution.
 
 The keyboard pilot, `bnb.controllers.human.human_action`, is for the
 [play shell](in-progress/play-shell.md) only; no pool seats it.
