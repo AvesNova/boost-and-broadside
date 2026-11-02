@@ -75,6 +75,17 @@ class GatedMLP(nn.Module):
         return self.down(gelu(gate) * up)
 
 
+def feedforward_residual(sublayer, x):
+    """x + feedforward(feedforward_norm x); with `sublayer.recompute_feedforward` (set by
+    `Trunk.recompute = "feedforward"`) the MLP is recomputed in the backward, so its 4D-wide
+    hidden activations are not stored."""
+    def branch(inputs):
+        return sublayer.feedforward(sublayer.feedforward_norm(inputs))
+    if getattr(sublayer, "recompute_feedforward", False) and torch.is_grad_enabled():
+        return x + checkpoint(branch, x, use_reentrant=False)
+    return x + branch(x)
+
+
 # --------------------------------------------------------------------------- rotary
 
 
@@ -157,7 +168,7 @@ class SpatialBlock(nn.Module):
             attended = attention(query.transpose(-2, -3), key.transpose(-2, -3),
                                  value.transpose(-2, -3)).transpose(-2, -3)
         x = x + self.output(attended.flatten(-2))
-        return x + self.feedforward(self.feedforward_norm(x))
+        return feedforward_residual(self, x)
 
 
 # --------------------------------------------------------------------------- temporal
@@ -269,7 +280,7 @@ class TemporalBlock(nn.Module):
             hidden = linear_scan(decay, contribution, state)
             mixed = hidden * gelu(branch)
         x = x + self.output(mixed)
-        return x + self.feedforward(self.feedforward_norm(x)), hidden[-1], buffer
+        return feedforward_residual(self, x), hidden[-1], buffer
 
 
 # --------------------------------------------------------------------------- encoder, trunk
@@ -335,10 +346,25 @@ class Trunk(nn.Module):
         super().__init__()
         self.blocks = nn.ModuleList(Block(width, heads, map_width, spatial_per_block)
                                     for _ in range(blocks))
-        self.recompute = False  # recompute each sublayer in the backward (activation memory)
+        self.recompute = "none"
+
+    @property
+    def recompute(self) -> str:
+        """What the backward recomputes instead of storing (activation memory): "none",
+        "feedforward" (each sublayer's MLP) or "sublayers" (every sublayer)."""
+        return self._recompute
+
+    @recompute.setter
+    def recompute(self, value: str):
+        if value not in ("none", "feedforward", "sublayers"):
+            raise ValueError(f"recompute: {value!r}")
+        self._recompute = value
+        for block in self.blocks:
+            for sublayer in (*block.spatial, block.temporal):
+                sublayer.recompute_feedforward = value == "feedforward"
 
     def sublayer(self, module, *arguments):
-        if self.recompute and torch.is_grad_enabled():
+        if self.recompute == "sublayers" and torch.is_grad_enabled():
             return checkpoint(module, *arguments, use_reentrant=False)
         return module(*arguments)
 

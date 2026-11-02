@@ -156,12 +156,17 @@ def rollout_cell(model, views, precision, mode, repetitions, warmup):
             "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30, "times_ms": times}
 
 
+RECOMPUTE_LADDER = ("none", "feedforward", "sublayers")
+
+
 def run_with_retries(function, model, *arguments, attempts: int = 4):
-    """A cell. Training that runs out of memory retries with the trunk's sublayers
-    recomputed in the backward (recorded as recompute: true); any cell that still does
-    (the GPU is shared) waits and retries, then is recorded as an error."""
+    """A cell. Training that runs out of memory retries recomputing more in the backward: the
+    MLPs ("feedforward"), then every trunk sublayer ("sublayers"), recorded as `recompute`;
+    any cell that still does (the GPU is shared) waits and retries, then is recorded as an
+    error."""
     for attempt in range(attempts):
-        recompute = function is training_cell and attempt % 2 == 1
+        recompute = (RECOMPUTE_LADDER[min(attempt, 2)] if function is training_cell
+                     else "none")
         model.trunk.recompute = recompute
         try:
             return function(model, *arguments) | {"recompute": recompute}
@@ -170,11 +175,11 @@ def run_with_retries(function, model, *arguments, attempts: int = 4):
             print(f"[bench] out of memory (attempt {attempt + 1}, recompute {recompute}): "
                   f"{message}", flush=True)
         finally:
-            model.trunk.recompute = False
+            model.trunk.recompute = "none"
             model.zero_grad(set_to_none=True)
             torch._dynamo.reset()
             torch.cuda.empty_cache()
-        if not (function is training_cell and attempt % 2 == 0):
+        if not (function is training_cell and attempt < 2):
             time.sleep(30)
     return {"ms": None, "error": "out of memory"}
 
@@ -232,7 +237,8 @@ def main():
                     print(f"{kind:8s} V={views:5d} {precision:8s} {mode:10s} "
                           f"{record['ms']:9.3f} ms  {rate:12.0f} /s  "
                           f"{record['peak_memory_gb']:.2f} GB"
-                          + ("  (recompute)" if record["recompute"] else ""), flush=True)
+                          + (f"  (recompute {record['recompute']})"
+                             if record["recompute"] != "none" else ""), flush=True)
                     if not arguments.no_write:
                         with open(RESULTS, "a") as handle:
                             handle.write(json.dumps(record) + "\n")

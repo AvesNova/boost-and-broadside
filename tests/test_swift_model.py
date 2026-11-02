@@ -5,6 +5,7 @@ import torch
 
 from bnb.contracts.obs import SHIP, SHIP_HIDDEN_ZERO, Obs
 from bnb.models.swift.model import Replay, Yemong, YemongConfig
+from bnb.models.swift.network import Trunk
 from bnb.models.swift.state_code import MEAN_CHANNELS, SPREAD_CHANNELS
 from bnb.models.swift.synthetic import random_segment, time_slice
 
@@ -242,3 +243,30 @@ def test_state_code_round_trip():
     assert ((means - truth).abs() <= tolerance * truth.abs().clamp_min(1) + 1e-9).all()
     assert spreads[..., :11].abs().max() < 1e-6
     assert spreads[..., 11:].abs().max() < 1e-9
+
+
+@pytest.mark.parametrize("recompute", ["feedforward", "sublayers"])
+def test_recompute_gives_the_same_gradients(recompute):
+    """Recomputing the MLPs or every sublayer in the backward changes memory, not results."""
+    torch.manual_seed(0)
+    trunk = Trunk(32, 2, 16, 2, 2).double()
+    steps, views, queries = 5, 2, 4
+    tokens = torch.randn(steps, views, queries, 32, dtype=torch.float64, requires_grad=True)
+    memory = torch.randn(steps, views, 3, 16, dtype=torch.float64)
+    angles = torch.randn(steps, views, queries + 3, 1, 4, dtype=torch.float64)
+    token_tables = (angles[:, :, :queries].cos(), angles[:, :, :queries].sin())
+    map_tables = (angles[:, :, queries:].cos(), angles[:, :, queries:].sin())
+    state = torch.randn(2, views, queries, 32, dtype=torch.float64)
+    buffer = torch.randn(2, views, queries, 3, 32, dtype=torch.float64)
+    starts = torch.zeros(steps, views, dtype=torch.bool)
+    starts[3, 1] = True
+    results = []
+    for setting in ("none", recompute):
+        trunk.recompute = setting
+        trunk.zero_grad(set_to_none=True)
+        tokens.grad = None
+        x, _, _ = trunk(tokens, memory, token_tables, map_tables, state, buffer, starts)
+        x.square().sum().backward()
+        results.append([tokens.grad.clone()] + [p.grad.clone() for p in trunk.parameters()])
+    for plain, recomputed in zip(*results, strict=True):
+        assert torch.allclose(plain, recomputed, rtol=1e-12, atol=1e-12)
