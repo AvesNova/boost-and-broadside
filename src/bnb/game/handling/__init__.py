@@ -9,5 +9,15 @@ from .errors import Infeasible, RedundantHandles
 from .handles import COMBAT, FLIGHT, FLOWN, NAMES, Handles
 from .solver import Solution, measure, solve
 
-__all__ = ["COMBAT", "FLIGHT", "FLOWN", "NAMES", "Handles", "Infeasible", "RedundantHandles",
-           "Solution", "measure", "solve"]
+__all__ = [
+    "COMBAT",
+    "FLIGHT",
+    "FLOWN",
+    "NAMES",
+    "Handles",
+    "Infeasible",
+    "RedundantHandles",
+    "Solution",
+    "measure",
+    "solve",
+]

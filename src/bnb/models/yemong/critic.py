@@ -29,8 +29,9 @@ def two_hot(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
     lower = upper - 1
     weight = torch.clamp((values - bins[lower]) / (bins[upper] - bins[lower]), 0.0, 1.0)
     index = torch.arange(count, device=values.device)
-    return (1.0 - weight)[..., None] * (index == lower[..., None]) \
-        + weight[..., None] * (index == upper[..., None])
+    return (1.0 - weight)[..., None] * (index == lower[..., None]) + weight[..., None] * (
+        index == upper[..., None]
+    )
 
 
 def expectation(logits: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
@@ -47,8 +48,14 @@ def outcome_class(result: torch.Tensor) -> torch.Tensor:
     return torch.where(result > 0, WIN, torch.where(result < 0, LOSS, TIE)).long()
 
 
-def outcome_targets(probabilities: torch.Tensor, result: torch.Tensor, terminated: torch.Tensor,
-                    next_probabilities: torch.Tensor, gamma: float, lam: float) -> torch.Tensor:
+def outcome_targets(
+    probabilities: torch.Tensor,
+    result: torch.Tensor,
+    terminated: torch.Tensor,
+    next_probabilities: torch.Tensor,
+    gamma: float,
+    lam: float,
+) -> torch.Tensor:
     """Lambda targets for the outcome distribution, (L, ..., 4).
 
     probabilities (L, ..., 4) are p(s_t); next_probabilities (..., 4) bootstrap p(s_L);
@@ -56,7 +63,7 @@ def outcome_targets(probabilities: torch.Tensor, result: torch.Tensor, terminate
     """
     unresolved = torch.zeros(OUTCOMES, dtype=probabilities.dtype, device=probabilities.device)
     unresolved[UNRESOLVED] = 1.0
-    final = (outcome_class(result)[..., None] == torch.arange(OUTCOMES, device=result.device))
+    final = outcome_class(result)[..., None] == torch.arange(OUTCOMES, device=result.device)
     final = final.to(probabilities.dtype)
     following = next_probabilities
     target = next_probabilities

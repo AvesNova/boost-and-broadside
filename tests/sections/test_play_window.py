@@ -9,8 +9,11 @@ UNMAPPED = {"KEY_UNKNOWN", "KEY_LAST", "KEY_WORLD_1", "KEY_WORLD_2", "KEY_F25"} 
 
 
 def test_imgui_hears_every_key_glfw_names():
-    keys = {value for name, value in vars(glfw).items()
-            if name.startswith("KEY_") and name not in UNMAPPED}
+    keys = {
+        value
+        for name, value in vars(glfw).items()
+        if name.startswith("KEY_") and name not in UNMAPPED
+    }
     assert keys <= IMGUI_KEYS.keys()
     assert len(set(IMGUI_KEYS.values())) == len(IMGUI_KEYS)  # no two keys share one
 

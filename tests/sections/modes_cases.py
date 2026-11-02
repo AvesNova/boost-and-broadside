@@ -23,8 +23,9 @@ MODES = {
 }
 
 
-def random_actions(batch: int, ships: int, generator: torch.Generator,
-                   shoot: float = 0.7) -> Action:
+def random_actions(
+    batch: int, ships: int, generator: torch.Generator, shoot: float = 0.7
+) -> Action:
     choice = torch.rand(batch, ships, 3, generator=generator)
     power = (choice[..., 0] * 3).to(torch.int32)
     stick = (choice[..., 1] * 7).to(torch.int32)
@@ -42,9 +43,14 @@ def play(config: GameConfig, batch: int = 16, ticks: int = 300, seed: int = 0):
     state = api.reset(rules, LIVELY_TYPES, api.uniforms(rules, batch, generator=generator))
     for _ in range(ticks):
         action = random_actions(batch, rules.num_ships, generator)
-        after, events = api.step(rules, LIVELY_TYPES, state, action,
-                                 api.spread(rules, batch, generator=generator),
-                                 api.uniforms(rules, batch, generator=generator))
+        after, events = api.step(
+            rules,
+            LIVELY_TYPES,
+            state,
+            action,
+            api.spread(rules, batch, generator=generator),
+            api.uniforms(rules, batch, generator=generator),
+        )
         yield state, events, after
         state = after
 
@@ -74,8 +80,14 @@ def tick(rules, state, action=None, seed: int = 0):
     B, N = state.ships.x.shape
     generator = torch.Generator().manual_seed(seed)
     action = still(B, N) if action is None else action
-    return api.step(rules, TYPES, state, action, api.spread(rules, B, generator=generator),
-                    api.uniforms(rules, B, generator=generator))
+    return api.step(
+        rules,
+        TYPES,
+        state,
+        action,
+        api.spread(rules, B, generator=generator),
+        api.uniforms(rules, B, generator=generator),
+    )
 
 
 def fields_away(state, distance: float = 1e6):

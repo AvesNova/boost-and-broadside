@@ -36,8 +36,10 @@ def range_drag(rules: Rules, distance: torch.Tensor, launch_speed: torch.Tensor)
     (bisection in log k_b: the range falls as the drag grows)."""
     reach = launch_speed * bullet_life(rules)
     if (distance >= reach).any():
-        raise Infeasible("a gun range at or beyond the drag-free reach (cruise + muzzle speed) "
-                         "x bullet life cannot be met")
+        raise Infeasible(
+            "a gun range at or beyond the drag-free reach (cruise + muzzle speed) "
+            "x bullet life cannot be met"
+        )
     low = torch.full_like(distance, DRAG_RANGE[0]).log()
     high = torch.full_like(distance, DRAG_RANGE[1]).log()
     for _ in range(DRAG_BISECTIONS):

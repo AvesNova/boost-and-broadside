@@ -33,8 +33,9 @@ FLOOR = 0.01
 def config(**overrides) -> LearnerConfig:
     """BC's learner settings (scripted spec B1): the BC coefficient 0.025 in nats per token
     in place of the surrogate's, no entropy term, no KL early stop; the rest section 6's."""
-    return dataclasses.replace(LearnerConfig(), policy=0.025, entropy=0.0, target_kl=None,
-                               **overrides)
+    return dataclasses.replace(
+        LearnerConfig(), policy=0.025, entropy=0.0, target_kl=None, **overrides
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -69,8 +70,9 @@ class TeacherOpponent:
     reads = Scripted.reads
 
     def __init__(self, agent: Scripted, teacher: TeacherConfig) -> None:
-        if not (isinstance(agent.scripted_probability, float)
-                and agent.scripted_probability == 1.0):
+        if not (
+            isinstance(agent.scripted_probability, float) and agent.scripted_probability == 1.0
+        ):
             raise ValueError("the teacher is the scripted agent at scripted probability 1")
         self.agent, self.teacher = agent, teacher
 
@@ -89,8 +91,9 @@ class TeacherOpponent:
         action = torch.stack([sample(part) for part in parts], -1).to(torch.int32)
         if floor != 0.0:
             uniform = torch.rand(action.shape[:-1], device=action.device) < floor
-            action = torch.where(uniform[..., None],
-                                 uniform_actions(action.shape[:-1], action.device), action)
+            action = torch.where(
+                uniform[..., None], uniform_actions(action.shape[:-1], action.device), action
+            )
         return Action.unpack(action), carry, Outputs()
 
 
@@ -102,8 +105,9 @@ def entropy(probabilities: torch.Tensor) -> torch.Tensor:
 def flat_views(obs: Obs) -> Obs:
     """Stored observations (L, n, ...) as views (L n, ...)."""
     parts = {field.name: getattr(obs, field.name) for field in dataclasses.fields(obs)}
-    return Obs(**{name: None if value is None else value.flatten(0, 1)
-                  for name, value in parts.items()})
+    return Obs(
+        **{name: None if value is None else value.flatten(0, 1) for name, value in parts.items()}
+    )
 
 
 def teacher_distribution(teacher: Teacher, obs: Obs) -> torch.Tensor:
@@ -117,17 +121,29 @@ class BehaviourCloning(Learner):
     pools: the pool names, view_pool (V,) each stored view's pool index (the metrics are
     per pool). The other arguments are the Learner's."""
 
-    def __init__(self, model: torch.nn.Module, config: LearnerConfig, rules, types,
-                 outcome_weight: float, device: torch.device, teacher: Teacher,
-                 teacher_config: TeacherConfig, pools: tuple[str, ...],
-                 view_pool: torch.Tensor, stage: Callable = lambda function: function,
-                 seed: int = 0) -> None:
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        config: LearnerConfig,
+        rules,
+        types,
+        outcome_weight: float,
+        device: torch.device,
+        teacher: Teacher,
+        teacher_config: TeacherConfig,
+        pools: tuple[str, ...],
+        view_pool: torch.Tensor,
+        stage: Callable = lambda function: function,
+        seed: int = 0,
+    ) -> None:
         self.teacher, self.teacher_config, self.pools = teacher, teacher_config, pools
         # (KL, teacher entropy, student entropy, tokens) per pool.
-        self.STATISTICS = tuple(f"{name}/{pool}" for name in ("kl", "teacher", "student",
-                                                               "tokens") for pool in pools)
-        self.pool_one_hot = torch.nn.functional.one_hot(view_pool.to(device),
-                                                        len(pools)).float()[None]
+        self.STATISTICS = tuple(
+            f"{name}/{pool}" for name in ("kl", "teacher", "student", "tokens") for pool in pools
+        )
+        self.pool_one_hot = torch.nn.functional.one_hot(view_pool.to(device), len(pools)).float()[
+            None
+        ]
         super().__init__(model, config, rules, types, outcome_weight, device, stage, seed)
 
     def prepare(self, segments, bootstraps: list) -> dict:
@@ -135,12 +151,18 @@ class BehaviourCloning(Learner):
         prepared["derived"]["pool"] = self.pool_one_hot  # (1, V, pools)
         return prepared
 
-    def _policy(self, unrolled, trajectory: Trajectory, derived: dict, denominator: dict,
-                scale: torch.Tensor):
+    def _policy(
+        self,
+        unrolled,
+        trajectory: Trajectory,
+        derived: dict,
+        denominator: dict,
+        scale: torch.Tensor,
+    ):
         """(the cross-entropy against the labels, the student's mean entropy, per-pool sums
         of KL(labels || student), the labels' and the student's entropy and the tokens),
         over own ships alive."""
-        own_alive = trajectory.alive[..., :trajectory.logp.shape[-1]]
+        own_alive = trajectory.alive[..., : trajectory.logp.shape[-1]]
         target = labels(teacher_distribution(self.teacher, trajectory.obs), self.teacher_config)
         logits = unrolled.policy_logits.float()
         cross = losses.cross_entropy(logits, target)
@@ -150,21 +172,34 @@ class BehaviourCloning(Learner):
         # p log p of the probabilities would give 0 x infinity.
         log_probabilities = torch.log_softmax(logits, -1)
         student_entropy = -(log_probabilities.exp() * log_probabilities).sum(-1)
-        per_view = torch.stack([torch.where(own_alive, value, 0.0).sum((0, 2))
-                                for value in (cross - teacher_entropy, teacher_entropy,
-                                              student_entropy, own_alive.float())])
+        per_view = torch.stack(
+            [
+                torch.where(own_alive, value, 0.0).sum((0, 2))
+                for value in (
+                    cross - teacher_entropy,
+                    teacher_entropy,
+                    student_entropy,
+                    own_alive.float(),
+                )
+            ]
+        )
         statistics = (per_view @ derived["pool"][0]).flatten()  # (4 pools,)
-        return (losses.masked_sum(cross, own_alive) / denominator["policy"],
-                losses.masked_sum(student_entropy, own_alive) / denominator["policy"],
-                statistics)
+        return (
+            losses.masked_sum(cross, own_alive) / denominator["policy"],
+            losses.masked_sum(student_entropy, own_alive) / denominator["policy"],
+            statistics,
+        )
 
     def report(self, statistics: list[float]) -> dict:
         """The BC KL and both entropies, per living own ship-step: overall and per pool."""
         pools = len(self.pools)
-        kl, teacher, student, tokens = (statistics[i * pools:(i + 1) * pools] for i in range(4))
+        kl, teacher, student, tokens = (statistics[i * pools : (i + 1) * pools] for i in range(4))
         total = max(sum(tokens), 1e-12)
-        out = dict(bc_kl=sum(kl) / total, teacher_entropy=sum(teacher) / total,
-                   student_entropy=sum(student) / total)
+        out = dict(
+            bc_kl=sum(kl) / total,
+            teacher_entropy=sum(teacher) / total,
+            student_entropy=sum(student) / total,
+        )
         for index, pool in enumerate(self.pools):
             count = max(tokens[index], 1e-12)
             out[f"bc_kl/{pool}"] = kl[index] / count
@@ -178,16 +213,24 @@ def mean_entropy(probabilities: torch.Tensor, teacher: TeacherConfig) -> float:
     return float(entropy(labels(probabilities, teacher)).mean())
 
 
-def calibrate(probabilities: torch.Tensor, target: float, floor: float = FLOOR,
-              tolerance: float = 1e-3, low: float = 1e-2, high: float = 1e2) -> TeacherConfig:
+def calibrate(
+    probabilities: torch.Tensor,
+    target: float,
+    floor: float = FLOOR,
+    tolerance: float = 1e-3,
+    low: float = 1e-2,
+    high: float = 1e2,
+) -> TeacherConfig:
     """The temperature (floor fixed) whose labels' mean entropy over these teacher
     distributions (tokens, 42), living own ship-steps, is `target` nats, by bisection on
     log T. Fails when the target lies outside what [low, high] reaches (raise the floor
     when it is above what the temperature alone can give)."""
     reach = [mean_entropy(probabilities, TeacherConfig(t, floor)) for t in (low, high)]
     if not reach[0] <= target <= reach[1]:
-        raise ValueError(f"target entropy {target} nats is outside [{reach[0]:.4f}, "
-                         f"{reach[1]:.4f}] for temperatures [{low}, {high}] at floor {floor}")
+        raise ValueError(
+            f"target entropy {target} nats is outside [{reach[0]:.4f}, "
+            f"{reach[1]:.4f}] for temperatures [{low}, {high}] at floor {floor}"
+        )
     log_low, log_high = torch.log(torch.tensor(low)), torch.log(torch.tensor(high))
     while True:
         middle = float(torch.exp(0.5 * (log_low + log_high)))
@@ -246,8 +289,10 @@ class StopRule:
             return None
         oldest_games, oldest_points, oldest_squares = self.updates[0]
         share = (games - window) / oldest_games  # of the oldest update, outside the window
-        return (sum(update[1] for update in self.updates) - oldest_points * share,
-                sum(update[2] for update in self.updates) - oldest_squares * share)
+        return (
+            sum(update[1] for update in self.updates) - oldest_points * share,
+            sum(update[2] for update in self.updates) - oldest_squares * share,
+        )
 
     @property
     def score(self) -> float | None:
@@ -272,29 +317,31 @@ class StopRule:
     def lower_bound(self) -> float | None:
         """The window score less score_errors standard errors: what the score stop reads."""
         score = self.score
-        return None if score is None else \
-            score - self.config.score_errors * self.standard_error
+        return None if score is None else score - self.config.score_errors * self.standard_error
 
-    def observe(self, env_steps: int, wins: int, draws: int, losses: int,
-                kl: float) -> str | None:
+    def observe(self, env_steps: int, wins: int, draws: int, losses: int, kl: float) -> str | None:
         """env_steps: the total so far; wins, draws, losses: games finished against the
         teacher this update; kl: this update's BC KL."""
         config = self.config
         games = wins + draws + losses
         if games > 0:
             self.updates.append((float(games), wins + 0.5 * draws, wins + 0.25 * draws))
-        while (len(self.updates) > 1
-               and sum(update[0] for update in self.updates) - self.updates[0][0]
-               >= config.score_window):
+        while (
+            len(self.updates) > 1
+            and sum(update[0] for update in self.updates) - self.updates[0][0]
+            >= config.score_window
+        ):
             self.updates.popleft()
         decay = config.kl_decay
-        self.kl_average = kl if self.kl_average is None else \
-            decay * self.kl_average + (1.0 - decay) * kl
+        self.kl_average = (
+            kl if self.kl_average is None else decay * self.kl_average + (1.0 - decay) * kl
+        )
         self.history.append((env_steps, self.kl_average))
         if self.lower_bound is not None and self.lower_bound >= config.score_target:
             return "score"
-        past = [average for steps, average in self.history
-                if steps <= env_steps - config.plateau_steps]
+        past = [
+            average for steps, average in self.history if steps <= env_steps - config.plateau_steps
+        ]
         if past and self.kl_average > (1.0 - config.plateau_fraction) * past[-1]:
             return "kl_plateau"
         if env_steps >= config.budget_steps:

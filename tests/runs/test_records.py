@@ -90,13 +90,15 @@ def test_run_json_is_rewritten_atomically_and_reopens(tmp_path):
 def test_an_offline_result_records_its_provenance_and_its_policies_by_hash(tmp_path):
     run = Run.create(tmp_path, "a", cases.tiny_train_config(), ["bnb", "train"], 64)
     save_policy(run.directory / "league" / "snapshot_0", cases.tiny_model("relational"))
-    directory = provenance.write_result(run, "ratings", dict(elo=1000.0),
-                                        dict(snapshot=run.directory / "league" / "snapshot_0"))
+    directory = provenance.write_result(
+        run, "ratings", dict(elo=1000.0), dict(snapshot=run.directory / "league" / "snapshot_0")
+    )
     result = json.loads((directory / "result.json").read_text())
     assert directory.parent == run.directory / "artifacts" / "ratings"
     assert result["payload"] == dict(elo=1000.0)
     assert result["inputs"]["snapshot"]["sha256"] == provenance.file_hash(
-        run.directory / "league" / "snapshot_0" / "checkpoint.json")
+        run.directory / "league" / "snapshot_0" / "checkpoint.json"
+    )
     origin = result["provenance"]
     assert origin["host"] == socket.gethostname() and origin["commit"] == provenance.commit()[0]
     assert {"python", "torch", "cuda", "command", "time", "dirty", "gpu"} <= origin.keys()

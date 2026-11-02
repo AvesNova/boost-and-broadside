@@ -147,8 +147,14 @@ replace = dataclasses.replace
 
 FLOAT, BOOL, INT = torch.float32, torch.bool, torch.int32
 SHIP_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Ships)} | dict(
-    alive=BOOL, fired=BOOL, spawned=BOOL, respawn_wait=INT, gun_cooldown=INT, next_slot=INT,
-    ship_type=INT)
+    alive=BOOL,
+    fired=BOOL,
+    spawned=BOOL,
+    respawn_wait=INT,
+    gun_cooldown=INT,
+    next_slot=INT,
+    ship_type=INT,
+)
 BULLET_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Bullets)} | dict(moves_left=INT)
 FIELD_DTYPES = {field.name: FLOAT for field in dataclasses.fields(Fields)} | dict(level=INT)
 MODE_INTEGERS = ("score", "front", "role", "movement")
@@ -163,29 +169,44 @@ def blank(rules: Rules, batch: int, device=None) -> State:
         return {k: torch.zeros(shape, dtype=d, device=device) for k, d in dtypes.items()}
 
     Z = rules.num_zones
-    shapes = dict(score=(B, TEAMS), front=(B,), attack_ledger=(B, Z, N),
-                  defense_ledger=(B, Z, N), handedness=(B,), ring_rotation=(B,))
-    mode = {field.name: torch.zeros(shapes.get(field.name, (B, Z)), device=device,
-                                    dtype=INT if field.name in MODE_INTEGERS else FLOAT)
-            for field in dataclasses.fields(ModeState)}
-    return State(ships=Ships(**zeros(SHIP_DTYPES, (B, N))),
-                 bullets=Bullets(**zeros(BULLET_DTYPES, (B, N, K))),
-                 fields=Fields(**zeros(FIELD_DTYPES, (B, M))),
-                 match=Match(episode_tick=torch.zeros(B, dtype=INT, device=device),
-                             spawn_axis_x=torch.zeros(B, device=device),
-                             spawn_axis_y=torch.zeros(B, device=device),
-                             ticks_since_seen=torch.zeros((B, TEAMS, N), dtype=INT,
-                                                          device=device),
-                             fogged=torch.ones(B, dtype=BOOL, device=device),
-                             vision_range=torch.full((B, N), rules.vision_range, device=device)),
-                 mode=ModeState(**mode))
+    shapes = dict(
+        score=(B, TEAMS),
+        front=(B,),
+        attack_ledger=(B, Z, N),
+        defense_ledger=(B, Z, N),
+        handedness=(B,),
+        ring_rotation=(B,),
+    )
+    mode = {
+        field.name: torch.zeros(
+            shapes.get(field.name, (B, Z)),
+            device=device,
+            dtype=INT if field.name in MODE_INTEGERS else FLOAT,
+        )
+        for field in dataclasses.fields(ModeState)
+    }
+    return State(
+        ships=Ships(**zeros(SHIP_DTYPES, (B, N))),
+        bullets=Bullets(**zeros(BULLET_DTYPES, (B, N, K))),
+        fields=Fields(**zeros(FIELD_DTYPES, (B, M))),
+        match=Match(
+            episode_tick=torch.zeros(B, dtype=INT, device=device),
+            spawn_axis_x=torch.zeros(B, device=device),
+            spawn_axis_y=torch.zeros(B, device=device),
+            ticks_since_seen=torch.zeros((B, TEAMS, N), dtype=INT, device=device),
+            fogged=torch.ones(B, dtype=BOOL, device=device),
+            vision_range=torch.full((B, N), rules.vision_range, device=device),
+        ),
+        mode=ModeState(**mode),
+    )
 
 
 def sweep_like(state: State) -> Sweep:
     """A zero Sweep shaped for this state (a buffer for runtimes that cut between stages)."""
     ship, bullet = state.ships.x, state.bullets.x
-    return Sweep(*(torch.zeros_like(ship) for _ in range(4)),
-                 *(torch.zeros_like(bullet) for _ in range(4)))
+    return Sweep(
+        *(torch.zeros_like(ship) for _ in range(4)), *(torch.zeros_like(bullet) for _ in range(4))
+    )
 
 
 def where(mask: torch.Tensor, new, old):
@@ -205,8 +226,9 @@ def where(mask: torch.Tensor, new, old):
 
 def apply(function, value):
     """A dataclass of the same type with `function` applied to every field."""
-    return type(value)(**{field.name: function(getattr(value, field.name))
-                          for field in dataclasses.fields(value)})
+    return type(value)(
+        **{field.name: function(getattr(value, field.name)) for field in dataclasses.fields(value)}
+    )
 
 
 def by_team(values: torch.Tensor) -> torch.Tensor:

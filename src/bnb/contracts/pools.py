@@ -65,8 +65,9 @@ def environments_per_pool(pools: tuple[Pool, ...], num_envs: int) -> tuple[int, 
         sizes.append(round(size))
         fogged = pool.fog_share * round(size)
         if not 0.0 <= pool.fog_share <= 1.0 or abs(fogged - round(fogged)) > 1e-6:
-            raise ValueError(f"pool {pool.name}: fog share {pool.fog_share} x {round(size)} "
-                             "envs is not whole")
+            raise ValueError(
+                f"pool {pool.name}: fog share {pool.fog_share} x {round(size)} envs is not whole"
+            )
     if sum(sizes) != num_envs:
         raise ValueError(f"pool shares cover {sum(sizes)} of {num_envs} envs")
     return tuple(sizes)

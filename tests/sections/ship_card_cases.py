@@ -17,16 +17,29 @@ VARIED = 8  # cards, each with every type
 PERTURBATION = 0.05
 TICK_RATES = (25, 30, 60)
 # The design envelope, as log-uniform factors on the default card's parameters.
-ENVELOPE = dict(max_lift_coefficient=(0.75, 1.33), max_acceleration=(0.75, 1.33),
-                zero_lift_drag=(0.75, 1.33), engine_power=(0.75, 1.33),
-                static_thrust=(0.75, 1.33), max_energy=(0.7, 1.4),
-                corner_nose_frequency=(0.7, 1.4), induced_drag_scale=(0.75, 1.33),
-                coast_exchange_scale=(0.7, 1.4), dive_exchange_scale=(0.75, 1.33),
-                climb_exchange_scale=(0.75, 1.33), vision_range_scale=(0.7, 1.4),
-                stall_angle_scale=(0.67, 1.67), muzzle_speed=(0.8, 1.25),
-                bullet_drag_scale=(0.6, 1.6), bullet_energy_cost=(0.7, 1.4), hit_radius=(0.8, 1.25),
-                max_shield=(0.7, 1.4), shield_recharge_rate_scale=(0.6, 1.6),
-                head_on_fraction_scale=(0.5, 2.0), hit_damage=(0.7, 1.4))
+ENVELOPE = dict(
+    max_lift_coefficient=(0.75, 1.33),
+    max_acceleration=(0.75, 1.33),
+    zero_lift_drag=(0.75, 1.33),
+    engine_power=(0.75, 1.33),
+    static_thrust=(0.75, 1.33),
+    max_energy=(0.7, 1.4),
+    corner_nose_frequency=(0.7, 1.4),
+    induced_drag_scale=(0.75, 1.33),
+    coast_exchange_scale=(0.7, 1.4),
+    dive_exchange_scale=(0.75, 1.33),
+    climb_exchange_scale=(0.75, 1.33),
+    vision_range_scale=(0.7, 1.4),
+    stall_angle_scale=(0.67, 1.67),
+    muzzle_speed=(0.8, 1.25),
+    bullet_drag_scale=(0.6, 1.6),
+    bullet_energy_cost=(0.7, 1.4),
+    hit_radius=(0.8, 1.25),
+    max_shield=(0.7, 1.4),
+    shield_recharge_rate_scale=(0.6, 1.6),
+    head_on_fraction_scale=(0.5, 2.0),
+    hit_damage=(0.7, 1.4),
+)
 
 
 def rules(rate: int = 30):
@@ -52,8 +65,9 @@ def varied_cards(seed: int = 20261101) -> api.ShipTypes:
     # k C_max^e, keeps its envelope factor.
     exponent = uniform(1.5, 3.0)
     values["bleed_exponent"] = exponent
-    values["induced_drag_scale"] = (values["induced_drag_scale"]
-                                    * values["max_lift_coefficient"] ** (2.0 - exponent))
+    values["induced_drag_scale"] = values["induced_drag_scale"] * values[
+        "max_lift_coefficient"
+    ] ** (2.0 - exponent)
     delay = torch.randint(1, 4, (VARIED, 2), generator=generator).double() * 0.5
     values["shield_recharge_delay_scale"] = delay
     values["spawn_energy"] = 0.4 * values["max_energy"]
@@ -89,11 +103,16 @@ class Cases:
         self.default = measure(api.ship_types(dtype=torch.float64), self.rules)
         self.varied_handles = measure(varied_cards(), self.rules)
         perturbations, self.labels = perturbed(self.default)
-        self.targets = stack([self.default] + [Handles(**{n: getattr(self.varied_handles, n)[i]
-                                                          for n in NAMES})
-                                               for i in range(VARIED)])
-        self.targets = Handles(**{n: torch.cat([getattr(self.targets, n),
-                                                getattr(perturbations, n)]) for n in NAMES})
+        self.targets = stack(
+            [self.default]
+            + [
+                Handles(**{n: getattr(self.varied_handles, n)[i] for n in NAMES})
+                for i in range(VARIED)
+            ]
+        )
+        self.targets = Handles(
+            **{n: torch.cat([getattr(self.targets, n), getattr(perturbations, n)]) for n in NAMES}
+        )
         self.solution = solve(self.targets, self.rules, strict=False)
         self.measured = measure(double(self.solution.types), self.rules)
 
@@ -120,9 +139,17 @@ def seconds_between_shots(rules, types: api.ShipTypes) -> torch.Tensor:
     zeros = torch.zeros(ship_type.shape, dtype=types.max_energy.dtype)
     state = ships(zeros + 100.0, zeros + 1e12, zeros, zeros, ship_type)
     empty = torch.zeros(ship_type.shape + (rules.bullet_slots,), dtype=zeros.dtype)
-    bullets = Bullets(x=empty, y=empty, direction_x=empty, direction_y=empty, proper_speed=empty,
-                      log_refractive_index=empty, log_index_gradient_x=empty,
-                      log_index_gradient_y=empty, moves_left=empty.int())
+    bullets = Bullets(
+        x=empty,
+        y=empty,
+        direction_x=empty,
+        direction_y=empty,
+        proper_speed=empty,
+        log_refractive_index=empty,
+        log_index_gradient_x=empty,
+        log_index_gradient_y=empty,
+        moves_left=empty.int(),
+    )
     shoot = torch.ones_like(zeros, dtype=torch.bool)
     shots = []
     for _ in range(round(2.0 / rules.tick_length)):  # 2 s: two shots at 1 Hz or faster

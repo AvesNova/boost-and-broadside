@@ -50,10 +50,12 @@ def test_every_part_of_a_training_checkpoint_round_trips(trained):
     _assert_same_optimizer(loaded, trainer)
     assert torch.equal(loaded.ppo.return_scale.low, trainer.ppo.return_scale.low)
     assert torch.equal(loaded.ppo.return_scale.high, trainer.ppo.return_scale.high)
-    assert torch.equal(loaded.ppo.spread_generator.get_state(),
-                       trainer.ppo.spread_generator.get_state())
-    assert torch.equal(loaded.ppo.order_generator.get_state(),
-                       trainer.ppo.order_generator.get_state())
+    assert torch.equal(
+        loaded.ppo.spread_generator.get_state(), trainer.ppo.spread_generator.get_state()
+    )
+    assert torch.equal(
+        loaded.ppo.order_generator.get_state(), trainer.ppo.order_generator.get_state()
+    )
     want_carry = checkpoint.named_tensors(trainer.rollout.saved_carry())
     got_carry = checkpoint.named_tensors(loaded.rollout.saved_carry())
     assert want_carry.keys() == got_carry.keys()
@@ -81,8 +83,10 @@ def test_a_training_checkpoint_is_also_a_policy_file(trained):
 def test_a_structural_change_on_resume_is_refused(trained):
     _, directory = trained
     saved, _ = checkpoint.training_config(directory)
-    with pytest.raises(CheckpointError, match="a resume cannot change num_envs; start a new "
-                                              "run from this checkpoint with --from"):
+    with pytest.raises(
+        CheckpointError,
+        match="a resume cannot change num_envs; start a new run from this checkpoint with --from",
+    ):
         checkpoint.load_training(directory, cases.CPU, dataclasses.replace(saved, num_envs=32))
 
 
@@ -92,7 +96,8 @@ def test_a_run_time_override_on_resume_is_allowed(trained):
     learner = dataclasses.replace(saved.learner, learning_rate=1e-4, entropy=-0.01)
     with torch.random.fork_rng():
         trainer = checkpoint.load_training(
-            directory, cases.CPU, dataclasses.replace(saved, updates=9, learner=learner))
+            directory, cases.CPU, dataclasses.replace(saved, updates=9, learner=learner)
+        )
     assert trainer.config.updates == 9 and trainer.ppo.config.learning_rate == 1e-4
 
 
@@ -102,19 +107,24 @@ def test_the_reward_weights_are_saved_and_a_resume_may_change_them(trained):
     assert saved.reward == cases.tiny_train_config().reward
     reward = dataclasses.replace(saved.reward, damage=0.5, outcome=2.0)
     with torch.random.fork_rng():
-        trainer = checkpoint.load_training(directory, cases.CPU,
-                                           dataclasses.replace(saved, reward=reward))
+        trainer = checkpoint.load_training(
+            directory, cases.CPU, dataclasses.replace(saved, reward=reward)
+        )
     assert trainer.rollout.reward_config.damage == 0.5 and trainer.ppo.outcome_weight == 2.0
     with pytest.raises(CheckpointError, match="a resume cannot change reward.damage_unit"):
-        checkpoint.load_training(directory, cases.CPU, dataclasses.replace(
-            saved, reward=dataclasses.replace(saved.reward, damage_unit=50.0)))
+        checkpoint.load_training(
+            directory,
+            cases.CPU,
+            dataclasses.replace(saved, reward=dataclasses.replace(saved.reward, damage_unit=50.0)),
+        )
 
 
 def test_the_micro_batch_rows_and_the_precision_may_change_on_resume(trained):
     _, directory = trained
     saved, _ = checkpoint.training_config(directory)
-    changed = dataclasses.replace(saved, precision="bfloat16", learner=dataclasses.replace(
-        saved.learner, micro_batch_rows=32))
+    changed = dataclasses.replace(
+        saved, precision="bfloat16", learner=dataclasses.replace(saved.learner, micro_batch_rows=32)
+    )
     with torch.random.fork_rng():
         trainer = checkpoint.load_training(directory, cases.CPU, changed)
     assert trainer.model.build.config.bfloat16_matmuls
@@ -154,19 +164,24 @@ def test_a_build_field_the_checkpoint_lacks_is_reported_on_resume_and_fork(tmp_p
 
 def test_a_fork_whose_build_differs_is_refused(trained):
     _, directory = trained
-    with torch.random.fork_rng(), pytest.raises(
-            CheckpointError, match="the fork refused: the build record .* differs from the "
-                                   "run's model in config.hidden. A new architecture is a "
-                                   "new run"):
-        checkpoint.fork_training(directory, cases.tiny_train_config(relational_hidden=32),
-                                 cases.CPU)
+    with (
+        torch.random.fork_rng(),
+        pytest.raises(
+            CheckpointError,
+            match="the fork refused: the build record .* differs from the "
+            "run's model in config.hidden. A new architecture is a "
+            "new run",
+        ),
+    ):
+        checkpoint.fork_training(
+            directory, cases.tiny_train_config(relational_hidden=32), cases.CPU
+        )
 
 
 def test_a_fork_takes_the_model_optimizer_and_return_scale_but_not_the_carry(trained):
     trainer, directory = trained
     with torch.random.fork_rng():
-        fork = checkpoint.fork_training(directory, cases.tiny_train_config(num_envs=32),
-                                        cases.CPU)
+        fork = checkpoint.fork_training(directory, cases.tiny_train_config(num_envs=32), cases.CPU)
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(fork.model.state_dict()[name], tensor)
     assert torch.equal(fork.ppo.return_scale.high, trainer.ppo.return_scale.high)
@@ -183,15 +198,22 @@ def test_an_optimizer_state_of_another_shape_is_refused(tmp_path, trained):
     stored["optimizer.0.exp_avg"] = stored["optimizer.0.exp_avg"][:1].clone()
     safetensors.torch.save_file(stored, tmp_path / checkpoint.TRAINING)
     with pytest.raises(SerialiseError, match="optimizer.0.exp_avg: stored"):
-        checkpoint.restore_optimizer(parent, safetensors.torch.load_file(
-            tmp_path / checkpoint.TRAINING), parent.ppo.optimizer.state_dict()["param_groups"])
+        checkpoint.restore_optimizer(
+            parent,
+            safetensors.torch.load_file(tmp_path / checkpoint.TRAINING),
+            parent.ppo.optimizer.state_dict()["param_groups"],
+        )
 
 
 def test_a_warm_start_takes_weights_and_return_scale_with_a_fresh_optimizer(tmp_path, trained):
     """Acceptance 9: the BC -> RL hand-off, from a policy file."""
     trainer, _ = trained
-    checkpoint.save_policy(tmp_path / "bc", trainer.model, return_scale=trainer.ppo.return_scale,
-                           steps=dict(environment_steps=trainer.ppo.env_steps))
+    checkpoint.save_policy(
+        tmp_path / "bc",
+        trainer.model,
+        return_scale=trainer.ppo.return_scale,
+        steps=dict(environment_steps=trainer.ppo.env_steps),
+    )
     with torch.random.fork_rng():
         rl = checkpoint.warm_start(tmp_path / "bc", cases.tiny_train_config(), cases.CPU)
     for name, tensor in trainer.model.state_dict().items():
@@ -208,8 +230,9 @@ def test_a_warm_start_from_another_build_is_refused(tmp_path, trained):
     trainer, _ = trained
     checkpoint.save_policy(tmp_path / "bc", trainer.model)
     with torch.random.fork_rng(), pytest.raises(CheckpointError, match="the warm start refused"):
-        checkpoint.warm_start(tmp_path / "bc", cases.tiny_train_config(relational_hidden=32),
-                              cases.CPU)
+        checkpoint.warm_start(
+            tmp_path / "bc", cases.tiny_train_config(relational_hidden=32), cases.CPU
+        )
 
 
 class Crash(Exception):
@@ -218,7 +241,8 @@ class Crash(Exception):
 
 @pytest.mark.parametrize("stage", [checkpoint.WEIGHTS, checkpoint.TRAINING, checkpoint.RECORD])
 def test_a_write_killed_at_any_stage_leaves_the_previous_checkpoint_and_no_partial_one(
-        tmp_path, trained, stage):
+    tmp_path, trained, stage
+):
     """Acceptance 7, a crash simulated by raising after each file is flushed."""
     trainer, _ = trained
     checkpoint.save_training(tmp_path / "step_1", trainer)

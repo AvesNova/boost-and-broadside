@@ -27,8 +27,9 @@ def _later(starts: torch.Tensor) -> torch.Tensor:
     return torch.cat([torch.zeros_like(starts[:1]), starts[1:]])
 
 
-def parallel_scan(decay: torch.Tensor, contribution: torch.Tensor,
-                  initial: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def parallel_scan(
+    decay: torch.Tensor, contribution: torch.Tensor, initial: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
     """h_t = decay_t h_(t-1) + contribution_t over the leading time axis, from `initial`.
     Returns every h (L, ...) and the last.
 
@@ -42,8 +43,9 @@ def parallel_scan(decay: torch.Tensor, contribution: torch.Tensor,
     pad = -length % SCAN_CHUNK
     if pad:  # a static shape, not a data-dependent branch
         decay = torch.cat([decay, decay.new_zeros((pad,) + decay.shape[1:])])
-        contribution = torch.cat([contribution,
-                                  contribution.new_zeros((pad,) + contribution.shape[1:])])
+        contribution = torch.cat(
+            [contribution, contribution.new_zeros((pad,) + contribution.shape[1:])]
+        )
     chunks = decay.shape[0] // SCAN_CHUNK
     decay = decay.unflatten(0, (chunks, SCAN_CHUNK))
     contribution = contribution.unflatten(0, (chunks, SCAN_CHUNK))
@@ -88,8 +90,9 @@ class RGLRU(nn.Module):
         decay, contribution = self._terms(inputs)
         return decay * state + contribution
 
-    def sequence(self, inputs: torch.Tensor, state: torch.Tensor,
-                 starts: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def sequence(
+        self, inputs: torch.Tensor, state: torch.Tensor, starts: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """inputs (L, ..., D); starts (L, ...) bool. Returns (outputs, final state)."""
         decay, contribution = self._terms(inputs)
         decay = torch.where(_later(starts)[..., None], 0.0, decay)
@@ -113,19 +116,20 @@ class CausalConvolution(nn.Module):
         window = torch.cat([buffer, inputs[..., None, :]], -2)
         return (window * self.weight.t()).sum(-2) + self.bias
 
-    def sequence(self, inputs: torch.Tensor, buffer: torch.Tensor,
-                 starts: torch.Tensor) -> torch.Tensor:
+    def sequence(
+        self, inputs: torch.Tensor, buffer: torch.Tensor, starts: torch.Tensor
+    ) -> torch.Tensor:
         """inputs (L, ..., D); buffer (..., 3, D). A tap never reaches back past a start."""
         history = TAPS - 1
         length = inputs.shape[0]
         padded = torch.cat([buffer.movedim(-2, 0), inputs])  # (L + 3, ..., D)
-        cut = torch.cat([torch.zeros_like(starts[:history - 1]), _later(starts)])  # (L + 2, ...)
+        cut = torch.cat([torch.zeros_like(starts[: history - 1]), _later(starts)])  # (L + 2, ...)
         out = self.weight[:, history] * inputs + self.bias
         blocked = torch.zeros_like(starts)
         for lag in range(1, TAPS):
             # The tap at this lag is cut if an episode starts at t - lag + 1 ... t.
-            blocked = blocked | cut[history - lag:history - lag + length]
-            tap = padded[history - lag:history - lag + length]
+            blocked = blocked | cut[history - lag : history - lag + length]
+            tap = padded[history - lag : history - lag + length]
             out = out + torch.where(blocked[..., None], 0.0, self.weight[:, history - lag] * tap)
         return out
 
@@ -147,8 +151,9 @@ class TemporalBlock(nn.Module):
         tokens = tokens + self.output(mixed)
         return tokens + self.feedforward(self.feedforward_norm(tokens))
 
-    def step(self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor
-             ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def step(
+        self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """One step: tokens and state (..., D), buffer (..., 3, D). Returns the outputs, the
         new state and the new buffer."""
         normed = self.input_norm(tokens)
@@ -157,8 +162,9 @@ class TemporalBlock(nn.Module):
         buffer = torch.cat([buffer[..., 1:, :], projected[..., None, :]], -2)
         return self._finish(tokens, state * F.gelu(self.gate_branch(normed))), state, buffer
 
-    def sequence(self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor,
-                 starts: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def sequence(
+        self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor, starts: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """A segment: tokens (L, ..., D), state (..., D), buffer (..., 3, D), starts (L, ...).
         Returns the outputs and the final state and buffer (unmasked, as `step` leaves them)."""
         normed = self.input_norm(tokens)
@@ -167,9 +173,15 @@ class TemporalBlock(nn.Module):
         if kernels.switches.temporal_mix and temporal.applies(convolved):
             recurrence = self.recurrence
             recurrent, mixed = temporal.temporal_mix(
-                recurrence.gates(convolved), convolved, self.gate_branch(normed),
-                _later(starts), recurrence.log_decay, state, DECAY_EXPONENT,
-                CONTRIBUTION_FLOOR)
+                recurrence.gates(convolved),
+                convolved,
+                self.gate_branch(normed),
+                _later(starts),
+                recurrence.log_decay,
+                state,
+                DECAY_EXPONENT,
+                CONTRIBUTION_FLOOR,
+            )
             state = recurrent[-1]
         else:
             recurrent, state = self.recurrence.sequence(convolved, state, starts)

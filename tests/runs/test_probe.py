@@ -37,9 +37,14 @@ def test_the_probe_records_both_peaks_in_the_run(tmp_path):
 def test_a_run_over_its_budget_stops_after_the_first_update_naming_the_sizes(tmp_path):
     run, trainer = _run(tmp_path, updates=5)
     total = torch.cuda.get_device_properties(CUDA).total_memory
-    with torch.random.fork_rng(devices=[CUDA]), pytest.raises(
-            MemoryBudgetError, match=r"the first update reserved \d+\.\d\d GB, over the budget "
-                                     r"of 0\.00 GB .* at 16 environments, 64 micro-batch rows"):
+    with (
+        torch.random.fork_rng(devices=[CUDA]),
+        pytest.raises(
+            MemoryBudgetError,
+            match=r"the first update reserved \d+\.\d\d GB, over the budget "
+            r"of 0\.00 GB .* at 16 environments, 64 micro-batch rows",
+        ),
+    ):
         session.train(run, trainer, log=lambda row: None, margin=total)
     record = Run.open(tmp_path, "a").record
     assert record["status"] == "failed" and record["probe"]["reserved"] > 0

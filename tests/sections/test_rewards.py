@@ -21,6 +21,7 @@ def test_levels_and_weights():
 
 # ------------------------------------------------------------------ real play
 
+
 def _check_conservation(ledger, state, types):
     """Each living ship's column (its ship rows plus its boundary entry) sums to its shield
     deficit within 1e-3 points; a dead ship's column was cleared at its death."""
@@ -69,6 +70,7 @@ def test_levels_are_zero_sum_and_the_ledger_holds_every_deficit(mode):
 
 # ------------------------------------------------------------------ scenarios
 
+
 class Match:
     """Synthetic ticks for a few ships: events built from the amounts given, the ledger
     carried, the rewards summed per ship and level."""
@@ -95,12 +97,20 @@ class Match:
         for ship in died:
             dead[0, ship] = True
         zero = torch.zeros(1, N)
-        events = Events(damage=damage, boundary_damage=vectors["boundary"], died=dead,
-                        fired=dead & False, spawned=dead & False,
-                        killer=torch.full((1, N), -1, dtype=torch.int32),
-                        done=torch.tensor([done]), shield_lost=vectors["lost"],
-                        shield_restored=vectors["restored"], objective_progress=zero,
-                        objective=zero, result=torch.tensor([result], dtype=torch.int32))
+        events = Events(
+            damage=damage,
+            boundary_damage=vectors["boundary"],
+            died=dead,
+            fired=dead & False,
+            spawned=dead & False,
+            killer=torch.full((1, N), -1, dtype=torch.int32),
+            done=torch.tensor([done]),
+            shield_lost=vectors["lost"],
+            shield_restored=vectors["restored"],
+            objective_progress=zero,
+            objective=zero,
+            result=torch.tensor([result], dtype=torch.int32),
+        )
         levels, self.ledger = rewards.reward_step(CONFIG, self.ledger, events, self.team)
         assert levels.sum(1).abs().max() < 1e-6, "zero-sum"
         self.total += levels[0]
@@ -192,15 +202,23 @@ def test_the_outcome_pays_every_ship_of_both_teams():
 
 # ------------------------------------------------------------------ the rollout
 
+
 @pytest.mark.parametrize("mode", ["team_deathmatch", "frontline"])
 def test_rollout_stores_every_level_zero_sum_per_environment(mode):
     from bnb.controllers.scripted import Random
     from bnb.runtime.rollout import Rollout
 
     config = cases.MODES[mode]
-    rollout = Rollout(config, (Pool("self_play", 1.0, ("r", "r")),),
-                      {"r": Random(config.ships_per_team)}, "r", 8, 64, torch.device("cpu"),
-                      compile=False)
+    rollout = Rollout(
+        config,
+        (Pool("self_play", 1.0, ("r", "r")),),
+        {"r": Random(config.ships_per_team)},
+        "r",
+        8,
+        64,
+        torch.device("cpu"),
+        compile=False,
+    )
     trajectory = rollout.run()
     L, R, S, K = trajectory.reward.shape
     assert (R, S, K) == (16, config.ships_per_team, len(REWARD_LEVELS))
@@ -222,9 +240,16 @@ def test_the_rollouts_ledger_holds_every_deficit(mode):
 
     config = cases.MODES[mode]
     S = config.ships_per_team
-    rollout = Rollout(config, (Pool("random", 0.5, ("r", "r")), Pool("chaser", 0.5, ("c", "r"))),
-                      {"r": Random(S), "c": Chaser(S)}, "r", 8, 8, torch.device("cpu"),
-                      compile=False)
+    rollout = Rollout(
+        config,
+        (Pool("random", 0.5, ("r", "r")), Pool("chaser", 0.5, ("c", "r"))),
+        {"r": Random(S), "c": Chaser(S)},
+        "r",
+        8,
+        8,
+        torch.device("cpu"),
+        compile=False,
+    )
     held = 0.0
     for _ in range(16):
         rollout.run()
@@ -253,12 +278,23 @@ def test_a_bigger_game_runs_too():
     """The rewards do not depend on the sizes: a 50v50 tick of zero events is all zeros."""
     N = 100
     zero = torch.zeros(2, N)
-    events = Events(damage=torch.zeros(2, N, N), boundary_damage=zero, died=zero.bool(),
-                    fired=zero.bool(), spawned=zero.bool(), killer=zero.int() - 1,
-                    done=torch.zeros(2, dtype=torch.bool), shield_lost=zero, shield_restored=zero,
-                    objective_progress=zero, objective=zero, result=torch.zeros(2).int())
-    levels, ledger = rewards.reward_step(CONFIG, rewards.blank_ledger(2, N), events,
-                                         torch.arange(N) // 50)
+    events = Events(
+        damage=torch.zeros(2, N, N),
+        boundary_damage=zero,
+        died=zero.bool(),
+        fired=zero.bool(),
+        spawned=zero.bool(),
+        killer=zero.int() - 1,
+        done=torch.zeros(2, dtype=torch.bool),
+        shield_lost=zero,
+        shield_restored=zero,
+        objective_progress=zero,
+        objective=zero,
+        result=torch.zeros(2).int(),
+    )
+    levels, ledger = rewards.reward_step(
+        CONFIG, rewards.blank_ledger(2, N), events, torch.arange(N) // 50
+    )
     assert levels.shape == (2, N, 5) and not levels.any()
     assert ledger.ships.shape == (2, N, N) and ledger.boundary.shape == (2, N)
     assert GameConfig(50, 40, 8200.0).num_ships == N

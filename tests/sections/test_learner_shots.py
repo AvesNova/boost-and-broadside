@@ -26,9 +26,15 @@ def _frame(launch, x, y, velocity_x, velocity_y):
     """World values in the launch heading's frame, as the re-simulation reports them."""
     cos, sin = launch.heading_cos, launch.heading_sin
     dx, dy = x - launch.x, y - launch.y
-    return torch.stack([dx * cos + dy * sin, dy * cos - dx * sin,
-                        velocity_x * cos + velocity_y * sin,
-                        velocity_y * cos - velocity_x * sin], -1)
+    return torch.stack(
+        [
+            dx * cos + dy * sin,
+            dy * cos - dx * sin,
+            velocity_x * cos + velocity_y * sin,
+            velocity_y * cos - velocity_x * sin,
+        ],
+        -1,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -49,17 +55,33 @@ def played():
         slot = state.ships.next_slot
         moved, sweep = api.move(rules, types, state, action, spread)
         hit = hits(rules, types, sweep, moved.ships, moved.bullets, alive)
-        state, events = api.resolve(rules, types, moved, sweep,
-                                    api.uniforms(rules, ENVS, generator=generator))
+        state, events = api.resolve(
+            rules, types, moved, sweep, api.uniforms(rules, ENVS, generator=generator)
+        )
         bullets = moved.bullets
         index = torch.exp(bullets.log_refractive_index)
         speed = bullets.proper_speed / index  # world speed
-        game.append(dict(fired=moved.ships.fired, slot=slot, x=bullets.x, y=bullets.y,
-                         velocity_x=bullets.direction_x * speed,
-                         velocity_y=bullets.direction_y * speed,
-                         index=index, hit=hit.bullet_hit, damage=hit.damage))
-        captures.append(ShotCapture(launch=launch, displacement_x=sweep.ship_displacement_x,
-                                    displacement_y=sweep.ship_displacement_y, alive=alive))
+        game.append(
+            dict(
+                fired=moved.ships.fired,
+                slot=slot,
+                x=bullets.x,
+                y=bullets.y,
+                velocity_x=bullets.direction_x * speed,
+                velocity_y=bullets.direction_y * speed,
+                index=index,
+                hit=hit.bullet_hit,
+                damage=hit.damage,
+            )
+        )
+        captures.append(
+            ShotCapture(
+                launch=launch,
+                displacement_x=sweep.ship_displacement_x,
+                displacement_y=sweep.ship_displacement_y,
+                alive=alive,
+            )
+        )
         fields.append(obs.fields[:, 0])
         dones.append(events.done)
         spreads.append(spread)
@@ -94,11 +116,14 @@ def test_a_resimulated_shot_is_the_bullet_the_game_fires(played):
             if tick + age >= TICKS or not shots.age_valid[tick, env, ship, age]:
                 break
             record = game[tick + age]
-            expected = _frame(launch, *(record[name][env, ship, slot]
-                                        for name in ("x", "y", "velocity_x", "velocity_y")))
+            expected = _frame(
+                launch,
+                *(record[name][env, ship, slot] for name in ("x", "y", "velocity_x", "velocity_y")),
+            )
             assert torch.equal(shots.snapshots[tick, env, ship, age, :4], expected)
-            assert torch.equal(shots.snapshots[tick, env, ship, age, 4],
-                               record["index"][env, ship, slot])
+            assert torch.equal(
+                shots.snapshots[tick, env, ship, age, 4], record["index"][env, ship, slot]
+            )
             compared += 1
     assert compared > 10_000
 
@@ -141,7 +166,7 @@ def test_a_flight_an_episode_end_cuts_short_is_invalid(played):
     cut = hit_first = 0
     for tick in range(TICKS - 12):
         for env in range(ENVS):
-            ends = done[tick:tick + 11, env].nonzero()
+            ends = done[tick : tick + 11, env].nonzero()
             if not ends.numel():
                 continue
             end = tick + int(ends[0])  # the episode ends after this tick
@@ -149,8 +174,11 @@ def test_a_flight_an_episode_end_cuts_short_is_invalid(played):
                 if not capture.alive[tick, env, ship]:
                     assert not shots.valid[tick, env, ship]  # a dead ship fires nothing
                     continue
-                last_age = int(shots.age_valid[tick, env, ship].nonzero().max()) \
-                    if shots.valid[tick, env, ship] else None
+                last_age = (
+                    int(shots.age_valid[tick, env, ship].nonzero().max())
+                    if shots.valid[tick, env, ship]
+                    else None
+                )
                 if last_age is None:
                     cut += 1
                 else:
@@ -191,11 +219,17 @@ def test_the_rollouts_displacement_is_the_next_row_minus_this_one(stored):
     thousand metres (an ulp is under 5e-4 m)."""
     rows = labels.privileged_rows(stored)
     following = labels.next_rows(stored, rows)
-    moving = (stored.capture.alive & (following[..., SHIP["alive"]] > 0.5)
-              & (following[..., SHIP["spawned"]] < 0.5) & ~stored.done[..., None])
+    moving = (
+        stored.capture.alive
+        & (following[..., SHIP["alive"]] > 0.5)
+        & (following[..., SHIP["spawned"]] < 0.5)
+        & ~stored.done[..., None]
+    )
     assert moving.float().mean() > 0.5
-    for axis, displacement in (("x", stored.capture.displacement_x),
-                               ("y", stored.capture.displacement_y)):
+    for axis, displacement in (
+        ("x", stored.capture.displacement_x),
+        ("y", stored.capture.displacement_y),
+    ):
         moved = following[..., SHIP[axis]] - rows[..., SHIP[axis]]
         torch.testing.assert_close(displacement[moving], moved[moving], rtol=0, atol=1e-3)
     assert stored.capture.displacement_x[moving].abs().max() > 1.0  # the ships do move
@@ -210,8 +244,10 @@ def test_a_shot_launched_near_the_segments_end_is_invalid_whatever_it_hit(played
     short = segment(length)
     tail = length - (MOVES - 1)
     assert not short.valid[tail:].any()
-    assert long.valid[tail:length].any() and (long.hit[tail:length][long.valid[tail:length]]
-                                              != HIT_NONE).any()  # the tail held hits
+    assert (
+        long.valid[tail:length].any()
+        and (long.hit[tail:length][long.valid[tail:length]] != HIT_NONE).any()
+    )  # the tail held hits
     body = slice(0, tail)
     assert torch.equal(short.valid[body], long.valid[body])
     valid = short.valid[body]
@@ -227,24 +263,38 @@ def _still(rows: int, length: int, positions: list[tuple[float, float]]) -> Shot
     x = torch.tensor([p[0] for p in positions]).expand(length, 1, rows)
     y = torch.tensor([p[1] for p in positions]).expand(length, 1, rows)
     zero = torch.zeros(length, 1, rows)
-    launch = Launch(x=x, y=y, heading_cos=zero + 1.0, heading_sin=zero, proper_speed=zero,
-                    angle_of_attack_cos=zero + 1.0, angle_of_attack_sin=zero,
-                    log_refractive_index=zero, log_index_gradient_x=zero,
-                    log_index_gradient_y=zero,
-                    ship_type=torch.zeros(length, 1, rows, dtype=torch.int32))
-    return ShotCapture(launch=launch, displacement_x=zero, displacement_y=zero,
-                       alive=torch.ones(length, 1, rows, dtype=torch.bool))
+    launch = Launch(
+        x=x,
+        y=y,
+        heading_cos=zero + 1.0,
+        heading_sin=zero,
+        proper_speed=zero,
+        angle_of_attack_cos=zero + 1.0,
+        angle_of_attack_sin=zero,
+        log_refractive_index=zero,
+        log_index_gradient_x=zero,
+        log_index_gradient_y=zero,
+        ship_type=torch.zeros(length, 1, rows, dtype=torch.int32),
+    )
+    return ShotCapture(
+        launch=launch,
+        displacement_x=zero,
+        displacement_y=zero,
+        alive=torch.ones(length, 1, rows, dtype=torch.bool),
+    )
 
 
-@pytest.mark.parametrize(("shooter", "positions", "distance", "side"), [
-    # 2v2, rows 0-1 one side and 2-3 the other; the shooter at the origin fires along +x.
-    (0, [(0, 0), (100, 30), (100, -50), (100, 2000)], 30.0, SIDE_ALLY),
-    (0, [(0, 0), (100, 50), (100, -30), (100, 2000)], 30.0, SIDE_ENEMY),
-    (2, [(100, -50), (100, 2000), (0, 0), (100, 30)], 30.0, SIDE_ALLY),
-    (2, [(100, 2000), (100, -30), (0, 0), (100, 50)], 30.0, SIDE_ENEMY),
-])
-def test_a_miss_records_its_closest_pass_and_that_ships_side(shooter, positions, distance,
-                                                             side):
+@pytest.mark.parametrize(
+    ("shooter", "positions", "distance", "side"),
+    [
+        # 2v2, rows 0-1 one side and 2-3 the other; the shooter at the origin fires along +x.
+        (0, [(0, 0), (100, 30), (100, -50), (100, 2000)], 30.0, SIDE_ALLY),
+        (0, [(0, 0), (100, 50), (100, -30), (100, 2000)], 30.0, SIDE_ENEMY),
+        (2, [(100, -50), (100, 2000), (0, 0), (100, 30)], 30.0, SIDE_ALLY),
+        (2, [(100, 2000), (100, -30), (0, 0), (100, 50)], 30.0, SIDE_ENEMY),
+    ],
+)
+def test_a_miss_records_its_closest_pass_and_that_ships_side(shooter, positions, distance, side):
     """A straight shot past ships standing beside its line: the closest pass is the nearest
     one's offset from the line (computed here by hand, not by the re-simulation), on the
     side of that ship relative to the shooter. Tolerance: float32 rounding along a flight of
@@ -253,11 +303,18 @@ def test_a_miss_records_its_closest_pass_and_that_ships_side(shooter, positions,
     length, rows = MOVES, 4
     capture = _still(rows, length, positions)
     far_field = torch.tensor([1e5, 1e5, 1.0, 1.0, 0.0]).expand(length, 1, 1, 5)
-    shots = resimulate(rules, types, capture, far_field,
-                       torch.zeros(length, 1, dtype=torch.bool),
-                       torch.zeros(length, 1, rows, 2), 2)
+    shots = resimulate(
+        rules,
+        types,
+        capture,
+        far_field,
+        torch.zeros(length, 1, dtype=torch.bool),
+        torch.zeros(length, 1, rows, 2),
+        2,
+    )
     assert shots.valid[0, 0, shooter] and shots.hit[0, 0, shooter] == HIT_NONE
     assert shots.snapshots[0, 0, shooter, -1, 0] > 100.0  # the flight passes the ships
-    torch.testing.assert_close(shots.distance[0, 0, shooter], torch.tensor(distance),
-                               rtol=0, atol=1e-3)
+    torch.testing.assert_close(
+        shots.distance[0, 0, shooter], torch.tensor(distance), rtol=0, atol=1e-3
+    )
     assert shots.side[0, 0, shooter] == side

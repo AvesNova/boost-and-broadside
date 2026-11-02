@@ -20,6 +20,11 @@ class RelationalController:
     def step(self, carry: None, obs: Obs, done: torch.Tensor) -> tuple[Action, None, Outputs]:
         decision = self.model(obs)
         joint, logp, entropy = policy.sample(decision.policy_logits)
-        outputs = Outputs(logp=logp, entropy=entropy, value=decision.values.sum(-1),
-                          values=decision.values, outcome=outcome_probabilities(decision))
+        outputs = Outputs(
+            logp=logp,
+            entropy=entropy,
+            value=decision.values.sum(-1),
+            values=decision.values,
+            outcome=outcome_probabilities(decision),
+        )
         return from_joint(joint), carry, outputs

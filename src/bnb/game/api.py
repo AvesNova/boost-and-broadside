@@ -35,10 +35,33 @@ from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, rules_of
 from .ship_types import ShipTypes, per_ship, ship_types
 from .state import Fields, State, Sweep, replace, sweep_like
 
-__all__ = ["LN_SQRT2", "MAP_SCALE_RADIUS", "PRESETS", "TEAMS", "Rules", "ShipTypes", "State",
-           "Sweep", "core_radius", "log_index", "move", "per_ship", "perceive", "reset",
-           "resolve", "rules_of", "ship_types", "spread", "start_clocks", "step", "sweep_like",
-           "uniforms", "vision_range", "visible", "zone_sides"]
+__all__ = [
+    "LN_SQRT2",
+    "MAP_SCALE_RADIUS",
+    "PRESETS",
+    "TEAMS",
+    "Rules",
+    "ShipTypes",
+    "State",
+    "Sweep",
+    "core_radius",
+    "log_index",
+    "move",
+    "per_ship",
+    "perceive",
+    "reset",
+    "resolve",
+    "rules_of",
+    "ship_types",
+    "spread",
+    "start_clocks",
+    "step",
+    "sweep_like",
+    "uniforms",
+    "vision_range",
+    "visible",
+    "zone_sides",
+]
 
 
 def spread(rules: Rules, batch: int, device=None, generator=None) -> torch.Tensor:
@@ -56,9 +79,15 @@ def start_clocks(state: State, episode_tick: torch.Tensor) -> State:
     return replace(state, match=replace(state.match, episode_tick=episode_tick.to(torch.int32)))
 
 
-def log_index(centre_x: torch.Tensor, centre_y: torch.Tensor, radius: torch.Tensor,
-              band_width: torch.Tensor, level: torch.Tensor, x: torch.Tensor,
-              y: torch.Tensor) -> torch.Tensor:
+def log_index(
+    centre_x: torch.Tensor,
+    centre_y: torch.Tensor,
+    radius: torch.Tensor,
+    band_width: torch.Tensor,
+    level: torch.Tensor,
+    x: torch.Tensor,
+    y: torch.Tensor,
+) -> torch.Tensor:
     """(B, P) ln n, the medium's log refractive index, at points x, y (B, P) for the fields
     given as (B, M) centres, radii and band widths (m) and int32 levels: the game's
     `medium`, for a caller that holds fields outside a state (such as a subset of them)."""

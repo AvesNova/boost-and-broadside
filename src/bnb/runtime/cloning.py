@@ -24,8 +24,7 @@ from .train import LEARNER, SCRIPTED, Trainer
 # scripted seat plays the labels' distribution (`bnb.learn.bc.TeacherOpponent`), so the
 # live score is against the teacher the clone copies. Section 8's pool replaces this when
 # it exists.
-LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)),
-          Pool("scripted", 0.5, (LEARNER, SCRIPTED)))
+LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("scripted", 0.5, (LEARNER, SCRIPTED)))
 
 
 def opponent_kind(pool: Pool) -> str:
@@ -46,14 +45,22 @@ def scores(pools: tuple[Pool, ...], metrics: dict) -> dict:
     out = {}
     for kind, (wins, draws, losses) in totals.items():
         games = wins + draws + losses
-        out[kind] = dict(wins=wins, draws=draws, losses=losses, games=games,
-                         score=(wins + 0.5 * draws) / games if games else None)
+        out[kind] = dict(
+            wins=wins,
+            draws=draws,
+            losses=losses,
+            games=games,
+            score=(wins + 0.5 * draws) / games if games else None,
+        )
     return out
 
 
-def clone(trainer: Trainer, stop: StopConfig = StopConfig(),
-          log: Callable[[dict], None] = print,
-          interrupted: Callable[[], bool] = lambda: False) -> str:
+def clone(
+    trainer: Trainer,
+    stop: StopConfig = StopConfig(),
+    log: Callable[[dict], None] = print,
+    interrupted: Callable[[], bool] = lambda: False,
+) -> str:
     """BC with `trainer` (objective "bc") until a stop rule fires or `interrupted()` is true
     after an update: the rule's name ("score", "kl_plateau" or "budget"), or
     "interrupted"."""
@@ -64,13 +71,23 @@ def clone(trainer: Trainer, stop: StopConfig = StopConfig(),
         row = trainer.update()
         live = scores(trainer.rollout.lineup.pools, row["pools"])
         against = live.get(SCRIPTED, dict(wins=0, draws=0, losses=0))
-        reason = rule.observe(trainer.ppo.env_steps, against["wins"], against["draws"],
-                              against["losses"], row["bc_kl"])
+        reason = rule.observe(
+            trainer.ppo.env_steps,
+            against["wins"],
+            against["draws"],
+            against["losses"],
+            row["bc_kl"],
+        )
         if reason is None and interrupted():
             reason = "interrupted"
-        row.update(scores=live, window_score=rule.score, window_lower_bound=rule.lower_bound,
-                   kl_average=rule.kl_average,
-                   env_steps=trainer.ppo.env_steps, stopped_by=reason)
+        row.update(
+            scores=live,
+            window_score=rule.score,
+            window_lower_bound=rule.lower_bound,
+            kl_average=rule.kl_average,
+            env_steps=trainer.ppo.env_steps,
+            stopped_by=reason,
+        )
         log(row)
         if reason is not None:
             return reason
@@ -91,23 +108,41 @@ def warm_start(trainer: Trainer, student: Trainer) -> None:
 
 
 @torch.no_grad()
-def teacher_distributions(game: GameConfig, pools: tuple[Pool, ...], num_envs: int,
-                          segments: int, device: torch.device, length: int = 128,
-                          compile: bool = True) -> torch.Tensor:
+def teacher_distributions(
+    game: GameConfig,
+    pools: tuple[Pool, ...],
+    num_envs: int,
+    segments: int,
+    device: torch.device,
+    length: int = 128,
+    compile: bool = True,
+) -> torch.Tensor:
     """The scripted agent's natural distributions (tokens, 42) over the living own ships of
     its own games: it plays every seat of these pools (each pool's seats renamed to it),
     from staggered clocks, for `segments` segments of `length` ticks."""
     agent = Scripted(characteristics(api.ship_types(device), api.rules_of(game)))
-    own_pools = tuple(Pool(pool.name, pool.share, (SCRIPTED,) * len(pool.seats), pool.fog_share,
-                           pool.mode, pool.arena_radius, pool.spawn_groups, pool.episode_s,
-                           pool.respawn_s) for pool in pools)
-    rollout = Rollout(game, own_pools, {SCRIPTED: agent}, SCRIPTED, num_envs, length, device,
-                      compile=compile)
+    own_pools = tuple(
+        Pool(
+            pool.name,
+            pool.share,
+            (SCRIPTED,) * len(pool.seats),
+            pool.fog_share,
+            pool.mode,
+            pool.arena_radius,
+            pool.spawn_groups,
+            pool.episode_s,
+            pool.respawn_s,
+        )
+        for pool in pools
+    )
+    rollout = Rollout(
+        game, own_pools, {SCRIPTED: agent}, SCRIPTED, num_envs, length, device, compile=compile
+    )
     rows = []
     for _ in range(segments):
         obs = rollout.run().obs
         views = flat_views(obs)
         probabilities = distribution(views, agent.characteristics, agent.parameters)
-        alive = views.ships[:, :probabilities.shape[1], SHIP["alive"]] > 0.5
+        alive = views.ships[:, : probabilities.shape[1], SHIP["alive"]] > 0.5
         rows.append(probabilities[alive])
     return torch.cat(rows)

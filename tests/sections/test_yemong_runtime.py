@@ -8,8 +8,11 @@ import yemong_cases as cases
 
 from bnb.models.yemong import policy
 
-pytestmark = [pytest.mark.gpu, pytest.mark.slow,
-              pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")]
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.slow,
+    pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"),
+]
 CUDA = torch.device("cuda") if torch.cuda.is_available() else None
 
 
@@ -18,8 +21,7 @@ def test_compiled_step_captures_and_samples_fresh_actions():
     net = cases.model().to(CUDA)
     controller = cases.controller(net, cases.SQUAD)
     _, trajectory = cases.rollout(cases.model(), cases.SQUAD, length=4)
-    obs = torch.utils._pytree.tree_map_only(torch.Tensor, lambda x: x[-1].to(CUDA),
-                                            trajectory.obs)
+    obs = torch.utils._pytree.tree_map_only(torch.Tensor, lambda x: x[-1].to(CUDA), trajectory.obs)
     carry = controller.init_carry(obs.ships.shape[0], CUDA)
     done = torch.zeros(obs.ships.shape[0], dtype=torch.bool, device=CUDA)
     step = torch.compile(controller.step, fullgraph=True, dynamic=False)
@@ -46,8 +48,12 @@ def test_compiled_rollout_stores_what_unroll_needs():
     # The compiled, captured act stage stores exactly what its step read, so unroll agrees to
     # float32 rounding (measured 2e-6 over 64 ticks, flat in time).
     with torch.no_grad():
-        unrolled = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
-                              cases.resets(trajectory.obs))
+        unrolled = net.unroll(
+            trajectory.initial_carry,
+            trajectory.obs,
+            trajectory.replay,
+            cases.resets(trajectory.obs),
+        )
     assert cases.scale_error(unrolled.values, trajectory.values) <= 1e-5
     logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
     assert cases.scale_error(logp, trajectory.logp) <= 1e-5

@@ -31,8 +31,15 @@ from bnb.models.yemong.temporal import TemporalBlock, parallel_scan  # noqa: E40
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="the kernels need CUDA")
 CUDA = torch.device("cuda")
 OWN, SHIPS, FIELDS, ZONES = 5, 10, 10, 5
-OUTPUTS = ("policy_logits", "enemy_action_logits", "next_state_logits", "value_logits",
-           "outcome_logits", "density_log_rates", "shot_outcome_logits")
+OUTPUTS = (
+    "policy_logits",
+    "enemy_action_logits",
+    "next_state_logits",
+    "value_logits",
+    "outcome_logits",
+    "density_log_rates",
+    "shot_outcome_logits",
+)
 
 
 def _generator(seed: int) -> torch.Generator:
@@ -42,8 +49,13 @@ def _generator(seed: int) -> torch.Generator:
 def _weighted_sum(outputs, seed: int = 1) -> torch.Tensor:
     """A loss whose gradient reaches every element with its own weight."""
     generator = _generator(seed)
-    return sum((output.double() * torch.randn(output.shape, generator=generator, device=CUDA,
-                                              dtype=torch.float64)).sum() for output in outputs)
+    return sum(
+        (
+            output.double()
+            * torch.randn(output.shape, generator=generator, device=CUDA, dtype=torch.float64)
+        ).sum()
+        for output in outputs
+    )
 
 
 def _gradients(function, inputs, seed: int = 1):
@@ -59,12 +71,15 @@ def _relative_rms(actual: torch.Tensor, expected: torch.Tensor) -> float:
     """rms(actual - expected) / rms(expected): a systematic error shows here, where rounding
     averages out."""
     actual, expected = actual.double(), expected.double()
-    return ((actual - expected).square().mean().sqrt()
-            / expected.square().mean().sqrt().clamp_min(1e-30)).item()
+    return (
+        (actual - expected).square().mean().sqrt()
+        / expected.square().mean().sqrt().clamp_min(1e-30)
+    ).item()
 
 
-def _assert_as_close(got, slow, want, floor: float = 0.0, rms_floor: float | None = None,
-                     label: str = ""):
+def _assert_as_close(
+    got, slow, want, floor: float = 0.0, rms_floor: float | None = None, label: str = ""
+):
     """The kernel's result `got` is as close to the float64 reference `want` as the plain
     path's `slow`: its largest error within twice the plain path's (or the floor), and its
     rms error within 1.5 times the plain path's (or the rms floor, by default the floor)."""
@@ -78,6 +93,7 @@ def _bf16(function):
     def run(*inputs):
         with torch.autocast("cuda", torch.bfloat16):
             return function(*inputs)
+
     return run
 
 
@@ -115,8 +131,7 @@ def test_scan_is_bitwise_repeatable():
 # ------------------------------------------------------------------ attention
 
 
-def _attention_inputs(seed: int = 0, views=(3, 4), tokens=11, maps=10, heads=2, width=64,
-                      pairs=20):
+def _attention_inputs(seed: int = 0, views=(3, 4), tokens=11, maps=10, heads=2, width=64, pairs=20):
     """Queries, keys and values as strided views of a fused projection, as the sublayer
     makes them, and the rotary tables."""
     generator = _generator(seed)
@@ -137,16 +152,20 @@ def _attention(function, heads):
         tables = (torch.cos(token_angles), torch.sin(token_angles))
         map_tables = (torch.cos(map_angles), torch.sin(map_angles))
         return function(query, key, value, map_key, map_value, tables, map_tables)
+
     return run
 
 
 def test_attention_equals_the_plain_attention():
     fused, map_fused, token_angles, map_angles, heads = _attention_inputs()
-    expected = _gradients(_attention(SpatialBlock._attend, heads),
-                          [fused.double(), map_fused.double()]
-                          + [token_angles.double(), map_angles.double()])
-    actual = _gradients(lambda f, m: _attention(attention.attend, heads)(
-        f, m, token_angles, map_angles), [fused, map_fused])
+    expected = _gradients(
+        _attention(SpatialBlock._attend, heads),
+        [fused.double(), map_fused.double()] + [token_angles.double(), map_angles.double()],
+    )
+    actual = _gradients(
+        lambda f, m: _attention(attention.attend, heads)(f, m, token_angles, map_angles),
+        [fused, map_fused],
+    )
     for got, want in zip(actual[0] + actual[1], expected[0] + expected[1][:2], strict=True):
         torch.testing.assert_close(got.double(), want, rtol=1e-5, atol=1e-5)
 
@@ -154,15 +173,18 @@ def test_attention_equals_the_plain_attention():
 def test_attention_in_bf16_is_as_close_as_the_plain_attention():
     fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=1)
     tables = [token_angles, map_angles]
-    expected = _gradients(_attention(SpatialBlock._attend, heads),
-                          [fused.double(), map_fused.double()] + [t.double() for t in tables])
+    expected = _gradients(
+        _attention(SpatialBlock._attend, heads),
+        [fused.double(), map_fused.double()] + [t.double() for t in tables],
+    )
     bf16 = [fused.bfloat16(), map_fused.bfloat16()]
-    plain = _gradients(_bf16(lambda f, m: _attention(SpatialBlock._attend, heads)(f, m, *tables)),
-                       bf16)
-    fast = _gradients(_bf16(lambda f, m: _attention(attention.attend, heads)(f, m, *tables)),
-                      bf16)
-    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1],
-                               expected[0] + expected[1][:2], strict=True):
+    plain = _gradients(
+        _bf16(lambda f, m: _attention(SpatialBlock._attend, heads)(f, m, *tables)), bf16
+    )
+    fast = _gradients(_bf16(lambda f, m: _attention(attention.attend, heads)(f, m, *tables)), bf16)
+    for got, slow, want in zip(
+        fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1][:2], strict=True
+    ):
         _assert_as_close(got, slow, want)
 
 
@@ -194,8 +216,9 @@ def test_gated_mlp_in_bf16_is_as_close_as_the_plain_mlp():
     expected = _gradients(_gated_plain, [x.double() for x in inputs])
     plain = _gradients(_bf16(_gated_plain), inputs)
     fast = _gradients(_bf16(gated.gated_hidden), inputs)
-    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1],
-                               strict=True):
+    for got, slow, want in zip(
+        fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1], strict=True
+    ):
         _assert_as_close(got, slow, want)
 
 
@@ -219,8 +242,9 @@ def test_gated_mlp_is_bitwise_repeatable():
 # ------------------------------------------------------------------ temporal mix
 
 
-def _temporal_case(seed: int = 0, length: int = 40, views: int = 3, tokens: int = 11,
-                   width: int = 128):
+def _temporal_case(
+    seed: int = 0, length: int = 40, views: int = 3, tokens: int = 11, width: int = 128
+):
     torch.manual_seed(seed)
     block = TemporalBlock(width).to(CUDA)
     generator = _generator(seed)
@@ -240,21 +264,25 @@ def _temporal_run(block: TemporalBlock, inputs, starts, precision: str):
     with torch.autocast("cuda", torch.bfloat16, enabled=precision == "bfloat16"):
         outputs, state, _ = block.sequence(*inputs, starts)
     _weighted_sum((outputs, state)).backward()
-    return ([outputs.detach(), state.detach()],
-            [x.grad for x in inputs] + [parameter.grad for parameter in block.parameters()])
+    return (
+        [outputs.detach(), state.detach()],
+        [x.grad for x in inputs] + [parameter.grad for parameter in block.parameters()],
+    )
 
 
 @pytest.mark.parametrize("precision", ["float32", "bfloat16"])
 def test_temporal_mix_is_as_close_as_the_plain_sublayer(precision):
     block, inputs, starts = _temporal_case()
-    expected = _temporal_run(copy.deepcopy(block).double(), [x.double() for x in inputs],
-                             starts, "float64")
+    expected = _temporal_run(
+        copy.deepcopy(block).double(), [x.double() for x in inputs], starts, "float64"
+    )
     with kernels.plain():
         plain = _temporal_run(block, inputs, starts, precision)
     fast = _temporal_run(block, inputs, starts, precision)
     floor = 1e-5 if precision == "float32" else 0.0
-    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1],
-                               strict=True):
+    for got, slow, want in zip(
+        fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1], strict=True
+    ):
         _assert_as_close(got, slow, want, floor)
 
 
@@ -283,8 +311,10 @@ def _head_run(group: HeadGroup, inputs: torch.Tensor, bfloat16: bool):
     with torch.autocast("cuda", torch.bfloat16, enabled=bfloat16):
         outputs = group(inputs)
     _weighted_sum(outputs).backward()
-    return ([output.detach() for output in outputs],
-            [inputs.grad] + [parameter.grad for parameter in group.parameters()])
+    return (
+        [output.detach() for output in outputs],
+        [inputs.grad] + [parameter.grad for parameter in group.parameters()],
+    )
 
 
 def test_heads_in_bf16_are_as_close_as_the_plain_heads():
@@ -295,8 +325,9 @@ def test_heads_in_bf16_are_as_close_as_the_plain_heads():
         plain = _head_run(group, inputs, True)
     assert head_kernel.applies(inputs, group.hidden) is False  # outside autocast
     fast = _head_run(group, inputs, True)
-    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1],
-                               strict=True):
+    for got, slow, want in zip(
+        fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1], strict=True
+    ):
         _assert_as_close(got, slow, want)
 
 
@@ -316,15 +347,26 @@ def segment():
     the replay records `step` stored over the segment."""
     net = cases.double(cases.model()).to(CUDA)
     steps, views = 24, 6
-    obs, reset = random_segment(steps, views, SHIPS, FIELDS, ZONES, device=CUDA,
-                                dtype=torch.float64, seed=3, reset_steps=(9,))
+    obs, reset = random_segment(
+        steps,
+        views,
+        SHIPS,
+        FIELDS,
+        ZONES,
+        device=CUDA,
+        dtype=torch.float64,
+        seed=3,
+        reset_steps=(9,),
+    )
     carry = net.initial_carry(views, OWN, SHIPS, device=CUDA)
     generator = _generator(4)
     carry = dataclasses.replace(
-        carry, state=torch.randn(carry.state.shape, generator=generator, device=CUDA,
-                                 dtype=torch.float64),
-        convolution_buffer=torch.randn(carry.convolution_buffer.shape, generator=generator,
-                                       device=CUDA, dtype=torch.float64))
+        carry,
+        state=torch.randn(carry.state.shape, generator=generator, device=CUDA, dtype=torch.float64),
+        convolution_buffer=torch.randn(
+            carry.convolution_buffer.shape, generator=generator, device=CUDA, dtype=torch.float64
+        ),
+    )
     replays, stepped = [], carry
     with torch.no_grad():
         for t in range(steps):
@@ -339,8 +381,7 @@ def segment():
 def _model(net, precision: str):
     """A copy of the float64 net in the precision's dtype, in training mode."""
     model = copy.deepcopy(net).to(torch.float64 if precision == "float64" else torch.float32)
-    model.config = dataclasses.replace(model.config,
-                                       bfloat16_matmuls=precision == "bfloat16")
+    model.config = dataclasses.replace(model.config, bfloat16_matmuls=precision == "bfloat16")
     return model.train()
 
 
@@ -370,9 +411,13 @@ def test_kernels_are_as_close_to_float64_as_the_plain_path(segment, precision):
     fast, fast_gradients, _ = _model_run(segment, precision)
     floor, rms_floor = (1e-5, 1e-5) if precision == "float32" else (1e-2, 1e-3)
     labels = list(OUTPUTS) + ["shot_trajectory"] + names
-    for label, want, slow, got in zip(labels, reference + reference_gradients,
-                                      plain + plain_gradients, fast + fast_gradients,
-                                      strict=True):
+    for label, want, slow, got in zip(
+        labels,
+        reference + reference_gradients,
+        plain + plain_gradients,
+        fast + fast_gradients,
+        strict=True,
+    ):
         if want is None:
             assert slow is None and got is None, label
             continue
@@ -383,8 +428,10 @@ def test_kernels_are_as_close_to_float64_as_the_plain_path(segment, precision):
 def test_the_model_with_kernels_is_bitwise_repeatable(segment, precision):
     first, first_gradients, _ = _model_run(segment, precision)
     second, second_gradients, _ = _model_run(segment, precision)
-    _assert_identical(first + [g for g in first_gradients if g is not None],
-                      second + [g for g in second_gradients if g is not None])
+    _assert_identical(
+        first + [g for g in first_gradients if g is not None],
+        second + [g for g in second_gradients if g is not None],
+    )
 
 
 # ------------------------------------------------------------------ autotune configurations
@@ -413,14 +460,22 @@ def _temporal_both():
 
 CONFIGURED = {
     "scan": ((scan._scan_forward, scan._scan_backward), test_scan_equals_the_parallel_scan),
-    "attention": ((attention._attention_forward, attention._attention_backward),
-                  lambda: (test_attention_equals_the_plain_attention(),
-                           test_attention_in_bf16_is_as_close_as_the_plain_attention())),
-    "gated MLP": ((gated._gated_forward, gated._gated_backward),
-                  test_gated_mlp_in_bf16_is_as_close_as_the_plain_mlp),
+    "attention": (
+        (attention._attention_forward, attention._attention_backward),
+        lambda: (
+            test_attention_equals_the_plain_attention(),
+            test_attention_in_bf16_is_as_close_as_the_plain_attention(),
+        ),
+    ),
+    "gated MLP": (
+        (gated._gated_forward, gated._gated_backward),
+        test_gated_mlp_in_bf16_is_as_close_as_the_plain_mlp,
+    ),
     "temporal mix": ((temporal._temporal_forward, temporal._temporal_backward), _temporal_both),
-    "heads": ((head_kernel._head_forward, head_kernel._head_backward),
-              test_heads_in_bf16_are_as_close_as_the_plain_heads),
+    "heads": (
+        (head_kernel._head_forward, head_kernel._head_backward),
+        test_heads_in_bf16_are_as_close_as_the_plain_heads,
+    ),
 }
 
 
@@ -447,6 +502,7 @@ def test_every_configuration_of_an_order_free_kernel_gives_the_same_bits(kernel)
     not in the order of any sum: each gives the same bits."""
     tuners = CONFIGURED[kernel][0]
     if kernel == "scan":
+
         def run():
             return _gradients(scan.linear_scan, _scan_inputs(seed=3))
     else:
@@ -454,6 +510,7 @@ def test_every_configuration_of_an_order_free_kernel_gives_the_same_bits(kernel)
 
         def run():
             return _gradients(_bf16(gated.gated_hidden), inputs)
+
     results = []
     for index in range(len(tuners[0].configs)):
         with _only_config(tuners, index):

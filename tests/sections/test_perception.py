@@ -22,21 +22,31 @@ def _game(ships_per_team=3, fields=6, radius=1800.0, batch=16, warm=60, fogged=N
     for _ in range(warm):  # some motion, firing and sight so the views are not trivial
         choice = torch.rand(batch, rules.num_ships, 3, generator=generator)
         action = Action.unpack((choice * torch.tensor([3.0, 7.0, 2.0])).to(torch.int32))
-        state, _ = api.step(rules, TYPES, state, action,
-                            api.spread(rules, batch, generator=generator),
-                            api.uniforms(rules, batch, generator=generator))
+        state, _ = api.step(
+            rules,
+            TYPES,
+            state,
+            action,
+            api.spread(rules, batch, generator=generator),
+            api.uniforms(rules, batch, generator=generator),
+        )
         state, _, _ = api.perceive(rules, state)
     return rules, state
 
 
 def _swap_teams(state: State, ships_per_team: int) -> State:
     """The same world with the two teams' sim indices exchanged."""
+
     def roll(values):
         return values.roll(ships_per_team, dims=1)
 
     since = state.match.ticks_since_seen.flip(1).roll(ships_per_team, dims=2)
-    return replace(state, ships=apply(roll, state.ships), bullets=apply(roll, state.bullets),
-                   match=replace(state.match, ticks_since_seen=since))
+    return replace(
+        state,
+        ships=apply(roll, state.ships),
+        bullets=apply(roll, state.bullets),
+        match=replace(state.match, ticks_since_seen=since),
+    )
 
 
 def test_views_swap_with_the_teams():
@@ -94,8 +104,9 @@ def test_fog_survives_episode_resets():
     action = Action.unpack(torch.zeros(2, 2, 3, dtype=torch.int32))
     resets = 0
     for _ in range(3):
-        state, events = api.step(rules, TYPES, state, action, api.spread(rules, 2),
-                                 api.uniforms(rules, 2))
+        state, events = api.step(
+            rules, TYPES, state, action, api.spread(rules, 2), api.uniforms(rules, 2)
+        )
         resets += int(events.done.sum())
     assert resets > 0 and torch.equal(state.match.fogged, fogged)
 
@@ -111,8 +122,16 @@ def test_rollout_fogs_the_first_share_of_each_pool():
     from bnb.runtime.rollout import Rollout
 
     pools = (Pool("a", 0.5, ("r", "r"), fog_share=0.5), Pool("b", 0.5, ("r", "r"), fog_share=0.0))
-    rollout = Rollout(GameConfig(1, 1, 600.0), pools, {"r": Random(1)}, "r", 8, 2,
-                      torch.device("cpu"), compile=False)
+    rollout = Rollout(
+        GameConfig(1, 1, 600.0),
+        pools,
+        {"r": Random(1)},
+        "r",
+        8,
+        2,
+        torch.device("cpu"),
+        compile=False,
+    )
     want = torch.tensor([True, True, False, False, False, False, False, False])
     assert torch.equal(rollout.carry["state"].match.fogged, want)
     rollout.run()

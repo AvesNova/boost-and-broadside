@@ -86,11 +86,24 @@ class Train:
 
 
 # What a resume may be given besides --resume: the rest comes from the checkpoint.
-RESUME_OPTIONS = ("resume", "at", "updates", "precision", "micro_batch_rows", "set",
-                  "checkpoint_every", "device", "runs_directory", "print_config")
+RESUME_OPTIONS = (
+    "resume",
+    "at",
+    "updates",
+    "precision",
+    "micro_batch_rows",
+    "set",
+    "checkpoint_every",
+    "device",
+    "runs_directory",
+    "print_config",
+)
 # The resume options that set a TrainConfig field: their paths.
-RESUME_FIELDS = {"updates": "updates", "precision": "precision",
-                 "micro_batch_rows": "learner.micro_batch_rows"}
+RESUME_FIELDS = {
+    "updates": "updates",
+    "precision": "precision",
+    "micro_batch_rows": "learner.micro_batch_rows",
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -147,8 +160,11 @@ def main() -> None:
 
 def given(arguments: list[str]) -> set[str]:
     """The Train fields the command line set (`--from` is the fork field)."""
-    names = {argument[2:].partition("=")[0].replace("-", "_") for argument in arguments
-             if argument.startswith("--")}
+    names = {
+        argument[2:].partition("=")[0].replace("-", "_")
+        for argument in arguments
+        if argument.startswith("--")
+    }
     return {"fork" if name == "from" else name for name in names}
 
 
@@ -157,8 +173,7 @@ def runs_directory_of(given: str | None) -> pathlib.Path:
     the current directory outside a repository."""
     if given is not None:
         return pathlib.Path(given)
-    found = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                           text=True)
+    found = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
     root = found.stdout.strip() if found.returncode == 0 else ""
     return pathlib.Path(root or ".") / "runs"
 
@@ -198,26 +213,36 @@ def _requested(args: Train):
         game, pools = mixed(pools)
     elif args.preset is not None:
         if args.preset not in PRESETS:
-            raise SystemExit(f"unknown preset {args.preset!r}; one of "
-                             f"{sorted(PRESETS) + ['mixed']}")
+            raise SystemExit(
+                f"unknown preset {args.preset!r}; one of {sorted(PRESETS) + ['mixed']}"
+            )
         game = PRESETS[args.preset]
     else:
-        game = GameConfig(args.ships_per_team, args.num_fields, args.arena_radius,
-                          mode=args.mode)
+        game = GameConfig(args.ships_per_team, args.num_fields, args.arena_radius, mode=args.mode)
     multiple = environment_multiple(pools)
     if args.num_envs % multiple:
-        raise SystemExit(f"--num-envs {args.num_envs} does not split into the pools' shares: "
-                         f"use a multiple of {multiple}")
-    settings = dict(old_log_probabilities=args.old_log_probabilities,
-                    micro_batch_rows=args.micro_batch_rows)
+        raise SystemExit(
+            f"--num-envs {args.num_envs} does not split into the pools' shares: "
+            f"use a multiple of {multiple}"
+        )
+    settings = dict(
+        old_log_probabilities=args.old_log_probabilities, micro_batch_rows=args.micro_batch_rows
+    )
     learner = bc.config(**settings) if cloned else LearnerConfig(**settings)
     try:
-        config = TrainConfig(game=game, pools=pools, num_envs=args.num_envs,
-                             updates=args.updates, shards=args.shards, model=args.model,
-                             precision=args.precision, learner=learner, seed=args.seed,
-                             objective=args.objective,
-                             teacher=bc.TeacherConfig(args.teacher_temperature,
-                                                      args.teacher_floor))
+        config = TrainConfig(
+            game=game,
+            pools=pools,
+            num_envs=args.num_envs,
+            updates=args.updates,
+            shards=args.shards,
+            model=args.model,
+            precision=args.precision,
+            learner=learner,
+            seed=args.seed,
+            objective=args.objective,
+            teacher=bc.TeacherConfig(args.teacher_temperature, args.teacher_floor),
+        )
     except ValueError as error:
         raise SystemExit(str(error)) from error
     return with_settings(config, map(parse_setting, args.set))
@@ -281,25 +306,35 @@ def train(args: Train, options: set[str]) -> None:
         if args.resume:
             run = Run.open(runs_directory, args.resume)
             if run.live():
-                raise SystemExit(f"run {args.resume} is running as process "
-                                 f"{run.record['pid']} on this host; stop it (Ctrl-C) before "
-                                 f"resuming it")
+                raise SystemExit(
+                    f"run {args.resume} is running as process "
+                    f"{run.record['pid']} on this host; stop it (Ctrl-C) before "
+                    f"resuming it"
+                )
             source = run.checkpoint_at(args.at)
             fixed = sorted(options - set(RESUME_OPTIONS))
             if fixed:
-                flags = ", ".join("--from" if name == "fork" else "--" + name.replace("_", "-")
-                                  for name in fixed)
-                raise SystemExit(f"a resume takes {flags} "
-                                 f"from the checkpoint and cannot change it: start a new run "
-                                 f"from it with --from {args.resume}")
-            settings = [(RESUME_FIELDS[name], getattr(args, name)) for name in RESUME_FIELDS
-                        if name in options]
+                flags = ", ".join(
+                    "--from" if name == "fork" else "--" + name.replace("_", "-") for name in fixed
+                )
+                raise SystemExit(
+                    f"a resume takes {flags} "
+                    f"from the checkpoint and cannot change it: start a new run "
+                    f"from it with --from {args.resume}"
+                )
+            settings = [
+                (RESUME_FIELDS[name], getattr(args, name))
+                for name in RESUME_FIELDS
+                if name in options
+            ]
             settings += [parse_setting(setting) for setting in args.set]
             outside = [path for path, _ in settings if path not in OVERRIDABLE]
             if outside:
-                raise SystemExit(f"a resume cannot --set {', '.join(outside)}: it may change "
-                                 f"only {', '.join(OVERRIDABLE)}; to change more, start a new "
-                                 f"run with --from {args.resume}")
+                raise SystemExit(
+                    f"a resume cannot --set {', '.join(outside)}: it may change "
+                    f"only {', '.join(OVERRIDABLE)}; to change more, start a new "
+                    f"run with --from {args.resume}"
+                )
             config = with_settings(checkpoint.training_config(source)[0], settings)
         else:
             config = _requested(args)
@@ -307,8 +342,10 @@ def train(args: Train, options: set[str]) -> None:
             print(json.dumps(to_json(config), indent=1))
             return
         if args.resume and config.objective == "bc":
-            raise SystemExit(f"run {args.resume} is a BC run, which is not resumed: start a "
-                             f"new one, or RL from its policy file with --init-from")
+            raise SystemExit(
+                f"run {args.resume} is a BC run, which is not resumed: start a "
+                f"new one, or RL from its policy file with --init-from"
+            )
         torch.manual_seed(config.seed)
         set_precision(config.precision)
         if args.calibrate_entropy is not None:
@@ -320,8 +357,11 @@ def train(args: Train, options: set[str]) -> None:
             trainer.update()
             peaks = probe.measure(device)
             print(probe.describe(peaks))
-            probe.check(peaks, f"{config.num_envs} environments, "
-                               f"{config.learner.micro_batch_rows} micro-batch rows")
+            probe.check(
+                peaks,
+                f"{config.num_envs} environments, "
+                f"{config.learner.micro_batch_rows} micro-batch rows",
+            )
             return
         if args.resume:
             trainer = checkpoint.load_training(source, device, config)
@@ -349,31 +389,42 @@ def train(args: Train, options: set[str]) -> None:
                 parent = dict(policy=str(pathlib.Path(args.init_from).resolve()))
             else:
                 trainer = Trainer(config, device)
-            run = Run.create(runs_directory, name, config, sys.argv, args.checkpoint_every,
-                             parent)
+            run = Run.create(runs_directory, name, config, sys.argv, args.checkpoint_every, parent)
             run.start_segment(trainer.ppo.env_steps)
             print(f"run {name} in {run.directory}", flush=True)
-    except (CheckpointError, SerialiseError, MemoryBudgetError, FileNotFoundError,
-            FileExistsError) as error:
+    except (
+        CheckpointError,
+        SerialiseError,
+        MemoryBudgetError,
+        FileNotFoundError,
+        FileExistsError,
+    ) as error:
         raise SystemExit(str(error)) from error
 
     def log(row: dict) -> None:
-        rewards = " ".join(f"{name} {sum(pool['reward_per_s'].values()):+.3f}"
-                           for name, pool in row["pools"].items())
-        print(f"update {row['update']:4d}  rollout {row['rollout_s'] * 1e3:6.0f} ms  "
-              f"learn {row['learn_s'] * 1e3:6.0f} ms  entropy {row['loss/entropy']:.2f}  "
-              f"kl {row['approximate_kl']:+.4f}  clip {row['clip_fraction']:.3f}  "
-              f"drift {row['ratio_drift_max']:.3f}  nonfinite {row['nonfinite_gradients']}/"
-              f"{row['nonfinite_beliefs']}  reward/s: {rewards}", flush=True)
+        rewards = " ".join(
+            f"{name} {sum(pool['reward_per_s'].values()):+.3f}"
+            for name, pool in row["pools"].items()
+        )
+        print(
+            f"update {row['update']:4d}  rollout {row['rollout_s'] * 1e3:6.0f} ms  "
+            f"learn {row['learn_s'] * 1e3:6.0f} ms  entropy {row['loss/entropy']:.2f}  "
+            f"kl {row['approximate_kl']:+.4f}  clip {row['clip_fraction']:.3f}  "
+            f"drift {row['ratio_drift_max']:.3f}  nonfinite {row['nonfinite_gradients']}/"
+            f"{row['nonfinite_beliefs']}  reward/s: {rewards}",
+            flush=True,
+        )
 
     try:
         if config.objective == "bc":
             from bnb.learn import bc
 
-            status = session.clone(run, trainer, bc.StopConfig(budget_steps=args.bc_budget_steps),
-                                   log_cloning)
-            print(f"stopped by {run.record['stopped_by']}; the clone is {run.policy_path}",
-                  flush=True)
+            status = session.clone(
+                run, trainer, bc.StopConfig(budget_steps=args.bc_budget_steps), log_cloning
+            )
+            print(
+                f"stopped by {run.record['stopped_by']}; the clone is {run.policy_path}", flush=True
+            )
         else:
             status = session.train(run, trainer, log)
     except MemoryBudgetError as error:  # the run is marked failed with the same message
@@ -382,15 +433,24 @@ def train(args: Train, options: set[str]) -> None:
 
 
 def log_cloning(row: dict) -> None:
-    scores = " ".join(f"{kind} {value['score']:.3f}" for kind, value in row["scores"].items()
-                      if value["score"] is not None)
+    scores = " ".join(
+        f"{kind} {value['score']:.3f}"
+        for kind, value in row["scores"].items()
+        if value["score"] is not None
+    )
     # the score stop's window against the scripted agent, once full: its score and bound
-    window = "" if row["window_score"] is None else \
-        f"  window {row['window_score']:.3f} (bound {row['window_lower_bound']:.3f})"
-    print(f"update {row['update']:4d}  steps {row['env_steps']:>11,}  "
-          f"rollout {row['rollout_s'] * 1e3:6.0f} ms  learn {row['learn_s'] * 1e3:6.0f} ms  "
-          f"bc kl {row['bc_kl']:.4f}  teacher {row['teacher_entropy']:.3f}  "
-          f"student {row['student_entropy']:.3f}  scores: {scores}{window}", flush=True)
+    window = (
+        ""
+        if row["window_score"] is None
+        else f"  window {row['window_score']:.3f} (bound {row['window_lower_bound']:.3f})"
+    )
+    print(
+        f"update {row['update']:4d}  steps {row['env_steps']:>11,}  "
+        f"rollout {row['rollout_s'] * 1e3:6.0f} ms  learn {row['learn_s'] * 1e3:6.0f} ms  "
+        f"bc kl {row['bc_kl']:.4f}  teacher {row['teacher_entropy']:.3f}  "
+        f"student {row['student_entropy']:.3f}  scores: {scores}{window}",
+        flush=True,
+    )
 
 
 def calibrate(args: Train, config, device) -> None:
@@ -399,17 +459,23 @@ def calibrate(args: Train, config, device) -> None:
     from bnb.learn import bc
     from bnb.runtime import cloning
 
-    tokens = cloning.teacher_distributions(config.game, config.pools, config.num_envs,
-                                           args.calibration_segments, device)
+    tokens = cloning.teacher_distributions(
+        config.game, config.pools, config.num_envs, args.calibration_segments, device
+    )
     natural = bc.mean_entropy(tokens, bc.TeacherConfig(1.0, 0.0))
-    print(f"natural entropy {natural:.4f} nats per living ship-step over "
-          f"{tokens.shape[0]} ship-steps", flush=True)
+    print(
+        f"natural entropy {natural:.4f} nats per living ship-step over "
+        f"{tokens.shape[0]} ship-steps",
+        flush=True,
+    )
     try:
         chosen = bc.calibrate(tokens, args.calibrate_entropy, args.teacher_floor)
     except ValueError as error:
         raise SystemExit(str(error)) from None
-    print(f"temperature {chosen.temperature:.4f} at floor {chosen.floor} gives "
-          f"{bc.mean_entropy(tokens, chosen):.4f}")
+    print(
+        f"temperature {chosen.temperature:.4f} at floor {chosen.floor} gives "
+        f"{bc.mean_entropy(tokens, chosen):.4f}"
+    )
 
 
 def runs(args: Runs) -> None:
@@ -425,8 +491,10 @@ def runs(args: Runs) -> None:
             commit = (segments[-1]["commit"] or "")[:10] if segments else ""
             started = segments[0]["start_time"] if segments else ""
             newest = record["newest_checkpoint"]
-            print(f"{record['name']:44s} {run.shown_status():16s} "
-                  f"{'' if newest is None else newest:>12}  {started:25s} {commit}")
+            print(
+                f"{record['name']:44s} {run.shown_status():16s} "
+                f"{'' if newest is None else newest:>12}  {started:25s} {commit}"
+            )
         return
     if args.run is None:
         raise SystemExit(f"bnb runs {args.action} needs a run name")
@@ -449,26 +517,31 @@ def runs(args: Runs) -> None:
 def show(run) -> list[str]:
     """`bnb runs show`: the record, readable."""
     record = run.record
-    lines = [f"run {record['name']}: {run.shown_status()}"
-             + (f" ({record['message']})" if record["message"] else ""),
-             f"  directory   {run.directory}",
-             f"  command     {' '.join(record['command'])}",
-             f"  host, pid   {record['host']}, {record['pid']}",
-             f"  W&B id      {record['wandb_id']}",
-             f"  parent      {record['parent']}",
-             f"  cadence     every {record['checkpoint_every']} environment steps",
-             f"  probe       {record['probe']}",
-             f"  checkpoints {run.checkpoint_steps()} (newest {record['newest_checkpoint']}, "
-             f"final {record['final_checkpoint']})",
-             "  segments:"]
+    lines = [
+        f"run {record['name']}: {run.shown_status()}"
+        + (f" ({record['message']})" if record["message"] else ""),
+        f"  directory   {run.directory}",
+        f"  command     {' '.join(record['command'])}",
+        f"  host, pid   {record['host']}, {record['pid']}",
+        f"  W&B id      {record['wandb_id']}",
+        f"  parent      {record['parent']}",
+        f"  cadence     every {record['checkpoint_every']} environment steps",
+        f"  probe       {record['probe']}",
+        f"  checkpoints {run.checkpoint_steps()} (newest {record['newest_checkpoint']}, "
+        f"final {record['final_checkpoint']})",
+        "  segments:",
+    ]
     for index, segment in enumerate(record["segments"]):
         dirty = " (dirty)" if segment["dirty"] else ""
-        lines.append(f"    {index}: steps {segment['start_step']} to {segment['end_step']} at "
-                     f"{segment['commit']}{dirty}, {segment['start_time']} to "
-                     f"{segment['end_time']}")
+        lines.append(
+            f"    {index}: steps {segment['start_step']} to {segment['end_step']} at "
+            f"{segment['commit']}{dirty}, {segment['start_time']} to "
+            f"{segment['end_time']}"
+        )
         if segment["overrides"]:
-            lines.append(f"       overrides from step {segment['start_step']}: "
-                         f"{segment['overrides']}")
+            lines.append(
+                f"       overrides from step {segment['start_step']}: {segment['overrides']}"
+            )
         if segment["rewound_from"] is not None:
             lines.append(f"       rewound from step {segment['rewound_from']}")
     return lines

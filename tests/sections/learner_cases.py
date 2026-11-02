@@ -15,16 +15,27 @@ from bnb.runtime.rollout import Rollout
 CPU = torch.device("cpu")
 OWN = 5
 # Self-play and the chaser, half fogged, short clocks: resets, hidden ships and fights.
-POOLS = (Pool("self_play", 0.5, ("learner", "learner"), 0.5),
-         Pool("chaser", 0.5, ("learner", "chaser"), 0.5))
+POOLS = (
+    Pool("self_play", 0.5, ("learner", "learner"), 0.5),
+    Pool("chaser", 0.5, ("learner", "chaser"), 0.5),
+)
 
 
-def rollout(net, envs: int = 8, length: int = 32, runs: int = 2, config=cases.SHORT_SQUAD,
-            pools=POOLS, controllers=None):
+def rollout(
+    net,
+    envs: int = 8,
+    length: int = 32,
+    runs: int = 2,
+    config=cases.SHORT_SQUAD,
+    pools=POOLS,
+    controllers=None,
+):
     """A Rollout run `runs` times (so the stored initial carry has history), with Yemong as
     the learner."""
-    controllers = controllers or {"learner": cases.controller(net, config),
-                                  "chaser": Chaser(config.ships_per_team)}
+    controllers = controllers or {
+        "learner": cases.controller(net, config),
+        "chaser": Chaser(config.ships_per_team),
+    }
     runner = Rollout(config, pools, controllers, "learner", envs, length, CPU, compile=False)
     for _ in range(runs):
         runner.run()
@@ -36,8 +47,14 @@ def learner(net, runner: Rollout, **config) -> Learner:
     views = runner.store.views
     rows = views * runner.rules.num_ships
     config = dict(dict(minibatches=1, micro_batch_rows=rows), **config)
-    return Learner(net, LearnerConfig(**config), runner.rules, runner.carry["types"],
-                   RewardConfig().outcome, CPU)
+    return Learner(
+        net,
+        LearnerConfig(**config),
+        runner.rules,
+        runner.carry["types"],
+        RewardConfig().outcome,
+        CPU,
+    )
 
 
 def whole(runner: Rollout):

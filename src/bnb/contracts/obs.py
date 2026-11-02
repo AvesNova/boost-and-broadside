@@ -13,11 +13,30 @@ from .tree import contract
 
 SHIP_COLUMNS = (
     # zero when the team cannot see the ship
-    "x", "y", "heading_cos", "heading_sin", "velocity_x", "velocity_y", "proper_speed",
-    "angle_of_attack", "nose_rate", "energy", "shield", "shield_recharge_wait", "gun_cooldown",
-    "log_refractive_index", "log_index_gradient_x", "log_index_gradient_y",
+    "x",
+    "y",
+    "heading_cos",
+    "heading_sin",
+    "velocity_x",
+    "velocity_y",
+    "proper_speed",
+    "angle_of_attack",
+    "nose_rate",
+    "energy",
+    "shield",
+    "shield_recharge_wait",
+    "gun_cooldown",
+    "log_refractive_index",
+    "log_index_gradient_x",
+    "log_index_gradient_y",
     # always shown; fired: fired this tick
-    "alive", "visible", "fired", "respawn_wait", "ship_type", "team_relative", "time_since_seen",
+    "alive",
+    "visible",
+    "fired",
+    "respawn_wait",
+    "ship_type",
+    "team_relative",
+    "time_since_seen",
     "spawned",
 )
 SHIP_HIDDEN_ZERO = 16  # the first this-many columns are zero for a ship the team cannot see
@@ -27,14 +46,33 @@ FIELD_COLUMNS = ("x", "y", "radius", "band_width", "level")
 # in the viewer's favour, -1 in the enemy's, 0 still; the distances: captures to the
 # viewer's win and to its loss; present, 1 for a zone of the environment's mode and 0 for an
 # absent slot (a mode without zones in a batch that has them), whose other columns are 0.
-ZONE_COLUMNS = ("x", "y", "radius", "role", "progress", "direction", "offensive_distance",
-                "defensive_distance", "present")
+ZONE_COLUMNS = (
+    "x",
+    "y",
+    "radius",
+    "role",
+    "progress",
+    "direction",
+    "offensive_distance",
+    "defensive_distance",
+    "present",
+)
 # The mode block: a mode one-hot (all zero in sandbox); the scores by team_relative and the
 # score that wins (team deathmatch); the front, positive in the viewer's favour, and the
 # front that wins (Frontline). Absent quantities are 0.
-GLOBAL_COLUMNS = ("episode_progress", "arena_radius", "fogged", "reset", "mode_team_deathmatch",
-                  "mode_frontline", "score_own", "score_enemy", "score_target", "front",
-                  "front_threshold")
+GLOBAL_COLUMNS = (
+    "episode_progress",
+    "arena_radius",
+    "fogged",
+    "reset",
+    "mode_team_deathmatch",
+    "mode_frontline",
+    "score_own",
+    "score_enemy",
+    "score_target",
+    "front",
+    "front_threshold",
+)
 # Times (shield_recharge_wait, gun_cooldown, respawn_wait, time_since_seen) are in seconds.
 
 SHIP = {name: i for i, name in enumerate(SHIP_COLUMNS)}

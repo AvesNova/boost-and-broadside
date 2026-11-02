@@ -26,11 +26,13 @@ def human_action(inputs: torch.Tensor) -> Action:
     inputs (..., len(INPUTS)) bool, in INPUTS order.
     """
     held = {name: inputs[..., i].bool() for name, i in INPUT.items()}
-    power = torch.where(held["boost"] & ~held["reverse"], BOOST,
-                        torch.where(held["reverse"] & ~held["boost"], REVERSE, COAST))
+    power = torch.where(
+        held["boost"] & ~held["reverse"],
+        BOOST,
+        torch.where(held["reverse"] & ~held["boost"], REVERSE, COAST),
+    )
     level = torch.where(held["full"], FULL, torch.where(held["lightest"], LIGHTEST, MIDDLE))
     left = held["left"] & ~held["right"]
     right = held["right"] & ~held["left"]
     stick = torch.where(left, 2 * level, torch.where(right, 2 * level - 1, 0))
-    return Action(power.to(torch.int32), stick.to(torch.int32),
-                  held["shoot"].to(torch.int32))
+    return Action(power.to(torch.int32), stick.to(torch.int32), held["shoot"].to(torch.int32))

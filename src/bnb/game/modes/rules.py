@@ -69,5 +69,6 @@ class ModeRules:
 
 
 def mode_rules_of(config: GameConfig) -> ModeRules:
-    return ModeRules(name=config.mode, kills_per_ship=config.kills_per_ship,
-                     spawn_groups=config.spawn_groups)
+    return ModeRules(
+        name=config.mode, kills_per_ship=config.kills_per_ship, spawn_groups=config.spawn_groups
+    )

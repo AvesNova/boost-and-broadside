@@ -45,6 +45,7 @@ ACTION_SCALE = 32767.0
 def store_action(probabilities: torch.Tensor) -> torch.Tensor:
     return torch.round(probabilities * ACTION_SCALE).to(torch.int16)
 
+
 SHIP_FLAGS = ("alive", "visible", "fired")
 POSITION_CODE = 9 * POSITION_LEVELS  # the width of a position code
 # The centre's code, then episode progress, arena radius, fog, the mode one-hot (2), both
@@ -84,11 +85,23 @@ def truth(ships: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
     offset (..., 2) (only read where visible)."""
     column = {name: ships[..., SHIP[name]] for name in SHIP}
     heading = torch.atan2(column["heading_sin"], column["heading_cos"])
-    return torch.stack([column["x"] + offset[..., 0:1], column["y"] + offset[..., 1:2],
-                        column["velocity_x"], column["velocity_y"], heading, column["nose_rate"],
-                        column["angle_of_attack"], column["shield_recharge_wait"],
-                        column["shield"], column["energy"], column["gun_cooldown"],
-                        column["log_refractive_index"]], -1)
+    return torch.stack(
+        [
+            column["x"] + offset[..., 0:1],
+            column["y"] + offset[..., 1:2],
+            column["velocity_x"],
+            column["velocity_y"],
+            heading,
+            column["nose_rate"],
+            column["angle_of_attack"],
+            column["shield_recharge_wait"],
+            column["shield"],
+            column["energy"],
+            column["gun_cooldown"],
+            column["log_refractive_index"],
+        ],
+        -1,
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -118,8 +131,9 @@ class Tokens:
 
 def _position_code(position: torch.Tensor) -> torch.Tensor:
     zero = torch.zeros_like(position[..., 0])
-    return codes.position_encode(position, zero, (POSITION_PERIOD,) * 2,
-                                 POSITION_LEVELS).flatten(-2)
+    return codes.position_encode(position, zero, (POSITION_PERIOD,) * 2, POSITION_LEVELS).flatten(
+        -2
+    )
 
 
 def believed(ships: torch.Tensor, replay: Replay) -> tuple[torch.Tensor, ...]:
@@ -130,13 +144,20 @@ def believed(ships: torch.Tensor, replay: Replay) -> tuple[torch.Tensor, ...]:
     rows = own_means.shape[:-1]
     valid = torch.cat([replay.valid.new_ones(rows), replay.valid], -1)
     age = torch.cat([replay.age.new_zeros(rows), replay.age], -1)
-    spreads = torch.cat([replay.spreads.new_zeros(rows + replay.spreads.shape[-1:]),
-                         replay.spreads], -2)
+    spreads = torch.cat(
+        [replay.spreads.new_zeros(rows + replay.spreads.shape[-1:]), replay.spreads], -2
+    )
     return valid, age, torch.cat([own_means, replay.means], -2), spreads
 
 
-def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int,
-            presence_radius: float, tick: float) -> Tokens:
+def compose(
+    obs: Obs,
+    replay: Replay,
+    state_code: ShipStateCode,
+    ship_types: int,
+    presence_radius: float,
+    tick: float,
+) -> Tokens:
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}
@@ -162,50 +183,111 @@ def compose(obs: Obs, replay: Replay, state_code: ShipStateCode, ship_types: int
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE
     presence = local_presence(position, team, valid, presence_radius)
     since_seen = age.to(dtype) * tick
-    ship = torch.cat([code, (team[..., None] == torch.arange(TEAMS, device=ships.device)).to(dtype),
-                      (ship_type[..., None] == torch.arange(ship_types, device=ships.device))
-                      .to(dtype),
-                      torch.stack([column[name] for name in SHIP_FLAGS], -1),
-                      symlog(since_seen)[..., None], respawn_features(column["respawn_wait"]),
-                      pending, gradient, presence], -1)
+    ship = torch.cat(
+        [
+            code,
+            (team[..., None] == torch.arange(TEAMS, device=ships.device)).to(dtype),
+            (ship_type[..., None] == torch.arange(ship_types, device=ships.device)).to(dtype),
+            torch.stack([column[name] for name in SHIP_FLAGS], -1),
+            symlog(since_seen)[..., None],
+            respawn_features(column["respawn_wait"]),
+            pending,
+            gradient,
+            presence,
+        ],
+        -1,
+    )
 
     globals_ = obs.globals
     target = globals_[..., GLOBAL["score_target"]]
     per_target = torch.where(target > 0.0, 1.0 / torch.where(target > 0.0, target, 1.0), 0.0)
-    global_token = torch.cat([_position_code(centre), torch.stack([
-        globals_[..., GLOBAL["episode_progress"]],
-        globals_[..., GLOBAL["arena_radius"]] / ARENA_SCALE, globals_[..., GLOBAL["fogged"]],
-        globals_[..., GLOBAL["mode_team_deathmatch"]], globals_[..., GLOBAL["mode_frontline"]],
-        globals_[..., GLOBAL["score_own"]] * per_target,
-        globals_[..., GLOBAL["score_enemy"]] * per_target, symlog(target),
-        globals_[..., GLOBAL["front"]], globals_[..., GLOBAL["front_threshold"]]], -1)],
-        -1)[..., None, :]
+    global_token = torch.cat(
+        [
+            _position_code(centre),
+            torch.stack(
+                [
+                    globals_[..., GLOBAL["episode_progress"]],
+                    globals_[..., GLOBAL["arena_radius"]] / ARENA_SCALE,
+                    globals_[..., GLOBAL["fogged"]],
+                    globals_[..., GLOBAL["mode_team_deathmatch"]],
+                    globals_[..., GLOBAL["mode_frontline"]],
+                    globals_[..., GLOBAL["score_own"]] * per_target,
+                    globals_[..., GLOBAL["score_enemy"]] * per_target,
+                    symlog(target),
+                    globals_[..., GLOBAL["front"]],
+                    globals_[..., GLOBAL["front_threshold"]],
+                ],
+                -1,
+            ),
+        ],
+        -1,
+    )[..., None, :]
 
     fields = obs.fields
-    field_position = torch.stack([fields[..., FIELD["x"]], fields[..., FIELD["y"]]], -1) \
-        + centre[..., None, :]
-    field = torch.cat([_position_code(field_position),
-                       torch.stack([fields[..., FIELD["radius"]] / FIELD_RADIUS_SCALE,
-                                    fields[..., FIELD["band_width"]] / FIELD_BAND_SCALE,
-                                    fields[..., FIELD["level"]] / FIELD_LEVEL_SCALE], -1)], -1)
-    zones = obs.zones if obs.zones is not None \
+    field_position = (
+        torch.stack([fields[..., FIELD["x"]], fields[..., FIELD["y"]]], -1) + centre[..., None, :]
+    )
+    field = torch.cat(
+        [
+            _position_code(field_position),
+            torch.stack(
+                [
+                    fields[..., FIELD["radius"]] / FIELD_RADIUS_SCALE,
+                    fields[..., FIELD["band_width"]] / FIELD_BAND_SCALE,
+                    fields[..., FIELD["level"]] / FIELD_LEVEL_SCALE,
+                ],
+                -1,
+            ),
+        ],
+        -1,
+    )
+    zones = (
+        obs.zones
+        if obs.zones is not None
         else fields.new_zeros(fields.shape[:-2] + (0, len(ZONE_COLUMNS)))
+    )
     # An absent zone takes the global token's rotation (the map centre; heading 0, like
     # every memory token): at the frame's origin it would reveal the offset to attention.
     present = zones[..., ZONE["present"]] > 0.5
-    zone_position = torch.where(present[..., None],
-                                torch.stack([zones[..., ZONE["x"]], zones[..., ZONE["y"]]], -1)
-                                + centre[..., None, :], centre[..., None, :])
+    zone_position = torch.where(
+        present[..., None],
+        torch.stack([zones[..., ZONE["x"]], zones[..., ZONE["y"]]], -1) + centre[..., None, :],
+        centre[..., None, :],
+    )
     role = zones[..., ZONE["role"]].long()
-    zone = torch.cat([_position_code(zone_position), torch.cat([
-        (zones[..., ZONE["radius"]] / FIELD_RADIUS_SCALE)[..., None],
-        (role[..., None] == torch.arange(ZONE_ROLES, device=role.device)).to(dtype),
-        torch.stack([zones[..., ZONE["progress"]], zones[..., ZONE["direction"]],
-                     symlog(zones[..., ZONE["offensive_distance"]]),
-                     symlog(zones[..., ZONE["defensive_distance"]])], -1)], -1)], -1)
+    zone = torch.cat(
+        [
+            _position_code(zone_position),
+            torch.cat(
+                [
+                    (zones[..., ZONE["radius"]] / FIELD_RADIUS_SCALE)[..., None],
+                    (role[..., None] == torch.arange(ZONE_ROLES, device=role.device)).to(dtype),
+                    torch.stack(
+                        [
+                            zones[..., ZONE["progress"]],
+                            zones[..., ZONE["direction"]],
+                            symlog(zones[..., ZONE["offensive_distance"]]),
+                            symlog(zones[..., ZONE["defensive_distance"]]),
+                        ],
+                        -1,
+                    ),
+                ],
+                -1,
+            ),
+        ],
+        -1,
+    )
     query_position = torch.cat([position, centre[..., None, :]], -2)
     query_heading = torch.cat([believed_means[..., 4], torch.zeros_like(centre[..., :1])], -1)
-    return Tokens(ship=ship, global_token=global_token, field=field, zone=zone,
-                  zone_present=present, code=code,
-                  ship_type=ship_type, query_position=query_position, query_heading=query_heading,
-                  memory_position=torch.cat([field_position, zone_position], -2))
+    return Tokens(
+        ship=ship,
+        global_token=global_token,
+        field=field,
+        zone=zone,
+        zone_present=present,
+        code=code,
+        ship_type=ship_type,
+        query_position=query_position,
+        query_heading=query_heading,
+        memory_position=torch.cat([field_position, zone_position], -2),
+    )

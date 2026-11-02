@@ -29,23 +29,45 @@ def _ships(speed, energy, angle=None, ship_type=None, dtype=torch.float32) -> Sh
     kind = torch.zeros(speed.shape, dtype=torch.int32) if ship_type is None else ship_type
     flags = torch.zeros(speed.shape, dtype=torch.bool)
     integers = torch.zeros_like(kind)
-    return Ships(x=zeros, y=zeros, heading_cos=zeros + 1.0, heading_sin=zeros, proper_speed=speed,
-                 angle_of_attack=angle, angle_of_attack_cos=torch.cos(angle),
-                 angle_of_attack_sin=torch.sin(angle), nose_rate=zeros,
-                 energy=torch.as_tensor(energy, dtype=dtype).expand_as(speed).clone(),
-                 log_refractive_index=zeros, log_index_gradient_x=zeros,
-                 log_index_gradient_y=zeros, shield=zeros, shield_recharge_wait=zeros,
-                 alive=~flags, fired=flags, spawned=flags, respawn_wait=integers,
-                 gun_cooldown=integers, next_slot=integers, ship_type=kind)
+    return Ships(
+        x=zeros,
+        y=zeros,
+        heading_cos=zeros + 1.0,
+        heading_sin=zeros,
+        proper_speed=speed,
+        angle_of_attack=angle,
+        angle_of_attack_cos=torch.cos(angle),
+        angle_of_attack_sin=torch.sin(angle),
+        nose_rate=zeros,
+        energy=torch.as_tensor(energy, dtype=dtype).expand_as(speed).clone(),
+        log_refractive_index=zeros,
+        log_index_gradient_x=zeros,
+        log_index_gradient_y=zeros,
+        shield=zeros,
+        shield_recharge_wait=zeros,
+        alive=~flags,
+        fired=flags,
+        spawned=flags,
+        respawn_wait=integers,
+        gun_cooldown=integers,
+        next_slot=integers,
+        ship_type=kind,
+    )
 
 
 def _no_fields(like):
     ones = torch.ones((like.shape[0], 1), dtype=like.dtype)
-    return Fields(x=ones * 1e9, y=ones * 0.0, radius=ones, band_width=ones,
-                  level=torch.ones((like.shape[0], 1), dtype=torch.int32))
+    return Fields(
+        x=ones * 1e9,
+        y=ones * 0.0,
+        radius=ones,
+        band_width=ones,
+        level=torch.ones((like.shape[0], 1), dtype=torch.int32),
+    )
 
 
 # ------------------------------------------------------------------ the bleed exponent
+
 
 def test_bleed_exponent_two_is_exactly_the_old_induced_drag():
     """At e = 2 the new formula returns its argument bit for bit (zero included), so the
@@ -69,8 +91,14 @@ def test_bleed_exponent_sets_the_induced_drag_power():
 
 # ------------------------------------------------------------------ per-type values
 
-FLIGHT_SCALES = ("induced_drag_scale", "stall_angle_scale", "coast_exchange_scale",
-                 "dive_exchange_scale", "climb_exchange_scale", "bleed_exponent")
+FLIGHT_SCALES = (
+    "induced_drag_scale",
+    "stall_angle_scale",
+    "coast_exchange_scale",
+    "dive_exchange_scale",
+    "climb_exchange_scale",
+    "bleed_exponent",
+)
 
 
 @pytest.mark.parametrize("name", FLIGHT_SCALES)
@@ -86,8 +114,15 @@ def test_flight_values_are_per_type(name):
         airframe = flight.airframe_of(types, start.ship_type)
         ships = start
         for _ in range(15):
-            ships = flight.flight_tick(FlightConstants(), airframe, 1 / 30, ships, stick[None],
-                                       power[None], _no_fields(start.x))
+            ships = flight.flight_tick(
+                FlightConstants(),
+                airframe,
+                1 / 30,
+                ships,
+                stick[None],
+                power[None],
+                _no_fields(start.x),
+            )
         return torch.stack([ships.proper_speed, ships.energy, ships.angle_of_attack])
 
     default = ship_types()
@@ -104,14 +139,24 @@ def test_vision_range_is_the_observers():
     types = api.ship_types(vision_range_scale=(1.0, 2.0))
     state = api.reset(rules, types, torch.zeros(1, rules.tick_uniform_count))
     assert state.match.vision_range.tolist() == [[1024.0, 2048.0, 1024.0, 2048.0]]
-    state, _ = api.step(rules, api.ship_types(), state,
-                        Action.unpack(torch.zeros(1, 4, 3, dtype=torch.int32)),
-                        torch.zeros(1, 4, 2), torch.zeros(1, rules.tick_uniform_count))
+    state, _ = api.step(
+        rules,
+        api.ship_types(),
+        state,
+        Action.unpack(torch.zeros(1, 4, 3, dtype=torch.int32)),
+        torch.zeros(1, 4, 2),
+        torch.zeros(1, rules.tick_uniform_count),
+    )
     assert state.match.vision_range.tolist() == [[1024.0] * 4]
     distance = 1.5 * rules.vision_range
     quiet = torch.zeros(1, 4, dtype=torch.bool)
-    ships = replace(state.ships, x=torch.tensor([[0.0, 0.0, distance, distance + 50.0]]),
-                    y=torch.tensor([[0.0, 30.0, 0.0, 0.0]]), fired=quiet, spawned=quiet)
+    ships = replace(
+        state.ships,
+        x=torch.tensor([[0.0, 0.0, distance, distance + 50.0]]),
+        y=torch.tensor([[0.0, 30.0, 0.0, 0.0]]),
+        fired=quiet,
+        spawned=quiet,
+    )
     fields = replace(state.fields, x=state.fields.x + 1e6)  # no field blocks a sight line
     visible = SHIP["visible"]
     for vision, seen in (([1024.0, 2048.0] * 2, 1.0), ([1024.0] * 4, 0.0)):
@@ -125,18 +170,31 @@ def test_bullet_drag_and_spread_are_the_shooters():
     rules = api.rules_of(GameConfig(1, 1, 1000.0))
     types = api.ship_types(bullet_drag_scale=(1.0, 2.0), bullet_spread_scale=(1.0, 3.0))
     ones = torch.ones(1, 2, rules.bullet_slots)
-    bullets = Bullets(x=ones * 0.0, y=ones * 0.0, direction_x=ones, direction_y=ones * 0.0,
-                      proper_speed=ones * 600.0, log_refractive_index=ones * 0.0,
-                      log_index_gradient_x=ones * 0.0, log_index_gradient_y=ones * 0.0,
-                      moves_left=ones.int())
+    bullets = Bullets(
+        x=ones * 0.0,
+        y=ones * 0.0,
+        direction_x=ones,
+        direction_y=ones * 0.0,
+        proper_speed=ones * 600.0,
+        log_refractive_index=ones * 0.0,
+        log_index_gradient_x=ones * 0.0,
+        log_index_gradient_y=ones * 0.0,
+        moves_left=ones.int(),
+    )
     ship_type = torch.tensor([[0, 1]], dtype=torch.int32)
     moved = move_bullets(rules, types, bullets, _no_fields(ones), ship_type)
     lost = 600.0 - moved.proper_speed[0, :, 0]
     assert lost[1] > 1.9 * lost[0] > 0.0
     ships = replace(_ships(torch.full((1, 2), 100.0), 5000.0), ship_type=ship_type)
     spread = torch.tensor([[[0.0, 1.0], [0.0, 1.0]]])
-    _, fired = fire(rules, types, ships, replace(bullets, moves_left=ones.int() * 0),
-                    torch.ones(1, 2, dtype=torch.bool), spread)
+    _, fired = fire(
+        rules,
+        types,
+        ships,
+        replace(bullets, moves_left=ones.int() * 0),
+        torch.ones(1, 2, dtype=torch.bool),
+        spread,
+    )
     sideways = fired.direction_y[0, :, 0] * fired.proper_speed[0, :, 0]
     assert torch.allclose(sideways, torch.tensor([12.0, 36.0]))
 
@@ -145,23 +203,39 @@ def test_head_on_fraction_is_the_targets_armour():
     """A head-on hit does the target's head-on fraction of the shooter's damage."""
     rules = api.rules_of(GameConfig(1, 1, 1000.0))
     types = api.ship_types(head_on_fraction_scale=(1.0, 2.0))
-    ships = replace(_ships(torch.zeros(1, 2), 0.0), x=torch.tensor([[0.0, 100.0]]),
-                    heading_cos=torch.tensor([[1.0, -1.0]]),
-                    ship_type=torch.tensor([[0, 1]], dtype=torch.int32))
+    ships = replace(
+        _ships(torch.zeros(1, 2), 0.0),
+        x=torch.tensor([[0.0, 100.0]]),
+        heading_cos=torch.tensor([[1.0, -1.0]]),
+        ship_type=torch.tensor([[0, 1]], dtype=torch.int32),
+    )
     K = rules.bullet_slots
     zeros = torch.zeros(1, 2, K)
     live = torch.zeros(1, 2, K, dtype=torch.int32)
     live[0, :, 0] = 1
     # One bullet each way, through the other ship's nose.
     along = torch.tensor([1.0, -1.0])[None, :, None] + zeros
-    bullets = Bullets(x=zeros, y=zeros, direction_x=along,
-                      direction_y=zeros, proper_speed=zeros + 500.0, log_refractive_index=zeros,
-                      log_index_gradient_x=zeros, log_index_gradient_y=zeros, moves_left=live)
-    sweep = Sweep(ship_x=ships.x, ship_y=ships.y, ship_displacement_x=ships.x * 0.0,
-                  ship_displacement_y=ships.y * 0.0,
-                  bullet_x=torch.tensor([[0.0, 100.0]])[..., None] + zeros, bullet_y=zeros,
-                  bullet_displacement_x=torch.tensor([[100.0, -100.0]])[..., None] + zeros,
-                  bullet_displacement_y=zeros)
+    bullets = Bullets(
+        x=zeros,
+        y=zeros,
+        direction_x=along,
+        direction_y=zeros,
+        proper_speed=zeros + 500.0,
+        log_refractive_index=zeros,
+        log_index_gradient_x=zeros,
+        log_index_gradient_y=zeros,
+        moves_left=live,
+    )
+    sweep = Sweep(
+        ship_x=ships.x,
+        ship_y=ships.y,
+        ship_displacement_x=ships.x * 0.0,
+        ship_displacement_y=ships.y * 0.0,
+        bullet_x=torch.tensor([[0.0, 100.0]])[..., None] + zeros,
+        bullet_y=zeros,
+        bullet_displacement_x=torch.tensor([[100.0, -100.0]])[..., None] + zeros,
+        bullet_displacement_y=zeros,
+    )
     damage = hits(rules, types, sweep, ships, bullets, torch.ones(1, 2, dtype=torch.bool)).damage
     assert torch.allclose(damage[0, 0, 1], torch.tensor(12.0 * 0.6))  # fighter hits the heavy
     assert torch.allclose(damage[0, 1, 0], torch.tensor(16.0 * 0.3))  # heavy hits the fighter
@@ -169,10 +243,14 @@ def test_head_on_fraction_is_the_targets_armour():
 
 def test_shield_recharge_rate_and_delay_are_per_type():
     rules = api.rules_of(GameConfig(1, 1, 1000.0))
-    types = api.ship_types(shield_recharge_rate_scale=(1.0, 2.0),
-                           shield_recharge_delay_scale=(1.0, 0.5))
-    ships = replace(_ships(torch.zeros(1, 2), 0.0), shield=torch.tensor([[50.0, 50.0]]),
-                    ship_type=torch.tensor([[0, 1]], dtype=torch.int32))
+    types = api.ship_types(
+        shield_recharge_rate_scale=(1.0, 2.0), shield_recharge_delay_scale=(1.0, 0.5)
+    )
+    ships = replace(
+        _ships(torch.zeros(1, 2), 0.0),
+        shield=torch.tensor([[50.0, 50.0]]),
+        ship_type=torch.tensor([[0, 1]], dtype=torch.int32),
+    )
     alive = torch.ones(1, 2, dtype=torch.bool)
     hurt = apply_damage(rules, types, ships, alive, torch.tensor([[1.0, 1.0]]))
     assert hurt.ships.shield_recharge_wait.tolist() == [[6.0, 3.0]]
@@ -191,6 +269,7 @@ def test_every_shared_value_has_its_scale():
 
 # ------------------------------------------------------------------ tick rates
 
+
 @pytest.mark.parametrize("rate", RATES)
 def test_bullet_life_is_time_native(rate):
     rules = api.rules_of(GameConfig(1, 1, 1000.0), tick_length=1.0 / rate)
@@ -203,8 +282,9 @@ def test_weapon_cadence_is_validated_per_rate():
     fire_rate = torch.tensor([15.0, 10.0])
     for rate, ticks in ((30, [2, 3]), (60, [4, 6])):
         assert ticks_between_shots(fire_rate, 1.0 / rate).tolist() == ticks
-    with pytest.raises(ValueError, match="fire rate of 15 Hz is not a whole number of ticks at "
-                                         "25 Hz"):
+    with pytest.raises(
+        ValueError, match="fire rate of 15 Hz is not a whole number of ticks at 25 Hz"
+    ):
         ticks_between_shots(fire_rate, 1.0 / 25)
     rules = api.rules_of(GameConfig(1, 1, 1000.0), tick_length=1.0 / 25)
     with pytest.raises(ValueError, match="15 Hz.*25 Hz"):
@@ -237,8 +317,14 @@ def test_energy_is_conserved_at_every_rate(rate, exponent):
     within the race test's bound (1e-4), for any bleed exponent."""
     generator = torch.Generator().manual_seed(rate)
     N = 256
-    types = ship_types(zero_lift_drag=0.0, induced_drag_scale=0.0, engine_power=0.0,
-                       engine_power_full_store=0.0, static_thrust=1e-6, bleed_exponent=exponent)
+    types = ship_types(
+        zero_lift_drag=0.0,
+        induced_drag_scale=0.0,
+        engine_power=0.0,
+        engine_power_full_store=0.0,
+        static_thrust=1e-6,
+        bleed_exponent=exponent,
+    )
     speed = 60.0 + 100.0 * torch.rand(1, N, generator=generator)
     energy = 1000.0 + 8000.0 * torch.rand(1, N, generator=generator)
     ship_type = torch.randint(0, 2, (1, N), generator=generator, dtype=torch.int32)
@@ -248,13 +334,13 @@ def test_energy_is_conserved_at_every_rate(rate, exponent):
     airframe = flight.airframe_of(types, ship_type)
     start = 0.5 * speed.double() ** 2 + energy
     for _ in range(2 * rate):
-        ships = flight.flight_tick(FlightConstants(), airframe, 1.0 / rate, ships, stick, power,
-                                   _no_fields(speed))
+        ships = flight.flight_tick(
+            FlightConstants(), airframe, 1.0 / rate, ships, stick, power, _no_fields(speed)
+        )
     end = 0.5 * ships.proper_speed.double() ** 2 + ships.energy
     keep = (ships.energy > 300) & (ships.energy < types.max_energy.min() - 300)
     assert keep.sum() > N // 4
     assert ((end - start).abs() / start)[keep].max() < 1e-4
-
 
 
 def _induced_drag_balance(rate: int, exponent: float) -> torch.Tensor:
@@ -267,9 +353,14 @@ def _induced_drag_balance(rate: int, exponent: float) -> torch.Tensor:
     N = 256
     constants = FlightConstants()
     lift = ship_types().max_lift_coefficient
-    types = ship_types(zero_lift_drag=0.0, engine_power=0.0, engine_power_full_store=0.0,
-                       static_thrust=1e-6, bleed_exponent=exponent,
-                       induced_drag_scale=lift ** (2.0 - exponent))
+    types = ship_types(
+        zero_lift_drag=0.0,
+        engine_power=0.0,
+        engine_power_full_store=0.0,
+        static_thrust=1e-6,
+        bleed_exponent=exponent,
+        induced_drag_scale=lift ** (2.0 - exponent),
+    )
     speed = 60.0 + 100.0 * torch.rand(1, N, generator=generator)
     energy = 3000.0 + 4000.0 * torch.rand(1, N, generator=generator)
     ship_type = torch.randint(0, 2, (1, N), generator=generator, dtype=torch.int32)
@@ -284,16 +375,16 @@ def _induced_drag_balance(rate: int, exponent: float) -> torch.Tensor:
 
     def induced_power(ship):  # W/kg
         u = ship.proper_speed.double()
-        current = flight.setting(constants, airframe, ship.proper_speed, ship.energy, stick,
-                                 power)
+        current = flight.setting(constants, airframe, ship.proper_speed, ship.energy, stick, power)
         coefficient = flight.lift_coefficient(constants, airframe, ship.angle_of_attack).double()
-        lifting = coefficient ** 2 + (current.vertical_lift.double() / u ** 2) ** 2
-        return factor * lifting ** (0.5 * exponent) * u ** 3
+        lifting = coefficient**2 + (current.vertical_lift.double() / u**2) ** 2
+        return factor * lifting ** (0.5 * exponent) * u**3
 
     work, start = torch.zeros_like(speed, dtype=torch.float64), total(ships)
     for _ in range(2 * rate):
-        after = flight.flight_tick(constants, airframe, 1.0 / rate, ships, stick, power,
-                                   _no_fields(speed))
+        after = flight.flight_tick(
+            constants, airframe, 1.0 / rate, ships, stick, power, _no_fields(speed)
+        )
         work = work + 0.5 / rate * (induced_power(ships) + induced_power(after))
         ships = after
     keep = (ships.energy > 300) & (ships.energy < types.max_energy.min() - 300)
@@ -315,6 +406,7 @@ def test_the_balance_sees_the_bleed_exponent(monkeypatch):
     monkeypatch.setattr(flight, "bleed", lambda airframe, lift_squared: lift_squared)
     assert _induced_drag_balance(30, 3.0).min() > 0.1
 
+
 def test_yemong_sizes_its_coding_ranges_from_the_card():
     """The state code's ranges are the card's largest per-type values: twice the widest
     stall angle, the longest recharge delay, and one more bin than the most ticks between
@@ -322,8 +414,9 @@ def test_yemong_sizes_its_coding_ranges_from_the_card():
     from bnb.models.yemong.state_code import ShipStateCode, state_code_ranges
 
     rules = api.rules_of(GameConfig(1, 1, 1000.0))
-    types = ship_types(stall_angle_scale=(1.0, 1.5), shield_recharge_delay_scale=(2.0, 1.0),
-                       fire_rate=(15.0, 5.0))
+    types = ship_types(
+        stall_angle_scale=(1.0, 1.5), shield_recharge_delay_scale=(2.0, 1.0), fire_rate=(15.0, 5.0)
+    )
     code = ShipStateCode(state_code_ranges(rules, types))
     assert math.isclose(code.angle_of_attack_limit, 3.0 * rules.flight.stall_angle)
     assert math.isclose(code.shield_delay, 2.0 * rules.shield_recharge_delay)

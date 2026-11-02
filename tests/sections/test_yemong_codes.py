@@ -47,14 +47,24 @@ def _states(generator, margin: float):
 
     speed = _uniform(0.0, velocity_reach(), generator)
     angle = _uniform(-math.pi, math.pi, generator)
-    means = torch.stack([
-        _uniform(-13_000.0, 13_000.0, generator), _uniform(-13_000.0, 13_000.0, generator),
-        speed * torch.cos(angle), speed * torch.sin(angle), _uniform(-math.pi, math.pi, generator),
-        inside(-8.0, 8.0), inside(-attack, attack), inside(0.0, RULES.shield_recharge_delay),
-        inside(0.0, 1.0) * shield_max, inside(0.0, 1.0) * energy_max,
-        (torch.rand(COUNT, generator=generator) * (interval + 1)).floor().double()
-        * RULES.tick_length,
-        inside(-math.log(2.0), math.log(2.0))], -1)
+    means = torch.stack(
+        [
+            _uniform(-13_000.0, 13_000.0, generator),
+            _uniform(-13_000.0, 13_000.0, generator),
+            speed * torch.cos(angle),
+            speed * torch.sin(angle),
+            _uniform(-math.pi, math.pi, generator),
+            inside(-8.0, 8.0),
+            inside(-attack, attack),
+            inside(0.0, RULES.shield_recharge_delay),
+            inside(0.0, 1.0) * shield_max,
+            inside(0.0, 1.0) * energy_max,
+            (torch.rand(COUNT, generator=generator) * (interval + 1)).floor().double()
+            * RULES.tick_length,
+            inside(-math.log(2.0), math.log(2.0)),
+        ],
+        -1,
+    )
     return means, ship_type
 
 
@@ -95,8 +105,10 @@ def test_round_trip_with_spreads(code):
     generator = torch.Generator().manual_seed(1)
     means, ship_type = _states(generator, margin=0.25)
     means[:, 2:4] = means[:, 2:4].clamp(-150.0, 150.0)
-    spreads = torch.tensor([30.0, 25.0, 5.0, 16.0, 0.3, 0.5, 0.05, 0.5, 5.0, 300.0, 0.05,
-                            0.0, 0.0, 0.0, 0.0], dtype=torch.float64).expand(COUNT, -1)
+    spreads = torch.tensor(
+        [30.0, 25.0, 5.0, 16.0, 0.3, 0.5, 0.05, 0.5, 5.0, 300.0, 0.05, 0.0, 0.0, 0.0, 0.0],
+        dtype=torch.float64,
+    ).expand(COUNT, -1)
     decoded, decoded_spreads = code.decode(code.encode(means, spreads, ship_type), ship_type)
     error = _errors(decoded, means)
     assert (error.amax(0) / means.abs().amax(0).clamp_min(1.0)).max() < 1e-12
@@ -109,8 +121,9 @@ def test_decoded_positions_lie_in_one_period(code):
     ship_type = torch.zeros(3, dtype=torch.long)
     decoded, _ = code.decode(code.sharp(means, ship_type), ship_type)
     assert ((decoded[:, 0] >= 0) & (decoded[:, 0] < POSITION_PERIOD)).all()
-    torch.testing.assert_close(torch.remainder(means[:, 0], POSITION_PERIOD), decoded[:, 0],
-                               rtol=0, atol=1e-9)
+    torch.testing.assert_close(
+        torch.remainder(means[:, 0], POSITION_PERIOD), decoded[:, 0], rtol=0, atol=1e-9
+    )
 
 
 def test_v2_shot_constants():
@@ -123,8 +136,9 @@ def test_v2_shot_constants():
     assert parameters.trajectory_width == 154 and parameters.outcome_width == 19
     snapshots = torch.tensor([[10.0, -5.0, 700.0, 20.0, 1.3]])
     assert shots.trajectory_code(parameters, snapshots).shape == (1, 154)
-    outcome = shots.outcome_code(parameters, torch.tensor([0, 1, 0]),
-                                 torch.tensor([20.0, 0.0, 1e4]), torch.tensor([2, 1, 1]))
+    outcome = shots.outcome_code(
+        parameters, torch.tensor([0, 1, 0]), torch.tensor([20.0, 0.0, 1e4]), torch.tensor([2, 1, 1])
+    )
     torch.testing.assert_close(outcome.sum(-1), torch.ones(3))
     assert outcome[1, 0] == 1.0 and outcome[2, -1] == 1.0  # an enemy hit; clear
     assert outcome[0, 2:10].sum() == 0.0 and outcome[0, 10:18].sum() > 0.99  # an ally pass
@@ -137,10 +151,13 @@ def test_density_target_and_rates():
     bias = model.density.lasts[0].bias
     assert torch.allclose(bias, torch.full_like(bias, math.log(5.0 / cells)))
     x = torch.tensor([[0.0, 100.0, 9000.0]])
-    counts = density.HexGrid(10).counts(x, torch.zeros_like(x),
-                                        torch.tensor([[True, False, True]]),
-                                        torch.ones_like(x, dtype=torch.bool),
-                                        torch.tensor([[2600.0]]))
+    counts = density.HexGrid(10).counts(
+        x,
+        torch.zeros_like(x),
+        torch.tensor([[True, False, True]]),
+        torch.ones_like(x, dtype=torch.bool),
+        torch.tensor([[2600.0]]),
+    )
     assert counts.shape == (1, 662)
     assert counts[0, :cells].sum() == pytest.approx(1.0)  # the far ally is off the grid
     assert counts[0, cells:].sum() == pytest.approx(1.0)

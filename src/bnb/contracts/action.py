@@ -37,5 +37,6 @@ def to_joint(action: Action) -> torch.Tensor:
 
 def from_joint(joint: torch.Tensor) -> Action:
     joint = joint.to(torch.int32)
-    return Action(joint // (NUM_STICK * NUM_SHOOT), (joint // NUM_SHOOT) % NUM_STICK,
-                  joint % NUM_SHOOT)
+    return Action(
+        joint // (NUM_STICK * NUM_SHOOT), (joint // NUM_SHOOT) % NUM_STICK, joint % NUM_SHOOT
+    )

@@ -60,10 +60,15 @@ def train_cell(size: dict | None, envs: int, preset: str | None = None) -> dict:
         learn_s.append(t3 - t2)
     ticks = envs * cfg.length
     r, lrn = min(rollout_s), min(learn_s)
-    return dict(compile_s=compile_s, rollout_ms=r * 1e3, learn_ms=lrn * 1e3,
-                rollout_env_ticks_per_s=ticks / r, train_env_ticks_per_s=ticks / (r + lrn),
-                peak_vram_gb=torch.cuda.max_memory_allocated(dev) / 2**30,
-                counters=trainer.rollout.counters())
+    return dict(
+        compile_s=compile_s,
+        rollout_ms=r * 1e3,
+        learn_ms=lrn * 1e3,
+        rollout_env_ticks_per_s=ticks / r,
+        train_env_ticks_per_s=ticks / (r + lrn),
+        peak_vram_gb=torch.cuda.max_memory_allocated(dev) / 2**30,
+        counters=trainer.rollout.counters(),
+    )
 
 
 def realtime_cell(size: dict, steps: int = 1000) -> dict:
@@ -84,13 +89,19 @@ def realtime_cell(size: dict, steps: int = 1000) -> dict:
         if i >= 300:
             times.append(time.perf_counter() - t1)
     times.sort()
-    return dict(compile_s=compile_s, p50_ms=times[len(times) // 2] * 1e3,
-                p99_ms=times[int(0.99 * len(times))] * 1e3)
+    return dict(
+        compile_s=compile_s,
+        p50_ms=times[len(times) // 2] * 1e3,
+        p99_ms=times[int(0.99 * len(times))] * 1e3,
+    )
 
 
 if __name__ == "__main__":
     cell = json.loads(sys.argv[1])
     fn = train_cell if cell["kind"] == "train" else realtime_cell
-    args = (cell.get("size"), cell["envs"], cell.get("preset")) if cell["kind"] == "train" \
+    args = (
+        (cell.get("size"), cell["envs"], cell.get("preset"))
+        if cell["kind"] == "train"
         else (cell["size"],)
+    )
     print("RESULT " + json.dumps(dict(cell=cell, **fn(*args))), flush=True)

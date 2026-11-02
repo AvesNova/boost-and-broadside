@@ -75,22 +75,25 @@ class Chaser:
         return action, carry, Outputs()
 
 
-def marginals(obs: Obs, characteristics: Characteristics,
-              parameters: ScriptedParameters) -> Marginals:
+def marginals(
+    obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters
+) -> Marginals:
     """The scripted agent's power, stick and shoot marginals per own ship, from the
     observation alone: the combat layer, with the Frontline layer on top in Frontline. A
     dead ship (or one waiting to respawn) takes the no-op action."""
     fleet = context(obs, characteristics, parameters)
     fighting, has_target, distance = combat(fleet, characteristics, parameters)
-    strategy = frontline(fleet, obs.zones, characteristics, parameters, fighting, has_target,
-                         distance)
+    strategy = frontline(
+        fleet, obs.zones, characteristics, parameters, fighting, has_target, distance
+    )
     in_frontline = (obs.globals[:, None, GLOBAL["mode_frontline"]] > 0.5)[..., None]
     alive = (fleet.own[..., SHIP["alive"]] > 0.5)[..., None]
 
     def chosen(combat_part: torch.Tensor, frontline_part: torch.Tensor) -> torch.Tensor:
         part = torch.where(in_frontline, frontline_part, combat_part)
-        no_op = torch.nn.functional.one_hot(torch.zeros_like(part[..., 0], dtype=torch.long),
-                                            part.shape[-1]).float()
+        no_op = torch.nn.functional.one_hot(
+            torch.zeros_like(part[..., 0], dtype=torch.long), part.shape[-1]
+        ).float()
         return torch.where(alive, part, no_op)
 
     return Marginals(*(chosen(a, b) for a, b in zip(fighting, strategy, strict=True)))
@@ -98,13 +101,17 @@ def marginals(obs: Obs, characteristics: Characteristics,
 
 def joint(parts: Marginals) -> torch.Tensor:
     """(R, S, 42) the outer product of the marginals, in `to_joint` order."""
-    product = (parts.power[..., :, None, None] * parts.stick[..., None, :, None]
-               * parts.shoot[..., None, None, :])
+    product = (
+        parts.power[..., :, None, None]
+        * parts.stick[..., None, :, None]
+        * parts.shoot[..., None, None, :]
+    )
     return product.flatten(-3)
 
 
-def distribution(obs: Obs, characteristics: Characteristics,
-                 parameters: ScriptedParameters) -> torch.Tensor:
+def distribution(
+    obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters
+) -> torch.Tensor:
     """(R, S, 42) the scripted agent's joint action probabilities, `to_joint` order."""
     return joint(marginals(obs, characteristics, parameters))
 
@@ -130,9 +137,12 @@ class Scripted:
 
     reads = ("ships", "zones", "globals")
 
-    def __init__(self, characteristics: Characteristics,
-                 parameters: ScriptedParameters = ScriptedParameters(),
-                 scripted_probability: float | torch.Tensor = 1.0) -> None:
+    def __init__(
+        self,
+        characteristics: Characteristics,
+        parameters: ScriptedParameters = ScriptedParameters(),
+        scripted_probability: float | torch.Tensor = 1.0,
+    ) -> None:
         self.characteristics, self.parameters = characteristics, parameters
         self.scripted_probability = scripted_probability
 
@@ -149,8 +159,10 @@ class Scripted:
         probability = self._probability()
         if isinstance(probability, torch.Tensor):
             probability = probability[..., None]
-        return (probability * distribution(obs, self.characteristics, self.parameters)
-                + (1.0 - probability) / NUM_JOINT)
+        return (
+            probability * distribution(obs, self.characteristics, self.parameters)
+            + (1.0 - probability) / NUM_JOINT
+        )
 
     def step(self, carry: None, obs: Obs, done: torch.Tensor):
         parts = marginals(obs, self.characteristics, self.parameters)
@@ -159,6 +171,7 @@ class Scripted:
         if isinstance(probability, torch.Tensor) or probability < 1.0:
             # a rung: one uniform draw for every view
             scripted = torch.rand(action.shape[:-1], device=action.device) < probability
-            action = torch.where(scripted[..., None], action,
-                                 uniform_actions(action.shape[:-1], action.device))
+            action = torch.where(
+                scripted[..., None], action, uniform_actions(action.shape[:-1], action.device)
+            )
         return Action.unpack(action), carry, Outputs()

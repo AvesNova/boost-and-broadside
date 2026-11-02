@@ -7,9 +7,15 @@ Shapes are time-major, (L, R, S, ...) per ship, with the K reward levels last.
 import torch
 
 
-def per_level_gae(rewards: torch.Tensor, values: torch.Tensor, terminated: torch.Tensor,
-                  next_value: torch.Tensor, next_done: torch.Tensor, discount: torch.Tensor,
-                  trace_decay: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def per_level_gae(
+    rewards: torch.Tensor,
+    values: torch.Tensor,
+    terminated: torch.Tensor,
+    next_value: torch.Tensor,
+    next_done: torch.Tensor,
+    discount: torch.Tensor,
+    trace_decay: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Advantages and returns (L, R, S, K): plain GAE per level with its own discounts.
 
     rewards, values (L, R, S, K); terminated (L, R): the episode ended on step t, so the
@@ -31,9 +37,13 @@ def per_level_gae(rewards: torch.Tensor, values: torch.Tensor, terminated: torch
     return advantages, advantages + values
 
 
-def team_aggregate(team: torch.Tensor, alive: torch.Tensor, advantages: torch.Tensor,
-                   returns: torch.Tensor, team_spirit: torch.Tensor
-                   ) -> tuple[torch.Tensor, torch.Tensor]:
+def team_aggregate(
+    team: torch.Tensor,
+    alive: torch.Tensor,
+    advantages: torch.Tensor,
+    returns: torch.Tensor,
+    team_spirit: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """The level sum with team mixing, (..., N) each:
     A_i = sum_k (A_ik + s_k mean_{living teammates j != i} A_jk), and the same of the
     returns. team (..., N) ids, alive (..., N); advantages, returns (..., N, K); team_spirit

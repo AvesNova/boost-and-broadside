@@ -38,14 +38,24 @@ def controller(net: Yemong, config: GameConfig) -> YemongController:
     return YemongController(net, config.ships_per_team, config.num_ships)
 
 
-def rollout(net: Yemong, config: GameConfig = SHORT_SQUAD, envs: int = 8, length: int = 128,
-            fog_share: float = 0.5, device=CPU, compile: bool = False, runs: int = 1):
+def rollout(
+    net: Yemong,
+    config: GameConfig = SHORT_SQUAD,
+    envs: int = 8,
+    length: int = 128,
+    fog_share: float = 0.5,
+    device=CPU,
+    compile: bool = False,
+    runs: int = 1,
+):
     """A real rollout with Yemong as the learner, in self-play and against the chaser. With
     runs > 1, the trajectory is the last run's, so its initial carry has history."""
     from bnb.runtime.rollout import Rollout  # tests may import the runtime
 
-    pools = (Pool("self_play", 0.5, ("learner", "learner"), fog_share),
-             Pool("chaser", 0.5, ("learner", "chaser"), fog_share))
+    pools = (
+        Pool("self_play", 0.5, ("learner", "learner"), fog_share),
+        Pool("chaser", 0.5, ("learner", "chaser"), fog_share),
+    )
     controllers = {"learner": controller(net, config), "chaser": Chaser(config.ships_per_team)}
     runner = Rollout(config, pools, controllers, "learner", envs, length, device, compile=compile)
     for _ in range(runs - 1):
@@ -58,8 +68,9 @@ def resets(obs: Obs) -> torch.Tensor:
 
 
 def cast(tree, dtype):
-    return _pytree.tree_map_only(torch.Tensor,
-                                 lambda x: x.to(dtype) if x.is_floating_point() else x, tree)
+    return _pytree.tree_map_only(
+        torch.Tensor, lambda x: x.to(dtype) if x.is_floating_point() else x, tree
+    )
 
 
 def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: int = 0):
@@ -68,8 +79,12 @@ def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: in
     decisions = []
     reset = resets(obs)
     for t in range(start, obs.ships.shape[0]):
-        view = Obs(ships=obs.ships[t], fields=obs.fields[t], globals=obs.globals[t],
-                   zones=None if obs.zones is None else obs.zones[t])
+        view = Obs(
+            ships=obs.ships[t],
+            fields=obs.fields[t],
+            globals=obs.globals[t],
+            zones=None if obs.zones is None else obs.zones[t],
+        )
         decision = step(carry, view, reset[t])
         carry = dataclasses.replace(decision.carry, previous_action=joint[t])
         decisions.append(decision)
@@ -79,7 +94,7 @@ def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: in
 
 def joint_actions(trajectory) -> torch.Tensor:
     """The learner's own joint actions (L, R, S); trajectory.action holds every row."""
-    return to_joint(trajectory.action).to(torch.int32)[..., :trajectory.logp.shape[-1]]
+    return to_joint(trajectory.action).to(torch.int32)[..., : trajectory.logp.shape[-1]]
 
 
 def double(net: Yemong) -> Yemong:

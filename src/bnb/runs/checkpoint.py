@@ -74,36 +74,49 @@ def _ship_card(types: ShipTypes) -> dict:
     return {field.name: getattr(types, field.name).tolist() for field in dataclasses.fields(types)}
 
 
-def policy_record(model: torch.nn.Module, return_scale: ReturnScale | None = None,
-                  steps: dict | None = None, game: GameConfig | None = None,
-                  types: ShipTypes | None = None) -> dict:
+def policy_record(
+    model: torch.nn.Module,
+    return_scale: ReturnScale | None = None,
+    steps: dict | None = None,
+    game: GameConfig | None = None,
+    types: ShipTypes | None = None,
+) -> dict:
     """The record of a policy file for `model` (its file hashes added on writing)."""
     head, dirty = provenance.commit()
-    return dict(format=FORMAT, kind="policy",
-                model=dict(name=name_of(model), version=type(model).VERSION,
-                           build=to_json(model.build)),
-                schemas=schemas(), game=None if game is None else to_json(game),
-                ship_card=None if types is None else _ship_card(types),
-                return_scale=return_scale is not None, steps=dict(steps or {}), commit=head,
-                dirty=dirty,
-                time=provenance.now())
+    return dict(
+        format=FORMAT,
+        kind="policy",
+        model=dict(name=name_of(model), version=type(model).VERSION, build=to_json(model.build)),
+        schemas=schemas(),
+        game=None if game is None else to_json(game),
+        ship_card=None if types is None else _ship_card(types),
+        return_scale=return_scale is not None,
+        steps=dict(steps or {}),
+        commit=head,
+        dirty=dirty,
+        time=provenance.now(),
+    )
 
 
 def weights(model: torch.nn.Module) -> dict[str, torch.Tensor]:
     """The model's state as host tensors that own their memory (safetensors refuses shared
     storage)."""
-    return {name: tensor.detach().to("cpu", copy=True).contiguous()
-            for name, tensor in model.state_dict().items()}
+    return {
+        name: tensor.detach().to("cpu", copy=True).contiguous()
+        for name, tensor in model.state_dict().items()
+    }
 
 
-def policy_files(model: torch.nn.Module,
-                 return_scale: ReturnScale | None = None) -> dict[str, dict[str, torch.Tensor]]:
+def policy_files(
+    model: torch.nn.Module, return_scale: ReturnScale | None = None
+) -> dict[str, dict[str, torch.Tensor]]:
     """A policy file's tensor files: the weights and, when given, the return scale's state
     tensors."""
     files = {WEIGHTS: weights(model)}
     if return_scale is not None:
-        files[RETURN_SCALE] = {name: getattr(return_scale, name).detach().to("cpu", copy=True)
-                               for name in SCALE_STATE}
+        files[RETURN_SCALE] = {
+            name: getattr(return_scale, name).detach().to("cpu", copy=True) for name in SCALE_STATE
+        }
     return files
 
 
@@ -115,9 +128,12 @@ def _flush(path: pathlib.Path) -> None:
         os.close(descriptor)
 
 
-def write_checkpoint(directory: str | os.PathLike, record: dict,
-                     files: dict[str, dict[str, torch.Tensor]],
-                     stage: Callable[[str], None] | None = None) -> pathlib.Path:
+def write_checkpoint(
+    directory: str | os.PathLike,
+    record: dict,
+    files: dict[str, dict[str, torch.Tensor]],
+    stage: Callable[[str], None] | None = None,
+) -> pathlib.Path:
     """Write `files` (file name to named tensors) and `record` (with each file's SHA-256
     added) as the checkpoint `directory`, atomically. An existing checkpoint there is never
     replaced. `stage(name)` is called after each file is flushed (the atomicity tests
@@ -148,10 +164,15 @@ def write_checkpoint(directory: str | os.PathLike, record: dict,
     return final
 
 
-def save_policy(directory: str | os.PathLike, model: torch.nn.Module, *,
-                return_scale: ReturnScale | None = None, steps: dict | None = None,
-                game: GameConfig | None = None,
-                types: ShipTypes | None = None) -> pathlib.Path:
+def save_policy(
+    directory: str | os.PathLike,
+    model: torch.nn.Module,
+    *,
+    return_scale: ReturnScale | None = None,
+    steps: dict | None = None,
+    game: GameConfig | None = None,
+    types: ShipTypes | None = None,
+) -> pathlib.Path:
     """Write `model` as a policy file at `directory`: its registered name, version and build
     record, its weights, the schema versions, and for a warm start the return scale and the
     step counts (`steps`, such as {"environment_steps": n}). game and types (the ship card)
@@ -168,15 +189,19 @@ def read_record(directory: str | os.PathLike) -> dict:
         raise CheckpointError(f"{directory} is not a checkpoint: it has no {RECORD}")
     record = json.loads(path.read_text())
     if record.get("format") != FORMAT:
-        raise CheckpointError(f"{directory} is checkpoint format {record.get('format')}; "
-                              f"this code reads format {FORMAT}")
+        raise CheckpointError(
+            f"{directory} is checkpoint format {record.get('format')}; "
+            f"this code reads format {FORMAT}"
+        )
     for name, expected in record["files"].items():
         if not (directory / name).is_file():
             raise CheckpointError(f"{directory / name} is missing")
         actual = provenance.file_hash(directory / name)
         if actual != expected:
-            raise CheckpointError(f"{directory / name} has SHA-256 {actual}, but the record "
-                                  f"says {expected}: the file changed after it was written")
+            raise CheckpointError(
+                f"{directory / name} has SHA-256 {actual}, but the record "
+                f"says {expected}: the file changed after it was written"
+            )
     return record
 
 
@@ -185,30 +210,42 @@ def read_policy(directory: str | os.PathLike) -> PolicyRecord:
     model's version must equal the code's, and the build record must read."""
     record = read_record(directory)
     if record["schemas"] != schemas():
-        raise CheckpointError(f"{directory} was trained on schema versions "
-                              f"{record['schemas']}; the code has {schemas()}")
+        raise CheckpointError(
+            f"{directory} was trained on schema versions "
+            f"{record['schemas']}; the code has {schemas()}"
+        )
     model = record["model"]
     cls = model_class(model["name"])
     if model["version"] != cls.VERSION:
         raise CheckpointError(
             f"{directory} holds {model['name']} version {model['version']}; the code has "
             f"version {cls.VERSION}. Load it from a worktree at a commit with version "
-            f"{model['version']}")
+            f"{model['version']}"
+        )
     build, filled = from_json(BUILDS[cls], model["build"])
     scale = None
     if record["return_scale"]:
         scale = safetensors.torch.load_file(pathlib.Path(directory) / RETURN_SCALE)
-    return PolicyRecord(name=model["name"], version=model["version"], build=build,
-                        filled=tuple(filled),
-                        return_scale=scale,
-                        steps=record["steps"], raw=record)
+    return PolicyRecord(
+        name=model["name"],
+        version=model["version"],
+        build=build,
+        filled=tuple(filled),
+        return_scale=scale,
+        steps=record["steps"],
+        raw=record,
+    )
 
 
 def build_model(policy: PolicyRecord, device: torch.device) -> torch.nn.Module:
     """A fresh model from a policy record's build (its weights not loaded)."""
     if policy.filled:
-        warnings.warn(f"the {policy.name} build record lacks {', '.join(policy.filled)}; "
-                      f"they take their defaults", FilledDefaults, stacklevel=3)
+        warnings.warn(
+            f"the {policy.name} build record lacks {', '.join(policy.filled)}; "
+            f"they take their defaults",
+            FilledDefaults,
+            stacklevel=3,
+        )
     return model_class(policy.name)(policy.build).to(device)
 
 
@@ -219,8 +256,9 @@ def load_policy(directory: str | os.PathLike, device: torch.device) -> torch.nn.
     them (`read_policy` lists them too)."""
     policy = read_policy(directory)
     model = build_model(policy, device)
-    model.load_state_dict(safetensors.torch.load_file(pathlib.Path(directory) / WEIGHTS,
-                                                      device=str(device)))
+    model.load_state_dict(
+        safetensors.torch.load_file(pathlib.Path(directory) / WEIGHTS, device=str(device))
+    )
     return model
 
 
@@ -231,18 +269,35 @@ def load_policy(directory: str | os.PathLike, device: torch.device) -> torch.nn.
 # the return), and what changes speed but not shapes (the micro-batch rows, the precision).
 # Everything else is structural, or not listed and so fixed: a resume takes it from the
 # checkpoint.
-OVERRIDABLE = ("updates", "precision", "learner.learning_rate", "learner.warmup_start",
-               "learner.warmup_steps", "learner.policy", "learner.entropy", "learner.value",
-               "learner.next_state", "learner.enemy_action", "learner.density",
-               "learner.shot_trajectory", "learner.shot_outcome", "learner.micro_batch_rows",
-               "reward.damage", "reward.kill_death", "reward.objective_progress",
-               "reward.objective", "reward.outcome")
+OVERRIDABLE = (
+    "updates",
+    "precision",
+    "learner.learning_rate",
+    "learner.warmup_start",
+    "learner.warmup_steps",
+    "learner.policy",
+    "learner.entropy",
+    "learner.value",
+    "learner.next_state",
+    "learner.enemy_action",
+    "learner.density",
+    "learner.shot_trajectory",
+    "learner.shot_outcome",
+    "learner.micro_batch_rows",
+    "reward.damage",
+    "reward.kill_death",
+    "reward.objective_progress",
+    "reward.objective",
+    "reward.outcome",
+)
 
 
 def _generators(trainer: Trainer) -> dict[str, torch.Generator]:
     """The named streams a trainer draws from beyond the default generators."""
-    return {"shot_spread": trainer.ppo.spread_generator,
-            "minibatch_order": trainer.ppo.order_generator}
+    return {
+        "shot_spread": trainer.ppo.spread_generator,
+        "minibatch_order": trainer.ppo.order_generator,
+    }
 
 
 def default_generator_states(device: torch.device) -> dict[str, torch.Tensor]:
@@ -254,9 +309,13 @@ def default_generator_states(device: torch.device) -> dict[str, torch.Tensor]:
     return states
 
 
-def save_training(directory: str | os.PathLike, trainer: Trainer, *,
-                  stage: Callable[[str], None] | None = None,
-                  extra: dict | None = None) -> pathlib.Path:
+def save_training(
+    directory: str | os.PathLike,
+    trainer: Trainer,
+    *,
+    stage: Callable[[str], None] | None = None,
+    extra: dict | None = None,
+) -> pathlib.Path:
     """Write a training checkpoint of `trainer` at `directory`: the policy file of its
     model, plus the full TrainConfig, the optimizer, the league slot, every generator, the
     rollout carry and the step counters. `extra` goes into the record as it is (the run's
@@ -266,9 +325,12 @@ def save_training(directory: str | os.PathLike, trainer: Trainer, *,
     steps = dict(environment_steps=ppo.env_steps, updates=trainer.updates_done)
     record = policy_record(trainer.model, ppo.return_scale, steps, config.game, ppo.types)
     optimizer = ppo.optimizer.state_dict()
-    record.update(kind="training", train_config=to_json(config),
-                  optimizer=dict(param_groups=to_json(optimizer["param_groups"])),
-                  extra=dict(extra or {}))
+    record.update(
+        kind="training",
+        train_config=to_json(config),
+        optimizer=dict(param_groups=to_json(optimizer["param_groups"])),
+        extra=dict(extra or {}),
+    )
     tensors = {}
     tensors.update(named_tensors(optimizer["state"], "optimizer."))
     tensors.update(named_tensors(trainer.league.state_dict(), "league."))
@@ -277,8 +339,9 @@ def save_training(directory: str | os.PathLike, trainer: Trainer, *,
         tensors[f"generator.{name}"] = generator.get_state()
     for name, state in default_generator_states(device).items():
         tensors[f"default_generator.{name}"] = state
-    tensors = {name: tensor.detach().to("cpu", copy=True).contiguous()
-               for name, tensor in tensors.items()}
+    tensors = {
+        name: tensor.detach().to("cpu", copy=True).contiguous() for name, tensor in tensors.items()
+    }
     files = policy_files(trainer.model, ppo.return_scale)
     return write_checkpoint(directory, record, dict(files, **{TRAINING: tensors}), stage)
 
@@ -296,8 +359,11 @@ def _paths(value, prefix: str = "") -> dict:
 def config_differences(saved, given, allowed: tuple[str, ...] = ()) -> list[str]:
     """The dotted fields where two dataclasses differ, apart from `allowed`."""
     saved, given = _paths(to_json(saved)), _paths(to_json(given))
-    return sorted(path for path in saved.keys() | given.keys()
-                  if saved.get(path) != given.get(path) and path not in allowed)
+    return sorted(
+        path
+        for path in saved.keys() | given.keys()
+        if saved.get(path) != given.get(path) and path not in allowed
+    )
 
 
 def run_build(policy: PolicyRecord, config: TrainConfig, directory, what: str):
@@ -306,18 +372,24 @@ def run_build(policy: PolicyRecord, config: TrainConfig, directory, what: str):
     the record's (so a changed code default never blocks loading an old file). Refuses
     another model; reports fields the record lacked (`FilledDefaults`)."""
     if policy.name != config.model:
-        raise CheckpointError(f"{what} refused: {directory} holds {policy.name}, the run "
-                              f"trains {config.model}")
+        raise CheckpointError(
+            f"{what} refused: {directory} holds {policy.name}, the run trains {config.model}"
+        )
     if policy.filled:
-        warnings.warn(f"the {policy.name} build record of {directory} lacks "
-                      f"{', '.join(policy.filled)}; they take their defaults", FilledDefaults,
-                      stacklevel=3)
+        warnings.warn(
+            f"the {policy.name} build record of {directory} lacks "
+            f"{', '.join(policy.filled)}; they take their defaults",
+            FilledDefaults,
+            stacklevel=3,
+        )
     build = model_build(config, policy.build.config)
     differ = config_differences(policy.build, build, ("config.bfloat16_matmuls",))
     if differ:
-        raise CheckpointError(f"{what} refused: the build record of {directory} differs from "
-                              f"the run's model in {', '.join(differ)}. A new architecture "
-                              f"is a new run")
+        raise CheckpointError(
+            f"{what} refused: the build record of {directory} differs from "
+            f"the run's model in {', '.join(differ)}. A new architecture "
+            f"is a new run"
+        )
     return build
 
 
@@ -333,37 +405,40 @@ def _set_return_scale(trainer: Trainer, scale: dict[str, torch.Tensor] | None) -
             setattr(target, name, scale[name].to(getattr(target, name).device))
 
 
-def restore_optimizer(trainer: Trainer, stored: dict[str, torch.Tensor],
-                      groups: list[dict]) -> None:
+def restore_optimizer(
+    trainer: Trainer, stored: dict[str, torch.Tensor], groups: list[dict]
+) -> None:
     """Load the optimizer state of a training file's tensors and the record's param groups
     into `trainer`, laid out as Adam's for its model's parameters (the step and both moments
     of each), every name, shape and dtype checked."""
     target = {}
     for index, parameter in enumerate(trainer.model.parameters()):
         if f"optimizer.{index}.step" in stored:
-            target[index] = dict(step=torch.zeros((), dtype=torch.float32),
-                                 exp_avg=torch.zeros_like(parameter),
-                                 exp_avg_sq=torch.zeros_like(parameter))
+            target[index] = dict(
+                step=torch.zeros((), dtype=torch.float32),
+                exp_avg=torch.zeros_like(parameter),
+                exp_avg_sq=torch.zeros_like(parameter),
+            )
     groups = [dict(group, betas=tuple(group["betas"])) for group in groups]
     trainer.ppo.optimizer.load_state_dict(
-        dict(state=tree_from_named(target, stored, "optimizer."), param_groups=groups))
+        dict(state=tree_from_named(target, stored, "optimizer."), param_groups=groups)
+    )
 
 
-def _restore(trainer: Trainer, directory: pathlib.Path, record: dict, policy: PolicyRecord,
-             carry: bool) -> None:
+def _restore(
+    trainer: Trainer, directory: pathlib.Path, record: dict, policy: PolicyRecord, carry: bool
+) -> None:
     """Load the model, league, optimizer, return scale and counters (and with `carry`, the
     rollout carry and the named streams) of a training checkpoint into `trainer`."""
     stored = safetensors.torch.load_file(directory / TRAINING)
     _load_weights(trainer.model, directory)
-    trainer.league.load_state_dict(tree_from_named(trainer.league.state_dict(), stored,
-                                                   "league."))
+    trainer.league.load_state_dict(tree_from_named(trainer.league.state_dict(), stored, "league."))
     restore_optimizer(trainer, stored, record["optimizer"]["param_groups"])
     _set_return_scale(trainer, policy.return_scale)
     trainer.ppo.env_steps = policy.steps["environment_steps"]
     trainer.updates_done = policy.steps["updates"]
     if carry:
-        trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored,
-                                                   "carry."))
+        trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored, "carry."))
         for name, generator in _generators(trainer).items():
             generator.set_state(stored[f"generator.{name}"])
 
@@ -372,8 +447,10 @@ def _check_card(trainer: Trainer, record: dict, directory) -> None:
     card = _ship_card(trainer.ppo.types)
     if record["ship_card"] != card:
         differ = sorted(name for name in card if record["ship_card"].get(name) != card[name])
-        raise CheckpointError(f"{directory} trained on another ship card ({', '.join(differ)} "
-                              f"differ); the card cannot change on a resume: fork with --from")
+        raise CheckpointError(
+            f"{directory} trained on another ship card ({', '.join(differ)} "
+            f"differ); the card cannot change on a resume: fork with --from"
+        )
 
 
 def restore_default_generators(directory: str | os.PathLike, device: torch.device) -> None:
@@ -383,8 +460,10 @@ def restore_default_generators(directory: str | os.PathLike, device: torch.devic
     torch.set_rng_state(stored["default_generator.cpu"])
     if device.type == "cuda":
         if "default_generator.cuda" not in stored:
-            raise CheckpointError(f"{directory} was saved on the CPU: it holds no CUDA "
-                                  f"generator to resume on {device}")
+            raise CheckpointError(
+                f"{directory} was saved on the CPU: it holds no CUDA "
+                f"generator to resume on {device}"
+            )
         torch.cuda.set_rng_state(stored["default_generator.cuda"], device)
 
 
@@ -392,14 +471,16 @@ def training_config(directory: str | os.PathLike) -> tuple[TrainConfig, list[str
     """(the TrainConfig a training checkpoint ran with, the fields its defaults filled)."""
     record = read_record(directory)
     if record.get("kind") != "training":
-        raise CheckpointError(f"{directory} is a {record.get('kind')} file, not a training "
-                              f"checkpoint")
+        raise CheckpointError(
+            f"{directory} is a {record.get('kind')} file, not a training checkpoint"
+        )
     config, filled = from_json(TrainConfig, record["train_config"])
     return config, filled
 
 
-def load_training(directory: str | os.PathLike, device: torch.device,
-                  config: TrainConfig | None = None) -> Trainer:
+def load_training(
+    directory: str | os.PathLike, device: torch.device, config: TrainConfig | None = None
+) -> Trainer:
     """The trainer of a training checkpoint, ready to continue exactly where it stopped:
     built from the checkpoint's own TrainConfig, or `config`, which may differ from it only
     in OVERRIDABLE fields, and its model from the checkpoint's build record. The ship card
@@ -408,13 +489,18 @@ def load_training(directory: str | os.PathLike, device: torch.device,
     directory = pathlib.Path(directory)
     saved, filled = training_config(directory)
     if filled:
-        warnings.warn(f"the TrainConfig of {directory} lacks {', '.join(filled)}; they take "
-                      f"their defaults", FilledDefaults, stacklevel=2)
+        warnings.warn(
+            f"the TrainConfig of {directory} lacks {', '.join(filled)}; they take their defaults",
+            FilledDefaults,
+            stacklevel=2,
+        )
     config = saved if config is None else config
     structural = config_differences(saved, config, OVERRIDABLE)
     if structural:
-        raise CheckpointError(f"a resume cannot change {', '.join(structural)}; start a new "
-                              f"run from this checkpoint with --from")
+        raise CheckpointError(
+            f"a resume cannot change {', '.join(structural)}; start a new "
+            f"run from this checkpoint with --from"
+        )
     record, policy = read_record(directory), read_policy(directory)
     trainer = Trainer(config, device, run_build(policy, config, directory, "the resume"))
     _check_card(trainer, record, directory)
@@ -422,8 +508,9 @@ def load_training(directory: str | os.PathLike, device: torch.device,
     return trainer
 
 
-def fork_training(directory: str | os.PathLike, config: TrainConfig,
-                  device: torch.device) -> Trainer:
+def fork_training(
+    directory: str | os.PathLike, config: TrainConfig, device: torch.device
+) -> Trainer:
     """A new trainer with `config` that starts from a training checkpoint's model (built
     from its build record), league slot, optimizer, return scale and environment-step count
     (so the warm-up goes on), not its carry or generators (the new run's sizes may differ).
@@ -431,16 +518,17 @@ def fork_training(directory: str | os.PathLike, config: TrainConfig,
     directory = pathlib.Path(directory)
     record, policy = read_record(directory), read_policy(directory)
     if record.get("kind") != "training":
-        raise CheckpointError(f"{directory} is a {record.get('kind')} file; a fork needs a "
-                              f"training checkpoint (a policy file is a warm start)")
+        raise CheckpointError(
+            f"{directory} is a {record.get('kind')} file; a fork needs a "
+            f"training checkpoint (a policy file is a warm start)"
+        )
     trainer = Trainer(config, device, run_build(policy, config, directory, "the fork"))
     _restore(trainer, directory, record, policy, carry=False)
     trainer.updates_done = 0
     return trainer
 
 
-def warm_start(directory: str | os.PathLike, config: TrainConfig,
-               device: torch.device) -> Trainer:
+def warm_start(directory: str | os.PathLike, config: TrainConfig, device: torch.device) -> Trainer:
     """A new trainer with `config` whose model (and league slot) start from a policy file's
     build record, weights and return scale, with a fresh optimizer and fresh step counts:
     the BC -> RL hand-off."""

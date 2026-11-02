@@ -17,14 +17,19 @@ class Realtime:
         fog = torch.tensor([fogged])
         self.state = api.reset(self.rules, self.types, api.uniforms(self.rules, 1), fog)
         self.state, self.obs, _ = api.perceive(self.rules, self.state)
-        self._tick = torch.compile(self._tick_fn, fullgraph=True, dynamic=False) if compile \
+        self._tick = (
+            torch.compile(self._tick_fn, fullgraph=True, dynamic=False)
+            if compile
             else self._tick_fn
+        )
 
-    def _tick_fn(self, state: api.State, types: api.ShipTypes,
-                 actions: torch.Tensor) -> tuple[api.State, Obs]:
+    def _tick_fn(
+        self, state: api.State, types: api.ShipTypes, actions: torch.Tensor
+    ) -> tuple[api.State, Obs]:
         rules = self.rules
-        moved, sweep = api.move(rules, types, state, Action.unpack(actions[None]),
-                                api.spread(rules, 1))
+        moved, sweep = api.move(
+            rules, types, state, Action.unpack(actions[None]), api.spread(rules, 1)
+        )
         stepped, _ = api.resolve(rules, types, moved, sweep, api.uniforms(rules, 1))
         stepped, obs, _ = api.perceive(rules, stepped)
         return stepped, obs

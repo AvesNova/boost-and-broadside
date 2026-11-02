@@ -33,11 +33,25 @@ LEAGUE_EVERY = 3
 def config(model: str, device: str) -> TrainConfig:
     # A learning rate that moves the model visibly in two updates, and a return-scale floor
     # under the returns' spread, so both the league's lag and the return scale show.
-    learner = LearnerConfig(epochs=2, minibatches=2, learning_rate=3e-3, warmup_steps=1000,
-                            micro_batch_rows=64, return_scale_floor=1e-7)
-    return TrainConfig(game=GameConfig(2, 2, 1500.0, episode_s=4.0, respawn_s=1.0),
-                       num_envs=16, updates=0, length=32, model=model, relational_hidden=32,
-                       league_every=LEAGUE_EVERY, learner=learner, compile=device == "cuda")
+    learner = LearnerConfig(
+        epochs=2,
+        minibatches=2,
+        learning_rate=3e-3,
+        warmup_steps=1000,
+        micro_batch_rows=64,
+        return_scale_floor=1e-7,
+    )
+    return TrainConfig(
+        game=GameConfig(2, 2, 1500.0, episode_s=4.0, respawn_s=1.0),
+        num_envs=16,
+        updates=0,
+        length=32,
+        model=model,
+        relational_hidden=32,
+        league_every=LEAGUE_EVERY,
+        learner=learner,
+        compile=device == "cuda",
+    )
 
 
 def main() -> None:

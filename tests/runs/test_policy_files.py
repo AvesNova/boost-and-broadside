@@ -49,15 +49,22 @@ def test_a_policy_loads_bit_for_bit_on_the_gpu(tmp_path, name):
 def test_the_return_scale_and_steps_travel_with_the_policy(tmp_path):
     scale = ReturnScale(0.99, 1.0)
     scale.low, scale.high = torch.tensor(-0.3721), torch.tensor(2.718281)
-    save_policy(tmp_path / "policy", cases.tiny_model("relational"), return_scale=scale,
-                steps=dict(environment_steps=12345), game=cases.GAME)
+    save_policy(
+        tmp_path / "policy",
+        cases.tiny_model("relational"),
+        return_scale=scale,
+        steps=dict(environment_steps=12345),
+        game=cases.GAME,
+    )
     policy = checkpoint.read_policy(tmp_path / "policy")
     assert policy.return_scale.keys() == {"low", "high"}
     for name in ("low", "high"):  # the state tensors themselves, bit for bit
         assert torch.equal(policy.return_scale[name], getattr(scale, name))
     assert (tmp_path / "policy" / checkpoint.RETURN_SCALE).is_file()
     assert checkpoint.read_policy(tmp_path / "policy").raw["files"].keys() == {
-        checkpoint.WEIGHTS, checkpoint.RETURN_SCALE}  # hashed like the weights
+        checkpoint.WEIGHTS,
+        checkpoint.RETURN_SCALE,
+    }  # hashed like the weights
     assert policy.steps == dict(environment_steps=12345)
     assert policy.raw["game"]["ships_per_team"] == 2
 
@@ -75,10 +82,20 @@ def test_two_widths_load_side_by_side_and_play_each_other(tmp_path):
     wide = load_policy(tmp_path / "width_256", cases.CPU)
     assert (narrow.config.width, wide.config.width) == (128, 256)
     game = cases.GAME
-    controllers = {name: YemongController(model, game.ships_per_team, game.num_ships)
-                   for name, model in (("narrow", narrow), ("wide", wide))}
-    rollout = Rollout(game, (Pool("match", 1.0, ("narrow", "wide")),), controllers, "narrow",
-                      2, 1, cases.CPU, compile=False)
+    controllers = {
+        name: YemongController(model, game.ships_per_team, game.num_ships)
+        for name, model in (("narrow", narrow), ("wide", wide))
+    }
+    rollout = Rollout(
+        game,
+        (Pool("match", 1.0, ("narrow", "wide")),),
+        controllers,
+        "narrow",
+        2,
+        1,
+        cases.CPU,
+        compile=False,
+    )
     trajectory = rollout.run()
     assert torch.isfinite(trajectory.logp).all() and torch.isfinite(trajectory.value).all()
 
@@ -103,23 +120,30 @@ def test_a_changed_weights_file_is_refused_by_its_hash(tmp_path):
 def test_a_schema_version_mismatch_is_refused_naming_both(tmp_path):
     save_policy(tmp_path / "policy", cases.tiny_model("relational"))
     _edit_record(tmp_path / "policy", lambda record: record["schemas"].update(Obs=2))
-    with pytest.raises(CheckpointError, match=r"schema versions \{'Obs': 2, 'Action': 1\}; "
-                                              rf"the code has \{{'Obs': {Obs.SCHEMA_VERSION}"):
+    with pytest.raises(
+        CheckpointError,
+        match=r"schema versions \{'Obs': 2, 'Action': 1\}; "
+        rf"the code has \{{'Obs': {Obs.SCHEMA_VERSION}",
+    ):
         load_policy(tmp_path / "policy", cases.CPU)
 
 
 def test_a_model_version_mismatch_is_refused_naming_both(tmp_path):
     save_policy(tmp_path / "policy", cases.tiny_model("yemong"))
     _edit_record(tmp_path / "policy", lambda record: record["model"].update(version=7))
-    with pytest.raises(CheckpointError, match=r"yemong version 7; the code has version 1\. "
-                                              r"Load it from a worktree"):
+    with pytest.raises(
+        CheckpointError,
+        match=r"yemong version 7; the code has version 1\. "
+        r"Load it from a worktree",
+    ):
         load_policy(tmp_path / "policy", cases.CPU)
 
 
 def test_an_unknown_config_field_is_refused_naming_it(tmp_path):
     save_policy(tmp_path / "policy", cases.tiny_model("yemong"))
-    _edit_record(tmp_path / "policy",
-                 lambda record: record["model"]["build"]["config"].update(dropout=0.1))
+    _edit_record(
+        tmp_path / "policy", lambda record: record["model"]["build"]["config"].update(dropout=0.1)
+    )
     with pytest.raises(SerialiseError, match="unknown field config.dropout in YemongConfig"):
         load_policy(tmp_path / "policy", cases.CPU)
 
@@ -128,8 +152,10 @@ def test_a_missing_build_field_takes_its_default_and_the_load_reports_it(tmp_pat
     """Acceptance 5: a field added since the file was written loads with its default."""
     model = cases.tiny_model("yemong")
     save_policy(tmp_path / "policy", model)
-    _edit_record(tmp_path / "policy",
-                 lambda record: record["model"]["build"]["config"].pop("presence_radius"))
+    _edit_record(
+        tmp_path / "policy",
+        lambda record: record["model"]["build"]["config"].pop("presence_radius"),
+    )
     assert checkpoint.read_policy(tmp_path / "policy").filled == ("config.presence_radius",)
     with pytest.warns(FilledDefaults, match="lacks config.presence_radius"):
         loaded = load_policy(tmp_path / "policy", cases.CPU)

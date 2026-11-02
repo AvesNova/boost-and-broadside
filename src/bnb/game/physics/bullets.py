@@ -15,9 +15,15 @@ from .numerics import rotate, small_angle_cos_sin
 
 def _half_bend(tick_length: float, bullet: Bullets, index: torch.Tensor):
     """Turn the direction toward higher n by half a tick: rate (w/n) (d x grad ln n)."""
-    turn = 0.5 * tick_length * (bullet.proper_speed / index) * (
-        bullet.direction_x * bullet.log_index_gradient_y
-        - bullet.direction_y * bullet.log_index_gradient_x)
+    turn = (
+        0.5
+        * tick_length
+        * (bullet.proper_speed / index)
+        * (
+            bullet.direction_x * bullet.log_index_gradient_y
+            - bullet.direction_y * bullet.log_index_gradient_x
+        )
+    )
     return rotate(bullet.direction_x, bullet.direction_y, *small_angle_cos_sin(turn))
 
 
@@ -35,18 +41,33 @@ def bullet_motion(rules: Rules, bullet: Bullets, fields: Fields, drag_scale=1.0)
     bullet = replace(bullet, proper_speed=_half_drag(rules, drag_scale, bullet.proper_speed, index))
     direction_x, direction_y = _half_bend(tick_length, bullet, index)
     speed = bullet.proper_speed / index
-    correction = 0.5 * tick_length * speed * (direction_x * bullet.log_index_gradient_x
-                                    + direction_y * bullet.log_index_gradient_y)  # xi
+    correction = (
+        0.5
+        * tick_length
+        * speed
+        * (direction_x * bullet.log_index_gradient_x + direction_y * bullet.log_index_gradient_y)
+    )  # xi
     step = speed * tick_length / (1.0 + correction * (1.0 + correction * (0.5 + correction / 6.0)))
     x, y = bullet.x + direction_x * step, bullet.y + direction_y * step
     log_index, gradient_x, gradient_y = medium(fields, x, y)
     index = torch.exp(log_index)
-    bullet = replace(bullet, x=x, y=y, direction_x=direction_x, direction_y=direction_y,
-                     log_refractive_index=log_index, log_index_gradient_x=gradient_x,
-                     log_index_gradient_y=gradient_y)
+    bullet = replace(
+        bullet,
+        x=x,
+        y=y,
+        direction_x=direction_x,
+        direction_y=direction_y,
+        log_refractive_index=log_index,
+        log_index_gradient_x=gradient_x,
+        log_index_gradient_y=gradient_y,
+    )
     direction_x, direction_y = _half_bend(tick_length, bullet, index)
-    return replace(bullet, direction_x=direction_x, direction_y=direction_y,
-                   proper_speed=_half_drag(rules, drag_scale, bullet.proper_speed, index))
+    return replace(
+        bullet,
+        direction_x=direction_x,
+        direction_y=direction_y,
+        proper_speed=_half_drag(rules, drag_scale, bullet.proper_speed, index),
+    )
 
 
 @contract
@@ -87,22 +108,34 @@ def launch(rules: Rules, types: ShipTypes, state: Launch, spread: torch.Tensor) 
     spread_speed = rules.bullet_spread * per_ship(types.bullet_spread_scale, state.ship_type)
     # Proper velocity: the ship's own along its flight path, plus the muzzle velocity along
     # the nose, plus the spread.
-    velocity_x = (speed * (cos * angle_cos + sin * angle_sin) + muzzle * cos
-                  + spread_speed * spread[..., 0])
-    velocity_y = (speed * (sin * angle_cos - cos * angle_sin) + muzzle * sin
-                  + spread_speed * spread[..., 1])
+    velocity_x = (
+        speed * (cos * angle_cos + sin * angle_sin) + muzzle * cos + spread_speed * spread[..., 0]
+    )
+    velocity_y = (
+        speed * (sin * angle_cos - cos * angle_sin) + muzzle * sin + spread_speed * spread[..., 1]
+    )
     bullet_speed = torch.sqrt(velocity_x * velocity_x + velocity_y * velocity_y)
     return Bullets(
-        x=state.x, y=state.y, direction_x=velocity_x / bullet_speed,
-        direction_y=velocity_y / bullet_speed, proper_speed=bullet_speed,
+        x=state.x,
+        y=state.y,
+        direction_x=velocity_x / bullet_speed,
+        direction_y=velocity_y / bullet_speed,
+        proper_speed=bullet_speed,
         log_refractive_index=state.log_refractive_index,
         log_index_gradient_x=state.log_index_gradient_x,
         log_index_gradient_y=state.log_index_gradient_y,
-        moves_left=torch.full_like(state.ship_type, rules.bullet_moves))
+        moves_left=torch.full_like(state.ship_type, rules.bullet_moves),
+    )
 
 
-def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: torch.Tensor,
-         spread: torch.Tensor) -> tuple[Ships, Bullets]:
+def fire(
+    rules: Rules,
+    types: ShipTypes,
+    ships: Ships,
+    bullets: Bullets,
+    shoot: torch.Tensor,
+    spread: torch.Tensor,
+) -> tuple[Ships, Bullets]:
     """Phase 1 (game spec 6.1), from the tick-start state. shoot (B, N) bool; spread
     (B, N, 2) standard normals."""
     cost = per_ship(types.bullet_energy_cost, ships.ship_type)
@@ -119,20 +152,24 @@ def fire(rules: Rules, types: ShipTypes, ships: Ships, bullets: Bullets, shoot: 
     slot = torch.arange(rules.bullet_slots, device=fired.device)
     bullets = where(fired[..., None] & (slot == ships.next_slot[..., None]), new, bullets)
     ships = replace(
-        ships, energy=torch.where(fired, ships.energy - cost, ships.energy),
+        ships,
+        energy=torch.where(fired, ships.energy - cost, ships.energy),
         gun_cooldown=torch.where(fired, interval, ships.gun_cooldown),
         next_slot=torch.where(fired, (ships.next_slot + 1) % rules.bullet_slots, ships.next_slot),
-        fired=fired)
+        fired=fired,
+    )
     return ships, bullets
 
 
-def move_bullets(rules: Rules, types: ShipTypes, bullets: Bullets, fields: Fields,
-                 ship_type: torch.Tensor) -> Bullets:
+def move_bullets(
+    rules: Rules, types: ShipTypes, bullets: Bullets, fields: Fields, ship_type: torch.Tensor
+) -> Bullets:
     """Phase 3: every active bullet moves, with its shooter's drag; inactive ones are
     frozen. ship_type (B, N), the owners' types."""
     B, N, K = bullets.moves_left.shape
     drag_scale = per_ship(types.bullet_drag_scale, ship_type)[..., None].expand(B, N, K)
-    moved = bullet_motion(rules, apply(lambda v: v.reshape(B, N * K), bullets), fields,
-                          drag_scale.reshape(B, N * K))
+    moved = bullet_motion(
+        rules, apply(lambda v: v.reshape(B, N * K), bullets), fields, drag_scale.reshape(B, N * K)
+    )
     moved = apply(lambda v: v.reshape(B, N, K), moved)
     return where(bullets.moves_left > 0, moved, bullets)

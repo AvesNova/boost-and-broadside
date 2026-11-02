@@ -52,8 +52,9 @@ def controls(power_index: torch.Tensor, stick_index: torch.Tensor):
 def engine_fall(constants: FlightConstants, airframe: Airframe, energy: torch.Tensor):
     """phi(E): 0 below the knee, rising smoothly to 1 at a full store."""
     fraction = energy / airframe.max_energy
-    return smoothstep(((fraction - constants.engine_knee) / (1.0 - constants.engine_knee))
-                      .clamp(0.0, 1.0))
+    return smoothstep(
+        ((fraction - constants.engine_knee) / (1.0 - constants.engine_knee)).clamp(0.0, 1.0)
+    )
 
 
 def stall_angle(constants: FlightConstants, airframe: Airframe) -> torch.Tensor:
@@ -69,8 +70,9 @@ def lift_coefficient(constants: FlightConstants, airframe: Airframe, angle: torc
 def lift_slope(constants: FlightConstants, airframe: Airframe, angle: torch.Tensor):
     stall = stall_angle(constants, airframe)
     ratio = (angle / stall).abs()
-    return torch.where(ratio < 2.0, (airframe.max_lift_coefficient / stall) * (2.0 - 2.0 * ratio),
-                       0.0)
+    return torch.where(
+        ratio < 2.0, (airframe.max_lift_coefficient / stall) * (2.0 - 2.0 * ratio), 0.0
+    )
 
 
 class Setting(NamedTuple):
@@ -82,51 +84,77 @@ class Setting(NamedTuple):
     thrust: torch.Tensor  # T (m/s^2)
 
 
-def setting(constants: FlightConstants, airframe: Airframe, speed, energy, stick,
-            power) -> Setting:
+def setting(constants: FlightConstants, airframe: Airframe, speed, energy, stick, power) -> Setting:
     fall = engine_fall(constants, airframe, energy)
     dive = constants.dive_exchange * airframe.dive_exchange_scale  # a_d
-    commanded = torch.where(power == 0.0,
-                            constants.coast_exchange * airframe.coast_exchange_scale * (1.0 - fall),
-                            torch.where(power > 0.0,
-                                        constants.climb_exchange * airframe.climb_exchange_scale,
-                                        -dive))
+    commanded = torch.where(
+        power == 0.0,
+        constants.coast_exchange * airframe.coast_exchange_scale * (1.0 - fall),
+        torch.where(power > 0.0, constants.climb_exchange * airframe.climb_exchange_scale, -dive),
+    )
     lift_reach = airframe.max_lift_coefficient * speed * speed
     budget = softmin(lift_reach, airframe.max_acceleration, constants.lift_softmin_exponent)  # L
     safe_budget = budget.clamp_min(1e-12)
-    lateral_command = torch.sign(stick) * softmin(stick.abs() * lift_reach, airframe.max_acceleration,
-                                                  constants.lift_softmin_exponent)
-    need = torch.sqrt(lateral_command * lateral_command + constants.gravity * constants.gravity)  # N
+    lateral_command = torch.sign(stick) * softmin(
+        stick.abs() * lift_reach, airframe.max_acceleration, constants.lift_softmin_exponent
+    )
+    need = torch.sqrt(
+        lateral_command * lateral_command + constants.gravity * constants.gravity
+    )  # N
     flown = softmin(need, safe_budget, constants.lift_softmin_exponent) / need.clamp_min(1e-12)  # q
     lateral = lateral_command * flown
     lateral_share = (lateral.abs() / safe_budget).clamp(0.0, 1.0)  # chi
-    exchange = commanded * torch.sqrt(1.0 - lateral_share * lateral_share) * flown - (1.0 - flown) * dive
+    exchange = (
+        commanded * torch.sqrt(1.0 - lateral_share * lateral_share) * flown - (1.0 - flown) * dive
+    )
     # Fade the exchange out at the ends of the store: charging stops at the maximum,
     # spending at 0.
     fade = constants.store_fade_band * airframe.max_energy
     room = torch.where(exchange > 0.0, (airframe.max_energy - energy) / fade, energy / fade)
     exchange = exchange * room.clamp(0.0, 1.0)
-    engine = airframe.engine_power - (airframe.engine_power - airframe.engine_power_full_store) * fall
+    engine = (
+        airframe.engine_power - (airframe.engine_power - airframe.engine_power_full_store) * fall
+    )
     thrust = softmin(engine / speed, airframe.static_thrust, 4.0) / constants.mass
     return Setting(lateral, exchange, constants.gravity * flown, thrust)
 
 
-def rates(constants: FlightConstants, airframe: Airframe, current: Setting, index, speed,
-          lift, angle_cos, inverse_speed_squared):
+def rates(
+    constants: FlightConstants,
+    airframe: Airframe,
+    current: Setting,
+    index,
+    speed,
+    lift,
+    angle_cos,
+    inverse_speed_squared,
+):
     """(d speed / dt, d energy / dt) for a speed, lift coefficient, cos(angle of attack) and
     1/u^2 (game spec 3.4). `index` is the refractive index n."""
     induced = current.vertical_lift * inverse_speed_squared
-    drag = (airframe.zero_lift_drag + constants.induced_drag_factor * airframe.induced_drag_scale
-            * bleed(airframe, lift * lift + induced * induced)) * speed * speed
-    return ((current.thrust * angle_cos - drag - current.exchange) / index,
-            constants.mass * speed * current.exchange / index)
+    drag = (
+        (
+            airframe.zero_lift_drag
+            + constants.induced_drag_factor
+            * airframe.induced_drag_scale
+            * bleed(airframe, lift * lift + induced * induced)
+        )
+        * speed
+        * speed
+    )
+    return (
+        (current.thrust * angle_cos - drag - current.exchange) / index,
+        constants.mass * speed * current.exchange / index,
+    )
 
 
 def bleed(airframe: Airframe, lift_squared: torch.Tensor) -> torch.Tensor:
     """(C^2 + (z/u^2)^2)^(e/2) with the bleed exponent e (ship-card spec 2), written as
     s * s^(e/2 - 1) so that it is exactly s at e = 2 (pow(x, 0) is exactly 1). The clamp
     keeps s = 0 at 0 for any e."""
-    return lift_squared * torch.pow(lift_squared.clamp_min(1e-30), 0.5 * airframe.bleed_exponent - 1.0)
+    return lift_squared * torch.pow(
+        lift_squared.clamp_min(1e-30), 0.5 * airframe.bleed_exponent - 1.0
+    )
 
 
 def exponential_2x2(a11, a12, a21, a22, dt: float):
@@ -134,14 +162,31 @@ def exponential_2x2(a11, a12, a21, a22, dt: float):
     b11, b12, b21, b22 = (v * (dt / 2.0) for v in (a11, a12, a21, a22))
     h11, h12, h21, h22 = 1.0, 0.0, 0.0, 1.0  # innermost first: I + B/4, then I + (B/k)(...)
     for k in (4.0, 3.0, 2.0, 1.0):
-        h11, h12, h21, h22 = (1.0 + (b11 * h11 + b12 * h21) / k, (b11 * h12 + b12 * h22) / k,
-                              (b21 * h11 + b22 * h21) / k, 1.0 + (b21 * h12 + b22 * h22) / k)
-    return (h11 * h11 + h12 * h21, h11 * h12 + h12 * h22,
-            h21 * h11 + h22 * h21, h21 * h12 + h22 * h22)
+        h11, h12, h21, h22 = (
+            1.0 + (b11 * h11 + b12 * h21) / k,
+            (b11 * h12 + b12 * h22) / k,
+            (b21 * h11 + b22 * h21) / k,
+            1.0 + (b21 * h12 + b22 * h22) / k,
+        )
+    return (
+        h11 * h11 + h12 * h21,
+        h11 * h12 + h12 * h22,
+        h21 * h11 + h22 * h21,
+        h21 * h12 + h22 * h22,
+    )
 
 
-def kick(constants: FlightConstants, airframe: Airframe, ship: Ships, index, gradient_nose_x,
-         gradient_nose_y, stick, power, dt: float) -> Ships:
+def kick(
+    constants: FlightConstants,
+    airframe: Airframe,
+    ship: Ships,
+    index,
+    gradient_nose_x,
+    gradient_nose_y,
+    stick,
+    power,
+    dt: float,
+) -> Ships:
     """Advance speed, angle of attack, nose rate and energy by dt with the pose held (game
     spec 3.5, normative). gradient_nose_x, _y: grad ln n in the nose frame (gamma)."""
     speed0, angle0 = ship.proper_speed, ship.angle_of_attack
@@ -149,27 +194,40 @@ def kick(constants: FlightConstants, airframe: Airframe, ship: Ships, index, gra
     safe_speed0 = speed0.clamp_min(constants.speed_floor)
     first = setting(constants, airframe, safe_speed0, energy, stick, power)
     lift0 = lift_coefficient(constants, airframe, angle0)
-    speed_rate0, energy_rate0 = rates(constants, airframe, first, index, speed0, lift0, cos0,
-                                      1.0 / (safe_speed0 * safe_speed0))
+    speed_rate0, energy_rate0 = rates(
+        constants, airframe, first, index, speed0, lift0, cos0, 1.0 / (safe_speed0 * safe_speed0)
+    )
 
     speed = (speed0 + 0.5 * dt * speed_rate0).clamp_min(constants.speed_floor)  # mid speed
     current = setting(constants, airframe, speed, energy + 0.5 * dt * energy_rate0, stick, power)
     inverse_speed_squared = 1.0 / (speed * speed)
-    path_rate = ((lift0 * speed * speed + current.thrust * sin0) / (speed * index)
-                 + (speed / index) * (cos0 * gradient_nose_y + sin0 * gradient_nose_x))
-    path_slope = ((lift_slope(constants, airframe, angle0) * speed * speed + current.thrust * cos0)
-                  / (speed * index))  # kappa
-    frequency = ((airframe.corner_nose_frequency * speed / airframe.corner_speed)
-                 .clamp_min(constants.nose_frequency_floor) / index)  # Omega
-    reach = (current.lateral_lift.abs() * inverse_speed_squared
-             / airframe.max_lift_coefficient).clamp(0.0, 1.0)
-    angle_step = (torch.sign(current.lateral_lift) * stall_angle(constants, airframe)
-                  * (1.0 - torch.sqrt(1.0 - reach)) - angle0)
+    path_rate = (lift0 * speed * speed + current.thrust * sin0) / (speed * index) + (
+        speed / index
+    ) * (cos0 * gradient_nose_y + sin0 * gradient_nose_x)
+    path_slope = (
+        lift_slope(constants, airframe, angle0) * speed * speed + current.thrust * cos0
+    ) / (speed * index)  # kappa
+    frequency = (airframe.corner_nose_frequency * speed / airframe.corner_speed).clamp_min(
+        constants.nose_frequency_floor
+    ) / index  # Omega
+    reach = (
+        current.lateral_lift.abs() * inverse_speed_squared / airframe.max_lift_coefficient
+    ).clamp(0.0, 1.0)
+    angle_step = (
+        torch.sign(current.lateral_lift)
+        * stall_angle(constants, airframe)
+        * (1.0 - torch.sqrt(1.0 - reach))
+        - angle0
+    )
 
     # The nose oscillator, linearized about the commanded angle of attack, solved exactly.
     m11, m12, m21, m22 = exponential_2x2(
-        -path_slope, 1.0, -frequency * frequency + 2.0 * constants.nose_damping * frequency * path_slope,
-        -2.0 * constants.nose_damping * frequency, dt)
+        -path_slope,
+        1.0,
+        -frequency * frequency + 2.0 * constants.nose_damping * frequency * path_slope,
+        -2.0 * constants.nose_damping * frequency,
+        dt,
+    )
     steady_rate = path_slope * angle_step
     y1 = -angle_step
     y2 = (ship.nose_rate - path_rate) - steady_rate
@@ -179,17 +237,31 @@ def kick(constants: FlightConstants, airframe: Airframe, ship: Ships, index, gra
     half_cos, half_sin = small_angle_cos_sin(0.5 * turn)
     mid_cos = cos0 * half_cos - sin0 * half_sin
     mid_lift = lift_coefficient(constants, airframe, angle0 + 0.5 * turn)
-    speed_rate1, _ = rates(constants, airframe, current, index, speed0, mid_lift, mid_cos, inverse_speed_squared)
-    speed_rate2, energy_rate2 = rates(constants, airframe, current, index,
-                                      (speed0 + 0.5 * dt * speed_rate1).clamp_min(constants.speed_floor),
-                                      mid_lift, mid_cos, inverse_speed_squared)
+    speed_rate1, _ = rates(
+        constants, airframe, current, index, speed0, mid_lift, mid_cos, inverse_speed_squared
+    )
+    speed_rate2, energy_rate2 = rates(
+        constants,
+        airframe,
+        current,
+        index,
+        (speed0 + 0.5 * dt * speed_rate1).clamp_min(constants.speed_floor),
+        mid_lift,
+        mid_cos,
+        inverse_speed_squared,
+    )
 
     turn_cos, turn_sin = small_angle_cos_sin(turn)
     angle_cos, angle_sin = rotate(cos0, sin0, turn_cos, turn_sin)
-    return replace(ship, proper_speed=(speed0 + dt * speed_rate2).clamp_min(constants.speed_floor),
-                   angle_of_attack=angle0 + turn, angle_of_attack_cos=angle_cos,
-                   angle_of_attack_sin=angle_sin, nose_rate=nose_rate,
-                   energy=torch.minimum((energy + dt * energy_rate2).clamp_min(0.0), airframe.max_energy))
+    return replace(
+        ship,
+        proper_speed=(speed0 + dt * speed_rate2).clamp_min(constants.speed_floor),
+        angle_of_attack=angle0 + turn,
+        angle_of_attack_cos=angle_cos,
+        angle_of_attack_sin=angle_sin,
+        nose_rate=nose_rate,
+        energy=torch.minimum((energy + dt * energy_rate2).clamp_min(0.0), airframe.max_energy),
+    )
 
 
 def nose_frame(ship: Ships):
@@ -199,12 +271,27 @@ def nose_frame(ship: Ships):
     return cos * gx + sin * gy, cos * gy - sin * gx
 
 
-def flight_tick(constants: FlightConstants, airframe: Airframe, tick_length: float, ship: Ships,
-                stick, power, fields: Fields) -> Ships:
+def flight_tick(
+    constants: FlightConstants,
+    airframe: Airframe,
+    tick_length: float,
+    ship: Ships,
+    stick,
+    power,
+    fields: Fields,
+) -> Ships:
     """One tick of flight (game spec 3.6): kick, drift along the exact nose arc, re-sample
     the medium, kick. Changes only the flight variables."""
-    ship = kick(constants, airframe, ship, torch.exp(ship.log_refractive_index), *nose_frame(ship),
-                stick, power, 0.5 * tick_length)
+    ship = kick(
+        constants,
+        airframe,
+        ship,
+        torch.exp(ship.log_refractive_index),
+        *nose_frame(ship),
+        stick,
+        power,
+        0.5 * tick_length,
+    )
 
     index = torch.exp(ship.log_refractive_index)
     gradient_nose_x, gradient_nose_y = nose_frame(ship)
@@ -227,9 +314,25 @@ def flight_tick(constants: FlightConstants, airframe: Airframe, tick_length: flo
     angle_cos, angle_sin = ship.angle_of_attack_cos, ship.angle_of_attack_sin
     angle_norm = torch.rsqrt(angle_cos * angle_cos + angle_sin * angle_sin)
     log_index, gradient_x, gradient_y = medium(fields, x, y)
-    ship = replace(ship, x=x, y=y, heading_cos=cos * norm, heading_sin=sin * norm,
-                   angle_of_attack_cos=angle_cos * angle_norm,
-                   angle_of_attack_sin=angle_sin * angle_norm,
-                   log_refractive_index=log_index, log_index_gradient_x=gradient_x,
-                   log_index_gradient_y=gradient_y)
-    return kick(constants, airframe, ship, torch.exp(log_index), *nose_frame(ship), stick, power, 0.5 * tick_length)
+    ship = replace(
+        ship,
+        x=x,
+        y=y,
+        heading_cos=cos * norm,
+        heading_sin=sin * norm,
+        angle_of_attack_cos=angle_cos * angle_norm,
+        angle_of_attack_sin=angle_sin * angle_norm,
+        log_refractive_index=log_index,
+        log_index_gradient_x=gradient_x,
+        log_index_gradient_y=gradient_y,
+    )
+    return kick(
+        constants,
+        airframe,
+        ship,
+        torch.exp(log_index),
+        *nose_frame(ship),
+        stick,
+        power,
+        0.5 * tick_length,
+    )

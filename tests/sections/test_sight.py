@@ -18,9 +18,11 @@ def _brute_clear(ax, ay, px, py, cx, cy, rho2):
     both_in = (((a - c) ** 2).sum(-1) < r2) & (((p - c) ** 2).sum(-1) < r2)
     blocked = (dist2 < r2) & ~both_in
     # Margin: pairs whose closest distance lies within float32 rounding of a core edge.
-    edge = ((dist2 - r2).abs() < 1e-3 * r2).any(-1) | \
-        ((((a - c) ** 2).sum(-1) - r2).abs() < 1e-3 * r2).any(-1) | \
-        ((((p - c) ** 2).sum(-1) - r2).abs() < 1e-3 * r2).any(-1)
+    edge = (
+        ((dist2 - r2).abs() < 1e-3 * r2).any(-1)
+        | ((((a - c) ** 2).sum(-1) - r2).abs() < 1e-3 * r2).any(-1)
+        | ((((p - c) ** 2).sum(-1) - r2).abs() < 1e-3 * r2).any(-1)
+    )
     return ~blocked.any(-1), edge
 
 
@@ -49,8 +51,15 @@ def test_sight_lines_match_a_brute_force_closest_point_check():
         seen = sighted(cores, observers, (tx, ty, core_membership(cores, tx, ty)))
         for b in range(B):
             for t in range(T):
-                want, edge = _brute_clear(ox[b, t, o:o + 1], oy[b, t, o:o + 1], tx[b, t], ty[b, t],
-                                          cx[b], cy[b], rho2[b])
+                want, edge = _brute_clear(
+                    ox[b, t, o : o + 1],
+                    oy[b, t, o : o + 1],
+                    tx[b, t],
+                    ty[b, t],
+                    cx[b],
+                    cy[b],
+                    rho2[b],
+                )
                 keep = ~edge[:, 0]
                 assert torch.equal(seen[b, t][keep], want[:, 0][keep]), (b, t, o)
                 total += Q

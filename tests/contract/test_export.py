@@ -32,8 +32,9 @@ def test_mlp_exports_to_onnx(tmp_path):
     torch.nn.init.normal_(model.policy.weight, std=0.1)  # non-trivial outputs
     args = (obs.ships[:, 0], obs.fields[:, 0], obs.globals[:, 0])
     path = tmp_path / "mlp.onnx"
-    torch.onnx.export(Step(model).eval(), args, str(path), dynamo=True,
-                      input_names=["ships", "fields", "globals"])
+    torch.onnx.export(
+        Step(model).eval(), args, str(path), dynamo=True, input_names=["ships", "fields", "globals"]
+    )
     session = onnxruntime.InferenceSession(str(path), providers=["CPUExecutionProvider"])
     got = session.run(None, {k: v.numpy() for k, v in zip(("ships", "fields", "globals"), args)})
     with torch.no_grad():

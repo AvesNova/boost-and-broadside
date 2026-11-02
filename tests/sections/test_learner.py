@@ -54,6 +54,7 @@ def test_unroll_receives_the_reset_before_each_step(segment):
         right = learner.unroll(trajectory)
         wrong = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, done)
     from bnb.models.yemong import policy
+
     right_logp, _ = policy.evaluate(right.policy_logits, joint)
     wrong_logp, _ = policy.evaluate(wrong.policy_logits, joint)
     assert cases.scale_error(right_logp, trajectory.logp) <= 1e-5
@@ -75,9 +76,15 @@ def test_the_compacted_replay_rebuilds_the_own_rows_sight_gave():
     net = cases.model(dtype=torch.float64)
     runner = lc.rollout(cases.model(), runs=1, length=16)
     trajectory = runner.trajectory(0)
-    obs = cases.cast(Obs(ships=trajectory.obs.ships[-1], fields=trajectory.obs.fields[-1],
-                         globals=trajectory.obs.globals[-1], zones=trajectory.obs.zones[-1]),
-                     torch.float64)
+    obs = cases.cast(
+        Obs(
+            ships=trajectory.obs.ships[-1],
+            fields=trajectory.obs.fields[-1],
+            globals=trajectory.obs.globals[-1],
+            zones=trajectory.obs.zones[-1],
+        ),
+        torch.float64,
+    )
     carry = net.initial_carry(obs.ships.shape[0], OWN, 10)
     with torch.no_grad():
         decision = net.step(carry, obs, torch.zeros(obs.ships.shape[0], dtype=torch.bool))
@@ -93,8 +100,7 @@ def test_an_own_privileged_row_is_its_observed_row():
     from bnb.game import api
 
     rules = api.rules_of(cases.SHORT_SQUAD)
-    state = api.reset(rules, api.ship_types(), api.uniforms(rules, 16),
-                      torch.arange(16) % 2 == 0)
+    state = api.reset(rules, api.ship_types(), api.uniforms(rules, 16), torch.arange(16) % 2 == 0)
     _, obs, privileged = api.perceive(rules, state)
     assert torch.equal(obs.ships[:, :, :OWN], privileged.ships[:, :, :OWN])
 
@@ -107,16 +113,18 @@ def _independent_two_hot(values: torch.Tensor, bins: torch.Tensor) -> torch.Tens
     upper = torch.bucketize(values, bins, right=True).clamp(1, bins.numel() - 1)
     lower = upper - 1
     weight = ((values - bins[lower]) / (bins[upper] - bins[lower])).clamp(0, 1)
-    return F.one_hot(lower, bins.numel()) * (1 - weight)[..., None] \
+    return (
+        F.one_hot(lower, bins.numel()) * (1 - weight)[..., None]
         + F.one_hot(upper, bins.numel()) * weight[..., None]
+    )
 
 
 def _grouped_cross_entropy(logits, target, runs) -> torch.Tensor:
     total, start = 0.0, 0
     for groups, size in runs:
         width = groups * size
-        part = logits[..., start:start + width].unflatten(-1, (groups, size))
-        goal = target[..., start:start + width].unflatten(-1, (groups, size))
+        part = logits[..., start : start + width].unflatten(-1, (groups, size))
+        goal = target[..., start : start + width].unflatten(-1, (groups, size))
         total = total - (goal * part.log_softmax(-1)).sum((-1, -2))
         start += width
     return total
@@ -130,8 +138,9 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
     derived = prepared["derived"]
     with torch.no_grad():
-        _, terms, per_level, _ = learner.loss(trajectory, label, derived, denominator,
-                                              prepared["scale"])
+        _, terms, per_level, _ = learner.loss(
+            trajectory, label, derived, denominator, prepared["scale"]
+        )
         out = learner.unroll(trajectory)
     got = dict(zip(TERMS, terms.tolist()))
     ships = trajectory.obs.ships
@@ -146,8 +155,9 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     ratio = (logp - derived["old_log_probability"]).exp()
     advantage = derived["advantage"] / prepared["scale"]
     surrogate = torch.maximum(-advantage * ratio, -advantage * ratio.clamp(0.8, 1.2))
-    assert math.isclose(got["policy"], surrogate[own_alive].mean().item(), rel_tol=1e-5,
-                        abs_tol=1e-7)
+    assert math.isclose(
+        got["policy"], surrogate[own_alive].mean().item(), rel_tol=1e-5, abs_tol=1e-7
+    )
     entropy = -(log_probabilities.exp() * log_probabilities).sum(-1)
     assert math.isclose(got["entropy"], entropy[own_alive].mean().item(), rel_tol=1e-5)
 
@@ -167,28 +177,35 @@ def test_each_loss_term_matches_an_independent_computation(segment):
 
     # next state: every row with a valid belief at a step that did not end an episode,
     # against the sharp code of its truth at t + 1 (own rows: the observation)
-    following = torch.cat([torch.cat([ships[1:, :, :OWN], trajectory.truth[1:]], -2),
-                           trajectory.final_truth[None]], 0)
-    target = net.state_code.sharp(truth(following, trajectory.replay.offset),
-                                  following[..., SHIP["ship_type"]].long())
+    following = torch.cat(
+        [torch.cat([ships[1:, :, :OWN], trajectory.truth[1:]], -2), trajectory.final_truth[None]], 0
+    )
+    target = net.state_code.sharp(
+        truth(following, trajectory.replay.offset), following[..., SHIP["ship_type"]].long()
+    )
     valid = torch.cat([torch.ones_like(trajectory.replay.valid), trajectory.replay.valid], -1)
     mask = valid & ~trajectory.done[..., None]
     ce = _grouped_cross_entropy(out.next_state_logits, target, net.state_code.runs)
     assert math.isclose(got["next_state"], ce[mask].mean().item(), rel_tol=1e-5)
 
     # enemy action: living enemies' actual joint actions
-    enemy = -out.enemy_action_logits[..., OWN:, :].log_softmax(-1).gather(
-        -1, joint[..., OWN:, None])[..., 0]
-    assert math.isclose(got["enemy_action"], enemy[alive[..., OWN:]].mean().item(),
-                        rel_tol=1e-5)
+    enemy = (
+        -out.enemy_action_logits[..., OWN:, :]
+        .log_softmax(-1)
+        .gather(-1, joint[..., OWN:, None])[..., 0]
+    )
+    assert math.isclose(got["enemy_action"], enemy[alive[..., OWN:]].mean().item(), rel_tol=1e-5)
 
     # density: per view-step, the Poisson terms over the cells over the valued-ship count
     rows = torch.cat([ships[..., :OWN, :], trajectory.truth], -2)
     grid = HexGrid(net.config.hex_rings)
-    counts = grid.counts(rows[..., SHIP["x"]], rows[..., SHIP["y"]],
-                         (torch.arange(10) < OWN).expand(rows.shape[:-1]),
-                         rows[..., SHIP["alive"]] > 0.5,
-                         trajectory.obs.globals[..., GLOBAL["arena_radius"]][..., None])
+    counts = grid.counts(
+        rows[..., SHIP["x"]],
+        rows[..., SHIP["y"]],
+        (torch.arange(10) < OWN).expand(rows.shape[:-1]),
+        rows[..., SHIP["alive"]] > 0.5,
+        trajectory.obs.globals[..., GLOBAL["arena_radius"]][..., None],
+    )
     per_cell, saturated = poisson_terms(out.density_log_rates, counts)
     per_step = (per_cell - saturated).sum(-1) / valued.sum(-1).clamp_min(1)
     assert math.isclose(got["density"], per_step.mean().item(), rel_tol=1e-5)
@@ -197,16 +214,20 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     # each shot's valid ages
     shot = shot_labels["shots"]
     visible = ships[..., SHIP["visible"]] > 0.5
-    shooters = shot.valid & torch.cat([torch.ones_like(visible[..., :OWN]),
-                                       visible[..., OWN:]], -1)
+    shooters = shot.valid & torch.cat([torch.ones_like(visible[..., :OWN]), visible[..., OWN:]], -1)
     assert shooters.any() and (shot.hit[shooters] > 0).any()
     ages = torch.arange(1, 13, dtype=torch.float32)
     logits = net.shot_trajectory(out.shot_latents, ages)
     from bnb.models.yemong import shots as shot_codes
+
     goal = shot_codes.trajectory_code(net.shot_code, shot.snapshots)
     per_age = _grouped_cross_entropy(logits, goal, learner.shot_runs)  # (..., ages)
-    per_shot = torch.stack([per_age[tuple(index)][shot.age_valid[tuple(index)]].mean()
-                            for index in shooters.nonzero().unbind(0)])
+    per_shot = torch.stack(
+        [
+            per_age[tuple(index)][shot.age_valid[tuple(index)]].mean()
+            for index in shooters.nonzero().unbind(0)
+        ]
+    )
     assert math.isclose(got["shot_trajectory"], per_shot.mean().item(), rel_tol=1e-5)
     outcome_goal = shot_codes.outcome_code(net.shot_code, shot.hit, shot.distance, shot.side)
     outcome = -(outcome_goal * out.shot_outcome_logits.log_softmax(-1)).sum(-1)
@@ -272,8 +293,9 @@ def test_labels_are_row_aligned_and_in_the_models_frame():
     # A row visible at t + 1, in the same episode: its target is the sharp code of what
     # the view then observed, shifted by the view's offset.
     seen = (ships[1:, ..., SHIP["visible"]] > 0.5) & ~trajectory.done[:-1, :, None]
-    observed = net.state_code.sharp(truth(ships[1:], trajectory.replay.offset[:-1]),
-                                    ships[1:, ..., SHIP["ship_type"]].long())
+    observed = net.state_code.sharp(
+        truth(ships[1:], trajectory.replay.offset[:-1]), ships[1:, ..., SHIP["ship_type"]].long()
+    )
     assert seen[..., OWN:].any()
     torch.testing.assert_close(target[:-1][seen], observed[seen], rtol=0, atol=1e-6)
 
@@ -282,17 +304,20 @@ def test_labels_are_row_aligned_and_in_the_models_frame():
     grid = HexGrid(net.config.hex_rings)
     globals_ = trajectory.obs.globals.clone()
     globals_[..., GLOBAL["arena_radius"]] *= 4.0
-    wide = dataclasses.replace(trajectory, obs=dataclasses.replace(trajectory.obs,
-                                                                   globals=globals_))
+    wide = dataclasses.replace(
+        trajectory, obs=dataclasses.replace(trajectory.obs, globals=globals_)
+    )
     distance = torch.hypot(rows[..., SHIP["x"]], rows[..., SHIP["y"]])
     assert (distance < 3.0 * globals_[..., GLOBAL["arena_radius"]][..., None] / 4.0).all()
     counts = labels.density_targets(grid, wide, rows)
     living = rows[..., SHIP["alive"]] > 0.5
     cells = grid.cells
-    torch.testing.assert_close(counts[..., :cells].sum(-1), living[..., :OWN].sum(-1).float(),
-                               rtol=0, atol=1e-5)
-    torch.testing.assert_close(counts[..., cells:].sum(-1), living[..., OWN:].sum(-1).float(),
-                               rtol=0, atol=1e-5)
+    torch.testing.assert_close(
+        counts[..., :cells].sum(-1), living[..., :OWN].sum(-1).float(), rtol=0, atol=1e-5
+    )
+    torch.testing.assert_close(
+        counts[..., cells:].sum(-1), living[..., OWN:].sum(-1).float(), rtol=0, atol=1e-5
+    )
 
 
 def test_the_store_records_every_rows_action(segment):
@@ -325,10 +350,18 @@ def decided():
     from bnb.learn.rewards import RewardConfig
 
     net = cases.model()
-    controllers = {"learner": cases.controller(net, cases.SHORT_SQUAD),
-                   "chaser": Chaser(OWN)}
-    runner = lc.Rollout(cases.SHORT_SQUAD, lc.POOLS, controllers, "learner", 16, 48, lc.CPU,
-                        compile=False, reward_config=RewardConfig(outcome=0.0))
+    controllers = {"learner": cases.controller(net, cases.SHORT_SQUAD), "chaser": Chaser(OWN)}
+    runner = lc.Rollout(
+        cases.SHORT_SQUAD,
+        lc.POOLS,
+        controllers,
+        "learner",
+        16,
+        48,
+        lc.CPU,
+        compile=False,
+        reward_config=RewardConfig(outcome=0.0),
+    )
     runner.carry["state"].mode.score[:, 0] = 1
     team = runner._team("learner", runner.carry["seat"])  # (R,) each view's, until its reset
     return net, runner, team, runner.run()
@@ -367,10 +400,17 @@ def test_an_update_consumes_several_shards():
     from bnb.learn.ppo import LearnerConfig
     from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
-    cfg = TrainConfig(game=GameConfig(2, 3, 1200.0, episode_s=2.0), num_envs=8, length=16,
-                      shards=2, model="relational", relational_hidden=32, compile=False,
-                      pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
-                      learner=LearnerConfig(minibatches=2, micro_batch_rows=16))
+    cfg = TrainConfig(
+        game=GameConfig(2, 3, 1200.0, episode_s=2.0),
+        num_envs=8,
+        length=16,
+        shards=2,
+        model="relational",
+        relational_hidden=32,
+        compile=False,
+        pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
+        learner=LearnerConfig(minibatches=2, micro_batch_rows=16),
+    )
     trainer = Trainer(cfg, torch.device("cpu"))
     store, bootstraps = trainer.collect()
     assert store.views == 16 and len(bootstraps) == 2
@@ -393,19 +433,19 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     stores the labels; each epoch's micro-batch reads them back unchanged."""
     _, runner, learner, _ = segment
     store = runner.store
-    spread = torch.randn((store.length, store.views, 10, 2),
-                         generator=random_stream(0, "shot_spread"))
+    spread = torch.randn(
+        (store.length, store.views, 10, 2), generator=random_stream(0, "shot_spread")
+    )
     views = torch.arange(3, 7)  # not one of prepare's micro-batches
     trajectory, stored = next(learner.staged(store, [views]))
     shot, mask = learner.shots(trajectory, spread[:, views])
     assert mask.any() and torch.equal(stored["mask"], mask)
-    for a, b in zip(_pytree.tree_leaves(stored["shots"]), _pytree.tree_leaves(shot),
-                    strict=True):
+    for a, b in zip(_pytree.tree_leaves(stored["shots"]), _pytree.tree_leaves(shot), strict=True):
         assert torch.equal(a, b)
 
 
 def test_recomputed_old_log_probabilities_are_the_unrolls(segment):
-    """"rollout" keeps the rollout's log-probabilities; "recomputed" takes unroll's, which
+    """ "rollout" keeps the rollout's log-probabilities; "recomputed" takes unroll's, which
     differ from them only by the step/unroll drift."""
     net, runner, _, prepared = segment
     trajectory = lc.whole(runner)
@@ -413,8 +453,9 @@ def test_recomputed_old_log_probabilities_are_the_unrolls(segment):
     recomputed = lc.learner(net, runner, old_log_probabilities="recomputed")
     old = recomputed.prepare(runner.store, [runner.bootstrap()])["derived"]["old_log_probability"]
     with torch.no_grad():
-        expected, _ = policy.evaluate(recomputed.unroll(trajectory).policy_logits,
-                                      cases.joint_actions(trajectory))
+        expected, _ = policy.evaluate(
+            recomputed.unroll(trajectory).policy_logits, cases.joint_actions(trajectory)
+        )
     assert torch.equal(old, expected) and not torch.equal(old, trajectory.logp)
     assert cases.scale_error(old, trajectory.logp) <= 1e-5
 
@@ -427,14 +468,19 @@ def test_the_drift_is_the_step_unroll_ratio_error(segment):
 
     def independent(model):
         with torch.no_grad():
-            unrolled = model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
-                                    cases.resets(trajectory.obs))
+            unrolled = model.unroll(
+                trajectory.initial_carry,
+                trajectory.obs,
+                trajectory.replay,
+                cases.resets(trajectory.obs),
+            )
         logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
         error = (torch.exp(logp - trajectory.logp) - 1.0).abs()[trajectory.alive[..., :OWN]]
         return torch.stack([error.max(), error.mean()])
 
-    torch.testing.assert_close(learner.drift(runner.store, prepared), independent(net),
-                               rtol=1e-5, atol=1e-9)
+    torch.testing.assert_close(
+        learner.drift(runner.store, prepared), independent(net), rtol=1e-5, atol=1e-9
+    )
     assert learner.drift(runner.store, prepared)[0] < 1e-5
     changed = copy.deepcopy(net)
     generator = torch.Generator().manual_seed(0)
@@ -453,8 +499,14 @@ def test_the_explained_variance_matches_an_independent_computation(segment):
     trajectory = lc.whole(runner)
     returns, values = prepared["derived"]["level_returns"], trajectory.values  # weight 1
     valued = trajectory.valued
-    expected = torch.stack([1.0 - (returns[..., k][valued] - values[..., k][valued]).var()
-                            / returns[..., k][valued].var() for k in range(5)])
+    expected = torch.stack(
+        [
+            1.0
+            - (returns[..., k][valued] - values[..., k][valued]).var()
+            / returns[..., k][valued].var()
+            for k in range(5)
+        ]
+    )
     torch.testing.assert_close(prepared["explained_variance"], expected, rtol=1e-4, atol=1e-5)
     assert torch.equal(explained_variance(returns, returns, valued), torch.ones(5))
     flat = torch.ones_like(returns)
@@ -474,8 +526,7 @@ def test_the_update_is_the_same_whatever_the_global_seed(segment):
         results.append((out, [parameter.detach().clone() for parameter in model.parameters()]))
     (first, first_parameters), (second, second_parameters) = results
     assert first == second
-    assert all(torch.equal(a, b) for a, b in zip(first_parameters, second_parameters,
-                                                 strict=True))
+    assert all(torch.equal(a, b) for a, b in zip(first_parameters, second_parameters, strict=True))
 
 
 def test_the_kl_early_stop_ends_the_update_after_an_epoch(segment):
@@ -483,8 +534,7 @@ def test_the_kl_early_stop_ends_the_update_after_an_epoch(segment):
     a target it never reaches runs every epoch."""
     net, runner, _, _ = segment
     for target, steps, stopped in ((-1.0, 2, True), (math.inf, 4, False)):
-        learner = lc.learner(copy.deepcopy(net), runner, epochs=2, minibatches=2,
-                             target_kl=target)
+        learner = lc.learner(copy.deepcopy(net), runner, epochs=2, minibatches=2, target_kl=target)
         out = learner.update(runner.store, [runner.bootstrap()])
         assert out["minibatch_steps"] == steps and out["stopped_early"] == stopped
         assert out["approximate_kl"] >= 0.0

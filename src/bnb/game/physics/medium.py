@@ -16,6 +16,7 @@ from ..state import Fields
 
 def medium(fields: Fields, x: torch.Tensor, y: torch.Tensor):
     """(ln n, d/dx ln n, d/dy ln n) at points (B, P) for fields (B, M)."""
+
     def per_field(values):  # (B, M) as (B, 1, M), against points (B, P, 1)
         return values[:, None, :]
 
@@ -34,7 +35,9 @@ def medium(fields: Fields, x: torch.Tensor, y: torch.Tensor):
     # it is exactly positive wherever the gradient is non-zero, even where alpha rounds to 1.
     complement = outward * outward * outward * (outward * (6.0 * outward - 15.0) + 10.0)
     in_band = (depth > 0.0) & (depth < 1.0) & (distance > 1e-6)
-    slope = torch.where(in_band, -30.0 * (inward * outward) ** 2 / (band * distance.clamp_min(1e-6)), 0.0)
+    slope = torch.where(
+        in_band, -30.0 * (inward * outward) ** 2 / (band * distance.clamp_min(1e-6)), 0.0
+    )
     profile_gradient_x, profile_gradient_y = slope * offset_x, slope * offset_y
 
     weight = profile.sum(-1)  # W
@@ -53,9 +56,14 @@ def medium(fields: Fields, x: torch.Tensor, y: torch.Tensor):
     covered = weight > 1e-12
     safe_weight = torch.where(covered, weight, 1.0)
     mean = torch.where(covered, weighted_target / safe_weight, 0.0)
-    mean_gradient_x = torch.where(covered, (target_gradient_x - mean * weight_gradient_x)
-                                  / safe_weight, 0.0)
-    mean_gradient_y = torch.where(covered, (target_gradient_y - mean * weight_gradient_y)
-                                  / safe_weight, 0.0)
-    return (coverage * mean, mean * coverage_gradient_x + coverage * mean_gradient_x,
-            mean * coverage_gradient_y + coverage * mean_gradient_y)
+    mean_gradient_x = torch.where(
+        covered, (target_gradient_x - mean * weight_gradient_x) / safe_weight, 0.0
+    )
+    mean_gradient_y = torch.where(
+        covered, (target_gradient_y - mean * weight_gradient_y) / safe_weight, 0.0
+    )
+    return (
+        coverage * mean,
+        mean * coverage_gradient_x + coverage * mean_gradient_x,
+        mean * coverage_gradient_y + coverage * mean_gradient_y,
+    )

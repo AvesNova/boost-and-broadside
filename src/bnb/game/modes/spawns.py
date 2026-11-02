@@ -21,8 +21,13 @@ from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
 INFINITY = float("inf")
 
 
-def _nearest(x: torch.Tensor, y: torch.Tensor, target_x: torch.Tensor, target_y: torch.Tensor,
-             counts: torch.Tensor) -> torch.Tensor:
+def _nearest(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    target_x: torch.Tensor,
+    target_y: torch.Tensor,
+    counts: torch.Tensor,
+) -> torch.Tensor:
     """Squared distance (..., K) from each candidate (..., K) to the nearest target (..., T)
     that counts (counts (..., T)); inf if none counts."""
     dx = x[..., None] - target_x[..., None, :]
@@ -36,8 +41,13 @@ def _best(x: torch.Tensor, y: torch.Tensor, score: torch.Tensor):
     return x.gather(-1, pick)[..., 0], y.gather(-1, pick)[..., 0]
 
 
-def _farthest_from_enemies(x: torch.Tensor, y: torch.Tensor, target_x: torch.Tensor,
-                           target_y: torch.Tensor, counts: torch.Tensor | None = None):
+def _farthest_from_enemies(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    target_x: torch.Tensor,
+    target_y: torch.Tensor,
+    counts: torch.Tensor | None = None,
+):
     """Each ship's candidate (B, N, K) farthest from its nearest enemy target (B, N; an
     infinite coordinate does not count). Only the other team's slots are compared
     (team-major: a flip of the team axis); counts (B, 2, S, S) [team, slot, enemy slot]
@@ -91,8 +101,11 @@ def _group_centres(mode_rules: ModeRules, arena_radius: torch.Tensor, uniforms: 
     centre."""
     B, G, K = uniforms.shape[0], len(mode_rules.spawn_groups), mode_rules.spawn_candidates
     drawn = uniforms.reshape(B, G, K, 2)
-    x, y = _disc((mode_rules.group_centre_fraction * arena_radius)[:, None, None], drawn[..., 0],
-                 drawn[..., 1])
+    x, y = _disc(
+        (mode_rules.group_centre_fraction * arena_radius)[:, None, None],
+        drawn[..., 0],
+        drawn[..., 1],
+    )
     centres_x, centres_y = [x[:, 0, 0]], [y[:, 0, 0]]
     for g in range(1, G):
         earlier_x, earlier_y = torch.stack(centres_x, -1), torch.stack(centres_y, -1)
@@ -112,14 +125,24 @@ def _anchors(alive: torch.Tensor, uniform: torch.Tensor, x: torch.Tensor, y: tor
     choice = (uniform * count).to(torch.int32).clamp_max((count - 1).clamp_min(0))  # (B, N)
     order = living.cumsum(-1) - 1  # the rank of each living ship
     chosen = (order[:, None, :] == choice[..., None]) & alive[:, None, :]  # (B, N, N)
-    return (torch.where(chosen, x[:, None, :], 0.0).sum(-1),
-            torch.where(chosen, y[:, None, :], 0.0).sum(-1), count > 0)
+    return (
+        torch.where(chosen, x[:, None, :], 0.0).sum(-1),
+        torch.where(chosen, y[:, None, :], 0.0).sum(-1),
+        count > 0,
+    )
 
 
-def deathmatch_placement(rules: Rules, mode_rules: ModeRules, arena_radius: torch.Tensor,
-                         uniforms: torch.Tensor, x: torch.Tensor, y: torch.Tensor,
-                         alive: torch.Tensor, reset: torch.Tensor, keys: torch.Tensor
-                         ) -> Placement:
+def deathmatch_placement(
+    rules: Rules,
+    mode_rules: ModeRules,
+    arena_radius: torch.Tensor,
+    uniforms: torch.Tensor,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    alive: torch.Tensor,
+    reset: torch.Tensor,
+    keys: torch.Tensor,
+) -> Placement:
     """Team deathmatch spawns, uniform or grouped (modes spec 4).
 
     arena_radius (B,); uniforms: the mode's tick uniforms (B, U_mode); x, y, alive (B, N):
@@ -131,15 +154,16 @@ def deathmatch_placement(rules: Rules, mode_rules: ModeRules, arena_radius: torc
     groups = mode_rules.spawn_groups
     per_environment = 2 * K * len(groups)
     per_ship = uniforms[:, per_environment:].reshape(B, N, -1)
-    radius_uniform, angle_uniform = per_ship[..., :K], per_ship[..., K:2 * K]
+    radius_uniform, angle_uniform = per_ship[..., :K], per_ship[..., K : 2 * K]
     starting = reset[:, None]
 
     # Uniform over the arena: the respawn rule, and the grouped rule's fallback.
     radius = arena_radius[:, None, None]
     uniform_x, uniform_y = _disc(radius, radius_uniform, angle_uniform)
     if groups:
-        centres_x, centres_y = _group_centres(mode_rules, arena_radius,
-                                              uniforms[:, :per_environment])
+        centres_x, centres_y = _group_centres(
+            mode_rules, arena_radius, uniforms[:, :per_environment]
+        )
         group = _group_of_rank(groups, formation_rank(rules, keys))  # (B, N)
         offset_x, offset_y = _disc(mode_rules.group_radius, radius_uniform, angle_uniform)
         reset_x = centres_x.gather(1, group)[..., None] + offset_x
@@ -148,19 +172,25 @@ def deathmatch_placement(rules: Rules, mode_rules: ModeRules, arena_radius: torc
         rival = by_group[..., :, None] == by_group.flip(1)[..., None, :]  # same-group enemies
         counts = rival | ~reset[:, None, None, None]
         anchor_x, anchor_y, any_living = _anchors(alive, per_ship[..., 2 * K + 1], x, y)
-        distance = mode_rules.anchor_distance_min \
+        distance = (
+            mode_rules.anchor_distance_min
             + (mode_rules.anchor_distance_max - mode_rules.anchor_distance_min) * radius_uniform
+        )
         angle = 2.0 * math.pi * angle_uniform
-        respawn_x = torch.where(any_living[..., None], anchor_x[..., None]
-                                + distance * torch.cos(angle), uniform_x)
-        respawn_y = torch.where(any_living[..., None], anchor_y[..., None]
-                                + distance * torch.sin(angle), uniform_y)
+        respawn_x = torch.where(
+            any_living[..., None], anchor_x[..., None] + distance * torch.cos(angle), uniform_x
+        )
+        respawn_y = torch.where(
+            any_living[..., None], anchor_y[..., None] + distance * torch.sin(angle), uniform_y
+        )
         # A group near the edge, or an anchor there, can put a candidate outside the arena:
         # every grouped candidate is clipped into the disc R_a - 50 m. (The uniform rule's
         # candidates are inside the arena by construction.)
-        candidate_x, candidate_y = _inside(torch.where(starting[..., None], reset_x, respawn_x),
-                                           torch.where(starting[..., None], reset_y, respawn_y),
-                                           (radius - mode_rules.spawn_margin).clamp_min(0.0))
+        candidate_x, candidate_y = _inside(
+            torch.where(starting[..., None], reset_x, respawn_x),
+            torch.where(starting[..., None], reset_y, respawn_y),
+            (radius - mode_rules.spawn_margin).clamp_min(0.0),
+        )
     else:
         counts, candidate_x, candidate_y = None, uniform_x, uniform_y
 
@@ -170,14 +200,18 @@ def deathmatch_placement(rules: Rules, mode_rules: ModeRules, arena_radius: torc
     target = starting | alive
     target_x = torch.where(target, torch.where(starting, candidate_x[..., 0], x), INFINITY)
     target_y = torch.where(target, torch.where(starting, candidate_y[..., 0], y), INFINITY)
-    place_x, place_y = _farthest_from_enemies(candidate_x, candidate_y, target_x, target_y,
-                                              counts)
+    place_x, place_y = _farthest_from_enemies(candidate_x, candidate_y, target_x, target_y, counts)
     heading_cos, heading_sin = _heading(per_ship[..., 2 * K])
     return Placement(x=place_x, y=place_y, heading_cos=heading_cos, heading_sin=heading_sin)
 
 
-def frontline_placement(rules: Rules, mode_rules: ModeRules, map_scale: torch.Tensor,
-                        uniforms: torch.Tensor, mode: ModeState) -> Placement:
+def frontline_placement(
+    rules: Rules,
+    mode_rules: ModeRules,
+    map_scale: torch.Tensor,
+    uniforms: torch.Tensor,
+    mode: ModeState,
+) -> Placement:
     """Frontline spawns: a uniform point in the disc of 0.35 zone radii around the team's
     current spawn zone, nose toward the zone it attacks (the enemy's defense zone).
     map_scale (B,); mode: the state after this tick's captures (or a new match's)."""
@@ -201,14 +235,30 @@ def frontline_placement(rules: Rules, mode_rules: ModeRules, map_scale: torch.Te
     return Placement(x=x, y=y, heading_cos=to_x / length, heading_sin=to_y / length)
 
 
-def placement(rules: Rules, mode_rules: ModeRules, arena_radius, map_scale, uniforms,
-              mode: ModeState, x, y, alive, reset, axis_x, axis_y, rotation, keys) -> Placement:
+def placement(
+    rules: Rules,
+    mode_rules: ModeRules,
+    arena_radius,
+    map_scale,
+    uniforms,
+    mode: ModeState,
+    x,
+    y,
+    alive,
+    reset,
+    axis_x,
+    axis_y,
+    rotation,
+    keys,
+) -> Placement:
     """The mode's placement for every ship (selected later by the spawn mask); arena_radius
     and map_scale (B,)."""
     if mode_rules.name == TEAM_DEATHMATCH:
-        return deathmatch_placement(rules, mode_rules, arena_radius, uniforms, x, y, alive, reset,
-                                    keys)
+        return deathmatch_placement(
+            rules, mode_rules, arena_radius, uniforms, x, y, alive, reset, keys
+        )
     if mode_rules.name == FRONTLINE:
         return frontline_placement(rules, mode_rules, map_scale, uniforms, mode)
-    return formation(rules, arena_radius, map_scale, axis_x, axis_y, rotation,
-                     keys)  # sandbox: game spec 8's
+    return formation(
+        rules, arena_radius, map_scale, axis_x, axis_y, rotation, keys
+    )  # sandbox: game spec 8's

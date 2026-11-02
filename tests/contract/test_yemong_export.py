@@ -25,10 +25,17 @@ class Step(torch.nn.Module):
         self.model, self.carry_spec = model, carry_spec
 
     def forward(self, ships, fields, globals, reset, *carry):
-        decision = self.model.step(_pytree.tree_unflatten(list(carry), self.carry_spec),
-                                   Obs(ships=ships, fields=fields, globals=globals), reset)
-        return (decision.policy_logits, decision.values, decision.outcome_probabilities,
-                *_pytree.tree_leaves(decision.carry))
+        decision = self.model.step(
+            _pytree.tree_unflatten(list(carry), self.carry_spec),
+            Obs(ships=ships, fields=fields, globals=globals),
+            reset,
+        )
+        return (
+            decision.policy_logits,
+            decision.values,
+            decision.outcome_probabilities,
+            *_pytree.tree_leaves(decision.carry),
+        )
 
 
 def _mid_game(config: GameConfig, ticks: int):
@@ -43,9 +50,14 @@ def _mid_game(config: GameConfig, ticks: int):
         views.append(Obs(ships=obs.ships[:, 0], fields=obs.fields[:, 0], globals=obs.globals[:, 0]))
         action, _, _ = chaser.step(None, Obs(ships=obs.ships[0], fields=None, globals=None), None)
         packed = action.packed().reshape(1, config.num_ships, 3)
-        state, _ = api.step(rules, types, state, Action.unpack(packed),
-                            api.spread(rules, 1, generator=generator),
-                            api.uniforms(rules, 1, generator=generator))
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            Action.unpack(packed),
+            api.spread(rules, 1, generator=generator),
+            api.uniforms(rules, 1, generator=generator),
+        )
         state, obs, _ = api.perceive(rules, state)
     return rules, types, views
 

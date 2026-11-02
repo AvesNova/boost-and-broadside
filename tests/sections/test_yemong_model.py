@@ -37,11 +37,13 @@ def test_segment_has_resets_fog_and_hidden_ships(segment):
 
 def _compare(unrolled, decisions, tolerance):
     """step computes the enemy-action and next-state heads for the enemy rows only."""
-    pairs = (("policy_logits", unrolled.policy_logits),
-             ("enemy_action_logits", unrolled.enemy_action_logits[..., OWN:, :]),
-             ("next_state_logits", unrolled.next_state_logits[..., OWN:, :]),
-             ("values", unrolled.values),
-             ("outcome_probabilities", torch.softmax(unrolled.outcome_logits, -1)))
+    pairs = (
+        ("policy_logits", unrolled.policy_logits),
+        ("enemy_action_logits", unrolled.enemy_action_logits[..., OWN:, :]),
+        ("next_state_logits", unrolled.next_state_logits[..., OWN:, :]),
+        ("values", unrolled.values),
+        ("outcome_probabilities", torch.softmax(unrolled.outcome_logits, -1)),
+    )
     for name, actual in pairs:
         error = cases.scale_error(actual, getattr(decisions, name))
         assert error <= tolerance, (name, error)
@@ -56,8 +58,7 @@ def test_unroll_equals_steps_float64(segment):
     net, obs = _float64(segment)
     carry = net.initial_carry(obs.ships.shape[1], OWN, 10)
     with torch.no_grad():
-        decisions, _ = cases.step_loop(net, net.step, carry, obs,
-                                       cases.joint_actions(segment[1]))
+        decisions, _ = cases.step_loop(net, net.step, carry, obs, cases.joint_actions(segment[1]))
         unrolled = net.unroll(carry, obs, decisions.replay, cases.resets(obs))
     _compare(unrolled, decisions, 1e-9)
 
@@ -77,8 +78,11 @@ def test_unroll_continues_from_a_carry_with_history(segment):
         tail = _pytree.tree_map_only(torch.Tensor, lambda x: x[split:], obs)
         reset = cases.resets(tail)
         unrolled = net.unroll(middle, tail, decisions.replay, reset)
-        zeroed = dataclasses.replace(middle, state=torch.zeros_like(middle.state),
-                                     convolution_buffer=torch.zeros_like(middle.convolution_buffer))
+        zeroed = dataclasses.replace(
+            middle,
+            state=torch.zeros_like(middle.state),
+            convolution_buffer=torch.zeros_like(middle.convolution_buffer),
+        )
         cold = net.unroll(zeroed, tail, decisions.replay, reset)
     _compare(unrolled, decisions, 1e-9)
     assert cases.scale_error(cold.policy_logits, decisions.policy_logits) > 1e-3
@@ -92,8 +96,12 @@ def test_unroll_reproduces_the_stored_rollout():
     assert trajectory.initial_carry.state.abs().max() > 0
     assert trajectory.initial_carry.belief.valid.any()
     with torch.no_grad():
-        unrolled = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay,
-                              cases.resets(trajectory.obs))
+        unrolled = net.unroll(
+            trajectory.initial_carry,
+            trajectory.obs,
+            trajectory.replay,
+            cases.resets(trajectory.obs),
+        )
     assert cases.scale_error(unrolled.values, trajectory.values) <= 1e-4
     assert cases.scale_error(torch.softmax(unrolled.outcome_logits, -1), trajectory.outcome) <= 1e-4
     assert cases.scale_error(unrolled.values.sum(-1), trajectory.value) <= 1e-4
@@ -131,22 +139,34 @@ def _view_sequence(config: GameConfig, fogged: bool, ticks: int, seed: int = 0) 
     generator = torch.Generator().manual_seed(seed)
     rules, types = api.rules_of(config), api.ship_types()
     batch = 2
-    state = api.reset(rules, types, api.uniforms(rules, batch, generator=generator),
-                      torch.full((batch,), fogged))
+    state = api.reset(
+        rules, types, api.uniforms(rules, batch, generator=generator), torch.full((batch,), fogged)
+    )
     state, obs, _ = api.perceive(rules, state)
     chaser = Chaser(config.ships_per_team)
     views = []
     for tick in range(ticks + 1):
-        views.append(Obs(ships=obs.ships.flatten(0, 1), fields=obs.fields.flatten(0, 1),
-                         globals=obs.globals.flatten(0, 1)))
+        views.append(
+            Obs(
+                ships=obs.ships.flatten(0, 1),
+                fields=obs.fields.flatten(0, 1),
+                globals=obs.globals.flatten(0, 1),
+            )
+        )
         if tick == ticks:
             break
-        action, _, _ = chaser.step(None, Obs(ships=views[-1].ships, fields=None, globals=None),
-                                   None)
+        action, _, _ = chaser.step(
+            None, Obs(ships=views[-1].ships, fields=None, globals=None), None
+        )
         packed = action.packed().reshape(batch, config.num_ships, 3)
-        state, _ = api.step(rules, types, state, Action.unpack(packed),
-                            api.spread(rules, batch, generator=generator),
-                            api.uniforms(rules, batch, generator=generator))
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            Action.unpack(packed),
+            api.spread(rules, batch, generator=generator),
+            api.uniforms(rules, batch, generator=generator),
+        )
         state, obs, _ = api.perceive(rules, state)
     return views
 
@@ -160,8 +180,9 @@ def _run(net, views: list[Obs], carry):
     reset = torch.ones(views[0].ships.shape[0], dtype=torch.bool)
     for view in views:
         decision = net.step(carry, view, reset)
-        carry = dataclasses.replace(decision.carry,
-                                    previous_action=decision.policy_logits.argmax(-1).int())
+        carry = dataclasses.replace(
+            decision.carry, previous_action=decision.policy_logits.argmax(-1).int()
+        )
         reset = torch.zeros_like(reset)
     return carry
 
@@ -187,10 +208,13 @@ def test_spawning_voids_a_belief():
     view = cases.cast(_views(cases.SQUAD, fogged=True), torch.float64)
     views = view.ships.shape[0]
     carry = net.initial_carry(views, OWN, 10)
-    believed = dataclasses.replace(carry.belief, valid=torch.ones_like(carry.belief.valid),
-                                   means=torch.full_like(carry.belief.means, 7.0),
-                                   spreads=torch.full_like(carry.belief.spreads, 3.0),
-                                   action=torch.softmax(torch.randn_like(carry.belief.action), -1))
+    believed = dataclasses.replace(
+        carry.belief,
+        valid=torch.ones_like(carry.belief.valid),
+        means=torch.full_like(carry.belief.means, 7.0),
+        spreads=torch.full_like(carry.belief.spreads, 3.0),
+        action=torch.softmax(torch.randn_like(carry.belief.action), -1),
+    )
     carry = dataclasses.replace(carry, belief=believed)
     ships = view.ships.clone()
     enemy = slice(5, 10)
@@ -223,8 +247,10 @@ def test_hidden_columns_of_hidden_ships_are_not_read():
     """After some ticks of history, so hidden ships hold beliefs (on a blank carry valid is
     visible)."""
     net = cases.model(dtype=torch.float64)
-    sequence = [cases.cast(view, torch.float64)
-                for view in _view_sequence(cases.SQUAD, fogged=True, ticks=40)]
+    sequence = [
+        cases.cast(view, torch.float64)
+        for view in _view_sequence(cases.SQUAD, fogged=True, ticks=40)
+    ]
     with torch.no_grad():
         carry = _run(net, sequence[:-1], net.initial_carry(sequence[0].ships.shape[0], OWN, 10))
     view = sequence[-1]
@@ -232,8 +258,9 @@ def test_hidden_columns_of_hidden_ships_are_not_read():
     assert (hidden & carry.belief.valid).any(), "a hidden ship should hold a belief"
     noise = torch.randn(view.ships.shape[:-1] + (SHIP_HIDDEN_ZERO,), dtype=torch.float64) * 100
     ships = view.ships.clone()
-    ships[..., :SHIP_HIDDEN_ZERO] = torch.where(hidden[..., None], noise,
-                                                ships[..., :SHIP_HIDDEN_ZERO])
+    ships[..., :SHIP_HIDDEN_ZERO] = torch.where(
+        hidden[..., None], noise, ships[..., :SHIP_HIDDEN_ZERO]
+    )
     reset = torch.zeros(view.ships.shape[0], dtype=torch.bool)
     with torch.no_grad():
         first = net.step(carry, view, reset)
@@ -271,8 +298,10 @@ def test_the_offset_reaches_the_outputs_only_through_the_position_codes():
         encoder.ship.first.weight[:, :POSITION_CODE] = 0.0
         encoder.field.first.weight[:, :POSITION_CODE] = 0.0
         encoder.global_token.first.weight[:, :POSITION_CODE] = 0.0
-    sequence = [cases.cast(view, torch.float64)
-                for view in _view_sequence(cases.SQUAD, fogged=True, ticks=24)]
+    sequence = [
+        cases.cast(view, torch.float64)
+        for view in _view_sequence(cases.SQUAD, fogged=True, ticks=24)
+    ]
     views = sequence[0].ships.shape[0]
     with torch.no_grad():
         carry = _run(net, sequence[:-1], net.initial_carry(views, OWN, 10))
@@ -281,15 +310,21 @@ def test_the_offset_reaches_the_outputs_only_through_the_position_codes():
         delta = torch.rand(views, 2, dtype=torch.float64) * POSITION_PERIOD
         means = carry.belief.means.clone()
         means[..., 0:2] += delta[:, None, :]
-        shifted = dataclasses.replace(carry, offset=carry.offset + delta,
-                                      belief=dataclasses.replace(carry.belief, means=means))
+        shifted = dataclasses.replace(
+            carry,
+            offset=carry.offset + delta,
+            belief=dataclasses.replace(carry.belief, means=means),
+        )
         reset = torch.zeros(views, dtype=torch.bool)
         plain, moved = net.step(carry, sequence[-1], reset), net.step(shifted, sequence[-1], reset)
     for name in ("policy_logits", "enemy_action_logits", "values", "outcome_probabilities"):
-        torch.testing.assert_close(getattr(moved, name), getattr(plain, name),
-                                   rtol=1e-8, atol=1e-8)
-    torch.testing.assert_close(moved.next_state_logits[..., POSITION_CODE:],
-                               plain.next_state_logits[..., POSITION_CODE:], rtol=1e-8, atol=1e-8)
+        torch.testing.assert_close(getattr(moved, name), getattr(plain, name), rtol=1e-8, atol=1e-8)
+    torch.testing.assert_close(
+        moved.next_state_logits[..., POSITION_CODE:],
+        plain.next_state_logits[..., POSITION_CODE:],
+        rtol=1e-8,
+        atol=1e-8,
+    )
 
 
 # ------------------------------------------------------------------ symmetry and size
@@ -314,16 +349,25 @@ def test_permuting_ships_within_a_team_permutes_every_output():
         plain_next = net.step(plain_carry, view, reset)
         swapped_next = net.step(swapped_carry, permuted, reset)
     for first, second in ((plain, swapped), (plain_next, swapped_next)):
-        for name, index in (("policy_logits", own), ("values", own),
-                            ("enemy_action_logits", enemy), ("next_state_logits", enemy)):
-            torch.testing.assert_close(getattr(first, name)[:, index], getattr(second, name),
-                                       rtol=1e-10, atol=1e-10)
-        torch.testing.assert_close(first.outcome_probabilities, second.outcome_probabilities,
-                                   rtol=1e-10, atol=1e-10)
+        for name, index in (
+            ("policy_logits", own),
+            ("values", own),
+            ("enemy_action_logits", enemy),
+            ("next_state_logits", enemy),
+        ):
+            torch.testing.assert_close(
+                getattr(first, name)[:, index], getattr(second, name), rtol=1e-10, atol=1e-10
+            )
+        torch.testing.assert_close(
+            first.outcome_probabilities, second.outcome_probabilities, rtol=1e-10, atol=1e-10
+        )
 
 
-@pytest.mark.parametrize("config", [GameConfig(1, 4, 1200.0), cases.SQUAD,
-                                    GameConfig(50, 40, 8200.0)], ids=["duel", "squad", "battle"])
+@pytest.mark.parametrize(
+    "config",
+    [GameConfig(1, 4, 1200.0), cases.SQUAD, GameConfig(50, 40, 8200.0)],
+    ids=["duel", "squad", "battle"],
+)
 def test_one_set_of_weights_plays_every_size(config):
     net = cases.model(cases.SQUAD)
     view = _views(config, fogged=True)
@@ -334,5 +378,6 @@ def test_one_set_of_weights_plays_every_size(config):
     assert decision.policy_logits.shape == (views, own, 42)
     assert decision.values.shape == (views, own, len(REWARD_LEVELS))
     assert decision.next_state_logits.shape == (views, ships - own, 490)
-    assert all(torch.isfinite(x).all() for x in _pytree.tree_leaves(decision)
-               if x.is_floating_point())
+    assert all(
+        torch.isfinite(x).all() for x in _pytree.tree_leaves(decision) if x.is_floating_point()
+    )

@@ -130,8 +130,9 @@ class Rules:
         """All uniforms per environment per tick: the game's, then the mode's spawn draws
         (modes spec 2), as wide as the widest mode needs; each environment reads its own
         mode's prefix (mixed spec 2)."""
-        return self.game_uniform_count + max(mode.uniform_count(self.num_ships)
-                                             for mode in self.modes)
+        return self.game_uniform_count + max(
+            mode.uniform_count(self.num_ships) for mode in self.modes
+        )
 
 
 def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) -> PoolRules:
@@ -139,14 +140,18 @@ def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) 
     episode_s, respawn_s = CLOCKS[game.mode]
     episode_s = episode_s if game.episode_s is None else game.episode_s
     respawn_s = respawn_s if game.respawn_s is None else game.respawn_s
-    return PoolRules(environments=environments, mode=mode_rules_of(game),
-                     arena_radius=game.arena_radius,
-                     episode_ticks=ticks_of(episode_s, tick_length),
-                     respawn_ticks=ticks_of(respawn_s, tick_length))
+    return PoolRules(
+        environments=environments,
+        mode=mode_rules_of(game),
+        arena_radius=game.arena_radius,
+        episode_ticks=ticks_of(episode_s, tick_length),
+        respawn_ticks=ticks_of(respawn_s, tick_length),
+    )
 
 
-def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | None = None,
-             **overrides) -> Rules:
+def rules_of(
+    config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | None = None, **overrides
+) -> Rules:
     """The rules for a config's sizes and games; `overrides` replace defaults.
 
     Without pools the batch plays the config's game, at any batch size. With pools (and
@@ -170,5 +175,10 @@ def rules_of(config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | N
             merged = [dataclasses.replace(merged[0], environments=None)]
         games = tuple(merged)
     overrides.setdefault("bullet_moves", ticks_of(BULLET_LIFE, tick_length))
-    return Rules(ships_per_team=config.ships_per_team, num_fields=config.num_fields,
-                 pools=games, tick_length=tick_length, **overrides)
+    return Rules(
+        ships_per_team=config.ships_per_team,
+        num_fields=config.num_fields,
+        pools=games,
+        tick_length=tick_length,
+        **overrides,
+    )

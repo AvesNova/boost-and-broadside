@@ -24,9 +24,12 @@ def measure(device: torch.device, margin: float = MARGIN) -> dict | None:
     if device.type != "cuda":
         return None
     total = torch.cuda.get_device_properties(device).total_memory
-    return dict(allocated=torch.cuda.max_memory_allocated(device),
-                reserved=torch.cuda.max_memory_reserved(device), total=total,
-                budget=int(total - margin))
+    return dict(
+        allocated=torch.cuda.max_memory_allocated(device),
+        reserved=torch.cuda.max_memory_reserved(device),
+        total=total,
+        budget=int(total - margin),
+    )
 
 
 def check(peaks: dict | None, sizes: str) -> None:
@@ -36,7 +39,8 @@ def check(peaks: dict | None, sizes: str) -> None:
         raise MemoryBudgetError(
             f"the first update reserved {peaks['reserved'] / 2**30:.2f} GB, over the budget of "
             f"{peaks['budget'] / 2**30:.2f} GB ({peaks['total'] / 2**30:.2f} GB less the "
-            f"margin), at {sizes}: lower them")
+            f"margin), at {sizes}: lower them"
+        )
 
 
 def describe(peaks: dict | None) -> str:
@@ -44,6 +48,8 @@ def describe(peaks: dict | None) -> str:
     if peaks is None:
         return "memory probe: CPU run, nothing measured"
     gigabytes = {name: value / 2**30 for name, value in peaks.items()}
-    return (f"memory probe: allocated {gigabytes['allocated']:.2f} GB, reserved "
-            f"{gigabytes['reserved']:.2f} GB, budget {gigabytes['budget']:.2f} GB of "
-            f"{gigabytes['total']:.2f} GB")
+    return (
+        f"memory probe: allocated {gigabytes['allocated']:.2f} GB, reserved "
+        f"{gigabytes['reserved']:.2f} GB, budget {gigabytes['budget']:.2f} GB of "
+        f"{gigabytes['total']:.2f} GB"
+    )

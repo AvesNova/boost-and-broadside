@@ -56,8 +56,11 @@ def sighted(cores: tuple, observers: tuple, targets: tuple) -> torch.Tensor:
         to_centre_y = centre_y[:, i, None, None, None] - observer_y[..., None, :]
         along = to_centre_x * line_x + to_centre_y * line_y
         across = to_centre_x * line_y - to_centre_y * line_x
-        blocked = blocked | ((across * across < radius_squared[..., None, :, i] * length_squared)
-                             & (along > 0.0) & (along < length_squared))
+        blocked = blocked | (
+            (across * across < radius_squared[..., None, :, i] * length_squared)
+            & (along > 0.0)
+            & (along < length_squared)
+        )
     in_range = length_squared <= (vision * vision)[..., None, :]
     return (in_range & alive[..., None, :] & ~blocked).any(-1)
 
@@ -78,12 +81,19 @@ def visibility(state: State) -> torch.Tensor:
     cores = (fields.x, fields.y, core * core)
     observer_x, observer_y = by_team(ships.x), by_team(ships.y)
     target_x, target_y = enemy(ships.x), enemy(ships.y)
-    observers = (observer_x, observer_y, core_membership(cores, observer_x, observer_y),
-                 by_team(ships.alive), by_team(state.match.vision_range))
-    seen = sighted(cores, observers, (target_x, target_y,
-                                      core_membership(cores, target_x, target_y)))
+    observers = (
+        observer_x,
+        observer_y,
+        core_membership(cores, observer_x, observer_y),
+        by_team(ships.alive),
+        by_team(state.match.vision_range),
+    )
+    seen = sighted(
+        cores, observers, (target_x, target_y, core_membership(cores, target_x, target_y))
+    )
     unfogged = ~state.match.fogged[:, None, None]
     enemies = enemy(ships.alive) & (enemy(ships.fired) | enemy(ships.spawned) | seen | unfogged)
     own = torch.ones_like(enemies)  # (B, 2, S) each; a team always sees its own ships
-    return torch.stack([torch.cat([own[:, 0], enemies[:, 0]], -1),
-                        torch.cat([enemies[:, 1], own[:, 1]], -1)], 1)
+    return torch.stack(
+        [torch.cat([own[:, 0], enemies[:, 0]], -1), torch.cat([enemies[:, 1], own[:, 1]], -1)], 1
+    )

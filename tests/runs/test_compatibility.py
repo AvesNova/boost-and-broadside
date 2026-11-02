@@ -23,7 +23,8 @@ def test_each_model_has_exactly_one_entry_at_its_current_version(name):
     entries = sorted(path.name for path in compatibility.SET.glob(f"{name}-v*"))
     assert entries == [compatibility.entry(name).name], (
         f"{name} is at version {MODELS[name].VERSION}; write its entry with "
-        f"tests/runs/compatibility.py {name}")
+        f"tests/runs/compatibility.py {name}"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(MODELS))
@@ -35,6 +36,12 @@ def test_the_stored_policy_still_computes_its_stored_outputs(name):
     got = cases.single_step(model, obs, carry)
     assert got.keys() == want.keys()
     for key, tensor in want.items():
-        torch.testing.assert_close(got[key], tensor, **OUTPUT_TOLERANCE, msg=lambda message: (
-            f"{name} version {MODELS[name].VERSION} computes another {key}: a change to what "
-            f"saved weights compute needs a version bump (runs spec 4). {message}"))
+        torch.testing.assert_close(
+            got[key],
+            tensor,
+            **OUTPUT_TOLERANCE,
+            msg=lambda message: (
+                f"{name} version {MODELS[name].VERSION} computes another {key}: a change to what "
+                f"saved weights compute needs a version bump (runs spec 4). {message}"
+            ),
+        )

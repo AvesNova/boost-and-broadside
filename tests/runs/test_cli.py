@@ -23,15 +23,22 @@ STEPS_PER_UPDATE = 16 * 16  # environments x segment length in TRAIN_OPTIONS
 
 def bnb(monkeypatch, runs_directory: pathlib.Path, *arguments: str) -> None:
     """`bnb ARGUMENTS --runs-directory RUNS` in this process, its seeding kept local."""
-    monkeypatch.setattr(sys, "argv", ["bnb", *arguments, "--runs-directory",
-                                      str(runs_directory)])
+    monkeypatch.setattr(sys, "argv", ["bnb", *arguments, "--runs-directory", str(runs_directory)])
     with torch.random.fork_rng():
         cli.main()
 
 
 def new_run(monkeypatch, runs_directory, name: str = "a", updates: int = 2) -> Run:
-    bnb(monkeypatch, runs_directory, "train", *cases.TRAIN_OPTIONS, "--updates", str(updates),
-        "--name", name)
+    bnb(
+        monkeypatch,
+        runs_directory,
+        "train",
+        *cases.TRAIN_OPTIONS,
+        "--updates",
+        str(updates),
+        "--name",
+        name,
+    )
     return Run.open(runs_directory, name)
 
 
@@ -42,7 +49,7 @@ def test_a_new_run_writes_its_record_config_and_final_checkpoint(monkeypatch, tm
     assert run.checkpoint_steps() == [2 * STEPS_PER_UPDATE]
     assert record["probe"] is None  # the CPU records nothing
     assert record["command"][:2] == ["bnb", "train"]
-    segment, = record["segments"]
+    (segment,) = record["segments"]
     assert (segment["start_step"], segment["end_step"]) == (0, 2 * STEPS_PER_UPDATE)
     assert segment["commit"] == provenance.commit()[0]
     config = json.loads((run.directory / "config.json").read_text())
@@ -53,8 +60,19 @@ def test_a_new_run_writes_its_record_config_and_final_checkpoint(monkeypatch, tm
 
 def test_a_resume_with_an_override_records_it_in_a_new_segment(monkeypatch, tmp_path):
     new_run(monkeypatch, tmp_path)
-    bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "3",
-        "--set", "learner.learning_rate=0.0001")
+    bnb(
+        monkeypatch,
+        tmp_path,
+        "train",
+        "--resume",
+        "a",
+        "--device",
+        "cpu",
+        "--updates",
+        "3",
+        "--set",
+        "learner.learning_rate=0.0001",
+    )
     run = Run.open(tmp_path, "a")
     first, second = run.record["segments"]
     assert second["start_step"] == first["end_step"] == 2 * STEPS_PER_UPDATE
@@ -65,22 +83,44 @@ def test_a_resume_with_an_override_records_it_in_a_new_segment(monkeypatch, tmp_
 
 def test_the_micro_batch_rows_and_the_precision_may_change_on_resume(monkeypatch, tmp_path):
     new_run(monkeypatch, tmp_path, updates=1)
-    bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "2",
-        "--micro-batch-rows", "32", "--precision", "tf32", "--set", "reward.damage=0.5")
+    bnb(
+        monkeypatch,
+        tmp_path,
+        "train",
+        "--resume",
+        "a",
+        "--device",
+        "cpu",
+        "--updates",
+        "2",
+        "--micro-batch-rows",
+        "32",
+        "--precision",
+        "tf32",
+        "--set",
+        "reward.damage=0.5",
+    )
     run = Run.open(tmp_path, "a")
     assert run.record["segments"][1]["overrides"] == {
-        "updates": 2, "precision": "tf32", "learner.micro_batch_rows": 32,
-        "reward.damage": 0.5}
+        "updates": 2,
+        "precision": "tf32",
+        "learner.micro_batch_rows": 32,
+        "reward.damage": 0.5,
+    }
     config, _ = checkpoint.training_config(run.checkpoint_at())
     assert (config.precision, config.learner.micro_batch_rows, config.reward.damage) == (
-        "tf32", 32, 0.5)
+        "tf32",
+        32,
+        0.5,
+    )
 
 
 def test_a_resume_of_a_live_run_is_refused(monkeypatch, tmp_path):
     run = new_run(monkeypatch, tmp_path)
     run.start_segment(2 * STEPS_PER_UPDATE)  # running, as this (live) process
-    with pytest.raises(SystemExit, match=f"run a is running as process {os.getpid()} on this "
-                                         f"host; stop it"):
+    with pytest.raises(
+        SystemExit, match=f"run a is running as process {os.getpid()} on this host; stop it"
+    ):
         bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu")
 
 
@@ -90,8 +130,7 @@ def test_a_resume_carries_the_runs_wandb_id(monkeypatch, tmp_path):
     assert Run.open(tmp_path, "a").record["wandb_id"] == "abc123"
 
 
-def test_a_checkpoint_with_an_unknown_config_field_is_a_one_line_refusal(monkeypatch,
-                                                                          tmp_path):
+def test_a_checkpoint_with_an_unknown_config_field_is_a_one_line_refusal(monkeypatch, tmp_path):
     run = new_run(monkeypatch, tmp_path)
     path = run.checkpoint_at() / checkpoint.RECORD
     record = json.loads(path.read_text())
@@ -105,8 +144,9 @@ def test_a_checkpoint_with_an_unknown_config_field_is_a_one_line_refusal(monkeyp
 def test_a_probe_over_the_budget_is_a_one_line_refusal(monkeypatch, tmp_path):
     over = dict(allocated=2, reserved=3, total=4, budget=1)
     monkeypatch.setattr(probe, "measure", lambda device, margin=probe.MARGIN: over)
-    with pytest.raises(SystemExit, match="over the budget .* at 16 environments, 160 "
-                                         "micro-batch rows: lower them"):
+    with pytest.raises(
+        SystemExit, match="over the budget .* at 16 environments, 160 micro-batch rows: lower them"
+    ):
         bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--probe")
 
 
@@ -120,8 +160,9 @@ def test_seed_and_set_seed_are_one_setting(monkeypatch, tmp_path, capsys):
 
 
 def test_the_runs_directory_is_runs_at_the_repository_root(monkeypatch, tmp_path):
-    root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                          text=True, check=True).stdout.strip()
+    root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+    ).stdout.strip()
     assert cli.runs_directory_of(None) == pathlib.Path(root) / "runs"
     monkeypatch.chdir(tmp_path)  # outside a repository: the current directory
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
@@ -131,9 +172,12 @@ def test_the_runs_directory_is_runs_at_the_repository_root(monkeypatch, tmp_path
 
 def test_a_structural_option_on_resume_is_refused_pointing_to_a_fork(monkeypatch, tmp_path):
     new_run(monkeypatch, tmp_path)
-    with pytest.raises(SystemExit, match="a resume takes --num-envs from the checkpoint and "
-                                         "cannot change it: start a new run from it with "
-                                         "--from a"):
+    with pytest.raises(
+        SystemExit,
+        match="a resume takes --num-envs from the checkpoint and "
+        "cannot change it: start a new run from it with "
+        "--from a",
+    ):
         bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--num-envs", "32")
     with pytest.raises(SystemExit, match="a resume cannot --set length"):
         bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--set", "length=32")
@@ -144,8 +188,10 @@ def test_a_resume_on_another_commit_warns_and_records_it(monkeypatch, tmp_path, 
     head = provenance.commit()[0]
     monkeypatch.setattr(provenance, "commit", lambda: ("0123abcd", True))
     bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "3")
-    assert f"warning: the run continues on commit 0123abcd; its last segment ran on {head}" \
+    assert (
+        f"warning: the run continues on commit 0123abcd; its last segment ran on {head}"
         in capsys.readouterr().out
+    )
     first, second = Run.open(tmp_path, "a").record["segments"]
     assert (first["commit"], second["commit"], second["dirty"]) == (head, "0123abcd", True)
 
@@ -153,28 +199,56 @@ def test_a_resume_on_another_commit_warns_and_records_it(monkeypatch, tmp_path, 
 def test_a_rewind_keeps_the_newer_checkpoints_aside(monkeypatch, tmp_path):
     new_run(monkeypatch, tmp_path, updates=1)
     bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "2")
-    bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--at", str(STEPS_PER_UPDATE),
-        "--device", "cpu", "--updates", "2")
+    bnb(
+        monkeypatch,
+        tmp_path,
+        "train",
+        "--resume",
+        "a",
+        "--at",
+        str(STEPS_PER_UPDATE),
+        "--device",
+        "cpu",
+        "--updates",
+        "2",
+    )
     run = Run.open(tmp_path, "a")
     third = run.record["segments"][2]
-    assert (third["start_step"], third["rewound_from"]) == (STEPS_PER_UPDATE,
-                                                            2 * STEPS_PER_UPDATE)
-    assert (run.directory / "checkpoints" / "rewound_2" / f"step_{2 * STEPS_PER_UPDATE}"
-            / checkpoint.RECORD).is_file()
+    assert (third["start_step"], third["rewound_from"]) == (STEPS_PER_UPDATE, 2 * STEPS_PER_UPDATE)
+    assert (
+        run.directory
+        / "checkpoints"
+        / "rewound_2"
+        / f"step_{2 * STEPS_PER_UPDATE}"
+        / checkpoint.RECORD
+    ).is_file()
     assert run.checkpoint_steps() == [STEPS_PER_UPDATE, 2 * STEPS_PER_UPDATE]
 
 
-def test_a_fork_is_a_new_run_naming_its_parent_that_trains_its_own_updates(monkeypatch,
-                                                                            tmp_path):
+def test_a_fork_is_a_new_run_naming_its_parent_that_trains_its_own_updates(monkeypatch, tmp_path):
     """The guide's fork example, from a parent with more updates than the fork's budget."""
     parent = new_run(monkeypatch, tmp_path, updates=3)
-    bnb(monkeypatch, tmp_path, "train", "--from", "a", *cases.TRAIN_OPTIONS,
-        "--set", "learner.entropy=-0.005", "--updates", "2", "--name", "b")
+    bnb(
+        monkeypatch,
+        tmp_path,
+        "train",
+        "--from",
+        "a",
+        *cases.TRAIN_OPTIONS,
+        "--set",
+        "learner.entropy=-0.005",
+        "--updates",
+        "2",
+        "--name",
+        "b",
+    )
     fork = Run.open(tmp_path, "b")
     assert fork.record["parent"] == dict(run="a", step=3 * STEPS_PER_UPDATE)
-    segment, = fork.record["segments"]
-    assert (segment["start_step"], segment["end_step"]) == (3 * STEPS_PER_UPDATE,
-                                                            5 * STEPS_PER_UPDATE)
+    (segment,) = fork.record["segments"]
+    assert (segment["start_step"], segment["end_step"]) == (
+        3 * STEPS_PER_UPDATE,
+        5 * STEPS_PER_UPDATE,
+    )
     assert fork.record["status"] == "finished"
     assert checkpoint.read_policy(fork.checkpoint_at()).steps["updates"] == 2
     assert parent.checkpoint_steps() == [3 * STEPS_PER_UPDATE]  # the parent is untouched
@@ -183,8 +257,16 @@ def test_a_fork_is_a_new_run_naming_its_parent_that_trains_its_own_updates(monke
 def test_a_fork_whose_build_differs_is_refused(monkeypatch, tmp_path):
     new_run(monkeypatch, tmp_path)
     with pytest.raises(SystemExit, match="the fork refused: .* config.hidden"):
-        bnb(monkeypatch, tmp_path, "train", "--from", "a", *cases.TRAIN_OPTIONS,
-            "--set", "relational_hidden=32")
+        bnb(
+            monkeypatch,
+            tmp_path,
+            "train",
+            "--from",
+            "a",
+            *cases.TRAIN_OPTIONS,
+            "--set",
+            "relational_hidden=32",
+        )
 
 
 def test_a_warm_start_from_a_policy_file_starts_a_new_run(monkeypatch, tmp_path):
@@ -192,10 +274,21 @@ def test_a_warm_start_from_a_policy_file_starts_a_new_run(monkeypatch, tmp_path)
     with torch.random.fork_rng():
         torch.manual_seed(0)
         trainer = Trainer(cases.tiny_train_config(), cases.CPU)
-    policy = checkpoint.save_policy(tmp_path / "bc", trainer.model,
-                                    return_scale=trainer.ppo.return_scale)
-    bnb(monkeypatch, tmp_path / "runs", "train", "--init-from", str(policy),
-        *cases.TRAIN_OPTIONS, "--updates", "1", "--name", "rl")
+    policy = checkpoint.save_policy(
+        tmp_path / "bc", trainer.model, return_scale=trainer.ppo.return_scale
+    )
+    bnb(
+        monkeypatch,
+        tmp_path / "runs",
+        "train",
+        "--init-from",
+        str(policy),
+        *cases.TRAIN_OPTIONS,
+        "--updates",
+        "1",
+        "--name",
+        "rl",
+    )
     run = Run.open(tmp_path / "runs", "rl")
     assert run.record["parent"] == dict(policy=str(policy.resolve()))
     assert run.record["segments"][0]["start_step"] == 0
@@ -221,12 +314,25 @@ def test_a_failure_marks_the_run_failed_with_the_message(monkeypatch, tmp_path):
 
 
 def test_ctrl_c_finishes_the_update_writes_a_checkpoint_and_stops(tmp_path):
-    arguments = ["bnb", "train", *cases.TRAIN_OPTIONS, "--updates", "1000", "--name", "a",
-                 "--runs-directory", str(tmp_path)]
+    arguments = [
+        "bnb",
+        "train",
+        *cases.TRAIN_OPTIONS,
+        "--updates",
+        "1000",
+        "--name",
+        "a",
+        "--runs-directory",
+        str(tmp_path),
+    ]
     code = f"import sys; sys.argv = {arguments!r}; from bnb.cli import main; main()"
-    process = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, text=True,
-                               env=dict(os.environ, PYTHONUNBUFFERED="1"))
+    process = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=dict(os.environ, PYTHONUNBUFFERED="1"),
+    )
     for line in process.stdout:
         if line.startswith("update"):
             break
@@ -251,13 +357,13 @@ def test_bnb_runs_lists_and_shows_runs_with_a_stale_one(monkeypatch, tmp_path, c
     assert listing[1].split()[:3] == ["a", "finished", str(2 * STEPS_PER_UPDATE)]
     assert listing[2].split()[:3] == ["b", "running", "(stale)"]
     assert provenance.commit()[0][:10] in listing[1]
-    monkeypatch.setattr(sys, "argv", ["bnb", "runs", "show", "a", "--runs-directory",
-                                      str(tmp_path)])
+    monkeypatch.setattr(
+        sys, "argv", ["bnb", "runs", "show", "a", "--runs-directory", str(tmp_path)]
+    )
     cli.main()
     shown = capsys.readouterr().out
     assert shown.startswith("run a: finished")
-    assert f"0: steps 0 to {2 * STEPS_PER_UPDATE} at {run.record['segments'][0]['commit']}" \
-        in shown
+    assert f"0: steps 0 to {2 * STEPS_PER_UPDATE} at {run.record['segments'][0]['commit']}" in shown
 
 
 def test_print_config_prints_the_resolved_configuration(monkeypatch, tmp_path, capsys):

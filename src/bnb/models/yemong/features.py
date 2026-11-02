@@ -11,14 +11,16 @@ RESPAWN_HARMONICS = 4
 __all__ = ["local_presence", "respawn_features", "symlog"]
 
 
-def respawn_features(seconds: torch.Tensor, horizon: float = RESPAWN_HORIZON,
-                     harmonics: int = RESPAWN_HARMONICS) -> torch.Tensor:
+def respawn_features(
+    seconds: torch.Tensor, horizon: float = RESPAWN_HORIZON, harmonics: int = RESPAWN_HARMONICS
+) -> torch.Tensor:
     """(...) respawn wait (s) to (..., 1 + 2 harmonics)."""
     return time_features(seconds, horizon, harmonics)
 
 
-def local_presence(position: torch.Tensor, team: torch.Tensor, source: torch.Tensor,
-                   radius: float) -> torch.Tensor:
+def local_presence(
+    position: torch.Tensor, team: torch.Tensor, source: torch.Tensor, radius: float
+) -> torch.Tensor:
     """(..., N, 2): ln(1 + Gaussian-weighted counts) of allies (same team, not itself) and
     enemies (the other ship team) around each token, from the tokens `source` allows.
 

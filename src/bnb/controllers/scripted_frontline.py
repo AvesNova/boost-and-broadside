@@ -43,20 +43,28 @@ def _pairs(x: torch.Tensor, y: torch.Tensor, to_x: torch.Tensor, to_y: torch.Ten
     return to_x[:, None, :] - x[..., None], to_y[:, None, :] - y[..., None]
 
 
-def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characteristics,
-              parameters: ScriptedParameters, combat_marginals: Marginals,
-              has_target: torch.Tensor, target_distance: torch.Tensor) -> Marginals:
+def frontline(
+    fleet: Context,
+    zones: torch.Tensor,
+    characteristics: Characteristics,
+    parameters: ScriptedParameters,
+    combat_marginals: Marginals,
+    has_target: torch.Tensor,
+    target_distance: torch.Tensor,
+) -> Marginals:
     own, enemy = fleet.own, fleet.enemy
     own_alive = column(own, "alive") > 0.5
     own_health = torch.where(own_alive, _health(own, fleet.own_type, characteristics), 0.0)
-    enemy_health = torch.where(fleet.enemy_seen,
-                               _health(enemy, fleet.enemy_type, characteristics), 0.0)
+    enemy_health = torch.where(
+        fleet.enemy_seen, _health(enemy, fleet.enemy_type, characteristics), 0.0
+    )
     combat_radius = parameters.combat_radius_in_gun_range * fleet.gun_range  # (R, S)
 
     # The threat at each own ship: the enemies' strength there.
     enemy_x, enemy_y = _pairs(fleet.x, fleet.y, column(enemy, "x"), column(enemy, "y"))
-    threat = (enemy_health[:, None, :]
-              * _kernel(enemy_x, enemy_y, combat_radius[..., None])).sum(-1)
+    threat = (enemy_health[:, None, :] * _kernel(enemy_x, enemy_y, combat_radius[..., None])).sum(
+        -1
+    )
 
     # The zones the layer reads, as offsets (R, S) from each own ship.
     zone_x, zone_y = zones[..., ZONE["x"]], zones[..., ZONE["y"]]
@@ -72,9 +80,10 @@ def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characterist
     to_attack = of_role(to_zone_x, ENEMY_DEFENSE), of_role(to_zone_y, ENEMY_DEFENSE)
     to_spawn = of_role(to_zone_x, OWN_SPAWN), of_role(to_zone_y, OWN_SPAWN)
     support = (parameters.support_radius_in_zone_radius * zones[..., ZONE["radius"]])[:, None, :]
-    enemy_near = (enemy_health[..., None]
-                  * _kernel(*_pairs(column(enemy, "x"), column(enemy, "y"), zone_x, zone_y),
-                            support)).sum(1)  # (R, Z): the enemy's strength near each zone
+    enemy_near = (
+        enemy_health[..., None]
+        * _kernel(*_pairs(column(enemy, "x"), column(enemy, "y"), zone_x, zone_y), support)
+    ).sum(1)  # (R, Z): the enemy's strength near each zone
     # The defense urgency: while the own defense zone's meter moves against the viewer, the
     # more so the further the enemy's capture has gone (progress in [0, 1]).
     against = (zones[..., ZONE["direction"]] < 0.0).float()
@@ -82,8 +91,9 @@ def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characterist
 
     # Recovery: hurt and threatened, fall back to the own spawn.
     shield_fraction = column(own, "shield") / per_ship(characteristics.max_shield, fleet.own_type)
-    recovering = ((shield_fraction < parameters.recovery_shield_fraction)
-                  & (threat > parameters.recovery_threat))
+    recovering = (shield_fraction < parameters.recovery_shield_fraction) & (
+        threat > parameters.recovery_threat
+    )
 
     # Who defends: the defense wants the floor, or the enemy's strength near it plus a
     # margin, and more by the urgency. Ships nearer the defense
@@ -97,17 +107,25 @@ def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characterist
     def per_view(value) -> torch.Tensor:  # a float or a per-view (R, 1) parameter
         return torch.as_tensor(value, dtype=available.dtype, device=available.device)
 
-    wanted = (torch.maximum(of_role(enemy_near, OWN_DEFENSE)[:, None]
-                            + parameters.defensive_margin, per_view(parameters.defensive_floor))
-              + parameters.defense_urgency * urgency[:, None])  # (R, 1)
+    wanted = (
+        torch.maximum(
+            of_role(enemy_near, OWN_DEFENSE)[:, None] + parameters.defensive_margin,
+            per_view(parameters.defensive_floor),
+        )
+        + parameters.defense_urgency * urgency[:, None]
+    )  # (R, 1)
     attackers = available.sum(-1, keepdim=True) - wanted
-    hopeless = (attackers * torch.exp(per_view(parameters.aggression))
-                < of_role(enemy_near, ENEMY_DEFENSE)[:, None])
-    order = (torch.sqrt(to_defense[0] ** 2 + to_defense[1] ** 2)
-             - torch.sqrt(to_attack[0] ** 2 + to_attack[1] ** 2))
+    hopeless = (
+        attackers * torch.exp(per_view(parameters.aggression))
+        < of_role(enemy_near, ENEMY_DEFENSE)[:, None]
+    )
+    order = torch.sqrt(to_defense[0] ** 2 + to_defense[1] ** 2) - torch.sqrt(
+        to_attack[0] ** 2 + to_attack[1] ** 2
+    )
     rows = torch.arange(order.shape[-1], device=order.device)
-    ahead = ((order[:, None, :] < order[..., None])
-             | ((order[:, None, :] == order[..., None]) & (rows[None, :] < rows[:, None])))
+    ahead = (order[:, None, :] < order[..., None]) | (
+        (order[:, None, :] == order[..., None]) & (rows[None, :] < rows[:, None])
+    )
     strength_ahead = torch.where(ahead, available[:, None, :], 0.0).sum(-1)  # (R, S)
     defending = hopeless | (strength_ahead < wanted)
     goal_x = torch.where(defending, to_defense[0], to_attack[0])
@@ -119,26 +137,35 @@ def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characterist
     separation_radius = (parameters.separation_radius_in_gun_range * fleet.gun_range)[..., None]
     others = ~torch.eye(own.shape[1], dtype=torch.bool, device=own.device)
     near = others & own_alive[:, None, :] & (ally_distance < separation_radius)
-    push = torch.where(near, (1.0 - ally_distance / separation_radius)
-                       / ally_distance.clamp_min(1e-3), 0.0)
+    push = torch.where(
+        near, (1.0 - ally_distance / separation_radius) / ally_distance.clamp_min(1e-3), 0.0
+    )
     goal_length = torch.sqrt(goal_x * goal_x + goal_y * goal_y).clamp_min(1e-6)
     wanted_x = goal_x / goal_length - parameters.separation_weight * (push * ally_x).sum(-1)
     wanted_y = goal_y / goal_length - parameters.separation_weight * (push * ally_y).sum(-1)
     wanted_x = torch.where(recovering, to_spawn[0], wanted_x)
     wanted_y = torch.where(recovering, to_spawn[1], wanted_y)
-    goal_distance = torch.where(recovering, torch.sqrt(to_spawn[0] ** 2 + to_spawn[1] ** 2),
-                                goal_length)
+    goal_distance = torch.where(
+        recovering, torch.sqrt(to_spawn[0] ** 2 + to_spawn[1] ** 2), goal_length
+    )
 
-    stick = stick_marginal(fleet, signed_angle(fleet.cos, fleet.sin,
-                                               *steer(fleet, wanted_x, wanted_y)), parameters)
-    power = power_marginal(either(slow(fleet, parameters), far(fleet, goal_distance, parameters)),
-                           torch.zeros_like(goal_distance))
+    stick = stick_marginal(
+        fleet, signed_angle(fleet.cos, fleet.sin, *steer(fleet, wanted_x, wanted_y)), parameters
+    )
+    power = power_marginal(
+        either(slow(fleet, parameters), far(fleet, goal_distance, parameters)),
+        torch.zeros_like(goal_distance),
+    )
     # Combat takes over from the inner shooting range in to the combat radius.
-    handover = Ramp(parameters.shoot_ramp_in_gun_range.low, parameters.combat_radius_in_gun_range,
-                    1.0, 0.0)
+    handover = Ramp(
+        parameters.shoot_ramp_in_gun_range.low, parameters.combat_radius_in_gun_range, 1.0, 0.0
+    )
     weight = torch.where(has_target, ramp(target_distance / fleet.gun_range, handover), 0.0)
     blended_power = blend(combat_marginals.power, power, weight)
     blended_stick = blend(combat_marginals.stick, stick, weight)
     keep = recovering[..., None]
-    return Marginals(torch.where(keep, power, blended_power),
-                     torch.where(keep, stick, blended_stick), combat_marginals.shoot)
+    return Marginals(
+        torch.where(keep, power, blended_power),
+        torch.where(keep, stick, blended_stick),
+        combat_marginals.shoot,
+    )

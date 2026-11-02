@@ -121,8 +121,9 @@ def test_fog_mask_agrees_with_sighted(renderer, config):
     ships, fields = frame.ships, frame.fields
     team = 0
     own = ships.alive & (ships.team == team)
-    observers = np.stack([ships.x[own], ships.y[own], ships.vision_range[own],
-                          np.zeros(int(own.sum()))], -1)
+    observers = np.stack(
+        [ships.x[own], ships.y[own], ships.vision_range[own], np.zeros(int(own.sum()))], -1
+    )
     renderer.set_map(frame, *build(fields, frame.arena_radius))
     renderer.fog.draw_mask(camera.uniforms(), observers, renderer.cores)
     width, height = renderer.fog.size
@@ -139,15 +140,27 @@ def test_fog_mask_agrees_with_sighted(renderer, config):
     cores = (state.fields.x, state.fields.y, radius * radius)
     S = loop.rules.ships_per_team
     observer_x, observer_y = state.ships.x.reshape(1, 2, S), state.ships.y.reshape(1, 2, S)
-    seen = sighted(cores, (observer_x, observer_y, core_membership(cores, observer_x, observer_y),
-                           state.ships.alive.reshape(1, 2, S),
-                           torch.from_numpy(ships.vision_range).reshape(1, 2, S)),
-                   (target_x, target_y, core_membership(cores, target_x, target_y)))
+    seen = sighted(
+        cores,
+        (
+            observer_x,
+            observer_y,
+            core_membership(cores, observer_x, observer_y),
+            state.ships.alive.reshape(1, 2, S),
+            torch.from_numpy(ships.vision_range).reshape(1, 2, S),
+        ),
+        (target_x, target_y, core_membership(cores, target_x, target_y)),
+    )
     want = seen[0, team].numpy().reshape(height, width)
     # Compare away from the mask's edges: cells whose neighbours all agree with them.
     padded = np.pad(want, 1, mode="edge")
-    neighbours = np.stack([padded[1 + dy:1 + dy + height, 1 + dx:1 + dx + width]
-                           for dy in (-1, 0, 1) for dx in (-1, 0, 1)])
+    neighbours = np.stack(
+        [
+            padded[1 + dy : 1 + dy + height, 1 + dx : 1 + dx + width]
+            for dy in (-1, 0, 1)
+            for dx in (-1, 0, 1)
+        ]
+    )
     interior = (neighbours == want).all(0)
     assert interior.mean() > 0.8
     assert want[interior].any() and not want[interior].all()  # both sides are tested
@@ -164,10 +177,13 @@ def test_a_ship_draws_in_its_team_colour(renderer, context):
     chosen = int(np.argmax(distance.min(1) * ships.alive))  # the most isolated ship
     camera = Camera(WIDTH, HEIGHT, float(ships.x[chosen]), float(ships.y[chosen]), 0.2)
     pixels = _draw(renderer, context, frame, SPECTATOR, camera, theme)
-    size = float(ring_radius(ships.hit_radius[chosen:chosen + 1], 0.2)[0])
+    size = float(ring_radius(ships.hit_radius[chosen : chosen + 1], 0.2)[0])
     ahead = 0.2 * size  # inside the silhouette, forward of the centre
-    row, column = _pixel_of(camera, ships.x[chosen] + ahead * math.cos(ships.heading[chosen]),
-                            ships.y[chosen] + ahead * math.sin(ships.heading[chosen]))
+    row, column = _pixel_of(
+        camera,
+        ships.x[chosen] + ahead * math.cos(ships.heading[chosen]),
+        ships.y[chosen] + ahead * math.sin(ships.heading[chosen]),
+    )
     colour = np.array(theme.team[int(ships.team[chosen])].floats()[:3]) * 255
     assert np.abs(pixels[row, column] - colour).max() <= 1
 
@@ -222,18 +238,19 @@ def _with_bullets(frame, owner: int, x, y, direction_x: float = 1.0, direction_y
     slots = owner * K + np.arange(len(x))
     active = np.zeros_like(bullets.active)
     active[slots] = True
-    values = {name: getattr(bullets, name).copy() for name in ("x", "y", "direction_x",
-                                                              "direction_y")}
+    values = {
+        name: getattr(bullets, name).copy() for name in ("x", "y", "direction_x", "direction_y")
+    }
     values["x"][slots], values["y"][slots] = x, y
     values["direction_x"][slots], values["direction_y"][slots] = direction_x, direction_y
-    return dataclasses.replace(frame, bullets=dataclasses.replace(bullets, active=active,
-                                                                  **values))
+    return dataclasses.replace(frame, bullets=dataclasses.replace(bullets, active=active, **values))
 
 
 def _without_bullets(frame):
     bullets = frame.bullets
-    return dataclasses.replace(frame, bullets=dataclasses.replace(
-        bullets, active=np.zeros_like(bullets.active)))
+    return dataclasses.replace(
+        frame, bullets=dataclasses.replace(bullets, active=np.zeros_like(bullets.active))
+    )
 
 
 def test_a_hidden_enemy_draws_nothing_in_its_enemys_view(renderer, context):
@@ -246,19 +263,30 @@ def test_a_hidden_enemy_draws_nothing_in_its_enemys_view(renderer, context):
     theme = themes.load(themes.DEFAULT)
     camera = Camera(WIDTH, HEIGHT, float(ships.x[enemy]), float(ships.y[enemy]), 0.5)
     ahead = np.array([10.0, 25.0])
-    shown = _with_bullets(frame, enemy, ships.x[enemy] + ahead * math.cos(ships.heading[enemy]),
-                          ships.y[enemy] + ahead * math.sin(ships.heading[enemy]),
-                          math.cos(ships.heading[enemy]), math.sin(ships.heading[enemy]))
+    shown = _with_bullets(
+        frame,
+        enemy,
+        ships.x[enemy] + ahead * math.cos(ships.heading[enemy]),
+        ships.y[enemy] + ahead * math.sin(ships.heading[enemy]),
+        math.cos(ships.heading[enemy]),
+        math.sin(ships.heading[enemy]),
+    )
     alive = ships.alive.copy()
     alive[enemy] = False
     ship_removed = dataclasses.replace(shown, ships=dataclasses.replace(ships, alive=alive))
     bullets_only = _without_bullets(ship_removed)
-    assert np.array_equal(_draw(renderer, context, shown, 0, camera, theme),
-                          _draw(renderer, context, ship_removed, 0, camera, theme))
-    assert not np.array_equal(_draw(renderer, context, ship_removed, 0, camera, theme),
-                              _draw(renderer, context, bullets_only, 0, camera, theme))
-    assert not np.array_equal(_draw(renderer, context, shown, SPECTATOR, camera, theme),
-                              _draw(renderer, context, ship_removed, SPECTATOR, camera, theme))
+    assert np.array_equal(
+        _draw(renderer, context, shown, 0, camera, theme),
+        _draw(renderer, context, ship_removed, 0, camera, theme),
+    )
+    assert not np.array_equal(
+        _draw(renderer, context, ship_removed, 0, camera, theme),
+        _draw(renderer, context, bullets_only, 0, camera, theme),
+    )
+    assert not np.array_equal(
+        _draw(renderer, context, shown, SPECTATOR, camera, theme),
+        _draw(renderer, context, ship_removed, SPECTATOR, camera, theme),
+    )
 
 
 def test_every_bullet_draws_in_every_view(renderer, context):
@@ -271,15 +299,18 @@ def test_every_bullet_draws_in_every_view(renderer, context):
     ships = frame.ships
     theme = themes.load(themes.DEFAULT)
     friend = int(np.flatnonzero(ships.alive & (ships.team == 0))[0])
-    for owner, (x, y) in ((enemy, (ships.x[enemy] + 30, ships.y[enemy] + 30)),
-                          (friend, (ships.x[enemy] + 30, ships.y[enemy] + 30)),
-                          (enemy, (ships.x[friend] + 30, ships.y[friend] + 30))):
+    for owner, (x, y) in (
+        (enemy, (ships.x[enemy] + 30, ships.y[enemy] + 30)),
+        (friend, (ships.x[enemy] + 30, ships.y[enemy] + 30)),
+        (enemy, (ships.x[friend] + 30, ships.y[friend] + 30)),
+    ):
         camera = Camera(WIDTH, HEIGHT, float(x), float(y), 0.5)
         with_bullet = _with_bullets(frame, owner, np.array([x]), np.array([y]))
         for view in (0, SPECTATOR):
-            assert not np.array_equal(_draw(renderer, context, with_bullet, view, camera, theme),
-                                      _draw(renderer, context, frame, view, camera, theme)), (
-                owner, view)
+            assert not np.array_equal(
+                _draw(renderer, context, with_bullet, view, camera, theme),
+                _draw(renderer, context, frame, view, camera, theme),
+            ), (owner, view)
 
 
 def test_a_bullet_in_the_fog_draws_at_full_brightness(renderer, context):
@@ -332,14 +363,20 @@ def _flown_trail(frame, ship: int, seen_by_team0):
     now = 0.0
     for index, seen in enumerate(seen_by_team0):
         now = index * STEP
-        x, heading, visible = frame.ships.x.copy(), frame.ships.heading.copy(), \
-            frame.ships.visible.copy()
+        x, heading, visible = (
+            frame.ships.x.copy(),
+            frame.ships.heading.copy(),
+            frame.ships.visible.copy(),
+        )
         x[ship] = start_x + SPEED * now
         heading[ship] = 0.0
         visible[0, ship] = seen
-        moved = dataclasses.replace(frame, ships=dataclasses.replace(
-            frame.ships, x=x, heading=heading, visible=visible,
-            angle_of_attack=np.zeros_like(x)))
+        moved = dataclasses.replace(
+            frame,
+            ships=dataclasses.replace(
+                frame.ships, x=x, heading=heading, visible=visible, angle_of_attack=np.zeros_like(x)
+            ),
+        )
         trails.record(moved, now, np.zeros(len(x), bool))
     return trails, now, start_x, start_y, moved
 
@@ -356,8 +393,9 @@ def test_an_enemy_coming_into_view_draws_no_trail_from_its_hidden_stretch(render
     from where it came into view."""
     frame, enemy = _trail_scene()
     hidden, seen = 40, 40
-    trails, now, start_x, start_y, frame = _flown_trail(frame, enemy,
-                                                        [False] * hidden + [True] * seen)
+    trails, now, start_x, start_y, frame = _flown_trail(
+        frame, enemy, [False] * hidden + [True] * seen
+    )
     theme = themes.load(themes.DEFAULT)
     empty = Trails(len(frame.ships.x), frame.stall_angle)
     for stretch, drawn_for_team in ((0.5 * hidden, False), (hidden + 0.5 * seen, True)):
@@ -381,11 +419,14 @@ def test_an_enemy_revealed_by_firing_does_not_flash_its_hidden_path(renderer, co
     empty = Trails(len(frame.ships.x), frame.stall_angle)
     middle = start_x + SPEED * 30 * STEP
     camera = Camera(WIDTH, HEIGHT, middle, start_y, SPEED * 60 * STEP / (0.8 * WIDTH))
-    assert np.array_equal(_draw(renderer, context, frame, 0, camera, theme, trails, now),
-                          _draw(renderer, context, frame, 0, camera, theme, empty, now))
+    assert np.array_equal(
+        _draw(renderer, context, frame, 0, camera, theme, trails, now),
+        _draw(renderer, context, frame, 0, camera, theme, empty, now),
+    )
     assert not np.array_equal(
         _draw(renderer, context, frame, SPECTATOR, camera, theme, trails, now),
-        _draw(renderer, context, frame, SPECTATOR, camera, theme, empty, now))
+        _draw(renderer, context, frame, SPECTATOR, camera, theme, empty, now),
+    )
 
 
 def test_the_core_line_is_drawn_at_the_sight_tests_core_radius(renderer, context):
@@ -397,8 +438,9 @@ def test_the_core_line_is_drawn_at_the_sight_tests_core_radius(renderer, context
     field = int(np.argmax(fields.core_radius))
     core = float(api.core_radius(loop.realtime.state)[0, field])
     red = Colour.from_hex("#FF0000")
-    theme = with_colour(with_colour(themes.load(themes.DEFAULT), "thin_core", red),
-                        "thick_core", red)
+    theme = with_colour(
+        with_colour(themes.load(themes.DEFAULT), "thin_core", red), "thick_core", red
+    )
     for radius, on_line in ((core, True), (float(fields.radius[field]), False)):
         x, y = float(fields.x[field]) + radius, float(fields.y[field])
         camera = Camera(WIDTH, HEIGHT, x, y, 0.25)
@@ -422,9 +464,12 @@ def test_a_ship_type_without_a_silhouette_draws_the_generic_one(renderer, contex
     trails = Trails(len(ships.x), frame.stall_angle)
     trails.record(frame, 0.0, np.zeros(len(ships.x), bool))
     pixels = _draw(renderer, context, frame, SPECTATOR, camera, theme, trails)
-    size = float(ring_radius(ships.hit_radius[chosen:chosen + 1], 0.2)[0])
-    row, column = _pixel_of(camera, ships.x[chosen] + 0.2 * size * math.cos(ships.heading[chosen]),
-                            ships.y[chosen] + 0.2 * size * math.sin(ships.heading[chosen]))
+    size = float(ring_radius(ships.hit_radius[chosen : chosen + 1], 0.2)[0])
+    row, column = _pixel_of(
+        camera,
+        ships.x[chosen] + 0.2 * size * math.cos(ships.heading[chosen]),
+        ships.y[chosen] + 0.2 * size * math.sin(ships.heading[chosen]),
+    )
     colour = np.array(theme.team[int(ships.team[chosen])].floats()[:3]) * 255
     assert np.abs(pixels[row, column] - colour).max() <= 1
 
@@ -444,21 +489,31 @@ def test_an_edited_colour_draws_on_the_next_frame(renderer, context):
         for fraction in (0.3, 0.5, 0.7):
             x = fraction * frame.arena_radius * math.cos(angle)
             y = fraction * frame.arena_radius * math.sin(angle)
-            clear_of_fields = (np.hypot(fields.x - x, fields.y - y)
-                               > fields.radius + fields.band_width + 50).all()
+            clear_of_fields = (
+                np.hypot(fields.x - x, fields.y - y) > fields.radius + fields.band_width + 50
+            ).all()
             clear_of_ships = (np.hypot(ships.x - x, ships.y - y) > 200).all()
             if clear_of_fields and clear_of_ships:
                 row, column = _pixel_of(camera, x, y)
-                assert np.array_equal(before[row, column],
-                                      np.array(theme.sky.floats()[:3]) * 255)
+                assert np.array_equal(before[row, column], np.array(theme.sky.floats()[:3]) * 255)
                 assert np.array_equal(after[row, column], [0x20, 0x40, 0x60])
                 return
     pytest.fail("no clear sky in the scenario")
 
 
 def test_offscreen_frames_are_written(tmp_path):
-    paths = run_offscreen(Options(offscreen=tmp_path, frames=3, width=WIDTH, height=HEIGHT,
-                                  compile=False, preset="frontline", fog=True, view="team1"))
+    paths = run_offscreen(
+        Options(
+            offscreen=tmp_path,
+            frames=3,
+            width=WIDTH,
+            height=HEIGHT,
+            compile=False,
+            preset="frontline",
+            fog=True,
+            view="team1",
+        )
+    )
     assert [p.name for p in paths] == ["frame_0000.png", "frame_0001.png", "frame_0002.png"]
     assert all(p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" for p in paths)
 
@@ -472,25 +527,28 @@ def test_a_hex_code_typed_into_the_editor_applies(context, tmp_path):
 
     width, height = 1280, 720
     target = context.framebuffer(color_attachments=[context.texture((width, height), 4)])
-    session = Session(Options(compile=False), context, width, height,
-                      library=themes.Library(tmp_path))
+    session = Session(
+        Options(compile=False), context, width, height, library=themes.Library(tmp_path)
+    )
     session.update(1.0 / 60.0)
     session.editor.open = True
     session.draw(target)
     session.draw(target)  # a new panel takes its size on its second frame
     io, style = imgui.get_io(), imgui.get_style()
     row = imgui.get_font_size() + 2 * style.frame_padding.y
-    io.add_mouse_pos_event(width - PANEL_WIDTH - 10 + style.window_padding.x + 30,
-                           10 + row + style.window_padding.y + 0.5 * row)
-    for event in (lambda: io.add_mouse_button_event(0, True),
-                  lambda: io.add_mouse_button_event(0, False),
-                  lambda: (io.add_key_event(imgui.Key.mod_ctrl, True),
-                           io.add_key_event(imgui.Key.a, True)),
-                  lambda: (io.add_key_event(imgui.Key.a, False),
-                           io.add_key_event(imgui.Key.mod_ctrl, False)),
-                  lambda: io.add_input_characters_utf8("#204060"),
-                  lambda: io.add_key_event(imgui.Key.enter, True),
-                  lambda: io.add_key_event(imgui.Key.enter, False)):
+    io.add_mouse_pos_event(
+        width - PANEL_WIDTH - 10 + style.window_padding.x + 30,
+        10 + row + style.window_padding.y + 0.5 * row,
+    )
+    for event in (
+        lambda: io.add_mouse_button_event(0, True),
+        lambda: io.add_mouse_button_event(0, False),
+        lambda: (io.add_key_event(imgui.Key.mod_ctrl, True), io.add_key_event(imgui.Key.a, True)),
+        lambda: (io.add_key_event(imgui.Key.a, False), io.add_key_event(imgui.Key.mod_ctrl, False)),
+        lambda: io.add_input_characters_utf8("#204060"),
+        lambda: io.add_key_event(imgui.Key.enter, True),
+        lambda: io.add_key_event(imgui.Key.enter, False),
+    ):
         event()
         session.draw(target)
     assert session.theme.sky == Colour.from_hex("#204060")

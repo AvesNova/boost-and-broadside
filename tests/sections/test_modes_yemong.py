@@ -25,8 +25,9 @@ def _frontline_views(ticks: int = 20, envs: int = 4):
 
 def test_zones_are_memory_tokens_after_the_fields():
     net, obs, _ = _frontline_views()
-    view = Obs(ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1],
-               zones=obs.zones[-1])
+    view = Obs(
+        ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1], zones=obs.zones[-1]
+    )
     carry = net.initial_carry(view.ships.shape[0], OWN, 10)
     replay = net.step(carry, view, torch.ones(view.ships.shape[0], dtype=torch.bool)).replay
     tokens = net.tokens(view, replay)
@@ -37,8 +38,15 @@ def test_zones_are_memory_tokens_after_the_fields():
     # a team deathmatch view has the same five slots, every one absent: the learned token
     rules = api.rules_of(cases.SQUAD)
     _, squad, _ = api.perceive(rules, api.reset(rules, api.ship_types(), api.uniforms(rules, 1)))
-    squad = cases.cast(Obs(ships=squad.ships[:, 0], fields=squad.fields[:, 0],
-                           globals=squad.globals[:, 0], zones=squad.zones[:, 0]), torch.float64)
+    squad = cases.cast(
+        Obs(
+            ships=squad.ships[:, 0],
+            fields=squad.fields[:, 0],
+            globals=squad.globals[:, 0],
+            zones=squad.zones[:, 0],
+        ),
+        torch.float64,
+    )
     assert squad.zones.shape[-2] == 5 and not squad.zones.any()
     carry = net.initial_carry(1, OWN, 10)
     with torch.no_grad():
@@ -56,8 +64,9 @@ def _decide(net, view):
 
 def test_zone_rows_and_mode_globals_reach_the_decision():
     net, obs, _ = _frontline_views()
-    view = Obs(ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1],
-               zones=obs.zones[-1])
+    view = Obs(
+        ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1], zones=obs.zones[-1]
+    )
     plain = _decide(net, view)
     for column in ("progress", "role", "offensive_distance"):
         zones = view.zones.clone()
@@ -90,11 +99,16 @@ def test_the_offset_reaches_zones_only_through_their_position_code():
     (the offset) changes nothing; zones sit in the shifted frame like fields."""
     net, obs, _ = _frontline_views()
     with torch.no_grad():
-        for kind in (net.encoder.ship, net.encoder.field, net.encoder.global_token,
-                     net.encoder.zone):
+        for kind in (
+            net.encoder.ship,
+            net.encoder.field,
+            net.encoder.global_token,
+            net.encoder.zone,
+        ):
             kind.first.weight[:, :POSITION_CODE] = 0.0
-    view = Obs(ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1],
-               zones=obs.zones[-1])
+    view = Obs(
+        ships=obs.ships[-1], fields=obs.fields[-1], globals=obs.globals[-1], zones=obs.zones[-1]
+    )
     views = view.ships.shape[0]
     carry = net.initial_carry(views, OWN, 10)
     delta = torch.rand(views, 2, dtype=torch.float64) * POSITION_PERIOD

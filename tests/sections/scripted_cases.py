@@ -19,22 +19,43 @@ def value(name: str, ship_type: int) -> float:
     return float(getattr(CHARACTERISTICS, name)[ship_type])
 
 
-def ship(x: float = 0.0, y: float = 0.0, heading: float = 0.0, speed: float | None = None,
-         ship_type: int = 0, team_relative: int = 0, alive: bool = True, visible: bool = True,
-         energy: float | None = None, shield: float | None = None, gun_cooldown: float = 0.0,
-         velocity: tuple[float, float] | None = None) -> torch.Tensor:
+def ship(
+    x: float = 0.0,
+    y: float = 0.0,
+    heading: float = 0.0,
+    speed: float | None = None,
+    ship_type: int = 0,
+    team_relative: int = 0,
+    alive: bool = True,
+    visible: bool = True,
+    energy: float | None = None,
+    shield: float | None = None,
+    gun_cooldown: float = 0.0,
+    velocity: tuple[float, float] | None = None,
+) -> torch.Tensor:
     """One observation row: flying along its nose at `speed` (cruise by default), with a
     full store and shield unless given."""
     speed = value("cruise_speed", ship_type) if speed is None else speed
     row = torch.zeros(len(SHIP_COLUMNS))
     velocity = velocity or (speed * math.cos(heading), speed * math.sin(heading))
-    shown = dict(alive=float(alive), visible=float(visible), ship_type=float(ship_type),
-                 team_relative=float(team_relative))
-    hidden = dict(x=x, y=y, heading_cos=math.cos(heading), heading_sin=math.sin(heading),
-                  velocity_x=velocity[0], velocity_y=velocity[1], proper_speed=speed,
-                  energy=value("max_energy", ship_type) if energy is None else energy,
-                  shield=value("max_shield", ship_type) if shield is None else shield,
-                  gun_cooldown=gun_cooldown)
+    shown = dict(
+        alive=float(alive),
+        visible=float(visible),
+        ship_type=float(ship_type),
+        team_relative=float(team_relative),
+    )
+    hidden = dict(
+        x=x,
+        y=y,
+        heading_cos=math.cos(heading),
+        heading_sin=math.sin(heading),
+        velocity_x=velocity[0],
+        velocity_y=velocity[1],
+        proper_speed=speed,
+        energy=value("max_energy", ship_type) if energy is None else energy,
+        shield=value("max_shield", ship_type) if shield is None else shield,
+        gun_cooldown=gun_cooldown,
+    )
     for name, number in shown.items():
         row[SHIP[name]] = number
     if visible:
@@ -47,18 +68,28 @@ def absent(ship_type: int = 0, team_relative: int = 1) -> torch.Tensor:
     return ship(ship_type=ship_type, team_relative=team_relative, alive=False, visible=False)
 
 
-def zone(x: float, y: float, role: int, progress: float = 0.0, direction: float = 0.0,
-         radius: float = 330.0) -> torch.Tensor:
+def zone(
+    x: float,
+    y: float,
+    role: int,
+    progress: float = 0.0,
+    direction: float = 0.0,
+    radius: float = 330.0,
+) -> torch.Tensor:
     row = torch.zeros(len(ZONE_COLUMNS))
-    for name, number in dict(x=x, y=y, radius=radius, role=role, progress=progress,
-                             direction=direction, present=1.0).items():
+    for name, number in dict(
+        x=x, y=y, radius=radius, role=role, progress=progress, direction=direction, present=1.0
+    ).items():
         row[ZONE[name]] = number
     return row
 
 
-def observation(own: list[torch.Tensor], enemies: list[torch.Tensor],
-                zones: list[torch.Tensor] | None = None,
-                arena_radius: float = ARENA_RADIUS) -> Obs:
+def observation(
+    own: list[torch.Tensor],
+    enemies: list[torch.Tensor],
+    zones: list[torch.Tensor] | None = None,
+    arena_radius: float = ARENA_RADIUS,
+) -> Obs:
     """One view (R = 1); Frontline when zones are given, team deathmatch otherwise."""
     assert len(own) == len(enemies)
     rows = torch.stack(own + enemies)

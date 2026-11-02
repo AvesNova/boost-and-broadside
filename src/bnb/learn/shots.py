@@ -80,27 +80,47 @@ def _at(tree, time: int):
 
 def _fields(rows: torch.Tensor) -> Fields:
     """Observation field rows (..., M, 5) as the game's Fields (the same values)."""
-    return Fields(x=rows[..., 0], y=rows[..., 1], radius=rows[..., 2], band_width=rows[..., 3],
-                  level=rows[..., 4].to(torch.int32))
+    return Fields(
+        x=rows[..., 0],
+        y=rows[..., 1],
+        radius=rows[..., 2],
+        band_width=rows[..., 3],
+        level=rows[..., 4].to(torch.int32),
+    )
 
 
-def tick(rules: Rules, types: ShipTypes, bullets: Bullets, capture: ShotCapture,
-         spread: torch.Tensor, field_rows: torch.Tensor) -> tuple[Bullets, _Tick]:
+def tick(
+    rules: Rules,
+    types: ShipTypes,
+    bullets: Bullets,
+    capture: ShotCapture,
+    spread: torch.Tensor,
+    field_rows: torch.Tensor,
+) -> tuple[Bullets, _Tick]:
     """One tick of the scan, every view (R, ...): each row fires a fresh bullet from its
     captured launch state (the newest age), every bullet (R, N, A) moves once, and each is
     tested against this tick's ships. The runtime may compile it (the scan calls it once
     per tick)."""
     fresh = launch(rules, types, capture.launch, spread)
     fresh = replace(fresh, moves_left=torch.ones_like(fresh.moves_left))
-    bullets = Bullets(**{name: torch.cat([getattr(fresh, name)[..., None],
-                                          getattr(bullets, name)[..., :-1]], -1)
-                         for name in BULLET_FIELDS})
+    bullets = Bullets(
+        **{
+            name: torch.cat([getattr(fresh, name)[..., None], getattr(bullets, name)[..., :-1]], -1)
+            for name in BULLET_FIELDS
+        }
+    )
     moved = move_bullets(rules, types, bullets, _fields(field_rows), capture.launch.ship_type)
     start = capture.launch
-    sweep = Sweep(ship_x=start.x, ship_y=start.y, ship_displacement_x=capture.displacement_x,
-                  ship_displacement_y=capture.displacement_y, bullet_x=bullets.x,
-                  bullet_y=bullets.y, bullet_displacement_x=moved.x - bullets.x,
-                  bullet_displacement_y=moved.y - bullets.y)
+    sweep = Sweep(
+        ship_x=start.x,
+        ship_y=start.y,
+        ship_displacement_x=capture.displacement_x,
+        ship_displacement_y=capture.displacement_y,
+        bullet_x=bullets.x,
+        bullet_y=bullets.y,
+        bullet_displacement_x=moved.x - bullets.x,
+        bullet_displacement_y=moved.y - bullets.y,
+    )
     pairs = contacts(types, sweep, start.ship_type, bullets.moves_left > 0, capture.alive)
     _, target, hit = first_contact(pairs)
     rows, ages = bullets.moves_left.shape[-2:]
@@ -110,16 +130,30 @@ def tick(rules: Rules, types: ShipTypes, bullets: Bullets, capture: ShotCapture,
     index = torch.exp(moved.log_refractive_index)
     speed = moved.proper_speed / index
     shape = bullets.moves_left.shape
-    record = _Tick(x=moved.x, y=moved.y, velocity_x=moved.direction_x * speed,
-                   velocity_y=moved.direction_y * speed, index=index, hit=hit.reshape(shape),
-                   target=target.reshape(shape), miss_squared=miss_squared.reshape(shape),
-                   nearest=nearest.reshape(shape))
+    record = _Tick(
+        x=moved.x,
+        y=moved.y,
+        velocity_x=moved.direction_x * speed,
+        velocity_y=moved.direction_y * speed,
+        index=index,
+        hit=hit.reshape(shape),
+        target=target.reshape(shape),
+        miss_squared=miss_squared.reshape(shape),
+        nearest=nearest.reshape(shape),
+    )
     return moved, record
 
 
-def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: torch.Tensor,
-               done: torch.Tensor, spread: torch.Tensor, own: int,
-               step: Callable = tick) -> Shots:
+def resimulate(
+    rules: Rules,
+    types: ShipTypes,
+    capture: ShotCapture,
+    fields: torch.Tensor,
+    done: torch.Tensor,
+    spread: torch.Tensor,
+    own: int,
+    step: Callable = tick,
+) -> Shots:
     """The shots of a stored segment. capture (L, R, N); fields (L, R, M, 5), the
     observation's field rows (the map of each tick); done (L, R), the episode ended after
     the tick; spread (L, R, N, 2) standard normals (the learner's draw); own: S, the
@@ -128,13 +162,16 @@ def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: tor
     length, views, rows = capture.alive.shape
     ages = rules.bullet_moves
     device = capture.alive.device
-    empty = apply(lambda x: x.new_zeros((views, rows, ages)),
-                  launch(rules, types, _at(capture.launch, 0), spread[0]))
+    empty = apply(
+        lambda x: x.new_zeros((views, rows, ages)),
+        launch(rules, types, _at(capture.launch, 0), spread[0]),
+    )
     bullets = replace(empty, moves_left=torch.ones_like(empty.moves_left))
     records = []
     for time in range(length):
-        bullets, record = step(rules, types, bullets, _at(capture, time), spread[time],
-                               fields[time])
+        bullets, record = step(
+            rules, types, bullets, _at(capture, time), spread[time], fields[time]
+        )
         records.append(record)
     by_tick = torch.utils._pytree.tree_map(lambda *x: torch.stack(x), *records)  # (L, R, N, A)
     # By launch: the shot fired at t is at age a + 1 on tick t + a.
@@ -148,8 +185,12 @@ def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: tor
         age = torch.arange(ages, device=device).expand(values.shape)
         return values.gather(0, index).gather(-1, age)  # [t, ..., a] = values[t + a, ..., a]
 
-    shot = _Tick(**{field.name: by_launch(getattr(by_tick, field.name))
-                    for field in dataclasses.fields(_Tick)})
+    shot = _Tick(
+        **{
+            field.name: by_launch(getattr(by_tick, field.name))
+            for field in dataclasses.fields(_Tick)
+        }
+    )
     inside = inside[:, None, None, :]
     contact = shot.hit & inside
     hit_age = torch.where(contact, torch.arange(ages, device=device), ages).min(-1).values
@@ -170,9 +211,16 @@ def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: tor
     start = capture.launch
     cos, sin = start.heading_cos[..., None], start.heading_sin[..., None]
     offset_x, offset_y = shot.x - start.x[..., None], shot.y - start.y[..., None]
-    snapshots = torch.stack([offset_x * cos + offset_y * sin, offset_y * cos - offset_x * sin,
-                             shot.velocity_x * cos + shot.velocity_y * sin,
-                             shot.velocity_y * cos - shot.velocity_x * sin, shot.index], -1)
+    snapshots = torch.stack(
+        [
+            offset_x * cos + offset_y * sin,
+            offset_y * cos - offset_x * sin,
+            shot.velocity_x * cos + shot.velocity_y * sin,
+            shot.velocity_y * cos - shot.velocity_x * sin,
+            shot.index,
+        ],
+        -1,
+    )
 
     side_of = torch.arange(rows, device=device) < own  # (N,) the row's block
     shooter_side = side_of  # the shooter is the last axis of a shot
@@ -181,11 +229,16 @@ def resimulate(rules: Rules, types: ShipTypes, capture: ShotCapture, fields: tor
         return side_of[row] == shooter_side
 
     first_target = shot.target.gather(-1, hit_age.clamp_max(ages - 1)[..., None])[..., 0]
-    hit = torch.where(hit_any, torch.where(same_side(first_target), HIT_ALLY, HIT_ENEMY),
-                      HIT_NONE)
+    hit = torch.where(hit_any, torch.where(same_side(first_target), HIT_ALLY, HIT_ENEMY), HIT_NONE)
     miss = torch.where(inside, shot.miss_squared, torch.inf)
     closest, closest_age = miss.min(-1)
     nearest = shot.nearest.gather(-1, closest_age[..., None])[..., 0]
     side = torch.where(same_side(nearest), SIDE_ALLY, SIDE_ENEMY)
-    return Shots(valid=valid, snapshots=snapshots, age_valid=age_valid, hit=hit,
-                 distance=torch.sqrt(closest), side=side)
+    return Shots(
+        valid=valid,
+        snapshots=snapshots,
+        age_valid=age_valid,
+        hit=hit,
+        distance=torch.sqrt(closest),
+        side=side,
+    )

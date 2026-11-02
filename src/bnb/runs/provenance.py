@@ -17,9 +17,10 @@ REPOSITORY = pathlib.Path(__file__).resolve().parents[3]
 
 def _git(*arguments: str) -> str | None:
     try:
-        done = subprocess.run(("git", *arguments), cwd=REPOSITORY, capture_output=True,
-                              text=True, timeout=10)
-    except (OSError, subprocess.TimeoutExpired):
+        done = subprocess.run(
+            ("git", *arguments), cwd=REPOSITORY, capture_output=True, text=True, timeout=10
+        )
+    except OSError, subprocess.TimeoutExpired:
         return None
     return done.stdout.strip() if done.returncode == 0 else None
 
@@ -44,9 +45,17 @@ def provenance() -> dict:
     the command line and the time."""
     head, dirty = commit()
     gpu = torch.cuda.get_device_name() if torch.cuda.is_initialized() else None
-    return dict(commit=head, dirty=dirty, host=socket.gethostname(), gpu=gpu,
-                python=platform.python_version(), torch=torch.__version__,
-                cuda=torch.version.cuda, command=list(sys.argv), time=now())
+    return dict(
+        commit=head,
+        dirty=dirty,
+        host=socket.gethostname(),
+        gpu=gpu,
+        python=platform.python_version(),
+        torch=torch.__version__,
+        cuda=torch.version.cuda,
+        command=list(sys.argv),
+        time=now(),
+    )
 
 
 def file_hash(path: pathlib.Path) -> str:
@@ -64,8 +73,9 @@ def policy_hash(directory: pathlib.Path) -> str:
     return file_hash(pathlib.Path(directory) / "checkpoint.json")
 
 
-def write_result(run, kind: str, payload: dict, inputs: dict[str, str | pathlib.Path]
-                 ) -> pathlib.Path:
+def write_result(
+    run, kind: str, payload: dict, inputs: dict[str, str | pathlib.Path]
+) -> pathlib.Path:
     """Write an offline result (ratings, head-to-head, clips) of `run` (a `records.Run` or
     its directory) as `artifacts/<kind>/<id>/result.json`: the provenance, the payload and
     the inputs, each policy file by path and hash. Returns the result's directory."""
@@ -76,10 +86,15 @@ def write_result(run, kind: str, payload: dict, inputs: dict[str, str | pathlib.
     count = sum(1 for path in parent.iterdir() if path.name.startswith(stamp))
     directory = parent / (stamp if count == 0 else f"{stamp}-{count + 1}")
     directory.mkdir()
-    result = dict(provenance=provenance(), kind=kind, payload=payload,
-                  inputs={name: dict(path=str(pathlib.Path(path).resolve()),
-                                     sha256=policy_hash(path))
-                          for name, path in inputs.items()})
+    result = dict(
+        provenance=provenance(),
+        kind=kind,
+        payload=payload,
+        inputs={
+            name: dict(path=str(pathlib.Path(path).resolve()), sha256=policy_hash(path))
+            for name, path in inputs.items()
+        },
+    )
     temporary = directory / "result.json.tmp"
     temporary.write_text(json.dumps(result, indent=1) + "\n")
     temporary.replace(directory / "result.json")

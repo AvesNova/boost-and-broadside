@@ -27,8 +27,14 @@ GAMES = 512
 # "At least 0.40" is read as not significantly below it: two standard errors of a GAMES-game
 # score (at most 0.5 / sqrt(GAMES), about 0.022).
 SCORE_BAR = bc.StopConfig().score_target - 2 * 0.5 / GAMES**0.5
-TOY = TrainConfig(game=GAME, pools=cloning.LINEUP, num_envs=256, model="relational",
-                  learner=bc.config(), objective="bc")
+TOY = TrainConfig(
+    game=GAME,
+    pools=cloning.LINEUP,
+    num_envs=256,
+    model="relational",
+    learner=bc.config(),
+    objective="bc",
+)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
@@ -37,8 +43,7 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
     with torch.random.fork_rng():
         torch.manual_seed(0)
         student = Trainer(TOY, device)
-        reason = cloning.clone(student, bc.StopConfig(budget_steps=BUDGET),
-                                        log=lambda row: None)
+        reason = cloning.clone(student, bc.StopConfig(budget_steps=BUDGET), log=lambda row: None)
         teacher = student.controllers[SCRIPTED]
         assert isinstance(teacher, bc.TeacherOpponent) and teacher.teacher.floor == bc.FLOOR
         chaser = Chaser(GAME.ships_per_team)
@@ -54,5 +59,7 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
         teacher_versus_chaser = against(teacher, chaser)
     assert reason == "score", reason
     assert versus_teacher >= SCORE_BAR, (versus_teacher, SCORE_BAR)
-    assert abs(versus_chaser - teacher_versus_chaser) <= 0.10, (versus_chaser,
-                                                                teacher_versus_chaser)
+    assert abs(versus_chaser - teacher_versus_chaser) <= 0.10, (
+        versus_chaser,
+        teacher_versus_chaser,
+    )

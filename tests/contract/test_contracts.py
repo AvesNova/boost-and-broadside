@@ -79,7 +79,15 @@ def test_rollout_carry_holds_no_privileged():
     from bnb.controllers.scripted import Random
     from bnb.runtime.rollout import Rollout
 
-    ro = Rollout(GameConfig(1, 1, 600.0), (Pool("p", 1.0, ("r", "r")),), {"r": Random(1)}, "r",
-                 2, 4, torch.device("cpu"), compile=False)
+    ro = Rollout(
+        GameConfig(1, 1, 600.0),
+        (Pool("p", 1.0, ("r", "r")),),
+        {"r": Random(1)},
+        "r",
+        2,
+        4,
+        torch.device("cpu"),
+        compile=False,
+    )
     leaves = _pytree.tree_leaves(ro.carry, is_leaf=lambda x: isinstance(x, Privileged))
     assert not any(isinstance(x, Privileged) for x in leaves)

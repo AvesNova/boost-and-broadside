@@ -35,8 +35,15 @@ from bnb.models.yemong import kernels  # noqa: E402
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build  # noqa: E402
 
 SHIPS, FIELDS, ZONES, STEPS, SHOT_AGES, OWN = 10, 10, 5, 128, 4, 5
-HEADS = ("policy_logits", "enemy_action_logits", "next_state_logits", "value_logits",
-         "outcome_logits", "density_log_rates", "shot_outcome_logits")
+HEADS = (
+    "policy_logits",
+    "enemy_action_logits",
+    "next_state_logits",
+    "value_logits",
+    "outcome_logits",
+    "density_log_rates",
+    "shot_outcome_logits",
+)
 
 
 def make_model(precision):
@@ -48,8 +55,11 @@ def make_model(precision):
 
 def nonzero_carry(model, views):
     carry = model.initial_carry(views, OWN, SHIPS, device="cuda")
-    return dataclasses.replace(carry, state=torch.randn_like(carry.state),
-                               convolution_buffer=torch.randn_like(carry.convolution_buffer))
+    return dataclasses.replace(
+        carry,
+        state=torch.randn_like(carry.state),
+        convolution_buffer=torch.randn_like(carry.convolution_buffer),
+    )
 
 
 def timed(function, repetitions, warmup):
@@ -77,8 +87,9 @@ def record_replay(model, carry, obs, reset):
 
 
 def training_cell(model, views, mode, repetitions, warmup):
-    obs, reset = random_segment(STEPS, views, SHIPS, FIELDS, ZONES, device="cuda", seed=views,
-                                reset_steps=(STEPS // 2,))
+    obs, reset = random_segment(
+        STEPS, views, SHIPS, FIELDS, ZONES, device="cuda", seed=views, reset_steps=(STEPS // 2,)
+    )
     start = nonzero_carry(model, views)
     replay = record_replay(model, start, obs, reset)
     ages = torch.randint(1, 13, (STEPS, views, SHIPS, SHOT_AGES), device="cuda")
@@ -88,9 +99,11 @@ def training_cell(model, views, mode, repetitions, warmup):
         total = sum(getattr(out, key).float().mean() for key in HEADS)
         return total + model.shot_trajectory(out.shot_latents, ages).float().mean()
 
-    compute = {"eager": loss_of,
-               "compiled": torch.compile(loss_of, fullgraph=True),
-               "cudagraphs": torch.compile(loss_of, fullgraph=True, mode="reduce-overhead")}[mode]
+    compute = {
+        "eager": loss_of,
+        "compiled": torch.compile(loss_of, fullgraph=True),
+        "cudagraphs": torch.compile(loss_of, fullgraph=True, mode="reduce-overhead"),
+    }[mode]
 
     def iteration():
         model.zero_grad(set_to_none=True)
@@ -98,8 +111,11 @@ def training_cell(model, views, mode, repetitions, warmup):
 
     torch.cuda.reset_peak_memory_stats()
     median, times = timed(iteration, repetitions, warmup)
-    return {"ms": median, "view_ticks_per_s": views * STEPS / median * 1e3,
-            "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30}
+    return {
+        "ms": median,
+        "view_ticks_per_s": views * STEPS / median * 1e3,
+        "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30,
+    }
 
 
 def rollout_cell(model, views, mode, repetitions, warmup):
@@ -107,26 +123,34 @@ def rollout_cell(model, views, mode, repetitions, warmup):
     single = time_slice(obs, 1)
     reset = torch.zeros(views, dtype=torch.bool, device="cuda")
     reset[: views // 64] = True
-    step = {"eager": model.step,
-            "compiled": torch.compile(model.step, fullgraph=True),
-            "cudagraphs": torch.compile(model.step, fullgraph=True, mode="reduce-overhead")}[mode]
+    step = {
+        "eager": model.step,
+        "compiled": torch.compile(model.step, fullgraph=True),
+        "cudagraphs": torch.compile(model.step, fullgraph=True, mode="reduce-overhead"),
+    }[mode]
     state = {"carry": nonzero_carry(model, views)}
 
     @torch.no_grad()
     def iteration():
         carry = step(state["carry"], single, reset).carry
-        state["carry"] = (_pytree.tree_map(torch.clone, carry) if mode == "cudagraphs"
-                          else carry)
+        state["carry"] = _pytree.tree_map(torch.clone, carry) if mode == "cudagraphs" else carry
 
     torch.cuda.reset_peak_memory_stats()
     median, times = timed(iteration, repetitions, warmup)
-    return {"ms": median, "view_steps_per_s": views / median * 1e3,
-            "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30}
+    return {
+        "ms": median,
+        "view_steps_per_s": views / median * 1e3,
+        "peak_memory_gb": torch.cuda.max_memory_allocated() / 2**30,
+    }
 
 
 def _commit() -> str:
-    return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
-                          text=True, cwd=pathlib.Path(__file__).parent).stdout.strip()
+    return subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=pathlib.Path(__file__).parent,
+    ).stdout.strip()
 
 
 def main():
@@ -139,8 +163,9 @@ def main():
     parser.add_argument("--kernels", nargs="+", help="only these kernels switched on")
     parser.add_argument("--label", default="")
     parser.add_argument("--repetitions", type=int, default=20)
-    parser.add_argument("--out", default=str(pathlib.Path(__file__).parent
-                                             / "yemong_results.jsonl"))
+    parser.add_argument(
+        "--out", default=str(pathlib.Path(__file__).parent / "yemong_results.jsonl")
+    )
     arguments = parser.parse_args()
     torch.set_float32_matmul_precision("highest")
     if arguments.plain or arguments.kernels:
@@ -167,10 +192,17 @@ def main():
                         del model
                         torch._dynamo.reset()
                         torch.cuda.empty_cache()
-                    row = {"commit": commit, "label": arguments.label, "kind": kind,
-                           "views": views, "precision": precision, "mode": mode,
-                           "kernels": dataclasses.asdict(kernels.switches),
-                           "load_average": os.getloadavg()[0], **result}
+                    row = {
+                        "commit": commit,
+                        "label": arguments.label,
+                        "kind": kind,
+                        "views": views,
+                        "precision": precision,
+                        "mode": mode,
+                        "kernels": dataclasses.asdict(kernels.switches),
+                        "load_average": os.getloadavg()[0],
+                        **result,
+                    }
                     print(json.dumps(row), flush=True)
                     with open(arguments.out, "a") as handle:
                         handle.write(json.dumps(row) + "\n")

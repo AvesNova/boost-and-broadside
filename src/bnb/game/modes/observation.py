@@ -17,7 +17,7 @@ from ..state import ModeState
 from . import frontline
 from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
-MODE_GLOBALS = GLOBAL_COLUMNS[GLOBAL_COLUMNS.index("mode_team_deathmatch"):]
+MODE_GLOBALS = GLOBAL_COLUMNS[GLOBAL_COLUMNS.index("mode_team_deathmatch") :]
 
 
 def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
@@ -32,16 +32,38 @@ def zone_rows(mode_rules: ModeRules, mode: ModeState) -> torch.Tensor:
         return torch.zeros((B, TEAMS, Z, len(ZONE_COLUMNS)), device=role.device)
     offensive, defensive = frontline.terminal_distances(mode.front, mode_rules.front_threshold)
     present = torch.ones_like(mode.progress)
-    team0_attacks = torch.where(role == frontline.TEAM1_DEFENSE, 1,
-                                torch.where(role == frontline.TEAM0_DEFENSE, -1, 0))
+    team0_attacks = torch.where(
+        role == frontline.TEAM1_DEFENSE, 1, torch.where(role == frontline.TEAM0_DEFENSE, -1, 0)
+    )
     team0_direction = mode.movement * team0_attacks  # in team 0's favour
-    team0 = torch.stack([mode.zone_x, mode.zone_y, mode.zone_radius, role.float(),
-                         mode.progress, team0_direction.float(), offensive.float(),
-                         defensive.float(), present], -1)
-    team1 = torch.stack([mode.zone_x, mode.zone_y, mode.zone_radius,
-                         (frontline.TEAM1_SPAWN - role).float(), mode.progress,
-                         -team0_direction.float(), defensive.float(), offensive.float(),
-                         present], -1)
+    team0 = torch.stack(
+        [
+            mode.zone_x,
+            mode.zone_y,
+            mode.zone_radius,
+            role.float(),
+            mode.progress,
+            team0_direction.float(),
+            offensive.float(),
+            defensive.float(),
+            present,
+        ],
+        -1,
+    )
+    team1 = torch.stack(
+        [
+            mode.zone_x,
+            mode.zone_y,
+            mode.zone_radius,
+            (frontline.TEAM1_SPAWN - role).float(),
+            mode.progress,
+            -team0_direction.float(),
+            defensive.float(),
+            offensive.float(),
+            present,
+        ],
+        -1,
+    )
     mirrored = (-torch.arange(Z, device=role.device)) % Z
     return torch.stack([team0, team1[:, mirrored]], 1)
 
@@ -56,8 +78,19 @@ def mode_globals(rules: Rules, mode_rules: ModeRules, mode: ModeState) -> torch.
     target = mode_rules.kills_per_ship * rules.ships_per_team if name == TEAM_DEATHMATCH else 0
     threshold = mode_rules.front_threshold if name == FRONTLINE else 0
     front = mode.front.float()
-    views = [torch.stack([zero + float(name == TEAM_DEATHMATCH), zero + float(name == FRONTLINE),
-                          score[:, view], score[:, 1 - view], zero + float(target),
-                          front if view == 0 else -front, zero + float(threshold)], -1)
-             for view in range(TEAMS)]
+    views = [
+        torch.stack(
+            [
+                zero + float(name == TEAM_DEATHMATCH),
+                zero + float(name == FRONTLINE),
+                score[:, view],
+                score[:, 1 - view],
+                zero + float(target),
+                front if view == 0 else -front,
+                zero + float(threshold),
+            ],
+            -1,
+        )
+        for view in range(TEAMS)
+    ]
     return torch.stack(views, 1)

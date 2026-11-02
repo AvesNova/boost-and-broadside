@@ -46,11 +46,15 @@ class GameConfig:
             raise ValueError("arena radius must be positive")
         if self.mode not in MODES:
             raise ValueError(f"mode {self.mode!r} is not one of {MODES}")
-        if self.spawn_groups and (self.mode != "team_deathmatch"
-                                  or min(self.spawn_groups) < 1
-                                  or sum(self.spawn_groups) != self.ships_per_team):
-            raise ValueError(f"spawn groups {self.spawn_groups} must be positive team "
-                             f"deathmatch groups summing to {self.ships_per_team} ships")
+        if self.spawn_groups and (
+            self.mode != "team_deathmatch"
+            or min(self.spawn_groups) < 1
+            or sum(self.spawn_groups) != self.ships_per_team
+        ):
+            raise ValueError(
+                f"spawn groups {self.spawn_groups} must be positive team "
+                f"deathmatch groups summing to {self.ships_per_team} ships"
+            )
         if self.kills_per_ship < 1:
             raise ValueError("kills_per_ship must be at least 1")
 

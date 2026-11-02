@@ -75,7 +75,7 @@ def test_visibility_is_each_teams_observation_in_sim_order():
         order = [team * S + s for s in range(S)] + [(1 - team) * S + s for s in range(S)]
         seen = (rows[:, SHIP["visible"]] > 0.5).numpy()
         assert np.array_equal(frame.ships.visible[team][order], seen)
-        assert frame.ships.visible[team][team * S:(team + 1) * S].all()  # own ships
+        assert frame.ships.visible[team][team * S : (team + 1) * S].all()  # own ships
     assert not frame.ships.visible.all()  # the scenario hides someone
 
 

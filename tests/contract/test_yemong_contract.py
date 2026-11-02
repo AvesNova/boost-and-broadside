@@ -23,8 +23,11 @@ def test_yemong_outputs():
     rules, types = api.rules_of(config), api.ship_types()
     state = api.reset(rules, types, api.uniforms(rules, 2))
     _, obs, _ = api.perceive(rules, state)
-    view = Obs(ships=obs.ships.flatten(0, 1), fields=obs.fields.flatten(0, 1),
-               globals=obs.globals.flatten(0, 1))
+    view = Obs(
+        ships=obs.ships.flatten(0, 1),
+        fields=obs.fields.flatten(0, 1),
+        globals=obs.globals.flatten(0, 1),
+    )
     controller = YemongController(Yemong(yemong_build(YemongConfig(), rules, types)), 2, 4)
     carry = controller.init_carry(4, torch.device("cpu"))
     with torch.no_grad():
@@ -36,5 +39,6 @@ def test_yemong_outputs():
     torch.testing.assert_close(out.outcome.sum(-1), torch.ones(4))
     leaves = torch.utils._pytree.tree_leaves(out.replay)
     assert leaves and all(leaf.shape[0] == 4 for leaf in leaves)
-    assert torch.equal(carry.previous_action, (action.power * 14 + action.stick * 2
-                                               + action.shoot).to(torch.int32))
+    assert torch.equal(
+        carry.previous_action, (action.power * 14 + action.stick * 2 + action.shoot).to(torch.int32)
+    )

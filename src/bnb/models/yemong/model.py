@@ -91,8 +91,9 @@ class YemongConfig:
             raise ValueError("the critic needs at least one per-ship level besides the outcome")
         pairs = 2 * self.rotary_octaves + len(self.heading_harmonics)
         if 2 * pairs > self.width // self.heads:
-            raise ValueError(f"{pairs} rotary pairs do not fit a head of "
-                             f"{self.width // self.heads}")
+            raise ValueError(
+                f"{pairs} rotary pairs do not fit a head of {self.width // self.heads}"
+            )
 
     @property
     def local_levels(self) -> tuple[int, ...]:
@@ -183,12 +184,16 @@ class YemongBuild:
 
 def yemong_build(config: YemongConfig, rules: Rules, types: ShipTypes) -> YemongBuild:
     """The build of a Yemong for the rules and a (types,) ship card."""
-    return YemongBuild(config=config, tick_length=rules.tick_length,
-                       num_ships=rules.num_ships, ship_types=types.max_shield.shape[-1],
-                       bullet_moves=rules.bullet_moves,
-                       muzzle_speed=float(types.muzzle_speed.max()),
-                       hit_radius=float(types.hit_radius.min()),
-                       state_code=state_code_ranges(rules, types))
+    return YemongBuild(
+        config=config,
+        tick_length=rules.tick_length,
+        num_ships=rules.num_ships,
+        ship_types=types.max_shield.shape[-1],
+        bullet_moves=rules.bullet_moves,
+        muzzle_speed=float(types.muzzle_speed.max()),
+        hit_radius=float(types.hit_radius.min()),
+        state_code=state_code_ranges(rules, types),
+    )
 
 
 class Yemong(nn.Module):
@@ -207,13 +212,23 @@ class Yemong(nn.Module):
         self.tick = build.tick_length
         self.state_code = ShipStateCode(build.state_code)
         self.shot_code = shots.shot_code_parameters(
-            build.muzzle_speed, velocity_reach(), build.bullet_moves * build.tick_length,
-            build.hit_radius)
+            build.muzzle_speed,
+            velocity_reach(),
+            build.bullet_moves * build.tick_length,
+            build.hit_radius,
+        )
         self.bullet_moves = build.bullet_moves
-        self.encoder = Encoder(ship_inputs(self.state_code.width, self.ship_types), GLOBAL_INPUTS,
-                               FIELD_INPUTS, width, config.map_width, ZONE_INPUTS)
-        self.trunk = Trunk(width, config.heads, config.map_width, config.blocks,
-                           config.spatial_per_block)
+        self.encoder = Encoder(
+            ship_inputs(self.state_code.width, self.ship_types),
+            GLOBAL_INPUTS,
+            FIELD_INPUTS,
+            width,
+            config.map_width,
+            ZONE_INPUTS,
+        )
+        self.trunk = Trunk(
+            width, config.heads, config.map_width, config.blocks, config.spatial_per_block
+        )
         levels = len(config.levels) - 1
         # Heads grouped by the token they read: own ships, every ship, the global token.
         self.own_heads = HeadGroup(width, hidden, (NUM_JOINT, levels * config.value_bins))
@@ -222,18 +237,21 @@ class Yemong(nn.Module):
         cells = density.cell_count(config.hex_rings)
         self.density = HeadGroup(width, hidden, (2 * cells,))
         self.shot_outcome = HeadGroup(width, hidden, (self.shot_code.outcome_width,))
-        self.shot_trajectory_head = ShotTrajectoryHead(width, 1 + 2 * SHOT_HARMONICS,
-                                                       self.shot_code.trajectory_width)
+        self.shot_trajectory_head = ShotTrajectoryHead(
+            width, 1 + 2 * SHOT_HARMONICS, self.shot_code.trajectory_width
+        )
         self._initialise(build.num_ships, cells)
         # Frequencies (2 pi / period) 2^k, held as their periods (exact powers of two metres).
         octaves = 2.0 ** torch.arange(config.rotary_octaves, dtype=torch.float32)
-        self.register_buffer("position_periods", config.rotary_period / octaves,
-                             persistent=False)
-        self.register_buffer("heading_frequencies",
-                             torch.tensor(config.heading_harmonics, dtype=torch.float32),
-                             persistent=False)
-        self.register_buffer("bins", critic.value_bins(config.value_bins, config.value_limit),
-                             persistent=False)
+        self.register_buffer("position_periods", config.rotary_period / octaves, persistent=False)
+        self.register_buffer(
+            "heading_frequencies",
+            torch.tensor(config.heading_harmonics, dtype=torch.float32),
+            persistent=False,
+        )
+        self.register_buffer(
+            "bins", critic.value_bins(config.value_bins, config.value_limit), persistent=False
+        )
         # Last, so no other layer's initialisation depends on it: at the scale of a
         # normalised memory token (RMS 1), where the norm is well conditioned (at zero its
         # gradient is 1 / sqrt(eps)).
@@ -244,8 +262,9 @@ class Yemong(nn.Module):
         """Code columns of each first projection ~ N(0, 1 / groups); the next-state head
         starts as "nothing changes"; the density head at an even spread of the ships."""
         with torch.no_grad():
-            self.encoder.ship.first.weight[:, :self.state_code.width].normal_(
-                0.0, self.state_code.groups**-0.5)
+            self.encoder.ship.first.weight[:, : self.state_code.width].normal_(
+                0.0, self.state_code.groups**-0.5
+            )
             for kind in (self.encoder.field, self.encoder.global_token, self.encoder.zone):
                 kind.first.weight[:, :POSITION_CODE].normal_(0.0, POSITION_LEVELS**-0.5)
             nn.init.zeros_(self.ship_heads.lasts[1].weight)
@@ -253,23 +272,30 @@ class Yemong(nn.Module):
 
     # ------------------------------------------------------------------ carry
 
-    def initial_carry(self, views: int, ships_per_team: int, num_ships: int,
-                      device=None) -> Carry:
+    def initial_carry(self, views: int, ships_per_team: int, num_ships: int, device=None) -> Carry:
         """No history: the trunk carry zero, no beliefs, every previous action null, a
         fresh position offset per view."""
         config, dtype = self.config, self.bins.dtype
         queries = num_ships + 1
-        state = torch.zeros((views, config.blocks, queries, config.width), dtype=dtype,
-                            device=device)
-        belief = beliefs.blank((views, num_ships), len(MEANS), self.state_code.spread_count,
-                               NUM_JOINT, device=device, dtype=dtype)
-        return Carry(state=state,
-                     convolution_buffer=state.new_zeros(state.shape[:-1] + (3, config.width)),
-                     belief=belief,
-                     previous_action=torch.zeros((views, ships_per_team), dtype=torch.int32,
-                                                 device=device),
-                     offset=POSITION_PERIOD * torch.rand((views, 2), dtype=dtype, device=device),
-                     nonfinite=torch.zeros(views, dtype=torch.int64, device=device))
+        state = torch.zeros(
+            (views, config.blocks, queries, config.width), dtype=dtype, device=device
+        )
+        belief = beliefs.blank(
+            (views, num_ships),
+            len(MEANS),
+            self.state_code.spread_count,
+            NUM_JOINT,
+            device=device,
+            dtype=dtype,
+        )
+        return Carry(
+            state=state,
+            convolution_buffer=state.new_zeros(state.shape[:-1] + (3, config.width)),
+            belief=belief,
+            previous_action=torch.zeros((views, ships_per_team), dtype=torch.int32, device=device),
+            offset=POSITION_PERIOD * torch.rand((views, 2), dtype=dtype, device=device),
+            nonfinite=torch.zeros(views, dtype=torch.int64, device=device),
+        )
 
     @staticmethod
     def _cleared(carry: Carry, reset: torch.Tensor) -> Carry:
@@ -282,14 +308,24 @@ class Yemong(nn.Module):
             return torch.where(keep.view(shape), tensor, fill)
 
         prior = carry.belief
-        belief = Belief(valid=prior.valid & keep[..., None], age=masked(prior.age),
-                        means=masked(prior.means), spreads=masked(prior.spreads),
-                        action=masked(prior.action, 1.0 / NUM_JOINT))
-        offset = torch.where(keep[..., None], carry.offset,
-                             POSITION_PERIOD * torch.rand_like(carry.offset))
-        return Carry(state=masked(carry.state), convolution_buffer=masked(carry.convolution_buffer),
-                     belief=belief, previous_action=masked(carry.previous_action), offset=offset,
-                     nonfinite=carry.nonfinite)
+        belief = Belief(
+            valid=prior.valid & keep[..., None],
+            age=masked(prior.age),
+            means=masked(prior.means),
+            spreads=masked(prior.spreads),
+            action=masked(prior.action, 1.0 / NUM_JOINT),
+        )
+        offset = torch.where(
+            keep[..., None], carry.offset, POSITION_PERIOD * torch.rand_like(carry.offset)
+        )
+        return Carry(
+            state=masked(carry.state),
+            convolution_buffer=masked(carry.convolution_buffer),
+            belief=belief,
+            previous_action=masked(carry.previous_action),
+            offset=offset,
+            nonfinite=carry.nonfinite,
+        )
 
     # ------------------------------------------------------------------ shared
 
@@ -298,24 +334,31 @@ class Yemong(nn.Module):
 
     def tokens(self, obs: Obs, replay: Replay) -> Tokens:
         """The encoder inputs of views and their replay records."""
-        return compose(obs, replay, self.state_code, self.ship_types,
-                       self.config.presence_radius, self.tick)
+        return compose(
+            obs, replay, self.state_code, self.ship_types, self.config.presence_radius, self.tick
+        )
 
     def _encode(self, tokens: Tokens):
         """Queries (..., Q, D), map memory (..., M, Dm) and the rotary tables."""
-        queries, memory = self.encoder(tokens.ship, tokens.global_token, tokens.field, tokens.zone,
-                                       tokens.zone_present)
+        queries, memory = self.encoder(
+            tokens.ship, tokens.global_token, tokens.field, tokens.zone, tokens.zone_present
+        )
         frequencies = (self.position_periods, self.position_periods, self.heading_frequencies)
-        token_tables = rotary_tables(tokens.query_position,
-                                     tokens.query_heading, *frequencies)
-        map_tables = rotary_tables(tokens.memory_position,
-                                   torch.zeros_like(tokens.memory_position[..., 0]), *frequencies)
+        token_tables = rotary_tables(tokens.query_position, tokens.query_heading, *frequencies)
+        map_tables = rotary_tables(
+            tokens.memory_position, torch.zeros_like(tokens.memory_position[..., 0]), *frequencies
+        )
         return queries, memory, token_tables, map_tables
 
     def _values(self, value_logits: torch.Tensor, outcome_logits: torch.Tensor):
         value_logits = value_logits.unflatten(-1, (-1, self.config.value_bins))
-        values = critic_values(value_logits, outcome_logits, self.bins, self.config.local_levels,
-                               self.config.levels.index(self.config.outcome_level))
+        values = critic_values(
+            value_logits,
+            outcome_logits,
+            self.bins,
+            self.config.local_levels,
+            self.config.levels.index(self.config.outcome_level),
+        )
         return value_logits, values
 
     # ------------------------------------------------------------------ step
@@ -329,39 +372,63 @@ class Yemong(nn.Module):
         visible = ships[..., SHIP["visible"]] > 0.5
         spawned = ships[..., SHIP["spawned"]] > 0.5
         seen = beliefs.observe(carry.belief, truth(ships, carry.offset), visible, spawned)
-        replay = Replay(valid=seen.valid[:, own:], age=seen.age[:, own:],
-                        means=seen.means[:, own:], spreads=seen.spreads[:, own:],
-                        enemy_action=store_action(seen.action[:, own:]),
-                        previous_action=carry.previous_action, offset=carry.offset)
+        replay = Replay(
+            valid=seen.valid[:, own:],
+            age=seen.age[:, own:],
+            means=seen.means[:, own:],
+            spreads=seen.spreads[:, own:],
+            enemy_action=store_action(seen.action[:, own:]),
+            previous_action=carry.previous_action,
+            offset=carry.offset,
+        )
         tokens = self.tokens(obs, replay)
         ships_count = tokens.code.shape[-2]
         with self._matmuls(ships.device):
             queries, memory, token_tables, map_tables = self._encode(tokens)
-            hidden, state, buffer = self.trunk.step(queries, memory, token_tables, map_tables,
-                                                    carry.state, carry.convolution_buffer)
+            hidden, state, buffer = self.trunk.step(
+                queries, memory, token_tables, map_tables, carry.state, carry.convolution_buffer
+            )
             policy_logits, value_logits = self.own_heads(hidden[:, :own])
             enemy_action_logits, change = self.ship_heads(hidden[:, own:ships_count])
-            outcome_logits, = self.outcome(hidden[:, ships_count])
-        policy_logits, enemy_action_logits, outcome_logits = \
-            policy_logits.to(dtype), enemy_action_logits.to(dtype), outcome_logits.to(dtype)
+            (outcome_logits,) = self.outcome(hidden[:, ships_count])
+        policy_logits, enemy_action_logits, outcome_logits = (
+            policy_logits.to(dtype),
+            enemy_action_logits.to(dtype),
+            outcome_logits.to(dtype),
+        )
         _, values = self._values(value_logits.to(dtype), outcome_logits)
         forecast_logits = next_state_logits(tokens.code[:, own:], change.to(dtype))
         enemy = _rows(seen, slice(own, None))
         means, spreads = self.state_code.decode_logits(forecast_logits, tokens.ship_type[:, own:])
         position = _nearest(means[..., 0:2], enemy.means[..., 0:2])
         means = torch.cat([position, means[..., 2:]], -1)
-        advanced, nonfinite = beliefs.advance(enemy, torch.cat([means, spreads], -1),
-                                              enemy_action_logits)
+        advanced, nonfinite = beliefs.advance(
+            enemy, torch.cat([means, spreads], -1), enemy_action_logits
+        )
         mine = _rows(seen, slice(None, own))
-        belief = Belief(**{name: torch.cat([getattr(mine, name), getattr(advanced, name)], 1)
-                           for name in BELIEF_FIELDS})
-        carry = Carry(state=state.to(dtype), convolution_buffer=buffer.to(dtype), belief=belief,
-                      previous_action=carry.previous_action, offset=carry.offset,
-                      nonfinite=carry.nonfinite + nonfinite)
-        return Decision(policy_logits=policy_logits, enemy_action_logits=enemy_action_logits,
-                        next_state_logits=forecast_logits, values=values,
-                        outcome_probabilities=torch.softmax(outcome_logits, -1), carry=carry,
-                        replay=replay)
+        belief = Belief(
+            **{
+                name: torch.cat([getattr(mine, name), getattr(advanced, name)], 1)
+                for name in BELIEF_FIELDS
+            }
+        )
+        carry = Carry(
+            state=state.to(dtype),
+            convolution_buffer=buffer.to(dtype),
+            belief=belief,
+            previous_action=carry.previous_action,
+            offset=carry.offset,
+            nonfinite=carry.nonfinite + nonfinite,
+        )
+        return Decision(
+            policy_logits=policy_logits,
+            enemy_action_logits=enemy_action_logits,
+            next_state_logits=forecast_logits,
+            values=values,
+            outcome_probabilities=torch.softmax(outcome_logits, -1),
+            carry=carry,
+            replay=replay,
+        )
 
     # ------------------------------------------------------------------ unroll
 
@@ -377,24 +444,29 @@ class Yemong(nn.Module):
         dtype = self.bins.dtype
         with self._matmuls(obs.ships.device):
             queries, memory, token_tables, map_tables = self._encode(tokens)
-            hidden, _, _ = self.trunk.sequence(queries, memory, token_tables, map_tables,
-                                               state, buffer, reset)
+            hidden, _, _ = self.trunk.sequence(
+                queries, memory, token_tables, map_tables, state, buffer, reset
+            )
             policy_logits, value_logits = self.own_heads(hidden[..., :own, :])
             ship_hidden = hidden[..., :ships, :]
             enemy_action_logits, change = self.ship_heads(ship_hidden)
-            outcome_logits, = self.outcome(hidden[..., ships, :])
-            density_log_rates, = self.density(hidden[..., ships, :])
-            shot_outcome_logits, = self.shot_outcome(ship_hidden)
+            (outcome_logits,) = self.outcome(hidden[..., ships, :])
+            (density_log_rates,) = self.density(hidden[..., ships, :])
+            (shot_outcome_logits,) = self.shot_outcome(ship_hidden)
             shot_latents = self.shot_trajectory_head.latent(ship_hidden)
         outcome_logits = outcome_logits.to(dtype)
         value_logits, values = self._values(value_logits.to(dtype), outcome_logits)
-        return Unrolled(policy_logits=policy_logits.to(dtype),
-                        enemy_action_logits=enemy_action_logits.to(dtype),
-                        next_state_logits=next_state_logits(tokens.code, change.to(dtype)),
-                        value_logits=value_logits, values=values, outcome_logits=outcome_logits,
-                        density_log_rates=density_log_rates.to(dtype),
-                        shot_outcome_logits=shot_outcome_logits.to(dtype),
-                        shot_latents=shot_latents.to(dtype))
+        return Unrolled(
+            policy_logits=policy_logits.to(dtype),
+            enemy_action_logits=enemy_action_logits.to(dtype),
+            next_state_logits=next_state_logits(tokens.code, change.to(dtype)),
+            value_logits=value_logits,
+            values=values,
+            outcome_logits=outcome_logits,
+            density_log_rates=density_log_rates.to(dtype),
+            shot_outcome_logits=shot_outcome_logits.to(dtype),
+            shot_latents=shot_latents.to(dtype),
+        )
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
         """Trajectory code logits (..., ages, 154) of latents (..., D) at bullet ages (in

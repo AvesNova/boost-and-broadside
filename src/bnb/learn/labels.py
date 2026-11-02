@@ -26,8 +26,9 @@ def next_rows(trajectory: Trajectory, rows: torch.Tensor) -> torch.Tensor:
     return torch.cat([rows[1:], trajectory.final_truth[None]], 0)
 
 
-def next_state_targets(state_code: ShipStateCode, trajectory: Trajectory,
-                       rows: torch.Tensor) -> torch.Tensor:
+def next_state_targets(
+    state_code: ShipStateCode, trajectory: Trajectory, rows: torch.Tensor
+) -> torch.Tensor:
     """(L, R, N, width): the sharp code of every row's true state at t + 1, in the model's
     frame (the true position plus the view's position offset at t)."""
     following = next_rows(trajectory, rows)
@@ -57,5 +58,6 @@ def density_targets(grid: HexGrid, trajectory: Trajectory, rows: torch.Tensor) -
     own = trajectory.logp.shape[-1]
     is_ally = (torch.arange(rows.shape[-2], device=rows.device) < own).expand(rows.shape[:-1])
     radius = trajectory.obs.globals[..., GLOBAL["arena_radius"]][..., None]
-    return grid.counts(rows[..., SHIP["x"]], rows[..., SHIP["y"]], is_ally,
-                       rows[..., SHIP["alive"]] > 0.5, radius)
+    return grid.counts(
+        rows[..., SHIP["x"]], rows[..., SHIP["y"]], is_ally, rows[..., SHIP["alive"]] > 0.5, radius
+    )

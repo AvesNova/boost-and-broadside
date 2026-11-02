@@ -27,19 +27,27 @@ class Belief:
     action: torch.Tensor
 
 
-def blank(leading: tuple[int, ...], means: int, spreads: int, actions: int, device=None,
-          dtype=torch.float32) -> Belief:
+def blank(
+    leading: tuple[int, ...],
+    means: int,
+    spreads: int,
+    actions: int,
+    device=None,
+    dtype=torch.float32,
+) -> Belief:
     """No beliefs: invalid, zero, uniform actions."""
-    return Belief(valid=torch.zeros(leading, dtype=torch.bool, device=device),
-                  age=torch.zeros(leading, dtype=torch.int32, device=device),
-                  means=torch.zeros(leading + (means,), dtype=dtype, device=device),
-                  spreads=torch.zeros(leading + (spreads,), dtype=dtype, device=device),
-                  action=torch.full(leading + (actions,), 1.0 / actions, dtype=dtype,
-                                    device=device))
+    return Belief(
+        valid=torch.zeros(leading, dtype=torch.bool, device=device),
+        age=torch.zeros(leading, dtype=torch.int32, device=device),
+        means=torch.zeros(leading + (means,), dtype=dtype, device=device),
+        spreads=torch.zeros(leading + (spreads,), dtype=dtype, device=device),
+        action=torch.full(leading + (actions,), 1.0 / actions, dtype=dtype, device=device),
+    )
 
 
-def observe(belief: Belief, truth: torch.Tensor, visible: torch.Tensor,
-            spawned: torch.Tensor) -> Belief:
+def observe(
+    belief: Belief, truth: torch.Tensor, visible: torch.Tensor, spawned: torch.Tensor
+) -> Belief:
     """Assimilate one observation: truth (..., N, 12) is read only where visible."""
     valid = (belief.valid & ~spawned) | visible
     seen = visible[..., None]
@@ -52,8 +60,9 @@ def observe(belief: Belief, truth: torch.Tensor, visible: torch.Tensor,
     return Belief(valid=valid, age=age, means=means, spreads=spreads, action=action)
 
 
-def advance(belief: Belief, prediction: torch.Tensor,
-            action_logits: torch.Tensor) -> tuple[Belief, torch.Tensor]:
+def advance(
+    belief: Belief, prediction: torch.Tensor, action_logits: torch.Tensor
+) -> tuple[Belief, torch.Tensor]:
     """Store the forecast: prediction (..., N, 12 + 15) means then spreads, decoded from the
     next-state head, and the enemy-action head's logits for every row. Non-finite prediction
     entries become 0 and are counted, per leading index (...)."""
@@ -65,5 +74,6 @@ def advance(belief: Belief, prediction: torch.Tensor,
     means = torch.where(held, prediction[..., :count], belief.means)
     spreads = torch.where(held, prediction[..., count:], belief.spreads)
     action = torch.softmax(action_logits, -1)
-    return Belief(valid=belief.valid, age=belief.age, means=means, spreads=spreads,
-                  action=action), nonfinite
+    return Belief(
+        valid=belief.valid, age=belief.age, means=means, spreads=spreads, action=action
+    ), nonfinite
