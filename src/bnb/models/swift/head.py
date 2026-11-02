@@ -42,7 +42,7 @@ def _hidden(x, first_weight, first_bias, rows, M, K, HIDDEN: tl.constexpr,
 
 @triton.jit
 def _head_forward(x, first_weight, first_bias, norm_weight, last_weight, last_bias, out, M, K,
-                  O, HIDDEN: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr,
+                  N, HIDDEN: tl.constexpr, BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr,
                   BLOCK_O: tl.constexpr):
     rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     hidden_index = tl.arange(0, HIDDEN)
@@ -51,19 +51,19 @@ def _head_forward(x, first_weight, first_bias, norm_weight, last_weight, last_bi
     normed = h * inverse_rms[:, None] * tl.load(norm_weight + hidden_index)[None, :]
     activation = (0.5 * normed * (1.0 + tl.math.erf(normed * SQRT_HALF))).to(
         x.dtype.element_ty)
-    for start in range(0, O, BLOCK_O):
+    for start in range(0, N, BLOCK_O):
         columns = start + tl.arange(0, BLOCK_O)
         weight = tl.load(last_weight + columns[None, :] * HIDDEN + hidden_index[:, None],
-                         mask=columns[None, :] < O, other=0.0)
+                         mask=columns[None, :] < N, other=0.0)
         result = tl.dot(activation, weight)
-        result += tl.load(last_bias + columns, mask=columns < O, other=0.0)[None, :]
-        tl.store(out + rows[:, None] * O + columns[None, :], result.to(out.dtype.element_ty),
-                 mask=(rows[:, None] < M) & (columns[None, :] < O))
+        result += tl.load(last_bias + columns, mask=columns < N, other=0.0)[None, :]
+        tl.store(out + rows[:, None] * N + columns[None, :], result.to(out.dtype.element_ty),
+                 mask=(rows[:, None] < M) & (columns[None, :] < N))
 
 
 @triton.jit
 def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_out,
-                   grad_hidden, activation_out, norm_partial, M, K, O, HIDDEN: tl.constexpr,
+                   grad_hidden, activation_out, norm_partial, M, K, N, HIDDEN: tl.constexpr,
                    BLOCK_M: tl.constexpr, BLOCK_K: tl.constexpr, BLOCK_O: tl.constexpr):
     rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
     row_mask = rows < M
@@ -76,10 +76,10 @@ def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_o
     cumulative = 0.5 * (1.0 + tl.math.erf(normed * SQRT_HALF))
     activation = normed * cumulative
     grad_activation = tl.zeros((BLOCK_M, HIDDEN), dtype=tl.float32)
-    for start in range(0, O, BLOCK_O):
+    for start in range(0, N, BLOCK_O):
         columns = start + tl.arange(0, BLOCK_O)
-        column_mask = columns < O
-        upstream = tl.load(grad_out + rows[:, None] * O + columns[None, :],
+        column_mask = columns < N
+        upstream = tl.load(grad_out + rows[:, None] * N + columns[None, :],
                            mask=row_mask[:, None] & column_mask[None, :], other=0.0)
         weight = tl.load(last_weight + columns[:, None] * HIDDEN + hidden_index[None, :],
                          mask=column_mask[:, None], other=0.0)
@@ -102,8 +102,8 @@ def _head_backward(x, first_weight, first_bias, norm_weight, last_weight, grad_o
 def fused_head(x: torch.Tensor, first_weight: torch.Tensor, first_bias: torch.Tensor,
                norm_weight: torch.Tensor, last_weight: torch.Tensor,
                last_bias: torch.Tensor) -> torch.Tensor:
-    """x (M, K) contiguous 16-bit; first_weight (H, K), last_weight (O, H) in x's dtype; biases
-    and the norm scale float32. Returns (M, O) in x's dtype."""
+    """x (M, K) contiguous 16-bit; first_weight (H, K), last_weight (N, H) in x's dtype; biases
+    and the norm scale float32. Returns (M, N) in x's dtype."""
     rows, inputs = x.shape
     hidden, outputs = first_weight.shape[0], last_weight.shape[0]
     out = torch.empty(rows, outputs, dtype=x.dtype, device=x.device)
@@ -119,7 +119,7 @@ def fused_head_backward(x: torch.Tensor, first_weight: torch.Tensor, first_bias:
                         norm_weight: torch.Tensor, last_weight: torch.Tensor,
                         grad_out: torch.Tensor
                         ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """grad_out (M, O) contiguous in x's dtype. Returns (dh (M, H), activation (M, H), norm
+    """grad_out (M, N) contiguous in x's dtype. Returns (dh (M, H), activation (M, H), norm
     scale partial sums (programs, H) float32)."""
     rows, inputs = x.shape
     hidden, outputs = first_weight.shape[0], last_weight.shape[0]

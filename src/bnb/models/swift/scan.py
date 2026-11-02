@@ -60,23 +60,19 @@ def _scan_backward(decay, initial, out, grad_out, grad_decay, grad_contribution,
 BLOCK = 256
 
 
-@torch.library.custom_op("swift::linear_scan", mutates_args=())
+@torch.library.triton_op("swift::linear_scan", mutates_args=())
 def triton_scan(decay: torch.Tensor, contribution: torch.Tensor,
                 initial: torch.Tensor) -> torch.Tensor:
     """decay, contribution (T, C) float32 contiguous; initial (C,) -> h (T, C)."""
     steps, channels = decay.shape
     out = torch.empty_like(decay)
     grid = (triton.cdiv(channels, BLOCK),)
-    _scan_forward[grid](decay, contribution, initial, out, steps, channels, BLOCK=BLOCK)
+    launch_forward = torch.library.wrap_triton(_scan_forward)
+    launch_forward[grid](decay, contribution, initial, out, steps, channels, BLOCK=BLOCK)
     return out
 
 
-@triton_scan.register_fake
-def _(decay, contribution, initial):
-    return torch.empty_like(decay)
-
-
-@torch.library.custom_op("swift::linear_scan_backward", mutates_args=())
+@torch.library.triton_op("swift::linear_scan_backward", mutates_args=())
 def triton_scan_backward(decay: torch.Tensor, initial: torch.Tensor, out: torch.Tensor,
                          grad_out: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
                                                           torch.Tensor]:
@@ -85,14 +81,10 @@ def triton_scan_backward(decay: torch.Tensor, initial: torch.Tensor, out: torch.
     grad_contribution = torch.empty_like(decay)
     grad_initial = torch.empty_like(initial)
     grid = (triton.cdiv(channels, BLOCK),)
-    _scan_backward[grid](decay, initial, out, grad_out.contiguous(), grad_decay,
+    launch_backward = torch.library.wrap_triton(_scan_backward)
+    launch_backward[grid](decay, initial, out, grad_out.contiguous(), grad_decay,
                          grad_contribution, grad_initial, steps, channels, BLOCK=BLOCK)
     return grad_decay, grad_contribution, grad_initial
-
-
-@triton_scan_backward.register_fake
-def _(decay, initial, out, grad_out):
-    return torch.empty_like(decay), torch.empty_like(decay), torch.empty_like(initial)
 
 
 def _setup_context(ctx, inputs, output):

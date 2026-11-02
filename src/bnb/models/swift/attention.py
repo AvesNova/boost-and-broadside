@@ -231,7 +231,7 @@ def _arguments(query, key, value, map_key, map_value, token_cos, map_cos):
         grid=(views, heads))
 
 
-@torch.library.custom_op("swift::attention_heads", mutates_args=())
+@torch.library.triton_op("swift::attention_heads", mutates_args=())
 def attention_heads(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
                     map_key: torch.Tensor, map_value: torch.Tensor, token_cos: torch.Tensor,
                     token_sin: torch.Tensor, map_cos: torch.Tensor,
@@ -240,18 +240,14 @@ def attention_heads(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
                                               (token_cos, token_sin, map_cos, map_sin))
     launch = _arguments(query, key, value, map_key, map_value, token_cos, map_cos)
     out = torch.empty(query.shape, dtype=query.dtype, device=query.device)
-    _attention_forward[launch["grid"]](query, key, value, map_key, map_value, token_cos,
+    launch_forward = torch.library.wrap_triton(_attention_forward)
+    launch_forward[launch["grid"]](query, key, value, map_key, map_value, token_cos,
                                        token_sin, map_cos, map_sin, out, *launch["scalars"],
                                        **launch["meta"])
     return out
 
 
-@attention_heads.register_fake
-def _(query, key, value, map_key, map_value, token_cos, token_sin, map_cos, map_sin):
-    return torch.empty(query.shape, dtype=query.dtype, device=query.device)
-
-
-@torch.library.custom_op("swift::attention_heads_backward", mutates_args=())
+@torch.library.triton_op("swift::attention_heads_backward", mutates_args=())
 def attention_heads_backward(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
                              map_key: torch.Tensor, map_value: torch.Tensor,
                              token_cos: torch.Tensor, token_sin: torch.Tensor,
@@ -264,19 +260,11 @@ def attention_heads_backward(query: torch.Tensor, key: torch.Tensor, value: torc
                  for t in (query, key, value)] + [
         torch.empty(map_key.shape, dtype=t.dtype, device=query.device)
         for t in (map_key, map_value)]
-    _attention_backward[launch["grid"]](query, key, value, map_key, map_value, token_cos,
+    launch_backward = torch.library.wrap_triton(_attention_backward)
+    launch_backward[launch["grid"]](query, key, value, map_key, map_value, token_cos,
                                         token_sin, map_cos, map_sin, out, grad_out.contiguous(),
                                         *gradients, *launch["scalars"], **launch["meta"])
     return gradients
-
-
-@attention_heads_backward.register_fake
-def _(query, key, value, map_key, map_value, token_cos, token_sin, map_cos, map_sin, out,
-      grad_out):
-    return [torch.empty(query.shape, dtype=t.dtype, device=query.device)
-            for t in (query, key, value)] + [
-        torch.empty(map_key.shape, dtype=t.dtype, device=query.device)
-        for t in (map_key, map_value)]
 
 
 def _setup_context(ctx, inputs, output):

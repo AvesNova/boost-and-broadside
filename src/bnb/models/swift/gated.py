@@ -75,37 +75,29 @@ def _grid(M, N):
     return lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
 
 
-@torch.library.custom_op("swift::gated_hidden", mutates_args=())
+@torch.library.triton_op("swift::gated_hidden", mutates_args=())
 def gated_hidden(x: torch.Tensor, gate_weight: torch.Tensor,
                  up_weight: torch.Tensor) -> torch.Tensor:
     """x (M, K) contiguous; weights (N, K) -> (M, N)."""
     M, K = x.shape
     N = gate_weight.shape[0]
     out = torch.empty(M, N, dtype=x.dtype, device=x.device)
-    _gated_forward[_grid(M, N)](x, gate_weight, up_weight, out, M, N, K)
+    launch_forward = torch.library.wrap_triton(_gated_forward)
+    launch_forward[_grid(M, N)](x, gate_weight, up_weight, out, M, N, K)
     return out
 
 
-@gated_hidden.register_fake
-def _(x, gate_weight, up_weight):
-    return x.new_empty(x.shape[0], gate_weight.shape[0])
-
-
-@torch.library.custom_op("swift::gated_hidden_backward", mutates_args=())
+@torch.library.triton_op("swift::gated_hidden_backward", mutates_args=())
 def gated_hidden_backward(x: torch.Tensor, gate_weight: torch.Tensor, up_weight: torch.Tensor,
                           grad_hidden: torch.Tensor) -> torch.Tensor:
     """d(gate, up) (M, 2N) for the upstream gradient grad_hidden (M, N)."""
     M, K = x.shape
     N = gate_weight.shape[0]
     out = torch.empty(M, 2 * N, dtype=x.dtype, device=x.device)
-    _gated_backward[_grid(M, N)](x, gate_weight, up_weight, grad_hidden.contiguous(), out, M,
+    launch_backward = torch.library.wrap_triton(_gated_backward)
+    launch_backward[_grid(M, N)](x, gate_weight, up_weight, grad_hidden.contiguous(), out, M,
                                  N, K)
     return out
-
-
-@gated_hidden_backward.register_fake
-def _(x, gate_weight, up_weight, grad_hidden):
-    return x.new_empty(x.shape[0], 2 * gate_weight.shape[0])
 
 
 def _setup_context(ctx, inputs, output):
