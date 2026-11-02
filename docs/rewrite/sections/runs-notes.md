@@ -324,7 +324,14 @@ All under `tests/runs/` unless named.
    - The docs check no longer accepts positional fields as options (`bnb runs --action
      show`): `tests/docs/test_references.py::test_the_command_check_takes_positional_arguments_but_not_as_options`.
    - `wandb` stays a core dependency.
-10. origin/v2 merged; section 11 set to `merged` in `docs/roadmap.yml`.
+10. origin/v2 merged (already up to date at f117874f); section 11 is `merged` in
+    `docs/roadmap.yml` (it already was).
+
+**Full suite (fix round):** 956 passed, 7 skipped (optional extras and hardware checks;
+none under `tests/runs/`), under the bench lock, 24 minutes, GPU resume tests included.
+The remaining `PossiblyStalePage` warnings are pages this round did not touch, or pages
+already reviewed today whose code changed in this round's commits and still read
+correctly (training loop, first run, writing docs).
 
 **Changes outside `bnb.runs` in this round:** `bnb.runtime.train` (`model_build`,
 `build_model(build)`, `Trainer(config, device, build)`, `Trainer.config`,

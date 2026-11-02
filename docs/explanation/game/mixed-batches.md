@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/game/layout.py, src/bnb/game/rules.py, src/bnb/contracts/pools.py, src/bnb/runtime/train.py, src/bnb/models/yemong/network.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # Mixed batches
