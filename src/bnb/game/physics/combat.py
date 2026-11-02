@@ -13,7 +13,6 @@ from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
 from ..state import Bullets, Ships, Sweep, replace
 
-INFINITY = float("inf")
 NO_HIT = torch.iinfo(torch.int64).max
 
 
@@ -65,11 +64,23 @@ def contacts(types: ShipTypes, sweep: Sweep, ship_type: torch.Tensor, active: to
     return Contacts(tau=tau, miss_squared=miss_squared, contact=contact)
 
 
+def contact_order(tau: torch.Tensor, miss_squared: torch.Tensor) -> torch.Tensor:
+    """The int64 key that orders contacts in time: smallest tau first, ties (the clamp puts
+    many contacts at exactly tau = 0 or 1) to the closer pass, the smaller miss distance.
+    Both are +0.0 or more, so their float bits order like the floats: tau's 30 bits above
+    the miss's 31. An order by sim index here would favour a team: team-major storage puts
+    team 0's ships and bullets first."""
+    return (tau.view(torch.int32).long() << 31) | miss_squared.view(torch.int32).long()
+
+
 def first_contact(pairs: Contacts) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Each bullet hits only its first contact: smallest tau, ties to the lowest ship index
-    (min returns the first minimal index). Returns (tau, target, hit), each (B, N K)."""
-    tau_first, target = torch.where(pairs.contact, pairs.tau, INFINITY).min(-1)
-    return tau_first, target, tau_first < INFINITY
+    """Each bullet hits only its first contact by `contact_order` (an exact tie in both to
+    the lowest ship index: min returns the first minimal index). Returns (order, target,
+    hit), each (B, N K): the first contact's order key, NO_HIT for a bullet that hit
+    nothing."""
+    order, target = torch.where(pairs.contact, contact_order(pairs.tau, pairs.miss_squared),
+                                NO_HIT).min(-1)
+    return order, target, order < NO_HIT
 
 
 def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bullets,
@@ -80,7 +91,7 @@ def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bu
     (B, N). Active bullets are those with moves_left > 0.
     """
     B, N, K = bullets.moves_left.shape
-    tau_first, target, hit = first_contact(
+    order, target, hit = first_contact(
         contacts(types, sweep, ships.ship_type, bullets.moves_left > 0, alive_at_start))
     ship = torch.arange(N, device=alive_at_start.device)
 
@@ -102,14 +113,15 @@ def hits(rules: Rules, types: ShipTypes, sweep: Sweep, ships: Ships, bullets: Bu
     owner = ship.repeat_interleave(K)
     damage = (torch.zeros((B, N * N), dtype=bullet_damage.dtype, device=bullet_damage.device)
               .scatter_add(1, owner * N + target, bullet_damage).reshape(B, N, N))
-    # The earliest hit on each target: smallest tau, ties to the lowest bullet index o K + k,
-    # as one int64 key (tau >= +0.0, so its float bits order like the floats) and an exact
-    # min.
+    # The earliest hit on each target: the smallest contact order (tau, then the miss
+    # distance), an exact tie in both to the lowest bullet index o K + k. Two exact int64
+    # mins: the order, then the bullet among those that reach it.
     bullet = torch.arange(N * K, device=bullet_damage.device)
-    key = torch.where(hit, tau_first.view(torch.int32).long() * (N * K) + bullet, NO_HIT)
-    earliest = (torch.full((B, N), NO_HIT, dtype=torch.int64, device=bullet_damage.device)
-                .scatter_reduce(1, target, key, "amin"))
-    shooter = torch.where(earliest < NO_HIT, (earliest % (N * K)) // K, -1)
+    blank = torch.full((B, N), NO_HIT, dtype=torch.int64, device=bullet_damage.device)
+    earliest_order = blank.scatter_reduce(1, target, order, "amin")  # a miss is NO_HIT
+    first = hit & (order == earliest_order.gather(1, target))
+    earliest = blank.scatter_reduce(1, target, torch.where(first, bullet, NO_HIT), "amin")
+    shooter = torch.where(earliest < NO_HIT, earliest // K, -1)
     return Hits(damage=damage, taken=damage.sum(1), bullet_hit=hit.reshape(B, N, K),
                 first_shooter=shooter)
 
