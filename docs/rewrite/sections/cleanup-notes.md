@@ -12,10 +12,20 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
 - [x] 1.2-1.3 names
 - [x] 2 dead code and the opaque state
 - [x] 3 the sweep's tests
-- [x] 4 docs (stale-page review at the end)
+- [x] 4 docs (the stale-page review is left for the end)
 - [x] 5 layering and duplication
-- [ ] 6 test hygiene
-- [ ] 8 additions
+- [ ] 6 test hygiene: the lock fixture, the CUDA and generator guards, clean skips, the
+  recompile test, the gaps are done (`51c4f56f`). Left: mark every test over 10 s `slow`
+  and every CUDA test `gpu` from a full run's `--durations=0` (a full run was waiting on
+  the shared benchmark lock at hand-over), and report both tiers' times with CUDA hidden.
+- [ ] 8 additions: 8.1 game version, 8.2 resume drift, 8.4 reflection test done. Left:
+  8.3 (the model's settings and the ship card in `TrainConfig`; replaces
+  `TrainConfig.relational_hidden`, which tests pass in about 15 places; the ship card needs
+  `Rollout` and `Trainer` to take the card instead of `api.ship_types(device)`) and 8.5's
+  measurements.
+- [ ] End: the full suite under the lock, the bench after (the rollout script and the
+  realtime cell; see Measurements), the `PossiblyStalePage` review
+  (`uv run --no-sync python -m tests.docs.staleness`), the size table.
 
 ## Items
 
@@ -285,7 +295,34 @@ a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is 
 
 ## Decisions and deviations
 
+1. **The off-limits files are not formatted** (`bnb/models/yemong/kernels/`,
+   `bnb/runtime/store.py`, `bnb/play/`): the brief keeps this diff out of them; the
+   formatter's exclude list names them until their branches merge.
+2. **Reward levels are written `levels`, not `L`** (1.2): `L` is a segment's steps in every
+   learner shape.
+3. **Kept names:** `obs` as a variable and parameter (the `Trajectory.obs` field and
+   `Controller.step`'s parameter, hundreds of uses; see the requests); `bench/results.jsonl`'s
+   keys; `Realtime(compile=...)` (the play shell calls it).
+4. **`PRESETS` stays in `bnb.game.modes.rules`** (5): the play shell imports it from the
+   game API.
+5. **The runtime-state test** counts `.ships` and `.mode` only on a state expression, since
+   `Obs.ships`, `Privileged.ships` and `GameConfig.mode` share the names.
+6. **Global random state** (6): code that draws from torch's default generator by design
+   (model initialisation, the rollout's seat draws, `Random`, Yemong's offsets, Gumbel
+   sampling) cannot take a local generator without a behaviour change. Those tests run under
+   the `global_generator` fixture (the default generator seeded at 0 inside `fork_rng`,
+   restored after), set per module with `pytestmark`; the guard fixture fails any other
+   test that leaves the global CPU generator changed. Every direct draw in a test uses a
+   local `torch.Generator` (`test_perception.py`'s two were the last).
+7. **Contracts in configs:** renaming config fields (`num_envs`, `compile`,
+   `episode_s`, `respawn_s`, `num_teams`) and the carry's keys (`ctrl`, `t_idx`) means a
+   run directory written before this pass cannot be resumed (its `config.json` and carry
+   use the old names). Policy files are unaffected (their build records already used
+   `tick_length`).
+
 ## Bugs found
+
+None. No sweep test found a wrong behaviour, so there is no `xfail`.
 
 ## Measurements
 
@@ -301,5 +338,31 @@ a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is 
   +0.3%, within noise: the copy is the same single `copy_` of `ticks_since_seen`.
 
 ## Requests and open questions
+
+1. **For the play branch (`bnb/play/`):**
+   - import `PRESETS` from wherever the coordinator settles it, then the cleanup's move of
+     `PRESETS` into `bnb.runtime` can land (spec 5; play-notes request 5 asks the same);
+   - `Realtime(config, compile=...)` becomes `compiled=` (spec 1.3) once `MatchLoop`
+     passes the new name;
+   - `ruff format` its files, drop its entries from `[tool.ruff.format] exclude` and from
+     `tests/docs/test_docstrings.py`'s `EXEMPT` (65 objects lack docstrings);
+   - `snapshot.py` reads state fields (`state.mode.score`, `state.match.fogged`, ...):
+     the "state is opaque outside `bnb.game`" rule does not hold there yet.
+2. **For `fix/intermittent` (`kernels/`, `store.py`):** format the files and drop their
+   exclude entries; the kernels lack 3 docstrings (`EXEMPT`).
+3. **`obs` as a name:** the code style forbids it as a variable, but it is also the
+   `Trajectory.obs` field and every controller's `step(carry, obs, reset)` parameter. A
+   rename to `observation` is a contract change across every controller and model; worth
+   its own small pass, or an exception in the code style.
+4. **The skeleton MLP** (`bnb.models.mlp`, registered with a compatibility entry) is still
+   there; runs-notes expected the cleanup to delete it, but no spec item names it.
+5. **Spec letters:** if `L` for reward levels is wanted after all, the segment steps need
+   another letter first (proposal: keep `L` steps, `R` views, `levels`).
+6. **The bench cells do not run on this machine since the kernels' autotuning:** before
+   this pass, the 114-ship cell ran out of memory inside Triton's autotune benchmarking,
+   and the 40- and 26-ship cells hit `bench.run`'s 900 s timeout (cold autotune caches for
+   those shapes). Only the realtime cell finished (p50 0.19 ms, p99 0.21 ms). The rollout
+   comparison above stands in for the train cells; the timeout, or warm caches, is for the
+   coordinator.
 
 ## Size
