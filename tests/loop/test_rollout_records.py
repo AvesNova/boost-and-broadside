@@ -7,6 +7,7 @@ Its seat draws come from the default generator, as in training; the statistical 
 states the chance of a false failure.
 """
 
+import pytest
 import torch
 
 from bnb.contracts import GameConfig, Pool
@@ -18,6 +19,14 @@ from bnb.runtime.rollout import Rollout
 
 CPU = torch.device("cpu")
 S = 2
+
+
+@pytest.fixture(autouse=True)
+def _default_generator_untouched():
+    """The rollout and the model draw from the default generator by design (seats, offsets,
+    the random controller): restore it, so no other test sees these draws."""
+    with torch.random.fork_rng(devices=[]):
+        yield
 
 
 def _rollout(config, pools, environments, length, **options):

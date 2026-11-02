@@ -10,6 +10,7 @@ real team-0 views of short games the chaser plays.
 import contextlib
 import dataclasses
 
+import pytest
 import torch
 from torch.utils import _pytree
 
@@ -33,6 +34,14 @@ S, N = GAME.ships_per_team, GAME.num_ships
 PRESENCE = slice(-2, None)
 PENDING = slice(-(NUM_JOINT + 4), -4)
 SINCE_SEEN = -(NUM_JOINT + 4 + 9 + 1)
+
+
+@pytest.fixture(autouse=True)
+def _default_generator_untouched():
+    """The rollout and the model draw from the default generator by design (seats, offsets,
+    the random controller): restore it, so no other test sees these draws."""
+    with torch.random.fork_rng(devices=[]):
+        yield
 
 
 @contextlib.contextmanager
