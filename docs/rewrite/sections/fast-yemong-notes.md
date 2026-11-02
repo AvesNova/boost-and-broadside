@@ -273,3 +273,29 @@ different, the norm epsilon, is not). The fixtures run the plain path and pass.
 - **Open:** questions 1-3 and 8 are the author's: determinism across machines, the shot
   trajectory head outside autocast, the remaining gap to the blind model, and the two
   intermittent failures.
+
+## The intermittent failures (open question 8): progress
+
+Working notes of the hunt (`docs/rewrite/sections/intermittent-failure-brief.md`); scratch in
+`/tmp/bnb-scratch-intermittent` (`loop.py`, `worker.py` with switches, `idempotent.py`,
+`stress*.py`, `retune_loop.sh`, `chunks.sh`; logs `*.log`).
+
+- **The evidence on disk** (`/tmp/bnb-scratch-fast-yemong`): the suite's failure printed only
+  the first update's dict (`At index 0 diff`, truncated), so which metric differed is not
+  known, not necessarily a pool's. The probe's assert came from
+  `triton_per_fused__log_softmax_..._gather_..._89` (the own-action log-probability of the
+  loss: `power * 14 + stick * 2 + shoot`, loaded from the staged `trajectory.action`), at
+  3328 rows = 128 steps x 2 views x 13 ships, the trailing micro-batch's shape, in one
+  program (`block [90]`) only; it surfaced at the `synchronize` that starts a benchmark.
+- **Hypothesis 1 ruled out.** Each kernel, forward and backward, eager (Triton's autotuner)
+  and compiled (Inductor's), autotuned on fresh inputs with emptied caches and memory dirtied
+  with NaN first, then called again with the configuration cached: bitwise equal and finite
+  (`idempotent.py`, `idempotent.log`). Every kernel writes only its outputs, in full.
+- **Store reads of unwritten memory ruled out (resume configuration):** every store and
+  staging buffer allocated as NaN / -77 / True (`BNB_POISON=1`), and every copy-stream copy
+  delayed by ~10 ms (`BNB_DELAY_COPY`): the metrics equal the plain warm run's.
+- **Autotuning choice is consistent across processes** in the runs logged: 908 Inductor
+  autotuners per process, 16 files shared by two instances; the second instance reads the
+  first's saved choice, and process B runs exactly A's configurations (`BNB_LOG_TUNING`).
+- **Loops so far:** cold A against warm B, `first` mode: 1 both-cold, 3 Inductor-cold, 7
+  re-tune-only (Inductor's `.best_config` files deleted, compiled code kept): all equal.
