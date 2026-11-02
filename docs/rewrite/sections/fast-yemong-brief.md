@@ -74,10 +74,9 @@ first: it says what the kernels are, what they buy, and what the author decided.
 
 ## Measure
 
-- **The race benchmark:** copy
-  `/tmp/claude-1000/-home-vizia-avesnova-boost-and-broadside/8c6b1428-1336-4ec5-bd6a-e66af2ce03fd/scratchpad/race-compare/v2_speed.py`
-  and `blind_synthetic.py` next to it into `bench/yemong_speed.py` (and a helper module),
-  and run it before you start and after each kernel. The coordinator's quiet-machine
+- **The race benchmark:** copy `bench/comparison/v2_speed.py` and `blind_synthetic.py`
+  from the `race/yemong-blind` branch (`/home/vizia/avesnova/bnb-yemong-blind`) into
+  `bench/yemong_speed.py` (and a helper module), and run it before you start and after each kernel. The coordinator's quiet-machine
   baseline and the blind model's numbers are in the audit; aim for the blind model's.
 - **Training throughput:** `bnb train` at 5v5 with 1024 environments, env-ticks/s and
   the update's time, before and after, in fp32 and bf16. Record the load average with
