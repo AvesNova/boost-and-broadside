@@ -71,13 +71,70 @@ Decisions the spec left open (all small):
 
 ## Benchmark
 
-`bench/speed.py` (see its docstring for the exact protocol). Results: `bench/results.jsonl`.
+`bench/speed.py` (see its docstring for the exact protocol). Results: `bench/results.jsonl`
+(one line per cell, with the commit). Cells: training (`unroll` forward + backward, L = 128,
+V = 16 and 64) and rollouts (`step`, V = 2048), float32 (strict, no TF32) and bf16
+autocast, eager / compiled / compiled + CUDA graphs. Rollout "compiled" and "cudagraphs"
+use `runtime.CapturedStep` (static carry updated in place inside the compiled function;
+cudagraphs replays it as one graph). A training cell that runs out of memory retries with
+the trunk's sublayers recomputed in the backward and is marked `recompute`.
 
-(table below)
+The GPU is shared with other agents' jobs; a cell that still runs out of memory is
+recorded as such. `bench/profile.py` prints a `torch.profiler` kernel table for one cell.
+
+Work per unit (FlopCounterMode): training 152 MFLOP per view-tick forward + backward
+(1.25 TFLOP per V = 64 segment); a decision 47 MFLOP per view (97 GFLOP at V = 2048). With
+D = 128 every GEMM has K = 128, so most of the model is memory-bandwidth bound (the laptop
+4070 has ~256 GB/s): fusion and 16-bit storage matter as much as tensor cores.
+
+### Baseline (commit 5efbb2ed, plain modules, SDPA, Triton scan)
+
+| cell | eager | compiled | compiled + graphs |
+|---|---|---|---|
+| training V=16 fp32 | 125.5 ms (16.3k vt/s) | 83.8 ms (24.4k) | 82.9 ms (24.7k) |
+| training V=16 bf16 | 93.2 ms (22.0k) | 43.9 ms (46.6k) | 43.1 ms (47.5k) |
+| training V=64 fp32 | OOM | OOM | OOM |
+| training V=64 bf16 | OOM | 196.2 ms (41.8k) | 195.6 ms (41.9k) |
+| rollout V=2048 fp32 | 53.6 ms (38.2k vs/s) | 29.8 ms (68.7k) | 29.5 ms (69.5k) |
+| rollout V=2048 bf16 | 44.5 ms (46.0k) | 18.0 ms (113.7k) | 17.2 ms (118.9k) |
+
+vt/s = view-ticks per second; vs/s = view-steps per second. Peak memory: V=16 fp32 eager
+2.9 GB, V=64 bf16 compiled 4.6 GB.
 
 ## Speed changes and what each bought
 
-(below)
+Profiles first (`bench/profile.py`, bf16 compiled):
+- **rollout, baseline** (18.3 ms/step): GEMMs 3.2 ms; flash attention 2.0 ms (its 128-row
+  tiles on 11 queries x 21 keys) plus 1.4 ms of rotary / cat / transpose around it; the
+  gated MLP's `gelu(gate) * up` 2.1 ms (memory bound); codec encode + decode ~2.5 ms;
+  carry write-back 0.7 ms; RMSNorms 0.8 ms.
+- **training V=16, baseline**: flash attention forward + backward 20% of GPU time, GEMMs
+  27%, gated-MLP elementwise forward + backward 12%, RMSNorm backward 5%.
+
+Changes (spatial sublayer micro-benchmark, compiled, B = 8192 views fwd + bwd / 2048 fwd):
+
+| change | train fp32 | train bf16 | rollout fp32 | rollout bf16 |
+|---|---|---|---|---|
+| SDPA (baseline) | 42.6 ms | 25.8 ms | 3.46 ms | 1.87 ms |
+| Triton small attention (`attention.py`) | 35.5 | 18.3 | 2.76 | 1.21 |
+| + fused gated MLP (`gated.py`, bf16 only) | 35.4 | 16.6 | 2.76 | 0.96 |
+| broadcast multiply-reduce attention (rejected) | 41.2 | 27.3 | 3.28 | 2.02 |
+
+- **Triton small attention:** one program per (view, head), 16 x 32 tiles, keys read by
+  stride from the token and map projections (no cat, no transpose); backward recomputes
+  the softmax in registers. 1.2-1.5x on the sublayer.
+- **Fused gated MLP:** both GEMMs in one kernel, `gelu(g) * u` in registers; the backward
+  recomputes g and u, so the 8D-wide pre-activations are neither written nor saved
+  (activation memory down by 2 KB per token per MLP).
+- **Rotary inside the attention kernel:** q and k are loaded as even and odd lanes,
+  rotated in float32 registers; the backward rotates the gradients back. Removes a
+  rotated copy of q, k and the map keys per sublayer (and, under autocast, their float32
+  promotion and cast back). (measuring)
+- **Exact fine-level circular codes:** `u = (m mod p_l)/p_l * c` instead of
+  `(m mod P)/p_l * c` (identical math). At the 4 m level u reached 3^9, so one float32 ulp
+  was ~1e-3 of the fraction; compiled and eager disagreed by ~0.1 in next-state logits
+  where the code is near zero (`log(code + 1e-3)`). Now exact (the level periods are
+  integers in metres).
 
 ## Progress
 
