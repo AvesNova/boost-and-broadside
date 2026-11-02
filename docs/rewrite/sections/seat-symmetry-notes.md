@@ -12,8 +12,10 @@ the scripted agent against itself in `deathmatch` scored 0.536 and 0.540 for tea
 - [x] Fix: ties go to the smaller miss distance (`combat.contact_order`); kill credit too.
 - [x] Mirror test passes after the fix, fails before it.
 - [x] Goldens (`tests/reference/`) pass unchanged: no golden blocks the fix.
-- [ ] Self-play per-seat scores before and after (waiting on the shared GPU).
-- [ ] Full suite.
+- [ ] Self-play per-seat scores before and after: queued on the shared GPU, not yet run
+  (`/tmp/bnb-scratch-seats/batch.py grid1.txt`, results to `selfplay_results.txt`).
+- [ ] Full suite (GPU). The CPU runs of the goldens, `test_game_section.py`,
+  `test_learner_shots.py`, `test_ship_card_game.py` and `test_seat_symmetry.py` pass.
 
 ## The mirror test
 
@@ -70,7 +72,8 @@ grouped spawns for this reason.
   the rule itself, both slot orders.
 
 In longer scratch runs (`/tmp/bnb-scratch-seats/mirror*.py`, 64 environments) before the
-fix: chaser self-play in team deathmatch differed first at tick 153; in Frontline, 87 of
+fix: chaser self-play in team deathmatch differed in 58 of 192,000 environment-ticks over
+3,000 ticks (first at tick 153), 15 of them in who died and so in the score; in Frontline, 87 of
 160,000 environment-ticks differed in damage over 2,500 ticks, 10 in who died, 14 in kill
 credit. Random against random (spread out, rarely in contact) showed no difference. After
 the fix the same Frontline run shows none.
