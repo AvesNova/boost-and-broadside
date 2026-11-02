@@ -161,7 +161,10 @@ class SegmentStore:
     def batches(self, names: tuple[str, ...], view_batches: list[torch.Tensor]):
         """Yield {name: pytree} on the device for each list of views (int64, on the host).
         From pinned memory the next batch is gathered and copied while the caller computes
-        on the current one; a yielded batch is valid until the next-but-one."""
+        on the current one; a yielded batch is valid until the next-but-one. Its staging
+        buffers are released for reuse when the caller asks for the next batch (after the
+        compute it queued on this one), so a caller runs the generator out: an abandoned one
+        never releases its last batch."""
         if not self.pinned:
             self._written_before_compute()
             device = self.data[names[0]][0].device
@@ -172,21 +175,28 @@ class SegmentStore:
             return
         self.synchronize()  # the host gathers from pinned memory the copies wrote
         compute = torch.cuda.current_stream(self.device)
+        # Every staging slot this call uses exists before the worker issues a copy: allocated
+        # here, on the caller's thread and stream, and released only after. The caching
+        # allocator may hand a new device buffer memory the compute stream freed with kernels
+        # still queued on it; the first copy into the buffer runs on the copy stream and must
+        # wait for them, so `released` is recorded after the allocation, never before (a slot
+        # set up on the worker while the caller computes would miss the caller's frees).
+        for views in view_batches:
+            key = (names, views.numel())
+            if key not in self._staging:
+                pairs = [dict(host=self._buffers(names, key[1], "cpu", True),
+                              device=self._buffers(names, key[1], self.device, False),
+                              copied=torch.cuda.Event(), released=torch.cuda.Event())
+                         for _ in range(2)]
+                for pair in pairs:
+                    pair["released"].record(compute)
+                self._staging[key] = [pairs, 0]
 
         def slot(index: int) -> dict:
             """The staging slot of batch `index`: per micro-batch size, two pinned and device
             buffers that alternate, each with the copy that fills it and the compute that
             last read it."""
             key = (names, view_batches[index].numel())
-            if key not in self._staging:
-                pairs = []
-                for _ in range(2):
-                    released = torch.cuda.Event()
-                    released.record(compute)
-                    pairs.append(dict(host=self._buffers(names, key[1], "cpu", True),
-                                      device=self._buffers(names, key[1], self.device, False),
-                                      copied=torch.cuda.Event(), released=released))
-                self._staging[key] = [pairs, 0]
             pairs, turn = self._staging[key]
             self._staging[key][1] = 1 - turn
             return pairs[turn]
