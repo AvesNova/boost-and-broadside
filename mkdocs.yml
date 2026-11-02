@@ -99,6 +99,7 @@ nav:
       - guides/index.md
       - Training: guides/training.md
       - Behaviour cloning: guides/behaviour-cloning.md
+      - Resuming, forking and sharing runs: guides/resuming-forking-sharing.md
       - Benchmarking: guides/benchmarking.md
       - Reference fixtures: guides/reference-fixtures.md
       - Adding a mode: guides/adding-a-mode.md
@@ -120,13 +121,13 @@ nav:
       - The learner: explanation/learner.md
       - The scripted agent: explanation/scripted-agent.md
       - Behaviour cloning: explanation/behaviour-cloning.md
+      - Runs and checkpoints: explanation/runs.md
       - Roadmap: explanation/roadmap.md
       - Glossary: explanation/glossary.md
       - In progress:
           - League and ratings: explanation/in-progress/league.md
           - Diagnostics: explanation/in-progress/diagnostics.md
           - The play shell: explanation/in-progress/play-shell.md
-          - Runs and checkpoints: explanation/in-progress/runs.md
   - Reference:
       - reference/index.md
       - bnb.contracts: reference/contracts.md
@@ -135,6 +136,7 @@ nav:
       - bnb.models: reference/models.md
       - bnb.learn: reference/learn.md
       - bnb.runtime: reference/runtime.md
+      - bnb.runs: reference/runs.md
       - bnb.play: reference/play.md
       - bnb.cli: reference/cli.md
       - bench: reference/bench.md

@@ -7,12 +7,12 @@ reviewed: 2026-11-02
 
 ## The command
 
-`bnb` is the only entry point (`src/bnb/cli.py`). It trains Yemong with the learner
+`bnb` is the only entry point (`src/bnb/cli.py`). `bnb train` trains Yemong with the learner
 (see [The learner](../explanation/learner.md)). On a GPU:
 
 <!-- not-runnable: needs CUDA and runs for minutes -->
 ```bash
-uv run --no-sync bnb --preset mixed --num-envs 1024 --updates 100
+uv run --no-sync bnb train --preset mixed --num-envs 1024 --updates 100
 ```
 
 `--preset mixed` trains on the default training mix: Frontline and team deathmatch on two
@@ -26,7 +26,7 @@ message naming the multiple when it is not.
 
 <!-- runnable -->
 ```bash
-uv run --no-sync bnb --help
+uv run --no-sync bnb train --help
 ```
 
 ## What it prints
@@ -41,7 +41,16 @@ One line per update:
   pool.
 
 The first update includes compilation and the CUDA-graph capture, so it takes longer than
-the rest.
+the rest. It is also the memory probe: the run prints its allocator peaks after it, and
+stops if they exceed the device's memory less a margin.
+
+## Where it goes
+
+Each `bnb train` is a run in its own directory under `runs/`, named for the date, the
+preset and two words. It holds the run's record, its configuration and its training
+checkpoints. Ctrl-C stops the run after the current update, with a checkpoint, and
+`bnb train --resume RUN` continues it exactly; `bnb runs` lists the runs. See
+[Resuming, forking and sharing runs](../guides/resuming-forking-sharing.md).
 
 ## The same loop in Python
 

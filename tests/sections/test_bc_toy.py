@@ -15,7 +15,7 @@ from bnb.controllers.scripted import Chaser, Scripted
 from bnb.learn import bc
 from bnb.runtime import cloning
 from bnb.runtime.evaluate import first_results, score
-from bnb.runtime.train import LEARNER, SCRIPTED, TrainConfig
+from bnb.runtime.train import LEARNER, SCRIPTED, TrainConfig, Trainer
 
 pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 GAME = GameConfig(2, 4, 1200.0)
@@ -29,7 +29,8 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
     device = torch.device("cuda")
     with torch.random.fork_rng():
         torch.manual_seed(0)
-        student, reason = cloning.clone(TOY, device, bc.StopConfig(budget_steps=BUDGET),
+        student = Trainer(TOY, device)
+        reason = cloning.clone(student, bc.StopConfig(budget_steps=BUDGET),
                                         log=lambda row: None)
         teacher = student.controllers[SCRIPTED]
         chaser = Chaser(GAME.ships_per_team)

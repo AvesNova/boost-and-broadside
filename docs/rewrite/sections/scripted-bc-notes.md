@@ -9,10 +9,8 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
 - **Done (first round):** parts A and B, their acceptance runs and measurements, the docs.
 - **Fix round (2026-11-02):** items 1-4, 6 and 7 of the review's fix list done and pushed;
   see "Fix round" at the end.
-- **Open:** item 5, the policy-file hand-off: section 11 (`bnb.runs.checkpoint`) has not
-  merged into `origin/v2`. When it does: merge v2, make `bnb train --objective bc` save
-  the clone as a policy file (weights, return scale, step counts) when it stops, and
-  unskip `test_the_hand_off_round_trips_through_a_policy_file`.
+- **Item 5 done** after section 11 merged (origin/v2 635f62fb): `bnb train --objective bc`
+  saves the clone as the run's policy file.
 
 ## Design
 
@@ -301,16 +299,9 @@ re-measurement should settle it.
 
 ## Requests and open questions
 
-1. **Open: the hand-off through policy files.** Section 11 has not merged.
-   `tests/sections/test_bc.py::test_the_hand_off_round_trips_through_a_policy_file` is
-   written against `bnb.runs.checkpoint.save_policy` / `load_policy` and skips until the
-   module exists. The in-memory hand-off (`bnb.runtime.cloning.warm_start`) is built and
-   tested.
-2. **Request (runs spec 3):** the BC → RL hand-off needs the return scale's state (two
-   EMAs) and BC's step count. A policy file holds the weights and step counters; the
-   return scale is listed only in a training checkpoint. Either the policy file carries
-   the return scale, or RL warm-starts from BC's training checkpoint (weights and return
-   scale, discarding the optimizer).
+1. **Done (fix round): the hand-off through policy files** (Fix round, item 5).
+2. **Resolved by section 11:** the policy file carries the return scale's state and the
+   step counts.
 3. **Resolved by 1b:** the stall angle, vision range and bullet drag are per type now and
    the characteristics read them per type.
 4. **Question:** should RL's learning-rate warmup restart after BC (it does now, with the
@@ -377,14 +368,28 @@ the review named was applied by hand and fails the named test (and passed the ol
    `test_the_gradient_stays_finite_for_a_confident_student` now checks the gradient at
    entropy coefficients 0 and −0.0081 and fails under `xlogy` of the probabilities
    (applied by hand). ε's default then changed by author decision (item 8).
-5. **Open: the policy-file hand-off.** Section 11 has not merged into `origin/v2` (checked
-   2026-11-02; `section/runs` has `save_policy`/`load_policy` with the return scale). The
-   guide says the CLI's clone is not yet saved.
+5. **The policy-file hand-off** (after merging origin/v2 at 635f62fb, section 11):
+   `bnb train --objective bc` runs in a run directory like PPO (`Run.create`, a segment,
+   the probe), through `bnb.runs.session.clone`, which runs `bnb.runtime.cloning.clone`
+   (now taking a `Trainer`, with an `interrupted` check for Ctrl-C) and, when a stop rule
+   fires or after the update at Ctrl-C, writes the clone with
+   `bnb.runs.checkpoint.save_policy` at `runs/<run>/policy/` (`Run.policy_path`): weights,
+   return scale, `environment_steps` and `updates`, the game and the card; `run.json`
+   records `stopped_by` and `policy`. A BC run writes no training checkpoints and refuses
+   `--resume`, `--from` and `--init-from`. `--calibrate-entropy` moved to `bnb train` and
+   writes no run. Tests (`tests/sections/test_bc.py`):
+   `test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file` (a two-update CPU BC
+   run stopped by its budget; the policy record's kind, return scale and step counts; then
+   `bnb train --init-from` of it starts an RL run whose model equals the clone) replaces
+   the skipped round trip; `test_a_bc_run_starts_fresh` (the three refusals). Changes in
+   section 11's code: `bnb.runs.session.clone` and `save_clone`, `Run.policy_path` and the
+   layout line in `bnb.runs.records`; the runs explanation and the resuming guide name
+   the policy directory.
 6. **Spec deviations:**
    - `characteristics.py` reads `Airframe.corner_speed` through
      `bnb.game.physics.flight.airframe_of`; `test_card_values_and_constants_are_read_as_given`
      compares against the game's value with `torch.equal`;
-   - `bnb --calibration-segments` (default 4) sets `teacher_distributions`' segments;
+   - `bnb train --calibration-segments` (default 4) sets `teacher_distributions`' segments;
    - full words for `p`, `u`, `q` in `scripted.py` (and `q` in `cloning.py`);
    - `StopRule` keeps per-update `(games, points)`; it drops the oldest updates whole
      while the rest fill the window and counts the oldest kept one by the exact share
@@ -397,7 +402,7 @@ the review named was applied by hand and fails the named test (and passed the ol
 
 8. **The teacher never gives an action probability 0** (author decision, after the review):
    `bnb.learn.bc.FLOOR = 0.01` is the default floor of `TeacherConfig`, `calibrate` and
-   `bnb --teacher-floor`, spread over the 42 joint actions as before.
+   `bnb train --teacher-floor`, spread over the 42 joint actions as before.
    `test_every_label_gives_every_action_a_probability_above_zero` (the stored segment's
    labels, dead ships included, at T = 1 and T = 0.25: every entry ≥ 0.99 · 0.01/42);
    the loss test's independent computation applies the floor; the temperature tests pin

@@ -9,8 +9,14 @@ import torch
 from bnb.contracts import GameConfig
 from bnb.game import api
 from bnb.models.yemong import codes, critic, density, shots
-from bnb.models.yemong.model import Yemong, YemongConfig
-from bnb.models.yemong.state_code import MEANS, POSITION_PERIOD, ShipStateCode, velocity_reach
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
+from bnb.models.yemong.state_code import (
+    MEANS,
+    POSITION_PERIOD,
+    ShipStateCode,
+    state_code_ranges,
+    velocity_reach,
+)
 
 RULES = api.rules_of(GameConfig(5, 10, 2600.0))
 TYPES = api.ship_types()
@@ -19,7 +25,7 @@ COUNT = 4000
 
 @pytest.fixture(scope="module")
 def code():
-    return ShipStateCode(RULES, TYPES).double()
+    return ShipStateCode(state_code_ranges(RULES, TYPES)).double()
 
 
 def _uniform(low, high, generator):
@@ -108,7 +114,7 @@ def test_decoded_positions_lie_in_one_period(code):
 
 
 def test_v2_shot_constants():
-    model = Yemong(YemongConfig(), RULES, TYPES)
+    model = Yemong(yemong_build(YemongConfig(), RULES, TYPES))
     parameters = model.shot_code
     top = 2.0 * (500.0 + velocity_reach())
     assert parameters.top_speed == pytest.approx(top)
@@ -125,7 +131,7 @@ def test_v2_shot_constants():
 
 
 def test_density_target_and_rates():
-    model = Yemong(YemongConfig(), RULES, TYPES)
+    model = Yemong(yemong_build(YemongConfig(), RULES, TYPES))
     cells = density.cell_count(10)
     assert cells == 331 and model.density.lasts[0].out_features == 2 * cells
     bias = model.density.lasts[0].bias

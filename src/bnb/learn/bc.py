@@ -83,14 +83,15 @@ class BehaviourCloning(Learner):
     def __init__(self, model: torch.nn.Module, config: LearnerConfig, rules, types,
                  outcome_weight: float, device: torch.device, teacher: Teacher,
                  teacher_config: TeacherConfig, pools: tuple[str, ...],
-                 view_pool: torch.Tensor, stage: Callable = lambda function: function) -> None:
+                 view_pool: torch.Tensor, stage: Callable = lambda function: function,
+                 seed: int = 0) -> None:
         self.teacher, self.teacher_config, self.pools = teacher, teacher_config, pools
         # (KL, teacher entropy, student entropy, tokens) per pool.
         self.STATISTICS = tuple(f"{name}/{pool}" for name in ("kl", "teacher", "student",
                                                                "tokens") for pool in pools)
         self.pool_one_hot = torch.nn.functional.one_hot(view_pool.to(device),
                                                         len(pools)).float()[None]
-        super().__init__(model, config, rules, types, outcome_weight, device, stage)
+        super().__init__(model, config, rules, types, outcome_weight, device, stage, seed)
 
     def prepare(self, segments, bootstraps: list) -> dict:
         prepared = super().prepare(segments, bootstraps)

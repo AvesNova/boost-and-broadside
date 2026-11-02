@@ -15,7 +15,7 @@ graphs.
 ```bash
 uv sync                                       # the environment, with the docs tools
 uv run --no-sync pytest -m "not gpu"          # the tests that run on the CPU
-uv run --no-sync bnb --preset mixed           # train the skeleton model (needs CUDA)
+uv run --no-sync bnb train --preset mixed           # train the skeleton model (needs CUDA)
 uv run --no-sync python -m bench.run          # the skeleton benchmark (needs CUDA)
 uv run --no-sync python -m bnb.play           # watch or fly a match (needs OpenGL)
 uv run --no-sync mkdocs serve                 # these docs, at http://127.0.0.1:8000

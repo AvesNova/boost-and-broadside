@@ -18,7 +18,7 @@ from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import StopConfig, StopRule, flat_views
 
 from .rollout import Rollout
-from .train import LEARNER, SCRIPTED, TrainConfig, Trainer
+from .train import LEARNER, SCRIPTED, Trainer
 
 # BC's opponents (proposal): self-play and the scripted agent at its natural distribution,
 # half each, no rungs. Section 8's pool replaces this when it exists.
@@ -49,13 +49,14 @@ def scores(pools: tuple[Pool, ...], metrics: dict) -> dict:
     return out
 
 
-def clone(cfg: TrainConfig, device: torch.device, stop: StopConfig = StopConfig(),
-          log: Callable[[dict], None] = print) -> tuple[Trainer, str]:
-    """BC until a stop rule fires: (the trainer, the rule's name: "score", "kl_plateau" or
-    "budget"). cfg.objective must be "bc"."""
-    if cfg.objective != "bc":
+def clone(trainer: Trainer, stop: StopConfig = StopConfig(),
+          log: Callable[[dict], None] = print,
+          interrupted: Callable[[], bool] = lambda: False) -> str:
+    """BC with `trainer` (objective "bc") until a stop rule fires or `interrupted()` is true
+    after an update: the rule's name ("score", "kl_plateau" or "budget"), or
+    "interrupted"."""
+    if trainer.config.objective != "bc":
         raise ValueError("clone trains with objective 'bc'")
-    trainer = Trainer(cfg, device)
     rule = StopRule(stop)
     while True:
         row = trainer.update()
@@ -63,11 +64,13 @@ def clone(cfg: TrainConfig, device: torch.device, stop: StopConfig = StopConfig(
         against = live.get(SCRIPTED, dict(wins=0, draws=0, losses=0))
         reason = rule.observe(trainer.ppo.env_steps, against["wins"], against["draws"],
                               against["losses"], row["bc_kl"])
+        if reason is None and interrupted():
+            reason = "interrupted"
         row.update(scores=live, window_score=rule.score, kl_average=rule.kl_average,
                    env_steps=trainer.ppo.env_steps, stopped_by=reason)
         log(row)
         if reason is not None:
-            return trainer, reason
+            return reason
 
 
 @torch.no_grad()
@@ -75,7 +78,7 @@ def warm_start(trainer: Trainer, student: Trainer) -> None:
     """RL from BC (scripted spec B4): the student's weights (into the learner and its league
     copy) and its return scale. The optimizer stays fresh and nothing clones; the copy is in
     place, so the rollout's captured graphs keep reading the weights."""
-    if trainer.cfg.objective != "ppo":
+    if trainer.config.objective != "ppo":
         raise ValueError("warm_start starts reinforcement learning (objective 'ppo')")
     state = student.model.state_dict()
     trainer.model.load_state_dict(state)

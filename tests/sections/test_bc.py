@@ -3,6 +3,8 @@ rule, on a real stored Yemong segment on the CPU."""
 
 import dataclasses
 import functools
+import json
+import sys
 
 import learner_cases as lc
 import pytest
@@ -262,26 +264,61 @@ def test_reinforcement_learning_starts_from_the_clone():
     assert float(trainer.ppo.return_scale.scale()) == float(student.ppo.return_scale.scale())
     assert float(student.ppo.return_scale.high) != 0.0
     assert not trainer.ppo.optimizer.state  # fresh
-    assert type(trainer.ppo) is Learner and trainer.cfg.learner.policy == 27.0  # no cloning
+    assert type(trainer.ppo) is Learner and trainer.config.learner.policy == 27.0  # no cloning
     row = trainer.update()
     assert "bc_kl" not in row and "approximate_kl" in row
 
 
-def test_the_hand_off_round_trips_through_a_policy_file(tmp_path):
-    """Section 11's interface (runs spec 3): save_policy and load_policy. Open until that
-    section merges."""
-    checkpoint = pytest.importorskip("bnb.runs.checkpoint",
-                                     reason="section 11 (bnb.runs) has not merged")
-    from bnb.runtime.cloning import LINEUP
-    from bnb.runtime.train import Trainer
+# The tiny BC run of the command line: 2v2 relational, 16 environments x 16 ticks per
+# update, stopped by its budget after two updates.
+BC_OPTIONS = ("--device", "cpu", "--model", "relational", "--ships-per-team", "2",
+              "--num-fields", "2", "--arena-radius", "1500", "--num-envs", "16",
+              "--objective", "bc", "--bc-budget-steps", str(2 * 16 * 16),
+              "--set", "length=16", "--set", "compile=false", "--set", "learner.minibatches=2",
+              "--set", "learner.epochs=1", "--set", "relational_hidden=16",
+              "--set", "game.episode_s=4.0")
 
-    student = Trainer(_tiny("bc", LINEUP), lc.CPU)
-    student.update()
-    checkpoint.save_policy(tmp_path / "clone", student.model)
-    loaded = checkpoint.load_policy(tmp_path / "clone", lc.CPU)
-    for a, b in zip(loaded.state_dict().values(), student.model.state_dict().values(),
-                    strict=True):
-        assert torch.equal(a, b)
+
+def _bnb(monkeypatch, *arguments: str) -> None:
+    from bnb import cli
+
+    monkeypatch.setattr(sys, "argv", ["bnb", *arguments])
+    with torch.random.fork_rng():
+        cli.main()
+
+
+def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tmp_path):
+    """The hand-off (scripted spec B4, runs spec 3): a BC run saves its clone in its run
+    directory with the weights, the return scale and the step counts; RL starts from it."""
+    from bnb.runs import checkpoint
+    from bnb.runs.records import Run
+
+    runs = str(tmp_path / "runs")
+    _bnb(monkeypatch, "train", *BC_OPTIONS, "--name", "clone", "--runs-directory", runs)
+    run = Run.open(tmp_path / "runs", "clone")
+    assert run.record["status"] == "finished" and run.record["stopped_by"] == "budget"
+    assert run.record["segments"][0]["end_step"] == 2 * 16 * 16
+    assert json.loads((run.directory / "config.json").read_text())["objective"] == "bc"
+    record = checkpoint.read_record(run.policy_path)
+    assert record["kind"] == "policy" and record["return_scale"]
+    assert record["steps"] == dict(environment_steps=2 * 16 * 16, updates=2)
+    clone = checkpoint.load_policy(run.policy_path, lc.CPU)
+    # Reinforcement learning from it: the clone's weights, a run of its own.
+    _bnb(monkeypatch, "train", *BC_OPTIONS[:12], "--set", "length=16", "--set", "compile=false",
+         "--set", "relational_hidden=16", "--set", "game.episode_s=4.0", "--updates", "0",
+         "--init-from", str(run.policy_path), "--name", "rl", "--runs-directory", runs)
+    rl = Run.open(tmp_path / "runs", "rl")
+    assert rl.record["parent"] == dict(policy=str(run.policy_path.resolve()))
+    final = checkpoint.load_policy(rl.checkpoint_at(), lc.CPU)
+    for name, value in clone.state_dict().items():
+        assert torch.equal(final.state_dict()[name], value), name
+
+
+@pytest.mark.parametrize("start", [("--resume", "clone"), ("--from", "clone"),
+                                   ("--init-from", "somewhere")])
+def test_a_bc_run_starts_fresh(monkeypatch, tmp_path, start):
+    with pytest.raises(SystemExit, match="a BC run starts fresh"):
+        _bnb(monkeypatch, "train", *BC_OPTIONS, *start, "--runs-directory", str(tmp_path))
 
 
 def test_the_gradient_stays_finite_for_a_confident_student(segment):

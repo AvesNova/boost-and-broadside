@@ -80,10 +80,13 @@ losses; and the live score per opponent kind.
 
 ## The hand-off
 
-`bnb.runtime.cloning.warm_start` copies the student's weights and return scale into a
-reinforcement-learning trainer, in place, so the rollout's captured graphs keep reading
-them; the optimizer stays fresh. Saving the clone to a file waits for the run directory
-and its policy files (in progress, [Runs and checkpoints](in-progress/runs.md)).
+`bnb train --objective bc` saves the clone, when it stops, as the run's policy file
+(`bnb.runs.session.clone`, through `bnb.runs.checkpoint.save_policy`): the weights, the
+return scale's state and the step counts. `bnb train --init-from` starts reinforcement
+learning from it (`bnb.runs.checkpoint.warm_start`): the weights and return scale, a fresh
+optimizer, fresh step counts and no cloning term ([Runs and checkpoints](runs.md)). In
+Python, `bnb.runtime.cloning.warm_start` does the same in memory, copying into a trainer in
+place so the rollout's captured graphs keep reading the weights.
 
 ## Measurements
 

@@ -1,6 +1,6 @@
 ---
 covers: [docs/hooks/generated.py, tests/docs/]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # Writing docs
@@ -60,8 +60,10 @@ Every page appears in `nav`{.plain} in `mkdocs.yml`. A page left out of the nav 
 - **Not code:** a backticked word that is not a Python name, such as a file format or a
   configuration key, opts out with `{.plain}` right after the span:
   `` `nav`{.plain} ``. The check skips it, and the page renders it as code.
-- **Commands:** every `bnb ...` line, in a fence or in backticks, runnable or not, is parsed
-  against the options of `bnb.cli.Train`, with known values for `--preset` and `--mode`.
+- **Commands:** every `bnb ...` line, in a fence or in backticks, runnable or not, must
+  name a command (`bnb.cli.COMMANDS`) and is parsed against that command's options
+  (`bnb.cli.Train`, `bnb.cli.Runs`, `bnb.cli.ShipCard`), with known values for `--preset`
+  and `--mode`.
 - **No reference entry:** a full name the reference does not render, such as a constant
   assigned in a tuple, takes `{.nolink}`{.plain} after the span. It is still checked, but not
   linked.

@@ -16,9 +16,9 @@ A run plays one game or several. Three ways to choose:
 
 <!-- not-runnable: needs CUDA -->
 ```bash
-uv run --no-sync bnb --preset frontline                 # one game preset
-uv run --no-sync bnb --preset mixed                     # the default training mix
-uv run --no-sync bnb --mode team_deathmatch --ships-per-team 2 --num-fields 4 \
+uv run --no-sync bnb train --preset frontline                 # one game preset
+uv run --no-sync bnb train --preset mixed                     # the default training mix
+uv run --no-sync bnb train --mode team_deathmatch --ships-per-team 2 --num-fields 4 \
     --arena-radius 1200                                 # any mode at any size
 ```
 
@@ -104,7 +104,7 @@ The command's other options set the model and the learner:
 
 <!-- not-runnable: needs CUDA -->
 ```bash
-uv run --no-sync bnb --preset mixed --precision tf32 --shards 2 --micro-batch-rows 320
+uv run --no-sync bnb train --preset mixed --precision tf32 --shards 2 --micro-batch-rows 320
 ```
 
 ## Configure a run in Python
@@ -165,8 +165,9 @@ print(win_rate(trainer, games=256))
 
 ## Seeds and process settings
 
-The `bnb` command seeds torch's default generator from `--seed` and sets the matmul
-precision (`bnb.runtime.train.set_precision`) once, before training, and sets
-`TRITON_DEFAULT_FP_FUSION` before torch is imported. A script that calls
+The `bnb` command seeds torch's default generator from `--seed` (the run's
+`TrainConfig.seed`, which also seeds the learner's streams; `--set seed=N` is the same)
+and sets the matmul precision (`bnb.runtime.train.set_precision`) once, before training,
+and sets `TRITON_DEFAULT_FP_FUSION` before torch is imported. A script that calls
 `bnb.runtime.train.train` does the same itself. Library code sets no process-wide options;
 only entry points do (see [Architecture](../explanation/architecture.md)).

@@ -58,8 +58,7 @@ class LearnerConfig:
     the first epoch). minibatches: per epoch, as equal in views as the views allow;
     micro_batch_rows: ship rows per micro-batch, so micro_batch_rows // N views (at least
     one): memory only, the result is the same, and the memory a micro-batch needs follows
-    its rows at any fleet size. seed: the learner's random streams (the shot spread, the
-    minibatch order).
+    its rows at any fleet size.
     """
 
     discount: tuple[float, ...] = (0.991, 0.995, 0.995, 0.999, 0.9997)
@@ -85,7 +84,6 @@ class LearnerConfig:
     micro_batch_rows: int = 160
     target_kl: float | None = 0.02  # None: no early stop
     old_log_probabilities: str = "rollout"
-    seed: int = 0
 
     def __post_init__(self) -> None:
         if self.old_log_probabilities not in ("rollout", "recomputed"):
@@ -151,7 +149,8 @@ class Learner:
 
     def __init__(self, model: torch.nn.Module, config: LearnerConfig, rules: Rules,
                  types: ShipTypes, outcome_weight: float, device: torch.device,
-                 stage: Callable = lambda function: function) -> None:
+                 stage: Callable = lambda function: function, seed: int = 0) -> None:
+        """seed: the learner's random streams (the shot spread, the minibatch order)."""
         self.model, self.config, self.rules, self.types = model, config, rules, types
         self.device, self.outcome_weight = device, outcome_weight
         levels = model.config.levels
@@ -164,8 +163,8 @@ class Learner:
                                           fused=device.type == "cuda")
         self.return_scale = critic.ReturnScale(config.return_scale_decay,
                                                config.return_scale_floor, device)
-        self.spread_generator = random_stream(config.seed, "shot_spread", device)
-        self.order_generator = random_stream(config.seed, "minibatch_order")  # host indices
+        self.spread_generator = random_stream(seed, "shot_spread", device)
+        self.order_generator = random_stream(seed, "minibatch_order")  # host indices
         self.auxiliary = hasattr(model, "state_code")
         if self.auxiliary:
             self.grid = HexGrid(model.config.hex_rings, device)
