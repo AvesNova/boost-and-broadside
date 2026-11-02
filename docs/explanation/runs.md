@@ -57,8 +57,9 @@ other languages read it.
 - **A policy file** (`bnb.runs.checkpoint.save_policy`) is what an agent needs to play: the
   model's registered name, version and build record, the `Obs` and `Action` schema
   versions, its weights, the return scale's state tensors and the step counts (for a warm
-  start), the game and ship card it trained on, the commit and the time, and each file's
-  SHA-256.
+  start), the game and ship card it trained on and the game's version (`bnb.game.VERSION`,
+  which rises whenever the game computes differently), the commit and the time, and each
+  file's SHA-256.
 - **A training checkpoint** (`bnb.runs.checkpoint.save_training`) is a policy file plus
   the full `TrainConfig`, the optimizer, the league slot, every random generator, the
   rollout carry (the game state, every controller's carry, the seats, the reward ledger)
@@ -142,6 +143,12 @@ record's, or the start is refused.
   tiles for each GPU and keep the choice in that machine's cache, not in the checkpoint.
   A different tile can round the last bits differently, so a run resumed on another GPU
   drifts from the original by rounding. This is accepted.
+
+  On the same GPU a long run can drift too. The game's damage sum and Yemong's density
+  counts add with float atomics, whose order is not fixed: after a tick in which two hits
+  land on one ship, a resumed run can differ from the original in the last bit, and the
+  difference grows from there. The tested resumes are exact because their sums happen to
+  be exact or ordered. This is accepted; the sums stay as they are.
 
 ## Retention
 
