@@ -20,7 +20,7 @@ from .scripted_parameters import ScriptedParameters
 REDRAW = 0.1  # sticky random: per-tick probability of a new action
 
 
-def _uniform(shape: tuple, device) -> torch.Tensor:
+def uniform_actions(shape: tuple, device) -> torch.Tensor:
     draws = torch.rand(shape + (3,), device=device)
     scale = torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32, device=device)
     return (draws * scale).to(torch.int32)
@@ -35,11 +35,11 @@ class Random:
         self.S = ships_per_team
 
     def init_carry(self, views: int, device: torch.device) -> torch.Tensor:
-        return _uniform((views, self.S), device)
+        return uniform_actions((views, self.S), device)
 
     def step(self, carry: torch.Tensor, obs: Obs, done: torch.Tensor):
         redraw = torch.rand(carry.shape[:-1], device=carry.device) < REDRAW
-        new = torch.where(redraw[..., None], _uniform(carry.shape[:-1], carry.device), carry)
+        new = torch.where(redraw[..., None], uniform_actions(carry.shape[:-1], carry.device), carry)
         return Action.unpack(new), new, Outputs()
 
 
@@ -109,7 +109,7 @@ def distribution(obs: Obs, characteristics: Characteristics,
     return joint(marginals(obs, characteristics, parameters))
 
 
-def _sample(probabilities: torch.Tensor) -> torch.Tensor:
+def sample(probabilities: torch.Tensor) -> torch.Tensor:
     """One index per row of (..., K) probabilities, by the inverse CDF (a category of
     probability 0 is never drawn)."""
     cumulative = probabilities.cumsum(-1)
@@ -154,11 +154,11 @@ class Scripted:
 
     def step(self, carry: None, obs: Obs, done: torch.Tensor):
         parts = marginals(obs, self.characteristics, self.parameters)
-        action = torch.stack([_sample(part) for part in parts], -1).to(torch.int32)
+        action = torch.stack([sample(part) for part in parts], -1).to(torch.int32)
         probability = self._probability()
         if isinstance(probability, torch.Tensor) or probability < 1.0:
             # a rung: one uniform draw for every view
             scripted = torch.rand(action.shape[:-1], device=action.device) < probability
             action = torch.where(scripted[..., None], action,
-                                 _uniform(action.shape[:-1], action.device))
+                                 uniform_actions(action.shape[:-1], action.device))
         return Action.unpack(action), carry, Outputs()

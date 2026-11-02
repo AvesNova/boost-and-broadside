@@ -164,22 +164,69 @@ def test_every_label_gives_every_action_a_probability_above_zero(segment):
     assert bc.TeacherConfig().floor == bc.FLOOR > 0.0
 
 
-def test_the_opponent_plays_the_natural_distribution_whatever_the_temperature():
+def _scripted_seat(objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig()):
+    """A small CPU trainer with BC's lineup, its scripted seat's controller and that seat's
+    first view."""
     from bnb.contracts import GameConfig
     from bnb.runtime.cloning import LINEUP
     from bnb.runtime.train import SCRIPTED, TrainConfig, Trainer
 
+    learner = bc.config(minibatches=2) if objective == "bc" else lc.LearnerConfig(minibatches=2)
     cfg = TrainConfig(game=GameConfig(2, 2, 1200.0), pools=LINEUP, num_envs=4, length=8,
                       model="relational", relational_hidden=16, compile=False, host_store=False,
-                      learner=bc.config(minibatches=2), objective="bc",
-                      teacher=bc.TeacherConfig(temperature=3.0, floor=0.2))
+                      learner=learner, objective=objective, teacher=teacher)
     trainer = Trainer(cfg, lc.CPU)
-    opponent = trainer.controllers[SCRIPTED]
-    assert opponent.scripted_probability == 1.0
     view = trainer.rollout._view(trainer.rollout.carry, SCRIPTED, Scripted.reads)
-    torch.testing.assert_close(opponent.action_distribution(view), TEACHER(view))
-    assert trainer.ppo.teacher_config == cfg.teacher
+    return trainer, trainer.controllers[SCRIPTED], view
+
+
+def _repeated(view: Obs, times: int) -> Obs:
+    """The view's rows (R, ...) repeated `times` times: (times R, ...)."""
+    parts = {field.name: getattr(view, field.name) for field in dataclasses.fields(view)}
+    return Obs(**{name: None if value is None else value.repeat(times, *[1] * (value.dim() - 1))
+                  for name, value in parts.items()})
+
+
+def test_the_scored_opponent_plays_the_labels_distribution():
+    """BC's scripted seat samples the labels' distribution (floor and temperature applied):
+    its stated distribution is the labels', and its draws' frequencies over 20000 copies of
+    each view match it within five standard errors."""
+    from bnb.contracts.action import NUM_JOINT, to_joint
+
+    teacher = bc.TeacherConfig(temperature=3.0, floor=0.2)
+    trainer, opponent, view = _scripted_seat("bc", teacher)
+    expected = bc.labels(TEACHER(view), teacher)  # (R, S, 42)
+    torch.testing.assert_close(opponent.action_distribution(view), expected)
+    assert trainer.ppo.teacher_config == teacher
     assert trainer.rollout.reads == ("ships", "globals", "zones")
+    times = 20_000
+    torch.manual_seed(0)
+    action, _, _ = opponent.step(None, _repeated(view, times), None)
+    joint = to_joint(action).long().unflatten(0, (times, -1))  # (times, R, S)
+    frequency = torch.nn.functional.one_hot(joint, NUM_JOINT).float().mean(0)
+    error = (expected * (1 - expected) / times).sqrt()
+    assert bool(((frequency - expected).abs() <= 5 * error + 1e-4).all()), \
+        float((frequency - expected).abs().max())
+    assert float(expected.min()) >= teacher.floor / NUM_JOINT * 0.999  # the floor is played
+
+
+def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
+    """At floor 0 and T = 1 the scored opponent draws exactly the scripted agent's actions
+    from the same random state; outside BC the scripted seat is the scripted agent itself."""
+    plain = bc.TeacherConfig(temperature=1.0, floor=0.0)
+    _, opponent, view = _scripted_seat("bc", plain)
+    assert isinstance(opponent, bc.TeacherOpponent)
+    views = _repeated(view, 500)
+    torch.manual_seed(1)
+    drawn, _, _ = opponent.step(None, views, None)
+    torch.manual_seed(1)
+    scripted, _, _ = Scripted(CHARACTERISTICS).step(None, views, None)
+    assert torch.equal(drawn.packed(), scripted.packed())
+    assert len(set(map(tuple, drawn.packed().flatten(0, 1).tolist()))) > 1  # not one action
+    torch.testing.assert_close(opponent.action_distribution(view), TEACHER(view))
+    _, reinforcement_opponent, _ = _scripted_seat("ppo")
+    assert type(reinforcement_opponent) is Scripted
+    assert reinforcement_opponent.scripted_probability == 1.0
 
 
 # ------------------------------------------------------------------ the stop rule
@@ -199,7 +246,8 @@ def _run(rule: bc.StopRule, updates: int, steps: int, score: float, kl):
 def test_each_stop_rule_fires_alone():
     config = bc.StopConfig(score_window=100, plateau_steps=1000, budget_steps=10_000)
     falling = lambda update: 2.0 * 0.95 ** update  # noqa: E731 - still improving 5% per update
-    assert _run(bc.StopRule(config), 200, 100, 0.5, falling) == (4, "score")  # 100 games
+    # 0.8 over 100 games: a lower bound of 0.72 (0.5 would give 0.40, below the target)
+    assert _run(bc.StopRule(config), 200, 100, 0.8, falling) == (4, "score")  # 100 games
     assert _run(bc.StopRule(config), 200, 100, 0.2, falling) == (99, "budget")
     flat = lambda update: 1.0 + 0.5 * 0.5 ** update  # noqa: E731 - converges, then plateaus
     update, reason = _run(bc.StopRule(config), 200, 100, 0.2, flat)
@@ -222,6 +270,37 @@ def test_the_score_window_trims_whole_updates_without_favouring_a_result():
     assert rule.score == pytest.approx(0.5)
     rule.observe(4, 100, 0, 0, 1.0)  # a full window's worth drops both older updates whole
     assert rule.score == pytest.approx(1.0) and len(rule.updates) == 1
+
+
+def test_the_score_stop_reads_the_windows_lower_bound_trimmed_like_the_score():
+    """Window 100: 30 wins and 30 losses, then 20 wins, 40 draws and 10 losses. The window
+    keeps half the first update, so its 100 games are 35 wins, 40 draws and 25 losses; the
+    bound is their mean less two of their standard errors (sample deviation / 10)."""
+    config = bc.StopConfig(score_window=100, score_target=0.47, budget_steps=10**9)
+    rule = bc.StopRule(config)
+    assert rule.observe(1, 30, 0, 30, 1.0) is None and rule.lower_bound is None
+    games = torch.tensor([1.0] * 35 + [0.5] * 40 + [0.0] * 25, dtype=torch.float64)
+    error = float(games.std() / 10)
+    assert rule.observe(2, 20, 40, 10, 1.0) == "score"  # 0.4728 >= 0.47
+    assert rule.score == pytest.approx(0.55)
+    assert rule.standard_error == pytest.approx(error)
+    assert rule.lower_bound == pytest.approx(0.55 - 2 * error)
+    assert rule.lower_bound == pytest.approx(0.472802, abs=1e-6)
+    tighter = bc.StopRule(dataclasses.replace(config, score_target=0.48))
+    tighter.observe(1, 30, 0, 30, 1.0)
+    assert tighter.observe(2, 20, 40, 10, 1.0) is None  # the score 0.55 alone would stop
+
+
+def test_a_window_at_the_target_does_not_stop_and_one_clearly_above_does():
+    config = bc.StopConfig(score_window=100, score_target=0.45, budget_steps=10**9)
+    at_target = bc.StopRule(config)
+    assert at_target.observe(1, 45, 0, 55, 1.0) is None
+    assert at_target.score == pytest.approx(0.45) and at_target.lower_bound < 0.45
+    above = bc.StopRule(config)
+    assert above.observe(1, 70, 0, 30, 1.0) == "score"
+    assert above.lower_bound == pytest.approx(0.7 - 2 * (0.21 / 99) ** 0.5)
+    certain = bc.StopRule(config)  # no spread: the bound is the score
+    assert certain.observe(1, 0, 100, 0, 1.0) == "score" and certain.lower_bound == 0.5
 
 
 def test_alive_mask_reads_the_own_rows(segment):
