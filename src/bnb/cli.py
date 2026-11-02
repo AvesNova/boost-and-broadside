@@ -24,7 +24,8 @@ class Train:
     set the labels' entropy; bc_budget_steps: BC's budget in environment steps.
     calibrate_entropy: print the scripted agent's natural entropy over its own games of the
     preset and the temperature whose labels reach this mean entropy (nats per living ship
-    step) at teacher_floor, then exit.
+    step) at teacher_floor, then exit; calibration_segments: how many rollout segments of
+    128 ticks it records.
     """
 
     preset: str | None = None
@@ -46,6 +47,7 @@ class Train:
     teacher_floor: float = 0.0
     bc_budget_steps: int = 500_000_000
     calibrate_entropy: float | None = None
+    calibration_segments: int = 4
 
 
 @dataclasses.dataclass(frozen=True)
@@ -136,7 +138,8 @@ def train(args: Train) -> None:
     device = torch.device(args.device)
 
     if args.calibrate_entropy is not None:
-        tokens = cloning.teacher_distributions(game, pools, args.num_envs, 4, device)
+        tokens = cloning.teacher_distributions(game, pools, args.num_envs,
+                                               args.calibration_segments, device)
         natural = bc.mean_entropy(tokens, bc.TeacherConfig())
         print(f"natural entropy {natural:.4f} nats per living ship-step over "
               f"{tokens.shape[0]} ship-steps", flush=True)

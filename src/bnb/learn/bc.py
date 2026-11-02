@@ -104,9 +104,11 @@ class BehaviourCloning(Learner):
         logits = unrolled.policy_logits.float()
         cross = losses.cross_entropy(logits, target)
         teacher_entropy = entropy(target)
-        # A statistic, not trained (its coefficient is 0): detached, since the gradient of
-        # p log p at a probability that underflows to 0 is 0 times infinity.
-        student_entropy = entropy(torch.softmax(logits.detach(), -1))
+        # PPO's formula (`bnb.models.yemong.policy.evaluate`): from log-probabilities, so a
+        # probability that underflows to 0 gives 0 x a finite number in the gradient, where
+        # p log p of the probabilities would give 0 x infinity.
+        log_probabilities = torch.log_softmax(logits, -1)
+        student_entropy = -(log_probabilities.exp() * log_probabilities).sum(-1)
         per_view = torch.stack([torch.where(own_alive, value, 0.0).sum((0, 2))
                                 for value in (cross - teacher_entropy, teacher_entropy,
                                               student_entropy, own_alive.float())])
@@ -173,27 +175,42 @@ class StopConfig:
 
 
 class StopRule:
-    """Fed once per update; `observe` names the rule that fires, or returns None."""
+    """Fed once per update; `observe` names the rule that fires, or returns None.
+
+    The score window keeps per-update totals (games, points): it drops the oldest updates
+    whole while the rest still fill it, then counts the oldest kept update by the exact
+    share of its games the window still needs, so trimming favours no result."""
 
     def __init__(self, config: StopConfig) -> None:
         self.config = config
-        self.games: collections.deque = collections.deque(maxlen=config.score_window)
+        self.updates: collections.deque[tuple[float, float]] = collections.deque()
         self.kl_average: float | None = None
         self.history: list[tuple[int, float]] = []  # (environment steps, the KL's EMA)
 
     @property
     def score(self) -> float | None:
-        """Wins plus half the draws over the window, once it is full."""
-        if len(self.games) < self.config.score_window:
+        """Wins plus half the draws over the last score_window games, once there are that
+        many."""
+        window = self.config.score_window
+        games = sum(count for count, _ in self.updates)
+        if games < window:
             return None
-        return sum(self.games) / len(self.games)
+        oldest_games, oldest_points = self.updates[0]
+        points = sum(total for _, total in self.updates)
+        return (points - oldest_points * (games - window) / oldest_games) / window
 
     def observe(self, env_steps: int, wins: int, draws: int, losses: int,
                 kl: float) -> str | None:
         """env_steps: the total so far; wins, draws, losses: games finished against the
         teacher this update; kl: this update's BC KL."""
         config = self.config
-        self.games.extend([1.0] * int(wins) + [0.5] * int(draws) + [0.0] * int(losses))
+        games = wins + draws + losses
+        if games > 0:
+            self.updates.append((float(games), wins + 0.5 * draws))
+        while (len(self.updates) > 1
+               and sum(count for count, _ in self.updates) - self.updates[0][0]
+               >= config.score_window):
+            self.updates.popleft()
         decay = config.kl_decay
         self.kl_average = kl if self.kl_average is None else \
             decay * self.kl_average + (1.0 - decay) * kl

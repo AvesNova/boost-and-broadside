@@ -121,9 +121,10 @@ def test_the_update_time_labels_are_the_rollout_time_distribution():
         stored = Obs(ships=trajectory.obs.ships[tick], fields=None,
                      globals=trajectory.obs.globals[tick], zones=trajectory.obs.zones[tick])
         assert torch.equal(TEACHER(stored), decided[tick])
-    # The update labels a whole segment at once; the CPU's vectorized kernels round the
-    # tail of a batch apart from its body, so a batch of another size may differ in the
-    # last bit.
+    # Per tick the labels are exact (above). The update labels a whole segment as one
+    # batch, and the CPU's vectorized kernels round the tail of a batch apart from its body,
+    # so a batch of another shape may differ at the ulp level: measured at most 1.2e-7 (on
+    # 0.15% of entries). The tolerance is 2.5e-7, about two float32 ulps at 1.
     labels = bc.teacher_distribution(TEACHER, trajectory.obs)
     torch.testing.assert_close(labels, decided, rtol=0, atol=2.5e-7)
 
@@ -189,6 +190,21 @@ def test_each_stop_rule_fires_alone():
     assert rule.score == pytest.approx(0.2)
 
 
+def test_the_score_window_trims_whole_updates_without_favouring_a_result():
+    """Window 100: an update of 30 wins and 30 losses, then one of 60 draws. The window
+    keeps 40/60 of the first (20 points) and the draws (30 points): 0.50, where dropping
+    the oldest games one by one, wins first, would leave 0.40."""
+    rule = bc.StopRule(bc.StopConfig(score_window=100, score_target=1.1))
+    rule.observe(1, 30, 0, 30, 1.0)
+    assert rule.score is None  # 60 games: not yet full
+    rule.observe(2, 0, 60, 0, 1.0)
+    assert rule.score == pytest.approx(0.5)
+    rule.observe(3, 0, 0, 0, 1.0)  # an update without a finished game changes nothing
+    assert rule.score == pytest.approx(0.5)
+    rule.observe(4, 100, 0, 0, 1.0)  # a full window's worth drops both older updates whole
+    assert rule.score == pytest.approx(1.0) and len(rule.updates) == 1
+
+
 def test_alive_mask_reads_the_own_rows(segment):
     _, runner, _, _ = segment
     trajectory: Trajectory = lc.whole(runner)
@@ -252,8 +268,9 @@ def test_the_hand_off_round_trips_through_a_policy_file(tmp_path):
 
 
 def test_the_gradient_stays_finite_for_a_confident_student(segment):
-    """The student's entropy is a statistic: with probabilities that underflow to zero, its
-    p log p would put 0 x infinity into the gradient."""
+    """With probabilities that underflow to zero, the student's entropy computed as
+    p log p of the probabilities (`xlogy`) would put 0 x infinity into the gradient; PPO's
+    formula from the log-probabilities keeps it finite, with or without a coefficient."""
     import types
 
     _, runner, learner, prepared = segment
@@ -265,5 +282,7 @@ def test_the_gradient_stays_finite_for_a_confident_student(segment):
     policy_term, entropy_term, _ = learner._policy(
         types.SimpleNamespace(policy_logits=logits), trajectory, prepared["derived"],
         dict(policy=trajectory.alive[..., :shape[2]].sum().float()), prepared["scale"])
-    (policy_term + 0.0 * entropy_term).backward()
-    assert torch.isfinite(logits.grad).all()
+    for coefficient in (0.0, -0.0081):  # BC's, and PPO's entropy bonus
+        gradient, = torch.autograd.grad(policy_term + coefficient * entropy_term, logits,
+                                        retain_graph=True)
+        assert torch.isfinite(gradient).all(), coefficient

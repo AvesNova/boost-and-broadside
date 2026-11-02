@@ -101,7 +101,7 @@ def teacher_distributions(game: GameConfig, pools: tuple[Pool, ...], num_envs: i
     for _ in range(segments):
         obs = rollout.run().obs
         views = flat_views(obs)
-        q = distribution(views, agent.characteristics, agent.parameters)
-        alive = views.ships[:, :q.shape[1], SHIP["alive"]] > 0.5
-        rows.append(q[alive])
+        probabilities = distribution(views, agent.characteristics, agent.parameters)
+        alive = views.ships[:, :probabilities.shape[1], SHIP["alive"]] > 0.5
+        rows.append(probabilities[alive])
     return torch.cat(rows)
