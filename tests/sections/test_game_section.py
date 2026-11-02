@@ -1,7 +1,7 @@
 """bnb.game beyond the acceptance tests: compiled vs eager, the ship card as tensors, the
-hit test against brute force (with its tie order), the medium against a float64
-reference, the defaults against the spec's table, the batch-1 realtime path, and fresh
-randomness in CUDA-graph replays."""
+hit test against brute force (with its order: tau, then the miss distance), the medium
+against a float64 reference, the defaults against the spec's table, the batch-1 realtime
+path, and fresh randomness in CUDA-graph replays."""
 
 import json
 import math
@@ -84,7 +84,8 @@ def test_compiled_tick_and_perception_match_eager(config):
 
 def test_hits_match_brute_force_with_friendly_fire():
     """First contact per bullet over every ship but its shooter, damage per (shooter,
-    target) and the killer, against a direct loop. Bullets start near random ships."""
+    target) and the killer, against a direct loop: the order is (tau, miss distance), an
+    exact tie in both to the lower index. Bullets start near random ships."""
     rules, state, generator = _warm(GameConfig(4, 3, 600.0), batch=4, ticks=30, seed=1)
     B, N = state.ships.x.shape
     K = rules.bullet_slots
@@ -111,14 +112,14 @@ def test_hits_match_brute_force_with_friendly_fire():
     full = TYPES.hit_damage[ships.ship_type.long()].double()
     damage = torch.zeros(B, N, N, dtype=torch.float64)
     first = torch.full((B, N), -1)
-    best = torch.full((B, N), math.inf)
+    best = torch.full((B, N, 2), math.inf, dtype=torch.float64)
     count = allies = 0
     for b in range(B):
         for owner in range(N):
             for k in range(K):
                 if bullets.moves_left[b, owner, k] <= 0:
                     continue
-                hit_tau, target = math.inf, -1
+                hit_order, target = (math.inf, math.inf), -1
                 for t in range(N):
                     if t == owner or not ships.alive[b, t]:
                         continue
@@ -131,8 +132,11 @@ def test_hits_match_brute_force_with_friendly_fire():
                     tau = float((-(start @ relative) / (relative @ relative).clamp_min(1e-12))
                                 .clamp(0.0, 1.0))
                     miss = start + tau * relative
-                    if float(miss @ miss) < float(radius[b, t]) ** 2 and tau < hit_tau:
-                        hit_tau, target = tau, t
+                    # float32 miss distances, as the game orders them
+                    miss_squared = float((miss @ miss).float())
+                    if miss_squared < float(radius[b, t]) ** 2:
+                        if (tau, miss_squared) < hit_order:
+                            hit_order, target = (tau, miss_squared), t
                 assert bool(got.bullet_hit[b, owner, k]) == (target >= 0), (b, owner, k)
                 if target < 0:
                     continue
@@ -146,8 +150,9 @@ def test_hits_match_brute_force_with_friendly_fire():
                                    -(dx * nose_cos + dy * nose_sin))
                 damage[b, owner, target] += float(full[b, owner]) * (
                     1.0 - (1.0 - rules.head_on_fraction) * math.exp(-4.0 * theta * theta / math.pi))
-                if hit_tau < best[b, target]:  # strict: ties keep the lower bullet index
-                    best[b, target], first[b, target] = hit_tau, owner
+                if hit_order < tuple(best[b, target].tolist()):  # strict: exact ties keep
+                    best[b, target] = torch.tensor(hit_order)        # the lower bullet index
+                    first[b, target] = owner
     assert count > 20 and allies > 0, (count, allies)
     assert torch.equal(got.first_shooter.long(), first)
     torch.testing.assert_close(got.damage.double(), damage, rtol=1e-5, atol=1e-4)
@@ -156,8 +161,9 @@ def test_hits_match_brute_force_with_friendly_fire():
 
 @pytest.mark.parametrize("swap", [False, True])
 def test_killer_ties_at_tau_zero_go_to_the_lower_bullet_eager_and_compiled(swap):
-    """Two bullets touch ship 3 at tau = 0: one moving with it (tau = -0.0 before the
-    clamp) and one moving away (negative tau). The lower bullet index wins either way."""
+    """Two bullets touch ship 3 at tau = 0 and 1 m from its centre: one moving with it
+    (tau = -0.0 before the clamp) and one moving away (negative tau). An exact tie in tau
+    and the miss distance goes to the lower bullet index either way."""
     rules = api.rules_of(GameConfig(2, 1, 1200.0))
     state = api.reset(rules, TYPES, api.uniforms(rules, 1))
     N, K = 4, rules.bullet_slots
@@ -167,7 +173,7 @@ def test_killer_ties_at_tau_zero_go_to_the_lower_bullet_eager_and_compiled(swap)
     moves_left = torch.zeros(1, N, K, dtype=torch.int32)
     with_ship, away = (1, 0) if swap else (0, 1)
     start[0, with_ship, 0], step[0, with_ship, 0] = 51.0, 10.0  # same motion as the target
-    start[0, away, 0], step[0, away, 0] = 52.0, 20.0
+    start[0, away, 0], step[0, away, 0] = 51.0, 20.0
     moves_left[0, :2, 0] = 1
     sweep = api.Sweep(ship_x=ships.x, ship_y=ships.y,
                       ship_displacement_x=torch.tensor([[0.0, 0.0, 0.0, 10.0]]),
@@ -182,6 +188,37 @@ def test_killer_ties_at_tau_zero_go_to_the_lower_bullet_eager_and_compiled(swap)
     assert int(shooter(sweep, ships, bullets)[0, 3]) == 0
     compiled = torch.compile(shooter, fullgraph=True, dynamic=False)
     assert int(compiled(sweep, ships, bullets)[0, 3]) == 0
+
+
+@pytest.mark.parametrize("swap", [False, True])
+def test_a_tau_tie_goes_to_the_closer_pass_whatever_the_index(swap):
+    """A bullet of ship 1 (team 0) ends its move inside both ship 2 (an ally) and ship 5 (an
+    enemy), still closing on each: tau = 1 for both. It hits the one whose centre it ends
+    nearer, in either slot order, and that ship's killer is its shooter. An order by index
+    would always pick the ally (team-major: team 0's ships come first), which made team 0's
+    bullets hit their own team and team 1's hit the enemy."""
+    rules = api.rules_of(GameConfig(3, 1, 1200.0))
+    state = api.reset(rules, TYPES, api.uniforms(rules, 1))
+    N, K = 6, rules.bullet_slots
+    near, far = (5, 2) if swap else (2, 5)
+    x = torch.tensor([[-300.0, 0.0, 0.0, -300.0, -300.0, 0.0]])
+    y = torch.tensor([[300.0, 0.0, 0.0, 600.0, 900.0, 0.0]])
+    x[0, near], x[0, far] = 103.0, 105.0  # hit radius 8 m: the bullet ends at 100 m
+    ships = replace(state.ships, x=x, y=y, alive=torch.ones(1, N, dtype=torch.bool),
+                    shield=torch.zeros(1, N), ship_type=torch.zeros(1, N, dtype=torch.int32))
+    start, step = torch.zeros(1, N, K), torch.zeros(1, N, K)
+    start[0, 1, 0], step[0, 1, 0] = 85.0, 15.0
+    moves_left = torch.zeros(1, N, K, dtype=torch.int32)
+    moves_left[0, 1, 0] = 1
+    sweep = api.Sweep(ship_x=ships.x, ship_y=ships.y, ship_displacement_x=torch.zeros(1, N),
+                      ship_displacement_y=torch.zeros(1, N), bullet_x=start,
+                      bullet_y=torch.zeros(1, N, K), bullet_displacement_x=step,
+                      bullet_displacement_y=torch.zeros(1, N, K))
+    bullets = replace(state.bullets, moves_left=moves_left, direction_x=torch.ones(1, N, K),
+                      direction_y=torch.zeros(1, N, K))
+    got = hits(rules, TYPES, sweep, ships, bullets, ships.alive)
+    assert got.damage[0, 1, near] > 0 and got.damage[0, 1, far] == 0
+    assert got.first_shooter[0].tolist() == [-1 if n != near else 1 for n in range(N)]
 
 
 # ------------------------------------------------------------------ the medium
