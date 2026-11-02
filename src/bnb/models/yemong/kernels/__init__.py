@@ -23,6 +23,7 @@ class Switches:
     attention: bool = True  # a spatial sublayer's rotary and attention (SpatialBlock._attend)
     gated_mlp: bool = True  # the gated MLP's hidden layer, 16-bit (GatedMLP.forward)
     temporal_mix: bool = True  # a temporal sublayer's gates, scan and output gate (segments)
+    heads: bool = True  # linear-norm-gelu-linear, 16-bit (heads, the encoder's projections)
 
 
 switches = Switches()

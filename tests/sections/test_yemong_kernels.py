@@ -19,7 +19,9 @@ if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repositor
 
 from bench.yemong_synthetic import random_segment, time_slice  # noqa: E402
 from bnb.models.yemong import kernels  # noqa: E402
+from bnb.models.yemong.heads import HeadGroup  # noqa: E402
 from bnb.models.yemong.kernels import attention, gated, scan  # noqa: E402
+from bnb.models.yemong.kernels import heads as head_kernel  # noqa: E402
 from bnb.models.yemong.layers import GatedMLP  # noqa: E402
 from bnb.models.yemong.spatial import SpatialBlock  # noqa: E402
 from bnb.models.yemong.temporal import TemporalBlock, parallel_scan  # noqa: E402
@@ -257,6 +259,49 @@ def test_temporal_mix_is_as_close_as_the_plain_sublayer(precision):
 def test_temporal_mix_is_bitwise_repeatable():
     block, inputs, starts = _temporal_case(seed=1)
     first, second = (_temporal_run(block, inputs, starts, "bfloat16") for _ in range(2))
+    _assert_identical(first[0] + first[1], second[0] + second[1])
+
+
+# ------------------------------------------------------------------ heads
+
+
+def _head_group(seed: int = 0, width: int = 128, outputs=(7, 300)) -> HeadGroup:
+    torch.manual_seed(seed)
+    group = HeadGroup(width, 2 * width, outputs).to(CUDA)
+    with torch.no_grad():
+        for parameter in group.parameters():
+            parameter.add_(0.1 * torch.randn_like(parameter))  # live lasts, norms and biases
+    return group
+
+
+def _head_run(group: HeadGroup, inputs: torch.Tensor, bfloat16: bool):
+    """The group's outputs and the gradients of the inputs and every parameter."""
+    group.zero_grad(set_to_none=True)
+    inputs = inputs.detach().requires_grad_()
+    with torch.autocast("cuda", torch.bfloat16, enabled=bfloat16):
+        outputs = group(inputs)
+    _weighted_sum(outputs).backward()
+    return ([output.detach() for output in outputs],
+            [inputs.grad] + [parameter.grad for parameter in group.parameters()])
+
+
+def test_heads_in_bf16_are_as_close_as_the_plain_heads():
+    group = _head_group()
+    inputs = torch.randn(9, 37, 128, generator=_generator(0), device=CUDA)
+    expected = _head_run(copy.deepcopy(group).double(), inputs.double(), False)
+    with kernels.plain():
+        plain = _head_run(group, inputs, True)
+    assert head_kernel.applies(inputs, group.hidden) is False  # outside autocast
+    fast = _head_run(group, inputs, True)
+    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1],
+                               strict=True):
+        _assert_as_close(got, slow, want)
+
+
+def test_heads_are_bitwise_repeatable():
+    group = _head_group(seed=1)
+    inputs = torch.randn(9, 37, 128, generator=_generator(1), device=CUDA)
+    first, second = (_head_run(group, inputs, True) for _ in range(2))
     _assert_identical(first[0] + first[1], second[0] + second[1])
 
 

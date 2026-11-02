@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from . import kernels
+from .kernels import heads as head_kernel
 from .layers import norm
 from .spatial import SpatialBlock, Tables
 from .temporal import TemporalBlock
@@ -53,8 +55,25 @@ class Encoder(nn.Module):
         # layer, so theirs do not depend on it.
         self.absent_zone = nn.Parameter(torch.empty(map_width)) if zone_inputs else None
 
-    def _shared(self, tokens: torch.Tensor) -> torch.Tensor:
-        return self.shared_norm(self.shared(tokens))
+    def _kinds(self, ship: torch.Tensor, global_token: torch.Tensor, field: torch.Tensor,
+               zone: torch.Tensor | None) -> tuple[torch.Tensor, torch.Tensor]:
+        """shared(kind(tokens)) of the query kinds (ships, then the global token) and of the
+        memory kinds (fields, then zones), before the shared norm."""
+        if kernels.switches.heads and head_kernel.applies(ship, self.ship.first.out_features):
+            def project(kind: KindProjection, tokens: torch.Tensor) -> torch.Tensor:
+                return head_kernel.head(tokens, kind.first, kind.first_norm, self.shared)
+
+            queries = torch.cat([project(self.ship, ship),
+                                 project(self.global_token, global_token)], -2)
+            memory = [project(self.field, field)]
+            if self.zone is not None:
+                memory.append(project(self.zone, zone))
+            return queries, torch.cat(memory, -2)
+        queries = self.shared(torch.cat([self.ship(ship), self.global_token(global_token)], -2))
+        memory = self.field(field)
+        if self.zone is not None:
+            memory = torch.cat([memory, self.zone(zone)], -2)
+        return queries, self.shared(memory)
 
     def forward(self, ship: torch.Tensor, global_token: torch.Tensor, field: torch.Tensor,
                 zone: torch.Tensor | None = None, zone_present: torch.Tensor | None = None
@@ -62,11 +81,9 @@ class Encoder(nn.Module):
         """ship (..., N, Fs), global_token (..., 1, Fg), field (..., M, Ff) and, for an
         encoder with zones, zone (..., Z, Fz) and zone_present (..., Z) bool to the queries
         (..., N + 1, D) and the map memory (..., M + Z, Dm), fields first."""
-        queries = self._shared(torch.cat([self.ship(ship), self.global_token(global_token)], -2))
-        memory = self.field(field)
-        if self.zone is not None:
-            memory = torch.cat([memory, self.zone(zone)], -2)
-        memory = self.map_memory_norm(self.map_memory(self._shared(memory)))
+        queries, memory = self._kinds(ship, global_token, field, zone)
+        queries = self.shared_norm(queries)
+        memory = self.map_memory_norm(self.map_memory(self.shared_norm(memory)))
         if self.zone is not None:
             fields = field.shape[-2]
             zones = torch.where(zone_present[..., None], memory[..., fields:, :],

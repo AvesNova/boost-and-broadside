@@ -7,7 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from . import codes, critic
+from . import codes, critic, kernels
+from .kernels import heads as head_kernel
 from .layers import norm
 
 FIRST_GAIN = math.sqrt(2.0)
@@ -41,6 +42,11 @@ class HeadGroup(nn.Module):
             nn.init.zeros_(last.bias)
 
     def forward(self, inputs: torch.Tensor) -> list[torch.Tensor]:
+        if kernels.switches.heads and head_kernel.applies(inputs, self.hidden):
+            blocks = zip(self.first.weight.split(self.hidden), self.first.bias.split(self.hidden),
+                         self.norms, self.lasts, strict=True)
+            return [head_kernel.head(inputs, (weight, bias), normed, last)
+                    for weight, bias, normed, last in blocks]
         hidden = self.first(inputs).split(self.hidden, -1)
         return [last(F.gelu(normed(part)))
                 for part, normed, last in zip(hidden, self.norms, self.lasts, strict=True)]
@@ -93,4 +99,6 @@ class ShotTrajectoryHead(nn.Module):
         """latent (..., D) from `self.latent`; age_features (..., ages, F) broadcasting
         against latent[..., None, :]. Returns (..., ages, outputs)."""
         hidden = F.gelu(self.first_norm(latent[..., None, :] + self.age(age_features)))
+        if kernels.switches.heads and head_kernel.applies(hidden, self.middle.out_features):
+            return head_kernel.head(hidden, self.middle, self.middle_norm, self.last)
         return self.last(F.gelu(self.middle_norm(self.middle(hidden))))
