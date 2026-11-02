@@ -7,6 +7,7 @@ import typing
 import torch
 
 from bnb.contracts import REWARD_LEVELS, GameConfig, Obs, Privileged
+from bnb.contracts.action import to_joint
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
@@ -40,6 +41,4 @@ def test_yemong_outputs():
     torch.testing.assert_close(out.outcome.sum(-1), torch.ones(4))
     leaves = torch.utils._pytree.tree_leaves(out.replay)
     assert leaves and all(leaf.shape[0] == 4 for leaf in leaves)
-    assert torch.equal(
-        carry.previous_action, (action.power * 14 + action.stick * 2 + action.shoot).to(torch.int32)
-    )
+    assert torch.equal(carry.previous_action, to_joint(action).to(torch.int32))

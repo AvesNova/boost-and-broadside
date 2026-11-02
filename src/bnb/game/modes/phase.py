@@ -5,7 +5,7 @@ a new match's mode state and map.
 
 Each hook takes one mode (static, `ModeRules`) and runs on that mode's slice of the batch
 (`layout.per_mode`): it dispatches on the mode's name, so a slice holds one mode's rules. A
-mode without zones leaves its zone slots (Z = 5 in every mode) absent: zero, and untouched.
+mode without zones leaves its zone slots (Z = ZONE_SLOTS in every mode) absent: zero, and untouched.
 """
 
 import math
@@ -14,7 +14,7 @@ from typing import NamedTuple
 import torch
 
 from ..rules import Rules
-from ..state import Fields, ModeState, Ships, apply, by_team, replace
+from ..state import Fields, ModeState, Ships, apply, enemy, replace, ship_team
 from . import frontline
 from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
@@ -29,10 +29,6 @@ class Phase(NamedTuple):
     objective: torch.Tensor
     won: torch.Tensor
     result: torch.Tensor
-
-
-def _team(rules: Rules, device) -> torch.Tensor:
-    return torch.arange(rules.num_ships, device=device) // rules.ships_per_team
 
 
 def _in_zones(mode: ModeState, ships: Ships) -> torch.Tensor:
@@ -56,14 +52,14 @@ def mode_phase(
     zero = torch.zeros_like(ships.x)
     no = torch.zeros_like(mode.front, dtype=torch.bool)
     if mode_rules.name == TEAM_DEATHMATCH:
-        # Every death scores for the other team, whatever its cause.
-        deaths = by_team(died.to(torch.int32)).sum(-1)  # (B, 2) by the dead ship's team
-        score = mode.score + deaths.flip(-1)
+        # Every death scores for the other team, whatever its cause: (B, 2) by the scoring
+        # team, its enemy's deaths.
+        score = mode.score + enemy(died.to(torch.int32)).sum(-1)
         reached = score >= mode_rules.kills_per_ship * rules.ships_per_team
         result = reached[:, 0].to(torch.int32) - reached[:, 1].to(torch.int32)  # both: a draw
         return Phase(replace(mode, score=score), zero, zero, reached.any(-1), result)
     if mode_rules.name == FRONTLINE:
-        team = _team(rules, ships.x.device)
+        team = ship_team(rules.ships_per_team, ships.x.device)
         inside = _in_zones(mode, ships) & alive[..., None]
         capture = frontline.capture_step(
             team,

@@ -7,9 +7,8 @@ import torch
 from bnb.contracts import GameConfig
 from bnb.contracts.action import Action
 from bnb.contracts.config import MODES, TEAMS
-from bnb.contracts.obs import FIELD_COLUMNS, GLOBAL_COLUMNS, SHIP_COLUMNS, ZONE_COLUMNS
+from bnb.contracts.obs import FIELD_COLUMNS, GLOBAL_COLUMNS, SHIP_COLUMNS, ZONE_COLUMNS, ZONE_SLOTS
 from bnb.game import api
-from bnb.game.modes.rules import ZONE_SLOTS
 
 SHIPS_PER_TEAM, FIELDS = 3, 4
 

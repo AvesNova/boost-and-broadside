@@ -12,8 +12,9 @@ from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 
 from ..layout import environment, per_mode
 from ..modes.observation import mode_globals, zone_rows
+from ..physics.numerics import flight_path_velocity
 from ..rules import TEAMS, Rules
-from ..state import State, replace
+from ..state import State, replace, ship_team
 from .sight import visibility
 
 # The row layout `ship_rows` writes: the hidden columns, then the always-shown ones.
@@ -66,8 +67,7 @@ def _hidden_columns(rules: Rules, state: State) -> torch.Tensor:
     speed = ships.proper_speed / torch.exp(ships.log_refractive_index)
     cos, sin = ships.heading_cos, ships.heading_sin
     angle_cos, angle_sin = ships.angle_of_attack_cos, ships.angle_of_attack_sin
-    velocity_x = speed * (cos * angle_cos + sin * angle_sin)
-    velocity_y = speed * (sin * angle_cos - cos * angle_sin)
+    velocity_x, velocity_y = flight_path_velocity(speed, cos, sin, angle_cos, angle_sin)
     return torch.stack(
         [
             ships.x,
@@ -107,7 +107,7 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     )
 
     hidden = _hidden_columns(rules, state)[:, order]  # (B, 2, N, SHIP_HIDDEN_ZERO) by row
-    team_relative = (torch.arange(N, device=device) // S).float()  # by row: static
+    team_relative = ship_team(S, device).float()  # by row: static
     alive, fired = ships.alive[:, order].float(), ships.fired[:, order].float()
     respawn_wait = ships.respawn_wait[:, order].float() * rules.tick_length
     ship_type, spawned = ships.ship_type[:, order].float(), ships.spawned[:, order].float()
@@ -162,7 +162,7 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
     )
 
     truth = Privileged(
-        team=(torch.arange(N, device=device) // S).to(torch.int32).expand(B, N),
+        team=ship_team(S, device).to(torch.int32).expand(B, N),
         view_order=order.expand(B, TEAMS, N),
         ships=ship_rows(torch.ones_like(visible), torch.zeros_like(since)),
     )

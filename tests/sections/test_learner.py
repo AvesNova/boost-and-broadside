@@ -15,6 +15,7 @@ import yemong_cases as cases
 from torch.utils import _pytree
 
 from bnb.contracts import Obs, Outputs, Pool
+from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.learn import labels
@@ -147,7 +148,7 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     alive = ships[..., SHIP["alive"]] > 0.5
     own_alive = alive[..., :OWN]
     action = trajectory.action
-    joint = (action.power * 14 + action.stick * 2 + action.shoot).long()
+    joint = to_joint(action).long()
 
     # policy and entropy, over living own ships
     log_probabilities = out.policy_logits.log_softmax(-1)

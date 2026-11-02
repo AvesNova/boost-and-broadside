@@ -13,7 +13,7 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
 - [x] 2 dead code and the opaque state
 - [x] 3 the sweep's tests
 - [x] 4 docs (stale-page review at the end)
-- [ ] 5 layering and duplication
+- [x] 5 layering and duplication
 - [ ] 6 test hygiene
 - [ ] 8 additions
 
@@ -236,6 +236,52 @@ a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is 
 - **Same-day reviews:** the staleness check already compares against the page's own last
   commit; what blocked a second review on one day was a `reviewed:` value that did not
   change. The writing guide now says to write the date and time (`2026-11-03 14:20`).
+
+### 5. Layering and duplication
+
+- **`test_imports.py`** resolves a relative import against the importing module's
+  package before checking the layer order. It found nothing upward; checked by adding
+  `from ...runtime import lineup` to `game/physics/step.py`: it fails.
+- **`PRESETS`:** not moved (request below). The play shell imports it from
+  `bnb.game.api`, and `bnb/play/` is off limits; `bnb.game` cannot re-export from
+  `bnb.runtime` (an upward import), and a copy would be a second definition. The runtime
+  now reads it through `bnb.game.api`.
+- **`test_game_section.py`** no longer imports `race_arm`: it holds its own copies of the
+  three name maps it reads (`FLIGHT_SHARED`, `CARD`, `RULES`).
+- **One definition each:**
+  1. a ship's team: `bnb.game.state.ship_team(ships_per_team, device)`, used by
+     `observe.py` (twice), `phase.py`, `spawning.py` and (through the API) the rollout;
+  2. the enemy flip: `bnb.game.state.enemy` (moved from `sight.py`), used by `sight.py`,
+     `spawns.py` (twice) and `phase.py`'s score (its enemy's deaths);
+  3. flight-path velocity: `numerics.flight_path_velocity`, the same expression, in
+     `bullets.launch` and `observe.py`;
+  4. disc sampling: `spawning.uniform_disc`, used by the map (`new_map`) and every spawn
+     rule;
+  5. magic numbers:
+     - 0.85: `FIELD_DISC_FRACTION` (`bnb.game.rules`), the field disc of both maps
+       (`new_map`, `frontline.mirror_fields`). `ModeRules.group_centre_fraction` stays its
+       own field: a spawn rule of team deathmatch that equals it by choice, tunable alone;
+     - the zone count: `ZONE_SLOTS` in `bnb.contracts.obs`; `frontline.ZONES` is defined
+       from it (Frontline fills every slot) and `FRONTLINE_ZONES` is gone.
+       `inputs.ZONE_ROLES` (5) stays: the roles a zone can have, a different count;
+     - 2600 and 40 m: kept apart. `MAP_SCALE_RADIUS` and `Rules.field_band_width` are game
+       rules; Yemong's `ARENA_SCALE`, `FIELD_BAND_SCALE` and `GRADIENT_SCALE` are input
+       scales, constants of the model's `VERSION` that must not follow a rule change.
+       A comment in `inputs.py` says so;
+  6. mode names: `TEAM_DEATHMATCH`, `FRONTLINE`, `SANDBOX` and `MODES` in
+     `bnb.contracts.config`; `game/modes/rules.py`, `GameConfig`'s default and the CLI's
+     import them;
+  7. two-hot: `codes.two_hot_at` (public now); `critic.two_hot` computes its bins and calls
+     it;
+  8. action sizes: `bench/cell.py` and the four tests use `NUM_POWER`, `NUM_STICK`,
+     `NUM_SHOOT`; `test_learner.py` and `test_yemong_contract.py` use `to_joint`;
+  9. the batch multiple: `bench.sizes.environments_for` asks `environment_multiple` of
+     the skeleton lineup (8) or the mixed pools (64); the drawn cells keep 360, 1024 and
+     1576 environments;
+  10. `INFINITY`: only `spawns.py` defines it now (`combat.py`'s went in section 6);
+  11. the core radius: `sight.core_radius(fields)`, used by `visibility` and by
+      `api.core_radius`.
+- **Same-day reviews:** see section 4.
 
 ## Decisions and deviations
 

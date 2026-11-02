@@ -4,6 +4,8 @@ the outcome classes and their lambda targets, and the percentile scale of return
 
 import torch
 
+from .codes import two_hot_at
+
 WIN, TIE, LOSS, UNRESOLVED = range(4)
 OUTCOMES = 4
 
@@ -30,10 +32,7 @@ def two_hot(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
     upper = torch.clamp(torch.searchsorted(bins, values.contiguous(), right=True), 1, count - 1)
     lower = upper - 1
     weight = torch.clamp((values - bins[lower]) / (bins[upper] - bins[lower]), 0.0, 1.0)
-    index = torch.arange(count, device=values.device)
-    return (1.0 - weight)[..., None] * (index == lower[..., None]) + weight[..., None] * (
-        index == upper[..., None]
-    )
+    return two_hot_at(lower, weight, count)
 
 
 def expectation(logits: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:

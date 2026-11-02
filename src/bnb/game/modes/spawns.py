@@ -12,9 +12,9 @@ import math
 
 import torch
 
-from ..physics.spawning import Placement, formation, formation_rank
+from ..physics.spawning import Placement, formation, formation_rank, uniform_disc
 from ..rules import Rules
-from ..state import ModeState, by_team
+from ..state import ModeState, by_team, enemy
 from .frontline import TEAM0_DEFENSE, TEAM0_SPAWN, TEAM1_DEFENSE, TEAM1_SPAWN
 from .rules import FRONTLINE, TEAM_DEATHMATCH, ModeRules
 
@@ -55,21 +55,13 @@ def _farthest_from_enemies(
     B, N, candidates = x.shape
     # One stacked tensor, so the compiled stage stores the targets once instead of
     # recomputing them (a sqrt, a cos and a sin at a reset) for every pair: half the time.
-    targets = by_team(torch.stack([target_x, target_y], -1)).flip(1)[:, :, None, None]
+    targets = enemy(torch.stack([target_x, target_y], -1))[:, :, None, None]
     dx = by_team(x)[..., None] - targets[..., 0]  # (B, 2, S, C, S)
     dy = by_team(y)[..., None] - targets[..., 1]
     distance = dx * dx + dy * dy
     if counts is not None:
         distance = torch.where(counts[:, :, :, None, :], distance, INFINITY)
     return _best(x, y, distance.amin(-1).reshape(B, N, candidates))
-
-
-def _disc(radius, radius_uniform: torch.Tensor, angle_uniform: torch.Tensor):
-    """Uniform points in a disc of this radius (a number, or broadcasting against the
-    uniforms) around the origin."""
-    distance = radius * torch.sqrt(radius_uniform)
-    angle = 2.0 * math.pi * angle_uniform
-    return distance * torch.cos(angle), distance * torch.sin(angle)
 
 
 def _clip_to_disc(x: torch.Tensor, y: torch.Tensor, radius: torch.Tensor):
@@ -101,7 +93,7 @@ def _group_centres(mode_rules: ModeRules, arena_radius: torch.Tensor, uniforms: 
     nearest earlier centre."""
     B, G = uniforms.shape[0], len(mode_rules.spawn_groups)
     drawn = uniforms.reshape(B, G, mode_rules.spawn_candidates, 2)
-    x, y = _disc(
+    x, y = uniform_disc(
         (mode_rules.group_centre_fraction * arena_radius)[:, None, None],
         drawn[..., 0],
         drawn[..., 1],
@@ -162,17 +154,16 @@ def deathmatch_placement(
 
     # Uniform over the arena: the respawn rule, and the grouped rule's fallback.
     radius = arena_radius[:, None, None]
-    uniform_x, uniform_y = _disc(radius, radius_uniform, angle_uniform)
+    uniform_x, uniform_y = uniform_disc(radius, radius_uniform, angle_uniform)
     if groups:
         centres_x, centres_y = _group_centres(
             mode_rules, arena_radius, uniforms[:, :per_environment]
         )
         group = _group_of_rank(groups, formation_rank(rules, keys))  # (B, N)
-        offset_x, offset_y = _disc(mode_rules.group_radius, radius_uniform, angle_uniform)
+        offset_x, offset_y = uniform_disc(mode_rules.group_radius, radius_uniform, angle_uniform)
         reset_x = centres_x.gather(1, group)[..., None] + offset_x
         reset_y = centres_y.gather(1, group)[..., None] + offset_y
-        by_group = by_team(group)
-        rival = by_group[..., :, None] == by_group.flip(1)[..., None, :]  # same-group enemies
+        rival = by_team(group)[..., :, None] == enemy(group)[..., None, :]  # same-group enemies
         counts = rival | ~reset[:, None, None, None]
         anchor_x, anchor_y, any_living = _anchors(alive, per_ship[..., 2 * candidates + 1], x, y)
         distance = (
@@ -231,7 +222,7 @@ def frontline_placement(
     spawn_x, spawn_y = centre((TEAM0_SPAWN, TEAM1_SPAWN))
     target_x, target_y = centre((TEAM1_DEFENSE, TEAM0_DEFENSE))
     radius = (mode_rules.spawn_zone_fraction * mode_rules.zone_radius * map_scale)[:, None]
-    offset_x, offset_y = _disc(radius, per_ship[..., 0], per_ship[..., 1])
+    offset_x, offset_y = uniform_disc(radius, per_ship[..., 0], per_ship[..., 1])
     x, y = spawn_x + offset_x, spawn_y + offset_y
     to_x, to_y = target_x - x, target_y - y
     length = torch.sqrt(to_x * to_x + to_y * to_y).clamp_min(1e-6)

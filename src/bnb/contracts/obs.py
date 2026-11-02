@@ -76,6 +76,11 @@ GLOBAL_COLUMNS = (
 )
 # Times (shield_recharge_wait, gun_cooldown, respawn_wait, time_since_seen) are in seconds.
 
+# Z: the zone slots of every observation in every mode, a fixed shape like the field count,
+# so a model sees the same tokens in any batch. Frontline fills them all; a mode without
+# zones leaves them absent.
+ZONE_SLOTS = 5
+
 SHIP = {name: i for i, name in enumerate(SHIP_COLUMNS)}
 FIELD = {name: i for i, name in enumerate(FIELD_COLUMNS)}
 ZONE = {name: i for i, name in enumerate(ZONE_COLUMNS)}
@@ -88,7 +93,7 @@ class Obs:
 
     ships (..., N, len(SHIP_COLUMNS)), own team's S ships first, then by team_relative and slot;
     fields (..., M, len(FIELD_COLUMNS)); globals (..., len(GLOBAL_COLUMNS)); zones (..., Z,
-    len(ZONE_COLUMNS)), Z = 5 zone slots in every mode (a mode without zones shows them
+    len(ZONE_COLUMNS)), Z = ZONE_SLOTS in every mode (a mode without zones shows them
     absent).
 
     A stored batch may leave out (None) a part its model does not read.

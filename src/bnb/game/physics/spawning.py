@@ -9,9 +9,9 @@ from typing import NamedTuple
 
 import torch
 
-from ..rules import FIELD_LEVELS, TEAMS, Rules
+from ..rules import FIELD_DISC_FRACTION, FIELD_LEVELS, TEAMS, Rules
 from ..ship_types import ShipTypes, per_ship
-from ..state import Fields, Ships, replace, where
+from ..state import Fields, Ships, replace, ship_team, where
 from .medium import medium
 from .numerics import lookup
 
@@ -38,6 +38,14 @@ class Placement(NamedTuple):
     heading_sin: torch.Tensor
 
 
+def uniform_disc(radius, radius_uniform: torch.Tensor, angle_uniform: torch.Tensor):
+    """(x, y) uniform points in a disc of this radius (a number, or broadcasting against the
+    uniforms) around the origin, from two uniforms in [0, 1) each."""
+    distance = radius * torch.sqrt(radius_uniform)
+    angle = 2.0 * math.pi * angle_uniform
+    return distance * torch.cos(angle), distance * torch.sin(angle)
+
+
 def new_map(
     rules: Rules, arena_radius: torch.Tensor, map_scale: torch.Tensor, uniforms: torch.Tensor
 ) -> tuple[Fields, torch.Tensor, torch.Tensor]:
@@ -50,9 +58,9 @@ def new_map(
     B, M = uniforms.shape[0], rules.num_fields
     P = M // 2
     per_field = uniforms[:, : 4 * M].reshape(B, M, 4)
-    distance = (0.85 * arena_radius)[:, None] * torch.sqrt(per_field[:, :P, 0])
-    angle = 2.0 * math.pi * per_field[:, :P, 1]
-    x, y = distance * torch.cos(angle), distance * torch.sin(angle)
+    x, y = uniform_disc(
+        (FIELD_DISC_FRACTION * arena_radius)[:, None], per_field[:, :P, 0], per_field[:, :P, 1]
+    )
     drawn = torch.cat(
         [per_field[:, :P], per_field[:, :P], per_field[:, 2 * P :]], 1
     )  # pairs, centre
@@ -93,8 +101,8 @@ def formation(
     """Game spec 8's formation for every ship: around its team's centre on the spawn axis
     (B,), at its rank's phase plus its team's rotation (B, 2), nose toward the other
     centre. keys (B, N): the formation keys; arena_radius and map_scale (B,)."""
-    N, S = keys.shape[1], rules.ships_per_team
-    team = torch.arange(N, device=keys.device) // S
+    S = rules.ships_per_team
+    team = ship_team(S, keys.device)
     side = (2 * team - 1).to(torch.float32)  # team 0 on the -axis side, team 1 on the +
     phase = formation_rank(rules, keys) / S + rotation.repeat_interleave(S, 1)
     angle = 2.0 * math.pi * torch.frac(phase)

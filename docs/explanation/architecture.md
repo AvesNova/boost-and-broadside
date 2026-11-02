@@ -105,7 +105,7 @@ compiled as one function by Inductor's C++ backend.
 - Every size is fixed for a run. The rollout allocates its buffers once, when it is built.
 - State is float32; counters are int32 and flags bool. Models may use bfloat16 inside.
   float64 appears only in the reference tests.
-- There are two teams, a constant (`bnb.game.rules.TEAMS`).
+- There are two teams, a constant (`bnb.contracts.config.TEAMS`).
 
 ## One code path
 

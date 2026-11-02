@@ -16,10 +16,13 @@ from typing import NamedTuple
 
 import torch
 
+from bnb.contracts.obs import ZONE_SLOTS
+
 from ..physics.numerics import lookup
+from ..rules import FIELD_DISC_FRACTION
 from ..state import Fields
 
-ZONES = 5
+ZONES = ZONE_SLOTS  # Frontline's zones fill every slot
 TEAM0_SPAWN, TEAM0_DEFENSE, NEUTRAL, TEAM1_DEFENSE, TEAM1_SPAWN = range(ZONES)
 BASE_ROLES = (NEUTRAL, TEAM0_SPAWN, TEAM0_DEFENSE, TEAM1_DEFENSE, TEAM1_SPAWN)  # by zone, front 0
 EULER_GAMMA = 0.5772156649015329
@@ -230,14 +233,14 @@ def mirror_fields(
 ) -> Fields:
     """The point-symmetric map's fields made mirror-symmetric about the axis at angle
     `rotation` through the centre and zone 0: field P + i is field i reflected about it,
-    and an odd last field lies on the axis at signed distance 0.85 R_a (2u - 1) (u the
-    field's first uniform; arena_radius (B,)). Radii, bands and levels are as drawn."""
+    and an odd last field lies on the axis at signed distance FIELD_DISC_FRACTION R_a (2u - 1)
+    (u the field's first uniform; arena_radius (B,)). Radii, bands and levels are as drawn."""
     B, M = fields.x.shape
     P = M // 2
     cos2, sin2 = torch.cos(2.0 * rotation)[:, None], torch.sin(2.0 * rotation)[:, None]
     x, y = fields.x[:, :P], fields.y[:, :P]
     reflected_x, reflected_y = cos2 * x + sin2 * y, sin2 * x - cos2 * y
-    along = 0.85 * arena_radius * (2.0 * map_uniforms[:, 4 * (M - 1)] - 1.0)
+    along = FIELD_DISC_FRACTION * arena_radius * (2.0 * map_uniforms[:, 4 * (M - 1)] - 1.0)
     on_axis = (along * torch.cos(rotation))[:, None], (along * torch.sin(rotation))[:, None]
     keep = M - 2 * P  # 1 for an odd M
     return Fields(

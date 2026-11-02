@@ -13,15 +13,17 @@ import math
 
 from bnb.contracts import GameConfig, Pool, ticks_of
 from bnb.contracts.config import TEAMS
+from bnb.contracts.obs import ZONE_SLOTS
 from bnb.contracts.pools import environments_per_pool, pool_game
 
-from .modes.rules import CLOCKS, ZONE_SLOTS, ModeRules, mode_rules_of
+from .modes.rules import CLOCKS, ModeRules, mode_rules_of
 
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
 POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
 FIELD_LEVELS = (-2, -1, 1, 2)
 LN_SQRT2 = 0.5 * math.log(2.0)
-MAP_SCALE_RADIUS = 2600.0  # the map scale is arena_radius / 2600
+MAP_SCALE_RADIUS = 2600.0  # m: the arena radius of map scale 1 (map_scale = R_a / this)
+FIELD_DISC_FRACTION = 0.85  # the fields' centres lie within this fraction of the arena radius
 BULLET_LIFE = 0.4  # s, every bullet's: 12 moves at 30 Hz
 
 

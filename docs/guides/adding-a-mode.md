@@ -13,9 +13,9 @@ page lists every place a new one plugs in.
 
 ## 1. Name it and give it a clock
 
-- Add the name to `bnb.contracts.config.MODES`. `GameConfig` rejects any other name.
-- Add a constant for it beside `bnb.game.modes.rules.TEAM_DEATHMATCH`{.nolink},
-  `bnb.game.modes.rules.FRONTLINE`{.nolink} and `bnb.game.modes.rules.SANDBOX`{.nolink}.
+- Add a constant for its name beside `bnb.contracts.config.TEAM_DEATHMATCH`{.nolink},
+  `bnb.contracts.config.FRONTLINE`{.nolink} and `bnb.contracts.config.SANDBOX`{.nolink}, and
+  add it to `bnb.contracts.config.MODES`. `GameConfig` rejects any other name.
 - Add its default episode length and respawn wait to `bnb.game.modes.rules.CLOCKS`. Both
   must be whole multiples of the tick.
 
@@ -33,7 +33,7 @@ and each environment reads its own mode's prefix.
 ## 3. Its state
 
 The mode's part of the match is `bnb.game.state.ModeState`. Every environment of every
-mode carries the same leaves and the same `bnb.game.modes.rules.ZONE_SLOTS` zone slots, so
+mode carries the same leaves and the same `bnb.contracts.obs.ZONE_SLOTS` zone slots, so
 a mixed batch is one set of tensors. A mode that needs new state adds leaves there; other
 modes leave them zero and pass them through unchanged.
 

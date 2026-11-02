@@ -11,7 +11,7 @@ import math
 import torch
 
 from bnb.contracts.obs import ZONE_COLUMNS
-from bnb.game.modes.rules import ZONE_SLOTS
+from bnb.contracts.obs import ZONE_SLOTS
 from bnb.models.yemong import belief, codes, critic, density, features, heads, layers, shots
 from bnb.models.yemong.network import Encoder, Trunk
 from bnb.models.yemong.spatial import SpatialBlock

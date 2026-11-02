@@ -3,12 +3,14 @@
 import torch
 
 from ..rules import Rules
-from ..state import State, by_team
+from ..state import Fields, State, by_team, enemy
 
 
-def enemy(values: torch.Tensor) -> torch.Tensor:
-    """(B, N) per-ship values as seen by each team's enemy: row T holds team 1 - T."""
-    return by_team(values).flip(1)
+def core_radius(fields: Fields) -> torch.Tensor:
+    """(B, M) each field's core radius (m): the disc the sight test treats as the core
+    (game spec 10.1), the radius less half the band, and 0 for a field with no flat
+    interior."""
+    return (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)
 
 
 def core_membership(cores: tuple, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -77,7 +79,7 @@ def visibility(state: State) -> torch.Tensor:
     d^2 <= V^2 with the observer's V (`Match.vision_range`). In an environment without fog
     every living ship is visible."""
     fields, ships = state.fields, state.ships
-    core = (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)  # no flat interior: none
+    core = core_radius(fields)
     cores = (fields.x, fields.y, core * core)
     observer_x, observer_y = by_team(ships.x), by_team(ships.y)
     target_x, target_y = enemy(ships.x), enemy(ships.y)

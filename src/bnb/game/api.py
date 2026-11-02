@@ -36,6 +36,7 @@ from bnb.contracts.obs import SHIP
 from .layout import environment
 from .modes import frontline
 from .modes.rules import PRESETS
+from .perception import sight
 from .perception.observe import perceive, view_order
 from .perception.sight import vision_range
 from .physics.bullets import Launch, launch_state
@@ -140,9 +141,8 @@ def log_index(
 def core_radius(state: State) -> torch.Tensor:
     """(B, M) each field's core radius (m): the disc the sight test treats as the core
     (game spec 10.1), the radius less half the band, and 0 for a field with no flat
-    interior. A test holds it to `visibility`, which builds the same cores."""
-    fields = state.fields
-    return (fields.radius - 0.5 * fields.band_width).clamp_min(0.0)
+    interior."""
+    return sight.core_radius(state.fields)
 
 
 def zone_sides(state: State) -> tuple[torch.Tensor, torch.Tensor]:

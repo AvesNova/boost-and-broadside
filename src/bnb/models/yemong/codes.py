@@ -138,7 +138,8 @@ def _scalar_coordinate(values: torch.Tensor, low: float, high: float, bins: int)
     return coordinate, lower, coordinate - lower, spacing
 
 
-def _two_hot_at(lower: torch.Tensor, fraction: torch.Tensor, bins: int) -> torch.Tensor:
+def two_hot_at(lower: torch.Tensor, fraction: torch.Tensor, bins: int) -> torch.Tensor:
+    """(...) to (..., bins): weight 1 - fraction on bin `lower` and fraction on the next."""
     lower = lower.long()
     return (1.0 - fraction)[..., None] * _one_hot(lower, bins, fraction.dtype) + fraction[
         ..., None
@@ -148,7 +149,7 @@ def _two_hot_at(lower: torch.Tensor, fraction: torch.Tensor, bins: int) -> torch
 def scalar_sharp(values: torch.Tensor, low: float, high: float, bins: int) -> torch.Tensor:
     """(...) to (..., bins): two-hot on the bins either side."""
     _, lower, fraction, _ = _scalar_coordinate(values, low, high, bins)
-    return _two_hot_at(lower, fraction, bins)
+    return two_hot_at(lower, fraction, bins)
 
 
 def match_moments(
@@ -225,7 +226,7 @@ def scalar_encode(
         + F.pad(low_tail[..., None], (0, bins - 1))
         + F.pad(high_tail[..., None], (bins - 1, 0))
     )
-    code = (1.0 - weight) * _two_hot_at(lower, fraction, bins) + weight * smooth
+    code = (1.0 - weight) * two_hot_at(lower, fraction, bins) + weight * smooth
     code = code / code.sum(-1, keepdim=True)
     return match_moments(code, offsets, fraction, variance + fraction * (1.0 - fraction))
 

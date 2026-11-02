@@ -6,12 +6,12 @@ path, and fresh randomness in CUDA-graph replays."""
 import json
 import math
 import pathlib
-import sys
 
 import pytest
 import torch
 
 from bnb.contracts import Action, GameConfig
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.game import api
 from bnb.game.physics.combat import hits
 from bnb.game.physics.medium import medium
@@ -21,15 +21,71 @@ from bnb.game.ship_types import DEFAULTS, SCALED
 from bnb.game.state import Fields, replace
 
 REFERENCE = pathlib.Path(__file__).resolve().parents[1] / "reference"
-sys.path.insert(0, str(REFERENCE))
-from race_arm import CARD, FLIGHT_SHARED, RULES  # noqa: E402
+
+# The race spec's names for the game's numbers (copied from the race adapter,
+# tests/reference/race_arm.py, so this suite does not depend on it).
+FLIGHT_SHARED = dict(
+    mass="mass",
+    g="gravity",
+    alpha_s="stall_angle",
+    k_ind="induced_drag_factor",
+    e_knee="engine_knee",
+    band="store_fade_band",
+    a0="coast_exchange",
+    a_climb="climb_exchange",
+    a_dive="dive_exchange",
+    soft_p="lift_softmin_exponent",
+    zeta="nose_damping",
+    omega_floor="nose_frequency_floor",
+    eps="speed_floor",
+)
+CARD = dict(
+    cl_max="max_lift_coefficient",
+    a_max="max_acceleration",
+    cd0="zero_lift_drag",
+    power="engine_power",
+    p_min="engine_power_full_store",
+    f_static="static_thrust",
+    e_max="max_energy",
+    omega_c="corner_nose_frequency",
+    shield_max="max_shield",
+    hit_radius="hit_radius",
+    damage="hit_damage",
+    muzzle_speed="muzzle_speed",
+    bullet_cost="bullet_energy_cost",
+    fire_interval="ticks_between_shots",
+    spawn_energy="spawn_energy",
+)
+RULES = dict(
+    h="tick_length",
+    episode_ticks="episode_ticks",
+    slots="bullet_slots",
+    bullet_moves="bullet_moves",
+    bullet_drag="bullet_drag",
+    spread="bullet_spread",
+    head_on_fraction="head_on_fraction",
+    shield_delay="shield_recharge_delay",
+    shield_regen="shield_recharge_rate",
+    boundary_base="boundary_damage_base",
+    boundary_per_m="boundary_damage_per_metre",
+    respawn_ticks="respawn_ticks",
+    spawn_speed="spawn_speed",
+    spawn_offset="spawn_offset",
+    spawn_radius="spawn_radius",
+    field_width="field_band_width",
+    vision="vision_range",
+)
 
 TYPES = api.ship_types()
 
 
 def _actions(batch, ships, generator):
     choice = torch.rand(batch, ships, 3, generator=generator)
-    return Action.unpack((choice * torch.tensor([3.0, 7.0, 2.0])).to(torch.int32))
+    return Action.unpack(
+        (choice * torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32)).to(
+            torch.int32
+        )
+    )
 
 
 def _warm(config=GameConfig(3, 5, 1200.0), batch=8, ticks=90, seed=0):

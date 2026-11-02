@@ -8,16 +8,11 @@ holds one or several games (one per pool), all at one size.
 import dataclasses
 
 from bnb.contracts import GameConfig
+from bnb.contracts.config import FRONTLINE, SANDBOX, TEAM_DEATHMATCH
 
-TEAM_DEATHMATCH, FRONTLINE, SANDBOX = "team_deathmatch", "frontline", "sandbox"
 # The mode's clock when the config leaves it out: (episode, respawn) seconds. Sandbox keeps
 # the physics game's (game spec 1), so the race tests run in it unchanged.
 CLOCKS = {TEAM_DEATHMATCH: (300.0, 5.0), FRONTLINE: (300.0, 8.0), SANDBOX: (60.0, 8.0)}
-FRONTLINE_ZONES = 5
-# Every environment of every mode holds this many zone slots, a fixed shape of the game like
-# the field count, so a model sees the same tokens in any batch; a mode without zones leaves
-# them absent.
-ZONE_SLOTS = FRONTLINE_ZONES
 
 # Training presets, all 5v5 at 10 fields (modes spec 1; mixed spec 1: the battle map keeps
 # 10 fields, zoomed with the arena).

@@ -15,6 +15,8 @@ from typing import Annotated
 
 import tyro
 
+from bnb.contracts.config import TEAM_DEATHMATCH
+
 
 @dataclasses.dataclass(frozen=True)
 class Train:
@@ -57,7 +59,7 @@ class Train:
     """
 
     preset: str | None = None
-    mode: str = "team_deathmatch"
+    mode: str = TEAM_DEATHMATCH
     ships_per_team: int = 5
     num_fields: int = 10
     arena_radius: float = 2600.0

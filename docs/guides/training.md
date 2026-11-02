@@ -130,7 +130,7 @@ from bnb.runtime.train import LEARNER, TrainConfig, train
 
 pools = (Pool("self_play", 0.5, (LEARNER, LEARNER)),
          Pool("chaser", 0.5, (LEARNER, "chaser"), fog_share=0.0))
-config = TrainConfig(game=GameConfig(5, 10, 2600.0), pools=pools, num_envs=1024, updates=200)
+config = TrainConfig(game=GameConfig(5, 10, 2600.0), pools=pools, environments=1024, updates=200)
 train(config, torch.device("cuda"))
 ```
 
@@ -153,7 +153,7 @@ from bnb.contracts import GameConfig, Pool
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer, win_rate
 
 torch.manual_seed(0)
-config = TrainConfig(game=GameConfig(2, 4, 1200.0), num_envs=256, model="relational",
+config = TrainConfig(game=GameConfig(2, 4, 1200.0), environments=256, model="relational",
                      pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),))
 trainer = Trainer(config, torch.device("cuda"))
 for _ in range(400):

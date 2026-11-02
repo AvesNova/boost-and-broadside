@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from bnb.contracts import Action, GameConfig
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import SHIP
 from bnb.game import api
 from bnb.game.physics.bullets import Launch, launch_state
@@ -48,7 +49,9 @@ def played():
     captures, fields, dones, spreads, game = [], [], [], [], []
     for _ in range(TICKS):
         choice = torch.rand(ENVS, rules.num_ships, 3, generator=generator)
-        action = Action.unpack((choice * torch.tensor([3.0, 7.0, 2.0])).int())
+        action = Action.unpack(
+            (choice * torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32)).int()
+        )
         action = Action(action.power, action.stick, torch.ones_like(action.shoot))
         spread = api.spread(rules, ENVS, generator=generator)
         launch, alive = launch_state(state.ships), state.ships.alive

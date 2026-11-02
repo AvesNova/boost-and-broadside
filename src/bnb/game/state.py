@@ -97,7 +97,7 @@ class Match:
 @contract
 class ModeState:
     """The mode's part of the match (modes spec 6). score (B, 2) int32, deaths scored per
-    team (team deathmatch). Frontline, with Z = 5 zone slots (absent, zero, in other
+    team (team deathmatch). Frontline, with Z = ZONE_SLOTS zone slots (absent, zero, in other
     modes): front (B,) int32, captures ahead for team 0; the zones' centres and radii
     (B, Z); role (B, Z) int32 in team 0's frame; progress (B, Z), the meters; movement
     (B, Z) int32, the sign of each meter's progress change this tick (0 on a completion);
@@ -242,3 +242,9 @@ def ship_team(ships_per_team: int, device=None) -> torch.Tensor:
 def by_team(values: torch.Tensor) -> torch.Tensor:
     """(B, N, ...) per-ship values as (B, 2, S, ...)."""
     return values.reshape(values.shape[0], TEAMS, values.shape[1] // TEAMS, *values.shape[2:])
+
+
+def enemy(values: torch.Tensor) -> torch.Tensor:
+    """(B, N, ...) per-ship values as each team's enemy's, (B, 2, S, ...): row t holds team
+    1 - t."""
+    return by_team(values).flip(1)

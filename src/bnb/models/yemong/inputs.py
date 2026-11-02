@@ -27,6 +27,9 @@ from .features import RESPAWN_HARMONICS, local_presence, respawn_features, symlo
 from .state_code import POSITION_LEVELS, POSITION_PERIOD, ShipStateCode
 
 NULL_ACTION = 0  # the joint index of coast, straight, hold fire
+# The model's input scales: constants of the model (its VERSION), not the game's rules. They
+# equal the game's defaults (`MAP_SCALE_RADIUS`, `Rules.field_band_width`) by choice, and do
+# not follow them if those change.
 # The log-index gradient's scale: a full-level band edge (1.875 x 2 ln 2 over 40 m).
 GRADIENT_SCALE = 1.875 * 2.0 * math.log(2.0) / 40.0
 ARENA_SCALE = 2600.0  # m

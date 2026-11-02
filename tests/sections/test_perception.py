@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from bnb.contracts import Action, GameConfig, Pool
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK
 from bnb.contracts.obs import GLOBAL, SHIP, SHIP_HIDDEN_ZERO
 from bnb.contracts.pools import environments_per_pool
 from bnb.game import api
@@ -21,7 +22,11 @@ def _game(ships_per_team=3, fields=6, radius=1800.0, batch=16, warm=60, fogged=N
     state = api.reset(rules, TYPES, api.uniforms(rules, batch, generator=generator), fogged)
     for _ in range(warm):  # some motion, firing and sight so the views are not trivial
         choice = torch.rand(batch, rules.num_ships, 3, generator=generator)
-        action = Action.unpack((choice * torch.tensor([3.0, 7.0, 2.0])).to(torch.int32))
+        action = Action.unpack(
+            (choice * torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32)).to(
+                torch.int32
+            )
+        )
         state, _ = api.step(
             rules,
             TYPES,

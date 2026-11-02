@@ -17,7 +17,7 @@ clear, in the same tensors and one compiled graph. The training mix does this. T
   (`bnb.contracts.Pool`). Every environment of a pool shares them.
 
 `bnb.contracts.pools.pool_game` gives a pool's game: the config with the pool's values
-where it sets them. `bnb.game.api.rules_of(config, pools, num_envs)` then builds
+where it sets them. `bnb.game.api.rules_of(config, pools, environments)` then builds
 `Rules.pools`, a tuple of `bnb.game.rules.PoolRules`, one per game, as static slices of the
 batch in pool order. Adjacent pools of the same game merge; if one game remains, it covers
 the whole batch, so a single-game run compiles as it would without pools.

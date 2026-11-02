@@ -240,7 +240,7 @@ def test_a_match_with_no_living_ship_respawns_at_the_uniform_fallback_points(mon
     per_environment = 2 * C * len(mode_rules.spawn_groups)
     per_ship = inputs["uniforms"][:, per_environment:].reshape(B, N, -1)
     radius = inputs["radius"][:, None, None]
-    uniform_x, uniform_y = spawns._disc(radius, per_ship[..., :C], per_ship[..., C : 2 * C])
+    uniform_x, uniform_y = spawns.uniform_disc(radius, per_ship[..., :C], per_ship[..., C : 2 * C])
     want_x, want_y = spawns._clip_to_disc(
         uniform_x, uniform_y, (radius - mode_rules.spawn_margin).clamp_min(0.0)
     )

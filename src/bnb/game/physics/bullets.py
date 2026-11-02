@@ -10,7 +10,7 @@ from ..rules import Rules
 from ..ship_types import ShipTypes, per_ship
 from ..state import Bullets, Fields, Ships, apply, replace, where
 from .medium import medium
-from .numerics import rotate, small_angle_cos_sin
+from .numerics import flight_path_velocity, rotate, small_angle_cos_sin
 
 
 def _half_bend(tick_length: float, bullet: Bullets, index: torch.Tensor):
@@ -108,12 +108,9 @@ def launch(rules: Rules, types: ShipTypes, state: Launch, spread: torch.Tensor) 
     spread_speed = rules.bullet_spread * per_ship(types.bullet_spread_scale, state.ship_type)
     # Proper velocity: the ship's own along its flight path, plus the muzzle velocity along
     # the nose, plus the spread.
-    velocity_x = (
-        speed * (cos * angle_cos + sin * angle_sin) + muzzle * cos + spread_speed * spread[..., 0]
-    )
-    velocity_y = (
-        speed * (sin * angle_cos - cos * angle_sin) + muzzle * sin + spread_speed * spread[..., 1]
-    )
+    path_x, path_y = flight_path_velocity(speed, cos, sin, angle_cos, angle_sin)
+    velocity_x = path_x + muzzle * cos + spread_speed * spread[..., 0]
+    velocity_y = path_y + muzzle * sin + spread_speed * spread[..., 1]
     bullet_speed = torch.sqrt(velocity_x * velocity_x + velocity_y * velocity_y)
     return Bullets(
         x=state.x,

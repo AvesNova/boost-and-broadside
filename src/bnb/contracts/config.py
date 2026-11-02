@@ -5,7 +5,8 @@ import dataclasses
 TEAMS = 2  # a game has exactly two teams (author decision): T in shapes
 MAX_SHIPS = 255  # stored ship indices are int32 with -1 for none; the cap is a design limit
 MAX_FIELDS = 64  # sight-line core membership is an int64 bitmask
-MODES = ("team_deathmatch", "frontline", "sandbox")
+TEAM_DEATHMATCH, FRONTLINE, SANDBOX = "team_deathmatch", "frontline", "sandbox"
+MODES = (TEAM_DEATHMATCH, FRONTLINE, SANDBOX)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -31,7 +32,7 @@ class GameConfig:
     arena_radius: float  # m
     episode_seconds: float | None = None
     respawn_seconds: float | None = None
-    mode: str = "team_deathmatch"
+    mode: str = TEAM_DEATHMATCH
     spawn_groups: tuple[int, ...] = ()
     kills_per_ship: int = 5
 
@@ -45,7 +46,7 @@ class GameConfig:
         if self.mode not in MODES:
             raise ValueError(f"mode {self.mode!r} is not one of {MODES}")
         if self.spawn_groups and (
-            self.mode != "team_deathmatch"
+            self.mode != TEAM_DEATHMATCH
             or min(self.spawn_groups) < 1
             or sum(self.spawn_groups) != self.ships_per_team
         ):
