@@ -126,17 +126,23 @@ def test_it_boosts_when_slow_or_far_with_a_full_store_and_reverses_when_close(sh
 
 
 @pytest.mark.parametrize("ship_type", TYPES)
-def test_the_lead_moves_the_aim_point_along_a_crossing_target_by_its_time_of_flight(ship_type):
+@pytest.mark.parametrize("shooter_velocity", [(0.0, 0.0), (80.0, -40.0)])
+def test_the_lead_moves_the_aim_point_along_a_crossing_target_by_its_time_of_flight(
+        ship_type, shooter_velocity):
+    """The aim point is the displacement at the time of flight under the relative velocity:
+    the bullet inherits the shooter's velocity, so a target keeping pace along x stays on
+    the line and only the crossing speed relative to the shooter leads."""
     distance, crossing = 0.8 * value("gun_range", ship_type), 60.0
-    obs = _duel(ship_type, ship(x=distance, team_relative=1, velocity=(0.0, crossing)),
-                own=ship(ship_type=ship_type, velocity=(0.0, 0.0)))
+    target_velocity = (shooter_velocity[0], crossing)
+    obs = _duel(ship_type, ship(x=distance, team_relative=1, velocity=target_velocity),
+                own=ship(ship_type=ship_type, velocity=shooter_velocity))
     fleet = scripted_combat.context(obs, CHARACTERISTICS, PARAMETERS)
     one = torch.ones(1, 2)
     aim_x, aim_y = scripted_combat.lead(fleet, CHARACTERISTICS, PARAMETERS, distance * one,
-                                        0.0 * one, 0.0 * one, crossing * one)
+                                        0.0 * one, target_velocity[0] * one, crossing * one)
     flight = time_of_flight(CHARACTERISTICS, fleet.own_type, torch.tensor(distance))
-    torch.testing.assert_close(aim_x, distance * one)
-    torch.testing.assert_close(aim_y, crossing * flight)
+    torch.testing.assert_close(aim_x[0, 0], torch.tensor(distance))
+    torch.testing.assert_close(aim_y[0, 0], (crossing - shooter_velocity[1]) * flight[0, 0])
     _, stick, _ = _marginals(obs)
     assert _levels(stick)[1] > 0.5  # it turns toward the lead, to the left
 
@@ -155,6 +161,19 @@ def test_near_the_boundary_and_heading_out_it_turns_inward(ship_type):
                   velocity=(value("cruise_speed", ship_type), 0.0))
     centred = _marginals(_duel(ship_type, target))[1]
     assert centred[0] > 0.99  # the same chase at the centre flies straight
+
+
+@pytest.mark.parametrize("ship_type", TYPES)
+def test_near_the_boundary_and_heading_inward_it_does_not_turn_back(ship_type):
+    """Deep in the margin but flying inward (at 120 degrees, the centre 60 degrees to its
+    left), the boundary leaves the chase of a target dead ahead alone."""
+    edge, heading = ARENA_RADIUS - 20.0, 2.0 * math.pi / 3.0
+    cruise, ahead = value("cruise_speed", ship_type), 0.5 * value("gun_range", ship_type)
+    target = ship(x=edge + ahead * math.cos(heading), y=ahead * math.sin(heading),
+                  team_relative=1,
+                  velocity=(cruise * math.cos(heading), cruise * math.sin(heading)))
+    own = ship(x=edge, heading=heading, ship_type=ship_type)
+    assert _marginals(_duel(ship_type, target, own=own))[1][0] > 0.99
 
 
 @pytest.mark.parametrize("ship_type", TYPES)
@@ -187,6 +206,77 @@ def test_frontline_it_defends_a_zone_whose_meter_moves_against_it(ship_type):
     calm = observation(own, [absent(), absent()], _ring())
     sides = [_levels(_marginals(calm, row)[1])[1:] for row in (0, 1)]
     assert sides[0][0] > 0.99 and sides[1][1] > 0.99  # one defends, the other attacks
+
+
+def _defending(obs: Obs, parameters: ScriptedParameters = PARAMETERS) -> list[bool]:
+    """Per own ship flying north, whether it turns left, toward the own defense zone on the
+    left of `_ring`, rather than right, toward the attack zone."""
+    stick = marginals(obs, CHARACTERISTICS, parameters).stick[0]
+    left, right = stick[:, 2::2].sum(-1), stick[:, 1::2].sum(-1)
+    assert bool(((left > 0.99) | (right > 0.99)).all()), stick
+    return (left > 0.99).tolist()
+
+
+def _line(xs: list[float], ship_type: int, y: float = 0.0) -> list[torch.Tensor]:
+    return [ship(x=x, y=y, heading=math.pi / 2, ship_type=ship_type) for x in xs]
+
+
+@pytest.mark.parametrize("ship_type", TYPES)
+def test_frontline_a_meter_moving_against_it_calls_the_attacker_back(ship_type):
+    """No enemy in sight: with the defense meter still, or moving the viewer's way, the ship
+    nearer the defense zone defends and the other attacks; moving the enemy's way, both
+    defend (the urgency)."""
+    own = _line([-100.0, 100.0], ship_type)
+    nobody = [absent(), absent()]
+    for direction, progress in ((0.0, 0.0), (1.0, 0.5)):
+        assert _defending(observation(own, nobody, _ring(direction, progress))) == [True, False]
+    assert _defending(observation(own, nobody, _ring(-1.0, 0.0))) == [True, True]
+
+
+@pytest.mark.parametrize("ship_type", TYPES)
+def test_frontline_the_urgency_grows_with_the_enemys_progress(ship_type):
+    """The defense wants floor + urgency (1 + progress) while the meter moves against the
+    viewer: with floor 0.5, no margin and urgency 1, four healthy ships send two to defend
+    at progress 0 (want 1.5) and three at progress 0.9 (want 2.4)."""
+    parameters = dataclasses.replace(PARAMETERS, defensive_floor=0.5, defensive_margin=0.0,
+                                     defense_urgency=1.0)
+    own = _line([-300.0, -100.0, 100.0, 300.0], ship_type)
+    nobody = [absent()] * 4
+    early = observation(own, nobody, _ring(-1.0, 0.0))
+    late = observation(own, nobody, _ring(-1.0, 0.9))
+    assert _defending(early, parameters) == [True, True, False, False]
+    assert _defending(late, parameters) == [True, True, True, False]
+
+
+@pytest.mark.parametrize("ship_type", TYPES)
+def test_frontline_equally_placed_ships_split_by_row(ship_type):
+    """Two ships exactly as far from both zones: the lower row defends, the other attacks,
+    whichever ship holds row 0."""
+    north, south = _line([0.0], ship_type, 300.0)[0], _line([0.0], ship_type, -300.0)[0]
+    for own in ([north, south], [south, north]):
+        assert _defending(observation(own, [absent(), absent()], _ring())) == [True, False]
+
+
+@pytest.mark.parametrize("ship_type", TYPES)
+def test_frontline_hands_over_to_combat_from_the_combat_radius_in(ship_type):
+    """A lone defender (the defense zone on its left) and an enemy on its right: beyond the
+    combat radius it flies the strategy, inside the shoot ramp's start it fights, and half
+    way between it mixes the two."""
+    gun_range, cruise = value("gun_range", ship_type), value("cruise_speed", ship_type)
+    inner = PARAMETERS.shoot_ramp_in_gun_range.low
+    outer = PARAMETERS.combat_radius_in_gun_range
+    own = [ship(heading=math.pi / 2, ship_type=ship_type), absent(team_relative=0)]
+
+    def sides(distance_in_gun_range: float) -> tuple[float, float]:
+        enemy = ship(x=distance_in_gun_range * gun_range, team_relative=1,
+                     velocity=(0.0, cruise))
+        _, left, right = _levels(_marginals(observation(own, [enemy, absent()], _ring()))[1])
+        return float(left), float(right)
+
+    assert sides(1.2 * outer)[0] > 0.99  # the strategy: to the defense zone
+    assert sides(0.8 * inner)[1] > 0.99  # combat: at the enemy
+    left, right = sides(0.5 * (inner + outer))
+    assert 0.25 < left < 0.75 and 0.25 < right < 0.75
 
 
 @pytest.mark.parametrize("ship_type", TYPES)

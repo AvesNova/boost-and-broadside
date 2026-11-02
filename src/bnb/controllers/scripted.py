@@ -21,9 +21,9 @@ REDRAW = 0.1  # sticky random: per-tick probability of a new action
 
 
 def _uniform(shape: tuple, device) -> torch.Tensor:
-    u = torch.rand(shape + (3,), device=device)
+    draws = torch.rand(shape + (3,), device=device)
     scale = torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32, device=device)
-    return (u * scale).to(torch.int32)
+    return (draws * scale).to(torch.int32)
 
 
 class Random:
@@ -113,8 +113,8 @@ def _sample(probabilities: torch.Tensor) -> torch.Tensor:
     """One index per row of (..., K) probabilities, by the inverse CDF (a category of
     probability 0 is never drawn)."""
     cumulative = probabilities.cumsum(-1)
-    u = torch.rand(probabilities.shape[:-1] + (1,), device=probabilities.device)
-    return (u * cumulative[..., -1:] >= cumulative[..., :-1]).sum(-1)
+    draw = torch.rand(probabilities.shape[:-1] + (1,), device=probabilities.device)
+    return (draw * cumulative[..., -1:] >= cumulative[..., :-1]).sum(-1)
 
 
 class Scripted:
@@ -122,9 +122,10 @@ class Scripted:
 
     scripted_probability: a float, or a tensor (R,) per view: each ship plays the scripted
     action with that probability and a uniform one otherwise (0 is random, 1 the scripted
-    agent), so its distribution is p q + (1 - p) / 42. The league may change a tensor in
-    place. parameters: one set, or per view (`scripted_parameters.unpack` of a table).
-    Memoryless: the carry is None.
+    agent), so its distribution is the scripted probability times the scripted
+    distribution plus the rest spread uniformly over the 42 joint actions. The league may
+    change a tensor in place. parameters: one set, or per view (`scripted_parameters.unpack`
+    of a table). Memoryless: the carry is None.
     """
 
     reads = ("ships", "zones", "globals")
@@ -139,23 +140,25 @@ class Scripted:
         return None
 
     def _probability(self) -> torch.Tensor | float:
-        """p per view, (R, 1) for a tensor."""
-        p = self.scripted_probability
-        return p[:, None] if isinstance(p, torch.Tensor) else p
+        """The scripted probability per view, (R, 1) for a tensor."""
+        probability = self.scripted_probability
+        return probability[:, None] if isinstance(probability, torch.Tensor) else probability
 
     def action_distribution(self, obs: Obs) -> torch.Tensor:
         """(R, S, 42) the distribution `step` samples from."""
-        p = self._probability()
-        p = p[..., None] if isinstance(p, torch.Tensor) else p
-        return p * distribution(obs, self.characteristics, self.parameters) \
-            + (1.0 - p) / NUM_JOINT
+        probability = self._probability()
+        if isinstance(probability, torch.Tensor):
+            probability = probability[..., None]
+        return (probability * distribution(obs, self.characteristics, self.parameters)
+                + (1.0 - probability) / NUM_JOINT)
 
     def step(self, carry: None, obs: Obs, done: torch.Tensor):
         parts = marginals(obs, self.characteristics, self.parameters)
         action = torch.stack([_sample(part) for part in parts], -1).to(torch.int32)
-        p = self._probability()
-        if isinstance(p, torch.Tensor) or p < 1.0:  # a rung: one uniform draw for every view
-            scripted = torch.rand(action.shape[:-1], device=action.device) < p
+        probability = self._probability()
+        if isinstance(probability, torch.Tensor) or probability < 1.0:
+            # a rung: one uniform draw for every view
+            scripted = torch.rand(action.shape[:-1], device=action.device) < probability
             action = torch.where(scripted[..., None], action,
                                  _uniform(action.shape[:-1], action.device))
         return Action.unpack(action), carry, Outputs()

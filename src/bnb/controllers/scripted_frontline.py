@@ -75,7 +75,10 @@ def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characterist
     enemy_near = (enemy_health[..., None]
                   * _kernel(*_pairs(column(enemy, "x"), column(enemy, "y"), zone_x, zone_y),
                             support)).sum(1)  # (R, Z): the enemy's strength near each zone
-    under_attack = of_role((zones[..., ZONE["direction"]] < 0.0).float(), OWN_DEFENSE) > 0.5
+    # The defense urgency: while the own defense zone's meter moves against the viewer, the
+    # more so the further the enemy's capture has gone (progress in [0, 1]).
+    against = (zones[..., ZONE["direction"]] < 0.0).float()
+    urgency = of_role(against * (1.0 + zones[..., ZONE["progress"]]), OWN_DEFENSE)  # (R,)
 
     # Recovery: hurt and threatened, fall back to the own spawn.
     shield_fraction = column(own, "shield") / per_ship(characteristics.max_shield, fleet.own_type)
@@ -83,7 +86,7 @@ def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characterist
                   & (threat > parameters.recovery_threat))
 
     # Who defends: the defense wants the floor, or the enemy's strength near it plus a
-    # margin, and more while its meter moves against the viewer. Ships nearer the defense
+    # margin, and more by the urgency. Ships nearer the defense
     # zone than the attack zone go first (ties: lowest row), until their strength covers
     # the want; the rest attack, unless their strength times exp(aggression) is below the
     # enemy's near the attack zone, when everyone defends. Every ship of a view reaches
@@ -96,7 +99,7 @@ def frontline(fleet: Context, zones: torch.Tensor, characteristics: Characterist
 
     wanted = (torch.maximum(of_role(enemy_near, OWN_DEFENSE)[:, None]
                             + parameters.defensive_margin, per_view(parameters.defensive_floor))
-              + parameters.defense_urgency * under_attack[:, None].float())  # (R, 1)
+              + parameters.defense_urgency * urgency[:, None])  # (R, 1)
     attackers = available.sum(-1, keepdim=True) - wanted
     hopeless = (attackers * torch.exp(per_view(parameters.aggression))
                 < of_role(enemy_near, ENEMY_DEFENSE)[:, None])

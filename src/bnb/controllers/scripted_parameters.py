@@ -50,7 +50,8 @@ class ScriptedParameters:
     wants at least and beyond the enemy's near it (a ship at full shield is 1);
     aggression, the attackers attack while their strength times exp(aggression) exceeds
     the enemy's near the attack zone; defense_urgency, added to the defense zone's want
-    while its meter moves against the viewer; separation_radius_in_gun_range and
+    while its meter moves against the viewer, times 1 + the meter's progress (the enemy's
+    share of the capture); separation_radius_in_gun_range and
     separation_weight; recovery_shield_fraction and recovery_threat, below and above which a
     ship falls back to its spawn.
     """
