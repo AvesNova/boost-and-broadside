@@ -505,3 +505,53 @@ def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
     )
     trajectory = rollout.run()
     assert trajectory.obs.zones is not None and trajectory.log_probability.shape == (16, 4, 2)
+
+
+NEUTRAL = 2  # the viewer's zone role of Frontline's neutral zone (ZONE_COLUMNS' `role`)
+MIRRORED_PAIRS = (
+    ("x", "y"),
+    ("heading_cos", "heading_sin"),
+    ("velocity_x", "velocity_y"),
+    ("log_index_gradient_x", "log_index_gradient_y"),
+)
+
+
+def _reflected(view: Obs, angle: torch.Tensor) -> Obs:
+    """The view (R, ...) reflected about the line through the arena centre at `angle` (R,):
+    positions, directions and gradients mirrored, the angle of attack and the nose rate
+    negated."""
+    cos2, sin2 = torch.cos(2.0 * angle)[:, None], torch.sin(2.0 * angle)[:, None]
+
+    def mirror(x, y):
+        return cos2 * x + sin2 * y, sin2 * x - cos2 * y
+
+    ships, zones = view.ships.clone(), view.zones.clone()
+    for first, second in MIRRORED_PAIRS:
+        a, b = mirror(view.ships[..., SHIP[first]], view.ships[..., SHIP[second]])
+        ships[..., SHIP[first]], ships[..., SHIP[second]] = a, b
+    for name in ("angle_of_attack", "nose_rate"):
+        ships[..., SHIP[name]] = -view.ships[..., SHIP[name]]
+    a, b = mirror(view.zones[..., ZONE["x"]], view.zones[..., ZONE["y"]])
+    zones[..., ZONE["x"]], zones[..., ZONE["y"]] = a, b
+    return Obs(ships=ships, fields=None, globals=view.globals, zones=zones)
+
+
+def test_a_view_reflected_about_frontlines_neutral_axis_reflects_the_stick():
+    """Frontline's map is mirror-symmetric about the axis through the centre and the neutral
+    zone, so the reflected view is a view of a real game: the agent's distribution there is
+    the original's with each stick level swapped for its mirror (cleanup spec 8.4)."""
+    _, _, obs = _game_views("frontline")
+    view = _view(obs, 0)
+    neutral = (view.zones[..., ZONE["role"]] == NEUTRAL) & (view.zones[..., ZONE["present"]] > 0.5)
+    assert bool(neutral.sum(-1).eq(1).all()), "every Frontline view shows one neutral zone"
+    centre_x = torch.where(neutral, view.zones[..., ZONE["x"]], 0.0).sum(-1)
+    centre_y = torch.where(neutral, view.zones[..., ZONE["y"]], 0.0).sum(-1)
+    mirrored = marginals(
+        _reflected(view, torch.atan2(centre_y, centre_x)), CHARACTERISTICS, PARAMETERS
+    )
+    original = marginals(view, CHARACTERISTICS, PARAMETERS)
+    swap_sides = torch.tensor([0, 2, 1, 4, 3, 6, 5])
+    # float32 rounding of the reflection itself moves the inputs by about 1e-4 m
+    torch.testing.assert_close(mirrored.power, original.power, atol=1e-4, rtol=0)
+    torch.testing.assert_close(mirrored.shoot, original.shoot, atol=1e-4, rtol=0)
+    torch.testing.assert_close(mirrored.stick, original.stick[..., swap_sides], atol=1e-4, rtol=0)
