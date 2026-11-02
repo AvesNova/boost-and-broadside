@@ -222,15 +222,17 @@ An earlier same-process A/B of the temporal kernel alone (CUDA graphs, before
 (35 -> 54 ms, 111 -> 120 ms); unexplained, and not yet A/B'd: suspects are `triton_op`
 dispatch in eager mode and the fused head's low parallelism on small row counts (the
 outcome and density heads have 2048 rows = 32 programs). The compiled rollout cells are
-1 ms slower too. A rollout A/B (`p2/ab_rollout.py 2048 bfloat16 compiled,cudagraphs`,
-log `p2/ab_rollout.log`) was queued on the lock when this phase stopped.
+1 ms slower too. Rollout A/B (V = 2048 bf16, `p2/ab_rollout.py`): neither 12.8 / 12.5 ms (compiled /
+graphs), fused temporal 13.7 / 13.6, temporal + heads 13.5 / 13.3. The temporal kernel lost
+at T = 1 (15 of its 16 chunk rows masked), so it now runs for segments only (T > 1); the
+heads win 0.2-0.3 ms. The rollout cells after that fix are not re-benchmarked yet.
 
 
 ## What to try next
 
-- **First: the rollout A/B** (above). If the fused head loses on the rollout, try
-  BLOCK_M = 32 (or 16) when rows are few, or keep it for training only; check the eager
-  regression (`triton_op` vs `custom_op` dispatch in eager).
+- **First:** rerun `bench.speed` on a quiet GPU (the rollout cells with the T > 1 temporal
+  gate); check the eager regression (`triton_op` vs `custom_op` dispatch in eager); try
+  BLOCK_M = 32 in `head.py` for small row counts.
 - fp32 V = 64: it needs ~8.5 GB without recompute. Storing less in strict fp32 means
   recomputing something; "feedforward" recompute is the cheapest ladder step.
 - The shot trajectory head's front (latent + age projection, norm, gelu) into `head.py`'s
@@ -246,6 +248,5 @@ log `p2/ab_rollout.log`) was queued on the lock when this phase stopped.
 
 - Done: every fixture; the whole model; tests; every kernel (scan, attention, gated MLP,
   temporal mix, heads) as a `triton_op`; the benchmark; phase 2 profiling and changes.
-- In flight: the rollout A/B of the phase 2 kernels (queued on the shared lock; its log is
-  `/tmp/bnb-scratch-yemong-blind/p2/ab_rollout.log`). Rerun `bench.speed` on a quiet GPU.
+- In flight: nothing. Rerun `bench.speed` on a quiet GPU.
 - Next: "What to try next".

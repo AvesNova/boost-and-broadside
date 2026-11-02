@@ -273,7 +273,10 @@ class TemporalBlock(nn.Module):
         recurrent, branch = F.linear(
             normed, torch.cat([self.recurrent_input.weight, self.gate_branch.weight])).chunk(2, -1)
         convolved, buffer = self.convolution(recurrent, buffer, starts)
-        if FUSED_TEMPORAL["enabled"] and temporal_kernel.supported(convolved, branch):
+        # segments only: at T = 1 (a rollout step) Inductor's fused pointwise path is faster
+        # (rollout A/B, V = 2048 bf16: 12.5 vs 13.6 ms with CUDA graphs)
+        if (FUSED_TEMPORAL["enabled"] and convolved.shape[0] > 1
+                and temporal_kernel.supported(convolved, branch)):
             hidden, mixed = self.fused_mix(convolved, branch, state, starts)
         else:
             decay, contribution = self.gates(convolved, starts)
