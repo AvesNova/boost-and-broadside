@@ -20,7 +20,7 @@ Carry = Any  # a pytree of tensors the runtime stores but never inspects (None i
 class Outputs:
     """Per controlled ship, shaped (R, S) for R views. None for controllers that do not learn.
 
-    logp: log-probability of the chosen action; entropy: of the policy; value: the critic,
+    log_probability: of the chosen action; entropy: of the policy; value: the critic,
     the sum of `values` over levels when a controller gives them.
     values (R, S, K): the critic per reward level, in raw units and the configured level
         order (an outcome level is P(win) - P(loss)).
@@ -29,7 +29,7 @@ class Outputs:
         carry, so the learner can recompute a segment without replaying it.
     """
 
-    logp: torch.Tensor | None = None
+    log_probability: torch.Tensor | None = None
     entropy: torch.Tensor | None = None
     value: torch.Tensor | None = None
     values: torch.Tensor | None = None
@@ -44,7 +44,7 @@ class Controller(Protocol):
 
     def init_carry(self, views: int, device: torch.device) -> Carry: ...
 
-    def step(self, carry: Carry, obs: Obs, done: torch.Tensor) -> tuple[Action, Carry, Outputs]:
-        """obs: views (R, ...); done: (R,) bool, the view's environment reset before this
+    def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Action, Carry, Outputs]:
+        """obs: views (R, ...); reset: (R,) bool, the view's environment reset before this
         observation (a lifecycle flag, also in obs.globals)."""
         ...

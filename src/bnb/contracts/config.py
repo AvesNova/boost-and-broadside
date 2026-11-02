@@ -13,13 +13,13 @@ class GameConfig:
 
     Teams are equal in size and team-major: ship `n = team * ships_per_team + slot`.
     A batch of several games (mixed spec 1) shares the sizes (ships, fields); mode,
-    arena_radius, spawn_groups, episode_s and respawn_s are then the defaults its pools
+    arena_radius, spawn_groups, episode_seconds and respawn_seconds are then the defaults its pools
     override (`Pool`).
 
     mode: the game's rules (modes spec 1): "team_deathmatch", "frontline" or "sandbox" (no
         score and no win, formation spawns: the physics game the race tests run).
-    episode_s, respawn_s: time-native rules, whole multiples of the tick or the rules fail
-        to build (ticks_of); None takes the mode's (the game's `modes.rules`).
+    episode_seconds, respawn_seconds: time-native rules, whole multiples of the tick or the
+        rules fail to build (ticks_of); None takes the mode's (the game's `modes.rules`).
     spawn_groups: team deathmatch only, ships per team in each spawn group (summing to
         ships_per_team); empty means uniform spawns.
     kills_per_ship: team deathmatch's winning score is kills_per_ship * ships_per_team.
@@ -28,8 +28,8 @@ class GameConfig:
     ships_per_team: int
     num_fields: int
     arena_radius: float  # m
-    episode_s: float | None = None
-    respawn_s: float | None = None
+    episode_seconds: float | None = None
+    respawn_seconds: float | None = None
     num_teams: int = 2
     mode: str = "team_deathmatch"
     spawn_groups: tuple[int, ...] = ()

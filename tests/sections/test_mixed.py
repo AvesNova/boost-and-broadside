@@ -20,7 +20,7 @@ from bnb.learn import rewards
 SEATS = ("learner", "learner")
 # One pool per mode, with arenas and clocks of their own (modes_cases' lively games), in
 # the shared sizes of the base config.
-BASE = GameConfig(3, 3, 900.0, episode_s=6.0, respawn_s=0.5)
+BASE = GameConfig(3, 3, 900.0, episode_seconds=6.0, respawn_seconds=0.5)
 GAMES = ("frontline", "team_deathmatch", "grouped", "sandbox")
 VECTOR_ALIGNED = 32  # environments per game: a multiple of every CPU's vector loop width
 
@@ -39,8 +39,8 @@ def _pools(share: float = 0.25, names=GAMES) -> tuple[Pool, ...]:
             mode=game.mode,
             arena_radius=game.arena_radius,
             spawn_groups=game.spawn_groups,
-            episode_s=game.episode_s,
-            respawn_s=RESPAWN_S[name],
+            episode_seconds=game.episode_seconds,
+            respawn_seconds=RESPAWN_S[name],
         )
 
     return tuple(pool(name) for name in names)
@@ -61,7 +61,9 @@ def test_pools_take_the_configs_values_or_the_modes_defaults():
     pools = (
         Pool("frontline", 0.5, SEATS, mode="frontline"),
         Pool("squad", 0.25, SEATS),
-        Pool("battle", 0.25, SEATS, arena_radius=8200.0, spawn_groups=(2, 2, 1), episode_s=60.0),
+        Pool(
+            "battle", 0.25, SEATS, arena_radius=8200.0, spawn_groups=(2, 2, 1), episode_seconds=60.0
+        ),
     )
     rules = api.rules_of(base, pools, 8)
     frontline, squad, battle = rules.pools
@@ -237,16 +239,30 @@ def test_an_unaligned_mixed_batch_equals_each_game_alone_to_float32_rounding():
 # Two arenas and clocks in each mode's slice (team deathmatch first, so Frontline is not
 # the first pool).
 ONE_SLICE_EACH = (
-    Pool("deathmatch_small", 0.25, SEATS, arena_radius=600.0, episode_s=5.0, respawn_s=0.3),
-    Pool("deathmatch_large", 0.25, SEATS, arena_radius=1500.0, episode_s=7.0, respawn_s=1.2),
+    Pool(
+        "deathmatch_small",
+        0.25,
+        SEATS,
+        arena_radius=600.0,
+        episode_seconds=5.0,
+        respawn_seconds=0.3,
+    ),
+    Pool(
+        "deathmatch_large",
+        0.25,
+        SEATS,
+        arena_radius=1500.0,
+        episode_seconds=7.0,
+        respawn_seconds=1.2,
+    ),
     Pool(
         "frontline_small",
         0.25,
         SEATS,
         mode="frontline",
         arena_radius=300.0,
-        episode_s=6.0,
-        respawn_s=0.4,
+        episode_seconds=6.0,
+        respawn_seconds=0.4,
     ),
     Pool(
         "frontline_large",
@@ -254,8 +270,8 @@ ONE_SLICE_EACH = (
         SEATS,
         mode="frontline",
         arena_radius=700.0,
-        episode_s=7.0,
-        respawn_s=0.9,
+        episode_seconds=7.0,
+        respawn_seconds=0.9,
     ),
 )
 
@@ -463,8 +479,8 @@ def test_the_rollout_staggers_each_start_clock_within_its_own_episode():
     from bnb.runtime.rollout import Rollout
 
     pools = (
-        Pool("short", 0.5, ("random", "random"), episode_s=2.0),
-        Pool("long", 0.5, ("random", "random"), episode_s=20.0),
+        Pool("short", 0.5, ("random", "random"), episode_seconds=2.0),
+        Pool("long", 0.5, ("random", "random"), episode_seconds=20.0),
     )
     rollout = Rollout(
         BASE,

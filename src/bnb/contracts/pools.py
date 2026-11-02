@@ -16,9 +16,9 @@ class Pool:
         seat drawn per environment at every reset, so every controller plays both sides).
     fog_share: the fraction of the pool's environments with fog of war; fog_share times the
         pool's size must be a whole number.
-    mode, arena_radius, spawn_groups, episode_s, respawn_s: the pool's game (mixed spec 1);
-        None takes the GameConfig's value, and for the clocks then the mode's default.
-        Every environment of the pool shares them. The sizes (ships, fields) are the
+    mode, arena_radius, spawn_groups, episode_seconds, respawn_seconds: the pool's game
+        (mixed spec 1); None takes the GameConfig's value, and for the clocks then the
+        mode's default. Every environment of the pool shares them. The sizes (ships, fields) are the
         GameConfig's, shared by the whole batch.
     """
 
@@ -29,11 +29,11 @@ class Pool:
     mode: str | None = None
     arena_radius: float | None = None  # m
     spawn_groups: tuple[int, ...] | None = None
-    episode_s: float | None = None
-    respawn_s: float | None = None
+    episode_seconds: float | None = None
+    respawn_seconds: float | None = None
 
 
-GAME_FIELDS = ("mode", "arena_radius", "spawn_groups", "episode_s", "respawn_s")
+GAME_FIELDS = ("mode", "arena_radius", "spawn_groups", "episode_seconds", "respawn_seconds")
 
 
 def pool_game(config: GameConfig, pool: Pool) -> GameConfig:

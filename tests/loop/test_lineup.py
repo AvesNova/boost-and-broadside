@@ -21,7 +21,7 @@ class Constant:
     def init_carry(self, views, device):
         return None
 
-    def step(self, carry, obs: Obs, done):
+    def step(self, carry, obs: Obs, reset):
         self.seen.append(obs.ships[:, : self.S, SHIP["proper_speed"]].clone())
         shape = obs.ships.shape[:1] + (self.S,)
         zero = torch.zeros(shape, dtype=torch.int32)

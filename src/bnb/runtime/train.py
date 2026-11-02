@@ -70,8 +70,8 @@ def mixed(
                 mode=game.mode,
                 arena_radius=game.arena_radius,
                 spawn_groups=game.spawn_groups,
-                episode_s=game.episode_s,
-                respawn_s=game.respawn_s,
+                episode_seconds=game.episode_seconds,
+                respawn_seconds=game.respawn_seconds,
             )
             for pool in lineup
         )

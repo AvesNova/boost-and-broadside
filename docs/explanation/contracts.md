@@ -124,8 +124,9 @@ scripted agents, random, and later humans.
 - A controller plays **one team**: it receives that team's views and returns actions for
   that team's `S` ships.
 - `init_carry(views, device)` gives its opaque [carry](glossary.md#carry), a pytree the runtime stores and
-  never inspects (`None` if stateless). `step(carry, obs, done)` returns the action, the
-  next carry and `bnb.contracts.Outputs`.
+  never inspects (`None` if stateless). `step(carry, obs, reset)` returns the action, the
+  next carry and `bnb.contracts.Outputs`; `reset` flags the views whose environment reset
+  before this observation.
 - `reads` lists the observation parts it uses, so the rollout stores only those.
 - A model's parameters live in the controller's own module, following PyTorch idiom. A
   league slot is a separate controller whose weights are copied in.

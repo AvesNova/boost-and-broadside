@@ -16,22 +16,22 @@ def split(logits: torch.Tensor) -> tuple[torch.Tensor, ...]:
 
 def sample(logits: torch.Tensor) -> tuple[Action, torch.Tensor, torch.Tensor]:
     """A Gumbel-max sample per component. Returns (action, log-prob, entropy) per ship."""
-    picks, logp, entropy = [], 0.0, 0.0
+    picks, log_probability, entropy = [], 0.0, 0.0
     for part in split(logits):
         u = torch.rand_like(part).clamp_min(1e-20)
         pick = torch.argmax(part - torch.log(-torch.log(u)), -1)
         logs = F.log_softmax(part, -1)
         picks.append(pick.to(torch.int32))
-        logp = logp + logs.gather(-1, pick[..., None])[..., 0]
+        log_probability = log_probability + logs.gather(-1, pick[..., None])[..., 0]
         entropy = entropy - (logs.exp() * logs).sum(-1)
-    return Action(*picks), logp, entropy
+    return Action(*picks), log_probability, entropy
 
 
 def evaluate(logits: torch.Tensor, action: Action) -> tuple[torch.Tensor, torch.Tensor]:
     """(log-prob of `action`, entropy) per ship."""
-    logp, entropy = 0.0, 0.0
+    log_probability, entropy = 0.0, 0.0
     for part, pick in zip(split(logits), (action.power, action.stick, action.shoot)):
         logs = F.log_softmax(part, -1)
-        logp = logp + logs.gather(-1, pick.long()[..., None])[..., 0]
+        log_probability = log_probability + logs.gather(-1, pick.long()[..., None])[..., 0]
         entropy = entropy - (logs.exp() * logs).sum(-1)
-    return logp, entropy
+    return log_probability, entropy

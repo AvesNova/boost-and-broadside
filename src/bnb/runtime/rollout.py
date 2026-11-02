@@ -133,7 +133,7 @@ class Rollout:
             action=Action.unpack(
                 torch.zeros((ring, views, N, 3), dtype=torch.int32, device=device)
             ),
-            logp=torch.zeros((ring, views, S), device=device),
+            log_probability=torch.zeros((ring, views, S), device=device),
             value=torch.zeros((ring, views, S), device=device),
             reward=torch.zeros((ring, views, S, len(REWARD_LEVELS)), device=device),
             done=torch.zeros((ring, views), **flags),
@@ -181,16 +181,16 @@ class Rollout:
 
     @torch.no_grad()
     def _learner_buffers(self, obs: Obs, learner_carry) -> dict:
-        """Ring buffers for what the learner's controller gives beyond logp and value:
+        """Ring buffers for what the learner's controller gives beyond log_probability and value:
         values, outcome and replay, shaped (ring, R, ...). Their shapes come from one probe
         decision on the learner's first row only."""
         ring, views, device = self.ring, self.lineup.rows(self.learner), self.device
         environments = self.lineup.env[self.learner][:1]
         team = self.lineup.role[self.learner][:1]
         view = Obs(**{part: getattr(obs, part)[environments, team] for part in PARTS})
-        done = view.globals[..., GLOBAL["reset"]] > 0.5
+        reset = view.globals[..., GLOBAL["reset"]] > 0.5
         one_row = _pytree.tree_map_only(torch.Tensor, lambda x: x[:1].clone(), learner_carry)
-        _, _, out = self.controllers[self.learner].step(one_row, view, done)
+        _, _, out = self.controllers[self.learner].step(one_row, view, reset)
         out = dict(values=out.values, outcome=out.outcome, replay=out.replay)
         return {
             name: _pytree.tree_map_only(
@@ -235,8 +235,8 @@ class Rollout:
         for name, ctrl in self.controllers.items():
             reads = self.reads if name == self.learner else ctrl.reads
             view = self._view(carry, name, reads + ("globals",))
-            done = view.globals[..., GLOBAL["reset"]] > 0.5
-            action, new_carry, out = ctrl.step(carry["ctrl"][name], view, done)
+            reset = view.globals[..., GLOBAL["reset"]] > 0.5
+            action, new_carry, out = ctrl.step(carry["ctrl"][name], view, reset)
             if new_carry is not None:
                 _assign(carry["ctrl"][name], new_carry)
             packed = action.packed()
@@ -253,8 +253,10 @@ class Rollout:
                 records["alive"].index_copy_(0, slot, alive[None])
                 waiting = ships[:, :S, SHIP["respawn_wait"]] > 0.0
                 records["valued"].index_copy_(0, slot, (alive[:, :S] | waiting)[None])
-                if out.logp is not None:  # a scripted "learner" (baselines) records no policy
-                    records["logp"].index_copy_(0, slot, out.logp[None])
+                if (
+                    out.log_probability is not None
+                ):  # a scripted "learner" (baselines) records no policy
+                    records["log_probability"].index_copy_(0, slot, out.log_probability[None])
                     records["value"].index_copy_(0, slot, out.value[None])
                 for part in ("values", "outcome", "replay"):
                     if part in records:
@@ -436,8 +438,8 @@ class Rollout:
         """The learner's controller on its current views without acting (learner spec 2):
         the Outputs (values, outcome) of the next segment's first observation."""
         view = self._view(self.carry, self.learner, self.reads + ("globals",))
-        done = view.globals[..., GLOBAL["reset"]] > 0.5
-        _, _, out = self._evaluate(self.carry["ctrl"][self.learner], view, done)
+        reset = view.globals[..., GLOBAL["reset"]] > 0.5
+        _, _, out = self._evaluate(self.carry["ctrl"][self.learner], view, reset)
         return out
 
     def counters(self) -> dict[str, int]:

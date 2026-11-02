@@ -24,12 +24,12 @@ class YemongController:
     def init_carry(self, views: int, device: torch.device) -> Carry:
         return self.model.initial_carry(views, self.ships_per_team, self.num_ships, device)
 
-    def step(self, carry: Carry, obs: Obs, done: torch.Tensor) -> tuple[Action, Carry, Outputs]:
-        decision = self.model.step(carry, obs, done)
-        joint, logp, entropy = policy.sample(decision.policy_logits)
+    def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Action, Carry, Outputs]:
+        decision = self.model.step(carry, obs, reset)
+        joint, log_probability, entropy = policy.sample(decision.policy_logits)
         carry = dataclasses.replace(decision.carry, previous_action=joint)
         outputs = Outputs(
-            logp=logp,
+            log_probability=log_probability,
             entropy=entropy,
             value=decision.values.sum(-1),
             values=decision.values,
@@ -40,5 +40,5 @@ class YemongController:
 
     def unroll(self, carry: Carry, obs: Obs, replay: Replay, reset: torch.Tensor) -> Unrolled:
         """A stored segment (L, R, ...): carry is the learner's carry at its start, reset
-        (L, R) the per-step `done` flags `step` received."""
+        (L, R) the per-step `reset` flags `step` received."""
         return self.model.unroll(carry, obs, replay, reset)

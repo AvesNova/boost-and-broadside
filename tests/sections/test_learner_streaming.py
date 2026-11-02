@@ -147,6 +147,6 @@ def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
         unrolled = net.unroll(
             on_device.initial_carry, on_device.obs, on_device.replay, cases.resets(on_device.obs)
         )
-    logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(on_device))
-    assert cases.scale_error(logp, on_device.logp) <= 1e-5
+    log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(on_device))
+    assert cases.scale_error(log_probability, on_device.log_probability) <= 1e-5
     assert cases.scale_error(unrolled.values, on_device.values) <= 1e-5

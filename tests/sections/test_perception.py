@@ -98,7 +98,7 @@ def test_unfogged_views_see_every_living_ship():
 
 
 def test_fog_survives_episode_resets():
-    rules = api.rules_of(GameConfig(1, 1, 600.0, episode_s=1 / 15))  # two-tick episodes
+    rules = api.rules_of(GameConfig(1, 1, 600.0, episode_seconds=1 / 15))  # two-tick episodes
     fogged = torch.tensor([True, False])
     state = api.reset(rules, TYPES, api.uniforms(rules, 2), fogged)
     action = Action.unpack(torch.zeros(2, 2, 3, dtype=torch.int32))

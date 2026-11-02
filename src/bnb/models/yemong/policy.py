@@ -13,12 +13,12 @@ def sample(logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tens
     """
     uniform = torch.rand_like(logits).clamp_min(GUMBEL_FLOOR)
     joint = torch.argmax(logits - torch.log(-torch.log(uniform)), -1)
-    logp, entropy = evaluate(logits, joint)
-    return joint.to(torch.int32), logp, entropy
+    log_probability, entropy = evaluate(logits, joint)
+    return joint.to(torch.int32), log_probability, entropy
 
 
 def evaluate(logits: torch.Tensor, joint: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """(log-prob of `joint`, entropy), each (...)."""
     log_probabilities = F.log_softmax(logits, -1)
-    logp = log_probabilities.gather(-1, joint.long()[..., None])[..., 0]
-    return logp, -(log_probabilities.exp() * log_probabilities).sum(-1)
+    log_probability = log_probabilities.gather(-1, joint.long()[..., None])[..., 0]
+    return log_probability, -(log_probabilities.exp() * log_probabilities).sum(-1)

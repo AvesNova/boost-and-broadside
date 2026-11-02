@@ -51,7 +51,7 @@ TERMS = (
 # waiting to respawn); view-steps; valid beliefs at non-final steps; enemies alive; shots.
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
 # The per-tick records the returns read, staged whole per shard.
-SMALL = ("reward", "values", "outcome", "done", "result", "logp", "alive", "valued")
+SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
 # The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
 SHOT_LABELS = "shot_labels"
 
@@ -148,7 +148,7 @@ def _head(unrolled, name: str):
 
 
 def _own_joint(trajectory: Trajectory) -> torch.Tensor:
-    return to_joint(trajectory.action)[..., : trajectory.logp.shape[-1]]
+    return to_joint(trajectory.action)[..., : trajectory.log_probability.shape[-1]]
 
 
 class Learner:
@@ -249,7 +249,7 @@ class Learner:
     def _counts(small: dict) -> torch.Tensor:
         """(R, COUNTS) the tokens of each view that the small records give; the pass over
         the views fills in the rest."""
-        own = small["logp"].shape[-1]
+        own = small["log_probability"].shape[-1]
         alive, length = small["alive"], small["done"].shape[0]
         counts = torch.zeros((alive.shape[1], len(COUNTS)), device=alive.device)
         counts[:, COUNTS.index("policy")] = alive[..., :own].sum((0, 2))
@@ -263,7 +263,7 @@ class Learner:
     def shots(self, trajectory: Trajectory, spread: torch.Tensor):
         """The re-simulated shots and the loss mask: valid shots of own ships and of enemies
         visible at t."""
-        own = trajectory.logp.shape[-1]
+        own = trajectory.log_probability.shape[-1]
         shot = shots.resimulate(
             self.rules,
             self.types,
@@ -336,7 +336,7 @@ class Learner:
         denominator."""
         config, model = self.config, self.model
         unrolled = self.unroll(trajectory)
-        own = trajectory.logp.shape[-1]
+        own = trajectory.log_probability.shape[-1]
         terms = dict.fromkeys(TERMS, unrolled.policy_logits.new_zeros(()))
         terms["policy"], terms["entropy"], statistics = self._policy(
             unrolled, trajectory, derived, denominator, scale
@@ -410,7 +410,7 @@ class Learner:
     ):
         """The policy's terms of a micro-batch: (the clipped surrogate, the mean entropy,
         statistics (STATISTICS,)), each over own ships alive."""
-        own_alive = trajectory.alive[..., : trajectory.logp.shape[-1]]
+        own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
         log_probability, entropy = policy.evaluate(unrolled.policy_logits, _own_joint(trajectory))
         old = derived["old_log_probability"]
         surrogate = losses.surrogate(
@@ -462,7 +462,7 @@ class Learner:
         derived = {
             name: joined(name, parts) for name in ("advantage", "level_returns", "outcome_targets")
         }
-        rollout_log_probability = joined("logp", small)
+        rollout_log_probability = joined("log_probability", small)
         derived["old_log_probability"] = rollout_log_probability.clone()
         own_alive = joined("alive", small)[..., : rollout_log_probability.shape[-1]]
         scale = self.return_scale.update(joined("total", parts), own_alive)

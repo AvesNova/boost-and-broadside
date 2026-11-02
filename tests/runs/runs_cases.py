@@ -124,7 +124,7 @@ def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
 
     learner = LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64)
     values = dict(
-        game=GameConfig(2, 2, 1500.0, episode_s=4.0, respawn_s=1.0),
+        game=GameConfig(2, 2, 1500.0, episode_seconds=4.0, respawn_seconds=1.0),
         num_envs=16,
         updates=updates,
         length=16,
@@ -162,5 +162,5 @@ TRAIN_OPTIONS = (
     "--set",
     "relational_hidden=16",
     "--set",
-    "game.episode_s=4.0",
+    "game.episode_seconds=4.0",
 )

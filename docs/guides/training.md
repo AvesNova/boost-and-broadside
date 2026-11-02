@@ -38,7 +38,7 @@ ships per team. Every field:
 
 <!-- generated: game-config -->
 
-`episode_s` and `respawn_s` must be whole multiples of the tick, or building the rules
+`episode_seconds` and `respawn_seconds` must be whole multiples of the tick, or building the rules
 fails (`bnb.contracts.config.ticks_of`).
 
 ## Pools: who plays whom
@@ -62,8 +62,8 @@ war; it too must come to a whole number. Every field of a pool:
 
 ## The mixed batch
 
-A pool may also set its own game: `mode`, `arena_radius`, `spawn_groups`, `episode_s` and
-`respawn_s`. `None` takes the `GameConfig`'s value. The sizes (ships per team, fields) are
+A pool may also set its own game: `mode`, `arena_radius`, `spawn_groups`, `episode_seconds` and
+`respawn_seconds`. `None` takes the `GameConfig`'s value. The sizes (ships per team, fields) are
 the `GameConfig`'s and are shared by the whole batch. One batch then holds several games
 in the same tensors and the same compiled graph; [Mixed batches](../explanation/game/mixed-batches.md)
 explains how.

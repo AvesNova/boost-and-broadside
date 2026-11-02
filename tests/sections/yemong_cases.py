@@ -17,8 +17,10 @@ from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 CPU = torch.device("cpu")
 # squad's sizes in a smaller arena with short episodes, so a segment has fights and resets
 SQUAD = GameConfig(5, 10, 2600.0)
-SHORT_SQUAD = GameConfig(5, 10, 1500.0, episode_s=2.0, respawn_s=1.0)
-SHORT_FRONTLINE = GameConfig(5, 10, 1500.0, episode_s=2.0, respawn_s=1.0, mode="frontline")
+SHORT_SQUAD = GameConfig(5, 10, 1500.0, episode_seconds=2.0, respawn_seconds=1.0)
+SHORT_FRONTLINE = GameConfig(
+    5, 10, 1500.0, episode_seconds=2.0, respawn_seconds=1.0, mode="frontline"
+)
 
 
 def model(config: GameConfig = SQUAD, seed: int = 0, dtype=torch.float32) -> Yemong:
@@ -94,7 +96,7 @@ def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: in
 
 def joint_actions(trajectory) -> torch.Tensor:
     """The learner's own joint actions (L, R, S); trajectory.action holds every row."""
-    return to_joint(trajectory.action).to(torch.int32)[..., : trajectory.logp.shape[-1]]
+    return to_joint(trajectory.action).to(torch.int32)[..., : trajectory.log_probability.shape[-1]]
 
 
 def double(net: Yemong) -> Yemong:

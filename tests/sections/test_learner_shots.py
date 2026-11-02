@@ -17,7 +17,7 @@ from bnb.models.yemong.shots import HIT_ALLY, HIT_ENEMY, HIT_NONE, SIDE_ALLY, SI
 # Whole vector widths of environments, so eager CPU kernels take one code path everywhere
 # (mixed-notes deviation 4) and the comparison can be exact.
 ENVS, TICKS = 32, 100
-CONFIG = GameConfig(3, 6, 500.0, episode_s=3.0)  # crowded, with fields and episode ends
+CONFIG = GameConfig(3, 6, 500.0, episode_seconds=3.0)  # crowded, with fields and episode ends
 OWN = CONFIG.ships_per_team
 MOVES = api.rules_of(CONFIG).bullet_moves  # the longest bullet flight, in ticks
 

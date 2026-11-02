@@ -31,7 +31,7 @@ def test_modes_take_their_clocks_and_presets_build():
     assert game().respawn_ticks == 150  # 5 s
     assert game(mode="frontline").respawn_ticks == 240
     assert game(mode="sandbox").episode_ticks == 1800
-    assert game(episode_s=2.0).episode_ticks == 60
+    assert game(episode_seconds=2.0).episode_ticks == 60
     for name, config in PRESETS.items():
         rules = api.rules_of(config)
         assert rules.num_ships == 10, name

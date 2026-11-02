@@ -319,11 +319,11 @@ def test_chaser_games_and_their_mirror_agree_every_tick(preset):
     )
     state, observation, _ = api.perceive(rules, state)
     failures, resets, deaths = set(), 0, 0
-    done = torch.zeros(batch, dtype=torch.bool)
+    reset = torch.zeros(batch, dtype=torch.bool)
     for tick in range(warm + compared):
         action = Action.unpack(
             torch.cat(
-                [chaser.step(None, _view(observation, view), done)[0].packed() for view in (0, 1)],
+                [chaser.step(None, _view(observation, view), reset)[0].packed() for view in (0, 1)],
                 1,
             )
         )
@@ -339,6 +339,6 @@ def test_chaser_games_and_their_mirror_agree_every_tick(preset):
             resets += int(events.done.sum())
             deaths += int(events.died.sum())
         state, observation, _ = api.perceive(rules, state)
-        done = events.done
+        reset = events.done  # the next observation follows a reset
     assert not failures, sorted(failures)
     assert resets >= batch and deaths > 10, (resets, deaths)

@@ -17,11 +17,11 @@ class RelationalController:
     def init_carry(self, views: int, device: torch.device) -> None:
         return None
 
-    def step(self, carry: None, obs: Obs, done: torch.Tensor) -> tuple[Action, None, Outputs]:
+    def step(self, carry: None, obs: Obs, reset: torch.Tensor) -> tuple[Action, None, Outputs]:
         decision = self.model(obs)
-        joint, logp, entropy = policy.sample(decision.policy_logits)
+        joint, log_probability, entropy = policy.sample(decision.policy_logits)
         outputs = Outputs(
-            logp=logp,
+            log_probability=log_probability,
             entropy=entropy,
             value=decision.values.sum(-1),
             values=decision.values,

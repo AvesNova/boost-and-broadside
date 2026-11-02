@@ -83,7 +83,7 @@ class TeacherOpponent:
         """(R, S, 42) the distribution `step` samples from: the labels'."""
         return labels(self.agent.action_distribution(obs), self.teacher)
 
-    def step(self, carry: None, obs: Obs, done: torch.Tensor):
+    def step(self, carry: None, obs: Obs, reset: torch.Tensor):
         parts = marginals(obs, self.agent.characteristics, self.agent.parameters)
         temperature, floor = self.teacher.temperature, self.teacher.floor
         if temperature != 1.0:
@@ -162,7 +162,7 @@ class BehaviourCloning(Learner):
         """(the cross-entropy against the labels, the student's mean entropy, per-pool sums
         of KL(labels || student), the labels' and the student's entropy and the tokens),
         over own ships alive."""
-        own_alive = trajectory.alive[..., : trajectory.logp.shape[-1]]
+        own_alive = trajectory.alive[..., : trajectory.log_probability.shape[-1]]
         target = labels(teacher_distribution(self.teacher, trajectory.obs), self.teacher_config)
         logits = unrolled.policy_logits.float()
         cross = losses.cross_entropy(logits, target)

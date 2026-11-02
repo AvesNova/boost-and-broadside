@@ -75,7 +75,7 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
     trajectory = lc.whole(runner)
     # Mark a third of the own rows dead, so the mask matters.
     marked = trajectory.alive.clone()
-    own = trajectory.logp.shape[-1]
+    own = trajectory.log_probability.shape[-1]
     marked[..., :own] &= (
         torch.rand(marked[..., :own].shape, generator=torch.Generator().manual_seed(1)) > 0.33
     )
@@ -137,9 +137,9 @@ class Recording(Scripted):
         super().__init__(CHARACTERISTICS)
         self.decisions: list[torch.Tensor] = []
 
-    def step(self, carry, obs, done):
+    def step(self, carry, obs, reset):
         self.decisions.append(distribution(obs, self.characteristics, self.parameters))
-        return super().step(carry, obs, done)
+        return super().step(carry, obs, reset)
 
 
 def test_the_update_time_labels_are_the_rollout_time_distribution():
@@ -372,7 +372,7 @@ def test_a_window_at_the_target_does_not_stop_and_one_clearly_above_does():
 def test_alive_mask_reads_the_own_rows(segment):
     _, runner, _, _ = segment
     trajectory: Trajectory = lc.whole(runner)
-    S = trajectory.logp.shape[-1]
+    S = trajectory.log_probability.shape[-1]
     torch.testing.assert_close(
         trajectory.alive[..., :S].float(),
         (trajectory.obs.ships[..., :S, SHIP["alive"]] > 0.5).float(),
@@ -456,7 +456,7 @@ BC_OPTIONS = (
     "--set",
     "relational_hidden=16",
     "--set",
-    "game.episode_s=4.0",
+    "game.episode_seconds=4.0",
 )
 
 
@@ -496,7 +496,7 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
         "--set",
         "relational_hidden=16",
         "--set",
-        "game.episode_s=4.0",
+        "game.episode_seconds=4.0",
         "--updates",
         "0",
         "--init-from",
@@ -529,7 +529,7 @@ def test_the_gradient_stays_finite_for_a_confident_student(segment):
 
     _, runner, learner, prepared = segment
     trajectory = lc.whole(runner)
-    shape = trajectory.logp.shape + (42,)
+    shape = trajectory.log_probability.shape + (42,)
     logits = torch.zeros(shape)
     logits[..., 3] = 1e4  # every other action's probability underflows to 0
     logits.requires_grad_(True)

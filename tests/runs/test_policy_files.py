@@ -97,7 +97,9 @@ def test_two_widths_load_side_by_side_and_play_each_other(tmp_path):
         compile=False,
     )
     trajectory = rollout.run()
-    assert torch.isfinite(trajectory.logp).all() and torch.isfinite(trajectory.value).all()
+    assert (
+        torch.isfinite(trajectory.log_probability).all() and torch.isfinite(trajectory.value).all()
+    )
 
 
 def _edit_record(directory, change):

@@ -130,8 +130,8 @@ def teacher_distributions(
             pool.mode,
             pool.arena_radius,
             pool.spawn_groups,
-            pool.episode_s,
-            pool.respawn_s,
+            pool.episode_seconds,
+            pool.respawn_seconds,
         )
         for pool in pools
     )

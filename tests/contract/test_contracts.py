@@ -48,8 +48,10 @@ def test_contracts_are_pytrees():
     leaves, spec = _pytree.tree_flatten(obs)
     back = _pytree.tree_unflatten(leaves, spec)
     assert back.globals is None and torch.equal(back.ships, obs.ships)
-    out = _pytree.tree_map_only(torch.Tensor, lambda x: x + 1, Outputs(logp=torch.zeros(2)))
-    assert out.value is None and out.logp.sum() == 2
+    out = _pytree.tree_map_only(
+        torch.Tensor, lambda x: x + 1, Outputs(log_probability=torch.zeros(2))
+    )
+    assert out.value is None and out.log_probability.sum() == 2
 
 
 def test_pool_shares_must_be_whole():

@@ -55,10 +55,10 @@ def test_unroll_receives_the_reset_before_each_step(segment):
         wrong = net.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, done)
     from bnb.models.yemong import policy
 
-    right_logp, _ = policy.evaluate(right.policy_logits, joint)
-    wrong_logp, _ = policy.evaluate(wrong.policy_logits, joint)
-    assert cases.scale_error(right_logp, trajectory.logp) <= 1e-5
-    assert cases.scale_error(wrong_logp, trajectory.logp) > 1e-2
+    right_log_probability, _ = policy.evaluate(right.policy_logits, joint)
+    wrong_log_probability, _ = policy.evaluate(wrong.policy_logits, joint)
+    assert cases.scale_error(right_log_probability, trajectory.log_probability) <= 1e-5
+    assert cases.scale_error(wrong_log_probability, trajectory.log_probability) > 1e-2
 
 
 def test_the_bootstrap_is_the_next_segments_first_decision():
@@ -151,8 +151,8 @@ def test_each_loss_term_matches_an_independent_computation(segment):
 
     # policy and entropy, over living own ships
     log_probabilities = out.policy_logits.log_softmax(-1)
-    logp = log_probabilities.gather(-1, joint[..., :OWN, None])[..., 0]
-    ratio = (logp - derived["old_log_probability"]).exp()
+    log_probability = log_probabilities.gather(-1, joint[..., :OWN, None])[..., 0]
+    ratio = (log_probability - derived["old_log_probability"]).exp()
     advantage = derived["advantage"] / prepared["scale"]
     surrogate = torch.maximum(-advantage * ratio, -advantage * ratio.clamp(0.8, 1.2))
     assert math.isclose(
@@ -270,10 +270,10 @@ class Constant:
     def init_carry(self, views, device):
         return None
 
-    def step(self, carry, obs, done):
+    def step(self, carry, obs, reset):
         from bnb.contracts.action import from_joint
 
-        joint = torch.full((done.shape[0], self.ships), self.joint, dtype=torch.int32)
+        joint = torch.full((reset.shape[0], self.ships), self.joint, dtype=torch.int32)
         return from_joint(joint), carry, Outputs()
 
 
@@ -401,7 +401,7 @@ def test_an_update_consumes_several_shards():
     from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
     cfg = TrainConfig(
-        game=GameConfig(2, 3, 1200.0, episode_s=2.0),
+        game=GameConfig(2, 3, 1200.0, episode_seconds=2.0),
         num_envs=8,
         length=16,
         shards=2,
@@ -449,15 +449,15 @@ def test_recomputed_old_log_probabilities_are_the_unrolls(segment):
     differ from them only by the step/unroll drift."""
     net, runner, _, prepared = segment
     trajectory = lc.whole(runner)
-    assert torch.equal(prepared["derived"]["old_log_probability"], trajectory.logp)
+    assert torch.equal(prepared["derived"]["old_log_probability"], trajectory.log_probability)
     recomputed = lc.learner(net, runner, old_log_probabilities="recomputed")
     old = recomputed.prepare(runner.store, [runner.bootstrap()])["derived"]["old_log_probability"]
     with torch.no_grad():
         expected, _ = policy.evaluate(
             recomputed.unroll(trajectory).policy_logits, cases.joint_actions(trajectory)
         )
-    assert torch.equal(old, expected) and not torch.equal(old, trajectory.logp)
-    assert cases.scale_error(old, trajectory.logp) <= 1e-5
+    assert torch.equal(old, expected) and not torch.equal(old, trajectory.log_probability)
+    assert cases.scale_error(old, trajectory.log_probability) <= 1e-5
 
 
 def test_the_drift_is_the_step_unroll_ratio_error(segment):
@@ -474,8 +474,12 @@ def test_the_drift_is_the_step_unroll_ratio_error(segment):
                 trajectory.replay,
                 cases.resets(trajectory.obs),
             )
-        logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
-        error = (torch.exp(logp - trajectory.logp) - 1.0).abs()[trajectory.alive[..., :OWN]]
+        log_probability, _ = policy.evaluate(
+            unrolled.policy_logits, cases.joint_actions(trajectory)
+        )
+        error = (torch.exp(log_probability - trajectory.log_probability) - 1.0).abs()[
+            trajectory.alive[..., :OWN]
+        ]
         return torch.stack([error.max(), error.mean()])
 
     torch.testing.assert_close(

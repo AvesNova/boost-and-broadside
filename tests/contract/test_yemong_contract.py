@@ -33,7 +33,7 @@ def test_yemong_outputs():
     with torch.no_grad():
         action, carry, out = controller.step(carry, view, torch.ones(4, dtype=torch.bool))
     assert action.power.shape == (4, 2) and action.power.dtype == torch.int32
-    assert out.logp.shape == out.entropy.shape == out.value.shape == (4, 2)
+    assert out.log_probability.shape == out.entropy.shape == out.value.shape == (4, 2)
     assert out.values.shape == (4, 2, len(REWARD_LEVELS)) and out.outcome.shape == (4, 4)
     torch.testing.assert_close(out.value, out.values.sum(-1))
     torch.testing.assert_close(out.outcome.sum(-1), torch.ones(4))

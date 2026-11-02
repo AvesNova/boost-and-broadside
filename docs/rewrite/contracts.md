@@ -361,7 +361,7 @@ cut; where they differ, this section and the code win.
 - **Names:** full words (scaffold rule 10).
 - **Modes and rewards (sections 3 and 3b, 2026-11-01):**
   - **`GameConfig`** gains `mode` (`"team_deathmatch"` default, `"frontline"`,
-    `"sandbox"`), `spawn_groups` and `kills_per_ship`. `episode_s` and `respawn_s` default
+    `"sandbox"`), `spawn_groups` and `kills_per_ship`. `episode_seconds` and `respawn_seconds` default
     to the mode's (None).
   - **`Events` (schema 2)** gains:
     - `shield_lost` and `shield_restored` (B, N);
@@ -378,8 +378,8 @@ cut; where they differ, this section and the code win.
   - **Reward state:** `bnb.learn.rewards.Ledger(ships (B, N, N), boundary (B, N))`,
     carried by the runtime. That is the spec's (B, N + 1, N), split for speed.
 - **Mixed batches (section 3c, 2026-11-01):**
-  - **`Pool`** gains `mode`, `arena_radius`, `spawn_groups`, `episode_s` and `respawn_s`
-    (None: the `GameConfig`'s value, and for the clocks then the mode's default).
+  - **`Pool`** gains `mode`, `arena_radius`, `spawn_groups`, `episode_seconds` and
+    `respawn_seconds` (None: the `GameConfig`'s value, and for the clocks then the mode's default).
     `pool_game(config, pool)` gives a pool's game; `environment_multiple(pools)` the batch
     size multiple a lineup needs (64 for the training mix). The `GameConfig` keeps the
     shared sizes and the pools' defaults.
@@ -428,9 +428,6 @@ cut; where they differ, this section and the code win.
   - **Shot labels:** a shot launched within the longest bullet flight of the segment's
     end is invalid, whatever it hit. Episode ends keep the flight-end rule: the bullets
     really vanish there.
-  - **Not done here, left to the cleanup pass:** the `done`/`reset` rename across the
-    controllers (`Controller.step(..., done)` still means a reset before this
-    observation).
 - **Runs and checkpoints (section 11, merged 2026-11-02):**
   - **Layer order:** `bnb.runs` sits between `bnb.runtime` and `bnb.league` (a test
     parses the imports).
@@ -508,6 +505,15 @@ cut; where they differ, this section and the code win.
     of each.
   - **Open:** an intermittent failure seen only while kernels autotune
     (`sections/intermittent-failure-brief.md`). It blocks the training runs.
+
+- **The cleanup pass (section/cleanup, 2026-11-03):**
+  - **Renames:** `Outputs.logp` and `Trajectory.logp` are `log_probability`;
+    `GameConfig` and `Pool` take `episode_seconds` and `respawn_seconds`. Neither
+    `Outputs` nor `Trajectory` has a schema version (neither is saved), so none rises.
+  - **`reset` and `done`:** `reset` is the environment resetting before an observation
+    (`Controller.step(carry, obs, reset)`, the observation's `reset` column, Yemong's
+    `step` and `unroll`); `done` is an episode ending after a step (`Events.done`,
+    `Trajectory.done`).
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 

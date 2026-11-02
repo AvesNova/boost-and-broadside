@@ -105,8 +105,8 @@ def test_unroll_reproduces_the_stored_rollout():
     assert cases.scale_error(unrolled.values, trajectory.values) <= 1e-4
     assert cases.scale_error(torch.softmax(unrolled.outcome_logits, -1), trajectory.outcome) <= 1e-4
     assert cases.scale_error(unrolled.values.sum(-1), trajectory.value) <= 1e-4
-    logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
-    assert cases.scale_error(logp, trajectory.logp) <= 1e-4
+    log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
+    assert cases.scale_error(log_probability, trajectory.log_probability) <= 1e-4
 
 
 @pytest.mark.slow

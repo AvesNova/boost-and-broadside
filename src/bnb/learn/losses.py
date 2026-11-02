@@ -15,16 +15,17 @@ def masked_sum(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
 
 def surrogate(
-    logp: torch.Tensor,
-    old_logp: torch.Tensor,
+    log_probability: torch.Tensor,
+    old_log_probability: torch.Tensor,
     advantage: torch.Tensor,
     return_scale: torch.Tensor | float,
     clip: float,
 ) -> torch.Tensor:
     """The clipped surrogate per token, max(-A r, -A clip(r, 1 +- clip)), with A the
-    advantage over the return scale (no mean subtracted) and r = exp(logp - old_logp)."""
+    advantage over the return scale (no mean subtracted) and r the probability ratio,
+    exp(log_probability - old_log_probability)."""
     scaled = advantage / return_scale
-    ratio = torch.exp(logp - old_logp)
+    ratio = torch.exp(log_probability - old_log_probability)
     return torch.maximum(-scaled * ratio, -scaled * torch.clamp(ratio, 1.0 - clip, 1.0 + clip))
 
 

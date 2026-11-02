@@ -174,8 +174,8 @@ def test_unroll_reproduces_a_stored_mixed_rollout():
             cases.resets(trajectory.obs),
         )
     assert cases.scale_error(unrolled.values, trajectory.values) <= 1e-4
-    logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
-    assert cases.scale_error(logp, trajectory.logp) <= 1e-4
+    log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
+    assert cases.scale_error(log_probability, trajectory.log_probability) <= 1e-4
 
 
 @pytest.mark.gpu
@@ -206,5 +206,5 @@ def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs():
             cases.resets(trajectory.obs),
         )
     assert cases.scale_error(unrolled.values, trajectory.values) <= 1e-5
-    logp, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
-    assert cases.scale_error(logp, trajectory.logp) <= 1e-5
+    log_probability, _ = policy.evaluate(unrolled.policy_logits, cases.joint_actions(trajectory))
+    assert cases.scale_error(log_probability, trajectory.log_probability) <= 1e-5

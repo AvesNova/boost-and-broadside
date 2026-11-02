@@ -37,7 +37,7 @@ class Random:
     def init_carry(self, views: int, device: torch.device) -> torch.Tensor:
         return uniform_actions((views, self.S), device)
 
-    def step(self, carry: torch.Tensor, obs: Obs, done: torch.Tensor):
+    def step(self, carry: torch.Tensor, obs: Obs, reset: torch.Tensor):
         redraw = torch.rand(carry.shape[:-1], device=carry.device) < REDRAW
         new = torch.where(redraw[..., None], uniform_actions(carry.shape[:-1], carry.device), carry)
         return Action.unpack(new), new, Outputs()
@@ -54,7 +54,7 @@ class Chaser:
     def init_carry(self, views: int, device: torch.device) -> None:
         return None
 
-    def step(self, carry: None, obs: Obs, done: torch.Tensor):
+    def step(self, carry: None, obs: Obs, reset: torch.Tensor):
         S = self.S
         own, foe = obs.ships[:, :S], obs.ships[:, S:]  # rows are ordered by team_rel
         tx = foe[:, None, :, SHIP["x"]] - own[:, :, None, SHIP["x"]]  # (R, own, foe)
@@ -164,7 +164,7 @@ class Scripted:
             + (1.0 - probability) / NUM_JOINT
         )
 
-    def step(self, carry: None, obs: Obs, done: torch.Tensor):
+    def step(self, carry: None, obs: Obs, reset: torch.Tensor):
         parts = marginals(obs, self.characteristics, self.parameters)
         action = torch.stack([sample(part) for part in parts], -1).to(torch.int32)
         probability = self._probability()

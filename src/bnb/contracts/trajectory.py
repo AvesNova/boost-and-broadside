@@ -16,7 +16,7 @@ REWARD_LEVELS = ("damage", "kill_death", "objective_progress", "objective", "out
 @contract
 class Trajectory:
     """obs: the parts the model reads, (L, R, ...). action: every row's action (L, R, N), in
-    the view's row order (own ships first; the learner's are [..., :S]). logp, value:
+    the view's row order (own ships first; the learner's are [..., :S]). log_probability, value:
     (L, R, S). reward: (L, R, S, len(REWARD_LEVELS)), per level, weighted.
     done: (L, R) bool, the view's environment reset after this step. result: (L, R) int32,
     the match result for the view's team (+1 win, -1 loss, 0 draw), nonzero only where done.
@@ -36,7 +36,7 @@ class Trajectory:
 
     obs: Obs
     action: Action
-    logp: torch.Tensor
+    log_probability: torch.Tensor
     value: torch.Tensor
     reward: torch.Tensor
     done: torch.Tensor

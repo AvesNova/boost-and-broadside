@@ -42,7 +42,7 @@ def config(model: str, device: str) -> TrainConfig:
         return_scale_floor=1e-7,
     )
     return TrainConfig(
-        game=GameConfig(2, 2, 1500.0, episode_s=4.0, respawn_s=1.0),
+        game=GameConfig(2, 2, 1500.0, episode_seconds=4.0, respawn_seconds=1.0),
         num_envs=16,
         updates=0,
         length=32,
