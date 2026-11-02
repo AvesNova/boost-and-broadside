@@ -485,8 +485,10 @@ cut; where they differ, this section and the code win.
     drawn at random per game.
   - **The scripted agent** reads per-type characteristics measured from the ship card
     (`bnb.game.handling.characteristics`).
-  - **Pending (author, 2026-11-02):** the score stop becomes a confidence bound, scored
-    against a teacher with the labels' floor; the toy BC test is `xfail` until then.
+  - **The score stop (fix/bc-stop, merged 2026-11-02):** BC stops when the live score's
+    lower bound (the window's score less two of its standard errors) reaches 0.40, scored
+    against `bnb.learn.bc.TeacherOpponent`: the scripted agent playing the labels'
+    distribution (their temperature and floor). PPO's scripted seat stays the plain agent.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
