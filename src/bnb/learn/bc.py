@@ -24,7 +24,7 @@ from bnb.controllers.scripted import Scripted, marginals, sample, uniform_action
 from . import losses
 from .ppo import Learner, LearnerConfig
 
-Teacher = Callable[[Obs], torch.Tensor]  # views (R, ...) -> (R, S, 42) probabilities
+Teacher = Callable[[Obs], torch.Tensor]  # views (R, ...) -> (R, S, NUM_JOINT) probabilities
 # The labels' default uniform floor (author): no label gives an action probability 0, so the
 # clone can sample every action in reinforcement learning.
 FLOOR = 0.01
@@ -80,7 +80,7 @@ class TeacherOpponent:
         return None
 
     def action_distribution(self, obs: Obs) -> torch.Tensor:
-        """(R, S, 42) the distribution `step` samples from: the labels'."""
+        """(R, S, NUM_JOINT) the distribution `step` samples from: the labels'."""
         return labels(self.agent.action_distribution(obs), self.teacher)
 
     def step(self, carry: None, obs: Obs, reset: torch.Tensor):

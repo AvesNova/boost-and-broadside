@@ -105,7 +105,7 @@ def marginals(
 
 
 def joint(parts: Marginals) -> torch.Tensor:
-    """(R, S, 42) the outer product of the marginals, in `to_joint` order."""
+    """(R, S, NUM_JOINT) the outer product of the marginals, in `to_joint` order."""
     product = (
         parts.power[..., :, None, None]
         * parts.stick[..., None, :, None]
@@ -117,7 +117,7 @@ def joint(parts: Marginals) -> torch.Tensor:
 def distribution(
     obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters
 ) -> torch.Tensor:
-    """(R, S, 42) the scripted agent's joint action probabilities, `to_joint` order."""
+    """(R, S, NUM_JOINT) the scripted agent's joint action probabilities, `to_joint` order."""
     return joint(marginals(obs, characteristics, parameters))
 
 
@@ -160,7 +160,7 @@ class Scripted:
         return probability[:, None] if isinstance(probability, torch.Tensor) else probability
 
     def action_distribution(self, obs: Obs) -> torch.Tensor:
-        """(R, S, 42) the distribution `step` samples from."""
+        """(R, S, NUM_JOINT) the distribution `step` samples from."""
         probability = self._probability()
         if isinstance(probability, torch.Tensor):
             probability = probability[..., None]

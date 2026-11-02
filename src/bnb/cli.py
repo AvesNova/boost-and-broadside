@@ -1,6 +1,9 @@
-"""Command-line entry point: `bnb train ...` trains or clones, `bnb runs ...` lists runs and uploads
-checkpoints, `bnb ship-card ...` charts a ship card. The one
-place that sets process-wide options (the seed, the matmul precision, the charts' backend)."""
+"""The `bnb` command: `bnb train` trains or clones, `bnb runs` lists runs and uploads
+checkpoints, `bnb ship-card` charts a ship card.
+
+An entry point (code style, Layers): it sets the process-wide options its commands need (the
+seed, the matmul precision, the charts' backend). The play shell (`python -m bnb.play`) and
+`bench` are the other entry points."""
 
 import dataclasses
 import json

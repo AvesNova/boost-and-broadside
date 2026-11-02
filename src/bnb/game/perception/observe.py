@@ -61,7 +61,7 @@ def view_order(ships_per_team: int, device) -> torch.Tensor:
 
 
 def _hidden_columns(rules: Rules, state: State) -> torch.Tensor:
-    """(B, N, 16) the columns a team sees only for ships it can see (sim order)."""
+    """(B, N, SHIP_HIDDEN_ZERO) the columns a team sees only for ships it can see (sim order)."""
     ships = state.ships
     speed = ships.proper_speed / torch.exp(ships.log_refractive_index)
     cos, sin = ships.heading_cos, ships.heading_sin
@@ -106,7 +106,7 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
         visible | unfogged, 0, (match.ticks_since_seen + 1).clamp_max(TICKS_SINCE_SEEN_CAP)
     )
 
-    hidden = _hidden_columns(rules, state)[:, order]  # (B, 2, N, 16) by row
+    hidden = _hidden_columns(rules, state)[:, order]  # (B, 2, N, SHIP_HIDDEN_ZERO) by row
     team_relative = (torch.arange(N, device=device) // S).float()  # by row: static
     alive, fired = ships.alive[:, order].float(), ships.fired[:, order].float()
     respawn_wait = ships.respawn_wait[:, order].float() * rules.tick_length

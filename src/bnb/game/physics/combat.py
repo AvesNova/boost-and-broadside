@@ -154,14 +154,16 @@ def hits(
 def boundary_damage(
     rules: Rules, arena_radius: torch.Tensor, ships: Ships, alive_at_start: torch.Tensor
 ) -> torch.Tensor:
-    """Game spec 5: (5 + 0.05 depth) tick_length for a living ship outside the arena (radius
-    (B,)) after its move."""
+    """Game spec 5: (boundary_damage_base + boundary_damage_per_metre depth) tick_length for
+    a living ship outside the arena (radius (B,)) after its move."""
     depth = torch.sqrt(ships.x * ships.x + ships.y * ships.y) - arena_radius[:, None]
     rate = rules.boundary_damage_base + rules.boundary_damage_per_metre * depth
     return torch.where(alive_at_start & (depth > 0.0), rate * rules.tick_length, 0.0)
 
 
 class Damage(NamedTuple):
+    """Phase 5's results: the ships after shields, recharge and deaths."""
+
     ships: Ships
     died: torch.Tensor  # (B, N)
     shield_lost: torch.Tensor  # (B, N) what the shield actually lost, overkill ignored

@@ -96,9 +96,9 @@ def _group_of_rank(groups: tuple[int, ...], rank: torch.Tensor) -> torch.Tensor:
 
 
 def _group_centres(mode_rules: ModeRules, arena_radius: torch.Tensor, uniforms: torch.Tensor):
-    """(B, G) centres: centre 0 uniform in the disc of radius 0.85 R_a (arena_radius (B,));
-    each later one the best of C uniform draws there by distance to the nearest earlier
-    centre."""
+    """(B, G) centres: centre 0 uniform in the disc of radius group_centre_fraction R_a
+    (arena_radius (B,)); each later one the best of C uniform draws there by distance to the
+    nearest earlier centre."""
     B, G = uniforms.shape[0], len(mode_rules.spawn_groups)
     drawn = uniforms.reshape(B, G, mode_rules.spawn_candidates, 2)
     x, y = _disc(
@@ -187,7 +187,7 @@ def deathmatch_placement(
             any_living[..., None], anchor_y[..., None] + distance * torch.sin(angle), uniform_y
         )
         # A group near the edge, or an anchor there, can put a candidate outside the arena:
-        # every grouped candidate is clipped into the disc R_a - 50 m. (The uniform rule's
+        # every grouped candidate is clipped into the disc R_a - spawn_margin. (The uniform rule's
         # candidates are inside the arena by construction.)
         candidate_x, candidate_y = _clip_to_disc(
             torch.where(starting[..., None], reset_x, respawn_x),
@@ -215,8 +215,8 @@ def frontline_placement(
     uniforms: torch.Tensor,
     mode: ModeState,
 ) -> Placement:
-    """Frontline spawns: a uniform point in the disc of 0.35 zone radii around the team's
-    current spawn zone, nose toward the zone it attacks (the enemy's defense zone).
+    """Frontline spawns: a uniform point in the disc of spawn_zone_fraction zone radii around
+    the team's current spawn zone, nose toward the zone it attacks (the enemy's defense zone).
     map_scale (B,); mode: the state after this tick's captures (or a new match's)."""
     B, N, S = uniforms.shape[0], rules.num_ships, rules.ships_per_team
     per_ship = uniforms[:, 2:].reshape(B, N, 2)

@@ -2,7 +2,8 @@
 
 import dataclasses
 
-MAX_SHIPS = 255  # ship indices fit in uint8; 255 is reserved for "none"
+TEAMS = 2  # a game has exactly two teams (author decision): T in shapes
+MAX_SHIPS = 255  # stored ship indices are int32 with -1 for none; the cap is a design limit
 MAX_FIELDS = 64  # sight-line core membership is an int64 bitmask
 MODES = ("team_deathmatch", "frontline", "sandbox")
 
@@ -30,14 +31,11 @@ class GameConfig:
     arena_radius: float  # m
     episode_seconds: float | None = None
     respawn_seconds: float | None = None
-    num_teams: int = 2
     mode: str = "team_deathmatch"
     spawn_groups: tuple[int, ...] = ()
     kills_per_ship: int = 5
 
     def __post_init__(self) -> None:
-        if self.num_teams != 2:
-            raise ValueError("only two teams are supported for now")
         if not 1 <= self.ships_per_team or self.num_ships > MAX_SHIPS:
             raise ValueError(f"need 1 <= ships per team and at most {MAX_SHIPS} ships")
         if not 1 <= self.num_fields <= MAX_FIELDS:
@@ -60,7 +58,7 @@ class GameConfig:
 
     @property
     def num_ships(self) -> int:
-        return self.num_teams * self.ships_per_team
+        return TEAMS * self.ships_per_team
 
 
 def ticks_of(seconds: float, tick: float) -> int:

@@ -22,7 +22,8 @@ from .rules import MAP_SCALE_RADIUS, Rules
 @contract
 class Environment:
     """The rules that vary by environment, (B,) each, one value per pool: arena_radius (m)
-    and map_scale (arena_radius / 2600) float32; episode_ticks and respawn_ticks int32."""
+    and map_scale (arena_radius / MAP_SCALE_RADIUS) float32; episode_ticks and respawn_ticks
+    int32."""
 
     arena_radius: torch.Tensor
     map_scale: torch.Tensor

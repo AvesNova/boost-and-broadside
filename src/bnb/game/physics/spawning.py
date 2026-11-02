@@ -95,7 +95,7 @@ def formation(
     centre. keys (B, N): the formation keys; arena_radius and map_scale (B,)."""
     N, S = keys.shape[1], rules.ships_per_team
     team = torch.arange(N, device=keys.device) // S
-    side = (2 * team - 1).to(torch.float32)  # team 0 spawns at -0.8 R_a axis, team 1 at +
+    side = (2 * team - 1).to(torch.float32)  # team 0 on the -axis side, team 1 on the +
     phase = formation_rank(rules, keys) / S + rotation.repeat_interleave(S, 1)
     angle = 2.0 * math.pi * torch.frac(phase)
     axis_x, axis_y = axis_x[:, None], axis_y[:, None]

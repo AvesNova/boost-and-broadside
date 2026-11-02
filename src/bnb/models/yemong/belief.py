@@ -15,9 +15,9 @@ class Belief:
     """Per view and ship row, (..., N) leading axes.
 
     valid: bool, the row holds a belief. age: int32 ticks since the ship was last seen.
-    means (..., N, 12) and spreads (..., N, 15): the ship state (state_code.MEANS and
-    SPREADS order, physical units). action (..., N, 42): forecast probabilities of the
-    ship's next joint action (read for enemy rows only).
+    means (..., N, len(MEANS)) and spreads (..., N, len(SPREADS)): the ship state
+    (state_code.MEANS and SPREADS order, physical units). action (..., N, NUM_JOINT): forecast
+    probabilities of the ship's next joint action (read for enemy rows only).
     """
 
     valid: torch.Tensor

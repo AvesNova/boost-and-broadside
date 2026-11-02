@@ -10,7 +10,7 @@ SIZES = (NUM_POWER, NUM_STICK, NUM_SHOOT)
 
 
 def split(logits: torch.Tensor) -> tuple[torch.Tensor, ...]:
-    """(..., 12) logits into the three components' logits."""
+    """(..., sum(SIZES)) logits into the three components' logits."""
     return logits.split(SIZES, -1)
 
 

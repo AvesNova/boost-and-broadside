@@ -118,7 +118,7 @@ class Carry:
 
 @contract
 class Decision:
-    """One step's outputs, per view: policy_logits (R, S, 42); enemy_action_logits and
+    """One step's outputs, per view: policy_logits (R, S, NUM_JOINT); enemy_action_logits and
     next_state_logits (R, N - S, ...) for the enemy rows; values (R, S, levels) in the configured
     level order; outcome_probabilities (R, 4); the next carry (previous_action not yet
     replaced by the sample); the replay record."""
@@ -136,7 +136,7 @@ class Decision:
 class Unrolled:
     """A segment's outputs, (L, R, ...) leading: policy_logits (S rows), enemy_action_logits
     and next_state_logits (every row), value_logits (S, levels - 1, bins), values (S, levels),
-    outcome_logits (4), density_log_rates (2C: ally cells, then enemy cells),
+    outcome_logits (4), density_log_rates (2 cells: ally cells, then enemy cells),
     shot_outcome_logits (N, 19) and shot_latents (N, D) for `Yemong.shot_trajectory`."""
 
     policy_logits: torch.Tensor
@@ -344,7 +344,7 @@ class Yemong(nn.Module):
         )
 
     def _encode(self, tokens: Tokens):
-        """Queries (..., Q, D), map memory (..., M, Dm) and the rotary tables."""
+        """Queries (..., Q, D), map memory (..., M + Z, Dm) and the rotary tables."""
         queries, memory = self.encoder(
             tokens.ship, tokens.global_token, tokens.field, tokens.zone, tokens.zone_present
         )
@@ -474,7 +474,7 @@ class Yemong(nn.Module):
         )
 
     def shot_trajectory(self, latents: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
-        """Trajectory code logits (..., ages, 154) of latents (..., D) at bullet ages (in
-        moves) broadcasting against (..., ages)."""
+        """Trajectory code logits (..., ages, trajectory_width) of latents (..., D) at bullet
+        ages (in moves) broadcasting against (..., ages)."""
         features = shots.time_features(ages, float(self.bullet_moves), SHOT_HARMONICS)
         return self.shot_trajectory_head.query(latents, features)

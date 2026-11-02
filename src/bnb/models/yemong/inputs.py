@@ -23,7 +23,7 @@ from bnb.contracts.tree import contract
 from bnb.game.rules import TEAMS
 
 from . import codes
-from .features import local_presence, respawn_features, symlog
+from .features import RESPAWN_HARMONICS, local_presence, respawn_features, symlog
 from .state_code import POSITION_LEVELS, POSITION_PERIOD, ShipStateCode
 
 NULL_ACTION = 0  # the joint index of coast, straight, hold fire
@@ -58,8 +58,10 @@ ZONE_INPUTS = POSITION_CODE + 1 + ZONE_ROLES + 4
 
 def ship_inputs(code_width: int, ship_types: int) -> int:
     """The ship token's width: the code, team and type one-hots, the flags, time since seen,
-    respawn features (9), the pending action, the gradient and presence (2 each)."""
-    return code_width + TEAMS + ship_types + len(SHIP_FLAGS) + 1 + 9 + NUM_JOINT + 2 + 2
+    respawn features (1 + 2 RESPAWN_HARMONICS), the pending action, the gradient and presence
+    (2 each)."""
+    respawn = 1 + 2 * RESPAWN_HARMONICS
+    return code_width + TEAMS + ship_types + len(SHIP_FLAGS) + 1 + respawn + NUM_JOINT + 2 + 2
 
 
 @contract
@@ -110,7 +112,7 @@ class Tokens:
 
     ship (..., N, ship_inputs), global_token (..., 1, GLOBAL_INPUTS), field (..., M,
     FIELD_INPUTS), zone (..., Z, ZONE_INPUTS); zone_present (..., Z) bool, the zone is
-    the mode's (an absent one becomes the learned absent token); code (..., N, 490) the
+    the mode's (an absent one becomes the learned absent token); code (..., N, state_code.width) the
     belief's state code (the next-state head's baseline); ship_type (..., N) int64;
     query_position (..., N + 1, 2) and query_heading (..., N + 1): the ships' belief and the
     map centre (no heading); memory_position (..., M + Z, 2), the fields' and zones' centres,

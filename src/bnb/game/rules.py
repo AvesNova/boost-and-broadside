@@ -12,11 +12,11 @@ import dataclasses
 import math
 
 from bnb.contracts import GameConfig, Pool, ticks_of
+from bnb.contracts.config import TEAMS
 from bnb.contracts.pools import environments_per_pool, pool_game
 
 from .modes.rules import CLOCKS, ZONE_SLOTS, ModeRules, mode_rules_of
 
-TEAMS = 2
 STICK_LEVELS = (0.0, -0.4, 0.4, -0.75, 0.75, -1.0, 1.0)  # by stick index; + turns left
 POWER_MODES = (0.0, -1.0, 1.0)  # by power index: coast, boost, reverse
 FIELD_LEVELS = (-2, -1, 1, 2)

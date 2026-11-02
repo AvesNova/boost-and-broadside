@@ -31,7 +31,8 @@ class Action:
 
 
 def to_joint(action: Action) -> torch.Tensor:
-    """The joint index power * 14 + stick * 2 + shoot, in [0, 42)."""
+    """The joint index power * NUM_STICK * NUM_SHOOT + stick * NUM_SHOOT + shoot, in
+    [0, NUM_JOINT)."""
     return action.power * (NUM_STICK * NUM_SHOOT) + action.stick * NUM_SHOOT + action.shoot
 
 

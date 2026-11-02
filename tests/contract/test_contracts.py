@@ -16,11 +16,9 @@ from bnb.contracts.pools import environments_per_pool
 def test_game_config_limits():
     assert GameConfig(5, 10, 2600.0).num_ships == 10
     with pytest.raises(ValueError):
-        GameConfig(128, 10, 2600.0)  # 256 ships: indices must fit in uint8 with 255 = none
+        GameConfig(128, 10, 2600.0)  # 256 ships: over MAX_SHIPS
     with pytest.raises(ValueError):
         GameConfig(5, 65, 2600.0)
-    with pytest.raises(ValueError):
-        GameConfig(5, 10, 2600.0, num_teams=3)
 
 
 def test_time_native_rules_must_be_whole_ticks():

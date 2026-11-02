@@ -1,4 +1,4 @@
-"""The 42-way joint policy: Gumbel-max sampling, log-probabilities and entropy."""
+"""The joint policy over NUM_JOINT actions: Gumbel-max sampling, log-probabilities and entropy."""
 
 import torch
 import torch.nn.functional as F
@@ -7,7 +7,7 @@ GUMBEL_FLOOR = 1e-20
 
 
 def sample(logits: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """A Gumbel-max sample of (..., 42) logits: (joint int32, log-prob, entropy), each (...).
+    """A Gumbel-max sample of (..., NUM_JOINT) logits: (joint int32, log-prob, entropy), each (...).
 
     Draws from the default generator, so a captured graph draws fresh noise on every replay.
     """

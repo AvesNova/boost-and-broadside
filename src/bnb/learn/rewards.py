@@ -218,7 +218,8 @@ def damage_events(
 def reward_step(
     config: RewardConfig, ledger: Ledger, events: Events, team: torch.Tensor
 ) -> tuple[torch.Tensor, Ledger]:
-    """(rewards (B, N, 5) in REWARD_LEVELS order, ledger') for one tick (rewards spec 3).
+    """(rewards (B, N, len(REWARD_LEVELS)) in REWARD_LEVELS order, ledger') for one tick (rewards
+    spec 3).
 
     Events in sim order; team (N,) or (B, N).
     """

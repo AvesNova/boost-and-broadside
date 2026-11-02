@@ -1,8 +1,9 @@
 """What a team sees (`Obs`) and the truth only learners may use (`Privileged`).
 
 An observation is raw and in world coordinates, with no rotation or mirroring. The only
-canonicalization is the team: every entity carries `team_relative = (team - viewer) mod T`, and
-rows are ordered by `team_relative` (own ships first), so nothing reveals which seat a team has.
+canonicalization is the team: each ship row carries `team_relative = (team - viewer) mod T`,
+and the ship rows are ordered by it (own ships first); zones and the mode's globals are in
+the viewer's terms. So nothing reveals which seat a team has.
 """
 
 from typing import ClassVar
@@ -110,7 +111,9 @@ class Privileged:
 
     team: (B, N) int32, the sim team of each ship (sim order).
     view_order: (B, T, N) int64, the sim index of each observation row of each view.
-    ships: (B, T, N, len(SHIP_COLUMNS)), the observation with fog off.
+    ships: (B, T, N, len(SHIP_COLUMNS)), every row as if its ship were seen: `visible` 1,
+        `time_since_seen` 0 and the true hidden columns for every ship, the dead included
+        (unlike a fog-off observation, where a dead enemy is not visible).
     """
 
     team: torch.Tensor

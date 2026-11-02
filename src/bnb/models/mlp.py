@@ -82,7 +82,7 @@ class MLP(nn.Module):
         nn.init.zeros_(self.policy.bias)
 
     def forward(self, obs: Obs) -> tuple[torch.Tensor, torch.Tensor]:
-        """Logits (..., S, 12) and values (..., S) for views with any leading axes."""
+        """Logits (..., S, sum(SIZES)) and values (..., S) for views with any leading axes."""
         ships = obs.ships * self.ship_scale
         since = SHIP["time_since_seen"]
         ships = torch.cat(
