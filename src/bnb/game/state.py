@@ -120,6 +120,9 @@ class ModeState:
 
 @contract
 class State:
+    """The game state of a batch of B environments: ships, bullets, fields, the match and the mode's
+    part."""
+
     ships: Ships
     bullets: Bullets
     fields: Fields

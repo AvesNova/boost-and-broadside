@@ -111,13 +111,16 @@ class Segments(Protocol):
     length: int
     names: tuple[str, ...]
 
-    def shard(self, names: tuple[str, ...], shard: int) -> dict: ...
+    def shard(self, names: tuple[str, ...], shard: int) -> dict:
+        """Whole-shard copies on the device of the per-tick leaves names, (L, R, ...) with
+        R = views // shards."""
 
-    def batches(
-        self, names: tuple[str, ...], view_batches: list[torch.Tensor]
-    ) -> Iterator[dict]: ...
+    def batches(self, names: tuple[str, ...], view_batches: list[torch.Tensor]) -> Iterator[dict]:
+        """Yield {name: pytree} on the device for each list of views in view_batches."""
 
-    def write_views(self, source: dict, views: slice) -> None: ...
+    def write_views(self, source: dict, views: slice) -> None:
+        """Copy {name: pytree (n, ...)} into the per-view leaves of the n views of the slice
+        views."""
 
 
 def random_stream(seed: int, name: str, device: torch.device | None = None) -> torch.Generator:
@@ -320,6 +323,8 @@ class Learner:
     # ------------------------------------------------------------------ the loss
 
     def unroll(self, trajectory: Trajectory):
+        """The model's outputs over a stored segment (L, R, ...), from its initial carry and replay,
+        with the resets read from the observation's globals."""
         reset = trajectory.obs.globals[..., GLOBAL["reset"]] > 0.5
         return self.model.unroll(trajectory.initial_carry, trajectory.obs, trajectory.replay, reset)
 

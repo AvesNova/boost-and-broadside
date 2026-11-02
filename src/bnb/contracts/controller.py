@@ -42,7 +42,9 @@ class Controller(Protocol):
 
     reads: tuple[str, ...]
 
-    def init_carry(self, views: int, device: torch.device) -> Carry: ...
+    def init_carry(self, views: int, device: torch.device) -> Carry:
+        """The carry before the first step of R = views views, on device (None for a stateless
+        controller)."""
 
     def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Action, Carry, Outputs]:
         """obs: views (R, ...); reset: (R,) bool, the view's environment reset before this

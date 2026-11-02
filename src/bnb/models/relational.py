@@ -48,6 +48,8 @@ class RelationalConfig:
 
     @property
     def local_levels(self) -> tuple[int, ...]:
+        """The indices into levels of every level but outcome_level: the levels with a value
+        distribution."""
         return tuple(i for i, name in enumerate(self.levels) if name != self.outcome_level)
 
 
@@ -182,6 +184,7 @@ class Relational(nn.Module):
         )
 
     def initial_carry(self, views: int, device=None) -> None:
+        """No carry: the model is stateless."""
         return None
 
     def forward(self, obs: Obs) -> Unrolled:
@@ -214,4 +217,6 @@ class Relational(nn.Module):
 
 
 def outcome_probabilities(unrolled: Unrolled) -> torch.Tensor:
+    """(..., OUTCOMES): the outcome probabilities (win, tie, loss, unresolved), the softmax of the
+    outcome logits."""
     return F.softmax(unrolled.outcome_logits, -1)

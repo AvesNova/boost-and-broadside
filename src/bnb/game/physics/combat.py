@@ -162,7 +162,8 @@ def boundary_damage(
 
 
 class Damage(NamedTuple):
-    """Phase 5's results: the ships after shields, recharge and deaths."""
+    """What apply_damage returns: the ships after the damage and the recharge, and per ship
+    (B, N) died, shield_lost and shield_restored."""
 
     ships: Ships
     died: torch.Tensor  # (B, N)

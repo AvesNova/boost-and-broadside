@@ -11,6 +11,9 @@ from bnb.game import api
 
 
 class Realtime:
+    """One match (B = 1) on the CPU for interactive play: its state, every team's latest view obs,
+    and the compiled tick."""
+
     def __init__(self, config: GameConfig, compile: bool = True, fogged: bool = True) -> None:
         self.rules = api.rules_of(config)
         self.types = api.ship_types()

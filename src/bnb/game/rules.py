@@ -97,6 +97,7 @@ class Rules:
 
     @property
     def num_ships(self) -> int:
+        """N: TEAMS times ships_per_team."""
         return TEAMS * self.ships_per_team
 
     @property
@@ -106,6 +107,7 @@ class Rules:
 
     @property
     def modes(self) -> tuple[ModeRules, ...]:
+        """Each pool's ModeRules, in pool order."""
         return tuple(pool.mode for pool in self.pools)
 
     @property

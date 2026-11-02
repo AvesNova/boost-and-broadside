@@ -52,6 +52,9 @@ def frontline(
     has_target: torch.Tensor,
     target_distance: torch.Tensor,
 ) -> Marginals:
+    """The Frontline layer's marginals per own ship (R, S): power and stick toward the assigned zone
+    of zones (R, Z, columns), or toward the spawn when recovering, blended with combat_marginals by
+    target_distance (m) where has_target; the shoot marginal is the combat layer's."""
     own, enemy = fleet.own, fleet.enemy
     own_alive = column(own, "alive") > 0.5
     own_health = torch.where(own_alive, _health(own, fleet.own_type, characteristics), 0.0)

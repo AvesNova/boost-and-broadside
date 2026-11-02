@@ -129,10 +129,12 @@ class ShipStateCode(nn.Module):
 
     @property
     def width(self) -> int:
+        """The code's width: groups times size, summed over runs."""
         return sum(groups * size for groups, size in self.runs)
 
     @property
     def groups(self) -> int:
+        """The softmax groups of the code, summed over runs."""
         return sum(groups for groups, _ in self.runs)
 
     @property
@@ -165,6 +167,8 @@ class ShipStateCode(nn.Module):
     def encode(
         self, means: torch.Tensor, spreads: torch.Tensor, ship_type: torch.Tensor
     ) -> torch.Tensor:
+        """The state code (..., width) of means (..., len(MEANS)), spreads (..., spread_count) and
+        ship_type (...), one run per quantity in runs order."""
         maxima = self._maxima(ship_type)
         mean = dict(zip(MEANS, means.unbind(-1), strict=True))
         spread = dict(zip(SPREADS, spreads[..., : len(SPREADS)].unbind(-1), strict=True))

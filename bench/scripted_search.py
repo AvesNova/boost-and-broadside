@@ -79,6 +79,8 @@ SEED_LIMIT = MAXIMUM_ROUNDS * (MAXIMUM_SEED + 1)  # every search game seed is be
 
 
 def game_seed(seed: int, round_index: int) -> int:
+    """The default generators' seed for a round's games, below SEED_LIMIT for every seed and round
+    the tool accepts."""
     return MAXIMUM_ROUNDS * seed + round_index
 
 
@@ -140,6 +142,8 @@ def scores(
 
 
 def best_of_last_round(path: str) -> ScriptedParameters:
+    """The parameters of the last round's best candidate (by combined score) in the search log at
+    path."""
     rows = [json.loads(line) for line in open(path)]
     last = max(row["round"] for row in rows)
     top = max((row for row in rows if row["round"] == last), key=lambda row: row["combined"])
@@ -157,6 +161,8 @@ def best_of_last_round(path: str) -> ScriptedParameters:
 
 
 def main() -> None:
+    """Run the search the module describes, appending every candidate's scores and parameters to the
+    log."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--games", type=int, default=128, help="per candidate and match")

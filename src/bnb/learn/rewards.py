@@ -51,6 +51,7 @@ class RewardConfig:
 
     @property
     def weights(self) -> tuple[float, ...]:
+        """The level weights in REWARD_LEVELS order."""
         return tuple(getattr(self, level) for level in REWARD_LEVELS)
 
 

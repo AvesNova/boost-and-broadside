@@ -55,10 +55,12 @@ class Context(NamedTuple):
 
 
 def column(rows: torch.Tensor, name: str) -> torch.Tensor:
+    """The named SHIP column of ship rows (..., columns), shaped (...)."""
     return rows[..., SHIP[name]]
 
 
 def context(obs: Obs, characteristics: Characteristics, parameters: ScriptedParameters) -> Context:
+    """The Context both layers read, from one team's views (R, ...), own rows first."""
     ships = obs.ships
     S = ships.shape[-2] // 2  # two teams, own rows first
     own, enemy = ships[:, :S], ships[:, S:]
@@ -173,6 +175,7 @@ def far(fleet: Context, distance: torch.Tensor, parameters: ScriptedParameters) 
 
 
 def either(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
+    """P(first or second) for independent events: 1 - (1 - first)(1 - second)."""
     return 1.0 - (1.0 - first) * (1.0 - second)
 
 

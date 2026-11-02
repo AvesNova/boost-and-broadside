@@ -140,6 +140,8 @@ def build_model(build: YemongBuild | RelationalBuild, device: torch.device) -> t
 
 
 def model_controller(model: torch.nn.Module, game: GameConfig):
+    """The controller for a model: RelationalController for a Relational model, otherwise
+    YemongController."""
     if isinstance(model, Relational):
         return RelationalController(model)
     return YemongController(model, game.ships_per_team, game.num_ships)

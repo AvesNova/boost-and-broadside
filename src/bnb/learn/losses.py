@@ -11,6 +11,7 @@ from bnb.models.yemong import codes, critic
 
 
 def masked_sum(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """The sum of values where mask is true: a scalar in the values' dtype."""
     return torch.where(mask, values, 0.0).sum()
 
 

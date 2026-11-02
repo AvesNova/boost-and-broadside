@@ -27,6 +27,8 @@ class Action:
 
     @staticmethod
     def unpack(packed: torch.Tensor) -> Action:
+        """The inverse of packed: (..., ships, 3) int32 in the order power, stick, shoot to an
+        Action."""
         return Action(packed[..., 0], packed[..., 1], packed[..., 2])
 
 
@@ -37,6 +39,8 @@ def to_joint(action: Action) -> torch.Tensor:
 
 
 def from_joint(joint: torch.Tensor) -> Action:
+    """The inverse of to_joint: joint indices in [0, NUM_JOINT) to an Action of int32 components
+    shaped like them."""
     joint = joint.to(torch.int32)
     return Action(
         joint // (NUM_STICK * NUM_SHOOT), (joint // NUM_SHOOT) % NUM_STICK, joint % NUM_SHOOT

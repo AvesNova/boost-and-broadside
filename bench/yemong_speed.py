@@ -47,6 +47,8 @@ HEADS = (
 
 
 def make_model(precision):
+    """A fresh Yemong (seed 0) on the GPU for the synthetic segments' game, with bf16 matmuls when
+    precision is bfloat16."""
     torch.manual_seed(0)
     config = YemongConfig(bfloat16_matmuls=precision == "bfloat16")
     rules = api.rules_of(GameConfig(5, 10, 2600.0))  # 5v5, 10 fields, the segments' arena
@@ -54,6 +56,8 @@ def make_model(precision):
 
 
 def nonzero_carry(model, views):
+    """The model's initial carry for views views with a random normal state and convolution buffer,
+    so no cell times an all-zero recurrence."""
     carry = model.initial_carry(views, OWN, SHIPS, device="cuda")
     return dataclasses.replace(
         carry,
@@ -63,6 +67,8 @@ def nonzero_carry(model, views):
 
 
 def timed(function, repetitions, warmup):
+    """Call function warmup times, then time repetitions CUDA-synchronised calls: (the median in ms,
+    every time in ms)."""
     for _ in range(warmup):
         function()
     torch.cuda.synchronize()
@@ -77,6 +83,8 @@ def timed(function, repetitions, warmup):
 
 @torch.no_grad()
 def record_replay(model, carry, obs, reset):
+    """The replays the model's step records over the segment obs (L, R, ...) from carry, stacked to
+    (L, R, ...)."""
     replays = []
     for t in range(reset.shape[0]):
         decision = model.step(carry, time_slice(obs, t), reset[t])
@@ -87,6 +95,9 @@ def record_replay(model, carry, obs, reset):
 
 
 def training_cell(model, views, mode, repetitions, warmup):
+    """Time one training iteration (unroll forward and backward) over a synthetic segment of STEPS
+    steps and views views in mode (eager, compiled or cudagraphs): the median ms, view ticks per s
+    and peak memory (GiB)."""
     obs, reset = random_segment(
         STEPS, views, SHIPS, FIELDS, ZONES, device="cuda", seed=views, reset_steps=(STEPS // 2,)
     )
@@ -119,6 +130,8 @@ def training_cell(model, views, mode, repetitions, warmup):
 
 
 def rollout_cell(model, views, mode, repetitions, warmup):
+    """Time one step for views views in mode (eager, compiled or cudagraphs): the median ms, view
+    steps per s and peak memory (GiB)."""
     obs, _ = random_segment(2, views, SHIPS, FIELDS, ZONES, device="cuda", seed=1)
     single = time_slice(obs, 1)
     reset = torch.zeros(views, dtype=torch.bool, device="cuda")
@@ -154,6 +167,7 @@ def _commit() -> str:
 
 
 def main():
+    """Run the selected cells and append each row as a JSON line to --out."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", choices=("training", "rollout"))
     parser.add_argument("--views", type=int)

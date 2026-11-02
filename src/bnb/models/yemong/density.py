@@ -11,6 +11,7 @@ LOG_RATE_RANGE = (-20.0, 2.0)
 
 
 def cell_count(rings: int) -> int:
+    """C, the hex grid's cells within rings rings of the centre: 1 + 3 rings (rings + 1)."""
     return 1 + 3 * rings * (rings + 1)
 
 

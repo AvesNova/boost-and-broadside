@@ -38,6 +38,8 @@ class Airframe(NamedTuple):
 
 
 def airframe_of(types: ShipTypes, ship_type: torch.Tensor) -> Airframe:
+    """Each ship's Airframe from the ship card, shaped like ship_type, with its corner_speed (m/s)
+    derived."""
     names = Airframe._fields[:-1]
     values = {name: per_ship(getattr(types, name), ship_type) for name in names}
     corner = torch.sqrt(values["max_acceleration"] / values["max_lift_coefficient"])
@@ -63,11 +65,16 @@ def stall_angle(constants: FlightConstants, airframe: Airframe) -> torch.Tensor:
 
 
 def lift_coefficient(constants: FlightConstants, airframe: Airframe, angle: torch.Tensor):
+    """The lift coefficient at angle of attack angle (rad): max_lift_coefficient (2r - r|r|), r the
+    angle in stall angles clamped to [-2, 2]; it peaks at the stall angle and is zero from twice
+    it."""
     ratio = (angle / stall_angle(constants, airframe)).clamp(-2.0, 2.0)
     return airframe.max_lift_coefficient * (2.0 * ratio - ratio * ratio.abs())
 
 
 def lift_slope(constants: FlightConstants, airframe: Airframe, angle: torch.Tensor):
+    """The lift coefficient's derivative in the angle of attack (1/rad), zero from twice the stall
+    angle."""
     stall = stall_angle(constants, airframe)
     ratio = (angle / stall).abs()
     return torch.where(
@@ -85,6 +92,9 @@ class Setting(NamedTuple):
 
 
 def setting(constants: FlightConstants, airframe: Airframe, speed, energy, stick, power) -> Setting:
+    """The Setting (game spec 3.4) at speed (m/s) and store energy, for stick level sigma and power
+    mode pi as floats: the lateral lift within the airframe's budget, the exchange faded at the
+    store's ends, the vertical lift and the thrust."""
     fall = engine_fall(constants, airframe, energy)
     dive = constants.dive_exchange * airframe.dive_exchange_scale  # a_d
     commanded = torch.where(

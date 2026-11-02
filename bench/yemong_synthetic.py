@@ -122,6 +122,7 @@ def random_segment(
 
 
 def time_slice(obs: Obs, t: int) -> Obs:
+    """Step t of a segment's observation (L, ...): the views (...) at that step."""
     return Obs(
         *(
             None if leaf is None else leaf[t]

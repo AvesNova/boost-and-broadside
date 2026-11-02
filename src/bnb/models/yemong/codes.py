@@ -380,6 +380,8 @@ def _split_runs(code: torch.Tensor, runs: Runs) -> list[torch.Tensor]:
 
 
 def grouped_log_softmax(logits: torch.Tensor, runs: Runs) -> torch.Tensor:
+    """Log-probabilities in the code's layout (..., width): a log-softmax over each group of each
+    run."""
     return torch.cat(
         [F.log_softmax(part, -1).flatten(-2) for part in _split_runs(logits, runs)], -1
     )

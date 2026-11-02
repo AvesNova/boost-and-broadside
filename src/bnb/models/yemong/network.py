@@ -24,6 +24,7 @@ class KindProjection(nn.Module):
         self.first_norm = norm(width)
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        """gelu(norm(W x + b)): (..., inputs) to (..., width)."""
         return F.gelu(self.first_norm(self.first(tokens)))
 
 
@@ -104,6 +105,8 @@ class Encoder(nn.Module):
 
 
 class Block(nn.Module):
+    """One trunk block: spatial_per_block spatial sublayers, then one temporal sublayer."""
+
     def __init__(self, width: int, heads: int, map_width: int, spatial_per_block: int) -> None:
         super().__init__()
         self.spatial = nn.ModuleList(
@@ -112,6 +115,8 @@ class Block(nn.Module):
         self.temporal = TemporalBlock(width)
 
     def attend(self, tokens, map_memory, token_tables, map_tables):
+        """The tokens (..., Q, D) after each of the block's spatial sublayers in turn, each
+        attending over the map memory."""
         for layer in self.spatial:
             tokens = layer(tokens, map_memory, token_tables, map_tables)
         return tokens

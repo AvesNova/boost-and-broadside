@@ -87,6 +87,7 @@ class RGLRU(nn.Module):
         return decay, scale * gate * inputs
 
     def step(self, inputs: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
+        """One step: the new state (..., D), the decay times the state plus the gated input."""
         decay, contribution = self._terms(inputs)
         return decay * state + contribution
 
@@ -135,6 +136,9 @@ class CausalConvolution(nn.Module):
 
 
 class TemporalBlock(nn.Module):
+    """The temporal sublayer: per query token a causal convolution and an RG-LRU, gated, then a
+    gated MLP, each pre-normed and residual. step is one decision, sequence a stored segment."""
+
     def __init__(self, width: int) -> None:
         super().__init__()
         self.input_norm = norm(width)

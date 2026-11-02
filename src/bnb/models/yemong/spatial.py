@@ -13,6 +13,9 @@ Tables = tuple[torch.Tensor, torch.Tensor]  # (cos, sin), each (..., tokens, 1, 
 
 
 class SpatialBlock(nn.Module):
+    """The spatial sublayer: rotary attention of the query tokens over themselves and the map
+    memory, then a gated MLP, each pre-normed and residual."""
+
     def __init__(self, width: int, heads: int, map_width: int) -> None:
         super().__init__()
         self.heads = heads

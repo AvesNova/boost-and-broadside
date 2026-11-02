@@ -58,6 +58,7 @@ class GameConfig:
 
     @property
     def num_ships(self) -> int:
+        """N: TEAMS times ships_per_team."""
         return TEAMS * self.ships_per_team
 
 

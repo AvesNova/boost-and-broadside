@@ -34,6 +34,7 @@ class ShotCodeParameters:
 
     @property
     def trajectory_width(self) -> int:
+        """The trajectory code's width: the displacement, direction, speed and log-index codes."""
         return (
             9 * self.displacement_levels
             + 4 * self.direction_levels
@@ -43,6 +44,8 @@ class ShotCodeParameters:
 
     @property
     def outcome_width(self) -> int:
+        """The outcome code's width: enemy hit, ally hit, near_bins near-miss bins per side, and
+        clear."""
         return 2 + 2 * self.near_bins + 1
 
 
