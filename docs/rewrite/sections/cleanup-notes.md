@@ -11,7 +11,7 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
 - [x] 1.1 contract renames
 - [x] 1.2-1.3 names
 - [x] 2 dead code and the opaque state
-- [ ] 3 the sweep's tests
+- [x] 3 the sweep's tests
 - [ ] 4 docs
 - [ ] 5 layering and duplication
 - [ ] 6 test hygiene
@@ -139,6 +139,60 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
   `ppo.py`. Kept: `checkpoint.restore_default_generators` sets the default generators'
   state; the entry point calls it on resume (its docstring says so), and the spec's list
   does not name it.
+
+### 3. The sweep's tests
+
+Written on `section/cleanup-sweep` (merged, `43fc89a2`..`674d50c3`), in new files so they
+stay out of the other groups' diffs. Each mutation was applied by hand in `src/`, the test
+failed, and the change was reverted (item 2 re-checked on the merged tree). No test found
+a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is `slow` or
+`gpu`.
+
+| Item | Test | Mutation that made it fail |
+|---|---|---|
+| 1 | `test_physics_rules.py::test_a_dead_ship_with_a_cool_gun_and_energy_fires_nothing` | `ships.alive &` dropped from `fire` |
+| 2 | `test_physics_rules.py::test_a_ship_with_exactly_the_shot_cost_in_energy_fires` | `>=` to `>` |
+| 3 | `test_perception_rules.py::test_without_fog_no_ship_goes_unseen_not_even_a_dead_one` | `visible \| unfogged` to `visible` |
+| 4 | `test_perception_rules.py::test_the_reset_flag_is_one_on_an_episodes_first_observation_only` | `episode_tick == 0` to `== 1` |
+| 5 | `test_perception_rules.py::test_the_privileged_rows_show_every_ship_as_seen_where_it_truly_is` | truth rows from `visible`, and from `since` (each failed) |
+| 6 | `test_perception_rules.py::test_the_observed_respawn_wait_is_in_seconds` | `* rules.tick_length` dropped |
+| 7 | `test_mode_rules.py::test_team_one_sees_a_moved_front_negated`, `::test_a_tick_with_a_moved_front_and_its_mirror_agree` | the front not negated for view 1 |
+| 8 | `test_mode_rules.py::test_a_dead_ship_inside_a_zone_does_not_count_toward_its_capture` | `& alive[..., None]` dropped in `phase.py` |
+| 9 | `test_mode_rules.py::test_every_zones_observed_movement_is_zero_on_the_tick_a_capture_completes` | movement not zeroed on a completion |
+| 10 | `test_mode_rules.py::test_spawn_protection_is_by_each_ships_own_team` | `repeat_interleave(S, 1)` to `repeat(1, S, 1)`, at S = 3 |
+| 11 | `test_mode_rules.py::test_spawns_count_every_enemy_on_a_respawn_and_same_group_rivals_on_a_reset` | `counts = rival` (respawn case) and `rival \| True` (reset case) |
+| 12 | `test_mode_rules.py::test_a_match_with_no_living_ship_respawns_at_the_uniform_fallback_points` | `any_living` forced true |
+| 13 | `test_reward_paths.py::test_the_objective_progress_level_carries_objective_progress` | the level built from `objective` |
+| 14 | `test_reward_paths.py::test_a_restore_after_boundary_damage_heals_the_boundary_row_by_its_share` | deficit without the boundary row; the boundary row's attribution removed; the ship rows' total including the boundary (each failed) |
+| 15 | `test_reward_paths.py::test_a_hit_and_a_restore_in_one_tick_share_the_ticks_ledger_total`, `::test_a_kill_is_shared_by_the_ledger_including_the_killing_ticks_damage` | `ships_total = old_total`; the kill's `ledger_total=old_total` |
+| 16 | `test_rollout_records.py::test_the_stored_reward_is_the_learners_seat_teams` | `reward[environments, 0]`, and `reward[environments, role]` |
+| 17 | `test_rollout_records.py::test_seats_are_redrawn_at_episode_ends_and_only_there` | seat never redrawn, and redrawn every tick |
+| 18 | `test_rollout_records.py::test_the_time_since_seen_rises_from_tick_to_tick_in_the_stored_views` | the `api.perceived` copy-back removed |
+| 19 | `test_rollout_records.py::test_each_stored_done_is_its_own_environments` | `events.done[:rows]`, and the environments reversed |
+| 20 | `test_pool_arithmetic.py::test_a_share_that_gives_a_fraction_of_an_environment_is_refused` | tolerance `1e-6` to `0.5` |
+| 21 | `test_pool_arithmetic.py::test_the_batch_multiple_counts_the_fogged_share` | the fogged denominator dropped from the lcm |
+| 22 | `test_pool_arithmetic.py::test_a_time_just_off_a_whole_tick_is_refused` | tolerance `1e-2`, and the check removed |
+| 23 | `test_yemong_inputs.py::test_a_ship_that_spawned_this_tick_enters_with_the_null_pending_action` | `where(spawned, null, forecast)` to `forecast` |
+| 24 | `test_yemong_inputs.py::test_presence_counts_only_ships_with_a_valid_belief` | presence from every row |
+| 25 | `test_yemong_inputs.py::test_the_time_since_seen_input_is_in_seconds` | `* tick_length` dropped |
+| 26 | `test_yemong_inputs.py::test_the_nearest_image_crosses_the_period_boundary`, `::test_the_forecast_position_of_a_hidden_enemy_is_the_image_nearest_its_belief` | `_nearest` removed in `step`; `round` to `floor` |
+| 27 | `test_yemong_inputs.py::test_unroll_from_a_carry_with_history_whose_first_step_is_a_reset_equals_a_fresh_start` | unroll's `keep = ~reset[0]` all true |
+| 28 | `test_yemong_inputs.py::test_unroll_equals_the_step_loop_around_a_reset_mid_segment`, and an argument | removing the decay cut fails it; see below |
+
+- **Item 28, equivalent mutation:** `_later(starts)` and `starts` differ only at step 0.
+  If `starts[0]` is false they agree; if it is true, `unroll` has already cleared the
+  trunk state and the convolution buffer for that view (`keep = ~reset[0]`), so the cut
+  multiplies or masks zeros. Both mutations pass every test, as the argument predicts.
+  The test still pins the mid-segment resets (removing the cut fails it).
+- **Item 11** needs a 300 m arena in its reset case: in a normal arena the same-group
+  rivals are the nearest anyway, so the reset rule cannot be seen.
+- **Item 17** is statistical: it uses the rollout's own seat draws (false-failure
+  chance about 3e-5, in its docstring).
+- **Spies:** items 11 and 12 wrap `spawns._farthest_from_enemies`, and items 16 and 17
+  wrap `rewards.reward_step` and the resolve stage, with `monkeypatch`, to record what
+  the real code computed; nothing is replaced.
+- **Item 7** imports `test_seat_symmetry`'s helpers (`_melee`, `_random_tick`,
+  `_assert_mirrored`) to reach a moved front in the mirror check.
 
 ## Decisions and deviations
 
