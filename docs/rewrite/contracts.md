@@ -463,7 +463,7 @@ cut; where they differ, this section and the code win.
   - **Open (section 11 notes):** there is no game version constant yet (files record the
     `GameConfig` and card); the game's damage sum uses float atomics, so a long GPU run's
     resume can differ by rounding after a tick with two hits on one ship.
-- **Hits (fix/seat-symmetry, merged 2026-11-02):** a bullet's contacts are ordered by
+- **Hits (fix/seat-symmetry, merged 2026-11-02; the closer pass is the hit scored, author 2026-11-02):** a bullet's contacts are ordered by
   `bnb.game.physics.combat.contact_order`: the hit time τ, then the closer pass (the
   smaller miss distance), and only an exact tie in both by ship index. Kill credit uses
   the same order, then the bullet index. The index-first rule favoured team 1 (team-major
