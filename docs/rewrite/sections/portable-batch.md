@@ -11,25 +11,23 @@ the 8 GB development laptop. Moving between them must not mean retuning (author,
 
 ## Decided
 
-- **Hyperparameters live on the logical batch:** environments × segment length × shards
+- **Hyperparameters live on the logical batch:** environments, segment length and shards
   per update, and the learner's epochs and minibatches. A config means the same training
   on any GPU.
+- **Shards are a hyperparameter, not a memory knob (author, 2026-11-02):** they are the
+  same environments continuing over consecutive segments, so they change the batch's
+  diversity (fewer independent matches, correlated samples), the advantages (each segment
+  boundary is a bootstrap cut) and the per-update statistics (the return scale's mix).
+  More shards is a different batch from more environments.
 - **Memory knobs change only memory and speed, never the maths:** `micro_batch_rows`
-  (gradient accumulation), shards (segments collected one after another),
-  `host_store` (segments in CPU memory). They are already overridable on resume.
+  (gradient accumulation) and `host_store` (segments in CPU memory). They are already
+  overridable on resume.
 - **The split is chosen automatically:** from the memory probe, the run picks the largest
-  micro-batch and the fewest shards that fit the device (an explicit setting still wins),
-  and records the choice in `run.json`.
+  micro-batch that fits and whether the segments live on the host (an explicit setting
+  still wins), and records the choice in `run.json`. If a config cannot fit even then, it
+  refuses with the probe's numbers instead of changing the batch.
 - **A test pins the equivalence:** two splits of one logical batch give the same update,
   bitwise where the order of sums allows, otherwise within float rounding of the
   reductions.
 - **The kernels autotune per GPU** (told to the fast-Yemong agent): nothing tuned to the
   laptop's RTX 4070.
-
-## To settle in the spec
-
-- Whether more shards (consecutive segments of the same environments) count as the same
-  logical batch as more environments. The data differs: shards reuse fewer environments
-  over more time. Measure whether learning differs before treating them as
-  interchangeable; until then, environments × length is fixed per config and only the
-  memory knobs move.

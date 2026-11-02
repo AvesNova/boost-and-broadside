@@ -85,6 +85,9 @@ Status: decisions settled for milestone 1, 2026-11-01. Spec: `play-spec.md`.
     on the snapshot): a ship's live state, controller and a "take control" button; a
     field's index and core; a zone's progress and attackers;
   - **bottom strip** in replays: the scrubber with event markers (kills, captures);
+  - **minimap** (lower right): the whole arena with fields, zones and ships as team
+    dots, the camera's view as a rectangle; click or drag to move the camera. In a team
+    view it shows that team's fog, as the battlefield does;
   - **menus** for mode, map, lineup and per-side agents, and a pause menu;
   - the cards collapse to slim tabs. While the player flies a ship the in-game HUD stays
     minimal, drawn in the game's style, and the cards open on demand.
