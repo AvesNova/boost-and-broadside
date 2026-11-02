@@ -138,6 +138,11 @@ record's, or the start is refused.
   - the per-pool metrics are masked sums, not atomic adds, so the same data gives the same
     numbers.
 
+  On another machine the resume is close, not exact. Yemong's kernels autotune their
+  tiles for each GPU and keep the choice in that machine's cache, not in the checkpoint.
+  A different tile can round the last bits differently, so a run resumed on another GPU
+  drifts from the original by rounding. This is accepted.
+
 ## Retention
 
 A training checkpoint is written every N environment steps. Without

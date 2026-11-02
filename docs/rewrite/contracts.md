@@ -489,6 +489,25 @@ cut; where they differ, this section and the code win.
     lower bound (the window's score less two of its standard errors) reaches 0.40, scored
     against `bnb.learn.bc.TeacherOpponent`: the scripted agent playing the labels'
     distribution (their temperature and floor). PPO's scripted seat stays the plain agent.
+- **Yemong's kernels and bf16 (perf/fast-yemong, merged 2026-11-03):**
+  - **Five Triton kernels:** the scan, attention with rotary, the gated MLP, the temporal
+    mix (training segments only) and the heads. Each is a `torch.library.triton_op` with
+    autograd. Each has v2's PyTorch code as its plain twin behind a switch
+    (`bnb.models.yemong.kernels.switches`), with a test that the two agree. The weights'
+    names and shapes are unchanged, and so is `VERSION`.
+  - **Every kernel is bitwise repeatable** on identical inputs on one machine: no atomics
+    and no dependence on launch order. Tiles autotune per shape and GPU. The choice is not
+    in checkpoints, so a resume on another machine drifts by rounding (author,
+    2026-11-03).
+  - **`TrainConfig.precision`** defaults to `"bfloat16"`. The matmuls run in bf16. The
+    residual stream, norms, softmax, the recurrent state, codes, belief, critic
+    expectations, every loss, the weights and the optimizer stay fp32. The update logs
+    the first epoch's ratio drift, the clip fraction, `nonfinite_gradients` and
+    `nonfinite_beliefs`.
+  - **Comparisons between model types** run both plain or both with kernels, never one
+    of each.
+  - **Open:** an intermittent failure seen only while kernels autotune
+    (`sections/intermittent-failure-brief.md`). It blocks the training runs.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
