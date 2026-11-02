@@ -8,7 +8,8 @@ __pycache__/
 .env
 
 # Run outputs stay out of git (checkpoints and artifacts go to wandb or the HF Hub)
-checkpoints/
+/checkpoints/
+/runs/
 logs/
 outputs/
 wandb/

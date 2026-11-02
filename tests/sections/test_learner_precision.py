@@ -10,7 +10,7 @@ from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
-from bnb.models.yemong.model import Yemong, YemongConfig
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 from bnb.runtime.rollout import Rollout
 from bnb.runtime.train import set_precision
 
@@ -42,8 +42,8 @@ def _gradient(model, runner, bootstraps):
 
 
 def _bfloat16_copy(net):
-    model = Yemong(YemongConfig(bfloat16_matmuls=True), api.rules_of(cases.SQUAD),
-                   api.ship_types()).to(CUDA)
+    model = Yemong(yemong_build(YemongConfig(bfloat16_matmuls=True), api.rules_of(cases.SQUAD),
+                               api.ship_types())).to(CUDA)
     model.load_state_dict(net.state_dict())
     return model
 

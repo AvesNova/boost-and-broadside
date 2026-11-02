@@ -6,7 +6,7 @@ import torch
 
 from bnb.contracts import GameConfig, Obs
 from bnb.game import api
-from bnb.models.mlp import MLP
+from bnb.models.mlp import MLP, MLPBuild
 
 onnxruntime = pytest.importorskip("onnxruntime")
 
@@ -28,7 +28,7 @@ def test_mlp_exports_to_onnx(tmp_path):
     rules = api.rules_of(cfg)
     state = api.reset(rules, api.ship_types(), api.uniforms(rules, 1))
     _, obs, _ = api.perceive(rules, state)
-    model = MLP(cfg.ships_per_team, cfg.num_ships, cfg.num_fields, hidden=64).eval()
+    model = MLP(MLPBuild(cfg.ships_per_team, cfg.num_ships, cfg.num_fields, hidden=64)).eval()
     torch.nn.init.normal_(model.policy.weight, std=0.1)  # non-trivial outputs
     args = (obs.ships[:, 0], obs.fields[:, 0], obs.globals[:, 0])
     path = tmp_path / "mlp.onnx"

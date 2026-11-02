@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/learn/ppo.py, src/bnb/learn/returns.py, src/bnb/learn/losses.py, src/bnb/learn/labels.py, src/bnb/learn/shots.py, src/bnb/runtime/store.py, src/bnb/models/relational.py]
+reviewed: 2026-11-02
 ---
 
 # The learner
@@ -107,7 +108,7 @@ its whole segment, which `unroll` needs. It clips the gradient norm, steps Adam 
 linear warmup of the learning rate over the first environment steps, and stops early after
 an epoch whose mean approximate KL divergence exceeds `target_kl`. The minibatch order and
 the shot spread come from the learner's own random streams (`bnb.learn.ppo.random_stream`,
-seeded from `LearnerConfig.seed`), so the global generator does not change an update. The old log-probabilities are
+seeded from the run's `TrainConfig.seed`), so the global generator does not change an update. The old log-probabilities are
 the rollout's, or recomputed by `unroll` before the first epoch
 (`LearnerConfig.old_log_probabilities`).
 

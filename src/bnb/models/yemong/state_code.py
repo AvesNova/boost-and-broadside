@@ -8,6 +8,7 @@ widest stall angle, the recharge wait the longest recharge delay, and the gun co
 bins (and so its residual spreads) are one more than the most ticks between shots.
 """
 
+import dataclasses
 import math
 
 import torch
@@ -48,6 +49,34 @@ def velocity_reach() -> float:
                                       / VELOCITY_KNEE)
 
 
+@dataclasses.dataclass(frozen=True)
+class StateCodeRanges:
+    """What the code reads from the rules and the ship card (`state_code_ranges`), so a
+    built model never reads the current game. tick_length (s); angle_of_attack_limit (rad):
+    twice the widest stall angle; shield_recharge_delay (s): the longest; cooldown_bins:
+    one more than the most ticks between shots; max_shield and max_energy: per type."""
+
+    tick_length: float
+    angle_of_attack_limit: float
+    shield_recharge_delay: float
+    cooldown_bins: int
+    max_shield: tuple[float, ...]
+    max_energy: tuple[float, ...]
+
+
+def state_code_ranges(rules: Rules, types: ShipTypes) -> StateCodeRanges:
+    """The ranges of the rules and a (types,) card: the shared values times the card's
+    largest scale (exact at the default card's 1)."""
+    return StateCodeRanges(
+        tick_length=rules.tick_length,
+        angle_of_attack_limit=2.0 * rules.flight.stall_angle * float(
+            types.stall_angle_scale.max()),
+        shield_recharge_delay=rules.shield_recharge_delay * float(
+            types.shield_recharge_delay_scale.max()),
+        cooldown_bins=1 + int(ticks_between_shots(types.fire_rate, rules.tick_length).max()),
+        max_shield=tuple(types.max_shield.tolist()), max_energy=tuple(types.max_energy.tolist()))
+
+
 class ShipStateCode(nn.Module):
     """Encodes (means (..., 12), spreads (..., spread_count), ship_type (...)) to
     (..., width) and back. With the default card the spreads are 15 wide and the code 490.
@@ -56,17 +85,14 @@ class ShipStateCode(nn.Module):
     of 21 bins each, gun cooldown.
     """
 
-    def __init__(self, rules: Rules, types: ShipTypes) -> None:
+    def __init__(self, ranges: StateCodeRanges) -> None:
         super().__init__()
-        # The shared values times the card's largest scale (exact at the default card's 1).
-        self.angle_of_attack_limit = 2.0 * rules.flight.stall_angle * float(
-            types.stall_angle_scale.max())
-        self.shield_delay = rules.shield_recharge_delay * float(
-            types.shield_recharge_delay_scale.max())
-        self.tick = rules.tick_length
-        self.cooldown_bins = 1 + int(ticks_between_shots(types.fire_rate, rules.tick_length).max())
-        self.register_buffer("max_shield", types.max_shield.detach().clone().float())
-        self.register_buffer("max_energy", types.max_energy.detach().clone().float())
+        self.angle_of_attack_limit = ranges.angle_of_attack_limit
+        self.shield_delay = ranges.shield_recharge_delay
+        self.tick = ranges.tick_length
+        self.cooldown_bins = ranges.cooldown_bins
+        self.register_buffer("max_shield", torch.tensor(ranges.max_shield, dtype=torch.float32))
+        self.register_buffer("max_energy", torch.tensor(ranges.max_energy, dtype=torch.float32))
         scalar = (1, SCALAR_BINS)
         self.runs: codes.Runs = ((POSITION_LEVELS, 9), (3, VELOCITY_BINS),
                                  (HEADING_LEVELS, HEADING_COLOURS), (1, NOSE_RATE_BINS),

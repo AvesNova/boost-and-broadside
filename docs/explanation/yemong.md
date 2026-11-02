@@ -1,13 +1,16 @@
 ---
 covers: [src/bnb/models/yemong/, src/bnb/controllers/yemong.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # The model (Yemong)
 
 Yemong is the model, in `bnb.models.yemong`: v1's model with the same ideas and math, in
 new code and the v2 units. The fixtures in `tests/reference/yemong` pin each module
-against v1's on fixed inputs and weights. The spec is
+against v1's on fixed inputs and weights. It is built from a build record alone
+(`bnb.models.yemong.model.YemongBuild`, from `bnb.models.yemong.model.yemong_build`): its
+config and the numbers it reads from the rules and the ship card, so a saved Yemong is
+rebuilt without the current game ([Runs and checkpoints](runs.md)). The spec is
 `docs/rewrite/sections/yemong-spec.md`.
 
 The model and its controller (`bnb.controllers.yemong.YemongController`) run in the rollout,

@@ -1,6 +1,6 @@
 ---
 covers: [pyproject.toml, src/bnb/contracts/tree.py, tests/conftest.py, tests/contract/test_imports.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # Code style
@@ -27,7 +27,7 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 
   <!-- not-runnable: the dependency order, not a command -->
   ```text
-  contracts <- game <- controllers, models <- learn <- runtime <- league <- play
+  contracts <- game <- controllers, models <- learn <- runtime <- runs <- league <- play
   ```
 
   An import points down this order, never up. `tests/contract/test_imports.py` checks it.
@@ -86,6 +86,18 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
 - **Versions:** a contract that a checkpoint or an exported model depends on carries
   `SCHEMA_VERSION`{.plain}. Any change to its fields, their meaning or their order raises the
   version, and `docs/rewrite/contracts.md` records the new schema.
+- **Model versions:** every registered model (`bnb.runs.registry.MODELS`) carries
+  `VERSION`{.plain}, an int, and builds from its build record alone (its config and the numbers it
+  derives from the game). A saved model loads only at its own version.
+  - **A new option's default must reproduce the old behaviour.** If it cannot, the change
+    alters what saved weights compute, and `VERSION`{.plain} goes up. Such changes include a
+    different normalisation, a reordering of input columns and a new part that is always
+    on. A refactor that computes the same numbers needs no bump.
+  - The compatibility set (`tests/runs/checkpoints/`) holds one tiny policy file per model
+    at its current version, with its outputs on a fixed input;
+    `tests/runs/test_compatibility.py` fails on a change of computation without a bump. A
+    bump replaces the model's entry (`tests/runs/compatibility.py`), and the commit says
+    why.
 - **Type hints** on every function signature, in the modern syntax: `X | None`,
   `list[int]`, `tuple[torch.Tensor, ...]`.
 - **Dtypes:**

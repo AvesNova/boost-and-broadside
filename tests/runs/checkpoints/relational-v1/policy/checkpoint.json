@@ -1,0 +1,40 @@
+{
+ "format": 1,
+ "kind": "policy",
+ "model": {
+  "name": "relational",
+  "version": 1,
+  "build": {
+   "config": {
+    "hidden": 8,
+    "value_bins": 11,
+    "value_limit": 2.0,
+    "levels": [
+     "damage",
+     "kill_death",
+     "objective_progress",
+     "objective",
+     "outcome"
+    ],
+    "outcome_level": "outcome",
+    "bfloat16_matmuls": false
+   },
+   "ships_per_team": 2,
+   "num_ships": 4
+  }
+ },
+ "schemas": {
+  "Obs": 3,
+  "Action": 1
+ },
+ "game": null,
+ "ship_card": null,
+ "return_scale": null,
+ "steps": {},
+ "commit": "8184224a033c82946814eb4cc5a56c6c0505b20e",
+ "dirty": false,
+ "time": "2026-11-01T18:31:01+00:00",
+ "files": {
+  "weights.safetensors": "2bbc5381ac3b55b7529d2a1095aab7e30d9a807420901c6f29e6447a8766ea0e"
+ }
+}

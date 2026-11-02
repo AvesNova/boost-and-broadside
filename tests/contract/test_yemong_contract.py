@@ -9,7 +9,7 @@ import torch
 from bnb.contracts import REWARD_LEVELS, GameConfig, Obs, Privileged
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
-from bnb.models.yemong.model import Yemong, YemongConfig
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 
 def test_yemong_step_takes_no_privileged():
@@ -25,7 +25,7 @@ def test_yemong_outputs():
     _, obs, _ = api.perceive(rules, state)
     view = Obs(ships=obs.ships.flatten(0, 1), fields=obs.fields.flatten(0, 1),
                globals=obs.globals.flatten(0, 1))
-    controller = YemongController(Yemong(YemongConfig(), rules, types), 2, 4)
+    controller = YemongController(Yemong(yemong_build(YemongConfig(), rules, types)), 2, 4)
     carry = controller.init_carry(4, torch.device("cpu"))
     with torch.no_grad():
         action, carry, out = controller.step(carry, view, torch.ones(4, dtype=torch.bool))

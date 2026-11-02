@@ -21,8 +21,8 @@ from bnb.game import api
 from bnb.game.modes.rules import PRESETS
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
-from bnb.models.relational import Relational, RelationalConfig
-from bnb.models.yemong.model import Yemong, YemongConfig
+from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
+from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
 from .rollout import Rollout
 
@@ -64,8 +64,9 @@ class TrainConfig:
     """model: "yemong" or "relational" (the toy learner; its sizes are fixed at build).
     length: ticks per segment; shards: segments per update. precision: "float32", "tf32" (a
     process-wide setting, which the entry point applies with `set_precision`) or
-    "bfloat16" (the model's matmuls). host_store: stream the segments through pinned host
-    memory (on a GPU) rather than keep them on the device."""
+    "bfloat16" (the model's matmuls). reward: the reward levels' weights. host_store: stream
+    the segments through pinned host memory (on a GPU) rather than keep them on the device.
+    seed: the learner's random streams; the entry point seeds the process with it too."""
 
     game: GameConfig
     num_envs: int = 1024
@@ -77,9 +78,10 @@ class TrainConfig:
     league_every: int = 10  # updates between copies of the learner into the league slot
     pools: tuple[Pool, ...] = LINEUP
     learner: LearnerConfig = LearnerConfig()
+    reward: RewardConfig = RewardConfig()
     precision: str = "float32"
     host_store: bool = True
-    seed: int = 0  # the entry point seeds the process with it
+    seed: int = 0
     compile: bool = True
 
     def __post_init__(self) -> None:
@@ -95,13 +97,23 @@ def set_precision(precision: str) -> None:
     torch.set_float32_matmul_precision("high" if precision == "tf32" else "highest")
 
 
-def build_model(cfg: TrainConfig, device: torch.device) -> torch.nn.Module:
-    game, bfloat16 = cfg.game, cfg.precision == "bfloat16"
-    if cfg.model == "relational":
-        config = RelationalConfig(hidden=cfg.relational_hidden, bfloat16_matmuls=bfloat16)
-        return Relational(config, game.ships_per_team, game.num_ships).to(device)
-    return Yemong(YemongConfig(bfloat16_matmuls=bfloat16), api.rules_of(game),
-                  api.ship_types()).to(device)
+def model_build(config: TrainConfig, architecture: YemongConfig | RelationalConfig | None = None):
+    """The build record of the run's model: `architecture` (a saved model's config; the
+    code's defaults without one) with the run's precision (and the relational model's
+    width), and the numbers the run's game and ship card derive."""
+    game, bfloat16 = config.game, config.precision == "bfloat16"
+    if config.model == "relational":
+        architecture = dataclasses.replace(architecture or RelationalConfig(),
+                                           hidden=config.relational_hidden,
+                                           bfloat16_matmuls=bfloat16)
+        return RelationalBuild(architecture, game.ships_per_team, game.num_ships)
+    architecture = dataclasses.replace(architecture or YemongConfig(), bfloat16_matmuls=bfloat16)
+    return yemong_build(architecture, api.rules_of(game), api.ship_types())
+
+
+def build_model(build: YemongBuild | RelationalBuild, device: torch.device) -> torch.nn.Module:
+    """A fresh model of the build record, on `device`."""
+    return (Relational(build) if isinstance(build, RelationalBuild) else Yemong(build)).to(device)
 
 
 def model_controller(model: torch.nn.Module, game: GameConfig):
@@ -118,54 +130,66 @@ def compiler(enabled: bool) -> Callable:
 
 
 class Trainer:
-    def __init__(self, cfg: TrainConfig, device: torch.device) -> None:
-        game = cfg.game
-        self.cfg = cfg
-        self.model = build_model(cfg, device)
+    """The run's model, league slot, opponents, rollout and learner. build: the model's build
+    record (a checkpoint's); without one, `model_build(config)`."""
+
+    def __init__(self, config: TrainConfig, device: torch.device,
+                 build: YemongBuild | RelationalBuild | None = None) -> None:
+        game = config.game
+        self.config = config
+        self.model = build_model(build or model_build(config), device)
         self.league = copy.deepcopy(self.model).requires_grad_(False)
         self.controllers = {LEARNER: model_controller(self.model, game),
                             "league_0": model_controller(self.league, game),
                             "chaser": Chaser(game.ships_per_team),
                             "random": Random(game.ships_per_team)}
-        reward_config = RewardConfig()
-        self.rollout = Rollout(game, cfg.pools, self.controllers, LEARNER, cfg.num_envs,
-                               cfg.length, device, compile=cfg.compile,
-                               reward_config=reward_config, shards=cfg.shards,
-                               host_store=cfg.host_store)
-        self.ppo = Learner(self.model, cfg.learner, self.rollout.rules, api.ship_types(device),
-                           reward_config.outcome, device, stage=compiler(cfg.compile))
+        self.rollout = Rollout(game, config.pools, self.controllers, LEARNER, config.num_envs,
+                               config.length, device, compile=config.compile,
+                               reward_config=config.reward, shards=config.shards,
+                               host_store=config.host_store)
+        self.ppo = Learner(self.model, config.learner, self.rollout.rules, api.ship_types(device),
+                           config.reward.outcome, device, stage=compiler(config.compile),
+                           seed=config.seed)
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)
         self.learner_pool = lineup.pool_of[LEARNER]
         self.updates_done = 0
 
+    @property
+    def steps_per_update(self) -> int:
+        """Environment steps one update collects."""
+        return self.config.num_envs * self.config.length * self.config.shards
+
     def collect(self):
         """Every shard of one update and its bootstrap (no learning): (the store, the
         bootstraps)."""
         bootstraps = []
-        for shard in range(self.cfg.shards):
+        for shard in range(self.config.shards):
             self.rollout.run(shard)
             bootstraps.append(self.rollout.bootstrap())
         return self.rollout.store, bootstraps
 
     def pool_metrics(self, store) -> dict:
         """Per pool: the learner's reward per level, per ship and second, and its episode
-        results (wins, draws, losses) in the stored segments."""
+        results (wins, draws, losses) in the stored segments. The per-pool sums are masked
+        reductions, not atomic adds, so the metrics are the same on every run of the same
+        data (an exact resume logs what a run straight through logs)."""
         pools = len(self.pool_names)
         device = self.learner_pool.device
+        member = (self.learner_pool[None, :] == torch.arange(pools, device=device)[:, None])
+        member = member.float()[..., None]  # (pools, views, 1)
         steps = torch.zeros(pools, device=device)
         totals = torch.zeros((pools, len(REWARD_LEVELS)), device=device)
         results = torch.zeros((pools, 3), device=device)
         for shard in range(store.shards):
             small = store.shard(("reward", "done", "result"), shard)
             reward, ended, result = small["reward"], small["done"], small["result"]
-            steps.index_add_(0, self.learner_pool,
-                             torch.full_like(reward[0, :, 0, 0], reward.shape[0]))
-            totals.index_add_(0, self.learner_pool, reward.mean(2).sum(0))
+            steps += member[..., 0].sum(1) * reward.shape[0]
+            totals += (member * reward.mean(2).sum(0)).sum(1)
             per_view = torch.stack([(ended & (result > 0)).sum(0),
                                     (ended & (result == 0)).sum(0),
                                     (ended & (result < 0)).sum(0)], -1).float()
-            results.index_add_(0, self.learner_pool, per_view)
+            results += (member * per_view).sum(1)
         rate = (totals / steps.clamp_min(1)[:, None] / self.rollout.rules.tick_length).tolist()
         results = results.tolist()
         return {name: dict(reward_per_s=dict(zip(REWARD_LEVELS, rate[index])),
@@ -177,11 +201,10 @@ class Trainer:
         store, bootstraps = self.collect()
         pools = self.pool_metrics(store)
         t1 = time.perf_counter()
-        env_steps = self.cfg.num_envs * self.cfg.length * self.cfg.shards
-        stats = self.ppo.update(store, bootstraps, env_steps)  # ends in host syncs
+        stats = self.ppo.update(store, bootstraps, self.steps_per_update)  # ends in host syncs
         t2 = time.perf_counter()
         self.updates_done += 1
-        if self.updates_done % self.cfg.league_every == 0:
+        if self.updates_done % self.config.league_every == 0:
             with torch.no_grad():
                 for dst, src in zip(self.league.parameters(), self.model.parameters()):
                     dst.copy_(src)
@@ -194,12 +217,12 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
     """The learner against a scripted opponent over `games` fresh games (one per
     environment, every clock from zero, the seat drawn per environment): the shares won,
     drawn and lost."""
-    cfg = trainer.cfg
+    config = trainer.config
     device = next(trainer.model.parameters()).device
     controllers = {LEARNER: trainer.controllers[LEARNER], opponent: trainer.controllers[opponent]}
-    pool = Pool("evaluation", 1.0, (LEARNER, opponent), cfg.pools[0].fog_share)
-    rollout = Rollout(cfg.game, (pool,), controllers, LEARNER, games, cfg.length, device,
-                      compile=cfg.compile, staggered=False)
+    pool = Pool("evaluation", 1.0, (LEARNER, opponent), config.pools[0].fog_share)
+    rollout = Rollout(config.game, (pool,), controllers, LEARNER, games, config.length, device,
+                      compile=config.compile, staggered=False)
     result = torch.zeros(games, device=device)
     finished = torch.zeros(games, dtype=torch.bool, device=device)
     while not bool(finished.all()):
@@ -212,9 +235,10 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
                 losses=(result < 0).float().mean().item())
 
 
-def train(cfg: TrainConfig, device: torch.device, log: Callable[[dict], None] = print) -> Trainer:
+def train(config: TrainConfig, device: torch.device,
+          log: Callable[[dict], None] = print) -> Trainer:
     """The loop. Process-wide settings (the seed, `set_precision`) are the entry point's."""
-    trainer = Trainer(cfg, device)
-    for _ in range(cfg.updates):
+    trainer = Trainer(config, device)
+    for _ in range(config.updates):
         log(trainer.update())
     return trainer

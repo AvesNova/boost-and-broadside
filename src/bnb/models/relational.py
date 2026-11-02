@@ -119,13 +119,29 @@ def features(obs: Obs, own: int) -> torch.Tensor:
     return torch.cat([own_state, others.flatten(-2)], -1)
 
 
+@dataclasses.dataclass(frozen=True)
+class RelationalBuild:
+    """Everything the constructor takes (runs spec 4): the config and the fixed fleet sizes
+    the inputs are laid out for."""
+
+    config: RelationalConfig
+    ships_per_team: int
+    num_ships: int
+
+
 class Relational(nn.Module):
+    """Built from a `RelationalBuild`. VERSION rises whenever a change alters what saved
+    weights compute (runs spec 4)."""
+
+    NAME = "relational"
+    VERSION = 1
     reads = ("ships", "globals")
 
-    def __init__(self, config: RelationalConfig, ships_per_team: int, num_ships: int) -> None:
+    def __init__(self, build: RelationalBuild) -> None:
         super().__init__()
-        self.config, self.ships_per_team = config, ships_per_team
-        inputs = OWN_FEATURES + (num_ships - 1) * OTHER_FEATURES
+        config = build.config
+        self.build, self.config, self.ships_per_team = build, config, build.ships_per_team
+        inputs = OWN_FEATURES + (build.num_ships - 1) * OTHER_FEATURES
         hidden = config.hidden
         self.body = nn.Sequential(nn.Linear(inputs, hidden), nn.GELU(),
                                   nn.Linear(hidden, hidden), nn.GELU())

@@ -394,7 +394,7 @@ def test_the_stored_shot_labels_are_the_updates_resimulation(segment):
     _, runner, learner, _ = segment
     store = runner.store
     spread = torch.randn((store.length, store.views, 10, 2),
-                         generator=random_stream(learner.config.seed, "shot_spread"))
+                         generator=random_stream(0, "shot_spread"))
     views = torch.arange(3, 7)  # not one of prepare's micro-batches
     trajectory, stored = next(learner.staged(store, [views]))
     shot, mask = learner.shots(trajectory, spread[:, views])
