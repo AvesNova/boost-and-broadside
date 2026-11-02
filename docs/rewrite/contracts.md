@@ -431,6 +431,38 @@ cut; where they differ, this section and the code win.
   - **Not done here, left to the cleanup pass:** the `done`/`reset` rename across the
     controllers (`Controller.step(..., done)` still means a reset before this
     observation).
+- **Runs and checkpoints (section 11, merged 2026-11-02):**
+  - **Layer order:** `bnb.runs` sits between `bnb.runtime` and `bnb.league` (a test
+    parses the imports).
+  - **Models:** every model class has `NAME`, `VERSION` and a constructor taking its build
+    record alone (`YemongBuild`, `RelationalBuild`, `MLPBuild`), kept on the instance as
+    `build`. `yemong_build(config, rules, types)` derives what Yemong reads from the game
+    and the ship card. `VERSION` rises whenever a change alters what saved weights mean;
+    `tests/runs/checkpoints` holds one tiny saved file per accepted version (the
+    compatibility set). `bnb.runs.registry` maps names to classes and classes to build
+    records.
+  - **Policy file** (a directory): `checkpoint.json` (format 1: model name, version and
+    build; the schema versions of `Obs`, `Action` and `Events`; the `GameConfig`; the ship
+    card; steps; commit and dirty flag; file hashes), `weights.safetensors` and, when
+    saved with one, `return_scale.safetensors`. `save_policy` and `load_policy` are the
+    interface the other sections use.
+  - **Training checkpoint:** a policy file plus the `TrainConfig`, the optimizer state,
+    the league slot's weights, the rollout's whole carry (`Rollout.saved_carry`) and
+    every generator, the device defaults included. Resume is bitwise on the tested cases.
+  - **Settings:** resume uses the checkpoint's settings, and only the fields in
+    `bnb.runs.checkpoint.OVERRIDABLE` may change (run length, precision, learning rate and
+    warm-up, loss weights, `micro_batch_rows`, reward weights). Fork (`--from`) and warm
+    start (`--init-from`) take the code's settings. A commit that differs from the
+    previous segment's is a printed warning; `run.json` records each segment's commit,
+    dirty flag and overrides.
+  - **Run directory:** `runs/<name>/` with `run.json` and `checkpoints/`. The name is
+    `<date>-<preset or mode>-<adjective>-<noun>`. Retention keeps the newest 8, one
+    checkpoint per doubling band of age by ordinal, and the final one.
+  - **Uploads** are explicit (`bnb runs upload`), to the W&B project
+    `boost-and-broadside-v2`; nothing leaves the machine by default.
+  - **Open (section 11 notes):** there is no game version constant yet (files record the
+    `GameConfig` and card); the game's damage sum uses float atomics, so a long GPU run's
+    resume can differ by rounding after a tick with two hits on one ship.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 

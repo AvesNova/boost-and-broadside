@@ -11,8 +11,10 @@ dependencies = [
     "moderngl>=5.13.0",
     "numpy>=2.5",
     "platformdirs>=4.3",
+    "safetensors>=0.8.0",
     "torch==2.15.0",
     "tyro>=1.0",
+    "wandb>=0.31.0",
 ]
 
 [project.optional-dependencies]

@@ -72,6 +72,6 @@
   page: explanation/in-progress/play-shell.md
 - section: "11"
   title: Runs and checkpoints
-  status: specified
+  status: merged
   spec: docs/rewrite/sections/runs-spec.md
-  page: explanation/in-progress/runs.md
+  page: explanation/runs.md

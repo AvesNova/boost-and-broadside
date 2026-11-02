@@ -22,6 +22,9 @@
 - package: runtime
   holds: "the only stateful code: buffers, carries, compiled stages, CUDA graphs, the rollout, the training loop"
   reference: reference/runtime.md
+- package: runs
+  holds: "run directories and their records, policy files and training checkpoints, the model registry, the memory probe, uploads"
+  reference: reference/runs.md
 - package: league
   holds: opponent pools and ratings
   section: "8"

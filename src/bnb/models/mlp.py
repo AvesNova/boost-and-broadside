@@ -8,6 +8,8 @@ The model reads token position (the summary is a flattened view), so it relies o
 being ordered by team_rel.
 """
 
+import dataclasses
+
 import torch
 import torch.nn as nn
 
@@ -24,14 +26,31 @@ GLOBAL_SCALE = {"arena_radius": 1e-3, "score_own": 0.04, "score_enemy": 0.04,
                 "score_target": 0.04, "front": 1.0 / 3.0, "front_threshold": 1.0 / 3.0}
 
 
+@dataclasses.dataclass(frozen=True)
+class MLPBuild:
+    """Everything the constructor takes (runs spec 4): the fixed sizes the summary is laid
+    out for, and the hidden width."""
+
+    ships_per_team: int
+    num_ships: int
+    num_fields: int
+    hidden: int = 256
+
+
 class MLP(nn.Module):
+    """Built from an `MLPBuild`. VERSION rises whenever a change alters what saved weights
+    compute (runs spec 4)."""
+
+    NAME = "mlp"
+    VERSION = 1
     reads = ("ships", "fields", "globals")
 
-    def __init__(self, ships_per_team: int, num_ships: int, num_fields: int, hidden: int = 256):
+    def __init__(self, build: MLPBuild) -> None:
         super().__init__()
-        C = len(SHIP_COLUMNS)
-        self.ships_per_team = ships_per_team
-        summary = num_ships * C + num_fields * len(FIELD_COLUMNS) + len(GLOBAL_COLUMNS)
+        C, hidden = len(SHIP_COLUMNS), build.hidden
+        self.build, self.ships_per_team = build, build.ships_per_team
+        summary = (build.num_ships * C + build.num_fields * len(FIELD_COLUMNS)
+                   + len(GLOBAL_COLUMNS))
         self.own = nn.Linear(C, hidden)
         self.summary = nn.Linear(summary, hidden, bias=False)
         self.body = nn.Linear(hidden, hidden)

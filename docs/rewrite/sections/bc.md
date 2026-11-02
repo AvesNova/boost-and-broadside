@@ -48,3 +48,13 @@ Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md` (with section
   - the clone scores at least 0.45 against its teacher;
   - its win rate against the chaser is close to the teacher's;
   - no v1 calibration comparison (v1 and v2 are different games).
+
+## Decided after implementation (author, 2026-11-02)
+
+- **The teacher never gives an action probability zero:** the label floor ε is on by
+  default (0.01 over the 42 joint actions), so the clone can sample every action when RL
+  starts. If the clone's entropy is still too low, the levers are a temperature on the
+  targets or a separate entropy loss during BC.
+- **Frontline zone assignment by rank** (the scripted agent) is approved: the literal
+  "neediest zone" rule moved every ship at once and drew 4.7% against random.
+- **`micro_batch_rows` and `precision`** may change on a resume (section 11).

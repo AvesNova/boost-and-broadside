@@ -122,18 +122,42 @@ def _CLASS_LIKE() -> set[str]:
     return {part for name in names.index()[0] for part in name.split(".")}
 
 
+def _options(cls) -> set[str]:
+    """A command dataclass's flags: each field's, or the name `tyro.conf.arg` gives it; a
+    positional field (`tyro.conf.Positional`) has none."""
+    import typing
+
+    import tyro
+
+    positional = typing.get_args(tyro.conf.Positional[int])[1]
+    hints = typing.get_type_hints(cls, include_extras=True)
+    options = set()
+    for field in dataclasses.fields(cls):
+        metadata = getattr(hints[field.name], "__metadata__", ())
+        if positional in metadata:
+            continue
+        names = [getattr(meta, "name", None) for meta in metadata]
+        name = next((name for name in names if name), field.name)
+        options.add("--" + name.replace("_", "-"))
+    return options
+
+
 def command(arguments: str) -> str | None:
-    """None if `bnb <arguments>` uses only the options of `bnb.cli.Train`, with a known
-    preset and mode."""
+    """None if `bnb <arguments>` names a command (`bnb.cli.COMMANDS`) and uses only its
+    options (`bnb.cli.Train`, `Runs` or `ShipCard`), with a known preset and mode."""
     import shlex
 
-    from bnb.cli import Train
+    from bnb.cli import COMMANDS, Runs, ShipCard, Train
     from bnb.contracts.config import MODES
     from bnb.game.modes.rules import PRESETS
 
-    options = {"--" + field.name.replace("_", "-") for field in dataclasses.fields(Train)}
-    values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}
     tokens = shlex.split(arguments)
+    if not tokens or tokens == ["..."]:  # the command itself, or `bnb ...`
+        return None
+    if tokens[0] not in COMMANDS:
+        return f"bnb needs a command, one of {list(COMMANDS)}"
+    options = _options({"train": Train, "runs": Runs, "ship-card": ShipCard}[tokens[0]])
+    values = {"--preset": set(PRESETS) | {"mixed"}, "--mode": set(MODES)}
     for index, token in enumerate(tokens):
         if not token.startswith("-"):
             continue
@@ -141,7 +165,7 @@ def command(arguments: str) -> str | None:
         if flag in ("--help", "-h"):
             continue
         if flag not in options:
-            return f"bnb has no option {flag}; its options are {sorted(options)}"
+            return f"bnb {tokens[0]} has no option {flag}; its options are {sorted(options)}"
         if not value and index + 1 < len(tokens):
             value = tokens[index + 1]
         if flag in values and value not in values[flag]:

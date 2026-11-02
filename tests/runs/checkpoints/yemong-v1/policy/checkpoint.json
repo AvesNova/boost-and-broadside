@@ -1,0 +1,69 @@
+{
+ "format": 1,
+ "kind": "policy",
+ "model": {
+  "name": "yemong",
+  "version": 1,
+  "build": {
+   "config": {
+    "width": 8,
+    "blocks": 1,
+    "spatial_per_block": 1,
+    "heads": 1,
+    "map_width": 4,
+    "value_bins": 11,
+    "value_limit": 2.0,
+    "levels": [
+     "damage",
+     "kill_death",
+     "objective_progress",
+     "objective",
+     "outcome"
+    ],
+    "outcome_level": "outcome",
+    "hex_rings": 1,
+    "presence_radius": 150.0,
+    "rotary_period": 8192.0,
+    "rotary_octaves": 1,
+    "heading_harmonics": [
+     1
+    ],
+    "bfloat16_matmuls": false
+   },
+   "tick_length": 0.03333333333333333,
+   "num_ships": 4,
+   "ship_types": 2,
+   "bullet_moves": 12,
+   "muzzle_speed": 500.0,
+   "hit_radius": 8.0,
+   "state_code": {
+    "tick_length": 0.03333333333333333,
+    "angle_of_attack_limit": 0.5235987755982988,
+    "shield_recharge_delay": 6.0,
+    "cooldown_bins": 4,
+    "max_shield": [
+     100.0,
+     160.0
+    ],
+    "max_energy": [
+     10000.0,
+     14000.0
+    ]
+   }
+  }
+ },
+ "schemas": {
+  "Obs": 3,
+  "Action": 1
+ },
+ "game": null,
+ "ship_card": null,
+ "return_scale": null,
+ "steps": {},
+ "commit": "8184224a033c82946814eb4cc5a56c6c0505b20e",
+ "dirty": false,
+ "time": "2026-11-01T18:31:01+00:00",
+ "files": {
+  "weights.safetensors": "cc53ffd7cf7d867d31df97ae971d73293678f873a670b383c4cbe6bc833b6648"
+ }
+}

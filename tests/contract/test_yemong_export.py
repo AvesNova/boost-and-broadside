@@ -14,7 +14,7 @@ from bnb.contracts import Action, GameConfig, Obs
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
-from bnb.models.yemong.model import Yemong, YemongConfig
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 onnxruntime = pytest.importorskip("onnxruntime")
 
@@ -54,7 +54,7 @@ def test_yemong_step_exports_to_onnx(tmp_path):
     config = GameConfig(3, 4, 1500.0)
     rules, types, views = _mid_game(config, ticks=20)
     torch.manual_seed(0)
-    model = Yemong(YemongConfig(), rules, types).eval()
+    model = Yemong(yemong_build(YemongConfig(), rules, types)).eval()
     with torch.no_grad():
         for name, parameter in model.named_parameters():
             if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):

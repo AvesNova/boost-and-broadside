@@ -41,7 +41,15 @@ from .inputs import (
 )
 from .layers import rotary_tables
 from .network import Encoder, Trunk
-from .state_code import MEANS, POSITION_LEVELS, POSITION_PERIOD, ShipStateCode, velocity_reach
+from .state_code import (
+    MEANS,
+    POSITION_LEVELS,
+    POSITION_PERIOD,
+    ShipStateCode,
+    StateCodeRanges,
+    state_code_ranges,
+    velocity_reach,
+)
 
 SHOT_HARMONICS = 4  # the trajectory head's age features
 
@@ -154,21 +162,54 @@ def _nearest(position: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
     return position + POSITION_PERIOD * torch.round((reference - position) / POSITION_PERIOD)
 
 
-class Yemong(nn.Module):
-    """rules and types give the game's constants (tick, stall angle, shield delay, the ship
-    card); rules.num_ships only sets the density head's starting rate."""
+@dataclasses.dataclass(frozen=True)
+class YemongBuild:
+    """Everything Yemong's constructor takes (runs spec 4): its config and the numbers it
+    derives from the rules and the ship card (`yemong_build`), so a saved model is rebuilt
+    without the current game. tick_length (s); num_ships sets only the density head's
+    starting rate; ship_types: the card's type count; bullet_moves: a bullet's lifetime in
+    ticks; muzzle_speed (m/s): the card's fastest; hit_radius (m): its smallest;
+    state_code: the ship-state code's ranges."""
 
-    def __init__(self, config: YemongConfig, rules: Rules, types: ShipTypes) -> None:
+    config: YemongConfig
+    tick_length: float
+    num_ships: int
+    ship_types: int
+    bullet_moves: int
+    muzzle_speed: float
+    hit_radius: float
+    state_code: StateCodeRanges
+
+
+def yemong_build(config: YemongConfig, rules: Rules, types: ShipTypes) -> YemongBuild:
+    """The build of a Yemong for the rules and a (types,) ship card."""
+    return YemongBuild(config=config, tick_length=rules.tick_length,
+                       num_ships=rules.num_ships, ship_types=types.max_shield.shape[-1],
+                       bullet_moves=rules.bullet_moves,
+                       muzzle_speed=float(types.muzzle_speed.max()),
+                       hit_radius=float(types.hit_radius.min()),
+                       state_code=state_code_ranges(rules, types))
+
+
+class Yemong(nn.Module):
+    """Built from a `YemongBuild` alone (`yemong_build` derives one from the game). VERSION
+    rises whenever a change alters what saved weights compute (runs spec 4)."""
+
+    NAME = "yemong"
+    VERSION = 1
+
+    def __init__(self, build: YemongBuild) -> None:
         super().__init__()
-        self.config = config
+        config = build.config
+        self.build, self.config = build, config
         width, hidden = config.width, 2 * config.width
-        self.ship_types = types.max_shield.shape[-1]
-        self.tick = rules.tick_length
-        self.state_code = ShipStateCode(rules, types)
+        self.ship_types = build.ship_types
+        self.tick = build.tick_length
+        self.state_code = ShipStateCode(build.state_code)
         self.shot_code = shots.shot_code_parameters(
-            float(types.muzzle_speed.max()), velocity_reach(),
-            rules.bullet_moves * rules.tick_length, float(types.hit_radius.min()))
-        self.bullet_moves = rules.bullet_moves
+            build.muzzle_speed, velocity_reach(), build.bullet_moves * build.tick_length,
+            build.hit_radius)
+        self.bullet_moves = build.bullet_moves
         self.encoder = Encoder(ship_inputs(self.state_code.width, self.ship_types), GLOBAL_INPUTS,
                                FIELD_INPUTS, width, config.map_width, ZONE_INPUTS)
         self.trunk = Trunk(width, config.heads, config.map_width, config.blocks,
@@ -183,7 +224,7 @@ class Yemong(nn.Module):
         self.shot_outcome = HeadGroup(width, hidden, (self.shot_code.outcome_width,))
         self.shot_trajectory_head = ShotTrajectoryHead(width, 1 + 2 * SHOT_HARMONICS,
                                                        self.shot_code.trajectory_width)
-        self._initialise(rules.num_ships, cells)
+        self._initialise(build.num_ships, cells)
         # Frequencies (2 pi / period) 2^k, held as their periods (exact powers of two metres).
         octaves = 2.0 ** torch.arange(config.rotary_octaves, dtype=torch.float32)
         self.register_buffer("position_periods", config.rotary_period / octaves,

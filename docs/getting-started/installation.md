@@ -1,5 +1,6 @@
 ---
 covers: [pyproject.toml, .python-version]
+reviewed: 2026-11-02
 ---
 
 # Installation

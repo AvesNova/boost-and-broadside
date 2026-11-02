@@ -12,7 +12,7 @@ from bnb.contracts.obs import GLOBAL
 from bnb.controllers.scripted import Chaser
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
-from bnb.models.yemong.model import Yemong, YemongConfig
+from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
 CPU = torch.device("cpu")
 # squad's sizes in a smaller arena with short episodes, so a segment has fights and resets
@@ -25,7 +25,7 @@ def model(config: GameConfig = SQUAD, seed: int = 0, dtype=torch.float32) -> Yem
     """A Yemong with its zero-initialised and near-zero last layers randomised, so every
     head's output depends on its inputs."""
     torch.manual_seed(seed)
-    net = Yemong(YemongConfig(), api.rules_of(config), api.ship_types())
+    net = Yemong(yemong_build(YemongConfig(), api.rules_of(config), api.ship_types()))
     with torch.no_grad():
         for name, parameter in net.named_parameters():
             if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):

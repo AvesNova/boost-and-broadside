@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runtime/rollout.py, src/bnb/runtime/realtime.py, src/bnb/contracts/tree.py, src/bnb/game/ship_types.py, tests/contract/test_imports.py]
-reviewed: 2026-11-01
+reviewed: 2026-11-02
 ---
 
 # Architecture
@@ -79,7 +79,9 @@ On a GPU the rollout captures a block of ticks as one CUDA graph and replays it:
 - The block is the largest divisor of the rollout length up to the rollout's
   `graph_ticks`.
 - Capture runs warm-up ticks on a side stream, which compiles every stage, records the
-  block, then restores the carry, so capture changes nothing.
+  block, then restores the carry and the device's default generator, so capture changes
+  nothing (and a run resumed in a new process, which captures again, draws what the first
+  process drew: [Runs and checkpoints](runs.md)).
 - A rollout of `length` ticks is then `length / block` graph replays.
 
 Two rules keep the captured graph correct:
