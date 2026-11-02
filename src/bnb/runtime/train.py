@@ -3,11 +3,14 @@ progress metrics.
 
 Lineup: self-play, one league slot (a lagged copy of the learner), the chaser and random, in
 fixed shares of the batch. A mixed batch (mixed spec 5) crosses the lineup with the games of
-a training mix. The learner is Yemong, or the toy relational model (learner spec 9).
+a training mix. The learner is Yemong, or the toy relational model (learner spec 9). The
+objective is PPO, or behaviour cloning of the scripted agent (`bnb.learn.bc`, with its own
+lineup and stop rule in `bnb.runtime.cloning`).
 """
 
 import copy
 import dataclasses
+import functools
 import time
 from collections.abc import Callable
 
@@ -15,18 +18,22 @@ import torch
 
 from bnb.contracts import REWARD_LEVELS, GameConfig, Pool
 from bnb.controllers.relational import RelationalController
-from bnb.controllers.scripted import Chaser, Random
+from bnb.controllers.scripted import Chaser, Random, Scripted, distribution
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
+from bnb.game.handling.characteristics import characteristics
 from bnb.game.modes.rules import PRESETS
+from bnb.learn.bc import BehaviourCloning, TeacherConfig
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
+from .evaluate import first_results, shares
 from .rollout import Rollout
 
 LEARNER = "learner"
+SCRIPTED = "scripted"
 # The default training mix (mixed spec 1, a proposal): each game preset's share of the batch.
 # The battle map is 25% of team deathmatch.
 TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.375), ("deathmatch_wide", 0.125))
@@ -37,6 +44,7 @@ LINEUP = (
     Pool("random", 0.125, (LEARNER, "random")),
 )
 MODELS = ("yemong", "relational")
+OBJECTIVES = ("ppo", "bc")
 PRECISIONS = ("float32", "tf32", "bfloat16")
 
 
@@ -66,7 +74,9 @@ class TrainConfig:
     process-wide setting, which the entry point applies with `set_precision`) or
     "bfloat16" (the model's matmuls). reward: the reward levels' weights. host_store: stream
     the segments through pinned host memory (on a GPU) rather than keep them on the device.
-    seed: the learner's random streams; the entry point seeds the process with it too."""
+    seed: the learner's random streams; the entry point seeds the process with it too.
+    objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
+    `bnb.learn.bc.config()`, and `teacher` sets its labels)."""
 
     game: GameConfig
     num_envs: int = 1024
@@ -83,8 +93,12 @@ class TrainConfig:
     host_store: bool = True
     seed: int = 0
     compile: bool = True
+    objective: str = "ppo"
+    teacher: TeacherConfig = TeacherConfig()
 
     def __post_init__(self) -> None:
+        if self.objective not in OBJECTIVES:
+            raise ValueError(f"objective {self.objective!r} is not one of {OBJECTIVES}")
         if self.model not in MODELS:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
@@ -139,20 +153,39 @@ class Trainer:
         self.config = config
         self.model = build_model(build or model_build(config), device)
         self.league = copy.deepcopy(self.model).requires_grad_(False)
-        self.controllers = {LEARNER: model_controller(self.model, game),
-                            "league_0": model_controller(self.league, game),
-                            "chaser": Chaser(game.ships_per_team),
-                            "random": Random(game.ships_per_team)}
+        cloning = config.objective == "bc"
+        seated = {name for pool in config.pools for name in pool.seats}
+        types = api.ship_types(device)
+        # The scripted agent's characteristics, when it plays or teaches (measured once).
+        self.characteristics = characteristics(types, api.rules_of(game)) \
+            if cloning or SCRIPTED in seated else None
+        builders = {LEARNER: lambda: model_controller(self.model, game),
+                    "league_0": lambda: model_controller(self.league, game),
+                    "chaser": lambda: Chaser(game.ships_per_team),
+                    "random": lambda: Random(game.ships_per_team),
+                    SCRIPTED: lambda: Scripted(self.characteristics)}
+        self.controllers = {name: build() for name, build in builders.items()
+                            if name in seated or name in (LEARNER, "league_0")}
         self.rollout = Rollout(game, config.pools, self.controllers, LEARNER, config.num_envs,
                                config.length, device, compile=config.compile,
                                reward_config=config.reward, shards=config.shards,
-                               host_store=config.host_store)
-        self.ppo = Learner(self.model, config.learner, self.rollout.rules, api.ship_types(device),
-                           config.reward.outcome, device, stage=compiler(config.compile),
-                           seed=config.seed)
+                               host_store=config.host_store,
+                               extra_reads=Scripted.reads if cloning else ())
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)
         self.learner_pool = lineup.pool_of[LEARNER]
+        rules, stage = self.rollout.rules, compiler(config.compile)
+        if cloning:  # the teacher is the scripted opponent; only its labels are tempered
+            agent = self.controllers.get(SCRIPTED) or Scripted(self.characteristics)
+            teacher = functools.partial(distribution, characteristics=agent.characteristics,
+                                        parameters=agent.parameters)
+            self.ppo = BehaviourCloning(self.model, config.learner, rules, types,
+                                        config.reward.outcome, device, teacher, config.teacher,
+                                        self.pool_names, self.learner_pool.repeat(config.shards),
+                                        stage=stage, seed=config.seed)
+        else:
+            self.ppo = Learner(self.model, config.learner, rules, types, config.reward.outcome,
+                               device, stage=stage, seed=config.seed)
         self.updates_done = 0
 
     @property
@@ -212,7 +245,6 @@ class Trainer:
                     **stats)
 
 
-@torch.no_grad()
 def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> dict:
     """The learner against a scripted opponent over `games` fresh games (one per
     environment, every clock from zero, the seat drawn per environment): the shares won,
@@ -221,18 +253,8 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
     device = next(trainer.model.parameters()).device
     controllers = {LEARNER: trainer.controllers[LEARNER], opponent: trainer.controllers[opponent]}
     pool = Pool("evaluation", 1.0, (LEARNER, opponent), config.pools[0].fog_share)
-    rollout = Rollout(config.game, (pool,), controllers, LEARNER, games, config.length, device,
-                      compile=config.compile, staggered=False)
-    result = torch.zeros(games, device=device)
-    finished = torch.zeros(games, dtype=torch.bool, device=device)
-    while not bool(finished.all()):
-        trajectory = rollout.run()  # (L, games): one view each
-        for tick in range(trajectory.result.shape[0]):
-            first = trajectory.done[tick] & ~finished
-            result = torch.where(first, trajectory.result[tick].float(), result)
-            finished = finished | trajectory.done[tick]
-    return dict(wins=(result > 0).float().mean().item(), draws=(result == 0).float().mean().item(),
-                losses=(result < 0).float().mean().item())
+    return shares(first_results(config.game, (pool,), controllers, LEARNER, games, device,
+                                config.length, config.compile))
 
 
 def train(config: TrainConfig, device: torch.device,

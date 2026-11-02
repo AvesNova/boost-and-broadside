@@ -26,6 +26,7 @@ runs/2026-11-02-mixed-purple-pumpkin/
   config.json           the resolved TrainConfig at the start
   checkpoints/step_<environment steps>/   training checkpoints
   league/               the league's policy snapshots
+  policy/               a BC run's clone, a policy file (bnb train --objective bc)
   metrics.jsonl         the local metrics sink
   artifacts/<kind>/<id>/result.json        offline results
 ```

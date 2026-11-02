@@ -53,13 +53,16 @@ def _clone(tree):
 class Rollout:
     """shards: segments the store holds (an update consumes them); host_store: keep them in
     pinned host memory (on a CUDA device) rather than on the device; staggered: start each
-    environment's clock at a random tick of its episode (else every game starts fresh)."""
+    environment's clock at a random tick of its episode (else every game starts fresh);
+    extra_reads: observation parts the learner's records keep beyond what its controller
+    reads (BC's teacher labels the stored observations)."""
 
     def __init__(self, cfg: GameConfig, pools: tuple[Pool, ...],
                  controllers: dict[str, Controller], learner: str, num_envs: int,
                  length: int, device: torch.device, compile: bool = True,
                  graph_ticks: int = 32, reward_config: rewards.RewardConfig | None = None,
-                 shards: int = 1, host_store: bool = False, staggered: bool = True) -> None:
+                 shards: int = 1, host_store: bool = False, staggered: bool = True,
+                 extra_reads: tuple[str, ...] = ()) -> None:
         self.rules = api.rules_of(cfg, pools, num_envs)
         self.reward_config = reward_config or rewards.RewardConfig()
         self.T, self.S, self.N = cfg.num_teams, cfg.ships_per_team, cfg.num_ships
@@ -70,7 +73,8 @@ class Rollout:
             raise ValueError(f"pools name controllers {missing} that were not given")
         self.controllers = {k: controllers[k] for k in self.lineup.names}
         self.learner = learner
-        self.reads = controllers[learner].reads
+        self.reads = tuple(part for part in PARTS
+                           if part in controllers[learner].reads + extra_reads)
         self.block = max(d for d in range(1, graph_ticks + 1) if length % d == 0)
         self.ring = min(length, 2 * self.block)  # the staging ring: two blocks of records
         self.carry = self._initial_carry(staggered)
@@ -187,7 +191,8 @@ class Rollout:
         actions = torch.zeros((B, T, S, 3), dtype=torch.int32, device=device)
         slot, records = self._slot(carry), carry["records"]
         for name, ctrl in self.controllers.items():
-            view = self._view(carry, name, ctrl.reads + ("globals",))
+            reads = self.reads if name == self.learner else ctrl.reads
+            view = self._view(carry, name, reads + ("globals",))
             done = view.globals[..., GLOBAL["reset"]] > 0.5
             action, new_carry, out = ctrl.step(carry["ctrl"][name], view, done)
             if new_carry is not None:

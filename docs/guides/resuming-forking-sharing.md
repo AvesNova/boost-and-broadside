@@ -79,8 +79,9 @@ uv run --no-sync bnb train --init-from runs/2026-11-02-mixed-quiet-otter/checkpo
 ```
 
 The new run's model starts from the policy file's weights and return scale, with a fresh
-optimizer: behaviour cloning's hand-off to RL. Any policy file or training checkpoint
-works, if its build record matches the run's model. In Python, the same files are
+optimizer: behaviour cloning's hand-off to RL. A BC run saves its clone at
+`runs/<run>/policy/`{.plain} ([Behaviour cloning](behaviour-cloning.md)). Any policy file or
+training checkpoint works, if its build record matches the run's model. In Python, the same files are
 `bnb.runs.checkpoint.save_policy` and `bnb.runs.checkpoint.load_policy`:
 
 <!-- runnable -->

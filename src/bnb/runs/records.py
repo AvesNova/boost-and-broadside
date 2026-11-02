@@ -5,6 +5,7 @@
       config.json         the resolved TrainConfig at the start
       checkpoints/step_<environment steps>/   training checkpoints
       league/             the league's policy snapshots
+      policy/             a BC run's clone, a policy file (`bnb train --objective bc`)
       metrics.jsonl       the local metrics sink
       artifacts/<kind>/<id>/result.json        offline results
 
@@ -190,6 +191,11 @@ class Run:
         return status
 
     # ---- checkpoints
+
+    @property
+    def policy_path(self) -> pathlib.Path:
+        """Where a BC run saves its clone as a policy file."""
+        return self.directory / "policy"
 
     def checkpoint_path(self, step: int) -> pathlib.Path:
         return self.directory / CHECKPOINTS / f"step_{step}"

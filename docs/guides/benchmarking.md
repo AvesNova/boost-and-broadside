@@ -5,7 +5,10 @@ covers: [bench/]
 # Benchmarking
 
 The harness lives in `bench/`, outside the package. It measures at steady state, at
-random sizes, one benchmark at a time on the machine.
+random sizes, one benchmark at a time on the machine. `bench/` also holds the scripted
+agent's parameter search (`bench/scripted_search.py`, described in
+[The scripted agent](../explanation/scripted-agent.md#parameters)), which takes the same
+lock.
 
 ## The lock
 

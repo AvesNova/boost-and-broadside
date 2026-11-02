@@ -1,4 +1,4 @@
-"""Command-line entry point: `bnb train ...` trains, `bnb runs ...` lists runs and uploads
+"""Command-line entry point: `bnb train ...` trains or clones, `bnb runs ...` lists runs and uploads
 checkpoints, `bnb ship-card ...` charts a ship card. The one
 place that sets process-wide options (the seed, the matmul precision, the charts' backend)."""
 
@@ -15,8 +15,8 @@ import tyro
 
 @dataclasses.dataclass(frozen=True)
 class Train:
-    """Train a model with PPO (learner spec) in a run directory (runs spec): Yemong, or the
-    toy relational model.
+    """Train a model with PPO (learner spec), or clone the scripted agent (BC), in a run
+    directory (runs spec): Yemong, or the toy relational model.
 
     preset: a training preset (deathmatch, deathmatch_wide, frontline), which sets the mode,
     the sizes and the spawn groups, or mixed, the default training mix of all three in one
@@ -43,6 +43,14 @@ class Train:
     current directory outside a repository).
     checkpoint_every: environment steps between training checkpoints (default: about 30
     minutes at the run's measured throughput).
+    objective: ppo, or bc (behaviour cloning against self-play and the scripted agent until
+    a stop rule fires, then the clone is saved as the run's policy file; updates is unused,
+    and a BC run is not resumed or forked); teacher_temperature and teacher_floor set the
+    labels' entropy; bc_budget_steps: BC's budget in environment steps.
+    calibrate_entropy: print the scripted agent's natural entropy over its own games of the
+    preset and the temperature whose labels reach this mean entropy (nats per living ship
+    step) at teacher_floor, then exit, writing no run; calibration_segments: how many
+    rollout segments of 128 ticks it records.
     """
 
     preset: str | None = None
@@ -69,6 +77,12 @@ class Train:
     name: str | None = None
     runs_directory: str | None = None
     checkpoint_every: int | None = None
+    objective: str = "ppo"
+    teacher_temperature: float = 1.0
+    teacher_floor: float = 0.01
+    bc_budget_steps: int = 500_000_000
+    calibrate_entropy: float | None = None
+    calibration_segments: int = 4
 
 
 # What a resume may be given besides --resume: the rest comes from the checkpoint.
@@ -173,12 +187,15 @@ def _requested(args: Train):
     from bnb.contracts import GameConfig
     from bnb.contracts.pools import environment_multiple
     from bnb.game.modes.rules import PRESETS
+    from bnb.learn import bc
     from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime import cloning
     from bnb.runtime.train import LINEUP, TrainConfig, mixed
 
-    pools = LINEUP
+    cloned = args.objective == "bc"
+    pools = cloning.LINEUP if cloned else LINEUP
     if args.preset == "mixed":
-        game, pools = mixed()
+        game, pools = mixed(pools)
     elif args.preset is not None:
         if args.preset not in PRESETS:
             raise SystemExit(f"unknown preset {args.preset!r}; one of "
@@ -191,11 +208,18 @@ def _requested(args: Train):
     if args.num_envs % multiple:
         raise SystemExit(f"--num-envs {args.num_envs} does not split into the pools' shares: "
                          f"use a multiple of {multiple}")
-    learner = LearnerConfig(old_log_probabilities=args.old_log_probabilities,
-                            micro_batch_rows=args.micro_batch_rows)
-    config = TrainConfig(game=game, pools=pools, num_envs=args.num_envs, updates=args.updates,
-                         shards=args.shards, model=args.model, precision=args.precision,
-                         learner=learner, seed=args.seed)
+    settings = dict(old_log_probabilities=args.old_log_probabilities,
+                    micro_batch_rows=args.micro_batch_rows)
+    learner = bc.config(**settings) if cloned else LearnerConfig(**settings)
+    try:
+        config = TrainConfig(game=game, pools=pools, num_envs=args.num_envs,
+                             updates=args.updates, shards=args.shards, model=args.model,
+                             precision=args.precision, learner=learner, seed=args.seed,
+                             objective=args.objective,
+                             teacher=bc.TeacherConfig(args.teacher_temperature,
+                                                      args.teacher_floor))
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     return with_settings(config, map(parse_setting, args.set))
 
 
@@ -248,6 +272,9 @@ def train(args: Train, options: set[str]) -> None:
     starts = [name for name in ("resume", "fork", "init_from") if getattr(args, name)]
     if len(starts) > 1:
         raise SystemExit(f"choose one of --resume, --from and --init-from, not {starts}")
+    if starts and args.objective == "bc":
+        flag = {"resume": "--resume", "fork": "--from", "init_from": "--init-from"}[starts[0]]
+        raise SystemExit(f"a BC run starts fresh: --objective bc takes no {flag}")
     if args.at is not None and not (args.resume or args.fork):
         raise SystemExit("--at chooses a checkpoint of --resume or --from")
     try:
@@ -279,8 +306,14 @@ def train(args: Train, options: set[str]) -> None:
         if args.print_config:
             print(json.dumps(to_json(config), indent=1))
             return
+        if args.resume and config.objective == "bc":
+            raise SystemExit(f"run {args.resume} is a BC run, which is not resumed: start a "
+                             f"new one, or RL from its policy file with --init-from")
         torch.manual_seed(config.seed)
         set_precision(config.precision)
+        if args.calibrate_entropy is not None:
+            calibrate(args, config, device)
+            return
         if args.probe:
             trainer = Trainer(config, device)
             probe.begin(device)
@@ -333,10 +366,46 @@ def train(args: Train, options: set[str]) -> None:
               f"reward/s: {rewards}", flush=True)
 
     try:
-        status = session.train(run, trainer, log)
+        if config.objective == "bc":
+            from bnb.learn import bc
+
+            status = session.clone(run, trainer, bc.StopConfig(budget_steps=args.bc_budget_steps),
+                                   log_cloning)
+            print(f"stopped by {run.record['stopped_by']}; the clone is {run.policy_path}",
+                  flush=True)
+        else:
+            status = session.train(run, trainer, log)
     except MemoryBudgetError as error:  # the run is marked failed with the same message
         raise SystemExit(str(error)) from error
     print(f"run {run.record['name']} {status} at step {trainer.ppo.env_steps}")
+
+
+def log_cloning(row: dict) -> None:
+    scores = " ".join(f"{kind} {value['score']:.3f}" for kind, value in row["scores"].items()
+                      if value["score"] is not None)
+    print(f"update {row['update']:4d}  steps {row['env_steps']:>11,}  "
+          f"rollout {row['rollout_s'] * 1e3:6.0f} ms  learn {row['learn_s'] * 1e3:6.0f} ms  "
+          f"bc kl {row['bc_kl']:.4f}  teacher {row['teacher_entropy']:.3f}  "
+          f"student {row['student_entropy']:.3f}  scores: {scores}", flush=True)
+
+
+def calibrate(args: Train, config, device) -> None:
+    """`bnb train --calibrate-entropy`: the teacher's natural entropy over the scripted
+    agent's own games of the configured game and pools, and the temperature for the target."""
+    from bnb.learn import bc
+    from bnb.runtime import cloning
+
+    tokens = cloning.teacher_distributions(config.game, config.pools, config.num_envs,
+                                           args.calibration_segments, device)
+    natural = bc.mean_entropy(tokens, bc.TeacherConfig(1.0, 0.0))
+    print(f"natural entropy {natural:.4f} nats per living ship-step over "
+          f"{tokens.shape[0]} ship-steps", flush=True)
+    try:
+        chosen = bc.calibrate(tokens, args.calibrate_entropy, args.teacher_floor)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
+    print(f"temperature {chosen.temperature:.4f} at floor {chosen.floor} gives "
+          f"{bc.mean_entropy(tokens, chosen):.4f}")
 
 
 def runs(args: Runs) -> None:

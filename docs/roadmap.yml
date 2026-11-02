@@ -37,9 +37,9 @@
   page: explanation/game/mixed-batches.md
 - section: "4"
   title: The scripted agent
-  status: specified
+  status: merged
   spec: docs/rewrite/sections/scripted-bc-spec.md
-  page: explanation/in-progress/scripted-agent.md
+  page: explanation/scripted-agent.md
 - section: "5"
   title: The model (Yemong)
   status: merged
@@ -52,9 +52,9 @@
   page: explanation/learner.md
 - section: "7"
   title: Behaviour cloning
-  status: specified
+  status: merged
   spec: docs/rewrite/sections/scripted-bc-spec.md
-  page: explanation/in-progress/behaviour-cloning.md
+  page: explanation/behaviour-cloning.md
 - section: "8"
   title: League and ratings
   status: specified

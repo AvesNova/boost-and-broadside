@@ -1,5 +1,6 @@
 ---
 covers: [src/bnb/game/handling/, src/bnb/game/ship_types.py]
+reviewed: 2026-11-02
 ---
 
 # The ship card

@@ -1,5 +1,6 @@
 """One process's segment of a run (runs spec 5 and 7): the probe on its first update,
 checkpoints every N environment steps with the retention, and the run's status at the end.
+A BC run (`clone`) instead saves its clone as the run's policy file when a stop rule fires.
 
 Ctrl-C finishes the current update, writes a checkpoint and marks the run stopped; an
 exception marks it failed, with the message, before it propagates. The cadence N, when the
@@ -11,6 +12,8 @@ import signal
 import time
 from collections.abc import Callable
 
+from bnb.learn.bc import StopConfig
+from bnb.runtime import cloning
 from bnb.runtime.train import Trainer
 
 from . import checkpoint, probe
@@ -27,6 +30,45 @@ def save(run: Run, trainer: Trainer, final: bool = False) -> None:
     if not path.exists():
         checkpoint.save_training(path, trainer, extra=dict(run=run.record["name"]))
     run.added_checkpoint(step, final=final)
+
+
+def save_clone(run: Run, trainer: Trainer) -> None:
+    """The clone as the run's policy file: its weights, the return scale and the step counts,
+    for the BC -> RL hand-off (`bnb train --init-from`)."""
+    checkpoint.save_policy(run.policy_path, trainer.model, return_scale=trainer.ppo.return_scale,
+                           steps=dict(environment_steps=trainer.ppo.env_steps,
+                                      updates=trainer.updates_done),
+                           game=trainer.config.game, types=trainer.ppo.types)
+
+
+def clone(run: Run, trainer: Trainer, stop: StopConfig = StopConfig(),
+          log: Callable[[dict], None] = print) -> str:
+    """BC until a stop rule fires ("finished") or Ctrl-C ("stopped", after the current
+    update); either way the clone is saved as the run's policy file, and the rule (or
+    "interrupted") is recorded as the run's `stopped_by`."""
+    stopping = []
+    previous = signal.getsignal(signal.SIGINT)
+
+    def interrupt(number, frame) -> None:
+        if stopping:  # a second Ctrl-C stops at once
+            raise KeyboardInterrupt
+        stopping.append(True)
+        print("stopping after this update (Ctrl-C again to stop now)", flush=True)
+
+    signal.signal(signal.SIGINT, interrupt)
+    try:
+        reason = cloning.clone(trainer, stop, log, interrupted=lambda: bool(stopping))
+        save_clone(run, trainer)
+        status = "stopped" if reason == "interrupted" else "finished"
+        run.update(stopped_by=reason, policy=str(run.policy_path))
+        run.end_segment(trainer.ppo.env_steps, status)
+        return status
+    except BaseException as error:
+        run.end_segment(trainer.ppo.env_steps, "failed",
+                        message=f"{type(error).__name__}: {error}")
+        raise
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 def train(run: Run, trainer: Trainer, log: Callable[[dict], None] = print,
