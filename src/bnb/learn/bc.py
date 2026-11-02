@@ -208,7 +208,8 @@ class StopConfig:
     plateau_fraction over the last plateau_steps environment steps; or budget_steps
     environment steps."""
 
-    score_target: float = 0.45
+    # v1 stopped BC at about 0.40 against its scripted agent and RL trained from it (author)
+    score_target: float = 0.40
     score_window: int = 1000
     score_errors: float = 2.0
     plateau_fraction: float = 0.01

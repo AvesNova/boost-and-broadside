@@ -67,7 +67,7 @@ opponent come from the training games themselves; there are no evaluation rollou
 first rule to fire (`bnb.learn.bc.StopConfig`):
 
 - **score:** the score against the scripted agent (wins plus half the draws) over the last
-  1000 finished training games, less two of its standard errors, reaches 0.45, even if
+  1000 finished training games, less two of its standard errors, reaches 0.40, even if
   the KL is still falling. The standard error is the window's own: the sample deviation of
   its per-game scores (1, 0.5 or 0) over the square root of 1000. The rule is checked
   every update, so the bound keeps a window that is high by chance from stopping BC. The
@@ -103,12 +103,12 @@ Measured on 2026-11-02 on the development laptop (RTX 4070 Laptop GPU):
   of the scripted agent's own games of the 5v5 training mix (256 environments, four
   segments of 128 ticks). Its distribution puts weight on 2.4 joint actions on average,
   so the temperature alone reaches at most 0.75 nats; a floor of 0.1 gives 1.03 to 1.34.
-- **The toy test** (`tests/sections/test_bc_toy.py`, at floor 0): the relational model
-  cloned at 2v2 team deathmatch, 256 environments, stopped by the score rule after 65.4M
-  environment steps (13 minutes). Over 512 fresh games it scores 0.478 against its teacher
-  and 1.000 against the chaser; the teacher scores 1.000 against the chaser. At the
-  default floor, 0.01, the same run's live score against the teacher stayed below 0.45
-  through 100M environment steps.
+- **The toy test** (`tests/sections/test_bc_toy.py`, at the default floor 0.01): the
+  relational model cloned at 2v2 team deathmatch, 256 environments, stopped by the score
+  rule after 65.6M environment steps (13 minutes), with a window score of 0.432 and a
+  bound of 0.401. Over 512 fresh games it scores 0.418 against its teacher (the toy
+  test's bar is 0.356), and over 4096 games 0.425; against the chaser it scores 0.994,
+  the teacher 1.000.
 - **Throughput:** Yemong on the 5v5 training mix at 1024 environments, 1923 environment
   steps per second end to end, against 2596 for PPO with its lineup, measured while other
   processes shared the machine (provisional). The teacher's labels take 0.7 ms per

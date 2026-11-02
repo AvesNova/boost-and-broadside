@@ -300,10 +300,11 @@ def test_the_score_stop_reads_the_windows_lower_bound_trimmed_like_the_score():
 
 
 def test_a_window_at_the_target_does_not_stop_and_one_clearly_above_does():
-    config = bc.StopConfig(score_window=100, score_target=0.45, budget_steps=10**9)
+    config = bc.StopConfig(score_window=100, budget_steps=10**9)
+    assert config.score_target == pytest.approx(0.40)  # the default (author)
     at_target = bc.StopRule(config)
-    assert at_target.observe(1, 45, 0, 55, 1.0) is None
-    assert at_target.score == pytest.approx(0.45) and at_target.lower_bound < 0.45
+    assert at_target.observe(1, 40, 0, 60, 1.0) is None
+    assert at_target.score == pytest.approx(0.40) and at_target.lower_bound < 0.40
     above = bc.StopRule(config)
     assert above.observe(1, 70, 0, 30, 1.0) == "score"
     assert above.lower_bound == pytest.approx(0.7 - 2 * (0.21 / 99) ** 0.5)
