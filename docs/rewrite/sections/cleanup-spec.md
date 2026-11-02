@@ -361,3 +361,26 @@ Its log and report are not available to you; this section is the complete list.
 6. **Docs:** `contracts.md` and the user docs match the code. The docs checks pass with
    no `PossiblyStalePage` warning left unresolved.
 7. **Size:** lines added and removed, by package.
+
+## 8. Additions (author, 2026-11-02)
+
+These are small features and checks, not renames. Each goes in its own commit, after
+sections 1–7.
+
+1. **A game version:** `bnb.game.VERSION`, an integer. It rises whenever a change alters
+   what the game computes. Policy files and league ratings record it.
+2. **Resume drift is accepted:** the game's damage sum and Yemong's density counts use
+   float atomics, so a long GPU run resumed from a checkpoint can differ by rounding after
+   a tick with two hits on one ship. Do not change the sums. State it in the runs
+   explanation page.
+3. **The model in the training settings:** `TrainConfig` gains the model's settings
+   (`YemongConfig` and the relational model's) and the ship card. A new run can then be
+   built at another width from the command line (`--set model.width=256`) and from a
+   config file. Resume and fork keep reading the build record, as now. This is the
+   tooling for a later 128-versus-256 comparison; the comparison itself is not part of
+   this pass.
+4. **The scripted agent's reflection test:** a reflected observation (Frontline's
+   reflection about the neutral axis) gives the reflected action, in distribution. After
+   the seat fix, Frontline scripted-versus-scripted still gives team 1 0.507 ± 0.003 over
+   16,384 games (deathmatch is even). If the test fails, list the rule that breaks it in
+   the notes, mark the test `xfail(strict=True)`, and do not change the agent here.
