@@ -299,6 +299,11 @@ Its log and report are not available to you; this section is the complete list.
       shell added `bnb.game.api.core_radius` as a second copy (held to it by a test).
       `visibility` uses the one function.
 
+- **The staleness check and same-day reviews:** `reviewed:` is a date, so a page reviewed
+  again later on the same day cannot clear a `PossiblyStalePage` warning raised by a later
+  commit that day. Accept a date and time (or compare against the page's own last
+  commit), and say so in the writing guide.
+
 ## 6. Test hygiene
 
 - **Markers:**
