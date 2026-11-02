@@ -20,6 +20,7 @@ class Switches:
     """One switch per kernel: on, the kernel runs where it applies; off, its plain twin."""
 
     scan: bool = True  # the RG-LRU's recurrence over a segment (temporal.parallel_scan)
+    attention: bool = True  # a spatial sublayer's rotary and attention (SpatialBlock._attend)
 
 
 switches = Switches()

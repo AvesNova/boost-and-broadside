@@ -19,7 +19,8 @@ if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repositor
 
 from bench.yemong_synthetic import random_segment, time_slice  # noqa: E402
 from bnb.models.yemong import kernels  # noqa: E402
-from bnb.models.yemong.kernels import scan  # noqa: E402
+from bnb.models.yemong.kernels import attention, scan  # noqa: E402
+from bnb.models.yemong.spatial import SpatialBlock  # noqa: E402
 from bnb.models.yemong.temporal import parallel_scan  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="the kernels need CUDA")
@@ -103,6 +104,67 @@ def test_scan_equals_the_parallel_scan():
 def test_scan_is_bitwise_repeatable():
     inputs = _scan_inputs(seed=2)
     first, second = (_gradients(scan.linear_scan, inputs) for _ in range(2))
+    _assert_identical(first[0] + first[1], second[0] + second[1])
+
+
+# ------------------------------------------------------------------ attention
+
+
+def _attention_inputs(seed: int = 0, views=(3, 4), tokens=11, maps=10, heads=2, width=64,
+                      pairs=20):
+    """Queries, keys and values as strided views of a fused projection, as the sublayer
+    makes them, and the rotary tables."""
+    generator = _generator(seed)
+    fused = torch.randn(*views, tokens, 3 * heads * width, generator=generator, device=CUDA)
+    map_fused = torch.randn(*views, maps, 2 * heads * width, generator=generator, device=CUDA)
+
+    def angles(rows):
+        return 6.0 * torch.rand(*views, rows, 1, pairs, generator=generator, device=CUDA)
+
+    token_angles, map_angles = angles(tokens), angles(maps)
+    return fused, map_fused, token_angles, map_angles, heads
+
+
+def _attention(function, heads):
+    def run(fused, map_fused, token_angles, map_angles):
+        query, key, value = fused.unflatten(-1, (3, heads, -1)).unbind(-3)
+        map_key, map_value = map_fused.unflatten(-1, (2, heads, -1)).unbind(-3)
+        tables = (torch.cos(token_angles), torch.sin(token_angles))
+        map_tables = (torch.cos(map_angles), torch.sin(map_angles))
+        return function(query, key, value, map_key, map_value, tables, map_tables)
+    return run
+
+
+def test_attention_equals_the_plain_attention():
+    fused, map_fused, token_angles, map_angles, heads = _attention_inputs()
+    expected = _gradients(_attention(SpatialBlock._attend, heads),
+                          [fused.double(), map_fused.double()]
+                          + [token_angles.double(), map_angles.double()])
+    actual = _gradients(lambda f, m: _attention(attention.attend, heads)(
+        f, m, token_angles, map_angles), [fused, map_fused])
+    for got, want in zip(actual[0] + actual[1], expected[0] + expected[1][:2], strict=True):
+        torch.testing.assert_close(got.double(), want, rtol=1e-5, atol=1e-5)
+
+
+def test_attention_in_bf16_is_as_close_as_the_plain_attention():
+    fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=1)
+    tables = [token_angles, map_angles]
+    expected = _gradients(_attention(SpatialBlock._attend, heads),
+                          [fused.double(), map_fused.double()] + [t.double() for t in tables])
+    bf16 = [fused.bfloat16(), map_fused.bfloat16()]
+    plain = _gradients(_bf16(lambda f, m: _attention(SpatialBlock._attend, heads)(f, m, *tables)),
+                       bf16)
+    fast = _gradients(_bf16(lambda f, m: _attention(attention.attend, heads)(f, m, *tables)),
+                      bf16)
+    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1],
+                               expected[0] + expected[1][:2], strict=True):
+        _assert_as_close(got, slow, want)
+
+
+def test_attention_is_bitwise_repeatable():
+    fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=2)
+    run = lambda f, m: _attention(attention.attend, heads)(f, m, token_angles, map_angles)  # noqa: E731
+    first, second = (_gradients(run, [fused, map_fused]) for _ in range(2))
     _assert_identical(first[0] + first[1], second[0] + second[1])
 
 
