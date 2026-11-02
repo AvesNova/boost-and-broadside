@@ -58,3 +58,11 @@ Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md` (with section
 - **Frontline zone assignment by rank** (the scripted agent) is approved: the literal
   "neediest zone" rule moved every ship at once and drew 4.7% against random.
 - **`micro_batch_rows` and `precision`** may change on a resume (section 11).
+- **The score stop is a confidence bound,** scored against the teacher playing with the
+  labels' own floor. The first rule stopped the first time a 1000-game window reached
+  0.45; checked every update, it fires on a lucky window, and the toy clone's fresh
+  512-game scores were 0.478, 0.447 and 0.405. The stop now needs the window's score minus
+  two standard errors to reach the target, against a teacher whose play has the same
+  floor as its labels (at floor 0.01 the clone did not reach 0.45 against the unfloored
+  teacher in 100M steps). The toy test's bar stays 0.45 minus two standard errors of its
+  512 games. Until this lands the toy test is marked `xfail` (not strict).
