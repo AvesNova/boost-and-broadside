@@ -354,3 +354,7 @@ Working notes of the hunt (`docs/rewrite/sections/intermittent-failure-brief.md`
   batch of the same size could be copied into it while drift still read it (the relational
   model's sizes can meet this; Yemong's gradient batches carry the shot labels, another
   key). It now runs the generator out.
+- **Done (2026-11-03):** full suite under the lock after the fix, **1071 passed, 7 skipped**
+  (37 min; the same seven skips as before). Committed and pushed on `fix/intermittent`:
+  `1f5558ac` (the fix, its test, the learner page), the notes. Scratch and logs in
+  `/tmp/bnb-scratch-intermittent` (`suite.log`, `probe-warm*.log`, `runs/probe/`).
