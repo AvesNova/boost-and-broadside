@@ -231,6 +231,11 @@ def apply(function, value):
     )
 
 
+def ship_team(ships_per_team: int, device=None) -> torch.Tensor:
+    """(N,) int64: each ship's team, from the team-major order (ship n = team * S + slot)."""
+    return torch.arange(TEAMS * ships_per_team, device=device) // ships_per_team
+
+
 def by_team(values: torch.Tensor) -> torch.Tensor:
     """(B, N, ...) per-ship values as (B, 2, S, ...)."""
     return values.reshape(values.shape[0], TEAMS, values.shape[1] // TEAMS, *values.shape[2:])

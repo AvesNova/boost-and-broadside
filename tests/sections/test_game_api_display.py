@@ -85,7 +85,6 @@ def test_a_lone_attacker_raises_only_the_meters_zone_sides_name():
                 inside[0, team, zone] = True
                 capture = frontline.capture_step(
                     torch.tensor([[0, 1]]),
-                    torch.ones(1, 2, dtype=torch.bool),
                     inside,
                     role,
                     torch.zeros(1, Z),

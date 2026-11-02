@@ -67,14 +67,11 @@ def zone_membership(
 
 
 class Capture(NamedTuple):
-    """One tick of the meters. progress, direction (..., Z): the majority's push on a defense
-    zone in team 0's frame (+1 a team-0 majority, -1 a team-1 one, 0 none or a completion;
-    clipped meters included); the attempt ledgers
-    (..., Z, N); gain and loss (..., N), each capturing side's shares; team0_captured,
-    team1_captured (...,); front (...,) and roles (..., Z) after the captures."""
+    """One tick of the meters. progress (..., Z); the attempt ledgers (..., Z, N); gain and
+    loss (..., N), each capturing side's shares; team0_captured, team1_captured (...,);
+    front (...,) and roles (..., Z) after the captures."""
 
     progress: torch.Tensor
-    direction: torch.Tensor
     attack_ledger: torch.Tensor
     defense_ledger: torch.Tensor
     gain: torch.Tensor
@@ -109,28 +106,27 @@ def _normalised(values: torch.Tensor) -> torch.Tensor:
 
 def capture_step(
     team: torch.Tensor,
-    alive: torch.Tensor,
     inside: torch.Tensor,
     roles: torch.Tensor,
     progress: torch.Tensor,
     attack_ledger: torch.Tensor,
     defense_ledger: torch.Tensor,
     front: torch.Tensor,
-    tick_seconds: float,
+    tick_length: float,
     capture_seconds: float,
 ) -> Capture:
     """v1's meters, attempt ledgers and completions (spec 5).
 
-    team, alive (..., N); inside (..., N, Z), already masked to living ships; roles,
-    progress (..., Z); the ledgers (..., Z, N); front (...,).
+    team (..., N); inside (..., N, Z), masked to living ships (a dead ship is absent);
+    roles, progress (..., Z); the ledgers (..., Z, N); front (...,).
     """
     present = inside.transpose(-1, -2)  # (..., Z, N)
     attacker, defender, team0_attacks, contested = _sides(team, roles)
     on_team0 = (team == 0)[..., None, :]
     net = (present & on_team0).sum(-1) - (present & ~on_team0).sum(-1)  # team 0 minus team 1
-    direction = torch.where(contested, torch.sign(net), 0)  # the majority, team 0's frame
-    toward_attacker = torch.where(team0_attacks, direction, -direction)
-    rate = harmonic(net.abs(), progress.dtype) * tick_seconds / capture_seconds
+    majority = torch.where(contested, torch.sign(net), 0)  # the majority, in team 0's frame
+    toward_attacker = torch.where(team0_attacks, majority, -majority)
+    rate = harmonic(net.abs(), progress.dtype) * tick_length / capture_seconds
     moved = (progress + toward_attacker * rate).clamp(0.0, 1.0)
     new = torch.where(contested, moved, 0.0)
     delta = new - progress
@@ -154,16 +150,13 @@ def capture_step(
     team0_captured = (captured & team0_attacks).any(-1)
     team1_captured = (captured & ~team0_attacks).any(-1)
 
-    # A completion zeroes every meter and push (the roles rotate); an empty meter clears its
-    # ledgers.
+    # A completion zeroes every meter (the roles rotate); an empty meter clears its ledgers.
     completed = (team0_captured | team1_captured)[..., None]
     new = torch.where(completed, 0.0, new)
-    direction = torch.where(completed, 0, direction)
     clear = (new <= 0.0)[..., None]
     front = front + team0_captured.to(front.dtype) - team1_captured.to(front.dtype)
     return Capture(
         progress=new,
-        direction=direction,
         attack_ledger=torch.where(clear, 0.0, attack_ledger),
         defense_ledger=torch.where(clear, 0.0, defense_ledger),
         gain=gain,

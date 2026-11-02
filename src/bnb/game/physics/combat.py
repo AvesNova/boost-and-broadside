@@ -17,8 +17,9 @@ NO_HIT = torch.iinfo(torch.int64).max
 
 
 class Hits(NamedTuple):
+    """One tick's swept hits, before shields and spawn protection."""
+
     damage: torch.Tensor  # (B, N, N) hit damage from shooter to target
-    taken: torch.Tensor  # (B, N) hit damage taken by each ship
     bullet_hit: torch.Tensor  # (B, N, K) the bullet hit something this tick
     first_shooter: torch.Tensor  # (B, N) owner of the earliest hit on each ship, -1 if none
 
@@ -147,9 +148,7 @@ def hits(
     first = hit & (order == earliest_order.gather(1, target))
     earliest = blank.scatter_reduce(1, target, torch.where(first, bullet, NO_HIT), "amin")
     shooter = torch.where(earliest < NO_HIT, earliest // K, -1)
-    return Hits(
-        damage=damage, taken=damage.sum(1), bullet_hit=hit.reshape(B, N, K), first_shooter=shooter
-    )
+    return Hits(damage=damage, bullet_hit=hit.reshape(B, N, K), first_shooter=shooter)
 
 
 def boundary_damage(

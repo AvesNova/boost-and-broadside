@@ -27,6 +27,7 @@ def test_yemong_outputs():
         ships=obs.ships.flatten(0, 1),
         fields=obs.fields.flatten(0, 1),
         globals=obs.globals.flatten(0, 1),
+        zones=obs.zones.flatten(0, 1),
     )
     controller = YemongController(Yemong(yemong_build(YemongConfig(), rules, types)), 2, 4)
     carry = controller.init_carry(4, torch.device("cpu"))

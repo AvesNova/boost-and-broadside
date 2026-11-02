@@ -283,6 +283,14 @@ def with_settings(config, settings):
         raise SystemExit(f"--set: {error}") from error
 
 
+def set_precision(precision: str) -> None:
+    """The process-wide matmul precision of a run: TF32 for "tf32", full float32 otherwise
+    (bf16 is the model's own autocast)."""
+    import torch
+
+    torch.set_float32_matmul_precision("high" if precision == "tf32" else "highest")
+
+
 def train(options: Train, given_options: set[str]) -> None:
     """`bnb train`: a new run, a resume, a fork or a warm start, logging a line per update;
     exits with the reason for a setting that does not fit."""
@@ -293,7 +301,7 @@ def train(options: Train, given_options: set[str]) -> None:
     from bnb.runs.probe import MemoryBudgetError
     from bnb.runs.records import Run, run_name
     from bnb.runs.serialise import SerialiseError, to_json
-    from bnb.runtime.train import Trainer, set_precision
+    from bnb.runtime.train import Trainer
 
     runs_directory = runs_directory_of(options.runs_directory)
     device = torch.device(options.device)

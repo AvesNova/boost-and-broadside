@@ -21,8 +21,8 @@ from bnb.controllers.relational import RelationalController
 from bnb.controllers.scripted import Chaser, Random, Scripted, distribution
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
+from bnb.game.api import PRESETS
 from bnb.game.handling.characteristics import characteristics
-from bnb.game.modes.rules import PRESETS
 from bnb.learn.bc import BehaviourCloning, TeacherConfig, TeacherOpponent
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
@@ -83,7 +83,7 @@ class TrainConfig:
     """model: "yemong" or "relational" (the toy learner; its sizes are fixed at build).
     length: ticks per segment; shards: segments per update. precision: "bfloat16" (the
     model's matmuls under autocast; the default), "float32" or "tf32" (a process-wide
-    setting, which the entry point applies with `set_precision`). reward: the reward
+    setting, which the entry point applies with `bnb.cli.set_precision`). reward: the reward
     levels' weights. host_store: stream the segments through pinned host memory (on a GPU)
     rather than keep them on the device.
     seed: the learner's random streams; the entry point seeds the process with it too.
@@ -116,12 +116,6 @@ class TrainConfig:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
             raise ValueError(f"precision {self.precision!r} is not one of {PRECISIONS}")
-
-
-def set_precision(precision: str) -> None:
-    """The process-wide matmul precision of a run (an entry point's setting): TF32 for
-    "tf32", full float32 otherwise (bf16 is the model's own autocast)."""
-    torch.set_float32_matmul_precision("high" if precision == "tf32" else "highest")
 
 
 def model_build(config: TrainConfig, architecture: YemongConfig | RelationalConfig | None = None):
@@ -351,7 +345,8 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
 def train(
     config: TrainConfig, device: torch.device, log: Callable[[dict], None] = print
 ) -> Trainer:
-    """The loop. Process-wide settings (the seed, `set_precision`) are the entry point's."""
+    """The loop. Process-wide settings (the seed, `bnb.cli.set_precision`) are the entry
+    point's."""
     trainer = Trainer(config, device)
     for _ in range(config.updates):
         log(trainer.update())

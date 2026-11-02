@@ -67,7 +67,6 @@ def mode_phase(
         inside = _in_zones(mode, ships) & alive[..., None]
         capture = frontline.capture_step(
             team,
-            alive,
             inside,
             mode.role,
             mode.progress,
@@ -86,8 +85,8 @@ def mode_phase(
             capture.team0_captured,
             capture.team1_captured,
         )
-        # The observation shows each meter's actual movement (the fixture's `direction` is
-        # the majority's push, which a clipped meter does not follow).
+        # The observation shows each meter's actual movement, which a clipped meter does not
+        # make whatever the majority.
         completed = (capture.team0_captured | capture.team1_captured)[:, None]
         movement = torch.where(completed, 0, torch.sign(capture.progress - mode.progress))
         state = replace(

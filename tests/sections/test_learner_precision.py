@@ -12,13 +12,13 @@ import pytest
 import torch
 import yemong_cases as cases
 
+from bnb.cli import set_precision
 from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 from bnb.runtime.rollout import Rollout
-from bnb.runtime.train import set_precision
 
 pytestmark = [
     pytest.mark.gpu,

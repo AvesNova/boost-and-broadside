@@ -21,10 +21,11 @@ os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # as the entry points se
 import safetensors.torch  # noqa: E402
 import torch  # noqa: E402
 
+from bnb.cli import set_precision  # noqa: E402
 from bnb.contracts import GameConfig  # noqa: E402
 from bnb.learn.ppo import LearnerConfig  # noqa: E402
 from bnb.runs import checkpoint  # noqa: E402
-from bnb.runtime.train import TrainConfig, Trainer, set_precision  # noqa: E402
+from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
 
 TIMES = ("rollout_seconds", "learn_seconds")
 LEAGUE_EVERY = 3

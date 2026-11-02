@@ -21,9 +21,6 @@ from torch.utils import _pytree
 from bnb.contracts import REWARD_LEVELS, Action, Controller, GameConfig, Obs, Pool, Trajectory
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.game import api
-from bnb.game.layout import environment
-from bnb.game.perception.observe import view_order
-from bnb.game.physics.bullets import launch_state
 from bnb.learn import rewards
 from bnb.learn.shots import ShotCapture
 
@@ -76,7 +73,7 @@ class Rollout:
     ) -> None:
         self.rules = api.rules_of(config, pools, environments)
         self.reward_config = reward_config or rewards.RewardConfig()
-        self.teams, self.ships_per_team, self.ships = (
+        self.teams, self.ships_per_team, self.ship_count = (
             api.TEAMS,
             config.ships_per_team,
             config.num_ships,
@@ -116,7 +113,7 @@ class Rollout:
         types = api.ship_types(device)
         state = api.reset(rules, types, api.uniforms(rules, B, device), self.lineup.fogged)
         if staggered:
-            episode_ticks = environment(rules, B, device).episode_ticks
+            episode_ticks = api.episode_ticks(rules, B, device)
             state = api.start_clocks(
                 state, torch.randint(0, 1 << 30, (B,), device=device) % episode_ticks
             )
@@ -125,10 +122,10 @@ class Rollout:
             self.lineup.rows(self.learner),
             self.ring,
             self.ships_per_team,
-            self.ships,
+            self.ship_count,
         )
         view_shape = {part: getattr(obs, part).shape[2:] for part in PARTS}
-        launch = launch_state(state.ships)
+        launch = api.launch_capture(state, api.sweep_like(state))[0]
         flags = dict(dtype=torch.bool, device=device)
         records = dict(
             obs=Obs(
@@ -175,11 +172,11 @@ class Rollout:
             obs={part: getattr(obs, part) for part in PARTS},
             truth=truth.ships,
             seat=torch.randint(0, self.teams, (B,), device=device),
-            actions=torch.zeros((B, self.ships, 3), dtype=torch.int32, device=device),
-            spread=torch.zeros((B, self.ships, 2), device=device),
+            actions=torch.zeros((B, self.ship_count, 3), dtype=torch.int32, device=device),
+            spread=torch.zeros((B, self.ship_count, 2), device=device),
             uniforms=torch.zeros((B, rules.tick_uniform_count), device=device),
             sweep=api.sweep_like(state),
-            ledger=rewards.blank_ledger(B, self.ships, device),
+            ledger=rewards.blank_ledger(B, self.ship_count, device),
             controllers=controller_carry,
             records=records,
             segment=segment,
@@ -226,7 +223,7 @@ class Rollout:
     def _rows(self, carry: dict, values: torch.Tensor) -> torch.Tensor:
         """Per-ship values (B, N, ...) in sim order, as the learner's views' rows (R, N, ...)."""
         name = self.learner
-        order = view_order(self.ships_per_team, self.device)[
+        order = api.view_order(self.ships_per_team, self.device)[
             self._team(name, carry["seat"])
         ]  # (R, N)
         rows = values[self.lineup.environments[name]]
@@ -275,7 +272,7 @@ class Rollout:
                             _tensors(records[part]), _tensors(getattr(outputs, part)), strict=True
                         ):
                             stored.index_copy_(0, slot, given[None])
-        flat = actions.reshape(B, self.ships, 3)
+        flat = actions.reshape(B, self.ship_count, 3)
         carry["actions"].copy_(flat)
         environments, team = (
             self.lineup.environments[self.learner],
@@ -296,13 +293,12 @@ class Rollout:
         moved, sweep = api.move(
             self.rules, carry["types"], state, Action.unpack(carry["actions"]), carry["spread"]
         )
+        launch, displacement_x, displacement_y, alive = api.launch_capture(state, sweep)
         capture = ShotCapture(
-            launch=_pytree.tree_map_only(
-                torch.Tensor, lambda x: self._rows(carry, x), launch_state(state.ships)
-            ),
-            displacement_x=self._rows(carry, sweep.ship_displacement_x),
-            displacement_y=self._rows(carry, sweep.ship_displacement_y),
-            alive=self._rows(carry, state.ships.alive),
+            launch=_pytree.tree_map_only(torch.Tensor, lambda x: self._rows(carry, x), launch),
+            displacement_x=self._rows(carry, displacement_x),
+            displacement_y=self._rows(carry, displacement_y),
+            alive=self._rows(carry, alive),
         )
         slot = self._slot(carry)
         for stored, given in zip(
@@ -317,7 +313,7 @@ class Rollout:
             self.rules, carry["types"], carry["state"], carry["sweep"], carry["uniforms"]
         )
         _assign(carry["state"], state)
-        team = torch.arange(self.ships, device=self.device) // self.ships_per_team
+        team = api.ship_team(self.ships_per_team, self.device)
         reward, ledger = rewards.reward_step(self.reward_config, carry["ledger"], events, team)
         _assign(carry["ledger"], ledger)
         reward = reward.reshape(
@@ -345,7 +341,7 @@ class Rollout:
 
     def _perceive(self, carry: dict) -> None:
         state, obs, truth = api.perceive(self.rules, carry["state"])
-        carry["state"].match.ticks_since_seen.copy_(state.match.ticks_since_seen)
+        _assign(api.perceived(carry["state"]), api.perceived(state))
         _assign(carry["obs"], {part: getattr(obs, part) for part in PARTS})
         carry["truth"].copy_(truth.ships)
         carry["segment_tick"].add_(1)

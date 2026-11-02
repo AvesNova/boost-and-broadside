@@ -10,6 +10,8 @@ import math
 
 import torch
 
+from bnb.contracts.obs import ZONE_COLUMNS
+from bnb.game.modes.rules import ZONE_SLOTS
 from bnb.models.yemong import belief, codes, critic, density, features, heads, layers, shots
 from bnb.models.yemong.network import Encoder, Trunk
 from bnb.models.yemong.spatial import SpatialBlock
@@ -113,11 +115,20 @@ class Arm:
     def encoder(self, weights, ship, global_token, field):
         width = weights["shared.weight"].shape[0]
         encoder = Encoder(ship.shape[-1], global_token.shape[-1], field.shape[-1], width,
-                          weights["map_memory.weight"].shape[0])
+                          weights["map_memory.weight"].shape[0], len(ZONE_COLUMNS))
         # `global` is a Python keyword, so our global kind is `global_token`.
         names = {("global_token." + name[len("global."):] if name.startswith("global.") else name):
                  value for name, value in weights.items()}
-        return _loaded(encoder, names)(ship, global_token, field)
+        # The fixture predates zones: every zone slot is absent (present 0), its kind's
+        # weights are zeros the fixture never sees, and only the field rows are compared.
+        dtype = next(iter(weights.values())).dtype
+        names.update({name: torch.zeros_like(value, dtype=dtype)
+                      for name, value in encoder.state_dict().items()
+                      if name.startswith(("zone.", "absent_zone"))})
+        zone = torch.zeros(field.shape[:-2] + (ZONE_SLOTS, len(ZONE_COLUMNS)), dtype=field.dtype)
+        present = torch.zeros(field.shape[:-2] + (ZONE_SLOTS,), dtype=torch.bool)
+        queries, memory = _loaded(encoder, names)(ship, global_token, field, zone, present)
+        return queries, memory[..., : field.shape[-2], :]
 
     def _trunk(self, weights, config):
         trunk = Trunk(config["width"], config["heads"], config["map_width"], config["blocks"],
@@ -216,7 +227,9 @@ class Arm:
         return codes.velocity_jacobian(velocity, knee)
 
     def velocity_sharp(self, bins, spacing, knee, velocity):
-        return codes.velocity_sharp(velocity, bins, spacing, knee)
+        # bnb has no velocity_sharp (no caller): the fixture's composition of bnb's pieces.
+        return codes.scalar_sharp(codes._project(codes.compress_velocity(velocity, knee)),
+                                  *codes._axis_range(bins, spacing), bins)
 
     def velocity_encode(self, bins, spacing, knee, mean, covariance):
         return codes.velocity_encode(mean, covariance, bins, spacing, knee)

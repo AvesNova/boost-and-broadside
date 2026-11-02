@@ -87,7 +87,7 @@ def step_loop(net: Yemong, step, carry, obs: Obs, joint: torch.Tensor, start: in
             ships=obs.ships[t],
             fields=obs.fields[t],
             globals=obs.globals[t],
-            zones=None if obs.zones is None else obs.zones[t],
+            zones=obs.zones[t],
         )
         decision = step(carry, view, reset[t])
         carry = dataclasses.replace(decision.carry, previous_action=joint[t])

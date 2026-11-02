@@ -18,7 +18,7 @@ import torch
 
 from bnb.contracts import Obs
 from bnb.contracts.action import NUM_JOINT
-from bnb.contracts.obs import FIELD, GLOBAL, SHIP, ZONE, ZONE_COLUMNS
+from bnb.contracts.obs import FIELD, GLOBAL, SHIP, ZONE
 from bnb.contracts.tree import contract
 from bnb.game.rules import TEAMS
 
@@ -241,11 +241,7 @@ def compose(
         ],
         -1,
     )
-    zones = (
-        obs.zones
-        if obs.zones is not None
-        else fields.new_zeros(fields.shape[:-2] + (0, len(ZONE_COLUMNS)))
-    )
+    zones = obs.zones
     # An absent zone takes the global token's rotation (the map centre; heading 0, like
     # every memory token): at the frame's origin it would reveal the offset to attention.
     present = zones[..., ZONE["present"]] > 0.5

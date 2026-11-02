@@ -151,6 +151,7 @@ def _view_sequence(config: GameConfig, fogged: bool, ticks: int, seed: int = 0) 
                 ships=obs.ships.flatten(0, 1),
                 fields=obs.fields.flatten(0, 1),
                 globals=obs.globals.flatten(0, 1),
+                zones=obs.zones.flatten(0, 1),
             )
         )
         if tick == ticks:

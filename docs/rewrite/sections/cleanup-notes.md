@@ -10,7 +10,7 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
 - [x] 1.0 the formatter
 - [x] 1.1 contract renames
 - [x] 1.2-1.3 names
-- [ ] 2 dead code and the opaque state
+- [x] 2 dead code and the opaque state
 - [ ] 3 the sweep's tests
 - [ ] 4 docs
 - [ ] 5 layering and duplication
@@ -88,11 +88,74 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
   `Realtime(config, compile=...)` and `bnb/play/` is off limits (request below).
 - **`team_rel`:** `team_relative` in `mlp.py` and `scripted.py`.
 
+### 2. Dead code, fixture-shaped code, the opaque state
+
+- **Deleted:** `state_code.MEAN`; `Hits.taken` and its assert in
+  `test_game_section.py`; both E501 exemptions: after the formatter, no line in
+  `game/physics/` or `perception/sight.py` is over 100 characters, so the `physics/*`
+  exemption was dead too (its comment was the stale part; nothing is left to describe).
+- **`capture_step`:** takes no `alive` and returns no `direction`; its docstring says
+  `inside` is masked to the living ships. `rewards_arm.py` drops the fixture's `alive`
+  and computes the majority's push from the same inputs (`_majority`), so the fixture
+  still checks it against v1.
+- **`Encoder`:** `zone_inputs` and the zone arguments are required; the Yemong reference
+  adapter builds the encoder with the zone kind, zeroes its weights, passes every zone
+  absent (present 0) and compares the field rows of the memory (the fixture predates
+  zones).
+- **`inputs.py`:** zones are required (`obs.zones is None` is gone). The tests that built
+  views without zones (`test_yemong_model.py`, `test_yemong_contract.py`,
+  `test_yemong_export.py`, `yemong_cases.step_loop`) now pass the game's zones; the
+  ONNX export of `Yemong.step` takes `zones` as an input.
+- **No production caller** (verdicts after sections 6, 1b, 4 and 7 merged):
+
+  | Name | Verdict |
+  |---|---|
+  | `ReturnScale` | kept: the learner (`ppo.py`) and policy files (`checkpoint.py`) use it |
+  | `outcome_targets` | kept: `ppo.py` calls it |
+  | `HexGrid` | kept: `ppo.py` and `labels.py` |
+  | `poisson_terms` | kept: `ppo.py` |
+  | `trajectory_code`, `outcome_code` | kept: `ppo.py` (the shot codes) |
+  | `grouped_cross_entropy` | kept: `ppo.py` and `losses.py` |
+  | `velocity_sharp` | deleted: no caller and no pending spec. The Yemong reference adapter composes it from `codes`' pieces (`scalar_sharp` of the projected, compressed velocity), so the fixture still checks them |
+
+- **The opaque state:** `bnb.game.api` gains `perceived(state)` (the part `perceive`
+  changes, a tuple the runtime copies leaf by leaf), `episode_ticks(rules, batch,
+  device)`, `launch_capture(state, sweep)` (the shot capture's launch state, move and
+  alive flags), `ship_team(ships_per_team, device)` and re-exports `view_order`. The
+  rollout imports only `bnb.game.api`. `tests/contract/test_layering.py` walks
+  `runtime/` and fails on `.match` or `.bullets` anywhere, on `.ships` or `.mode` of a
+  state expression (a name containing `state`, or `x["state"]`: `Obs.ships` and
+  `GameConfig.mode` are other things with the same names), and on an import from
+  `bnb.game` other than the API and the handling tools. Checked by putting the old
+  `ticks_since_seen` copy back: it fails.
+- **Process-wide settings:** already out of library code after section 6, except
+  `runtime.train.set_precision` (a library function setting TF32), which moves to
+  `bnb.cli.set_precision`. `test_layering.py` fails on a `torch.manual_seed`, matmul
+  precision, thread count or deterministic-algorithms call, or an assignment under
+  `torch.backends`, `torch._dynamo.config` or `torch._inductor.config`, outside
+  `bnb.cli`, a `__main__` module or a `main` function (`bnb.play.benchmark.main`
+  sets threads and seeds as an entry point); and on `torch.compile` outside
+  `bnb.runtime` and those entry points. Checked with a seed and a compile added to
+  `ppo.py`. Kept: `checkpoint.restore_default_generators` sets the default generators'
+  state; the entry point calls it on resume (its docstring says so), and the spec's list
+  does not name it.
+
 ## Decisions and deviations
 
 ## Bugs found
 
 ## Measurements
+
+- **The rollout change (section 2), on its own:** `/tmp/bnb-scratch-cleanup/rollout_bench.py`
+  (`Rollout.run` alone: the mixed preset's three games, one pool of the chaser against
+  random at fog share 0.5, 1024 environments, 5v5, 128-tick segments; twelve segments to
+  compile, capture and settle, then the best of five runs of four segments; benchmark lock
+  held; RTX 4060 Laptop, 8 GB):
+  - before (`f007def3`, the formatted tree): 2 692 138 environment-ticks/s (load 3.0);
+  - after (`perceived` copied through the API, working tree on `63ca1c94`): 2 699 598
+    (load 5.4, provisional).
+
+  +0.3%, within noise: the copy is the same single `copy_` of `ticks_since_seen`.
 
 ## Requests and open questions
 

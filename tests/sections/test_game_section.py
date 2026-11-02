@@ -185,7 +185,6 @@ def test_hits_match_brute_force_with_friendly_fire():
     assert count > 20 and allies > 0, (count, allies)
     assert torch.equal(got.first_shooter.long(), first)
     torch.testing.assert_close(got.damage.double(), damage, rtol=1e-5, atol=1e-4)
-    torch.testing.assert_close(got.taken, got.damage.sum(1))
 
 
 @pytest.mark.parametrize("swap", [False, True])

@@ -47,7 +47,6 @@ SPREADS = (
     "energy",
     "log_refractive_index",
 )
-MEAN = {name: i for i, name in enumerate(MEANS)}
 
 POSITION_PERIOD = 4.0 * 3.0**8  # m per axis: 26 244 m, finest level 4 m
 POSITION_LEVELS = 9

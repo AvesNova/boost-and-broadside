@@ -331,13 +331,6 @@ def _axis_range(bins: int, spacing: float) -> tuple[float, float]:
     return -half, half
 
 
-def velocity_sharp(velocity: torch.Tensor, bins: int, spacing: float, knee: float) -> torch.Tensor:
-    """(..., 2) to (..., 3, bins)."""
-    return scalar_sharp(
-        _project(compress_velocity(velocity, knee)), *_axis_range(bins, spacing), bins
-    )
-
-
 def velocity_encode(
     mean: torch.Tensor, covariance: torch.Tensor, bins: int, spacing: float, knee: float
 ) -> torch.Tensor:
