@@ -534,7 +534,7 @@ def test_compiled_rollout_graph_replays_draw_fresh_randomness():
         16,
         8,
         torch.device("cuda"),
-        compile=True,
+        compiled=True,
         graph_ticks=4,
     )
     draws = []

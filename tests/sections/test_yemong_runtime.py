@@ -44,7 +44,7 @@ def test_compiled_step_captures_and_samples_fresh_actions():
 
 def test_compiled_rollout_stores_what_unroll_needs():
     net = cases.model().to(CUDA)
-    _, trajectory = cases.rollout(net, envs=16, length=64, device=CUDA, compile=True)
+    _, trajectory = cases.rollout(net, environments=16, length=64, device=CUDA, compiled=True)
     # The compiled, captured act stage stores exactly what its step read, so unroll agrees to
     # float32 rounding (measured 2e-6 over 64 ticks, flat in time).
     with torch.no_grad():

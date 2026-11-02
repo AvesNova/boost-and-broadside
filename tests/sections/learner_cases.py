@@ -23,7 +23,7 @@ POOLS = (
 
 def rollout(
     net,
-    envs: int = 8,
+    environments: int = 8,
     length: int = 32,
     runs: int = 2,
     config=cases.SHORT_SQUAD,
@@ -36,7 +36,9 @@ def rollout(
         "learner": cases.controller(net, config),
         "chaser": Chaser(config.ships_per_team),
     }
-    runner = Rollout(config, pools, controllers, "learner", envs, length, CPU, compile=False)
+    runner = Rollout(
+        config, pools, controllers, "learner", environments, length, CPU, compiled=False
+    )
     for _ in range(runs):
         runner.run()
     return runner

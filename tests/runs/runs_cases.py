@@ -125,14 +125,14 @@ def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
     learner = LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64)
     values = dict(
         game=GameConfig(2, 2, 1500.0, episode_seconds=4.0, respawn_seconds=1.0),
-        num_envs=16,
+        environments=16,
         updates=updates,
         length=16,
         model=model,
         relational_hidden=16,
         league_every=1,
         learner=learner,
-        compile=False,
+        compiled=False,
     )
     values.update(changes)
     return TrainConfig(**values)
@@ -149,12 +149,12 @@ TRAIN_OPTIONS = (
     "2",
     "--arena-radius",
     "1500",
-    "--num-envs",
+    "--environments",
     "16",
     "--set",
     "length=16",
     "--set",
-    "compile=false",
+    "compiled=false",
     "--set",
     "learner.minibatches=2",
     "--set",

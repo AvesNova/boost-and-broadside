@@ -199,7 +199,7 @@ class Learner:
         self.loss = stage(self._loss)
         self.shot_tick = stage(shots.tick)
         self.codes = stage(self._codes)
-        self.env_steps = 0
+        self.environment_steps = 0
 
     # ------------------------------------------------------------------ returns
 
@@ -331,7 +331,7 @@ class Learner:
         denominator: dict,
         scale: torch.Tensor,
     ):
-        """One micro-batch: (loss, terms (TERMS,), value loss per level (K,), statistics
+        """One micro-batch: (loss, terms (TERMS,), value loss per level (levels,), statistics
         (STATISTICS,)), every sum over its tokens divided by its minibatch-total
         denominator."""
         config, model = self.config, self.model
@@ -450,7 +450,7 @@ class Learner:
     def prepare(self, segments: Segments, bootstraps: list) -> dict:
         """Steps 1 and 2: per view, the advantage, the returns, the outcome targets and the
         old log-probabilities (L, V, ...), each view's token counts (V, COUNTS), the return
-        scale and the explained variance per level (K,); the shot labels go into the
+        scale and the explained variance per level (levels,); the shot labels go into the
         store."""
         config, device = self.config, self.device
         small = [segments.shard(SMALL, shard) for shard in range(segments.shards)]
@@ -541,9 +541,9 @@ class Learner:
             statistics += statistic
         return terms_sum, levels_sum, statistics
 
-    def update(self, segments: Segments, bootstraps: list, env_steps: int = 0) -> dict:
+    def update(self, segments: Segments, bootstraps: list, environment_steps: int = 0) -> dict:
         """One update from the store's shards and their bootstraps (each the learner's
-        Outputs on the observation after the shard's last tick). env_steps: environment
+        Outputs on the observation after the shard's last tick). environment_steps: environment
         steps this update collected (the warmup counts them)."""
         config, device = self.config, self.device
         views = segments.views
@@ -551,8 +551,8 @@ class Learner:
             raise ValueError(f"{views} views do not make {config.minibatches} minibatches")
         prepared = self.prepare(segments, bootstraps)
         for group in self.optimizer.param_groups:
-            group["lr"] = learning_rate(config, self.env_steps)
-        self.env_steps += env_steps
+            group["lr"] = learning_rate(config, self.environment_steps)
+        self.environment_steps += environment_steps
         terms_total = torch.zeros(len(TERMS), device=device)
         levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
         drift = self.drift(segments, prepared)
@@ -636,9 +636,9 @@ class Learner:
 def explained_variance(
     level_returns: torch.Tensor, values: torch.Tensor, valued: torch.Tensor
 ) -> torch.Tensor:
-    """(K,) per level, 1 - Var(return - value) / Var(return) over the valued own ships
+    """(levels,) per level, 1 - Var(return - value) / Var(return) over the valued own ships
     (unbiased variances; 0 where the returns do not vary). level_returns, values
-    (L, V, S, K); valued (L, V, S)."""
+    (L, V, S, levels); valued (L, V, S)."""
     mask = valued[..., None].to(level_returns.dtype)
     count = mask.sum((0, 1, 2))
 

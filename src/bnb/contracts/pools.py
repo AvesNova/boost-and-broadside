@@ -54,20 +54,23 @@ def environment_multiple(pools: tuple[Pool, ...]) -> int:
     return multiple
 
 
-def environments_per_pool(pools: tuple[Pool, ...], num_envs: int) -> tuple[int, ...]:
-    """Environments per pool. Each share times num_envs must be a whole number and the
+def environments_per_pool(pools: tuple[Pool, ...], environments: int) -> tuple[int, ...]:
+    """Environments per pool. Each share times environments must be a whole number and the
     shares must sum to 1, or this fails."""
     sizes = []
     for pool in pools:
-        size = pool.share * num_envs
+        size = pool.share * environments
         if abs(size - round(size)) > 1e-6:
-            raise ValueError(f"pool {pool.name}: {pool.share} x {num_envs} envs is not whole")
+            raise ValueError(
+                f"pool {pool.name}: {pool.share} x {environments} environments is not whole"
+            )
         sizes.append(round(size))
         fogged = pool.fog_share * round(size)
         if not 0.0 <= pool.fog_share <= 1.0 or abs(fogged - round(fogged)) > 1e-6:
             raise ValueError(
-                f"pool {pool.name}: fog share {pool.fog_share} x {round(size)} envs is not whole"
+                f"pool {pool.name}: fog share {pool.fog_share} x {round(size)} environments "
+                "is not whole"
             )
-    if sum(sizes) != num_envs:
-        raise ValueError(f"pool shares cover {sum(sizes)} of {num_envs} envs")
+    if sum(sizes) != environments:
+        raise ValueError(f"pool shares cover {sum(sizes)} of {environments} environments")
     return tuple(sizes)

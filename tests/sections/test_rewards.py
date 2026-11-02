@@ -76,14 +76,14 @@ class Match:
     carried, the rewards summed per ship and level."""
 
     def __init__(self, ships: int) -> None:
-        self.N = ships
+        self.ships = ships
         self.team = torch.arange(ships) // (ships // 2)
         self.ledger = rewards.blank_ledger(1, ships)
         self.total = torch.zeros(ships, len(REWARD_LEVELS))
 
     def tick(self, hits=(), boundary=(), lost=(), restored=(), died=(), done=False, result=0):
         """hits: (shooter, target, raw); boundary, lost, restored: (ship, amount); died: ships."""
-        N = self.N
+        N = self.ships
         damage = torch.zeros(1, N, N)
         for shooter, target, raw in hits:
             damage[0, shooter, target] += raw
@@ -217,13 +217,13 @@ def test_rollout_stores_every_level_zero_sum_per_environment(mode):
         8,
         64,
         torch.device("cpu"),
-        compile=False,
+        compiled=False,
     )
     trajectory = rollout.run()
     L, R, S, K = trajectory.reward.shape
     assert (R, S, K) == (16, config.ships_per_team, len(REWARD_LEVELS))
-    env = rollout.lineup.env["r"]
-    total = torch.zeros(L, 8, K).index_add_(1, env, trajectory.reward.sum(2))
+    environment = rollout.lineup.environments["r"]
+    total = torch.zeros(L, 8, K).index_add_(1, environment, trajectory.reward.sum(2))
     largest = trajectory.reward.abs().amax((1, 2, 3)).clamp_min(1e-6)[:, None, None]
     assert (total.abs() <= 1e-5 * largest).all()
     assert trajectory.reward.abs().sum() > 0
@@ -248,7 +248,7 @@ def test_the_rollouts_ledger_holds_every_deficit(mode):
         8,
         8,
         torch.device("cpu"),
-        compile=False,
+        compiled=False,
     )
     held = 0.0
     for _ in range(16):

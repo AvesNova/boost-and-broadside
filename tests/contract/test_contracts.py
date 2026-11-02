@@ -89,7 +89,7 @@ def test_rollout_carry_holds_no_privileged():
         2,
         4,
         torch.device("cpu"),
-        compile=False,
+        compiled=False,
     )
     leaves = _pytree.tree_leaves(ro.carry, is_leaf=lambda x: isinstance(x, Privileged))
     assert not any(isinstance(x, Privileged) for x in leaves)

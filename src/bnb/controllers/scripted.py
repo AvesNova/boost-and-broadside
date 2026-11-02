@@ -27,20 +27,21 @@ def uniform_actions(shape: tuple, device) -> torch.Tensor:
 
 
 class Random:
-    """Uniform random actions, each ship redrawing with probability 0.1 per tick."""
+    """Uniform random actions, each ship redrawing with probability `REDRAW` per tick."""
 
     reads = ()
 
     def __init__(self, ships_per_team: int) -> None:
-        self.S = ships_per_team
+        self.ships_per_team = ships_per_team
 
     def init_carry(self, views: int, device: torch.device) -> torch.Tensor:
-        return uniform_actions((views, self.S), device)
+        return uniform_actions((views, self.ships_per_team), device)
 
     def step(self, carry: torch.Tensor, obs: Obs, reset: torch.Tensor):
         redraw = torch.rand(carry.shape[:-1], device=carry.device) < REDRAW
-        new = torch.where(redraw[..., None], uniform_actions(carry.shape[:-1], carry.device), carry)
-        return Action.unpack(new), new, Outputs()
+        drawn = uniform_actions(carry.shape[:-1], carry.device)
+        held = torch.where(redraw[..., None], drawn, carry)
+        return Action.unpack(held), held, Outputs()
 
 
 class Chaser:
@@ -49,29 +50,33 @@ class Chaser:
     reads = ("ships",)
 
     def __init__(self, ships_per_team: int) -> None:
-        self.S = ships_per_team
+        self.ships_per_team = ships_per_team
 
     def init_carry(self, views: int, device: torch.device) -> None:
         return None
 
     def step(self, carry: None, obs: Obs, reset: torch.Tensor):
-        S = self.S
-        own, foe = obs.ships[:, :S], obs.ships[:, S:]  # rows are ordered by team_rel
-        tx = foe[:, None, :, SHIP["x"]] - own[:, :, None, SHIP["x"]]  # (R, own, foe)
-        ty = foe[:, None, :, SHIP["y"]] - own[:, :, None, SHIP["y"]]
-        target = (foe[..., SHIP["visible"]] > 0.5) & (foe[..., SHIP["alive"]] > 0.5)
-        d2 = torch.where(target[:, None, :], tx * tx + ty * ty, math.inf)
-        pick = torch.nn.functional.one_hot(d2.argmin(-1), d2.shape[-1]).bool()  # ties: lowest row
-        tx, ty = torch.where(pick, tx, 0.0).sum(-1), torch.where(pick, ty, 0.0).sum(-1)
-        c, s = own[..., SHIP["heading_cos"]], own[..., SHIP["heading_sin"]]
-        signed = torch.atan2(c * ty - s * tx, c * tx + s * ty)
-        bearing, dist = signed.abs(), torch.sqrt(tx * tx + ty * ty)
-        level = sum((bearing >= math.radians(deg)).int() for deg in (3.0, 10.0, 30.0))
+        """Each own ship turns toward and shoots at its nearest visible living enemy."""
+        S = self.ships_per_team
+        own, enemy = obs.ships[:, :S], obs.ships[:, S:]  # rows are ordered by team_relative
+        to_x = enemy[:, None, :, SHIP["x"]] - own[:, :, None, SHIP["x"]]  # (R, own, enemy)
+        to_y = enemy[:, None, :, SHIP["y"]] - own[:, :, None, SHIP["y"]]
+        target = (enemy[..., SHIP["visible"]] > 0.5) & (enemy[..., SHIP["alive"]] > 0.5)
+        squared = torch.where(target[:, None, :], to_x * to_x + to_y * to_y, math.inf)
+        pick = torch.nn.functional.one_hot(squared.argmin(-1), squared.shape[-1]).bool()
+        # ties go to the lowest row
+        to_x, to_y = torch.where(pick, to_x, 0.0).sum(-1), torch.where(pick, to_y, 0.0).sum(-1)
+        cos, sin = own[..., SHIP["heading_cos"]], own[..., SHIP["heading_sin"]]
+        signed = torch.atan2(cos * to_y - sin * to_x, cos * to_x + sin * to_y)
+        bearing, distance = signed.abs(), torch.sqrt(to_x * to_x + to_y * to_y)
+        level = sum((bearing >= math.radians(degrees)).int() for degrees in (3.0, 10.0, 30.0))
         stick = torch.where(level == 0, 0, 2 * level - (signed < 0.0).int())
-        power = torch.where(dist > 600.0, 1, torch.where(dist < 120.0, 2, 0))
-        shoot = ((bearing < math.radians(8.0)) & (dist < 250.0)).int()
-        has = target.any(-1)[:, None]
-        action = Action(*(torch.where(has, a, 0).to(torch.int32) for a in (power, stick, shoot)))
+        power = torch.where(distance > 600.0, 1, torch.where(distance < 120.0, 2, 0))
+        shoot = ((bearing < math.radians(8.0)) & (distance < 250.0)).int()
+        any_target = target.any(-1)[:, None]
+        action = Action(
+            *(torch.where(any_target, part, 0).to(torch.int32) for part in (power, stick, shoot))
+        )
         return action, carry, Outputs()
 
 

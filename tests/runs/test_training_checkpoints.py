@@ -61,7 +61,7 @@ def test_every_part_of_a_training_checkpoint_round_trips(trained):
     assert want_carry.keys() == got_carry.keys()
     for name, tensor in want_carry.items():
         assert torch.equal(got_carry[name], tensor), name
-    assert (loaded.updates_done, loaded.ppo.env_steps) == (2, trainer.ppo.env_steps)
+    assert (loaded.updates_done, loaded.ppo.environment_steps) == (2, trainer.ppo.environment_steps)
 
 
 def test_the_default_generators_are_restored_by_the_entry_points_call(trained):
@@ -85,9 +85,10 @@ def test_a_structural_change_on_resume_is_refused(trained):
     saved, _ = checkpoint.training_config(directory)
     with pytest.raises(
         CheckpointError,
-        match="a resume cannot change num_envs; start a new run from this checkpoint with --from",
+        match="a resume cannot change environments; start a new run from this checkpoint with "
+        "--from",
     ):
-        checkpoint.load_training(directory, cases.CPU, dataclasses.replace(saved, num_envs=32))
+        checkpoint.load_training(directory, cases.CPU, dataclasses.replace(saved, environments=32))
 
 
 def test_a_run_time_override_on_resume_is_allowed(trained):
@@ -181,13 +182,15 @@ def test_a_fork_whose_build_differs_is_refused(trained):
 def test_a_fork_takes_the_model_optimizer_and_return_scale_but_not_the_carry(trained):
     trainer, directory = trained
     with torch.random.fork_rng():
-        fork = checkpoint.fork_training(directory, cases.tiny_train_config(num_envs=32), cases.CPU)
+        fork = checkpoint.fork_training(
+            directory, cases.tiny_train_config(environments=32), cases.CPU
+        )
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(fork.model.state_dict()[name], tensor)
     assert torch.equal(fork.ppo.return_scale.high, trainer.ppo.return_scale.high)
     _assert_same_optimizer(fork, trainer)
-    assert fork.rollout.B == 32
-    assert (fork.ppo.env_steps, fork.updates_done) == (trainer.ppo.env_steps, 0)
+    assert fork.rollout.environments == 32
+    assert (fork.ppo.environment_steps, fork.updates_done) == (trainer.ppo.environment_steps, 0)
 
 
 def test_an_optimizer_state_of_another_shape_is_refused(tmp_path, trained):
@@ -212,7 +215,7 @@ def test_a_warm_start_takes_weights_and_return_scale_with_a_fresh_optimizer(tmp_
         tmp_path / "bc",
         trainer.model,
         return_scale=trainer.ppo.return_scale,
-        steps=dict(environment_steps=trainer.ppo.env_steps),
+        steps=dict(environment_steps=trainer.ppo.environment_steps),
     )
     with torch.random.fork_rng():
         rl = checkpoint.warm_start(tmp_path / "bc", cases.tiny_train_config(), cases.CPU)
@@ -223,7 +226,7 @@ def test_a_warm_start_takes_weights_and_return_scale_with_a_fresh_optimizer(tmp_
     assert torch.equal(rl.ppo.return_scale.high, trainer.ppo.return_scale.high)
     assert float(trainer.ppo.return_scale.high) != 0.0  # a real state, not the initial zeros
     assert rl.ppo.optimizer.state_dict()["state"] == {}
-    assert (rl.ppo.env_steps, rl.updates_done) == (0, 0)
+    assert (rl.ppo.environment_steps, rl.updates_done) == (0, 0)
 
 
 def test_a_warm_start_from_another_build_is_refused(tmp_path, trained):

@@ -334,10 +334,10 @@ def test_the_store_records_every_rows_action(segment):
     previous = trajectory.replay.previous_action[1:]
     assert torch.equal(previous[kept], joint[:-1, :, :OWN][kept])
     lineup = runner.lineup
-    env, role = lineup.env["learner"], lineup.role["learner"]
+    environment, role = lineup.environments["learner"], lineup.role["learner"]
     first = (role == 0).nonzero()[:, 0]
     for view in first.tolist():
-        partner = ((env == env[view]) & (role == 1)).nonzero()[:, 0]
+        partner = ((environment == environment[view]) & (role == 1)).nonzero()[:, 0]
         if partner.numel():  # a self-play environment: both teams are learner views
             assert torch.equal(joint[:, view, OWN:], joint[:, partner[0], :OWN])
 
@@ -359,7 +359,7 @@ def decided():
         16,
         48,
         lc.CPU,
-        compile=False,
+        compiled=False,
         reward_config=RewardConfig(outcome=0.0),
     )
     runner.carry["state"].mode.score[:, 0] = 1
@@ -402,12 +402,12 @@ def test_an_update_consumes_several_shards():
 
     cfg = TrainConfig(
         game=GameConfig(2, 3, 1200.0, episode_seconds=2.0),
-        num_envs=8,
+        environments=8,
         length=16,
         shards=2,
         model="relational",
         relational_hidden=32,
-        compile=False,
+        compiled=False,
         pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
         learner=LearnerConfig(minibatches=2, micro_batch_rows=16),
     )

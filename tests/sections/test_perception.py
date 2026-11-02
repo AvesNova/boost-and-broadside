@@ -130,7 +130,7 @@ def test_rollout_fogs_the_first_share_of_each_pool():
         8,
         2,
         torch.device("cpu"),
-        compile=False,
+        compiled=False,
     )
     want = torch.tensor([True, True, False, False, False, False, False, False])
     assert torch.equal(rollout.carry["state"].match.fogged, want)

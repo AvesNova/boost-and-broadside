@@ -42,7 +42,7 @@ def _rollout(host_store: bool, shards: int = 1, seed: int = 0):
         16,
         LENGTH,
         CUDA,
-        compile=False,
+        compiled=False,
         graph_ticks=BLOCK,
         shards=shards,
         host_store=host_store,
@@ -131,7 +131,7 @@ def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
         16,
         LENGTH,
         CUDA,
-        compile=False,
+        compiled=False,
         graph_ticks=BLOCK,
         host_store=True,
     )

@@ -14,7 +14,7 @@ from bnb.runtime.train import LEARNER, TrainConfig, Trainer, win_rate
 pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 TOY = TrainConfig(
     game=GameConfig(2, 4, 1200.0),
-    num_envs=256,
+    environments=256,
     model="relational",
     pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
 )

@@ -110,7 +110,7 @@ class ShipStateCode(nn.Module):
         super().__init__()
         self.angle_of_attack_limit = ranges.angle_of_attack_limit
         self.shield_delay = ranges.shield_recharge_delay
-        self.tick = ranges.tick_length
+        self.tick_length = ranges.tick_length
         self.cooldown_bins = ranges.cooldown_bins
         self.register_buffer("max_shield", torch.tensor(ranges.max_shield, dtype=torch.float32))
         self.register_buffer("max_energy", torch.tensor(ranges.max_energy, dtype=torch.float32))
@@ -160,7 +160,7 @@ class ShipStateCode(nn.Module):
 
     def _cooldown_sharp(self, cooldown: torch.Tensor) -> torch.Tensor:
         return codes.scalar_sharp(
-            cooldown, 0.0, (self.cooldown_bins - 1) * self.tick, self.cooldown_bins
+            cooldown, 0.0, (self.cooldown_bins - 1) * self.tick_length, self.cooldown_bins
         )
 
     def encode(
@@ -248,7 +248,7 @@ class ShipStateCode(nn.Module):
             scale = maxima.get(name, 1.0)
             scalar[name], scalar_spread[name] = value * scale, sigma * scale
         cooldown_code = parts[9]
-        centres = self.tick * torch.arange(
+        centres = self.tick_length * torch.arange(
             self.cooldown_bins, dtype=probabilities.dtype, device=probabilities.device
         )
         cooldown = (cooldown_code * centres).sum(-1)

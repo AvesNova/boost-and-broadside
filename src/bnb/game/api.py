@@ -8,7 +8,7 @@
 
 Every function is pure (tensors in, tensors out) and works eagerly or under
 torch.compile, on any device: at any batch size for one game (`rules_of(config)`), and at
-the pools' batch size for several (`rules_of(config, pools, num_envs)`). The state is
+the pools' batch size for several (`rules_of(config, pools, environments)`). The state is
 opaque outside `bnb.game`.
 The tick's randomness is an explicit input; `spread` and `uniforms` draw it. The ship card
 `types` is always passed: it is data, which a sweep may change between calls.

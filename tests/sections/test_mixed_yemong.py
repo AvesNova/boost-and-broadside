@@ -22,7 +22,7 @@ POOLS = (
 )
 
 
-def _mixed_rollout(net, envs: int = 8, length: int = 32, runs: int = 1):
+def _mixed_rollout(net, environments: int = 8, length: int = 32, runs: int = 1):
     """Yemong learning views of a mixed batch: Frontline against the chaser (first), team
     deathmatch in self-play (absent zones), short clocks so the segment has resets."""
     from bnb.runtime.rollout import Rollout
@@ -32,7 +32,9 @@ def _mixed_rollout(net, envs: int = 8, length: int = 32, runs: int = 1):
         "learner": cases.controller(net, config),
         "chaser": Chaser(config.ships_per_team),
     }
-    runner = Rollout(config, POOLS, controllers, "learner", envs, length, cases.CPU, compile=False)
+    runner = Rollout(
+        config, POOLS, controllers, "learner", environments, length, cases.CPU, compiled=False
+    )
     for _ in range(runs):
         trajectory = runner.run()
     return trajectory
@@ -193,7 +195,7 @@ def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs():
         "learner": cases.controller(net, config),
         "chaser": Chaser(config.ships_per_team),
     }
-    runner = Rollout(config, POOLS, controllers, "learner", 16, 64, device, compile=True)
+    runner = Rollout(config, POOLS, controllers, "learner", 16, 64, device, compiled=True)
     trajectory = runner.run()
     assert runner.graph is not None and cases.resets(trajectory.obs)[1:].any()
     present = trajectory.obs.zones[..., ZONE["present"]]

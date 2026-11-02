@@ -35,7 +35,7 @@ def _team(rules: Rules, device) -> torch.Tensor:
     return torch.arange(rules.num_ships, device=device) // rules.ships_per_team
 
 
-def _inside(mode: ModeState, ships: Ships) -> torch.Tensor:
+def _in_zones(mode: ModeState, ships: Ships) -> torch.Tensor:
     """(B, N, Z): the ship's position is inside the zone."""
     return frontline.zone_membership(
         torch.stack([ships.x, ships.y], -1),
@@ -64,7 +64,7 @@ def mode_phase(
         return Phase(replace(mode, score=score), zero, zero, reached.any(-1), result)
     if mode_rules.name == FRONTLINE:
         team = _team(rules, ships.x.device)
-        inside = _inside(mode, ships) & alive[..., None]
+        inside = _in_zones(mode, ships) & alive[..., None]
         capture = frontline.capture_step(
             team,
             alive,
@@ -127,7 +127,7 @@ def protected(rules: Rules, mode_rules: ModeRules, mode: ModeState, ships: Ships
     own = torch.stack(
         [mode.role == frontline.TEAM0_SPAWN, mode.role == frontline.TEAM1_SPAWN], 1
     ).repeat_interleave(rules.ships_per_team, 1)  # (B, N, Z)
-    return (_inside(mode, ships) & own).any(-1)
+    return (_in_zones(mode, ships) & own).any(-1)
 
 
 def new_match(

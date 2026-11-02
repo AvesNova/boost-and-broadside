@@ -5,7 +5,7 @@ fields and the globals), raw apart from fixed scales. It exists to exercise the 
 to play well; Yemong is the model that matters. The first layer is split along that
 concatenation, so the summary half is computed once per view instead of once per ship.
 The model reads token position (the summary is a flattened view), so it relies on rows
-being ordered by team_rel.
+being ordered by team_relative.
 """
 
 import dataclasses

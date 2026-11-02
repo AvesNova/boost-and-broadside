@@ -25,7 +25,7 @@ CADENCE_SECONDS = 30 * 60
 def save(run: Run, trainer: Trainer, final: bool = False) -> None:
     """A training checkpoint at the trainer's step (unless one is there), then the
     retention."""
-    step = trainer.ppo.env_steps
+    step = trainer.ppo.environment_steps
     path = run.checkpoint_path(step)
     if not path.exists():
         checkpoint.save_training(path, trainer, extra=dict(run=run.record["name"]))
@@ -39,7 +39,7 @@ def save_clone(run: Run, trainer: Trainer) -> None:
         run.policy_path,
         trainer.model,
         return_scale=trainer.ppo.return_scale,
-        steps=dict(environment_steps=trainer.ppo.env_steps, updates=trainer.updates_done),
+        steps=dict(environment_steps=trainer.ppo.environment_steps, updates=trainer.updates_done),
         game=trainer.config.game,
         types=trainer.ppo.types,
     )
@@ -66,10 +66,12 @@ def clone(
         save_clone(run, trainer)
         status = "stopped" if reason == "interrupted" else "finished"
         run.update(stopped_by=reason, policy=str(run.policy_path))
-        run.end_segment(trainer.ppo.env_steps, status)
+        run.end_segment(trainer.ppo.environment_steps, status)
         return status
     except BaseException as error:
-        run.end_segment(trainer.ppo.env_steps, "failed", message=f"{type(error).__name__}: {error}")
+        run.end_segment(
+            trainer.ppo.environment_steps, "failed", message=f"{type(error).__name__}: {error}"
+        )
         raise
     finally:
         signal.signal(signal.SIGINT, previous)
@@ -97,7 +99,7 @@ def train(
             if first:
                 probe.begin(device)
             started = time.perf_counter()
-            before = trainer.ppo.env_steps
+            before = trainer.ppo.environment_steps
             row = trainer.update()
             if first:
                 peaks = probe.measure(device, margin)
@@ -106,7 +108,7 @@ def train(
                 learner = trainer.config.learner
                 probe.check(
                     peaks,
-                    f"{trainer.config.num_envs} environments, "
+                    f"{trainer.config.environments} environments, "
                     f"{learner.micro_batch_rows} micro-batch rows",
                 )
             elif run.record["checkpoint_every"] is None:
@@ -116,14 +118,16 @@ def train(
             first = False
             log(row)
             every = run.record["checkpoint_every"]
-            if every and trainer.ppo.env_steps // every > before // every:
+            if every and trainer.ppo.environment_steps // every > before // every:
                 save(run, trainer)
         status = "stopped" if stopping else "finished"
         save(run, trainer, final=status == "finished")
-        run.end_segment(trainer.ppo.env_steps, status)
+        run.end_segment(trainer.ppo.environment_steps, status)
         return status
     except BaseException as error:
-        run.end_segment(trainer.ppo.env_steps, "failed", message=f"{type(error).__name__}: {error}")
+        run.end_segment(
+            trainer.ppo.environment_steps, "failed", message=f"{type(error).__name__}: {error}"
+        )
         raise
     finally:
         signal.signal(signal.SIGINT, previous)

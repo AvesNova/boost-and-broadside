@@ -31,7 +31,7 @@ PRESETS = {
 @dataclasses.dataclass(frozen=True)
 class ModeRules:
     """name: the mode. Team deathmatch: kills_per_ship, spawn_groups (ships per team per
-    group; empty for uniform spawns), spawn_candidates (K, best of K), the group centres'
+    group; empty for uniform spawns), spawn_candidates (C, the best of C), the group centres'
     disc (group_centre_fraction of the arena radius), the members' disc (group_radius), the
     respawn ring around an anchor (anchor_distance_min to _max), and spawn_margin, how far
     inside the arena edge a grouped candidate is clipped to. Frontline: the zone
@@ -57,12 +57,12 @@ class ModeRules:
     def uniform_count(self, num_ships: int) -> int:
         """The mode's spawn uniforms per environment per tick, after the game's (spec 2).
 
-        Team deathmatch: per ship K radii, K angles and a heading, plus an anchor when
-        grouped; per environment K centre candidates (2 each) per group. Frontline: the
+        Team deathmatch: per ship C radii, C angles and a heading, plus an anchor when
+        grouped; per environment C centre candidates (2 each) per group. Frontline: the
         ring's rotation and handedness, and per ship a point in the spawn disc."""
-        K, groups = self.spawn_candidates, len(self.spawn_groups)
+        candidates, groups = self.spawn_candidates, len(self.spawn_groups)
         if self.name == TEAM_DEATHMATCH:
-            return 2 * K * groups + num_ships * (2 * K + 1 + (1 if groups else 0))
+            return 2 * candidates * groups + num_ships * (2 * candidates + 1 + (1 if groups else 0))
         if self.name == FRONTLINE:
             return 2 + 2 * num_ships
         return 0

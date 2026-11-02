@@ -94,7 +94,7 @@ def test_two_widths_load_side_by_side_and_play_each_other(tmp_path):
         2,
         1,
         cases.CPU,
-        compile=False,
+        compiled=False,
     )
     trajectory = rollout.run()
     assert (

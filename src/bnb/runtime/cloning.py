@@ -72,7 +72,7 @@ def clone(
         live = scores(trainer.rollout.lineup.pools, row["pools"])
         against = live.get(SCRIPTED, dict(wins=0, draws=0, losses=0))
         reason = rule.observe(
-            trainer.ppo.env_steps,
+            trainer.ppo.environment_steps,
             against["wins"],
             against["draws"],
             against["losses"],
@@ -85,7 +85,7 @@ def clone(
             window_score=rule.score,
             window_lower_bound=rule.lower_bound,
             kl_average=rule.kl_average,
-            env_steps=trainer.ppo.env_steps,
+            environment_steps=trainer.ppo.environment_steps,
             stopped_by=reason,
         )
         log(row)
@@ -111,11 +111,11 @@ def warm_start(trainer: Trainer, student: Trainer) -> None:
 def teacher_distributions(
     game: GameConfig,
     pools: tuple[Pool, ...],
-    num_envs: int,
+    environments: int,
     segments: int,
     device: torch.device,
     length: int = 128,
-    compile: bool = True,
+    compiled: bool = True,
 ) -> torch.Tensor:
     """The scripted agent's natural distributions (tokens, 42) over the living own ships of
     its own games: it plays every seat of these pools (each pool's seats renamed to it),
@@ -136,7 +136,14 @@ def teacher_distributions(
         for pool in pools
     )
     rollout = Rollout(
-        game, own_pools, {SCRIPTED: agent}, SCRIPTED, num_envs, length, device, compile=compile
+        game,
+        own_pools,
+        {SCRIPTED: agent},
+        SCRIPTED,
+        environments,
+        length,
+        device,
+        compiled=compiled,
     )
     rows = []
     for _ in range(segments):

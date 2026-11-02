@@ -54,7 +54,7 @@ class RelationalConfig:
 @contract
 class Unrolled:
     """A segment's outputs, (L, R, ...) leading: policy_logits (S, 42), value_logits
-    (S, K - 1, bins), values (S, K), outcome_logits (4). The model has no other heads."""
+    (S, levels - 1, bins), values (S, levels), outcome_logits (4). The model has no other heads."""
 
     policy_logits: torch.Tensor
     value_logits: torch.Tensor

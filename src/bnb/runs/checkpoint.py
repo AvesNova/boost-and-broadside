@@ -322,7 +322,7 @@ def save_training(
     settings)."""
     config, ppo = trainer.config, trainer.ppo
     device = trainer.rollout.device
-    steps = dict(environment_steps=ppo.env_steps, updates=trainer.updates_done)
+    steps = dict(environment_steps=ppo.environment_steps, updates=trainer.updates_done)
     record = policy_record(trainer.model, ppo.return_scale, steps, config.game, ppo.types)
     optimizer = ppo.optimizer.state_dict()
     record.update(
@@ -435,7 +435,7 @@ def _restore(
     trainer.league.load_state_dict(tree_from_named(trainer.league.state_dict(), stored, "league."))
     restore_optimizer(trainer, stored, record["optimizer"]["param_groups"])
     _set_return_scale(trainer, policy.return_scale)
-    trainer.ppo.env_steps = policy.steps["environment_steps"]
+    trainer.ppo.environment_steps = policy.steps["environment_steps"]
     trainer.updates_done = policy.steps["updates"]
     if carry:
         trainer.rollout.load_carry(tree_from_named(trainer.rollout.saved_carry(), stored, "carry."))

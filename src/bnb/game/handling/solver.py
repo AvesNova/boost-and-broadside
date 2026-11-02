@@ -193,9 +193,9 @@ def check(rules: Rules, handles: Handles) -> None:
 
 def _unmeasured(residual: torch.Tensor) -> str:
     """Why the first guesses fly no measurement: for each card and type whose every candidate
-    misses a flown handle (residual (B, copies, T, 8), NaN where not measured), the handles
+    misses a flown handle (residual (B, copies, types, 8), NaN where not measured), the handles
     and their reasons."""
-    missing = residual.isnan().all(1)  # (B, T, 8)
+    missing = residual.isnan().all(1)  # (B, types, 8)
     reasons = []
     for card, kind in missing.any(-1).nonzero().tolist():
         names = [FLOWN[i] for i in missing[card, kind].nonzero()[:, 0].tolist()]
@@ -259,8 +259,8 @@ def first_guess(rules: Rules, handles: Handles, combat: dict, exponent: float) -
     constants = rules.flight
     mass = constants.mass
     stall, cruise, store = handles.stall_speed, handles.cruise_speed, handles.ceiling
-    B, T = stall.shape
-    columns = torch.arange(T, dtype=torch.int32, device=stall.device).expand(B, T)
+    B, type_count = stall.shape
+    columns = torch.arange(type_count, dtype=torch.int32, device=stall.device).expand(B, type_count)
     coast = (
         store
         * _climb_integral(constants.engine_knee, constants.store_fade_band)
@@ -356,12 +356,12 @@ def solve(
     handles = _batched_handles(Handles(**{n: getattr(handles, n).double() for n in NAMES}))
     check(rules, handles)
     combat = combat_card(rules, handles, handles.cruise_speed)
-    B, T = handles.ceiling.shape
-    target = torch.stack([getattr(handles, name) for name in FLOWN], -1)  # (B, T, 8)
+    B, type_count = handles.ceiling.shape
+    target = torch.stack([getattr(handles, name) for name in FLOWN], -1)  # (B, types, 8)
     scale = torch.maximum(target.abs(), target.new_tensor([ERROR_FLOOR[n] for n in FLOWN]))
 
     def flown(log_parameters: torch.Tensor, copies: int) -> torch.Tensor:
-        """Relative residuals (B, copies, T, 8) of log parameters (B * copies, T, 8)."""
+        """Relative residuals (B, copies, types, 8) of log parameters (B * copies, types, 8)."""
         repeated = Handles(**{n: getattr(handles, n).repeat_interleave(copies, 0) for n in NAMES})
         types = _card(
             rules,
@@ -369,7 +369,7 @@ def solve(
             log_parameters.exp(),
             {k: v.repeat_interleave(copies, 0) for k, v in combat.items()},
         )
-        measured = _flown_values(fly(rules, types)).reshape(B, copies, T, 8)
+        measured = _flown_values(fly(rules, types)).reshape(B, copies, type_count, 8)
         return (measured - target[:, None]) / scale[:, None]
 
     # The first guess: closed forms at each scanned bleed exponent, flown in one batch; each
@@ -377,22 +377,26 @@ def solve(
     scan = torch.stack([first_guess(rules, handles, combat, e) for e in EXPONENT_SCAN], 1).log()
     if not torch.isfinite(scan).all():
         raise Infeasible("the closed-form first guess has no finite parameters")
-    residual = flown(scan.reshape(B * len(EXPONENT_SCAN), T, 8), len(EXPONENT_SCAN))
+    residual = flown(scan.reshape(B * len(EXPONENT_SCAN), type_count, 8), len(EXPONENT_SCAN))
     cost = residual.pow(2).sum(-1)
     if not torch.isfinite(cost).any(1).all():
         raise Infeasible(f"no first guess flies every manoeuvre: {_unmeasured(residual)}")
-    choice = cost.nan_to_num(math.inf).argmin(1)  # (B, T)
-    x = scan.gather(1, choice[:, None, :, None].expand(B, 1, T, 8))[:, 0]
+    choice = cost.nan_to_num(math.inf).argmin(1)  # (B, types)
+    x = scan.gather(1, choice[:, None, :, None].expand(B, 1, type_count, 8))[:, 0]
     eye = torch.eye(8, dtype=x.dtype, device=x.device)
     candidates = torch.cat([torch.zeros_like(eye[:1]), STEP * eye])  # (9, 8)
     bounds = math.log(EXPONENT_BOUNDS[0]), math.log(EXPONENT_BOUNDS[1])
     best_x, best_cost = x, torch.full_like(x[..., 0], math.inf)
-    best_base, best_jacobian = torch.full_like(x, math.inf), eye.expand(B, T, 8, 8)
+    best_base, best_jacobian = torch.full_like(x, math.inf), eye.expand(B, type_count, 8, 8)
     damping = torch.full_like(best_cost, DAMPING[0])
     for iteration in range(1, iterations + 1):
-        residual = flown((x[:, None] + candidates[None, :, None, :]).reshape(B * 9, T, 8), 9)
-        base = residual[:, 0]  # (B, T, 8)
-        jacobian = ((residual[:, 1:] - base[:, None]) / STEP).permute(0, 2, 3, 1)  # (B, T, h, p)
+        residual = flown(
+            (x[:, None] + candidates[None, :, None, :]).reshape(B * 9, type_count, 8), 9
+        )
+        base = residual[:, 0]  # (B, types, 8)
+        jacobian = ((residual[:, 1:] - base[:, None]) / STEP).permute(
+            0, 2, 3, 1
+        )  # (B, types, h, p)
         cost = (base * base).sum(-1)
         improved = cost < best_cost  # NaN never improves
         best_x = torch.where(improved[..., None], x, best_x)
@@ -443,7 +447,7 @@ def solve(
 
 
 def _conditioning(jacobian: torch.Tensor):
-    """Condition numbers (B, T) and, where they exceed CONDITION_WARNING, the two handles
+    """Condition numbers (B, types) and, where they exceed CONDITION_WARNING, the two handles
     that dominate the least-determined combination (with a warning)."""
     left, values, _ = torch.linalg.svd(jacobian)
     condition = values[..., 0] / values[..., -1]

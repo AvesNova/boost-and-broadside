@@ -11,7 +11,7 @@ Status: **draft, first review done** 2026-10-31 (see the review log at the end).
 
 | | Rule | Status |
 |---|---|---|
-| Shapes | Envs `B`, teams `T` (2 for now, equal sizes), ships per team `S`, ships `N = T·S`, fields `M`, bullet slots per ship `K` | carried |
+| Shapes | Envs `B`, teams `T` (2 for now, equal sizes), ships per team `S`, ships `N = T·S`, fields `M`, bullet slots per ship `K`, zone slots `Z`, spawn candidates `C`, a segment's steps `L`, views `R`; the reward levels are written `levels` (cleanup pass) | carried |
 | Ship order | Team-major: ship `n = team·S + slot`. Ship tensors are stored `(B, N, …)` and viewed `(B, T, S, …)` for free | new |
 | Floats | float32 everywhere in game and runtime. float64 only in `reference/`. bf16 only inside models | carried |
 | Ints | int32 counters and categoricals; bool flags; int64 only where torch requires it (indexing), converted at the use site | carried |
@@ -399,12 +399,12 @@ cut; where they differ, this section and the code win.
     arena 8200 m, groups (2, 2, 1)).
 - **Learner outputs (section 5, 2026-11-01):**
   - **`Outputs`** gains:
-    - `values (R, S, K)`: the critic per reward level, in raw units;
+    - `values (R, S, levels)`: the critic per reward level, in raw units;
     - `outcome (R, 4)`: the outcome probabilities (win, tie, loss, unresolved);
     - `replay`: an opaque pytree with leading `(R,)`, what the decision read from the
       controller's carry.
     `value` is the sum of `values` when a controller gives them.
-  - **`Trajectory`** gains `values (L, R, S, K)`, `outcome (L, R, 4)`, `replay (L, R, …)`
+  - **`Trajectory`** gains `values (L, R, S, levels)`, `outcome (L, R, 4)`, `replay (L, R, …)`
     and `initial_carry`, the learner's carry at the start of the segment. The runtime fills
     them for the learner's views; all are `None` for controllers without them.
   - **Rule:** the replay must hold exactly what the step read. Never store a rounded copy

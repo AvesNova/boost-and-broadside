@@ -60,7 +60,7 @@ def segment():
         8,
         32,
         lc.CPU,
-        compile=False,
+        compiled=False,
         extra_reads=Scripted.reads,
     )
     for _ in range(2):
@@ -153,7 +153,7 @@ def test_the_update_time_labels_are_the_rollout_time_distribution():
         4,
         16,
         lc.CPU,
-        compile=False,
+        compiled=False,
     )
     trajectory = runner.run()
     decided = torch.stack(recording.decisions[1:])  # the first is the rollout's one-row probe
@@ -219,11 +219,11 @@ def _scripted_seat(
     cfg = TrainConfig(
         game=GameConfig(2, 2, 1200.0),
         pools=LINEUP,
-        num_envs=4,
+        environments=4,
         length=8,
         model="relational",
         relational_hidden=16,
-        compile=False,
+        compiled=False,
         host_store=False,
         learner=learner,
         objective=objective,
@@ -391,11 +391,11 @@ def _tiny(objective: str, pools):
     return TrainConfig(
         game=GameConfig(2, 2, 1200.0),
         pools=pools,
-        num_envs=8,
+        environments=8,
         length=8,
         model="relational",
         relational_hidden=16,
-        compile=False,
+        compiled=False,
         host_store=False,
         learner=learner,
         objective=objective,
@@ -439,7 +439,7 @@ BC_OPTIONS = (
     "2",
     "--arena-radius",
     "1500",
-    "--num-envs",
+    "--environments",
     "16",
     "--objective",
     "bc",
@@ -448,7 +448,7 @@ BC_OPTIONS = (
     "--set",
     "length=16",
     "--set",
-    "compile=false",
+    "compiled=false",
     "--set",
     "learner.minibatches=2",
     "--set",
@@ -492,7 +492,7 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
         "--set",
         "length=16",
         "--set",
-        "compile=false",
+        "compiled=false",
         "--set",
         "relational_hidden=16",
         "--set",

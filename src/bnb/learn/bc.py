@@ -319,8 +319,10 @@ class StopRule:
         score = self.score
         return None if score is None else score - self.config.score_errors * self.standard_error
 
-    def observe(self, env_steps: int, wins: int, draws: int, losses: int, kl: float) -> str | None:
-        """env_steps: the total so far; wins, draws, losses: games finished against the
+    def observe(
+        self, environment_steps: int, wins: int, draws: int, losses: int, kl: float
+    ) -> str | None:
+        """environment_steps: the total so far; wins, draws, losses: games finished against the
         teacher this update; kl: this update's BC KL."""
         config = self.config
         games = wins + draws + losses
@@ -336,14 +338,16 @@ class StopRule:
         self.kl_average = (
             kl if self.kl_average is None else decay * self.kl_average + (1.0 - decay) * kl
         )
-        self.history.append((env_steps, self.kl_average))
+        self.history.append((environment_steps, self.kl_average))
         if self.lower_bound is not None and self.lower_bound >= config.score_target:
             return "score"
         past = [
-            average for steps, average in self.history if steps <= env_steps - config.plateau_steps
+            average
+            for steps, average in self.history
+            if steps <= environment_steps - config.plateau_steps
         ]
         if past and self.kl_average > (1.0 - config.plateau_fraction) * past[-1]:
             return "kl_plateau"
-        if env_steps >= config.budget_steps:
+        if environment_steps >= config.budget_steps:
             return "budget"
         return None

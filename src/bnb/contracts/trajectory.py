@@ -21,7 +21,7 @@ class Trajectory:
     done: (L, R) bool, the view's environment reset after this step. result: (L, R) int32,
     the match result for the view's team (+1 win, -1 loss, 0 draw), nonzero only where done.
 
-    When the learner's controller gives them (else None): values (L, R, S, K), outcome
+    When the learner's controller gives them (else None): values (L, R, S, levels), outcome
     (L, R, 4) and replay (a pytree, (L, R, ...)) from its Outputs, and initial_carry, the
     learner's carry at the segment's start (R, ...).
 

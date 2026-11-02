@@ -43,11 +43,11 @@ def controller(net: Yemong, config: GameConfig) -> YemongController:
 def rollout(
     net: Yemong,
     config: GameConfig = SHORT_SQUAD,
-    envs: int = 8,
+    environments: int = 8,
     length: int = 128,
     fog_share: float = 0.5,
     device=CPU,
-    compile: bool = False,
+    compiled: bool = False,
     runs: int = 1,
 ):
     """A real rollout with Yemong as the learner, in self-play and against the chaser. With
@@ -59,7 +59,9 @@ def rollout(
         Pool("chaser", 0.5, ("learner", "chaser"), fog_share),
     )
     controllers = {"learner": controller(net, config), "chaser": Chaser(config.ships_per_team)}
-    runner = Rollout(config, pools, controllers, "learner", envs, length, device, compile=compile)
+    runner = Rollout(
+        config, pools, controllers, "learner", environments, length, device, compiled=compiled
+    )
     for _ in range(runs - 1):
         runner.run()
     return runner, runner.run()

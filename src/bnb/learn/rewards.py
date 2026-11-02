@@ -10,7 +10,7 @@ The component functions are v1's math (fixtures in tests/reference/rewards) and 
 leading axes; `team` is each ship's team, 0 or 1, broadcasting against them.
 
 The step is memory-bound on its (B, N, N) matrices, so it reads each as few times as it
-can: the components optionally take the column totals (..., 1, T) the step already has,
+can: the components optionally take the column totals (..., 1, N) the step already has,
 instead of summing a derived matrix again.
 """
 
@@ -73,12 +73,12 @@ def blank_ledger(batch: int, num_ships: int, device=None) -> Ledger:
 
 
 def _column_total(values: torch.Tensor) -> torch.Tensor:
-    """(..., 1, T): each target's total over the rows."""
+    """(..., 1, N): each target's total over the rows."""
     return values.sum(-2, keepdim=True)
 
 
 def _shares(values: torch.Tensor, total: torch.Tensor | None = None) -> torch.Tensor:
-    """values (..., A, T) as fractions of each target's column total (0 for an empty one)."""
+    """values (..., N, N) as fractions of each target's column total (0 for an empty one)."""
     total = _column_total(values) if total is None else total
     return torch.where(total > 0.0, values / torch.where(total > 0.0, total, 1.0), 0.0)
 
@@ -98,8 +98,8 @@ def accumulate_ledger(
     *,
     raw_total: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """The ledger plus each attacker's share of the applied damage (..., T), in proportion
-    to its raw impact raw (..., A, T)."""
+    """The ledger plus each attacker's share of the applied damage (..., N), in proportion
+    to its raw impact raw (..., N, N)."""
     return ledger + _shares(raw, raw_total) * combat_applied[..., None, :]
 
 
@@ -110,9 +110,9 @@ def attribute_recharge(
     *,
     ledger_total: torch.Tensor | None = None,
 ):
-    """Recharge (..., T) attributed pro rata over the ledger's rows (..., R, T), with the
+    """Recharge (..., N) attributed pro rata over the ledger's rows (..., rows, N), with the
     fraction min(recharge / deficit, 1) (0 for a zero deficit). Returns (attributed
-    (..., R, T), unattributed = recharge - attributed over the rows (..., T), ledger)."""
+    (..., rows, N), unattributed = recharge - attributed over the rows (..., N), ledger)."""
     positive = deficit > 0.0
     fraction = torch.where(
         positive, (recharge / torch.where(positive, deficit, 1.0)).clamp_max(1.0), 0.0
@@ -162,7 +162,7 @@ def kill_death_events(
     raw_share = _shares(raw, raw_total)
     ledger_total = _column_total(ledger) if ledger_total is None else ledger_total
     held = torch.where(ledger_total > 0.0, _shares(ledger, ledger_total), raw_share)
-    share = combat_death[..., None, :] * (0.5 * raw_share + 0.5 * held)  # (..., A, T)
+    share = combat_death[..., None, :] * (0.5 * raw_share + 0.5 * held)  # (..., N, N)
     enemies = _enemies(team)
     ally_share = torch.where(enemies, 0.0, share)
     kill = torch.where(enemies, share, 0.0).sum(-1)
@@ -186,13 +186,13 @@ def damage_events(
     """(..., N, 6) taken, dealt, friendly fire, recharge, charge-back, unforced, in units of
     `unit` points.
 
-    Applied damage (..., T) is split over its attackers by raw impact. Damage to an enemy
+    Applied damage (..., N) is split over its attackers by raw impact. Damage to an enemy
     pays the shooter; to an ally it blames the shooter and pays the opposing team twice.
     Recharge refunds the target and charges back each attacker pro rata (an ally's blame
     is refunded). Boundary damage pays, and its unattributed healing charges, the opposing
     team.
     """
-    applied = _shares(raw, raw_total) * combat_applied[..., None, :]  # (..., A, T)
+    applied = _shares(raw, raw_total) * combat_applied[..., None, :]  # (..., N, N)
     enemies = _enemies(team)
     ally_applied = torch.where(enemies, 0.0, applied).sum(-1)
     ally_attributed = torch.where(enemies, 0.0, recharge_attributed).sum(-1)

@@ -54,8 +54,10 @@ def batched(types: ShipTypes) -> ShipTypes:
 
 def type_axis(types: ShipTypes) -> torch.Tensor:
     """(B, num_types) int32: each column's ship type."""
-    B, T = types.max_energy.shape
-    return torch.arange(T, dtype=torch.int32, device=types.max_energy.device).expand(B, T)
+    B, type_count = types.max_energy.shape
+    return torch.arange(type_count, dtype=torch.int32, device=types.max_energy.device).expand(
+        B, type_count
+    )
 
 
 def ships(speed, energy, angle, nose_rate, ship_type) -> Ships:
@@ -182,17 +184,19 @@ def aitken(first, second, third):
 
 
 def cruise_speed(rules: Rules, types: ShipTypes, energy: torch.Tensor) -> torch.Tensor:
-    """(B, T, G) the straight coasting equilibrium at stores energy (B, T, G): the fastest
-    speed the flight tick leaves unchanged, the terminal speed a ship coasting straight
-    reaches from above. Bracketed on a grid of one-tick flights from the stall speed to 30
-    times it (the last sign change of the speed's gain from + to -), then bisected. NaN
-    where there is none."""
+    """(B, types, points) the straight coasting equilibrium at stores energy (B, types,
+    points): the fastest speed the flight tick leaves unchanged, the terminal speed a ship coasting
+    straight reaches from above. Bracketed on a grid of one-tick flights from the stall speed to 30
+    times it (the last sign change of the speed's gain from + to -), then bisected. NaN where there
+    is none."""
     types = batched(types)
-    B, T, G = energy.shape
-    ship_type = type_axis(types)[..., None].expand(B, T, G).reshape(B, T * G)
+    B, type_count, points = energy.shape
+    ship_type = (
+        type_axis(types)[..., None].expand(B, type_count, points).reshape(B, type_count * points)
+    )
     airframe = airframe_of(types, ship_type)
     stall = torch.sqrt(rules.flight.gravity / airframe.max_lift_coefficient)
-    flat = energy.reshape(B, T * G)
+    flat = energy.reshape(B, type_count * points)
 
     def gain(speed):  # (B, P, ...) speeds
         shape = speed.shape
@@ -220,7 +224,7 @@ def cruise_speed(rules: Rules, types: ShipTypes, energy: torch.Tensor) -> torch.
         middle = 0.5 * (low + high)
         up = gain(middle[..., None])[..., 0] > 0.0
         low, high = torch.where(up, middle, low), torch.where(up, high, middle)
-    return torch.where(found, 0.5 * (low + high), torch.nan).reshape(B, T, G)
+    return torch.where(found, 0.5 * (low + high), torch.nan).reshape(B, type_count, points)
 
 
 class Flown(NamedTuple):
@@ -253,7 +257,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     constants, h = rules.flight, rules.tick_length
     columns = type_axis(types)
     airframe = airframe_of(types, columns)
-    B, T = columns.shape
+    B, type_count = columns.shape
     full = airframe.max_energy
     cruise = cruise_speed(rules, types, full[..., None])[..., 0]
     stall = torch.sqrt(constants.gravity / airframe.max_lift_coefficient)
@@ -265,7 +269,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     zeros, ones = torch.zeros_like(full), torch.ones_like(full)
 
     def blocks(*values):
-        return torch.cat(values, -1)  # (B, T) per manoeuvre -> (B, 7 T)
+        return torch.cat(values, -1)  # (B, types) per manoeuvre -> (B, 7 types)
 
     speed = blocks(cruise, cruise, cruise, stall, corner, corner, corner)
     energy = blocks(zeros, DIVE_STORE * full, DIVE_STORE * full, zeros, turning, turning, turning)
@@ -293,12 +297,12 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     history = {"speed": [speed], "energy": [energy], "angle": [angle]}
     path, path_samples = torch.zeros_like(speed), {}
     tick, limit, check = 0, round(CLIMB_LIMIT / h), round(CLIMB_PROGRESS / h)
-    pending, checkpoint = climb_time.isnan(), energy[:, :T]
+    pending, checkpoint = climb_time.isnan(), energy[:, :type_count]
     while tick < limit and (tick < max(short, settle) or pending.any()):
         new = flight_tick(constants, flight, h, state, stick, power, fields)
         path = path + path_turned(state, new)
         tick += 1
-        before, after = state.energy[:, :T], new.energy[:, :T]
+        before, after = state.energy[:, :type_count], new.energy[:, :type_count]
         crossed = climb_time.isnan() & (after >= climb_target)
         fraction = (climb_target - before) / (after - before)
         climb_time = torch.where(crossed, h * (tick - 1 + fraction), climb_time)
@@ -319,7 +323,7 @@ def fly(rules: Rules, types: ShipTypes) -> Flown:
     series = {key: torch.stack(values) for key, values in history.items()}
 
     def block(values, manoeuvre):
-        return values[..., manoeuvre * T : (manoeuvre + 1) * T]
+        return values[..., manoeuvre * type_count : (manoeuvre + 1) * type_count]
 
     def start_rate(values):
         return torch.einsum("k,k...->...", weights, values[: len(weights)])

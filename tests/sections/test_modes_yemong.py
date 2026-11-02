@@ -15,11 +15,11 @@ from bnb.models.yemong.state_code import POSITION_PERIOD
 OWN = 5
 
 
-def _frontline_views(ticks: int = 20, envs: int = 4):
+def _frontline_views(ticks: int = 20, environments: int = 4):
     """Team views of a mid-game Frontline match (chaser play), float64."""
     config = cases.SHORT_FRONTLINE
     net = cases.model(config)
-    _, trajectory = cases.rollout(net, config=config, envs=envs, length=ticks)
+    _, trajectory = cases.rollout(net, config=config, environments=environments, length=ticks)
     return cases.double(net), cases.cast(trajectory.obs, torch.float64), trajectory
 
 

@@ -74,14 +74,14 @@ def critic_values(
     local_levels: tuple[int, ...],
     outcome_level: int,
 ) -> torch.Tensor:
-    """(..., S, K) values in the configured level order.
+    """(..., S, levels) values in the configured level order.
 
-    local_logits (..., S, K - 1, bins): per-ship levels, each the expectation over the bins;
+    local_logits (..., S, levels - 1, bins): per-ship levels, each the expectation over the bins;
     outcome_logits (..., 4): the outcome level P(win) - P(loss), the same for every ship.
     """
     local = critic.expectation(local_logits, bins).unbind(-1)
     outcome = critic.outcome_values(torch.softmax(outcome_logits, -1))[..., None]
-    outcome = outcome.expand(local[0].shape)  # K >= 2: at least one per-ship level
+    outcome = outcome.expand(local[0].shape)  # levels >= 2: at least one per-ship level
     columns = {level: column for level, column in zip(local_levels, local)}
     columns[outcome_level] = outcome
     # Stacked from slices (no index tensor), so eager CUDA-graph capture needs no host copy.

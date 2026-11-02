@@ -53,7 +53,7 @@ def test_a_new_run_writes_its_record_config_and_final_checkpoint(monkeypatch, tm
     assert (segment["start_step"], segment["end_step"]) == (0, 2 * STEPS_PER_UPDATE)
     assert segment["commit"] == provenance.commit()[0]
     config = json.loads((run.directory / "config.json").read_text())
-    assert config["num_envs"] == 16 and config["length"] == 16
+    assert config["environments"] == 16 and config["length"] == 16
     for part in ("league", "artifacts", "metrics.jsonl"):
         assert (run.directory / part).exists()
 
@@ -174,11 +174,11 @@ def test_a_structural_option_on_resume_is_refused_pointing_to_a_fork(monkeypatch
     new_run(monkeypatch, tmp_path)
     with pytest.raises(
         SystemExit,
-        match="a resume takes --num-envs from the checkpoint and "
+        match="a resume takes --environments from the checkpoint and "
         "cannot change it: start a new run from it with "
         "--from a",
     ):
-        bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--num-envs", "32")
+        bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--environments", "32")
     with pytest.raises(SystemExit, match="a resume cannot --set length"):
         bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--set", "length=32")
 
@@ -369,7 +369,7 @@ def test_bnb_runs_lists_and_shows_runs_with_a_stale_one(monkeypatch, tmp_path, c
 def test_print_config_prints_the_resolved_configuration(monkeypatch, tmp_path, capsys):
     bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--print-config")
     config = json.loads(capsys.readouterr().out)
-    assert config["num_envs"] == 16 and config["learner"]["minibatches"] == 2
+    assert config["environments"] == 16 and config["learner"]["minibatches"] == 2
     assert not tmp_path.exists() or not any(tmp_path.iterdir())  # no run written
 
 

@@ -12,7 +12,7 @@ reviewed: 2026-11-02
 
 <!-- not-runnable: needs CUDA and runs for minutes -->
 ```bash
-uv run --no-sync bnb train --preset mixed --num-envs 1024 --updates 100
+uv run --no-sync bnb train --preset mixed --environments 1024 --updates 100
 ```
 
 `--preset mixed` trains on the default training mix: Frontline and team deathmatch on two
@@ -21,7 +21,7 @@ pools and the mix. Every option:
 
 <!-- generated: cli-options -->
 
-`--num-envs` must be a multiple of what the pools split into; the command stops with a
+`--environments` must be a multiple of what the pools split into; the command stops with a
 message naming the multiple when it is not.
 
 <!-- runnable -->

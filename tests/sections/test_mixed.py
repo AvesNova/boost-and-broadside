@@ -450,12 +450,12 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
     )
     cfg = TrainConfig(
         game=BASE,
-        num_envs=16,
+        environments=16,
         length=32,
         model="relational",
         relational_hidden=32,
         pools=pools,
-        compile=False,
+        compiled=False,
         learner=LearnerConfig(minibatches=2, micro_batch_rows=30),
     )
     trainer = Trainer(cfg, torch.device("cpu"))
@@ -490,7 +490,7 @@ def test_the_rollout_staggers_each_start_clock_within_its_own_episode():
         256,
         8,
         torch.device("cpu"),
-        compile=False,
+        compiled=False,
     )
     tick = rollout.carry["state"].match.episode_tick
     length = environment(rollout.rules, 256).episode_ticks

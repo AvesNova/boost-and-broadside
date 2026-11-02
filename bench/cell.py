@@ -17,80 +17,86 @@ os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")
 import torch  # noqa: E402
 
 from bnb.contracts import GameConfig  # noqa: E402
+from bnb.contracts.action import NUM_POWER, NUM_SHOOT, NUM_STICK  # noqa: E402
 
 TIMED = 3
 
 
-def train_config(size: dict | None, envs: int, preset: str | None):
+def train_config(size: dict | None, environments: int, preset: str | None):
+    """The training config of a cell: a size, a game preset or the mixed preset."""
     from bnb.game.modes.rules import PRESETS
     from bnb.runtime.train import TrainConfig, mixed
 
     if preset == "mixed":
         game, pools = mixed()
-        return TrainConfig(game=game, pools=pools, num_envs=envs)
+        return TrainConfig(game=game, pools=pools, environments=environments)
     game = PRESETS[preset] if preset is not None else GameConfig(**size)
-    return TrainConfig(game=game, num_envs=envs)
+    return TrainConfig(game=game, environments=environments)
 
 
-def train_cell(size: dict | None, envs: int, preset: str | None = None) -> dict:
+def train_cell(size: dict | None, environments: int, preset: str | None = None) -> dict:
+    """Compile, run one episode, then the best of `TIMED` collects and updates."""
     from bnb.runtime.train import Trainer
 
     torch.manual_seed(0)
-    dev = torch.device("cuda")
-    torch.cuda.reset_peak_memory_stats(dev)
-    cfg = train_config(size, envs, preset)
-    t0 = time.perf_counter()
-    trainer = Trainer(cfg, dev)
+    device = torch.device("cuda")
+    torch.cuda.reset_peak_memory_stats(device)
+    config = train_config(size, environments, preset)
+    started = time.perf_counter()
+    trainer = Trainer(config, device)
     trainer.update()  # compiles the rollout stages, the graph and the learner
     torch.cuda.synchronize()
-    compile_s = time.perf_counter() - t0
+    compile_seconds = time.perf_counter() - started
     episode_ticks = max(pool.episode_ticks for pool in trainer.rollout.rules.pools)
-    for _ in range(math.ceil(episode_ticks / cfg.length)):  # one episode
+    for _ in range(math.ceil(episode_ticks / config.length)):  # one episode
         trainer.collect()
-    rollout_s, learn_s = [], []
+    rollout_seconds, learn_seconds = [], []
     for _ in range(TIMED):
         torch.cuda.synchronize()
-        t1 = time.perf_counter()
-        traj, last_value = trainer.collect()
+        started = time.perf_counter()
+        store, bootstraps = trainer.collect()
         torch.cuda.synchronize()
-        t2 = time.perf_counter()
-        trainer.ppo.update(traj, last_value)
-        t3 = time.perf_counter()
-        rollout_s.append(t2 - t1)
-        learn_s.append(t3 - t2)
-    ticks = envs * cfg.length
-    r, lrn = min(rollout_s), min(learn_s)
+        collected = time.perf_counter()
+        trainer.ppo.update(store, bootstraps)
+        learned = time.perf_counter()
+        rollout_seconds.append(collected - started)
+        learn_seconds.append(learned - collected)
+    ticks = environments * config.length
+    rollout, learn = min(rollout_seconds), min(learn_seconds)
+    # The keys are bench/results.jsonl's format, kept so its history compares.
     return dict(
-        compile_s=compile_s,
-        rollout_ms=r * 1e3,
-        learn_ms=lrn * 1e3,
-        rollout_env_ticks_per_s=ticks / r,
-        train_env_ticks_per_s=ticks / (r + lrn),
-        peak_vram_gb=torch.cuda.max_memory_allocated(dev) / 2**30,
+        compile_s=compile_seconds,
+        rollout_ms=rollout * 1e3,
+        learn_ms=learn * 1e3,
+        rollout_env_ticks_per_s=ticks / rollout,
+        train_env_ticks_per_s=ticks / (rollout + learn),
+        peak_vram_gb=torch.cuda.max_memory_allocated(device) / 2**30,
         counters=trainer.rollout.counters(),
     )
 
 
 def realtime_cell(size: dict, steps: int = 1000) -> dict:
+    """The CPU tick latency of one match at this size: p50 and p99 over `steps` ticks."""
     from bnb.runtime.realtime import Realtime
 
     torch.manual_seed(0)
     torch.set_num_threads(min(6, torch.get_num_threads()))  # an entry point's setting
-    rt = Realtime(GameConfig(**size))
-    N = 2 * size["ships_per_team"]
-    t0 = time.perf_counter()
-    rt.step(torch.zeros(N, 3, dtype=torch.int32))
-    compile_s = time.perf_counter() - t0
+    realtime = Realtime(GameConfig(**size))
+    ships = 2 * size["ships_per_team"]
+    started = time.perf_counter()
+    realtime.step(torch.zeros(ships, 3, dtype=torch.int32))
+    compile_seconds = time.perf_counter() - started
+    sizes = torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32)
     times = []
-    for i in range(300 + steps):
-        a = (torch.rand(N, 3) * torch.tensor([3.0, 7.0, 2.0])).to(torch.int32)
-        t1 = time.perf_counter()
-        rt.step(a)
-        if i >= 300:
-            times.append(time.perf_counter() - t1)
+    for index in range(300 + steps):
+        actions = (torch.rand(ships, 3) * sizes).to(torch.int32)
+        started = time.perf_counter()
+        realtime.step(actions)
+        if index >= 300:
+            times.append(time.perf_counter() - started)
     times.sort()
     return dict(
-        compile_s=compile_s,
+        compile_s=compile_seconds,
         p50_ms=times[len(times) // 2] * 1e3,
         p99_ms=times[int(0.99 * len(times))] * 1e3,
     )
@@ -98,10 +104,8 @@ def realtime_cell(size: dict, steps: int = 1000) -> dict:
 
 if __name__ == "__main__":
     cell = json.loads(sys.argv[1])
-    fn = train_cell if cell["kind"] == "train" else realtime_cell
-    args = (
-        (cell.get("size"), cell["envs"], cell.get("preset"))
-        if cell["kind"] == "train"
-        else (cell["size"],)
-    )
-    print("RESULT " + json.dumps(dict(cell=cell, **fn(*args))), flush=True)
+    if cell["kind"] == "train":
+        result = train_cell(cell.get("size"), cell["envs"], cell.get("preset"))
+    else:
+        result = realtime_cell(cell["size"])
+    print("RESULT " + json.dumps(dict(cell=cell, **result)), flush=True)

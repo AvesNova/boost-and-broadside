@@ -15,7 +15,7 @@ CUDA = torch.device("cuda")
 
 
 def _run(tmp_path, updates: int = 1):
-    config = cases.tiny_train_config(updates=updates, compile=True)  # a GPU rollout compiles
+    config = cases.tiny_train_config(updates=updates, compiled=True)  # a GPU rollout compiles
     with torch.random.fork_rng(devices=[CUDA]):
         torch.manual_seed(0)
         trainer = Trainer(config, CUDA)

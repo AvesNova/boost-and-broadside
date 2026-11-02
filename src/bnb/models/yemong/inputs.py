@@ -156,7 +156,7 @@ def compose(
     state_code: ShipStateCode,
     ship_types: int,
     presence_radius: float,
-    tick: float,
+    tick_length: float,
 ) -> Tokens:
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
@@ -182,7 +182,7 @@ def compose(
     gradient = torch.stack([column["log_index_gradient_x"], column["log_index_gradient_y"]], -1)
     gradient = torch.where(visible[..., None], gradient, 0.0) / GRADIENT_SCALE
     presence = local_presence(position, team, valid, presence_radius)
-    since_seen = age.to(dtype) * tick
+    since_seen = age.to(dtype) * tick_length
     ship = torch.cat(
         [
             code,

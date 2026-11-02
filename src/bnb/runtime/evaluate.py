@@ -21,12 +21,12 @@ def first_results(
     games: int,
     device: torch.device,
     length: int = 32,
-    compile: bool = True,
+    compiled: bool = True,
 ) -> torch.Tensor:
     """(views,) int32: the result of each of `player`'s views in its environment's first
     game, +1 a win, 0 a draw, -1 a loss. games: environments (the pools' batch)."""
     rollout = Rollout(
-        game, pools, controllers, player, games, length, device, compile=compile, staggered=False
+        game, pools, controllers, player, games, length, device, compiled=compiled, staggered=False
     )
     views = rollout.lineup.rows(player)
     result = torch.zeros(views, dtype=torch.int32, device=device)

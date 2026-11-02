@@ -496,7 +496,7 @@ def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
         4,
         16,
         torch.device("cpu"),
-        compile=False,
+        compiled=False,
     )
     trajectory = rollout.run()
     assert trajectory.obs.zones is not None and trajectory.log_probability.shape == (16, 4, 2)

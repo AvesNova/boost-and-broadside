@@ -107,7 +107,7 @@ print(type(loaded).__name__, loaded.build.config.hidden)
 
 <!-- not-runnable: needs CUDA -->
 ```bash
-uv run --no-sync bnb train --preset mixed --num-envs 1536 --probe
+uv run --no-sync bnb train --preset mixed --environments 1536 --probe
 ```
 
 runs the setup and one update, prints the allocator's peaks against the budget, and exits

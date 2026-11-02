@@ -92,7 +92,7 @@ class TrainConfig:
     plays, `bnb.learn.bc.TeacherOpponent`)."""
 
     game: GameConfig
-    num_envs: int = 1024
+    environments: int = 1024
     updates: int = 100
     length: int = 128
     shards: int = 1
@@ -105,7 +105,7 @@ class TrainConfig:
     precision: str = "bfloat16"
     host_store: bool = True
     seed: int = 0
-    compile: bool = True
+    compiled: bool = True
     objective: str = "ppo"
     teacher: TeacherConfig = TeacherConfig()
 
@@ -201,10 +201,10 @@ class Trainer:
             config.pools,
             self.controllers,
             LEARNER,
-            config.num_envs,
+            config.environments,
             config.length,
             device,
-            compile=config.compile,
+            compiled=config.compiled,
             reward_config=config.reward,
             shards=config.shards,
             host_store=config.host_store,
@@ -213,7 +213,7 @@ class Trainer:
         lineup = self.rollout.lineup
         self.pool_names = tuple(pool.name for pool in lineup.pools)
         self.learner_pool = lineup.pool_of[LEARNER]
-        rules, stage = self.rollout.rules, compiler(config.compile)
+        rules, stage = self.rollout.rules, compiler(config.compiled)
         if cloning:  # the labels are the scripted agent's distribution, transformed
             agent = Scripted(self.characteristics)
             teacher = functools.partial(
@@ -249,7 +249,7 @@ class Trainer:
     @property
     def steps_per_update(self) -> int:
         """Environment steps one update collects."""
-        return self.config.num_envs * self.config.length * self.config.shards
+        return self.config.environments * self.config.length * self.config.shards
 
     def collect(self):
         """Every shard of one update and its bootstrap (no learning): (the store, the
@@ -290,28 +290,30 @@ class Trainer:
         results = results.tolist()
         return {
             name: dict(
-                reward_per_s=dict(zip(REWARD_LEVELS, rate[index])),
+                reward_per_second=dict(zip(REWARD_LEVELS, rate[index])),
                 results=dict(zip(("wins", "draws", "losses"), results[index])),
             )
             for index, name in enumerate(self.pool_names)
         }
 
     def update(self) -> dict:
-        t0 = time.perf_counter()
+        """One update: collect every shard, learn from them, and refresh the league slot on
+        schedule. Returns the update's metrics."""
+        started = time.perf_counter()
         store, bootstraps = self.collect()
         pools = self.pool_metrics(store)
-        t1 = time.perf_counter()
+        collected = time.perf_counter()
         stats = self.ppo.update(store, bootstraps, self.steps_per_update)  # ends in host syncs
-        t2 = time.perf_counter()
+        learned = time.perf_counter()
         self.updates_done += 1
         if self.updates_done % self.config.league_every == 0:
             with torch.no_grad():
-                for dst, src in zip(self.league.parameters(), self.model.parameters()):
-                    dst.copy_(src)
+                for league, learner in zip(self.league.parameters(), self.model.parameters()):
+                    league.copy_(learner)
         return dict(
             update=self.updates_done,
-            rollout_s=t1 - t0,
-            learn_s=t2 - t1,
+            rollout_seconds=collected - started,
+            learn_seconds=learned - collected,
             pools=pools,
             nonfinite_beliefs=self.nonfinite_beliefs(),
             **stats,
@@ -320,7 +322,7 @@ class Trainer:
     def nonfinite_beliefs(self) -> int:
         """Non-finite belief entries the learner's carry has counted since its rollouts began
         (Yemong's `Carry.nonfinite`; 0 for a model without one)."""
-        counts = getattr(self.rollout.carry["ctrl"][LEARNER], "nonfinite", None)
+        counts = getattr(self.rollout.carry["controllers"][LEARNER], "nonfinite", None)
         return 0 if counts is None else int(counts.sum())
 
 
@@ -334,7 +336,14 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
     pool = Pool("evaluation", 1.0, (LEARNER, opponent), config.pools[0].fog_share)
     return shares(
         first_results(
-            config.game, (pool,), controllers, LEARNER, games, device, config.length, config.compile
+            config.game,
+            (pool,),
+            controllers,
+            LEARNER,
+            games,
+            device,
+            config.length,
+            config.compiled,
         )
     )
 

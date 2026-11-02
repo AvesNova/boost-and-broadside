@@ -119,7 +119,7 @@ class Carry:
 @contract
 class Decision:
     """One step's outputs, per view: policy_logits (R, S, 42); enemy_action_logits and
-    next_state_logits (R, N - S, ...) for the enemy rows; values (R, S, K) in the configured
+    next_state_logits (R, N - S, ...) for the enemy rows; values (R, S, levels) in the configured
     level order; outcome_probabilities (R, 4); the next carry (previous_action not yet
     replaced by the sample); the replay record."""
 
@@ -135,7 +135,7 @@ class Decision:
 @contract
 class Unrolled:
     """A segment's outputs, (L, R, ...) leading: policy_logits (S rows), enemy_action_logits
-    and next_state_logits (every row), value_logits (S, K - 1, bins), values (S, K),
+    and next_state_logits (every row), value_logits (S, levels - 1, bins), values (S, levels),
     outcome_logits (4), density_log_rates (2C: ally cells, then enemy cells),
     shot_outcome_logits (N, 19) and shot_latents (N, D) for `Yemong.shot_trajectory`."""
 
@@ -209,7 +209,7 @@ class Yemong(nn.Module):
         self.build, self.config = build, config
         width, hidden = config.width, 2 * config.width
         self.ship_types = build.ship_types
-        self.tick = build.tick_length
+        self.tick_length = build.tick_length
         self.state_code = ShipStateCode(build.state_code)
         self.shot_code = shots.shot_code_parameters(
             build.muzzle_speed,
@@ -335,7 +335,12 @@ class Yemong(nn.Module):
     def tokens(self, obs: Obs, replay: Replay) -> Tokens:
         """The encoder inputs of views and their replay records."""
         return compose(
-            obs, replay, self.state_code, self.ship_types, self.config.presence_radius, self.tick
+            obs,
+            replay,
+            self.state_code,
+            self.ship_types,
+            self.config.presence_radius,
+            self.tick_length,
         )
 
     def _encode(self, tokens: Tokens):

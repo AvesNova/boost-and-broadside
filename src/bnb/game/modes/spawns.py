@@ -28,15 +28,15 @@ def _nearest(
     target_y: torch.Tensor,
     counts: torch.Tensor,
 ) -> torch.Tensor:
-    """Squared distance (..., K) from each candidate (..., K) to the nearest target (..., T)
-    that counts (counts (..., T)); inf if none counts."""
+    """Squared distance (..., C) from each candidate (..., C) to the nearest target (...,
+    targets) that counts (counts (..., targets)); inf if none counts."""
     dx = x[..., None] - target_x[..., None, :]
     dy = y[..., None] - target_y[..., None, :]
     return torch.where(counts[..., None, :], dx * dx + dy * dy, INFINITY).amin(-1)
 
 
 def _best(x: torch.Tensor, y: torch.Tensor, score: torch.Tensor):
-    """The candidate (..., K) with the largest score, ties to the lower one: (x, y) (...)."""
+    """The candidate (..., C) with the largest score, ties to the lower one: (x, y) (...)."""
     pick = score.argmax(-1, keepdim=True)
     return x.gather(-1, pick)[..., 0], y.gather(-1, pick)[..., 0]
 
@@ -48,20 +48,20 @@ def _farthest_from_enemies(
     target_y: torch.Tensor,
     counts: torch.Tensor | None = None,
 ):
-    """Each ship's candidate (B, N, K) farthest from its nearest enemy target (B, N; an
+    """Each ship's candidate (B, N, C) farthest from its nearest enemy target (B, N; an
     infinite coordinate does not count). Only the other team's slots are compared
     (team-major: a flip of the team axis); counts (B, 2, S, S) [team, slot, enemy slot]
     restricts the pairs further."""
-    B, N, K = x.shape
+    B, N, candidates = x.shape
     # One stacked tensor, so the compiled stage stores the targets once instead of
     # recomputing them (a sqrt, a cos and a sin at a reset) for every pair: half the time.
     targets = by_team(torch.stack([target_x, target_y], -1)).flip(1)[:, :, None, None]
-    dx = by_team(x)[..., None] - targets[..., 0]  # (B, 2, S, K, S)
+    dx = by_team(x)[..., None] - targets[..., 0]  # (B, 2, S, C, S)
     dy = by_team(y)[..., None] - targets[..., 1]
     distance = dx * dx + dy * dy
     if counts is not None:
         distance = torch.where(counts[:, :, :, None, :], distance, INFINITY)
-    return _best(x, y, distance.amin(-1).reshape(B, N, K))
+    return _best(x, y, distance.amin(-1).reshape(B, N, candidates))
 
 
 def _disc(radius, radius_uniform: torch.Tensor, angle_uniform: torch.Tensor):
@@ -72,7 +72,7 @@ def _disc(radius, radius_uniform: torch.Tensor, angle_uniform: torch.Tensor):
     return distance * torch.cos(angle), distance * torch.sin(angle)
 
 
-def _inside(x: torch.Tensor, y: torch.Tensor, radius: torch.Tensor):
+def _clip_to_disc(x: torch.Tensor, y: torch.Tensor, radius: torch.Tensor):
     """Points clipped radially into the disc of this radius (broadcasting against the
     points) around the origin."""
     distance = torch.sqrt(x * x + y * y)
@@ -97,10 +97,10 @@ def _group_of_rank(groups: tuple[int, ...], rank: torch.Tensor) -> torch.Tensor:
 
 def _group_centres(mode_rules: ModeRules, arena_radius: torch.Tensor, uniforms: torch.Tensor):
     """(B, G) centres: centre 0 uniform in the disc of radius 0.85 R_a (arena_radius (B,));
-    each later one the best of K uniform draws there by distance to the nearest earlier
+    each later one the best of C uniform draws there by distance to the nearest earlier
     centre."""
-    B, G, K = uniforms.shape[0], len(mode_rules.spawn_groups), mode_rules.spawn_candidates
-    drawn = uniforms.reshape(B, G, K, 2)
+    B, G = uniforms.shape[0], len(mode_rules.spawn_groups)
+    drawn = uniforms.reshape(B, G, mode_rules.spawn_candidates, 2)
     x, y = _disc(
         (mode_rules.group_centre_fraction * arena_radius)[:, None, None],
         drawn[..., 0],
@@ -110,7 +110,7 @@ def _group_centres(mode_rules: ModeRules, arena_radius: torch.Tensor, uniforms: 
     for g in range(1, G):
         earlier_x, earlier_y = torch.stack(centres_x, -1), torch.stack(centres_y, -1)
         counts = torch.ones((1, g), dtype=torch.bool, device=uniforms.device)
-        nearest = _nearest(x[:, g], y[:, g], earlier_x, earlier_y, counts)  # (B, K)
+        nearest = _nearest(x[:, g], y[:, g], earlier_x, earlier_y, counts)  # (B, C)
         best_x, best_y = _best(x[:, g], y[:, g], nearest)
         centres_x.append(best_x)
         centres_y.append(best_y)
@@ -150,11 +150,14 @@ def deathmatch_placement(
     starting a match, whose ships all spawn together; keys (B, N): the formation keys
     (grouped membership).
     """
-    B, N, K = x.shape[0], rules.num_ships, mode_rules.spawn_candidates
+    B, N, candidates = x.shape[0], rules.num_ships, mode_rules.spawn_candidates
     groups = mode_rules.spawn_groups
-    per_environment = 2 * K * len(groups)
+    per_environment = 2 * candidates * len(groups)
     per_ship = uniforms[:, per_environment:].reshape(B, N, -1)
-    radius_uniform, angle_uniform = per_ship[..., :K], per_ship[..., K : 2 * K]
+    radius_uniform, angle_uniform = (
+        per_ship[..., :candidates],
+        per_ship[..., candidates : 2 * candidates],
+    )
     starting = reset[:, None]
 
     # Uniform over the arena: the respawn rule, and the grouped rule's fallback.
@@ -171,7 +174,7 @@ def deathmatch_placement(
         by_group = by_team(group)
         rival = by_group[..., :, None] == by_group.flip(1)[..., None, :]  # same-group enemies
         counts = rival | ~reset[:, None, None, None]
-        anchor_x, anchor_y, any_living = _anchors(alive, per_ship[..., 2 * K + 1], x, y)
+        anchor_x, anchor_y, any_living = _anchors(alive, per_ship[..., 2 * candidates + 1], x, y)
         distance = (
             mode_rules.anchor_distance_min
             + (mode_rules.anchor_distance_max - mode_rules.anchor_distance_min) * radius_uniform
@@ -186,7 +189,7 @@ def deathmatch_placement(
         # A group near the edge, or an anchor there, can put a candidate outside the arena:
         # every grouped candidate is clipped into the disc R_a - 50 m. (The uniform rule's
         # candidates are inside the arena by construction.)
-        candidate_x, candidate_y = _inside(
+        candidate_x, candidate_y = _clip_to_disc(
             torch.where(starting[..., None], reset_x, respawn_x),
             torch.where(starting[..., None], reset_y, respawn_y),
             (radius - mode_rules.spawn_margin).clamp_min(0.0),
@@ -201,7 +204,7 @@ def deathmatch_placement(
     target_x = torch.where(target, torch.where(starting, candidate_x[..., 0], x), INFINITY)
     target_y = torch.where(target, torch.where(starting, candidate_y[..., 0], y), INFINITY)
     place_x, place_y = _farthest_from_enemies(candidate_x, candidate_y, target_x, target_y, counts)
-    heading_cos, heading_sin = _heading(per_ship[..., 2 * K])
+    heading_cos, heading_sin = _heading(per_ship[..., 2 * candidates])
     return Placement(x=place_x, y=place_y, heading_cos=heading_cos, heading_sin=heading_sin)
 
 

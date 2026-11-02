@@ -43,7 +43,7 @@ def stored():
         16,
         64,
         CUDA,
-        compile=False,
+        compiled=False,
         graph_ticks=16,
         host_store=True,
     )
@@ -145,9 +145,11 @@ def test_the_trainer_reports_the_carrys_nonfinite_beliefs(stored):
     from bnb.runtime.train import LEARNER, Trainer
 
     _, runner, _ = stored
-    carry = runner.carry["ctrl"][LEARNER]
-    trainer = types.SimpleNamespace(rollout=types.SimpleNamespace(carry={"ctrl": {LEARNER: carry}}))
+    carry = runner.carry["controllers"][LEARNER]
+    trainer = types.SimpleNamespace(
+        rollout=types.SimpleNamespace(carry={"controllers": {LEARNER: carry}})
+    )
     assert Trainer.nonfinite_beliefs(trainer) == int(carry.nonfinite.sum()) == 0
     counted = dataclasses.replace(carry, nonfinite=torch.tensor([1, 0, 2], device=CUDA))
-    trainer.rollout.carry["ctrl"][LEARNER] = counted
+    trainer.rollout.carry["controllers"][LEARNER] = counted
     assert Trainer.nonfinite_beliefs(trainer) == 3

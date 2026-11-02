@@ -37,10 +37,16 @@ SPEED_GRID = 160  # speeds on the charts' curves
 
 
 def _grid(types: ShipTypes, *values: torch.Tensor):
-    """(B, T, G) values laid out as ships (B, T G) with their types and airframes."""
-    B, T, G = values[0].shape
-    ship_type = type_axis(types)[..., None].expand(B, T, G).reshape(B, T * G)
-    return ship_type, airframe_of(types, ship_type), [v.reshape(B, T * G) for v in values]
+    """(B, types, grid) values laid out as ships (B, types grid) with their types and airframes."""
+    B, type_count, grid = values[0].shape
+    ship_type = (
+        type_axis(types)[..., None].expand(B, type_count, grid).reshape(B, type_count * grid)
+    )
+    return (
+        ship_type,
+        airframe_of(types, ship_type),
+        [v.reshape(B, type_count * grid) for v in values],
+    )
 
 
 def trajectory(
@@ -55,10 +61,10 @@ def trajectory(
     ticks: int,
     hold_store: bool = False,
 ) -> dict[str, torch.Tensor]:
-    """Fly (B, T, G) starts for `ticks` ticks: (ticks + 1, B, T, G) speed, energy, angle of
-    attack and the flight path's angle (from 0). hold_store: the store is reset to its start
-    after every tick."""
-    B, T, G = speed.shape
+    """Fly (B, types, grid) starts for `ticks` ticks: (ticks + 1, B, types, grid) speed,
+    energy, angle of attack and the flight path's angle (from 0). hold_store: the store is
+    reset to its start after every tick."""
+    B, type_count, grid = speed.shape
     ship_type, airframe, (speed, energy, angle, nose_rate, stick, power) = _grid(
         types, speed, energy, angle, nose_rate, stick, power
     )
@@ -77,11 +83,11 @@ def trajectory(
             ("path", path),
         ):
             history[key].append(value)
-    return {k: torch.stack(v).reshape(ticks + 1, B, T, G) for k, v in history.items()}
+    return {k: torch.stack(v).reshape(ticks + 1, B, type_count, grid) for k, v in history.items()}
 
 
 class Instant(NamedTuple):
-    """Rates at the start of a steady turn, (B, T, G) over a speed grid."""
+    """Rates at the start of a steady turn, (B, types, grid) over a speed grid."""
 
     speed: torch.Tensor
     turn_rate: torch.Tensor  # rad/s, the flight path's
@@ -90,10 +96,10 @@ class Instant(NamedTuple):
 
 
 def instant(rules: Rules, types: ShipTypes, speed: torch.Tensor, stick: float) -> Instant:
-    """At each speed (B, T, G): the nose at its steady angle of attack for the stick,
+    """At each speed (B, types, grid): the nose at its steady angle of attack for the stick,
     coasting, below the engine knee; the start rates fitted over the first ticks."""
-    B, T, G = speed.shape
-    full = types.max_energy[..., None].expand(B, T, G)
+    B, type_count, grid = speed.shape
+    full = types.max_energy[..., None].expand(B, type_count, grid)
     energy = TURNING_STORE * full
     sticks = torch.full_like(speed, stick)
     _, airframe, (flat_speed, flat_energy, flat_stick) = _grid(types, speed, energy, sticks)
@@ -104,8 +110,8 @@ def instant(rules: Rules, types: ShipTypes, speed: torch.Tensor, stick: float) -
         types,
         speed,
         energy,
-        steady.angle.reshape(B, T, G),
-        steady.path_rate.reshape(B, T, G),
+        steady.angle.reshape(B, type_count, grid),
+        steady.path_rate.reshape(B, type_count, grid),
         sticks,
         torch.zeros_like(speed),
         len(weights) - 1,
@@ -116,12 +122,15 @@ def instant(rules: Rules, types: ShipTypes, speed: torch.Tensor, stick: float) -
 
     specific = 0.5 * flown["speed"] ** 2 + flown["energy"] / rules.flight.mass
     return Instant(
-        speed, start_rate(flown["path"]), start_rate(specific), steady.angle.reshape(B, T, G)
+        speed,
+        start_rate(flown["path"]),
+        start_rate(specific),
+        steady.angle.reshape(B, type_count, grid),
     )
 
 
 class Settled(NamedTuple):
-    """Settled coasting turns, (B, T, S) over stick levels."""
+    """Settled coasting turns, (B, types, sticks) over stick levels."""
 
     stick: torch.Tensor
     speed: torch.Tensor
@@ -133,18 +142,18 @@ def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settle
     """The coast datum at each stick level: coasting from cruise with the store held below
     the engine knee until speed, angle of attack and turn rate settle (the Aitken limit of
     the last three seconds' means)."""
-    B, T = types.max_energy.shape
-    S = len(sticks)
-    stick = torch.tensor(sticks, dtype=types.max_energy.dtype).expand(B, T, S)
+    B, type_count = types.max_energy.shape
+    stick_count = len(sticks)
+    stick = torch.tensor(sticks, dtype=types.max_energy.dtype).expand(B, type_count, stick_count)
     cruise = cruise_speed(rules, types, types.max_energy[..., None])
     zeros = torch.zeros_like(stick)
     ticks = round(SETTLE_TIME / rules.tick_length)
     last = round(1.0 / rules.tick_length)
-    energy = TURNING_STORE * types.max_energy[..., None].expand(B, T, S)
+    energy = TURNING_STORE * types.max_energy[..., None].expand(B, type_count, stick_count)
     flown = trajectory(
         rules,
         types,
-        cruise.expand(B, T, S),
+        cruise.expand(B, type_count, stick_count),
         energy,
         zeros,
         zeros,
@@ -168,7 +177,7 @@ def settled(rules: Rules, types: ShipTypes, sticks: tuple[float, ...]) -> Settle
 
 
 def top_speed(rules: Rules, types: ShipTypes) -> torch.Tensor:
-    """(B, T) the peak speed of a straight boost from cruise with a full store."""
+    """(B, types) the peak speed of a straight boost from cruise with a full store."""
     full = types.max_energy[..., None]
     cruise = cruise_speed(rules, types, full)
     zeros = torch.zeros_like(cruise)
@@ -190,15 +199,21 @@ ENDURANCE = dict(coasting=(0.0, 0.0), climbing=(0.0, 1.0), diving=(0.0, -1.0), h
 
 
 def endurance(rules: Rules, types: ShipTypes) -> dict[str, torch.Tensor]:
-    """(B, T) per flight condition (ENDURANCE: stick, power): the time from cruise with a full
+    """(B, types) per flight condition (ENDURANCE: stick, power): the time from cruise with a full
     store, firing at every chance (the game's fire rule), until a shot is refused for lack of
     energy; inf beyond ENDURANCE_LIMIT."""
-    B, T = types.max_energy.shape
-    C = len(ENDURANCE)
-    cruise = cruise_speed(rules, types, types.max_energy[..., None]).expand(B, T, C)
-    full = types.max_energy[..., None].expand(B, T, C)
-    stick = torch.tensor([v[0] for v in ENDURANCE.values()], dtype=full.dtype).expand(B, T, C)
-    power = torch.tensor([v[1] for v in ENDURANCE.values()], dtype=full.dtype).expand(B, T, C)
+    B, type_count = types.max_energy.shape
+    conditions = len(ENDURANCE)
+    cruise = cruise_speed(rules, types, types.max_energy[..., None]).expand(
+        B, type_count, conditions
+    )
+    full = types.max_energy[..., None].expand(B, type_count, conditions)
+    stick = torch.tensor([v[0] for v in ENDURANCE.values()], dtype=full.dtype).expand(
+        B, type_count, conditions
+    )
+    power = torch.tensor([v[1] for v in ENDURANCE.values()], dtype=full.dtype).expand(
+        B, type_count, conditions
+    )
     zeros = torch.zeros_like(full)
     ship_type, airframe, (speed, energy, stick, power, zeros) = _grid(
         types, cruise, full, stick, power, zeros
@@ -234,17 +249,17 @@ def endurance(rules: Rules, types: ShipTypes) -> dict[str, torch.Tensor]:
         state = replace(state, gun_cooldown=(state.gun_cooldown - 1).clamp_min(0))
         if refused.isfinite().all():
             break
-    return dict(zip(ENDURANCE, refused.reshape(B, T, C).unbind(-1)))
+    return dict(zip(ENDURANCE, refused.reshape(B, type_count, conditions).unbind(-1)))
 
 
 class Shown(NamedTuple):
-    """The shown quantities, (B, T) unless noted."""
+    """The shown quantities, (B, types) unless noted."""
 
     corner_speed: torch.Tensor
     peak_turn_rate: torch.Tensor  # the instantaneous peak over speed, full stick
     peak_turn_speed: torch.Tensor
     minimum_radius: torch.Tensor
-    datum: Settled  # (B, T, 3) at the stick levels 0.4, 0.75, 1
+    datum: Settled  # (B, types, 3) at the stick levels 0.4, 0.75, 1
     top_speed: torch.Tensor
     endurance: dict
     damage_per_second: torch.Tensor
@@ -290,7 +305,7 @@ P51D = dict(
 
 
 def similarity_inputs(rules: Rules, handles, view: Shown) -> dict[str, torch.Tensor]:
-    """Ours in the P-51D table's terms, (B, T) each."""
+    """Ours in the P-51D table's terms, (B, types) each."""
     return dict(
         top_speed=view.top_speed,
         stall_speed=handles.stall_speed,

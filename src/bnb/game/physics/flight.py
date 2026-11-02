@@ -267,8 +267,8 @@ def kick(
 def nose_frame(ship: Ships):
     """grad ln n rotated into the nose frame (gamma_x, gamma_y)."""
     cos, sin = ship.heading_cos, ship.heading_sin
-    gx, gy = ship.log_index_gradient_x, ship.log_index_gradient_y
-    return cos * gx + sin * gy, cos * gy - sin * gx
+    gradient_x, gradient_y = ship.log_index_gradient_x, ship.log_index_gradient_y
+    return cos * gradient_x + sin * gradient_y, cos * gradient_y - sin * gradient_x
 
 
 def flight_tick(

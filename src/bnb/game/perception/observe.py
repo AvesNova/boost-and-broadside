@@ -134,10 +134,10 @@ def perceive(rules: Rules, state: State) -> tuple[State, Obs, Privileged]:
         [fields.x, fields.y, fields.radius, fields.band_width, fields.level.float()], -1
     )
     arena = environment(rules, B, device)
-    tick = match.episode_tick.float()
+    episode_progress = match.episode_tick.float() / arena.episode_ticks.float()
     global_row = torch.stack(
         [
-            tick / arena.episode_ticks.float(),
+            episode_progress,
             arena.arena_radius,
             match.fogged.float(),
             (match.episode_tick == 0).float(),

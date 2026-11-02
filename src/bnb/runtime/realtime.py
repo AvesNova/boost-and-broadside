@@ -11,11 +11,11 @@ from bnb.game import api
 
 
 class Realtime:
-    def __init__(self, cfg: GameConfig, compile: bool = True, fogged: bool = True) -> None:
-        self.rules = api.rules_of(cfg)
+    def __init__(self, config: GameConfig, compile: bool = True, fogged: bool = True) -> None:
+        self.rules = api.rules_of(config)
         self.types = api.ship_types()
-        fog = torch.tensor([fogged])
-        self.state = api.reset(self.rules, self.types, api.uniforms(self.rules, 1), fog)
+        fog_flags = torch.tensor([fogged])
+        self.state = api.reset(self.rules, self.types, api.uniforms(self.rules, 1), fog_flags)
         self.state, self.obs, _ = api.perceive(self.rules, self.state)
         self._tick = (
             torch.compile(self._tick_fn, fullgraph=True, dynamic=False)

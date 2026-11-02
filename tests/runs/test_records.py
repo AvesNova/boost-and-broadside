@@ -84,7 +84,7 @@ def test_run_json_is_rewritten_atomically_and_reopens(tmp_path):
     assert not any(path.name.endswith(".tmp") for path in run.directory.iterdir())
     segment = again.record["segments"][0]
     assert (segment["start_step"], segment["end_step"]) == (0, 128)
-    assert json.loads((run.directory / "config.json").read_text())["num_envs"] == 16
+    assert json.loads((run.directory / "config.json").read_text())["environments"] == 16
 
 
 def test_an_offline_result_records_its_provenance_and_its_policies_by_hash(tmp_path):

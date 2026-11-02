@@ -150,12 +150,12 @@ def _pool_rules(environments: int | None, game: GameConfig, tick_length: float) 
 
 
 def rules_of(
-    config: GameConfig, pools: tuple[Pool, ...] = (), num_envs: int | None = None, **overrides
+    config: GameConfig, pools: tuple[Pool, ...] = (), environments: int | None = None, **overrides
 ) -> Rules:
     """The rules for a config's sizes and games; `overrides` replace defaults.
 
     Without pools the batch plays the config's game, at any batch size. With pools (and
-    num_envs, their batch size) each pool plays its own (`pool_game`), in pool order;
+    environments, their batch size) each pool plays its own (`pool_game`), in pool order;
     adjacent pools of the same game merge, and if one game remains it covers the whole
     batch as without pools.
     """
@@ -163,7 +163,7 @@ def rules_of(
     if not pools:
         games = (_pool_rules(None, config, tick_length),)
     else:
-        sizes = environments_per_pool(pools, num_envs)
+        sizes = environments_per_pool(pools, environments)
         merged: list[PoolRules] = []
         for size, pool in zip(sizes, pools):
             game = _pool_rules(size, pool_game(config, pool), tick_length)

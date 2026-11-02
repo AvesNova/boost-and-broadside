@@ -103,26 +103,30 @@ def stack_prefix(tree, length: int):
 
 def _fired(game):
     for tick, record in enumerate(game):
-        for env, ship in record["fired"].nonzero().tolist():
-            yield tick, env, ship, record["slot"][env, ship].item()
+        for environment, ship in record["fired"].nonzero().tolist():
+            yield tick, environment, ship, record["slot"][environment, ship].item()
 
 
 def test_a_resimulated_shot_is_the_bullet_the_game_fires(played):
     capture, _, shots, game, _ = played
     compared = 0
-    for tick, env, ship, slot in _fired(game):
-        launch = torch.utils._pytree.tree_map(lambda x: x[tick, env, ship], capture.launch)
+    for tick, environment, ship, slot in _fired(game):
+        launch = torch.utils._pytree.tree_map(lambda x: x[tick, environment, ship], capture.launch)
         for age in range(12):
-            if tick + age >= TICKS or not shots.age_valid[tick, env, ship, age]:
+            if tick + age >= TICKS or not shots.age_valid[tick, environment, ship, age]:
                 break
             record = game[tick + age]
             expected = _frame(
                 launch,
-                *(record[name][env, ship, slot] for name in ("x", "y", "velocity_x", "velocity_y")),
+                *(
+                    record[name][environment, ship, slot]
+                    for name in ("x", "y", "velocity_x", "velocity_y")
+                ),
             )
-            assert torch.equal(shots.snapshots[tick, env, ship, age, :4], expected)
+            assert torch.equal(shots.snapshots[tick, environment, ship, age, :4], expected)
             assert torch.equal(
-                shots.snapshots[tick, env, ship, age, 4], record["index"][env, ship, slot]
+                shots.snapshots[tick, environment, ship, age, 4],
+                record["index"][environment, ship, slot],
             )
             compared += 1
     assert compared > 10_000
@@ -133,18 +137,18 @@ def test_a_resimulated_hit_is_the_games_hit_with_its_side(played):
     a hit, on the side the re-simulation names (the game's damage matrix says whom)."""
     _, _, shots, game, _ = played
     sides = {HIT_ENEMY: 0, HIT_ALLY: 0}
-    for tick, env, ship, slot in _fired(game):
-        valid = shots.age_valid[tick, env, ship]
-        if not shots.valid[tick, env, ship]:
+    for tick, environment, ship, slot in _fired(game):
+        valid = shots.age_valid[tick, environment, ship]
+        if not shots.valid[tick, environment, ship]:
             continue
         last = int(valid.nonzero().max())
         for age in range(last + 1):
-            game_hit = bool(game[tick + age]["hit"][env, ship, slot])
-            ends_in_hit = age == last and shots.hit[tick, env, ship] != HIT_NONE
-            assert game_hit == ends_in_hit, (tick, env, ship, age)
-        side = int(shots.hit[tick, env, ship])
+            game_hit = bool(game[tick + age]["hit"][environment, ship, slot])
+            ends_in_hit = age == last and shots.hit[tick, environment, ship] != HIT_NONE
+            assert game_hit == ends_in_hit, (tick, environment, ship, age)
+        side = int(shots.hit[tick, environment, ship])
         if side != HIT_NONE:
-            damage = game[tick + last]["damage"][env, ship]
+            damage = game[tick + last]["damage"][environment, ship]
             team = slice(0, OWN) if ship < OWN else slice(OWN, None)
             ally = damage[team].sum() > 0
             enemy = damage.sum() - damage[team].sum() > 0
@@ -165,24 +169,24 @@ def test_a_flight_an_episode_end_cuts_short_is_invalid(played):
     capture, done, shots, _, _ = played
     cut = hit_first = 0
     for tick in range(TICKS - 12):
-        for env in range(ENVS):
-            ends = done[tick : tick + 11, env].nonzero()
+        for environment in range(ENVS):
+            ends = done[tick : tick + 11, environment].nonzero()
             if not ends.numel():
                 continue
             end = tick + int(ends[0])  # the episode ends after this tick
             for ship in range(2 * OWN):
-                if not capture.alive[tick, env, ship]:
-                    assert not shots.valid[tick, env, ship]  # a dead ship fires nothing
+                if not capture.alive[tick, environment, ship]:
+                    assert not shots.valid[tick, environment, ship]  # a dead ship fires nothing
                     continue
                 last_age = (
-                    int(shots.age_valid[tick, env, ship].nonzero().max())
-                    if shots.valid[tick, env, ship]
+                    int(shots.age_valid[tick, environment, ship].nonzero().max())
+                    if shots.valid[tick, environment, ship]
                     else None
                 )
                 if last_age is None:
                     cut += 1
                 else:
-                    assert tick + last_age <= end and shots.hit[tick, env, ship] != HIT_NONE
+                    assert tick + last_age <= end and shots.hit[tick, environment, ship] != HIT_NONE
                     hit_first += 1
     assert cut > 0 and hit_first > 0
 

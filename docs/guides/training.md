@@ -79,7 +79,7 @@ The crossed pools, game by game so that each game is one contiguous slice:
 <!-- generated: mixed-pools -->
 
 `bnb.contracts.pools.environment_multiple` gives the smallest batch the pools split into;
-every valid `--num-envs` is a multiple of it.
+every valid `--environments` is a multiple of it.
 
 <!-- runnable -->
 ```python

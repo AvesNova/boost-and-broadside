@@ -34,12 +34,12 @@ PARTS = ("ships", "fields", "globals", "zones")
 COUNTERS = ("shots", "hits", "deaths", "resets")
 
 
-def _assign(dst, src) -> None:
+def _assign(target, source) -> None:
     """Copy a pytree of tensors into the matching carry buffers. A leaf a stage passed
     through unchanged (the buffer itself) is not copied onto itself."""
-    for d, s in zip(_tensors(dst), _tensors(src), strict=True):
-        if d is not s:
-            d.copy_(s)
+    for target_leaf, source_leaf in zip(_tensors(target), _tensors(source), strict=True):
+        if target_leaf is not source_leaf:
+            target_leaf.copy_(source_leaf)
 
 
 def _tensors(tree) -> list[torch.Tensor]:
@@ -59,14 +59,14 @@ class Rollout:
 
     def __init__(
         self,
-        cfg: GameConfig,
+        config: GameConfig,
         pools: tuple[Pool, ...],
         controllers: dict[str, Controller],
         learner: str,
-        num_envs: int,
+        environments: int,
         length: int,
         device: torch.device,
-        compile: bool = True,
+        compiled: bool = True,
         graph_ticks: int = 32,
         reward_config: rewards.RewardConfig | None = None,
         shards: int = 1,
@@ -74,11 +74,15 @@ class Rollout:
         staggered: bool = True,
         extra_reads: tuple[str, ...] = (),
     ) -> None:
-        self.rules = api.rules_of(cfg, pools, num_envs)
+        self.rules = api.rules_of(config, pools, environments)
         self.reward_config = reward_config or rewards.RewardConfig()
-        self.T, self.S, self.N = cfg.num_teams, cfg.ships_per_team, cfg.num_ships
-        self.B, self.length, self.device = num_envs, length, device
-        self.lineup = Lineup(pools, num_envs, device)
+        self.teams, self.ships_per_team, self.ships = (
+            api.TEAMS,
+            config.ships_per_team,
+            config.num_ships,
+        )
+        self.environments, self.length, self.device = environments, length, device
+        self.lineup = Lineup(pools, environments, device)
         missing = set(self.lineup.names) - set(controllers)
         if missing:
             raise ValueError(f"pools name controllers {missing} that were not given")
@@ -95,12 +99,12 @@ class Rollout:
         stages = (self._act, self._advance, self._resolve, self._perceive)
         self.stages = (
             tuple(torch.compile(f, fullgraph=True, dynamic=False) for f in stages)
-            if compile
+            if compiled
             else stages
         )
         learner_step = self.controllers[learner].step
         self._evaluate = (
-            torch.compile(learner_step, fullgraph=True, dynamic=False) if compile else learner_step
+            torch.compile(learner_step, fullgraph=True, dynamic=False) if compiled else learner_step
         )
         self.graph: torch.cuda.CUDAGraph | None = None
         self._written: dict = {}  # ring slot or segment buffer -> the copy that reads it
@@ -108,18 +112,23 @@ class Rollout:
     # ---- carry ------------------------------------------------------------------------
 
     def _initial_carry(self, staggered: bool) -> dict:
-        rules, B, device = self.rules, self.B, self.device
+        rules, B, device = self.rules, self.environments, self.device
         types = api.ship_types(device)
-        st = api.reset(rules, types, api.uniforms(rules, B, device), self.lineup.fogged)
+        state = api.reset(rules, types, api.uniforms(rules, B, device), self.lineup.fogged)
         if staggered:
             episode_ticks = environment(rules, B, device).episode_ticks
-            st = api.start_clocks(
-                st, torch.randint(0, 1 << 30, (B,), device=device) % episode_ticks
+            state = api.start_clocks(
+                state, torch.randint(0, 1 << 30, (B,), device=device) % episode_ticks
             )
-        st, obs, truth = api.perceive(rules, st)
-        views, ring, S, N = self.lineup.rows(self.learner), self.ring, self.S, self.N
+        state, obs, truth = api.perceive(rules, state)
+        views, ring, S, N = (
+            self.lineup.rows(self.learner),
+            self.ring,
+            self.ships_per_team,
+            self.ships,
+        )
         view_shape = {part: getattr(obs, part).shape[2:] for part in PARTS}
-        launch = launch_state(st.ships)
+        launch = launch_state(state.ships)
         flags = dict(dtype=torch.bool, device=device)
         records = dict(
             obs=Obs(
@@ -161,20 +170,20 @@ class Rollout:
         if controller_carry[self.learner] is not None:
             segment["initial_carry"] = controller_carry[self.learner]
         carry = dict(
-            state=st,
+            state=state,
             types=types,
             obs={part: getattr(obs, part) for part in PARTS},
             truth=truth.ships,
-            seat=torch.randint(0, self.T, (B,), device=device),
-            actions=torch.zeros((B, self.N, 3), dtype=torch.int32, device=device),
-            spread=torch.zeros((B, self.N, 2), device=device),
+            seat=torch.randint(0, self.teams, (B,), device=device),
+            actions=torch.zeros((B, self.ships, 3), dtype=torch.int32, device=device),
+            spread=torch.zeros((B, self.ships, 2), device=device),
             uniforms=torch.zeros((B, rules.tick_uniform_count), device=device),
-            sweep=api.sweep_like(st),
-            ledger=rewards.blank_ledger(B, self.N, device),
-            ctrl=controller_carry,
+            sweep=api.sweep_like(state),
+            ledger=rewards.blank_ledger(B, self.ships, device),
+            controllers=controller_carry,
             records=records,
             segment=segment,
-            t_idx=torch.zeros(1, dtype=torch.long, device=device),
+            segment_tick=torch.zeros(1, dtype=torch.long, device=device),
             counters=torch.zeros(len(COUNTERS), dtype=torch.int64, device=device),
         )
         return _clone(carry)
@@ -185,28 +194,28 @@ class Rollout:
         values, outcome and replay, shaped (ring, R, ...). Their shapes come from one probe
         decision on the learner's first row only."""
         ring, views, device = self.ring, self.lineup.rows(self.learner), self.device
-        environments = self.lineup.env[self.learner][:1]
+        environments = self.lineup.environments[self.learner][:1]
         team = self.lineup.role[self.learner][:1]
         view = Obs(**{part: getattr(obs, part)[environments, team] for part in PARTS})
         reset = view.globals[..., GLOBAL["reset"]] > 0.5
         one_row = _pytree.tree_map_only(torch.Tensor, lambda x: x[:1].clone(), learner_carry)
-        _, _, out = self.controllers[self.learner].step(one_row, view, reset)
-        out = dict(values=out.values, outcome=out.outcome, replay=out.replay)
+        _, _, outputs = self.controllers[self.learner].step(one_row, view, reset)
+        outputs = dict(values=outputs.values, outcome=outputs.outcome, replay=outputs.replay)
         return {
             name: _pytree.tree_map_only(
                 torch.Tensor,
                 lambda x: torch.zeros((ring, views) + x.shape[1:], dtype=x.dtype, device=device),
                 value,
             )
-            for name, value in out.items()
+            for name, value in outputs.items()
             if value is not None
         }
 
     def _team(self, name: str, seat: torch.Tensor) -> torch.Tensor:
-        return (self.lineup.role[name] + seat[self.lineup.env[name]]) % self.T
+        return (self.lineup.role[name] + seat[self.lineup.environments[name]]) % self.teams
 
     def _view(self, carry: dict, name: str, parts: tuple[str, ...]) -> Obs:
-        environments, team = self.lineup.env[name], self._team(name, carry["seat"])
+        environments, team = self.lineup.environments[name], self._team(name, carry["seat"])
         return Obs(
             **{
                 part: carry["obs"][part][environments, team] if part in parts else None
@@ -217,8 +226,10 @@ class Rollout:
     def _rows(self, carry: dict, values: torch.Tensor) -> torch.Tensor:
         """Per-ship values (B, N, ...) in sim order, as the learner's views' rows (R, N, ...)."""
         name = self.learner
-        order = view_order(self.S, self.device)[self._team(name, carry["seat"])]  # (R, N)
-        rows = values[self.lineup.env[name]]
+        order = view_order(self.ships_per_team, self.device)[
+            self._team(name, carry["seat"])
+        ]  # (R, N)
+        rows = values[self.lineup.environments[name]]
         return rows.gather(
             1, order.reshape(order.shape + (1,) * (rows.dim() - 2)).expand(rows.shape)
         )
@@ -226,47 +237,50 @@ class Rollout:
     # ---- stages -----------------------------------------------------------------------
 
     def _slot(self, carry: dict) -> torch.Tensor:
-        return carry["t_idx"] % self.ring
+        return carry["segment_tick"] % self.ring
 
     def _act(self, carry: dict) -> None:
-        B, T, S, device = self.B, self.T, self.S, self.device
+        B, T, S, device = self.environments, self.teams, self.ships_per_team, self.device
         actions = torch.zeros((B, T, S, 3), dtype=torch.int32, device=device)
         slot, records = self._slot(carry), carry["records"]
-        for name, ctrl in self.controllers.items():
-            reads = self.reads if name == self.learner else ctrl.reads
+        for name, controller in self.controllers.items():
+            reads = self.reads if name == self.learner else controller.reads
             view = self._view(carry, name, reads + ("globals",))
             reset = view.globals[..., GLOBAL["reset"]] > 0.5
-            action, new_carry, out = ctrl.step(carry["ctrl"][name], view, reset)
+            action, new_carry, outputs = controller.step(carry["controllers"][name], view, reset)
             if new_carry is not None:
-                _assign(carry["ctrl"][name], new_carry)
+                _assign(carry["controllers"][name], new_carry)
             packed = action.packed()
             actions = actions.index_put(
-                (self.lineup.env[name], self._team(name, carry["seat"])), packed
+                (self.lineup.environments[name], self._team(name, carry["seat"])), packed
             )
             if name == self.learner:
                 for part in self.reads:
                     getattr(records["obs"], part).index_copy_(0, slot, getattr(view, part)[None])
                 ships = carry["obs"]["ships"][
-                    self.lineup.env[name], self._team(name, carry["seat"])
+                    self.lineup.environments[name], self._team(name, carry["seat"])
                 ]
                 alive = ships[..., SHIP["alive"]] > 0.5
                 records["alive"].index_copy_(0, slot, alive[None])
                 waiting = ships[:, :S, SHIP["respawn_wait"]] > 0.0
                 records["valued"].index_copy_(0, slot, (alive[:, :S] | waiting)[None])
                 if (
-                    out.log_probability is not None
+                    outputs.log_probability is not None
                 ):  # a scripted "learner" (baselines) records no policy
-                    records["log_probability"].index_copy_(0, slot, out.log_probability[None])
-                    records["value"].index_copy_(0, slot, out.value[None])
+                    records["log_probability"].index_copy_(0, slot, outputs.log_probability[None])
+                    records["value"].index_copy_(0, slot, outputs.value[None])
                 for part in ("values", "outcome", "replay"):
                     if part in records:
                         for stored, given in zip(
-                            _tensors(records[part]), _tensors(getattr(out, part)), strict=True
+                            _tensors(records[part]), _tensors(getattr(outputs, part)), strict=True
                         ):
                             stored.index_copy_(0, slot, given[None])
-        flat = actions.reshape(B, self.N, 3)
+        flat = actions.reshape(B, self.ships, 3)
         carry["actions"].copy_(flat)
-        environments, team = self.lineup.env[self.learner], self._team(self.learner, carry["seat"])
+        environments, team = (
+            self.lineup.environments[self.learner],
+            self._team(self.learner, carry["seat"]),
+        )
         for stored, given in zip(
             _tensors(records["action"]),
             _tensors(Action.unpack(self._rows(carry, flat))),
@@ -299,33 +313,42 @@ class Rollout:
         _assign(carry["sweep"], sweep)
 
     def _resolve(self, carry: dict) -> None:
-        st, ev = api.resolve(
+        state, events = api.resolve(
             self.rules, carry["types"], carry["state"], carry["sweep"], carry["uniforms"]
         )
-        _assign(carry["state"], st)
-        team = torch.arange(self.N, device=self.device) // self.S
-        reward, ledger = rewards.reward_step(self.reward_config, carry["ledger"], ev, team)
+        _assign(carry["state"], state)
+        team = torch.arange(self.ships, device=self.device) // self.ships_per_team
+        reward, ledger = rewards.reward_step(self.reward_config, carry["ledger"], events, team)
         _assign(carry["ledger"], ledger)
-        reward = reward.reshape(self.B, self.T, self.S, len(REWARD_LEVELS))
+        reward = reward.reshape(
+            self.environments, self.teams, self.ships_per_team, len(REWARD_LEVELS)
+        )
         name, records, slot = self.learner, carry["records"], self._slot(carry)
-        environments, team = self.lineup.env[name], self._team(name, carry["seat"])
+        environments, team = self.lineup.environments[name], self._team(name, carry["seat"])
         records["reward"].index_copy_(0, slot, reward[environments, team][None])
-        records["done"].index_copy_(0, slot, ev.done[environments][None])
+        records["done"].index_copy_(0, slot, events.done[environments][None])
         # Events.result is team 0's; the other team's is its negation (two teams).
-        result = torch.where(team == 0, ev.result[environments], -ev.result[environments])
+        result = torch.where(team == 0, events.result[environments], -events.result[environments])
         records["result"].index_copy_(0, slot, result[None])
-        redraw = torch.randint(0, self.T, (self.B,), device=self.device)
-        carry["seat"].copy_(torch.where(ev.done, redraw, carry["seat"]))
+        redraw = torch.randint(0, self.teams, (self.environments,), device=self.device)
+        carry["seat"].copy_(torch.where(events.done, redraw, carry["seat"]))
         carry["counters"].add_(
-            torch.stack([ev.fired.sum(), (ev.damage > 0).sum(), ev.died.sum(), ev.done.sum()])
+            torch.stack(
+                [
+                    events.fired.sum(),
+                    (events.damage > 0).sum(),
+                    events.died.sum(),
+                    events.done.sum(),
+                ]
+            )
         )
 
     def _perceive(self, carry: dict) -> None:
-        st, obs, truth = api.perceive(self.rules, carry["state"])
-        carry["state"].match.ticks_since_seen.copy_(st.match.ticks_since_seen)
+        state, obs, truth = api.perceive(self.rules, carry["state"])
+        carry["state"].match.ticks_since_seen.copy_(state.match.ticks_since_seen)
         _assign(carry["obs"], {part: getattr(obs, part) for part in PARTS})
         carry["truth"].copy_(truth.ships)
-        carry["t_idx"].add_(1)
+        carry["segment_tick"].add_(1)
 
     # ---- checkpoints --------------------------------------------------------------------
 
@@ -387,14 +410,14 @@ class Rollout:
         """Advance `length` ticks into the store's shard `shard`; returns that shard as a
         Trajectory (views of the store, valid until the shard is written again)."""
         carry, records, segment = self.carry, self.carry["records"], self.carry["segment"]
-        carry["t_idx"].zero_()
+        carry["segment_tick"].zero_()
         self._reusable("segment")
         if "initial_carry" in segment:
-            _assign(segment["initial_carry"], carry["ctrl"][self.learner])
+            _assign(segment["initial_carry"], carry["controllers"][self.learner])
         cuda = self.device.type == "cuda"
         if cuda and self.graph is None:
             self._capture()
-            carry["t_idx"].zero_()
+            carry["segment_tick"].zero_()
         for start in range(0, self.length, self.block):
             slots = slice(start % self.ring, start % self.ring + self.block)
             self._reusable(slots.start)
@@ -419,7 +442,7 @@ class Rollout:
     def _final_truth(self, carry: dict) -> torch.Tensor:
         """The truth of the observation after the last step, in the learner's views' rows."""
         name = self.learner
-        return carry["truth"][self.lineup.env[name], self._team(name, carry["seat"])]
+        return carry["truth"][self.lineup.environments[name], self._team(name, carry["seat"])]
 
     def trajectory(self, shard: int) -> Trajectory:
         """Shard `shard` of the store as a Trajectory, (L, R, ...)."""
@@ -439,8 +462,8 @@ class Rollout:
         the Outputs (values, outcome) of the next segment's first observation."""
         view = self._view(self.carry, self.learner, self.reads + ("globals",))
         reset = view.globals[..., GLOBAL["reset"]] > 0.5
-        _, _, out = self._evaluate(self.carry["ctrl"][self.learner], view, reset)
-        return out
+        _, _, outputs = self._evaluate(self.carry["controllers"][self.learner], view, reset)
+        return outputs
 
     def counters(self) -> dict[str, int]:
         return dict(zip(COUNTERS, self.carry["counters"].tolist()))
