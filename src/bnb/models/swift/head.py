@@ -144,7 +144,8 @@ def _backward(ctx, grad_out):
     grad_out = grad_out.to(x.dtype).contiguous()
     grad_hidden, activation, partial = fused_head_backward(
         x, first_weight, first_bias, norm_weight, last_weight, grad_out)
-    return (grad_hidden @ first_weight, grad_hidden.t() @ x,
+    grad_x = grad_hidden @ first_weight if ctx.needs_input_grad[0] else None  # not for inputs
+    return (grad_x, grad_hidden.t() @ x,
             grad_hidden.float().sum(0), partial.sum(0), grad_out.t() @ activation,
             grad_out.float().sum(0))
 
