@@ -41,7 +41,8 @@ runs/2026-11-02-mixed-purple-pumpkin/
   the start and end steps and times, the run-time overrides it applied, and a rewind. The
   file is rewritten atomically (a flushed temporary file renamed over it) on every change.
 - **A stale run:** a process killed outright leaves `running`. `bnb runs` shows such a run
-  as `running (stale)` when its process id is not alive on this host.
+  as `running (stale)` when its process id is not alive on this host. A resume of a run
+  whose process is alive on this host is refused, so two processes never write one run.
 - **Stopping:** Ctrl-C finishes the current update, writes a checkpoint and marks the run
   `stopped`; an exception marks it `failed` before it propagates
   (`bnb.runs.session.train`).
@@ -63,9 +64,10 @@ other languages read it.
   and the step counters. `bnb.runs.checkpoint.load_policy` reads the policy part of
   either kind.
 - **Writes are atomic** (`bnb.runs.checkpoint.write_checkpoint`): the files go into
-  `<name>.tmp/`, each is flushed, the directory is renamed to `<name>/`, and the parent
-  directory is flushed. A crash at any point leaves no half-written checkpoint, and a
-  checkpoint is never overwritten.
+  `<name>.tmp/`, each file and then the directory are flushed, the directory is renamed to
+  `<name>/`, and the parent directory is flushed. After a crash, `<name>/` is either
+  complete or absent; a leftover `<name>.tmp/` is never listed as a checkpoint and is
+  removed by the next write. A checkpoint is never overwritten.
 - **Loading checks** the format version, every file's hash, the schema versions and the
   model's version against the code's, and fails with a message naming both sides.
 
@@ -78,7 +80,10 @@ the fastest muzzle speed, the smallest hit radius, the number of ship types and 
 code's ranges); `bnb.models.yemong.model.yemong_build` computes them from a game. Loading
 rebuilds the model from the file's record, never from the current game or the current
 defaults, so a model saved before a ship-card change keeps the code ranges it learned with,
-and models of two widths load side by side in one process.
+and models of two widths load side by side in one process. A resume, a fork and a warm
+start build the run's model the same way (`bnb.runs.checkpoint.run_build`): the record's
+architecture, with the run's precision; the numbers the run's game derives must equal the
+record's, or the start is refused.
 
 - **The registry** (`bnb.runs.registry.MODELS`) maps a model's name (`yemong`,
   `relational`, `mlp`) to its class. Loading goes by that name, so renaming a class or a
@@ -101,15 +106,19 @@ and models of two widths load side by side in one process.
 | Start | Loads | Settings |
 |---|---|---|
 | `--resume RUN` | everything: model, league slot, optimizer, return scale, generators, rollout carry, counters | the checkpoint's own, plus the run-time overrides |
-| `--from RUN` (a fork) | model, league slot, optimizer, return scale, counters | the code's current settings plus the command line; a new run |
+| `--from RUN` (a fork) | model, league slot, optimizer, return scale, environment steps | the code's current settings plus the command line; a new run |
 | `--init-from POLICY` (a warm start) | weights and return scale; a fresh optimizer | the command line; a new run |
 
 - **A resume** (`bnb.runs.checkpoint.load_training`) may change only the fields in
   `bnb.runs.checkpoint.OVERRIDABLE` (the update budget, the learning rate and its
-  warm-up, the loss coefficients and the entropy) and the checkpoint cadence. Anything
-  else given with `--resume` fails and points to `--from`. Each override is recorded in the
-  new segment. A resume on another commit goes ahead with a warning, and the segment
-  records the commit.
+  warm-up, the loss coefficients and the entropy, the reward weights, and the precision
+  and micro-batch rows, which change speed but not shapes) and the checkpoint cadence.
+  Anything else given with `--resume` fails and points to `--from`. Each override is
+  recorded in the new segment. The update budget is the run's total. A resume on another
+  commit goes ahead with a warning, and the segment records the commit.
+- **A fork's** update count starts at zero, so `--updates` is the number of updates the
+  fork trains; its environment-step count goes on from the parent's, so the learning
+  rate's warm-up does not restart.
 - **A fork** (`bnb.runs.checkpoint.fork_training`) and **a warm start**
   (`bnb.runs.checkpoint.warm_start`) refuse unless the model's name, version and build
   record match what the run builds. A new architecture is a new run. The warm start is
@@ -133,10 +142,14 @@ and models of two widths load side by side in one process.
 A training checkpoint is written every N environment steps. Without
 `--checkpoint-every`, N is about 30 minutes at the run's throughput, measured on its
 second update (the first compiles) and recorded in `run.json`{.plain}. The kept checkpoints
-follow the league's rule (`bnb.runs.records.retained`): the newest `RECENT`, the one
-nearest each age 8, 16, 32, … checkpoints back, and the final one. A checkpoint once
-deleted cannot return, so the older history keeps a few checkpoints at roughly doubling
-ages, always including the oldest. A rewind (`--resume RUN --at STEP`) moves the newer
+follow the league's rule (`bnb.runs.records.retained`). Number the checkpoints 0, 1, 2, …
+in the order written (a stop's off-cadence checkpoint counts too); with n the newest and
+age = n − i, checkpoint i is kept if its age is under `RECENT`, or if i is divisible by
+2^⌊log₂ age⌋, and the final one is always kept. A multiple of 2^(j+1) is a multiple of
+2^j, so a checkpoint kept now was kept at every earlier step, and each band of ages
+[2^j, 2^(j+1)) from `RECENT` on holds exactly one checkpoint: about `RECENT` + log₂ n in
+all. A deleted checkpoint is first renamed `step_<step>.deleting`, which the listing
+ignores, then removed. A rewind (`--resume RUN --at STEP`) moves the newer
 checkpoints into `checkpoints/rewound_<segment>/`, where they are kept.
 
 ## The memory probe

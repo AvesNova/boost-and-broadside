@@ -123,14 +123,20 @@ def _CLASS_LIKE() -> set[str]:
 
 
 def _options(cls) -> set[str]:
-    """A command dataclass's flags: each field's, or the name `tyro.conf.arg` gives it."""
+    """A command dataclass's flags: each field's, or the name `tyro.conf.arg` gives it; a
+    positional field (`tyro.conf.Positional`) has none."""
     import typing
 
+    import tyro
+
+    positional = typing.get_args(tyro.conf.Positional[int])[1]
     hints = typing.get_type_hints(cls, include_extras=True)
     options = set()
     for field in dataclasses.fields(cls):
-        names = [getattr(meta, "name", None) for meta in getattr(hints[field.name],
-                                                                 "__metadata__", ())]
+        metadata = getattr(hints[field.name], "__metadata__", ())
+        if positional in metadata:
+            continue
+        names = [getattr(meta, "name", None) for meta in metadata]
         name = next((name for name in names if name), field.name)
         options.add("--" + name.replace("_", "-"))
     return options

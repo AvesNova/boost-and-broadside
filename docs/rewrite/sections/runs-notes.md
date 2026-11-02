@@ -19,6 +19,9 @@ are in `runs.md`.
     types))`, `Relational(RelationalBuild(config, ships_per_team, num_ships))`.
 - **Done:** every spec item, each with tests under `tests/runs/`; the docs; origin/v2
   merged (df04ab99).
+- **Fix round (after the 7.5/10 review): done.** All ten fixes landed with their tests
+  (see "Fix round" at the end); full suite passed under the bench lock; origin/v2 merged;
+  roadmap status `merged`.
 - **Next:** the coordinator's quiet-machine measurements (acceptance 12, provisional
   below); the requests at the end.
 
@@ -86,27 +89,26 @@ are in `runs.md`.
    not inside `load_training`: scaffold rule 3 keeps process-wide state out of library
    code. It is the one process-wide effect of a resume.
 5. **`--set path=value`** is the CLI's generic setting of `TrainConfig` fields (JSON
-   values). On `--resume` only `OVERRIDABLE` paths (learning rate, warm-up, loss
-   coefficients, entropy), `--updates` and `--checkpoint-every` are accepted; every other
-   option fails and points to `--from`. The spec's "logging and diagnostic cadence" does
-   not exist yet (section 9). Fields neither structural nor listed (precision,
-   micro-batch rows, shards, old log-probabilities, league cadence, seed) are fixed on
-   resume (most literal reading).
-6. **`updates` is the run's total budget,** so a plain resume continues to it.
-7. **A fork keeps the step counts and the league slot** besides the model, optimizer and
-   return scale (runs.md lists the league; a loaded optimizer with the warm-up restarted
-   would be inconsistent). It does not load the carry or generators (the sizes may
-   differ).
+   values; fields inside tuples, such as `pools`, cannot be set). On `--resume` only
+   `OVERRIDABLE` paths (learning rate, warm-up, loss coefficients, entropy, reward
+   weights, precision, micro-batch rows), `--updates`, `--precision`,
+   `--micro-batch-rows` and `--checkpoint-every` are accepted; every other option fails
+   and points to `--from`. The spec's "logging and diagnostic cadence" does not exist yet
+   (section 9). Shards, old log-probabilities, league cadence and seed stay fixed.
+6. **`updates` is the run's total budget,** so a plain resume continues to it; a fork's
+   update count starts at zero, so for a fork `--updates` is what it trains.
+7. **A fork keeps the environment-step count and the league slot** besides the model,
+   optimizer and return scale (runs.md lists the league; a loaded optimizer with the
+   warm-up restarted would be inconsistent). It does not load the carry or generators
+   (the sizes may differ), and its update count starts at zero.
 8. **The default cadence is measured in the run:** about 30 minutes at the throughput of
    the segment's second update (the first compiles), in whole updates, recorded in
    run.json as `checkpoint_every`. Until it is measured no periodic checkpoint is written.
    A per-preset table of measured throughputs would go stale per machine.
-9. **Retention (author's update):** newest `RECENT` (8), the one nearest each age 8, 16,
-   32, … checkpoints back (age = step gap over the cadence), and the final one. Read
-   literally, every age beyond the oldest is nearest the oldest, so the oldest is always
-   kept. Applied after each checkpoint, a deleted one cannot come back, so the history has
-   gaps: at 300 checkpoints the older ages kept are 8, 19, 75 and 299. If the league wants
-   an evenly geometric history, a stable rule (by index bits) would need a spec change.
+9. **Retention (the coordinator's rule, fix round):** by ordinal i (order written), with
+   age = n − i: keep age < `RECENT` (8), or i divisible by 2^floor(log2(age)), and the
+   final one. Stable, one checkpoint per doubling band. The ordinals live in run.json
+   (`checkpoint_ordinals`); `retained` takes ordinals only, for the league's snapshots too.
 10. **A rewind** (`--resume RUN --at STEP`) moves the newer checkpoints into
     `checkpoints/rewound_<segment>/` (kept, outside the retention), so the run can write
     those steps again; the segment records `rewound_from`.
@@ -212,10 +214,11 @@ another agent's process held 4.2 GB; it passed in the locked rerun.
    no such constant. Files record the `GameConfig` and the ship card, and the build record
    catches what Yemong reads. Proposal: `bnb.game.VERSION` (or the `Events` schema
    version) for ratings keys.
-2. **`TrainConfig` has no model config or ship card.** The trainer builds Yemong with
-   `YemongConfig` defaults (apart from bf16) and the default card. A resume refuses when
-   the code's build or card differs from the checkpoint's; a run with another width or
-   card needs `TrainConfig` fields for them (section 8 or the cleanup pass).
+2. **`TrainConfig` has no model config or ship card.** A new run builds Yemong with
+   `YemongConfig` defaults (apart from bf16) and the default card. Resume, fork and warm
+   start build from the checkpoint's record (fix round), so a changed default no longer
+   blocks them; a new run with another width or card still needs `TrainConfig` fields for
+   them (section 8 or the cleanup pass).
 3. **GPU determinism beyond the tests.** The game's damage uses `scatter_add` (float
    atomics, `bnb.game.physics.combat`) and Yemong's density counts use `scatter_add_`.
    When two bullets hit one ship in one tick, the sum's order can vary between processes.
@@ -228,8 +231,8 @@ another agent's process held 4.2 GB; it passed in the locked rerun.
    a host tensor inside the graph); it predates this section.
 6. **The skeleton MLP** is registered; when the cleanup pass deletes it, its
    compatibility entry goes too.
-7. **Overridable on resume:** confirm whether `micro_batch_rows` (memory only, same
-   result) and `precision` should be allowed.
+7. **Overridable on resume:** `micro_batch_rows` and `precision` are allowed (the
+   coordinator's decision, fix round).
 
 ## Size
 
@@ -240,3 +243,93 @@ another agent's process held 4.2 GB; it passed in the locked rerun.
 | `src/bnb` in total, against the branch point 3395b218 | +1552 / -57 |
 | of which outside `bnb.runs` and the CLI (models, runtime) | about +110 / -40 |
 | tests (`tests/runs/` 1007, call sites, docs check) | +1193 / -25 |
+
+## Fix round
+
+The coordinator's decisions on the review (7.5/10), each with the test that guards it.
+All under `tests/runs/` unless named.
+
+1. **Retention by ordinal, stable.** `records.retained(ordinals, final)`: age < 8, or i
+   divisible by 2^floor(log2(age)), plus the final. Run keeps `checkpoint_ordinals` in
+   run.json (a checkpoint whose run.json write a crash lost gets the next ordinal, in step
+   order; a rewind drops the set-aside ones). Guards:
+   `test_records.py::test_the_retention_applied_after_every_write_is_stable_with_one_checkpoint_per_band`
+   (2,000 writes: each band from 8 holds exactly one, count ≤ 8 + log2 n, newest 8 and
+   final kept), `..._keeps_the_newest_eight_one_per_doubling_band_and_the_final`,
+   `..._the_run_keeps_its_checkpoints_by_ordinal_and_deletes_by_renaming`. Broken by hand
+   (exponent off by one): both rule tests fail. Explanation page states the exact rule.
+2. **A fork's budget counts from the fork.** `fork_training` sets `updates_done = 0`;
+   environment steps kept. Guards: `test_cli.py::test_a_fork_is_a_new_run_naming_its_parent_that_trains_its_own_updates`
+   (the guide's example, `--set learner.entropy=-0.005`, from a 3-update parent with
+   `--updates 2`: trains 2, finished), and the fork assertion in
+   `test_training_checkpoints.py::test_a_fork_takes_the_model_optimizer_and_return_scale_but_not_the_carry`.
+   Broken by hand: both fail. The guide's example now passes `--updates`.
+3. **A resume uses only what the checkpoint holds.**
+   - `train.model_build(config, architecture)` and `Trainer(config, device, build)`;
+     `checkpoint.run_build` gives resume, fork and warm start the record's architecture
+     with the run's precision, and refuses when the numbers the game derives differ (or
+     another model). Guard: `test_a_resume_builds_the_model_from_the_checkpoint_not_the_code_defaults`
+     (a `value_bins=41` model resumes with its own build; broken by hand: fails).
+   - `RewardConfig` is `TrainConfig.reward`: saved, restored, validated. The five level
+     weights are in `OVERRIDABLE` (loss coefficients, recorded); `damage_unit` is fixed.
+     Guard: `test_the_reward_weights_are_saved_and_a_resume_may_change_them`.
+   - A default-filled build field warns `FilledDefaults` on resume and fork: guard
+     `test_a_build_field_the_checkpoint_lacks_is_reported_on_resume_and_fork`. A model
+     version mismatch still refuses (`read_policy`, unchanged tests).
+4. **No resume of a live run:** `Run.live()`; the CLI refuses naming the process. Guard:
+   `test_cli.py::test_a_resume_of_a_live_run_is_refused`.
+5. **Atomic deletion and durability.** Retention renames to `step_N.deleting/` before
+   `rmtree`; `checkpoint_steps` accepts only `step_<digits>`; leftovers (`.deleting`,
+   `.tmp`) are removed after each retention; `write_checkpoint` flushes the `.tmp`
+   directory before the rename. The explanation now claims what this guarantees
+   (`<name>/` complete or absent). Guard: `test_the_run_keeps_its_checkpoints_by_ordinal_and_deletes_by_renaming`.
+6. **The exact-resume test sees more.** `resume_worker.py` copies the league every 3
+   updates with K = 2 (the slot lags at the checkpoint), at a learning rate of 3e-3 and a
+   return-scale floor of 1e-7 (under the tiny games' return spread, about 1e-5, so the
+   scale is live). `test_resume.py::test_the_exact_resume_test_sees_a_damaged_league_slot_or_return_scale`
+   runs the resume with noise added to the league weights after the restore, and with a
+   fresh return scale: both differ from straight through. At the review's settings
+   neither damage showed (floor 1.0 hid the scale; a league perturbed by 1e-3, or set to
+   the model's weights, flipped no sampled action), which is why the settings changed.
+   The fork test compares optimizer values (`_assert_same_optimizer`).
+7. **CLI and loading.**
+   - `SerialiseError` and `MemoryBudgetError` (probe and run) exit with the one-line
+     message: `test_a_checkpoint_with_an_unknown_config_field_is_a_one_line_refusal`,
+     `test_a_probe_over_the_budget_is_a_one_line_refusal`.
+   - One seed: `LearnerConfig.seed` removed; `Learner(..., seed=)` takes
+     `TrainConfig.seed`. Guard: `test_seed_and_set_seed_are_one_setting`.
+   - `--set` help says tuple fields cannot be set.
+   - Optimizer state reassembles through `tree_from_named` (`checkpoint.restore_optimizer`,
+     Adam's layout per parameter): `test_an_optimizer_state_of_another_shape_is_refused`.
+   - `--runs-directory` defaults to `runs/` at `git rev-parse --show-toplevel`, else the
+     current directory: `test_the_runs_directory_is_runs_at_the_repository_root`.
+   - `--precision`, `--micro-batch-rows` may change on resume, recorded:
+     `test_cli.py::test_the_micro_batch_rows_and_the_precision_may_change_on_resume`,
+     `test_training_checkpoints.py::test_the_micro_batch_rows_and_the_precision_may_change_on_resume`
+     (bfloat16: the build's `bfloat16_matmuls` follows the precision).
+8. **Not in scope here.**
+   - W&B run ids, and a resume continuing the same W&B run, come with section 9
+     (diagnostics). The field stays (`wandb_id`, null until section 9's sink sets it);
+     guard: `test_a_resume_carries_the_runs_wandb_id`.
+   - There is no game version constant; policy files record the game config and the ship
+     card instead (request 1).
+9. **Quality and deviations.**
+   - Deviations from the spec's wording, kept: the registry is a dict in
+     `runs/registry.py`, not a decorator (decision 1); constructors take the build record,
+     and `build` is an attribute, not `build_record()`/`from_build_record` (decision 2).
+   - `stage: Callable[[str], None] | None`; `runtime.train` imported at the top of
+     `runs/checkpoint.py` and `runs/session.py`; `cfg` became `config` (in `bnb.runs`,
+     `bnb.cli`, and `Trainer.config` in `bnb.runtime.train`); `Trainer.steps_per_update`
+     is the one definition.
+   - The docs check no longer accepts positional fields as options (`bnb runs --action
+     show`): `tests/docs/test_references.py::test_the_command_check_takes_positional_arguments_but_not_as_options`.
+   - `wandb` stays a core dependency.
+10. origin/v2 merged; section 11 set to `merged` in `docs/roadmap.yml`.
+
+**Changes outside `bnb.runs` in this round:** `bnb.runtime.train` (`model_build`,
+`build_model(build)`, `Trainer(config, device, build)`, `Trainer.config`,
+`steps_per_update`, `TrainConfig.reward`); `bnb.learn.ppo` (`LearnerConfig.seed` removed,
+`Learner(seed=)`); `bnb.cli`; `tests/sections/test_learner.py` (the stream seed);
+`tests/docs/resolve.py`; docs (`explanation/runs.md`, `explanation/learner.md`,
+`guides/resuming-forking-sharing.md`, `guides/training.md`, `guides/designing-a-ship.md`
+reviewed).

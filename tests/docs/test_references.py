@@ -52,6 +52,13 @@ def test_every_bnb_command_uses_real_options(page):
     assert not broken, "\n".join(broken)
 
 
+def test_the_command_check_takes_positional_arguments_but_not_as_options():
+    assert resolve.command("runs show 2026-11-02-mixed-purple-pumpkin") is None
+    assert resolve.command("runs upload RUN --at 268435456 --league") is None
+    assert "has no option --action" in resolve.command("runs --action show")
+    assert "has no option --run" in resolve.command("runs show --run RUN")
+
+
 @pytest.mark.parametrize("page", PAGES, ids=_ids)
 def test_every_python_block_parses_and_its_imports_resolve(page):
     broken = []

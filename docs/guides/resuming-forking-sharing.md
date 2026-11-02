@@ -5,7 +5,7 @@ reviewed: 2026-11-02
 
 # Resuming, forking and sharing runs
 
-Every `bnb train` is a run with a directory under `runs/`. This page is about continuing,
+Every `bnb train` is a run with a directory under `runs/` at the repository root. This page is about continuing,
 branching and sharing runs; [Runs and checkpoints](../explanation/runs.md) explains what is
 saved and why.
 
@@ -44,9 +44,12 @@ uv run --no-sync bnb train --resume 2026-11-02-mixed-purple-pumpkin --at 2684354
 
 - A resume continues from the newest checkpoint with every setting the checkpoint holds,
   exactly where the run stopped.
-- `--updates` is the run's total budget. `--set` may change the fields
-  `bnb.runs.checkpoint.OVERRIDABLE` lists, and `--checkpoint-every` the cadence. Each
-  change is recorded with the step it took effect at.
+- `--updates` is the run's total budget. `--precision`, `--micro-batch-rows` and
+  `--checkpoint-every` may change, and `--set` the fields
+  `bnb.runs.checkpoint.OVERRIDABLE` lists (the learning rate, the warm-up, the loss
+  coefficients, the reward weights). Each change is recorded with the step it took effect
+  at.
+- A run whose process is still alive on this machine does not resume: stop it first.
 - Any other option fails with a message pointing to `--from`.
 - `--at STEP` resumes from an older kept checkpoint; the newer ones move to
   `checkpoints/rewound_<segment>/` and stay there.
@@ -58,13 +61,14 @@ uv run --no-sync bnb train --resume 2026-11-02-mixed-purple-pumpkin --at 2684354
 <!-- not-runnable: needs CUDA and a run -->
 ```bash
 uv run --no-sync bnb train --from 2026-11-02-mixed-purple-pumpkin --preset mixed \
-    --set learner.entropy=-0.005
+    --set learner.entropy=-0.005 --updates 500
 ```
 
 A fork is a new run with the command line's settings that starts from another run's
 checkpoint (the newest, or `--at STEP`): the model, league slot, optimizer, return scale
-and step counts. Its record names the parent. It refuses a model whose build record
-differs (another width, another ship card): that is a new run.
+and environment-step count. `--updates` is the number of updates the fork trains (500
+here), whatever the parent had done. Its record names the parent. It refuses a model whose
+build record differs (another width, another ship card): that is a new run.
 
 ## Warm start from a policy file
 
