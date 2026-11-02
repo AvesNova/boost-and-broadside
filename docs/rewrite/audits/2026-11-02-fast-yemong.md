@@ -17,8 +17,10 @@
   | `head.py` | the heads' linear–norm–gelu–linear (bf16 only) | 0.3–0.5 ms at V = 16 |
   | `scan.py` | the linear recurrence | the scan without Python loops |
 
-  Besides the kernels, it is laid out time-major with no data-dependent branches, so
-  the compiler fuses more of it and the rollout step fits one CUDA graph.
+  Both models are time-major over a segment. The structural difference outside the
+  kernels is the recurrence: v2 runs a log-depth parallel scan in PyTorch (about seven
+  passes over the state for 128 steps, with the intermediates kept for the backward pass);
+  the blind model walks time once in `scan.py`.
 
 ## The speed-up
 
@@ -26,7 +28,7 @@ Both models ran the same benchmark back to back on a quiet machine (load average
 RTX 4070 Laptop). Training is `unroll` forward and backward over 128 steps; the rollout is
 one `step` for 2048 views. Each cell is the best compiled mode, in ms.
 
-| Cell | v2 | Blind, no kernels* | Blind | Speed-up |
+| Cell | v2 | Blind, scan kernel only* | Blind | Speed-up |
 |---|---:|---:|---:|---:|
 | Training V=16, fp32 | 86.3 | ~84 | 73.7 | 1.17× |
 | Training V=16, bf16 | 51.7 | ~44 | 32.7 | 1.58× |
@@ -35,12 +37,12 @@ one `step` for 2048 views. Each cell is the best compiled mode, in ms.
 | Rollout, bf16 | 16.3 | ~17 | 12.6 | 1.29× |
 | Rollout, fp32 | 28.8 | ~30 | 26.6 | 1.08× |
 
-\* The blind agent's own first measurements, before any kernel, taken on a possibly shared
-machine: approximate.
+\* The blind agent's own first measurements, with SDPA attention and only the scan kernel,
+taken on a possibly shared machine: approximate.
 
-**Where the gain comes from (bf16 training):** about 15% from the plain-PyTorch layout,
-which costs nothing to maintain, and about 25% more from the kernels. Memory halves,
-mostly from the kernels.
+**Where the gain comes from (bf16 training):** about 15% with only the scan kernel (very
+likely mostly the scan, not yet separated), and about 25% more from the other kernels.
+Memory halves.
 
 **What it could mean for training (estimated, not measured):** the update is about 93% of
 training time. Its V = 16 micro-batch takes 108 ms in fp32 (the model about 86 ms, the rest
@@ -66,8 +68,8 @@ The freed memory allows larger micro-batches, and may let the 26-ship cell fit.
 ## Changing the model
 
 - **Prototype on the plain path.** With the switches off, any change (width, heads, a new
-  token, another activation) runs at about the no-kernel speed, which is still a little
-  faster than v2's Yemong today. Write or adapt a kernel only for a change you keep.
+  token, another activation) runs at the plain path's speed, which with the scan kernel
+  is still a little faster than v2's Yemong today. Write or adapt a kernel only for a change you keep.
 - **What a kernel handles without rewriting:** the number of ships, fields and zones (the
   attention pads its query and key counts to a power of two of at least 16), the width,
   the number of heads, the batch, the sequence length and the number of blocks.
@@ -85,8 +87,8 @@ The freed memory allows larger micro-batches, and may let the 26-ship cell fit.
 
 ## Options
 
-1. **The layout only:** bring the time-major, branch-free structure into v2's Yemong with
-   no kernels. That is about 15% on bf16 training, at no maintenance cost.
+1. **The scan only:** v2's Yemong with the sequential scan kernel (about 110 lines). Up to
+   about 15% on bf16 training, and less memory.
 2. **Layout plus the two biggest kernels** (attention with rotary, fused gated MLP): most
    of the gain, about 400 lines of Triton.
 3. **All of it:** the full 1.6×, and all five kernels to maintain.
