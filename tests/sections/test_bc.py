@@ -164,9 +164,11 @@ def test_every_label_gives_every_action_a_probability_above_zero(segment):
     assert bc.TeacherConfig().floor == bc.FLOOR > 0.0
 
 
-def _scripted_seat(objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig()):
+def _scripted_seat(objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig(),
+                   segments: int = 0):
     """A small CPU trainer with BC's lineup, its scripted seat's controller and that seat's
-    first view."""
+    view after `segments` segments of 8 ticks (from 2 on, the scripted agent is no longer
+    certain of every action)."""
     from bnb.contracts import GameConfig
     from bnb.runtime.cloning import LINEUP
     from bnb.runtime.train import SCRIPTED, TrainConfig, Trainer
@@ -176,6 +178,8 @@ def _scripted_seat(objective: str, teacher: bc.TeacherConfig = bc.TeacherConfig(
                       model="relational", relational_hidden=16, compile=False, host_store=False,
                       learner=learner, objective=objective, teacher=teacher)
     trainer = Trainer(cfg, lc.CPU)
+    for _ in range(segments):
+        trainer.rollout.run()
     view = trainer.rollout._view(trainer.rollout.carry, SCRIPTED, Scripted.reads)
     return trainer, trainer.controllers[SCRIPTED], view
 
@@ -194,8 +198,10 @@ def test_the_scored_opponent_plays_the_labels_distribution():
     from bnb.contracts.action import NUM_JOINT, to_joint
 
     teacher = bc.TeacherConfig(temperature=3.0, floor=0.2)
-    trainer, opponent, view = _scripted_seat("bc", teacher)
+    trainer, opponent, view = _scripted_seat("bc", teacher, segments=2)
     expected = bc.labels(TEACHER(view), teacher)  # (R, S, 42)
+    untempered = bc.labels(TEACHER(view), dataclasses.replace(teacher, temperature=1.0))
+    assert float((expected - untempered).abs().max()) > 0.05  # the temperature matters here
     torch.testing.assert_close(opponent.action_distribution(view), expected)
     assert trainer.ppo.teacher_config == teacher
     assert trainer.rollout.reads == ("ships", "globals", "zones")
@@ -214,15 +220,17 @@ def test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged():
     """At floor 0 and T = 1 the scored opponent draws exactly the scripted agent's actions
     from the same random state; outside BC the scripted seat is the scripted agent itself."""
     plain = bc.TeacherConfig(temperature=1.0, floor=0.0)
-    _, opponent, view = _scripted_seat("bc", plain)
+    _, opponent, view = _scripted_seat("bc", plain, segments=2)
     assert isinstance(opponent, bc.TeacherOpponent)
     views = _repeated(view, 500)
-    torch.manual_seed(1)
-    drawn, _, _ = opponent.step(None, views, None)
-    torch.manual_seed(1)
-    scripted, _, _ = Scripted(CHARACTERISTICS).step(None, views, None)
-    assert torch.equal(drawn.packed(), scripted.packed())
-    assert len(set(map(tuple, drawn.packed().flatten(0, 1).tolist()))) > 1  # not one action
+    agent = Scripted(CHARACTERISTICS)
+    draws = []
+    for player in (opponent, agent):  # two steps each: the second sees the first's draws
+        torch.manual_seed(1)
+        draws.append([player.step(None, views, None)[0].packed() for _ in range(2)])
+    for drawn, scripted in zip(*draws, strict=True):
+        assert torch.equal(drawn, scripted)
+        assert len(set(map(tuple, drawn.flatten(0, 1).tolist()))) > 1  # not one action
     torch.testing.assert_close(opponent.action_distribution(view), TEACHER(view))
     _, reinforcement_opponent, _ = _scripted_seat("ppo")
     assert type(reinforcement_opponent) is Scripted
