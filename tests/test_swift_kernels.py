@@ -1,4 +1,5 @@
-"""The Triton kernels against plain torch: the scan, the small attention, the gated MLP."""
+"""The Triton kernels against plain torch: the scan, the small attention, the gated MLP, the
+fused temporal mix (gates + scan + output gate) and the fused linear-norm-gelu-linear head."""
 
 import pytest
 import torch
@@ -103,3 +104,78 @@ def test_fused_gated_mlp_matches_unfused():
         mlp.zero_grad()
     for plain, fused in zip(*results, strict=True):
         assert (plain - fused).abs().max() < 2e-2 * plain.abs().max()
+
+
+def block_gradients(block, dtype, fused, autocast, inputs, weight):
+    """Outputs and every gradient of a TemporalBlock in `dtype` (float64 copies)."""
+    x, state, buffer, starts = inputs
+    network.FUSED_TEMPORAL["enabled"] = fused
+    try:
+        module = block.to(dtype)
+        module.zero_grad(set_to_none=True)
+        x = x.detach().to(dtype).requires_grad_()
+        state = state.detach().to(dtype).requires_grad_()
+        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=autocast):
+            out, final, _ = module(x, state, buffer.to(dtype), starts)
+        ((out.double() * weight).sum() + 0.3 * final.double().sum()).backward()
+    finally:
+        network.FUSED_TEMPORAL["enabled"] = True
+    return [out.double(), final.double(), x.grad.double(), state.grad.double()] + [
+        parameter.grad.double() for parameter in module.parameters()]
+
+
+@pytest.mark.parametrize("autocast,tolerance", [(False, 2e-5), (True, 3e-2)])
+def test_fused_temporal_mix_matches_the_float64_block(autocast, tolerance):
+    """Forward and every gradient, with resets mid-segment for one view and for one token."""
+    torch.manual_seed(0)
+    steps, views, queries, width = 37, 3, 11, 128  # 37: a partial last time chunk
+    block = network.TemporalBlock(width).cuda()
+    with torch.no_grad():
+        block.log_decay.uniform_(-2, 5)
+    x = torch.randn(steps, views, queries, width, device="cuda")
+    state = torch.randn(views, queries, width, device="cuda")
+    buffer = torch.randn(views, queries, 3, width, device="cuda")
+    starts = torch.zeros(steps, views, queries, dtype=torch.bool, device="cuda")
+    starts[20, 1] = True
+    starts[5, :, 3] = True
+    weight = torch.randn(steps, views, queries, width, device="cuda", dtype=torch.float64)
+    inputs = (x, state, buffer, starts)
+    reference = block_gradients(block, torch.float64, False, False, inputs, weight)
+    fused = block_gradients(block, torch.float32, True, autocast, inputs, weight)
+    for actual, expected in zip(fused, reference, strict=True):
+        assert (actual - expected).abs().max() < tolerance * expected.abs().max()
+
+
+@pytest.mark.parametrize("inputs,hidden,outputs,rows", [(128, 256, 490, 3000), (553, 256, 128, 77),
+                                                         (128, 128, 154, 1000)])
+def test_fused_head_matches_the_float64_module(inputs, hidden, outputs, rows):
+    """bf16 autocast: the fused head is as close to float64 as the module path is."""
+    torch.manual_seed(0)
+    head = network.MLPHead(inputs, hidden, outputs).cuda().double()
+    head.initialise(1.0)
+    with torch.no_grad():
+        head.norm.weight.uniform_(0.5, 1.5)
+    x = torch.randn(rows, inputs, device="cuda", dtype=torch.float64)
+    weight = torch.randn(rows, outputs, device="cuda", dtype=torch.float64)
+
+    def run(dtype, fused, autocast):
+        network.FUSED_HEAD["enabled"] = fused
+        try:
+            module = head.to(dtype)
+            module.zero_grad(set_to_none=True)
+            source = x.to(dtype).clone().requires_grad_()
+            with torch.autocast("cuda", dtype=torch.bfloat16, enabled=autocast):
+                out = module(source)
+            (out.double() * weight).sum().backward()
+        finally:
+            network.FUSED_HEAD["enabled"] = True
+        return [out.double(), source.grad.double()] + [p.grad.double()
+                                                       for p in module.parameters()]
+
+    reference = run(torch.float64, False, False)
+    fused = run(torch.float32, True, True)
+    plain = run(torch.float32, False, True)
+    for actual, module_path, expected in zip(fused, plain, reference, strict=True):
+        scale = expected.abs().max()
+        assert (actual - expected).abs().max() < max(
+            1.5 * (module_path - expected).abs().max(), 2e-3 * scale)

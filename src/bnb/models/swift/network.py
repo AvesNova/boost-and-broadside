@@ -17,6 +17,8 @@ from torch.utils.checkpoint import checkpoint
 
 from . import attention as small_attention
 from . import gated
+from . import head as fused_head
+from . import temporal as temporal_kernel
 from .scan import linear_scan
 
 DECAY_EXPONENT = 8.0
@@ -41,6 +43,17 @@ def gelu(x):
 
 
 FUSED_MLP = {"enabled": True}  # gated.py's one-kernel hidden layer under 16-bit autocast
+FUSED_TEMPORAL = {"enabled": True}  # temporal.py's gates + scan + output gate on CUDA
+FUSED_HEAD = {"enabled": True}  # head.py's linear-norm-gelu-linear under 16-bit autocast
+
+
+def linear_norm_gelu_linear(x, first, norm, last):
+    """last(gelu(norm(first x))), in head.py's one kernel when it applies."""
+    if FUSED_HEAD["enabled"]:
+        out = fused_head.apply(x, first.weight, first.bias, norm.weight, last.weight, last.bias)
+        if out is not None:
+            return out
+    return last(gelu(norm(first(x))))  # temporal.py's gates + scan + output gate on CUDA
 
 
 class GatedMLP(nn.Module):
@@ -228,6 +241,20 @@ class TemporalBlock(nn.Module):
 
     gates = RGLRU.gates
 
+    def fused_mix(self, convolved, branch, state, starts):
+        """The gates, scan and output gate in temporal.py's kernel. convolved, branch
+        (T, ..., D) -> (hidden (T, ..., D) float32, hidden * gelu(branch) in branch's dtype)."""
+        steps, width = convolved.shape[0], convolved.shape[-1]
+        weight = torch.cat([self.recurrence_gate.weight, self.input_gate.weight])
+        bias = torch.cat([self.recurrence_gate.bias, self.input_gate.bias])
+        pre = F.linear(convolved, weight, bias).reshape(steps, -1, 2 * width).contiguous()
+        keep = None if starts is None else (1 - starts.to(torch.float32)).reshape(steps, -1)
+        hidden, mixed = temporal_kernel.temporal_mix(
+            pre, convolved.reshape(steps, -1, width).contiguous(),
+            branch.reshape(steps, -1, width), keep, self.log_decay,
+            state.to(torch.float32).reshape(-1, width).contiguous())
+        return hidden.view(convolved.shape), mixed.view(convolved.shape)
+
     def forward(self, x, state, buffer, starts=None):
         """x (T, ..., D); state (..., D); buffer (..., 3, D); starts (T, ...) bool or None.
         Returns (x, final state, final buffer)."""
@@ -235,9 +262,13 @@ class TemporalBlock(nn.Module):
         recurrent, branch = F.linear(
             normed, torch.cat([self.recurrent_input.weight, self.gate_branch.weight])).chunk(2, -1)
         convolved, buffer = self.convolution(recurrent, buffer, starts)
-        decay, contribution = self.gates(convolved, starts)
-        hidden = linear_scan(decay, contribution, state)
-        x = x + self.output(hidden * gelu(branch))
+        if FUSED_TEMPORAL["enabled"] and temporal_kernel.supported(convolved, branch):
+            hidden, mixed = self.fused_mix(convolved, branch, state, starts)
+        else:
+            decay, contribution = self.gates(convolved, starts)
+            hidden = linear_scan(decay, contribution, state)
+            mixed = hidden * gelu(branch)
+        x = x + self.output(mixed)
         return x + self.feedforward(self.feedforward_norm(x)), hidden[-1], buffer
 
 
@@ -245,13 +276,13 @@ class TemporalBlock(nn.Module):
 
 
 class KindProjection(nn.Module):
+    """One kind's first layer and norm; the encoder applies gelu(first_norm(first x)) and the
+    shared projection as one linear-norm-gelu-linear."""
+
     def __init__(self, inputs: int, hidden: int):
         super().__init__()
         self.first = nn.Linear(inputs, hidden)
         self.first_norm = RMSNorm(hidden)
-
-    def forward(self, x):
-        return gelu(self.first_norm(self.first(x)))
 
 
 class Encoder(nn.Module):
@@ -276,15 +307,13 @@ class Encoder(nn.Module):
         return {(f"kinds.{key}" if key.split(".")[0] in self.kinds else key): value
                 for key, value in weights.items()}
 
-    def shared_projection(self, hidden):
-        return self.shared_norm(self.shared(hidden))
-
     def forward(self, ship, global_token, field):
         """ship (..., N, Fs), global_token (..., 1, Fg), field (..., M, Ff) ->
         (queries (..., N + 1, D), map memory (..., M, Dm))."""
-        ships = self.shared_projection(self.kinds["ship"](ship))
-        globals_ = self.shared_projection(self.kinds["global"](global_token))
-        fields = self.shared_projection(self.kinds["field"](field))
+        ships, globals_, fields = (
+            self.shared_norm(linear_norm_gelu_linear(tokens, self.kinds[kind].first,
+                                                     self.kinds[kind].first_norm, self.shared))
+            for kind, tokens in (("ship", ship), ("global", global_token), ("field", field)))
         memory = self.map_memory_norm(self.map_memory(fields))
         return torch.cat([ships, globals_], -2), memory
 
@@ -344,7 +373,7 @@ class MLPHead(nn.Module):
         self.last = nn.Linear(hidden, outputs)
 
     def forward(self, x):
-        return self.last(gelu(self.norm(self.first(x))))
+        return linear_norm_gelu_linear(x, self.first, self.norm, self.last)
 
     def initialise(self, last_gain: float = 0.01):
         nn.init.orthogonal_(self.first.weight, math.sqrt(2))
@@ -377,5 +406,5 @@ class ShotTrajectoryHead(nn.Module):
     def query(self, latent, age_features):
         """latent (..., D); age_features (..., A, F) -> logits (..., A, outputs)."""
         hidden = latent.unsqueeze(-2) + self.age(age_features)
-        hidden = gelu(self.middle_norm(self.middle(gelu(self.first_norm(hidden)))))
-        return self.last(hidden)
+        return linear_norm_gelu_linear(gelu(self.first_norm(hidden)), self.middle,
+                                       self.middle_norm, self.last)
