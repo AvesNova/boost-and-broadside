@@ -19,7 +19,8 @@ if str(ROOT) not in sys.path:  # `bench` is a top-level package of the repositor
 
 from bench.yemong_synthetic import random_segment, time_slice  # noqa: E402
 from bnb.models.yemong import kernels  # noqa: E402
-from bnb.models.yemong.kernels import attention, scan  # noqa: E402
+from bnb.models.yemong.kernels import attention, gated, scan  # noqa: E402
+from bnb.models.yemong.layers import GatedMLP  # noqa: E402
 from bnb.models.yemong.spatial import SpatialBlock  # noqa: E402
 from bnb.models.yemong.temporal import parallel_scan  # noqa: E402
 
@@ -165,6 +166,49 @@ def test_attention_is_bitwise_repeatable():
     fused, map_fused, token_angles, map_angles, heads = _attention_inputs(seed=2)
     run = lambda f, m: _attention(attention.attend, heads)(f, m, token_angles, map_angles)  # noqa: E731
     first, second = (_gradients(run, [fused, map_fused]) for _ in range(2))
+    _assert_identical(first[0] + first[1], second[0] + second[1])
+
+
+# ------------------------------------------------------------------ gated MLP
+
+
+def _gated_inputs(seed: int = 0, rows=(7, 45), width=128):
+    generator = _generator(seed)
+    torch.manual_seed(seed)
+    layer = GatedMLP(width, 4 * width).to(CUDA)
+    inputs = torch.randn(*rows, width, generator=generator, device=CUDA)
+    return layer, [inputs, layer.gate_up.weight.detach()]
+
+
+def _gated_plain(inputs, weight):
+    gate, up = torch.nn.functional.linear(inputs, weight).chunk(2, -1)
+    return torch.nn.functional.gelu(gate) * up
+
+
+def test_gated_mlp_in_bf16_is_as_close_as_the_plain_mlp():
+    _, inputs = _gated_inputs()
+    expected = _gradients(_gated_plain, [x.double() for x in inputs])
+    plain = _gradients(_bf16(_gated_plain), inputs)
+    fast = _gradients(_bf16(gated.gated_hidden), inputs)
+    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1],
+                               strict=True):
+        _assert_as_close(got, slow, want)
+
+
+def test_gated_mlp_module_takes_the_kernel_only_under_16_bit_autocast():
+    layer, (inputs, _) = _gated_inputs(seed=1)
+    with torch.autocast("cuda", torch.bfloat16):
+        assert gated.applies(inputs)
+        with kernels.plain():
+            plain = layer(inputs)
+        fast = layer(inputs)
+    assert not gated.applies(inputs)
+    assert cases.scale_error(fast.double(), plain.double()) <= 2e-2
+
+
+def test_gated_mlp_is_bitwise_repeatable():
+    _, inputs = _gated_inputs(seed=2)
+    first, second = (_gradients(_bf16(gated.gated_hidden), inputs) for _ in range(2))
     _assert_identical(first[0] + first[1], second[0] + second[1])
 
 
