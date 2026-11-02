@@ -23,7 +23,7 @@ from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.game.handling.characteristics import characteristics
 from bnb.game.modes.rules import PRESETS
-from bnb.learn.bc import BehaviourCloning, TeacherConfig
+from bnb.learn.bc import BehaviourCloning, TeacherConfig, TeacherOpponent
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
@@ -76,7 +76,8 @@ class TrainConfig:
     the segments through pinned host memory (on a GPU) rather than keep them on the device.
     seed: the learner's random streams; the entry point seeds the process with it too.
     objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
-    `bnb.learn.bc.config()`, and `teacher` sets its labels)."""
+    `bnb.learn.bc.config()`, and `teacher` sets its labels and how the scripted opponent
+    plays, `bnb.learn.bc.TeacherOpponent`)."""
 
     game: GameConfig
     num_envs: int = 1024
@@ -163,7 +164,10 @@ class Trainer:
                     "league_0": lambda: model_controller(self.league, game),
                     "chaser": lambda: Chaser(game.ships_per_team),
                     "random": lambda: Random(game.ships_per_team),
-                    SCRIPTED: lambda: Scripted(self.characteristics)}
+                    # BC scores the learner against the teacher its labels describe
+                    SCRIPTED: lambda: TeacherOpponent(Scripted(self.characteristics),
+                                                      config.teacher)
+                    if cloning else Scripted(self.characteristics)}
         self.controllers = {name: build() for name, build in builders.items()
                             if name in seated or name in (LEARNER, "league_0")}
         self.rollout = Rollout(game, config.pools, self.controllers, LEARNER, config.num_envs,
@@ -175,8 +179,8 @@ class Trainer:
         self.pool_names = tuple(pool.name for pool in lineup.pools)
         self.learner_pool = lineup.pool_of[LEARNER]
         rules, stage = self.rollout.rules, compiler(config.compile)
-        if cloning:  # the teacher is the scripted opponent; only its labels are tempered
-            agent = self.controllers.get(SCRIPTED) or Scripted(self.characteristics)
+        if cloning:  # the labels are the scripted agent's distribution, transformed
+            agent = Scripted(self.characteristics)
             teacher = functools.partial(distribution, characteristics=agent.characteristics,
                                         parameters=agent.parameters)
             self.ppo = BehaviourCloning(self.model, config.learner, rules, types,

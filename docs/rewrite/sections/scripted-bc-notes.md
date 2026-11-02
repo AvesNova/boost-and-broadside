@@ -69,8 +69,8 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
 
 | Module | Job | Lines |
 |---|---|---:|
-| `learn/bc.py` | `config`, `TeacherConfig`, `labels`, `entropy`, `teacher_distribution`, `BehaviourCloning`, `mean_entropy`, `calibrate`, `StopConfig`, `StopRule` | 210 |
-| `runtime/cloning.py` | `LINEUP`, `scores` (per opponent kind), `clone` (the loop with the stop rule), `warm_start`, `teacher_distributions` | 107 |
+| `learn/bc.py` | `config`, `TeacherConfig`, `labels`, `TeacherOpponent`, `entropy`, `teacher_distribution`, `BehaviourCloning`, `mean_entropy`, `calibrate`, `StopConfig`, `StopRule` | 302 |
+| `runtime/cloning.py` | `LINEUP`, `scores` (per opponent kind), `clone` (the loop with the stop rule), `warm_start`, `teacher_distributions` | 113 |
 
 - **The learner.** `BehaviourCloning(Learner)` overrides two methods: `_policy` (the
   cross-entropy against the labels over own ships alive, the student's entropy as a
@@ -436,3 +436,96 @@ Changes outside `bnb.controllers` and `bnb.learn` in this round: `bench/scripted
 above, and the docs (`scripted-agent.md`, `behaviour-cloning.md` in explanation and
 guides, `benchmarking.md`; `reviewed:` dates on `training.md`, `designing-a-ship.md`,
 `ship-card.md`, `benchmark.md` after rereading them).
+
+## Stop rule (2026-11-02)
+
+The author's decision (`bc.md`, the last two bullets), on branch `fix/bc-stop`.
+
+**What changed.**
+
+- **The score stop is a lower confidence bound.** `StopRule` keeps `(games, points,
+  squared points)` per update (a game scores 1, 0.5 or 0, so a win adds 1 to both, a draw
+  0.5 and 0.25); the trimming is unchanged and scales the oldest kept update's points and
+  squared points by the same share. `standard_error` is the window's own: the sample
+  variance of its per-game scores over W - 1, divided by W, square-rooted (W = 1000). The
+  score stop fires when `lower_bound` = score - `score_errors` (2) x standard error reaches
+  `score_target`. `StopConfig` now rejects a window under 2 games.
+- **The target is 0.40** (author, later the same day: v1 stopped BC at about 0.40 and RL
+  trained from it). The toy test's bar is 0.40 - 2 x 0.5 / sqrt(512) = 0.356.
+- **The scored opponent is the teacher the labels describe.**
+  `bnb.learn.bc.TeacherOpponent` wraps a `Scripted` (at scripted probability 1) and is BC's
+  scripted seat (`Trainer` builds it when `objective == "bc"`; the PPO trainer still seats
+  a plain `Scripted`). Its `step` tempers each marginal (`softmax(log q / T)` per part;
+  since the joint is the product of the parts, this is the joint tempered exactly), samples
+  them with the scripted agent's own inverse-CDF sampler, then with probability ε replaces
+  a ship's action by a uniform joint action. Its distribution is `bc.labels` of the
+  scripted distribution. At T = 1 and ε = 0 it skips both steps and draws exactly the
+  scripted agent's actions from the same random state. The labels still come from a plain
+  `Scripted`'s `distribution`. `scripted.py`'s `_sample` and `_uniform` became public
+  (`sample`, `uniform_actions`), unchanged otherwise.
+- **Logging:** `clone` adds `window_lower_bound` to each row; `bnb train --objective bc`
+  prints the window score and its bound once the window is full.
+- **Tests** (`tests/sections/test_bc.py`):
+  `test_the_score_stop_reads_the_windows_lower_bound_trimmed_like_the_score` (window 100:
+  30 wins + 30 losses, then 20 wins, 40 draws, 10 losses; half the first update kept; the
+  bound 0.472802 against the per-game list's `std` computed independently; a target of
+  0.48 does not stop although the score is 0.55);
+  `test_a_window_at_the_target_does_not_stop_and_one_clearly_above_does` (40/100 at the
+  default 0.40 does not stop; 70/100 does; 100 draws, no spread, the bound is the score);
+  `test_each_stop_rule_fires_alone` now feeds 0.8 for the score rule (0.5 over 100 games
+  has a bound of 0.40), the plateau and budget cases unchanged;
+  `test_the_scored_opponent_plays_the_labels_distribution` (T = 3, ε = 0.2, a view after
+  two segments where the temperature changes the labels by more than 0.05; the stated
+  distribution equals the labels; the frequencies of 20000 draws per view within five
+  standard errors) replaces the natural-distribution test;
+  `test_floor_0_and_temperature_1_leave_the_scripted_agents_play_unchanged` (two
+  consecutive steps over 500 copies of each view equal `Scripted.step`'s from the same
+  seed; the PPO trainer's scripted seat is a plain `Scripted`). Mutations applied by hand,
+  each failing its test: the stop reading the score instead of the bound; the squared
+  points not trimmed; a worst-case variance (0.25); the floor dropped; the temperature
+  dropped; an extra random draw at ε = 0; BC seating a plain `Scripted`.
+- **The toy test** runs at the default floor, scores the clone against BC's scripted seat
+  (the `TeacherOpponent`) and compares the clone's chaser score with that seat's. Its
+  `xfail` mark is removed.
+- **Docs:** the BC explanation (the teacher's play, the lineup, the stop rule, the toy
+  measurement), the BC guide (the stop rule, the printed window) and the training-loop
+  page (the scripted seat under BC).
+
+**The toy run** (`/tmp/bnb-scratch-bc-stop/toy_run_040.py`, the test's configuration,
+seed 0, RTX 4070 Laptop GPU, curve in `toy_run_040.jsonl`):
+
+| env steps | BC KL (EMA) | student entropy | window score | lower bound |
+|---:|---:|---:|---:|---:|
+| 2.0M | 0.932 | 1.23 | - | - |
+| 5.0M | 0.732 | 1.04 | - | - |
+| 10.0M | 0.372 | 0.74 | - | - |
+| 15.0M | 0.290 | 0.66 | 0.005 | 0.001 |
+| 20.0M | 0.244 | 0.60 | 0.057 | 0.043 |
+| 30.0M | 0.185 | 0.56 | 0.208 | 0.183 |
+| 40.0M | 0.143 | 0.51 | 0.277 | 0.249 |
+| 50.0M | 0.122 | 0.48 | 0.357 | 0.327 |
+| 60.0M | 0.110 | 0.46 | 0.405 | 0.374 |
+| 65.6M | 0.103 | 0.44 | 0.432 | 0.401 (stop: score) |
+
+The labels' entropy is about 0.35 nats (floor 0.01; 0.25-0.27 at floor 0). Stopped by the
+score rule at 65.6M environment steps, 787 s. Over 512 fresh games the clone scores
+**0.418 against its teacher** (bar 0.356) and **0.994 against the chaser**; the teacher
+scores 1.000 against the chaser. Eight more 512-game evaluations (seeds 1000-1007): 0.399,
+0.444, 0.457, 0.450, 0.423, 0.422, 0.396, 0.404; mean 0.425 over 4096 games, standard
+deviation 0.024 between blocks (a 512-game score's standard error is at most 0.022).
+
+**At the brief's target of 0.45** (before the author's change; `toy_run_1.jsonl`, the same
+run, identical step for step through 65M): the window reached 0.45 at 70.3M steps, then
+hovered at 0.44-0.455 until 90M; the bound reached 0.45 at 91.2M (window 0.4825, 1104 s).
+The clone then scored 0.401 over 512 fresh games, below that bar (0.406), and 0.997
+against the chaser. The bound kept the first lucky windows from stopping it, but a
+window 2.4 standard errors above the plateau still passed after about 20M steps of
+checks; the fresh score sat 2 standard errors below it.
+
+
+**The suite** (`uv run --no-sync pytest` under the benchmark lock, at a73ff3e8): 1041
+passed, 7 skipped (the six league-equivalence tests awaiting section 8, the ship-card
+charts without the tools extra), 0 failed, in 38.5 minutes. The toy test passed without
+its `xfail` mark in 824 s. The staleness check warns about pages whose `reviewed:` date
+is already today: the BC pages, the scripted agent and training-loop pages, the training
+guide and others, reread for this change.

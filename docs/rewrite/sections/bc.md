@@ -66,3 +66,10 @@ Status: decisions settled, 2026-11-01. Spec: `scripted-bc-spec.md` (with section
   floor as its labels (at floor 0.01 the clone did not reach 0.45 against the unfloored
   teacher in 100M steps). The toy test's bar stays 0.45 minus two standard errors of its
   512 games. Until this lands the toy test is marked `xfail` (not strict).
+- **The score target is 0.40** (author, later on 2026-11-02): the exact cutoff is not
+  critical; v1 stopped BC at about 0.40 against its scripted agent and RL trained from it.
+  `StopConfig.score_target` defaults to 0.40, with the confidence bound (the window's score
+  less two standard errors) and the floored teacher as above. The toy test's bar is the
+  target less two standard errors of its 512 games (about 0.356). At 0.45 the toy run
+  stopped by score at 91.2M steps and scored 0.401 over 512 fresh games, below that bar
+  (0.406).

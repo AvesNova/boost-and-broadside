@@ -20,8 +20,10 @@ from bnb.learn.bc import StopConfig, StopRule, flat_views
 from .rollout import Rollout
 from .train import LEARNER, SCRIPTED, Trainer
 
-# BC's opponents (proposal): self-play and the scripted agent at its natural distribution,
-# half each, no rungs. Section 8's pool replaces this when it exists.
+# BC's opponents (proposal): self-play and the scripted agent, half each, no rungs. The
+# scripted seat plays the labels' distribution (`bnb.learn.bc.TeacherOpponent`), so the
+# live score is against the teacher the clone copies. Section 8's pool replaces this when
+# it exists.
 LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)),
           Pool("scripted", 0.5, (LEARNER, SCRIPTED)))
 
@@ -66,7 +68,8 @@ def clone(trainer: Trainer, stop: StopConfig = StopConfig(),
                               against["losses"], row["bc_kl"])
         if reason is None and interrupted():
             reason = "interrupted"
-        row.update(scores=live, window_score=rule.score, kl_average=rule.kl_average,
+        row.update(scores=live, window_score=rule.score, window_lower_bound=rule.lower_bound,
+                   kl_average=rule.kl_average,
                    env_steps=trainer.ppo.env_steps, stopped_by=reason)
         log(row)
         if reason is not None:

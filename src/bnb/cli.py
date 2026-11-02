@@ -383,10 +383,13 @@ def train(args: Train, options: set[str]) -> None:
 def log_cloning(row: dict) -> None:
     scores = " ".join(f"{kind} {value['score']:.3f}" for kind, value in row["scores"].items()
                       if value["score"] is not None)
+    # the score stop's window against the scripted agent, once full: its score and bound
+    window = "" if row["window_score"] is None else \
+        f"  window {row['window_score']:.3f} (bound {row['window_lower_bound']:.3f})"
     print(f"update {row['update']:4d}  steps {row['env_steps']:>11,}  "
           f"rollout {row['rollout_s'] * 1e3:6.0f} ms  learn {row['learn_s'] * 1e3:6.0f} ms  "
           f"bc kl {row['bc_kl']:.4f}  teacher {row['teacher_entropy']:.3f}  "
-          f"student {row['student_entropy']:.3f}  scores: {scores}", flush=True)
+          f"student {row['student_entropy']:.3f}  scores: {scores}{window}", flush=True)
 
 
 def calibrate(args: Train, config, device) -> None:
