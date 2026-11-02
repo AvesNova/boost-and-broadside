@@ -19,6 +19,12 @@ A runtime-fast Yemong built from `docs/yemong-spec.md` and the equivalence fixtu
   block of channels walks time; the backward is the reverse recurrence), registered as a
   `torch.library.custom_op` with autograd so it compiles under `fullgraph=True`. The CPU /
   float64 path is a plain loop (the fixtures).
+- **Kernels as `triton_op`s.** Every Triton kernel (`attention.py`, `gated.py`, `head.py`,
+  `temporal.py`, `scan.py`) is a `torch.library.triton_op` with autograd, so it compiles
+  under `fullgraph=True` and Inductor launches it from its own wrapper code (no Python
+  custom-op dispatch per call). Each has a switch in `network.py` (`ATTENTION`,
+  `FUSED_MLP`, `FUSED_TEMPORAL`, `FUSED_HEAD`) and the plain-torch path stays for the CPU,
+  float64 and the fixtures.
 - **Precision.** Under bf16 autocast the matmuls run in bf16; RMSNorm upcasts to float32
   (with float32's epsilon, so autocast does not silently switch to bf16's epsilon); the
   residual stream, the scan state, the codes, the belief and the critic expectations stay
@@ -41,9 +47,9 @@ A runtime-fast Yemong built from `docs/yemong-spec.md` and the equivalence fixtu
 | 6.1 encoder | `network.Encoder` |
 | 6.2 rotary | `network.rotary_tables`, `network.apply_rotary` |
 | 6.3 spatial sublayer | `network.SpatialBlock`, `network.GatedMLP` |
-| 6.4 temporal sublayer | `network.TemporalBlock`, `network.RGLRU`, `network.DepthwiseConvolution`, `scan.py` |
+| 6.4 temporal sublayer | `network.TemporalBlock`, `network.RGLRU`, `network.DepthwiseConvolution`, `scan.py`, `temporal.py` (CUDA) |
 | 6.5 trunk | `network.Trunk` |
-| 7 heads and initialisation | `network.MLPHead`, `network.ShotTrajectoryHead`, `Yemong.initialise` |
+| 7 heads and initialisation | `network.MLPHead`, `network.ShotTrajectoryHead`, `Yemong.initialise`, `head.py` (CUDA, 16-bit) |
 | 8 critic, return scale | `targets.py` (`two_hot`, `expectation`, `critic_values`, `outcome_targets`, `ReturnScale`) |
 | 9 hex density, shot codes | `targets.py` (`hex_cells`, `hex_counts`, `poisson_terms`, `shot_*`) |
 
@@ -67,7 +73,10 @@ Decisions the spec left open (all small):
   and compiled (1e-4); shapes, dtypes, finiteness; bf16 autocast forward + backward on the
   CPU and CUDA; the belief rules (sharp code when visible, spawn voids, fog off zero
   spread, hidden-zero columns unread); permutation within a team; sizes 1v1 to 10v10; the
-  state-code round trip.
+  state-code round trip; recomputing the MLPs or every sublayer gives the same gradients.
+- `tests/test_swift_kernels.py`: every Triton kernel against plain torch (the fused
+  temporal mix against the float64 block, forward and every gradient, with resets; the
+  fused head against float64, at least as close as the module path under bf16).
 
 ## Benchmark
 
@@ -129,15 +138,78 @@ Changes (spatial sublayer micro-benchmark, compiled, B = 8192 views fwd + bwd / 
 - **Rotary inside the attention kernel:** q and k are loaded as even and odd lanes,
   rotated in float32 registers; the backward rotates the gradients back. Removes a
   rotated copy of q, k and the map keys per sublayer (and, under autocast, their float32
-  promotion and cast back). (measuring)
+  promotion and cast back). Spatial sublayer micro-benchmark (B = 8192 / 2048, compiled):
+  train bf16 16.74 -> 15.79 ms, train fp32 35.7 -> 35.2, rollout bf16 0.959 -> 0.850,
+  rollout fp32 3.00 -> 2.66.
 - **Exact fine-level circular codes:** `u = (m mod p_l)/p_l * c` instead of
   `(m mod P)/p_l * c` (identical math). At the 4 m level u reached 3^9, so one float32 ulp
   was ~1e-3 of the fraction; compiled and eager disagreed by ~0.1 in next-state logits
   where the code is near zero (`log(code + 1e-3)`). Now exact (the level periods are
   integers in metres).
 
+## Phase 2 (speed)
+
+Profile of the training cell (V = 16, compiled, `bench/profile.py`, which now also prints
+GPU time per kernel group), before phase 2, ms of GPU time per segment:
+
+| group | bf16 (32.8 total) | fp32 (74.1 total) |
+|---|---|---|
+| GEMMs (cuBLAS) | 11.0 | 35.5 |
+| fused pointwise (Inductor) | 5.4 | 6.3 |
+| RMSNorm backward | 4.2 | 6.9 |
+| gated MLP kernel | 3.5 | - (gelu * up: 10.4) |
+| attention kernel | 2.7 | 5.8 |
+| RMSNorm forward | 2.6 | 5.1 |
+| scan kernel | 1.0 | 1.4 |
+
+By part (compiled fwd + bwd, bf16 / fp32 ms): compose 2.2 / 2.3 (forward only), encoder
+2.2 / 4.3, trunk 22.8 / 53.4 (a spatial sublayer 3.7 / 8.7, a temporal 4.5 / 9.3), heads
+8.1 / 15.5 (the shot trajectory head alone 3.5 / 7.0: 81 920 rows).
+
+Readings:
+- The GEMMs run at the roof: bf16 ~29 TFLOP/s (the GeForce fp32-accumulate rate), strict
+  fp32 ~9 TFLOP/s. What is left is memory traffic between them, and CPU launch overhead:
+  the compiled V = 16 bf16 cell spent ~2-3 ms more wall time than GPU time (CUDA graphs
+  close the gap).
+- A strict-fp32 fused gated MLP (`tl.dot` with IEEE inputs) is *slower* than cuBLAS SGEMM
+  plus the elementwise pass (spatial micro-benchmark 40.2 vs 35.8 ms): rejected; fp32
+  keeps cuBLAS for every GEMM.
+- `max-autotune` does nothing here: Inductor refuses GEMM autotuning on 36 SMs.
+
+Changes:
+- **Fused temporal mix** (`temporal.py`): the RG-LRU gates, the scan and `h * gelu(branch)`
+  in one kernel per direction. Time is walked in chunks of 16 steps, each an associative
+  scan in registers (the one-step loop was latency bound: 128 dependent loads); only h
+  (float32) is stored between the two GEMMs. Temporal sublayer alone: bf16 4.48 -> 3.98
+  ms, fp32 9.34 -> 8.56 ms. As a `custom_op` it *lost* 1.5 ms of wall time in the
+  compiled bf16 cell (CPU dispatch) while winning 1.3 ms with CUDA graphs; hence:
+- **`triton_op` for every kernel**: Inductor launches them itself.
+- **Fused heads** (`head.py`): `W2 gelu(RMSNorm(W1 x + b1)) + b2` as one kernel per
+  direction under 16-bit autocast (the hidden row, 128 or 256 wide, lives in registers;
+  the backward writes only dh and the activation for the cuBLAS weight GEMMs). Covers the
+  seven MLP heads, the shot trajectory head's tail and the encoder's three kind
+  projections with the shared layer (whose input gradient GEMM is skipped).
+- **MLP-only recompute** (`Trunk.recompute = "feedforward"`): the bench tries it before
+  full sublayer recompute when a cell runs out of memory.
+
+PHASE2_RESULTS
+
+## What to try next
+
+- fp32 V = 64: it needs ~8.5 GB without recompute. Storing less in strict fp32 means
+  recomputing something; "feedforward" recompute is the cheapest ladder step.
+- The shot trajectory head's front (latent + age projection, norm, gelu) into `head.py`'s
+  kernel as a prologue (81 920 rows: the largest head).
+- RMSNorm into the following GEMM's prologue (attention and feedforward norms): K = 128
+  fits a row in registers; saves a bf16 write + read of every normed activation.
+- Residual stream: every sublayer reads and writes the float32 residual 2-3 times
+  (norm, add, norm backward). A kernel that does the residual add and the next norm
+  together would halve that traffic.
+- CPU overhead in the compiled (no graphs) cells at small V: fewer, larger kernels.
+
 ## Progress
 
-- Done: every fixture; the whole model; tests; Triton scan; the benchmark.
-- In flight: baseline numbers, profiling.
-- Next: see "What to try next".
+- Done: every fixture; the whole model; tests; every kernel (scan, attention, gated MLP,
+  temporal mix, heads) as a `triton_op`; the benchmark; phase 2 profiling and changes.
+- In flight: nothing.
+- Next: "What to try next".
