@@ -6,18 +6,13 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
 
 ## Progress (working state)
 
-- **Done:** parts A and B, their acceptance runs and measurements, the docs. Commits on
-  `section/scripted`, pushed.
-- **Suite:** `uv run --no-sync pytest` at e19b5410: 848 passed, 7 skipped (the 6 of the
-  baseline plus the policy-file round trip), 6 failed with CUDA out-of-memory while
-  another agent's suite held 4.7 GB of the GPU; those 6 (learner precision and streaming)
-  pass when rerun with the GPU free. The toy BC test passed inside the suite. The
-  `bnb --objective bc` command runs end to end on the CPU at a toy size. After merging
-  origin/v2 (section 1b), the full suite at 386db109+: 909 passed, 8 skipped (the
-  baseline's 6, the policy-file round trip, one of 1b's), 6 failed with CUDA
-  out-of-memory while another process held 6.2 GB; the same 6 pass when rerun with the
-  GPU free. The scores were re-run after the merge.
-- **Open:** the policy-file hand-off (section 11), request 1 below.
+- **Done (first round):** parts A and B, their acceptance runs and measurements, the docs.
+- **Fix round (2026-11-02):** items 1-4, 6 and 7 of the review's fix list done and pushed;
+  see "Fix round" at the end.
+- **Open:** item 5, the policy-file hand-off: section 11 (`bnb.runs.checkpoint`) has not
+  merged into `origin/v2`. When it does: merge v2, make `bnb train --objective bc` save
+  the clone as a policy file (weights, return scale, step counts) when it stops, and
+  unskip `test_the_hand_off_round_trips_through_a_policy_file`.
 
 ## Design
 
@@ -118,9 +113,11 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
    checks per-tick equality exactly and the batched labels to 2.5e-7.
 8. **Labels per micro-batch, every epoch**, not per shard once: the teacher is cheaper to
    rerun (part A's cost) than its `(L, V, S, 42)` labels are to store and stream.
-9. **The student's entropy is detached.** It is reported, not trained; its gradient at an
-   underflowed probability is 0 × ∞ (found as NaN at update 53 of the first toy run;
-   `test_the_gradient_stays_finite_for_a_confident_student`).
+9. **The student's entropy uses PPO's formula** (fix round), `-(exp(log_softmax) ·
+   log_softmax)`, not detached. The first version computed `xlogy` of the probabilities
+   and detached it, since that gradient at an underflowed probability is 0 × ∞ (found as
+   NaN at update 53 of the first toy run;
+   `test_the_gradient_stays_finite_for_a_confident_student`, which fails under `xlogy`).
 10. **The rollout records the learner's parts plus `extra_reads`**, in `PARTS` order; the
     learner's controller then also receives those parts.
 11. **`Trainer.ppo` holds BC's learner too.** `bench/cell.py` (fixed) reads
@@ -140,7 +137,8 @@ shared the GPU during part of them; timings are provisional, scores are not timi
 
 ### The parameter search
 
-`/tmp/bnb-scratch-scripted/search.py`: 32 candidates side by side (one parameter-table
+`bench/scripted_search.py` (committed in the fix round; first run from a scratch copy
+of the same procedure): 32 candidates side by side (one parameter-table
 row per view) in one compiled rollout per (mode, opponent): against the chaser and against
 the starting point, team deathmatch and Frontline presets, fog on, seat drawn per game.
 The objective is the mean of the four scores. Each round perturbs the round's best
@@ -185,7 +183,8 @@ The starting point and the chosen values (rounded to three figures; ramps as low
 ### Scores (acceptance A7.2, A7.3)
 
 The chosen defaults, fresh games to their end, 5v5 presets, fog on, seat drawn per game
-(`/tmp/bnb-scratch-scripted/acceptance.py`):
+(`/tmp/bnb-scratch-scripted/acceptance.py`, the first round; the fix round's scores, on the
+acceptance tests' seeds and with the progress urgency, are under "Fix round", item 2):
 
 | Preset | vs random (2048) | vs chaser (1024) | vs start (1024) |
 |---|---|---|---|
@@ -326,3 +325,78 @@ re-measurement should settle it.
 Part A: 738 lines of source (characteristics 98, the four controller modules 640) and 44 for
 `evaluate`; part B: 210 (`bc.py`) + 107 (`cloning.py`); edits to `ppo.py`, `rollout.py`,
 `train.py` and `cli.py`: +143 / −58. Tests: 844 lines in five files.
+
+## Fix round (2026-11-02)
+
+The review's fix list, each with the test that now guards it. Every behaviour mutation
+the review named was applied by hand and fails the named test (and passed the old suite).
+
+1. **Behaviour tests that can fail** (`tests/sections/test_scripted.py`):
+   - defense urgency removed (`under_attack` forced False):
+     `test_frontline_a_meter_moving_against_it_calls_the_attacker_back` (no enemies; two
+     ships; meter still or moving the viewer's way: one defends, one attacks; moving
+     against: both defend);
+   - the meter's `progress` is now read (spec A5): the urgency is
+     `defense_urgency · (1 + progress)` while the meter moves against the viewer.
+     `test_frontline_the_urgency_grows_with_the_enemys_progress` (four ships, floor 0.5,
+     margin 0, urgency 1: two defend at progress 0, three at 0.9) fails when progress is
+     dropped;
+   - the shooter's velocity dropped from the lead: the lead test is parametrized with a
+     moving shooter (80, −40) m/s; it also fails
+     `test_near_the_boundary_and_heading_inward_it_does_not_turn_back`;
+   - the outward condition removed from the boundary steer:
+     `test_near_the_boundary_and_heading_inward_it_does_not_turn_back` (20 m inside the
+     edge, heading 120°, a target dead ahead: flies straight);
+   - the handover replaced by all-combat when a target is visible:
+     `test_frontline_hands_over_to_combat_from_the_combat_radius_in` (beyond the combat
+     radius: strategy; inside the shoot ramp's start: combat; half way: both sides
+     between 0.25 and 0.75);
+   - the zone-ranking tie-break removed: `test_frontline_equally_placed_ships_split_by_row`
+     (two ships at exactly equal order: row 0 defends, whichever ship holds it).
+2. **Win rates as tests:** `tests/sections/test_scripted_acceptance.py` (`gpu`, `slow`):
+   against random, at most 2 non-wins in 2048 games; against the chaser, above 0.5 over
+   1024 games (warns below 0.70); at `deathmatch`, `deathmatch_wide` and `frontline`, fog
+   on, seat drawn per game, seeds 20261102 + 10 · preset + opponent, all at or above
+   `bench.scripted_search.SEED_LIMIT` (checked by `test_the_seeds_are_not_the_searchs`).
+   7 passed in 111 s. With the progress urgency, on these seeds: 2048/2048 against random
+   at every preset; against the chaser 0.999 (deathmatch, one loss), 1.000 (wide, one
+   draw), 0.991 (Frontline, 1.9% draws); against the starting parameters (seeds
+   20261202 + preset) 0.893, 0.867, 0.934.
+3. **The search is auditable:** `bench/scripted_search.py` holds the procedure, the
+   starting values (`STARTING_PARAMETERS`, the table above) and its seeds: the
+   perturbations from `--seed` (default 7), round `r`'s games from
+   `game_seed(seed, r) = 1000 · seed + r < SEED_LIMIT = 10⁶`. The run that chose the
+   defaults was the scratch copy with perturbation seed 7; its games drew from torch's
+   default generators unseeded (their fixed start-up seed), not from any acceptance seed.
+   Rerunning the tool will not reproduce those exact games, and its "start" opponent now
+   uses the progress urgency. The scripted-agent page points at the tool.
+4. **Student entropy, PPO's formula:** `bnb.learn.bc.BehaviourCloning._policy` computes
+   `-(exp(log_softmax) · log_softmax)` with no detach.
+   `test_the_gradient_stays_finite_for_a_confident_student` now checks the gradient at
+   entropy coefficients 0 and −0.0081 and fails under `xlogy` of the probabilities
+   (applied by hand). The BC page says that with ε = 0 the clone enters RL with the
+   teacher's support (about 2.4 joint actions) and that PPO never samples an action of
+   probability 0. ε's default is unchanged.
+5. **Open: the policy-file hand-off.** Section 11 has not merged into `origin/v2` (checked
+   2026-11-02; `section/runs` has `save_policy`/`load_policy` with the return scale). The
+   guide says the CLI's clone is not yet saved.
+6. **Spec deviations:**
+   - `characteristics.py` reads `Airframe.corner_speed` through
+     `bnb.game.physics.flight.airframe_of`; `test_card_values_and_constants_are_read_as_given`
+     compares against the game's value with `torch.equal`;
+   - `bnb --calibration-segments` (default 4) sets `teacher_distributions`' segments;
+   - full words for `p`, `u`, `q` in `scripted.py` (and `q` in `cloning.py`);
+   - `StopRule` keeps per-update `(games, points)`; it drops the oldest updates whole
+     while the rest fill the window and counts the oldest kept one by the exact share
+     still needed. `test_the_score_window_trims_whole_updates_without_favouring_a_result`
+     (30 wins + 30 losses, then 60 draws, window 100: 0.50; the old per-game deque gave
+     0.40).
+7. **The label rounding:** `test_the_update_time_labels_are_the_rollout_time_distribution`
+   states that per-tick labels are exact, that a whole segment labelled as one batch
+   differs at the ulp level (at most 1.2e-7 measured), and the 2.5e-7 tolerance.
+
+Changes outside `bnb.controllers` and `bnb.learn` in this round: `bench/scripted_search.py`
+(new), `bnb.game.handling.characteristics`, `bnb.runtime.cloning`, `bnb.cli`, the tests
+above, and the docs (`scripted-agent.md`, `behaviour-cloning.md` in explanation and
+guides, `benchmarking.md`; `reviewed:` dates on `training.md`, `designing-a-ship.md`,
+`ship-card.md`, `benchmark.md` after rereading them).

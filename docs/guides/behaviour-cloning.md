@@ -26,6 +26,10 @@ the rule that stopped it. The other options (`--model`, `--num-envs`, `--shards`
 `--precision`, `--micro-batch-rows`, `--seed`) are training's
 ([Training](training.md)).
 
+The command does not yet save the clone: it ends when the stop rule fires, and the clone
+leaves with the process. Starting reinforcement learning from a clone goes through Python
+([below](#from-python)) until policy files exist.
+
 ## Choose the labels' entropy
 
 The labels' entropy is the entropy the clone starts reinforcement learning with. To find
@@ -40,7 +44,8 @@ uv run --no-sync bnb --preset mixed --calibrate-entropy 1.2 --teacher-floor 0.1
 It plays the scripted agent against itself in the preset's games, prints its natural
 entropy (temperature 1) and the temperature whose labels reach the target at the given
 floor, and exits. A target outside what the temperature reaches at that floor fails with
-the reachable range; raise `--teacher-floor` for a higher one. The natural entropy is low
+the reachable range; raise `--teacher-floor` for a higher one. `--calibration-segments`
+(4 by default) sets how many segments of 128 ticks it records. The natural entropy is low
 (0.40 nats on the training mix,
 [measured](../explanation/behaviour-cloning.md#measurements)), and the temperature alone
 reaches about 0.75. Pass the temperature to the BC run with

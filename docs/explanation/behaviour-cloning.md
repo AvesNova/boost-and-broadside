@@ -41,6 +41,12 @@ temperature alone; the floor exists for a target entropy the temperature cannot 
 transformation applies to the labels only: as an opponent, the scripted agent plays its
 natural distribution.
 
+With the floor at its default, ε = 0, the labels keep the teacher's support, about 2.4
+joint actions per living ship-step on the training mix ([measured](#measurements)), and
+the clone enters reinforcement learning with that support: the actions outside it have
+probabilities near 0 (exactly 0 where they underflow), and an action of probability 0 is
+never sampled by PPO. A floor above 0 gives every joint action weight in every state.
+
 `bnb.learn.bc.calibrate` bisects the temperature to a target mean entropy, in nats per
 living ship-step, over the scripted agent's own distributions in its own games of the
 training mix (`bnb.runtime.cloning.teacher_distributions`).
@@ -57,7 +63,9 @@ opponent come from the training games themselves; there are no evaluation rollou
 first rule to fire (`bnb.learn.bc.StopConfig`):
 
 - **score:** the score against the scripted agent (wins plus half the draws) over the last
-  1000 finished training games reaches 0.45, even if the KL is still falling;
+  1000 finished training games reaches 0.45, even if the KL is still falling. The window
+  keeps each update's totals, drops the oldest updates whole and counts the oldest one
+  it keeps by the share of its games the window needs, so trimming favours no result;
 - **KL plateau:** the BC KL, `KL(labels ‖ student) = CE − H(labels)` per token, as an
   exponential average over updates, improved by less than 1% over the last 20M
   environment steps;
