@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from . import kernels
+from .kernels import scan
 from .layers import GatedMLP, norm
 
 TAPS = 4  # the convolution reads the current input and the 3 before it
@@ -91,6 +93,9 @@ class RGLRU(nn.Module):
         """inputs (L, ..., D); starts (L, ...) bool. Returns (outputs, final state)."""
         decay, contribution = self._terms(inputs)
         decay = torch.where(_later(starts)[..., None], 0.0, decay)
+        if kernels.switches.scan and scan.applies(decay, contribution, state):
+            states = scan.linear_scan(decay, contribution, state)
+            return states, states[-1]
         return parallel_scan(decay, contribution, state)
 
 
