@@ -14,7 +14,7 @@ import runs_cases as cases
 import torch
 
 from bnb import cli
-from bnb.runs import checkpoint, provenance
+from bnb.runs import checkpoint, probe, provenance
 from bnb.runs.records import Run
 from bnb.runtime.train import Trainer
 
@@ -63,6 +63,72 @@ def test_a_resume_with_an_override_records_it_in_a_new_segment(monkeypatch, tmp_
     assert checkpoint.training_config(run.checkpoint_at())[0].learner.learning_rate == 0.0001
 
 
+def test_the_micro_batch_rows_and_the_precision_may_change_on_resume(monkeypatch, tmp_path):
+    new_run(monkeypatch, tmp_path, updates=1)
+    bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "2",
+        "--micro-batch-rows", "32", "--precision", "tf32", "--set", "reward.damage=0.5")
+    run = Run.open(tmp_path, "a")
+    assert run.record["segments"][1]["overrides"] == {
+        "updates": 2, "precision": "tf32", "learner.micro_batch_rows": 32,
+        "reward.damage": 0.5}
+    config, _ = checkpoint.training_config(run.checkpoint_at())
+    assert (config.precision, config.learner.micro_batch_rows, config.reward.damage) == (
+        "tf32", 32, 0.5)
+
+
+def test_a_resume_of_a_live_run_is_refused(monkeypatch, tmp_path):
+    run = new_run(monkeypatch, tmp_path)
+    run.start_segment(2 * STEPS_PER_UPDATE)  # running, as this (live) process
+    with pytest.raises(SystemExit, match=f"run a is running as process {os.getpid()} on this "
+                                         f"host; stop it"):
+        bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu")
+
+
+def test_a_resume_carries_the_runs_wandb_id(monkeypatch, tmp_path):
+    new_run(monkeypatch, tmp_path, updates=1).update(wandb_id="abc123")
+    bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu", "--updates", "2")
+    assert Run.open(tmp_path, "a").record["wandb_id"] == "abc123"
+
+
+def test_a_checkpoint_with_an_unknown_config_field_is_a_one_line_refusal(monkeypatch,
+                                                                          tmp_path):
+    run = new_run(monkeypatch, tmp_path)
+    path = run.checkpoint_at() / checkpoint.RECORD
+    record = json.loads(path.read_text())
+    record["train_config"]["learner"]["dropout"] = 0.1
+    path.write_text(json.dumps(record))
+    with pytest.raises(SystemExit, match="unknown field learner.dropout") as raised:
+        bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--device", "cpu")
+    assert "\n" not in str(raised.value)
+
+
+def test_a_probe_over_the_budget_is_a_one_line_refusal(monkeypatch, tmp_path):
+    over = dict(allocated=2, reserved=3, total=4, budget=1)
+    monkeypatch.setattr(probe, "measure", lambda device, margin=probe.MARGIN: over)
+    with pytest.raises(SystemExit, match="over the budget .* at 16 environments, 160 "
+                                         "micro-batch rows: lower them"):
+        bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--probe")
+
+
+def test_seed_and_set_seed_are_one_setting(monkeypatch, tmp_path, capsys):
+    printed = []
+    for option in (("--seed", "7"), ("--set", "seed=7")):
+        bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, *option, "--print-config")
+        printed.append(json.loads(capsys.readouterr().out))
+    assert printed[0] == printed[1] and printed[0]["seed"] == 7
+    assert "seed" not in printed[0]["learner"]
+
+
+def test_the_runs_directory_is_runs_at_the_repository_root(monkeypatch, tmp_path):
+    root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                          text=True, check=True).stdout.strip()
+    assert cli.runs_directory_of(None) == pathlib.Path(root) / "runs"
+    monkeypatch.chdir(tmp_path)  # outside a repository: the current directory
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    assert cli.runs_directory_of(None) == pathlib.Path(".") / "runs"
+    assert cli.runs_directory_of("elsewhere") == pathlib.Path("elsewhere")
+
+
 def test_a_structural_option_on_resume_is_refused_pointing_to_a_fork(monkeypatch, tmp_path):
     new_run(monkeypatch, tmp_path)
     with pytest.raises(SystemExit, match="a resume takes --num-envs from the checkpoint and "
@@ -98,14 +164,20 @@ def test_a_rewind_keeps_the_newer_checkpoints_aside(monkeypatch, tmp_path):
     assert run.checkpoint_steps() == [STEPS_PER_UPDATE, 2 * STEPS_PER_UPDATE]
 
 
-def test_a_fork_is_a_new_run_naming_its_parent(monkeypatch, tmp_path):
-    parent = new_run(monkeypatch, tmp_path)
-    bnb(monkeypatch, tmp_path, "train", "--from", "a", *cases.TRAIN_OPTIONS, "--updates", "3",
-        "--name", "b")
+def test_a_fork_is_a_new_run_naming_its_parent_that_trains_its_own_updates(monkeypatch,
+                                                                            tmp_path):
+    """The guide's fork example, from a parent with more updates than the fork's budget."""
+    parent = new_run(monkeypatch, tmp_path, updates=3)
+    bnb(monkeypatch, tmp_path, "train", "--from", "a", *cases.TRAIN_OPTIONS,
+        "--set", "learner.entropy=-0.005", "--updates", "2", "--name", "b")
     fork = Run.open(tmp_path, "b")
-    assert fork.record["parent"] == dict(run="a", step=2 * STEPS_PER_UPDATE)
-    assert fork.record["segments"][0]["start_step"] == 2 * STEPS_PER_UPDATE
-    assert parent.checkpoint_steps() == [2 * STEPS_PER_UPDATE]  # the parent is untouched
+    assert fork.record["parent"] == dict(run="a", step=3 * STEPS_PER_UPDATE)
+    segment, = fork.record["segments"]
+    assert (segment["start_step"], segment["end_step"]) == (3 * STEPS_PER_UPDATE,
+                                                            5 * STEPS_PER_UPDATE)
+    assert fork.record["status"] == "finished"
+    assert checkpoint.read_policy(fork.checkpoint_at()).steps["updates"] == 2
+    assert parent.checkpoint_steps() == [3 * STEPS_PER_UPDATE]  # the parent is untouched
 
 
 def test_a_fork_whose_build_differs_is_refused(monkeypatch, tmp_path):

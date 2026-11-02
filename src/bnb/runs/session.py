@@ -11,18 +11,15 @@ import signal
 import time
 from collections.abc import Callable
 
+from bnb.runtime.train import Trainer
+
 from . import checkpoint, probe
 from .records import Run
 
 CADENCE_SECONDS = 30 * 60
 
 
-def _steps_per_update(trainer) -> int:
-    cfg = trainer.cfg
-    return cfg.num_envs * cfg.length * cfg.shards
-
-
-def save(run: Run, trainer, final: bool = False) -> None:
+def save(run: Run, trainer: Trainer, final: bool = False) -> None:
     """A training checkpoint at the trainer's step (unless one is there), then the
     retention."""
     step = trainer.ppo.env_steps
@@ -32,9 +29,9 @@ def save(run: Run, trainer, final: bool = False) -> None:
     run.added_checkpoint(step, final=final)
 
 
-def train(run: Run, trainer, log: Callable[[dict], None] = print,
+def train(run: Run, trainer: Trainer, log: Callable[[dict], None] = print,
           margin: float = probe.MARGIN) -> str:
-    """Train until the update budget (`trainer.cfg.updates`, the run's total) or Ctrl-C;
+    """Train until the update budget (`trainer.config.updates`, the run's total) or Ctrl-C;
     returns the run's final status ("finished" or "stopped")."""
     stopping = []
     previous = signal.getsignal(signal.SIGINT)
@@ -47,10 +44,9 @@ def train(run: Run, trainer, log: Callable[[dict], None] = print,
 
     signal.signal(signal.SIGINT, interrupt)
     device = trainer.rollout.device
-    per_update = _steps_per_update(trainer)
     try:
         first = True
-        while trainer.updates_done < trainer.cfg.updates and not stopping:
+        while trainer.updates_done < trainer.config.updates and not stopping:
             if first:
                 probe.begin(device)
             started = time.perf_counter()
@@ -60,13 +56,13 @@ def train(run: Run, trainer, log: Callable[[dict], None] = print,
                 peaks = probe.measure(device, margin)
                 run.update(probe=peaks)
                 print(probe.describe(peaks), flush=True)
-                learner = trainer.cfg.learner
-                probe.check(peaks, f"{trainer.cfg.num_envs} environments, "
+                learner = trainer.config.learner
+                probe.check(peaks, f"{trainer.config.num_envs} environments, "
                                    f"{learner.micro_batch_rows} micro-batch rows")
             elif run.record["checkpoint_every"] is None:
                 seconds = time.perf_counter() - started
                 updates = max(1, round(CADENCE_SECONDS / seconds))
-                run.update(checkpoint_every=updates * per_update)
+                run.update(checkpoint_every=updates * trainer.steps_per_update)
             first = False
             log(row)
             every = run.record["checkpoint_every"]

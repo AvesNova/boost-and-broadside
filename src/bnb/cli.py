@@ -5,6 +5,8 @@ place that sets process-wide options (the seed, the matmul precision, the charts
 import dataclasses
 import json
 import os
+import pathlib
+import subprocess
 import sys
 from typing import Annotated
 
@@ -21,18 +23,24 @@ class Train:
     batch; without one, the mode and sizes below.
     precision: float32, tf32 or bfloat16 (the model's matmuls); old_log_probabilities:
     rollout or recomputed (by unroll before the first epoch).
-    updates: the run's total update budget (a resume continues to it).
-    set: TrainConfig fields by dotted path, such as learner.entropy=-0.01 (JSON values).
+    updates: the updates to train (a resume continues to the run's total).
+    seed: the run's seed (TrainConfig.seed: the process and the learner's streams).
+    set: TrainConfig fields by dotted path, such as learner.entropy=-0.01 (JSON values);
+    fields inside tuples (such as pools) cannot be set.
     resume: continue the run named, from its newest checkpoint or the one at --at, with
-    every setting from the checkpoint; only the budget, --set of the learning rate, the
-    warm-up and the loss coefficients, and the checkpoint cadence may change.
+    every setting from the checkpoint; only the budget, the precision, the micro-batch
+    rows, the checkpoint cadence and --set of OVERRIDABLE fields (the learning rate, the
+    warm-up, the loss coefficients, the reward weights) may change.
     fork (--from): a new run with these settings, starting from the named run's checkpoint
-    (newest, or at --at): its model, optimizer, return scale and league slot.
+    (newest, or at --at): its model, optimizer, return scale, league slot and environment
+    steps; --updates counts from the fork.
     init_from: a warm start from a policy file: its weights and return scale, a fresh
     optimizer (the BC -> RL hand-off).
     print_config: print the resolved configuration and exit; probe: run the memory probe
     (the setup and one update), print the peaks and exit, writing no run.
     name: the run's name (default: date, preset or mode, and two words).
+    runs_directory: where runs live (default: runs/ at the repository root, or in the
+    current directory outside a repository).
     checkpoint_every: environment steps between training checkpoints (default: about 30
     minutes at the run's measured throughput).
     """
@@ -59,13 +67,16 @@ class Train:
     print_config: bool = False
     probe: bool = False
     name: str | None = None
-    runs_directory: str = "runs"
+    runs_directory: str | None = None
     checkpoint_every: int | None = None
 
 
 # What a resume may be given besides --resume: the rest comes from the checkpoint.
-RESUME_OPTIONS = ("resume", "at", "updates", "set", "checkpoint_every", "device",
-                  "runs_directory", "print_config")
+RESUME_OPTIONS = ("resume", "at", "updates", "precision", "micro_batch_rows", "set",
+                  "checkpoint_every", "device", "runs_directory", "print_config")
+# The resume options that set a TrainConfig field: their paths.
+RESUME_FIELDS = {"updates": "updates", "precision": "precision",
+                 "micro_batch_rows": "learner.micro_batch_rows"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -75,7 +86,7 @@ class Runs:
 
     action: list, show or upload; run: the run's name (show and upload).
     at: the checkpoint's step (default: the newest); league: upload the league's snapshots
-    instead; to: the target (wandb only, for now).
+    instead; to: the target (wandb only, for now); runs_directory: as for bnb train.
     """
 
     action: tyro.conf.Positional[str] = "list"
@@ -83,7 +94,7 @@ class Runs:
     at: int | None = None
     league: bool = False
     to: str = "wandb"
-    runs_directory: str = "runs"
+    runs_directory: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -125,6 +136,17 @@ def given(arguments: list[str]) -> set[str]:
     names = {argument[2:].partition("=")[0].replace("-", "_") for argument in arguments
              if argument.startswith("--")}
     return {"fork" if name == "from" else name for name in names}
+
+
+def runs_directory_of(given: str | None) -> pathlib.Path:
+    """`given`, or `runs/` at the repository root (`git rev-parse --show-toplevel`), or in
+    the current directory outside a repository."""
+    if given is not None:
+        return pathlib.Path(given)
+    found = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                           text=True)
+    root = found.stdout.strip() if found.returncode == 0 else ""
+    return pathlib.Path(root or ".") / "runs"
 
 
 def ship_card(args: ShipCard) -> None:
@@ -170,11 +192,11 @@ def _requested(args: Train):
         raise SystemExit(f"--num-envs {args.num_envs} does not split into the pools' shares: "
                          f"use a multiple of {multiple}")
     learner = LearnerConfig(old_log_probabilities=args.old_log_probabilities,
-                            micro_batch_rows=args.micro_batch_rows, seed=args.seed)
-    cfg = TrainConfig(game=game, pools=pools, num_envs=args.num_envs, updates=args.updates,
-                      shards=args.shards, model=args.model, precision=args.precision,
-                      learner=learner, seed=args.seed)
-    return with_settings(cfg, args.set)
+                            micro_batch_rows=args.micro_batch_rows)
+    config = TrainConfig(game=game, pools=pools, num_envs=args.num_envs, updates=args.updates,
+                         shards=args.shards, model=args.model, precision=args.precision,
+                         learner=learner, seed=args.seed)
+    return with_settings(config, map(parse_setting, args.set))
 
 
 def parse_setting(setting: str) -> tuple[str, object]:
@@ -188,13 +210,12 @@ def parse_setting(setting: str) -> tuple[str, object]:
         return path, text
 
 
-def with_settings(cfg, settings: tuple[str, ...]):
-    """`cfg` with each `path=value` of `settings` set (the value as JSON, else a string)."""
+def with_settings(config, settings):
+    """`config` with each (path, value) of `settings` set."""
     from bnb.runs.serialise import SerialiseError, from_json, to_json
 
-    data = to_json(cfg)
-    for setting in settings:
-        path, value = parse_setting(setting)
+    data = to_json(config)
+    for path, value in settings:
         *parents, leaf = path.split(".")
         node = data
         for part in parents:
@@ -205,7 +226,7 @@ def with_settings(cfg, settings: tuple[str, ...]):
             raise SystemExit(f"--set {path}: TrainConfig has no field {path}")
         node[leaf] = value
     try:
-        return from_json(type(cfg), data)[0]
+        return from_json(type(config), data)[0]
     except (SerialiseError, ValueError) as error:
         raise SystemExit(f"--set: {error}") from error
 
@@ -213,17 +234,16 @@ def with_settings(cfg, settings: tuple[str, ...]):
 def train(args: Train, options: set[str]) -> None:
     """`bnb train`: a new run, a resume, a fork or a warm start, logging a line per update;
     exits with the reason for a setting that does not fit."""
-    import pathlib
-
     import torch
 
     from bnb.runs import checkpoint, probe, session
     from bnb.runs.checkpoint import OVERRIDABLE, CheckpointError
+    from bnb.runs.probe import MemoryBudgetError
     from bnb.runs.records import Run, run_name
-    from bnb.runs.serialise import to_json
+    from bnb.runs.serialise import SerialiseError, to_json
     from bnb.runtime.train import Trainer, set_precision
 
-    runs_directory = pathlib.Path(args.runs_directory)
+    runs_directory = runs_directory_of(args.runs_directory)
     device = torch.device(args.device)
     starts = [name for name in ("resume", "fork", "init_from") if getattr(args, name)]
     if len(starts) > 1:
@@ -233,6 +253,10 @@ def train(args: Train, options: set[str]) -> None:
     try:
         if args.resume:
             run = Run.open(runs_directory, args.resume)
+            if run.live():
+                raise SystemExit(f"run {args.resume} is running as process "
+                                 f"{run.record['pid']} on this host; stop it (Ctrl-C) before "
+                                 f"resuming it")
             source = run.checkpoint_at(args.at)
             fixed = sorted(options - set(RESUME_OPTIONS))
             if fixed:
@@ -241,65 +265,63 @@ def train(args: Train, options: set[str]) -> None:
                 raise SystemExit(f"a resume takes {flags} "
                                  f"from the checkpoint and cannot change it: start a new run "
                                  f"from it with --from {args.resume}")
-            outside = [setting.partition("=")[0] for setting in args.set
-                       if setting.partition("=")[0] not in OVERRIDABLE]
+            settings = [(RESUME_FIELDS[name], getattr(args, name)) for name in RESUME_FIELDS
+                        if name in options]
+            settings += [parse_setting(setting) for setting in args.set]
+            outside = [path for path, _ in settings if path not in OVERRIDABLE]
             if outside:
                 raise SystemExit(f"a resume cannot --set {', '.join(outside)}: it may change "
                                  f"only {', '.join(OVERRIDABLE)}; to change more, start a new "
                                  f"run with --from {args.resume}")
-            saved, _ = checkpoint.training_config(source)
-            cfg = saved
-            if "updates" in options:
-                cfg = dataclasses.replace(cfg, updates=args.updates)
-            cfg = with_settings(cfg, args.set)
+            config = with_settings(checkpoint.training_config(source)[0], settings)
         else:
-            cfg = _requested(args)
+            config = _requested(args)
         if args.print_config:
-            print(json.dumps(to_json(cfg), indent=1))
+            print(json.dumps(to_json(config), indent=1))
             return
-        torch.manual_seed(cfg.seed)
-        set_precision(cfg.precision)
+        torch.manual_seed(config.seed)
+        set_precision(config.precision)
         if args.probe:
-            trainer = Trainer(cfg, device)
+            trainer = Trainer(config, device)
             probe.begin(device)
             trainer.update()
             peaks = probe.measure(device)
             print(probe.describe(peaks))
-            probe.check(peaks, f"{cfg.num_envs} environments, "
-                               f"{cfg.learner.micro_batch_rows} micro-batch rows")
+            probe.check(peaks, f"{config.num_envs} environments, "
+                               f"{config.learner.micro_batch_rows} micro-batch rows")
             return
         if args.resume:
-            trainer = checkpoint.load_training(source, device, cfg)
+            trainer = checkpoint.load_training(source, device, config)
             checkpoint.restore_default_generators(source, device)
             step = trainer.ppo.env_steps
             rewound = run.set_aside_after(step)
-            overrides = {name: getattr(args, name) for name in ("updates", "checkpoint_every")
-                         if name in options}
-            overrides.update(parse_setting(setting) for setting in args.set)
+            overrides = dict(settings)
             if args.checkpoint_every is not None:
+                overrides["checkpoint_every"] = args.checkpoint_every
                 run.update(checkpoint_every=args.checkpoint_every)
             warning = run.start_segment(step, overrides, rewound_from=max(rewound, default=None))
             if warning:
                 print(f"warning: {warning}", flush=True)
         else:
-            label = args.preset or cfg.game.mode
+            label = args.preset or config.game.mode
             name = args.name or run_name(label, runs_directory)
             parent = None
             if args.fork:
                 parent_run = Run.open(runs_directory, args.fork)
                 source = parent_run.checkpoint_at(args.at)
-                trainer = checkpoint.fork_training(source, cfg, device)
+                trainer = checkpoint.fork_training(source, config, device)
                 parent = dict(run=args.fork, step=trainer.ppo.env_steps)
             elif args.init_from:
-                trainer = checkpoint.warm_start(args.init_from, cfg, device)
+                trainer = checkpoint.warm_start(args.init_from, config, device)
                 parent = dict(policy=str(pathlib.Path(args.init_from).resolve()))
             else:
-                trainer = Trainer(cfg, device)
-            run = Run.create(runs_directory, name, cfg, sys.argv, args.checkpoint_every,
+                trainer = Trainer(config, device)
+            run = Run.create(runs_directory, name, config, sys.argv, args.checkpoint_every,
                              parent)
             run.start_segment(trainer.ppo.env_steps)
             print(f"run {name} in {run.directory}", flush=True)
-    except (CheckpointError, FileNotFoundError, FileExistsError) as error:
+    except (CheckpointError, SerialiseError, MemoryBudgetError, FileNotFoundError,
+            FileExistsError) as error:
         raise SystemExit(str(error)) from error
 
     def log(row: dict) -> None:
@@ -310,17 +332,18 @@ def train(args: Train, options: set[str]) -> None:
               f"kl {row['approximate_kl']:+.4f}  clip {row['clip_fraction']:.3f}  "
               f"reward/s: {rewards}", flush=True)
 
-    status = session.train(run, trainer, log)
+    try:
+        status = session.train(run, trainer, log)
+    except MemoryBudgetError as error:  # the run is marked failed with the same message
+        raise SystemExit(str(error)) from error
     print(f"run {run.record['name']} {status} at step {trainer.ppo.env_steps}")
 
 
 def runs(args: Runs) -> None:
     """`bnb runs`: list the runs, show one, or upload a checkpoint."""
-    import pathlib
-
     from bnb.runs.records import Run, list_runs
 
-    runs_directory = pathlib.Path(args.runs_directory)
+    runs_directory = runs_directory_of(args.runs_directory)
     if args.action == "list":
         print(f"{'run':44s} {'status':16s} {'newest step':>12s}  {'started':25s} commit")
         for run in list_runs(runs_directory):

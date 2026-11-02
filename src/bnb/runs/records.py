@@ -20,6 +20,7 @@ import pathlib
 import random
 import shutil
 import socket
+from collections.abc import Iterable
 
 from . import provenance
 from .serialise import to_json
@@ -74,25 +75,31 @@ def process_alive(pid: int) -> bool:
     return True
 
 
-def retained(steps: list[int], every: int, final: int | None = None) -> set[int]:
-    """The checkpoints (by step) the retention keeps: the newest RECENT, plus, of the older
-    ones, the one nearest each age 8, 16, 32, ... checkpoints back (an age is the step gap
-    to the newest over the cadence `every`), plus the final one. Every age beyond the oldest
-    is nearest the oldest, so it is always kept."""
-    if not steps:
+def retained(ordinals: Iterable[int], final: int | None = None) -> set[int]:
+    """The checkpoints the retention keeps, by ordinal (0, 1, 2, ... in the order written,
+    a stop's off-cadence checkpoint included): with n the newest and age = n - i, the
+    newest RECENT (age < RECENT), every i divisible by 2^floor(log2(age)), and the final
+    one. A multiple of 2^(j+1) is a multiple of 2^j, so applied after every write the rule
+    only ever deletes what it would delete later anyway, and each band of ages
+    [2^j, 2^(j+1)) from RECENT on holds exactly one checkpoint. The league's snapshots
+    follow the same rule."""
+    ordinals = set(ordinals)
+    if not ordinals:
         return set()
-    ordered = sorted(steps)
-    keep = set(ordered[-RECENT:])
-    older, newest = ordered[:-RECENT], ordered[-1]
-    if older:
-        keep.add(older[0])
-        age = RECENT
-        while age < (newest - older[0]) / every:
-            keep.add(min(older, key=lambda step: (abs((newest - step) / every - age), -step)))
-            age *= 2
-    if final is not None and final in steps:
+    newest = max(ordinals)
+    keep = {ordinal for ordinal in ordinals
+            if newest - ordinal < RECENT
+            or ordinal % (1 << ((newest - ordinal).bit_length() - 1)) == 0}
+    if final in ordinals:
         keep.add(final)
     return keep
+
+
+def step_of(path: pathlib.Path) -> int | None:
+    """The step of a complete checkpoint directory `step_<step>`; None for anything else
+    (a `.tmp` being written, a `.deleting` being removed)."""
+    digits = path.name[len("step_"):]
+    return int(digits) if path.name.startswith("step_") and digits.isdigit() else None
 
 
 class Run:
@@ -117,7 +124,7 @@ class Run:
         record = dict(name=name, status="running", pid=os.getpid(), host=socket.gethostname(),
                       message=None, command=list(command), wandb_id=None, parent=parent,
                       checkpoint_every=checkpoint_every, newest_checkpoint=None,
-                      final_checkpoint=None, probe=None, segments=[])
+                      final_checkpoint=None, checkpoint_ordinals={}, probe=None, segments=[])
         run = cls(directory, record)
         run.save()
         return run
@@ -168,6 +175,11 @@ class Run:
         self.record.update(fields)
         self.save()
 
+    def live(self) -> bool:
+        """Whether the record says running and its process is alive on this host."""
+        return (self.record["status"] == "running" and self.record["host"] == socket.gethostname()
+                and process_alive(self.record["pid"]))
+
     def shown_status(self) -> str:
         """The status, with `running (stale)` for a running record whose process is gone
         from this host."""
@@ -183,12 +195,10 @@ class Run:
         return self.directory / CHECKPOINTS / f"step_{step}"
 
     def checkpoint_steps(self) -> list[int]:
-        """The steps of the complete checkpoints, oldest first (a `.tmp` is not one)."""
-        steps = []
-        for path in (self.directory / CHECKPOINTS).iterdir():
-            if path.name.startswith("step_") and not path.name.endswith(".tmp"):
-                steps.append(int(path.name[len("step_"):]))
-        return sorted(steps)
+        """The steps of the complete checkpoints, oldest first (a `.tmp` or a `.deleting` is
+        not one)."""
+        paths = (self.directory / CHECKPOINTS).iterdir()
+        return sorted(step for step in map(step_of, paths) if step is not None)
 
     def checkpoint_at(self, step: int | None = None) -> pathlib.Path:
         """The kept checkpoint at `step`, or the newest."""
@@ -214,19 +224,36 @@ class Run:
                 self.checkpoint_path(later).rename(aside / f"step_{later}")
         if self.record["final_checkpoint"] in newer:
             self.record["final_checkpoint"] = None
+        for later in newer:
+            self.record["checkpoint_ordinals"].pop(str(later), None)
         return newer
 
     def added_checkpoint(self, step: int, final: bool = False) -> None:
-        """Record the checkpoint just written at `step` and apply the retention."""
+        """Record the checkpoint just written at `step` (the next ordinal, unless it has one)
+        and apply the retention. A deleted checkpoint is first renamed `step_<step>.deleting`,
+        so a crash mid-removal leaves no directory that lists as a checkpoint; leftovers of
+        an earlier crash (`.deleting`, `.tmp`) are removed here too."""
         self.record["newest_checkpoint"] = step
         if final:
             self.record["final_checkpoint"] = step
+        ordinals = self.record["checkpoint_ordinals"]
         steps = self.checkpoint_steps()
-        every = self.record["checkpoint_every"] or 1  # not measured yet: ages in steps
-        keep = retained(steps, every, self.record["final_checkpoint"])
-        for old in set(steps) - keep:
-            shutil.rmtree(self.checkpoint_path(old))
+        for kept in list(ordinals):
+            if int(kept) not in steps:
+                del ordinals[kept]
+        for present in steps:  # in step order, so also one whose run.json write a crash lost
+            if str(present) not in ordinals:
+                ordinals[str(present)] = max(ordinals.values(), default=-1) + 1
+        final_step = self.record["final_checkpoint"]
+        keep = retained(ordinals.values(), ordinals.get(str(final_step)))
+        for old in [present for present in steps if ordinals[str(present)] not in keep]:
+            path = self.checkpoint_path(old)
+            path.rename(path.with_name(path.name + ".deleting"))
+            del ordinals[str(old)]
         self.save()
+        for leftover in (self.directory / CHECKPOINTS).iterdir():
+            if leftover.name.endswith((".deleting", ".tmp")):
+                shutil.rmtree(leftover)
 
 
 def list_runs(runs_directory: pathlib.Path) -> list[Run]:

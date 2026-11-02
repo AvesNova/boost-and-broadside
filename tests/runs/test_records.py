@@ -23,28 +23,47 @@ def test_a_run_name_is_the_date_the_label_and_two_words_drawn_again_on_a_clash(t
     assert run_name("mixed", tmp_path, date, random.Random(0)) != first
 
 
-def test_the_retention_keeps_the_newest_eight_a_geometric_history_and_the_final():
-    steps = list(range(1, 101))  # checkpoints every step, newest 100
-    keep = retained(steps, 1, final=3)
-    assert set(steps[-RECENT:]) <= keep
-    ages = sorted(100 - step for step in keep if step != 3)
-    assert ages == [0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 32, 64, 99]  # 99: the oldest
-    assert 3 in keep
+def test_the_retention_keeps_the_newest_eight_one_per_doubling_band_and_the_final():
+    keep = retained(range(101), final=3)  # ordinals 0 to 100
+    assert set(range(100 - RECENT + 1, 101)) <= keep and 3 in keep
+    ages = sorted(100 - ordinal for ordinal in keep if ordinal != 3)
+    assert ages == [0, 1, 2, 3, 4, 5, 6, 7, 12, 20, 36, 100]  # i = 88, 80, 64, 0
 
 
-def test_the_retention_keeps_a_logarithmic_history_as_a_run_grows():
-    """Applied after every new checkpoint, it keeps the newest eight, the first, and a few
-    in between. A deleted checkpoint cannot come back, so the history has gaps where the
-    nearest to an age was deleted earlier (at 300: ages 8, 19, 75 and 299)."""
-    kept: list[int] = []
-    for step in range(1, 301):
-        kept = sorted(retained(kept + [step], 1))
-    ages = sorted(300 - step for step in kept)
-    assert ages[:RECENT] == list(range(RECENT))
-    older = ages[RECENT:]
-    assert older[0] == RECENT and older[-1] == 299  # the first checkpoint, nearest every age
-    assert len(older) <= 9  # one per doubling at most
-    assert all(later <= 4 * earlier for earlier, later in zip(older, older[1:]))
+def test_the_retention_applied_after_every_write_is_stable_with_one_checkpoint_per_band():
+    """Each band of ages [2^j, 2^(j+1)) from 8 on holds exactly one checkpoint at every
+    newest ordinal, so what was deleted is never needed again."""
+    kept: set[int] = set()
+    for newest in range(2000):
+        kept = retained(kept | {newest}, final=None)
+        ages = sorted(newest - ordinal for ordinal in kept)
+        assert ages[:RECENT] == list(range(min(RECENT, newest + 1)))
+        for band in range(3, newest.bit_length()):
+            assert sum(1 << band <= age < 2 << band for age in ages) == 1, (newest, band)
+        assert len(kept) <= RECENT + newest.bit_length()
+    final = 1234
+    kept = set()
+    for newest in range(2000):
+        kept = retained(kept | {newest}, final=final if newest >= final else None)
+    assert final in kept
+
+
+def test_the_run_keeps_its_checkpoints_by_ordinal_and_deletes_by_renaming(tmp_path):
+    run = Run.create(tmp_path, "a", cases.tiny_train_config(), ["bnb", "train"], 64)
+    for ordinal in range(40):
+        run.checkpoint_path(10 * ordinal).mkdir()
+        run.added_checkpoint(10 * ordinal)
+    ordinals = {int(step) // 10 for step in run.record["checkpoint_ordinals"]}
+    assert ordinals == retained(range(40))
+    assert [step // 10 for step in run.checkpoint_steps()] == sorted(ordinals)
+    (tmp_path / "a" / "checkpoints" / "step_5.deleting").mkdir()  # a crash's leftovers
+    (tmp_path / "a" / "checkpoints" / "step_7.tmp").mkdir()
+    assert 5 not in run.checkpoint_steps() and 7 not in run.checkpoint_steps()
+    run.checkpoint_path(400).mkdir()
+    run.added_checkpoint(400, final=True)
+    names = {path.name for path in (tmp_path / "a" / "checkpoints").iterdir()}
+    assert not any(name.endswith((".deleting", ".tmp")) for name in names)
+    assert run.record["checkpoint_ordinals"]["400"] == 40
 
 
 def test_a_running_record_whose_process_is_gone_shows_as_stale(tmp_path):
