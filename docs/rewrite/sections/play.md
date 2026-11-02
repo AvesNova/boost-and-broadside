@@ -72,3 +72,21 @@ Status: decisions settled for milestone 1, 2026-11-01. Spec: `play-spec.md`.
   table with them.
 - **Bullets under fog are drawn at full brightness (author, 2026-11-02):** the bullets
   pass draws after the fog pass, so fog never darkens a bullet.
+- **On-screen controls, not hotkeys (author, 2026-11-02):** the interface follows strategy
+  games such as Age of Empires II and Civilization V. The most important information is
+  visible at once without covering the battlefield, and clicking an object, in the game or
+  on an info panel, opens a card with more about it. Every action has an on-screen control;
+  keys are optional shortcuts, shown in tooltips. The layout for milestone 2's spec:
+  - **top bar** (always shown): score, clock, the mode's objective (Frontline's meter,
+    zone states), and the speed controls as buttons (pause, step, fast-forward);
+  - **left card:** each team's fleet: type, shield and energy, alive, and the controller
+    (human, scripted or agent); a row selects its ship;
+  - **right card:** the selection, picked in a card or on the battlefield (a CPU hit test
+    on the snapshot): a ship's live state, controller and a "take control" button; a
+    field's index and core; a zone's progress and attackers;
+  - **bottom strip** in replays: the scrubber with event markers (kills, captures);
+  - **menus** for mode, map, lineup and per-side agents, and a pause menu;
+  - the cards collapse to slim tabs. While the player flies a ship the in-game HUD stays
+    minimal, drawn in the game's style, and the cards open on demand.
+
+  The panels are Dear ImGui, themed to the brainstorm's flat, light look.
