@@ -522,3 +522,10 @@ against the chaser. The bound kept the first lucky windows from stopping it, but
 window 2.4 standard errors above the plateau still passed after about 20M steps of
 checks; the fresh score sat 2 standard errors below it.
 
+
+**The suite** (`uv run --no-sync pytest` under the benchmark lock, at a73ff3e8): 1041
+passed, 7 skipped (the six league-equivalence tests awaiting section 8, the ship-card
+charts without the tools extra), 0 failed, in 38.5 minutes. The toy test passed without
+its `xfail` mark in 824 s. The staleness check warns about pages whose `reviewed:` date
+is already today: the BC pages, the scripted agent and training-loop pages, the training
+guide and others, reread for this change.
