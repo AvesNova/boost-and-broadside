@@ -1,8 +1,6 @@
 """Perception: views depend on team only through team_relative; fog of war per
 environment."""
 
-import math
-
 import pytest
 import torch
 
@@ -78,7 +76,9 @@ def test_own_rows_first_and_hidden_rows_blank():
 
 def test_spawn_layout_does_not_reveal_the_seat():
     rules = api.rules_of(GameConfig(3, 4, 2600.0))
-    _, obs, _ = api.perceive(rules, api.reset(rules, TYPES, api.uniforms(rules, 512)))
+    generator = torch.Generator().manual_seed(2)
+    uniforms = api.uniforms(rules, 512, generator=generator)
+    _, obs, _ = api.perceive(rules, api.reset(rules, TYPES, uniforms))
     S = rules.ships_per_team
     own = obs.ships[..., :S, :]
     dx = own[..., 0, SHIP["x"]] - own[..., SHIP["x"]].mean(-1)
@@ -86,7 +86,6 @@ def test_spawn_layout_does_not_reveal_the_seat():
     angle = torch.atan2(dy, dx)  # world-frame direction of slot 0 from its team's centre
     spread = 1.0 - torch.hypot(angle.cos().mean(0), angle.sin().mean(0))  # circular spread
     assert (spread > 0.5).all(), f"slot 0's direction is fixed per view: {spread} (uniform ~1)"
-    assert math.isfinite(float(spread.sum()))
 
 
 def test_unfogged_views_see_every_living_ship():
@@ -105,12 +104,18 @@ def test_unfogged_views_see_every_living_ship():
 def test_fog_survives_episode_resets():
     rules = api.rules_of(GameConfig(1, 1, 600.0, episode_seconds=1 / 15))  # two-tick episodes
     fogged = torch.tensor([True, False])
-    state = api.reset(rules, TYPES, api.uniforms(rules, 2), fogged)
+    generator = torch.Generator().manual_seed(3)
+    state = api.reset(rules, TYPES, api.uniforms(rules, 2, generator=generator), fogged)
     action = Action.unpack(torch.zeros(2, 2, 3, dtype=torch.int32))
     resets = 0
     for _ in range(3):
         state, events = api.step(
-            rules, TYPES, state, action, api.spread(rules, 2), api.uniforms(rules, 2)
+            rules,
+            TYPES,
+            state,
+            action,
+            api.spread(rules, 2, generator=generator),
+            api.uniforms(rules, 2, generator=generator),
         )
         resets += int(events.done.sum())
     assert resets > 0 and torch.equal(state.match.fogged, fogged)
@@ -122,7 +127,7 @@ def test_fog_share_must_be_whole():
         environments_per_pool((Pool("a", 1.0, ("x", "x"), fog_share=0.3),), 8)
 
 
-def test_rollout_fogs_the_first_share_of_each_pool():
+def test_rollout_fogs_the_first_share_of_each_pool(global_generator):
     from bnb.controllers.scripted import Random
     from bnb.runtime.rollout import Rollout
 

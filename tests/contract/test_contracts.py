@@ -12,6 +12,10 @@ from bnb.contracts.action import NUM_JOINT, from_joint, to_joint
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 from bnb.contracts.pools import environments_per_pool
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 def test_game_config_limits():
     assert GameConfig(5, 10, 2600.0).num_ships == 10
@@ -63,9 +67,20 @@ def test_pool_shares_must_be_whole():
 
 def _controller_classes():
     from bnb.controllers.model import ModelController
-    from bnb.controllers.scripted import Chaser, Random
+    from bnb.controllers.relational import RelationalController
+    from bnb.controllers.scripted import Chaser, Random, Scripted
+    from bnb.controllers.yemong import YemongController
+    from bnb.learn.bc import TeacherOpponent
 
-    return (ModelController, Chaser, Random)
+    return (
+        ModelController,
+        Chaser,
+        Random,
+        Scripted,
+        RelationalController,
+        YemongController,
+        TeacherOpponent,
+    )
 
 
 @pytest.mark.parametrize("cls", _controller_classes())

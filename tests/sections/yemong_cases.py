@@ -26,9 +26,10 @@ SHORT_FRONTLINE = GameConfig(
 def model(config: GameConfig = SQUAD, seed: int = 0, dtype=torch.float32) -> Yemong:
     """A Yemong with its zero-initialised and near-zero last layers randomised, so every
     head's output depends on its inputs."""
-    torch.manual_seed(seed)
-    net = Yemong(yemong_build(YemongConfig(), api.rules_of(config), api.ship_types()))
-    with torch.no_grad():
+    # The constructor initialises from the default generator: seeded here, then restored.
+    with torch.random.fork_rng(devices=[]), torch.no_grad():
+        torch.manual_seed(seed)
+        net = Yemong(yemong_build(YemongConfig(), api.rules_of(config), api.ship_types()))
         for name, parameter in net.named_parameters():
             if name.endswith("last.weight") or ".lasts." in name and name.endswith(".weight"):
                 parameter.normal_(0.0, 0.05)

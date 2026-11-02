@@ -3,6 +3,7 @@ global columns reach the global token, and unroll still equals a loop of step.""
 
 import dataclasses
 
+import pytest
 import torch
 import yemong_cases as cases
 
@@ -11,6 +12,11 @@ from bnb.contracts.obs import GLOBAL, ZONE
 from bnb.game import api
 from bnb.models.yemong.inputs import POSITION_CODE, ZONE_INPUTS
 from bnb.models.yemong.state_code import POSITION_PERIOD
+
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 OWN = 5
 

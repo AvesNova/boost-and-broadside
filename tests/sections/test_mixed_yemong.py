@@ -15,6 +15,11 @@ from bnb.models.yemong import policy
 from bnb.models.yemong.inputs import POSITION_CODE
 from bnb.models.yemong.state_code import POSITION_PERIOD
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 OWN = 5
 POOLS = (
     Pool("frontline", 0.5, ("learner", "chaser"), 0.5, mode="frontline"),

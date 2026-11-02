@@ -9,6 +9,11 @@ from bnb.contracts import REWARD_LEVELS, Events, GameConfig, Pool
 from bnb.game.ship_types import per_ship
 from bnb.learn import rewards
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 CONFIG = rewards.RewardConfig()
 LEVEL = {name: i for i, name in enumerate(REWARD_LEVELS)}
 WEIGHTS = torch.tensor(CONFIG.weights)

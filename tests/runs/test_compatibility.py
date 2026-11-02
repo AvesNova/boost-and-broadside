@@ -11,6 +11,11 @@ import torch
 from bnb.runs.checkpoint import load_policy
 from bnb.runs.registry import MODELS
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 # float32 on the CPU. The same machine and library versions reproduce the outputs bit for
 # bit; another CPU or BLAS may order a sum differently, which moves an output by a few ulps
 # of the largest term (the weights are of order 0.3, the outputs of order 10). A change of

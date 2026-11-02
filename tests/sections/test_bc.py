@@ -19,6 +19,11 @@ from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime.rollout import Rollout
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 POOLS = (
     Pool("self_play", 0.5, ("learner", "learner"), 0.5),
     Pool("scripted", 0.5, ("learner", "scripted"), 0.5, mode="frontline"),

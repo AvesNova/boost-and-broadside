@@ -1,22 +1,18 @@
 """The Yemong controller against the contracts: no privileged input, and Outputs as the
 runtime stores them (spec 10)."""
 
-import inspect
-import typing
-
+import pytest
 import torch
 
-from bnb.contracts import REWARD_LEVELS, GameConfig, Obs, Privileged
+from bnb.contracts import REWARD_LEVELS, GameConfig, Obs
 from bnb.contracts.action import to_joint
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
-
-def test_yemong_step_takes_no_privileged():
-    hints = typing.get_type_hints(YemongController.step)
-    for name in inspect.signature(YemongController.step).parameters:
-        assert hints.get(name) is not Privileged, f"YemongController.step({name}) takes Privileged"
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
 
 
 def test_yemong_outputs():

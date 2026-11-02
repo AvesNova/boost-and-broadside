@@ -18,6 +18,11 @@ from bnb.models.yemong.state_code import (
     velocity_reach,
 )
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 RULES = api.rules_of(GameConfig(5, 10, 2600.0))
 TYPES = api.ship_types()
 COUNT = 4000

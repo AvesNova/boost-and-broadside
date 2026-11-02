@@ -17,6 +17,11 @@ from bnb.game import api
 from bnb.game.layout import environment, slices
 from bnb.learn import rewards
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 SEATS = ("learner", "learner")
 # One pool per mode, with arenas and clocks of their own (modes_cases' lively games), in
 # the shared sizes of the base config.

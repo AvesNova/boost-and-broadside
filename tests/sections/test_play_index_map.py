@@ -14,6 +14,10 @@ from bnb.game.physics.medium import medium
 from bnb.play.index_map import TILE, TILES_PER_CALL, IndexBuilder, build
 from bnb.play.snapshot import snapshot
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 @pytest.fixture(autouse=True, scope="module")
 def one_thread():

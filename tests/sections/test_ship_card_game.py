@@ -19,6 +19,11 @@ from bnb.game.rules import POWER_MODES, STICK_LEVELS, FlightConstants
 from bnb.game.ship_types import SCALED, ship_types, ticks_between_shots
 from bnb.game.state import Bullets, Fields, Ships, Sweep, replace
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 RATES = (25, 30, 60)
 
 

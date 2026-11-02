@@ -15,6 +15,11 @@ from bnb.runs import checkpoint
 from bnb.runs.checkpoint import CheckpointError, FilledDefaults, load_policy, save_policy
 from bnb.runs.serialise import SerialiseError
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 MODELS = ("yemong", "relational", "mlp")
 
 

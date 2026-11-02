@@ -15,6 +15,10 @@ from bnb.runs.checkpoint import CheckpointError, FilledDefaults
 from bnb.runs.serialise import SerialiseError
 from bnb.runtime.train import Trainer, model_build
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 @pytest.fixture(scope="module")
 def trained(tmp_path_factory):

@@ -20,6 +20,11 @@ from bnb.game.rules import LN_SQRT2, FlightConstants
 from bnb.game.ship_types import DEFAULTS, SCALED
 from bnb.game.state import Fields, replace
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 REFERENCE = pathlib.Path(__file__).resolve().parents[1] / "reference"
 
 # The race spec's names for the game's numbers (copied from the race adapter,
@@ -494,14 +499,21 @@ def test_ship_card_is_data_per_environment():
     assert torch.equal(one.ships.proper_speed[0], two.ships.proper_speed[0])
     assert not torch.equal(one.ships.proper_speed[1][alive[1]], two.ships.proper_speed[1][alive[1]])
 
-    torch._dynamo.reset()
+    # A counting backend sees each graph this function compiles, whatever compiled before.
+    graphs = []
+
+    def counting(graph, example_inputs):
+        graphs.append(graph)
+        return graph.forward
+
     step = torch.compile(
-        lambda s, c: api.step(rules, c, s, action, spread, uniforms), fullgraph=True
+        lambda s, c: api.step(rules, c, s, action, spread, uniforms),
+        fullgraph=True,
+        backend=counting,
     )
     step(state, TYPES)
-    graphs = torch._dynamo.utils.counters["stats"]["unique_graphs"]
     step(state, api.ship_types(hit_damage=(20.0, 30.0), fire_rate=(30.0, 7.5)))
-    assert torch._dynamo.utils.counters["stats"]["unique_graphs"] == graphs
+    assert len(graphs) == 1
 
 
 def test_formation_ranks_ties_to_the_lower_slot():

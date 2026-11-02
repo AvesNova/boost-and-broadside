@@ -8,6 +8,11 @@ from bnb.contracts import GameConfig, Obs
 from bnb.game import api
 from bnb.models.mlp import MLP, MLPBuild
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 onnxruntime = pytest.importorskip("onnxruntime")
 
 

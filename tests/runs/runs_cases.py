@@ -42,19 +42,20 @@ def _randomised(model: torch.nn.Module, seed: int) -> torch.nn.Module:
 
 def tiny_model(name: str, seed: int = 0, width: int = 8, game: GameConfig = GAME):
     """The smallest model registered as `name`, weights drawn from `seed`."""
-    torch.manual_seed(seed)  # the constructors initialise from the default generator
-    if name == "yemong":
-        model = Yemong(
-            yemong_build(tiny_yemong_config(width), api.rules_of(game), api.ship_types())
-        )
-    elif name == "relational":
-        model = Relational(
-            RelationalBuild(
+    # The constructors initialise from the default generator: seeded here, then restored.
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(seed)
+        if name == "yemong":
+            model = Yemong(
+                yemong_build(tiny_yemong_config(width), api.rules_of(game), api.ship_types())
+            )
+        elif name == "relational":
+            build = RelationalBuild(
                 RelationalConfig(hidden=width, value_bins=11), game.ships_per_team, game.num_ships
             )
-        )
-    else:
-        model = MLP(MLPBuild(game.ships_per_team, game.num_ships, game.num_fields, width))
+            model = Relational(build)
+        else:
+            model = MLP(MLPBuild(game.ships_per_team, game.num_ships, game.num_fields, width))
     return _randomised(model, seed)
 
 

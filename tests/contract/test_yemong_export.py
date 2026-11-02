@@ -16,6 +16,11 @@ from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.models.yemong.model import Yemong, YemongConfig, yemong_build
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 onnxruntime = pytest.importorskip("onnxruntime")
 
 

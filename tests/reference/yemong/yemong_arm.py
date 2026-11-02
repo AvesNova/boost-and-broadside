@@ -6,6 +6,7 @@ time-first and batch-first ones, and the interface's `done` ("ended at this step
 model's episode starts ("an episode starts at this step").
 """
 
+import functools
 import math
 
 import torch
@@ -299,6 +300,21 @@ class Arm:
         out, nonfinite = belief.advance(prior, prediction, enemy_action_logits)
         return dict(means=out.means, uncertainty=out.spreads, action=out.action,
                     nonfinite=nonfinite.sum())
+
+
+def _restoring(method):
+    """The method with torch's default generator restored afterwards: building a module
+    draws its initial weights from it, and the fixture weights replace them."""
+    @functools.wraps(method)
+    def wrapped(*args, **kwargs):
+        with torch.random.fork_rng(devices=[]):
+            return method(*args, **kwargs)
+    return wrapped
+
+
+for _name, _method in list(vars(Arm).items()):
+    if not _name.startswith("_") and callable(_method):
+        setattr(Arm, _name, _restoring(_method))
 
 
 def make_arm():

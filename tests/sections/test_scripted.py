@@ -21,6 +21,11 @@ from bnb.game import api
 from bnb.game.handling.characteristics import time_of_flight
 from bnb.runtime.rollout import Rollout
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 PARAMETERS = ScriptedParameters()
 TYPES = (0, 1)
 

@@ -14,6 +14,10 @@ from bnb.game.modes.rules import PRESETS
 from bnb.play.snapshot import Snapshot, snapshot
 from bnb.runtime.realtime import Realtime
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 @pytest.fixture(autouse=True, scope="module")
 def one_thread():

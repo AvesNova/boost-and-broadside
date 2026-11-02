@@ -24,6 +24,11 @@ from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
 
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
+
 OWN = lc.OWN
 
 

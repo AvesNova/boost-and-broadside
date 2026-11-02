@@ -1,10 +1,16 @@
 """The runtime gives each controller its own team's view and applies its actions to that team."""
 
+import pytest
 import torch
 
 from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
 from bnb.runtime.rollout import Rollout
+
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 CPU = torch.device("cpu")
 

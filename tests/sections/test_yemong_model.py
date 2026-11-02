@@ -9,11 +9,16 @@ import yemong_cases as cases
 from torch.utils import _pytree
 
 from bnb.contracts import REWARD_LEVELS, GameConfig, Obs
-from bnb.contracts.obs import SHIP, SHIP_HIDDEN_ZERO
+from bnb.contracts.obs import GLOBAL, SHIP, SHIP_HIDDEN_ZERO
 from bnb.game import api
 from bnb.models.yemong import policy
 from bnb.models.yemong.inputs import ACTION_SCALE, POSITION_CODE, truth
 from bnb.models.yemong.state_code import POSITION_PERIOD
+
+# The code under test draws from torch's default generator (model initialisation, the
+# rollout, the scripted opponents): each test runs with it seeded and restored.
+pytestmark = pytest.mark.usefixtures("global_generator")
+
 
 OWN = 5  # squad: own ships per view
 
@@ -30,7 +35,7 @@ def test_segment_has_resets_fog_and_hidden_ships(segment):
     _, trajectory = segment
     reset = cases.resets(trajectory.obs)
     assert reset[1:].sum(0).min() >= 2  # every view starts at least two episodes
-    fogged = trajectory.obs.globals[..., 2] > 0.5
+    fogged = trajectory.obs.globals[..., GLOBAL["fogged"]] > 0.5
     assert fogged.any() and (~fogged).any()
     assert (trajectory.obs.ships[..., SHIP["visible"]] < 0.5).any()
 
@@ -110,10 +115,11 @@ def test_unroll_reproduces_the_stored_rollout():
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.gpu)])
 @pytest.mark.parametrize("compiled", [False, True], ids=["eager", "compiled"])
-def test_unroll_equals_steps_float32(segment, compiled):
+def test_unroll_equals_steps_float32(segment, compiled, device):
     net, trajectory = segment
-    device = torch.device("cuda") if torch.cuda.is_available() else cases.CPU
+    device = torch.device(device)
     net = cases.double(net).float().to(device)
     obs = _pytree.tree_map_only(torch.Tensor, lambda x: x.to(device), trajectory.obs)
     joint = cases.joint_actions(trajectory).to(device)
