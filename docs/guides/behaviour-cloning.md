@@ -42,13 +42,14 @@ uv run --no-sync bnb --preset mixed --calibrate-entropy 1.2 --teacher-floor 0.1
 ```
 
 It plays the scripted agent against itself in the preset's games, prints its natural
-entropy (temperature 1) and the temperature whose labels reach the target at the given
+entropy (temperature 1, no floor) and the temperature whose labels reach the target at the given
 floor, and exits. A target outside what the temperature reaches at that floor fails with
 the reachable range; raise `--teacher-floor` for a higher one. `--calibration-segments`
 (4 by default) sets how many segments of 128 ticks it records. The natural entropy is low
 (0.40 nats on the training mix,
-[measured](../explanation/behaviour-cloning.md#measurements)), and the temperature alone
-reaches about 0.75. Pass the temperature to the BC run with
+[measured](../explanation/behaviour-cloning.md#measurements)), and at floor 0 the
+temperature alone reaches about 0.75. `--teacher-floor` defaults to 0.01, so no label
+gives an action probability 0. Pass the temperature to the BC run with
 `--teacher-temperature`.
 
 ## From Python

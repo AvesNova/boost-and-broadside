@@ -83,10 +83,11 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
    (the shoot ramp, 0.5–1.0 gun ranges, is the one starting value taken from it). The
    other starting values are mine (listed below) and the search moved all of them; the
    search's second opponent is therefore my starting point, not a v1-converted one.
-2. **Frontline assignment by rank** instead of each ship choosing the neediest zone (see
-   Design): the literal port oscillated without memory. The spec's quantities remain
+2. **Frontline assignment by rank** (decided by the author, 2026-11-02) instead of each
+   ship choosing the neediest zone (see Design): the literal port oscillated without
+   memory. The spec's quantities remain
    (strength kernels, the defensive floor, the margins, exp(aggression), the urgency from
-   the meter's direction, the support radius in zone radii); the zone-distance cost was
+   the meter's direction and progress, the support radius in zone radii); the zone-distance cost was
    dropped with the per-ship choice.
 3. **The lead's distance is capped** (`lead_cap_in_gun_range`, searched to 1.16): the
    drag law's time of flight grows exponentially with distance (about 2.4 s at 1000 m),
@@ -314,11 +315,12 @@ re-measurement should settle it.
    the characteristics read them per type.
 4. **Question:** should RL's learning-rate warmup restart after BC (it does now, with the
    fresh optimizer)?
-5. **Question (spec A5):** the literal per-ship "neediest zone" choice oscillates without
-   memory; the rank assignment is my replacement (decision 2).
-6. **Proposal check:** the natural entropy (above) is low; a target entropy for RL needs
-   a temperature well above 1 or a floor (`--calibrate-entropy` reports the reachable
-   range).
+5. **Resolved (spec A5):** the rank assignment replaces the per-ship "neediest zone"
+   choice, decided by the author (decision 2).
+6. **The clone's entropy:** the natural entropy (above) is low. The floor now defaults
+   to 0.01 (author; fix round item 8). If the clone's entropy is still too low with it,
+   the author's next levers are the temperature on the labels (built) or a separate
+   entropy loss during BC (not built).
 
 ## Size
 
@@ -374,9 +376,7 @@ the review named was applied by hand and fails the named test (and passed the ol
    `-(exp(log_softmax) · log_softmax)` with no detach.
    `test_the_gradient_stays_finite_for_a_confident_student` now checks the gradient at
    entropy coefficients 0 and −0.0081 and fails under `xlogy` of the probabilities
-   (applied by hand). The BC page says that with ε = 0 the clone enters RL with the
-   teacher's support (about 2.4 joint actions) and that PPO never samples an action of
-   probability 0. ε's default is unchanged.
+   (applied by hand). ε's default then changed by author decision (item 8).
 5. **Open: the policy-file hand-off.** Section 11 has not merged into `origin/v2` (checked
    2026-11-02; `section/runs` has `save_policy`/`load_policy` with the return scale). The
    guide says the CLI's clone is not yet saved.
@@ -394,6 +394,18 @@ the review named was applied by hand and fails the named test (and passed the ol
 7. **The label rounding:** `test_the_update_time_labels_are_the_rollout_time_distribution`
    states that per-tick labels are exact, that a whole segment labelled as one batch
    differs at the ulp level (at most 1.2e-7 measured), and the 2.5e-7 tolerance.
+
+8. **The teacher never gives an action probability 0** (author decision, after the review):
+   `bnb.learn.bc.FLOOR = 0.01` is the default floor of `TeacherConfig`, `calibrate` and
+   `bnb --teacher-floor`, spread over the 42 joint actions as before.
+   `test_every_label_gives_every_action_a_probability_above_zero` (the stored segment's
+   labels, dead ships included, at T = 1 and T = 0.25: every entry ≥ 0.99 · 0.01/42);
+   the loss test's independent computation applies the floor; the temperature tests pin
+   floor 0 where they test a structural zero or T = 1 leaving labels unchanged. The BC
+   page states the default and its reason (the clone can sample every action in RL). The
+   toy BC run, the natural entropy and the entropy table were measured at floor 0; the
+   toy test was rerun at the new default (below). Next lever if the clone's entropy is
+   still too low: a separate entropy loss during BC (not built).
 
 Changes outside `bnb.controllers` and `bnb.learn` in this round: `bench/scripted_search.py`
 (new), `bnb.game.handling.characteristics`, `bnb.runtime.cloning`, `bnb.cli`, the tests

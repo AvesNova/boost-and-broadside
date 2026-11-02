@@ -37,15 +37,16 @@ reinforcement learning at a chosen entropy without an entropy bonus
 (`bnb.learn.bc.TeacherConfig`): `q_T ∝ q^(1/T)` over the joint, then `(1 − ε) q_T + ε / 42`.
 One global temperature keeps the teacher's relative confidence between states, which the
 clone learns. A structural zero (turning away from the target) stays zero under the
-temperature alone; the floor exists for a target entropy the temperature cannot reach. The
+temperature alone; the floor lifts every zero and reaches entropies the temperature cannot. The
 transformation applies to the labels only: as an opponent, the scripted agent plays its
 natural distribution.
 
-With the floor at its default, ε = 0, the labels keep the teacher's support, about 2.4
-joint actions per living ship-step on the training mix ([measured](#measurements)), and
-the clone enters reinforcement learning with that support: the actions outside it have
-probabilities near 0 (exactly 0 where they underflow), and an action of probability 0 is
-never sampled by PPO. A floor above 0 gives every joint action weight in every state.
+The floor defaults to ε = 0.01 (`bnb.learn.bc.FLOOR`), spread over all 42 joint actions,
+so no label gives an action probability 0. The teacher itself puts weight on about 2.4
+joint actions per living ship-step on the training mix ([measured](#measurements)); a
+clone trained on its distribution unfloored would give the rest probabilities near 0, and
+PPO never samples an action of probability 0. With the floor, the clone can sample every
+action in reinforcement learning.
 
 `bnb.learn.bc.calibrate` bisects the temperature to a target mean entropy, in nats per
 living ship-step, over the scripted agent's own distributions in its own games of the
@@ -92,7 +93,8 @@ Measured on 2026-11-02 on the development laptop (RTX 4070 Laptop GPU):
   of the scripted agent's own games of the 5v5 training mix (256 environments, four
   segments of 128 ticks). Its distribution puts weight on 2.4 joint actions on average,
   so the temperature alone reaches at most 0.75 nats; a floor of 0.1 gives 1.03 to 1.34.
-- **The toy test** (`tests/sections/test_bc_toy.py`): the relational model cloned at 2v2
+- **The toy test** (`tests/sections/test_bc_toy.py`, measured at floor 0, before the
+  default became 0.01): the relational model cloned at 2v2
   team deathmatch, 256 environments, stopped by the score rule after 65.4M environment
   steps (13 minutes). Over 512 fresh games it scores 0.478 against its teacher and 1.000
   against the chaser; the teacher scores 1.000 against the chaser.
