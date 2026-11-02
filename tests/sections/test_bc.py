@@ -65,6 +65,8 @@ def test_the_bc_loss_matches_an_independent_computation(segment):
         obs = Obs(**{name: None if value is None else value[tick]
                      for name, value in dataclasses.asdict(trajectory.obs).items()})
         q = distribution(obs, CHARACTERISTICS, Scripted(CHARACTERISTICS).parameters)
+        floor = bc.TeacherConfig().floor  # the default labels: the uniform floor, T = 1
+        q = (1.0 - floor) * q + floor / 42
         log_student = torch.log_softmax(unrolled.policy_logits[tick], -1)
         per_token = -(q * log_student).sum(-1)
         entropy = -torch.special.xlogy(q, q).sum(-1)
@@ -134,15 +136,30 @@ def test_the_teacher_temperature():
     q = torch.softmax(torch.randn(500, 42) * 3.0, -1)
     q[:, 5] = 0.0  # a structural zero
     q = q / q.sum(-1, keepdim=True)
-    assert torch.equal(bc.labels(q, bc.TeacherConfig()), q)
-    hotter = bc.labels(q, bc.TeacherConfig(temperature=2.0))
+    assert torch.equal(bc.labels(q, bc.TeacherConfig(1.0, 0.0)), q)
+    hotter = bc.labels(q, bc.TeacherConfig(temperature=2.0, floor=0.0))
     assert (hotter[:, 5] == 0.0).all()
-    assert bc.mean_entropy(q, bc.TeacherConfig(2.0)) > bc.mean_entropy(q, bc.TeacherConfig())
+    assert (bc.mean_entropy(q, bc.TeacherConfig(2.0, 0.0))
+            > bc.mean_entropy(q, bc.TeacherConfig(1.0, 0.0)))
     for target, floor in ((1.0, 0.0), (2.5, 0.0), (3.5, 0.0), (3.7, 0.05)):
         chosen = bc.calibrate(q, target, floor)
         assert bc.mean_entropy(q, chosen) == pytest.approx(target, abs=0.01)
     with pytest.raises(ValueError):
-        bc.calibrate(q, 3.73)  # above what the temperature alone reaches with a zero
+        bc.calibrate(q, 3.73, 0.0)  # above what the temperature alone reaches with a zero
+
+
+def test_every_label_gives_every_action_a_probability_above_zero(segment):
+    """The default floor, on the stored observations (dead ships' certain no-op included),
+    at T = 1 and at a cold temperature."""
+    _, runner, _, _ = segment
+    trajectory = lc.whole(runner)
+    distributions = bc.teacher_distribution(TEACHER, trajectory.obs)
+    assert (distributions == 0.0).any()  # the teacher itself has zeros
+    for temperature in (1.0, 0.25):
+        labels = bc.labels(distributions, bc.TeacherConfig(temperature=temperature))
+        assert bool((labels > 0.0).all()), temperature
+        assert float(labels.min()) >= 0.99 * bc.FLOOR / 42
+    assert bc.TeacherConfig().floor == bc.FLOOR > 0.0
 
 
 def test_the_opponent_plays_the_natural_distribution_whatever_the_temperature():

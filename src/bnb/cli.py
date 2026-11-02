@@ -44,7 +44,7 @@ class Train:
     device: str = "cuda"
     objective: str = "ppo"
     teacher_temperature: float = 1.0
-    teacher_floor: float = 0.0
+    teacher_floor: float = 0.01
     bc_budget_steps: int = 500_000_000
     calibrate_entropy: float | None = None
     calibration_segments: int = 4
@@ -140,7 +140,7 @@ def train(args: Train) -> None:
     if args.calibrate_entropy is not None:
         tokens = cloning.teacher_distributions(game, pools, args.num_envs,
                                                args.calibration_segments, device)
-        natural = bc.mean_entropy(tokens, bc.TeacherConfig())
+        natural = bc.mean_entropy(tokens, bc.TeacherConfig(1.0, 0.0))
         print(f"natural entropy {natural:.4f} nats per living ship-step over "
               f"{tokens.shape[0]} ship-steps", flush=True)
         try:

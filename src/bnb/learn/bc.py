@@ -22,6 +22,9 @@ from . import losses
 from .ppo import Learner, LearnerConfig
 
 Teacher = Callable[[Obs], torch.Tensor]  # views (R, ...) -> (R, S, 42) probabilities
+# The labels' default uniform floor (author): no label gives an action probability 0, so the
+# clone can sample every action in reinforcement learning.
+FLOOR = 0.01
 
 
 def config(**overrides) -> LearnerConfig:
@@ -34,10 +37,10 @@ def config(**overrides) -> LearnerConfig:
 @dataclasses.dataclass(frozen=True)
 class TeacherConfig:
     """The labels' transformation: q_T proportional to q^(1/T), then (1 - floor) q_T +
-    floor / 42. T = 1 and floor 0 leave them as they are."""
+    floor / 42. The floor defaults to `FLOOR`; T = 1 and floor 0 leave them as they are."""
 
     temperature: float = 1.0
-    floor: float = 0.0
+    floor: float = FLOOR
 
     def __post_init__(self) -> None:
         if not self.temperature > 0.0 or not 0.0 <= self.floor <= 1.0:
@@ -137,7 +140,7 @@ def mean_entropy(probabilities: torch.Tensor, teacher: TeacherConfig) -> float:
     return float(entropy(labels(probabilities, teacher)).mean())
 
 
-def calibrate(probabilities: torch.Tensor, target: float, floor: float = 0.0,
+def calibrate(probabilities: torch.Tensor, target: float, floor: float = FLOOR,
               tolerance: float = 1e-3, low: float = 1e-2, high: float = 1e2) -> TeacherConfig:
     """The temperature (floor fixed) whose labels' mean entropy over these teacher
     distributions (tokens, 42), living own ship-steps, is `target` nats, by bisection on
