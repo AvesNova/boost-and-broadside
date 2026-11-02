@@ -11,6 +11,16 @@ Branch `section/scripted`. The spec is `scripted-bc-spec.md`; the user pages are
   see "Fix round" at the end.
 - **Item 5 done** after section 11 merged (origin/v2 635f62fb): `bnb train --objective bc`
   saves the clone as the run's policy file.
+- **Suite (fix round, 53c519b9, under the bench lock):** 1031 passed, 7 skipped (the
+  league's 6 reference tests, the charts without the tools extra), 1 failed: the toy BC
+  test, which stopped by score and then scored **0.447** against its teacher over 512 fresh
+  games, against its 0.45 bar (0.478 in the first round, before the merge with section
+  11, which changed the learner's random streams). The stop rule fires at the bar itself
+  (0.45 over 1000 games), so a fresh 512-game score lands on either side of it (standard
+  error about 0.022). Raising the toy run's stop target to 0.5 (budget 150M) was tried:
+  the KL plateau rule fired first (24 minutes), so it was reverted. **Open for the
+  coordinator:** decide the toy test's margin (a stop target above the bar, or a bar
+  below the stop target, or more evaluation games).
 
 ## Design
 
