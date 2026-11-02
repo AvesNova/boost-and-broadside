@@ -506,8 +506,17 @@ cut; where they differ, this section and the code win.
     `nonfinite_beliefs`.
   - **Comparisons between model types** run both plain or both with kernels, never one
     of each.
-  - **Open:** an intermittent failure seen only while kernels autotune
-    (`sections/intermittent-failure-brief.md`). It blocks the training runs.
+- **The segment store's staging (fix/intermittent, merged 2026-11-03):**
+  - **The cause:** `SegmentStore.batches` allocated a new micro-batch size's staging
+    buffers on its worker thread while the caller computed. Kernels still queued on the
+    compute stream could then overwrite a copied batch. It allocates every slot it needs
+    on the caller's thread before any copy, and records each slot's release after the
+    allocation.
+  - **Callers run the generator out:** an abandoned one never releases its last batch.
+  - **The guard** is `tests/sections/test_store_staging.py`.
+  - **Open:** the 26-ship update is not bitwise repeatable between processes. Losses
+    differ by up to 5e-7 relative, while the rollout is identical. The probable cause is
+    an atomic add in a compiled backward. The 2v2 exact-resume test is unaffected.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
