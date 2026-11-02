@@ -72,8 +72,16 @@ that fail when the behaviour breaks.
      adjectives; no design history; every number says where it was measured.
 5. **Stay mergeable:**
    - merge `origin/v2` into your branch at least once a day, and whenever it moves;
-   - other branches are open while you work (the scripted agent and BC, the play shell).
-     Keep your diff out of their files: `bnb/controllers/scripted.py` and `bnb/play/`.
+   - other branches are open while you work. `fix/intermittent` hunts an intermittent
+     failure seen while Yemong's kernels autotune, and play's second milestone follows.
+     Keep your diff out of their files: `bnb/models/yemong/kernels/`,
+     `bnb/runtime/store.py` and `bnb/play/`. If the spec needs a change in one of them,
+     write it up as a request in your notes. `bnb/runtime/rollout.py` is yours (the spec
+     changes it); the other branch may touch it too, and whichever merges second
+     resolves the conflict.
+   - **The GPU is shared:** the other agent holds the benchmark lock for short runs. Run
+     the quick tier while you work, and the full suite (about 50 minutes) once at the
+     end, under the lock.
 6. **Commit and push often:**
    - commit to `section/cleanup`, then `git push -u origin section/cleanup`;
    - author Julian Kizanis <julianzia@gmail.com>;
@@ -93,7 +101,7 @@ that fail when the behaviour breaks.
 - **You may not change:**
   - the goldens, or `tests/reference/` beyond the two adapters;
   - `docs/rewrite/` other than `contracts.md` and your notes;
-  - `bnb/controllers/scripted.py`, `bnb/play/`.
+  - `bnb/models/yemong/kernels/`, `bnb/runtime/store.py`, `bnb/play/`.
 - **No behaviour change.** If you find a bug, do not fix it here. Write a test marked
   `xfail(strict=True)` with the reason, and list it in the notes; it is fixed
   separately.
