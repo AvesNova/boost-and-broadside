@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from . import kernels
+from .kernels import attention
 from .layers import GatedMLP, apply_rotary, norm
 
 Tables = tuple[torch.Tensor, torch.Tensor]  # (cos, sin), each (..., tokens, 1, pairs)
@@ -29,10 +31,21 @@ class SpatialBlock(nn.Module):
             .unflatten(-1, (3, self.heads, -1)).unbind(-3)
         map_key, map_value = self.map_key_value(self.map_norm(map_memory)) \
             .unflatten(-1, (2, self.heads, -1)).unbind(-3)
+        if kernels.switches.attention and attention.applies(query, token_tables):
+            attended = attention.attend(query, key, value, map_key, map_value, token_tables,
+                                        map_tables)
+        else:
+            attended = self._attend(query, key, value, map_key, map_value, token_tables,
+                                    map_tables)
+        tokens = tokens + self.output(attended.flatten(-2))
+        return tokens + self.feedforward(self.feedforward_norm(tokens))
+
+    @staticmethod
+    def _attend(query, key, value, map_key, map_value, token_tables, map_tables):
+        """The plain twin of `kernels.attention.attend`: (..., Q, heads, width)."""
         query, key = apply_rotary(query, *token_tables), apply_rotary(key, *token_tables)
         map_key = apply_rotary(map_key, *map_tables)
         keys = torch.cat([key, map_key], -3).transpose(-3, -2)  # (..., heads, Q + M, width)
         values = torch.cat([value, map_value], -3).transpose(-3, -2)
         attended = F.scaled_dot_product_attention(query.transpose(-3, -2), keys, values)
-        tokens = tokens + self.output(attended.transpose(-3, -2).flatten(-2))
-        return tokens + self.feedforward(self.feedforward_norm(tokens))
+        return attended.transpose(-3, -2)

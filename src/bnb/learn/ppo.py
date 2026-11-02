@@ -453,6 +453,7 @@ class Learner:
         terms_total = torch.zeros(len(TERMS), device=device)
         levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
         drift = self.drift(segments, prepared)
+        nonfinite = torch.zeros(1, device=device)  # minibatch steps with a non-finite gradient
         steps, stopped = 0, False
         for epoch in range(config.epochs):
             # Minibatches as equal as the views allow (micro-batches of micro_views views,
@@ -461,7 +462,9 @@ class Learner:
             statistics = torch.zeros(len(self.STATISTICS), device=device)
             for chosen in order.tensor_split(config.minibatches):
                 terms, per_level, statistic = self.gradient(segments, prepared, chosen)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
+                norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(),
+                                                      config.max_grad_norm)
+                nonfinite += ~torch.isfinite(norm)
                 self.optimizer.step()
                 terms_total += terms
                 levels_total += per_level
@@ -478,7 +481,7 @@ class Learner:
                 break
         readout = torch.cat([terms_total / steps, levels_total / steps,
                              prepared["explained_variance"], drift, first_epoch,
-                             prepared["scale"].reshape(1)]).tolist()  # the one transfer
+                             prepared["scale"].reshape(1), nonfinite]).tolist()  # one transfer
         terms, readout = readout[:len(TERMS)], readout[len(TERMS):]
         levels, readout = readout[:len(REWARD_LEVELS)], readout[len(REWARD_LEVELS):]
         variance, readout = readout[:len(REWARD_LEVELS)], readout[len(REWARD_LEVELS):]
@@ -490,6 +493,7 @@ class Learner:
         statistics, readout = readout[:len(self.STATISTICS)], readout[len(self.STATISTICS):]
         out.update(ratio_drift_max=drift[0], ratio_drift_mean=drift[1], **self.report(statistics),
                    minibatch_steps=steps, stopped_early=stopped, return_scale=readout[0],
+                   nonfinite_gradients=int(readout[1]),
                    learning_rate=self.optimizer.param_groups[0]["lr"])
         return out
 

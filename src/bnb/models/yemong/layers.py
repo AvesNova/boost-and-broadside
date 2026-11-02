@@ -6,6 +6,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from . import kernels
+from .kernels import gated
+
 
 def norm(width: int) -> nn.RMSNorm:
     """RMSNorm with a learned scale and torch's default epsilon (the dtype's machine eps)."""
@@ -55,5 +58,7 @@ class GatedMLP(nn.Module):
                 nn.init.kaiming_uniform_(half, a=5**0.5)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        if kernels.switches.gated_mlp and gated.applies(inputs):
+            return self.down(gated.gated_hidden(inputs, self.gate_up.weight))
         gate, up = self.gate_up(inputs).chunk(2, -1)
         return self.down(F.gelu(gate) * up)

@@ -97,7 +97,7 @@ The command's other options set the model and the learner:
 | Option | Values | Sets |
 |---|---|---|
 | `--model` | `yemong`, `relational` | `TrainConfig.model`: Yemong or the toy relational model |
-| `--precision` | `float32`, `tf32`, `bfloat16` | `TrainConfig.precision`: the matmuls' precision |
+| `--precision` | `bfloat16` (default), `float32`, `tf32` | `TrainConfig.precision`: the matmuls' precision |
 | `--shards` | a count | `TrainConfig.shards`: segments collected per update |
 | `--old-log-probabilities` | `rollout`, `recomputed` | `LearnerConfig.old_log_probabilities`: the rollout's, or recomputed by `unroll` before the first epoch |
 | `--micro-batch-rows` | a count | `LearnerConfig.micro_batch_rows`: ship rows per micro-batch (memory only; the result is the same) |

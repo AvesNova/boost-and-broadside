@@ -136,6 +136,53 @@ The controller samples the joint action from the policy logits by Gumbel-max
 (`bnb.models.yemong.policy.sample`), stores the sample as the previous action, and
 converts it to the factored `Action` with `bnb.contracts.action.from_joint`.
 
+## Kernels
+
+On CUDA, five pieces of the network run as Triton kernels (`bnb.models.yemong.kernels`):
+
+| Switch | Replaces | Runs in |
+|---|---|---|
+| `scan` | the RG-LRU's linear recurrence over a segment | either precision (the recurrence is float32 in both) |
+| `attention` | a spatial sublayer's rotary rotation and attention | either precision |
+| `gated_mlp` | the gated MLP's hidden layer, `gelu(gate x) * (up x)` | bf16 only |
+| `temporal_mix` | a temporal sublayer's gates, recurrence and output gate over a segment (it takes over from `scan` there) | either precision, segments only |
+| `heads` | linear, norm, gelu, linear: the heads, the shot trajectory head's tail and the encoder's projections | bf16 only |
+
+Each kernel computes the same function as the plain PyTorch code it replaces, which stays
+in place as its twin: the plain path runs on the CPU, in float64 (the reference fixtures),
+wherever a kernel does not apply, and wherever its switch is off.
+`tests/sections/test_yemong_kernels.py` holds each kernel to its twin, forward and
+backward, and checks that every kernel gives bitwise-identical results on identical
+inputs, as the exact-resume tests need. Each is a `torch.library.triton_op` with autograd,
+so it compiles under `fullgraph=True` and captures in the rollout's CUDA graph.
+
+The switches are the fields of `bnb.models.yemong.kernels.Switches`, process-wide in
+`bnb.models.yemong.kernels.switches`, and read when a function is traced: set them before
+compiling. `bnb.models.yemong.kernels.plain` turns them all off for a block of code:
+
+<!-- runnable -->
+```python
+from bnb.models.yemong import kernels
+
+kernels.switches.heads = False  # one kernel off, from here on
+with kernels.plain():  # every kernel off inside the block
+    assert not kernels.switches.scan
+kernels.switches.heads = True
+```
+
+A change to a piece with a kernel is made twice, in the plain path and in the kernel, and
+the test keeps them equal; a new piece can be tried with the switch off first. A speed
+comparison between model types runs both plain or both with their kernels.
+
+Each kernel autotunes its tiles and warps for each shape it meets, over a few
+configurations (`triton.autotune`), so every GPU picks its own; a configuration a GPU
+cannot run is skipped. Tuning a new shape costs about a second, once.
+`tests/sections/test_yemong_kernels.py::test_every_autotune_configuration_matches_the_plain_path`
+checks every configuration against the plain path. The scan's and the gated MLP's
+configurations give the same bits; the others' can differ in the last bits, so the choice
+is cached on disk (Triton's and Inductor's autotune caches), and a later process on the
+same machine, such as a resumed run, makes the same choice and repeats the bits.
+
 ## Configuration
 
 `bnb.models.yemong.model.YemongConfig`. Its defaults are the configuration of v1's
@@ -144,7 +191,10 @@ trained model:
 <!-- generated: yemong-config -->
 
 `bfloat16_matmuls` runs the matrix products of the encoder, the trunk and the heads under
-bfloat16 autocast. With it on, `step` and `unroll` agree only to bfloat16 rounding.
+bfloat16 autocast. With it on, `step` and `unroll` agree only to bfloat16 rounding. Training
+sets it from `TrainConfig.precision`, whose default is `"bfloat16"`; the residual stream,
+the norms, the recurrent state, the codes, the belief and the critic's expectations stay
+float32 under it.
 
 ## Export
 
