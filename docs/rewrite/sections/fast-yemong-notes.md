@@ -82,18 +82,21 @@ backward, a memory feature outside this brief.
 `bnb train`'s trainer at 5v5 with 1024 environments, the default micro-batch (160 rows),
 through `bench.cell`'s train cell (compile, one episode of rollouts, then the best of three
 collect + update; `/tmp/bnb-scratch-fast-yemong/cell.py` sets the precision and the
-switches; raw rows in `throughput.jsonl`). Provisional: load average 1.0-1.3.
+switches; raw rows in `throughput.jsonl`). Remeasured after autotuning (2026-11-03, the
+only GPU job, one cell after another; load average at the start of each cell, the 1-minute
+figure first, raised by the cells before it). Provisional.
 
-| Precision | Kernels | Rollout (s) | Update (s) | Train env-ticks/s | Peak (GB) |
-|---|---|---:|---:|---:|---:|
-| fp32 | off (v2 before) | 3.39 | 44.45 | 2 740 | 3.6 |
-| fp32 | on | 3.02 | 40.51 | 3 011 | 3.5 |
-| bf16 | off | 1.89 | 31.09 | 3 974 | 2.8 |
-| bf16 | on (the new default) | 1.38 | 25.57 | 4 864 | 2.2 |
+| Precision | Kernels | Rollout (s) | Update (s) | Train env-ticks/s | Peak (GB) | Load |
+|---|---|---:|---:|---:|---:|---|
+| fp32 | off (v2 before) | 3.42 | 44.38 | 2 742 | 3.6 | 1.10 / 1.45 / 2.17 |
+| fp32 | on | 3.03 | 40.30 | 3 025 | 3.5 | 1.03 / 1.84 / 2.67 |
+| bf16 | off | 1.90 | 30.98 | 3 986 | 2.8 | 1.09 / 2.40 / 3.13 |
+| bf16 | on (the new default) | 1.39 | 25.43 | 4 886 | 2.2 | 2.41 / 3.34 / 3.46 |
 
 The new default trains 1.78x faster than the old one (fp32 without kernels); the kernels
-alone give 1.22x in bf16 and 1.10x in fp32. The update is 93-95% of training time in every
-row. (The audit's estimate for the blind model in bf16 was 1.8x against fp32 today.)
+alone give 1.23x in bf16 and 1.10x in fp32. The update is 93-95% of training time in every
+row. Every cell is within 1% of the same cell before autotuning (load 1.0-1.3 then).
+(The audit's estimate for the blind model in bf16 was 1.8x against fp32 today.)
 
 ## Memory
 
@@ -109,6 +112,14 @@ budget), doubling from 320 rows:
 The 26-ship cell (13 per team, 54 fields, 1576 environments, the default 160 rows), by the
 probe: fp32 does not fit with or without the kernels; bf16 without kernels runs out of
 memory; **bf16 with the kernels fits** (allocated 5.07 GB, reserved 6.24 GB).
+
+After autotuning (2026-11-03, three probes of that cell, bf16 with the kernels,
+`--arena-radius 4950`): with the autotune caches warm it fits (allocated 4.82 GB, reserved
+5.55 GB); with both caches emptied (`TRITON_CACHE_DIR`, `TORCHINDUCTOR_CACHE_DIR`) the
+first update reserved 7.30 GB, over the budget, because the autotuner's benchmarking runs
+inside the probed update; and one probe (Inductor's cache cold for these shapes, Triton's
+warm) died with a device-side assert (open question 8). So on a new machine the probe
+reads high until the run's shapes have been tuned once.
 
 ## Autotuning (the author's addition, 2026-11-02)
 
@@ -205,37 +216,60 @@ different, the norm epsilon, is not). The fixtures run the plain path and pass.
 6. **A CUDA error in one probe.** One 26-ship bf16 probe with the kernels failed with a
    sticky CUDA error while the kernel sources were being edited under the running chain;
    the same probe passed when rerun (see Progress for the rerun after autotuning).
-7. **Noise in the plain path's compile logs.** Compiling the plain path logs
+8. **Two intermittent failures, each seen once and not reproduced (2026-11-03).**
+   - The first full suite after autotuning (fresh `/tmp`, so Inductor's cache was cold and
+     Triton's, in `~/.triton`, warm) failed one test,
+     `tests/runs/test_resume.py::test_a_resumed_run_equals_one_straight_through_on_the_gpu[yemong]`:
+     the first update's pool metrics (the rollout's reward rates) differed between the
+     straight process and the first. Rerun alone four times it passed (warm caches; both
+     caches emptied; Inductor's emptied and Triton's warm, the suite's state; all of
+     `tests/runs` and the kernel tests from emptied caches), and the second full suite
+     passed.
+   - One 26-ship bf16 probe died with a device-side assert in the learner's loss
+     (`index out of bounds: 0 <= tmp32 < 42`): a stored action's joint index, which
+     Gumbel-max sampling keeps in range, was out of range, so the update read actions that
+     were never written or were overwritten. It was raised while Inductor benchmarked that
+     kernel's configurations. Rerun twice (warm caches; emptied caches) it did not recur.
+     The CUDA error of item 6 may be the same failure.
+
+   Both happened in processes that were autotuning, which changes the timing around the
+   segment store's asynchronous copies (pinned host memory, a copy stream and a worker
+   thread: `src/bnb/runtime/store.py`, outside this brief). A race there, exposed by the
+   timing rather than caused by a kernel, would explain both; nothing pins it down yet. A
+   kernel reading memory that one configuration leaves unwritten would explain them too,
+   but each kernel's buffers are written in full by every configuration (the heads'
+   partial sums were the one exception, fixed). If it recurs: the resume test or the probe
+   in a loop from emptied caches, `host_store=false` against the default.
+9. **Noise in the plain path's compile logs.** Compiling the plain path logs
    "Attempting to permute a tensor of rank 5" from the fake-tensor pass; it is not fatal and
    is not new (the plain path is v2's code).
 
-## Progress (2026-11-02, 20:3x, stopped for a machine shutdown)
+## Progress (2026-11-03, done)
 
 - **Done and pushed:** the piece map; the five kernels, one commit each (`aa9e12cd`,
   `66cdd7ca`, `b14de1a8`, `de77abe2`, `1d6bfeba`); bf16 by default with the precision
   signals (`dac8a4b0`); every kernel autotuned (the author's addition), with the heads'
-  partial-sum fix and the tests over every configuration (the last commit, marked WIP until
-  the full suite passes).
-- **Tested (GPU, under the lock):** `tests/sections/test_yemong_kernels.py` (24 passed
-  after autotuning); before autotuning also `test_yemong_model.py`,
-  `test_learner_precision.py`, `test_yemong_runtime.py`, `tests/runs/test_resume.py`,
-  `tests/runs/test_compatibility.py`; `tests/reference` and `tests/docs` on the CPU. Each
-  kernel broken by hand fails its own test (before autotuning; `breaks.py`).
-- **Measured after autotuning** (race benchmark, label "6 autotuned", load 0.7-1.8): training
-  V=16 fp32 76.5 ms, bf16 37.7 (0.97 GB); V=64 bf16 165.5 (3.77 GB), fp32 out of memory;
-  rollout fp32 25.4, bf16 12.2. The same as before autotuning within noise (rollout bf16
-  11.5 -> 12.2, provisional). Training throughput fp32 with kernels after autotuning:
-  3 013 env-ticks/s (load 1.1), as before.
-- **In flight when stopped:** `/tmp/bnb-scratch-fast-yemong/chain3.sh` (the bf16 throughput
-  cell after autotuning, the 26-ship probe rerun, `breaks.py` rerun, the full suite). It
-  could not be stopped from here; its results, if any, are in `/tmp/bnb-scratch-fast-yemong/`
-  (`throughput.jsonl`, `probe26b.log`, `breaks2.log`, `suite.log`), which may not survive the
-  shutdown.
-- **Next:** rerun under the lock: the full suite (`uv run --no-sync pytest`), `breaks.py`
-  (the heads break string still matches), the 26-ship bf16 probe with kernels, the bf16
-  throughput cell; then drop the WIP mark, fill the numbers in here, and hand back. Scratch
-  scripts to recreate if `/tmp` is gone: `locked.py` (runs a command under
-  `bench.lock.bench_lock`), `cell.py` (bench.cell's train cell with precision, switches and
-  micro-batch rows), `train_speed.py` (`bnb train` with `--plain`), `micro.py`,
-  `configs.py`, `breaks.py`, `gpu_profile.py` (never name a script `profile.py`: it shadows
-  the standard library's).
+  partial-sum fix and the tests over every configuration (`11e54dce`, committed as WIP;
+  the commit after it records that the suite passed).
+- **Full suite (GPU, under the lock), 2026-11-03:** first run 1 failed, 1064 passed (the
+  GPU exact-resume test for Yemong, open question 8); second run **1065 passed, 7
+  skipped, 1 xpassed** (49 min). The skips are six league-equivalence tests (the league
+  section's `make_arm` is not implemented yet) and one ship-card chart test (needs the
+  tools extra); none is a hardware skip, none is new.
+- **Hand breaks after autotuning** (`breaks.py`, a 1% error in each kernel's forward
+  store): every kernel's own tests fail (scan, attention, gated MLP, temporal mix,
+  heads), and the sources were restored.
+- **Measured after autotuning:** the race benchmark (label "6 autotuned", load 0.7-1.8):
+  training V=16 fp32 76.5 ms, bf16 37.7 (0.97 GB); V=64 bf16 165.5 (3.77 GB), fp32 out of
+  memory; rollout fp32 25.4, bf16 12.2, the same as before autotuning within noise. The
+  training throughput cells and the 26-ship probe: see Training throughput and Memory.
+- **Scratch** (`/tmp/bnb-scratch-fast-yemong`, recreated 2026-11-03 after a reboot wiped
+  it): `locked.py` (a command under `bench.lock.bench_lock`), `cell.py` (bench.cell's
+  train cell at 5v5 x 1024 with a precision, the switches on or off and optional
+  micro-batch rows; appends to `throughput.jsonl`), `breaks.py`; logs `suite.log`,
+  `suite2.log`, `breaks.log`, `probe26*.log`, `resume*.log`. Not recreated: `micro.py`,
+  `configs.py`, `train_speed.py`, `gpu_profile.py` (never name a script `profile.py`: it
+  shadows the standard library's).
+- **Open:** questions 1-3 and 8 are the author's: determinism across machines, the shot
+  trajectory head outside autocast, the remaining gap to the blind model, and the two
+  intermittent failures.
