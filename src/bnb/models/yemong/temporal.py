@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from . import kernels
-from .kernels import scan
+from .kernels import scan, temporal
 from .layers import GatedMLP, norm
 
 TAPS = 4  # the convolution reads the current input and the 3 before it
@@ -142,9 +142,9 @@ class TemporalBlock(nn.Module):
         self.feedforward_norm = norm(width)
         self.feedforward = GatedMLP(width, 4 * width)
 
-    def _finish(self, tokens: torch.Tensor, normed: torch.Tensor,
-                recurrent: torch.Tensor) -> torch.Tensor:
-        tokens = tokens + self.output(recurrent * F.gelu(self.gate_branch(normed)))
+    def _finish(self, tokens: torch.Tensor, mixed: torch.Tensor) -> torch.Tensor:
+        """mixed: the recurrence's output times gelu(gate_branch(normed))."""
+        tokens = tokens + self.output(mixed)
         return tokens + self.feedforward(self.feedforward_norm(tokens))
 
     def step(self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor
@@ -155,7 +155,7 @@ class TemporalBlock(nn.Module):
         projected = self.recurrent_input(normed)
         state = self.recurrence.step(self.convolution.step(projected, buffer), state)
         buffer = torch.cat([buffer[..., 1:, :], projected[..., None, :]], -2)
-        return self._finish(tokens, normed, state), state, buffer
+        return self._finish(tokens, state * F.gelu(self.gate_branch(normed))), state, buffer
 
     def sequence(self, tokens: torch.Tensor, state: torch.Tensor, buffer: torch.Tensor,
                  starts: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -164,7 +164,16 @@ class TemporalBlock(nn.Module):
         normed = self.input_norm(tokens)
         projected = self.recurrent_input(normed)
         convolved = self.convolution.sequence(projected, buffer, starts)
-        recurrent, state = self.recurrence.sequence(convolved, state, starts)
+        if kernels.switches.temporal_mix and temporal.applies(convolved):
+            recurrence = self.recurrence
+            recurrent, mixed = temporal.temporal_mix(
+                recurrence.gates(convolved), convolved, self.gate_branch(normed),
+                _later(starts), recurrence.log_decay, state, DECAY_EXPONENT,
+                CONTRIBUTION_FLOOR)
+            state = recurrent[-1]
+        else:
+            recurrent, state = self.recurrence.sequence(convolved, state, starts)
+            mixed = recurrent * F.gelu(self.gate_branch(normed))
         history = TAPS - 1
         buffer = torch.cat([buffer.movedim(-2, 0), projected])[-history:].movedim(0, -2)
-        return self._finish(tokens, normed, recurrent), state, buffer
+        return self._finish(tokens, mixed), state, buffer

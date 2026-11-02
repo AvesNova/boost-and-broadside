@@ -22,7 +22,7 @@ from bnb.models.yemong import kernels  # noqa: E402
 from bnb.models.yemong.kernels import attention, gated, scan  # noqa: E402
 from bnb.models.yemong.layers import GatedMLP  # noqa: E402
 from bnb.models.yemong.spatial import SpatialBlock  # noqa: E402
-from bnb.models.yemong.temporal import parallel_scan  # noqa: E402
+from bnb.models.yemong.temporal import TemporalBlock, parallel_scan  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="the kernels need CUDA")
 CUDA = torch.device("cuda")
@@ -209,6 +209,54 @@ def test_gated_mlp_module_takes_the_kernel_only_under_16_bit_autocast():
 def test_gated_mlp_is_bitwise_repeatable():
     _, inputs = _gated_inputs(seed=2)
     first, second = (_gradients(_bf16(gated.gated_hidden), inputs) for _ in range(2))
+    _assert_identical(first[0] + first[1], second[0] + second[1])
+
+
+# ------------------------------------------------------------------ temporal mix
+
+
+def _temporal_case(seed: int = 0, length: int = 40, views: int = 3, tokens: int = 11,
+                   width: int = 128):
+    torch.manual_seed(seed)
+    block = TemporalBlock(width).to(CUDA)
+    generator = _generator(seed)
+    tokens_in = torch.randn(length, views, tokens, width, generator=generator, device=CUDA)
+    state = torch.randn(views, tokens, width, generator=generator, device=CUDA)
+    buffer = torch.randn(views, tokens, 3, width, generator=generator, device=CUDA)
+    starts = torch.zeros(length, views, 1, dtype=torch.bool, device=CUDA)
+    starts[17, 1] = starts[0, 2] = starts[33] = True  # mid-segment, at the first step, all
+    return block, [tokens_in, state, buffer], starts
+
+
+def _temporal_run(block: TemporalBlock, inputs, starts, precision: str):
+    """The block's outputs and final state, and the gradients of the inputs and every
+    parameter."""
+    block.zero_grad(set_to_none=True)
+    inputs = [x.detach().requires_grad_() for x in inputs]
+    with torch.autocast("cuda", torch.bfloat16, enabled=precision == "bfloat16"):
+        outputs, state, _ = block.sequence(*inputs, starts)
+    _weighted_sum((outputs, state)).backward()
+    return ([outputs.detach(), state.detach()],
+            [x.grad for x in inputs] + [parameter.grad for parameter in block.parameters()])
+
+
+@pytest.mark.parametrize("precision", ["float32", "bfloat16"])
+def test_temporal_mix_is_as_close_as_the_plain_sublayer(precision):
+    block, inputs, starts = _temporal_case()
+    expected = _temporal_run(copy.deepcopy(block).double(), [x.double() for x in inputs],
+                             starts, "float64")
+    with kernels.plain():
+        plain = _temporal_run(block, inputs, starts, precision)
+    fast = _temporal_run(block, inputs, starts, precision)
+    floor = 1e-5 if precision == "float32" else 0.0
+    for got, slow, want in zip(fast[0] + fast[1], plain[0] + plain[1], expected[0] + expected[1],
+                               strict=True):
+        _assert_as_close(got, slow, want, floor)
+
+
+def test_temporal_mix_is_bitwise_repeatable():
+    block, inputs, starts = _temporal_case(seed=1)
+    first, second = (_temporal_run(block, inputs, starts, "bfloat16") for _ in range(2))
     _assert_identical(first[0] + first[1], second[0] + second[1])
 
 

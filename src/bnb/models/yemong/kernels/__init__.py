@@ -22,6 +22,7 @@ class Switches:
     scan: bool = True  # the RG-LRU's recurrence over a segment (temporal.parallel_scan)
     attention: bool = True  # a spatial sublayer's rotary and attention (SpatialBlock._attend)
     gated_mlp: bool = True  # the gated MLP's hidden layer, 16-bit (GatedMLP.forward)
+    temporal_mix: bool = True  # a temporal sublayer's gates, scan and output gate (segments)
 
 
 switches = Switches()
