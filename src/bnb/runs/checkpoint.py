@@ -26,6 +26,7 @@ import safetensors.torch
 import torch
 
 from bnb.contracts import Action, GameConfig, Obs
+from bnb.game import VERSION as GAME_VERSION
 from bnb.game.ship_types import ShipTypes
 from bnb.models.yemong.critic import ReturnScale
 from bnb.runtime.train import TrainConfig, Trainer, model_build
@@ -88,6 +89,7 @@ def policy_record(
         kind="policy",
         model=dict(name=name_of(model), version=type(model).VERSION, build=to_json(model.build)),
         schemas=schemas(),
+        game_version=GAME_VERSION,
         game=None if game is None else to_json(game),
         ship_card=None if types is None else _ship_card(types),
         return_scale=return_scale is not None,

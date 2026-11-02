@@ -114,6 +114,14 @@ def _edit_record(directory, change):
     path.write_text(json.dumps(record))
 
 
+def test_a_policy_file_records_the_game_version(tmp_path):
+    from bnb.game import VERSION
+
+    save_policy(tmp_path / "policy", cases.tiny_model("relational"))
+    record = json.loads((tmp_path / "policy" / "checkpoint.json").read_text())
+    assert record["game_version"] == VERSION
+
+
 def test_a_changed_weights_file_is_refused_by_its_hash(tmp_path):
     save_policy(tmp_path / "policy", cases.tiny_model("relational"))
     weights = tmp_path / "policy" / checkpoint.WEIGHTS
