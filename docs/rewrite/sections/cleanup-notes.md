@@ -12,7 +12,7 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
 - [x] 1.2-1.3 names
 - [x] 2 dead code and the opaque state
 - [x] 3 the sweep's tests
-- [ ] 4 docs
+- [x] 4 docs (stale-page review at the end)
 - [ ] 5 layering and duplication
 - [ ] 6 test hygiene
 - [ ] 8 additions
@@ -193,6 +193,49 @@ a real bug, so there is no `xfail`. All 39 run on the CPU in about 5 s; none is 
   the real code computed; nothing is replaced.
 - **Item 7** imports `test_seat_symmetry`'s helpers (`_melee`, `_random_tick`,
   `_assert_mirrored`) to reach a moved front in the mirror check.
+
+### 4. Docs, docstrings and contracts.md
+
+- **`STYLE_GUIDE.md`:** deleted. Nothing outside `docs/rewrite/` referred to it;
+  `docs/contributing/code-style.md` replaces it.
+- **Docstrings against the code:**
+  - `cli.py`: names `bnb train` (which exists now), and says it is an entry point and
+    which others there are (the play shell, `bench`); the seed is set there, and only
+    there in library terms (`test_layering.py`).
+  - `Privileged.ships`: every row as if seen (`visible` 1, `time_since_seen` 0, the true
+    hidden columns), the dead included, unlike a fog-off observation, where a dead enemy
+    is not visible. Pinned by sweep item 5.
+  - `obs.py`: only ship rows carry `team_relative`.
+  - `config.py` and `test_contracts.py`: `MAX_SHIPS` is a design cap, ship indices are
+    int32 with -1 for none.
+  - `model.py`: the memory is `(..., M + Z, Dm)`.
+  - `api.py`: names the functions that take the ship card (`reset`, `move`, `resolve`,
+    `step`), and the runtime's functions (section 2).
+- **Defaults and counts in prose:** every place the audit lists now names the field
+  (`boundary_damage_base`, `group_centre_fraction`, `spawn_margin`,
+  `spawn_zone_fraction`, `MAP_SCALE_RADIUS`) or the constant (`NUM_JOINT`,
+  `SHIP_HIDDEN_ZERO`, `len(REWARD_LEVELS)`, `len(MEANS)`, `state_code.width`,
+  `trajectory_width`, `sum(SIZES)`), and `REDRAW` in `scripted.py`. `spawning.py`'s
+  "-0.8 R_a" comment says the side instead. `inputs.ship_inputs` added a literal 9 for the
+  respawn features; it is `1 + 2 * RESPAWN_HARMONICS` (the same number). Yemong's
+  "2C" density cells are "2 cells" (`C` is spawn candidates now).
+- **Missing docstrings:** 82 written (on `section/cleanup-docstrings`, merged),
+  `tests/docs/test_docstrings.py` holds the count at zero outside `bnb.play` and
+  `bnb.models.yemong.kernels` (68 there, owned by open branches: request below).
+- **`contracts.md`:** the Game API list is complete (with the runtime's functions); the
+  global columns no longer say the mode's come later; `values` is `(R, S, levels)`;
+  `GameConfig.num_teams` is deleted in the code (`TEAMS` is one constant in
+  `bnb.contracts.config`) and the doc; the ship-index convention says int32 -1; the
+  skeleton notes keep the three settled points (controller signature with `reset`,
+  perception and `ticks_since_seen`, the seat) and drop the stale ones (`last_seen`, the
+  seat-layout xfail, `presets.json`, the ledger, uint8 indices). "Required argument of
+  every game function" was already gone. A "cleanup pass" entry records the renames.
+- **Contract dtypes (rule 8):** `tests/contract/test_game_dtypes.py` checks the dtype and
+  shape of every field of the `Events`, `Obs` and `Privileged` that one game tick
+  produces, in all three modes, at batch 1 and 6.
+- **Same-day reviews:** the staleness check already compares against the page's own last
+  commit; what blocked a second review on one day was a `reviewed:` value that did not
+  change. The writing guide now says to write the date and time (`2026-11-03 14:20`).
 
 ## Decisions and deviations
 

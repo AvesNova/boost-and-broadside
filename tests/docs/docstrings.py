@@ -1,5 +1,6 @@
 """The docstring report: public modules, classes and functions of `bnb` and `bench` whose
-docstring is missing or one word. A report, not a gate.
+docstring is missing or one word. `tests/docs/test_docstrings.py` holds the count at zero
+(outside the files open branches own).
 
     uv run --no-sync python -m tests.docs.docstrings
 

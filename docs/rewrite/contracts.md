@@ -15,7 +15,7 @@ Status: **draft, first review done** 2026-10-31 (see the review log at the end).
 | Ship order | Team-major: ship `n = team·S + slot`. Ship tensors are stored `(B, N, …)` and viewed `(B, T, S, …)` for free | new |
 | Floats | float32 everywhere in game and runtime. float64 only in `reference/`. bf16 only inside models | carried |
 | Ints | int32 counters and categoricals; bool flags; int64 only where torch requires it (indexing), converted at the use site | carried |
-| Ship indices | At most 255 ships (author: no plans beyond 256); stored ship indices (killer, per-bullet target, row maps) may be `uint8` with 255 = none. Torch treats a `uint8` index tensor as a boolean mask, so convert to int64 before indexing | new |
+| Ship indices | At most 255 ships (`MAX_SHIPS`, author: no plans beyond 256). Stored ship indices (killer, first shooter) are int32 with −1 = none; index tensors are int64 where torch requires it | new |
 | Units | m, s, kg, J, W, rad. Angles counter-clockwise, y up | carried |
 | Containers | frozen `@dataclass`es whose fields are tensors, registered as pytrees (`torch.utils._pytree`) so the runtime can map `copy_`, `clone`, `to(device)` over them. No dicts at contract boundaries | new |
 | Versions | `Obs`, `Action` and `Events` each carry a `SCHEMA_VERSION` class constant. A model checkpoint and an exported ONNX model record the versions they were trained on; loading a mismatch fails | new |
@@ -318,8 +318,8 @@ cut; where they differ, this section and the code win.
 
   Times are in seconds.
 - **Field columns:** x, y, radius, band_width, level.
-- **Global columns:** episode_progress, arena_radius, fogged, reset. Mode features come
-  with the modes section.
+- **Global columns:** episode_progress, arena_radius, fogged, reset, then the mode's
+  columns (see the modes section below).
 - **Fog of war:**
   - per environment, `Match.fogged`, set at reset;
   - `Pool.fog_share` (default 1.0) chooses the fogged share of each pool, as a fixed
@@ -343,8 +343,12 @@ cut; where they differ, this section and the code win.
   - **Designer handles:** `bnb.game.handling`. `measure` flies the game's own code;
     `solve` finds the card that meets a set of handles (Levenberg–Marquardt in float64,
     the cruise fix included). `bnb ship-card` is its command.
-- **Game API:** `bnb.game.api`: `rules_of`, `reset`, `move`, `resolve`, `step`,
-  `perceive`, `spread`, `uniforms`. Randomness is explicit (spec section 2).
+- **Game API:** `bnb.game.api`: `rules_of`, `ship_types`, `reset`, `move`, `resolve`,
+  `step`, `perceive`, `spread`, `uniforms`, `start_clocks`, `sweep_like`. Randomness is
+  explicit (spec section 2). For a runtime holding the state in persistent buffers (the
+  cleanup pass): `perceived`, `episode_ticks`, `launch_capture`, `ship_team`, `view_order`.
+  No other package reads a field of the state (`tests/contract/test_layering.py` checks
+  the runtime).
   - **Display functions (section 10, 2026-11-01), for the play shell:**
     - `log_index`: the medium at chosen points;
     - `core_radius`: the cores the sight test uses (a second copy, held to
@@ -514,6 +518,10 @@ cut; where they differ, this section and the code win.
     (`Controller.step(carry, obs, reset)`, the observation's `reset` column, Yemong's
     `step` and `unroll`); `done` is an episode ending after a step (`Events.done`,
     `Trajectory.done`).
+  - **`GameConfig.num_teams`** is gone: `TEAMS` (2) is one constant in
+    `bnb.contracts.config`, which `bnb.game.rules` imports.
+  - **Shapes:** `Z` zone slots and `C` spawn candidates join the letters; the reward levels
+    are written `levels` (`L` is a segment's steps).
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
@@ -526,37 +534,22 @@ This supersedes the decision log's "raw observation includes bullets". The sight
 longer pairs bullets with observers. The race reference tests lost their bullet
 observation checks (`test_bullet_visibility` and the `obs.bullets` comparisons).
 
-## Skeleton implementation notes (2026-10-31)
+## Skeleton implementation notes (2026-10-31, revised by the cleanup pass)
 
-Milestone 0 is built (`src/bnb`). These are the places where it differs from or settles
-the text above:
+Milestone 0 settled these points of the text above; the rest of its notes were superseded
+by the sections and are in "Current schema".
 
-- **Controller signature:** `step(carry, obs, done) -> (action, carry, outputs)`.
+- **Controller signature:** `step(carry, obs, reset) -> (action, carry, outputs)`.
   - Following PyTorch idiom, a model's parameters live in the controller's own module.
     There is no `params` argument; a league slot is a separate controller whose weights
     are `copy_`'d in.
-  - `done` is the view's reset flag.
-  - Random draws use the default generator for now. Named, graph-registered generators
-    come later.
+  - `reset` is the view's reset flag (the environment reset before this observation).
   - `reads` lists the Obs parts a controller uses; the rollout stores only the learner's.
-- **Perception:** `perceive(p, state) -> (state, Obs, Privileged)`. "When did this team
-  last see this ship" is game state (`last_seen`, ticks, `(B, T, N)`), so perception
-  returns the state with it advanced.
+- **Perception:** `perceive(rules, state) -> (state, Obs, Privileged)`. "When did this
+  team last see this ship" is game state (`Match.ticks_since_seen`, ticks, `(B, T, N)`), so
+  perception returns the state with it advanced.
 - **Seat:** a runtime array `seat (B,)`, redrawn at every reset. Role r plays team
-  `(r + seat) mod T`. `Match.seat_of_team` (map sides) is not needed by team deathmatch
-  and arrives with the first mode that has side-specific roles.
-- **Known seat leak, physics section:**
-  - The race spawn rule places ship i at phase `frac(0.618 i + 0.382 t)` using the
-    sim index.
-  - So team 0's slot 0 always spawns due east of its team's centre in world coordinates,
-    and a reset reveals the seat.
-  - Fix: phase by slot within the team, measured relative to the spawn axis. That
-    changes the race goldens.
-  - `tests/sections/test_perception.py::test_spawn_layout_does_not_reveal_the_seat` is a
-    strict xfail until then.
-- **Physics constants:** sizes and the two time-native rules (`episode_s`, `respawn_s`)
-  are in `GameConfig`. Everything else is still the race's `presets.json` until the
-  physics section.
-- **Events** carry the race's per-tick pairwise damage. The stub reward uses only kills,
-  deaths and damage dealt and taken. The attribution ledger arrives with the modes
-  section.
+  `(r + seat) mod T`.
+- **Constants:** sizes and the two time-native rules (`episode_seconds`,
+  `respawn_seconds`) are in `GameConfig`; the game's other numbers are in `bnb.game.rules`
+  (`Rules`, `FlightConstants`) and the ship card.

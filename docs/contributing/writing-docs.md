@@ -145,9 +145,11 @@ uv run --no-sync python -m tests.docs.staleness
 ```
 
 When you change covered code, reread the pages that cover it and fix what changed. If a
-page is still correct, set `reviewed:` in its front matter to the date and commit the page.
-Nothing reads `reviewed:`; it exists only so that confirming a page is a change to commit,
-because the warning clears once the page has a commit newer than the code. A page that is
+page is still correct, set `reviewed:` in its front matter to the date and time
+(`2026-11-03 14:20`) and commit the page. Nothing reads `reviewed:`; it exists only so that
+confirming a page is a change to commit, because the warning clears once the page has a
+commit newer than the code. The time lets a page reviewed earlier the same day be reviewed
+again. A page that is
 warned about on most commits covers too much; narrow its `covers`.
 
 ## Voice
