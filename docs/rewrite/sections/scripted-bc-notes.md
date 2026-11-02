@@ -351,6 +351,9 @@ the review named was applied by hand and fails the named test (and passed the ol
    1024 games (warns below 0.70); at `deathmatch`, `deathmatch_wide` and `frontline`, fog
    on, seat drawn per game, seeds 20261102 + 10 · preset + opponent, all at or above
    `bench.scripted_search.SEED_LIMIT` (checked by `test_the_seeds_are_not_the_searchs`).
+   Each match plays in a fresh process: inside the full suite, after the other tests'
+   compiled rollouts, the in-process version stalled on its sixth match (the CPU busy,
+   the GPU idle, 40 minutes; not diagnosed further), while the file alone passed.
    7 passed in 111 s. With the progress urgency, on these seeds: 2048/2048 against random
    at every preset; against the chaser 0.999 (deathmatch, one loss), 1.000 (wide, one
    draw), 0.991 (Frontline, 1.9% draws); against the starting parameters (seeds
@@ -408,9 +411,15 @@ the review named was applied by hand and fails the named test (and passed the ol
    the loss test's independent computation applies the floor; the temperature tests pin
    floor 0 where they test a structural zero or T = 1 leaving labels unchanged. The BC
    page states the default and its reason (the clone can sample every action in RL). The
-   toy BC run, the natural entropy and the entropy table were measured at floor 0; the
-   toy test was rerun at the new default (below). Next lever if the clone's entropy is
-   still too low: a separate entropy loss during BC (not built).
+   toy BC run, the natural entropy and the entropy table were measured at floor 0.
+   **Finding for the author:** the toy BC test rerun at the new default floor 0.01 did
+   not stop by score: its window score against the teacher stayed below 0.45 through the
+   100M-step budget (stopped by "budget", 22 minutes on a shared GPU; the curve was not
+   logged). At floor 0 it stops by score at 65M. The toy test now pins floor 0 (it
+   measures how closely the toy clones the teacher's own distribution); the default stays
+   0.01. A clone that plays 1% of its decisions spread over all 42 actions is weaker
+   against its teacher, so the 0.45 stop rule may need the floor in mind. Next lever if
+   the clone's entropy is still too low: a separate entropy loss during BC (not built).
 
 Changes outside `bnb.controllers` and `bnb.learn` in this round: `bench/scripted_search.py`
 (new), `bnb.game.handling.characteristics`, `bnb.runtime.cloning`, `bnb.cli`, the tests

@@ -5,6 +5,10 @@ games, and its score against the chaser is within 0.10 of the teacher's.
 BC runs to its stop rule (the live score against the teacher, 0.45 over 1000 games) within
 BUDGET environment steps of 256 environments x 128 ticks. Measured: it stops by score at
 65M steps, about 13 minutes on the dev GPU (the section notes have the curve).
+
+The labels are the teacher's own (floor 0): the test measures how closely the toy clones
+it. At the default floor (0.01) the same run did not reach 0.45 within the budget (the
+section notes, fix round item 8).
 """
 
 import pytest
@@ -21,7 +25,7 @@ pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 GAME = GameConfig(2, 4, 1200.0)
 BUDGET = 100_000_000
 TOY = TrainConfig(game=GAME, pools=cloning.LINEUP, num_envs=256, model="relational",
-                  learner=bc.config(), objective="bc")
+                  learner=bc.config(), objective="bc", teacher=bc.TeacherConfig(floor=0.0))
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
