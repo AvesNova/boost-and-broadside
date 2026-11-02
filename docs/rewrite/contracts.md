@@ -463,6 +463,30 @@ cut; where they differ, this section and the code win.
   - **Open (section 11 notes):** there is no game version constant yet (files record the
     `GameConfig` and card); the game's damage sum uses float atomics, so a long GPU run's
     resume can differ by rounding after a tick with two hits on one ship.
+- **Hits (fix/seat-symmetry, merged 2026-11-02):** a bullet's contacts are ordered by
+  `bnb.game.physics.combat.contact_order`: the hit time τ, then the closer pass (the
+  smaller miss distance), and only an exact tie in both by ship index. Kill credit uses
+  the same order, then the bullet index. The index-first rule favoured team 1 (team-major
+  storage with friendly fire). A mirror test in both modes guards it
+  (`tests/sections/test_seat_symmetry.py`).
+- **The scripted agent and BC (sections 4 and 7, merged 2026-11-02):**
+  - **`TrainConfig`** gains `objective` (`bnb.runtime.train.OBJECTIVES`: PPO or BC) and
+    `teacher` (`bnb.learn.bc.TeacherConfig`: the labels' temperature and floor, default
+    floor `bnb.learn.bc.FLOOR`, 0.01 over the 42 joint actions). `SCRIPTED` names the
+    scripted agent's controller slot.
+  - **`BehaviourCloning`** is a `Learner`: it overrides only the policy terms and the
+    report. The labels are computed inside the compiled loss from the stored
+    observations (`bnb.controllers.scripted.distribution`); the rollout records what the
+    teacher reads through `extra_reads`.
+  - **The hand-off is a policy file:** `bnb train --objective bc` saves the clone at
+    `runs/<run>/policy/`, and RL starts from it with `--init-from`. A BC run refuses
+    `--resume`, `--from` and `--init-from`.
+  - **Evaluation:** `bnb.runtime.evaluate` (`first_results`, `score`, `shares`); seats are
+    drawn at random per game.
+  - **The scripted agent** reads per-type characteristics measured from the ship card
+    (`bnb.game.handling.characteristics`).
+  - **Pending (author, 2026-11-02):** the score stop becomes a confidence bound, scored
+    against a teacher with the labels' floor; the toy BC test is `xfail` until then.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
