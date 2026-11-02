@@ -42,6 +42,7 @@ class HeadGroup(nn.Module):
             nn.init.zeros_(last.bias)
 
     def forward(self, inputs: torch.Tensor) -> list[torch.Tensor]:
+        """One output (..., size) per head, in the order of the constructor's outputs."""
         if kernels.switches.heads and head_kernel.applies(inputs, self.hidden):
             blocks = zip(
                 self.first.weight.split(self.hidden),

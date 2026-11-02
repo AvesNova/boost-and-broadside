@@ -15,6 +15,10 @@ from bnb.models.yemong.model import Carry, Replay, Unrolled, Yemong
 
 
 class YemongController:
+    """Yemong as a controller: the carry is the model's, with the sampled joint action as its
+    previous action; the outputs add the critic's values per level, the outcome probabilities and
+    the replay."""
+
     reads = ("ships", "fields", "globals", "zones")
 
     def __init__(self, model: Yemong, ships_per_team: int, num_ships: int) -> None:
@@ -22,9 +26,11 @@ class YemongController:
         self.ships_per_team, self.num_ships = ships_per_team, num_ships
 
     def init_carry(self, views: int, device: torch.device) -> Carry:
+        """The model's initial carry for R = views views, on device."""
         return self.model.initial_carry(views, self.ships_per_team, self.num_ships, device)
 
     def step(self, carry: Carry, obs: Obs, reset: torch.Tensor) -> tuple[Action, Carry, Outputs]:
+        """One decision for views (R, ...); see `Controller.step`."""
         decision = self.model.step(carry, obs, reset)
         joint, log_probability, entropy = policy.sample(decision.policy_logits)
         carry = dataclasses.replace(decision.carry, previous_action=joint)

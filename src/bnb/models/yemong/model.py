@@ -97,6 +97,8 @@ class YemongConfig:
 
     @property
     def local_levels(self) -> tuple[int, ...]:
+        """The indices into levels of every level but outcome_level: the levels with a value
+        distribution."""
         return tuple(i for i, name in enumerate(self.levels) if name != self.outcome_level)
 
 

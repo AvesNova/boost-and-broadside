@@ -69,6 +69,8 @@ class ModeRules:
 
 
 def mode_rules_of(config: GameConfig) -> ModeRules:
+    """The ModeRules of the config's mode: its name, kills_per_ship and spawn_groups from the
+    config, the other fields their defaults."""
     return ModeRules(
         name=config.mode, kills_per_ship=config.kills_per_ship, spawn_groups=config.spawn_groups
     )

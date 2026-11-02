@@ -446,6 +446,9 @@ def train(options: Train, given_options: set[str]) -> None:
 
 
 def log_cloning(row: dict) -> None:
+    """Print one behaviour-cloning update's row on one line: the timings (ms), the BC KL and the
+    teacher's and student's entropies (nats), each score, and the score stop's window once it is
+    full."""
     scores = " ".join(
         f"{kind} {value['score']:.3f}"
         for kind, value in row["scores"].items()

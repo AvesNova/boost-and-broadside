@@ -462,4 +462,6 @@ class Rollout:
         return outputs
 
     def counters(self) -> dict[str, int]:
+        """The carry's running totals by COUNTERS name: shots fired, damage events, deaths and
+        environment resets."""
         return dict(zip(COUNTERS, self.carry["counters"].tolist()))

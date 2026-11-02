@@ -68,6 +68,7 @@ class GatedMLP(nn.Module):
                 nn.init.kaiming_uniform_(half, a=5**0.5)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        """down(gelu(gate x) * up x), shaped like the inputs (..., width)."""
         if kernels.switches.gated_mlp and gated.applies(inputs):
             return self.down(gated.gated_hidden(inputs, self.gate_up.weight))
         gate, up = self.gate_up(inputs).chunk(2, -1)

@@ -43,6 +43,8 @@ ACTION_SCALE = 32767.0
 
 
 def store_action(probabilities: torch.Tensor) -> torch.Tensor:
+    """Probabilities as int16 fixed point, round(p ACTION_SCALE): the replay's storage of the enemy-
+    action forecasts."""
     return torch.round(probabilities * ACTION_SCALE).to(torch.int16)
 
 
@@ -158,6 +160,9 @@ def compose(
     presence_radius: float,
     tick_length: float,
 ) -> Tokens:
+    """The Tokens of one team's views (...) from the observation and the replay: the ships' belief
+    codes and features, the global token, the fields and the zones, every position shifted by the
+    replay's offset. presence_radius in m, tick_length in s."""
     ships, dtype = obs.ships, obs.ships.dtype
     own = replay.previous_action.shape[-1]
     column = {name: ships[..., SHIP[name]] for name in SHIP}

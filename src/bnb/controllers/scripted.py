@@ -21,6 +21,8 @@ REDRAW = 0.1  # sticky random: per-tick probability of a new action
 
 
 def uniform_actions(shape: tuple, device) -> torch.Tensor:
+    """Actions (*shape, 3) int32 drawn uniformly from the global generator, in the order power,
+    stick, shoot."""
     draws = torch.rand(shape + (3,), device=device)
     scale = torch.tensor([NUM_POWER, NUM_STICK, NUM_SHOOT], dtype=torch.float32, device=device)
     return (draws * scale).to(torch.int32)
@@ -35,9 +37,12 @@ class Random:
         self.ships_per_team = ships_per_team
 
     def init_carry(self, views: int, device: torch.device) -> torch.Tensor:
+        """The held actions (R, S, 3) int32, drawn uniformly."""
         return uniform_actions((views, self.ships_per_team), device)
 
     def step(self, carry: torch.Tensor, obs: Obs, reset: torch.Tensor):
+        """One decision for views (R, ...): each ship keeps its held action or, with probability
+        REDRAW, draws a new one. The carry is the held actions."""
         redraw = torch.rand(carry.shape[:-1], device=carry.device) < REDRAW
         drawn = uniform_actions(carry.shape[:-1], carry.device)
         held = torch.where(redraw[..., None], drawn, carry)
@@ -53,6 +58,7 @@ class Chaser:
         self.ships_per_team = ships_per_team
 
     def init_carry(self, views: int, device: torch.device) -> None:
+        """No carry: the chaser is stateless."""
         return None
 
     def step(self, carry: None, obs: Obs, reset: torch.Tensor):
@@ -152,6 +158,7 @@ class Scripted:
         self.scripted_probability = scripted_probability
 
     def init_carry(self, views: int, device: torch.device) -> None:
+        """No carry: the scripted agent is memoryless."""
         return None
 
     def _probability(self) -> torch.Tensor | float:
@@ -170,6 +177,9 @@ class Scripted:
         )
 
     def step(self, carry: None, obs: Obs, reset: torch.Tensor):
+        """One decision for views (R, ...): an action sampled from each marginal, each ship's
+        replaced by a uniform one with probability 1 - scripted_probability (per view when it is a
+        tensor)."""
         parts = marginals(obs, self.characteristics, self.parameters)
         action = torch.stack([sample(part) for part in parts], -1).to(torch.int32)
         probability = self._probability()

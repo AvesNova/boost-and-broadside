@@ -225,6 +225,7 @@ class Run:
         return cls(directory, json.loads((directory / RECORD).read_text()))
 
     def save(self) -> None:
+        """Write the record to the run directory's RECORD file."""
         write_json(self.directory / RECORD, self.record)
 
     # ---- the record
@@ -303,6 +304,7 @@ class Run:
         return self.directory / "policy"
 
     def checkpoint_path(self, step: int) -> pathlib.Path:
+        """Where the checkpoint at environment step step lives, whether or not it exists."""
         return self.directory / CHECKPOINTS / f"step_{step}"
 
     def checkpoint_steps(self) -> list[int]:

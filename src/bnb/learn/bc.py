@@ -77,6 +77,7 @@ class TeacherOpponent:
         self.agent, self.teacher = agent, teacher
 
     def init_carry(self, views: int, device: torch.device) -> None:
+        """No carry: the teacher is memoryless."""
         return None
 
     def action_distribution(self, obs: Obs) -> torch.Tensor:
@@ -84,6 +85,8 @@ class TeacherOpponent:
         return labels(self.agent.action_distribution(obs), self.teacher)
 
     def step(self, carry: None, obs: Obs, reset: torch.Tensor):
+        """One decision for views (R, ...), drawn from the labels' distribution; see
+        `Controller.step`."""
         parts = marginals(obs, self.agent.characteristics, self.agent.parameters)
         temperature, floor = self.teacher.temperature, self.teacher.floor
         if temperature != 1.0:
@@ -147,6 +150,8 @@ class BehaviourCloning(Learner):
         super().__init__(model, config, rules, types, outcome_weight, device, stage, seed)
 
     def prepare(self, segments, bootstraps: list) -> dict:
+        """The Learner's prepare, with each view's pool one-hot (1, V, pools) added to derived for
+        the per-pool metrics."""
         prepared = super().prepare(segments, bootstraps)
         prepared["derived"]["pool"] = self.pool_one_hot  # (1, V, pools)
         return prepared

@@ -9,10 +9,12 @@ OUTCOMES = 4
 
 
 def symlog(values: torch.Tensor) -> torch.Tensor:
+    """sign(x) log(1 + |x|), elementwise."""
     return torch.sign(values) * torch.log1p(values.abs())
 
 
 def symexp(values: torch.Tensor) -> torch.Tensor:
+    """The inverse of symlog: sign(x) (exp|x| - 1), elementwise."""
     return torch.sign(values) * torch.expm1(values.abs())
 
 
@@ -35,6 +37,8 @@ def two_hot(values: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
 
 
 def expectation(logits: torch.Tensor, bins: torch.Tensor) -> torch.Tensor:
+    """The mean (...) of the categorical distribution softmax(logits) (..., bins) over the bin
+    values."""
     return (torch.softmax(logits, -1) * bins).sum(-1)
 
 
@@ -98,4 +102,5 @@ class ReturnScale:
         return self.scale()
 
     def scale(self) -> torch.Tensor:
+        """The current scale, a scalar tensor: the gap of the percentile EMAs, at least floor."""
         return torch.clamp_min(self.high - self.low, self.floor)
