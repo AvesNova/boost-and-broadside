@@ -192,10 +192,45 @@ Changes:
 - **MLP-only recompute** (`Trunk.recompute = "feedforward"`): the bench tries it before
   full sublayer recompute when a cell runs out of memory.
 
-PHASE2_RESULTS
+### Benchmark, every cell (ms; eager / compiled / compiled + CUDA graphs)
+
+| cell | baseline 5efbb2ed | phase 1 end cb9398a9 | phase 2 a39c1463 |
+|---|---|---|---|
+| train V=16 fp32 | 125.5 / 83.8 / 82.9 | 111.2 / 74.4 / 74.0 | 120.0 / 75.8 / 75.0 |
+| train V=16 bf16 | 93.2 / 43.9 / 43.1 | 71.2 / 34.0 / 33.3 | 71.2 / 34.0 / 34.0 (A/B: 33.0 / 32.7) |
+| train V=64 fp32 | OOM / OOM / OOM | 573 / 368 / 367 (recompute all) | 521 / 333 (recompute MLPs) / 362 (all) |
+| train V=64 bf16 | OOM / 196.2 / 195.6 | 355 / 154.8 / 154.3 | 313 / 142.5 / 142.4 |
+| rollout V=2048 fp32 | 53.6 / 29.8 / 29.5 | 48.2 / 26.5 / 26.3 | 63.0 / 27.8 / 26.8 |
+| rollout V=2048 bf16 | 44.5 / 18.0 / 17.2 | 35.4 / 12.8 / 12.6 | 54.5 / 13.8 / 13.9 |
+
+Peak memory, phase 2: V=16 bf16 compiled 0.82 GB (was 0.91), V=64 bf16 3.1 GB (was 3.5),
+V=64 fp32 compiled with MLP recompute 5.1 GB.
+
+**Caveat on the phase 2 column.** The GPU lock was held by other agents' jobs for ~90
+minutes; the run went through while other processes still had GPU memory, and the
+unchanged-code control in the A/B below drifted by 1-4 ms between runs. In-process A/B
+(same process, flags toggled, training V=16 bf16, `/tmp/bnb-scratch-yemong-blind/p2/ab2.py`):
+
+| setting | compiled | CUDA graphs | peak |
+|---|---|---|---|
+| neither kernel | 35.2 ms | 37.8 (outlier) | 0.94 GB |
+| fused temporal | 33.5 | 32.9 | 0.93 |
+| fused temporal + fused heads | 33.0 | 32.7 | 0.80 |
+
+An earlier same-process A/B of the temporal kernel alone (CUDA graphs, before
+`triton_op`): 33.4 -> 32.15 ms. The eager rollout and eager V=16 fp32 cells got slower
+(35 -> 54 ms, 111 -> 120 ms); unexplained, and not yet A/B'd: suspects are `triton_op`
+dispatch in eager mode and the fused head's low parallelism on small row counts (the
+outcome and density heads have 2048 rows = 32 programs). The compiled rollout cells are
+1 ms slower too. A rollout A/B (`p2/ab_rollout.py 2048 bfloat16 compiled,cudagraphs`,
+log `p2/ab_rollout.log`) was queued on the lock when this phase stopped.
+
 
 ## What to try next
 
+- **First: the rollout A/B** (above). If the fused head loses on the rollout, try
+  BLOCK_M = 32 (or 16) when rows are few, or keep it for training only; check the eager
+  regression (`triton_op` vs `custom_op` dispatch in eager).
 - fp32 V = 64: it needs ~8.5 GB without recompute. Storing less in strict fp32 means
   recomputing something; "feedforward" recompute is the cheapest ladder step.
 - The shot trajectory head's front (latent + age projection, norm, gelu) into `head.py`'s
@@ -211,5 +246,6 @@ PHASE2_RESULTS
 
 - Done: every fixture; the whole model; tests; every kernel (scan, attention, gated MLP,
   temporal mix, heads) as a `triton_op`; the benchmark; phase 2 profiling and changes.
-- In flight: nothing.
+- In flight: the rollout A/B of the phase 2 kernels (queued on the shared lock; its log is
+  `/tmp/bnb-scratch-yemong-blind/p2/ab_rollout.log`). Rerun `bench.speed` on a quiet GPU.
 - Next: "What to try next".
