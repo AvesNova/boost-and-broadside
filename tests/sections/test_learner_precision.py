@@ -1,5 +1,11 @@
 """The precision settings (learner spec 8): TF32 and bf16 matmuls give finite losses and
-gradients that agree with float32's to their mantissas' precision."""
+gradients that agree with float32's to their mantissas' precision; bf16 is the default;
+every update reports the signals of a precision problem."""
+
+import copy
+import dataclasses
+import math
+import types
 
 import learner_cases as lc
 import pytest
@@ -69,3 +75,45 @@ def test_a_precision_setting_agrees_with_float32(stored, precision, tolerance):
     torch.testing.assert_close(terms, reference_terms, rtol=tolerance, atol=1e-6)
     assert (gradient - reference).norm() <= tolerance * reference.norm()
     assert not torch.equal(gradient, reference)  # the setting took effect
+
+
+def test_training_defaults_to_bfloat16():
+    """TrainConfig, the command line and the model a run builds all default to bf16."""
+    from bnb.cli import Train
+    from bnb.runtime.train import TrainConfig, model_build
+
+    config = TrainConfig(game=cases.SQUAD)
+    assert config.precision == "bfloat16" and Train().precision == "bfloat16"
+    assert model_build(config).config.bfloat16_matmuls
+
+
+def test_the_update_reports_its_precision_signals(stored):
+    """Every update reports the step/unroll ratio drift, the first epoch's clip fraction and
+    the minibatch steps whose gradient was not finite; a non-finite gradient counts once per
+    step."""
+    net, runner, bootstraps = stored
+    config = LearnerConfig(epochs=1, minibatches=2)
+    learner = Learner(copy.deepcopy(net), config, runner.rules, runner.carry["types"],
+                      RewardConfig().outcome, CUDA)
+    out = learner.update(runner.store, bootstraps)
+    assert {"ratio_drift_max", "ratio_drift_mean", "clip_fraction"} <= out.keys()
+    assert out["nonfinite_gradients"] == 0
+    model = copy.deepcopy(net)
+    next(model.parameters()).register_hook(lambda gradient: gradient * math.nan)
+    learner = Learner(model, config, runner.rules, runner.carry["types"],
+                      RewardConfig().outcome, CUDA)
+    assert learner.update(runner.store, bootstraps)["nonfinite_gradients"] == 2
+
+
+def test_the_trainer_reports_the_carrys_nonfinite_beliefs(stored):
+    """The trainer's row reads the learner carry's count of non-finite belief entries."""
+    from bnb.runtime.train import LEARNER, Trainer
+
+    _, runner, _ = stored
+    carry = runner.carry["ctrl"][LEARNER]
+    trainer = types.SimpleNamespace(rollout=types.SimpleNamespace(
+        carry={"ctrl": {LEARNER: carry}}))
+    assert Trainer.nonfinite_beliefs(trainer) == int(carry.nonfinite.sum()) == 0
+    counted = dataclasses.replace(carry, nonfinite=torch.tensor([1, 0, 2], device=CUDA))
+    trainer.rollout.carry["ctrl"][LEARNER] = counted
+    assert Trainer.nonfinite_beliefs(trainer) == 3

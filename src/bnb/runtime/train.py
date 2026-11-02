@@ -70,10 +70,11 @@ def mixed(lineup: tuple[Pool, ...] = LINEUP,
 @dataclasses.dataclass(frozen=True)
 class TrainConfig:
     """model: "yemong" or "relational" (the toy learner; its sizes are fixed at build).
-    length: ticks per segment; shards: segments per update. precision: "float32", "tf32" (a
-    process-wide setting, which the entry point applies with `set_precision`) or
-    "bfloat16" (the model's matmuls). reward: the reward levels' weights. host_store: stream
-    the segments through pinned host memory (on a GPU) rather than keep them on the device.
+    length: ticks per segment; shards: segments per update. precision: "bfloat16" (the
+    model's matmuls under autocast; the default), "float32" or "tf32" (a process-wide
+    setting, which the entry point applies with `set_precision`). reward: the reward
+    levels' weights. host_store: stream the segments through pinned host memory (on a GPU)
+    rather than keep them on the device.
     seed: the learner's random streams; the entry point seeds the process with it too.
     objective: "ppo", or "bc" (clone the scripted agent; `learner` should then be
     `bnb.learn.bc.config()`, and `teacher` sets its labels)."""
@@ -89,7 +90,7 @@ class TrainConfig:
     pools: tuple[Pool, ...] = LINEUP
     learner: LearnerConfig = LearnerConfig()
     reward: RewardConfig = RewardConfig()
-    precision: str = "float32"
+    precision: str = "bfloat16"
     host_store: bool = True
     seed: int = 0
     compile: bool = True
@@ -242,7 +243,13 @@ class Trainer:
                 for dst, src in zip(self.league.parameters(), self.model.parameters()):
                     dst.copy_(src)
         return dict(update=self.updates_done, rollout_s=t1 - t0, learn_s=t2 - t1, pools=pools,
-                    **stats)
+                    nonfinite_beliefs=self.nonfinite_beliefs(), **stats)
+
+    def nonfinite_beliefs(self) -> int:
+        """Non-finite belief entries the learner's carry has counted since its rollouts began
+        (Yemong's `Carry.nonfinite`; 0 for a model without one)."""
+        counts = getattr(self.rollout.carry["ctrl"][LEARNER], "nonfinite", None)
+        return 0 if counts is None else int(counts.sum())
 
 
 def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> dict:

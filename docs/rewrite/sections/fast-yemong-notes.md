@@ -34,6 +34,49 @@ What the blind kernels compute differently from v2, and how the port keeps v2's 
   global token with one `shared` product over their concatenation; the head kernel runs it
   per kind (row-wise, the same function). The plain path is unchanged.
 
+## The kernels, one commit each
+
+Every number in this section is provisional: taken on the dev machine (RTX 4070 Laptop,
+8 GB) under the benchmark lock, with the load average noted (1.1-2.2 for the kernel rows,
+1.9-4.0 for the baseline rows, which match the coordinator's quiet-machine baseline within
+0.5 ms). The coordinator re-measures on a quiet machine.
+
+**Micro-benchmarks** (`/tmp/bnb-scratch-fast-yemong/micro.py`: the piece alone, compiled
+with `fullgraph=True`, plain against kernel, median of 30, ms; training shape L = 128,
+V = 16, 11 tokens, D = 128, forward and backward; rollout shape 2048 views, one step,
+forward; load 1.0-1.4):
+
+| Commit | Piece | Shape | fp32 plain / kernel | bf16 plain / kernel |
+|---|---|---|---:|---:|
+| `aa9e12cd` scan | `RGLRU.sequence` | training | 3.26 / 2.39 | 2.88 / 1.70 |
+| `66cdd7ca` attention | `SpatialBlock` (whole sublayer) | training | 10.46 / 8.91 | 6.45 / 4.31 |
+| | | rollout | 3.53 / 2.38 | 1.87 / 1.13 |
+| `b14de1a8` gated MLP | `GatedMLP` | training | 4.84 (plain both) | 2.27 / 1.81 |
+| | | rollout | 1.49 (plain both) | 0.64 / 0.34 |
+| `de77abe2` temporal mix | `TemporalBlock.sequence` (plain = PyTorch scan) | training | 10.44 / 9.22 | 6.22 / 4.85 |
+| `1d6bfeba` heads | `HeadGroup` (42 + 153 outputs) | training | 1.71 (plain both) | 1.15 / 0.98 |
+| | | rollout | 0.40 (plain both) | 0.22 / 0.19 |
+
+**The race benchmark after each commit** (`bench/yemong_speed.py`, ms, the better of
+compiled and compiled + CUDA graphs; peak memory in GB; the kernels switched on
+cumulatively with `--kernels`, which is the tree after each commit; raw rows in
+`/tmp/bnb-scratch-fast-yemong/speed.jsonl`):
+
+| Cell | v2 before | + scan | + attention | + gated MLP | + temporal mix | + heads (all) | blind |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Training V=16, fp32 | 85.7 (2.27) | 84.2 | 77.2 | 77.2 | 76.4 | 76.3 (2.24) | 73.7 |
+| Training V=16, bf16 | 51.5 (1.54) | 49.8 | 40.8 | 38.8 | 37.9 | 37.7 (0.97) | 32.7 |
+| Training V=64, bf16 | 226.2 (6.02) | 218.9 | 179.0 | 172.5 | 167.7 | 165.4 (3.77) | 141 (3.1) |
+| Training V=64, fp32 | out of memory | oom | oom | oom | oom | out of memory | 329 (recomputes its MLPs) |
+| Rollout, bf16 | 16.5 (0.33) | 16.3 | 13.5 | 11.8 | 11.8 | 11.5 (0.33) | 12.6 |
+| Rollout, fp32 | 28.5 (0.44) | 28.4 | 25.4 | 25.3 | 25.2 | 25.4 (0.41) | 26.6 |
+
+Speed-ups with every kernel: training bf16 1.37x (V = 16) and 1.37x (V = 64, memory
+6.0 -> 3.8 GB); training fp32 1.12x; rollout bf16 1.43x, fp32 1.12x. The rollout beats the
+blind model's; training bf16 is 5 ms (V = 16) and 24 ms (V = 64) short of it. The V = 64
+fp32 cell still does not fit: the blind model fits it by recomputing its MLPs in the
+backward, a memory feature outside this brief.
+
 ## Progress
 
 - Step 1 (piece map): done.

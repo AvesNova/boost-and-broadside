@@ -21,7 +21,7 @@ class Train:
     preset: a training preset (deathmatch, deathmatch_wide, frontline), which sets the mode,
     the sizes and the spawn groups, or mixed, the default training mix of all three in one
     batch; without one, the mode and sizes below.
-    precision: float32, tf32 or bfloat16 (the model's matmuls); old_log_probabilities:
+    precision: bfloat16 (the model's matmuls), float32 or tf32; old_log_probabilities:
     rollout or recomputed (by unroll before the first epoch).
     updates: the updates to train (a resume continues to the run's total).
     seed: the run's seed (TrainConfig.seed: the process and the learner's streams).
@@ -62,7 +62,7 @@ class Train:
     updates: int = 100
     shards: int = 1
     model: str = "yemong"
-    precision: str = "float32"
+    precision: str = "bfloat16"
     old_log_probabilities: str = "rollout"
     micro_batch_rows: int = 160
     seed: int = 0
@@ -363,7 +363,8 @@ def train(args: Train, options: set[str]) -> None:
         print(f"update {row['update']:4d}  rollout {row['rollout_s'] * 1e3:6.0f} ms  "
               f"learn {row['learn_s'] * 1e3:6.0f} ms  entropy {row['loss/entropy']:.2f}  "
               f"kl {row['approximate_kl']:+.4f}  clip {row['clip_fraction']:.3f}  "
-              f"reward/s: {rewards}", flush=True)
+              f"drift {row['ratio_drift_max']:.3f}  nonfinite {row['nonfinite_gradients']}/"
+              f"{row['nonfinite_beliefs']}  reward/s: {rewards}", flush=True)
 
     try:
         if config.objective == "bc":

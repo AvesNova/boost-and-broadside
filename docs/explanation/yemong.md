@@ -140,13 +140,13 @@ converts it to the factored `Action` with `bnb.contracts.action.from_joint`.
 
 On CUDA, five pieces of the network run as Triton kernels (`bnb.models.yemong.kernels`):
 
-| Switch | Replaces | Runs |
+| Switch | Replaces | Runs in |
 |---|---|---|
-| `scan` | the RG-LRU's linear recurrence over a segment | float32 |
-| `attention` | a spatial sublayer's rotary rotation and attention | float32 and bf16 |
-| `gated_mlp` | the gated MLP's hidden layer, `gelu(gate x) * (up x)` | bf16 |
-| `temporal_mix` | a temporal sublayer's gates, recurrence and output gate over a segment (it takes over from `scan` there) | float32 and bf16, segments only |
-| `heads` | linear, norm, gelu, linear: the heads, the shot trajectory head's tail and the encoder's projections | bf16 |
+| `scan` | the RG-LRU's linear recurrence over a segment | either precision (the recurrence is float32 in both) |
+| `attention` | a spatial sublayer's rotary rotation and attention | either precision |
+| `gated_mlp` | the gated MLP's hidden layer, `gelu(gate x) * (up x)` | bf16 only |
+| `temporal_mix` | a temporal sublayer's gates, recurrence and output gate over a segment (it takes over from `scan` there) | either precision, segments only |
+| `heads` | linear, norm, gelu, linear: the heads, the shot trajectory head's tail and the encoder's projections | bf16 only |
 
 Each kernel computes the same function as the plain PyTorch code it replaces, which stays
 in place as its twin: the plain path runs on the CPU, in float64 (the reference fixtures),

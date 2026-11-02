@@ -156,10 +156,19 @@ size of the segment):
 
 Section code does not compile itself. The learner takes a `stage` function from the runtime
 (`bnb.runtime.train.compiler`), which compiles the micro-batch loss and the
-re-simulation's tick (`bnb.learn.shots.tick`). Matmuls are float32 by default.
-`TrainConfig.precision` selects TF32 (a process-wide setting the entry point applies with
-`bnb.runtime.train.set_precision`) or bf16 matmuls inside the model; recurrent state, norms,
-scans and every loss reduction stay float32 in all of them.
+re-simulation's tick (`bnb.learn.shots.tick`). `TrainConfig.precision` defaults to
+`"bfloat16"`: the model's matmuls run under bf16 autocast, in the rollout and in the update
+alike. `"float32"` (strict) and `"tf32"` (a process-wide setting the entry point applies with
+`bnb.runtime.train.set_precision`) are the alternatives. The residual stream, norms,
+softmax, the recurrent state, the codes, the belief, the critic's expectations, every loss,
+the weights and the optimizer stay float32 in all of them.
+
+Each update logs the signals that show a precision problem: `ratio_drift_max` and
+`ratio_drift_mean` (how far the update's `unroll` moves the policy from the rollout's
+`step`, before any optimizer step; bf16 rounding makes it nonzero), `clip_fraction` (the
+first epoch's), `nonfinite_gradients` (minibatch steps whose gradient norm was not finite)
+and `nonfinite_beliefs` (non-finite belief entries the learner's carry has counted since its
+rollouts began).
 
 ## The toy learner
 
