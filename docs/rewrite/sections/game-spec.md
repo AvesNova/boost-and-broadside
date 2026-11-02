@@ -366,7 +366,11 @@ moves of this tick, `Δ = D₁ − D₀`,
 
 The pair is a contact when the miss distance² is below `r_hit²`, with the target's hit
 radius. A bullet hits only its
-**first** contact: the smallest `τ`, ties to the lowest ship index. A bullet can hit an
+**first** contact: the smallest `τ`, ties to the smaller miss distance **(v2)**, and an exact
+tie in both to the lowest ship index. (The clamp puts many contacts at exactly `τ = 0` or
+`1`; v1 sent those ties to the lowest index, which, with team-major indices and friendly
+fire, sent team 0's bullets into their own team and team 1's into the enemy. See
+`seat-symmetry-notes.md`.) A bullet can hit an
 ally of its shooter, never the shooter itself. A ship can be hit by several bullets in
 one tick.
 
@@ -390,8 +394,9 @@ For each ship alive at tick start, with `S⁰` its tick-start shield:
   `shield_wait ← 6`; else `shield_wait ← max(W⁰ − h, 0)`. If the ship took no damage and
   did not die, `S ← S + min(S_max − S, 12 · clip(h − W⁰, 0, h))` with the ship's own
 `S_max`.
-- `killer` = owner of the hit with the smallest `τ` among the bullets that hit it (ties
-  to the lowest bullet index `o·K + slot`), when it died and was hit; else −1.
+- `killer` = owner of the first hit among the bullets that hit it, in the order of
+  section 7.1 (the smallest `τ`, then the smaller miss distance **(v2)**, an exact tie in
+  both to the lowest bullet index `o·K + slot`), when it died and was hit; else −1.
 
 Ships dead at tick start keep `shield` and `shield_wait` unchanged.
 
