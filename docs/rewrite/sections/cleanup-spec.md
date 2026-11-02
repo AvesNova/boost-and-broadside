@@ -384,3 +384,15 @@ sections 1–7.
    the seat fix, Frontline scripted-versus-scripted still gives team 1 0.507 ± 0.003 over
    16,384 games (deathmatch is even). If the test fails, list the rule that breaks it in
    the notes, mark the test `xfail(strict=True)`, and do not change the agent here.
+5. **Two test tiers (author, 2026-11-03):**
+   - **Quick:** `uv run --no-sync pytest -m "not slow"` (or the equivalent default). It is
+     what agents run while implementing. Aim for a few minutes; measure it and report it.
+     Mark every test over about 10 s `slow`, and keep its fast part (a smaller case) in
+     the quick tier where one exists.
+   - **Full:** everything, once at the end of a task and at each merge. The toy BC
+     training run belongs here.
+   - **Machines without a GPU:** every test that needs CUDA carries the `gpu` marker and
+     skips cleanly without it, never failing and never falling back to a slow CPU path.
+     A test that runs on the CPU but would take minutes there is marked `slow`. Check it
+     by running both tiers with CUDA hidden (`CUDA_VISIBLE_DEVICES=""`), and report both
+     tiers' times on the CPU alone.
