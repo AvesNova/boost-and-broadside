@@ -1,11 +1,11 @@
-"""The training loop: rollout segments into the store, the learner's update, league refresh,
-progress metrics.
+"""The training loop: rollout segments into the store, the learner's update, the league's
+hooks, progress metrics.
 
-Lineup: self-play, one league slot (a lagged copy of the learner), the chaser and random, in
-fixed shares of the batch. A mixed batch (mixed spec 5) crosses the lineup with the games of
-a training mix. The learner is Yemong, or the toy relational model (learner spec 9). The
-objective is PPO, or behaviour cloning of the scripted agent (`bnb.learn.bc`, with its own
-lineup and stop rule in `bnb.runtime.cloning`).
+Lineup: self-play and the league's seat (`bnb.runtime.opponents`), half each. A mixed batch
+(mixed spec 5) crosses the lineup with the games of a training mix. The learner is Yemong,
+or the toy relational model (learner spec 9). The objective is PPO, or behaviour cloning of
+the scripted agent (`bnb.learn.bc`, with its own lineup and stop rule in
+`bnb.runtime.cloning`).
 """
 
 import copy
@@ -13,6 +13,7 @@ import dataclasses
 import functools
 import time
 from collections.abc import Callable
+from typing import Protocol
 
 import torch
 
@@ -30,6 +31,8 @@ from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
 from .evaluate import first_results, shares
+from .lineup import Lineup
+from .opponents import OPPONENTS, LeagueConfig, OpponentSlots, stream_key
 from .rollout import Rollout
 
 LEARNER = "learner"
@@ -37,12 +40,8 @@ SCRIPTED = "scripted"
 # The default training mix (mixed spec 1, a proposal): each game preset's share of the batch.
 # The battle map is 25% of team deathmatch.
 TRAINING_MIX = (("frontline", 0.5), ("deathmatch", 0.375), ("deathmatch_wide", 0.125))
-LINEUP = (
-    Pool("self_play", 0.5, (LEARNER, LEARNER)),
-    Pool("league_0", 0.25, (LEARNER, "league_0")),
-    Pool("chaser", 0.125, (LEARNER, "chaser")),
-    Pool("random", 0.125, (LEARNER, "random")),
-)
+# Self-play is a fixed share of each mode's batch, the league's seat the rest (league spec 1).
+LINEUP = (Pool("self_play", 0.5, (LEARNER, LEARNER)), Pool("league", 0.5, (LEARNER, OPPONENTS)))
 MODELS = ("yemong", "relational")
 OBJECTIVES = ("ppo", "bc")
 PRECISIONS = ("float32", "tf32", "bfloat16")
@@ -98,7 +97,7 @@ class TrainConfig:
     shards: int = 1
     model: str = "yemong"
     relational_hidden: int = 256
-    league_every: int = 10  # updates between copies of the learner into the league slot
+    league: LeagueConfig = LeagueConfig()
     pools: tuple[Pool, ...] = LINEUP
     learner: LearnerConfig = LearnerConfig()
     reward: RewardConfig = RewardConfig()
@@ -154,9 +153,33 @@ def compiler(enabled: bool) -> Callable:
     return lambda function: torch.compile(function, fullgraph=True, dynamic=False)
 
 
+def mode_key(pool: Pool, game: GameConfig) -> str:
+    """The gauge a pool's games count for (league spec 4): its game of the mix ("frontline"
+    of "frontline/league"), or the run's mode for a single-game lineup."""
+    return pool.name.split("/")[0] if "/" in pool.name else pool.mode or game.mode
+
+
+class LeagueHooks(Protocol):
+    """What the league (`bnb.league`) does inside an update: after each shard, after the
+    whole collection (before learning), and after learning (returning its metrics)."""
+
+    def after_shard(self, trainer: Trainer, shard: int) -> None:
+        """Read the shard's results; end and begin drains."""
+
+    def collected(self, trainer: Trainer) -> None:
+        """The rollout is done and the weights are still the ones that played it."""
+
+    def updated(self, trainer: Trainer) -> dict:
+        """The update's learning is done; returns the league's metrics."""
+
+    def state(self) -> tuple[dict, dict[str, torch.Tensor]]:
+        """What a training checkpoint keeps: (a JSON record, named tensors)."""
+
+
 class Trainer:
-    """The run's model, league slot, opponents, rollout and learner. build: the model's build
-    record (a checkpoint's); without one, `model_build(config)`."""
+    """The run's model, the league's seat, opponents, rollout and learner. build: the model's
+    build record (a checkpoint's); without one, `model_build(config)`. `league`: the league's
+    hooks, attached by `bnb.league` (None: the seat's slots keep what they hold)."""
 
     def __init__(
         self,
@@ -167,17 +190,36 @@ class Trainer:
         game = config.game
         self.config = config
         self.model = build_model(build or model_build(config), device)
-        self.league = copy.deepcopy(self.model).requires_grad_(False)
+        self.league: LeagueHooks | None = None
         cloning = config.objective == "bc"
         seated = {name for pool in config.pools for name in pool.seats}
         types = api.ship_types(device)
-        # The scripted agent's characteristics, when it plays or teaches (measured once).
+        # The scripted agent's characteristics, when it plays, teaches or is the ladder.
         self.characteristics = (
-            characteristics(types, api.rules_of(game)) if cloning or SCRIPTED in seated else None
+            characteristics(types, api.rules_of(game))
+            if cloning or SCRIPTED in seated or OPPONENTS in seated
+            else None
+        )
+        lineup = Lineup(config.pools, config.environments, device)
+        opponent_pools = [config.pools[index] for index in lineup.pool_of.get(OPPONENTS, [])]
+        # the league's gauges: one per mode of the opponents' pools, in order
+        self.modes = tuple(dict.fromkeys(mode_key(pool, game) for pool in opponent_pools))
+        self.mode_rows = tuple(
+            sum(mode_key(pool, game) == mode for pool in opponent_pools) for mode in self.modes
         )
         builders = {
             LEARNER: lambda: model_controller(self.model, game),
-            "league_0": lambda: model_controller(self.league, game),
+            OPPONENTS: lambda: OpponentSlots(
+                model_controller(copy.deepcopy(self.model).requires_grad_(False), game),
+                torch.tensor(
+                    [self.modes.index(mode_key(pool, game)) for pool in opponent_pools],
+                    device=device,
+                ),
+                len(self.modes),
+                self.characteristics,
+                config.league,
+                stream_key(config.seed, "league.ladder"),
+            ),
             "chaser": lambda: Chaser(game.ships_per_team),
             "random": lambda: Random(game.ships_per_team),
             # BC scores the learner against the teacher its labels describe
@@ -188,10 +230,9 @@ class Trainer:
             ),
         }
         self.controllers = {
-            name: build()
-            for name, build in builders.items()
-            if name in seated or name in (LEARNER, "league_0")
+            name: build() for name, build in builders.items() if name in seated or name == LEARNER
         }
+        self.opponents: OpponentSlots | None = self.controllers.get(OPPONENTS)
         self.rollout = Rollout(
             game,
             config.pools,
@@ -249,12 +290,21 @@ class Trainer:
 
     def collect(self):
         """Every shard of one update and its bootstrap (no learning): (the store, the
-        bootstraps)."""
+        bootstraps). The league's hooks run after each shard."""
         bootstraps = []
         for shard in range(self.config.shards):
             self.rollout.run(shard)
             bootstraps.append(self.rollout.bootstrap())
+            if self.league is not None:
+                self.league.after_shard(self, shard)
         return self.rollout.store, bootstraps
+
+    @torch.no_grad()
+    def reset_opponents(self) -> None:
+        """Every opponent slot holds the model's current weights (a warm start, before a
+        league draws the slots)."""
+        if self.opponents is not None:
+            self.opponents.fill(self.model.state_dict())
 
     def pool_metrics(self, store) -> dict:
         """Per pool: the learner's reward per level, per ship and second, and its episode
@@ -293,20 +343,20 @@ class Trainer:
         }
 
     def update(self) -> dict:
-        """One update: collect every shard, learn from them, and refresh the league slot on
-        schedule. Returns the update's metrics."""
+        """One update: collect every shard, learn from them, with the league's hooks around
+        the learning. Returns the update's metrics."""
         started = time.perf_counter()
         store, bootstraps = self.collect()
         pools = self.pool_metrics(store)
+        if self.league is not None:
+            self.league.collected(self)
         collected = time.perf_counter()
         stats = self.ppo.update(store, bootstraps, self.steps_per_update)  # ends in host syncs
         learned = time.perf_counter()
         self.updates_done += 1
-        if self.updates_done % self.config.league_every == 0:
-            with torch.no_grad():
-                for league, learner in zip(self.league.parameters(), self.model.parameters()):
-                    league.copy_(learner)
+        league = {} if self.league is None else self.league.updated(self)
         return dict(
+            **league,
             update=self.updates_done,
             rollout_seconds=collected - started,
             learn_seconds=learned - collected,

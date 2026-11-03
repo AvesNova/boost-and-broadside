@@ -25,6 +25,7 @@ from bnb.learn import rewards
 from bnb.learn.shots import ShotCapture
 
 from .lineup import Lineup
+from .opponents import OUTCOMES
 from .store import SegmentStore
 
 PARTS = ("ships", "fields", "globals", "zones")
@@ -85,6 +86,10 @@ class Rollout:
             raise ValueError(f"pools name controllers {missing} that were not given")
         self.controllers = {k: controllers[k] for k in self.lineup.names}
         self.learner = learner
+        # controllers that keep a record of their games' results (the league's seat)
+        self.tallied = tuple(
+            name for name, controller in self.controllers.items() if hasattr(controller, "tally")
+        )
         self.reads = tuple(
             part for part in PARTS if part in controllers[learner].reads + extra_reads
         )
@@ -181,6 +186,16 @@ class Rollout:
             records=records,
             segment=segment,
             segment_tick=torch.zeros(1, dtype=torch.long, device=device),
+            tallies={
+                name: torch.zeros(
+                    self.controllers[name].columns
+                    * self.controllers[name].mode_count
+                    * len(OUTCOMES),
+                    dtype=torch.int64,
+                    device=device,
+                )
+                for name in self.tallied
+            },
             counters=torch.zeros(len(COUNTERS), dtype=torch.int64, device=device),
         )
         return _clone(carry)
@@ -326,6 +341,14 @@ class Rollout:
         # Events.result is team 0's; the other team's is its negation (two teams).
         result = torch.where(team == 0, events.result[environments], -events.result[environments])
         records["result"].index_copy_(0, slot, result[None])
+        for name in self.tallied:  # each ended game's result from the learner's side
+            environments, team = self.lineup.environments[name], self._team(name, carry["seat"])
+            mine = torch.where(team == 0, events.result[environments], -events.result[environments])
+            carry["tallies"][name].add_(
+                self.controllers[name].tally(
+                    carry["controllers"][name], events.done[environments], -mine
+                )
+            )
         redraw = torch.randint(0, self.teams, (self.environments,), device=self.device)
         carry["seat"].copy_(torch.where(events.done, redraw, carry["seat"]))
         carry["counters"].add_(
@@ -345,6 +368,14 @@ class Rollout:
         _assign(carry["obs"], {part: getattr(obs, part) for part in PARTS})
         carry["truth"].copy_(truth.ships)
         carry["segment_tick"].add_(1)
+
+    def take_tally(self, name: str) -> torch.Tensor:
+        """The results the controller `name` has tallied since the last take, on the host
+        (a host read), and the tally zeroed."""
+        tally = self.carry["tallies"][name]
+        taken = tally.to("cpu", copy=True)
+        tally.zero_()
+        return taken
 
     # ---- checkpoints --------------------------------------------------------------------
 

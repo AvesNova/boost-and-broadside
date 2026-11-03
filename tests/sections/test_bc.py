@@ -418,11 +418,10 @@ def test_reinforcement_learning_starts_from_the_clone():
     student.update()
     trainer = Trainer(_tiny("ppo", RL_LINEUP), lc.CPU)
     warm_start(trainer, student)
-    for module in (trainer.model, trainer.league):
-        for (name, a), b in zip(
-            module.state_dict().items(), student.model.state_dict().values(), strict=True
-        ):
-            assert torch.equal(a, b), name
+    for name, tensor in student.model.state_dict().items():
+        assert torch.equal(trainer.model.state_dict()[name], tensor), name
+        for set_weights in trainer.opponents.parameters[f"model.{name}"]:  # every slot's set
+            assert torch.equal(set_weights, tensor), name
     assert float(trainer.ppo.return_scale.scale()) == float(student.ppo.return_scale.scale())
     assert float(student.ppo.return_scale.high) != 0.0
     assert not trainer.ppo.optimizer.state  # fresh
