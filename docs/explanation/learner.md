@@ -42,6 +42,11 @@ current one computes. A rollout from the same seed writes the same records into 
 store, with one shard or several, and the update's counts, losses and gradients are the
 same bit for bit
 (`tests/sections/test_learner_streaming.py::test_the_update_through_pinned_memory_equals_the_device_path`).
+Each micro-batch size has two staging buffers that alternate, allocated on the caller's
+thread before any copy into them is issued: the caching allocator may hand a new buffer memory
+the compute stream freed with kernels still queued, and the first copy into it, on the copy
+stream, waits for them
+(`tests/sections/test_store_staging.py::test_a_new_staging_buffer_is_filled_after_the_compute_that_last_used_its_memory`).
 Readers wait on the store's last write: the GPU waits where the data stays on the device,
 and the host only where it reads pinned memory itself. An update synchronises with the
 host once per epoch, for the early stop, and once at its end, for its results

@@ -240,6 +240,24 @@ different, the norm epsilon, is not). The fixtures run the plain path and pass.
    but each kernel's buffers are written in full by every configuration (the heads'
    partial sums were the one exception, fixed). If it recurs: the resume test or the probe
    in a loop from emptied caches, `host_store=false` against the default.
+
+   **Answered (2026-11-03, `fix/intermittent`, `1f5558ac`): a race in the segment store,
+   not in a kernel or in autotuning.** `SegmentStore.batches` set up the staging buffers of
+   a micro-batch size it had not seen on its worker thread, while the caller computed on the
+   previous micro-batch, and recorded their `released` event before allocating them. The
+   caching allocator can give such a buffer memory the compute stream has just freed with
+   kernels still queued that write it; the first copy into the buffer runs on the copy
+   stream, waited only for that earlier event, and could be overwritten by those kernels. The
+   learner then read a corrupted micro-batch: in the probe, the trailing 2-view micro-batch
+   of a minibatch, whose own-action indices came out of range (the assert); in the resume
+   test, `prepare`'s trailing 8-view micro-batch in a process's first update. With the store
+   as it was, the 26-ship probe with warm caches fails 6 times in 6 (3 times the original
+   assert in the same kernel, 3 times a loss off by 12%, by 5e26, or NaN); with the fix it
+   gives the same update 6 times in 6. The buffers are now allocated on the caller's thread
+   at the start of `batches`, and released after the allocation; a test forces the
+   interleaving (`tests/sections/test_store_staging.py`). Autotuning only made the window
+   likelier. Item 6's sticky CUDA error had the edited kernel sources as an explanation and
+   is not known to be this.
 9. **Noise in the plain path's compile logs.** Compiling the plain path logs
    "Attempting to permute a tensor of rank 5" from the fake-tensor pass; it is not fatal and
    is not new (the plain path is v2's code).
@@ -273,3 +291,70 @@ different, the norm epsilon, is not). The fixtures run the plain path and pass.
 - **Open:** questions 1-3 and 8 are the author's: determinism across machines, the shot
   trajectory head outside autocast, the remaining gap to the blind model, and the two
   intermittent failures.
+
+## The intermittent failures (open question 8): progress
+
+Working notes of the hunt (`docs/rewrite/sections/intermittent-failure-brief.md`); scratch in
+`/tmp/bnb-scratch-intermittent` (`loop.py`, `worker.py` with switches, `idempotent.py`,
+`stress*.py`, `retune_loop.sh`, `chunks.sh`; logs `*.log`).
+
+- **The evidence on disk** (`/tmp/bnb-scratch-fast-yemong`): the suite's failure printed only
+  the first update's dict (`At index 0 diff`, truncated), so which metric differed is not
+  known, not necessarily a pool's. The probe's assert came from
+  `triton_per_fused__log_softmax_..._gather_..._89` (the own-action log-probability of the
+  loss: `power * 14 + stick * 2 + shoot`, loaded from the staged `trajectory.action`), at
+  3328 rows = 128 steps x 2 views x 13 ships, the trailing micro-batch's shape, in one
+  program (`block [90]`) only; it surfaced at the `synchronize` that starts a benchmark.
+- **Hypothesis 1 ruled out.** Each kernel, forward and backward, eager (Triton's autotuner)
+  and compiled (Inductor's), autotuned on fresh inputs with emptied caches and memory dirtied
+  with NaN first, then called again with the configuration cached: bitwise equal and finite
+  (`idempotent.py`, `idempotent.log`). Every kernel writes only its outputs, in full.
+- **Store reads of unwritten memory ruled out (resume configuration):** every store and
+  staging buffer allocated as NaN / -77 / True (`BNB_POISON=1`), and every copy-stream copy
+  delayed by ~10 ms (`BNB_DELAY_COPY`): the metrics equal the plain warm run's.
+- **Autotuning choice is consistent across processes** in the runs logged: 908 Inductor
+  autotuners per process, 16 files shared by two instances; the second instance reads the
+  first's saved choice, and process B runs exactly A's configurations (`BNB_LOG_TUNING`).
+- **Loops:** cold A against warm B, `first` mode: 1 both-cold, 7 Inductor-cold (2 updates
+  each from the 4th), 7 re-tune-only (Inductor's `.best_config` files deleted, compiled code
+  kept): all equal. Neither original symptom recurred end to end.
+- **The race found (fixed in `1f5558ac`).** `SegmentStore.batches` set up a new micro-batch
+  size's staging slot on its worker thread while the caller computed on the previous
+  micro-batch: it recorded the slot's `released` event on the compute stream, then
+  allocated the pinned and device buffers. The caching allocator can hand the device buffer
+  memory the compute stream freed after that record, with kernels still queued that write
+  it (stream-ordered reuse); the first copy into the buffer, on the copy stream, waited only
+  for `released`, so those kernels could land after it and overwrite the batch. Measured on
+  this GPU: a pinned host-to-device copy on a side stream does not wait for queued
+  default-stream work (`order2.py`, `prim.py`). Evidence: forced interleaving (the caller
+  frees a still-written temporary just before the worker allocates) overwrites the batch
+  every time before the fix (`tests/sections/test_store_staging.py`); natural timing
+  (`stress.py 2000 2000 5000 50000000`, the real store and threads, no hooks): 12 of 2000
+  batches overwritten before, 0 of 2000 after. Lazy module loading, `cudaMalloc` and a
+  first `cudaHostAlloc` can wait for the device and hide it (the test warms them first).
+- **Why it matches the failures.** The probe's asserting kernel ran on the trailing
+  micro-batch of a minibatch (2 views of 6), a size first seen in that update, so its slot
+  was set up on the worker while the caller ran the previous micro-batch's loss; the bad
+  rows sat in one program. In the resume test (24 views, micro-batches of 16) `prepare`'s
+  trailing 8-view slot is set up the same way, in every process's first update. Autotuning
+  makes the window likelier (the caller allocates and frees benchmark clones and buffers
+  with kernels queued) but is not the cause.
+- **End to end (the 26-ship probe, `probe_run.py`, `probe_warm.sh`, warm caches; one
+  update; logs `runs/probe/*.log`, `probe_compare.py`):** the store before the fix
+  (`BNB_OLD_STORE=1`, `old_store.py` = the store at `d6fb28fd`) 6 of 6 runs corrupted: the
+  original assert in the same Inductor kernel (`cgugzpcgik...py:66`) 3 times, otherwise the
+  next-state loss off by 12% or 5e26, or NaN. The fixed store: 6 of 6 runs agree to within
+  5e-7 relative and the rollout's pool metrics are identical. That residual is a separate
+  finding: at 26 ships the update is not bitwise repeatable between processes with warm
+  caches (policy, value and enemy-action losses differ in their last bits; the 2v2 exact
+  resume is unaffected). Not investigated; an atomic add in a compiled backward is the
+  likely kind.
+- **Also fixed:** `Learner.drift` took one batch with `next(iter(...))` and abandoned the
+  generator, so that slot's `released` was never recorded after drift's compute; a later
+  batch of the same size could be copied into it while drift still read it (the relational
+  model's sizes can meet this; Yemong's gradient batches carry the shot labels, another
+  key). It now runs the generator out.
+- **Done (2026-11-03):** full suite under the lock after the fix, **1071 passed, 7 skipped**
+  (37 min; the same seven skips as before). Committed and pushed on `fix/intermittent`:
+  `1f5558ac` (the fix, its test, the learner page), the notes. Scratch and logs in
+  `/tmp/bnb-scratch-intermittent` (`suite.log`, `probe-warm*.log`, `runs/probe/`).

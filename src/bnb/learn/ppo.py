@@ -627,14 +627,16 @@ class Learner:
         micro-batch of views: |exp(log_probability_unroll - log_probability_rollout) - 1|
         over living own ships, max and mean (0 without any)."""
         views = torch.arange(min(self.micro_views, segments.views))
-        batch = next(iter(segments.batches(segments.names, [views])))
-        trajectory = Trajectory(**batch)
-        log_probability, _ = policy.evaluate(
-            self.unroll(trajectory).policy_logits, _own_joint(trajectory)
-        )
-        mask = trajectory.alive[..., : log_probability.shape[-1]]
-        rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
-        error = torch.where(mask, (torch.exp(log_probability - rollout) - 1.0).abs(), 0.0)
+        # The loop runs the store's generator out: it releases the batch's staging buffers
+        # for reuse only once the compute below is queued (an abandoned generator never does).
+        for batch in segments.batches(segments.names, [views]):
+            trajectory = Trajectory(**batch)
+            log_probability, _ = policy.evaluate(
+                self.unroll(trajectory).policy_logits, _own_joint(trajectory)
+            )
+            mask = trajectory.alive[..., : log_probability.shape[-1]]
+            rollout = prepared["rollout_log_probability"][:, self._on_device(views)]
+            error = torch.where(mask, (torch.exp(log_probability - rollout) - 1.0).abs(), 0.0)
         return torch.stack([error.amax(), error.sum() / mask.sum().clamp_min(1)])
 
 
