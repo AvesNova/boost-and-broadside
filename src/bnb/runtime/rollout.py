@@ -341,12 +341,12 @@ class Rollout:
         # Events.result is team 0's; the other team's is its negation (two teams).
         result = torch.where(team == 0, events.result[environments], -events.result[environments])
         records["result"].index_copy_(0, slot, result[None])
-        for name in self.tallied:  # each ended game's result from the learner's side
+        for name in self.tallied:  # each ended game's result, from the controller's side
             environments, team = self.lineup.environments[name], self._team(name, carry["seat"])
-            mine = torch.where(team == 0, events.result[environments], -events.result[environments])
+            own = torch.where(team == 0, events.result[environments], -events.result[environments])
             carry["tallies"][name].add_(
                 self.controllers[name].tally(
-                    carry["controllers"][name], events.done[environments], -mine
+                    carry["controllers"][name], events.done[environments], own
                 )
             )
         redraw = torch.randint(0, self.teams, (self.environments,), device=self.device)

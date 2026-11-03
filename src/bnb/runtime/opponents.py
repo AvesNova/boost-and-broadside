@@ -254,10 +254,10 @@ class OpponentSlots:
         return Action.unpack(action), carry, Outputs()
 
     def tally(self, carry: OpponentCarry, done: torch.Tensor, result: torch.Tensor) -> torch.Tensor:
-        """Each ended episode's result from the learner's side (`result` (R,) int32: +1 win,
-        0 tie, -1 loss, read only where `done` (R,)) counted by (column, mode, outcome):
-        flat (columns * modes * 3,) int64."""
-        outcome = (1 - result).to(torch.int64)  # win 0, tie 1, loss 2
+        """Each ended episode (`done` (R,)), by (column, mode, outcome) with the outcome from
+        the learner's side (`result` (R,) int32 is the opponent row's own: +1 won, 0 tied,
+        -1 lost): flat (columns * modes * 3,) int64."""
+        outcome = (1 + result).to(torch.int64)  # the learner's win 0, tie 1, loss 2
         flat = (carry.column * self.mode_count + self.modes) * len(OUTCOMES) + outcome
         counts = torch.zeros(
             self.columns * self.mode_count * len(OUTCOMES), dtype=torch.int64, device=done.device

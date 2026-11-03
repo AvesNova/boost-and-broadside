@@ -200,3 +200,16 @@ def test_a_drain_ends_once_every_row_has_switched(drain_history):
 def test_the_opponent_rows_split_evenly_over_the_slots():
     with pytest.raises(ValueError, match="split evenly"):
         cases.Trainer(cases.config(environments=12), torch.device("cpu"))
+
+
+def test_the_tally_counts_each_result_from_the_learners_side(tmp_path):
+    trainer, _ = cases.league(tmp_path)
+    opponents = trainer.opponents
+    carry = trainer.rollout.carry["controllers"][OPPONENTS]
+    rows = opponents.modes.shape[0]
+    own = torch.tensor([1, 0, -1, 1, 1, 0, -1, -1], dtype=torch.int32)  # the opponents' results
+    done = torch.tensor([True] * 7 + [False])
+    counts = opponents.tally(carry, done, own).reshape(opponents.columns, 1, 3)
+    per_column = counts[:, 0]  # (columns, wins/ties/losses of the learner)
+    assert per_column.sum(0).tolist() == [2, 2, 3]  # three opponent wins are learner losses
+    assert per_column[carry.column[0]].tolist()[2] >= 1 and rows == 8
