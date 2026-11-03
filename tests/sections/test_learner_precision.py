@@ -29,7 +29,7 @@ CUDA = torch.device("cuda") if torch.cuda.is_available() else None
 
 
 @pytest.fixture(scope="module")
-def stored():
+def stored(module_global_generator):
     net = cases.model().to(CUDA)
     config = cases.SHORT_SQUAD
     controllers = {
@@ -38,6 +38,7 @@ def stored():
     }
     runner = Rollout(
         config,
+        api.ship_types(CUDA),
         lc.POOLS,
         controllers,
         "learner",

@@ -8,6 +8,7 @@ import yemong_cases as cases
 
 from bnb.contracts import Pool
 from bnb.controllers.scripted import Chaser
+from bnb.game import api
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime.rollout import Rollout
@@ -37,7 +38,15 @@ def rollout(
         "chaser": Chaser(config.ships_per_team),
     }
     runner = Rollout(
-        config, pools, controllers, "learner", environments, length, CPU, compiled=False
+        config,
+        api.ship_types(CPU),
+        pools,
+        controllers,
+        "learner",
+        environments,
+        length,
+        CPU,
+        compiled=False,
     )
     for _ in range(runs):
         runner.run()

@@ -15,6 +15,7 @@ import torch
 
 from bnb.contracts import GameConfig, Pool
 from bnb.controllers.scripted import Chaser
+from bnb.game import api
 from bnb.learn import bc
 from bnb.runtime import cloning
 from bnb.runtime.evaluate import first_results, score
@@ -51,7 +52,11 @@ def test_the_toy_clone_scores_against_its_teacher_and_the_chaser():
         def against(player, opponent) -> float:
             controllers = {"player": player, "opponent": opponent}
             pool = Pool("evaluation", 1.0, ("player", "opponent"))
-            return score(first_results(GAME, (pool,), controllers, "player", GAMES, device))
+            return score(
+                first_results(
+                    GAME, api.ship_types(device), (pool,), controllers, "player", GAMES, device
+                )
+            )
 
         clone = student.controllers[LEARNER]
         versus_teacher = against(clone, teacher)

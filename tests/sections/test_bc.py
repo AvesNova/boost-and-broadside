@@ -15,8 +15,10 @@ from scripted_cases import CHARACTERISTICS
 from bnb.contracts import Obs, Pool, Trajectory
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Scripted, distribution
+from bnb.game import api
 from bnb.learn import bc
 from bnb.learn.rewards import RewardConfig
+from bnb.models.relational import RelationalConfig
 from bnb.runtime.rollout import Rollout
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -51,7 +53,7 @@ def _cloning(net, runner: Rollout, teacher_config=bc.TeacherConfig(), **config):
 
 
 @pytest.fixture(scope="module")
-def segment():
+def segment(module_global_generator):
     net = cases.model()
     controllers = {
         "learner": cases.controller(net, cases.SHORT_SQUAD),
@@ -59,6 +61,7 @@ def segment():
     }
     runner = Rollout(
         cases.SHORT_SQUAD,
+        api.ship_types(lc.CPU),
         POOLS,
         controllers,
         "learner",
@@ -152,6 +155,7 @@ def test_the_update_time_labels_are_the_rollout_time_distribution():
     pools = (Pool("self_play", 1.0, ("learner", "learner"), 0.5, mode="frontline"),)
     runner = Rollout(
         cases.SHORT_FRONTLINE,
+        api.ship_types(lc.CPU),
         pools,
         {"learner": recording},
         "learner",
@@ -227,7 +231,7 @@ def _scripted_seat(
         environments=4,
         length=8,
         model="relational",
-        relational_hidden=16,
+        relational=RelationalConfig(hidden=16),
         compiled=False,
         host_store=False,
         learner=learner,
@@ -399,7 +403,7 @@ def _tiny(objective: str, pools):
         environments=8,
         length=8,
         model="relational",
-        relational_hidden=16,
+        relational=RelationalConfig(hidden=16),
         compiled=False,
         host_store=False,
         learner=learner,
@@ -458,7 +462,7 @@ BC_OPTIONS = (
     "--set",
     "learner.epochs=1",
     "--set",
-    "relational_hidden=16",
+    "relational.hidden=16",
     "--set",
     "game.episode_seconds=4.0",
 )
@@ -468,7 +472,7 @@ def _bnb(monkeypatch, *arguments: str) -> None:
     from bnb import cli
 
     monkeypatch.setattr(sys, "argv", ["bnb", *arguments])
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         cli.main()
 
 
@@ -498,7 +502,7 @@ def test_bnb_train_objective_bc_saves_the_clone_as_a_policy_file(monkeypatch, tm
         "--set",
         "compiled=false",
         "--set",
-        "relational_hidden=16",
+        "relational.hidden=16",
         "--set",
         "game.episode_seconds=4.0",
         "--updates",

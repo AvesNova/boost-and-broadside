@@ -49,7 +49,8 @@ def _clone(tree):
 
 
 class Rollout:
-    """shards: segments the store holds (an update consumes them); host_store: keep them in
+    """types: the ship card the games are played with (the carry keeps its own copy).
+    shards: segments the store holds (an update consumes them); host_store: keep them in
     pinned host memory (on a CUDA device) rather than on the device; staggered: start each
     environment's clock at a random tick of its episode (else every game starts fresh);
     extra_reads: observation parts the learner's records keep beyond what its controller
@@ -58,6 +59,7 @@ class Rollout:
     def __init__(
         self,
         config: GameConfig,
+        types: api.ShipTypes,
         pools: tuple[Pool, ...],
         controllers: dict[str, Controller],
         learner: str,
@@ -95,7 +97,7 @@ class Rollout:
         )
         self.block = max(d for d in range(1, graph_ticks + 1) if length % d == 0)
         self.ring = min(length, 2 * self.block)  # the staging ring: two blocks of records
-        self.carry = self._initial_carry(staggered)
+        self.carry = self._initial_carry(types, staggered)
         ticks = _pytree.tree_map_only(torch.Tensor, lambda x: x[0], self.carry["records"])
         self.store = SegmentStore(ticks, self.carry["segment"], shards, length, device, host_store)
         stages = (self._act, self._advance, self._resolve, self._perceive)
@@ -113,9 +115,9 @@ class Rollout:
 
     # ---- carry ------------------------------------------------------------------------
 
-    def _initial_carry(self, staggered: bool) -> dict:
+    def _initial_carry(self, types: api.ShipTypes, staggered: bool) -> dict:
         rules, B, device = self.rules, self.environments, self.device
-        types = api.ship_types(device)
+        types = _pytree.tree_map_only(torch.Tensor, lambda x: x.to(device, copy=True), types)
         state = api.reset(rules, types, api.uniforms(rules, B, device), self.lineup.fogged)
         if staggered:
             episode_ticks = api.episode_ticks(rules, B, device)

@@ -495,6 +495,7 @@ def test_the_scripted_agent_plays_in_the_rollout_against_the_chaser():
     pools = (Pool("scripted", 1.0, ("scripted", "chaser")),)
     rollout = Rollout(
         game,
+        api.ship_types(),
         pools,
         {"scripted": Scripted(CHARACTERISTICS), "chaser": Chaser(2)},
         "scripted",

@@ -9,6 +9,7 @@ import runs_cases as cases
 import torch
 
 from bnb.contracts import Obs
+from bnb.game import api
 from bnb.models.yemong.critic import ReturnScale
 from bnb.models.yemong.model import Yemong
 from bnb.runs import checkpoint
@@ -93,6 +94,7 @@ def test_two_widths_load_side_by_side_and_play_each_other(tmp_path):
     }
     rollout = Rollout(
         game,
+        api.ship_types(cases.CPU),
         (Pool("match", 1.0, ("narrow", "wide")),),
         controllers,
         "narrow",

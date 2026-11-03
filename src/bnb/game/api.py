@@ -13,7 +13,8 @@ opaque outside `bnb.game`: other packages hold it and pass it back, and read it 
 these functions.
 The tick's randomness is an explicit input; `spread` and `uniforms` draw it. The ship card
 `types` is an argument of every function that reads it (`reset`, `move`, `resolve`, `step`):
-it is data, which a sweep may change between calls.
+it is data, which a sweep may change between calls; `default_card` gives the default
+card's values in the form a configuration holds.
 
 For a runtime that keeps the state in persistent buffers: `perceived` (the part of the state
 `perceive` changes, to copy back), `episode_ticks` (each environment's episode length),
@@ -44,7 +45,7 @@ from .physics.bullets import Launch, launch_state
 from .physics.medium import medium
 from .physics.step import move, reset, resolve, step
 from .rules import LN_SQRT2, MAP_SCALE_RADIUS, TEAMS, Rules, rules_of
-from .ship_types import ShipTypes, per_ship, ship_types
+from .ship_types import ShipTypes, default_card, per_ship, ship_types
 from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 
 __all__ = [
@@ -59,6 +60,7 @@ __all__ = [
     "Sweep",
     "TEAMS",
     "core_radius",
+    "default_card",
     "display",
     "episode_ticks",
     "launch_capture",

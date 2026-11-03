@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runtime/train.py, src/bnb/contracts/pools.py, src/bnb/contracts/config.py, src/bnb/game/modes/rules.py]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 16:00
 ---
 
 # Training
@@ -106,6 +106,20 @@ The command's other options set the model and the learner:
 ```bash
 uv run --no-sync bnb train --preset mixed --precision tf32 --shards 2 --micro-batch-rows 320
 ```
+
+The model's settings are `TrainConfig.yemong` (`bnb.models.yemong.model.YemongConfig`) and
+`TrainConfig.relational` (`bnb.models.relational.RelationalConfig`); the run builds the one
+`--model` names. The ship card the run plays is `TrainConfig.ship_card`, its values by
+field, one per ship type (the default is `bnb.game.api.default_card`). `--set` changes
+either by its dotted path; the run's `config.json`{.plain} and its checkpoints record them:
+
+<!-- not-runnable: needs CUDA -->
+```bash
+uv run --no-sync bnb train --preset mixed --set yemong.width=256
+uv run --no-sync bnb train --preset mixed --set ship_card.hit_damage=[14,18]
+```
+
+`bfloat16_matmuls` is not set there: `--precision` sets it.
 
 ## Configure a run in Python
 

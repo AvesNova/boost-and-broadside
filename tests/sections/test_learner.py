@@ -18,8 +18,10 @@ from bnb.contracts import Obs, Outputs, Pool
 from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
 from bnb.controllers.scripted import Chaser
+from bnb.game import api
 from bnb.learn import labels
 from bnb.learn.ppo import COUNTS, TERMS, explained_variance, random_stream
+from bnb.models.relational import RelationalConfig
 from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
@@ -33,7 +35,7 @@ OWN = lc.OWN
 
 
 @pytest.fixture(scope="module")
-def segment():
+def segment(module_global_generator):
     net = cases.model()
     runner = lc.rollout(net)
     learner = lc.learner(net, runner)
@@ -349,7 +351,7 @@ def test_the_store_records_every_rows_action(segment):
 
 
 @pytest.fixture(scope="module")
-def decided():
+def decided(module_global_generator):
     """A self-play and chaser rollout whose every first episode end is team 0's win (the
     score is set to 1-0 before the segment; the clock decides team deathmatch by score), with
     the outcome weighted zero, so its reward cannot tell the result."""
@@ -359,6 +361,7 @@ def decided():
     controllers = {"learner": cases.controller(net, cases.SHORT_SQUAD), "chaser": Chaser(OWN)}
     runner = lc.Rollout(
         cases.SHORT_SQUAD,
+        api.ship_types(lc.CPU),
         lc.POOLS,
         controllers,
         "learner",
@@ -412,7 +415,7 @@ def test_an_update_consumes_several_shards():
         length=16,
         shards=2,
         model="relational",
-        relational_hidden=32,
+        relational=RelationalConfig(hidden=32),
         compiled=False,
         pools=(Pool("chaser", 1.0, (LEARNER, "chaser")),),
         learner=LearnerConfig(minibatches=2, micro_batch_rows=16),

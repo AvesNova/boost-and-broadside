@@ -130,7 +130,7 @@ def tiny_train_config(model: str = "relational", updates: int = 2, **changes):
         updates=updates,
         length=16,
         model=model,
-        relational_hidden=16,
+        relational=RelationalConfig(hidden=16),
         learner=learner,
         compiled=False,
     )
@@ -160,7 +160,7 @@ TRAIN_OPTIONS = (
     "--set",
     "learner.epochs=1",
     "--set",
-    "relational_hidden=16",
+    "relational.hidden=16",
     "--set",
     "game.episode_seconds=4.0",
 )

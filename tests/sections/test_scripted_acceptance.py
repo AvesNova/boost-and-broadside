@@ -54,6 +54,7 @@ def _results(preset: str, opponent: str, games: int) -> torch.Tensor:
     torch.manual_seed(SEEDS[preset, opponent])
     return first_results(
         game,
+        api.ship_types(device),
         (Pool("acceptance", 1.0, ("scripted", "opponent")),),
         {"scripted": Scripted(card), "opponent": rival},
         "scripted",

@@ -595,6 +595,7 @@ def test_compiled_rollout_graph_replays_draw_fresh_randomness():
 
     rollout = Rollout(
         GameConfig(2, 3, 1200.0),
+        api.ship_types("cuda"),
         (Pool("p", 1.0, ("r", "r")),),
         {"r": Random(2)},
         "r",

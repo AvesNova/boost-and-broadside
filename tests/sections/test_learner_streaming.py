@@ -11,6 +11,7 @@ import yemong_cases as cases
 from torch.utils import _pytree
 
 from bnb.controllers.scripted import Chaser
+from bnb.game import api
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
 from bnb.runtime.rollout import Rollout
@@ -37,6 +38,7 @@ def _rollout(host_store: bool, shards: int = 1, seed: int = 0):
     }
     runner = Rollout(
         config,
+        api.ship_types(CUDA),
         lc.POOLS,
         controllers,
         "learner",
@@ -126,6 +128,7 @@ def test_the_rollout_keeps_two_blocks_of_records_on_the_device():
     }
     runner = Rollout(
         config,
+        api.ship_types(CUDA),
         lc.POOLS,
         controllers,
         "learner",

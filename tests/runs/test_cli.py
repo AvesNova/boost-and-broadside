@@ -2,6 +2,7 @@
 across a new run, a stop by Ctrl-C, a resume with an override, a resume on another
 commit, a rewind, a fork and a failure; the refusals; the listing."""
 
+import dataclasses
 import json
 import os
 import pathlib
@@ -14,9 +15,11 @@ import runs_cases as cases
 import torch
 
 from bnb import cli
+from bnb.models.yemong.model import YemongConfig
 from bnb.runs import checkpoint, probe, provenance
 from bnb.runs.records import Run
-from bnb.runtime.train import Trainer
+from bnb.runs.serialise import from_json
+from bnb.runtime.train import TrainConfig, Trainer, build_model, model_build
 
 STEPS_PER_UPDATE = 16 * 16  # environments x segment length in TRAIN_OPTIONS
 
@@ -24,7 +27,7 @@ STEPS_PER_UPDATE = 16 * 16  # environments x segment length in TRAIN_OPTIONS
 def bnb(monkeypatch, runs_directory: pathlib.Path, *arguments: str) -> None:
     """`bnb ARGUMENTS --runs-directory RUNS` in this process, its seeding kept local."""
     monkeypatch.setattr(sys, "argv", ["bnb", *arguments, "--runs-directory", str(runs_directory)])
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         cli.main()
 
 
@@ -183,6 +186,42 @@ def test_a_structural_option_on_resume_is_refused_pointing_to_a_fork(monkeypatch
         bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--set", "length=32")
 
 
+def test_a_resume_that_sets_a_model_setting_is_refused_with_its_reason(monkeypatch, tmp_path):
+    new_run(monkeypatch, tmp_path)
+    with pytest.raises(SystemExit, match="a resume cannot --set relational.hidden"):
+        bnb(monkeypatch, tmp_path, "train", "--resume", "a", "--set", "relational.hidden=32")
+
+
+def test_set_yemong_width_reaches_the_built_model(monkeypatch, tmp_path, capsys):
+    options = ("--model", "yemong", "--set", "yemong.width=256", "--print-config")
+    bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, *options)
+    config, _ = from_json(TrainConfig, json.loads(capsys.readouterr().out))
+    assert config.yemong.width == 256 and config.model == "yemong"
+    with torch.random.fork_rng(devices=[]):  # the models' initialisation draws
+        wide, default = (
+            build_model(model_build(c), cases.CPU).state_dict()
+            for c in (config, dataclasses.replace(config, yemong=YemongConfig()))
+        )
+    shapes = {name: (tuple(default[name].shape), tuple(wide[name].shape)) for name in default}
+    widened = [
+        name
+        for name, (before, after) in shapes.items()
+        if after == tuple(256 if size == 128 else size for size in before) != before
+    ]
+    assert widened  # the width is in the weights
+
+
+def test_a_fork_that_sets_no_model_setting_takes_the_parents(monkeypatch, tmp_path):
+    """The parent's width (16) though the code's default (256) is what the command gives."""
+    new_run(monkeypatch, tmp_path)
+    options = list(cases.TRAIN_OPTIONS)
+    at = options.index("relational.hidden=16")
+    del options[at - 1 : at + 1]
+    bnb(monkeypatch, tmp_path, "train", "--from", "a", *options, "--updates", "1", "--name", "b")
+    config = json.loads((tmp_path / "b" / "config.json").read_text())
+    assert config["relational"]["hidden"] == 16
+
+
 def test_a_resume_on_another_commit_warns_and_records_it(monkeypatch, tmp_path, capsys):
     new_run(monkeypatch, tmp_path)
     head = provenance.commit()[0]
@@ -265,13 +304,13 @@ def test_a_fork_whose_build_differs_is_refused(monkeypatch, tmp_path):
             "a",
             *cases.TRAIN_OPTIONS,
             "--set",
-            "relational_hidden=32",
+            "relational.hidden=32",
         )
 
 
 def test_a_warm_start_from_a_policy_file_starts_a_new_run(monkeypatch, tmp_path):
     """Acceptance 9 through the command line: BC's policy file starts RL."""
-    with torch.random.fork_rng():
+    with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         trainer = Trainer(cases.tiny_train_config(), cases.CPU)
     policy = checkpoint.save_policy(
@@ -313,6 +352,23 @@ def test_a_failure_marks_the_run_failed_with_the_message(monkeypatch, tmp_path):
     assert run.record["segments"][0]["end_step"] == STEPS_PER_UPDATE
 
 
+def test_an_interrupt_finishes_the_update_writes_a_checkpoint_and_stops(monkeypatch, tmp_path):
+    """The quick variant of the next test: SIGINT raised in this process during an update."""
+    update = Trainer.update
+
+    def interrupted(self):
+        os.kill(os.getpid(), signal.SIGINT)  # the session's handler: stop after this update
+        return update(self)
+
+    monkeypatch.setattr(Trainer, "update", interrupted)
+    bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "1000", "--name", "a")
+    run = Run.open(tmp_path, "a")
+    step = run.record["segments"][0]["end_step"]
+    assert run.record["status"] == "stopped" and run.checkpoint_steps() == [step]
+    assert step == STEPS_PER_UPDATE and run.record["final_checkpoint"] is None
+
+
+@pytest.mark.slow  # over 10 s: a fresh process imports torch and trains
 def test_ctrl_c_finishes_the_update_writes_a_checkpoint_and_stops(tmp_path):
     arguments = [
         "bnb",

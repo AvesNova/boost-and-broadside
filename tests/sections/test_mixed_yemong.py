@@ -11,6 +11,7 @@ import yemong_cases as cases
 from bnb.contracts import Obs, Pool
 from bnb.contracts.obs import ZONE, ZONE_COLUMNS
 from bnb.controllers.scripted import Chaser
+from bnb.game import api
 from bnb.models.yemong import policy
 from bnb.models.yemong.inputs import POSITION_CODE
 from bnb.models.yemong.state_code import POSITION_PERIOD
@@ -38,7 +39,15 @@ def _mixed_rollout(net, environments: int = 8, length: int = 32, runs: int = 1):
         "chaser": Chaser(config.ships_per_team),
     }
     runner = Rollout(
-        config, POOLS, controllers, "learner", environments, length, cases.CPU, compiled=False
+        config,
+        api.ship_types(cases.CPU),
+        POOLS,
+        controllers,
+        "learner",
+        environments,
+        length,
+        cases.CPU,
+        compiled=False,
     )
     for _ in range(runs):
         trajectory = runner.run()
@@ -200,7 +209,9 @@ def test_a_compiled_captured_mixed_rollout_stores_what_unroll_needs(fresh_compil
         "learner": cases.controller(net, config),
         "chaser": Chaser(config.ships_per_team),
     }
-    runner = Rollout(config, POOLS, controllers, "learner", 16, 64, device, compiled=True)
+    runner = Rollout(
+        config, api.ship_types(device), POOLS, controllers, "learner", 16, 64, device, compiled=True
+    )
     trajectory = runner.run()
     assert runner.graph is not None and cases.resets(trajectory.obs)[1:].any()
     present = trajectory.obs.zones[..., ZONE["present"]]

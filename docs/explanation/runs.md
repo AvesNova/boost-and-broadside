@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/runs/, src/bnb/runtime/rollout.py, src/bnb/models/yemong/model.py, src/bnb/models/relational.py, src/bnb/models/mlp.py, tests/runs/]
-reviewed: 2026-11-02
+reviewed: 2026-11-03 16:00
 ---
 
 # Runs and checkpoints
@@ -83,10 +83,16 @@ the fastest muzzle speed, the smallest hit radius, the number of ship types and 
 code's ranges); `bnb.models.yemong.model.yemong_build` computes them from a game. Loading
 rebuilds the model from the file's record, never from the current game or the current
 defaults, so a model saved before a ship-card change keeps the code ranges it learned with,
-and models of two widths load side by side in one process. A resume, a fork and a warm
-start build the run's model the same way (`bnb.runs.checkpoint.run_build`): the record's
-architecture, with the run's precision; the numbers the run's game derives must equal the
-record's, or the start is refused.
+and models of two widths load side by side in one process.
+
+A run's model settings (`TrainConfig.yemong` or `TrainConfig.relational`) and ship card
+(`TrainConfig.ship_card`) are part of its `TrainConfig`, so `config.json`{.plain} and every
+training checkpoint record them; `bnb.runtime.train.model_build` turns them into the build
+record. A resume, a fork and a warm start check that build against the file's
+(`bnb.runs.checkpoint.check_build`): apart from the precision, they must be equal, or the
+start is refused. A resume takes the settings from its checkpoint and may not change them.
+A fork or a warm start whose command sets no model setting takes the file's
+(`bnb.runs.checkpoint.with_model_of`), so a changed code default does not block it.
 
 - **The registry** (`bnb.runs.registry.MODELS`) maps a model's name (`yemong`,
   `relational`, `mlp`) to its class. Loading goes by that name, so renaming a class or a
@@ -156,7 +162,8 @@ record's, or the start is refused.
 A training checkpoint is written every N environment steps. Without
 `--checkpoint-every`, N is about 30 minutes at the run's throughput, measured on its
 second update (the first compiles) and recorded in `run.json`{.plain}. The kept checkpoints
-follow the league's rule (`bnb.runs.records.retained`). Number the checkpoints 0, 1, 2, …
+follow `bnb.runs.records.retained` (the league's snapshots have their own rule,
+`bnb.league.pool.retained`). Number the checkpoints 0, 1, 2, …
 in the order written (a stop's off-cadence checkpoint counts too); with n the newest and
 age = n − i, checkpoint i is kept if its age is under `RECENT`, or if i is divisible by
 2^⌊log₂ age⌋, and the final one is always kept. A multiple of 2^(j+1) is a multiple of

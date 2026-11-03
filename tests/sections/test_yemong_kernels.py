@@ -346,7 +346,7 @@ def test_heads_are_bitwise_repeatable():
 
 
 @pytest.fixture(scope="module")
-def segment():
+def segment(module_global_generator):
     """A float64 model on CUDA, a synthetic segment with a reset mid-way, a nonzero carry and
     the replay records `step` stored over the segment."""
     net = cases.double(cases.model()).to(CUDA)

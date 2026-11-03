@@ -16,6 +16,7 @@ from bnb.contracts.pools import environment_multiple, pool_game
 from bnb.game import api
 from bnb.game.layout import environment, slices
 from bnb.learn import rewards
+from bnb.models.relational import RelationalConfig
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -235,11 +236,18 @@ def test_a_mixed_batch_equals_each_game_run_alone():
     assert seen["done"] > 64 and seen["died"] > 800 and seen["objective"] > 0, seen
 
 
+@pytest.mark.slow  # over 10 s; the quick tier runs the first 60 ticks (next test)
 def test_an_unaligned_mixed_batch_equals_each_game_alone_to_float32_rounding():
     """Pools of 5 environments (not whole vector widths): every tick, from the same state,
     within the spec's 1e-6."""
     seen = _against_alone(_pools(), 5, ticks=260, seed=9, tolerance=1e-6, resync=True)
     assert seen["done"] > 4 and seen["died"] > 50, seen
+
+
+def test_an_unaligned_mixed_batch_equals_each_game_alone_over_its_first_ticks():
+    """The quick variant of the test above: 60 ticks, with deaths but no episode end."""
+    seen = _against_alone(_pools(), 5, ticks=60, seed=9, tolerance=1e-6, resync=True)
+    assert seen["died"] > 0, seen
 
 
 # Two arenas and clocks in each mode's slice (team deathmatch first, so Frontline is not
@@ -282,16 +290,27 @@ ONE_SLICE_EACH = (
 )
 
 
-def test_one_slice_of_several_arenas_and_clocks_equals_each_game_alone():
-    """Adjacent pools of one mode share a slice; each environment still plays its own
-    pool's arena, map scale, episode length and respawn wait (bit for bit)."""
+def _one_slice_each(ticks: int) -> dict:
     rules = api.rules_of(BASE, ONE_SLICE_EACH, 4 * VECTOR_ALIGNED)
     assert [part.mode.name for part in slices(rules, 4 * VECTOR_ALIGNED)] == [
         "team_deathmatch",
         "frontline",
     ]
-    seen = _against_alone(ONE_SLICE_EACH, VECTOR_ALIGNED, ticks=240, seed=3)
+    return _against_alone(ONE_SLICE_EACH, VECTOR_ALIGNED, ticks=ticks, seed=3)
+
+
+@pytest.mark.slow  # over 10 s; the quick tier runs the first 40 ticks (next test)
+def test_one_slice_of_several_arenas_and_clocks_equals_each_game_alone():
+    """Adjacent pools of one mode share a slice; each environment still plays its own
+    pool's arena, map scale, episode length and respawn wait (bit for bit)."""
+    seen = _one_slice_each(ticks=240)
     assert seen["done"] > 64 and seen["died"] > 500, seen
+
+
+def test_one_slice_of_several_arenas_equals_each_game_alone_over_its_first_ticks():
+    """The quick variant of the test above: 40 ticks, with deaths but no episode end."""
+    seen = _one_slice_each(ticks=40)
+    assert seen["died"] > 0, seen
 
 
 def test_spawn_protection_holds_where_frontline_is_not_the_first_pool():
@@ -460,7 +479,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         environments=16,
         length=32,
         model="relational",
-        relational_hidden=32,
+        relational=RelationalConfig(hidden=32),
         pools=pools,
         compiled=False,
         learner=LearnerConfig(minibatches=2, micro_batch_rows=30),
@@ -491,6 +510,7 @@ def test_the_rollout_staggers_each_start_clock_within_its_own_episode():
     )
     rollout = Rollout(
         BASE,
+        api.ship_types(),
         pools,
         {"random": Random(BASE.ships_per_team)},
         "random",

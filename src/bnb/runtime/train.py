@@ -22,7 +22,7 @@ from bnb.controllers.relational import RelationalController
 from bnb.controllers.scripted import Chaser, Random, Scripted, distribution
 from bnb.controllers.yemong import YemongController
 from bnb.game import api
-from bnb.game.api import PRESETS
+from bnb.game.api import PRESETS, ShipTypes
 from bnb.game.handling.characteristics import characteristics
 from bnb.learn.bc import BehaviourCloning, TeacherConfig, TeacherOpponent
 from bnb.learn.ppo import Learner, LearnerConfig
@@ -79,8 +79,11 @@ def mixed(
 
 @dataclasses.dataclass(frozen=True)
 class TrainConfig:
-    """model: "yemong" or "relational" (the toy learner; its sizes are fixed at build).
-    length: ticks per segment; shards: segments per update. precision: "bfloat16" (the
+    """model: "yemong" or "relational" (the toy learner), built with the settings of the
+    same name (`yemong`, `relational`); their `bfloat16_matmuls` stays False, as `precision`
+    sets it. ship_card: the ship card's values by field, one per ship type, every field
+    given (`bnb.game.api.default_card`). length: ticks per segment; shards: segments per
+    update. precision: "bfloat16" (the
     model's matmuls under autocast; the default), "float32" or "tf32" (a process-wide
     setting, which the entry point applies with `bnb.cli.set_precision`). reward: the reward
     levels' weights. host_store: stream the segments through pinned host memory (on a GPU)
@@ -96,7 +99,9 @@ class TrainConfig:
     length: int = 128
     shards: int = 1
     model: str = "yemong"
-    relational_hidden: int = 256
+    yemong: YemongConfig = YemongConfig()
+    relational: RelationalConfig = RelationalConfig()
+    ship_card: dict[str, tuple[float, ...]] = dataclasses.field(default_factory=api.default_card)
     league: LeagueConfig = LeagueConfig()
     pools: tuple[Pool, ...] = LINEUP
     learner: LearnerConfig = LearnerConfig()
@@ -115,22 +120,39 @@ class TrainConfig:
             raise ValueError(f"model {self.model!r} is not one of {MODELS}")
         if self.precision not in PRECISIONS:
             raise ValueError(f"precision {self.precision!r} is not one of {PRECISIONS}")
+        for name in MODELS:
+            if getattr(self, name).bfloat16_matmuls:
+                raise ValueError(
+                    f"{name}.bfloat16_matmuls is set by precision ({self.precision!r}), "
+                    f"not by the model's settings"
+                )
+        card = api.default_card()
+        if self.ship_card.keys() != card.keys():
+            missing = sorted(card.keys() - self.ship_card.keys())
+            unknown = sorted(self.ship_card.keys() - card.keys())
+            raise ValueError(f"ship_card lacks {missing} and has unknown fields {unknown}")
+        for name, values in self.ship_card.items():
+            if len(values) != len(card[name]):
+                raise ValueError(
+                    f"ship_card.{name} has {len(values)} values; the card has "
+                    f"{len(card[name])} ship types"
+                )
+
+    def ship_types(self, device: torch.device | None = None) -> ShipTypes:
+        """The run's ship card as tensors, on `device`."""
+        return api.ship_types(device, **self.ship_card)
 
 
-def model_build(config: TrainConfig, architecture: YemongConfig | RelationalConfig | None = None):
-    """The build record of the run's model: `architecture` (a saved model's config; the
-    code's defaults without one) with the run's precision (and the relational model's
-    width), and the numbers the run's game and ship card derive."""
+def model_build(config: TrainConfig) -> YemongBuild | RelationalBuild:
+    """The build record of the run's model: its settings (`TrainConfig.yemong` or
+    `TrainConfig.relational`) with the run's precision, and the numbers the run's game and
+    ship card derive."""
     game, bfloat16 = config.game, config.precision == "bfloat16"
     if config.model == "relational":
-        architecture = dataclasses.replace(
-            architecture or RelationalConfig(),
-            hidden=config.relational_hidden,
-            bfloat16_matmuls=bfloat16,
-        )
+        architecture = dataclasses.replace(config.relational, bfloat16_matmuls=bfloat16)
         return RelationalBuild(architecture, game.ships_per_team, game.num_ships)
-    architecture = dataclasses.replace(architecture or YemongConfig(), bfloat16_matmuls=bfloat16)
-    return yemong_build(architecture, api.rules_of(game), api.ship_types())
+    architecture = dataclasses.replace(config.yemong, bfloat16_matmuls=bfloat16)
+    return yemong_build(architecture, api.rules_of(game), config.ship_types())
 
 
 def build_model(build: YemongBuild | RelationalBuild, device: torch.device) -> torch.nn.Module:
@@ -177,23 +199,18 @@ class LeagueHooks(Protocol):
 
 
 class Trainer:
-    """The run's model, the league's seat, opponents, rollout and learner. build: the model's
-    build record (a checkpoint's); without one, `model_build(config)`. `league`: the league's
+    """The run's model (built from `model_build(config)`), the league's seat, opponents,
+    rollout and learner, playing the config's ship card (`types`). `league`: the league's
     hooks, attached by `bnb.league` (None: the seat's slots keep what they hold)."""
 
-    def __init__(
-        self,
-        config: TrainConfig,
-        device: torch.device,
-        build: YemongBuild | RelationalBuild | None = None,
-    ) -> None:
+    def __init__(self, config: TrainConfig, device: torch.device) -> None:
         game = config.game
         self.config = config
-        self.model = build_model(build or model_build(config), device)
+        self.model = build_model(model_build(config), device)
         self.league: LeagueHooks | None = None
         cloning = config.objective == "bc"
         seated = {name for pool in config.pools for name in pool.seats}
-        types = api.ship_types(device)
+        self.types = types = config.ship_types(device)
         # The scripted agent's characteristics, when it plays, teaches or is the ladder.
         self.characteristics = (
             characteristics(types, api.rules_of(game))
@@ -235,6 +252,7 @@ class Trainer:
         self.opponents: OpponentSlots | None = self.controllers.get(OPPONENTS)
         self.rollout = Rollout(
             game,
+            types,
             config.pools,
             self.controllers,
             LEARNER,
@@ -383,6 +401,7 @@ def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> di
     return shares(
         first_results(
             config.game,
+            trainer.types,
             (pool,),
             controllers,
             LEARNER,

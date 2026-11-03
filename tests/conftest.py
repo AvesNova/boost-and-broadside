@@ -39,13 +39,24 @@ def _gpu_tests_hold_the_benchmark_lock(request):
         yield
 
 
+def _no_cuda() -> int:
+    raise RuntimeError("a test without the gpu marker sees no CUDA device")
+
+
 @pytest.fixture(autouse=True)
-def _only_gpu_tests_touch_cuda(request):
+def _only_gpu_tests_touch_cuda(request, monkeypatch):
     """A test without the `gpu` marker must not initialise CUDA, so `-m "not gpu"` never
-    does."""
-    before = torch.cuda.is_initialized()
+    does. It runs as on a machine without CUDA, since `torch.compile` initialises CUDA even
+    for a graph on the CPU: it saves the CUDA generator's state around every compile when
+    `torch.cuda.is_available()`, and its cache key reads the current device's name (once per
+    process; without CUDA, the read raises and the key leaves the device out). After a gpu
+    test has initialised CUDA, a non-gpu test sees it as it is."""
+    gpu, before = "gpu" in request.keywords, torch.cuda.is_initialized()
+    if not gpu and not before:  # once a gpu test has initialised CUDA, there is nothing to keep
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        monkeypatch.setattr(torch.cuda, "current_device", _no_cuda)
     yield
-    if "gpu" not in request.keywords and not before and torch.cuda.is_initialized():
+    if not gpu and not before and torch.cuda.is_initialized():
         pytest.fail("initialised CUDA without the gpu marker", pytrace=False)
 
 
@@ -69,6 +80,19 @@ def global_generator():
     """For code that draws from torch's default generators by design (a model's
     initialisation, the rollout's draws, the scripted opponents): the test runs with them
     seeded at 0 and restores them afterwards."""
+    with torch.random.fork_rng(
+        devices=range(torch.cuda.device_count()) if torch.cuda.is_initialized() else []
+    ):
+        torch.manual_seed(0)
+        yield
+
+
+@pytest.fixture(scope="module")
+def module_global_generator():
+    """`global_generator` for a module-scoped fixture that draws from the default generators
+    (a module fixture is built before any test's own fixtures, so the per-test guard and
+    `global_generator` do not cover it): seeded at 0 for the module, restored after it, so
+    the fixture's data does not depend on which modules ran before."""
     with torch.random.fork_rng(
         devices=range(torch.cuda.device_count()) if torch.cuda.is_initialized() else []
     ):

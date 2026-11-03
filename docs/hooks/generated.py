@@ -323,7 +323,9 @@ def train_config() -> str:
     """The fields of TrainConfig."""
     from bnb.runtime.train import TrainConfig
 
-    return _dataclass_table(TrainConfig, skip=("pools", "learner"))
+    return _dataclass_table(
+        TrainConfig, skip=("pools", "learner", "yemong", "relational", "ship_card")
+    )
 
 
 def learner_config() -> str:

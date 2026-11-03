@@ -63,11 +63,12 @@ import torch
 
 from bnb.contracts import GameConfig
 from bnb.learn.ppo import LearnerConfig
+from bnb.models.relational import RelationalConfig
 from bnb.runtime.train import TrainConfig, Trainer
 
 config = TrainConfig(game=GameConfig(ships_per_team=1, num_fields=2, arena_radius=1200.0),
                      environments=8, updates=1, length=8, model="relational",
-                     relational_hidden=32, compiled=False,
+                     relational=RelationalConfig(hidden=32), compiled=False,
                      learner=LearnerConfig(minibatches=2, micro_batch_rows=8))
 trainer = Trainer(config, torch.device("cpu"))
 row = trainer.update()

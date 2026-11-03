@@ -8,6 +8,7 @@ controller, a model or the scripted agent, and its opponents are the pools' othe
 import torch
 
 from bnb.contracts import Controller, GameConfig, Pool
+from bnb.game.api import ShipTypes
 
 from .rollout import Rollout
 
@@ -15,6 +16,7 @@ from .rollout import Rollout
 @torch.no_grad()
 def first_results(
     game: GameConfig,
+    types: ShipTypes,
     pools: tuple[Pool, ...],
     controllers: dict[str, Controller],
     player: str,
@@ -24,9 +26,19 @@ def first_results(
     compiled: bool = True,
 ) -> torch.Tensor:
     """(views,) int32: the result of each of `player`'s views in its environment's first
-    game, +1 a win, 0 a draw, -1 a loss. games: environments (the pools' batch)."""
+    game, +1 a win, 0 a draw, -1 a loss, with the ship card `types`. games: environments
+    (the pools' batch)."""
     rollout = Rollout(
-        game, pools, controllers, player, games, length, device, compiled=compiled, staggered=False
+        game,
+        types,
+        pools,
+        controllers,
+        player,
+        games,
+        length,
+        device,
+        compiled=compiled,
+        staggered=False,
     )
     views = rollout.lineup.rows(player)
     result = torch.zeros(views, dtype=torch.int32, device=device)

@@ -54,7 +54,7 @@ def mode_phase(
     if mode_rules.name == TEAM_DEATHMATCH:
         # Every death scores for the other team, whatever its cause: (B, 2) by the scoring
         # team, its enemy's deaths.
-        score = mode.score + enemy(died.to(torch.int32)).sum(-1)
+        score = mode.score + enemy(died.to(torch.int32)).sum(-1, dtype=torch.int32)
         reached = score >= mode_rules.kills_per_ship * rules.ships_per_team
         result = reached[:, 0].to(torch.int32) - reached[:, 1].to(torch.int32)  # both: a draw
         return Phase(replace(mode, score=score), zero, zero, reached.any(-1), result)
