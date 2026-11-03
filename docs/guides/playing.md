@@ -30,7 +30,8 @@ the first several seconds. The options:
 ## The screen
 
 - **The top bar** (always shown): the menu button and the view selector on the left; the
-  score, or Frontline's front and zones, and the clock in the middle; the speed controls
+  score, or Frontline's front and zones (captioned "Front" and "Zones", each zone numbered
+  in its owner's colour, with a tooltip saying what it shows), and the clock in the middle; the speed controls
   on the right: pause or play, one tick while paused, and ×1, ×2, ×4, ×8.
 - **The fleets card** (left): each team's ships, with type, shield, energy, alive or the
   respawn wait, and who controls it. Click a row to select the ship. Each team's
@@ -68,7 +69,7 @@ spectator's.
 ## Flying a ship
 
 Select a ship and press **Take control**. Its side keeps controlling every other ship. The
-camera follows it, the cards collapse (their tabs open them), and a small HUD at the
+camera follows it, zoomed in from the whole-arena view, the cards collapse (their tabs open them), and a small HUD at the
 bottom shows the shield, energy, power and stick:
 
 - W and S: boost and reverse (neither: coast);
@@ -92,7 +93,7 @@ league's snapshots (`--runs` sets the directory). A policy plays only the game i
 trained on, with the same ship card and the default lineup; otherwise the shell says
 what differs and keeps the match as it was.
 
-An agent runs on the CPU at one decision per tick, with its memory kept from tick to tick
+An agent runs on the GPU when there is one (the CPU otherwise) at one decision per tick, with its memory kept from tick to tick
 as in training. Its card row has a temperature: 1 samples the policy as trained, lower is
 more deterministic, 0 always takes its most likely action. A team's controller can also
 be changed in the fleets card during a match.

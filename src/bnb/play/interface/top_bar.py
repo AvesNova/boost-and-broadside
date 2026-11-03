@@ -17,13 +17,15 @@ from ..loop import TIME_SCALES
 from ..selection import Selection
 from .cards import window
 from .controls import button, icon_button, menu_icon, pause_icon, play_icon, step_icon, tooltip, u32
+from .inspector import ROLE_NAMES
 from .shortcuts import shortcut
-from .text import clock
+from .text import TEAM_NAMES, clock
 
 if TYPE_CHECKING:
     from .interface import Interface
     from .layout import Layout
 
+LUMA = (0.2126, 0.7152, 0.0722)
 VIEW_BUTTONS = ("Spectator", "Team 0", "Team 1")
 
 
@@ -148,7 +150,15 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
             ("text", (f"first to {frame.score_target}", muted, small, None)),
         ]
     elif frame.mode == "frontline":
-        parts += [("front", None), ("gap", 14.0 * scale), ("zones", None)]
+        parts += [
+            ("text", ("Front", muted, small, None)),
+            ("gap", 6.0 * scale),
+            ("front", None),
+            ("gap", 16.0 * scale),
+            ("text", ("Zones", muted, small, None)),
+            ("gap", 6.0 * scale),
+            ("zones", None),
+        ]
     else:
         parts += [("text", ("Sandbox", text, small, None))]
     parts += [
@@ -159,7 +169,7 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
 
     cell, cell_gap = 12.0 * scale, 3.0 * scale
     threshold = max(frame.front_threshold, 1)
-    zone_radius, zone_gap = 7.0 * scale, 8.0 * scale
+    zone_radius, zone_gap = 10.0 * scale, 6.0 * scale
     zones = [index for index in range(len(frame.zones.x)) if frame.zones.present[index]]
 
     def size_of(kind, value) -> float:
@@ -187,12 +197,17 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
             imgui.set_cursor_screen_pos(imgui.ImVec2(x, middle_y - 0.5 * cell))
             imgui.invisible_button("front", imgui.ImVec2(size_of(kind, value), cell))
             tooltip(
-                f"The front: {frame.front:+d}; a side wins {frame.front_threshold} captures ahead"
+                f"The front, a tug of war over captures. Cells fill from the middle in the "
+                f"colour of the side that is ahead (team 0 pushes right, team 1 left); a side "
+                f"wins {frame.front_threshold} captures ahead. Now {frame.front:+d} "
+                f"(positive: team 0)."
             )
         elif kind == "zones":
             for slot, zone in enumerate(zones):
                 centre_x = x + zone_radius + slot * (2 * zone_radius + zone_gap)
-                _zone_dot(draw, centre_x, middle_y, zone_radius, frame.zones, zone, theme, scale)
+                _zone_dot(
+                    draw, centre_x, middle_y, zone_radius, frame.zones, zone, slot + 1, theme, scale
+                )
                 imgui.set_cursor_screen_pos(
                     imgui.ImVec2(centre_x - zone_radius, middle_y - zone_radius)
                 )
@@ -201,7 +216,7 @@ def _objective(interface: Interface, rect, left: float, right: float) -> None:
                 ):
                     session.select(Selection("zone", zone))
                 interface.controls.record(f"top/zone/{zone}")
-                tooltip("A zone: click to see it")
+                tooltip(_zone_tooltip(frame.zones, zone, slot + 1))
         x += size_of(kind, value)
 
 
@@ -228,9 +243,23 @@ def _front(draw, x, middle_y, frame, threshold, cell, gap, team, theme, scale) -
         )
 
 
-def _zone_dot(draw, x, y, radius, zones, zone, theme, scale) -> None:
+def _zone_tooltip(zones, zone: int, number: int) -> str:
+    """What a zone's dot shows: its role, owner and capture progress."""
+    role, owner, attacker = int(zones.role[zone]), int(zones.owner[zone]), int(zones.attacker[zone])
+    text = f"Zone {number}: {ROLE_NAMES[role] if 0 <= role < len(ROLE_NAMES) else role}, "
+    text += f"owned by {TEAM_NAMES[owner]}" if owner >= 0 else "owned by nobody"
+    text += ". The dot is the owner's colour (grey: nobody; pale: a spawn zone)"
+    if attacker >= 0 and zones.meter[zone] > 0.0:
+        text += (
+            f"; the arc is {TEAM_NAMES[attacker]}'s capture, {100 * float(zones.meter[zone]):.0f}%"
+        )
+    return text + ". Click to inspect."
+
+
+def _zone_dot(draw, x, y, radius, zones, zone, number, theme, scale) -> None:
     """A zone: a dot in its owner's colour (grey for the neutral zone), lighter for a
-    spawn zone, and a defense zone's meter as an arc in the attacker's colour."""
+    spawn zone, labelled with its number, and a defense zone's meter as an arc in the
+    attacker's colour."""
     owner, attacker = int(zones.owner[zone]), int(zones.attacker[zone])
     colour = theme.team[owner] if owner >= 0 else theme.neutral
     alpha = 1.0 if attacker >= 0 or owner < 0 else 0.35
@@ -241,3 +270,16 @@ def _zone_dot(draw, x, y, radius, zones, zone, theme, scale) -> None:
         end = start + 2.0 * math.pi * min(float(zones.meter[zone]), 1.0)
         draw.path_arc_to(imgui.ImVec2(x, y), radius + 3.0 * scale, start, end, 0)
         draw.path_stroke(u32(theme.team[attacker]), 2.5 * scale)
+    label = str(number)
+    shown = 1.0 if attacker >= 0 or owner < 0 else 0.35  # the fill's opacity over the panel
+    luminance = sum(
+        weight * (shown * value + (1.0 - shown)) for weight, value in zip(LUMA, colour.floats())
+    )
+    imgui.push_font(None, imgui.get_font_size())
+    size = imgui.calc_text_size(label)
+    draw.add_text(
+        imgui.ImVec2(x - 0.5 * size.x, y - 0.5 * size.y),
+        u32(theme.text) if luminance > 0.5 else imgui.get_color_u32(imgui.ImVec4(1, 1, 1, 1)),
+        label,
+    )
+    imgui.pop_font()

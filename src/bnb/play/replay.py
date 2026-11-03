@@ -95,7 +95,9 @@ def save(recorder: Recorder, root: str | pathlib.Path, keep: int = KEEP) -> path
     newest `keep` replays there; returns the replay's directory."""
     root = pathlib.Path(root)
     root.mkdir(parents=True, exist_ok=True)
-    stamp = recorder.started.strftime("%Y%m%d-%H%M%S")
+    stamp = recorder.started.strftime("%Y%m%d-%H%M%S%f")[
+        :-3
+    ]  # to the millisecond: newest-first order
     base = f"{stamp}-{_slug(recorder.setup.config.mode)}-{_slug(recorder.name)}"
     directory, copy = root / base, 1
     while directory.exists():

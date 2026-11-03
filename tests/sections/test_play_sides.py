@@ -14,6 +14,8 @@ from bnb.contracts.obs import GLOBAL
 from bnb.play.loop import MatchLoop, MatchSetup, SideSetup, team_view
 from bnb.play.sides import AgentError, describe, label_of, load_agent, policy_choices
 
+pytestmark = pytest.mark.gpu  # agents run on the GPU when there is one
+
 
 def _agents(policy, temperature: float = 1.0) -> MatchSetup:
     side = SideSetup("agent", str(policy), temperature)
@@ -130,3 +132,69 @@ def test_an_agent_match_is_reproducible_from_its_seed(tmp_path):
             actions.append(loop.last_actions.clone())
         runs.append(torch.stack(actions))
     assert torch.equal(runs[0], runs[1])
+
+
+@pytest.mark.parametrize("model", ["relational", "yemong"])
+def test_an_agent_runs_on_the_gpu_when_there_is_one_and_the_cpu_otherwise(tmp_path, model):
+    """The device follows CUDA's availability; the actions come back on the CPU and the
+    carry stays on the agent's device. (Without CUDA this checks the CPU half.)"""
+    from bnb.play.sides import agent_device
+
+    want = "cuda" if torch.cuda.is_available() else "cpu"
+    assert agent_device().type == want
+    policy = tiny_policy(tmp_path / "policy", SMALL, model)
+    loop = MatchLoop(_agents(policy), compiled=False)
+    for side in loop.sides:
+        assert side.device.type == want
+    for _ in range(5):
+        loop.step()
+    assert loop.last_actions.device.type == "cpu"
+    if model == "yemong":
+        assert loop.sides[0].carry.previous_action.device.type == want
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_a_gpu_agent_is_reproducible_and_leaves_the_global_generators_alone(
+    tmp_path, global_generator
+):
+    policy = tiny_policy(tmp_path / "policy", SMALL, "yemong")
+
+    def play() -> torch.Tensor:
+        loop = MatchLoop(_agents(policy), compiled=False)
+        return torch.stack([(loop.step(), loop.last_actions.clone())[1] for _ in range(15)])
+
+    torch.manual_seed(1)
+    torch.cuda.manual_seed(1)
+    cpu_state, cuda_state = torch.get_rng_state(), torch.cuda.get_rng_state()
+    first = play()
+    assert torch.equal(torch.get_rng_state(), cpu_state)
+    assert torch.equal(torch.cuda.get_rng_state(), cuda_state)
+    assert torch.equal(first, play())
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_the_captured_step_matches_the_eager_one(tmp_path):
+    """Yemong's step replayed from a CUDA graph gives the eager step's logits (to
+    rounding) and, from the same generator seed, the same actions, tick after tick with the
+    carry advancing; a reset inside the graph clears the carry."""
+    policy = tiny_policy(tmp_path / "policy", SMALL, "yemong")
+    loop = MatchLoop(MatchSetup(SMALL, seed=4), compiled=False)
+
+    def agent(graph: bool):
+        return load_agent(policy, SMALL, loop.rules, loop.types, 1.0, seed=7, graph=graph)
+
+    eager, graphed = agent(False), agent(True)
+    assert graphed.graphed and not eager.graphed
+    no_reset = torch.zeros(1, dtype=torch.bool)
+    for _ in range(25):
+        loop.step()
+        view = team_view(loop.realtime.obs, 0)
+        want, got = eager.act(view, no_reset), graphed.act(view, no_reset)
+        assert torch.allclose(graphed.last_logits, eager.last_logits, atol=2e-2, rtol=2e-2)
+        assert torch.equal(want, got)
+    assert torch.allclose(graphed.carry.state, eager.carry.state, atol=2e-2, rtol=2e-2)
+
+    before, offset = graphed.carry.state.clone(), graphed.carry.offset.clone()
+    graphed.act(team_view(loop.realtime.obs, 0), torch.ones(1, dtype=torch.bool))
+    assert not torch.allclose(graphed.carry.state, before)
+    assert not torch.equal(graphed.carry.offset, offset)  # a new offset drawn in the graph
