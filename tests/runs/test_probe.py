@@ -10,7 +10,9 @@ from bnb.runs.probe import MemoryBudgetError
 from bnb.runs.records import Run
 from bnb.runtime.train import Trainer
 
-pytestmark = pytest.mark.gpu
+# Over 10 s: the first update compiles the rollout and the loss (a GPU rollout is a
+# compiled, captured graph). The CPU path stays in the quick tier (test_cli).
+pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 CUDA = torch.device("cuda")
 
 

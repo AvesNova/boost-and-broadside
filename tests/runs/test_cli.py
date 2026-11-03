@@ -352,6 +352,23 @@ def test_a_failure_marks_the_run_failed_with_the_message(monkeypatch, tmp_path):
     assert run.record["segments"][0]["end_step"] == STEPS_PER_UPDATE
 
 
+def test_an_interrupt_finishes_the_update_writes_a_checkpoint_and_stops(monkeypatch, tmp_path):
+    """The quick variant of the next test: SIGINT raised in this process during an update."""
+    update = Trainer.update
+
+    def interrupted(self):
+        os.kill(os.getpid(), signal.SIGINT)  # the session's handler: stop after this update
+        return update(self)
+
+    monkeypatch.setattr(Trainer, "update", interrupted)
+    bnb(monkeypatch, tmp_path, "train", *cases.TRAIN_OPTIONS, "--updates", "1000", "--name", "a")
+    run = Run.open(tmp_path, "a")
+    step = run.record["segments"][0]["end_step"]
+    assert run.record["status"] == "stopped" and run.checkpoint_steps() == [step]
+    assert step == STEPS_PER_UPDATE and run.record["final_checkpoint"] is None
+
+
+@pytest.mark.slow  # over 10 s: a fresh process imports torch and trains
 def test_ctrl_c_finishes_the_update_writes_a_checkpoint_and_stops(tmp_path):
     arguments = [
         "bnb",
