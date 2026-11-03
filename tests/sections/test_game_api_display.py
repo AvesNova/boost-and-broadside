@@ -135,3 +135,12 @@ def test_the_reexports_are_the_games_own():
         game_rules.LN_SQRT2,
         game_rules.MAP_SCALE_RADIUS,
     )
+
+
+def test_display_names_the_states_own_tensors():
+    rules, state, _ = _state(GameConfig(4, 12, 2600.0, mode="frontline"), ticks=20, seed=1)
+    values = api.display(state)
+    assert len(values) == sum(len(names) for names in api.DISPLAYED.values())
+    for name, value in values.items():
+        part, field = name.split(".")
+        assert value is getattr(getattr(state, part), field), name
