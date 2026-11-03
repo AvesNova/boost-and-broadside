@@ -122,10 +122,10 @@ nav:
       - The scripted agent: explanation/scripted-agent.md
       - Behaviour cloning: explanation/behaviour-cloning.md
       - Runs and checkpoints: explanation/runs.md
+      - The league: explanation/league.md
       - Roadmap: explanation/roadmap.md
       - Glossary: explanation/glossary.md
       - In progress:
-          - League and ratings: explanation/in-progress/league.md
           - Diagnostics: explanation/in-progress/diagnostics.md
           - The play shell: explanation/in-progress/play-shell.md
   - Reference:
@@ -137,6 +137,7 @@ nav:
       - bnb.learn: reference/learn.md
       - bnb.runtime: reference/runtime.md
       - bnb.runs: reference/runs.md
+      - bnb.league: reference/league.md
       - bnb.play: reference/play.md
       - bnb.cli: reference/cli.md
       - bench: reference/bench.md
