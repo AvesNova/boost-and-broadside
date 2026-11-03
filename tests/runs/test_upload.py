@@ -48,3 +48,34 @@ def test_a_checkpoint_uploads_as_an_artifact_named_for_the_run_and_step(monkeypa
     with pytest.raises(FileNotFoundError, match="has no league snapshots"):
         upload.upload(run, league=True)
     assert json.loads((run.directory / "run.json").read_text())["status"] == "finished"
+
+
+def test_a_run_streams_its_records_to_wandb(monkeypatch, tmp_path):
+    """`bnb train --wandb` with the real W&B library (offline): the run gets a W&B id, and
+    the update's series reach the W&B run's records."""
+    monkeypatch.setenv("WANDB_MODE", "offline")
+    monkeypatch.setenv("WANDB_DIR", str(tmp_path / "wandb"))
+    monkeypatch.setenv("WANDB_SILENT", "true")
+    (tmp_path / "wandb").mkdir()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "bnb",
+            "train",
+            *cases.TRAIN_OPTIONS,
+            "--updates",
+            "1",
+            "--name",
+            "a",
+            "--wandb",
+            "--runs-directory",
+            str(tmp_path),
+        ],
+    )
+    with torch.random.fork_rng(devices=[]):
+        cli.main()
+    run = Run.open(tmp_path, "a")
+    assert json.loads((run.directory / "run.json").read_text())["wandb_id"]
+    (records,) = run.directory.rglob("offline-run-*/run-*.wandb")  # in the run's directory
+    assert b"policy/kl" in records.read_bytes()

@@ -9,6 +9,7 @@ from its environment variables.
 
 import json
 import pathlib
+import secrets
 
 from .records import Run
 from .upload import PROJECT
@@ -47,7 +48,7 @@ class WandbSink:
     def __init__(self, run: Run, config: dict) -> None:
         import wandb
 
-        identifier = run.record.get("wandb_id") or wandb.util.generate_id()
+        identifier = run.record.get("wandb_id") or secrets.token_hex(4)  # W&B run ids: [a-z0-9]
         self.session = wandb.init(
             project=PROJECT,
             name=run.record["name"],
