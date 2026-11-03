@@ -89,10 +89,10 @@ agents, so the MVP's RL agent can be watched and played against.
 - **Trained agents:** a policy file (`bnb.runs.load_policy`), picked from a list of the
   local runs' policies (`runs/*/policy/` and checkpoints) or a file dialog. Its game
   config and ship card must match the match's, or the shell says why it cannot load it.
-  - It runs with torch on the CPU at B = 1, its carry kept per side and reset at each
-    ship's episode boundary, as in training. A model that cannot keep 30 Hz on the CPU
-    may run on the GPU when one is present. ONNX Runtime, the client's eventual path, is
-    not part of this milestone (author, 2026-11-03).
+  - It runs with torch at B = 1, on the GPU whenever one is present and on the CPU
+    otherwise (author, 2026-11-03), its carry kept per side and reset at each ship's
+    episode boundary, as in training. ONNX Runtime, the client's eventual path, is not
+    part of this milestone (author, 2026-11-03).
   - Sampling: the policy's distribution, with a temperature control on the fleet card
     (default 1) **(proposal)**.
 - **Taking control** of a ship of an agent's side replaces that ship's action only; the
