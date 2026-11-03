@@ -531,6 +531,26 @@ cut; where they differ, this section and the code win.
     `bnb.contracts.config`, which `bnb.game.rules` imports.
   - **Shapes:** `Z` zone slots and `C` spawn candidates join the letters; the reward levels
     are written `levels` (`L` is a segment's steps).
+- **The league (section/league, merged 2026-11-03):**
+  - **The seat:** `bnb.runtime.opponents` holds 4 network slots (stacked parameters plus
+    a spare set for the drain) and the stationary ladder as one controller, all inside
+    the captured rollout. The slots' forward runs each set in turn in one graph, not
+    vmap: under vmap, attention skips autocast's casts on the plain bf16 path.
+  - **The default lineup** is self-play 0.5 and the league 0.5. The lagged `league_0`
+    copy and `league_every` are gone.
+  - **A drain** starts only when none is running.
+  - **A slot's entry** is drawn from the modes' weights, mixed by their share of the
+    opponent rows.
+  - **A snapshot** is taken from the weights that played its update, and that update's
+    games are credited to it.
+  - **The training checkpoint** holds the slots and the league's state, and embeds the
+    snapshots' and averages' weights. Resume is exact with the league attached.
+  - **Metrics** are under a `league` key in each update's row. `bnb ratings` and
+    `bnb head-to-head` play the offline matches (`bnb.league.matches`,
+    `bnb.league.tournament`).
+  - **Open:** the GPU resume test can differ when its processes autotune from cold. The
+    attention, temporal-mix and heads kernels have configurations whose bits differ, and
+    the first tuning picks one by timing.
 
 ## Decision: no bullets in the observation (author, 2026-10-31)
 
