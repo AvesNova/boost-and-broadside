@@ -77,12 +77,13 @@ CASES = {
         [{"input/envelope_violation_share/speed": 0.0}],
     ),
     "representation_collapse": (
-        [{"repr/effective_rank/block_0": 100.0}] * 10 + [{"repr/effective_rank/block_0": 50.0}] * 3,
-        [{"repr/effective_rank/block_0": 100.0}] * 13,
+        [{"representation/effective_rank/trunk_block_0": 100.0}] * 10
+        + [{"representation/effective_rank/trunk_block_0": 50.0}] * 3,
+        [{"representation/effective_rank/trunk_block_0": 100.0}] * 13,
     ),
     "dormant_units": (
-        [{"repr/dormant_share/block_0": 0.01 * k} for k in range(30)],
-        [{"repr/dormant_share/block_0": 0.05 + 0.001 * (k % 3)} for k in range(30)],
+        [{"representation/dormant_share/trunk_block_0": 0.01 * k} for k in range(30)],
+        [{"representation/dormant_share/trunk_block_0": 0.05 + 0.001 * (k % 3)} for k in range(30)],
     ),
     "update_ratio": (
         [{"train/update_ratio/trunk_block_0": 0.5}] * 13,

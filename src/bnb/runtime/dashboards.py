@@ -64,7 +64,7 @@ HEADLINE = (
             panel("train/environment_steps_per_second"),
             panel("next_state/kl", "next_state/kl/*"),
             panel("belief/position_error", "belief/position_error/*"),
-            panel("repr/effective_rank", "repr/effective_rank/*"),
+            panel("representation/effective_rank", "representation/effective_rank/*"),
         ),
         open=True,
     ),
@@ -194,9 +194,9 @@ CURATED = (
     Section(
         "Representation",
         (
-            panel("repr/effective_rank", "repr/effective_rank/*"),
-            panel("repr/dormant_share", "repr/dormant_share/*"),
-            panel("repr/activation_rms", "repr/activation_rms/*"),
+            panel("representation/effective_rank", "representation/effective_rank/*"),
+            panel("representation/dormant_share", "representation/dormant_share/*"),
+            panel("representation/activation_rms", "representation/activation_rms/*"),
         ),
     ),
     Section(

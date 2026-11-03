@@ -340,7 +340,7 @@ def test_entry_kinds_split_the_ladder():
 # ------------------------------------------------------------------ the method rules
 
 # Abbreviations a series name may use (code style, "Names"): universal ones and percentiles.
-ALLOWED = {"kl", "rms", "x", "y", "id", "p5", "p10", "p50", "p90", "p95"}
+ALLOWED = {"kl", "rms", "x", "y", "id", "of", "p5", "p10", "p50", "p90", "p95"}
 # Truncations a series name must not use.
 FORBIDDEN = {
     "adv", "avg", "cfg", "env", "envs", "ev", "grad", "grads", "idx", "lr", "num", "obs",

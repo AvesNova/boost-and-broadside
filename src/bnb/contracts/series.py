@@ -4,6 +4,7 @@ number (on the device; the collector, `bnb.runtime.metrics.Collector`, reads eve
 in one transfer), a host number, a `Mean` or a `Table`."""
 
 import dataclasses
+import time
 
 import torch
 
@@ -33,3 +34,35 @@ class Table:
 
 
 Series = torch.Tensor | Mean | Table | float | int | bool | None
+
+
+class Stopwatch:
+    """A device-side interval: `start` and `stop` record CUDA events (no synchronisation) or,
+    on the CPU, the host clock; `seconds` is read after the update's readback, when the
+    events have completed (None before a stop)."""
+
+    def __init__(self, device: torch.device) -> None:
+        self.cuda = device.type == "cuda"
+        self.started = self.stopped = None
+
+    def start(self) -> None:
+        self.started, self.stopped = self._now(), None
+
+    def stop(self) -> None:
+        self.stopped = self._now()
+
+    def _now(self):
+        if not self.cuda:
+            return time.perf_counter()
+        event = torch.cuda.Event(enable_timing=True)
+        event.record()
+        return event
+
+    def seconds(self) -> float | None:
+        """The interval in seconds; the CUDA events' wait is a no-op after the readback."""
+        if self.stopped is None:
+            return None
+        if not self.cuda:
+            return self.stopped - self.started
+        self.stopped.synchronize()
+        return self.started.elapsed_time(self.stopped) / 1000.0
