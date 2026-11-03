@@ -61,6 +61,16 @@ def config(model: str, device: str) -> TrainConfig:
     )
 
 
+def dump_state(out: pathlib.Path, trainer: Trainer) -> None:
+    """The whole training state as it is now, listed by the checkpoint's own enumeration
+    (`checkpoint.training_state`), for the test to compare bit for bit: the first process
+    dumps it as it saves, the second as soon as it has restored, before any compute."""
+    out.mkdir(parents=True, exist_ok=True)
+    record, tensors = checkpoint.training_state(trainer)
+    (out / "state.json").write_text(json.dumps(record, sort_keys=True))
+    torch.save(tensors, out / "state.pt")
+
+
 def main() -> None:
     mode, directory, device, model, updates, *damage = sys.argv[1:]
     directory, device, updates = pathlib.Path(directory), torch.device(device), int(updates)
@@ -77,6 +87,7 @@ def main() -> None:
         league = League(
             trainer, directory / "league", state=checkpoint.league_state(directory / "checkpoint")
         )
+        dump_state(directory / "second", trainer)  # the restore alone, before any damage
         if damage == ["league"]:
             noise = torch.Generator().manual_seed(1)
             with torch.no_grad():
@@ -85,6 +96,13 @@ def main() -> None:
                         parameter.add_(
                             0.1 * torch.randn(parameter.shape, generator=noise).to(device)
                         )
+        if damage == ["ulp"]:
+            with torch.no_grad():  # every weight one step toward +infinity
+                for parameter in trainer.model.parameters():
+                    if parameter.is_floating_point():
+                        parameter.copy_(torch.nextafter(parameter, torch.full_like(parameter, 1e9)))
+        if damage == ["order_seed"]:
+            trainer.ppo.order_generator.manual_seed(12345)
         if damage == ["draws"]:
             league.swaps = 0
         if damage == ["gauges"]:
@@ -102,8 +120,9 @@ def main() -> None:
         rows.append({name: value for name, value in row.items() if name not in TIMES})
     if mode == "first":
         checkpoint.save_training(directory / "checkpoint", trainer)
+        dump_state(directory / "first", trainer)
     out = directory / mode
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
     (out / "metrics.json").write_text(json.dumps(rows))
     safetensors.torch.save_file(checkpoint.weights(trainer.model), out / "weights.safetensors")
 

@@ -311,6 +311,45 @@ def default_generator_states(device: torch.device) -> dict[str, torch.Tensor]:
     return states
 
 
+def _training_tensors(trainer: Trainer, optimizer_state: dict) -> dict[str, torch.Tensor]:
+    """The training file's tensors, as host copies: the optimizer's state, the opponent
+    slots, the league's tensors, the rollout carry and every generator."""
+    tensors = {}
+    tensors.update(named_tensors(optimizer_state, "optimizer."))
+    if trainer.opponents is not None:
+        tensors.update(named_tensors(trainer.opponents.state_dict(), "opponents."))
+    if trainer.league is not None:
+        tensors.update(named_tensors(trainer.league.state()[1], "league."))
+    tensors.update(named_tensors(trainer.rollout.saved_carry(), "carry."))
+    for name, generator in _generators(trainer).items():
+        tensors[f"generator.{name}"] = generator.get_state()
+    for name, state in default_generator_states(trainer.rollout.device).items():
+        tensors[f"default_generator.{name}"] = state
+    return {
+        name: tensor.detach().to("cpu", copy=True).contiguous() for name, tensor in tensors.items()
+    }
+
+
+def training_state(trainer: Trainer) -> tuple[dict, dict[str, torch.Tensor]]:
+    """Everything a training checkpoint holds, read from the live trainer without writing:
+    (the record's state: counters, optimizer groups, league record; every tensor by name,
+    the policy files' and the training file's). A resumed trainer's equals the saving
+    one's, exactly, before any compute. It lists what the trainer has, as the checkpoint
+    does, not what a file happens to hold, so a field left out of the file shows."""
+    ppo = trainer.ppo
+    optimizer = ppo.optimizer.state_dict()
+    record = dict(
+        environment_steps=ppo.environment_steps,
+        updates=trainer.updates_done,
+        optimizer=to_json(optimizer["param_groups"]),
+        league=None if trainer.league is None else trainer.league.state()[0],
+    )
+    tensors = _training_tensors(trainer, optimizer["state"])
+    for file, files in policy_files(trainer.model, ppo.return_scale).items():
+        tensors.update({f"{file}:{name}": tensor for name, tensor in files.items()})
+    return record, tensors
+
+
 def save_training(
     directory: str | os.PathLike,
     trainer: Trainer,
@@ -324,7 +363,6 @@ def save_training(
     `training.safetensors` under "league."), every generator, the rollout carry and the step
     counters. `extra` goes into the record as it is (the run's settings)."""
     config, ppo = trainer.config, trainer.ppo
-    device = trainer.rollout.device
     steps = dict(environment_steps=ppo.environment_steps, updates=trainer.updates_done)
     record = policy_record(trainer.model, ppo.return_scale, steps, config.game, ppo.types)
     optimizer = ppo.optimizer.state_dict()
@@ -334,22 +372,9 @@ def save_training(
         optimizer=dict(param_groups=to_json(optimizer["param_groups"])),
         extra=dict(extra or {}),
     )
-    tensors = {}
-    tensors.update(named_tensors(optimizer["state"], "optimizer."))
-    if trainer.opponents is not None:
-        tensors.update(named_tensors(trainer.opponents.state_dict(), "opponents."))
+    tensors = _training_tensors(trainer, optimizer["state"])
     if trainer.league is not None:
-        league_record, league_tensors = trainer.league.state()
-        record["league"] = league_record
-        tensors.update(named_tensors(league_tensors, "league."))
-    tensors.update(named_tensors(trainer.rollout.saved_carry(), "carry."))
-    for name, generator in _generators(trainer).items():
-        tensors[f"generator.{name}"] = generator.get_state()
-    for name, state in default_generator_states(device).items():
-        tensors[f"default_generator.{name}"] = state
-    tensors = {
-        name: tensor.detach().to("cpu", copy=True).contiguous() for name, tensor in tensors.items()
-    }
+        record["league"] = trainer.league.state()[0]
     files = policy_files(trainer.model, ppo.return_scale)
     return write_checkpoint(directory, record, dict(files, **{TRAINING: tensors}), stage)
 
