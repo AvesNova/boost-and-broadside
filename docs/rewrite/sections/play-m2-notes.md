@@ -382,3 +382,31 @@ failed about every other run. Replay directories were stamped to the second and 
 newest first by name, so two matches started within one second (the test starts three)
 sorted by mode name, and "replays/0" could be the Frontline match without a kill. The
 stamp now runs to the millisecond (`replay.save`).
+
+### Fix round, second step: the agent's step in a CUDA graph
+
+Eager Yemong on the GPU (15.5 ms an agent) lost to the CPU (7 ms), so on a GPU the agent
+now captures its step in a CUDA graph on its first tick (`Agent._capture`): static view,
+reset and carry buffers, the view copied in, the graph replayed, the policy logits read
+out to the CPU, where sampling stays; the sampled action is copied into the carry's
+previous action. The carry advances in place inside the graph and clears at a reset inside
+it, with the new position offset drawn there from the agent's own CUDA generator stream
+(swapped in around the replay). A copy of an agent (a replay forked into a live match)
+leaves the graph behind and captures its own. The eager CPU path is unchanged. Not done:
+one batched B = 2 forward for two agents on the same policy file; two graphs fit the frame
+already.
+
+Test: `test_the_captured_step_matches_the_eager_one` (25 ticks, logits within 2e-2, the
+same actions from the same generator seed, the carry state within rounding, a reset
+clears the carry and draws a new offset).
+
+Before and after (default Yemong, deathmatch 5v5, one torch thread, load average 1.7;
+the `controllers` stage per tick, median of 100; the one-agent row includes the scripted
+side, about 0.5 ms; the agent's `act` alone is 3.0 ms on the GPU):
+
+| Agents per tick | CPU eager | GPU eager | GPU graph |
+|---|---|---|---|
+| one | 7.2 ms | 15.5 ms | 3.4 ms |
+| two | 14.1 ms | 30.7 ms | 6.2 ms |
+
+The 2.9 ms left is the graph's own GPU time.

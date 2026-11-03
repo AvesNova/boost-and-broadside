@@ -170,3 +170,31 @@ def test_a_gpu_agent_is_reproducible_and_leaves_the_global_generators_alone(
     assert torch.equal(torch.get_rng_state(), cpu_state)
     assert torch.equal(torch.cuda.get_rng_state(), cuda_state)
     assert torch.equal(first, play())
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_the_captured_step_matches_the_eager_one(tmp_path):
+    """Yemong's step replayed from a CUDA graph gives the eager step's logits (to
+    rounding) and, from the same generator seed, the same actions, tick after tick with the
+    carry advancing; a reset inside the graph clears the carry."""
+    policy = tiny_policy(tmp_path / "policy", SMALL, "yemong")
+    loop = MatchLoop(MatchSetup(SMALL, seed=4), compiled=False)
+
+    def agent(graph: bool):
+        return load_agent(policy, SMALL, loop.rules, loop.types, 1.0, seed=7, graph=graph)
+
+    eager, graphed = agent(False), agent(True)
+    assert graphed.graphed and not eager.graphed
+    no_reset = torch.zeros(1, dtype=torch.bool)
+    for _ in range(25):
+        loop.step()
+        view = team_view(loop.realtime.obs, 0)
+        want, got = eager.act(view, no_reset), graphed.act(view, no_reset)
+        assert torch.allclose(graphed.last_logits, eager.last_logits, atol=2e-2, rtol=2e-2)
+        assert torch.equal(want, got)
+    assert torch.allclose(graphed.carry.state, eager.carry.state, atol=2e-2, rtol=2e-2)
+
+    before, offset = graphed.carry.state.clone(), graphed.carry.offset.clone()
+    graphed.act(team_view(loop.realtime.obs, 0), torch.ones(1, dtype=torch.bool))
+    assert not torch.allclose(graphed.carry.state, before)
+    assert not torch.equal(graphed.carry.offset, offset)  # a new offset drawn in the graph

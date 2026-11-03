@@ -80,6 +80,7 @@ class Agent:
         num_ships: int,
         temperature: float = 1.0,
         seed: int = 0,
+        graph: bool | None = None,
     ) -> None:
         self.model, self.name, self.label = model, name, label
         self.temperature = temperature
@@ -96,6 +97,70 @@ class Agent:
         if self.recurrent:
             with self._local_draws():
                 self.carry = model.initial_carry(1, ships_per_team, num_ships, self.device)
+        # Yemong's step on a GPU is replayed from a CUDA graph (captured on the first tick):
+        # eager, it is bound by kernel launches and slower than the CPU.
+        self.graphed = (self.recurrent and self.device.type == "cuda") if graph is None else graph
+        self._graph: torch.cuda.CUDAGraph | None = None
+        self._inputs = self._outputs = None
+        self.last_logits: torch.Tensor | None = None  # the latest tick's (S, NUM_JOINT) logits
+
+    def __getstate__(self) -> dict:
+        """A copy (a replay forked into a live match) leaves the captured graph behind and
+        captures its own on its first tick."""
+        return {**self.__dict__, "_graph": None, "_inputs": None, "_outputs": None}
+
+    def _capture(self, view: Obs, reset: torch.Tensor) -> None:
+        """Capture one step on static buffers: the view and reset are copied in, the carry
+        advances in place (its previous action is set after sampling), and the policy logits
+        are read out. The carry, the generator states and the model's state are left as
+        they were."""
+        device = self.device
+        self._inputs = (
+            _pytree.tree_map(lambda t: t.to(device).clone(), view),
+            reset.to(device).clone(),
+        )
+        saved = _pytree.tree_map(torch.clone, self.carry)
+        side = torch.cuda.Stream(device)
+        side.wait_stream(torch.cuda.current_stream(device))
+
+        def step():
+            decision = self.model.step(self.carry, *self._inputs)
+            for field in dataclasses.fields(self.carry):
+                if field.name != "previous_action":
+                    for target, new in zip(
+                        _pytree.tree_leaves(getattr(self.carry, field.name)),
+                        _pytree.tree_leaves(getattr(decision.carry, field.name)),
+                        strict=True,
+                    ):
+                        target.copy_(new)
+            return decision.policy_logits
+
+        with torch.random.fork_rng(devices=[device]):
+            with torch.cuda.stream(side):
+                for _ in range(2):
+                    step()
+            torch.cuda.current_stream(device).wait_stream(side)
+            self._graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self._graph, capture_error_mode="thread_local"):
+                self._outputs = step()
+        for target, old in zip(
+            _pytree.tree_leaves(self.carry), _pytree.tree_leaves(saved), strict=True
+        ):
+            target.copy_(old)
+
+    def _graphed_logits(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
+        if self._graph is None:
+            self._capture(view, reset)
+        view_in, reset_in = self._inputs
+        for target, new in zip(
+            _pytree.tree_leaves((view_in, reset_in)),
+            _pytree.tree_leaves((view, reset)),
+            strict=True,
+        ):
+            target.copy_(new)
+        with self._local_draws():
+            self._graph.replay()
+        return self._outputs.cpu()
 
     @contextlib.contextmanager
     def _local_draws(self):
@@ -117,6 +182,12 @@ class Agent:
     @torch.no_grad()
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
         """The team's (S, 3) actions for its view (1, ...), on the CPU; the carry moves on."""
+        if self.graphed:
+            logits = self._graphed_logits(view, reset)
+            joint = sample(logits, self.temperature, self.generator).to(torch.int32)
+            self.carry.previous_action.copy_(joint)
+            self.last_logits = logits
+            return from_joint(joint).packed()[0]
         if self.device.type != "cpu":
             view = _pytree.tree_map(lambda tensor: tensor.to(self.device), view)
             reset = reset.to(self.device)
@@ -129,6 +200,7 @@ class Agent:
         joint = sample(logits, self.temperature, self.generator).to(torch.int32)
         if self.recurrent:
             self.carry = dataclasses.replace(decision.carry, previous_action=joint.to(self.device))
+        self.last_logits = logits
         return from_joint(joint).packed()[0]
 
 
@@ -178,6 +250,7 @@ def load_agent(
     types: api.ShipTypes,
     temperature: float = 1.0,
     seed: int = 0,
+    graph: bool | None = None,
 ) -> Agent:
     """The agent of a policy file (or training checkpoint) for this match, on `agent_device()`.
     Raises AgentError with the reason when it cannot play it."""
@@ -203,6 +276,7 @@ def load_agent(
         rules.num_ships,
         temperature=temperature,
         seed=seed,
+        graph=graph,
     )
 
 
