@@ -93,6 +93,19 @@ Producer abbreviations: L `bnb.learn.ppo.Learner`, B `bnb.learn.bc.BehaviourClon
 | ungrouped | `repr/` (B6, F2), `input/` (C1), C5 token shares, C6 supervised shares, `bc/` (I1-I5) | `batch/token_share/{mode,opponent}/*` (A); `bc/kl`, `bc/entropy/{student,target}`, `bc/agreement/{power,stick,shoot,joint}`, `bc/kl_by_pool/*`, `bc/score/*`, `bc/stop/*` (B, cloning). Not built: `repr/`, `input/`, supervised shares, `bc/loss/heldout`, `bc/loss/{own,teacher}_states` | `test_bc` |
 | triggers | 8 alerts, 13 warnings | all (T) | `test_triggers` |
 
+## Broken by hand
+
+Each bug was introduced, the named test failed, and the change was reverted:
+
+| Bug | Test that failed |
+|---|---|
+| switch rate counts a pair across an episode end (`analytics`, `~ended` dropped) | `test_the_rollout_series_match_a_hand_computed_shard` |
+| power and stick marginals swapped (`statistics.marginal_entropies`) | `test_uniform_logits_give_the_factors_uniform_entropies` |
+| a `Mean` over no samples reported (`Collector.read`) | `test_the_collector_reads_every_device_series_in_one_transfer` |
+| rule: warm-up ignored (`Triggers.check`) | `test_a_rule_is_quiet_during_its_warm_up` |
+| rule: the entropy-collapse z-score compares the wrong way (`ZScoreBelow`) | `test_each_rule_fires_on_its_case_and_stays_quiet_otherwise[entropy_collapse]` |
+| rule: `Above` breaches at its threshold (`>=`) | `test_a_value_at_the_threshold_does_not_breach` (added after the case tests missed it) |
+
 ## Cost
 
 To be measured under the lock at the 5v5 mixed cell with Yemong

@@ -267,3 +267,10 @@ def test_a_panel_pattern_matches_its_slices():
     expression = re.compile(dashboards.regex(("policy/usage/power/*", "policy/kl")))
     assert expression.match("policy/usage/power/2") and expression.match("policy/kl")
     assert not expression.match("policy/kl_first") and not expression.match("policy/usage/stick/0")
+
+
+def test_a_value_at_the_threshold_does_not_breach():
+    rules = Triggers((RULES["support_clipping"], RULES["critic_useless"]))
+    record = {"critic/support_clip/damage": 0.01, "critic/explained_variance/outcome": 0.0}
+    for update in range(1, 20):
+        assert rules.check(record, update)["alerts/active"] == 0
