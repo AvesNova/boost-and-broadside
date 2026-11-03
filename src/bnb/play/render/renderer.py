@@ -1,7 +1,8 @@
 """The renderer: the passes in draw order, into a multisampled scene resolved onto the
 target, then the ImGui layer (HUD and panels) on top.
 
-Draw order: sky and arena, fields, zones, trails, ships, rings, fog, bullets. A spectator
+Draw order: sky and arena, fields, zones, trails, ships, rings, fog, bullets, the
+selection's outline; then the minimap into its own texture (`minimap.py`). A spectator
 sees everything; a team's view draws only the ships that team sees (its observation's
 `visible`) and the parts of their trails it saw, and in a fogged match darkens what it
 cannot see. Every bullet is drawn in every view, above the fog at full brightness: agents
@@ -24,6 +25,7 @@ from .bullets import BulletsPass
 from .fields import FieldsPass
 from .fog import FogPass
 from .imgui_renderer import ImguiRenderer
+from .minimap import MinimapPass
 from .rings import ring_table
 from .ships import ShipsPass, ring_radius
 from .sky import SkyPass
@@ -51,6 +53,7 @@ class PassTimer:
 
     @contextlib.contextmanager
     def measure(self, name: str):
+        """Time the block as the pass `name`: a GPU timer query around it and its CPU time."""
         query = self.queries.get(name)
         if query is None:
             query = self.queries[name] = self.context.query(time=True)
@@ -60,10 +63,13 @@ class PassTimer:
         self.cpu[name] = time.perf_counter() - started
 
     def gpu(self) -> dict[str, float]:
+        """The last measured GPU time of each pass, in milliseconds (waits for the GPU)."""
         return {name: query.elapsed * 1e-6 for name, query in self.queries.items()}
 
 
 class Renderer:
+    """Every pass of the battlefield, the multisampled scene they draw into, and the ImGui layer."""
+
     def __init__(self, context: moderngl.Context, width: int, height: int) -> None:
         self.context = context
         self.arcs = ArcProgram(context)
@@ -74,11 +80,14 @@ class Renderer:
         self.ships = ShipsPass(context)
         self.fog = FogPass(context)
         self.imgui = ImguiRenderer(context)
+        self.minimap = MinimapPass(context, self.sky, self.fields, self.arcs)
+        self.minimap_id: int | None = None
         self.size = None
         self.resize(width, height)
         self.timer: PassTimer | None = None
 
     def resize(self, width: int, height: int) -> None:
+        """Reallocate the multisampled scene for a target of this size."""
         size = (max(width, 1), max(height, 1))
         if size == self.size:
             return
@@ -94,19 +103,31 @@ class Renderer:
         `write_index` brings its tiles)."""
         self.fields.set_map(frame.fields, grid, values)
         fields = frame.fields
-        self.cores = np.stack([fields.x, fields.y, fields.core_radius ** 2,
-                               np.zeros_like(fields.x)], -1).astype(np.float32)
+        self.cores = np.stack(
+            [fields.x, fields.y, fields.core_radius**2, np.zeros_like(fields.x)], -1
+        ).astype(np.float32)
 
     def write_index(self, updates: list[TileUpdate]) -> None:
+        """Write built tiles into the index texture."""
         self.fields.write(updates)
 
     def _measure(self, name: str):
         return self.timer.measure(name) if self.timer else contextlib.nullcontext()
 
-    def draw(self, frame: Snapshot, view: int, camera: Camera, theme: Theme,
-             trails: Trails, now: float, target: moderngl.Framebuffer) -> None:
+    def draw(
+        self,
+        frame: Snapshot,
+        view: int,
+        camera: Camera,
+        theme: Theme,
+        trails: Trails,
+        now: float,
+        target: moderngl.Framebuffer,
+        overlay: np.ndarray | None = None,
+    ) -> None:
         """Draw the frame as `view` (SPECTATOR or a team) sees it onto `target`; `now`:
-        game time (s), for the trails."""
+        game time (s), for the trails; overlay: an arcs table drawn last (the selection's
+        outline)."""
         context, uniforms = self.context, camera.uniforms()
         ships, pixel = frame.ships, camera.metres_per_pixel
         team_view = view != SPECTATOR
@@ -116,8 +137,15 @@ class Renderer:
         if fogged:
             with self._measure("fog mask"):
                 team = ships.alive & (ships.team == view)
-                observers = np.stack([ships.x[team], ships.y[team], ships.vision_range[team],
-                                      np.zeros(int(team.sum()), np.float32)], -1)
+                observers = np.stack(
+                    [
+                        ships.x[team],
+                        ships.y[team],
+                        ships.vision_range[team],
+                        np.zeros(int(team.sum()), np.float32),
+                    ],
+                    -1,
+                )
                 self.fog.draw_mask(uniforms, observers, self.cores)
         self.scene.use()
         context.viewport = (0, 0, *self.size)
@@ -131,30 +159,72 @@ class Renderer:
             self.arcs.draw(uniforms, zone_table(theme, frame.zones, pixel))
         with self._measure("trails"):
             seen = trails.seen[view] if team_view else np.ones_like(trails.seen[0])
-            self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type,
-                             size)
+            self.trails.draw(uniforms, theme, trails, now, seen, ships.team, ships.ship_type, size)
         with self._measure("ships"):
-            self.ships.draw(uniforms, theme, ships.x[shown], ships.y[shown],
-                            ships.heading[shown], size[shown], ships.team[shown],
-                            ships.ship_type[shown])
+            self.ships.draw(
+                uniforms,
+                theme,
+                ships.x[shown],
+                ships.y[shown],
+                ships.heading[shown],
+                size[shown],
+                ships.team[shown],
+                ships.ship_type[shown],
+            )
         with self._measure("rings"):
-            self.arcs.draw(uniforms, ring_table(theme, ships.x[shown], ships.y[shown],
-                                                ships.heading[shown], size[shown],
-                                                ships.team[shown], ships.shield[shown],
-                                                ships.energy[shown]))
+            self.arcs.draw(
+                uniforms,
+                ring_table(
+                    theme,
+                    ships.x[shown],
+                    ships.y[shown],
+                    ships.heading[shown],
+                    size[shown],
+                    ships.team[shown],
+                    ships.shield[shown],
+                    ships.energy[shown],
+                ),
+            )
         if fogged:
             with self._measure("fog"):
                 self.fog.draw(uniforms, theme)
         with self._measure("bullets"):
             bullets = frame.bullets
             active = bullets.active
-            self.bullets.draw(uniforms, theme, bullets.x[active], bullets.y[active],
-                              bullets.direction_x[active], bullets.direction_y[active],
-                              bullets.team[active])
+            self.bullets.draw(
+                uniforms,
+                theme,
+                bullets.x[active],
+                bullets.y[active],
+                bullets.direction_x[active],
+                bullets.direction_y[active],
+                bullets.team[active],
+            )
+        if overlay is not None:
+            self.arcs.draw(uniforms, overlay)
         with self._measure("resolve"):
             context.copy_framebuffer(target, self.scene)
         target.use()
 
+    def draw_minimap(
+        self,
+        frame: Snapshot,
+        view: int,
+        camera: Camera,
+        theme: Theme,
+        shown: np.ndarray,
+        overlay: np.ndarray,
+    ) -> int:
+        """Draw the minimap with its own square camera; returns its texture's id for ImGui."""
+        with self._measure("minimap"):
+            texture = self.minimap.draw(frame, view, camera, theme, self.cores, shown, overlay)
+        if self.minimap_id is not None and self.minimap_id != texture.glo:
+            self.imgui.textures.pop(self.minimap_id, None)  # a resize released the old one
+        self.imgui.textures[texture.glo] = texture
+        self.minimap_id = texture.glo
+        return texture.glo
+
     def draw_imgui(self, draw_data) -> None:
+        """Draw this frame's ImGui output over the bound target."""
         with self._measure("imgui"):
             self.imgui.render(draw_data)

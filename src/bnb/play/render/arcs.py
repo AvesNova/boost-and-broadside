@@ -23,6 +23,9 @@ def arcs(count: int) -> np.ndarray:
 
 
 class ArcProgram:
+    """The one program for circles and arcs: a quad per instance, from an instance table
+    (`arcs`)."""
+
     def __init__(self, context: moderngl.Context, capacity: int = 1024) -> None:
         self.context = context
         self.program = program(context, "arcs")
@@ -40,9 +43,11 @@ class ArcProgram:
         self.capacity = max(count, 2 * self.capacity)
         self.instances = self.context.buffer(reserve=self.capacity * FLOATS * 4, dynamic=True)
         self.vertex_array = self.context.vertex_array(
-            self.program, [(self.corners, "2f", "corner"), (self.instances, FORMAT, *ATTRIBUTES)])
+            self.program, [(self.corners, "2f", "corner"), (self.instances, FORMAT, *ATTRIBUTES)]
+        )
 
     def draw(self, camera: dict, table: np.ndarray) -> None:
+        """Draw the instance table's circles and arcs with the camera's uniforms."""
         if len(table) == 0:
             return
         self._reserve(len(table))

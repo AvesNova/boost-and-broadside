@@ -1,5 +1,6 @@
-"""The play shell's layering: it reaches the game only through `bnb.game.api`, and
-rendering never imports torch (it reads numpy snapshots)."""
+"""The play shell's layering: it reaches the game only through `bnb.game.api` (and policy
+files through `bnb.runs`), it reads no field of the game state, and rendering never
+imports torch (it reads numpy snapshots)."""
 
 import ast
 import pathlib
@@ -8,7 +9,14 @@ import sys
 
 PLAY = pathlib.Path(__file__).resolve().parents[2] / "src" / "bnb" / "play"
 RENDER = PLAY / "render"
-ALLOWED = ("bnb.play", "bnb.runtime", "bnb.controllers", "bnb.game.api", "bnb.contracts")
+ALLOWED = (
+    "bnb.play",
+    "bnb.runtime",
+    "bnb.controllers",
+    "bnb.game.api",
+    "bnb.contracts",
+    "bnb.runs",  # policy files, for the trained agents
+)
 
 
 def _imported_modules(path: pathlib.Path) -> list[str]:
@@ -53,3 +61,30 @@ def test_rendering_never_imports_torch():
     )
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+STATE_PARTS = ("ships", "bullets", "fields", "mode", "match")
+
+
+def _state_reads(path: pathlib.Path) -> list[str]:
+    """`state.<part>` attribute reads (the game state's fields) in a file."""
+    return [
+        f"{path.name}:{node.lineno} .{node.attr}"
+        for node in ast.walk(ast.parse(path.read_text()))
+        if isinstance(node, ast.Attribute)
+        and node.attr in STATE_PARTS
+        and isinstance(node.value, ast.Name)
+        and "state" in node.value.id
+    ]
+
+
+def test_play_reads_no_field_of_the_game_state():
+    """The state is opaque outside the game: the shell reads it through `bnb.game.api`."""
+    found = [read for path in PLAY.rglob("*.py") for read in _state_reads(path)]
+    assert not found, "\n".join(found)
+
+
+def test_the_state_check_sees_a_field_read(tmp_path):
+    path = tmp_path / "reach.py"
+    path.write_text("x = state.ships.x\ny = values['ships.x']\n")
+    assert _state_reads(path) == ["reach.py:1 .ships"]

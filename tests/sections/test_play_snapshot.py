@@ -16,7 +16,6 @@ from bnb.runtime.realtime import Realtime
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
-pytestmark = pytest.mark.usefixtures("global_generator")
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -29,8 +28,8 @@ def one_thread():
 
 
 def _match(config: GameConfig, fogged: bool = True, ticks: int = 40, seed: int = 0):
-    torch.manual_seed(seed)
-    match = Realtime(config, compile=False, fogged=fogged)
+    generator = torch.Generator().manual_seed(seed)
+    match = Realtime(config, compiled=False, fogged=fogged, generator=generator)
     for _ in range(ticks):
         match.step(torch.tensor([[1, 2, 1]] * match.rules.num_ships, dtype=torch.int32))
     return match

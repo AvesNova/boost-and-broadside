@@ -28,6 +28,9 @@ NEVER = 1e30  # the age of an empty sample
 
 
 class TrailsPass:
+    """Pass 4: the trails and wingtip vortices, built in the vertex shader from the trail
+    store's textures."""
+
     def __init__(self, context: moderngl.Context) -> None:
         self.context = context
         self.program = program(context, "trails", vertex="trails")
@@ -50,16 +53,25 @@ class TrailsPass:
         self.samples, self.turns = table(samples, ships, 4), table(samples, ships, 2)
         self.ships = table(1, ships, 3)
 
-    def draw(self, camera: dict, theme: Theme, trails: Trails, now: float,
-             seen: np.ndarray, team: np.ndarray, ship_type: np.ndarray,
-             size: np.ndarray) -> None:
+    def draw(
+        self,
+        camera: dict,
+        theme: Theme,
+        trails: Trails,
+        now: float,
+        seen: np.ndarray,
+        team: np.ndarray,
+        ship_type: np.ndarray,
+        size: np.ndarray,
+    ) -> None:
         """Every ship's trail at game time `now` (s). seen (N, SAMPLES): the samples the
         view saw; team, ship_type and size (the ring radius, m) are per ship."""
         ships, samples = trails.x.shape
         self._resize(ships, samples)
         age = np.where(np.isfinite(trails.time), now - trails.time, NEVER)
-        self.samples.write(np.stack([trails.x, trails.y, age, trails.heading], -1)
-                           .astype(np.float32).tobytes())
+        self.samples.write(
+            np.stack([trails.x, trails.y, age, trails.heading], -1).astype(np.float32).tobytes()
+        )
         self.turns.write(np.stack([trails.turn, seen], -1).astype(np.float32).tobytes())
         wingtip = np.array([WINGTIPS[key] for key in silhouette_of(ship_type)], np.float32)
         self.ships.write(np.stack([team, size, wingtip], -1).astype(np.float32).tobytes())
@@ -67,11 +79,21 @@ class TrailsPass:
         self.turns.use(1)
         self.ships.use(2)
         colours = np.array([c.floats() for c in theme.trail], np.float32)
-        set_uniforms(self.program, **camera, samples=0, turns=1, ships=2,
-                     sample_count=samples, seconds=trails.seconds, trail_colours=colours,
-                     vortex_colour=theme.vortex.floats(),
-                     vortex_threshold=theme.vortex_threshold, vortex_ramp=VORTEX_RAMP,
-                     trail_pixels=(OLDEST_PIXELS, NEWEST_PIXELS), vortex_pixels=VORTEX_PIXELS)
+        set_uniforms(
+            self.program,
+            **camera,
+            samples=0,
+            turns=1,
+            ships=2,
+            sample_count=samples,
+            seconds=trails.seconds,
+            trail_colours=colours,
+            vortex_colour=theme.vortex.floats(),
+            vortex_threshold=theme.vortex_threshold,
+            vortex_ramp=VORTEX_RAMP,
+            trail_pixels=(OLDEST_PIXELS, NEWEST_PIXELS),
+            vortex_pixels=VORTEX_PIXELS,
+        )
         vertices = ships * (samples - 1) * 6
         for vortex in (True, False):
             set_uniforms(self.program, vortex=vortex)

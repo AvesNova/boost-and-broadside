@@ -34,9 +34,14 @@ def _ships(previous: Ships, current: Ships, alpha: float) -> Ships:
         return np.where(moving, how(before, after, alpha), after).astype(after.dtype)
 
     return dataclasses.replace(
-        current, x=blend("x", lerp), y=blend("y", lerp), heading=blend("heading", angle_lerp),
-        flight_path=blend("flight_path", angle_lerp), shield=blend("shield", lerp),
-        energy=blend("energy", lerp))
+        current,
+        x=blend("x", lerp),
+        y=blend("y", lerp),
+        heading=blend("heading", angle_lerp),
+        flight_path=blend("flight_path", angle_lerp),
+        shield=blend("shield", lerp),
+        energy=blend("energy", lerp),
+    )
 
 
 def _bullets(previous: Snapshot, current: Snapshot, alpha: float) -> Bullets:
@@ -45,12 +50,17 @@ def _bullets(previous: Snapshot, current: Snapshot, alpha: float) -> Bullets:
     fresh = after.active & (~before.active | (after.moves_left >= before.moves_left))
     start_x = np.where(fresh, previous.ships.x[after.owner], before.x)
     start_y = np.where(fresh, previous.ships.y[after.owner], before.y)
-    return dataclasses.replace(after, x=lerp(start_x, after.x, alpha).astype(after.x.dtype),
-                               y=lerp(start_y, after.y, alpha).astype(after.y.dtype))
+    return dataclasses.replace(
+        after,
+        x=lerp(start_x, after.x, alpha).astype(after.x.dtype),
+        y=lerp(start_y, after.y, alpha).astype(after.y.dtype),
+    )
 
 
 def interpolate(previous: Snapshot, current: Snapshot, alpha: float) -> Snapshot:
     """The state drawn at alpha in [0, 1] of the way from previous to current."""
-    return dataclasses.replace(current,
-                               ships=_ships(previous.ships, current.ships, alpha),
-                               bullets=_bullets(previous, current, alpha))
+    return dataclasses.replace(
+        current,
+        ships=_ships(previous.ships, current.ships, alpha),
+        bullets=_bullets(previous, current, alpha),
+    )

@@ -1,0 +1,243 @@
+"""The top bar, always shown, one row: the menu button and the view selector on the left;
+the score or the mode's objective and the clock in the middle; the speed controls on the
+right (pause or play, a tick while paused, x1 to x8).
+
+Team deathmatch shows the kill score in team colours and the winning score; Frontline
+shows the front as a tug of war (a cell per capture up to the threshold, filled toward
+the side being pushed back) and each zone as a dot in its owner's colour with its meter.
+A zone's dot selects the zone.
+"""
+
+import math
+from typing import TYPE_CHECKING
+
+from imgui_bundle import imgui
+
+from ..loop import TIME_SCALES
+from ..selection import Selection
+from .cards import window
+from .controls import button, icon_button, menu_icon, pause_icon, play_icon, step_icon, tooltip, u32
+from .shortcuts import shortcut
+from .text import clock
+
+if TYPE_CHECKING:
+    from .interface import Interface
+    from .layout import Layout
+
+VIEW_BUTTONS = ("Spectator", "Team 0", "Team 1")
+
+
+def draw(interface: Interface, layout: Layout) -> None:
+    """The top bar, in the current ImGui frame."""
+    session, controls = interface.session, interface.controls
+    loop, theme, scale = session.loop, session.theme, session.scale
+    rect = layout.top_bar
+    imgui.push_style_var(imgui.StyleVar_.window_rounding, 0.0)
+    imgui.push_style_var(imgui.StyleVar_.window_border_size, 0.0)
+    window("###top bar", rect)
+    imgui.pop_style_var(2)
+    draw_list = imgui.get_window_draw_list()
+    draw_list.add_line(
+        imgui.ImVec2(rect.x, rect.bottom - 1),
+        imgui.ImVec2(rect.right, rect.bottom - 1),
+        u32(theme.panel_line),
+    )
+    row = imgui.get_frame_height()
+    top = 0.5 * (rect.height - row)
+
+    # Left: the menu and the view selector.
+    imgui.set_cursor_pos(imgui.ImVec2(8.0 * scale, top))
+    if icon_button(controls, "menu", menu_icon, "Menu", shortcut("toggle_menu")):
+        session.toggle_menu()
+    imgui.same_line(0.0, 14.0 * scale)
+    for view, label in enumerate(VIEW_BUTTONS):
+        if view:
+            imgui.same_line(0.0, 2.0 * scale)
+        chosen = session.view == view
+        if view:
+            colour = theme.team[view - 1]
+            imgui.push_style_color(imgui.Col_.text, imgui.ImVec4(*colour.floats()))
+        if button(
+            controls,
+            f"view/{VIEW_BUTTONS[view].lower().replace(' ', '')}",
+            label,
+            "Show the battlefield as "
+            + ("the spectator sees it" if view == 0 else f"{label} sees it"),
+            shortcut("cycle_view"),
+            active=chosen,
+        ):
+            session.set_view(view)
+        if view:
+            imgui.pop_style_color()
+    left_end = imgui.get_item_rect_max().x
+
+    # Right: the speed controls.
+    spacing = imgui.get_style().item_spacing.x
+    labels = [f"×{scale_value:g}" for scale_value in TIME_SCALES]
+    widths = [
+        imgui.calc_text_size(label).x + 2 * imgui.get_style().frame_padding.x for label in labels
+    ]
+    right_width = 2 * row + spacing + 14.0 * scale + sum(widths) + 2.0 * scale * (len(widths) - 1)
+    if loop.replaying:
+        right_width += imgui.calc_text_size("REPLAY").x + 14.0 * scale
+    imgui.set_cursor_pos(imgui.ImVec2(rect.width - right_width - 10.0 * scale, top))
+    right_start = imgui.get_cursor_screen_pos().x
+    if loop.replaying:
+        imgui.align_text_to_frame_padding()
+        imgui.text_disabled("REPLAY")
+        imgui.same_line(0.0, 14.0 * scale)
+    if loop.paused:
+        if icon_button(controls, "play", play_icon, "Play", shortcut("toggle_pause")):
+            session.toggle_pause()
+    elif icon_button(controls, "pause", pause_icon, "Pause", shortcut("toggle_pause")):
+        session.toggle_pause()
+    imgui.same_line()
+    if icon_button(
+        controls,
+        "step",
+        step_icon,
+        "One tick (while paused)",
+        shortcut("single_step"),
+        enabled=loop.paused,
+    ):
+        session.single_step()
+    imgui.same_line(0.0, 14.0 * scale)
+    for index, (value, label) in enumerate(zip(TIME_SCALES, labels, strict=True)):
+        if index:
+            imgui.same_line(0.0, 2.0 * scale)
+        if button(
+            controls,
+            f"speed/{value:g}",
+            label,
+            f"Play at {value:g} times real time",
+            "+ / -",
+            active=loop.time_scale == value,
+        ):
+            session.set_time_scale(value)
+
+    _objective(interface, rect, left_end, right_start)
+    imgui.end()
+
+
+def _objective(interface: Interface, rect, left: float, right: float) -> None:
+    """The score or the front and zones, and the clock, centred between the two groups."""
+    session = interface.session
+    frame, theme, scale = session.frame, session.theme, session.scale
+    draw = imgui.get_window_draw_list()
+    fonts = session.fonts
+    text = u32(theme.text)
+    muted = imgui.get_color_u32(imgui.Col_.text_disabled)
+    team = [u32(colour) for colour in theme.team]
+    middle_y = rect.y + 0.5 * rect.height
+    big = imgui.get_font_size() * 1.35
+    small = imgui.get_font_size()
+
+    def width_of(line: str, size: float, font=None) -> float:
+        imgui.push_font(font, size)
+        width = imgui.calc_text_size(line).x
+        imgui.pop_font()
+        return width
+
+    parts = []  # (kind, value): ("text", (string, colour, size, font)) or ("gap", pixels)
+    if frame.mode == "team_deathmatch":
+        parts += [
+            ("text", (f"{int(frame.score[0])}", team[0], big, fonts.bold)),
+            ("text", ("  :  ", text, big, fonts.bold)),
+            ("text", (f"{int(frame.score[1])}", team[1], big, fonts.bold)),
+            ("gap", 10.0 * scale),
+            ("text", (f"first to {frame.score_target}", muted, small, None)),
+        ]
+    elif frame.mode == "frontline":
+        parts += [("front", None), ("gap", 14.0 * scale), ("zones", None)]
+    else:
+        parts += [("text", ("Sandbox", text, small, None))]
+    parts += [
+        ("gap", 22.0 * scale),
+        ("text", (clock(frame.clock), text, big, fonts.bold)),
+        ("text", (f"  / {clock(frame.episode_length)}", muted, small, None)),
+    ]
+
+    cell, cell_gap = 12.0 * scale, 3.0 * scale
+    threshold = max(frame.front_threshold, 1)
+    zone_radius, zone_gap = 7.0 * scale, 8.0 * scale
+    zones = [index for index in range(len(frame.zones.x)) if frame.zones.present[index]]
+
+    def size_of(kind, value) -> float:
+        if kind == "text":
+            return width_of(value[0], value[2], value[3])
+        if kind == "gap":
+            return value
+        if kind == "front":
+            return (2 * threshold) * (cell + cell_gap) + 4.0 * scale
+        return len(zones) * (2 * zone_radius + zone_gap) - zone_gap
+
+    total = sum(size_of(kind, value) for kind, value in parts)
+    x = max(0.5 * (rect.x + rect.right - total), left + 16.0 * scale)
+    if x + total > right - 16.0 * scale:
+        x = 0.5 * (left + right - total)
+    for kind, value in parts:
+        if kind == "text":
+            string, colour, size, font = value
+            imgui.push_font(font, size)
+            height = imgui.get_text_line_height()
+            draw.add_text(imgui.ImVec2(x, middle_y - 0.5 * height), colour, string)
+            imgui.pop_font()
+        elif kind == "front":
+            _front(draw, x, middle_y, frame, threshold, cell, cell_gap, team, theme, scale)
+            imgui.set_cursor_screen_pos(imgui.ImVec2(x, middle_y - 0.5 * cell))
+            imgui.invisible_button("front", imgui.ImVec2(size_of(kind, value), cell))
+            tooltip(
+                f"The front: {frame.front:+d}; a side wins {frame.front_threshold} captures ahead"
+            )
+        elif kind == "zones":
+            for slot, zone in enumerate(zones):
+                centre_x = x + zone_radius + slot * (2 * zone_radius + zone_gap)
+                _zone_dot(draw, centre_x, middle_y, zone_radius, frame.zones, zone, theme, scale)
+                imgui.set_cursor_screen_pos(
+                    imgui.ImVec2(centre_x - zone_radius, middle_y - zone_radius)
+                )
+                if imgui.invisible_button(
+                    f"zone {zone}", imgui.ImVec2(2 * zone_radius, 2 * zone_radius)
+                ):
+                    session.select(Selection("zone", zone))
+                interface.controls.record(f"top/zone/{zone}")
+                tooltip("A zone: click to see it")
+        x += size_of(kind, value)
+
+
+def _front(draw, x, middle_y, frame, threshold, cell, gap, team, theme, scale) -> None:
+    """The tug of war: `threshold` cells a side; captures ahead fill toward the side being
+    pushed back, in the leader's colour."""
+    track = u32(theme.panel_line)
+    top = middle_y - 0.5 * cell
+    middle = x + threshold * (cell + gap)
+    draw.add_line(
+        imgui.ImVec2(middle, top - 2.0 * scale),
+        imgui.ImVec2(middle, top + cell + 2.0 * scale),
+        u32(theme.text),
+        1.5 * scale,
+    )
+    for index in range(2 * threshold):
+        side = 1 if index >= threshold else -1  # cells right of the middle: team 0 ahead
+        reach = index - threshold + 1 if side > 0 else threshold - index
+        filled = (frame.front * side) >= reach
+        left = x + index * (cell + gap) + (4.0 * scale if side > 0 else 0.0)
+        colour = (team[0] if side > 0 else team[1]) if filled else track
+        draw.add_rect_filled(
+            imgui.ImVec2(left, top), imgui.ImVec2(left + cell, top + cell), colour, 2.0 * scale
+        )
+
+
+def _zone_dot(draw, x, y, radius, zones, zone, theme, scale) -> None:
+    """A zone: a dot in its owner's colour (grey for the neutral zone), lighter for a
+    spawn zone, and a defense zone's meter as an arc in the attacker's colour."""
+    owner, attacker = int(zones.owner[zone]), int(zones.attacker[zone])
+    colour = theme.team[owner] if owner >= 0 else theme.neutral
+    alpha = 1.0 if attacker >= 0 or owner < 0 else 0.35
+    draw.add_circle_filled(imgui.ImVec2(x, y), radius, u32(colour, alpha))
+    draw.add_circle(imgui.ImVec2(x, y), radius, u32(colour), 0, 1.2 * scale)
+    if attacker >= 0 and zones.meter[zone] > 0.0:
+        start = -0.5 * math.pi
+        end = start + 2.0 * math.pi * min(float(zones.meter[zone]), 1.0)
+        draw.path_arc_to(imgui.ImVec2(x, y), radius + 3.0 * scale, start, end, 0)
+        draw.path_stroke(u32(theme.team[attacker]), 2.5 * scale)

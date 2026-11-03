@@ -356,7 +356,7 @@ def play_options() -> str:
 
 def play_keys() -> str:
     """The play shell's keys."""
-    from bnb.play.render.hud import KEYS
+    from bnb.play.interface.shortcuts import KEYS
 
     return _table(("Key", "Does"), [(key, meaning) for key, meaning in KEYS])
 
@@ -398,7 +398,9 @@ def bench_sizes() -> str:
 
 # ------------------------------------------------------------------ the roadmap
 
-ROADMAP_STATUSES = ("merged", "milestone 1 built", "specified", "decided", "planned")
+ROADMAP_STATUSES = (
+    "merged", "milestone 1 built", "milestone 2 built", "specified", "decided", "planned"
+)
 ROADMAP_KEYS = {"section", "title", "status", "spec", "page"}
 
 
@@ -449,6 +451,7 @@ def roadmap_summary(page: str) -> str:
 STATUS_SENTENCES = {
     "merged": "is merged",
     "milestone 1 built": "has its first milestone built; the later milestones are to follow",
+    "milestone 2 built": "has its first two milestones built; the later ones are to follow",
     "specified": "is specified and not built",
     "decided": "has its decisions recorded; its spec is to follow",
     "planned": "is planned",

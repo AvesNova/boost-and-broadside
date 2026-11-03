@@ -51,8 +51,10 @@ def grid_for(fields: FieldSnapshot, arena_radius: float) -> IndexGrid:
     """The grid covering the arena and every field, at TEXEL_METRES times the map scale."""
     texel = TEXEL_METRES * arena_radius / api.MAP_SCALE_RADIUS
     outer = fields.radius + 0.5 * fields.band_width
-    reach = max(arena_radius, float(np.max(np.maximum(np.abs(fields.x), np.abs(fields.y))
-                                           + outer, initial=0.0)))
+    reach = max(
+        arena_radius,
+        float(np.max(np.maximum(np.abs(fields.x), np.abs(fields.y)) + outer, initial=0.0)),
+    )
     tiles = math.ceil(2.0 * reach / (texel * TILE))
     size = tiles * TILE
     return IndexGrid(origin=-0.5 * size * texel, texel=texel, size=size)
@@ -68,10 +70,14 @@ class IndexBuilder:
         span = TILE * grid.texel
         low = grid.origin + np.arange(tiles) * span  # tile edges along either axis
         outer = fields.radius + 0.5 * fields.band_width
+
         # (M, tiles) the gap between each field's centre and each tile's edges, per axis
         def gap(centre: np.ndarray) -> np.ndarray:
-            return np.clip(np.maximum(low[None] - centre[:, None],
-                                      centre[:, None] - low[None] - span), 0.0, None)
+            return np.clip(
+                np.maximum(low[None] - centre[:, None], centre[:, None] - low[None] - span),
+                0.0,
+                None,
+            )
 
         gap_x, gap_y = gap(fields.x), gap(fields.y)
         touches = gap_y[:, :, None] ** 2 + gap_x[:, None, :] ** 2 < outer[:, None, None] ** 2
@@ -84,6 +90,7 @@ class IndexBuilder:
 
     @property
     def done(self) -> bool:
+        """Whether every tile of the texture has been built."""
         return self.next >= len(self.tiles)
 
     def _batch(self, start: int, stop: int) -> list[TileUpdate]:
@@ -97,10 +104,13 @@ class IndexBuilder:
             return torch.from_numpy(np.where(used, values[order], padding).astype(dtype))
 
         fields = self.fields
-        tile_fields = (column(fields.x, 0.0, np.float32), column(fields.y, 0.0, np.float32),
-                       column(fields.radius, -1e9, np.float32),
-                       column(fields.band_width, 1.0, np.float32),
-                       column(fields.level, 1, np.int32))
+        tile_fields = (
+            column(fields.x, 0.0, np.float32),
+            column(fields.y, 0.0, np.float32),
+            column(fields.radius, -1e9, np.float32),
+            column(fields.band_width, 1.0, np.float32),
+            column(fields.level, 1, np.int32),
+        )
         grid = self.grid
         offsets = (np.arange(TILE) + 0.5) * grid.texel
         tile_x = grid.origin + (tiles % self.columns) * TILE * grid.texel
@@ -114,9 +124,14 @@ class IndexBuilder:
 
         log_index = api.log_index(*tile_fields, points(x), points(y))
         values = log_index.numpy().reshape(len(tiles), TILE, TILE)
-        return [TileUpdate(column=int(tile % self.columns) * TILE,
-                           row=int(tile // self.columns) * TILE, values=values[index])
-                for index, tile in enumerate(tiles)]
+        return [
+            TileUpdate(
+                column=int(tile % self.columns) * TILE,
+                row=int(tile // self.columns) * TILE,
+                values=values[index],
+            )
+            for index, tile in enumerate(tiles)
+        ]
 
     @torch.no_grad()
     def run(self, budget: float = math.inf) -> list[TileUpdate]:
@@ -137,5 +152,5 @@ def build(fields: FieldSnapshot, arena_radius: float) -> tuple[IndexGrid, np.nda
     builder = IndexBuilder(fields, arena_radius)
     values = np.zeros((builder.grid.size, builder.grid.size), dtype=np.float32)
     for update in builder.run():
-        values[update.row:update.row + TILE, update.column:update.column + TILE] = update.values
+        values[update.row : update.row + TILE, update.column : update.column + TILE] = update.values
     return builder.grid, values

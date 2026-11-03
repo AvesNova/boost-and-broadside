@@ -532,7 +532,7 @@ def test_realtime_steps_one_match(compiled):
 
     config = GameConfig(2, 3, 900.0, episode_seconds=2.0)
     for fogged in (True, False):
-        realtime = Realtime(config, compile=compiled, fogged=fogged)
+        realtime = Realtime(config, compiled=compiled, fogged=fogged)
         actions = torch.zeros(config.num_ships, 3, dtype=torch.int32)
         actions[:, 2] = 1
         resets = 0

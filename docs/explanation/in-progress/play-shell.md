@@ -9,18 +9,20 @@ reviewed: 2026-11-03 09:45
 
 The play shell (`bnb.play`) is a desktop window that plays one match at the display rate:
 the realtime sim at its fixed tick underneath, the game drawn in shaders on top, and a
-layer of Dear ImGui for the HUD and the panels. It adds no game rules. It reaches the game only through
+layer of Dear ImGui for the interface: the cards, the menus and the minimap's frame. It adds no game rules. It reaches the game only through
 `bnb.game.api`: it reads a tick through one pure function, `bnb.play.snapshot.snapshot`,
 and draws the medium, the cores and the zones with the game's own functions. [Playing and spectating](../../guides/playing.md) covers the
-keys, views, themes and offscreen renders.
+interface, views, agents, replays, themes and offscreen renders.
 
 ![Team 0's view of a Frontline match](../../images/play/frontline-team0.png)
 
 ## The match loop
 
 `bnb.play.loop.MatchLoop` holds a `bnb.runtime.realtime.Realtime` match, compiled, at its
-fixed tick. Every ship plays `bnb.controllers.scripted.Chaser`, except at most one, the
-pilot, flown from the keyboard.
+fixed tick, set up by a `MatchSetup` (the game, the lineup, fog, the seed, and each
+side's controller). Each side is played by its controller (`bnb.play.sides`): the
+scripted `bnb.controllers.scripted.Chaser`, or a trained agent. At most one ship, the
+pilot, is flown from the keyboard instead; its action replaces that ship's only.
 
 The loop runs on one thread with a fixed timestep:
 
@@ -32,8 +34,9 @@ So the drawn state lags the sim by at most one tick. Pausing stops the accumulat
 `MatchLoop.single_step` advances exactly one tick. A backlog beyond `CATCH_UP_TICKS` ticks
 per unit of time scale is dropped, so a stall does not snowball.
 
-The loop draws no random numbers. Given the same seed and the same per-tick actions, it
-produces the same states as `Realtime` alone
+The match draws its randomness from its own `torch.Generator`, seeded by the setup, outside
+the compiled tick; the loop draws none. Given the same seed and the same per-tick actions,
+it produces the same states as `Realtime` alone
 (`tests/sections/test_play_loop.py::test_the_loop_gives_the_same_states_as_realtime_alone`).
 
 ## The snapshot and interpolation
@@ -61,7 +64,8 @@ Runtime, and rendering is OpenGL.
 ## The passes
 
 The renderer (`bnb.play.render.renderer.Renderer`) draws into a multisampled framebuffer
-and resolves it onto the target, then draws the ImGui layer. The passes, in order:
+and resolves it onto the target; then the minimap into its own texture, and the ImGui
+layer over everything. The passes, in order:
 
 | Pass | Draws |
 |---|---|
@@ -73,7 +77,7 @@ and resolves it onto the target, then draws the ImGui layer. The passes, in orde
 | Rings | One ring at the hitbox: the shield on an arc centred on the nose, the energy on an arc centred on the tail, each shrinking toward its centre as it empties. |
 | Fog | In a team's view, everything the team cannot see is multiplied by the theme's fog colour: darker, with its saturation kept. |
 | Bullets | Short streaks along each bullet's direction, in the shooter's team colour, drawn above the ships and the fog, so fog never darkens a bullet. |
-| HUD | The clock, the score or the front, the flown ship's respawn timer, the view, theme and time scale. |
+| Selection | A ring around the selected ship, field or zone, above everything. |
 
 Ships, rings, bullets and trails keep a minimum size on screen, so they stay visible at the
 full-arena zoom. Lines are antialiased in their shaders, and the ships by the multisampled
@@ -123,6 +127,68 @@ fields and the zones) stays drawn under the fog.
 In a match without fog of war every ship is visible to both teams, so a team's
 view has no fog: it draws everything and darkens nothing.
 
+## The interface
+
+The interface (`bnb.play.interface`) follows strategy games such as Age of Empires II and
+Civilization V: the most important information is on screen without covering the
+battlefield, and clicking an object opens a card about it. Every action has a control;
+the keys are shortcuts, named in the controls' tooltips.
+
+`bnb.play.interface.layout.Layout` places every card for a screen size and an interface
+scale: the top bar, the fleets card on the left, the selection card and the minimap on the
+right, the kill feed under the top bar, the scrubber along the bottom in a replay, and the
+flying HUD at the bottom while a ship is flown. A card is drawn inside its rectangle, or
+as a slim tab on its edge when collapsed, so everything outside the rectangles is
+battlefield; a test renders with and without the interface and checks those pixels are
+unchanged. The cards are Dear ImGui windows themed from the theme file: the panel,
+line and control colours are theme values like the battlefield's, so the theme editor
+edits both.
+
+All input reaches the session through ImGui's input state, which the window fills from
+GLFW (and a test fills with synthetic clicks). What no card takes belongs to the
+battlefield: a click runs the hit test (`bnb.play.selection.hit_test`, on the CPU on the
+drawn snapshot: the nearest ship within its drawn ring, else the zone, else the field
+under the point; in a team view only what the team sees), a drag pans, the wheel zooms.
+Every control records its rectangle by name (`bnb.play.interface.controls.Controls`), so
+a test drives the whole interface by clicking named controls.
+
+The minimap is drawn by the renderer at its own square size with the battlefield's own
+passes (sky, fields, zones, the team's fog from its own mask) and ships as dots, into a
+texture the minimap card shows; the camera's view is a rectangle over it.
+
+## Trained agents
+
+A side can be a trained agent: a policy file (`bnb.runs.checkpoint.load_policy`) of a
+Yemong or relational model, run with torch on the CPU at B = 1. The policy file records
+the game it was trained on and its ship card; the shell loads it only when both equal the
+match's (and the lineup is the game's default), and otherwise names what differs. The
+agent keeps its carry from tick to tick, handing the model the view's reset flag as
+training does, and samples its policy at a temperature with Gumbel-max from its own
+generator. Flying one of its ships replaces that ship's action only: the agent decides for
+all its ships as usual and keeps its carry.
+
+## Replays
+
+Every live match is recorded (`bnb.play.replay.Recorder`): the setup, a keyframe every
+`KEYFRAME_TICKS` ticks (the state, every team's latest view and the generator's state),
+every tick's actions, whether each tick ran compiled, and the match's events. Playback
+(`ReplayLoop`) restores the nearest keyframe and repeats the recorded actions, each tick
+compiled or not as it ran, so it reproduces the match bitwise
+(`tests/sections/test_play_replay.py`) and a seek costs at most `KEYFRAME_TICKS` ticks.
+The scrubber's markers and the kill feed come from the same events (`MatchEvent`: kills
+from the tick's `Events`, captures from the front's moves, the end from `done`).
+
+Taking control in a replay continues the replay's own match from the shown tick as a new
+live match; the saved replay is not changed.
+
+## Compiling in the background
+
+A new kind of match (another mode, map size or fleet) needs its tick compiled, which
+takes several seconds. `Realtime(background=True)` compiles it on a thread while the
+match runs the uncompiled tick, then swaps it in; compiled ticks are shared by every match
+of the same rules in the process, so a restart or a replay of the same game starts
+compiled.
+
 ## Themes
 
 A theme is a TOML file holding every colour the renderer uses, as hex codes, plus two
@@ -135,6 +201,6 @@ edits them live and saves new theme files to the user's directory.
 ## The keyboard pilot
 
 `bnb.controllers.human.human_action` maps an input array, in `bnb.controllers.human.INPUTS`
-order, to one ship's action. It is a pure function: the window fills the array from the
+order, to one ship's action. It is a pure function: the interface fills the array from the
 keyboard each frame, and the tests check that every power, stick level and shoot is
 reachable. A pilot flies through the same action contract as any other controller.

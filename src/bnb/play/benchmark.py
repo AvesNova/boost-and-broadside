@@ -9,6 +9,11 @@ part of the frame times) and the CPU stages (sim tick, controllers, snapshot, in
 tiles, interpolation, and each pass's own Python, which includes its uploads). Last, it
 rebuilds the map's index texture as a map change does, a few tiles per frame, and reports
 those frames.
+
+The interface is drawn as a player sees it with everything open: every card, the minimap
+and a selected ship. The stage `interface` is its own CPU time (building the ImGui frame,
+the minimap's draw included); the passes `minimap` and `imgui` are its GPU work. With
+`--no-interface` the battlefield is drawn alone, for the interface's cost by difference.
 """
 
 import dataclasses
@@ -22,6 +27,7 @@ import tyro
 
 from .app import Options, Session, offscreen_context
 from .render.renderer import PassTimer
+from .selection import Selection
 
 GAMES = {
     "deathmatch": dict(preset="deathmatch"),
@@ -33,6 +39,8 @@ GAMES = {
 
 @dataclasses.dataclass
 class Benchmark:
+    """One timed configuration: the game, the view and the frame times measured."""
+
     games: tuple[str, ...] = tuple(GAMES)
     views: tuple[str, ...] = ("team0", "spectator")
     seconds: float = 10.0  # timed play per game and view
@@ -42,16 +50,20 @@ class Benchmark:
     height: int = 1080
     threads: int = 1
     output: pathlib.Path | None = None  # also append the results here, one JSON line each
+    interface: bool = True  # draw the interface, every card open
 
 
 def _percentiles(values: list[float]) -> dict:
     data = np.array(values) * 1e3
-    return {f"p{percentile}": float(np.percentile(data, percentile))
-            for percentile in (50, 90, 99)} | {"max": float(data.max())}
+    return {
+        f"p{percentile}": float(np.percentile(data, percentile)) for percentile in (50, 90, 99)
+    } | {"max": float(data.max())}
 
 
-def measure(session: Session, target, seconds: float, profile_frames: int,
-            warmup_frames: int) -> dict:
+def measure(
+    session: Session, target, seconds: float, profile_frames: int, warmup_frames: int
+) -> dict:
+    """Time frames of one configuration offscreen and return the measurement."""
     context = session.context
     for _ in range(warmup_frames):  # compiles the tick and fills the caches
         session.update(1.0 / 60.0)
@@ -95,17 +107,22 @@ def measure(session: Session, target, seconds: float, profile_frames: int,
         context.finish()
         rebuild.append(time.perf_counter() - now)
         last = now
-    return dict(frames=len(frame_times), frame_ms=_percentiles(frame_times),
-                tick_rate=tick_rate, real_time_rate=1.0 / loop.tick_length,
-                gpu_ms={name: float(np.mean(values)) for name, values in gpu.items()},
-                pass_cpu_ms={name: float(np.mean(values)) for name, values in cpu.items()},
-                stage_ms={name: float(np.mean(values)) for name, values in stages.items()},
-                map_change=dict(frames=len(rebuild), frame_ms=_percentiles(rebuild)),
-                fog_mask=list(session.renderer.fog.size) if session.renderer.fog.size else None,
-                index_grid=dataclasses.asdict(session.renderer.fields.grid))
+    return dict(
+        frames=len(frame_times),
+        frame_ms=_percentiles(frame_times),
+        tick_rate=tick_rate,
+        real_time_rate=1.0 / loop.tick_length,
+        gpu_ms={name: float(np.mean(values)) for name, values in gpu.items()},
+        pass_cpu_ms={name: float(np.mean(values)) for name, values in cpu.items()},
+        stage_ms={name: float(np.mean(values)) for name, values in stages.items()},
+        map_change=dict(frames=len(rebuild), frame_ms=_percentiles(rebuild)),
+        fog_mask=list(session.renderer.fog.size) if session.renderer.fog.size else None,
+        index_grid=dataclasses.asdict(session.renderer.fields.grid),
+    )
 
 
 def main() -> None:
+    """Run every benchmark configuration under the benchmark lock and print the tables."""
     from bench.lock import bench_lock
 
     benchmark = tyro.cli(Benchmark)
@@ -116,16 +133,33 @@ def main() -> None:
         target = context.framebuffer(color_attachments=[context.texture(size, 4)])
         for game in benchmark.games:
             for view in benchmark.views:
-                torch.manual_seed(0)
-                options = Options(**GAMES[game], fog=True, view=view, fly=False,
-                                  width=benchmark.width, height=benchmark.height)
+                options = Options(
+                    **GAMES[game],
+                    fog=True,
+                    view=view,
+                    fly=False,
+                    width=benchmark.width,
+                    height=benchmark.height,
+                    record=False,
+                )
                 started = time.perf_counter()
                 session = Session(options, context, *size)
+                session.loop.realtime.wait_compiled()
                 setup = time.perf_counter() - started
-                result = dict(game=game, view=view, setup_s=setup,
-                              renderer=context.info["GL_RENDERER"]) | measure(
-                    session, target, benchmark.seconds, benchmark.profile_frames,
-                    benchmark.warmup_frames)
+                session.show_interface = benchmark.interface
+                session.select(Selection("ship", 0))
+                result_interface = dict(interface=benchmark.interface)
+                result = (
+                    dict(game=game, view=view, setup_s=setup, renderer=context.info["GL_RENDERER"])
+                    | result_interface
+                    | measure(
+                        session,
+                        target,
+                        benchmark.seconds,
+                        benchmark.profile_frames,
+                        benchmark.warmup_frames,
+                    )
+                )
                 session.close()
                 print(json.dumps(result), flush=True)
                 if benchmark.output is not None:

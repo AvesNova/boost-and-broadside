@@ -13,6 +13,8 @@ FLOATS = 8
 
 
 class BulletsPass:
+    """Pass 8: the bullets, one instanced streak per active bullet in its shooter's team colour."""
+
     def __init__(self, context: moderngl.Context, capacity: int = 1024) -> None:
         self.context = context
         self.program = program(context, "bullets")
@@ -30,20 +32,32 @@ class BulletsPass:
         self.capacity = max(count, 2 * self.capacity)
         self.instances = self.context.buffer(reserve=self.capacity * FLOATS * 4, dynamic=True)
         self.vertex_array = self.context.vertex_array(
-            self.program, [(self.corners, "2f", "corner"),
-                           (self.instances, "2f 2f 4f/i", "tip", "direction", "tint")])
+            self.program,
+            [
+                (self.corners, "2f", "corner"),
+                (self.instances, "2f 2f 4f/i", "tip", "direction", "tint"),
+            ],
+        )
 
-    def draw(self, camera: dict, theme: Theme, x: np.ndarray, y: np.ndarray,
-             direction_x: np.ndarray, direction_y: np.ndarray, team: np.ndarray) -> None:
+    def draw(
+        self,
+        camera: dict,
+        theme: Theme,
+        x: np.ndarray,
+        y: np.ndarray,
+        direction_x: np.ndarray,
+        direction_y: np.ndarray,
+        team: np.ndarray,
+    ) -> None:
         """The listed bullets (arrays of one length)."""
         if len(x) == 0:
             return
         self._reserve(len(x))
         colours = np.array([c.floats() for c in theme.team], np.float32)[team]
-        table = np.concatenate([np.stack([x, y, direction_x, direction_y], -1), colours],
-                               -1).astype(np.float32)
+        table = np.concatenate(
+            [np.stack([x, y, direction_x, direction_y], -1), colours], -1
+        ).astype(np.float32)
         self.instances.orphan()  # fresh storage: no wait on the last frame's draw
         self.instances.write(table.tobytes())
-        set_uniforms(self.program, **camera, length_pixels=LENGTH_PIXELS,
-                     width_pixels=WIDTH_PIXELS)
+        set_uniforms(self.program, **camera, length_pixels=LENGTH_PIXELS, width_pixels=WIDTH_PIXELS)
         self.vertex_array.render(moderngl.TRIANGLE_STRIP, vertices=4, instances=len(x))

@@ -35,11 +35,12 @@ class Colour:
 
     @classmethod
     def from_hex(cls, code: str) -> Colour:
+        """The colour of a hex code, "#RRGGBB" or "#RRGGBBAA"."""
         match = HEX.fullmatch(code)
         if match is None:
             raise ValueError(f"{code!r} is not a colour (#RRGGBB or #RRGGBBAA)")
         digits = match.group(1) + (match.group(2) or "FF")
-        return cls(*(int(digits[i:i + 2], 16) for i in range(0, 8, 2)))
+        return cls(*(int(digits[i : i + 2], 16) for i in range(0, 8, 2)))
 
     @classmethod
     def from_floats(cls, values) -> Colour:
@@ -48,10 +49,12 @@ class Colour:
         return cls(*channels)
 
     def hex(self) -> str:
+        """The colour's hex code ("#RRGGBB", or "#RRGGBBAA" when it is not opaque)."""
         code = f"#{self.red:02X}{self.green:02X}{self.blue:02X}"
         return code if self.alpha == 255 else code + f"{self.alpha:02X}"
 
     def floats(self) -> tuple[float, float, float, float]:
+        """The colour as four floats in [0, 1], alpha last."""
         return (self.red / 255.0, self.green / 255.0, self.blue / 255.0, self.alpha / 255.0)
 
 
@@ -66,7 +69,10 @@ def _pair(label: str, alpha: bool = False):
 @dataclasses.dataclass(frozen=True)
 class Theme:
     """A whole look. Colours are `Colour`s; a pair holds team 0's then team 1's. fog
-    multiplies what a team cannot see (#999999 darkens to 60%, saturation kept).
+    multiplies what a team cannot see (#999999 darkens to 60%, saturation kept). The
+    interface's cards draw with panel (their fill, semi-opaque), panel_line (outlines and
+    separators), control (buttons and fields), control_active (a pressed or chosen control)
+    and the HUD text; selection outlines the selected ship, field or zone.
     fill_strength: how far a field's deepest fill goes from the sky toward its air colour.
     vortex_threshold: the angle of attack, as a fraction of the stall angle, beyond which
     a wingtip vortex trails."""
@@ -90,13 +96,21 @@ class Theme:
     trail: tuple[Colour, Colour] = _pair("trail", alpha=True)
     vortex: Colour = _colour("wingtip vortex", alpha=True)
     text: Colour = _colour("HUD text")
+    panel: Colour = _colour("panel", alpha=True)
+    panel_line: Colour = _colour("panel lines")
+    control: Colour = _colour("controls")
+    control_active: Colour = _colour("active control")
+    selection: Colour = _colour("selection")
     fill_strength: float = dataclasses.field(metadata={"label": "fill strength"})
     vortex_threshold: float = dataclasses.field(metadata={"label": "vortex threshold"})
 
 
 NUMBER_FIELDS = ("fill_strength", "vortex_threshold")
-COLOUR_FIELDS = tuple(field.name for field in dataclasses.fields(Theme)
-                      if field.name != "name" and field.name not in NUMBER_FIELDS)
+COLOUR_FIELDS = tuple(
+    field.name
+    for field in dataclasses.fields(Theme)
+    if field.name != "name" and field.name not in NUMBER_FIELDS
+)
 
 
 def parse(name: str, values: dict) -> Theme:
@@ -160,6 +174,7 @@ class Library:
         return shipped if shipped.is_file() else self.user_directory / f"{name}.toml"
 
     def load(self, name: str) -> Theme:
+        """The theme of this name (`path` says which file)."""
         return read(self.path(name))
 
     def user_path(self, name: str) -> pathlib.Path:
@@ -186,6 +201,7 @@ def load(name: str) -> Theme:
 
 
 def to_toml(theme: Theme) -> str:
+    """The theme as a theme file's text, every value listed."""
     lines = [f"# Theme {theme.name}, saved by the play shell's theme editor."]
     for field in dataclasses.fields(Theme):
         if field.name == "name":

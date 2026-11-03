@@ -92,7 +92,10 @@ that views the store; it is valid until the shard is written again.
 
 `bnb.runtime.realtime.Realtime` runs one match on the CPU at batch size 1 for interactive
 play: the same game functions, with the whole tick compiled as one function. It takes
-actions in sim order and returns every team's view.
+actions in sim order and returns every team's view; it keeps the tick's `Events`. The
+match draws from its own `torch.Generator`, so a seed, a keyframe (`keyframe`, `restore`)
+and the actions decide every state, and `background=True` compiles the tick on a thread
+while the match runs it uncompiled.
 
 <!-- runnable -->
 ```python
@@ -102,7 +105,7 @@ from bnb.contracts import GameConfig
 from bnb.runtime.realtime import Realtime
 
 match = Realtime(GameConfig(ships_per_team=1, num_fields=2, arena_radius=1200.0),
-                 compile=False)
+                 compiled=False)
 obs = match.step(torch.zeros((2, 3), dtype=torch.int32))
 print(obs.ships.shape)
 ```

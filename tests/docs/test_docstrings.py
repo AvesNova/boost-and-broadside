@@ -2,9 +2,9 @@
 
 from . import docstrings
 
-# Owned by open branches (the play shell's second milestone, fix/intermittent), which write
-# their own; the cleanup pass left them alone. Remove an entry when its branch merges.
-EXEMPT = ("bnb.play", "bnb.models.yemong.kernels")
+# Owned by an open branch (fix/intermittent), which writes its own; the cleanup pass left it
+# alone. Remove the entry when its branch merges.
+EXEMPT = ("bnb.models.yemong.kernels",)
 
 
 def test_every_public_object_has_a_docstring():

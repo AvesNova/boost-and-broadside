@@ -21,7 +21,8 @@ For a runtime that keeps the state in persistent buffers: `perceived` (the part 
 `view_order` (each ship's team, and the sim index of each observation row), `start_clocks`
 and `sweep_like`.
 
-For display (the play shell), with no rules of their own: `log_index` (the medium at
+For display (the play shell), with no rules of their own: `display` (the state's values a
+display draws, by name), `log_index` (the medium at
 points), `core_radius` (the discs the sight test treats as cores), `zone_sides`
 (Frontline's zone owners and attackers), `visible` (each team's observation in sim order),
 `vision_range` and `per_ship`; and the constants `TEAMS`, `LN_SQRT2` (ln n per field level),
@@ -47,6 +48,7 @@ from .ship_types import ShipTypes, per_ship, ship_types
 from .state import Fields, State, Sweep, replace, ship_team, sweep_like
 
 __all__ = [
+    "DISPLAYED",
     "LN_SQRT2",
     "Launch",
     "MAP_SCALE_RADIUS",
@@ -57,6 +59,7 @@ __all__ = [
     "Sweep",
     "TEAMS",
     "core_radius",
+    "display",
     "episode_ticks",
     "launch_capture",
     "log_index",
@@ -120,6 +123,28 @@ def launch_capture(
         sweep.ship_displacement_y,
         state.ships.alive,
     )
+
+
+DISPLAYED = {
+    "ships": (
+        "x", "y", "heading_cos", "heading_sin", "angle_of_attack", "nose_rate", "shield",
+        "energy", "alive", "ship_type", "fired", "spawned", "respawn_wait",
+    ),
+    "bullets": ("x", "y", "direction_x", "direction_y", "moves_left"),
+    "fields": ("x", "y", "radius", "band_width", "level"),
+    "mode": ("role", "zone_x", "zone_y", "zone_radius", "progress", "score", "front"),
+    "match": ("episode_tick", "fogged"),
+}  # fmt: skip
+
+
+def display(state: State) -> dict[str, torch.Tensor]:
+    """The state's values a display draws, named `part.value` (`DISPLAYED`), as the state
+    holds them (B, ...): read-only access for the play shell, which keeps no rules."""
+    return {
+        f"{part}.{name}": getattr(getattr(state, part), name)
+        for part, names in DISPLAYED.items()
+        for name in names
+    }
 
 
 def log_index(

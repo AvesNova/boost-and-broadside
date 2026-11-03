@@ -62,9 +62,9 @@ line-length = 100
 extend-exclude = ["docs", "tests/reference"]
 
 [tool.ruff.format]
-# Formatted by the branches that own them (the kernels and the store: fix/intermittent;
-# the play shell: its second milestone), so this pass leaves their diffs alone.
-exclude = ["src/bnb/models/yemong/kernels/**", "src/bnb/runtime/store.py", "src/bnb/play/**"]
+# Formatted by the branch that owns them (the kernels and the store: fix/intermittent), so
+# this pass leaves their diffs alone.
+exclude = ["src/bnb/models/yemong/kernels/**", "src/bnb/runtime/store.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

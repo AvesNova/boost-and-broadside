@@ -1,4 +1,4 @@
-"""`python -m bnb.play`: watch or play a scripted match, in a window or offscreen."""
+"""`python -m bnb.play`: watch, play or replay a match, in a window or offscreen."""
 
 import torch
 import tyro
@@ -8,7 +8,6 @@ from .app import Options, run_offscreen
 
 def main() -> None:
     options = tyro.cli(Options)
-    torch.manual_seed(options.seed)
     torch.set_num_threads(options.threads)
     if options.offscreen is not None:
         paths = run_offscreen(options)

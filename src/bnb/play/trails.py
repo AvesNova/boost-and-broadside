@@ -38,6 +38,7 @@ class Trails:
         self.last = -np.inf
 
     def clear(self) -> None:
+        """Forget every sample (a new map)."""
         self.time[:] = -np.inf
         self.last = -np.inf
 
