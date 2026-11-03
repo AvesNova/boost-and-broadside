@@ -46,6 +46,7 @@ class Record:
 
     @property
     def games(self) -> float:
+        """Every game in the record."""
         return self.wins + self.losses + self.ties
 
 

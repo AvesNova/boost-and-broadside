@@ -15,7 +15,8 @@ import torch
 SCALE = 400.0 / math.log(10.0)  # rating points per natural unit of log-odds
 DTYPE = torch.float64
 NEWTON_STEPS = 200
-TOLERANCE = 1e-13  # on the Newton decrement, in natural units: far past float64 rating noise
+# On the Newton decrement, in natural units: far past float64 rating noise.
+DECREMENT_TOLERANCE = 1e-13
 
 
 def win_probability(rating: torch.Tensor, opponent: torch.Tensor) -> torch.Tensor:
@@ -46,7 +47,7 @@ def _maximise(theta: torch.Tensor, wins: torch.Tensor, free: torch.Tensor) -> to
         hessian = (torch.diag(weight.sum(1)) - weight)[free][:, free]
         step = torch.linalg.solve(hessian, gradient)
         decrement = float(gradient @ step)
-        if decrement < TOLERANCE:
+        if decrement < DECREMENT_TOLERANCE:
             break
         current = _log_likelihood(theta, wins)
         length = 1.0
@@ -112,7 +113,7 @@ def rate_against(opponent_ratings, wins, losses) -> tuple[float, float]:
         gradient = float((wins - games * probability).sum())
         information = float((games * probability * (1.0 - probability)).sum())
         step = gradient / information
-        if step * gradient < TOLERANCE:
+        if step * gradient < DECREMENT_TOLERANCE:
             break
         current = float(
             (wins * torch.nn.functional.logsigmoid(theta[0] - strengths)).sum()

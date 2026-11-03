@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from bnb.league.pool import (
-    RECENT,
+    RECENT_SNAPSHOTS,
     Entry,
     average_into,
     ladder_entries,
@@ -33,13 +33,13 @@ def test_retention_keeps_the_snapshot_nearest_each_power_of_two_back():
     for count in (9, 20, 37, 100, 513):
         kept = _apply_after_every_snapshot(count)
         newest = count - 1
-        older = sorted(newest - ordinal for ordinal in kept if newest - ordinal >= RECENT)
+        older = sorted(newest - ordinal for ordinal in kept if newest - ordinal >= RECENT_SNAPSHOTS)
         # each older one is the nearest of the kept to some age 2^k, k >= 3
         for age in older:
             assert any(
                 min(older, key=lambda a: (abs(a - (1 << k)), -a)) == age for k in range(3, 20)
             ), (count, age, older)
-        assert len(kept) <= RECENT + math.ceil(math.log2(count)) + 1
+        assert len(kept) <= RECENT_SNAPSHOTS + math.ceil(math.log2(count)) + 1
 
 
 def test_retention_keeps_the_first_snapshot_as_the_deepest_history():

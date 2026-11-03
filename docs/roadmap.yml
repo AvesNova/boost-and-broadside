@@ -59,7 +59,7 @@
   title: League and ratings
   status: specified
   spec: docs/rewrite/sections/league-spec.md
-  page: explanation/in-progress/league.md
+  page: explanation/league.md
 - section: "9"
   title: Diagnostics
   status: specified

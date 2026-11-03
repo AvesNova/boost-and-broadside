@@ -21,8 +21,10 @@ the [training guide](../guides/training.md).
 2. **Learn:** one update of the learner over the stored segments
    (`bnb.learn.ppo.Learner.update`; with BC, `bnb.learn.bc.BehaviourCloning`, the same
    update with the cloning loss).
-3. **Refresh the league:** every `league_every` updates, copy the learner's weights into the
-   `league_0` controller's model, in place.
+
+When a league is attached (`bnb.league.league.League`, which `bnb train` attaches to a PPO
+run), its hooks run after each segment, after the collection and after the learning; see
+[The league](league.md).
 
 It returns a row of measurements: the times of the rollout and the update, the learner's
 statistics (each loss term, the value loss and explained variance per level, the clip
@@ -32,12 +34,13 @@ second and its episode results.
 
 ## Controllers
 
-The trainer builds the learner, its league copy, and a controller for every other name its
-pools seat:
+The trainer builds the learner and a controller for every other name its pools seat. The
+default lineup (`bnb.runtime.train.LINEUP`) is self-play and the league's seat, half each:
 
 - `learner`: the model being trained, through `bnb.controllers.yemong.YemongController` or
   `bnb.controllers.relational.RelationalController`;
-- `league_0`: a frozen copy of it;
+- `opponents`: the league's seat, `bnb.runtime.opponents.OpponentSlots`: network slots
+  and the stationary ladder in one controller (see [The league](league.md));
 - `chaser`: `bnb.controllers.scripted.Chaser`, which turns toward and shoots at the nearest
   visible living enemy;
 - `random`: `bnb.controllers.scripted.Random`, sticky uniform random actions;

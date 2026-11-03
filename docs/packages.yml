@@ -26,8 +26,8 @@
   holds: "run directories and their records, policy files and training checkpoints, the model registry, the memory probe, uploads"
   reference: reference/runs.md
 - package: league
-  holds: opponent pools and ratings
-  section: "8"
+  holds: "the opponent pool, its sampling, the live gauge, snapshots, and the published ratings"
+  reference: reference/league.md
 - package: play
   holds: "the interactive shell: the match loop, render snapshots, the renderer, themes"
   reference: reference/play.md

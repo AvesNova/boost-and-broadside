@@ -15,7 +15,7 @@ from .gauge import KINDS
 UNIFORM_AVERAGE = "uniform_average"
 EXPONENTIAL_AVERAGE = "exponential_average"
 AVERAGES = (UNIFORM_AVERAGE, EXPONENTIAL_AVERAGE)
-RECENT = 8  # the newest snapshots retention keeps
+RECENT_SNAPSHOTS = 8  # the newest snapshots retention keeps
 HISTORY_FROM = 3  # then the snapshot nearest each age 2^k snapshots back, k >= HISTORY_FROM
 
 
@@ -77,15 +77,15 @@ def sampling_weights(win_probabilities: torch.Tensor, floor: float) -> torch.Ten
 
 
 def retained(ordinals: list[int] | set[int]) -> set[int]:
-    """The snapshots retention keeps, by ordinal: the newest RECENT, plus of the older ones
-    the snapshot nearest each age 2^k snapshots back for k >= HISTORY_FROM (an equal
-    distance keeps the older). Ages are counted from the newest snapshot."""
+    """The snapshots retention keeps, by ordinal: the newest RECENT_SNAPSHOTS, plus of the
+    older ones the snapshot nearest each age 2^k snapshots back for k >= HISTORY_FROM (an
+    equal distance keeps the older). Ages are counted from the newest snapshot."""
     ordinals = set(ordinals)
     if not ordinals:
         return set()
     newest = max(ordinals)
-    keep = {ordinal for ordinal in ordinals if newest - ordinal < RECENT}
-    older = sorted(newest - ordinal for ordinal in ordinals if newest - ordinal >= RECENT)
+    keep = {ordinal for ordinal in ordinals if newest - ordinal < RECENT_SNAPSHOTS}
+    older = sorted(newest - ordinal for ordinal in ordinals if newest - ordinal >= RECENT_SNAPSHOTS)
     if older:
         power = HISTORY_FROM
         while True:

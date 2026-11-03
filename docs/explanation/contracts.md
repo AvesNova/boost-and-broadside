@@ -129,8 +129,9 @@ scripted agents, random, and later humans.
   next carry and `bnb.contracts.Outputs`; `reset` flags the views whose environment reset
   before this observation.
 - `reads` lists the observation parts it uses, so the rollout stores only those.
-- A model's parameters live in the controller's own module, following PyTorch idiom. A
-  league slot is a separate controller whose weights are copied in.
+- A model's parameters live in the controller's own module, following PyTorch idiom. The
+  league's seat (`bnb.runtime.opponents.OpponentSlots`) holds its slots' weights as stacked
+  parameters and copies new ones in.
 
 `bnb.contracts.Outputs` holds what a learner needs per controlled ship: the log-probability
 of the chosen action, the entropy and the value. A controller that gives them adds the

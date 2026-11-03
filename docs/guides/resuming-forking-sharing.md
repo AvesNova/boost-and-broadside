@@ -65,8 +65,8 @@ uv run --no-sync bnb train --from 2026-11-02-mixed-purple-pumpkin --preset mixed
 ```
 
 A fork is a new run with the command line's settings that starts from another run's
-checkpoint (the newest, or `--at STEP`): the model, league slot, optimizer, return scale
-and environment-step count. `--updates` is the number of updates the fork trains (500
+checkpoint (the newest, or `--at STEP`): the model, optimizer, return scale and
+environment-step count; its league starts afresh from the model. `--updates` is the number of updates the fork trains (500
 here), whatever the parent had done. Its record names the parent. It refuses a model whose
 build record differs (another width, another ship card): that is a new run.
 
