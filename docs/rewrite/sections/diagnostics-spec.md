@@ -95,10 +95,11 @@ How they run:
 - **No host syncs (A6):** a test runs the update under
   `torch.cuda.set_sync_debug_mode("error")`, allowing only the per-epoch KL read. The
   rollout already has the CUDA-graph capture test.
-- **Determinism (A8):** a test checks that the same seed gives identical first updates.
-  - Bitwise where the stack is deterministic.
-  - Elsewhere within float32 tolerance, with the reason recorded. This follows the
-    smooth-sim principle: repeatable where it costs little throughput.
+- **Determinism (A8):** a test checks that the same seed gives the same first updates.
+  - Bitwise on the CPU, where it costs nothing.
+  - On the GPU within a float tolerance, with integers and categoricals exact (author,
+    2026-11-03: the run's integrity within rounding, not its bits; contracts, "Resume:
+    integrity, not bits").
 - **Resume (A9):** stopped and resumed equals uninterrupted (section 8 covers the
   league's part).
 - **The action metrics** use the joint 42-way action. Factor entropies are the joint's
