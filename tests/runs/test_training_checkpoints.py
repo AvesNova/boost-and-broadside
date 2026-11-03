@@ -49,8 +49,8 @@ def test_every_part_of_a_training_checkpoint_round_trips(trained):
         loaded = checkpoint.load_training(directory, cases.CPU)
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(loaded.model.state_dict()[name], tensor), name
-    for name, tensor in trainer.league.state_dict().items():
-        assert torch.equal(loaded.league.state_dict()[name], tensor), name
+    for name, tensor in trainer.opponents.state_dict().items():
+        assert torch.equal(loaded.opponents.state_dict()[name], tensor), name
     _assert_same_optimizer(loaded, trainer)
     assert torch.equal(loaded.ppo.return_scale.low, trainer.ppo.return_scale.low)
     assert torch.equal(loaded.ppo.return_scale.high, trainer.ppo.return_scale.high)
@@ -225,7 +225,8 @@ def test_a_warm_start_takes_weights_and_return_scale_with_a_fresh_optimizer(tmp_
         rl = checkpoint.warm_start(tmp_path / "bc", cases.tiny_train_config(), cases.CPU)
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(rl.model.state_dict()[name], tensor)
-        assert torch.equal(rl.league.state_dict()[name], tensor)
+        for set_weights in rl.opponents.parameters[f"model.{name}"]:  # every slot's set
+            assert torch.equal(set_weights, tensor), name
     assert torch.equal(rl.ppo.return_scale.low, trainer.ppo.return_scale.low)
     assert torch.equal(rl.ppo.return_scale.high, trainer.ppo.return_scale.high)
     assert float(trainer.ppo.return_scale.high) != 0.0  # a real state, not the initial zeros

@@ -144,12 +144,57 @@ class ShipCard:
     out: str = "ship-card"
 
 
-COMMANDS = ("train", "runs", "ship-card")
+@dataclasses.dataclass(frozen=True)
+class Ratings:
+    """Published ratings (`bnb ratings RUN`): an offline tournament over the run's snapshots
+    and averages (its `league/` directory), the stationary ladder and the players `--with`
+    names (policy files, runs' newest checkpoints, ladder entries), game preset by preset,
+    until every standard error is under `--target-stderr` or the budget is spent. The
+    leaderboard goes to the run's `artifacts/ratings/`.
+
+    run: the run; with_: more players; presets: the game presets; target_stderr: rating
+    points; budget: games per preset at most; first_games: games per pair in the first
+    batch; batch_games: games per later batch; device; runs_directory: as for bnb train.
+    """
+
+    run: tyro.conf.Positional[str]
+    with_: Annotated[tuple[str, ...], tyro.conf.arg(name="with")] = ()
+    presets: tuple[str, ...] = ("frontline", "deathmatch", "deathmatch_wide")
+    target_stderr: float = 25.0
+    budget: int = 20_000
+    first_games: int = 4
+    batch_games: int = 1024
+    device: str = "cuda"
+    runs_directory: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class HeadToHead:
+    """Head-to-head (`bnb head-to-head A B [C D ...] --games N`): only the named pairs (A
+    against B, C against D, ...), each over `--games` games per preset split evenly between
+    the seats. A player is a policy file, a run (its newest checkpoint), "scripted",
+    "random" or "rung_<p>". Prints and records, per pair, the wins, losses and draws, the
+    score with its standard error and the split by preset; the result goes to the first
+    named run's `artifacts/head_to_head/` (else the runs directory's).
+
+    players: the pairs; games: games per pair and preset (even); presets; device;
+    runs_directory: as for bnb train.
+    """
+
+    players: tyro.conf.Positional[tuple[str, ...]]
+    games: int = 64
+    presets: tuple[str, ...] = ("frontline", "deathmatch", "deathmatch_wide")
+    device: str = "cuda"
+    runs_directory: str | None = None
+
+
+COMMANDS = ("train", "runs", "ship-card", "ratings", "head-to-head")
 
 
 def main() -> None:
     """The `bnb` command: `bnb train ...` trains, `bnb runs ...` lists and shows runs and
-    uploads checkpoints, `bnb ship-card ...` charts a card."""
+    uploads checkpoints, `bnb ship-card ...` charts a card, `bnb ratings ...` and
+    `bnb head-to-head ...` rate policies offline."""
     os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
     command, arguments = (sys.argv[1:2] or [""])[0], sys.argv[2:]
     if command == "ship-card":
@@ -159,6 +204,10 @@ def main() -> None:
         train(tyro.cli(Train, args=arguments, prog="bnb train"), given(arguments))
     elif command == "runs":
         runs(tyro.cli(Runs, args=arguments, prog="bnb runs"))
+    elif command == "ratings":
+        ratings(tyro.cli(Ratings, args=arguments, prog="bnb ratings"))
+    elif command == "head-to-head":
+        head_to_head(tyro.cli(HeadToHead, args=arguments, prog="bnb head-to-head"))
     else:
         raise SystemExit(f"usage: bnb {{{','.join(COMMANDS)}}} ... (bnb train --help)")
 
@@ -433,6 +482,12 @@ def train(options: Train, given_options: set[str]) -> None:
             flush=True,
         )
 
+    if config.objective == "ppo" and trainer.opponents is not None:
+        from bnb.league.league import League
+
+        state = checkpoint.league_state(source) if options.resume else None
+        League(trainer, run.directory / "league", run, state)
+
     try:
         if config.objective == "bc":
             from bnb.learn import bc
@@ -567,3 +622,103 @@ def show(run) -> list[str]:
         if segment["rewound_from"] is not None:
             lines.append(f"       rewound from step {segment['rewound_from']}")
     return lines
+
+
+def _players(names, runs_directory):
+    from bnb.league.matches import player
+
+    try:
+        return [player(name, runs_directory) for name in names]
+    except (ValueError, FileNotFoundError) as error:
+        raise SystemExit(str(error)) from error
+
+
+def _check_presets(presets: tuple[str, ...]) -> None:
+    from bnb.game.api import PRESETS
+
+    unknown = [preset for preset in presets if preset not in PRESETS]
+    if unknown:
+        raise SystemExit(f"unknown presets {unknown}; choose from {sorted(PRESETS)}")
+
+
+def ratings(options: Ratings) -> None:
+    """`bnb ratings`: the offline tournament and its leaderboard."""
+    import torch
+
+    from bnb.league import tournament
+    from bnb.league.matches import Player
+    from bnb.league.pool import ladder_entries
+    from bnb.runs import provenance
+    from bnb.runs.records import Run
+    from bnb.runtime.opponents import LADDER
+
+    _check_presets(options.presets)
+    runs_directory = runs_directory_of(options.runs_directory)
+    try:
+        run = Run.open(runs_directory, options.run)
+    except FileNotFoundError as error:
+        raise SystemExit(str(error)) from error
+    field = [
+        Player(f"{options.run}/{policy.parent.name}/{policy.name}", policy=policy)
+        for policy in sorted((run.directory / "league").glob("step_*/*"))
+        if (policy / "checkpoint.json").exists()
+    ]
+    field += [
+        Player(e.name, scripted_probability=e.scripted_probability) for e in ladder_entries(LADDER)
+    ]
+    field += [
+        p for p in _players(options.with_, runs_directory) if p.name not in {f.name for f in field}
+    ]
+    config = tournament.TournamentConfig(
+        first_games=options.first_games,
+        batch_games=options.batch_games,
+        target_stderr=options.target_stderr,
+        budget=options.budget,
+    )
+    device = torch.device(options.device)
+    rows = []
+    for preset in options.presets:
+        rows += tournament.rate(field, preset, device, config)
+    for row in sorted(rows, key=lambda row: (row["map"], -row["calibrated_elo"])):
+        print(
+            f"{row['map']:16s} {row['player']:60s} {row['calibrated_elo']:8.1f} "
+            f"+- {row['stderr']:5.1f}  {row['games']:6d} games"
+        )
+    inputs = {player.name: player.policy for player in field if player.policy is not None}
+    payload = dict(leaderboard=rows, config=dataclasses.asdict(config))
+    print(provenance.write_result(run, "ratings", payload, inputs))
+
+
+def head_to_head(options: HeadToHead) -> None:
+    """`bnb head-to-head`: the named pairs, and the result recorded."""
+    import torch
+
+    from bnb.league import tournament
+    from bnb.runs import provenance
+
+    _check_presets(options.presets)
+    runs_directory = runs_directory_of(options.runs_directory)
+    players = _players(options.players, runs_directory)
+    try:
+        rows = tournament.head_to_head(
+            players, options.games, options.presets, torch.device(options.device)
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    for row in rows:
+        print(
+            f"{row['first']} against {row['second']}: {row['wins']} wins, {row['losses']} "
+            f"losses, {row['draws']} draws; score {row['score']:.3f} +- {row['stderr']:.3f}"
+        )
+        for preset, part in row["presets"].items():
+            print(
+                f"  {preset:16s} {part['wins']}-{part['losses']}-{part['draws']}, "
+                f"score {part['score']:.3f}"
+            )
+    owner = next(
+        (runs_directory / name for name in options.players if (runs_directory / name).is_dir()),
+        runs_directory,
+    )
+    inputs = {player.name: player.policy for player in players if player.policy is not None}
+    payload = dict(pairs=rows, games=options.games, presets=list(options.presets))
+    print(provenance.write_result(owner, "head_to_head", payload, inputs))

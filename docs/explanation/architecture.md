@@ -89,7 +89,8 @@ Two rules keep the captured graph correct:
 - **No host copies inside a tick.** The game reads constant tables as chains of selects
   (`bnb.game.ship_types.per_ship`), not by copying from the host.
 - **Weights change in place.** The learner updates the model's parameters in place, so the
-  graph always reads the current weights. A league slot's weights are copied in.
+  graph always reads the current weights. The league copies an opponent's weights into its
+  slots' stacked parameters in place, between segments.
 
 Random draws come from torch's default generator, which a captured graph draws afresh on
 every replay (`tests/sections/test_game_section.py::test_compiled_rollout_graph_replays_draw_fresh_randomness`).

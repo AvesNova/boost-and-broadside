@@ -61,9 +61,10 @@ other languages read it.
   which rises whenever the game computes differently), the commit and the time, and each
   file's SHA-256.
 - **A training checkpoint** (`bnb.runs.checkpoint.save_training`) is a policy file plus
-  the full `TrainConfig`, the optimizer, the league slot, every random generator, the
-  rollout carry (the game state, every controller's carry, the seats, the reward ledger)
-  and the step counters. `bnb.runs.checkpoint.load_policy` reads the policy part of
+  the full `TrainConfig`, the optimizer, the opponent slots, the league's state (its
+  entries, gauges, sampling state, and the averages' and snapshots' weights), every random
+  generator, the rollout carry (the game state, every controller's carry, the seats, the
+  reward ledger) and the step counters. `bnb.runs.checkpoint.load_policy` reads the policy part of
   either kind.
 - **Writes are atomic** (`bnb.runs.checkpoint.write_checkpoint`): the files go into
   `<name>.tmp/`, each file and then the directory are flushed, the directory is renamed to
@@ -107,8 +108,8 @@ record's, or the start is refused.
 
 | Start | Loads | Settings |
 |---|---|---|
-| `--resume RUN` | everything: model, league slot, optimizer, return scale, generators, rollout carry, counters | the checkpoint's own, plus the run-time overrides |
-| `--from RUN` (a fork) | model, league slot, optimizer, return scale, environment steps | the code's current settings plus the command line; a new run |
+| `--resume RUN` | everything: model, opponent slots and the league, optimizer, return scale, generators, rollout carry, counters | the checkpoint's own, plus the run-time overrides |
+| `--from RUN` (a fork) | model, optimizer, return scale, environment steps; the league starts afresh | the code's current settings plus the command line; a new run |
 | `--init-from POLICY` (a warm start) | weights and return scale; a fresh optimizer | the command line; a new run |
 
 - **A resume** (`bnb.runs.checkpoint.load_training`) may change only the fields in

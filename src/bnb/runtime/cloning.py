@@ -95,14 +95,13 @@ def clone(
 
 @torch.no_grad()
 def warm_start(trainer: Trainer, student: Trainer) -> None:
-    """RL from BC (scripted spec B4): the student's weights (into the learner and its league
-    copy) and its return scale. The optimizer stays fresh and nothing clones; the copy is in
-    place, so the rollout's captured graphs keep reading the weights."""
+    """RL from BC (scripted spec B4): the student's weights (into the learner and its
+    opponent slots) and its return scale. The optimizer stays fresh and nothing clones; the
+    copy is in place, so the rollout's captured graphs keep reading the weights."""
     if trainer.config.objective != "ppo":
         raise ValueError("warm_start starts reinforcement learning (objective 'ppo')")
-    state = student.model.state_dict()
-    trainer.model.load_state_dict(state)
-    trainer.league.load_state_dict(state)
+    trainer.model.load_state_dict(student.model.state_dict())
+    trainer.reset_opponents()
     trainer.ppo.return_scale.low.copy_(student.ppo.return_scale.low)
     trainer.ppo.return_scale.high.copy_(student.ppo.return_scale.high)
 

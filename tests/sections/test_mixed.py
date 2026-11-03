@@ -115,7 +115,7 @@ def test_the_mixed_preset_crosses_the_lineup_with_the_training_mix():
     base, pools = mixed()
     assert len(pools) == 3 * len(LINEUP)
     assert math.isclose(sum(pool.share for pool in pools), 1.0)
-    assert environment_multiple(pools) == 64 and environment_multiple(LINEUP) == 8
+    assert environment_multiple(pools) == 16 and environment_multiple(LINEUP) == 2
     rules = api.rules_of(base, pools, 1024)
     games = [
         (pool.environments, pool.mode.name, pool.arena_radius, pool.mode.spawn_groups)
@@ -448,11 +448,12 @@ def test_a_mixed_batch_does_not_reveal_the_seat():
 
 def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
     from bnb.learn.ppo import LearnerConfig
+    from bnb.runtime.opponents import OPPONENTS
     from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
     pools = tuple(
         dataclasses.replace(pool, seats=(LEARNER, other))
-        for pool, other in zip(_pools(), ("chaser", "random", LEARNER, "league_0"))
+        for pool, other in zip(_pools(), ("chaser", "random", LEARNER, OPPONENTS))
     )
     cfg = TrainConfig(
         game=BASE,
