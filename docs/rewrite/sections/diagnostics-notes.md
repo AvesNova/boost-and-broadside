@@ -111,8 +111,8 @@ files: `d` `tests/sections/test_diagnostics.py`, `dh` `..._heads.py`, `dc` `..._
 | 10 density | deviance and explained deviance per team | `density/deviance/{ally,enemy}`, `density/explained_deviance/{ally,enemy}` (H) | dh: batch mean explains 0, exact counts 1 |
 | 11 shot | trajectory KL per part, rates realised and predicted, supervised share | `shot/trajectory_kl/{part}`, `shot/{enemy_hit,ally_hit,clear_miss}_rate/{realised,predicted}`, `shot/supervised_share` (H) | dh: rates and KL hand case |
 | 12 episode | length, lifespan, reward mean/min/max/level, events, alive share, results by side, end, count | `episode/count`, `length_seconds`, `end/*`, `wins`, `draws`, `losses`, `alive_share` (round 1); `episode/lifespan_seconds`, `reward_mean`, `reward/{level}`, `reward_min`, `reward_max`, `event/{name}` per slice, `episode/result/{team_0,team_1,draw}` (A, game sums; every ship of every game) | dg: hand episode; a rollout's sums against its counters |
-| 13 fog | visible share (all, by scale), hidden age, reacquisitions, occlusion, never seen, fogged share | `fog/visible_share/{all,scale_*}`, `mean_hidden_age_seconds`, `reacquisitions_per_slot_minute`, `occlusion_share/{bucket}`, `fogged_environment_share` (A, fogged environments), `fog/never_seen_share` (H). Not built: `range_visible_share`, `field_occluded_share`, `individual_visible_share` (the observation does not say why a ship is hidden or who saw it; needs a perception output) | dg: perceive hand case |
-| 14 physics, frontline, map scale | rates in readable units | `physics/damage_per_ship_second/*`, `deaths_per_ship_minute/*`, `speed_metres_per_second`, `energy_mean`, `out_of_energy_share`, `in_field_share`, `shield_recharge_per_ship_second`; `frontline/front_moves_per_environment_minute`; `map_scale/mean`, `slot_share/*` (A). Not built: simultaneous captures (no per-zone capture event in the observation) | dg: resolve and perceive hand cases |
+| 13 fog | visible share (all, by scale), hidden age, reacquisitions, occlusion, never seen, fogged share | `fog/visible_share/{all,scale_{1,1_2,2_plus}}`, `mean_hidden_age_seconds`, `reacquisitions_per_slot_minute`, `occlusion_share/{bucket}`, `fogged_environment_share` (A, fogged environments), `fog/never_seen_share` (H). Not built: `range_visible_share`, `field_occluded_share`, `individual_visible_share` (the observation does not say why a ship is hidden or who saw it; needs a perception output) | dg: perceive hand case |
+| 14 physics, frontline, map scale | rates in readable units | `physics/damage_per_ship_second/*`, `deaths_per_ship_minute/*`, `speed_metres_per_second`, `energy_mean`, `out_of_energy_share`, `inside_field_share`, `shield_recharge_per_ship_second`; `frontline/front_moves_per_environment_minute`; `map_scale/mean`, `slot_share/*` (A). Not built: simultaneous captures (no per-zone capture event in the observation) | dg: resolve and perceive hand cases |
 | 15 reward | event share, level share, zero-sum residual | `reward/event_share/{event}` (13 events, `rewards.REWARD_EVENTS`), `reward/zero_sum_residual/{level}` (A, reward per environment-second), `level_share` (round 1) | dg: hand episode |
 | 16 seat | dropped | | |
 | 17 schedule | every scheduled hyperparameter | `schedule/learning_rate` (L), the only schedule | |
@@ -141,7 +141,15 @@ files: `d` `tests/sections/test_diagnostics.py`, `dh` `..._heads.py`, `dc` `..._
 
 - Round 2, CPU (CUDA hidden), targeted files while the BC run trained (load 2-3): the
   diagnostics, heads, cadence, games, trigger, learner, BC, learner-shot, reward, mixed,
-  loop and runs tests; results in the commit messages and below.
+  loop and runs tests, at `2ad85d9b` plus the fixes in the next commit: `tests/loop`,
+  `tests/runs` (the CPU resume tests among them: 7 passed, 4 GPU skipped), the
+  diagnostics, heads, cadence, games and trigger tests, the learner, BC, shot, reward,
+  mixed, Yemong-runtime and league-metrics tests, `tests/docs` and `tests/contract`: all
+  pass (623 + 32 + 7 in the last runs). The first run found the record test's patch of
+  `reward_step`, the resume worker's new timing (`train/time/cadence_seconds`, now left
+  out like the other times) and two short words in names (`at_most`, `in_field`): fixed.
+- Round 2, GPU: none run (the BC run held the lock). The full suite under the lock: not
+  run in round 2.
 
 ## Broken by hand
 

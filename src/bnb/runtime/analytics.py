@@ -190,7 +190,7 @@ class Analytics:
         out["physics/speed_metres_per_second"] = Mean(total(resolve["speed"]), ship_ticks)
         out["physics/energy_mean"] = Mean(total(resolve["energy"]), ship_ticks)
         out["physics/out_of_energy_share"] = Mean(total(resolve["out_of_energy"]), ship_ticks)
-        out["physics/in_field_share"] = Mean(total(resolve["in_field"]), ship_ticks)
+        out["physics/inside_field_share"] = Mean(total(resolve["in_field"]), ship_ticks)
         out["physics/shield_recharge_per_ship_second"] = Mean(
             total(resolve["shield_restored"]), ship_seconds
         )
@@ -339,7 +339,7 @@ OCCLUSION_BUCKETS = (
     ("over_30_seconds", 30.0, math.inf),
 )
 # Map scale (arena radius over MAP_SCALE_RADIUS) buckets, upper bound inclusive.
-SCALE_BUCKETS = (("at_most_1", 0.0, 1.0), ("1_2", 1.0, 2.0), ("over_2", 2.0, math.inf))
+SCALE_BUCKETS = (("1", 0.0, 1.0), ("1_2", 1.0, 2.0), ("2_plus", 2.0, math.inf))
 PERCEIVE_COLUMNS = (
     "fog/enemy_slots",
     "fog/visible",

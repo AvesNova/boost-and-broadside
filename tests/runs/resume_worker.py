@@ -34,7 +34,11 @@ from bnb.runs.triggers import Triggers  # noqa: E402
 from bnb.runtime.opponents import LeagueConfig  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
 
-TIMES = ("train/time/rollout_seconds", "train/time/learner_seconds")
+TIMES = (
+    "train/time/rollout_seconds",
+    "train/time/learner_seconds",
+    "train/time/cadence_seconds",
+)
 ENVIRONMENTS, LENGTH = 16, 32
 
 
