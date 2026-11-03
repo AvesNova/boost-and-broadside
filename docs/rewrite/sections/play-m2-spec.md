@@ -121,7 +121,8 @@ agents, so the MVP's RL agent can be watched and played against.
 - **The pickers** build a new match; a structural change (mode, map, fleet) runs the
   uncompiled tick while the new graph compiles in the background, then swaps it in
   (request 3).
-- **From the cleanup pass:** import `PRESETS` from `bnb.runtime`; `Realtime(compiled=)`;
+- **From the cleanup pass:** `PRESETS` stays in `bnb.game.modes.rules`, read through
+  `bnb.game.api` (settled 2026-11-03: presets are game configuration); `Realtime(compiled=)`;
   `snapshot.py` reads the state only through `bnb.game.api` (the opaque-state rule);
   format `bnb/play/` with ruff and add its missing docstrings, so the format check and the
   docstring count cover it.

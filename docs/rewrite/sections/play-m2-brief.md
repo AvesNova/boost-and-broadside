@@ -65,8 +65,7 @@ games like Age of Empires II and Civilization V. It must look clean and stay fas
 ## Boundaries
 
 - **You may change:** `src/bnb/play/**`, `src/bnb/controllers/human.py`,
-  `src/bnb/runtime/realtime.py`, `bnb.game.api` only to drop the `PRESETS` re-export,
-  `pyproject.toml` (dependencies and the play exclusions), tests outside
+  `src/bnb/runtime/realtime.py`, `pyproject.toml` (dependencies and the play exclusions), tests outside
   `tests/reference/`, the user docs, your notes.
 - **Do not change** the game's rules, the models, the learner, the league
   (`src/bnb/league/`, being built now), or `src/bnb/runtime/rollout.py`.
