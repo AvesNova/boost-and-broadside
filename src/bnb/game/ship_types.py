@@ -101,6 +101,12 @@ class ShipTypes:
     head_on_fraction_scale: torch.Tensor
 
 
+def default_card() -> dict[str, tuple[float, ...]]:
+    """The default card's values by field (DEFAULTS), one per type: the JSON form a
+    configuration holds, which `ship_types(**card)` turns into tensors."""
+    return {name: tuple(float(value) for value in values) for name, values in DEFAULTS.items()}
+
+
 def ship_types(device=None, dtype=torch.float32, **overrides) -> ShipTypes:
     """The default card. An override is a per-type sequence or tensor ((num_types,) or
     (B, num_types)), or one number for every type. dtype is the fields' (offline tools use

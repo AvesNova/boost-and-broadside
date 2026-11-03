@@ -9,6 +9,7 @@ import torch
 from bnb.contracts import GameConfig, Pool
 from bnb.league.league import League
 from bnb.learn.ppo import LearnerConfig
+from bnb.models.relational import RelationalConfig
 from bnb.runtime.opponents import LeagueConfig
 from bnb.runtime.train import LEARNER, TrainConfig, Trainer
 
@@ -24,7 +25,7 @@ def config(device: str = "cpu", **changes) -> TrainConfig:
         updates=0,
         length=16,
         model="relational",
-        relational_hidden=16,
+        relational=RelationalConfig(hidden=16),
         learner=LearnerConfig(epochs=1, minibatches=2, warmup_steps=1000, micro_batch_rows=64),
         compiled=device == "cuda",
         league=LeagueConfig(snapshot_every=16 * 16),

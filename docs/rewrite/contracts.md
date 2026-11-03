@@ -551,6 +551,17 @@ cut; where they differ, this section and the code win.
   - **The GPU resume test** can differ in the last bits when its processes autotune from
     cold. The attention, temporal-mix and heads kernels have configurations whose bits
     differ, and the first tuning picks one by timing.
+- **Model settings in `TrainConfig` (fix/hygiene, 2026-11-03):** `TrainConfig` holds
+  `yemong` (`YemongConfig`), `relational` (`RelationalConfig`) and `ship_card` (the card's
+  values by field, one per type, every field given; `bnb.game.api.default_card`);
+  `relational_hidden` is gone. `model_build(config)` builds from them, and their
+  `bfloat16_matmuls` must stay False (`precision` sets it). `Rollout` and
+  `first_results` take the card (`types`) as their second argument; the `Trainer` passes
+  `config.ship_types(device)`. A resume refuses a changed setting (none is in
+  `OVERRIDABLE`); a fork or a warm start checks the file's build record against the
+  run's (`check_build`) and, when the command sets no model setting, takes the file's
+  (`with_model_of`). A run directory written before this cannot be resumed (its
+  `config.json` and checkpoints have `relational_hidden` and no `yemong`).
 - **Resume: integrity, not bits (author, 2026-11-03):** a resumed run must continue the
   same run (the same state, generators, league and schedule) within rounding. Bit-for-bit
   equality is not required. On the CPU it costs nothing and its tests stay bitwise. On

@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from bnb.contracts import REWARD_LEVELS, Events, GameConfig, Pool
+from bnb.game import api
 from bnb.game.ship_types import per_ship
 from bnb.learn import rewards
 
@@ -216,6 +217,7 @@ def test_rollout_stores_every_level_zero_sum_per_environment(mode):
     config = cases.MODES[mode]
     rollout = Rollout(
         config,
+        api.ship_types(),
         (Pool("self_play", 1.0, ("r", "r")),),
         {"r": Random(config.ships_per_team)},
         "r",
@@ -247,6 +249,7 @@ def test_the_rollouts_ledger_holds_every_deficit(mode):
     S = config.ships_per_team
     rollout = Rollout(
         config,
+        api.ship_types(),
         (Pool("random", 0.5, ("r", "r")), Pool("chaser", 0.5, ("c", "r"))),
         {"r": Random(S), "c": Chaser(S)},
         "r",

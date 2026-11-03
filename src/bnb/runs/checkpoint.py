@@ -374,11 +374,11 @@ def config_differences(saved, given, allowed: tuple[str, ...] = ()) -> list[str]
     )
 
 
-def run_build(policy: PolicyRecord, config: TrainConfig, directory, what: str):
-    """The build of the run's model, from the file's own record: its architecture, with the
-    run's precision, and the numbers the run's game and ship card derive, which must equal
-    the record's (so a changed code default never blocks loading an old file). Refuses
-    another model; reports fields the record lacked (`FilledDefaults`)."""
+def check_build(policy: PolicyRecord, config: TrainConfig, directory, what: str) -> None:
+    """Refuse a run whose model (`model_build(config)`: its settings, and the numbers the
+    run's game and ship card derive) differs from the file's build record in anything but
+    the precision, or is another model; report fields the record lacked
+    (`FilledDefaults`)."""
     if policy.name != config.model:
         raise CheckpointError(
             f"{what} refused: {directory} holds {policy.name}, the run trains {config.model}"
@@ -390,15 +390,24 @@ def run_build(policy: PolicyRecord, config: TrainConfig, directory, what: str):
             FilledDefaults,
             stacklevel=3,
         )
-    build = model_build(config, policy.build.config)
-    differ = config_differences(policy.build, build, ("config.bfloat16_matmuls",))
+    differ = config_differences(policy.build, model_build(config), ("config.bfloat16_matmuls",))
     if differ:
         raise CheckpointError(
             f"{what} refused: the build record of {directory} differs from "
             f"the run's model in {', '.join(differ)}. A new architecture "
             f"is a new run"
         )
-    return build
+
+
+def with_model_of(config: TrainConfig, directory: str | os.PathLike) -> TrainConfig:
+    """`config` with the model settings of the policy file (or training checkpoint) at
+    `directory` (its build record's, the precision aside): how a fork or a warm start whose
+    command sets none of them takes the file's model, even after a code default changed."""
+    policy = read_policy(directory)
+    if policy.name != config.model:
+        return config  # check_build refuses it, naming both models
+    settings = dataclasses.replace(policy.build.config, bfloat16_matmuls=False)
+    return dataclasses.replace(config, **{config.model: settings})
 
 
 def _load_weights(model: torch.nn.Module, directory: pathlib.Path) -> None:
@@ -494,9 +503,9 @@ def load_training(
     directory: str | os.PathLike, device: torch.device, config: TrainConfig | None = None
 ) -> Trainer:
     """The trainer of a training checkpoint, ready to continue exactly where it stopped:
-    built from the checkpoint's own TrainConfig, or `config`, which may differ from it only
-    in OVERRIDABLE fields, and its model from the checkpoint's build record. The ship card
-    must equal the code's. The default generators are the caller's
+    built from the checkpoint's own TrainConfig (its model's settings and ship card
+    included), or `config`, which may differ from it only in OVERRIDABLE fields; its model
+    must match the checkpoint's build record. The default generators are the caller's
     (`restore_default_generators`)."""
     directory = pathlib.Path(directory)
     saved, filled = training_config(directory)
@@ -514,7 +523,8 @@ def load_training(
             f"run from this checkpoint with --from"
         )
     record, policy = read_record(directory), read_policy(directory)
-    trainer = Trainer(config, device, run_build(policy, config, directory, "the resume"))
+    check_build(policy, config, directory, "the resume")
+    trainer = Trainer(config, device)
     _check_card(trainer, record, directory)
     _restore(trainer, directory, record, policy, carry=True)
     return trainer
@@ -523,11 +533,11 @@ def load_training(
 def fork_training(
     directory: str | os.PathLike, config: TrainConfig, device: torch.device
 ) -> Trainer:
-    """A new trainer with `config` that starts from a training checkpoint's model (built
-    from its build record), optimizer, return scale and environment-step count (so the
-    warm-up goes on), not its carry, generators or league (the new run's sizes may differ;
-    its league starts afresh). Its update count starts at zero: `config.updates` is what the
-    fork trains."""
+    """A new trainer with `config` that starts from a training checkpoint's model (whose
+    build record must match `config`'s model; `with_model_of` takes its settings),
+    optimizer, return scale and environment-step count (so the warm-up goes on), not its
+    carry, generators or league (the new run's sizes may differ; its league starts afresh).
+    Its update count starts at zero: `config.updates` is what the fork trains."""
     directory = pathlib.Path(directory)
     record, policy = read_record(directory), read_policy(directory)
     if record.get("kind") != "training":
@@ -535,7 +545,8 @@ def fork_training(
             f"{directory} is a {record.get('kind')} file; a fork needs a "
             f"training checkpoint (a policy file is a warm start)"
         )
-    trainer = Trainer(config, device, run_build(policy, config, directory, "the fork"))
+    check_build(policy, config, directory, "the fork")
+    trainer = Trainer(config, device)
     _restore(trainer, directory, record, policy, carry=False)
     trainer.reset_opponents()
     trainer.updates_done = 0
@@ -544,11 +555,13 @@ def fork_training(
 
 def warm_start(directory: str | os.PathLike, config: TrainConfig, device: torch.device) -> Trainer:
     """A new trainer with `config` whose model (and opponent slots) start from a policy
-    file's build record, weights and return scale, with a fresh optimizer and fresh step
+    file's weights and return scale (its build record must match `config`'s model;
+    `with_model_of` takes its settings), with a fresh optimizer and fresh step
     counts: the BC -> RL hand-off."""
     directory = pathlib.Path(directory)
     policy = read_policy(directory)
-    trainer = Trainer(config, device, run_build(policy, config, directory, "the warm start"))
+    check_build(policy, config, directory, "the warm start")
+    trainer = Trainer(config, device)
     _load_weights(trainer.model, directory)
     trainer.reset_opponents()
     _set_return_scale(trainer, policy.return_scale)

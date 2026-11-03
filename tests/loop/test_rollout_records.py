@@ -14,6 +14,7 @@ from bnb.contracts import GameConfig, Pool
 from bnb.contracts.config import ticks_of
 from bnb.contracts.obs import SHIP
 from bnb.controllers.scripted import Chaser, Random
+from bnb.game import api
 from bnb.learn import rewards
 from bnb.runtime.rollout import Rollout
 
@@ -32,6 +33,7 @@ def _default_generator_untouched():
 def _rollout(config, pools, environments, length, **options):
     return Rollout(
         config,
+        api.ship_types(CPU),
         pools,
         {"learner": Chaser(S), "other": Random(S)},
         "learner",

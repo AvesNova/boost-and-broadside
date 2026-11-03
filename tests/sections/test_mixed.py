@@ -16,6 +16,7 @@ from bnb.contracts.pools import environment_multiple, pool_game
 from bnb.game import api
 from bnb.game.layout import environment, slices
 from bnb.learn import rewards
+from bnb.models.relational import RelationalConfig
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -460,7 +461,7 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         environments=16,
         length=32,
         model="relational",
-        relational_hidden=32,
+        relational=RelationalConfig(hidden=32),
         pools=pools,
         compiled=False,
         learner=LearnerConfig(minibatches=2, micro_batch_rows=30),
@@ -491,6 +492,7 @@ def test_the_rollout_staggers_each_start_clock_within_its_own_episode():
     )
     rollout = Rollout(
         BASE,
+        api.ship_types(),
         pools,
         {"random": Random(BASE.ships_per_team)},
         "random",

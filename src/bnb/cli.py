@@ -30,8 +30,8 @@ class Train:
     rollout or recomputed (by unroll before the first epoch).
     updates: the updates to train (a resume continues to the run's total).
     seed: the run's seed (TrainConfig.seed: the process and the learner's streams).
-    set: TrainConfig fields by dotted path, such as learner.entropy=-0.01 (JSON values);
-    fields inside tuples (such as pools) cannot be set.
+    set: TrainConfig fields by dotted path, such as learner.entropy=-0.01 or
+    yemong.width=256 (JSON values); fields inside tuples (such as pools) cannot be set.
     resume: continue the run named, from its newest checkpoint or the one at --at, with
     every setting from the checkpoint; only the budget, the precision, the micro-batch
     rows, the checkpoint cadence and --set of OVERRIDABLE fields (the learning rate, the
@@ -40,7 +40,8 @@ class Train:
     (newest, or at --at): its model, optimizer, return scale, league slot and environment
     steps; --updates counts from the fork.
     init_from: a warm start from a policy file: its weights and return scale, a fresh
-    optimizer (the BC -> RL hand-off).
+    optimizer (the BC -> RL hand-off). A fork and a warm start take the model's settings
+    from the file, unless --set gives one, when the file must match them.
     print_config: print the resolved configuration and exit; probe: run the memory probe
     (the setup and one update), print the peaks and exit, writing no run.
     name: the run's name (default: date, preset or mode, and two words).
@@ -403,6 +404,15 @@ def train(options: Train, given_options: set[str]) -> None:
             config = with_settings(checkpoint.training_config(source)[0], settings)
         else:
             config = _requested(options)
+            if options.fork:
+                source = Run.open(runs_directory, options.fork).checkpoint_at(options.at)
+            elif options.init_from:
+                source = pathlib.Path(options.init_from)
+            model_set = any(
+                path.split(".")[0] == config.model for path, _ in map(parse_setting, options.set)
+            )
+            if (options.fork or options.init_from) and not model_set:
+                config = checkpoint.with_model_of(config, source)
         if options.print_config:
             print(json.dumps(to_json(config), indent=1))
             return
@@ -445,12 +455,10 @@ def train(options: Train, given_options: set[str]) -> None:
             name = options.name or run_name(label, runs_directory)
             parent = None
             if options.fork:
-                parent_run = Run.open(runs_directory, options.fork)
-                source = parent_run.checkpoint_at(options.at)
                 trainer = checkpoint.fork_training(source, config, device)
                 parent = dict(run=options.fork, step=trainer.ppo.environment_steps)
             elif options.init_from:
-                trainer = checkpoint.warm_start(options.init_from, config, device)
+                trainer = checkpoint.warm_start(source, config, device)
                 parent = dict(policy=str(pathlib.Path(options.init_from).resolve()))
             else:
                 trainer = Trainer(config, device)
@@ -537,7 +545,12 @@ def calibrate(options: Train, config, device) -> None:
     from bnb.runtime import cloning
 
     tokens = cloning.teacher_distributions(
-        config.game, config.pools, config.environments, options.calibration_segments, device
+        config.game,
+        config.ship_types(device),
+        config.pools,
+        config.environments,
+        options.calibration_segments,
+        device,
     )
     natural = bc.mean_entropy(tokens, bc.TeacherConfig(1.0, 0.0))
     print(

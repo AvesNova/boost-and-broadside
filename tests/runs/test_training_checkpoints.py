@@ -136,21 +136,46 @@ def test_the_micro_batch_rows_and_the_precision_may_change_on_resume(trained):
     assert trainer.ppo.config.micro_batch_rows == 32
 
 
-def test_a_resume_builds_the_model_from_the_checkpoint_not_the_code_defaults(tmp_path):
-    """A model saved with another architecture than the code's default (as after a default
-    changed) resumes with its own."""
-    config = cases.tiny_train_config()
+def test_the_model_settings_round_trip_through_a_checkpoint(tmp_path):
+    """A model with other settings than the code's defaults resumes with its own: the
+    checkpoint's TrainConfig and build record both hold them."""
+    config = cases.tiny_train_config(relational=RelationalConfig(hidden=24, value_bins=41))
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
-        build = model_build(config, RelationalConfig(value_bins=41))
-        trainer = Trainer(config, cases.CPU, build)
+        trainer = Trainer(config, cases.CPU)
         trainer.update()
     checkpoint.save_training(tmp_path / "step", trainer)
+    assert checkpoint.training_config(tmp_path / "step")[0] == config
     with torch.random.fork_rng(devices=[]):
         loaded = checkpoint.load_training(tmp_path / "step", cases.CPU)
-    assert loaded.model.build == build and loaded.model.build != model_build(config)
+    assert loaded.config == config
+    assert loaded.model.build == trainer.model.build != model_build(cases.tiny_train_config())
+    assert loaded.model.build.config.hidden == 24
     for name, tensor in trainer.model.state_dict().items():
         assert torch.equal(loaded.model.state_dict()[name], tensor), name
+
+
+def test_a_resume_with_another_width_is_refused_naming_the_setting(trained):
+    _, directory = trained
+    saved, _ = checkpoint.training_config(directory)
+    wider = dataclasses.replace(saved, relational=dataclasses.replace(saved.relational, hidden=32))
+    with (
+        torch.random.fork_rng(devices=[]),
+        pytest.raises(CheckpointError, match="a resume cannot change relational.hidden"),
+    ):
+        checkpoint.load_training(directory, cases.CPU, wider)
+
+
+def test_a_fork_takes_the_files_model_settings_unless_given(trained):
+    """`with_model_of`: the settings of the file's build record, the precision aside."""
+    trainer, directory = trained
+    given = cases.tiny_train_config(relational=RelationalConfig(hidden=32), precision="bfloat16")
+    taken = checkpoint.with_model_of(given, directory)
+    assert taken.relational == trainer.config.relational and taken.relational.hidden == 16
+    assert taken.precision == "bfloat16" and not taken.relational.bfloat16_matmuls
+    with torch.random.fork_rng(devices=[]):
+        fork = checkpoint.fork_training(directory, taken, cases.CPU)
+    assert fork.model.build.config.hidden == 16
 
 
 def test_a_build_field_the_checkpoint_lacks_is_reported_on_resume_and_fork(tmp_path, trained):
@@ -179,7 +204,7 @@ def test_a_fork_whose_build_differs_is_refused(trained):
         ),
     ):
         checkpoint.fork_training(
-            directory, cases.tiny_train_config(relational_hidden=32), cases.CPU
+            directory, cases.tiny_train_config(relational=RelationalConfig(hidden=32)), cases.CPU
         )
 
 
@@ -242,7 +267,9 @@ def test_a_warm_start_from_another_build_is_refused(tmp_path, trained):
         pytest.raises(CheckpointError, match="the warm start refused"),
     ):
         checkpoint.warm_start(
-            tmp_path / "bc", cases.tiny_train_config(relational_hidden=32), cases.CPU
+            tmp_path / "bc",
+            cases.tiny_train_config(relational=RelationalConfig(hidden=32)),
+            cases.CPU,
         )
 
 

@@ -5,6 +5,7 @@ import torch
 
 from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool
 from bnb.contracts.obs import SHIP
+from bnb.game import api
 from bnb.runtime.rollout import Rollout
 
 # The code under test draws from torch's default generator (model initialisation, the
@@ -38,7 +39,17 @@ def test_actions_and_views_follow_the_seat():
     cfg = GameConfig(ships_per_team=3, num_fields=2, arena_radius=5000.0)
     fast, slow = Constant(1, 3), Constant(2, 3)  # boost vs reverse
     pools = (Pool("a", 0.5, ("fast", "slow")), Pool("b", 0.5, ("slow", "fast")))
-    ro = Rollout(cfg, pools, {"fast": fast, "slow": slow}, "fast", 8, 40, CPU, compiled=False)
+    ro = Rollout(
+        cfg,
+        api.ship_types(CPU),
+        pools,
+        {"fast": fast, "slow": slow},
+        "fast",
+        8,
+        40,
+        CPU,
+        compiled=False,
+    )
     ro.run()
     st, seat = ro.carry["state"], ro.carry["seat"]
     w = st.ships.proper_speed.reshape(8, 2, 3).mean(-1)  # (B, team)

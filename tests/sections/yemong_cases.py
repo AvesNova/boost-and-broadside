@@ -61,7 +61,15 @@ def rollout(
     )
     controllers = {"learner": controller(net, config), "chaser": Chaser(config.ships_per_team)}
     runner = Rollout(
-        config, pools, controllers, "learner", environments, length, device, compiled=compiled
+        config,
+        api.ship_types(device),
+        pools,
+        controllers,
+        "learner",
+        environments,
+        length,
+        device,
+        compiled=compiled,
     )
     for _ in range(runs - 1):
         runner.run()

@@ -159,6 +159,7 @@ def play(
     recorder = next(iter(controllers))
     rollout = Rollout(
         game,
+        api.ship_types(device),
         tuple(pools),
         controllers,
         recorder,

@@ -109,6 +109,7 @@ def warm_start(trainer: Trainer, student: Trainer) -> None:
 @torch.no_grad()
 def teacher_distributions(
     game: GameConfig,
+    types: api.ShipTypes,
     pools: tuple[Pool, ...],
     environments: int,
     segments: int,
@@ -117,9 +118,10 @@ def teacher_distributions(
     compiled: bool = True,
 ) -> torch.Tensor:
     """The scripted agent's natural distributions (tokens, 42) over the living own ships of
-    its own games: it plays every seat of these pools (each pool's seats renamed to it),
-    from staggered clocks, for `segments` segments of `length` ticks."""
-    agent = Scripted(characteristics(api.ship_types(device), api.rules_of(game)))
+    its own games with the ship card `types` (on `device`): it plays every seat of these
+    pools (each pool's seats renamed to it), from staggered clocks, for `segments` segments
+    of `length` ticks."""
+    agent = Scripted(characteristics(types, api.rules_of(game)))
     own_pools = tuple(
         Pool(
             pool.name,
@@ -136,6 +138,7 @@ def teacher_distributions(
     )
     rollout = Rollout(
         game,
+        types,
         own_pools,
         {SCRIPTED: agent},
         SCRIPTED,

@@ -28,6 +28,7 @@ from bnb.cli import set_precision  # noqa: E402
 from bnb.contracts import GameConfig  # noqa: E402
 from bnb.league.league import League  # noqa: E402
 from bnb.learn.ppo import LearnerConfig  # noqa: E402
+from bnb.models.relational import RelationalConfig  # noqa: E402
 from bnb.runs import checkpoint  # noqa: E402
 from bnb.runtime.opponents import LeagueConfig  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
@@ -53,7 +54,7 @@ def config(model: str, device: str) -> TrainConfig:
         updates=0,
         length=LENGTH,
         model=model,
-        relational_hidden=32,
+        relational=RelationalConfig(hidden=32),
         league=LeagueConfig(snapshot_every=ENVIRONMENTS * LENGTH),
         learner=learner,
         compiled=device == "cuda",

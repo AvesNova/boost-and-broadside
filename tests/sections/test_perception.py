@@ -134,6 +134,7 @@ def test_rollout_fogs_the_first_share_of_each_pool(global_generator):
     pools = (Pool("a", 0.5, ("r", "r"), fog_share=0.5), Pool("b", 0.5, ("r", "r"), fog_share=0.0))
     rollout = Rollout(
         GameConfig(1, 1, 600.0),
+        api.ship_types(),
         pools,
         {"r": Random(1)},
         "r",

@@ -130,6 +130,7 @@ def scores(
         torch._dynamo.reset()  # a fresh rollout per match; the compile cache is not reused
         results = first_results(
             game,
+            api.ship_types(device),
             (Pool("search", 1.0, ("player", "opponent")),),
             {"player": Scripted(card, unpack(rows)), "opponent": rival},
             "player",

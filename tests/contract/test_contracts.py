@@ -11,6 +11,7 @@ from bnb.contracts import Action, GameConfig, Obs, Outputs, Pool, Privileged, ti
 from bnb.contracts.action import NUM_JOINT, from_joint, to_joint
 from bnb.contracts.obs import SHIP_COLUMNS, SHIP_HIDDEN_ZERO
 from bnb.contracts.pools import environments_per_pool
+from bnb.game import api
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -96,6 +97,7 @@ def test_rollout_carry_holds_no_privileged():
 
     ro = Rollout(
         GameConfig(1, 1, 600.0),
+        api.ship_types(),
         (Pool("p", 1.0, ("r", "r")),),
         {"r": Random(1)},
         "r",

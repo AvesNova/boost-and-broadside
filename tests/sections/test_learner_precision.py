@@ -38,6 +38,7 @@ def stored():
     }
     runner = Rollout(
         config,
+        api.ship_types(CUDA),
         lc.POOLS,
         controllers,
         "learner",

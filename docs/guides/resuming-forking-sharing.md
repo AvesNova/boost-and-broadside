@@ -1,6 +1,6 @@
 ---
 covers: [src/bnb/cli.py, src/bnb/runs/]
-reviewed: 2026-11-03 09:45
+reviewed: 2026-11-03 16:00
 ---
 
 # Resuming, forking and sharing runs
@@ -67,8 +67,10 @@ uv run --no-sync bnb train --from 2026-11-02-mixed-purple-pumpkin --preset mixed
 A fork is a new run with the command line's settings that starts from another run's
 checkpoint (the newest, or `--at STEP`): the model, optimizer, return scale and
 environment-step count; its league starts afresh from the model. `--updates` is the number of updates the fork trains (500
-here), whatever the parent had done. Its record names the parent. It refuses a model whose
-build record differs (another width, another ship card): that is a new run.
+here), whatever the parent had done. Its record names the parent. It takes the parent's
+model settings unless `--set` gives one (`--set yemong.width=256`); then the parent's
+build record must match them, and a model whose build record differs (another width,
+another ship card) is refused: that is a new run.
 
 ## Warm start from a policy file
 
@@ -81,7 +83,8 @@ uv run --no-sync bnb train --init-from runs/2026-11-02-mixed-quiet-otter/checkpo
 The new run's model starts from the policy file's weights and return scale, with a fresh
 optimizer: behaviour cloning's hand-off to RL. A BC run saves its clone at
 `runs/<run>/policy/`{.plain} ([Behaviour cloning](behaviour-cloning.md)). Any policy file or
-training checkpoint works, if its build record matches the run's model. In Python, the same files are
+training checkpoint works, if its build record matches the run's model; as for a fork,
+the model's settings come from the file unless `--set` gives one. In Python, the same files are
 `bnb.runs.checkpoint.save_policy` and `bnb.runs.checkpoint.load_policy`:
 
 <!-- runnable -->
