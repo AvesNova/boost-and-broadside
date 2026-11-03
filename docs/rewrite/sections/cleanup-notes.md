@@ -20,9 +20,8 @@ The order of the brief. Each group is one or more commits on `section/cleanup`, 
   `TrainConfig.relational_hidden`, which tests pass in about 15 places; the ship card needs
   `Rollout` and `Trainer` to take the card instead of `api.ship_types(device)`) and 8.5's
   measurements.
-- [x] End: the bench after, both tiers on the CPU, the quick tier on the GPU, the
-  `PossiblyStalePage` review, the size table. Left: one more full GPU run on the final tree
-  (the last one, on `6dd10879`, found the markers fixed since).
+- [x] End: the bench after, both tiers on the CPU and on the GPU (full suite green on
+  `bf6c396e`), the `PossiblyStalePage` review, the size table.
 
 ## Items
 
@@ -391,6 +390,8 @@ None. No sweep test found a wrong behaviour, so there is no `xfail`.
   - quick, CUDA hidden: 1012 passed, 46 skipped in 2 min 25 s (load 2.8);
   - full, GPU visible: 1 h 47 min in the run that found the last markers (about 40 min of
     it waiting for the other agent's lock; 2 failures and 27 guard errors, all fixed since);
+  - full, GPU visible, the whole run under the lock (`bf6c396e`): 1129 passed, 7 skipped (the
+    league's six, the ship card's charts without the tools extra) in 41 min 3 s;
   - full, CUDA hidden (`cd83e57e`): 1067 passed, 69 skipped (every CUDA test and the
     league's six) in 16 min 52 s (load 2.8).
 - **Slow tests** (over 10 s, from that full run, provisional):
