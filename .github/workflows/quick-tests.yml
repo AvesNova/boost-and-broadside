@@ -1,0 +1,44 @@
+name: quick tests
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: quick-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # pyproject.toml pins torch to the CUDA index, and the runner has no GPU. Install the
+      # locked dependencies without torch and its CUDA libraries (triton stays: the kernel
+      # modules import it), then the CPU wheel of the same torch version.
+      - name: Install (CPU torch)
+        run: |
+          uv venv
+          uv export --frozen --no-hashes --no-emit-project --extra tools --format requirements-txt \
+            | grep -Ev '^(torch|nvidia-|cuda-)' > "$RUNNER_TEMP/requirements.txt"
+          uv pip install -r "$RUNNER_TEMP/requirements.txt"
+          uv pip install --no-deps -e .
+          uv pip install "torch==$(uv export --frozen --no-hashes --package bnb 2>/dev/null | sed -n 's/^torch==\([0-9.]*\).*/\1/p')" \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - run: uv run --no-sync ruff check
+      - run: uv run --no-sync ruff format --check
+
+      - name: Quick tier (parallel, CPU)
+        run: uv run --no-sync pytest -n auto -m "not slow"

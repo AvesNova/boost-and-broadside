@@ -30,6 +30,8 @@ dev = [
     "onnxruntime>=1.31",
     "onnxscript",
     "pytest",
+    "pytest-randomly",
+    "pytest-xdist",
     "ruff",
 ]
 # The documentation site (mkdocs.yml); a default group, so `uv sync` installs it and the
@@ -71,6 +73,8 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# With -n, loadgroup keeps the gpu-marked tests together on one worker (tests/conftest.py).
+addopts = "--dist loadgroup"
 markers = [
     "gpu: needs a GPU (a CUDA device, or an OpenGL 3.3 context for the play shell)",
     "slow: takes more than a few seconds",

@@ -1,13 +1,31 @@
 """Suite-wide fixtures: the benchmark lock for GPU tests, the CUDA and random-state guards,
 and clean skips on a machine without CUDA (code style, Tests)."""
 
+import getpass
 import os
 import sys
+import tempfile
 
 import pytest
-import torch
+
+# Under pytest-xdist the workers share the CPU: each gets its share of the cores for torch's
+# intra-op threads (and one Inductor compile thread), instead of every worker using all of
+# them. This runs before torch is imported, which reads the variable once.
+if count := os.environ.get("PYTEST_XDIST_WORKER_COUNT"):
+    os.environ.setdefault("OMP_NUM_THREADS", str(max(1, (os.cpu_count() or 1) // int(count))))
+    os.environ.setdefault("TORCHINDUCTOR_COMPILE_THREADS", "1")
+
+import torch  # noqa: E402
 
 os.environ.setdefault("TRITON_DEFAULT_FP_FUSION", "1")  # Triton 3.9's default, made explicit
+
+# Under pytest-xdist each worker compiles into its own Inductor and Triton cache, so two
+# workers never write one cache entry at once. The directories persist between runs (a worker
+# keeps its name), so a second run still hits its cache. A serial run keeps the defaults.
+if worker := os.environ.get("PYTEST_XDIST_WORKER"):
+    _caches = os.path.join(tempfile.gettempdir(), f"bnb-test-caches-{getpass.getuser()}", worker)
+    os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", os.path.join(_caches, "inductor"))
+    os.environ.setdefault("TRITON_CACHE_DIR", os.path.join(_caches, "triton"))
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from bench.lock import bench_lock  # noqa: E402
@@ -17,7 +35,12 @@ OPENGL_MODULES = ("test_play_",)
 
 
 def pytest_collection_modifyitems(config, items):
-    """Without CUDA, every CUDA test skips (a `gpu` test never falls back to the CPU)."""
+    """Under xdist, every `gpu` test goes to one worker. Without CUDA, every CUDA test skips (a
+    `gpu` test never falls back to the CPU)."""
+    for item in items:
+        if "gpu" in item.keywords:
+            # One GPU behind one lock: `--dist loadgroup` keeps every gpu test on one worker.
+            item.add_marker(pytest.mark.xdist_group("gpu"))
     if torch.cuda.is_available():
         return
     skip = pytest.mark.skip(reason="needs CUDA")

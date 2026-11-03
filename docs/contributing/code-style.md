@@ -1,6 +1,6 @@
 ---
-covers: [pyproject.toml, src/bnb/contracts/tree.py, tests/conftest.py, tests/contract/test_imports.py]
-reviewed: 2026-11-03 09:45
+covers: [pyproject.toml, src/bnb/contracts/tree.py, tests/conftest.py, tests/contract/test_imports.py, .github/workflows/quick-tests.yml]
+reviewed: 2026-11-03 19:40
 ---
 
 # Code style
@@ -202,6 +202,21 @@ rules in `docs/rewrite/scaffold.md` (sections 3 and 4) and the decisions recorde
   pass. An adapter changes only when the code's interface changes.
 - **Markers:** `gpu` on every test that can touch CUDA; `slow` on every test that takes
   more than 10 seconds on a quiet machine. `-m "not gpu"` never initialises CUDA.
+- **Running them:**
+  - The CPU tests run in parallel with pytest-xdist:
+    `uv run --no-sync pytest -n auto -m "not slow"` (the quick tier), or
+    `CUDA_VISIBLE_DEVICES= uv run --no-sync pytest -n auto` (the whole suite on the CPU).
+  - The `gpu` tests share one GPU behind the benchmark lock, so `tests/conftest.py` marks
+    each of them `xdist_group("gpu")` and `--dist loadgroup` (set in `pyproject.toml`) keeps
+    them together on one worker. A plain `pytest -n auto` is therefore safe on a GPU
+    machine; to time the GPU tests alone, run `pytest -m gpu` without `-n`.
+  - Each worker compiles into its own Inductor and Triton cache
+    (`$TMPDIR/bnb-test-caches-<user>/<worker>/`), so two workers never write one cache entry.
+  - pytest-randomly shuffles the order on every run and prints its seed; to reproduce a
+    failure run `pytest --randomly-seed=SEED`. `-p no:randomly` turns the shuffle off.
+  - Every push runs `ruff` and the quick tier on the CPU in GitHub Actions
+    (`.github/workflows/quick-tests.yml`). The runner installs torch's CPU wheel; the slow
+    tier and the `gpu` tests run by hand.
 - **No shared state:** every random draw uses a local generator, and no test changes a
   process-wide setting that another test can see.
 - **One behaviour per test,** named as a statement of it:
