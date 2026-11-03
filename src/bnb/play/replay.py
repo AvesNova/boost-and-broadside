@@ -244,16 +244,22 @@ class ReplayLoop(MatchLoop):
 
     def seek(self, tick: int) -> None:
         """Show tick `tick` (clamped to the replay): restore the nearest keyframe at or
-        before it and repeat the recorded ticks from there."""
+        before it and repeat the recorded ticks from there. It draws at tick `tick`; the
+        tick before it (when repeated) gives the speed and the last actions."""
         tick = min(max(int(tick), 0), self.replay.last)
         start = max(t for t in self.replay.keyframes if t <= tick)
         self.realtime.restore(self.replay.keyframes[start])
+        self.previous = None
         for position in range(start, tick):
+            if position == tick - 1:  # the tick before: for the speed and the last action
+                self.previous = self._snapshot()
+                self.last_actions = self.replay.actions[position]
             self.realtime.step(
                 self.replay.actions[position], eager=not self.replay.compiled[position]
             )
         self.position = tick
-        self.current = self.previous = self._snapshot()
+        self.current = self._snapshot()
+        self.previous = self.current if self.previous is None else self.previous
         self.accumulator = self.tick_length
         self.restarted[:] = True
         self.kills[:] = 0

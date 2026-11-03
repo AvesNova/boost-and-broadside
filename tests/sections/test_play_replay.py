@@ -65,7 +65,7 @@ def test_a_seek_equals_playing_to_the_same_tick(recorded, tick):
     loop.seek(tick)
     assert loop.position == tick
     assert _equal(_leaves(loop.realtime.state), states[tick])
-    assert loop.current.tick == loop.previous.tick
+    assert loop.alpha == 1.0  # drawn at the tick itself
 
 
 def test_the_markers_are_the_matchs_kills(recorded):
