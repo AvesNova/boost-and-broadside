@@ -180,7 +180,7 @@ def _tiny(updates: int = 2):
 
 @pytest.mark.slow
 def test_rule_state_survives_a_checkpoint_round_trip(tmp_path, global_generator):
-    from bnb.runs import session
+    from bnb.runs import checkpoint, session
     from bnb.runs.recording import Recorder
     from bnb.runs.records import Run
     from bnb.runtime.train import Trainer
@@ -195,7 +195,7 @@ def test_rule_state_survives_a_checkpoint_round_trip(tmp_path, global_generator)
         )
     recorder = Recorder(run, trainer, None, rules)
     session.save(run, trainer, recorder=recorder)
-    restored = session.triggers_state(run.checkpoint_path(trainer.ppo.environment_steps))
+    restored = checkpoint.triggers_state(run.checkpoint_path(trainer.ppo.environment_steps))
     assert restored == rules.state
     resumed = Triggers(state=restored)
     following = {"policy/entropy/joint": 0.5, "rating/live/m": 60.0}

@@ -511,7 +511,7 @@ def train(options: Train, given_options: set[str]) -> None:
     from bnb.runs.triggers import Triggers
 
     sinks = Sinks(run, to_json(config), wandb=options.wandb)
-    rules = Triggers(state=session.triggers_state(source) if options.resume else None)
+    rules = Triggers(state=checkpoint.triggers_state(source) if options.resume else None)
     recorder = Recorder(run, trainer, sinks, rules)
     try:
         if config.objective == "bc":

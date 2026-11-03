@@ -343,6 +343,7 @@ def training_state(trainer: Trainer) -> tuple[dict, dict[str, torch.Tensor]]:
         updates=trainer.updates_done,
         optimizer=to_json(optimizer["param_groups"]),
         league=None if trainer.league is None else trainer.league.state()[0],
+        triggers=None if trainer.triggers is None else trainer.triggers.state,
     )
     tensors = _training_tensors(trainer, optimizer["state"])
     for file, files in policy_files(trainer.model, ppo.return_scale).items():
@@ -361,7 +362,8 @@ def save_training(
     model, plus the full TrainConfig, the optimizer, the opponent slots, the league's state
     (when one is attached: its record part under "league", its tensors in
     `training.safetensors` under "league."), every generator, the rollout carry and the step
-    counters. `extra` goes into the record as it is (the run's settings)."""
+    counters, and the trigger rules' state when the trainer has them (`trainer.triggers`).
+    `extra` goes into the record as it is (the run's settings)."""
     config, ppo = trainer.config, trainer.ppo
     steps = dict(environment_steps=ppo.environment_steps, updates=trainer.updates_done)
     record = policy_record(trainer.model, ppo.return_scale, steps, config.game, ppo.types)
@@ -375,6 +377,8 @@ def save_training(
     tensors = _training_tensors(trainer, optimizer["state"])
     if trainer.league is not None:
         record["league"] = trainer.league.state()[0]
+    if trainer.triggers is not None:
+        record["triggers"] = trainer.triggers.state
     files = policy_files(trainer.model, ppo.return_scale)
     return write_checkpoint(directory, record, dict(files, **{TRAINING: tensors}), stage)
 
@@ -591,6 +595,12 @@ def warm_start(directory: str | os.PathLike, config: TrainConfig, device: torch.
     trainer.reset_opponents()
     _set_return_scale(trainer, policy.return_scale)
     return trainer
+
+
+def triggers_state(directory: str | os.PathLike) -> dict | None:
+    """A training checkpoint's trigger-rule state (`bnb.runs.triggers.Triggers.state`); None
+    when the run kept none."""
+    return read_record(pathlib.Path(directory)).get("triggers")
 
 
 def league_state(directory: str | os.PathLike) -> tuple[dict, dict[str, torch.Tensor]] | None:

@@ -212,6 +212,9 @@ class Trainer:
         self.config = config
         self.model = build_model(model_build(config), device)
         self.league: LeagueHooks | None = None
+        # the trigger rules (`bnb.runs.triggers`), attached by the run's recorder: their
+        # state is part of the training checkpoint
+        self.triggers = None
         cloning = config.objective == "bc"
         seated = {name for pool in config.pools for name in pool.seats}
         self.types = types = config.ship_types(device)
@@ -344,8 +347,8 @@ class Trainer:
     def update(self) -> dict:
         """One update: collect every shard, learn from them, with the league's hooks around
         the learning. Returns the update's series on the host (`bnb.runtime.metrics`), read
-        back in one transfer, and its two phases' wall-clock times (`rollout_seconds`,
-        `learn_seconds`)."""
+        back in one transfer, and its two phases' wall-clock times
+        (`train/time/rollout_seconds`, `train/time/learner_seconds`)."""
         started = time.perf_counter()
         store, bootstraps = self.collect()
         collector = Collector()
@@ -368,7 +371,9 @@ class Trainer:
         learned = time.perf_counter()
         if self.league is not None:
             row.update(self.league.updated(self))
-        return dict(row, rollout_seconds=collected - started, learn_seconds=learned - collected)
+        row["train/time/rollout_seconds"] = collected - started
+        row["train/time/learner_seconds"] = learned - collected
+        return row
 
     def nonfinite_beliefs(self) -> torch.Tensor | int:
         """Non-finite belief entries the learner's carry has counted since its rollouts began,

@@ -39,6 +39,7 @@ class Recorder:
 
     def __init__(self, run: Run | None, trainer, sinks: Sinks | None, triggers: Triggers) -> None:
         self.run, self.trainer, self.sinks, self.triggers = run, trainer, sinks, triggers
+        trainer.triggers = triggers  # their state goes into the training checkpoint
         self.device = trainer.rollout.device
         self.started = self.previous = time.perf_counter()
         self.hours = float(run.record.get("hours", 0.0)) if run is not None else 0.0
@@ -52,11 +53,7 @@ class Recorder:
         rules' flags, written to the sinks."""
         now = time.perf_counter()
         trainer = self.trainer
-        record = {
-            name: value
-            for name, value in row.items()
-            if name not in ("rollout_seconds", "learn_seconds")
-        }
+        record = dict(row)
         update_seconds = now - self.previous
         self.hours += update_seconds / 3600
         self.previous = now
@@ -67,8 +64,6 @@ class Recorder:
         steps = trainer.steps_per_update
         record.update(
             {
-                "train/time/rollout_seconds": row["rollout_seconds"],
-                "train/time/learner_seconds": row["learn_seconds"],
                 "train/time/checkpoint_seconds": self.checkpoint_seconds,
                 "train/time/logging_seconds": self.logging_seconds,
                 "train/time/update_seconds": update_seconds,

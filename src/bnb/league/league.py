@@ -332,7 +332,8 @@ class League:
         it), each average's rating and the sampling distribution's normalised entropy. By
         opponent kind (`entry_kind`): the live policy's score and its share of the games.
         The pool's size, its snapshots and whether a slot is draining; and `pool/entries`,
-        a table of every entry per mode (rating, error, sampling share, games, score), as
+        a table of every entry per mode (rating, error, sampling share, games, score, and
+        the slot holding it: the network slots in order, then the incoming one), as
         JSON (`bnb.contracts.series.Table.as_json`)."""
         out: dict = {}
         games_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
@@ -356,7 +357,10 @@ class League:
                     games_by_kind[kind] += played
                     points_by_kind[kind] += games.wins + games.ties / 2
                     window += played
-                rows.append((mode, name, kind, rated.reported, rated.stderr, share, played, score))
+                slot = self.held.index(name) if name in self.held else None
+                rows.append(
+                    (mode, name, kind, rated.reported, rated.stderr, share, played, score, slot)
+                )
             out[f"rating/window_games/{mode}"] = window
         total = sum(games_by_kind.values())
         for kind in ENTRY_KINDS:
@@ -368,7 +372,17 @@ class League:
         out["pool/snapshots"] = len(self.snapshots)
         out["pool/draining"] = int(self.opponents.draining_slot is not None)
         out["pool/entries"] = Table(
-            ("mode", "entry", "kind", "rating", "stderr", "sampling_share", "games", "score"),
+            (
+                "mode",
+                "entry",
+                "kind",
+                "rating",
+                "stderr",
+                "sampling_share",
+                "games",
+                "score",
+                "slot",
+            ),
             tuple(rows),
         ).as_json()
         return out

@@ -30,10 +30,11 @@ from bnb.league.league import League  # noqa: E402
 from bnb.learn.ppo import LearnerConfig  # noqa: E402
 from bnb.models.relational import RelationalConfig  # noqa: E402
 from bnb.runs import checkpoint  # noqa: E402
+from bnb.runs.triggers import Triggers  # noqa: E402
 from bnb.runtime.opponents import LeagueConfig  # noqa: E402
 from bnb.runtime.train import TrainConfig, Trainer  # noqa: E402
 
-TIMES = ("rollout_seconds", "learn_seconds")
+TIMES = ("train/time/rollout_seconds", "train/time/learner_seconds")
 ENVIRONMENTS, LENGTH = 16, 32
 
 
@@ -84,6 +85,7 @@ def main() -> None:
                 fresh = Trainer(settings, device).ppo.return_scale
             trainer.ppo.return_scale.low, trainer.ppo.return_scale.high = fresh.low, fresh.high
         checkpoint.restore_default_generators(directory / "checkpoint", device)
+        trainer.triggers = Triggers(state=checkpoint.triggers_state(directory / "checkpoint"))
         league = League(
             trainer, directory / "league", state=checkpoint.league_state(directory / "checkpoint")
         )
@@ -112,11 +114,13 @@ def main() -> None:
                     window.clear()
     else:
         trainer = Trainer(settings, device)
+        trainer.triggers = Triggers()
         League(trainer, directory / ("straight-league" if mode == "straight" else "league"))
     count = 2 * updates if mode == "straight" else updates
     rows = []
     for _ in range(count):
         row = trainer.update()
+        row.update(trainer.triggers.check(row, row["counters/updates"]))
         rows.append({name: value for name, value in row.items() if name not in TIMES})
     if mode == "first":
         checkpoint.save_training(directory / "checkpoint", trainer)

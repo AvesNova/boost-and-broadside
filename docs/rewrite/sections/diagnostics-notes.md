@@ -4,7 +4,7 @@ Branch `section/diagnostics`. Spec: `diagnostics-spec.md`; audit: `../diagnostic
 
 ## Progress
 
-Done and pushed (first round, 2026-11-03):
+Done and pushed (first round, 2026-11-03; v2 merged at 58aa9375):
 1. The collector (`bnb.runtime.metrics`), the series types (`bnb.contracts.series`), the
    sinks (`bnb.runs.sinks`: `metrics.jsonl` always, W&B with `bnb train --wandb`), the
    recorder (`bnb.runs.recording`), with every existing series moved onto them under
@@ -46,7 +46,10 @@ and `returns/mixed/*`. The coverage table below lists each.
 | 1 Collection | `Collector`: producers return `{name: tensor or Mean}`; one stacked float64 transfer per update (`read_back`); a `Mean` is divided on the host and absent at count 0. Producers: `Learner.update` (and BC's `report`), `bnb.runtime.analytics.Analytics` (store shards and the rollout's per-environment episode sums), the league's `metrics`, the recorder. The cadence helper `metrics.due` exists; no cadence group is built yet. |
 | 1 Method rules | One readback per update in `Trainer.update`; the per-epoch KL `.item()` stays. Raw values: the only EMAs logged are the return scale's (`returns/scale*`) and the rating. Names quantity first, full words, checked by a test. |
 | 2 Sinks | `metrics.jsonl` per run (always), W&B live with `--wandb` (project `boost-and-broadside-v2`, the run's name, its id kept in run.json so a resume continues it, x-axis `counters/environment_steps`). The fired-events table (`alerts/events`) goes to both. `bnb runs upload` unchanged. |
-| 3 Trigger rules | 8 alerts and 13 warnings, as the audit lists them, with warm-up, hysteresis and cooldown; placeholder thresholds. Outputs `alerts/{rule}`, `alerts/active`, `alerts/events`. Rules whose series are not built yet stay idle. State in the checkpoint's `extra.triggers`; restored on `--resume`. |
+| 3 Trigger rules | 8 alerts and 13 warnings, as the audit lists them, with warm-up, hysteresis and cooldown; placeholder thresholds. Outputs `alerts/{rule}`, `alerts/active`, `alerts/events`. Rules whose series are not built yet stay idle. State in the training checkpoint's record (`triggers`), through
+`bnb.runs.checkpoint.training_state`, so the resume test's exact-restore check covers it
+(the resume worker attaches the rules and logs their flags); restored on `--resume` with
+`bnb.runs.checkpoint.triggers_state`. |
 | 3 Skipped step | The learner skips the step on the device (weights and Adam state kept where the gradient norm is not finite); the rule fires per update with a skip; the session writes a checkpoint and `runs/<run>/dumps/step_<steps>/` (the store's whole batch and the record), listed in run.json. A BC run only dumps (it keeps no checkpoints). |
 | 4 Dashboards | `bnb.runtime.dashboards`: the 12-panel headline and the curated view (open sections Alerts, Strength, Health, Policy, Value, Learning signal; collapsed detail sections; a `bc/` section open in BC runs) as `wandb-workspaces` objects; one panel per quantity, slices by regex. `bnb runs dashboard RUN` saves both. |
 | 5 No host syncs (A6) | The streaming test counts the update's synchronisations under `set_sync_debug_mode("warn")`: one per epoch (the early stops' reads and the readback). |
@@ -103,7 +106,11 @@ Producer abbreviations: L `bnb.learn.ppo.Learner`, B `bnb.learn.bc.BehaviourClon
 - `tests/sections/test_diagnostics.py` and `test_triggers.py`, all tiers, CPU: 54 passed.
 - GPU, under the lock: the learner's, BC's, the streaming and precision `gpu` tests: 9
   passed, the no-sync test among them.
-- The full suite under the lock: not run yet in this round.
+- After merging v2 (fix/resume-integrity): `tests/runs`, the trigger, BC and diagnostics
+  tests on the CPU, 146 passed and 1 failed (the damaged-draws resume test: dropping
+  `pool/slots` from the league's metrics hid the restarted draws); fixed by the entries
+  table's `slot` column, then the damaged-resume and league tests: 6 passed.
+- The full suite under the lock: not run yet in this round (next agent: run it once).
 
 ## Broken by hand
 
@@ -120,8 +127,26 @@ Each bug was introduced, the named test failed, and the change was reverted:
 
 ## Cost
 
-To be measured under the lock at the 5v5 mixed cell with Yemong
-(`uv run --no-sync python -m bench.diagnostics_cost`): pending at this commit.
+`uv run --no-sync python -m bench.diagnostics_cost --environments 2048 --blocks 2
+--per-block 2`, under the lock, the mixed 5v5 preset with Yemong (bf16, kernels), RTX 4070
+Laptop, commit `f235fcd5` plus the cost script's progress lines; load average 1.7 / 3.2 /
+3.2 (a CPU test run of mine overlapped the second half). Whole updates (collect, the
+rollout's series, learn, the readback, the record), the learner's diagnostics on and off
+alternating in blocks:
+
+| | median of 4 |
+|---|---|
+| update, diagnostics on | 56.59 s |
+| update, diagnostics off | 56.97 s |
+| per-update overhead | -0.7 % (within the run-to-run spread of about 4 s) |
+| the record (rules, sinks) | 1.8 ms |
+
+- The per-update series are under the 2 % cap; the measurement cannot resolve them. "Off"
+  still runs the rollout's series (they feed BC's stop) and the skipped-step guard.
+- The cadence groups (5 % cap) are not built, so not measured.
+- 4096 environments (the 40,960-ship budget) did not finish 30 updates in 50 minutes on
+  this laptop; the run was stopped and repeated at 2048. Re-measure at 4096 on a quiet,
+  larger GPU.
 
 ## Deviations and requests
 
@@ -136,10 +161,9 @@ To be measured under the lock at the 5v5 mixed cell with Yemong
   `train/time/*_seconds`, `critic/explained_variance` (audit `ev`), `returns/advantage_rms`
   (`adv_rms`), `train/memory_peak_gigabytes`, the rule `behaviour_mismatch` (audit "C4
   mismatch"). The stick factor keeps the contract's name (`stick`, audit "turn").
-- **Temporary:** `Trainer.update` still returns `rollout_seconds` and `learn_seconds`
-  under those names, because `tests/runs/resume_worker.py` (owned by fix/resume-integrity)
-  filters them out by name; the recorder renames them `train/time/*`. Rename at the source
-  once that branch merges.
+- **The timings at the source:** after fix/resume-integrity merged, `Trainer.update`
+  returns `train/time/rollout_seconds` and `train/time/learner_seconds` itself, and the
+  resume worker leaves out those two names.
 - **`policy/kl`** is the last completed epoch's mean (the early stop's quantity, audit);
   it was the first epoch's. `policy/clip_fraction` is over every step (was the first
   epoch's). BC's `bc/kl` stays the first epoch's (the stop rule reads it).

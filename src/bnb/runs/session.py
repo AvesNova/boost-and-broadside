@@ -21,28 +21,19 @@ from .recording import Recorder
 from .records import Run
 
 CADENCE_SECONDS = 30 * 60
-TRIGGERS = "triggers"  # the rule state's key in a training checkpoint's extra record
 
 
 def save(run: Run, trainer: Trainer, final: bool = False, recorder: Recorder | None = None) -> None:
-    """A training checkpoint at the trainer's step (unless one is there), with the trigger
-    rules' state when a recorder keeps them, then the retention."""
+    """A training checkpoint at the trainer's step (unless one is there), then the
+    retention; its time counts in the recorder's next record."""
     started = time.perf_counter()
     step = trainer.ppo.environment_steps
     path = run.checkpoint_path(step)
     if not path.exists():
-        extra = dict(run=run.record["name"])
-        if recorder is not None:
-            extra[TRIGGERS] = recorder.triggers.state
-        checkpoint.save_training(path, trainer, extra=extra)
+        checkpoint.save_training(path, trainer, extra=dict(run=run.record["name"]))
     run.added_checkpoint(step, final=final)
     if recorder is not None:
         recorder.checkpoint_seconds += time.perf_counter() - started
-
-
-def triggers_state(directory) -> dict | None:
-    """The trigger rules' state a training checkpoint keeps (None: it keeps none)."""
-    return checkpoint.read_record(directory)["extra"].get(TRIGGERS)
 
 
 def act(run: Run, trainer: Trainer, recorder: Recorder, record: dict) -> None:
