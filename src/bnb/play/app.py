@@ -45,6 +45,7 @@ VIEW_LABELS = ("Spectator", "Team 0", "Team 1")
 INDEX_BUDGET = 0.004  # seconds per frame spent building a new map's index texture
 FRAME_SECONDS = 1.0 / 60.0  # the offscreen runner's clock
 NOTICE_SECONDS = 6.0  # a notice stays this long (display time)
+FLYING_ZOOM = 3.0  # taking control zooms in to at most this multiple of the fitted view
 SEEK_BEFORE_MARKER = 3.0  # seconds before an event a marker seeks to
 
 
@@ -427,7 +428,8 @@ class Session:
             self.start(setup, pilot=ship, realtime=loop.realtime, sides=sides)
             self.selection = Selection("ship", ship)
         self.loop.pilot = ship
-        self.following = ship
+        self.follow(ship)
+        self.camera.zoom_in_to(FLYING_ZOOM)
         self.interface.collapse_for_flying()
 
     def release(self) -> None:
@@ -444,8 +446,10 @@ class Session:
             self.take_control(ship)
 
     def follow(self, ship: int | None) -> None:
-        """Keep the camera on this ship (None: stop)."""
+        """Keep the camera on this ship (None: stop); it moves there now."""
         self.following = ship
+        if ship is not None and self.frame.ships.alive[ship]:
+            self.camera.follow(float(self.frame.ships.x[ship]), float(self.frame.ships.y[ship]))
 
     def toggle_follow(self) -> None:
         """Follow the selected ship, or stop following."""

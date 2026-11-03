@@ -216,3 +216,22 @@ def test_the_interface_draws_only_inside_its_layout(
     assert outside == 0
     assert inside > 1000  # the interface did draw
     session.close()
+
+
+def test_taking_control_puts_the_camera_on_the_flown_ship_and_keeps_it_there(context, tmp_path):
+    """Spec 4: flying follows the flown ship by default, zoomed in from the fitted view:
+    the ship is at the middle of the view, now and as it flies."""
+    session = _session(context, tmp_path, 1920, 1080, preset="frontline")
+    player = Player(session, context, 1920, 1080)
+    player.frames(20)
+    fitted = session.camera.metres_per_pixel
+    ship = int(np.flatnonzero(session.frame.ships.alive)[3])
+    session.take_control(ship)
+    session.loop.inputs[:] = torch.tensor([True, False, True, False, True, False, False])
+    for _ in range(4):
+        frame = session.frame
+        px, py = session.camera.pixel(float(frame.ships.x[ship]), float(frame.ships.y[ship]))
+        assert abs(px - 960.0) < 3.0 and abs(py - 540.0) < 3.0
+        player.frames(30)
+    assert session.camera.metres_per_pixel < 0.5 * fitted
+    session.close()

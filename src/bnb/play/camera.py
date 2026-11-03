@@ -22,12 +22,18 @@ class Camera:
     centre_y: float = 0.0
     metres_per_pixel: float = 1.0
     farthest: float = math.inf  # the largest metres per pixel; fit sets it
+    fitted: float = math.inf  # the fitted view's metres per pixel; fit sets it
 
     def fit(self, radius: float) -> None:
         """Centre on the origin with a disc of this radius in view."""
         self.centre_x = self.centre_y = 0.0
         self.metres_per_pixel = 2.0 * radius * FIT_MARGIN / min(self.width, self.height)
-        self.farthest = self.metres_per_pixel * FARTHEST_FACTOR
+        self.fitted = self.metres_per_pixel
+        self.farthest = self.fitted * FARTHEST_FACTOR
+
+    def zoom_in_to(self, factor: float) -> None:
+        """Zoom in to `factor` times the fitted view's, unless the view is already closer."""
+        self.metres_per_pixel = min(self.metres_per_pixel, self.fitted / factor)
 
     def resize(self, width: int, height: int) -> None:
         """Take the target's new size in pixels (at least 1 by 1)."""

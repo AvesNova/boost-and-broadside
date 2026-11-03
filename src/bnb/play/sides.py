@@ -1,12 +1,14 @@
 """Each side's controller: the scripted chaser, or a trained agent from a policy file.
 
 A side turns its team's view (1, ...) into its ships' actions, (S, 3) int32. An agent
-runs with torch on the CPU at B = 1: its carry is kept per side and handed the view's
-reset flag, so the model clears it at each episode boundary as in training. It samples
-the policy's distribution at a temperature (1 is the policy's own), from its own
-generator, so it never touches torch's global one (a model's own draws, such as Yemong's
-position offsets, come from a second stream of its own, swapped in for the default
-generator and back).
+runs with torch at B = 1 on the GPU when one is present (`agent_device`) and on the CPU
+otherwise; the sim stays on the CPU, so each tick moves the view to the agent's device and
+the actions back. Its carry is kept per side and handed the view's reset flag, so the
+model clears it at each episode boundary as in training. It samples the policy's
+distribution at a temperature (1 is the policy's own), on the CPU from its own generator,
+so it never touches torch's global one (a model's own draws, such as Yemong's position
+offsets, come from a second stream of its own, swapped in for the default generator, or
+for the device's, and back).
 
 A policy file loads only when the game it was trained on and its ship card equal the
 match's; otherwise `load_agent` raises `AgentError` naming the difference.
@@ -19,6 +21,7 @@ import math
 import pathlib
 
 import torch
+from torch.utils import _pytree
 
 from bnb.contracts import GameConfig, Obs
 from bnb.contracts.action import from_joint
@@ -50,6 +53,11 @@ class Scripted:
         return self.chaser.step(None, view, reset)[0].packed()[0]
 
 
+def agent_device() -> torch.device:
+    """Where agents run: the GPU whenever one is present, the CPU otherwise."""
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 def sample(logits: torch.Tensor, temperature: float, generator: torch.Generator) -> torch.Tensor:
     """A joint action per row of (..., NUM_JOINT) logits at a temperature, by Gumbel-max
     from `generator`; temperature 0 takes the most likely action."""
@@ -77,34 +85,50 @@ class Agent:
         self.temperature = temperature
         self.generator = torch.Generator().manual_seed(seed)
         self.model_draws = torch.Generator().manual_seed(seed + MODEL_DRAWS_OFFSET)
+        self.device = next(model.parameters()).device
         self.recurrent = name == "yemong"
         self.carry = None
+        self.device_draws = None  # a GPU's own stream of the model's draws (its generator state)
+        if self.device.type == "cuda":
+            with torch.random.fork_rng(devices=[self.device]):
+                torch.cuda.manual_seed(seed + MODEL_DRAWS_OFFSET)
+                self.device_draws = torch.cuda.get_rng_state(self.device)
         if self.recurrent:
             with self._local_draws():
-                self.carry = model.initial_carry(1, ships_per_team, num_ships, torch.device("cpu"))
+                self.carry = model.initial_carry(1, ships_per_team, num_ships, self.device)
 
     @contextlib.contextmanager
     def _local_draws(self):
         """The model's own draws from the default generator (Yemong's position offsets)
-        come from the agent's `model_draws` stream instead: torch's global generator is
-        swapped for it and restored, so the agent is reproducible from its seed and the
-        process's generator is untouched."""
-        with torch.random.fork_rng(devices=[]):
+        come from the agent's `model_draws` stream instead (on a GPU, from the device's
+        generator, with its own state): torch's global generators are swapped for it and
+        restored, so the agent is reproducible from its seed and the process's generators
+        are untouched."""
+        cuda = [self.device] if self.device.type == "cuda" else []
+        with torch.random.fork_rng(devices=cuda):
             torch.default_generator.set_state(self.model_draws.get_state())
+            if cuda:
+                torch.cuda.set_rng_state(self.device_draws, self.device)
             yield
             self.model_draws.set_state(torch.default_generator.get_state())
+            if cuda:
+                self.device_draws = torch.cuda.get_rng_state(self.device)
 
     @torch.no_grad()
     def act(self, view: Obs, reset: torch.Tensor) -> torch.Tensor:
-        """The team's (S, 3) actions for its view (1, ...); the carry moves on."""
+        """The team's (S, 3) actions for its view (1, ...), on the CPU; the carry moves on."""
+        if self.device.type != "cpu":
+            view = _pytree.tree_map(lambda tensor: tensor.to(self.device), view)
+            reset = reset.to(self.device)
         if self.recurrent:
             with self._local_draws():
                 decision = self.model.step(self.carry, view, reset)
         else:
             decision = self.model(view)
-        joint = sample(decision.policy_logits, self.temperature, self.generator).to(torch.int32)
+        logits = decision.policy_logits.cpu()
+        joint = sample(logits, self.temperature, self.generator).to(torch.int32)
         if self.recurrent:
-            self.carry = dataclasses.replace(decision.carry, previous_action=joint)
+            self.carry = dataclasses.replace(decision.carry, previous_action=joint.to(self.device))
         return from_joint(joint).packed()[0]
 
 
@@ -155,7 +179,7 @@ def load_agent(
     temperature: float = 1.0,
     seed: int = 0,
 ) -> Agent:
-    """The agent of a policy file (or training checkpoint) for this match, on the CPU.
+    """The agent of a policy file (or training checkpoint) for this match, on `agent_device()`.
     Raises AgentError with the reason when it cannot play it."""
     directory = pathlib.Path(directory)
     try:
@@ -167,8 +191,10 @@ def load_agent(
     reason = mismatch(policy.raw, config, rules, types)
     if reason is not None:
         raise AgentError(f"{directory.name} cannot play this match: {reason}")
-    with torch.random.fork_rng(devices=[]):  # the model's initialisation draws; keep it local
-        model = checkpoint.load_policy(directory, torch.device("cpu")).eval()
+    device = agent_device()
+    drawn = [device] if device.type == "cuda" else []
+    with torch.random.fork_rng(devices=drawn):  # the model's initialisation draws; keep it local
+        model = checkpoint.load_policy(directory, device).eval()
     return Agent(
         model,
         policy.name,

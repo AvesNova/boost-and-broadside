@@ -159,7 +159,7 @@ texture the minimap card shows; the camera's view is a rectangle over it.
 ## Trained agents
 
 A side can be a trained agent: a policy file (`bnb.runs.checkpoint.load_policy`) of a
-Yemong or relational model, run with torch on the CPU at B = 1. The policy file records
+Yemong or relational model, run with torch at B = 1 on the GPU when one is present and on the CPU otherwise. The policy file records
 the game it was trained on and its ship card; the shell loads it only when both equal the
 match's (and the lineup is the game's default), and otherwise names what differs. The
 agent keeps its carry from tick to tick, handing the model the view's reset flag as

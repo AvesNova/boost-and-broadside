@@ -317,7 +317,7 @@ temperature on the fleet card, default 1; the interface scale.
    (`mode.score` is int32 after `reset`, int64 after a tick). Replays store each keyframe's
    dtypes as they are, so nothing breaks, but the compiled tick probably recompiles once
    for it.
-2. **Question (agents):** two default-size Yemong agents take about 15 ms a tick on one CPU
+2. **Question (agents):** two default-size Yemong agents take about 15 ms a tick on one CPU (30 ms on the GPU, since the fix round)
    thread, so a frame holding a tick is at the 16.7 ms budget. Options: the GPU when
    present, a smaller play model, deciding every other tick, or the ONNX path the client
    plans.
@@ -329,3 +329,56 @@ temperature on the fleet card, default 1; the interface scale.
    (88% white), so they read light grey; a more opaque `panel` in the theme avoids it.
 5. **Open:** the kill feed names ships by type and slot ("Heavy 2" in team colour); a
    callsign scheme could replace it later.
+
+## Fix round
+
+Branch `fix/play-m2`, four fixes.
+
+1. **Agents run on the GPU whenever one is present** (`sides.agent_device`), the CPU
+   otherwise. The sim stays on the CPU: each tick moves the view and the reset flag to the
+   agent's device and the sampled logits back (sampling stays on the CPU, from the agent's
+   own generator). Yemong's own draws come from a per-agent CUDA generator state, swapped
+   in for the device's default generator and back, so the agent is reproducible and the
+   global generators are untouched. Tests: `test_play_sides.py` (the device follows CUDA's
+   availability, the actions return on the CPU, the carry stays on the device; the
+   reproducibility test skips without CUDA; the module carries `gpu` since agents now
+   initialise CUDA).
+
+   Measured (default Yemong, deathmatch preset, 5v5, eager, one torch thread, RTX 4070
+   Laptop, the machine busy with another agent's suite, load average 9-10; median of 100
+   ticks, the `controllers` stage, `sides.act` with the observation moved and the
+   actions back):
+
+   | Agents per tick | CPU | GPU |
+   |---|---|---|
+   | one (the other side scripted) | 7.3 ms | 15.5 ms |
+   | two | 14.3 ms (max 15.3) | 30.7 ms (max 32.5) |
+
+   Eager Yemong on the GPU is launch-bound at B = 1, so it is about twice as slow as one
+   CPU thread, and two GPU agents do not fit the 16.7 ms frame (a tick falls every second
+   frame at x1; the frame holding it takes about 31 ms). The author's rule is applied as
+   asked; the options in open question 2 (CUDA graphs for the agent step, deciding every
+   other tick, a smaller play model) remain.
+2. **The Frontline objective is labelled:** "Front" and "Zones" captions, each zone's
+   number inside its dot (text coloured for contrast), the owner's colour as before, and
+   tooltips: the front's reading (who pushes which way, the win margin, the current
+   value), and each zone's role, owner and capture progress. Checked in
+   `interface-frontline-1920.png` and `-1280.png`.
+3. **The camera on take-control** zooms in to three times the fitted view (unless already
+   closer) and moves to the flown ship at once (`Session.follow`); it followed the ship
+   already, but at the fitted zoom, so the screenshot showed the whole arena. Test:
+   `test_taking_control_puts_the_camera_on_the_flown_ship_and_keeps_it_there` (within 3
+   px of the middle, now and over 4 x 30 frames of flying, and zoomed in).
+4. **The kill-feed mutation check ran:** drawing the feed 400 px below its rectangle (and
+   without the bottom clip) fails `test_the_interface_draws_only_inside_its_layout` at all
+   three sizes (1819 pixels outside); the change was reverted.
+
+Regenerated (`docs/images/play/`): every `interface-frontline-*`, `interface-flying-*` and
+`interface-replay-*` screenshot, at 1920 and 1280 (the top bar changed in all Frontline
+ones).
+
+A fifth, found while running the suite: `test_a_match_is_set_up_watched_flown_and_replayed_from_the_interface`
+failed about every other run. Replay directories were stamped to the second and listed
+newest first by name, so two matches started within one second (the test starts three)
+sorted by mode name, and "replays/0" could be the Frontline match without a kill. The
+stamp now runs to the millisecond (`replay.save`).
