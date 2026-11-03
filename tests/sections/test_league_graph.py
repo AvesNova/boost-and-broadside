@@ -16,13 +16,13 @@ pytestmark = [
 ]
 
 
-def _collect_and_count_syncs(trainer) -> int:
+def _count_syncs(work) -> int:
     torch.cuda.synchronize()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         torch.cuda.set_sync_debug_mode("warn")
         try:
-            trainer.collect()
+            work()
         finally:
             torch.cuda.set_sync_debug_mode("default")
     return sum("called a synchronizing" in str(warning.message) for warning in caught)
@@ -42,21 +42,18 @@ def test_swaps_and_drains_never_capture_the_rollout_again(tmp_path):
     assert drains >= 3, drains
 
 
-def test_the_league_adds_host_synchronisations_per_segment_not_per_step(tmp_path):
-    """Capturing already forbids a synchronisation inside the ticks; this checks the hooks:
-    doubling the segment adds the same synchronisations with the league as without it."""
-    added = {}
-    for league in (True, False):
-        counts = []
-        for length in (32, 64):
-            directory = tmp_path / f"{league}-{length}"
-            if league:
-                trainer, _ = cases.league(directory, "cuda", length=length)
-            else:
-                trainer = cases.Trainer(
-                    cases.config("cuda", length=length, pools=cases.SELF_PLAY), torch.device("cuda")
-                )
-            trainer.collect()  # compiles and captures
-            counts.append(_collect_and_count_syncs(trainer))
-        added[league] = counts[1] - counts[0]
-    assert added[True] == added[False], added
+def test_a_league_rollout_synchronises_no_more_than_self_play(tmp_path):
+    """Capturing already forbids a synchronisation inside the ticks; a segment's rollout with
+    the league synchronises as often as one without it, and the league's own reads happen
+    once per segment, in its hook."""
+    league_trainer, league = cases.league(tmp_path / "league", "cuda", length=64)
+    alone = cases.Trainer(
+        cases.config("cuda", length=64, pools=cases.SELF_PLAY), torch.device("cuda")
+    )
+    counts = {}
+    for name, trainer in (("league", league_trainer), ("self_play", alone)):
+        trainer.collect()  # compiles and captures
+        counts[name] = _count_syncs(lambda: trainer.rollout.run(0))
+    assert counts["league"] == counts["self_play"], counts
+    hook = _count_syncs(lambda: league.after_shard(league_trainer, 0))
+    assert hook <= 8, hook  # the tally, the drain check and the slot loads, per segment
