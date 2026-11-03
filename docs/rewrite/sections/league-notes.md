@@ -198,3 +198,12 @@ update and 6 warm-up segments; lock held, alone on the GPU.
   (`bnb.models.yemong.kernels`, author 2026-11-03: the choice is not in checkpoints).
 - Open: whether a slot holding the ladder should skip its network forward (needs a
   data-dependent branch or a different row layout).
+
+## Status at hand-back
+
+- Full suite under the lock at `d55241ba`: 1189 passed, 1 skipped
+  (`tests/sections/test_ship_card.py`: the charts need the tools extra), 47.8 minutes on
+  the dev machine. The exact-resume tests (CPU and GPU, relational and Yemong) pass with
+  the league attached.
+- Not done / next: a published-ratings run on a real trained run (`bnb ratings`) has not
+  been made; the tournament is tested on a 2v2 game on the CPU only.
