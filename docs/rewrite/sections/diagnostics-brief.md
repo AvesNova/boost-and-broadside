@@ -38,7 +38,11 @@ answer.
 ## What to do
 
 In this order, one commit or more each, pushed:
-1. the collector and the sinks (W&B, JSONL), with the existing series moved onto them;
+1. the collector and the sinks (W&B, JSONL), with the existing series moved onto them.
+   Live logging (author, 2026-11-03): `bnb train --wandb` streams each update's record to
+   W&B during the run (project `boost-and-broadside-v2`, the run's name), as well as to
+   the local JSONL. Without the flag nothing leaves the machine, and `bnb runs upload`
+   stays for runs trained offline;
 2. the method-rule tests (no host sync, the naming check, the no-EMA check);
 3. the series, group by group, each with its hand-computed case. Start with what the
    first BC and RL runs need most: the learner's losses and ratios, entropy and the
