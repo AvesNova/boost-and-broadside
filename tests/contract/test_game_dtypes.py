@@ -1,8 +1,10 @@
 """The dtype and shape of every field of the `Events`, `Obs` and `Privileged` the game
-produces (code style, Dtypes), in every mode and at two batch sizes."""
+produces (code style, Dtypes), in every mode and at two batch sizes; and that a tick keeps
+every state field's dtype."""
 
 import pytest
 import torch
+from torch.utils import _pytree
 
 from bnb.contracts import GameConfig
 from bnb.contracts.action import Action
@@ -83,3 +85,43 @@ def test_the_game_produces_each_contract_fields_dtype_and_shape(mode, batch):
             if value.dtype != dtype or tuple(value.shape) != shape:
                 wrong.append(f"{contract}.{name}: {value.dtype} {tuple(value.shape)}")
     assert not wrong, "\n".join(wrong)
+
+
+def _state_dtypes(state) -> dict[str, torch.dtype]:
+    leaves, _ = _pytree.tree_flatten_with_path(state)
+    return {_pytree.keystr(path): leaf.dtype for path, leaf in leaves}
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_tick_keeps_every_state_fields_dtype(mode):
+    """Through ticks with deaths, respawns and an episode's end (a one-second episode)."""
+    generator = torch.Generator().manual_seed(11)
+    config = GameConfig(
+        SHIPS_PER_TEAM, FIELDS, 600.0, mode=mode, episode_seconds=1.0, respawn_seconds=0.5
+    )
+    rules, types, batch = api.rules_of(config), api.ship_types(), 4
+    state = api.reset(rules, types, api.uniforms(rules, batch, generator=generator))
+    expected = _state_dtypes(state)
+    assert set(expected.values()) <= {torch.float32, torch.int32, torch.bool}
+    shape = (batch, rules.num_ships)
+    for tick in range(2 * round(1.0 / rules.tick_length)):
+        action = Action(
+            torch.randint(0, 3, shape, dtype=torch.int32, generator=generator),
+            torch.randint(0, 7, shape, dtype=torch.int32, generator=generator),
+            torch.ones(shape, dtype=torch.int32),
+        )
+        state, _ = api.step(
+            rules,
+            types,
+            state,
+            action,
+            api.spread(rules, batch, generator=generator),
+            api.uniforms(rules, batch, generator=generator),
+        )
+        state, _, _ = api.perceive(rules, state)
+        changed = {
+            path: (expected[path], dtype)
+            for path, dtype in _state_dtypes(state).items()
+            if dtype != expected[path]
+        }
+        assert not changed, f"tick {tick}: {changed}"
