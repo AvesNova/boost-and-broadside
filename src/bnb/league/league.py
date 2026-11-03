@@ -15,12 +15,14 @@ the graph (`bnb.runtime.opponents.counter_uniform`), keyed by the run's seed.
 
 import copy
 import dataclasses
+import math
 import pathlib
 import shutil
 import time
 
 import torch
 
+from bnb.contracts.series import Table
 from bnb.runs import checkpoint
 from bnb.runs.records import Run
 from bnb.runtime.opponents import (
@@ -47,6 +49,10 @@ from .pool import (
     snapshot_name,
 )
 
+# The opponent kinds the league's scores and game shares are sliced by (diagnostics audit,
+# group 20): the scripted agent, the ladder's other rungs (random among them), the averages
+# and the checkpoints.
+ENTRY_KINDS = ("scripted", "rung", "average", "checkpoint")
 SNAPSHOT_SECONDS = 30 * 60  # the measured snapshot cadence's target (league spec 5)
 SNAPSHOT_DIRECTORY = "step_{steps}"
 CHECKPOINT_POLICY = "checkpoint"  # a snapshot directory's policy files: the snapshot, and
@@ -321,29 +327,65 @@ class League:
     # ---- metrics and state
 
     def metrics(self) -> dict:
-        """Per mode: the live gauge (`live_elo`) and its error; per entry its rating, sampling
-        share and score against the live policy this update. The pool: entries, snapshots,
-        the slots' entries, the draining slot. Games this update by opponent kind."""
+        """The league's series of this update (diagnostics audit, group 20), on the host.
+        Per mode: the live gauge (`rating/live`, its standard error and the games that rated
+        it), each average's rating and the sampling distribution's normalised entropy. By
+        opponent kind (`entry_kind`): the live policy's score and its share of the games.
+        The pool's size, its snapshots and whether a slot is draining; and `pool/entries`,
+        a table of every entry per mode (rating, error, sampling share, games, score, and
+        the slot holding it: the network slots in order, then the incoming one), as
+        JSON (`bnb.contracts.series.Table.as_json`)."""
         out: dict = {}
-        games_by_kind = {"checkpoint": 0.0, "average": 0.0, "ladder": 0.0}
+        games_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
+        points_by_kind = dict.fromkeys(ENTRY_KINDS, 0.0)
+        rows = []
         for mode, gauge in self.gauges.items():
-            out[f"live_elo/{mode}"] = gauge.live.rating  # the last finite value
-            out[f"live_elo_stderr/{mode}"] = gauge.live.stderr
-            for (name, rated), share in zip(gauge.entries.items(), self.weights[mode].tolist()):
-                out[f"rating/{mode}/{name}"] = rated.reported
-                out[f"sampling_share/{mode}/{name}"] = share
+            out[f"rating/live/{mode}"] = gauge.live.rating  # the last finite value
+            out[f"rating/live_stderr/{mode}"] = gauge.live.stderr
+            weights = self.weights[mode].tolist()
+            out[f"pool/sampling_entropy/{mode}"] = normalised_entropy(weights)
+            window = 0.0
+            for (name, rated), share in zip(gauge.entries.items(), weights, strict=True):
                 games = self.record[mode].get(name)
-                if games is not None and games.games:
-                    out[f"score/{mode}/{name}"] = (games.losses + games.ties / 2) / games.games
-                    games_by_kind[rated.kind] += games.games
-        for kind, count in games_by_kind.items():
-            out[f"games/{kind}"] = count
-        out["pool/entries"] = len(self.entries)
+                played = games.games if games is not None else 0.0
+                score = (games.wins + games.ties / 2) / played if played else None
+                if rated.kind == "average":
+                    out[f"rating/average/{name}/{mode}"] = rated.reported
+                    out[f"rating/average_stderr/{name}/{mode}"] = rated.stderr
+                kind = entry_kind(name, rated.kind)
+                if played:
+                    games_by_kind[kind] += played
+                    points_by_kind[kind] += games.wins + games.ties / 2
+                    window += played
+                slot = self.held.index(name) if name in self.held else None
+                rows.append(
+                    (mode, name, kind, rated.reported, rated.stderr, share, played, score, slot)
+                )
+            out[f"rating/window_games/{mode}"] = window
+        total = sum(games_by_kind.values())
+        for kind in ENTRY_KINDS:
+            if games_by_kind[kind]:
+                out[f"pool/score/{kind}"] = points_by_kind[kind] / games_by_kind[kind]
+            if total:
+                out[f"pool/game_share/{kind}"] = games_by_kind[kind] / total
+        out["pool/size"] = len(self.entries)
         out["pool/snapshots"] = len(self.snapshots)
-        out["pool/slots"] = list(self.held[: self.config.slots])
-        out["pool/draining_slot"] = self.opponents.draining_slot
-        out["pool/incoming"] = self.held[self.config.slots]
-        return dict(league=out)
+        out["pool/draining"] = int(self.opponents.draining_slot is not None)
+        out["pool/entries"] = Table(
+            (
+                "mode",
+                "entry",
+                "kind",
+                "rating",
+                "stderr",
+                "sampling_share",
+                "games",
+                "score",
+                "slot",
+            ),
+            tuple(rows),
+        ).as_json()
+        return out
 
     def state(self) -> tuple[dict, dict[str, torch.Tensor]]:
         """What a resume needs: the entries, the gauges, the slots' entries, the sampling
@@ -366,3 +408,20 @@ class League:
             for key, value in weights.items():
                 tensors[f"{name}.{key}"] = value
         return record, tensors
+
+
+def entry_kind(name: str, kind: str) -> str:
+    """An entry's kind for the series (ENTRY_KINDS): a ladder entry is "scripted" or "rung"."""
+    if kind == "ladder":
+        return "scripted" if name == "scripted" else "rung"
+    return kind
+
+
+def normalised_entropy(weights: list[float]) -> float:
+    """The entropy of a sampling distribution over its maximum, log of its size: 1 when
+    uniform, 0 on one entry (and 0 for a single entry)."""
+    if len(weights) < 2:
+        return 0.0
+    total = sum(weights)
+    entropy = -sum(w / total * math.log(w / total) for w in weights if w > 0)
+    return entropy / math.log(len(weights))

@@ -19,7 +19,10 @@ dependencies = [
 
 [project.optional-dependencies]
 # Offline tools: `bnb ship-card` writes its charts with matplotlib.
-tools = ["matplotlib>=3.10"]
+tools = [
+    "matplotlib>=3.10",
+    "wandb-workspaces>=0.4.13",
+]
 
 [project.scripts]
 bnb = "bnb.cli:main"

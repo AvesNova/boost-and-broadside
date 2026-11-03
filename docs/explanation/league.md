@@ -77,8 +77,8 @@ fixed: random 0, rung `p` at `1000 p`, the scripted agent 1000. Once per update:
    game's update (`bnb.league.ratings.rate_against`).
 
 A sweep gives an infinite estimate; the gauge reports it and keeps the last finite value,
-which sampling and the dashboard use. The gauge is `live_elo`{.plain} in the metrics and is never
-published.
+which sampling and the dashboard use. The gauge is `rating/live/<mode>`{.plain} in the metrics
+and is never published.
 
 ## Resuming
 

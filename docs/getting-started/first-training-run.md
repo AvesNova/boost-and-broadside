@@ -72,7 +72,7 @@ config = TrainConfig(game=GameConfig(ships_per_team=1, num_fields=2, arena_radiu
                      learner=LearnerConfig(minibatches=2, micro_batch_rows=8))
 trainer = Trainer(config, torch.device("cpu"))
 row = trainer.update()
-print(row["update"], sorted(row["pools"]), round(row["loss/value"], 2))
+print(row["counters/updates"], round(row["critic/value_loss/outcome"], 2))
 ```
 
 Next: [a benchmark](benchmark.md).

@@ -15,6 +15,7 @@ from typing import Annotated
 
 import tyro
 
+from bnb.contracts import REWARD_LEVELS
 from bnb.contracts.config import TEAM_DEATHMATCH
 
 
@@ -53,6 +54,8 @@ class Train:
     a stop rule fires, then the clone is saved as the run's policy file; updates is unused,
     and a BC run is not resumed or forked); teacher_temperature and teacher_floor set the
     labels' entropy; bc_budget_steps: BC's budget in environment steps.
+    wandb: stream each update's record to W&B (project `boost-and-broadside-v2`, the run's
+    name) as well as to the run's metrics.jsonl; without it nothing leaves the machine.
     calibrate_entropy: print the scripted agent's natural entropy over its own games of the
     preset and the temperature whose labels reach this mean entropy (nats per living ship
     step) at teacher_floor, then exit, writing no run; calibration_segments: how many
@@ -89,6 +92,7 @@ class Train:
     bc_budget_steps: int = 500_000_000
     calibrate_entropy: float | None = None
     calibration_segments: int = 4
+    wandb: bool = False
 
 
 # What a resume may be given besides --resume: the rest comes from the checkpoint.
@@ -103,6 +107,7 @@ RESUME_OPTIONS = (
     "device",
     "runs_directory",
     "print_config",
+    "wandb",
 )
 # The resume options that set a TrainConfig field: their paths.
 RESUME_FIELDS = {
@@ -114,10 +119,12 @@ RESUME_FIELDS = {
 
 @dataclasses.dataclass(frozen=True)
 class Runs:
-    """List the runs (`bnb runs`), show one (`bnb runs show RUN`), or upload a chosen
-    checkpoint (`bnb runs upload RUN [--at STEP] [--league]`) as a W&B artifact.
+    """List the runs (`bnb runs`), show one (`bnb runs show RUN`), upload a chosen
+    checkpoint (`bnb runs upload RUN [--at STEP] [--league]`) as a W&B artifact, or build the
+    run's W&B dashboards (`bnb runs dashboard RUN`, the `tools` extra).
 
-    action: list, show or upload; run: the run's name (show and upload).
+    action: list, show, upload or dashboard; run: the run's name (show, upload and
+    dashboard).
     at: the checkpoint's step (default: the newest); league: upload the league's snapshots
     instead; to: the target (wandb only, for now); runs_directory: as for bnb train.
     """
@@ -477,16 +484,19 @@ def train(options: Train, given_options: set[str]) -> None:
         raise SystemExit(str(error)) from error
 
     def log(row: dict) -> None:
-        rewards = " ".join(
-            f"{name} {sum(pool['reward_per_second'].values()):+.3f}"
-            for name, pool in row["pools"].items()
-        )
+        totals = {
+            pool: sum(row.get(f"reward/rate/{level}/{pool}", 0.0) for level in REWARD_LEVELS)
+            for pool in trainer.pool_names
+        }
+        rewards = " ".join(f"{pool} {total:+.3f}" for pool, total in totals.items())
         print(
-            f"update {row['update']:4d}  rollout {row['rollout_seconds'] * 1e3:6.0f} ms  "
-            f"learn {row['learn_seconds'] * 1e3:6.0f} ms  entropy {row['loss/entropy']:.2f}  "
-            f"kl {row['approximate_kl']:+.4f}  clip {row['clip_fraction']:.3f}  "
-            f"drift {row['ratio_drift_max']:.3f}  nonfinite {row['nonfinite_gradients']}/"
-            f"{row['nonfinite_beliefs']}  reward/s: {rewards}",
+            f"update {row['counters/updates']:4d}  "
+            f"rollout {row['train/time/rollout_seconds'] * 1e3:6.0f} ms  "
+            f"learn {row['train/time/learner_seconds'] * 1e3:6.0f} ms  "
+            f"entropy {row.get('policy/entropy/joint', float('nan')):.2f}  "
+            f"kl {row['policy/kl']:+.4f}  clip {row['policy/clip_fraction']:.3f}  "
+            f"drift {row['policy/ratio_drift/max']:.3f}  skipped {row['train/skipped_steps']}  "
+            f"nonfinite beliefs {row['counters/nonfinite_beliefs']}  reward/s: {rewards}",
             flush=True,
         )
 
@@ -496,20 +506,33 @@ def train(options: Train, given_options: set[str]) -> None:
         state = checkpoint.league_state(source) if options.resume else None
         League(trainer, run.directory / "league", run, state)
 
+    from bnb.runs.recording import Recorder
+    from bnb.runs.sinks import Sinks
+    from bnb.runs.triggers import Triggers
+
+    sinks = Sinks(run, to_json(config), wandb=options.wandb)
+    rules = Triggers(state=checkpoint.triggers_state(source) if options.resume else None)
+    recorder = Recorder(run, trainer, sinks, rules)
     try:
         if config.objective == "bc":
             from bnb.learn import bc
 
             status = session.clone(
-                run, trainer, bc.StopConfig(budget_steps=options.bc_budget_steps), log_cloning
+                run,
+                trainer,
+                bc.StopConfig(budget_steps=options.bc_budget_steps),
+                log_cloning,
+                recorder,
             )
             print(
                 f"stopped by {run.record['stopped_by']}; the clone is {run.policy_path}", flush=True
             )
         else:
-            status = session.train(run, trainer, log)
+            status = session.train(run, trainer, log, recorder=recorder)
     except MemoryBudgetError as error:  # the run is marked failed with the same message
         raise SystemExit(str(error)) from error
+    finally:
+        sinks.close()
     print(f"run {run.record['name']} {status} at step {trainer.ppo.environment_steps}")
 
 
@@ -518,22 +541,23 @@ def log_cloning(row: dict) -> None:
     teacher's and student's entropies (nats), each score, and the score stop's window once it is
     full."""
     scores = " ".join(
-        f"{kind} {value['score']:.3f}"
-        for kind, value in row["scores"].items()
-        if value["score"] is not None
+        f"{name.split('/')[-1]} {value:.3f}"
+        for name, value in row.items()
+        if name.startswith("bc/score/")
     )
     # the score stop's window against the scripted agent, once full: its score and bound
     window = (
-        ""
-        if row["window_score"] is None
-        else f"  window {row['window_score']:.3f} (bound {row['window_lower_bound']:.3f})"
+        f"  window {row['bc/stop/window_score']:.3f} "
+        f"(bound {row['bc/stop/window_lower_bound']:.3f})"
+        if "bc/stop/window_score" in row
+        else ""
     )
     print(
-        f"update {row['update']:4d}  steps {row['environment_steps']:>11,}  "
-        f"rollout {row['rollout_seconds'] * 1e3:6.0f} ms  "
-        f"learn {row['learn_seconds'] * 1e3:6.0f} ms  "
-        f"bc kl {row['bc_kl']:.4f}  teacher {row['teacher_entropy']:.3f}  "
-        f"student {row['student_entropy']:.3f}  scores: {scores}{window}",
+        f"update {row['counters/updates']:4d}  steps {row['counters/environment_steps']:>11,}  "
+        f"rollout {row['train/time/rollout_seconds'] * 1e3:6.0f} ms  "
+        f"learn {row['train/time/learner_seconds'] * 1e3:6.0f} ms  "
+        f"bc kl {row['bc/kl']:.4f}  teacher {row['bc/entropy/target']:.3f}  "
+        f"student {row['bc/entropy/student']:.3f}  scores: {scores}{window}",
         flush=True,
     )
 
@@ -592,6 +616,8 @@ def runs(options: Runs) -> None:
         run = Run.open(runs_directory, options.run)
         if options.action == "show":
             print("\n".join(show(run)))
+        elif options.action == "dashboard":
+            print(dashboard(run))
         elif options.action == "upload":
             from bnb.runs import upload
 
@@ -599,9 +625,29 @@ def runs(options: Runs) -> None:
                 raise SystemExit(f"--to {options.to!r}: the only target is wandb for now")
             print(upload.upload(run, options.at, options.league))
         else:
-            raise SystemExit(f"bnb runs {options.action!r}: the actions are list, show, upload")
+            raise SystemExit(
+                f"bnb runs {options.action!r}: the actions are list, show, upload, dashboard"
+            )
     except FileNotFoundError as error:
         raise SystemExit(str(error)) from error
+
+
+def dashboard(run) -> str:
+    """`bnb runs dashboard RUN`: build or update the run's headline and curated W&B views
+    (`bnb.runtime.dashboards`; the `tools` extra)."""
+    import os
+
+    import wandb
+
+    from bnb.runs.upload import PROJECT
+    from bnb.runtime import dashboards
+
+    entity = os.environ.get("WANDB_ENTITY") or wandb.Api().default_entity
+    config = json.loads((run.directory / "config.json").read_text())
+    views = dashboards.build(run.record["name"], entity, PROJECT, config.get("objective") == "bc")
+    for view in views.values():
+        view.save()
+    return "\n".join(f"{name}: {view.url}" for name, view in views.items())
 
 
 def show(run) -> list[str]:

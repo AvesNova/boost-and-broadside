@@ -18,12 +18,17 @@ from collections.abc import Callable
 import torch
 
 from bnb.contracts import Action, Obs, Outputs, Trajectory
-from bnb.contracts.action import NUM_JOINT
+from bnb.contracts.action import NUM_JOINT, NUM_POWER, NUM_SHOOT, NUM_STICK
+from bnb.contracts.series import Mean
 from bnb.controllers.scripted import Scripted, marginals, sample, uniform_actions
 
 from . import losses
 from .ppo import Learner, LearnerConfig
 
+# The student's agreement with the labels' likeliest action: per factor, and jointly.
+AGREEMENTS = ("power", "stick", "shoot", "joint")
+# BC's per-pool sums over the living own ship-steps, in order.
+SUMS = ("kl", "teacher", "student", "tokens", *(f"agreement_{name}" for name in AGREEMENTS))
 Teacher = Callable[[Obs], torch.Tensor]  # views (R, ...) -> (R, S, NUM_JOINT) probabilities
 # The labels' default uniform floor (author): no label gives an action probability 0, so the
 # clone can sample every action in reinforcement learning.
@@ -100,6 +105,13 @@ class TeacherOpponent:
         return Action.unpack(action), carry, Outputs()
 
 
+def factor_marginals(probabilities: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    """The power, stick and shoot marginals of joint probabilities (..., NUM_JOINT), in
+    `bnb.contracts.action.to_joint`'s order, and the joint itself."""
+    joint = probabilities.unflatten(-1, (NUM_POWER, NUM_STICK, NUM_SHOOT))
+    return joint.sum((-2, -1)), joint.sum((-3, -1)), joint.sum((-3, -2)), probabilities
+
+
 def entropy(probabilities: torch.Tensor) -> torch.Tensor:
     """In nats, over the last axis (0 log 0 = 0)."""
     return -torch.special.xlogy(probabilities, probabilities).sum(-1)
@@ -138,16 +150,17 @@ class BehaviourCloning(Learner):
         view_pool: torch.Tensor,
         stage: Callable = lambda function: function,
         seed: int = 0,
+        diagnostics: bool = True,
     ) -> None:
         self.teacher, self.teacher_config, self.pools = teacher, teacher_config, pools
-        # (KL, teacher entropy, student entropy, tokens) per pool.
-        self.STATISTICS = tuple(
-            f"{name}/{pool}" for name in ("kl", "teacher", "student", "tokens") for pool in pools
-        )
+        # (KL, teacher entropy, student entropy, tokens, agreements) per pool.
+        self.STATISTICS = tuple(f"{name}/{pool}" for name in SUMS for pool in pools)
         self.pool_one_hot = torch.nn.functional.one_hot(view_pool.to(device), len(pools)).float()[
             None
         ]
-        super().__init__(model, config, rules, types, outcome_weight, device, stage, seed)
+        super().__init__(
+            model, config, rules, types, outcome_weight, device, stage, seed, diagnostics
+        )
 
     def prepare(self, segments, bootstraps: list) -> dict:
         """The Learner's prepare, with each view's pool one-hot (1, V, pools) added to derived for
@@ -188,28 +201,48 @@ class BehaviourCloning(Learner):
                 )
             ]
         )
-        statistics = (per_view @ derived["pool"][0]).flatten()  # (4 pools,)
+        agreements = [
+            (student.argmax(-1) == teacher.argmax(-1)).float()
+            for student, teacher in zip(
+                factor_marginals(log_probabilities.exp()), factor_marginals(target), strict=True
+            )
+        ]
+        per_view = torch.cat(
+            [
+                per_view,
+                torch.stack(
+                    [torch.where(own_alive, value, 0.0).sum((0, 2)) for value in agreements]
+                ),
+            ]
+        )
+        statistics = (per_view @ derived["pool"][0]).flatten()  # (SUMS x pools,)
         return (
             losses.masked_sum(cross, own_alive) / denominator["policy"],
             losses.masked_sum(student_entropy, own_alive) / denominator["policy"],
             statistics,
         )
 
-    def report(self, statistics: list[float]) -> dict:
-        """The BC KL and both entropies, per living own ship-step: overall and per pool."""
-        pools = len(self.pools)
-        kl, teacher, student, tokens = (statistics[i * pools : (i + 1) * pools] for i in range(4))
-        total = max(sum(tokens), 1e-12)
-        out = dict(
-            bc_kl=sum(kl) / total,
-            teacher_entropy=sum(teacher) / total,
-            student_entropy=sum(student) / total,
-        )
+    def report(
+        self, first_epoch: torch.Tensor, last_epoch: torch.Tensor, mean: torch.Tensor
+    ) -> dict:
+        """Over the first epoch (the score stop reads `bc/kl`), per living own ship-step:
+        the BC KL, both entropies and the student's agreement with the labels' likeliest
+        action per factor and jointly (`bc/agreement/{factor}`), overall and the KL and
+        entropies per pool (`bc/kl_by_pool/{pool}`, ...)."""
+        sums = first_epoch.reshape(len(SUMS), len(self.pools))
+        named = dict(zip(SUMS, sums.unbind(), strict=True))
+        tokens = named["tokens"]
+        out = {
+            "bc/kl": Mean(named["kl"].sum(), tokens.sum()),
+            "bc/entropy/target": Mean(named["teacher"].sum(), tokens.sum()),
+            "bc/entropy/student": Mean(named["student"].sum(), tokens.sum()),
+        }
+        for factor in AGREEMENTS:
+            out[f"bc/agreement/{factor}"] = Mean(named[f"agreement_{factor}"].sum(), tokens.sum())
         for index, pool in enumerate(self.pools):
-            count = max(tokens[index], 1e-12)
-            out[f"bc_kl/{pool}"] = kl[index] / count
-            out[f"teacher_entropy/{pool}"] = teacher[index] / count
-            out[f"student_entropy/{pool}"] = student[index] / count
+            out[f"bc/kl_by_pool/{pool}"] = Mean(named["kl"][index], tokens[index])
+            out[f"bc/entropy_by_pool/target/{pool}"] = Mean(named["teacher"][index], tokens[index])
+            out[f"bc/entropy_by_pool/student/{pool}"] = Mean(named["student"][index], tokens[index])
         return out
 
 

@@ -36,6 +36,7 @@ def train_config(size: dict | None, environments: int, preset: str | None):
 
 def train_cell(size: dict | None, environments: int, preset: str | None = None) -> dict:
     """Compile, run one episode, then the best of `TIMED` collects and updates."""
+    from bnb.runtime import metrics
     from bnb.runtime.train import Trainer
 
     torch.manual_seed(0)
@@ -57,7 +58,7 @@ def train_cell(size: dict | None, environments: int, preset: str | None = None) 
         store, bootstraps = trainer.collect()
         torch.cuda.synchronize()
         collected = time.perf_counter()
-        trainer.ppo.update(store, bootstraps)
+        metrics.read(trainer.ppo.update(store, bootstraps))  # the update's one readback
         learned = time.perf_counter()
         rollout_seconds.append(collected - started)
         learn_seconds.append(learned - collected)

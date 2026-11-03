@@ -25,6 +25,7 @@ from bnb.models.relational import RelationalConfig
 from bnb.models.yemong import critic, policy
 from bnb.models.yemong.density import HexGrid, poisson_terms
 from bnb.models.yemong.inputs import believed, truth
+from bnb.runtime import metrics
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -146,7 +147,7 @@ def test_each_loss_term_matches_an_independent_computation(segment):
     denominator = dict(zip(COUNTS, prepared["counts"].sum(0).clamp_min(1).unbind()))
     derived = prepared["derived"]
     with torch.no_grad():
-        _, terms, per_level, _ = learner.loss(
+        _, terms, per_level, _, _ = learner.loss(
             trajectory, label, derived, denominator, prepared["scale"]
         )
         out = learner.unroll(trajectory)
@@ -251,7 +252,7 @@ def test_micro_batches_accumulate_to_the_unsplit_minibatch(segment):
 
     def gradient(size: int):
         lc.with_micro_batch(learner, size)
-        terms, levels, statistics = learner.gradient(runner.store, prepared, views)
+        terms, levels, statistics, _ = learner.gradient(runner.store, prepared, views)
         return terms, [parameter.grad.clone() for parameter in net.parameters()]
 
     whole_terms, whole = gradient(runner.store.views)
@@ -430,8 +431,9 @@ def test_an_update_consumes_several_shards():
     following = second.obs.globals[0, :, GLOBAL["episode_progress"]]
     continued = ~first.done[-1]
     torch.testing.assert_close(following[continued], progress[-1][continued] + 1.0 / 60.0)
-    stats = trainer.ppo.update(store, bootstraps)
-    assert stats["minibatch_steps"] == 8 and math.isfinite(stats["loss/value"])
+    stats = metrics.read(trainer.ppo.update(store, bootstraps))
+    assert stats["policy/minibatch_steps"] == 8
+    assert math.isfinite(stats["critic/value_loss/outcome"])
 
 
 # ------------------------------------------------------------------ the update's other paths
@@ -535,7 +537,7 @@ def test_the_update_is_the_same_whatever_the_global_seed(segment):
         model = copy.deepcopy(net)
         learner = lc.learner(model, runner, epochs=1, minibatches=3)
         torch.manual_seed(seed)
-        out = learner.update(runner.store, [runner.bootstrap()])
+        out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
         results.append((out, [parameter.detach().clone() for parameter in model.parameters()]))
     (first, first_parameters), (second, second_parameters) = results
     assert first == second
@@ -548,6 +550,6 @@ def test_the_kl_early_stop_ends_the_update_after_an_epoch(segment):
     net, runner, _, _ = segment
     for target, steps, stopped in ((-1.0, 2, True), (math.inf, 4, False)):
         learner = lc.learner(copy.deepcopy(net), runner, epochs=2, minibatches=2, target_kl=target)
-        out = learner.update(runner.store, [runner.bootstrap()])
-        assert out["minibatch_steps"] == steps and out["stopped_early"] == stopped
-        assert out["approximate_kl"] >= 0.0
+        out = metrics.read(learner.update(runner.store, [runner.bootstrap()]))
+        assert out["policy/minibatch_steps"] == steps and out["policy/stopped_early"] == stopped
+        assert out["policy/kl"] >= 0.0

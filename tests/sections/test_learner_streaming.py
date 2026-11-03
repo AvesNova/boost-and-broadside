@@ -14,6 +14,7 @@ from bnb.controllers.scripted import Chaser
 from bnb.game import api
 from bnb.learn.ppo import Learner, LearnerConfig
 from bnb.learn.rewards import RewardConfig
+from bnb.runtime import metrics
 from bnb.runtime.rollout import Rollout
 
 pytestmark = [
@@ -73,7 +74,7 @@ def _gradient(net, runner, bootstraps):
     )
     prepared = learner.prepare(store, bootstraps)
     chosen = torch.randperm(views, generator=torch.Generator().manual_seed(0))
-    terms, levels, _ = learner.gradient(store, prepared, chosen)
+    terms, levels, _, _ = learner.gradient(store, prepared, chosen)
     return prepared["counts"], terms, levels, [p.grad.clone() for p in net.parameters()]
 
 
@@ -111,11 +112,11 @@ def test_an_update_synchronises_only_to_read_its_kl_and_its_results():
         warnings.simplefilter("always")
         torch.cuda.set_sync_debug_mode("warn")
         try:
-            out = learner.update(runner.store, bootstraps)
+            out = metrics.read(learner.update(runner.store, bootstraps))
         finally:
             torch.cuda.set_sync_debug_mode("default")
     synchronising = [w for w in caught if "called a synchronizing" in str(w.message)]
-    assert out["minibatch_steps"] == 12
+    assert out["policy/minibatch_steps"] == 12
     assert len(synchronising) == config.epochs, [(w.filename, w.lineno) for w in synchronising]
 
 

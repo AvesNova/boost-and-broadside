@@ -17,7 +17,7 @@ from typing import Protocol
 
 import torch
 
-from bnb.contracts import REWARD_LEVELS, GameConfig, Pool
+from bnb.contracts import GameConfig, Pool
 from bnb.controllers.relational import RelationalController
 from bnb.controllers.scripted import Chaser, Random, Scripted, distribution
 from bnb.controllers.yemong import YemongController
@@ -30,8 +30,10 @@ from bnb.learn.rewards import RewardConfig
 from bnb.models.relational import Relational, RelationalBuild, RelationalConfig
 from bnb.models.yemong.model import Yemong, YemongBuild, YemongConfig, yemong_build
 
+from . import analytics
 from .evaluate import first_results, shares
 from .lineup import Lineup
+from .metrics import Collector
 from .opponents import OPPONENTS, LeagueConfig, OpponentSlots, stream_key
 from .rollout import Rollout
 
@@ -192,7 +194,7 @@ class LeagueHooks(Protocol):
         """The rollout is done and the weights are still the ones that played it."""
 
     def updated(self, trainer: Trainer) -> dict:
-        """The update's learning is done; returns the league's metrics."""
+        """The update's learning is done; returns the league's series on the host."""
 
     def state(self) -> tuple[dict, dict[str, torch.Tensor]]:
         """What a training checkpoint keeps: (a JSON record, named tensors)."""
@@ -201,13 +203,18 @@ class LeagueHooks(Protocol):
 class Trainer:
     """The run's model (built from `model_build(config)`), the league's seat, opponents,
     rollout and learner, playing the config's ship card (`types`). `league`: the league's
-    hooks, attached by `bnb.league` (None: the seat's slots keep what they hold)."""
+    hooks, attached by `bnb.league` (None: the seat's slots keep what they hold).
+    diagnostics: measure the learner's diagnostic series (diagnostics spec 1); none of them
+    changes the update."""
 
-    def __init__(self, config: TrainConfig, device: torch.device) -> None:
+    def __init__(self, config: TrainConfig, device: torch.device, diagnostics: bool = True) -> None:
         game = config.game
         self.config = config
         self.model = build_model(model_build(config), device)
         self.league: LeagueHooks | None = None
+        # the trigger rules (`bnb.runs.triggers`), attached by the run's recorder: their
+        # state is part of the training checkpoint
+        self.triggers = None
         cloning = config.objective == "bc"
         seated = {name for pool in config.pools for name in pool.seats}
         self.types = types = config.ship_types(device)
@@ -287,6 +294,7 @@ class Trainer:
                 self.learner_pool.repeat(config.shards),
                 stage=stage,
                 seed=config.seed,
+                diagnostics=diagnostics,
             )
         else:
             self.ppo = Learner(
@@ -298,8 +306,20 @@ class Trainer:
                 device,
                 stage=stage,
                 seed=config.seed,
+                diagnostics=diagnostics,
             )
         self.updates_done = 0
+        environment_pool = torch.repeat_interleave(
+            torch.arange(len(lineup.pools), device=device),
+            torch.tensor(lineup.sizes, device=device),
+        )
+        self.analytics = analytics.Analytics(
+            self.pool_names,
+            self.learner_pool.repeat(config.shards),
+            environment_pool,
+            rules.tick_length,
+            game.mode,
+        )
 
     @property
     def steps_per_update(self) -> int:
@@ -324,70 +344,42 @@ class Trainer:
         if self.opponents is not None:
             self.opponents.fill(self.model.state_dict())
 
-    def pool_metrics(self, store) -> dict:
-        """Per pool: the learner's reward per level, per ship and second, and its episode
-        results (wins, draws, losses) in the stored segments. The per-pool sums are masked
-        reductions, not atomic adds, so the metrics are the same on every run of the same
-        data (an exact resume logs what a run straight through logs)."""
-        pools = len(self.pool_names)
-        device = self.learner_pool.device
-        member = self.learner_pool[None, :] == torch.arange(pools, device=device)[:, None]
-        member = member.float()[..., None]  # (pools, views, 1)
-        steps = torch.zeros(pools, device=device)
-        totals = torch.zeros((pools, len(REWARD_LEVELS)), device=device)
-        results = torch.zeros((pools, 3), device=device)
-        for shard in range(store.shards):
-            small = store.shard(("reward", "done", "result"), shard)
-            reward, ended, result = small["reward"], small["done"], small["result"]
-            steps += member[..., 0].sum(1) * reward.shape[0]
-            totals += (member * reward.mean(2).sum(0)).sum(1)
-            per_view = torch.stack(
-                [
-                    (ended & (result > 0)).sum(0),
-                    (ended & (result == 0)).sum(0),
-                    (ended & (result < 0)).sum(0),
-                ],
-                -1,
-            ).float()
-            results += (member * per_view).sum(1)
-        rate = (totals / steps.clamp_min(1)[:, None] / self.rollout.rules.tick_length).tolist()
-        results = results.tolist()
-        return {
-            name: dict(
-                reward_per_second=dict(zip(REWARD_LEVELS, rate[index])),
-                results=dict(zip(("wins", "draws", "losses"), results[index])),
-            )
-            for index, name in enumerate(self.pool_names)
-        }
-
     def update(self) -> dict:
         """One update: collect every shard, learn from them, with the league's hooks around
-        the learning. Returns the update's metrics."""
+        the learning. Returns the update's series on the host (`bnb.runtime.metrics`), read
+        back in one transfer, and its two phases' wall-clock times
+        (`train/time/rollout_seconds`, `train/time/learner_seconds`)."""
         started = time.perf_counter()
         store, bootstraps = self.collect()
-        pools = self.pool_metrics(store)
+        collector = Collector()
+        collector.add(self.analytics.episodes(self.rollout.take_episodes()))
+        for shard in range(store.shards):
+            collector.add(self.analytics.shard(store.shard(analytics.NAMES, shard)))
         if self.league is not None:
             self.league.collected(self)
         collected = time.perf_counter()
-        stats = self.ppo.update(store, bootstraps, self.steps_per_update)  # ends in host syncs
-        learned = time.perf_counter()
+        collector.set(self.ppo.update(store, bootstraps, self.steps_per_update))
         self.updates_done += 1
-        league = {} if self.league is None else self.league.updated(self)
-        return dict(
-            **league,
-            update=self.updates_done,
-            rollout_seconds=collected - started,
-            learn_seconds=learned - collected,
-            pools=pools,
-            nonfinite_beliefs=self.nonfinite_beliefs(),
-            **stats,
+        collector.set(
+            {
+                "counters/updates": self.updates_done,
+                "counters/environment_steps": self.ppo.environment_steps,
+                "counters/nonfinite_beliefs": self.nonfinite_beliefs(),
+            }
         )
+        row = collector.read()  # the update's one transfer
+        learned = time.perf_counter()
+        if self.league is not None:
+            row.update(self.league.updated(self))
+        row["train/time/rollout_seconds"] = collected - started
+        row["train/time/learner_seconds"] = learned - collected
+        return row
 
-    def nonfinite_beliefs(self) -> int:
-        """Non-finite belief entries the learner's carry has counted since its rollouts began
-        (Yemong's `Carry.nonfinite`; 0 for a model without one)."""
+    def nonfinite_beliefs(self) -> torch.Tensor | int:
+        """Non-finite belief entries the learner's carry has counted since its rollouts began,
+        on the device (Yemong's `Carry.nonfinite`; 0 for a model without one)."""
         counts = getattr(self.rollout.carry["controllers"][LEARNER], "nonfinite", None)
-        return 0 if counts is None else int(counts.sum())
+        return 0 if counts is None else counts.sum()
 
 
 def win_rate(trainer: Trainer, opponent: str = "chaser", games: int = 256) -> dict:

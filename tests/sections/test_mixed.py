@@ -17,6 +17,7 @@ from bnb.game import api
 from bnb.game.layout import environment, slices
 from bnb.learn import rewards
 from bnb.models.relational import RelationalConfig
+from bnb.runtime import analytics, metrics
 
 # The code under test draws from torch's default generator (model initialisation, the
 # rollout, the scripted opponents): each test runs with it seeded and restored.
@@ -486,8 +487,10 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
     )
     trainer = Trainer(cfg, torch.device("cpu"))
     store, bootstraps = trainer.collect()
-    metrics = trainer.pool_metrics(store)
-    assert set(metrics) == set(GAMES)
+    series = metrics.read(trainer.analytics.shard(store.shard(analytics.NAMES, 0)))
+    assert {name.removeprefix("episode/wins/") for name in series if "episode/wins/" in name} == (
+        set(GAMES)
+    )
     zones = trainer.rollout.carry["obs"]["zones"]
     assert zones.shape[2] == 5
     assert (zones[:4, ..., ZONE["present"]] == 1).all() and not zones[4:].any()
@@ -496,8 +499,8 @@ def test_the_rollout_runs_a_mixed_batch_and_reports_every_pool():
         globals_[..., GLOBAL["arena_radius"]][:, 0].tolist()
         == [300.0] * 4 + [900.0] * 4 + [1200.0] * 4 + [300.0] * 4
     )
-    stats = trainer.ppo.update(store, bootstraps)
-    assert math.isfinite(stats["loss/policy"]) and math.isfinite(stats["loss/value"])
+    stats = metrics.read(trainer.ppo.update(store, bootstraps))
+    assert math.isfinite(stats["policy/kl"]) and math.isfinite(stats["critic/value_loss/outcome"])
 
 
 def test_the_rollout_staggers_each_start_clock_within_its_own_episode():

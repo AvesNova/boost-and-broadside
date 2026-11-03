@@ -6,7 +6,7 @@ covers: []
 
 <!-- generated: section-status -->
 
-That record is a draft audit of the metrics to port.
-
-It will cover the metric registry, the logging sink, and dumps for replaying a crash
-offline. Each metric is to be tested against a hand-computed case.
+It will cover the series training logs (named quantity first, read back once per update),
+the run's `metrics.jsonl`{.plain} and the live W&B stream (`bnb train --wandb`), the trigger
+rules, the skipped-step dump and the dashboards (`bnb runs dashboard`). Each series is tested
+against a hand-computed case.

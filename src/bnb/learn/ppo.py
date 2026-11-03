@@ -29,13 +29,14 @@ from torch.utils import _pytree
 from bnb.contracts import REWARD_LEVELS, Trajectory
 from bnb.contracts.action import to_joint
 from bnb.contracts.obs import GLOBAL, SHIP
+from bnb.contracts.series import Mean
 from bnb.game.rules import Rules
 from bnb.game.ship_types import ShipTypes
 from bnb.models.yemong import codes, critic, policy
 from bnb.models.yemong import shots as shot_codes
 from bnb.models.yemong.density import HexGrid, poisson_terms
 
-from . import labels, losses, returns, shots
+from . import labels, losses, returns, shots, statistics
 
 TERMS = (
     "policy",
@@ -52,6 +53,14 @@ TERMS = (
 COUNTS = ("policy", "valued", "steps", "next_state", "enemy_action", "shots")
 # The per-tick records the returns read, staged whole per shard.
 SMALL = ("reward", "values", "outcome", "done", "result", "log_probability", "alive", "valued")
+# The auxiliary heads' losses (nats per token), as their groups' series.
+HEAD_SERIES = {
+    "next_state": "next_state/loss",
+    "enemy_action": "enemy_action/loss",
+    "density": "density/loss",
+    "shot_trajectory": "shot/loss/trajectory",
+    "shot_outcome": "shot/loss/outcome",
+}
 # The stored shot labels' name in the store: per view, {"shots": Shots, "mask"}, (V, L, ...).
 SHOT_LABELS = "shot_labels"
 
@@ -188,8 +197,11 @@ class Learner:
         device: torch.device,
         stage: Callable = lambda function: function,
         seed: int = 0,
+        diagnostics: bool = True,
     ) -> None:
-        """seed: the learner's random streams (the shot spread, the minibatch order)."""
+        """seed: the learner's random streams (the shot spread, the minibatch order).
+        diagnostics: measure the diagnostic series beyond the losses and the early stop's
+        KL (none of them changes the update)."""
         self.model, self.config, self.rules, self.types = model, config, rules, types
         self.device, self.outcome_weight = device, outcome_weight
         levels = model.config.levels
@@ -218,6 +230,11 @@ class Learner:
         self.shot_tick = stage(shots.tick)
         self.codes = stage(self._codes)
         self.environment_steps = 0
+        self.diagnostics = diagnostics
+        self.parameter_groups = statistics.parameter_groups(model)
+        # made once: a tensor built from host values inside the update would be a copy
+        self.return_quantiles = torch.tensor([0.05, 0.5, 0.95], device=device)
+        self.entropy_quantiles = torch.tensor(statistics.ENTROPY_QUANTILES, device=device)
 
     # ------------------------------------------------------------------ returns
 
@@ -352,13 +369,15 @@ class Learner:
         scale: torch.Tensor,
     ):
         """One micro-batch: (loss, terms (TERMS,), value loss per level (levels,), statistics
-        (STATISTICS,)), every sum over its tokens divided by its minibatch-total
+        (STATISTICS,), diagnostics (the policy's sums, `statistics.POLICY_SUMS` and the
+        entropy histogram, then the critic targets' entropy per level; empty without
+        diagnostics)), every sum over its tokens divided by its minibatch-total
         denominator."""
         config, model = self.config, self.model
         unrolled = self.unroll(trajectory)
         own = trajectory.log_probability.shape[-1]
         terms = dict.fromkeys(TERMS, unrolled.policy_logits.new_zeros(()))
-        terms["policy"], terms["entropy"], statistics = self._policy(
+        terms["policy"], terms["entropy"], statistic = self._policy(
             unrolled, trajectory, derived, denominator, scale
         )
         per_level = losses.critic_losses(
@@ -415,8 +434,38 @@ class Learner:
             loss,
             torch.stack([terms[term] for term in TERMS]).detach(),
             per_level.detach(),
-            statistics.detach(),
+            statistic.detach(),
+            self._diagnostics(unrolled, trajectory, derived, denominator),
         )
+
+    @torch.no_grad()
+    def _diagnostics(
+        self, unrolled, trajectory: Trajectory, derived: dict, denominator: dict
+    ) -> torch.Tensor:
+        """The micro-batch's diagnostic sums over its denominators (see `_loss`); empty
+        without diagnostics."""
+        if not self.diagnostics:
+            return unrolled.policy_logits.new_zeros(0, dtype=torch.float32)
+        own = trajectory.log_probability.shape[-1]
+        own_alive = trajectory.alive[..., :own]
+        logits = unrolled.policy_logits.float()
+        log_probability, entropy = policy.evaluate(logits, _own_joint(trajectory))
+        ratio = torch.exp(log_probability - derived["old_log_probability"])
+        sums = statistics.policy_sums(logits, ratio, entropy, self.config.clip, own_alive)
+        local = statistics.target_entropy(
+            critic.two_hot(
+                derived["level_returns"].index_select(-1, self.local_index), self.model.bins
+            )
+        )  # (L, R, S, levels - 1)
+        local = torch.where(trajectory.valued[..., None], local, 0.0).flatten(0, -2).sum(0)
+        columns = dict(
+            zip(self.local_levels, (local / denominator["valued"]).unbind(), strict=True)
+        )
+        columns[self.outcome_level] = (
+            statistics.target_entropy(derived["outcome_targets"]).sum() / denominator["steps"]
+        )
+        targets = torch.stack([columns[level] for level in range(len(columns))])
+        return torch.cat([sums / denominator["policy"], targets])
 
     STATISTICS = ("clip_fraction", "approximate_kl")  # what `_policy` reports per minibatch
 
@@ -444,10 +493,6 @@ class Learner:
             losses.masked_sum(entropy, own_alive) / denominator["policy"],
             torch.stack([clipped, divergence]) / denominator["policy"],
         )
-
-    def report(self, statistics: list[float]) -> dict:
-        """The first epoch's mean STATISTICS, by name."""
-        return dict(zip(self.STATISTICS, statistics, strict=True))
 
     # ------------------------------------------------------------------ update
 
@@ -522,8 +567,15 @@ class Learner:
                             self.unroll(trajectory).policy_logits, _own_joint(trajectory)
                         )
                         derived["old_log_probability"][:, views] = log_probability
-        variance = explained_variance(
-            joined("level_returns", parts), joined("values", parts), joined("valued", small)
+        level_returns, values = joined("level_returns", parts), joined("values", parts)
+        valued = joined("valued", small)
+        variance = explained_variance(level_returns, values, valued)
+        series = (
+            self._target_series(
+                level_returns, values, valued, derived["advantage"], own_alive, scale
+            )
+            if self.diagnostics
+            else {}
         )
         return dict(
             derived=derived,
@@ -531,20 +583,68 @@ class Learner:
             counts=counts,
             scale=scale,
             explained_variance=variance,
+            series=series,
         )
+
+    def _target_series(
+        self,
+        level_returns: torch.Tensor,
+        values: torch.Tensor,
+        valued: torch.Tensor,
+        advantage: torch.Tensor,
+        own_alive: torch.Tensor,
+        scale: torch.Tensor,
+    ) -> dict:
+        """The targets' series, measured before any step (diagnostics audit, group 5): per
+        level over the valued ships, the return's mean and percentiles (5, 50, 95), the
+        rollout critic's bias (prediction less target) and the share of returns outside the
+        categorical critic's support; the normalised advantage's mean and RMS over the
+        living ships; the return scale's percentile EMAs and whether the floor holds it.
+        level_returns, values (L, V, S, levels) in reward units; valued, own_alive and
+        advantage (L, V, S)."""
+        out = {}
+        mask = valued[..., None].expand_as(level_returns)
+        count = mask.float().sum((0, 1, 2))  # (levels,)
+        bins = self.model.bins
+        outside = ((level_returns < bins[0]) | (level_returns > bins[-1])).float()
+        flat = torch.where(mask, level_returns, torch.nan).flatten(0, 2)  # (tokens, levels)
+        quantiles = torch.nanquantile(flat, self.return_quantiles, dim=0)  # (3, levels)
+        for index, level in enumerate(REWARD_LEVELS):
+
+            def total(x: torch.Tensor) -> torch.Tensor:
+                return torch.where(mask[..., index], x[..., index], 0.0).sum()
+
+            out[f"critic/return_mean/{level}"] = Mean(total(level_returns), count[index])
+            out[f"critic/value_bias/{level}"] = Mean(total(values - level_returns), count[index])
+            if index != self.outcome_level:  # the outcome's head is not over the bins
+                out[f"critic/support_clip/{level}"] = Mean(total(outside), count[index])
+            for row, name in enumerate(("p5", "p50", "p95")):
+                out[f"returns/{name}/{level}"] = quantiles[row, index]
+        normalised = advantage / scale
+        living = own_alive.float()
+        out["returns/advantage_mean"] = Mean((normalised * living).sum(), living.sum())
+        out["returns/advantage_rms"] = torch.sqrt(
+            (normalised.square() * living).sum() / living.sum().clamp_min(1.0)
+        )
+        out["returns/scale_p5"] = self.return_scale.low.clone()
+        out["returns/scale_p95"] = self.return_scale.high.clone()
+        out["returns/scale_floored"] = (
+            self.return_scale.high - self.return_scale.low < self.return_scale.floor
+        )
+        return out
 
     def gradient(self, segments: Segments, prepared: dict, chosen: torch.Tensor) -> tuple:
         """Accumulate one minibatch's gradient (views `chosen`, host indices) into the
-        parameters' .grad,
-        micro-batch by micro-batch: (terms (TERMS,), value loss per level, statistics
-        (clip fraction, approximate KL)), each the minibatch's."""
+        parameters' .grad, micro-batch by micro-batch: (terms (TERMS,), value loss per
+        level, statistics (STATISTICS,), diagnostics (see `_loss`)), each the minibatch's."""
         device, derived = self.device, prepared["derived"]
         total = prepared["counts"][self._on_device(chosen)].sum(0).clamp_min(1.0)
         denominator = dict(zip(COUNTS, total.unbind()))
         micro = self._micro_batches(chosen)
         terms_sum = torch.zeros(len(TERMS), device=device)
         levels_sum = torch.zeros(len(REWARD_LEVELS), device=device)
-        statistics = torch.zeros(len(self.STATISTICS), device=device)
+        statistic_sum = torch.zeros(len(self.STATISTICS), device=device)
+        diagnostic_sum = None
         self.optimizer.zero_grad(set_to_none=True)
         for host_views, (trajectory, shot_labels) in zip(
             micro, self.staged(segments, micro), strict=True
@@ -552,19 +652,53 @@ class Learner:
             views = self._on_device(host_views)
             label = self.labels(trajectory, shot_labels)
             part = {name: value.index_select(1, views) for name, value in derived.items()}
-            loss, terms, per_level, statistic = self.loss(
+            loss, terms, per_level, statistic, diagnostic = self.loss(
                 trajectory, label, part, denominator, prepared["scale"]
             )
             loss.backward()
             terms_sum += terms
             levels_sum += per_level
-            statistics += statistic
-        return terms_sum, levels_sum, statistics
+            statistic_sum += statistic
+            diagnostic_sum = diagnostic if diagnostic_sum is None else diagnostic_sum + diagnostic
+        return terms_sum, levels_sum, statistic_sum, diagnostic_sum
 
-    def update(self, segments: Segments, bootstraps: list, environment_steps: int = 0) -> dict:
+    def _step(self, finite: torch.Tensor) -> None:
+        """The optimizer's step, kept only where `finite` (a device flag) holds: a step with
+        a non-finite gradient leaves the parameters and the optimizer's state as they were
+        (learner spec 4d: skipped and counted), with no host synchronisation. A state the
+        step creates (the first step) is zero before it, as Adam starts it."""
+        tensors = [p for group in self.optimizer.param_groups for p in group["params"]]
+        tensors += [
+            value
+            for state in self.optimizer.state.values()
+            for value in state.values()
+            if isinstance(value, torch.Tensor)
+        ]
+        saved = [tensor.detach().clone() for tensor in tensors]
+        known = set(map(id, tensors))
+        self.optimizer.step()
+        created = [
+            value
+            for state in self.optimizer.state.values()
+            for value in state.values()
+            if isinstance(value, torch.Tensor) and id(value) not in known
+        ]
+        with torch.no_grad():
+            for tensor, before in zip(tensors, saved, strict=True):
+                tensor.copy_(torch.where(finite.to(tensor.device), tensor, before))
+            for tensor in created:
+                tensor.copy_(torch.where(finite.to(tensor.device), tensor, 0))
+
+    def update(
+        self,
+        segments: Segments,
+        bootstraps: list,
+        environment_steps: int = 0,
+    ) -> dict:
         """One update from the store's shards and their bootstraps (each the learner's
-        Outputs on the observation after the shard's last tick). environment_steps: environment
-        steps this update collected (the warmup counts them)."""
+        Outputs on the observation after the shard's last tick). environment_steps:
+        environment steps this update collected (the warmup counts them). Returns the update's
+        series on the device (`bnb.contracts.series`), for the caller to read back once."""
         config, device = self.config, self.device
         views = segments.views
         if views < config.minibatches:
@@ -573,67 +707,146 @@ class Learner:
         for group in self.optimizer.param_groups:
             group["lr"] = learning_rate(config, self.environment_steps)
         self.environment_steps += environment_steps
+        before = (
+            {name: p.detach().clone() for name, p in self.model.named_parameters()}
+            if self.diagnostics
+            else None
+        )
         terms_total = torch.zeros(len(TERMS), device=device)
         levels_total = torch.zeros(len(REWARD_LEVELS), device=device)
+        statistics_total = torch.zeros(len(self.STATISTICS), device=device)
+        diagnostics_total = None
         drift = self.drift(segments, prepared)
-        nonfinite = torch.zeros(1, device=device)  # minibatch steps with a non-finite gradient
-        steps, stopped = 0, False
+        skipped = torch.zeros((), dtype=torch.int64, device=device)
+        nonfinite_terms = torch.zeros(len(TERMS), dtype=torch.int64, device=device)
+        norm_total = torch.zeros((), device=device)  # the finite steps' pre-clip norms
+        clipped = torch.zeros((), dtype=torch.int64, device=device)
+        steps, stopped, epochs = 0, False, 0
+        first_kl = first_epoch = epoch_statistics = None
         for epoch in range(config.epochs):
             # Minibatches as equal as the views allow (micro-batches of micro_views views,
             # each minibatch's last one smaller where they do not divide).
             order = torch.randperm(views, generator=self.order_generator)
-            statistics = torch.zeros(len(self.STATISTICS), device=device)
+            epoch_statistics = torch.zeros(len(self.STATISTICS), device=device)
             for chosen in order.tensor_split(config.minibatches):
-                terms, per_level, statistic = self.gradient(segments, prepared, chosen)
+                terms, per_level, statistic, diagnostic = self.gradient(segments, prepared, chosen)
                 norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.max_grad_norm)
-                nonfinite += ~torch.isfinite(norm)
-                self.optimizer.step()
+                finite = torch.isfinite(norm)
+                self._step(finite)
+                skipped += ~finite
+                nonfinite_terms += ~torch.isfinite(terms)
+                norm_total += torch.where(finite, norm, 0.0)
+                clipped += finite & (norm > config.max_grad_norm)
+                if first_kl is None and "approximate_kl" in self.STATISTICS:
+                    first_kl = statistic[self.STATISTICS.index("approximate_kl")]
                 terms_total += terms
                 levels_total += per_level
-                statistics += statistic
+                epoch_statistics += statistic
+                statistics_total += statistic
+                diagnostics_total = (
+                    diagnostic if diagnostics_total is None else diagnostics_total + diagnostic
+                )
                 steps += 1
-            statistics = statistics / config.minibatches  # the epoch's means
+            epochs += 1
+            epoch_statistics = epoch_statistics / config.minibatches  # the epoch's means
             if epoch == 0:
-                first_epoch = statistics
+                first_epoch = epoch_statistics
             # The early stop reads the epoch's mean KL: one host sync per epoch.
             if (
                 config.target_kl is not None
                 and epoch + 1 < config.epochs
-                and statistics[self.STATISTICS.index("approximate_kl")].item() > config.target_kl
+                and epoch_statistics[self.STATISTICS.index("approximate_kl")].item()
+                > config.target_kl
             ):
                 stopped = True
                 break
-        readout = torch.cat(
-            [
-                terms_total / steps,
-                levels_total / steps,
-                prepared["explained_variance"],
-                drift,
-                first_epoch,
-                prepared["scale"].reshape(1),
-                nonfinite,
-            ]
-        ).tolist()  # one transfer
-        terms, readout = readout[: len(TERMS)], readout[len(TERMS) :]
-        levels, readout = readout[: len(REWARD_LEVELS)], readout[len(REWARD_LEVELS) :]
-        variance, readout = readout[: len(REWARD_LEVELS)], readout[len(REWARD_LEVELS) :]
-        out = {f"loss/{term}": value for term, value in zip(TERMS, terms)}
-        out.update({f"value_loss/{name}": value for name, value in zip(REWARD_LEVELS, levels)})
+        out = {
+            HEAD_SERIES[term]: Mean(terms_total[index], steps)
+            for index, term in enumerate(TERMS)
+            if term in HEAD_SERIES
+        }
+        for index, level in enumerate(REWARD_LEVELS):
+            out[f"critic/value_loss/{level}"] = Mean(levels_total[index], steps)
+            out[f"critic/explained_variance/{level}"] = prepared["explained_variance"][index]
+        out.update(self.report(first_epoch, epoch_statistics, statistics_total / steps))
         out.update(
-            {f"explained_variance/{name}": value for name, value in zip(REWARD_LEVELS, variance)}
+            {
+                "policy/ratio_drift/max": drift[0],
+                "policy/ratio_drift/mean": drift[1],
+                "policy/minibatch_steps": steps,
+                "policy/epochs_completed": epochs,
+                "policy/stopped_early": stopped,
+                "returns/scale": prepared["scale"],
+                "train/skipped_steps": skipped,
+                "train/gradient_norm": Mean(norm_total, steps - skipped),
+                "train/clip_fire_rate": Mean(clipped, steps - skipped),
+                "schedule/learning_rate": self.optimizer.param_groups[0]["lr"],
+            }
         )
-        drift, readout = readout[:2], readout[2:]
-        statistics, readout = readout[: len(self.STATISTICS)], readout[len(self.STATISTICS) :]
-        out.update(
-            ratio_drift_max=drift[0],
-            ratio_drift_mean=drift[1],
-            **self.report(statistics),
-            minibatch_steps=steps,
-            stopped_early=stopped,
-            return_scale=readout[0],
-            nonfinite_gradients=int(readout[1]),
-            learning_rate=self.optimizer.param_groups[0]["lr"],
+        if first_kl is not None:  # the behaviour policy against the learner's, before a step
+            out["policy/kl_first"] = first_kl
+        for index, term in enumerate(TERMS):
+            out[f"train/nonfinite_steps/{term}"] = nonfinite_terms[index]
+        if self.diagnostics:
+            out.update(self._diagnostic_series(prepared, diagnostics_total, steps, levels_total))
+            out.update(self._parameter_series(before))
+        return out
+
+    def report(
+        self, first_epoch: torch.Tensor, last_epoch: torch.Tensor, mean: torch.Tensor
+    ) -> dict:
+        """The policy's series from its STATISTICS: the first and the last completed
+        epoch's means and the mean over every minibatch step. `policy/kl` is the last
+        epoch's (what the early stop reads), the clip fraction every step's."""
+        index = self.STATISTICS.index
+        return {
+            "policy/kl": last_epoch[index("approximate_kl")],
+            "policy/clip_fraction": mean[index("clip_fraction")],
+        }
+
+    def _diagnostic_series(
+        self, prepared: dict, total: torch.Tensor, steps: int, levels_total: torch.Tensor
+    ) -> dict:
+        """The policy's diagnostic means over the update's steps (`statistics.POLICY_SUMS`,
+        the entropy quantiles from its histogram, the factor coupling), the value KL per
+        level, and the series `prepare` measured before any step."""
+        policy_part, targets = total[: -len(REWARD_LEVELS)], total[-len(REWARD_LEVELS) :]
+        sums, histogram = (
+            policy_part[: len(statistics.POLICY_SUMS)],
+            policy_part[len(statistics.POLICY_SUMS) :],
         )
+        means = dict(zip(statistics.POLICY_SUMS, (sums / steps).unbind(), strict=True))
+        out = {f"policy/{name}": value for name, value in means.items()}
+        out["policy/factor_coupling"] = (
+            means["entropy/power"]
+            + means["entropy/stick"]
+            + means["entropy/shoot"]
+            - means["entropy/joint"]
+        )
+        for quantile, value in zip(
+            statistics.ENTROPY_QUANTILES,
+            statistics.histogram_quantiles(histogram, self.entropy_quantiles).unbind(),
+            strict=True,
+        ):
+            out[f"policy/entropy_quantile/p{round(quantile * 100)}"] = value
+        for index, level in enumerate(REWARD_LEVELS):
+            out[f"critic/value_kl/{level}"] = Mean(levels_total[index] - targets[index], steps)
+        out.update(prepared["series"])
+        return out
+
+    @torch.no_grad()
+    def _parameter_series(self, before: dict[str, torch.Tensor]) -> dict:
+        """Per module (`statistics.parameter_groups`): the parameters' norm after the update
+        and the update's size relative to the norm before it."""
+        after = dict(self.model.named_parameters())
+        change = {name: after[name].detach() - before[name] for name in before}
+        norms = statistics.group_norms(after, self.parameter_groups)
+        previous = statistics.group_norms(before, self.parameter_groups)
+        moved = statistics.group_norms(change, self.parameter_groups)
+        out = {}
+        for group in self.parameter_groups:
+            out[f"train/parameter_norm/{group}"] = norms[group]
+            out[f"train/update_ratio/{group}"] = Mean(moved[group], previous[group])
         return out
 
     @torch.no_grad()
