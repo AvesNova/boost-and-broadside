@@ -15,6 +15,7 @@ Statuses:
 - **merged:** built, reviewed and on the `v2` branch. These sections have prose pages here.
 - **milestone 1 built:** the first of the section's milestones is built and has a prose
   page; the later milestones are to follow.
+- **milestone 2 built:** the first two of the section's milestones are built.
 - **specified:** a spec exists; the section is not built.
 - **decided:** the decisions are recorded; the spec is to follow.
 - **planned:** in the plan only.
